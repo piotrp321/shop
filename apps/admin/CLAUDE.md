@@ -163,7 +163,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   procent, cena katalogowa jednostki) jest pod nazwą produktu, z kodem i bez.
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
   `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`): filtr
-  statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
+  statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone; także z adresu: `status` przy wejściu i przy zmianie `route.query`
+  przy otwartej liście, np. link „Aktywne promocje” z pulpitu; ustawia filtr według adresu, wraca na pierwszą stronę,
+  pomija nieznaną wartość, rozpoznaje swój widok po nazwie trasy i niczego nie zapisuje do adresu; filtr w widoku
+  pokazuje status listy) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
   w `useOrderList` (zmiana filtra porzuca wiersze i kursory; błąd następnej strony zostawia wyświetloną; 403 bez
   ponowienia). Status wiersza i jego etykieta (`format.ts`) pochodzą z API. Przycisk „Dodaj promocję” i cała edycja:
   tylko `admin` i `marketing` (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą
@@ -191,7 +194,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
 - `src/discount-codes/` – kody rabatowe (menu „Kody rabatowe”, trasy `/discount-codes`, `/discount-codes/new`,
   `/discount-codes/:id`: jedna ścieżka `discount-codes`, więc pozycja menu zostaje aktywna na formularzu).
   `useDiscountCodeList` (widok `DiscountCodesView`): filtr statusu (Wszystkie, Zaplanowane, Aktywne, Wygasłe,
-  Wyłączone), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
+  Wyłączone; także z adresu jak w `usePromotionList`, np. link „Kody rabatowe” z pulpitu; wyszukiwanie zostaje), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
   jest wysyłany i widok to mówi; wielkość liter normalizuje API) i stronicowanie po kursorach ze stosem kursorów
   w panelu, jak w `usePromotionList` (zmiana filtra albo wyszukiwania porzuca wiersze i kursory; błąd następnej strony
   zostawia wyświetloną; 403 bez ponowienia). Przyciski „Poprzednia” i „Następna” nie są wyłączane na czas ładowania
