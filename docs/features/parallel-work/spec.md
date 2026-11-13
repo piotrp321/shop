@@ -68,7 +68,9 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
 
 **Wstrzymanie równoległości**: gdy istnieje `parallel-hold.json` (sekcja „Pomiar pierwszych dwóch par”), zaraz po
 kroku 2 każdy kandydat obok epiku w toku (także czekającego na merge) czeka z powodem `równoległość wstrzymana:
-<powód>`. Krok 1 działa dalej, więc praca szeregowa trwa.
+<powód>`. Krok 1 działa dalej, więc praca szeregowa trwa. Odnowienie rezerwacji założonej przed wstrzymaniem go nie
+sprawdza (odnowienie nie uruchamia kroków bramki), więc taki epik może ruszyć jeszcze w ciągu 30 minut od rezerwacji
+lub ostatniego odnowienia.
 
 „Pominięty” oznacza, że bramka sprawdza następnego kandydata z tablicy (niższy epik może ruszyć przed wyższym, jak
 w liście nocy). „Czekanie” dotyczy każdego kandydata, więc bramka kończy szukanie: kandydat ruszy później,
@@ -82,8 +84,8 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
 - **Blokada**: `fcntl.flock` na `gate.lock`. Trzymają ją wszystkie komendy, które czytają stan do decyzji albo
   zapisują stan wspólny: `gate --reserve`, `release`, `start`, `done`, `approve`, `close`, `next`, `hold` i `unhold`,
   przez cały odczyt, sprawdzenie i zapis. Czekanie na blokadę najwyżej 120 s; potem kod 2 z powodem „blokada bramki zajęta”, bez zapisu.
-  `claims.json` i `night.json` są zapisywane przez plik tymczasowy i `os.replace`, więc przerwany zapis nie zostawia
-  nieczytelnego pliku.
+  `claims.json`, `night.json` i `parallel-hold.json` są zapisywane przez plik tymczasowy i `os.replace`, więc
+  przerwany zapis nie zostawia nieczytelnego pliku.
 - **Rezerwacja**: wpis w `claims.json` (`dir`, `claim` (losowy token), `at`, `expires_at`), ważny 30 minut. Bramka
   liczy epik z ważną rezerwacją jako epik w toku i aktywny (pliki z `Zakres:` jego `spec.md` na `origin/main`, rezerwa
   pamięci, pełny szacunek limitu). Wygasłe wpisy są pomijane i usuwane przy następnym zapisie.
@@ -213,9 +215,9 @@ sprzed zmiany drugiego epiku. Dlatego:
 - **Ponowne sprawdzenie** czekającego kandydata (w dzień i w nocy), ze świeżym `get_usage`, przy: nowym zdarzeniu
   `done` w `measurements.jsonl` (także z innej sesji: Monitor na nowe linie `done`), końcu procesu AO tej sesji,
   merge'u albo zamknięciu końcowego PR (także cudzego: zmiana `origin/main` z pętli z sekcji 6), najbliższym `resetsAt`
-  okna, które blokuje krok 7, i `expires_at` cudzej rezerwacji, która blokuje (jednorazowy budzik), a poza tym co
-  30 minut, póki kandydat czeka. Monitor uzbraja sesja, która ma czekającego kandydata, także bez własnego procesu AO.
-  Push tylko przy zmianie powodu czekania, nie przy każdym sprawdzeniu.
+  okna, które blokuje krok 7, i `expires_at` cudzej rezerwacji, która blokuje (jednorazowy budzik), od razu po
+  `unhold`, a poza tym co 30 minut, póki kandydat czeka. Monitor uzbraja sesja, która ma czekającego kandydata, także
+  bez własnego procesu AO. Push tylko przy zmianie powodu czekania, nie przy każdym sprawdzeniu.
 
 ### Dwa epiki w jednej sesji
 

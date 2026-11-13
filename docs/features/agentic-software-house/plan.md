@@ -166,8 +166,9 @@ flowchart TB
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.
 3. **Wykonanie (AO, w nocy).**
    - Start epiku: sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane `spec.md`
-     i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku albo na
-     prośbę użytkownika.
+     i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku, na
+     prośbę użytkownika, a w dzień także po starcie epiku i po jego `epic_done` (bramka proponuje wtedy epik
+     równoległy).
    - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, bez wspólnych
      plików wymuszających kolejkę (reguła plików bramki), bez zależności od otwartych epików i, przy pomiarze czasu,
      mieszczące się do rana. Użytkownik zatwierdza ją jednym „tak”. Każdy epik listy rusza przez bramkę: równolegle
@@ -255,8 +256,9 @@ flowchart TB
 5. **Powiadomienia i kolejka epików przez aplikację Claude.** Przebieg AO prowadzi sesja Claude Code z Remote
    Control (włączone globalnie w aplikacji). Sesja śledzi zdarzenia AO (bloker, awaria, koniec epiku) i wysyła
    powiadomienie push do aplikacji Claude na telefonie. Odpowiedź na bloker użytkownik pisze w tej sesji, a sesja
-   wykonuje `ao answer`. Po merge'u końcowego PR ta sama sesja bierze następny przygotowany epik z tablicy i pyta
-   „Zacząć epik X?” (punkt 3 procesu). Instrukcja dla sesji jest w `shop`, bez zmian w kodzie AO. Mechanizm sprawdza
+   wykonuje `ao answer`. Po merge'u końcowego PR, a w dzień także po starcie epiku i po jego `epic_done`, ta sama
+   sesja bierze następny przygotowany epik z tablicy, który przechodzi bramkę, i pyta „Zacząć epik X?” (punkt 3
+   procesu). Instrukcja dla sesji jest w `shop`, bez zmian w kodzie AO. Mechanizm sprawdza
    pierwszy przebieg (krok 7). Przebieg epiku prowadzi skill `/ao-run <epik>` (`docs/features/ao-run/spec.md`).
    Kolejkę prowadzi ten sam skill (sekcja „Następny epik”, bramka `night_queue.py gate`): `/ao-run` bez argumentu
    wybiera następny przygotowany epik z tablicy.
@@ -269,9 +271,9 @@ flowchart TB
 7. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, od `/prepare-epic` do odbioru, razem z pomiarem
    z punktu 5 procesu. Każdy kolejny epik idzie tym samym procesem.
 8. **Nocna kolejka kilku epików.** Przed snem użytkownik jedną zgodą zatwierdza listę przygotowanych epików na noc
-   (`/ao-run --noc`, punkt 3 procesu). Po `epic_done` jednego epiku sesja z `/ao-run` startuje następny z listy, bez
-   czekania na merge (od kroku 19a także równolegle, przez bramkę). Rano użytkownik odbiera kilka raportów. Opis jest w `docs/features/ao-run/spec.md` (sekcja
-   „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
+   (`/ao-run --noc`, punkt 3 procesu). Każdy epik listy rusza przez bramkę: równolegle z trwającym albo po `epic_done`
+   poprzedniego, bez czekania na merge. Rano użytkownik odbiera kilka raportów. Opis jest
+   w `docs/features/ao-run/spec.md` (sekcja „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
    - na jedną noc trafiają tylko epiki bez wspólnych plików wymuszających kolejkę (reguła plików bramki, krok 19a),
      bo każdy startuje z `main` bez poprzednich; `/prepare-epic` zapisuje zakres epiku w linii `Zakres:`
      specyfikacji, a lista porównuje z niej pliki epików;

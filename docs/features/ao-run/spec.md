@@ -74,8 +74,9 @@ Remote Control skill nie sprawdza.
   Następny epik wybiera bramka (`night_queue.py gate`); z wyjścia `next_epic.py` skill bierze tylko `skipped`, gdy
   bramka nie ma kandydata (bramka nie widzi epików nieprzygotowanych).
 - `.claude/skills/ao-run/night_queue.py` (Python 3.9+, bez zależności) i `test_night_queue.py`: lista na noc, pomiar,
-  warunki startu kolejnego epiku (sekcja „Noc”) oraz bramka pracy równoległej z rezerwacją (`gate`, `release`; opis:
-  [spec pracy równoległej](../parallel-work/spec.md), „Gdzie działa”). Tablicę, issues, gałęzie i pliki na
+  warunki startu kolejnego epiku (sekcja „Noc”) oraz bramka pracy równoległej z rezerwacją i wstrzymaniem
+  równoległości (`gate`, `release`, `hold`, `unhold`; opis: [spec pracy równoległej](../parallel-work/spec.md),
+  „Gdzie działa”). Tablicę, issues, gałęzie i pliki na
   `origin/main` czyta tak samo jak `next_epic.py` (wspólny kod w `next_epic.py`).
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada stanu wspólnego, zapis atomowy,
   rezerwacje i właściciele epików, klasyfikacja plików bramki i pomiar pamięci Dockera (bez zależności od
@@ -322,9 +323,11 @@ równoległej („Gdzie działa”, „Noc”); w skrócie `next` zwraca pierwsz
   czasu nie przekracza `until`, stan limitów to `ok`, a każde okno, które nie odnowi się przed końcem szacunku czasu
   (`resetsAt` późniejszy), ma pomiar i po dodaniu szacunku zużycia nie przekracza 80%. Okna, które odnowią się
   wcześniej, nie blokują: na ich cooldown AO czeka samo (`--max-cooldown-wait`);
-- w pozostałych przypadkach (obok epików aktywnych): gdy przejdzie kroki 2–7 bramki i teraz + szacunek czasu nie
+- w pozostałych przypadkach (obok epików w toku, aktywnych albo czekających na merge): gdy przejdzie kroki 2–7 bramki
+  i wstrzymanie równoległości (`parallel-hold.json`: każdy epik w toku to czekanie) i teraz + szacunek czasu nie
   przekracza `until`. Niespełniony warunek przy aktywnym epiku to `wait: true` (noc trwa, sesja sprawdza ponownie),
-  a bez aktywnego epiku koniec nocy.
+  a bez aktywnego epiku koniec nocy, także gdy wstrzymanie zatrzymuje kandydata przy samych epikach czekających na
+  merge.
 
 Sesja wywołuje `next` po `approve`, zaraz po starcie każdego epiku nocy (start równoległy), po `epic_done` i przy
 każdym ponownym sprawdzeniu czekającego epiku. Gdy `epic` jest, sesja wykonuje dla niego przebieg od punktu 1 bez

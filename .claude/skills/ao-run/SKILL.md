@@ -500,13 +500,14 @@ python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" hold -
 
 Wyjście `{"at", "reason"}` (istniejące wstrzymanie zostaje bez zmiany); kod różny od 0: powiedz o tym w rozmowie
 i w pushu. Do decyzji użytkownika o zmianie bramki (w rozmowie albo w PR do specyfikacji pracy równoległej) żaden epik
-nie rusza obok epiku w toku (sekcja 1). Wstrzymanie zdejmujesz tylko po wyraźnej decyzji użytkownika w rozmowie:
+nie rusza obok epiku w toku (sekcja 1), poza startem mimo bramki po „tak” na „Uruchomić mimo bramki?” (tylko w dzień).
+Wstrzymanie zdejmujesz tylko po wyraźnej decyzji użytkownika w rozmowie:
 
 ```bash
 python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" unhold
 ```
 
-Wyjście `{"removed": true|false}`. Po werdykcie drugiej pary z `pairs`, gdy obie pierwsze pary są zamknięte (żaden ich
+Wyjście `{"removed": true|false}`; po nim od razu sprawdź czekającego kandydata (sekcja 8). Po werdykcie drugiej pary z `pairs`, gdy obie pierwsze pary są zamknięte (żaden ich
 epik nie ma `open`) i żadna nie ma krytycznego problemu: push „Krok 19b może ruszyć: dwie pary bez krytycznego
 problemu”. Po werdykcie drugiej pary przedstaw też dane do decyzji, czy dopuścić wspólne `CLAUDE.md` w bramce: korzyść
 (`claude_md_only` z `pairs.py`: epiki, które czekały tylko przez `CLAUDE.md`, z liczbą pominięć) i ryzyko
@@ -646,6 +647,7 @@ ponownie ze świeżym `get_usage` (w dzień bramką z tej sekcji, w nocy przez `
 
   Wygaśnięcie tego Monitora to sprawdzenie co 30 minut: sprawdź kandydata i uzbrój Monitor ponownie;
 - końcu procesu AO tej sesji i wyniku pętli z sekcji 6 (`MERGED`, `CLOSED`, `MAIN`);
+- zdjęciu wstrzymania równoległości (`unhold`, sekcja 7): od razu;
 - jednorazowym budziku (Bash `run_in_background`) na najbliższe `resetsAt` okna z powodu `okno <okno>: …` (z obiektu
   `plan` z `get_usage`) albo na `expires_at` rezerwacji innej sesji, której epik jest w powodzie czekania
   (`~/.local/state/ao-night/claims.json`, tylko odczyt):
