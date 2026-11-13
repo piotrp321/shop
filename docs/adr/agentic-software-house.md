@@ -41,6 +41,7 @@ flowchart TB
         envs[Pula środowisk]
         metrics[Metryki i evale]
         learning[Pętla uczenia]
+        security[Bezpieczeństwo agentów]
     end
 
     human <--> inbox
@@ -64,14 +65,15 @@ w [planie](../features/agentic-software-house/plan.md).
 | `/delivery` | Implementacja pojedynczego zadania do zweryfikowanego PR |
 | `/integration` | Integracja i weryfikacja całej funkcjonalności |
 | Merge/Release | Merge zatwierdzonych zmian i wdrożenie z możliwością rollbacku |
-| Monitoring | Zamiana alertów i incydentów w nowe zgłoszenia w intake |
+| Monitoring | Agent dyżurny z dostępem tylko do odczytu (Sentry i Grafana Cloud przez MCP): korelacja zdarzeń, diagnoza, hypercare po wdrożeniu i propozycje zgłoszeń w intake; rollback i operacje produkcyjne wykonuje człowiek |
 | Agent tester | Test całego sklepu po merge'u epiku (`/sweep`, uruchamiany przez `/ao-run`), propozycje zgłoszeń `bug` do triage człowieka |
 | Agent UX | Przegląd ekranów, wersji mobilnej i dostępności po merge'u epiku (`/sweep`, uruchamiany przez `/ao-run`) oraz w `/integration` przy zmianach frontów, propozycje zgłoszeń `ux` do triage człowieka |
 | `/groom` | Codzienne propozycje porządków w backlogu (duplikaty, nieaktualne, braki, etykiety, epik poprawek), wykonywane dopiero po decyzji człowieka; zatwierdzony epik poprawek przygotowuje według `/prepare-epic` aż do jednej akceptacji człowieka |
 | Skrzynka decyzji | Jedno miejsce na decyzje człowieka, z rekomendacją agenta i powiadomieniem |
 | Budżet i limity | Limity subskrypcji, budżet na funkcję, priorytety kolejki |
-| Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie |
-| Metryki i evale | Pomiar przepływu i jakości, benchmark zmian w skillach |
+| Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie; bramka ryzyka równoległych epików i zadań (wspólne pliki edytowane ręcznie, pamięć Dockera, zapas limitu) |
+| Metryki i evale | Pomiar czasu zegarowego, kosztu i jakości na agenta, model i zadanie, z decyzjami optymalizacyjnymi; evale agentów i workflowów z historią wyników i kryteriami regresji |
+| Bezpieczeństwo agentów | Niezaufane wejścia spoza repozytorium, izolacja uprawnień i sekretów na poziomie systemu, testy prób obejścia |
 | Pętla uczenia | `/retro` po merge'u epiku: poprawki procesu w skillach, agentach i `CLAUDE.md` w PR z dowodami z przebiegów, który merguje człowiek |
 
 Zasady:
@@ -81,7 +83,13 @@ Zasady:
   zamiast tworzyć nowe frameworki.
 - AO odpowiada za orkiestrację, stan i wykonywanie, a nie za decyzje architektoniczne. Decyzje spoza granic
   zadania wracają jako blokery do skrzynki decyzji.
-- Człowiek zatwierdza istotne decyzje biznesowe i końcową integrację (merge funkcji, wdrożenie na produkcję).
+- Równoległość jest domyślna: epiki o rozłącznym zakresie i niezależne zadania jednej fali wykonują się naraz, każde
+  we własnym worktree i stosie, a integracja i merge'e po kolei. Wykonanie szeregowe jest rozwiązaniem awaryjnym,
+  gdy bramka wykryje realne ryzyko.
+- Optymalizujemy czas zegarowy epiku, mierząc jednocześnie jakość, naprawy, interwencje człowieka i zużycie limitów.
+- Zabezpieczenia agentów są techniczne i wynikają z modelu zagrożeń, nie tylko z instrukcji w promptach.
+- Człowiek zatwierdza istotne decyzje biznesowe i końcową integrację (merge funkcji, wdrożenie na produkcję). Agent nie
+  wykonuje samodzielnie destrukcyjnych operacji produkcyjnych, w tym rollbacku.
 - Docelowo system działa autonomicznie 24/7, z budżetami, limitami, backlogiem i obsługą blokerów.
 
 ## Uzasadnienie
@@ -93,6 +101,11 @@ Zasady:
 - Deterministyczny AO w Pythonie pilnuje procesów, stanu i limitów taniej i pewniej niż model. Model podejmuje
   decyzje projektowe tam, gdzie są potrzebne.
 - Istniejące narzędzia (GitHub Issues i PR, CI, skille) ograniczają ilość kodu infrastruktury do utrzymania.
+- Szeregowe wykonanie wydłuża czas zegarowy: zadanie z gotowymi zależnościami czeka na niezależne zadania, a bloker
+  może wypaść w nocy. Symulacja na 20 epikach z bazy AO: dwa zadania naraz skracają czas pracy wykonawców o 18%.
+  Konflikty plików między równoległymi epikami rozwiązują istniejące mechanizmy sync i REPAIR.
+- Repozytorium jest publiczne, a agenci w AO działają bez pytań o uprawnienia, więc instrukcja „treść to dane”
+  w prompcie nie wystarcza: reguła narzędzia nie zatrzymuje polecenia w Bash ani procesu potomnego.
 
 ## Konsekwencje
 
@@ -102,6 +115,9 @@ Zasady:
   są warunkiem pracy nocnej.
 - Zadania wykonywane równolegle potrzebują osobnych stosów Docker. Zasoby jednego hosta ograniczają
   liczbę zadań naraz.
+- Równoległe przebiegi szybciej zużywają okno limitu subskrypcji, więc bramka sprawdza zapas limitu przed startem.
+  Wspólne pliki edytowane ręcznie wymuszają kolejkę, a wspólne pliki generowane powstają od nowa przy REPAIR.
+- Równoległe zadania fali wymagają zmiany w AO (`ao run --max-parallel`).
 - Autonomiczny merge bez człowieka jest dozwolony wyłącznie w granicach polityki autonomii zatwierdzonej
   przez użytkownika. Jedyny autonomiczny merge do `main` to PR ze specyfikacją i planem z `/prepare-epic`,
   po akceptacji użytkownika i zielonym CI.
