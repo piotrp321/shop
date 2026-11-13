@@ -2,7 +2,7 @@
 """Night queue of several epics for the /ao-run skill. Python 3.9+, standard library only.
 
   night_queue.py [--repo DIR] [--state DIR] scope <spec.md>
-  night_queue.py [--repo DIR] [--state DIR] start <dir>   (stdin: the `plan` object of get_usage)
+  night_queue.py [--repo DIR] [--state DIR] start <dir> [--claim TOKEN]  (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] done <dir>    (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] propose [--until HH:MM]
   night_queue.py [--repo DIR] [--state DIR] approve [--until HH:MM] <dir>...
@@ -16,11 +16,19 @@ scope: reads the `Zakres:` line from the header of an epic spec (the lines befor
 one JSON line `{"scope": [path, ...]}`, exit 0. A missing, doubled or unreadable line, or an unreadable file, prints
 the reason to stderr and exits 2.
 
+Shared state: start, done, approve, close, next and gate hold the lock <state>/gate.lock
+(parallel_gate.state_lock, at most 120 s; then exit 2 `blokada bramki zajęta` without a write) for their whole
+read-decide-write. night.json and claims.json are replaced atomically (temp file and os.replace).
+
 start: counts the tasks in the manifest of origin/main:docs/features/<dir>/plan.md and appends a start event to
-<state>/measurements.jsonl. done: appends a done event for the latest start without one and prints the measurement
-(tasks, minutes, usage delta per limit window, `overlap`: its interval intersects another epic's). A start/done pair is
-a measurement only through `measurements`. Estimates take time per task from all measurements and usage per task from
-the measurements without `overlap` (from all when none of them has the window).
+<state>/measurements.jsonl with `docker`: the Docker memory {total_mib, ao_mib, other_mib}
+(parallel_gate.docker_snapshot) or null when `docker` fails (the event is still written). Then, in the same lock, the
+epic gets an owner in claims.json: the --claim token (its reservation is removed) or, without --claim, a new token.
+Prints the event plus `owner` (the token; not stored in measurements.jsonl). done: appends a done event for the latest
+start without one and prints the measurement (tasks, minutes, usage delta per limit window, `overlap`: its interval
+intersects another epic's). A start/done pair is a measurement only through `measurements`. Estimates take time per
+task from all measurements and usage per task from the measurements without `overlap` (from all when none of them has
+the window).
 
 propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
 {"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
@@ -314,22 +322,44 @@ def _read_usage(stdin):
         return {'status': 'unreadable'}
 
 
+LOCK_TIMEOUT = 120.0
+
+
+def state_lock(state_dir):
+    """The gate lock of the shared state (parallel_gate.state_lock, LOCK_TIMEOUT seconds)."""
+    return parallel_gate.state_lock(state_dir, timeout=LOCK_TIMEOUT)
+
+
+def _docker_memory(run):
+    try:
+        return parallel_gate.docker_snapshot(run)
+    except parallel_gate.DockerError:
+        return None
+
+
 def cmd_start(args, run, now, stdin):
-    events = read_events(args.state)
-    event = {'event': 'start', 'epic': args.dir, 'tasks': task_count(run, args.dir), 'at': now.isoformat(),
-             'usage': _read_usage(stdin)}
-    append_event(args.state, event)
-    print(json.dumps(event, ensure_ascii=False))
+    # The manifest and Docker are read before the lock: neither is shared state, and `docker stats` is slow.
+    tasks = task_count(run, args.dir)
+    event = {'event': 'start', 'epic': args.dir, 'tasks': tasks, 'at': now.isoformat(), 'usage': _read_usage(stdin),
+             'docker': _docker_memory(run)}
+    with state_lock(args.state):
+        read_events(args.state)
+        parallel_gate.read_claims(args.state)
+        append_event(args.state, event)
+        owner = parallel_gate.claim_to_owner(args.state, args.dir, args.claim, now)
+    print(json.dumps(dict(event, owner=owner), ensure_ascii=False))
     return 0
 
 
 def cmd_done(args, run, now, stdin):
-    events = read_events(args.state)
-    latest = [e for e in events if e.get('epic') == args.dir and e.get('event') in ('start', 'done')]
-    if not latest or latest[-1]['event'] != 'start':
-        raise StateError('brak start dla %s' % args.dir)
-    event = {'event': 'done', 'epic': args.dir, 'at': now.isoformat(), 'usage': _read_usage(stdin)}
-    append_event(args.state, event)
+    usage_now = _read_usage(stdin)
+    with state_lock(args.state):
+        events = read_events(args.state)
+        latest = [e for e in events if e.get('epic') == args.dir and e.get('event') in ('start', 'done')]
+        if not latest or latest[-1]['event'] != 'start':
+            raise StateError('brak start dla %s' % args.dir)
+        event = {'event': 'done', 'epic': args.dir, 'at': now.isoformat(), 'usage': usage_now}
+        append_event(args.state, event)
     print(json.dumps(measurements(events + [event])[-1], ensure_ascii=False))
     return 0
 
@@ -424,24 +454,19 @@ def cmd_propose(args, run, now, stdin):
 
 
 def write_night(state_dir, night):
-    directory = os.path.expanduser(state_dir)
-    try:
-        os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, NIGHT_FILE), 'w', encoding='utf-8') as f:
-            json.dump(night, f, ensure_ascii=False)
-            f.write('\n')
-    except OSError as e:
-        raise StateError('nie można zapisać %s: %s' % (NIGHT_FILE, e.strerror or e))
+    """Atomic write (temp file and os.replace) by a caller holding the gate lock; StateFileError on failure."""
+    parallel_gate.write_atomic(os.path.join(os.path.expanduser(state_dir), NIGHT_FILE), json.dumps(night) + '\n')
 
 
 def cmd_approve(args, run, now, stdin):
-    result = propose(run, args.state, args.until, now)
-    listed = [e['dir'] for e in result['epics']]
-    if not listed or listed != args.dirs:
-        raise StateError('lista różni się od zatwierdzanej: propozycja [%s], podano [%s]'
-                         % (', '.join(listed), ', '.join(args.dirs)))
-    night = {'approved_at': now.isoformat(), 'until': result['until'], 'epics': listed}
-    write_night(args.state, night)
+    with state_lock(args.state):
+        result = propose(run, args.state, args.until, now)
+        listed = [e['dir'] for e in result['epics']]
+        if not listed or listed != args.dirs:
+            raise StateError('lista różni się od zatwierdzanej: propozycja [%s], podano [%s]'
+                             % (', '.join(listed), ', '.join(args.dirs)))
+        night = {'approved_at': now.isoformat(), 'until': result['until'], 'epics': listed}
+        write_night(args.state, night)
     print(json.dumps(night, ensure_ascii=False))
     return 0
 
@@ -519,17 +544,23 @@ def _progress(state_dir, night):
 
 
 def cmd_close(args, run, now, stdin):
-    night = read_night(args.state)
-    if night is None:
-        raise StateError('brak zatwierdzonej listy nocy')
-    if 'ended_at' not in night:
-        night = dict(night, ended_at=now.isoformat(), reason=args.reason)
-        write_night(args.state, night)
+    with state_lock(args.state):
+        night = read_night(args.state)
+        if night is None:
+            raise StateError('brak zatwierdzonej listy nocy')
+        if 'ended_at' not in night:
+            night = dict(night, ended_at=now.isoformat(), reason=args.reason)
+            write_night(args.state, night)
     print(json.dumps(night, ensure_ascii=False))
     return 0
 
 
 def cmd_next(args, run, now, stdin):
+    with state_lock(args.state):
+        return _next(args, run, now, stdin)
+
+
+def _next(args, run, now, stdin):
     night = read_night(args.state)
     if night is None:
         print(json.dumps(_next_result(None, 'brak zatwierdzonej listy', [], []), ensure_ascii=False))
@@ -898,7 +929,7 @@ def cmd_gate(args, run, now, stdin):
     if stack_gib is None or not 0 < stack_gib < float('inf'):
         raise StateError('--stack-gib musi być liczbą GiB większą od 0, jest %r' % args.stack_gib)
     usage_now = _read_usage(stdin)
-    with parallel_gate.state_lock(args.state):
+    with state_lock(args.state):
         ctx = gate_context(run, args.state, now)
         result = gate_decision(ctx, args.dir, usage_now, stack_gib * 1024)
         append_gate_log(args.state, now, args.dir, result)
@@ -913,8 +944,10 @@ def main(argv=None, run=None, now=None, stdin=None):
     sub = parser.add_subparsers(dest='command', required=True)
     scope = sub.add_parser('scope', help='print the Zakres line of a spec')
     scope.add_argument('spec')
-    for name in ('start', 'done'):
-        sub.add_parser(name).add_argument('dir')
+    start_parser = sub.add_parser('start', help='record the start of an epic and its owner')
+    start_parser.add_argument('dir')
+    start_parser.add_argument('--claim')
+    sub.add_parser('done', help='record the end of an epic and print its measurement').add_argument('dir')
     propose_parser = sub.add_parser('propose', help='propose the list of epics for the night')
     approve_parser = sub.add_parser('approve', help='approve the list of epics for the night')
     for p in (propose_parser, approve_parser):

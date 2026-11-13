@@ -4,7 +4,10 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -16,6 +19,40 @@ spec.loader.exec_module(night_queue)
 
 def header(line):
     return '# Epic\n\nIssues: #1\n%s\n\n## Cel\nText\n' % line
+
+
+HOLDER = (
+    "import fcntl,sys\n"
+    "f=open(sys.argv[1],'a')\n"
+    "fcntl.flock(f,fcntl.LOCK_EX)\n"
+    "print('held',flush=True)\n"
+    "sys.stdin.read()\n"
+)
+
+
+def hold(path):
+    """A child process holding an exclusive flock on `path` until release_child."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    proc = subprocess.Popen([sys.executable, '-c', HOLDER, path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            text=True)
+    assert proc.stdout.readline().strip() == 'held'
+    return proc
+
+
+def release_child(proc):
+    proc.stdin.close()
+    proc.wait(10)
+    proc.stdout.close()
+
+
+def snapshot(directory):
+    """Contents of the files of `directory` (the lock file excluded)."""
+    found = {}
+    for name in sorted(os.listdir(directory)):
+        if name != 'gate.lock':
+            with open(os.path.join(directory, name), encoding='utf-8') as f:
+                found[name] = f.read()
+    return found
 
 
 class ParseScopeTest(unittest.TestCase):
@@ -147,15 +184,21 @@ def manifest(n):
 
 
 class ManifestRunner:
-    def __init__(self, files=None, fail=False):
+    def __init__(self, files=None, fail=False, docker=None):
+        # docker: answers of `docker info|ps|stats` by subcommand; None: every docker command fails.
         self.files = files or {}
         self.fail = fail
+        self.docker = docker
         self.calls = []
 
     def __call__(self, args):
         self.calls.append(list(args))
         if self.fail:
             raise night_queue.next_epic.CommandError(args, 'boom')
+        if args[0] == 'docker':
+            if self.docker is None:
+                raise night_queue.next_epic.CommandError(args, 'docker down')
+            return self.docker[args[1]]
         assert args[:2] == ['git', 'show'], args
         prefix = 'origin/main:docs/features/'
         assert args[2].startswith(prefix)
@@ -356,9 +399,9 @@ class MeasureCliTest(unittest.TestCase):
         self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
         self.state = os.path.join(self.dir, 'nested', 'state')
 
-    def cli(self, command, directory, stdin_text, run=None, now=T0):
+    def cli(self, command, directory, stdin_text, run=None, now=T0, extra=()):
         out, err = io.StringIO(), io.StringIO()
-        argv = ['--state', self.state, command, directory]
+        argv = ['--state', self.state, command, directory] + list(extra)
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = night_queue.main(argv, run=run or ManifestRunner({'cart': manifest(4)}), now=now,
                                     stdin=io.StringIO(stdin_text))
@@ -372,9 +415,66 @@ class MeasureCliTest(unittest.TestCase):
         code, out, err = self.cli('start', 'cart', json.dumps(usage(10)))
         self.assertEqual(0, code, err)
         event = json.loads(out)
-        self.assertEqual({'event': 'start', 'epic': 'cart', 'tasks': 4, 'at': T0.isoformat(), 'usage': usage(10)},
-                         event)
+        owner = event.pop('owner')
+        self.assertEqual({'event': 'start', 'epic': 'cart', 'tasks': 4, 'at': T0.isoformat(), 'usage': usage(10),
+                          'docker': None}, event)
         self.assertEqual([event], self.lines())
+        self.assertRegex(owner, '^[0-9a-f]{16}$')
+
+    def claims_json(self):
+        with open(os.path.join(self.state, 'claims.json'), encoding='utf-8') as f:
+            return json.load(f)
+
+    def write_claims(self, claims, owners=None):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': claims, 'owners': owners or {}}, f)
+
+    def claim(self, directory, token, expires=T0 + timedelta(minutes=20)):
+        return {'dir': directory, 'claim': token, 'at': T0.isoformat(), 'expires_at': expires.isoformat()}
+
+    def test_start_records_docker_memory(self):
+        docker = {'info': str(16 * 1024 ** 3), 'ps': 'ao-a-api-1\tao-a\nweb\tother\n',
+                  'stats': 'ao-a-api-1\t2GiB / 16GiB\nweb\t512MiB / 16GiB\n'}
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)),
+                                  run=ManifestRunner({'cart': manifest(4)}, docker=docker))
+        self.assertEqual(0, code, err)
+        expected = {'total_mib': 16384.0, 'ao_mib': 2048.0, 'other_mib': 512.0}
+        self.assertEqual(expected, json.loads(out)['docker'])
+        self.assertEqual(expected, self.lines()[0]['docker'])
+
+    def test_start_docker_failure_still_writes_the_event(self):
+        for docker in (None, {'info': 'garbage', 'ps': '', 'stats': ''}):
+            with self.subTest(docker=docker):
+                code, out, err = self.cli('start', 'cart', json.dumps(usage(10)),
+                                          run=ManifestRunner({'cart': manifest(4)}, docker=docker))
+                self.assertEqual(0, code, err)
+                self.assertIsNone(json.loads(out)['docker'])
+                self.assertIsNone(self.lines()[-1]['docker'])
+
+    def test_start_with_claim_turns_the_reservation_into_the_owner(self):
+        self.write_claims([self.claim('cart', 'tok'), self.claim('other', 'theirs')])
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'tok'])
+        self.assertEqual(0, code, err)
+        self.assertEqual('tok', json.loads(out)['owner'])
+        self.assertEqual({'claims': [self.claim('other', 'theirs')], 'owners': {'cart': 'tok'}}, self.claims_json())
+        self.assertNotIn('owner', self.lines()[0])
+
+    def test_start_without_claim_records_a_new_owner(self):
+        self.write_claims([], owners={'old': 'x'})
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)))
+        self.assertEqual(0, code, err)
+        owner = json.loads(out)['owner']
+        self.assertEqual({'claims': [], 'owners': {'old': 'x', 'cart': owner}}, self.claims_json())
+
+    def test_start_with_unreadable_claims_exits_2_without_writing(self):
+        os.makedirs(self.state)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{oops')
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'tok'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'measurements.jsonl')))
 
     def test_start_with_unreadable_usage(self):
         for text in ['', 'garbage', '[1]', '{"status": "ok"}', '{"status": "ok", "windows": [1]}']:
@@ -1780,7 +1880,7 @@ class GateCliTest(unittest.TestCase):
 
     def test_busy_lock_exits_2_without_log(self):
         @contextlib.contextmanager
-        def busy(state_dir):
+        def busy(state_dir, **kwargs):
             raise night_queue.parallel_gate.LockTimeout('blokada bramki zajęta')
             yield
 
@@ -1801,3 +1901,64 @@ class GateCliTest(unittest.TestCase):
             with self.subTest(value=value):
                 code, out, _ = self.gate([epic(1, 'A', 'apps/a')], extra=['--stack-gib', value])
                 self.assertEqual((2, ''), (code, out))
+
+
+class LockedWritesTest(unittest.TestCase):
+    """Commands that read the shared state to decide and write it hold the gate lock: busy -> 2 without a write."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+        os.makedirs(self.state)
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            json.dump({'approved_at': APPROVED.isoformat(), 'until': UNTIL.isoformat(), 'epics': ['b']}, f)
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            f.write(json.dumps({'event': 'start', 'epic': 'a', 'tasks': 2, 'at': T0.isoformat(), 'usage': {}}) + '\n')
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': 'b', 'claim': 'tok', 'at': NOW.isoformat(),
+                                   'expires_at': (NOW + timedelta(minutes=20)).isoformat()}], 'owners': {}}, f)
+
+    def test_busy_lock_exits_2_without_writes(self):
+        commands = [['start', 'b', '--claim', 'tok'], ['done', 'a'], ['approve', 'b'], ['close'], ['next'],
+                    ['gate', '--dir', 'b']]
+        before = snapshot(self.state)
+        proc = hold(os.path.join(self.state, 'gate.lock'))
+        try:
+            with mock.patch.object(night_queue, 'LOCK_TIMEOUT', 0.3):
+                for argv in commands:
+                    with self.subTest(command=argv[0]):
+                        out, err = io.StringIO(), io.StringIO()
+                        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                            code = night_queue.main(['--state', self.state] + argv,
+                                                    run=GateRunner([epic(2, 'B', 'apps/b')]), now=NOW,
+                                                    stdin=io.StringIO(json.dumps(usage(10))))
+                        self.assertEqual((2, ''), (code, out.getvalue()))
+                        self.assertIn('blokada bramki zajęta', err.getvalue())
+                        self.assertEqual(before, snapshot(self.state))
+        finally:
+            release_child(proc)
+
+    def test_free_lock_lets_the_same_commands_write(self):
+        # The counterpart of the busy-lock test: without a held lock every command succeeds.
+        for argv in (['done', 'a'], ['close']):
+            with self.subTest(command=argv[0]):
+                out, err = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = night_queue.main(['--state', self.state] + argv, run=GateRunner([]), now=NOW,
+                                            stdin=io.StringIO(json.dumps(usage(10))))
+                self.assertEqual(0, code, err.getvalue())
+
+    def test_night_json_is_replaced_atomically(self):
+        path = os.path.join(self.state, 'night.json')
+        with open(path) as f:
+            before = f.read()
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch('os.replace', side_effect=OSError(5, 'boom')), contextlib.redirect_stdout(out), \
+                contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'close'], run=GateRunner([]), now=NOW)
+        self.assertEqual((2, ''), (code, out.getvalue()))
+        self.assertIn('night.json', err.getvalue())
+        with open(path) as f:
+            self.assertEqual(before, f.read())
+        self.assertEqual([], [n for n in os.listdir(self.state) if n.startswith('.tmp-')])
