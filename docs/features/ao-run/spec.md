@@ -94,8 +94,9 @@ Remote Control skill nie sprawdza.
 - Katalog przebiegu `$HOME/.local/state/ao-<epik>/` (`AO_HOME`, poza repo) z `events.jsonl` i dziennikiem `run.log`.
 - Katalog stanu wspólnego `$HOME/.local/state/ao-night/` (poza repo, jeden dla wszystkich sesji `/ao-run` na
   komputerze): `night.json` (zatwierdzona lista), `measurements.jsonl` (pomiar każdego epiku prowadzonego przez
-  `/ao-run`), `claims.json` (rezerwacje i właściciele epików), `gate.jsonl` (wyniki bramki) i `gate.lock` (blokada
-  komend, które czytają stan do decyzji albo go zapisują).
+  `/ao-run`), `claims.json` (rezerwacje i właściciele epików), `gate.jsonl` (wyniki bramki), `parallel-hold.json`
+  (wstrzymanie równoległości po krytycznym problemie pary) i `gate.lock` (blokada komend, które czytają stan do decyzji
+  albo go zapisują).
 
 ## Przebieg
 
@@ -144,8 +145,9 @@ Remote Control skill nie sprawdza.
    Po merge'u, przed punktem 7, sesja dopisuje `/sweep <epik>` i `/retro <epik>` do kolejki przeglądów (sekcja
    „Przegląd po merge'u”). Pytanie z punktu 7 nie czeka na przegląd ani na retro. Po `MERGED` i po `CLOSED` sesja
    sprawdza pary epiku (`pairs.py`) i dla pary z obydwoma końcowymi PR zamkniętymi pokazuje blok `Para równoległa`
-   z werdyktem krytycznego problemu, a po zgodzie dopisuje go do issue epiku zamkniętego później; po drugiej parze
-   wysyła push o kroku 19b i przedstawia dane do decyzji o wspólnym `CLAUDE.md` (spec pracy równoległej, „Pomiar
+   z werdyktem krytycznego problemu (krytyczny problem: `night_queue.py hold`, które wstrzymuje starty obok epiku
+   w toku do `unhold` po decyzji użytkownika), a po zgodzie dopisuje go do issue epiku zamkniętego później; po drugiej
+   parze wysyła push o kroku 19b i przedstawia dane do decyzji o wspólnym `CLAUDE.md` (spec pracy równoległej, „Pomiar
    pierwszych dwóch par” i „Ocena `CLAUDE.md`”).
 7. **Następny epik.** Po merge'u końcowego PR, na prośbę użytkownika (`/ao-run` bez argumentu), a w dzień także po
    starcie epiku i po jego `epic_done`, sesja uruchamia bramkę bez rezerwacji (`night_queue.py gate`; spec pracy
@@ -362,7 +364,8 @@ końcowy PR epiku na polecenie, squash, i PR `sync/<epik>-main` do `epic/<epik>`
 albo, w parze epików równoległych, na podstawie akceptacji specyfikacji pracy równoległej), nie zakłada issues z przeglądu ani z retro bez decyzji użytkownika, nie uruchamia
 przeglądu ani retro równolegle z epikiem, nie merguje PR retro, nie odpowiada na blokery sam, nie prowadzi więcej niż
 dwóch aktywnych epików naraz (razem z epikami innych sesji) i nie zaczyna epiku z pominięciem bramki (start mimo bramki
-tylko w dzień po „tak” użytkownika, w nocy nigdy), nie przejmuje epiku innej sesji bez „tak” użytkownika, nie zaczyna
+tylko w dzień po „tak” użytkownika, w nocy nigdy), nie zdejmuje wstrzymania równoległości (`unhold`) bez decyzji
+użytkownika w rozmowie, nie przejmuje epiku innej sesji bez „tak” użytkownika, nie zaczyna
 epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na listę nocy), nie przygotowuje epiku (`/prepare-epic`)
 i nie zmienia tablicy.
 

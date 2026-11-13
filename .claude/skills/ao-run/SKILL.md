@@ -86,8 +86,8 @@ zostaje, a `skipped` może wymieniać ten sam epik.
 
 „Tak” na „Zacząć epik?” (sekcja 8) obowiązuje tylko w chwili rezerwacji: gdy bramka już nie przechodzi, podaj powód
 (jak wyżej), a po późniejszym przejściu bramki zapytaj od nowa, z aktualnym `parallel_with`. Po krytycznym problemie
-pary (sekcja 7), do decyzji użytkownika o zmianie bramki, wynik `reserved: true` z niepustym `parallel_with`
-traktujesz jak niespełnioną bramkę z powodem „krytyczny problem pary, czeka na decyzję użytkownika”.
+pary (sekcja 7) bramka sama wstrzymuje równoległość: obok epiku w toku zwraca czekanie z powodem `równoległość
+wstrzymana: <powód>` (w dzień, jak każda niespełniona bramka, z pytaniem „Uruchomić mimo bramki?”).
 
 ## 2. Przygotowanie
 
@@ -487,11 +487,24 @@ zamkniętego później w parze: na końcu komentarza z pomiarem (wyżej), oddzie
 z samym blokiem. W bloku nie używaj etykiet komentarza pomiaru (`Interwencje człowieka`, `Czekanie na użytkownika`,
 `Ręczne poprawki`). Bez zgody niczego nie komentuj.
 
-Po werdykcie pary z krytycznym problemem wyślij push „Para A+B: krytyczny problem: <opis>” (do 200 znaków), a do
-decyzji użytkownika o zmianie bramki (w rozmowie albo w PR do specyfikacji pracy równoległej) żaden epik nie rusza
-równolegle (sekcja 1). Po werdykcie drugiej pary z `pairs`, gdy obie pierwsze pary są zamknięte (żaden ich epik nie ma
-`open`) i żadna nie ma krytycznego problemu: push „Krok 19b może ruszyć: dwie pary bez krytycznego problemu”. Po
-werdykcie drugiej pary przedstaw też dane do decyzji, czy dopuścić wspólne `CLAUDE.md` w bramce: korzyść
+Po werdykcie pary z krytycznym problemem wstrzymaj równoległość, a potem wyślij push „Para A+B: krytyczny problem:
+<opis>” (do 200 znaków):
+
+```bash
+python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" hold --reason "para A+B: <opis>"
+```
+
+Wyjście `{"at", "reason"}` (istniejące wstrzymanie zostaje bez zmiany); kod różny od 0: powiedz o tym w rozmowie
+i w pushu. Do decyzji użytkownika o zmianie bramki (w rozmowie albo w PR do specyfikacji pracy równoległej) żaden epik
+nie rusza obok epiku w toku (sekcja 1). Wstrzymanie zdejmujesz tylko po wyraźnej decyzji użytkownika w rozmowie:
+
+```bash
+python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" unhold
+```
+
+Wyjście `{"removed": true|false}`. Po werdykcie drugiej pary z `pairs`, gdy obie pierwsze pary są zamknięte (żaden ich
+epik nie ma `open`) i żadna nie ma krytycznego problemu: push „Krok 19b może ruszyć: dwie pary bez krytycznego
+problemu”. Po werdykcie drugiej pary przedstaw też dane do decyzji, czy dopuścić wspólne `CLAUDE.md` w bramce: korzyść
 (`claude_md_only` z `pairs.py`: epiki, które czekały tylko przez `CLAUDE.md`, z liczbą pominięć) i ryzyko
 (niespójności dokumentów znalezione w sync i REPAIR obu par oraz krytyczne problemy). Decyzja należy do użytkownika;
 zmiana reguły to osobny PR do specyfikacji i `parallel_gate.py`.
@@ -749,7 +762,8 @@ epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, kt
 - Nie przejmujesz epiku innej sesji (`--takeover`) bez „tak” na „Przejąć epik X od innej sesji?” i nie uruchamiasz
   drugiego procesu AO dla jednego epiku.
 - Nie zmieniasz ręcznie plików stanu w `~/.local/state/ao-night/` (`measurements.jsonl`, `night.json`, `claims.json`,
-  `gate.jsonl`): zapisuje je tylko `night_queue.py`.
+  `gate.jsonl`, `parallel-hold.json`): zapisuje je tylko `night_queue.py`. `unhold` uruchamiasz tylko po wyraźnej
+  decyzji użytkownika w rozmowie.
 - Nie zaczynasz epiku bez „tak” użytkownika w sesji (na „Zacząć epik?” albo na listę nocy). Kolejny epik listy
   zaczynasz bez pytania tylko wtedy, gdy zwróci go `next`.
 - Nie zapisujesz listy nocy (`approve`) bez „tak” użytkownika ani z innymi epikami niż zaproponowane.

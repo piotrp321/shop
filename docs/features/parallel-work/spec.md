@@ -13,7 +13,7 @@ Miara główna: czas zegarowy epiku. Pilnujemy przy tym jakości, liczby napraw,
 ### Pojęcia
 
 - **Stan wspólny**: katalog `~/.local/state/ao-night/` (`measurements.jsonl`, `night.json`, `claims.json`,
-  `gate.jsonl`, `gate.lock`), jeden dla wszystkich sesji `/ao-run` na tym komputerze.
+  `gate.jsonl`, `gate.lock`, `parallel-hold.json`), jeden dla wszystkich sesji `/ao-run` na tym komputerze.
 - **Epik w toku**: epik z gałęzią `origin/epic/<katalog>` i otwartym issue z etykietą `epic` (jak w `next_epic.py`),
   bez zmergowanego końcowego PR `epic/<katalog>` → `main` (`gh pr list --head epic/<katalog> --base main --state
   merged`), albo epik z ważną rezerwacją (sekcja „Rezerwacja”). Obejmuje epiki czekające na merge końcowego PR.
@@ -65,6 +65,10 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
    równoległego zawiera zużycie drugiego); bez takich pomiarów ze wszystkich. Szacunek czasu: ze wszystkich pomiarów.
    Inaczej: czekanie.
 
+**Wstrzymanie równoległości**: gdy istnieje `parallel-hold.json` (sekcja „Pomiar pierwszych dwóch par”), zaraz po
+kroku 1 każdy kandydat obok epiku w toku (także czekającego na merge) czeka z powodem `równoległość wstrzymana:
+<powód>`. Krok 1 działa dalej, więc praca szeregowa trwa.
+
 „Pominięty” oznacza, że bramka sprawdza następnego kandydata z tablicy (niższy epik może ruszyć przed wyższym, jak
 w liście nocy). „Czekanie” dotyczy każdego kandydata, więc bramka kończy szukanie: kandydat ruszy później,
 równolegle albo szeregowo po zakończeniu epiku aktywnego.
@@ -75,8 +79,8 @@ Sam odczyt stanu przed startem nie wystarcza: dwie sesje mogłyby jednocześnie 
 Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
 
 - **Blokada**: `fcntl.flock` na `gate.lock`. Trzymają ją wszystkie komendy, które czytają stan do decyzji albo
-  zapisują stan wspólny: `gate --reserve`, `release`, `start`, `done`, `approve`, `close` i `next`, przez cały odczyt,
-  sprawdzenie i zapis. Czekanie na blokadę najwyżej 120 s; potem kod 2 z powodem „blokada bramki zajęta”, bez zapisu.
+  zapisują stan wspólny: `gate --reserve`, `release`, `start`, `done`, `approve`, `close`, `next`, `hold` i `unhold`,
+  przez cały odczyt, sprawdzenie i zapis. Czekanie na blokadę najwyżej 120 s; potem kod 2 z powodem „blokada bramki zajęta”, bez zapisu.
   `claims.json` i `night.json` są zapisywane przez plik tymczasowy i `os.replace`, więc przerwany zapis nie zostawia
   nieczytelnego pliku.
 - **Rezerwacja**: wpis w `claims.json` (`dir`, `claim` (losowy token), `at`, `expires_at`), ważny 30 minut. Bramka
@@ -161,8 +165,12 @@ sprzed zmiany drugiego epiku. Dlatego:
   `other_mib`, `ao_mib`, `free_mib`, `required_mib` albo `null`), `waiting` (`dir`, `id`, `issue`, `title` kandydata,
   którego kroki bramki skończyły się czekaniem, także przy `--force`, inaczej `null`). Każde wywołanie dopisuje wynik
   do `gate.jsonl` (czas, kandydaci z wynikiem i `paths`, `waiting` jako katalog albo `null`, bez treści issues). Kod 1: błąd `gh` albo `git`; kod 2: błąd stanu
-  (nieczytelny plik pomiarów albo rezerwacji, zajęta blokada).
+  (nieczytelny plik pomiarów, rezerwacji albo wstrzymania, zajęta blokada).
 - **`night_queue.py release <katalog> --claim TOKEN`**: usuwa własną rezerwację; brak jej: kod 0 bez zmiany.
+- **`night_queue.py hold --reason TEXT`**: zapisuje (pod blokadą, atomowo) `parallel-hold.json` z `at` i `reason`
+  i wypisuje go; istniejące wstrzymanie zostaje bez zmiany. **`night_queue.py unhold`**: usuwa je i wypisuje
+  `{"removed": true|false}` (kod 0 także bez wstrzymania). Nieczytelny `parallel-hold.json`: kod 2 w `hold` i w każdej
+  komendzie, która czyta stan bramki (`gate`, `next`, `propose`, `approve`); `unhold` go usuwa.
 - **`/ao-run` bez argumentu i po merge'u (sekcja 8 skilla):** sesja uruchamia `gate` zamiast `next_epic.py`.
   `epic` jest: push „Zacząć epik X?” albo, przy niepustym `parallel_with`, „Zacząć epik X równolegle z Y?”; start
   tylko po „tak” użytkownika. `epic` null z `reason`: push „Epik X czeka: <powód>”, bez pytania; X to `waiting`
@@ -186,8 +194,8 @@ sprzed zmiany drugiego epiku. Dlatego:
     - (b) gdy coś ruszyło tej nocy, wszystkie rozpoczęte epiki nocy mają `done`, a żaden epik w toku nie jest
       aktywny: po sprawdzeniach szeregowych (szacunek czasu do `until`, stan limitów `ok`, okna do 80%, jak w spec
       `/ao-run`, „Kolejny epik”);
-    - (c) w pozostałych przypadkach, także gdy epik innej sesji jest aktywny: gdy przechodzi bramkę (kroki 2–7,
-      rezerwa 6 GiB) i teraz + szacunek czasu nie przekracza `until` (inaczej powód `X nie zdąży do HH:MM`).
+    - (c) w pozostałych przypadkach, także gdy epik innej sesji jest aktywny: gdy przechodzi bramkę (kroki 2–7
+      i wstrzymanie równoległości, rezerwa 6 GiB) i teraz + szacunek czasu nie przekracza `until` (inaczej powód `X nie zdąży do HH:MM`).
     Odmowa w (c) (czekanie albo pominięcie w bramce, `nie zdąży`) przy czymkolwiek aktywnym to `epic: null`
     i `wait: true` z powodem: noc trwa, `next` niczego nie zapisuje. Bez aktywnego epiku ta sama odmowa kończy noc.
     Gdy wszystkie epiki listy ruszyły, a któryś jeszcze trwa, `next` czeka z powodem `wszystkie epiki listy ruszyły,
@@ -248,8 +256,9 @@ teraz, `open: true`).
      pomiaru, liczonych tak samo.
 - Push „Krok 19b może ruszyć: dwie pary bez krytycznego problemu” sesja wysyła po werdykcie drugiej pary, gdy obie
   pierwsze pary są zamknięte (żaden epik nie ma `open`) i żadna nie ma krytycznego problemu. Krytyczny problem: push
-  z problemem, a epiki dalej ruszają równolegle dopiero po decyzji użytkownika o zmianie bramki (w rozmowie albo
-  w PR do tej specyfikacji).
+  z problemem i `night_queue.py hold --reason "<para i problem>"`, więc epiki dalej ruszają równolegle dopiero po
+  decyzji użytkownika o zmianie bramki (w rozmowie albo w PR do tej specyfikacji); `unhold` sesja uruchamia tylko po
+  wyraźnej decyzji użytkownika w rozmowie.
 
 ### Ocena `CLAUDE.md`
 
@@ -299,9 +308,9 @@ par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
 
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada, zapis atomowy, rezerwacje z tokenem,
   pomiar pamięci Dockera i klasyfikacja plików (dopuszczalne, blokujące); bez zależności od `night_queue.py`.
-- `.claude/skills/ao-run/night_queue.py` i `test_night_queue.py`: komendy `gate` i `release` (algorytm bramki na
-  tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`, szacunek zużycia bez
-  pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
+- `.claude/skills/ao-run/night_queue.py` i `test_night_queue.py`: komendy `gate`, `release`, `hold` i `unhold`
+  (algorytm bramki na tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`,
+  szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
 - `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: pomiar par, usuwany po decyzjach z sekcji „Pomiar…”
   i „Ocena `CLAUDE.md`”.
 - `.claude/skills/ao-run/next_epic.py`: bez zmiany zachowania; wspólny odczyt tablicy zostaje w nim.
@@ -340,6 +349,10 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
 - `propose`: epik w toku nie opróżnia listy, reguła plików. `approve`: odmowa przy trwającej nocy, zgoda po
   `ended_at` i po `until`. `next`: pierwszy epik z rezerwacją, pierwszy epik przy epiku aktywnym innej sesji (bramka),
   start równoległy z rezerwacją, czekanie bez końca nocy, przypadki szeregowe bez zmian.
+- Wstrzymanie równoległości: `gate` czeka przy epiku w toku (aktywnym, czekającym na merge, rezerwacji innej sesji,
+  także z `--dir --reserve`), przechodzi bez epików w toku; `next` (c) czeka, a przypadek szeregowy (b) rusza; `hold`
+  drugi raz zostawia pierwsze, `unhold` także bez pliku; nieczytelny plik → kod 2 (`unhold` go usuwa); zapis atomowy;
+  zajęta blokada → kod 2 bez zapisu.
 - `start`: pole `docker`, błąd `docker` nie przerywa zapisu, token.
 - `pairs.py`: brak par, para, trzy epiki w łańcuchu, para otwarta, okno odnowione, awarie stosu w rozpiętości i poza
   nią, brak katalogu diagnostyki, `claude_md_only` z `gate.jsonl` (tylko `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką

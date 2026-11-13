@@ -12,15 +12,17 @@
   night_queue.py [--repo DIR] [--state DIR] gate [--dir DIR [--reserve] [--claim TOKEN] [--force] [--takeover]]
                  [--stack-gib N] [--ao-root DIR]           (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] release <dir> --claim TOKEN
+  night_queue.py [--repo DIR] [--state DIR] hold --reason TEXT
+  night_queue.py [--repo DIR] [--state DIR] unhold
   night_queue.py room --hours H [--max-percent P]         (stdin: the `plan` object of get_usage)
 
 scope: reads the `Zakres:` line from the header of an epic spec (the lines before the first `## ` heading) and prints
 one JSON line `{"scope": [path, ...]}`, exit 0. A missing, doubled or unreadable line, or an unreadable file, prints
 the reason to stderr and exits 2.
 
-Shared state: start, done, approve, close, next, gate and release hold the lock <state>/gate.lock
+Shared state: start, done, approve, close, next, gate, release, hold and unhold hold the lock <state>/gate.lock
 (parallel_gate.state_lock, at most 120 s; then exit 2 `blokada bramki zajęta` without a write) for their whole
-read-decide-write. night.json and claims.json are replaced atomically (temp file and os.replace).
+read-decide-write. night.json, claims.json and parallel-hold.json are replaced atomically (temp file and os.replace).
 
 start: counts the tasks in the manifest of origin/main:docs/features/<dir>/plan.md and appends a start event to
 <state>/measurements.jsonl with `docker`: the Docker memory {total_mib, ao_mib, other_mib}
@@ -96,7 +98,8 @@ origin/main plus docs/features/<dir> plus, with a branch, `git diff --name-only 
 Without --dir the candidates are the prepared, unreserved board epics in board order; with --dir only that epic
 (off the board, merged, not prepared: `epic` null with the reason; a valid reservation of another token, also without
 --claim: `epik X zarezerwowany albo w toku`). Steps against the epics in progress
-other than the candidate: none -> pass; two active -> wait; dependency on an open epic -> skip; no readable scope:
+other than the candidate: none -> pass; a parallel hold (parallel-hold.json, see hold) -> wait `równoległość
+wstrzymana: <reason>`; two active -> wait; dependency on an open epic -> skip; no readable scope:
 candidate -> skip, epic in progress (also without spec.md on origin/main) -> wait; a common path that is not allowed (parallel_gate.is_allowed) -> skip with
 the blocking paths of all epics in progress; free Docker memory below one stack (--stack-gib, default 6) -> wait;
 usage status not `ok`, no estimate, an active epic without a readable plan.md on origin/main, or a window resetting after the candidate's estimated end above 80% with the full
@@ -125,8 +128,15 @@ so a failure never leaves a token in claims.json that was not printed.
 
 release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
+hold: the parallel hold after a critical problem of a pair (docs/features/parallel-work/spec.md, „Pomiar pierwszych
+dwóch par”): writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
+not overwritten). While it exists, the gate (also `next` case (c)) makes every candidate next to an epic in progress
+wait; nothing in progress still passes, so serial work goes on. unhold: removes the hold (the user's decision) and
+prints {"removed": <bool>}, exit 0 also without a hold. An unreadable parallel-hold.json exits 2 in every command that
+reads the gate context (gate, next, propose, approve) and in hold; unhold removes it.
+
 Exit codes: 0 success; 1 a `git`/`gh` command failed or returned unexpected JSON, or a bad --hours of room; 2 usage
-and state errors (also an unreadable claims.json, a busy gate lock and a bad --stack-gib).
+and state errors (also an unreadable claims.json or parallel-hold.json, a busy gate lock and a bad --stack-gib).
 """
 import argparse
 import contextlib
@@ -762,6 +772,7 @@ def cmd_ahead(args, run, now, stdin):
 
 
 GATE_LOG = 'gate.jsonl'
+HOLD_FILE = 'parallel-hold.json'
 MAX_ACTIVE = 2
 MAX_PERCENT = 80
 DEFAULT_STACK_GIB = 6
@@ -774,15 +785,16 @@ class GateContext:
     in_progress: [{dir, id, issue, branch, active}]: board epics with an `origin/epic/<dir>` branch and no merged final
     PR (active when their last measurements.jsonl event is `start` or they have none), then valid claims of other
     sessions (always active). `claims`: the valid claims of claims.json without the caller's own one, `own_claim`:
-    whether the caller's token holds a valid claim of its `--dir`, `owners`: {dir: token} of claims.json. Files and
-    task counts are read lazily and cached; step 6 stores its Docker memory state in `docker` (None when not measured
-    or failed).
+    whether the caller's token holds a valid claim of its `--dir`, `owners`: {dir: token} of claims.json, `hold`: the
+    reason of the parallel hold (parallel-hold.json) or None. Files and task counts are read lazily and cached; step 6
+    stores its Docker memory state in `docker` (None when not measured or failed).
     """
 
-    def __init__(self, run, now, board, measured, in_progress, merged_open, claims=(), owners=None, own_claim=False):
+    def __init__(self, run, now, board, measured, in_progress, merged_open, claims=(), owners=None, own_claim=False,
+                 hold=None):
         self.run, self.now, self.board, self.measured = run, now, board, measured
         self.in_progress, self.merged_open = in_progress, merged_open
-        self.claims, self.owners, self.own_claim = list(claims), dict(owners or {}), own_claim
+        self.claims, self.owners, self.own_claim, self.hold = list(claims), dict(owners or {}), own_claim, hold
         self.docker = None
         self._files, self._tasks, self._fetched, self._on_main = {}, {}, False, None
 
@@ -840,6 +852,7 @@ def gate_context(run, state_dir, now, own=None):
     neither in progress nor active for it. Every other claim, also one of the same dir, belongs to another session.
     """
     events = read_events(state_dir)
+    hold = read_hold(state_dir)
     data = parallel_gate.read_claims(state_dir)
     valid = parallel_gate.valid_claims(data, now)
     claims = [c for c in valid if own is None or (c['dir'], c['claim']) != tuple(own)]
@@ -863,7 +876,57 @@ def gate_context(run, state_dir, now, own=None):
         in_progress.append({'dir': c['dir'], 'id': entry['id'] if entry else c['dir'].upper(),
                             'issue': entry['number'] if entry else None, 'branch': False, 'active': True})
     return GateContext(run, now, board, measurements(events), in_progress, merged_open, claims=claims,
-                       owners=data['owners'], own_claim=len(claims) < len(valid))
+                       owners=data['owners'], own_claim=len(claims) < len(valid),
+                       hold=hold['reason'] if hold else None)
+
+
+def _hold_path(state_dir):
+    return os.path.join(os.path.expanduser(state_dir), HOLD_FILE)
+
+
+def read_hold(state_dir):
+    """The parallel hold {at, reason} of <state>/parallel-hold.json, None without the file; StateError when
+    unreadable."""
+    path = _hold_path(state_dir)
+    try:
+        with open(path, encoding='utf-8') as f:
+            hold = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        raise StateError('nieczytelny plik %s: %s' % (path, getattr(e, 'strerror', None) or e))
+    try:
+        parse_time(hold['at'])
+        if not isinstance(hold['reason'], str):
+            raise ValueError('reason')
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise StateError('nieczytelny plik %s' % path)
+    return hold
+
+
+def cmd_hold(args, run, now, stdin):
+    with state_lock(args.state):
+        hold = read_hold(args.state)
+        if hold is None:
+            hold = {'at': now.isoformat(), 'reason': args.reason}
+            # ASCII on disk like night.json and claims.json: write_atomic uses the locale encoding.
+            parallel_gate.write_atomic(_hold_path(args.state), json.dumps(hold) + '\n')
+    print(json.dumps(hold, ensure_ascii=False))
+    return 0
+
+
+def cmd_unhold(args, run, now, stdin):
+    path = _hold_path(args.state)
+    with state_lock(args.state):
+        try:
+            os.remove(path)
+            removed = True
+        except FileNotFoundError:
+            removed = False
+        except OSError as e:
+            raise StateError('nie można usunąć %s: %s' % (path, e.strerror or e))
+    print(json.dumps({'removed': removed}))
+    return 0
 
 
 def check_room(active):
@@ -985,6 +1048,9 @@ def evaluate(ctx, entry, usage_now, stack_mib):
 
     if not others:
         return passed()
+    if ctx.hold is not None:
+        # After a critical problem of a pair: no epic starts next to an epic in progress until the user decides.
+        return verdict(WAIT, 'równoległość wstrzymana: %s' % ctx.hold)
     reason = check_room(active)
     if reason:
         return verdict(WAIT, reason)
@@ -1189,6 +1255,9 @@ def main(argv=None, run=None, now=None, stdin=None):
     gate_parser.add_argument('--force', action='store_true')
     gate_parser.add_argument('--takeover', action='store_true')
     gate_parser.add_argument('--ao-root', default='~/.local/state')
+    hold_parser = sub.add_parser('hold', help='stop parallel starts until unhold (after a critical problem)')
+    hold_parser.add_argument('--reason', required=True)
+    sub.add_parser('unhold', help='allow parallel starts again (the decision of the user)')
     room_parser = sub.add_parser('room', help='room in the usage limits for a review after a merge')
     room_parser.add_argument('--hours')
     room_parser.add_argument('--max-percent', default='80')
@@ -1205,7 +1274,8 @@ def main(argv=None, run=None, now=None, stdin=None):
     try:
         return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve,
                 'close': cmd_close, 'next': cmd_next, 'ahead': cmd_ahead,
-                'gate': cmd_gate, 'release': cmd_release}[args.command](args, run, now, stdin)
+                'gate': cmd_gate, 'release': cmd_release, 'hold': cmd_hold,
+                'unhold': cmd_unhold}[args.command](args, run, now, stdin)
     except (StateError, parallel_gate.StateFileError, parallel_gate.LockTimeout) as e:
         print('night_queue: %s' % e, file=sys.stderr)
         return 2

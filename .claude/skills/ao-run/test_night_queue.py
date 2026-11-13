@@ -1363,6 +1363,33 @@ class NextCliTest(unittest.TestCase):
         self.events(*self.a_done(), *b_running, self.done('b', NOW - timedelta(minutes=1)))
         self.assertEqual('lista wykonana', self.reason(self.abc(), branches=['b']))
 
+    def hold(self):
+        code = night_queue.main(['--state', self.state, 'hold', '--reason', 'CI czerwone'], run=GateRunner([]),
+                                now=NOW, stdin=io.StringIO())
+        self.assertEqual(0, code)
+
+    def test_hold_makes_a_parallel_candidate_wait(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.hold()
+        result = self.result(self.abc(), branches=['a'])
+        self.assertEqual({'epic': None, 'reason': 'równoległość wstrzymana: CI czerwone', 'started': ['a'],
+                          'left': ['b'], 'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.assertFalse(self.has_claims_file())
+        self.assertEqual(('b', 'równoległość wstrzymana: CI czerwone'),
+                         (self.gate_log()[-1]['waiting'], self.gate_log()[-1]['reason']))
+
+    def test_hold_keeps_serial_epics_of_the_night(self):
+        self.night(['a', 'b'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.hold()
+        self.assertEqual('a', self.result(self.abc())['epic']['dir'])
+        os.remove(os.path.join(self.state, 'claims.json'))
+        self.events(*self.old_measurement(), *self.a_done())   # a waits for its merge: serial case (b)
+        self.assertEqual('b', self.result(self.abc(), branches=['a'])['epic']['dir'])
+
     def test_candidate_reserved_by_another_session_waits(self):
         self.night(['a', 'b'])
         self.other_claims('a')
@@ -1912,6 +1939,49 @@ class GateCliTest(unittest.TestCase):
                 self.assertEqual(['B'], [s['id'] for s in result['skipped']])
                 self.assertIsNone(result['waiting'])
                 self.assertIsNone(self.log()[-1]['waiting'])
+
+    def hold(self, reason='CI czerwone'):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'hold', '--reason', reason], run=GateRunner([]), now=NOW)
+        self.assertEqual(0, code, err.getvalue())
+
+    def test_hold_makes_a_candidate_next_to_any_epic_in_progress_wait(self):
+        # After a critical problem of a pair epics run in parallel again only after the user's decision.
+        self.hold()
+        held = 'równoległość wstrzymana: CI czerwone'
+        b = {'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title'}
+        a_done = [self.start('a', NOW - timedelta(hours=3)), self.done('a', NOW - timedelta(hours=2))]
+        cases = [
+            ('active branch epic', [], {'branches': ['a']}, []),
+            ('branch epic waiting for its merge', a_done, {'branches': ['a']}, []),
+            ('reservation of another session', [], {}, ['a']),
+            ('--dir --reserve', [], {'branches': ['a'], 'extra': ['--dir', 'b', '--reserve']}, []),
+        ]
+        for name, events, kwargs, claims in cases:
+            with self.subTest(case=name):
+                self.events(*self.old_measurement(), *events)
+                self.claims(*claims)
+                result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], **kwargs)
+                self.assertEqual((None, held, b, False, None),
+                                 (result['epic'], result['reason'], result['waiting'], result['reserved'],
+                                  result['claim']))
+                self.assertEqual([], self.commands('docker'))
+                self.assertEqual([c for c in self.claims_json()['claims'] if c['dir'] == 'b'], [])
+
+    def test_hold_lets_an_epic_start_with_nothing_in_progress(self):
+        self.hold()
+        result = self.result([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--reserve'])
+        self.assertEqual(('a', None, True), (result['epic']['dir'], result['reason'], result['reserved']))
+
+    def test_unreadable_hold_exits_2(self):
+        for text in ('{oops', '[]', '{"at": "2026-11-13T10:00:00", "reason": "x"}', '{"at": "2026-11-13T10:00:00Z"}'):
+            with self.subTest(text=text):
+                with open(os.path.join(self.state, 'parallel-hold.json'), 'w') as f:
+                    f.write(text)
+                code, out, err = self.gate([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'])
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('parallel-hold.json', err)
 
     def test_empty_board_gives_no_epic_and_no_reason(self):
         result = self.result([])
@@ -2788,6 +2858,84 @@ with contextlib.redirect_stdout(out):
                               run=runner, now=t.NOW, stdin=io.StringIO(json.dumps(t.usage(10))))
 print(json.dumps({'code': code, 'out': out.getvalue()}))
 """
+
+
+class HoldCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+        self.path = os.path.join(self.state, 'parallel-hold.json')
+
+    def cli(self, *argv, now=NOW):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state] + list(argv), run=GateRunner([]), now=now)
+        return code, out.getvalue(), err.getvalue()
+
+    def stored(self):
+        with open(self.path, encoding='utf-8') as f:
+            return json.load(f)
+
+    def test_hold_writes_the_reason_and_a_second_hold_keeps_the_first(self):
+        code, out, err = self.cli('hold', '--reason', 'para A+B: CI czerwone')
+        expected = {'at': NOW.isoformat(), 'reason': 'para A+B: CI czerwone'}
+        self.assertEqual((0, expected), (code, json.loads(out)), err)
+        self.assertEqual(expected, self.stored())
+        code, out, err = self.cli('hold', '--reason', 'inny', now=NOW + timedelta(hours=1))
+        self.assertEqual((0, expected), (code, json.loads(out)), err)
+        self.assertEqual(expected, self.stored())
+
+    def test_unhold_removes_the_hold_and_is_idempotent(self):
+        self.cli('hold', '--reason', 'x')
+        code, out, err = self.cli('unhold')
+        self.assertEqual((0, {'removed': True}), (code, json.loads(out)), err)
+        self.assertFalse(os.path.exists(self.path))
+        code, out, err = self.cli('unhold')
+        self.assertEqual((0, {'removed': False}), (code, json.loads(out)), err)
+
+    def test_hold_needs_a_reason(self):
+        code, out, _ = self.cli('hold')
+        self.assertEqual((2, ''), (code, out))
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_unreadable_hold_exits_2_and_unhold_removes_it(self):
+        os.makedirs(self.state)
+        with open(self.path, 'w') as f:
+            f.write('{oops')
+        code, out, err = self.cli('hold', '--reason', 'x')
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('parallel-hold.json', err)
+        with open(self.path) as f:
+            self.assertEqual('{oops', f.read())
+        code, out, err = self.cli('unhold')
+        self.assertEqual((0, {'removed': True}), (code, json.loads(out)), err)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_hold_is_written_atomically(self):
+        with mock.patch('os.replace', side_effect=OSError(5, 'boom')):
+            code, out, err = self.cli('hold', '--reason', 'x')
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('parallel-hold.json', err)
+        self.assertEqual(['gate.lock'], os.listdir(self.state))
+
+    def test_busy_lock_exits_2_without_writes(self):
+        os.makedirs(self.state)
+        proc = hold(os.path.join(self.state, 'gate.lock'))
+        try:
+            with mock.patch.object(night_queue, 'LOCK_TIMEOUT', 0.3):
+                code, out, err = self.cli('hold', '--reason', 'x')
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('blokada bramki zajęta', err)
+                self.assertFalse(os.path.exists(self.path))
+                with open(self.path, 'w') as f:
+                    f.write('{"at": "%s", "reason": "x"}' % NOW.isoformat())
+                code, out, err = self.cli('unhold')
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('blokada bramki zajęta', err)
+                self.assertTrue(os.path.exists(self.path))
+        finally:
+            release_child(proc)
 
 
 class LockedWritesTest(unittest.TestCase):
