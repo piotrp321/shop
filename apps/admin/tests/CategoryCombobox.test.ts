@@ -146,6 +146,17 @@ describe("CategoryCombobox", () => {
     expect(input().value).toBe("Namioty");
   });
 
+  it("shows the name of the selected category when the tree arrives after the value (the address of a list names it first)", async () => {
+    const wrapper = mountCombobox({ nodes: [], modelValue: "c-tents" });
+    await flushPromises();
+    expect(input().value).toBe("");
+
+    await wrapper.setProps({ nodes });
+    await flushPromises();
+
+    expect(input().value).toBe("Namioty");
+  });
+
   it("selects several categories in multiple mode and lists them with a removal button each", async () => {
     const wrapper = mountCombobox({ multiple: true, modelValue: ["c-tents", "c-running"] });
     await flushPromises();
@@ -185,6 +196,28 @@ describe("CategoryCombobox", () => {
 
     expect(options()).toEqual([]);
     expect(document.body.textContent).toContain("Brak pasujących kategorii.");
+  });
+
+  it("keeps the selected category when it is chosen again, unless the field is deselectable", async () => {
+    const wrapper = mountCombobox({ modelValue: "c-sport" });
+    await open();
+    options()[5]!.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("update:modelValue")).toEqual([["c-sport"]]);
+  });
+
+  it("clears the selected category when it is chosen again in a deselectable field, and selects another as usual", async () => {
+    const wrapper = mountCombobox({ modelValue: "c-sport", deselectable: true });
+    await open();
+    options()[5]!.click();
+    await flushPromises();
+    expect(wrapper.emitted("update:modelValue")).toEqual([[null]]);
+
+    await open();
+    options()[2]!.click();
+    await flushPromises();
+    expect(wrapper.emitted("update:modelValue")?.at(-1)).toEqual(["c-tents"]);
   });
 
   it("emits null, not undefined, when the combobox clears a single selection", async () => {

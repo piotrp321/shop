@@ -247,10 +247,13 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
 - Menu „Produkty” (`/products`), trasy `/products/new` i `/products/:id`. Widoki tras w `src/views/`
   (`ProductsView`, `ProductFormView`), logika i komponenty w `src/products/`. `/products/new` bez roli `admin` albo
   `marketing` przekierowuje na listę.
-- Lista (`useProductList`, wzorem `usePriceList`): wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii
-  (`useCategoryTree`), filtr statusu (Wszystkie, Szkice, Opublikowane), stronicowanie kursorem ze stosem kursorów.
-  Kolumny: miniatura, nazwa (link do edycji), kategoria główna, liczba wariantów, status (`Tag`: „Szkic”,
-  „Opublikowany”), ostatnia zmiana. Przycisk „Dodaj produkt” tylko dla `admin` i `marketing` (role z `/me`).
+- Lista (`useProductList` na `useListUrlState` i `useCursorPager`, standard listy z `docs/features/admin-design/spec.md`):
+  wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii (`CategoryCombobox` na `useCategoryTree`), filtr statusu
+  (Select: Wszystkie, Szkice, Opublikowane), rozmiar strony 10/25/50, stan listy w adresie (`q`, `category`, `status`,
+  `perPage`), stronicowanie kursorem ze stosem kursorów i „Pokazano X–Y”. Kolumny: produkt (miniatura albo placeholder,
+  nazwa jako link do edycji, slug), kategoria główna, liczba wariantów, status (etykieta: „Szkic”, „Opublikowany”),
+  ostatnia zmiana, akcje („Edytuj”, „Podgląd w sklepie” dla opublikowanego). Przycisk „Dodaj produkt” tylko dla
+  `admin` i `marketing` (role z `/me`).
 - Formularz (`useProductForm`): sekcje „Dane” (nazwa, slug z podpowiedzią „pusty: wyliczony z nazwy”, zablokowany
   przy `slugLocked` z wyjaśnieniem, krótki opis z licznikiem znaków, kategoria główna i dodatkowe z drzewa, klasa
   podatkowa z `GET /tax-classes`), „Zdjęcia”, „Warianty”. Pracownik bez `MANAGE_PRODUCTS` widzi formularz tylko
