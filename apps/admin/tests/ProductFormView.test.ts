@@ -726,6 +726,21 @@ describe("ProductFormView", () => {
       expect((mounted.wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Inne");
     });
 
+    it("puts the focus on the heading when the navigation did not come from an element, e.g. the Back button of the browser", async () => {
+      mounted = await mountForm("/products/p-1");
+      (document.activeElement as HTMLElement | null)?.blur();
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      expect(document.activeElement).toBe(document.body);
+      const navigation = mounted.router.push("/products");
+      await flushPromises();
+      dialogButton("Zostań")!.click();
+      await navigation;
+      await flushPromises();
+
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
     it("stays with Escape", async () => {
       mounted = await mountForm("/products/p-1");
 

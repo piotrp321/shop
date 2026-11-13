@@ -484,6 +484,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
 
     <UnsavedChangesDialog
       v-model:open="leaveOpen"
+      :fallback-focus="header?.heading ?? null"
       @leave="leave"
     />
   </div>
