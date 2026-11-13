@@ -47,7 +47,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   wierszy liczą się jak spacje, pusta nic nie robi, za krótka i za długa pokazują „Wpisz od 2 do 100 znaków.” w stałym
   regionie `role="status"` połączonym z polem przez `aria-describedby`, fokus zostaje w polu), link „Sklep” z
   `VITE_STORE_URL` w nowej karcie (`rel="noopener"`), konto (inicjały, login, polskie role z `account.ts`, menu z
-  „Wyloguj”; bez wczytanego pracownika „Konto” i „Wyloguj” też są). `useAccessDenied` czyta i czyści
+  „Wyloguj”; bez wczytanego pracownika „Konto” i „Wyloguj” też są; nazwa przycisku pochodzi z jego treści („Konto: login
+  role”, bez `aria-label`, bo ten musiałby powtarzać wszystko, co przycisk pokazuje: WCAG 2.5.3), a poniżej 640 px
+  login i role są tylko wizualnie ukryte (`sr-only`); menu jest niemodalne (`:modal="false"`), bo modalne ukrywa resztę
+  strony przez `aria-hidden` mimo fokusowalnych elementów: axe `aria-hidden-focus`). `useAccessDenied` czyta i czyści
   `history.state.denied` (komunikat na pulpicie po strażniku trasy).
 - `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`, `DiscountCodesView`, `DiscountCodeFormView`).
 - `src/dashboard/` – komponenty i composables pulpitu i ekranu „Stan systemu”; widoki tras to `DashboardView` (`/`, H1

@@ -32,7 +32,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `CreateDiscountCode` bez aktora, włączone i bez limitu użyć: `WITAJ10` (10%), `MINUS50` (50 zł od 300 zł) i wygasły
   `LATO15` (15%, okres od 60 do 30 dni przed seedem). Plik kodów jest sprawdzany przed resetem tymi samymi value objectami
   i agregatem co zapis kodu w panelu (zły format kodu, kod kwotowy bez minimum, koniec przed początkiem, powtórzony kod),
-  więc błąd kończy seed bez zmian w danych; testy E2E nie używają kodów demo, tworzą własne przez API panelu.
+  więc błąd kończy seed bez zmian w danych; testy E2E nie realizują ani nie zmieniają kodów demo, tworzą własne przez
+  API panelu (`admin-design.spec.ts` tylko otwiera formularz pierwszego kodu z listy, więc lista nie może być pusta).
   Promocje demo omijają produkty E2E i kategorię Bieganie > Buty biegowe (pilnuje tego `RealDemoPromotionsTest`, lista
   wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem
   `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności

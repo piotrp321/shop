@@ -185,6 +185,30 @@ describe("AppTopbar: store link, menu button and account", () => {
     expect(topbar.get("[data-testid=roles]").text()).toBe("Administrator, Obsługa klienta");
   });
 
+  it("names the account button from its content, so the name holds every word it shows (WCAG 2.5.3, axe label-content-name-mismatch)", async () => {
+    const { wrapper: topbar } = await mountTopbar();
+
+    const button = topbar.get("[data-testid=account]");
+    // The visible text is the initials, the login and the roles; a label of its own would have to repeat all of it.
+    expect(button.attributes("aria-label")).toBeUndefined();
+    const words = button.get("[data-testid=username]").element.parentElement as HTMLElement;
+    // Narrow screens hide the words from the eye but keep them in the name (`sr-only`), they do not remove them (`hidden`).
+    expect(words.classList).toContain("sr-only");
+    expect(words.classList).not.toContain("hidden");
+    expect(words.textContent).toContain("jan.admin");
+    expect(button.text()).toContain("Konto");
+  });
+
+  it("opens the account menu without hiding the rest of the page from assistive technology (axe aria-hidden-focus)", async () => {
+    const { wrapper: topbar } = await mountTopbar();
+
+    await topbar.get("[data-testid=account]").trigger("keydown", { key: "Enter" });
+    await flushPromises();
+
+    expect(document.body.querySelector("[role=menu]")).not.toBeNull();
+    expect(document.body.querySelectorAll("[data-aria-hidden]")).toHaveLength(0);
+  });
+
   it("signs out through „Wyloguj” in the account menu", async () => {
     const { wrapper: topbar } = await mountTopbar();
 

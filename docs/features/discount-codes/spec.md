@@ -391,8 +391,9 @@ pozostali 403; odczyt: każdy pracownik):
   minimum, bez limitu i końca, początek w chwili seeda), `MINUS50` (50 zł od 300 zł, początek w chwili seeda, bez
   końca), `LATO15` (15%, okres od 60 do 30 dni przed seedem, wygasły). Czasy w pliku są względne (przesunięcie od chwili
   seeda). Plik sprawdzany przed resetem (błąd kończy seed bez zmian w danych).
-- E2E nie używa kodów demo: tworzy własny kod przez API panelu (helper w `e2e/support`) z unikalnym tekstem na
-  uruchomienie.
+- E2E nie realizuje ani nie zmienia kodów demo: tworzy własny kod przez API panelu (helper w `e2e/support`) z unikalnym
+  tekstem na uruchomienie; `admin-design.spec.ts` tylko otwiera formularz pierwszego kodu z listy panelu, więc lista
+  nie może być pusta.
 
 ## Scenariusze błędów
 

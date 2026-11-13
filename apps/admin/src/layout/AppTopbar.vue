@@ -26,7 +26,6 @@ const hinted = ref(false);
 const menuButton = ref<InstanceType<typeof Button> | null>(null);
 
 const roles = computed(() => auth.staff?.roles.map(roleLabel).join(", ") ?? "");
-const accountLabel = computed(() => (auth.staff ? `Konto: ${auth.staff.username}, ${roles.value}` : "Konto"));
 
 /** Control characters and line or paragraph separators count as spaces, like the white space that `trim` removes. */
 function normalized(text: string): string {
@@ -107,10 +106,13 @@ defineExpose({ focusMenuButton: () => (menuButton.value?.$el as HTMLElement | un
         />
       </a>
 
-      <DropdownMenu>
+      <!-- Not modal: a modal menu hides the rest of the page with aria-hidden while its links and fields still take the focus
+           (axe aria-hidden-focus); the menu keeps the focus anyway and closes on Escape and on a click outside. -->
+      <DropdownMenu :modal="false">
+        <!-- The name comes from the content, so it holds every word the button shows (WCAG 2.5.3): below 640 px the login and
+             the roles are only visually hidden (sr-only), not removed. -->
         <DropdownMenuTrigger
           data-testid="account"
-          :aria-label="accountLabel"
           class="flex items-center gap-3 rounded-md p-1 text-left transition-colors hover:bg-accent"
         >
           <span
@@ -120,20 +122,21 @@ defineExpose({ focusMenuButton: () => (menuButton.value?.$el as HTMLElement | un
           >
             {{ auth.staff ? initialsOf(auth.staff.username) : "?" }}
           </span>
-          <span class="hidden flex-col leading-tight sm:flex">
+          <span class="sr-only leading-tight sm:not-sr-only sm:flex sm:flex-col">
             <template v-if="auth.staff">
+              <span class="sr-only">Konto: </span>
               <span
                 data-testid="username"
-                class="text-sm font-bold text-heading"
+                class="block text-sm font-bold text-heading"
               >{{ auth.staff.username }}</span>
               <span
                 data-testid="roles"
-                class="text-xs text-muted-foreground"
+                class="block text-xs text-muted-foreground"
               >{{ roles }}</span>
             </template>
             <span
               v-else
-              class="text-sm font-bold text-heading"
+              class="block text-sm font-bold text-heading"
             >Konto</span>
           </span>
           <ChevronDown
