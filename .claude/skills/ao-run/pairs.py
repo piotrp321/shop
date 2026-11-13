@@ -10,8 +10,10 @@ decisions on step 19b and on the shared CLAUDE.md rule (docs/features/parallel-w
     {"pairs": [...], "claude_md_only": [...]}
 
 Intervals: a `start` event opens an interval of its epic, the next `done` of that epic closes it, a later `start`
-without a `done` replaces the open one; an open interval (`open: true`) ends at now. A pair is two intervals of
-different epics that overlap, ordered by the earlier start, then the later one. Each pair:
+without a `done` replaces the open one; an open interval (`open: true`) ends at now. Lines written before 19a have no
+`docker` key on `start`: an open interval whose start lacks it is ignored (an epic whose done was never recorded). A
+pair is two intervals of different epics that overlap and whose later start has the `docker` key (also null), ordered
+by the earlier start, then the later one. Each pair:
   epics            [{dir, start, done|null, minutes, open}, {...}]
   overlap_minutes  the intersection of the two intervals
   span_minutes     first start to last end
@@ -60,7 +62,13 @@ def intervals(events, now):
     for item in found:
         item['open'] = item['done'] is None
         item['end'] = now if item['open'] else night_queue.parse_time(item['done']['at'])
-    return found
+    # An open interval from before 19a (start without `docker`) is an epic whose done was never recorded.
+    return [item for item in found if not item['open'] or _is_19a(item)]
+
+
+def _is_19a(item):
+    """Whether the start of the interval was written by 19a: it has the `docker` key (also null)."""
+    return 'docker' in item['start']
 
 
 def setup_failures(directory, begin, end):
@@ -108,7 +116,8 @@ def find_pairs(events, now, diag):
     found = []
     for i, first in enumerate(items):
         for second in items[i + 1:]:
-            if second['epic'] != first['epic'] and second['begin'] < first['end']:
+            # Only overlaps that began under 19a: the later start has the `docker` key.
+            if second['epic'] != first['epic'] and second['begin'] < first['end'] and _is_19a(second):
                 found.append(build_pair(first, second, diag))
     return found
 

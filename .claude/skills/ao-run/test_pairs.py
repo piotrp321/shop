@@ -24,10 +24,16 @@ def usage(percent, reset=RESET, status='ok'):
 
 
 def start(epic, at, percent=10, docker=None, **extra):
-    event = {'event': 'start', 'epic': epic, 'at': at, 'usage': usage(percent), 'tasks': 3}
-    if docker is not None:
-        event['docker'] = docker
+    """A start of the 19a format: it has the `docker` key (null when not given)."""
+    event = {'event': 'start', 'epic': epic, 'at': at, 'usage': usage(percent), 'tasks': 3, 'docker': docker}
     event.update(extra)
+    return event
+
+
+def old_start(epic, at, percent=10):
+    """A start written before 19a: no `docker` key."""
+    event = start(epic, at, percent)
+    del event['docker']
     return event
 
 
@@ -91,7 +97,42 @@ class PairsTest(unittest.TestCase):
         self.assertEqual({'usedMiB': 5000}, pair['docker'])
         self.assertEqual(0, pair['setup_failures'])
 
-    def test_docker_absent_is_null(self):
+    def test_overlaps_written_before_19a_are_no_pairs(self):
+        self.write('measurements.jsonl', [
+            old_start('a', '2026-11-14T08:00:00Z'), old_start('b', '2026-11-14T08:10:00Z'),
+            done('a', '2026-11-14T09:00:00Z'), done('b', '2026-11-14T09:30:00Z')])
+        self.assertEqual([], self.result()['pairs'])
+
+    def test_old_closed_epic_and_later_19a_start_are_a_pair(self):
+        self.write('measurements.jsonl', [
+            old_start('a', '2026-11-14T08:00:00Z'), start('b', '2026-11-14T08:10:00Z', docker={'ao_mib': 1}),
+            done('a', '2026-11-14T09:00:00Z'), done('b', '2026-11-14T09:30:00Z')])
+        pair, = self.result()['pairs']
+        self.assertEqual(['a', 'b'], [e['dir'] for e in pair['epics']])
+        self.assertEqual({'ao_mib': 1}, pair['docker'])
+
+    def test_19a_epic_and_later_old_start_are_no_pair(self):
+        self.write('measurements.jsonl', [
+            start('a', '2026-11-14T08:00:00Z'), old_start('b', '2026-11-14T08:10:00Z'),
+            done('a', '2026-11-14T09:00:00Z'), done('b', '2026-11-14T09:30:00Z')])
+        self.assertEqual([], self.result()['pairs'])
+
+    def test_old_open_start_is_ignored(self):
+        # A start written before 19a that never got a done (an abandoned epic) is no interval at all.
+        self.write('measurements.jsonl', [
+            old_start('x', '2026-11-06T18:00:00Z'), start('b', '2026-11-14T08:10:00Z'),
+            done('b', '2026-11-14T09:30:00Z'), start('c', '2026-11-14T10:00:00Z')])
+        self.assertEqual([], self.result()['pairs'])
+
+    def test_old_open_start_replaced_by_19a_start_counts(self):
+        self.write('measurements.jsonl', [
+            old_start('a', '2026-11-06T18:00:00Z'), start('a', '2026-11-14T08:00:00Z'),
+            start('b', '2026-11-14T08:10:00Z'), done('a', '2026-11-14T09:00:00Z')])
+        pair, = self.result()['pairs']
+        self.assertEqual(['a', 'b'], [e['dir'] for e in pair['epics']])
+        self.assertTrue(pair['epics'][1]['open'])
+
+    def test_docker_null_is_null(self):
         self.write('measurements.jsonl', [
             start('a', '2026-11-14T08:00:00Z'), start('b', '2026-11-14T08:10:00Z'),
             done('a', '2026-11-14T09:00:00Z'), done('b', '2026-11-14T09:30:00Z')])

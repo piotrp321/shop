@@ -237,8 +237,10 @@ sprzed zmiany drugiego epiku. Dlatego:
 
 ### Pomiar pierwszych dwóch par
 
-Para to dwa epiki, których przedziały w `measurements.jsonl` się nakładają; epik bez `done` ma przedział otwarty (do
-teraz, `open: true`).
+Para to dwa epiki, których przedziały w `measurements.jsonl` się nakładają, a późniejszy `start` z tych dwóch ma pole
+`docker` (zapis 19a, także `null`); epik bez `done` ma przedział otwarty (do teraz, `open: true`). Nakładania sprzed
+19a nie są parami, a otwarty przedział, którego `start` nie ma pola `docker` (epik sprzed 19a bez zapisanego `done`),
+jest pomijany w całości.
 
 - **`pairs.py [--state DIR] [--setup-diag DIR]`** (osobny skrypt w `.claude/skills/ao-run/`, do usunięcia po decyzji
   o 19b i `CLAUDE.md`; JSON, kod 0; brak par: pusta lista): `pairs` w kolejności startu, dla każdej: oba epiki
@@ -367,6 +369,7 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   ze wstrzymaniem) odmawia bez rezerwacji.
 - `start`: pole `docker`, błąd `docker` nie przerywa zapisu, token.
 - `pairs.py`: brak par, para, trzy epiki w łańcuchu, para otwarta, okno odnowione, awarie stosu w rozpiętości i poza
-  nią, brak katalogu diagnostyki, `claude_md_only` z `gate.jsonl` (tylko `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką
-  nie), brak `gate.jsonl`, nieczytelny plik → kod 2.
+  nią, brak katalogu diagnostyki, linie sprzed 19a (nakładanie bez `docker` nie jest parą, zamknięty epik sprzed 19a
+  z późniejszym `start` 19a jest, otwarty `start` sprzed 19a jest pomijany), `claude_md_only` z `gate.jsonl` (tylko
+  `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką nie), brak `gate.jsonl`, nieczytelny plik → kod 2.
 - Testy skryptów `/delivery` w `.github/scripts/script-tests.sh` (jeśli sprawdzają treść sekcji) dalej przechodzą.
