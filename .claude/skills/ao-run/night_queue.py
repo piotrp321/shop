@@ -451,21 +451,13 @@ def parse_until(text, now):
 
 
 def _night_clash(ctx, scope, in_progress, chosen):
-    """The reason a candidate with `scope` cannot join the night list next to the epics in progress (their scope plus
-    branch diff) and the epics already chosen: a common path that is not allowed (step 5 of the gate), or an epic in
-    progress without a readable scope. None when it can join."""
-    others = []
-    for p in in_progress:
-        try:
-            others.append((p['id'], ctx.files(p['dir'], p['branch'])))
-        except ScopeError as error:
-            return '%s w toku bez zakresu: %s' % (p['id'], error)
-    others += [(c['id'], c['scope']) for c in chosen]
-    for name, files in others:
-        blocking = [path for path in parallel_gate.common_paths(scope, files) if not parallel_gate.is_allowed(path)]
-        if blocking:
-            return 'zakres wspólny z %s: %s' % (name, blocking[0])
-    return None
+    """The reason a candidate with `scope` cannot join the night list next to the epics in progress and the epics
+    already chosen (gate steps 4-5, blocking_paths), or None when it can join."""
+    try:
+        found = blocking_paths(ctx, scope, in_progress, [(c['id'], c['scope']) for c in chosen])
+    except MissingScope as error:
+        return str(error)
+    return 'zakres wspólny z %s: %s' % (found[0][0], found[0][1][0]) if found else None
 
 
 def propose(run, state_dir, until_text, now):
@@ -859,25 +851,43 @@ def check_room(active):
     return None
 
 
+class MissingScope(Exception):
+    """An epic in progress without a readable scope (its message is the reason `X w toku bez zakresu: <error>`)."""
+
+
+def blocking_paths(ctx, mine, in_progress, known=()):
+    """Steps 4-5 of the gate for files `mine`: [(id, blocking paths)] for each epic of `in_progress` (files from
+    ctx.files: scope plus branch diff) and then of `known` ((id, files) pairs) that shares with `mine` a path refused by
+    parallel_gate.is_allowed, in that order. The files of every epic in progress are read first; one without a readable
+    scope raises MissingScope."""
+    theirs = []
+    for p in in_progress:
+        try:
+            theirs.append((p['id'], ctx.files(p['dir'], p['branch'])))
+        except ScopeError as error:
+            raise MissingScope('%s w toku bez zakresu: %s' % (p['id'], error))
+    found = []
+    for name, files in theirs + list(known):
+        blocking = [path for path in parallel_gate.common_paths(mine, files) if not parallel_gate.is_allowed(path)]
+        if blocking:
+            found.append((name, blocking))
+    return found
+
+
 def check_files(ctx, entry, others):
     """Steps 4-5: (SKIP|WAIT, reason, blocking paths) or None when the candidate shares only allowed paths."""
     try:
         mine = ctx.files(entry['dir'], branch=False)
     except ScopeError as error:
         return SKIP, str(error), []
-    theirs = []
-    for p in others:
-        try:
-            theirs.append((p, ctx.files(p['dir'], p['branch'])))
-        except ScopeError as error:
-            return WAIT, '%s w toku bez zakresu: %s' % (p['id'], error), []
-    first, paths = None, set()
-    for p, files in theirs:
-        blocking = [path for path in parallel_gate.common_paths(mine, files) if not parallel_gate.is_allowed(path)]
-        if blocking and first is None:
-            first = 'wspólne pliki z %s: %s' % (p['id'], ', '.join(blocking))
-        paths.update(blocking)
-    return (SKIP, first, sorted(paths)) if first else None
+    try:
+        found = blocking_paths(ctx, mine, others)
+    except MissingScope as error:
+        return WAIT, str(error), []
+    if not found:
+        return None
+    name, first = found[0]
+    return SKIP, 'wspólne pliki z %s: %s' % (name, ', '.join(first)), sorted({p for _, paths in found for p in paths})
 
 
 def check_docker(ctx, active, stack_mib):
