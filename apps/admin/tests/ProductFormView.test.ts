@@ -1,11 +1,10 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import PrimeVue from "primevue/config";
-import TreeSelect from "primevue/treeselect";
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterView, createMemoryHistory, createRouter } from "vue-router";
+import { toast } from "vue-sonner";
 import type { components } from "@/api/schema";
-import { primeVueOptions } from "@/primevue";
+import { Toaster } from "@/components/ui/sonner";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import ProductFormView from "@/views/ProductFormView.vue";
 
@@ -79,13 +78,14 @@ async function mountForm(path: string, roles: StaffMe["roles"] = ["admin"]) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/", name: "dashboard", component: empty },
       { path: "/products", name: "products", component: empty },
       { path: "/products/new", name: "product-new", component: ProductFormView },
       { path: "/products/:id", name: "product", component: ProductFormView },
     ],
   });
   await router.push(path);
-  const wrapper = mount({ components: { RouterView }, template: "<RouterView />" }, { attachTo: document.body, global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[], stubs: { transition: false } } });
+  const wrapper = mount({ components: { RouterView, Toaster }, template: "<RouterView /><Toaster />" }, { attachTo: document.body, global: { plugins: [pinia, router], stubs: { transition: false } } });
   await flushPromises();
   return { wrapper, router };
 }
@@ -96,9 +96,26 @@ function files(wrapper: Awaited<ReturnType<typeof mountForm>>["wrapper"], chosen
   return input.trigger("change");
 }
 
+const field = (label: string) => [...document.body.querySelectorAll<HTMLInputElement>("[role=combobox]")].find((candidate) => candidate.labels?.[0]?.textContent?.trim() === label);
+const dialog = () => document.body.querySelector<HTMLElement>("[role=alertdialog]");
+const dialogButton = (name: string) => [...(dialog()?.querySelectorAll("button") ?? [])].find((candidate) => candidate.textContent?.trim() === name);
+const pressEscape = () => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+const heading = (level: "h1" | "h2", text?: string) => [...document.body.querySelectorAll(level)].find((candidate) => text === undefined || candidate.textContent?.trim() === text);
+const barButton = (name: string) => [...document.body.querySelectorAll("section[aria-label='Zapis formularza'] button")].find((candidate) => candidate.textContent?.trim() === name) as HTMLButtonElement | undefined;
+const saveBar = () => document.body.querySelector("section[aria-label='Zapis formularza']");
+
+async function chooseCategory(label: string, category: string) {
+  const input = field(label)!;
+  input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await flushPromises();
+  document.body.querySelector<HTMLElement>(`[role=option][aria-label="${category}"]`)!.click();
+  await flushPromises();
+}
+
 describe("ProductFormView", () => {
   let mounted: Awaited<ReturnType<typeof mountForm>> | undefined;
   let scrollIntoView: Mock<Element["scrollIntoView"]>;
+  let successToast: Mock<typeof toast.success>;
 
   beforeEach(() => {
     mocks.get.mockReset();
@@ -109,12 +126,15 @@ describe("ProductFormView", () => {
     // jsdom does not scroll and has no scrollIntoView either.
     scrollIntoView = vi.fn<Element["scrollIntoView"]>();
     Element.prototype.scrollIntoView = scrollIntoView;
+    // The toast store is global; the tests read what was shown from the calls, one test reads the live region itself.
+    successToast = vi.spyOn(toast, "success").mockImplementation(() => 1);
     serve();
   });
 
   afterEach(() => {
     mounted?.wrapper.unmount();
     mounted = undefined;
+    document.body.innerHTML = "";
     delete (Element.prototype as Partial<Element>).scrollIntoView;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -156,16 +176,56 @@ describe("ProductFormView", () => {
 
     it("sends the categories chosen from the tree", async () => {
       mounted = await mountForm("/products/p-1");
-      const trees = mounted.wrapper.findAllComponents(TreeSelect);
       mocks.put.mockResolvedValue({ data: view({ version: 4 }), response: { status: 200 } });
 
-      trees[0]!.vm.$emit("update:modelValue", { "c-extra": true });
-      trees[1]!.vm.$emit("update:modelValue", { "c-main": true, "c-extra": true });
-      await flushPromises();
+      await chooseCategory("Kategoria główna", "Sport");
+      await chooseCategory("Kategorie dodatkowe", "Obuwie");
       await mounted.wrapper.get("[data-testid=save]").trigger("click");
       await flushPromises();
 
-      expect(mocks.put.mock.calls[0]![1].body).toMatchObject({ mainCategoryId: "c-extra", additionalCategoryIds: ["c-main", "c-extra"] });
+      const body = mocks.put.mock.calls[0]![1].body;
+      expect(body.mainCategoryId).toBe("c-extra");
+      expect([...body.additionalCategoryIds].sort()).toEqual(["c-extra", "c-main"]);
+    });
+
+    it("#250 F13: names the tax class and the categories, and leaves no button without a name", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      expect(document.getElementById("product-tax-class")?.getAttribute("role")).toBe("combobox");
+      expect((document.getElementById("product-tax-class") as HTMLButtonElement).labels?.[0]?.textContent?.trim()).toBe("Klasa podatkowa");
+      expect(field("Kategoria główna")).toBeDefined();
+      expect(field("Kategorie dodatkowe")).toBeDefined();
+      const nameless = [...mounted.wrapper.element.querySelectorAll("button")].filter(
+        (button) => (button.getAttribute("aria-label") ?? button.textContent ?? "").trim() === "" && !button.hasAttribute("aria-labelledby") && !(button as HTMLButtonElement).labels?.length,
+      );
+      expect(nameless).toEqual([]);
+    });
+
+    it("marks the category with the error invalid and points it at the message", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "mainCategoryId", title: "Wybierz kategorię." }] }));
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const error = mounted.wrapper.get("[data-testid=error-mainCategoryId]");
+      expect(field("Kategoria główna")?.getAttribute("aria-invalid")).toBe("true");
+      expect(field("Kategoria główna")?.getAttribute("aria-describedby")).toContain(error.attributes("id"));
+    });
+
+    it("marks the field with the error invalid and points it at the message", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Nazwa jest wymagana." }] }));
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const name = mounted.wrapper.get("[data-testid=name]");
+      expect(name.attributes("aria-invalid")).toBe("true");
+      expect(name.attributes("aria-describedby")).toBe(mounted.wrapper.get("[data-testid=error-name]").attributes("id"));
+      expect(mounted.wrapper.get("[data-testid=slug]").attributes("aria-invalid")).toBeUndefined();
     });
 
     it("shows an error at the field the API names", async () => {
@@ -192,7 +252,7 @@ describe("ProductFormView", () => {
   });
 
   describe("actions", () => {
-    it("saves an edited product with its version and shows the message", async () => {
+    it("saves an edited product with its version and says so in a toast", async () => {
       mounted = await mountForm("/products/p-1");
       mocks.put.mockResolvedValue({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
 
@@ -202,7 +262,8 @@ describe("ProductFormView", () => {
 
       expect(mocks.put).toHaveBeenCalledWith(PRODUCT, expect.objectContaining({ params: { path: { id: "p-1" } } }));
       expect(mocks.put.mock.calls[0]![1].body.version).toBe(3);
-      expect(mounted.wrapper.get("[data-testid=success-message]").text()).toBe("Produkt zapisany.");
+      expect(successToast).toHaveBeenCalledWith("Produkt zapisany.");
+      expect(mounted.wrapper.find("[data-testid=success-message]").exists()).toBe(false);
     });
 
     it("creates a new product with the default variant and moves to its page", async () => {
@@ -217,7 +278,7 @@ describe("ProductFormView", () => {
       expect(mocks.post).toHaveBeenCalledWith(PRODUCTS, expect.objectContaining({ body: expect.objectContaining({ name: "Buty biegowe", variants: [{ variantId: null, values: [] }] }) }));
       expect(mounted.router.currentRoute.value.name).toBe("product");
       expect(mounted.router.currentRoute.value.params.id).toBe("p-9");
-      expect(mounted.wrapper.get("[data-testid=success-message]").text()).toBe("Produkt zapisany.");
+      expect(successToast).toHaveBeenCalledWith("Produkt zapisany.");
       expect(mounted.wrapper.get("h1").text()).toBe("Buty biegowe");
     });
 
@@ -226,9 +287,12 @@ describe("ProductFormView", () => {
       const { wrapper } = mounted;
 
       expect(wrapper.get("[data-testid=publish]").attributes("disabled")).toBeUndefined();
+      expect(wrapper.find("[data-testid=publish-reason]").exists()).toBe(false);
       expect(wrapper.find("[data-testid=unpublish]").exists()).toBe(false);
       await wrapper.get("[data-testid=name]").setValue("Inne");
       expect(wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
+      expect(wrapper.get("[data-testid=publish-reason]").text()).toBe("Najpierw zapisz zmiany.");
+      expect(wrapper.get("[data-testid=publish]").attributes("aria-describedby")).toBe(wrapper.get("[data-testid=publish-reason]").attributes("id"));
 
       serve(view({ status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
       wrapper.unmount();
@@ -238,7 +302,7 @@ describe("ProductFormView", () => {
       expect(mounted.wrapper.get("[data-testid=product-status]").text()).toBe("Opublikowany");
     });
 
-    it("publishes with the version and shows the status of the API", async () => {
+    it("publishes with the version, shows the status of the API and says so in a toast", async () => {
       mounted = await mountForm("/products/p-1");
       mocks.post.mockResolvedValue({ data: view({ version: 4, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }), response: { status: 200 } });
 
@@ -247,7 +311,20 @@ describe("ProductFormView", () => {
 
       expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/products/{id}/publish", { params: { path: { id: "p-1" } }, body: { version: 3 } });
       expect(mounted.wrapper.get("[data-testid=product-status]").text()).toBe("Opublikowany");
-      expect(mounted.wrapper.get("[data-testid=success-message]").text()).toBe("Produkt opublikowany.");
+      expect(successToast).toHaveBeenCalledWith("Produkt opublikowany.");
+    });
+
+    it("withdraws a published product and says so in a toast", async () => {
+      serve(view({ status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
+      mounted = await mountForm("/products/p-1");
+      mocks.post.mockResolvedValue({ data: view({ version: 4, status: "draft", firstPublishedAt: "2026-11-02T10:00:00+00:00" }), response: { status: 200 } });
+
+      await mounted.wrapper.get("[data-testid=unpublish]").trigger("click");
+      await flushPromises();
+
+      expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/products/{id}/unpublish", { params: { path: { id: "p-1" } }, body: { version: 3 } });
+      expect(mounted.wrapper.get("[data-testid=product-status]").text()).toBe("Szkic");
+      expect(successToast).toHaveBeenCalledWith("Produkt wycofany z publikacji.");
     });
 
     it("asks to refresh after a conflict and discards the changes when asked", async () => {
@@ -276,8 +353,10 @@ describe("ProductFormView", () => {
       await flushPromises();
 
       expect(mounted.wrapper.get("[data-testid=form-error]").text()).toContain("uprawnień");
+      expect(mounted.wrapper.get("[data-testid=form-error]").attributes("role")).toBe("alert");
       expect(mounted.wrapper.find("[data-testid=refresh]").exists()).toBe(false);
       expect((mounted.wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Moje");
+      expect(successToast).not.toHaveBeenCalled();
     });
 
     it("disables the actions while the request runs", async () => {
@@ -293,7 +372,21 @@ describe("ProductFormView", () => {
       expect(mounted.wrapper.get("[data-testid=publish]").attributes("disabled")).toBeDefined();
       finish({ data: view({ version: 4 }), response: { status: 200 } });
       await flushPromises();
-      expect(mounted.wrapper.get("[data-testid=save]").attributes("disabled")).toBeUndefined();
+      expect(mounted.wrapper.find("[data-testid=save]").exists()).toBe(false);
+    });
+
+    it("shows the toast in a polite live region (criterion 15)", async () => {
+      successToast.mockRestore();
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const region = document.body.querySelector("section[aria-live=polite]");
+      expect(region?.textContent).toContain("Produkt zapisany.");
+      toast.dismiss();
     });
   });
 
@@ -399,8 +492,17 @@ describe("ProductFormView", () => {
       expectRevealed(mounted!.wrapper.findAll("[data-testid=variant-row]")[1]!.get("input").element);
     });
 
+    it("moves to the category with the error", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "mainCategoryId", title: "Wybierz kategorię." }] }));
+
+      await click("save");
+
+      expectRevealed(field("Kategoria główna")!);
+    });
+
     it("moves to the message of a failed publication", async () => {
-      await edited("/products/p-1", "Buty biegowe");
+      mounted = await mountForm("/products/p-1");
       mocks.post.mockResolvedValue(problem(409, { type: `${PREFIX}product-not-publishable`, detail: "x" }));
 
       await click("publish");
@@ -410,7 +512,7 @@ describe("ProductFormView", () => {
 
     it("moves to the message of a failed withdrawal", async () => {
       serve(view({ status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
-      await edited("/products/p-1", "Buty biegowe");
+      mounted = await mountForm("/products/p-1");
       mocks.post.mockResolvedValue(problem(503));
 
       await click("unpublish");
@@ -418,32 +520,73 @@ describe("ProductFormView", () => {
       revealed("form-error");
     });
 
-    it("moves to the confirmation after a save", async () => {
+    it("moves to the heading of the page after a save, because the save bar went away with its button", async () => {
       await edited("/products/p-1");
       mocks.put.mockResolvedValue({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
 
       await click("save");
 
-      revealed("success-message");
+      expect(saveBar()).toBeNull();
+      expect(document.activeElement).toBe(heading("h1"));
+      expect(document.activeElement?.textContent?.trim()).toBe("Inne");
     });
 
-    it("moves to the confirmation after a publication", async () => {
-      await edited("/products/p-1", "Buty biegowe");
-      mocks.post.mockResolvedValue({ data: view({ version: 4, status: "published" }), response: { status: 200 } });
+    it("moves to the heading of the card „Status” after a publication, because the button was replaced", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.post.mockResolvedValue({ data: view({ version: 4, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }), response: { status: 200 } });
 
       await click("publish");
 
-      revealed("success-message");
+      expect(document.activeElement).toBe(heading("h2", "Status"));
+      expect(document.activeElement).not.toBe(document.body);
     });
 
-    it("moves to the confirmation of a product that was just created, after the route moved to its page", async () => {
+    it("moves to the heading of the card „Status” after a withdrawal", async () => {
+      serve(view({ status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
+      mounted = await mountForm("/products/p-1");
+      mocks.post.mockResolvedValue({ data: view({ version: 4, status: "draft", firstPublishedAt: "2026-11-02T10:00:00+00:00" }), response: { status: 200 } });
+
+      await click("unpublish");
+
+      expect(document.activeElement).toBe(heading("h2", "Status"));
+    });
+
+    it("moves to the heading of the page after a product was created, once the route moved to its page", async () => {
       await edited("/products/new", "Buty biegowe");
       mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), response: { status: 201 } });
 
       await click("save");
 
       expect(mounted!.router.currentRoute.value.name).toBe("product");
-      revealed("success-message");
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
+    it("#250 F16: leaves the focus in the field the staff member moved to while the request ran", async () => {
+      await edited("/products/p-1");
+      let finish!: (value: unknown) => void;
+      mocks.put.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+
+      await mounted!.wrapper.get("[data-testid=save]").trigger("click");
+      const slug = mounted!.wrapper.get("[data-testid=slug]").element as HTMLInputElement;
+      slug.focus();
+      finish({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
+      await flushPromises();
+
+      expect(document.activeElement).toBe(slug);
+      expect(successToast).toHaveBeenCalledWith("Produkt zapisany.");
+    });
+
+    it("#250 F16: leaves the focus in the category field the staff member moved to while the request ran", async () => {
+      await edited("/products/p-1");
+      let finish!: (value: unknown) => void;
+      mocks.put.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+
+      await mounted!.wrapper.get("[data-testid=save]").trigger("click");
+      field("Kategoria główna")!.focus();
+      finish({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
+      await flushPromises();
+
+      expect(document.activeElement).toBe(field("Kategoria główna"));
     });
   });
 
@@ -463,25 +606,147 @@ describe("ProductFormView", () => {
     });
   });
 
-  describe("leaving with unsaved changes", () => {
-    it("asks for confirmation and stays when it is refused", async () => {
+  describe("the page", () => {
+    it("has crumbs with a link to the list and the product as the current page, instead of „Wróć do listy”", async () => {
       mounted = await mountForm("/products/p-1");
-      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+      const crumbs = mounted.wrapper.get("nav[aria-label=Okruszki]");
+      expect(crumbs.text()).toContain("Katalog");
+      expect(crumbs.get("a[href='/products']").text()).toBe("Produkty");
+      expect(crumbs.get("[aria-current=page]").text()).toBe("Buty biegowe");
+      expect(mounted.wrapper.text()).not.toContain("Wróć do listy");
+    });
+
+    it("has the cards „Dane produktu”, „Zdjęcia”, „Warianty”, „Status” and „Organizacja”", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      expect([...document.body.querySelectorAll("h2")].map((node) => node.textContent?.trim())).toEqual(["Status", "Organizacja", "Dane produktu", "Zdjęcia", "Warianty"]);
+      expect(heading("h2", "Status")?.getAttribute("tabindex")).toBe("-1");
+    });
+
+    it("has no card „Status” for a product that does not exist yet", async () => {
+      mounted = await mountForm("/products/new");
+
+      expect(heading("h2", "Status")).toBeUndefined();
+      expect(heading("h2", "Organizacja")).toBeDefined();
+      expect(mounted.wrapper.find("[data-testid=publish]").exists()).toBe(false);
+    });
+  });
+
+  describe("the save bar", () => {
+    it("is not there for an untouched product and appears with the first change", async () => {
+      mounted = await mountForm("/products/p-1");
+      expect(saveBar()).toBeNull();
 
       await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
-      await mounted.router.push("/products");
+
+      expect(saveBar()?.textContent).toContain("Niezapisane zmiany");
+      expect(barButton("Odrzuć")).toBeDefined();
+      expect(barButton("Zapisz")).toBeDefined();
+      expect(document.documentElement.style.scrollPaddingBottom).not.toBe("");
+    });
+
+    it("is there from the start for a new product, with „Nowy produkt” and „Anuluj” that goes back to the list", async () => {
+      mounted = await mountForm("/products/new");
+
+      expect(saveBar()?.textContent).toContain("Nowy produkt");
+      expect(saveBar()?.textContent).not.toContain("Niezapisane zmiany");
+      expect(barButton("Odrzuć")).toBeUndefined();
+
+      barButton("Anuluj")!.click();
       await flushPromises();
 
-      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(mounted.router.currentRoute.value.name).toBe("products");
+      expect(dialog()).toBeNull();
+    });
+
+    it("goes away after a save and gives the room back", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      expect(saveBar()).toBeNull();
+      expect(document.documentElement.style.scrollPaddingBottom).toBe("");
+    });
+
+    it("stays after a failed save", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(problem(403));
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      expect(saveBar()).not.toBeNull();
+    });
+
+    it("„Odrzuć” restores the product without a request and puts the focus on the heading", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.get.mockClear();
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      barButton("Odrzuć")!.click();
+      await flushPromises();
+
+      expect((mounted.wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Buty biegowe");
+      expect(saveBar()).toBeNull();
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(mocks.put).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(heading("h1"));
+    });
+
+    it("is not there for staff who cannot change products", async () => {
+      mounted = await mountForm("/products/p-1", ["support"]);
+
+      expect(saveBar()).toBeNull();
+    });
+  });
+
+  describe("leaving with unsaved changes", () => {
+    it("asks in a dialog and stays, with the form as it was, when the staff member stays", async () => {
+      mounted = await mountForm("/products/p-1");
+      const confirm = vi.spyOn(window, "confirm");
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      const navigation = mounted.router.push("/products");
+      await flushPromises();
+
+      expect(dialog()?.textContent).toContain("Masz niezapisane zmiany");
+      expect(document.activeElement).toBe(dialogButton("Zostań"));
+      dialogButton("Zostań")!.click();
+      await navigation;
+      await flushPromises();
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(dialog()).toBeNull();
+      expect(mounted.router.currentRoute.value.name).toBe("product");
+      expect((mounted.wrapper.get("[data-testid=name]").element as HTMLInputElement).value).toBe("Inne");
+    });
+
+    it("stays with Escape", async () => {
+      mounted = await mountForm("/products/p-1");
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      const navigation = mounted.router.push("/products");
+      await flushPromises();
+      pressEscape();
+      await navigation;
+      await flushPromises();
+
       expect(mounted.router.currentRoute.value.name).toBe("product");
     });
 
-    it("leaves when it is confirmed", async () => {
+    it("leaves when the staff member chooses „Opuść bez zapisu”", async () => {
       mounted = await mountForm("/products/p-1");
-      vi.spyOn(window, "confirm").mockReturnValue(true);
 
       await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
-      await mounted.router.push("/products");
+      const navigation = mounted.router.push("/products");
+      await flushPromises();
+      dialogButton("Opuść bez zapisu")!.click();
+      await navigation;
       await flushPromises();
 
       expect(mounted.router.currentRoute.value.name).toBe("products");
@@ -489,12 +754,25 @@ describe("ProductFormView", () => {
 
     it("leaves without asking when nothing changed", async () => {
       mounted = await mountForm("/products/p-1");
-      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
       await mounted.router.push("/products");
       await flushPromises();
 
-      expect(confirm).not.toHaveBeenCalled();
+      expect(dialog()).toBeNull();
+      expect(mounted.router.currentRoute.value.name).toBe("products");
+    });
+
+    it("does not ask after a save", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+      await mounted.router.push("/products");
+      await flushPromises();
+
+      expect(dialog()).toBeNull();
       expect(mounted.router.currentRoute.value.name).toBe("products");
     });
 
@@ -526,46 +804,61 @@ describe("ProductFormView", () => {
   });
 
   describe("after the view is left", () => {
-    it("no longer asks for confirmation on navigation and no longer warns when the tab is closed", async () => {
+    it("no longer asks about unsaved changes on navigation and no longer warns when the tab is closed", async () => {
       mounted = await mountForm("/products/p-1");
       await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
       mounted.wrapper.unmount();
-      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
       await mounted.router.push("/products");
       await flushPromises();
       const event = new Event("beforeunload", { cancelable: true });
       window.dispatchEvent(event);
 
-      expect(confirm).not.toHaveBeenCalled();
+      expect(dialog()).toBeNull();
       expect(mounted.router.currentRoute.value.name).toBe("products");
       expect(event.defaultPrevented).toBe(false);
     });
   });
 
   describe("load failures", () => {
-    it("says that the product does not exist", async () => {
+    it("#251 F9: says that the product could not be loaded in the heading, and that it does not exist in the message", async () => {
       serve(404);
       mounted = await mountForm("/products/gone");
 
       expect(mounted.wrapper.get("[data-testid=load-error]").text()).toContain("nie istnieje");
+      expect(mounted.wrapper.get("[data-testid=load-error]").attributes("role")).toBe("alert");
       expect(mounted.wrapper.find("[data-testid=name]").exists()).toBe(false);
-      expect(mounted.wrapper.get("h1").text()).toBe("Produkt");
+      expect(mounted.wrapper.get("h1").text()).toBe("Nie udało się wczytać produktu");
+      expect(saveBar()).toBeNull();
     });
 
-    it("keeps the heading of an existing product when it fails to load", async () => {
+    it("#251 F9: keeps that heading for an existing product that fails to load, not „Nowy produkt”", async () => {
       serve(500);
       mounted = await mountForm("/products/p-1");
 
       expect(mounted.wrapper.find("[data-testid=load-error]").exists()).toBe(true);
-      expect(mounted.wrapper.get("h1").text()).toBe("Produkt");
+      expect(mounted.wrapper.get("h1").text()).toBe("Nie udało się wczytać produktu");
     });
 
-    it("keeps the heading of an existing product until it is loaded", async () => {
+    it("#251 F9: has that heading when the API cannot be reached", async () => {
+      mocks.get.mockImplementation(async (path: string) => {
+        if (path === "/api/v1/admin/products/{id}") {
+          throw new Error("offline");
+        }
+        return { data: [], response: { status: 200 } };
+      });
+      mounted = await mountForm("/products/p-1");
+
+      expect(mounted.wrapper.get("h1").text()).toBe("Nie udało się wczytać produktu");
+    });
+
+    it("keeps the heading of an existing product until it is loaded, with a skeleton and no form", async () => {
       mocks.get.mockReturnValue(new Promise(() => {}));
       mounted = await mountForm("/products/p-1");
 
       expect(mounted.wrapper.get("h1").text()).toBe("Produkt");
+      expect(mounted.wrapper.find("[data-testid=name]").exists()).toBe(false);
+      expect(mounted.wrapper.find("[data-testid=load-error]").exists()).toBe(false);
     });
   });
 

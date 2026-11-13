@@ -1,15 +1,23 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import InputText from "primevue/inputtext";
-import Message from "primevue/message";
-import Select from "primevue/select";
-import Skeleton from "primevue/skeleton";
-import Tag from "primevue/tag";
-import Textarea from "primevue/textarea";
-import TreeSelect from "primevue/treeselect";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { Eye, EyeOff, RefreshCw } from "lucide-vue-next";
+import { computed, nextTick, ref, useId } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { toast } from "vue-sonner";
+import CategoryCombobox from "@/components/CategoryCombobox.vue";
+import FormField from "@/components/FormField.vue";
+import FormSection from "@/components/FormSection.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import SaveBar from "@/components/SaveBar.vue";
+import UnsavedChangesDialog from "@/components/UnsavedChangesDialog.vue";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useCategoryTree } from "@/composables/useCategoryTree";
+import { useUnsavedChangesGuard } from "@/composables/useUnsavedChangesGuard";
 import { canManageProducts } from "@/products/permissions";
 import ProductImages from "@/products/ProductImages.vue";
 import ProductVariants from "@/products/ProductVariants.vue";
@@ -17,11 +25,12 @@ import { type ActionResult, useProductForm } from "@/products/useProductForm";
 import { useAuthStore } from "@/stores/auth";
 
 const SHORT_DESCRIPTION_LIMIT = 500;
-const LEAVE_MESSAGE = "Masz niezapisane zmiany. Czy na pewno chcesz opuścić ten formularz?";
 
-// The first message of an error or field marked invalid, in the order of the document; a disabled field cannot take focus.
-const FIRST_ERROR = '.p-message-error, [data-form-error], [aria-invalid="true"]:not(:disabled)';
-const SUCCESS = ".p-message-success";
+// What a failed action moves the focus to: the first error mark or field marked invalid, in the order of the document;
+// a disabled field cannot take focus.
+const FIRST_ERROR = '[data-form-error], [aria-invalid="true"]:not(:disabled)';
+// A field the staff member types in: a save or a publication that ends while the focus is in one leaves it there (#250 F16).
+const EDITABLE_FIELD = 'input:not([type="file"]), textarea, select, [role="combobox"]';
 const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
 const route = useRoute();
@@ -56,6 +65,7 @@ const {
   publish,
   unpublish,
   refresh,
+  discard,
   moveImage,
   removeImage,
   addAxis,
@@ -73,18 +83,39 @@ const {
     void router.replace({ name: "product", params: { id } });
   },
 });
-const root = ref<HTMLElement | null>(null);
 
-// The form is long and the result of an action appears far from the button: bring the first error (or the
-// confirmation) into view and move the focus there. This runs after the DOM is updated, also after the route moved
-// from the "new" page to the page of the created product, because the same instance stays.
-async function run(action: () => Promise<ActionResult>): Promise<void> {
+const root = ref<HTMLElement | null>(null);
+const header = ref<InstanceType<typeof PageHeader> | null>(null);
+const status = ref<InstanceType<typeof FormSection> | null>(null);
+
+// The form is long and the result of an action appears far from the button. A failure brings the first error into view
+// and moves the focus there. A success says so in a toast and moves the focus to where the button was: the save bar goes
+// away with its button, so the focus goes to the H1; publishing and withdrawing replace their button, so it goes to the
+// heading of the card „Status”. Unless the staff member moved to a field while the request ran: then it stays there.
+// This runs after the DOM is updated, also after the route moved from the "new" page to the page of the created product,
+// because the same instance stays.
+async function run(action: () => Promise<ActionResult>, after: "page" | "status"): Promise<void> {
   const result = await action();
   if (result === null) {
     return;
   }
   await nextTick();
-  const target = root.value?.querySelector<HTMLElement>(result === "success" ? SUCCESS : FIRST_ERROR);
+  if (result === "success") {
+    if (message.value) {
+      toast.success(message.value);
+    }
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && root.value?.contains(active) && active.matches(EDITABLE_FIELD)) {
+      return;
+    }
+    if (after === "status") {
+      status.value?.focusHeading();
+    } else {
+      header.value?.focus();
+    }
+    return;
+  }
+  const target = root.value?.querySelector<HTMLElement>(FIRST_ERROR);
   if (!target) {
     return;
   }
@@ -96,24 +127,21 @@ async function run(action: () => Promise<ActionResult>): Promise<void> {
   target.scrollIntoView({ block: "center" });
 }
 
-const { nodes: categories, error: categoriesError } = useCategoryTree();
+// The bar goes away with „Odrzuć”, so the focus goes to the H1.
+async function discardChanges(): Promise<void> {
+  discard();
+  await nextTick();
+  header.value?.focus();
+}
 
-// TreeSelect holds the chosen nodes as { [key]: true }: one for the main category, any number for the additional ones.
-const mainSelection = computed({
-  get: () => (data.value.mainCategoryId === null ? null : { [data.value.mainCategoryId]: true }),
-  set: (value: Record<string, boolean> | null) => {
-    data.value.mainCategoryId = value ? (Object.keys(value)[0] ?? null) : null;
-  },
-});
-const additionalSelection = computed({
-  get: () => Object.fromEntries(data.value.additionalCategoryIds.map((id) => [id, true])),
-  set: (value: Record<string, boolean> | null) => {
-    data.value.additionalCategoryIds = Object.keys(value ?? {});
-  },
-});
+const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value);
+
+const { nodes: categories, error: categoriesError } = useCategoryTree();
 
 const descriptionLength = computed(() => [...data.value.shortDescription].length);
 const slugDisabled = computed(() => readOnly.value || (view.value?.slugLocked ?? false));
+const taxClassName = computed(() => taxClasses.value.find((taxClass) => taxClass.code === data.value.taxClass)?.name);
+const publishReasonId = useId();
 
 function setAlt(index: number, value: string): void {
   const image = data.value.images[index];
@@ -122,24 +150,13 @@ function setAlt(index: number, value: string): void {
   }
 }
 
-// Leaving with unsaved changes asks first, whether the staff member goes to another page of the panel or closes the tab.
-// A global guard rather than onBeforeRouteLeave: after a product is created the same instance moves from the "new"
-// route to the route of the product, and a leave guard stays with the record it was registered for.
-const removeGuard = router.beforeEach(() => !dirty.value || window.confirm(LEAVE_MESSAGE));
-
-function warnBeforeUnload(event: BeforeUnloadEvent): void {
-  // The sign-out (e.g. the idle one) leaves the page by itself; holding it back would keep the session alive.
-  if (dirty.value && !auth.signingOut) {
-    event.preventDefault();
-    event.returnValue = "";
+const title = computed(() => {
+  if (loadError.value) {
+    return "Nie udało się wczytać produktu";
   }
-}
-
-onMounted(() => window.addEventListener("beforeunload", warnBeforeUnload));
-onBeforeUnmount(() => {
-  removeGuard();
-  window.removeEventListener("beforeunload", warnBeforeUnload);
+  return view.value ? data.value.name || "Produkt" : isExisting.value ? "Produkt" : "Nowy produkt";
 });
+const crumbs = computed(() => [{ label: "Katalog" }, { label: "Produkty", to: { name: "products" } }, { label: loadError.value ? "Produkt" : title.value }]);
 
 const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
 </script>
@@ -147,364 +164,327 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
 <template>
   <div
     ref="root"
-    class="product"
+    class="flex flex-col gap-6"
   >
-    <div class="header">
-      <h1>{{ view ? data.name || "Produkt" : isExisting ? "Produkt" : "Nowy produkt" }}</h1>
-      <Tag
-        v-if="view"
-        data-testid="product-status"
-        :severity="view.status === 'published' ? 'success' : 'secondary'"
-        :value="statusLabels[view.status]"
-      />
-      <RouterLink
-        class="back"
-        :to="{ name: 'products' }"
-      >
-        Wróć do listy
-      </RouterLink>
-    </div>
+    <PageHeader
+      ref="header"
+      :title="title"
+      :crumbs="crumbs"
+    />
 
-    <Message
+    <Alert
       v-if="loadError"
       data-testid="load-error"
-      severity="error"
+      variant="destructive"
     >
-      {{ loadError }}
-    </Message>
+      <AlertDescription>{{ loadError }}</AlertDescription>
+    </Alert>
     <Skeleton
       v-else-if="!loaded"
-      height="20rem"
+      class="h-80 w-full"
     />
 
     <template v-else>
-      <Message
+      <Alert
         v-if="readOnly"
         data-testid="read-only-note"
-        severity="info"
       >
-        Nie masz uprawnień do zmiany produktów. Formularz jest tylko do odczytu.
-      </Message>
-      <Message
-        v-if="message"
-        data-testid="success-message"
-        severity="success"
-      >
-        {{ message }}
-      </Message>
-      <Message
+        <AlertDescription>Nie masz uprawnień do zmiany produktów. Formularz jest tylko do odczytu.</AlertDescription>
+      </Alert>
+      <Alert
         v-if="error"
         data-testid="form-error"
-        severity="error"
+        data-form-error
+        variant="destructive"
       >
-        {{ error }}
-        <Button
-          v-if="conflict"
-          data-testid="refresh"
-          label="Odśwież"
-          icon="pi pi-refresh"
-          severity="secondary"
-          size="small"
-          :disabled="busy"
-          @click="refresh()"
-        />
-      </Message>
-      <Message
+        <AlertDescription class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span>{{ error }}</span>
+          <Button
+            v-if="conflict"
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="refresh"
+            :disabled="busy"
+            @click="refresh()"
+          >
+            <RefreshCw aria-hidden="true" />
+            Odśwież
+          </Button>
+        </AlertDescription>
+      </Alert>
+      <Alert
         v-if="taxClassesError"
         data-testid="tax-classes-error"
-        severity="warn"
       >
-        {{ taxClassesError }}
-      </Message>
-      <Message
+        <AlertDescription>{{ taxClassesError }}</AlertDescription>
+      </Alert>
+      <Alert
         v-if="categoriesError"
         data-testid="categories-error"
-        severity="warn"
       >
-        {{ categoriesError }}
-      </Message>
+        <AlertDescription>{{ categoriesError }}</AlertDescription>
+      </Alert>
 
-      <section
-        class="section"
-        aria-labelledby="data-heading"
-      >
-        <h2 id="data-heading">
-          Dane
-        </h2>
-
-        <div class="field">
-          <label for="product-name">Nazwa</label>
-          <InputText
-            id="product-name"
-            v-model="data.name"
-            data-testid="name"
-            maxlength="200"
-            :disabled="readOnly"
-            :invalid="errorsAt('name').length > 0"
-          />
-          <Message
-            v-for="title in errorsAt('name')"
-            :key="title"
-            data-testid="error-name"
-            severity="error"
-            size="small"
-            variant="simple"
+      <!-- From 1280 px two columns: the data on the left, the side column of 320 px on the right. Below that one column
+           with the side cards above the data, which is the order of the source. -->
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+        <div class="flex flex-col gap-6 xl:col-start-2 xl:row-start-1">
+          <FormSection
+            v-if="view"
+            ref="status"
+            title="Status"
           >
-            {{ title }}
-          </Message>
+            <div class="flex flex-wrap items-center gap-2">
+              <Badge
+                data-testid="product-status"
+                :variant="view.status === 'published' ? 'success' : 'warning'"
+              >
+                {{ statusLabels[view.status] }}
+              </Badge>
+            </div>
+            <template v-if="!readOnly">
+              <Button
+                v-if="view.status === 'draft'"
+                type="button"
+                variant="outline"
+                data-testid="publish"
+                :disabled="!canPublish"
+                :aria-describedby="dirty ? publishReasonId : undefined"
+                @click="run(publish, 'status')"
+              >
+                <Eye aria-hidden="true" />
+                Opublikuj
+              </Button>
+              <Button
+                v-if="view.status === 'published'"
+                type="button"
+                variant="outline"
+                data-testid="unpublish"
+                :disabled="!canUnpublish"
+                :aria-describedby="dirty ? publishReasonId : undefined"
+                @click="run(unpublish, 'status')"
+              >
+                <EyeOff aria-hidden="true" />
+                Wycofaj z publikacji
+              </Button>
+              <p
+                v-if="dirty"
+                :id="publishReasonId"
+                data-testid="publish-reason"
+                class="text-sm text-muted-foreground"
+              >
+                Najpierw zapisz zmiany.
+              </p>
+            </template>
+          </FormSection>
+
+          <FormSection title="Organizacja">
+            <FormField
+              control-id="product-main-category"
+              :errors="errorsAt('mainCategoryId')"
+              error-testid="error-mainCategoryId"
+            >
+              <template #default="{ describedBy, invalid }">
+                <CategoryCombobox
+                  id="product-main-category"
+                  data-testid="main-category"
+                  label="Kategoria główna"
+                  placeholder="Wybierz kategorię"
+                  :nodes="categories"
+                  :model-value="data.mainCategoryId"
+                  :disabled="readOnly || categories.length === 0"
+                  :invalid="invalid"
+                  :described-by="describedBy"
+                  @update:model-value="data.mainCategoryId = ($event as string | null) ?? null"
+                />
+              </template>
+            </FormField>
+            <FormField
+              control-id="product-additional-categories"
+              :errors="errorsAt('additionalCategoryIds')"
+              error-testid="error-additionalCategoryIds"
+            >
+              <template #default="{ describedBy, invalid }">
+                <CategoryCombobox
+                  id="product-additional-categories"
+                  data-testid="additional-categories"
+                  label="Kategorie dodatkowe"
+                  placeholder="Bez dodatkowych kategorii"
+                  multiple
+                  :nodes="categories"
+                  :model-value="data.additionalCategoryIds"
+                  :disabled="readOnly || categories.length === 0"
+                  :invalid="invalid"
+                  :described-by="describedBy"
+                  @update:model-value="data.additionalCategoryIds = ($event as string[] | null) ?? []"
+                />
+              </template>
+            </FormField>
+          </FormSection>
         </div>
 
-        <div class="field">
-          <label for="product-slug">Slug</label>
-          <InputText
-            id="product-slug"
-            v-model="data.slug"
-            data-testid="slug"
-            maxlength="200"
-            :disabled="slugDisabled"
-            :invalid="errorsAt('slug').length > 0"
+        <div class="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
+          <FormSection title="Dane produktu">
+            <FormField
+              control-id="product-name"
+              label="Nazwa"
+              :errors="errorsAt('name')"
+              error-testid="error-name"
+            >
+              <template #default="{ describedBy, invalid }">
+                <Input
+                  id="product-name"
+                  v-model="data.name"
+                  data-testid="name"
+                  maxlength="200"
+                  :disabled="readOnly"
+                  :aria-invalid="invalid ? 'true' : undefined"
+                  :aria-describedby="describedBy"
+                />
+              </template>
+            </FormField>
+
+            <FormField
+              control-id="product-slug"
+              label="Slug"
+              :errors="errorsAt('slug')"
+              error-testid="error-slug"
+            >
+              <template #default="{ describedBy, invalid }">
+                <Input
+                  id="product-slug"
+                  v-model="data.slug"
+                  data-testid="slug"
+                  maxlength="200"
+                  :disabled="slugDisabled"
+                  :aria-invalid="invalid ? 'true' : undefined"
+                  :aria-describedby="describedBy"
+                />
+              </template>
+              <template
+                v-if="view?.slugLocked"
+                #hint
+              >
+                <span data-testid="slug-locked-note">Slug jest zablokowany od pierwszej publikacji produktu. Zmiana adresu zepsułaby linki do niego.</span>
+              </template>
+              <template
+                v-else-if="!readOnly"
+                #hint
+              >
+                <span data-testid="slug-hint">pusty: wyliczony z nazwy</span>
+              </template>
+            </FormField>
+
+            <FormField
+              control-id="product-description"
+              label="Krótki opis"
+              :errors="errorsAt('shortDescription')"
+              error-testid="error-shortDescription"
+            >
+              <template #default="{ describedBy, invalid }">
+                <Textarea
+                  id="product-description"
+                  v-model="data.shortDescription"
+                  data-testid="short-description"
+                  rows="4"
+                  :maxlength="SHORT_DESCRIPTION_LIMIT"
+                  :disabled="readOnly"
+                  :aria-invalid="invalid ? 'true' : undefined"
+                  :aria-describedby="describedBy"
+                />
+              </template>
+              <template #hint>
+                <span data-testid="short-description-counter">{{ descriptionLength }}/{{ SHORT_DESCRIPTION_LIMIT }}</span>
+              </template>
+            </FormField>
+
+            <FormField
+              control-id="product-tax-class"
+              label="Klasa podatkowa"
+              :errors="errorsAt('taxClass')"
+              error-testid="error-taxClass"
+            >
+              <template #default="{ describedBy, invalid }">
+                <Select
+                  :model-value="data.taxClass ?? undefined"
+                  :disabled="readOnly"
+                  @update:model-value="data.taxClass = String($event)"
+                >
+                  <SelectTrigger
+                    id="product-tax-class"
+                    data-testid="tax-class"
+                    class="w-full"
+                    :aria-invalid="invalid ? 'true' : undefined"
+                    :aria-describedby="describedBy"
+                  >
+                    <SelectValue placeholder="Wybierz klasę">
+                      {{ taxClassName ?? "Wybierz klasę" }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="taxClass in taxClasses"
+                      :key="taxClass.code"
+                      :value="taxClass.code"
+                    >
+                      {{ taxClass.name }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </template>
+            </FormField>
+          </FormSection>
+
+          <ProductImages
+            :images="data.images"
+            :entries="upload.entries.value"
+            :can-add-more="upload.canAddMore.value"
+            :read-only="readOnly"
+            :errors-at="errorsAt"
+            :errors="imagesErrors"
+            @add="upload.addFiles($event)"
+            @retry="upload.retry($event)"
+            @dismiss="upload.dismiss($event)"
+            @move="moveImage"
+            @remove="removeImage"
+            @alt="setAlt"
           />
-          <small
-            v-if="view?.slugLocked"
-            data-testid="slug-locked-note"
-            class="hint"
-          >
-            Slug jest zablokowany od pierwszej publikacji produktu. Zmiana adresu zepsułaby linki do niego.
-          </small>
-          <small
-            v-else-if="!readOnly"
-            data-testid="slug-hint"
-            class="hint"
-          >pusty: wyliczony z nazwy</small>
-          <Message
-            v-for="title in errorsAt('slug')"
-            :key="title"
-            data-testid="error-slug"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ title }}
-          </Message>
-        </div>
 
-        <div class="field">
-          <label for="product-description">Krótki opis</label>
-          <Textarea
-            id="product-description"
-            v-model="data.shortDescription"
-            data-testid="short-description"
-            rows="4"
-            :maxlength="SHORT_DESCRIPTION_LIMIT"
-            :disabled="readOnly"
-            :invalid="errorsAt('shortDescription').length > 0"
+          <ProductVariants
+            :axes="data.variantAxes"
+            :rows="data.variants"
+            :errors="variantsErrors"
+            :read-only="readOnly"
+            :axes-locked="axesLocked"
+            :errors-at="errorsAt"
+            :errors-exactly="errorsExactly"
+            @add-axis="addAxis"
+            @set-axis="setAxis"
+            @remove-axis="removeAxis"
+            @move-axis="moveAxis"
+            @add-variant="addVariant"
+            @remove-variant="removeVariant"
+            @set-value="setValue"
           />
-          <small
-            data-testid="short-description-counter"
-            class="hint"
-          >{{ descriptionLength }}/{{ SHORT_DESCRIPTION_LIMIT }}</small>
-          <Message
-            v-for="title in errorsAt('shortDescription')"
-            :key="title"
-            data-testid="error-shortDescription"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ title }}
-          </Message>
         </div>
-
-        <div class="field">
-          <label>Kategoria główna</label>
-          <TreeSelect
-            v-model="mainSelection"
-            data-testid="main-category"
-            :options="categories"
-            selection-mode="single"
-            placeholder="Wybierz kategorię"
-            filter
-            :disabled="readOnly || categories.length === 0"
-            :invalid="errorsAt('mainCategoryId').length > 0"
-            aria-label="Kategoria główna"
-          />
-          <Message
-            v-for="title in errorsAt('mainCategoryId')"
-            :key="title"
-            data-testid="error-mainCategoryId"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ title }}
-          </Message>
-        </div>
-
-        <div class="field">
-          <label>Kategorie dodatkowe</label>
-          <TreeSelect
-            v-model="additionalSelection"
-            data-testid="additional-categories"
-            :options="categories"
-            selection-mode="multiple"
-            placeholder="Bez dodatkowych kategorii"
-            filter
-            :disabled="readOnly || categories.length === 0"
-            :invalid="errorsAt('additionalCategoryIds').length > 0"
-            aria-label="Kategorie dodatkowe"
-          />
-          <Message
-            v-for="title in errorsAt('additionalCategoryIds')"
-            :key="title"
-            data-testid="error-additionalCategoryIds"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ title }}
-          </Message>
-        </div>
-
-        <div class="field">
-          <label for="product-tax-class">Klasa podatkowa</label>
-          <Select
-            v-model="data.taxClass"
-            input-id="product-tax-class"
-            data-testid="tax-class"
-            :options="taxClasses"
-            option-label="name"
-            option-value="code"
-            placeholder="Wybierz klasę"
-            :disabled="readOnly"
-            :invalid="errorsAt('taxClass').length > 0"
-          />
-          <Message
-            v-for="title in errorsAt('taxClass')"
-            :key="title"
-            data-testid="error-taxClass"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ title }}
-          </Message>
-        </div>
-      </section>
-
-      <ProductImages
-        class="section"
-        :images="data.images"
-        :entries="upload.entries.value"
-        :can-add-more="upload.canAddMore.value"
-        :read-only="readOnly"
-        :errors-at="errorsAt"
-        :errors="imagesErrors"
-        @add="upload.addFiles($event)"
-        @retry="upload.retry($event)"
-        @dismiss="upload.dismiss($event)"
-        @move="moveImage"
-        @remove="removeImage"
-        @alt="setAlt"
-      />
-
-      <ProductVariants
-        class="section"
-        :axes="data.variantAxes"
-        :rows="data.variants"
-        :errors="variantsErrors"
-        :read-only="readOnly"
-        :axes-locked="axesLocked"
-        :errors-at="errorsAt"
-        :errors-exactly="errorsExactly"
-        @add-axis="addAxis"
-        @set-axis="setAxis"
-        @remove-axis="removeAxis"
-        @move-axis="moveAxis"
-        @add-variant="addVariant"
-        @remove-variant="removeVariant"
-        @set-value="setValue"
-      />
-
-      <div
-        v-if="!readOnly"
-        class="actions"
-      >
-        <Button
-          data-testid="save"
-          label="Zapisz"
-          icon="pi pi-check"
-          :loading="busy"
-          :disabled="!canSave"
-          @click="run(save)"
-        />
-        <Button
-          v-if="view?.status === 'draft'"
-          data-testid="publish"
-          label="Opublikuj"
-          icon="pi pi-eye"
-          severity="secondary"
-          :disabled="!canPublish"
-          @click="run(publish)"
-        />
-        <Button
-          v-if="view?.status === 'published'"
-          data-testid="unpublish"
-          label="Wycofaj z publikacji"
-          icon="pi pi-eye-slash"
-          severity="secondary"
-          :disabled="!canUnpublish"
-          @click="run(unpublish)"
-        />
-        <small
-          v-if="dirty && view"
-          class="hint"
-        >Zapisz zmiany, aby opublikować albo wycofać produkt.</small>
       </div>
+
+      <SaveBar
+        v-if="!readOnly && (dirty || !isExisting)"
+        :creating="!isExisting"
+        new-label="Nowy produkt"
+        :busy="busy"
+        :save-disabled="!canSave"
+        @save="run(save, 'page')"
+        @discard="discardChanges"
+        @cancel="router.push({ name: 'products' })"
+      />
     </template>
+
+    <UnsavedChangesDialog
+      v-model:open="leaveOpen"
+      @leave="leave"
+    />
   </div>
 </template>
-
-<style scoped>
-.product {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 56rem;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.back {
-  margin-left: auto;
-}
-
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--p-content-border-color);
-  border-radius: var(--p-content-border-radius);
-  background: var(--p-content-background);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.hint {
-  color: var(--p-text-muted-color);
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-</style>
