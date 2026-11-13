@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-vue-next";
-import { computed, ref, useId } from "vue";
+import { computed, nextTick, ref, useId } from "vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import FormSection from "@/components/FormSection.vue";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { focusAfterAction } from "@/lib/focus";
 import { MAX_AXES, MAX_VARIANTS, type VariantRow } from "./useProductForm";
 
 const props = defineProps<{
@@ -50,13 +51,22 @@ const axisLabel = (position: number) => props.axes[position] || `Oś ${position 
 /** The name of a variant is its values: „czarny / 42”. */
 const variantName = (index: number) => props.rows[index]?.values.filter((value) => value.trim() !== "").join(" / ") || String(index + 1);
 
+// The button of a row or an axis removed without asking goes away with it: the focus goes to the same button of what took
+// its place (the next one) and, without a next one, to the heading of the card, never to the body.
+async function removeWithoutAsking(removal: () => void, buttons: string, index: number): Promise<void> {
+  removal();
+  await nextTick();
+  const next = section.value?.$el.querySelectorAll(`[data-testid=${buttons}]`)[index] as HTMLElement | undefined;
+  focusAfterAction(next ?? null, section.value?.heading ?? null);
+}
+
 function removeRow(index: number): void {
   if (props.rows[index]?.variantId != null) {
     const name = variantName(index);
     pending.value = { kind: "row", index, title: `Usunąć wariant ${name}?`, confirmLabel: `Usuń wariant ${name}` };
     confirmOpen.value = true;
   } else {
-    emit("removeVariant", index);
+    void removeWithoutAsking(() => emit("removeVariant", index), "variant-remove", index);
   }
 }
 
@@ -67,7 +77,7 @@ function removeAxis(index: number): void {
     pending.value = { kind: "axis", index, title: `Usunąć oś ${axisLabel(index)}?`, confirmLabel: `Usuń oś ${axisLabel(index)}` };
     confirmOpen.value = true;
   } else {
-    emit("removeAxis", index);
+    void removeWithoutAsking(() => emit("removeAxis", index), "axis-remove", index);
   }
 }
 

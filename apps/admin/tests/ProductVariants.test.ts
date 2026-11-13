@@ -54,15 +54,24 @@ const TWO_AXES_ROWS: VariantRow[] = [
   { variantId: "v-2", values: ["biały", "43"] },
 ];
 
-/** The form around the editor: removing a row changes the props, like `ProductFormView` does. */
-function renderInForm(initial: VariantRow[] = TWO_ROWS) {
+/** The form around the editor: removing a row or an axis changes the props, like `ProductFormView` does. */
+function renderInForm(initial: VariantRow[] = TWO_ROWS, initialAxes: string[] = ["Kolor"]) {
   const Host = defineComponent({
     components: { ProductVariants },
     setup() {
       const rows = ref(initial.map((row) => ({ ...row, values: [...row.values] })));
-      return { rows, remove: (index: number) => rows.value.splice(index, 1) };
+      const axes = ref([...initialAxes]);
+      return {
+        rows,
+        axes,
+        remove: (index: number) => rows.value.splice(index, 1),
+        removeAxis: (index: number) => {
+          axes.value.splice(index, 1);
+          rows.value.forEach((row) => row.values.splice(index, 1));
+        },
+      };
     },
-    template: `<ProductVariants :axes="['Kolor']" :rows="rows" :errors="[]" :read-only="false" :axes-locked="false" :errors-at="() => []" :errors-exactly="() => []" @remove-variant="remove" />`,
+    template: `<ProductVariants :axes="axes" :rows="rows" :errors="[]" :read-only="false" :axes-locked="false" :errors-at="() => []" :errors-exactly="() => []" @remove-variant="remove" @remove-axis="removeAxis" />`,
   });
   mounted = mount(Host, { attachTo: document.body });
   return mounted;
@@ -229,6 +238,30 @@ describe("ProductVariants", () => {
       expect(document.activeElement?.textContent).toBe("Warianty");
     });
 
+    it("puts the focus on the remove button of the row that took its place after a new row is removed without asking", async () => {
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"] }, { variantId: null, values: ["zielone"] }, { variantId: null, values: ["żółte"] }]);
+      const buttons = () => wrapper.findAll("[data-testid=variant-remove]").map((button) => button.element as HTMLElement);
+      buttons()[1]!.focus();
+
+      await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
+      await flushPromises();
+
+      expect(wrapper.findAll("[data-testid=variant-row]")).toHaveLength(2);
+      expect(dialog()).toBeNull();
+      expect(document.activeElement).toBe(buttons()[1]);
+    });
+
+    it("puts the focus on the heading „Warianty” after the last new row is removed, because its button is gone", async () => {
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"] }, { variantId: null, values: ["zielone"] }]);
+      (wrapper.findAll("[data-testid=variant-remove]")[1]!.element as HTMLElement).focus();
+
+      await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(document.querySelector("h2"));
+      expect(document.activeElement?.textContent).toBe("Warianty");
+    });
+
     it("does not offer removing the only row", () => {
       const wrapper = render({ rows: [{ variantId: "v-1", values: ["czarne"] }] });
 
@@ -251,6 +284,43 @@ describe("ProductVariants", () => {
       const single = render({ rows: [{ variantId: "v-1", values: ["czarne"] }] });
       await single.get("[data-testid=axis-remove]").trigger("click");
       expect(single.emitted("removeAxis")).toEqual([[0]]);
+    });
+  });
+
+  describe("removing an axis without asking", () => {
+    const axisButtons = (wrapper: VueWrapper) => wrapper.findAll("[data-testid=axis-remove]").map((button) => button.element as HTMLElement);
+
+    it("puts the focus on the remove button of the axis that took its place", async () => {
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"] }], ["Kolor", "Rozmiar"]);
+      axisButtons(wrapper)[0]!.focus();
+
+      await wrapper.findAll("[data-testid=axis-remove]")[0]!.trigger("click");
+      await flushPromises();
+
+      expect(axisButtons(wrapper)).toHaveLength(1);
+      expect(document.activeElement).toBe(axisButtons(wrapper)[0]);
+    });
+
+    it("puts the focus on the heading „Warianty” after the last axis is removed, because its button is gone", async () => {
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"] }], ["Kolor", "Rozmiar"]);
+      axisButtons(wrapper)[1]!.focus();
+
+      await wrapper.findAll("[data-testid=axis-remove]")[1]!.trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).toBe(document.querySelector("h2"));
+    });
+
+    it("puts the focus on the heading when the only axis is removed", async () => {
+      const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny"] }], ["Kolor"]);
+      axisButtons(wrapper)[0]!.focus();
+
+      await wrapper.findAll("[data-testid=axis-remove]")[0]!.trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid=axis-remove]").exists()).toBe(false);
+      expect(document.activeElement).toBe(document.querySelector("h2"));
+      expect(document.activeElement).not.toBe(document.body);
     });
   });
 
