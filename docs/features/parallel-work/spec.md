@@ -34,7 +34,7 @@ Miara główna: czas zegarowy epiku. Pilnujemy przy tym jakości, liczby napraw,
 
 Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespełniony warunek daje wynik.
 
-1. **Brak epików w toku**: kandydat przechodzi bez dalszych warunków (dzisiejszy start szeregowy).
+1. **Brak epików w toku**: kandydat przechodzi bez dalszych warunków (start szeregowy).
 2. **Miejsce**: najwyżej jeden epik aktywny (razem z kandydatem najwyżej dwa). Inaczej: czekanie.
 3. **Zależności**: sekcja `## Zależności` issue kandydata nie wymienia ID otwartego epiku (reguła listy nocy).
    Inaczej: kandydat pominięty.
@@ -50,7 +50,7 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
    - **Wymuszają kolejkę:** wspólne pliki edytowane ręcznie: CI (`.github/**`), każdy `CLAUDE.md`, `make/*.mk`
      i główny `Makefile`, menu panelu (`apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`), inne
      `README.md` (np. runbook `infra/k8s/README.md`) oraz każda inna wspólna ścieżka kodu, testów i konfiguracji
-     (rozłączność jak w liście nocy). Czy dopuścić `CLAUDE.md`, rozstrzyga użytkownik po dwóch pierwszych parach
+     (porównanie po segmentach: `docs/features/ao-run/spec.md`, „Zakres epiku”). Czy dopuścić `CLAUDE.md`, rozstrzyga użytkownik po dwóch pierwszych parach
      (sekcja „Ocena `CLAUDE.md`”).
 6. **Pamięć Dockera**: `wolna = MemTotal − pamięć kontenerów spoza AO − max(pamięć kontenerów AO, rezerwa × liczba
    epików aktywnych)` jest co najmniej rezerwą jednego stosu. Rezerwa: 6 GiB (`--stack-gib`, pomiar: stos ok. 4,9 GB).
@@ -91,12 +91,17 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
   rezerwacja: brak startu). `night_queue.py start <epik> --claim <token>` (zaraz po udanym `ao epic start`) zapisuje
   zdarzenie `start` i usuwa rezerwację w tej samej blokadzie. `ao epic start` od razu wypycha `epic/<epik>`, więc po
   usunięciu rezerwacji epik jest w toku z gałęzi. Odmowa w sekcjach 1–2 po rezerwacji: `release <epik> --claim
-  <token>`. Rezerwacja niezwolniona (np. przerwana sesja) wygasa sama.
+  <token>`. Rezerwacja niezwolniona (np. przerwana sesja) wygasa sama. `start` odmawia (kod 2, `epik X ma innego
+  właściciela`, bez zapisu), gdy epik ma zapisanego właściciela innego niż `--claim` (także bez `--claim`), więc
+  ponowny `start` epiku wymaga tokenu właściciela.
 - **Pytanie a rezerwacja**: `gate` bez `--reserve` tylko czyta (do pytania „Zacząć epik X?”), więc nie blokuje innych
   sesji na czas czekania na odpowiedź. „Tak” jest ważne tylko w chwili rezerwacji: gdy bramka już nie przechodzi,
   sesja podaje powód, a po późniejszym przejściu bramki pyta od nowa z aktualnym `parallel_with`.
 - **Wymuszenie**: w dzień `gate --dir <epik> --reserve --force` zakłada rezerwację mimo niespełnionej bramki (wynik
-  bramki zostaje w wyjściu), tylko po „tak” użytkownika na „Uruchomić mimo bramki?”. W nocy nie ma wymuszenia.
+  bramki zostaje w wyjściu: `reason`, a `skipped` może wymieniać ten sam epik, zwrócony z `reserved: true`), tylko po
+  „tak” użytkownika na „Uruchomić mimo bramki?”. Sesja rozpoznaje rezerwację po `reserved`, nie po pustym `skipped`.
+  Wymuszenie nie omija odmów samego epiku (spoza tablicy, zmergowany, nieprzygotowany, zarezerwowany). W nocy nie ma
+  wymuszenia.
 - **Wznowienie**: `gate --dir` dla epiku, który jest już w toku z gałęzi (np. nowa sesja przejmuje epik po przerwanej),
   zwraca `resumed: true` bez sprawdzeń bramki i bez rezerwacji: epik już zajmuje swoje miejsce. Wznowienie nie może
   uruchomić drugiego procesu AO dla epiku innej sesji:
@@ -154,22 +159,36 @@ sprzed zmiany drugiego epiku. Dlatego:
 - **`night_queue.py release <katalog> --claim TOKEN`**: usuwa własną rezerwację; brak jej: kod 0 bez zmiany.
 - **`/ao-run` bez argumentu i po merge'u (sekcja 8 skilla):** sesja uruchamia `gate` zamiast `next_epic.py`.
   `epic` jest: push „Zacząć epik X?” albo, przy niepustym `parallel_with`, „Zacząć epik X równolegle z Y?”; start
-  dalej tylko po „tak” użytkownika. `epic` null z `reason`: push „Epik X czeka: <powód>”, bez pytania.
+  tylko po „tak” użytkownika. `epic` null z `reason`: push „Epik X czeka: <powód>”, bez pytania; wynik bramki nie
+  podaje czekającego kandydata, więc X to pierwszy epik z `night_queue.py ahead` spoza `skipped` i `in_progress`
+  bramki. `epic` null bez `reason` (brak kandydata): push z pierwszą pozycją `skipped` bramki, a gdy jej brak,
+  z pierwszą pozycją `skipped` z `next_epic.py` (bramka nie widzi epików nieprzygotowanych).
 - **Po starcie epiku i po jego `epic_done`** (sekcje 4 i 6 skilla) sesja w dzień też uruchamia `gate`: tak proponuje
   drugi epik, póki pierwszy trwa.
-- **`/ao-run <epik>`** (sekcja 1 skilla): `gate --dir <epik> --reserve` zastępuje dzisiejszy opis ryzyka „Inne epiki
-  w toku”. Bramka niespełniona: w dzień sesja podaje powód i pyta „Uruchomić mimo bramki?” (start tylko po „tak”,
-  z `--force`).
+- **`/ao-run <epik>`** (sekcja 1 skilla): `gate --dir <epik> --reserve` przed startem. Bramka niespełniona: w dzień
+  sesja podaje powód i pyta „Uruchomić mimo bramki?” (start tylko po „tak”, z `--force`). O starcie decydują pola
+  `reserved` i `resumed`, nie `reason` ani `skipped`.
 - **Noc:**
   - Na komputerze trwa jedna noc naraz: `approve` (pod blokadą) odmawia, gdy `night.json` ma noc bez `ended_at`
-    i przed `until`.
-  - `propose` stosuje regułę plików (krok 5) zamiast samej rozłączności, a epiki w toku nie opróżniają już listy:
-    liczą się jak epiki już na liście (pliki i zależności). Suma szacunków dalej musi się zmieścić do `until`
-    szeregowo, bo szeregowe wykonanie jest rozwiązaniem awaryjnym.
-  - Każdy epik nocy, także pierwszy, rusza przez `next`. `next` zwraca kolejny epik listy z rezerwacją (`claim`), gdy
-    nic nie jest w toku (pierwszy epik po „tak”: bez dalszych warunków), gdy wszystkie rozpoczęte epiki nocy mają
-    `done` (dzisiejsze warunki) albo gdy epik przechodzi bramkę (kroki 2–7) i warunek `until`. Gdy żaden przypadek
-    nie zachodzi, a coś jest aktywne, `next` zwraca `epic: null` i `wait: true` z powodem i nie kończy nocy.
+    i przed `until`. Nieczytelny `night.json` blokuje `approve`, `close` i `next` (kod 2, bez zapisu), aż użytkownik
+    go naprawi albo usunie.
+  - `propose` stosuje regułę plików (krok 5), a epiki w toku nie opróżniają listy: liczą się jak epiki już na liście
+    (pliki i zależności). Suma szacunków musi się zmieścić do `until` szeregowo, bo szeregowe wykonanie jest
+    rozwiązaniem awaryjnym.
+  - Każdy epik nocy, także pierwszy, rusza przez `next`. `next` bierze pierwszy epik listy bez zdarzenia `start` od
+    zatwierdzenia i zwraca go z rezerwacją (`claim`):
+    - (a) gdy nic nie jest w toku i nic nie ruszyło tej nocy (pierwszy epik po „tak”): bez dalszych warunków;
+    - (b) gdy coś ruszyło tej nocy, wszystkie rozpoczęte epiki nocy mają `done`, a żaden epik w toku nie jest
+      aktywny: po sprawdzeniach szeregowych (szacunek czasu do `until`, stan limitów `ok`, okna do 80%, jak w spec
+      `/ao-run`, „Kolejny epik”);
+    - (c) w pozostałych przypadkach, także gdy epik innej sesji jest aktywny: gdy przechodzi bramkę (kroki 2–7,
+      rezerwa 6 GiB) i teraz + szacunek czasu nie przekracza `until` (inaczej powód `X nie zdąży do HH:MM`).
+    Odmowa w (c) (czekanie albo pominięcie w bramce, `nie zdąży`) przy czymkolwiek aktywnym to `epic: null`
+    i `wait: true` z powodem: noc trwa, `next` niczego nie zapisuje. Bez aktywnego epiku ta sama odmowa kończy noc.
+    Gdy wszystkie epiki listy ruszyły, a któryś jeszcze trwa, `next` czeka z powodem `wszystkie epiki listy ruszyły,
+    w toku: …`, a po ostatnim `done` kończy noc z `lista wykonana`. Ważna rezerwacja kandydata przez inną sesję to
+    czekanie z powodem `epik X zarezerwowany albo w toku`. Każde sprawdzenie bramką w (c) `next` dopisuje do
+    `gate.jsonl` jak `gate --dir <kandydat>` (przed końcowym zapisem).
   - `next` sesja wywołuje po „tak” na listę, zaraz po `start` każdego epiku nocy (start równoległy), po `epic_done`
     i przy każdym ponownym sprawdzeniu. Sekcja 1 dla epiku nocy używa tokenu z `next`; niespełniony warunek w nocy to
     czekanie (jak `wait`), bez pytania i bez wymuszenia.
@@ -183,14 +202,15 @@ sprzed zmiany drugiego epiku. Dlatego:
 ### Dwa epiki w jednej sesji
 
 - Każdy epik ma własny `AO_HOME`, proces `ao run` w tle, Monitor zdarzeń i pętlę na końcowy PR; komendy dostają
-  blok startowy swojego epiku. Push ma etykietę epiku (już dziś z `--epic-label`).
+  blok startowy swojego epiku. Push ma etykietę epiku (`--epic-label`).
 - Odpowiedź na bloker, gdy czekają blokery obu epików, musi wskazać epik (jak przy triage kilku przeglądów); bez
   tego sesja dopytuje.
-- Kolejka przeglądów (`/sweep`, `/retro`) dalej nie działa razem z żadnym procesem AO tej sesji ani z procedurą 6a,
-  a nowy epik dalej czeka na pustą kolejkę przeglądów. Przy dwóch epikach kolejka rusza po końcu obu procesów AO.
-- `start` w `measurements.jsonl` dostaje pole `docker` (stan pamięci jak w `gate` albo `null` przy błędzie `docker`;
-  błąd nie przerywa zapisu). Nakładanie się epików wynika z przedziałów `start`–`done`, bez osobnego pola. Stare linie
-  bez `docker` są dalej poprawne.
+- Kolejka przeglądów (`/sweep`, `/retro`) nie działa razem z żadnym procesem AO tej sesji ani z procedurą 6a,
+  a nowy epik czeka na pustą kolejkę przeglądów. Przy dwóch epikach kolejka rusza po końcu obu procesów AO.
+- `start` w `measurements.jsonl` ma pole `docker`: pamięć Dockera `{total_mib, ao_mib, other_mib}` (pomiar jak
+  w kroku 6 bramki, bez `free_mib` i `required_mib`, które zależą od liczby epików aktywnych) albo `null` przy błędzie
+  `docker`; błąd nie przerywa zapisu. Nakładanie się epików wynika z przedziałów `start`–`done`, bez osobnego pola;
+  wynik `done` podaje je jako `overlap` (przedział epiku przecina przedział innego). Linie bez `docker` są poprawne.
 
 ### Pomiar pierwszych dwóch par
 
@@ -283,9 +303,8 @@ par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
 - `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4, 5, 6, 6a, 7, 7a, 8, „Noc” i „Czego nie robisz”.
 - `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów i pliki generowane bez konfliktu w sekcji
   „Konflikt z gałęzią docelową lub z `main`”.
-- Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: dziś „jeden
-  epik naraz”), plan Agentic Software House (status kroku 19, rola „Praca równoległa”, zdanie „Na raz trwa jeden epik
-  z jednej sesji” w punkcie 3 procesu).
+- Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: wskazują
+  tę specyfikację), plan Agentic Software House (status kroku 19, rola „Praca równoległa”, punkt 3 procesu).
 
 ## Testy
 
@@ -312,7 +331,7 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   zmienia właściciela, ten sam token i epik bez właściciela → `resumed: true`.
 - `propose`: epik w toku nie opróżnia listy, reguła plików. `approve`: odmowa przy trwającej nocy, zgoda po
   `ended_at` i po `until`. `next`: pierwszy epik z rezerwacją, pierwszy epik przy epiku aktywnym innej sesji (bramka),
-  start równoległy z rezerwacją, czekanie bez końca nocy, dzisiejsze przypadki bez zmian.
+  start równoległy z rezerwacją, czekanie bez końca nocy, przypadki szeregowe bez zmian.
 - `start`: pole `docker`, błąd `docker` nie przerywa zapisu, token.
 - `pairs.py`: brak par, para, trzy epiki w łańcuchu, para otwarta, okno odnowione, awarie stosu w rozpiętości i poza
   nią, brak katalogu diagnostyki, `claude_md_only` z `gate.jsonl` (tylko `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką

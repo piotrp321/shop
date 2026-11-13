@@ -1,13 +1,16 @@
 # `/ao-run`: przebieg epiku przez AO z powiadomieniami w aplikacji Claude
 
-Krok 5 planu [Agentic Software House](../agentic-software-house/plan.md). Skill prowadzi nocny przebieg jednego epiku
+Krok 5 planu [Agentic Software House](../agentic-software-house/plan.md). Skill prowadzi nocny przebieg epiku
 przez AO z sesji Claude Code w aplikacji: uruchamia AO, przekazuje zdarzenia jako powiadomienia push do aplikacji Claude,
 przyjmuje odpowiedzi na blokery i kończy raportem odbioru. Po merge'u końcowego PR proponuje następny przygotowany epik
 z tablicy backlogu (kolejka epików). Krok 8 planu dodaje noc: listę kilku epików zatwierdzoną jednym „tak”, które
-ruszają po kolei, każdy po `epic_done` poprzedniego, bez czekania na merge (sekcja „Noc”). Krok 12 planu dodaje
+ruszają bez czekania na merge (sekcja „Noc”). Krok 12 planu dodaje
 przegląd po merge'u: sesja sama uruchamia `/sweep <epik>` po merge'u końcowego PR (sekcja „Przegląd po merge'u”).
 Krok 15 planu dodaje do tej kolejki retrospektywę `/retro <epik>` po przeglądzie
-([spec](../retro/spec.md), sekcja „Uruchamianie”). Kod AO się nie zmienia.
+([spec](../retro/spec.md), sekcja „Uruchamianie”). Krok 19a planu dodaje pracę równoległą: kolejny przygotowany epik,
+także z listy nocy, rusza naraz z trwającym, gdy przejdzie bramkę ryzyka (najwyżej dwa epiki aktywne). Bramkę,
+rezerwację, sync spójności i pomiar par opisuje [specyfikacja pracy równoległej](../parallel-work/spec.md); ta
+specyfikacja tylko na nią wskazuje. Kod AO się nie zmienia.
 
 ## Wejście i warunki startu
 
@@ -23,16 +26,15 @@ Skill odmawia startu i mówi dlaczego, gdy:
 - nie ma binarki Claude Code w wersji przypiętej przez AO (`claude_pin.py` kończy się kodem różnym od 0); odmowa
   podaje wersję i komendę instalacji (`claude install <wersja> --force`) i zapada przed założeniem `AO_HOME`
   i przed `ao epic start`;
+- bramka pracy równoległej nie rezerwuje epiku ani go nie wznawia (`night_queue.py gate --dir <epik> --reserve`;
+  reguły, rezerwacja i wznowienie: [spec pracy równoległej](../parallel-work/spec.md), „Bramka” i „Rezerwacja”).
+  W dzień niespełniona bramka (kroki 2–7) daje pytanie „Uruchomić mimo bramki?”, a „tak” rezerwuje epik z `--force`;
+  epik prowadzony przez inną sesję daje pytanie „Przejąć epik X od innej sesji?”, a „tak” przejmuje go z
+  `--takeover`. W nocy niespełniona bramka to czekanie, bez pytania i bez wymuszenia;
 - `ao epic start --dry-run` kończy się odmową (np. epik już zarejestrowany z innego commita planu).
 
-Zasilania skill nie sprawdza i o baterię nie pyta: decyduje o nim użytkownik. Sprawdzenie przed startem, które nie
-odmawia:
-
-- **Inne epiki w toku** (proces AO z innym `$HOME/.local/state/ao-<x>`, otwarty końcowy PR `epic/<x>` → `main` albo
-  `in_progress` z `next_epic.py`):
-  skill porównuje pliki wspólne (`.github/workflows/ci.yml`, pliki `CLAUDE.md`, `apps/api/openapi*.json`, klienci TS,
-  menu panelu) z linii `Zakres:` obu specyfikacji i z diffu `origin/main...origin/epic/<x>`. Wspólne pliki opisuje
-  jako ryzyko konfliktu w rozmowie i w raporcie odbioru, bez pytania i bez blokady.
+Odmowa po rezerwacji zwalnia ją (`night_queue.py release <epik> --claim <token>`). Zasilania skill nie sprawdza
+i o baterię nie pyta: decyduje o nim użytkownik.
 
 Remote Control skill nie sprawdza.
 
@@ -67,11 +69,18 @@ Remote Control skill nie sprawdza.
   - epik w toku: istnieje `origin/epic/<katalog>`, a issue jest otwarte (gałęzi epików nie usuwamy, ruleset `epic`);
   - epik przygotowany: na `origin/main` są `docs/features/<katalog>/spec.md` i `plan.md`, a plan ma manifest
     (`"schema_version"`); otwarte epiki nad nim, nieprzygotowane, trafiają do `skipped` z powodem;
-  - `epic` to pierwszy przygotowany epik, który nie jest w toku; gdy jakiś epik jest w toku, `epic` jest `null`
-    (na raz trwa jeden epik).
-- `.claude/skills/ao-run/night_queue.py` (Python 3.9+, bez zależności) i `test_night_queue.py`: lista na noc, pomiar
-  i warunki startu kolejnego epiku (sekcja „Noc”). Tablicę, issues, gałęzie i pliki na `origin/main` czyta tak samo
-  jak `next_epic.py` (wspólny kod w `next_epic.py`).
+  - `epic` to pierwszy przygotowany epik, który nie jest w toku; gdy jakiś epik jest w toku, `epic` jest `null`.
+  Następny epik wybiera bramka (`night_queue.py gate`); z wyjścia `next_epic.py` skill bierze tylko `skipped`, gdy
+  bramka nie ma kandydata (bramka nie widzi epików nieprzygotowanych).
+- `.claude/skills/ao-run/night_queue.py` (Python 3.9+, bez zależności) i `test_night_queue.py`: lista na noc, pomiar,
+  warunki startu kolejnego epiku (sekcja „Noc”) oraz bramka pracy równoległej z rezerwacją (`gate`, `release`; opis:
+  [spec pracy równoległej](../parallel-work/spec.md), „Gdzie działa”). Tablicę, issues, gałęzie i pliki na
+  `origin/main` czyta tak samo jak `next_epic.py` (wspólny kod w `next_epic.py`).
+- `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada stanu wspólnego, zapis atomowy,
+  rezerwacje i właściciele epików, klasyfikacja plików bramki i pomiar pamięci Dockera (bez zależności od
+  `night_queue.py`).
+- `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: pomiar pierwszych par epików równoległych; usuwany po decyzjach
+  o kroku 19b i o wspólnym `CLAUDE.md` (spec pracy równoległej, „Pomiar pierwszych dwóch par”).
 - `.claude/skills/ao-run/claude_pin.py` (Python 3.9+, bez zależności) i `test_claude_pin.py`: binarka Claude Code
   dla `ao run --claude-bin`. AO przypina wersję CLI (`LifecycleConfig.claude_version` w `orchestrator/lifecycle.py`)
   i jego preflight odmawia startu, gdy `claude --version` zgłasza inną. `claude` z PATH aktualizuje się sam, więc
@@ -83,13 +92,17 @@ Remote Control skill nie sprawdza.
   jest tą wersją (brak pliku, plik niewykonywalny, błąd albo przekroczony czas `--version`, inna wersja); stderr
   podaje powód dla każdego kandydata i komendę instalacji.
 - Katalog przebiegu `$HOME/.local/state/ao-<epik>/` (`AO_HOME`, poza repo) z `events.jsonl` i dziennikiem `run.log`.
-- Katalog nocy `$HOME/.local/state/ao-night/` (poza repo): `night.json` (zatwierdzona lista) i `measurements.jsonl`
-  (pomiar każdego epiku prowadzonego przez `/ao-run`).
+- Katalog stanu wspólnego `$HOME/.local/state/ao-night/` (poza repo, jeden dla wszystkich sesji `/ao-run` na
+  komputerze): `night.json` (zatwierdzona lista), `measurements.jsonl` (pomiar każdego epiku prowadzonego przez
+  `/ao-run`), `claims.json` (rezerwacje i właściciele epików), `gate.jsonl` (wyniki bramki) i `gate.lock` (blokada
+  komend, które czytają stan do decyzji albo go zapisują).
 
 ## Przebieg
 
-1. **Przygotowanie.** Sprawdza warunki startu, zakłada `AO_HOME`, uruchamia `ao epic start --dry-run`, potem
-   `ao epic start`.
+1. **Przygotowanie.** Sprawdza warunki startu (z rezerwacją w bramce), zakłada `AO_HOME`, uruchamia
+   `ao epic start --dry-run`, odnawia rezerwację tym samym tokenem, potem `ao epic start`. Przy dwóch epikach każdy
+   ma własne `AO_HOME`, proces AO, Monitor i pętlę na końcowy PR, a odpowiedź na bloker przy blokerach obu epików
+   musi wskazać epik (bez tego sesja dopytuje).
 2. **Start.** Uruchamia w tle (Bash w tle sesji) `caffeinate -dims` z `ao run --until-idle`,
    `--claude-bin <ścieżka z claude_pin.py>` i
    `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami jak przy CART:
@@ -108,7 +121,8 @@ Remote Control skill nie sprawdza.
    - rekomendacja: „merge” albo „najpierw sprawdź: …” (każda pozycja „Sprawdź:” z listy odbioru, znaleziska bez naprawy,
      ujawnione luki TDD);
    - zakres, zadania i PR, interwencje, czas, koszt;
-   - czekanie na użytkownika z `ao_events.py summary` i ryzyko z innymi epikami w toku, gdy było;
+   - czekanie na użytkownika z `ao_events.py summary` i epiki, z którymi epik trwał równolegle (z powodem bramki,
+     gdy ruszył mimo niej);
    - link do końcowego PR i linie `Closes #N`, które sesja dopisała do jego opisu (`gh pr edit`): każde issue z linii
      `Issues:` specyfikacji na `origin/main`, tylko brakujące. Gdy się nie uda, raport podaje listę do dopisania.
    Push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Końcowy PR merguje użytkownik w GitHubie albo sesja, gdy
@@ -118,7 +132,9 @@ Remote Control skill nie sprawdza.
    `gh pr merge --squash --match-head-commit <HEAD>`, bez `--admin`, `--auto` i `--delete-branch` (ruleset `epic`
    nie pozwala usunąć gałęzi). Niespełniony warunek: brak merge'u, powód w rozmowie i pushem.
 6. **Pomiar.** Po wysłaniu raportu odbioru sesja uruchamia w tle (Bash w tle) pętlę, która co 5 minut sprawdza
-   `gh pr view <końcowy PR> --json state` i kończy się przy `MERGED` albo `CLOSED`; jej zakończenie budzi sesję.
+   `gh pr view <końcowy PR> --json state` i kończy się przy `MERGED` albo `CLOSED` albo przy zmianie `origin/main`
+   (`git ls-remote origin main`); jej zakończenie budzi sesję. Przy zmianie `main` sesja sprawdza warunki syncu
+   spójności w parze i czekającego kandydata bramki, potem uruchamia pętlę ponownie.
    Użytkownik może też napisać w sesji, że zmergował: po potwierdzeniu `MERGED` sesja zatrzymuje pętlę. Po merge'u
    sesja pokazuje komentarz do issue epiku i po zgodzie go dopisuje: liczba interwencji z `ao report`, czekanie na
    użytkownika z `ao_events.py summary` (liczba czekań, suma, czekania otwarte osobno, przy błędzie „brak danych”),
@@ -126,20 +142,29 @@ Remote Control skill nie sprawdza.
    PR; `N` równa się liczbie linii), format czytany przez `retro.py collect`. Minut pracy użytkownika sesja nie pyta
    i nie szacuje. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
    Po merge'u, przed punktem 7, sesja dopisuje `/sweep <epik>` i `/retro <epik>` do kolejki przeglądów (sekcja
-   „Przegląd po merge'u”). Pytanie z punktu 7 nie czeka na przegląd ani na retro.
-7. **Następny epik.** Po merge'u końcowego PR albo na prośbę użytkownika (`/ao-run` bez argumentu) sesja uruchamia
-   `next_epic.py`:
-   - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a w rozmowie także pozycje `skipped` (np. epik wyżej na
-     tablicy bez planu). Start dopiero po „tak” użytkownika w sesji: przebieg od punktu 1 dla nowego `<epik>`, z
-     wszystkimi warunkami startu. Gdy trwa przegląd albo retro albo kolejka przeglądów nie jest pusta, „tak” czeka na jej
+   „Przegląd po merge'u”). Pytanie z punktu 7 nie czeka na przegląd ani na retro. Po `MERGED` i po `CLOSED` sesja
+   sprawdza pary epiku (`pairs.py`) i dla pary z obydwoma końcowymi PR zamkniętymi pokazuje blok `Para równoległa`
+   z werdyktem krytycznego problemu, a po zgodzie dopisuje go do issue epiku zamkniętego później; po drugiej parze
+   wysyła push o kroku 19b i przedstawia dane do decyzji o wspólnym `CLAUDE.md` (spec pracy równoległej, „Pomiar
+   pierwszych dwóch par” i „Ocena `CLAUDE.md`”).
+7. **Następny epik.** Po merge'u końcowego PR, na prośbę użytkownika (`/ao-run` bez argumentu), a w dzień także po
+   starcie epiku i po jego `epic_done`, sesja uruchamia bramkę bez rezerwacji (`night_queue.py gate`; spec pracy
+   równoległej, „Gdzie działa”):
+   - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a gdy epik ruszy obok epików w toku (`parallel_with`),
+     „Zacząć epik `<ID>` (#`<nr>`) równolegle z `<ID>`?”; w rozmowie także pozycje `skipped`. Start dopiero po „tak”
+     użytkownika w sesji: przebieg od punktu 1 dla nowego `<epik>`, z wszystkimi warunkami startu i rezerwacją.
+     Gdy trwa przegląd albo retro albo kolejka przeglądów nie jest pusta, „tak” czeka na jej
      koniec, a sesja mówi to w rozmowie
      i w pushu („Epik X ruszy po kolejce przeglądów”). Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
-   - `epic` jest `null`: push (krótszy niż 200 znaków) z powodem: pierwsza pozycja `in_progress` albo pierwsza
-     `skipped` z liczbą pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main,
-     następny krok `/prepare-epic` (+2 inne)”; pełna lista w rozmowie. Jeśli `in_progress` to epik właśnie
-     zmergowanego PR, issue epiku jest nadal otwarte (zwykle brak jego `Closes #N`): sesja mówi to, prosi o zamknięcie issue
-     i o ponowne `/ao-run`. Gdy `retro.py pending` zwraca niepustą listę, push podaje też liczbę jej epików („; retro
-     do zrobienia: 2”).
+   - `epic` jest `null` z powodem: kandydat czeka; push „Epik X czeka: <powód>”, bez pytania, a sesja sprawdza go
+     ponownie (spec pracy równoległej, „Ponowne sprawdzenie”), z pushem tylko przy zmianie powodu.
+   - `epic` jest `null` bez powodu (brak kandydata): push (krótszy niż 200 znaków) z pierwszą pozycją `skipped`
+     bramki z liczbą pozostałych, a bez niej z pierwszą pozycją `skipped` z `next_epic.py`, np. „Brak przygotowanego
+     epiku: VARIANTS (#89) bez spec.md i plan.md na main, następny krok `/prepare-epic` (+2 inne)”; pełna lista
+     w rozmowie. Gdy `retro.py pending` zwraca niepustą listę, push podaje też liczbę jej epików („; retro do zrobienia:
+     2”).
+   - `merged_open` niepuste: issue epiku ze zmergowanym końcowym PR jest nadal otwarte (zwykle brak jego
+     `Closes #N`): sesja mówi to, prosi o zamknięcie issue i o ponowne `/ao-run`.
 
 **Konflikt końcowego PR poza AO.** Gdy końcowy PR ma konflikt z `main`, a AO go nie naprawi (epik `DONE` przed
 zmianą `main`, epik `BLOCKED`, konflikt wrócił po REPAIR), sesja opisuje stan i po „tak” użytkownika: zakłada
@@ -147,13 +172,18 @@ worktree `sync/<epik>-main` z `origin/epic/<epik>` i stos (`.ao/setup`), wykonuj
 `/delivery` (pliki generowane od nowa, reszta semantycznie z obu stron, kontrola diffu i dokumentów), uruchamia
 `make check` i testy aplikacji z konfliktami, otwiera PR do `epic/<epik>` i po zielonym CI merguje go
 `gh pr merge --merge` (nigdy squash, `--admin` ani `--auto`). Końcowy PR zostaje ten sam; zastępczego nie ma. Gdy AO
-działa, nowy HEAD gałęzi epiku przechodzi rundę `DELTA` `/integration`, a raport odbioru powstaje od nowa.
+działa, nowy HEAD gałęzi epiku przechodzi rundę `DELTA` `/integration`, a raport odbioru powstaje od nowa. Ta sama
+procedura, bez pytania, to sync spójności w parze epików równoległych i konflikt epiku pary, gdy jego AO nie działa
+(warunki, zgoda i przerwanie: spec pracy równoległej, „Spójność dokumentów”); sync w parze liczy się w bloku pary
+jako „sync automatyczny”, nie jako ręczna poprawka.
 
 Pomiar epiku (każdy przebieg, także poza nocą): zaraz po udanym `ao epic start` sesja wykonuje
-`night_queue.py start <epik>`, a na `epic_done` `night_queue.py done <epik>`. Oba dostają na stdin stan limitów
-z narzędzia aplikacji `get_usage` (obiekt `plan`). Pomiar zapisuje liczbę zadań z manifestu, czas od startu do
-`epic_done` i przyrost procentu każdego okna limitu. Okno, które odnowiło się w trakcie (inne `resetsAt`), albo stan
-limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony bez `DONE` nie ma pomiaru.
+`night_queue.py start <epik> --claim <token>`, a na `epic_done` `night_queue.py done <epik>`. Oba dostają na stdin
+stan limitów z narzędzia aplikacji `get_usage` (obiekt `plan`). Pomiar zapisuje liczbę zadań z manifestu, czas od
+startu do `epic_done`, przyrost procentu każdego okna limitu i przy starcie pamięć Dockera (`docker`). Okno, które
+odnowiło się w trakcie (inne `resetsAt`), albo stan limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony
+bez `DONE` nie ma pomiaru. `start` zapisuje token jako właściciela epiku i odmawia (kod 2, bez zapisu), gdy epik ma
+innego właściciela; `done` podaje też `overlap` (przedział epiku nakłada się z innym).
 
 ## Przegląd po merge'u
 
@@ -171,7 +201,7 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   ani retro. Kolejka żyje w sesji: gdy sesja się kończy, nieuruchomione pozycje przepadają z kolejki, a push przy
   końcu sesji je wymienia (użytkownik może uruchomić `/sweep <epik>` i `/retro <epik>` sam; retro nie przepada,
   bo zostaje w `retro.py pending`).
-- **Przegląd, retro i epik nie działają naraz.** Przegląd ani retro nie startuje, gdy działa proces AO tej sesji,
+- **Przegląd, retro i epik nie działają naraz.** Przegląd ani retro nie startuje, gdy działa któryś proces AO tej sesji,
   procedura „Konflikt końcowego PR poza AO” (własny stos) albo inna pozycja kolejki. Nowy epik („tak” z punktu 7,
   pierwszy i kolejny epik listy nocy), ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec
   trwającego przeglądu albo retro (przy nocy sesja wywołuje `next` dopiero po kolejce, żeby prognoza dotyczyła chwili
@@ -223,22 +253,27 @@ braku albo złej wartości `--hours` (liczba godzin od 0 do roku). Reguła okna 
 
 ## Noc
 
-Krok 8 planu: przed snem użytkownik zatwierdza jednym „tak” listę epików, a sesja uruchamia je po kolei.
+Krok 8 planu: przed snem użytkownik zatwierdza jednym „tak” listę epików, a sesja uruchamia je przez `next`: kolejny
+epik listy rusza równolegle z trwającym, gdy przejdzie bramkę, a inaczej po `epic_done` poprzedniego.
 
 ### Zakres epiku
 
 `/prepare-epic` zapisuje w nagłówku `spec.md` (przed pierwszym nagłówkiem `## `) linię
 `Zakres: <ścieżka>, <ścieżka>, …`: ścieżki w repo (katalogi albo pliki), które epik zmienia poza własnym
 `docs/features/<katalog>/`. Reguły linii są w `docs/features/prepare-epic/spec.md`. Zakres każdego epiku obejmuje też
-jego `docs/features/<katalog>`. Dwa epiki mają rozłączny zakres, gdy żadna ścieżka jednego nie jest równa ścieżce
-drugiego ani nie leży w niej (porównanie po segmentach: `apps/api/src/Cart` leży w `apps/api/src`, a
-`apps/api/src/CartX` nie leży w `apps/api/src/Cart`). Spec bez linii `Zakres:` albo z linią nieczytelną (ścieżka
-absolutna, `..`, znaki `*?[`, pusta pozycja) nie ma zakresu.
+jego `docs/features/<katalog>`. Ścieżka leży w drugiej, gdy jest jej równa albo leży w niej po segmentach
+(`apps/api/src/Cart` leży w `apps/api/src`, a `apps/api/src/CartX` nie leży w `apps/api/src/Cart`). Dwa epiki mają
+wspólną ścieżkę, gdy ścieżka jednego leży w ścieżce drugiego; częścią wspólną jest wtedy węższa z nich. Którą część
+wspólną dopuszcza lista nocy i bramka, mówi reguła plików bramki (spec pracy równoległej, „Bramka”, krok 5): pliki
+generowane i dokumentacja tak, ręcznie edytowane pliki wspólne i kod nie. Spec bez linii `Zakres:` albo z linią
+nieczytelną (ścieżka absolutna, `..`, znaki `*?[`, pusta pozycja) nie ma zakresu.
 
 ### Szacunek
 
 Z `measurements.jsonl`: czas epiku = liczba zadań × najwyższy zmierzony czas na zadanie; zużycie okna = liczba zadań
-× najwyższy zmierzony przyrost tego okna na zadanie. Najwyższy, nie średni: szacunek ma raczej zawyżać.
+× najwyższy zmierzony przyrost tego okna na zadanie. Najwyższy, nie średni: szacunek ma raczej zawyżać. Czas na
+zadanie liczy się ze wszystkich pomiarów, a zużycie tylko z pomiarów epików, które nie nakładały się w czasie z innym
+epikiem (bez takich pomiarów ze wszystkich), bo przyrost okna epiku równoległego zawiera zużycie drugiego.
 
 ### Lista na noc
 
@@ -247,45 +282,55 @@ nie proponuje listy, tylko podaje powód, żeby użytkownik naprawił to przed s
 `night_queue.py propose --until HH:MM`. `night_queue.py` nie uruchamia `ao run`: każdy epik nocy przechodzi warunki
 startu z punktu 1, więc binarkę sprawdza się też przed każdym z nich. Wynik (JSON): `epics` (lista w kolejności
 startu: `dir`, `id`, `issue`, `title`, `tasks`, `minutes` albo `null`, `scope`), `skipped` (`issue`, `id`, `reason`),
-`in_progress`, `until` (czas ISO), `measured` (czy jest pomiar czasu). Reguły:
+`in_progress` (epiki w toku i ważne rezerwacje, jak w bramce), `until` (czas ISO), `measured` (czy jest pomiar
+czasu). Reguły:
 
-- gdy jakiś epik jest w toku (jak w `next_epic.py`: gałąź `origin/epic/<katalog>` i otwarte issue), lista jest pusta:
-  noc zaczyna się, gdy poprzednie epiki są zmergowane;
-- kandydaci to przygotowane epiki w kolejności tablicy (reguły `next_epic.py`); epik wchodzi na listę, gdy:
+- epiki w toku nie opróżniają listy: liczą się jak epiki już na liście (pliki z zakresu i diffu gałęzi, zależności);
+- kandydaci to przygotowane epiki w kolejności tablicy (reguły `next_epic.py`), które nie są w toku; epik wchodzi na
+  listę, gdy:
   - sekcja `## Zależności` jego issue nie wymienia ID innego otwartego epiku (wymieniony epik nie jest jeszcze na
     `main`, a każdy epik nocy startuje z `main`);
-  - ma zakres rozłączny z zakresem każdego epiku już na liście; epik bez zakresu wchodzi tylko jako pierwszy
-    i wtedy jest jedynym;
-  - przy pomiarze czasu suma szacunków listy z nim mieści się do `until`;
-- kandydat, który nie wchodzi, trafia do `skipped` z powodem (np. „zakres wspólny z VARIANTS:
-  apps/api/openapi.json”, „zależy od CHECKOUT”, „nie mieści się do 07:00”), a sprawdzanie idzie dalej: niższy epik
-  o rozłącznym zakresie może wejść przed wyższym;
+  - każda część wspólna jego zakresu z plikami każdego epiku w toku i z zakresem każdego epiku już na liście jest
+    plikiem dopuszczalnym według reguły plików bramki; epik bez zakresu wchodzi tylko jako pierwszy, gdy nic nie jest
+    w toku, i wtedy jest jedynym; epik w toku bez czytelnego zakresu pomija każdego kandydata;
+  - przy pomiarze czasu suma szacunków listy z nim mieści się do `until` szeregowo (wykonanie szeregowe jest
+    rozwiązaniem awaryjnym, więc lista ma się zmieścić także bez równoległości);
+- kandydat, który nie wchodzi, trafia do `skipped` z powodem (np. „zakres wspólny z VARIANTS: CLAUDE.md”, „zależy od
+  CHECKOUT”, „nie mieści się do 07:00”), a sprawdzanie idzie dalej: niższy epik może wejść przed wyższym;
 - bez pomiaru czasu lista nie ma limitu długości; kolejne epiki i tak ruszają dopiero po sprawdzeniu w `next`.
 
-Sesja pokazuje listę z szacunkami i pozycje `skipped` i pyta raz: „Zatwierdzasz listę na noc: A, B, C?”. Tylko „tak”
-użytkownika w sesji zatwierdza listę: `night_queue.py approve <katalog>…` liczy listę od nowa i zapisuje
+Sesja pokazuje listę z szacunkami, pozycje `skipped` i epiki w toku i pyta raz: „Zatwierdzasz listę na noc: A, B, C?”.
+Tylko „tak” użytkownika w sesji zatwierdza listę: `night_queue.py approve <katalog>…` liczy listę od nowa i zapisuje
 `night.json` (lista, `until`, czas zatwierdzenia), gdy jest taka sama jak podana; inna lista to błąd i nowa
-propozycja. Potem sesja wykonuje przebieg (punkty 1–5) pierwszego epiku listy.
+propozycja. Na komputerze trwa jedna noc naraz: `approve` odmawia (kod 2), gdy `night.json` ma noc bez końca przed
+jej `until`. Nieczytelny `night.json` blokuje `approve`, `close` i `next` (kod 2), aż użytkownik go naprawi albo
+usunie. Po `approve` sesja wywołuje `next`, który zwraca pierwszy epik listy.
 
 ### Kolejny epik
 
-Na `epic_done` epiku z listy, po raporcie odbioru i `done`, sesja uruchamia `night_queue.py next` (stdin: stan
-limitów z `get_usage`). Wynik: `epic` albo `null` z `reason`, oraz `started` i `left`. `next` bierze pierwszy epik
-listy bez pomiaru od zatwierdzenia i zwraca go, gdy wszystkie warunki są spełnione:
+Każdy epik nocy, także pierwszy, rusza przez `night_queue.py next` (stdin: stan limitów z `get_usage`). Wynik:
+`epic` albo `null` z `reason`, `started`, `left`, `wait` i `claim`. Zwrócony epik ma rezerwację w bramce (`claim`),
+której sesja używa w punkcie 1. Przypadki `next`, kolejność sprawdzeń i powody czekania opisuje spec pracy
+równoległej („Gdzie działa”, „Noc”); w skrócie `next` zwraca pierwszy epik listy bez pomiaru od zatwierdzenia:
 
-- każdy epik listy, który ruszył tej nocy, ma zakończony pomiar (`done`);
-- epik jest nadal przygotowany na `origin/main`, nie jest w toku (brak `origin/epic/<katalog>`) i ma otwarte issue;
-- jest pomiar czasu i teraz + szacunek czasu nie przekracza `until`;
-- stan limitów to `ok`, a każde okno, które nie odnowi się przed końcem szacunku czasu (`resetsAt` późniejszy), ma
-  pomiar i po dodaniu szacunku zużycia nie przekracza 80%. Okna, które odnowią się wcześniej, nie blokują:
-  na ich cooldown AO czeka samo (`--max-cooldown-wait`).
+- gdy nic nie jest w toku i nic nie ruszyło tej nocy: bez dalszych warunków (pierwszy epik po „tak”);
+- gdy każdy epik listy, który ruszył, ma zakończony pomiar (`done`), a żaden epik w toku nie jest aktywny: po
+  sprawdzeniach szeregowych. Epik jest nadal przygotowany na `origin/main`, jest pomiar czasu i teraz + szacunek
+  czasu nie przekracza `until`, stan limitów to `ok`, a każde okno, które nie odnowi się przed końcem szacunku czasu
+  (`resetsAt` późniejszy), ma pomiar i po dodaniu szacunku zużycia nie przekracza 80%. Okna, które odnowią się
+  wcześniej, nie blokują: na ich cooldown AO czeka samo (`--max-cooldown-wait`);
+- w pozostałych przypadkach (obok epików aktywnych): gdy przejdzie kroki 2–7 bramki i teraz + szacunek czasu nie
+  przekracza `until`. Niespełniony warunek przy aktywnym epiku to `wait: true` (noc trwa, sesja sprawdza ponownie),
+  a bez aktywnego epiku koniec nocy.
 
-Pierwszy epik nocy rusza po „tak” bez tych warunków, jak dziś. Gdy `epic` jest, sesja wykonuje dla niego przebieg
-od punktu 1 bez pytania „Zacząć epik?”. Gdy `epic` jest `null` albo punkt 1 odmawia, noc się kończy: push
-„Noc: gotowe A, B; C nie ruszył: <powód>” (do 200 znaków), pozostałe epiki listy nie ruszają, a `night.json`
-przestaje obowiązywać (następna noc to nowa lista). Epik nocy, który kończy się bez `DONE` (`BLOCKED`, `FAILED`),
-też kończy noc: następny nie rusza. Sesja zapisuje koniec nocy przez `night_queue.py close`, a `next` zapisuje go sam,
-gdy zwraca `null`, więc późniejszy `next` odmawia.
+Sesja wywołuje `next` po `approve`, zaraz po starcie każdego epiku nocy (start równoległy), po `epic_done` i przy
+każdym ponownym sprawdzeniu czekającego epiku. Gdy `epic` jest, sesja wykonuje dla niego przebieg od punktu 1 bez
+pytania „Zacząć epik?”; niespełniona bramka w punkcie 1 to w nocy czekanie, bez pytania i bez wymuszenia. Gdy `epic`
+jest `null` bez `wait` albo punkt 1 odmawia z innego powodu, noc się kończy: push „Noc: gotowe A, B; C nie ruszył:
+<powód>” (do 200 znaków), pozostałe epiki listy nie ruszają, a `night.json` przestaje obowiązywać (następna noc to
+nowa lista). Epik nocy, który kończy się bez `DONE` (`BLOCKED`, `FAILED`), też kończy noc: następny nie rusza, a epik
+nocy, który jeszcze trwa, sesja prowadzi dalej do raportu odbioru. Sesja zapisuje koniec nocy przez
+`night_queue.py close`, a `next` zapisuje go sam, gdy zwraca `null` bez `wait`, więc późniejszy `next` odmawia.
 
 Rano użytkownik odbiera każdy epik osobno (punkt 5 i 6). Każdy merge dopisuje przegląd i retro epiku do kolejki, więc
 przegląd pierwszego zmergowanego epiku może działać, gdy użytkownik odbiera następny. Punkt 7 („Następny epik”) sesja
@@ -306,16 +351,20 @@ wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo
   (wyżej, „Konflikt końcowego PR poza AO”).
 - Binarka z Homebrew znika przy `brew upgrade` (katalog starej wersji w `Caskroom`). Gdy zniknie w trakcie epiku,
   AO nie uruchomi kolejnego wykonawcy; trwalsza jest kopia z instalatora natywnego (`claude install <wersja>`).
-- CI końcowego PR drugiego epiku przeszło na `main` bez pierwszego. Rozłączny zakres zmniejsza, ale nie wyklucza
-  konfliktu znaczeniowego.
+- CI końcowego PR drugiego epiku przeszło na `main` bez pierwszego. Reguła plików bramki i sync spójności
+  zmniejszają, ale nie wykluczają konfliktu znaczeniowego. Pozostałe ograniczenia pracy równoległej: spec pracy
+  równoległej, „Ograniczenia”.
 
 ## Czego skill nie robi
 
 Nie zmienia kodu ani konfiguracji AO, nie merguje do `main` bez polecenia użytkownika w rozmowie (merge'e sesji:
-końcowy PR epiku na polecenie, squash, i PR `sync/<epik>-main` do `epic/<epik>` merge commitem, po zgodzie użytkownika), nie zakłada issues z przeglądu ani z retro bez decyzji użytkownika, nie uruchamia
-przeglądu ani retro równolegle z epikiem, nie merguje PR retro, nie odpowiada na blokery sam, nie uruchamia kilku epików
-naraz (epiki nocy idą jeden po drugim), nie zaczyna epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na
-listę nocy), nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
+końcowy PR epiku na polecenie, squash, i PR `sync/<epik>-main` do `epic/<epik>` merge commitem, po zgodzie użytkownika
+albo, w parze epików równoległych, na podstawie akceptacji specyfikacji pracy równoległej), nie zakłada issues z przeglądu ani z retro bez decyzji użytkownika, nie uruchamia
+przeglądu ani retro równolegle z epikiem, nie merguje PR retro, nie odpowiada na blokery sam, nie prowadzi więcej niż
+dwóch aktywnych epików naraz (razem z epikami innych sesji) i nie zaczyna epiku z pominięciem bramki (start mimo bramki
+tylko w dzień po „tak” użytkownika, w nocy nigdy), nie przejmuje epiku innej sesji bez „tak” użytkownika, nie zaczyna
+epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na listę nocy), nie przygotowuje epiku (`/prepare-epic`)
+i nie zmienia tablicy.
 
 ## Testy
 
@@ -331,12 +380,13 @@ kandydat bez `{version}` → błąd użycia); `next_epic.py` z podstawionymi wyn
 zamkniętych, z `needs-info`, bez etykiety `epic`, z innego repo i nie-issue, tytuł bez prefiksu, plan bez manifestu,
 brak `spec.md`, epik w toku blokuje wybór, epik zakończony z gałęzią i zamkniętym issue nie blokuje, pusta tablica,
 błąd `gh` albo `git` → kod 1); `night_queue.py` z podstawionymi wynikami komend, plikami stanu w katalogu
-tymczasowym i ustalonym „teraz” (zakres: rozłączność po segmentach, linia nieczytelna, brak linii; `propose`: epik
-w toku, zależność od otwartego epiku, wspólny zakres, epik bez zakresu tylko jako jedyny, niższy epik przed wyższym,
+tymczasowym i ustalonym „teraz” (zakres: wspólna ścieżka po segmentach, linia nieczytelna, brak linii; `propose`:
+zależność od otwartego epiku, wspólny zakres, epik bez zakresu tylko jako jedyny, niższy epik przed wyższym,
 limit czasu z pomiarem i bez; `approve`: zgodna i niezgodna lista; `start` i `done`: liczba zadań, czas, okno
 odnowione w trakcie, stan limitów inny niż `ok`, `done` bez `start`; `next`: brak listy, poprzedni epik bez `done`,
 epik już nie przygotowany albo w toku, brak pomiaru, przekroczone `until`, okno powyżej 80%, okno bez pomiaru, okno
-odnawiane przed końcem; `room`: brak okien, okno poniżej i od 80%, próg `--max-percent` (95%, domyślne 80%, zła wartość → kod 1), okno odnawiane w ciągu podanych godzin,
+odnawiane przed końcem; bramka, rezerwacja, blokada, zmiany `propose`, `approve`, `next` i `start` oraz `pairs.py`:
+lista w spec pracy równoległej, „Testy”; `room`: brak okien, okno poniżej i od 80%, próg `--max-percent` (95%, domyślne 80%, zła wartość → kod 1), okno odnawiane w ciągu podanych godzin,
 stan limitów inny niż `ok`, pusty i niepoprawny JSON, zły argument → kod 1; `close`: ustawienie końca nocy, drugie wywołanie bez zmiany, brak listy, odmowa `next` po
 `close`, zapis końca przez `next` zwracające `null`, nowa noc po `approve`; `ahead` z pomiarem i bez; błąd `gh` albo `git` → kod 1). CI uruchamia testy skilli tak jak dla
 `delivery` i `integration`. Sam przebieg sprawdza krok 7 planu (CART-FIXES), a nocną kolejkę pierwsza noc po kroku 8.
