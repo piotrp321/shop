@@ -35,7 +35,8 @@ Miara główna: czas zegarowy epiku. Pilnujemy przy tym jakości, liczby napraw,
 Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespełniony warunek daje wynik.
 
 1. **Brak epików w toku**: kandydat przechodzi bez dalszych warunków (start szeregowy).
-2. **Miejsce**: najwyżej jeden epik aktywny (razem z kandydatem najwyżej dwa). Inaczej: czekanie.
+2. **Miejsce**: najwyżej jeden epik aktywny (razem z kandydatem najwyżej dwa). Inaczej: czekanie, którego
+   wymuszenie (`--force`) nie omija.
 3. **Zależności**: sekcja `## Zależności` issue kandydata nie wymienia ID otwartego epiku (reguła listy nocy).
    Inaczej: kandydat pominięty.
 4. **Zakres**: kandydat i każdy epik w toku mają czytelną linię `Zakres:`. Brak u kandydata: kandydat pominięty;
@@ -66,7 +67,7 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
    Inaczej: czekanie.
 
 **Wstrzymanie równoległości**: gdy istnieje `parallel-hold.json` (sekcja „Pomiar pierwszych dwóch par”), zaraz po
-kroku 1 każdy kandydat obok epiku w toku (także czekającego na merge) czeka z powodem `równoległość wstrzymana:
+kroku 2 każdy kandydat obok epiku w toku (także czekającego na merge) czeka z powodem `równoległość wstrzymana:
 <powód>`. Krok 1 działa dalej, więc praca szeregowa trwa.
 
 „Pominięty” oznacza, że bramka sprawdza następnego kandydata z tablicy (niższy epik może ruszyć przed wyższym, jak
@@ -106,11 +107,12 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
 - **Pytanie a rezerwacja**: `gate` bez `--reserve` tylko czyta (do pytania „Zacząć epik X?”), więc nie blokuje innych
   sesji na czas czekania na odpowiedź. „Tak” jest ważne tylko w chwili rezerwacji: gdy bramka już nie przechodzi,
   sesja podaje powód, a po późniejszym przejściu bramki pyta od nowa z aktualnym `parallel_with`.
-- **Wymuszenie**: w dzień `gate --dir <epik> --reserve --force` zakłada rezerwację mimo niespełnionej bramki (wynik
-  bramki zostaje w wyjściu: `reason`, a `skipped` może wymieniać ten sam epik, zwrócony z `reserved: true`), tylko po
-  „tak” użytkownika na „Uruchomić mimo bramki?”. Sesja rozpoznaje rezerwację po `reserved`, nie po pustym `skipped`.
-  Wymuszenie nie omija odmów samego epiku (spoza tablicy, zmergowany, nieprzygotowany, zarezerwowany). W nocy nie ma
-  wymuszenia.
+- **Wymuszenie**: w dzień `gate --dir <epik> --reserve --force` zakłada rezerwację mimo niespełnionych kroków 3–7
+  i wstrzymania równoległości (wynik bramki zostaje w wyjściu: `reason` i `waiting`, a `skipped` może wymieniać ten
+  sam epik, zwrócony z `reserved: true`), tylko po „tak” użytkownika na „Uruchomić mimo bramki?”. Sesja rozpoznaje
+  rezerwację po `reserved`, nie po pustym `skipped`. Wymuszenie nigdy nie omija kroku 2 (dwa epiki aktywne: odmowa
+  `dwa epiki aktywne: …` bez rezerwacji) ani odmów samego epiku (spoza tablicy, zmergowany, nieprzygotowany,
+  zarezerwowany). W nocy nie ma wymuszenia.
 - **Wznowienie**: `gate --dir` dla epiku, który jest już w toku z gałęzi (np. nowa sesja przejmuje epik po przerwanej),
   zwraca `resumed: true` bez sprawdzeń bramki i bez rezerwacji: epik już zajmuje swoje miejsce. Wznowienie nie może
   uruchomić drugiego procesu AO dla epiku innej sesji:
@@ -169,8 +171,10 @@ sprzed zmiany drugiego epiku. Dlatego:
 - **`night_queue.py release <katalog> --claim TOKEN`**: usuwa własną rezerwację; brak jej: kod 0 bez zmiany.
 - **`night_queue.py hold --reason TEXT`**: zapisuje (pod blokadą, atomowo) `parallel-hold.json` z `at` i `reason`
   i wypisuje go; istniejące wstrzymanie zostaje bez zmiany. **`night_queue.py unhold`**: usuwa je i wypisuje
-  `{"removed": true|false}` (kod 0 także bez wstrzymania). Nieczytelny `parallel-hold.json`: kod 2 w `hold` i w każdej
-  komendzie, która czyta stan bramki (`gate`, `next`, `propose`, `approve`); `unhold` go usuwa.
+  `{"removed": true|false}` (kod 0 także bez wstrzymania). Pusty albo biały `--reason`: kod 2. Nieczytelny
+  `parallel-hold.json`: kod 2 w `hold` i w każdej komendzie, która czyta stan bramki (`gate`, `next`, `propose`,
+  `approve`); `unhold` go usuwa. `propose` podaje wstrzymanie w polu `hold` (`{at, reason}` albo `null`), a sesja mówi
+  o nim przed pytaniem o listę nocy (noc idzie wtedy szeregowo).
 - **`/ao-run` bez argumentu i po merge'u (sekcja 8 skilla):** sesja uruchamia `gate` zamiast `next_epic.py`.
   `epic` jest: push „Zacząć epik X?” albo, przy niepustym `parallel_with`, „Zacząć epik X równolegle z Y?”; start
   tylko po „tak” użytkownika. `epic` null z `reason`: push „Epik X czeka: <powód>”, bez pytania; X to `waiting`
@@ -179,7 +183,8 @@ sprzed zmiany drugiego epiku. Dlatego:
 - **Po starcie epiku i po jego `epic_done`** (sekcje 4 i 6 skilla) sesja w dzień też uruchamia `gate`: tak proponuje
   drugi epik, póki pierwszy trwa.
 - **`/ao-run <epik>`** (sekcja 1 skilla): `gate --dir <epik> --reserve` przed startem. Bramka niespełniona: w dzień
-  sesja podaje powód i pyta „Uruchomić mimo bramki?” (start tylko po „tak”, z `--force`). O starcie decydują pola
+  sesja podaje powód i pyta „Uruchomić mimo bramki?” (start tylko po „tak”, z `--force`), poza brakiem miejsca
+  (krok 2), przy którym epik czeka bez pytania. O starcie decydują pola
   `reserved` i `resumed`, nie `reason` ani `skipped`.
 - **Noc:**
   - Na komputerze trwa jedna noc naraz: `approve` (pod blokadą) odmawia, gdy `night.json` ma noc bez `ended_at`
@@ -351,8 +356,10 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   start równoległy z rezerwacją, czekanie bez końca nocy, przypadki szeregowe bez zmian.
 - Wstrzymanie równoległości: `gate` czeka przy epiku w toku (aktywnym, czekającym na merge, rezerwacji innej sesji,
   także z `--dir --reserve`), przechodzi bez epików w toku; `next` (c) czeka, a przypadek szeregowy (b) rusza; `hold`
-  drugi raz zostawia pierwsze, `unhold` także bez pliku; nieczytelny plik → kod 2 (`unhold` go usuwa); zapis atomowy;
-  zajęta blokada → kod 2 bez zapisu.
+  drugi raz zostawia pierwsze, pusty `--reason` → kod 2, `unhold` także bez pliku; nieczytelny plik → kod 2 (`unhold`
+  go usuwa); zapis atomowy; zajęta blokada → kod 2 bez zapisu; `hold` w wyniku `propose`.
+- Wymuszenie: `--force` rezerwuje mimo pamięci, wspólnych plików i wstrzymania, a przy dwóch epikach aktywnych (także
+  ze wstrzymaniem) odmawia bez rezerwacji.
 - `start`: pole `docker`, błąd `docker` nie przerywa zapisu, token.
 - `pairs.py`: brak par, para, trzy epiki w łańcuchu, para otwarta, okno odnowione, awarie stosu w rozpiętości i poza
   nią, brak katalogu diagnostyki, `claude_md_only` z `gate.jsonl` (tylko `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką

@@ -637,12 +637,22 @@ class QueueCliTest(unittest.TestCase):
 
     def test_output_shape(self):
         result = self.propose([epic(1, 'CART', 'apps/api/src/Cart', tasks=3)])
-        self.assertEqual({'epics', 'skipped', 'in_progress', 'until', 'measured'}, set(result))
+        self.assertEqual({'epics', 'skipped', 'in_progress', 'until', 'measured', 'hold'}, set(result))
+        self.assertIsNone(result['hold'])
         self.assertEqual({'dir': 'cart', 'id': 'CART', 'issue': 1, 'title': 'CART: title', 'tasks': 3,
                           'minutes': None, 'scope': ['apps/api/src/Cart', 'docs/features/cart']},
                          result['epics'][0])
         self.assertFalse(result['measured'])
         self.assertEqual([], result['skipped'] + result['in_progress'])
+
+    def test_hold_is_reported_and_does_not_change_the_list(self):
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')]
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'parallel-hold.json'), 'w') as f:
+            json.dump({'at': T0.isoformat(), 'reason': 'para X+Y: CI czerwone'}, f)
+        result = self.propose(epics)
+        self.assertEqual({'at': T0.isoformat(), 'reason': 'para X+Y: CI czerwone'}, result['hold'])
+        self.assertEqual(['a', 'b'], self.dirs(result))
 
     def claims(self, *dirs):
         os.makedirs(self.state, exist_ok=True)
@@ -2556,22 +2566,30 @@ class GateCliTest(unittest.TestCase):
 
     def test_force_reserves_despite_a_gate_refusal(self):
         self.events(*self.old_measurement())
+        small = {'info': str(11 * GIB), 'ps': '', 'stats': ''}
+        c = {'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}
         cases = [
-            # wait: two active epics
-            ([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')], ['a', 'b'],
-             'dwa epiki aktywne: A, B', {'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}),
+            # wait: Docker memory (step 6)
+            ([epic(1, 'A', 'apps/a'), epic(3, 'C', 'apps/c')], ['a'], 'pamięć Dockera: wolne 5120 MiB < 6144 MiB',
+             c, {'docker': small}, False),
             # skip: common files
-            ([epic(1, 'A', 'apps/x'), epic(3, 'C', 'apps/x')], ['a'], 'wspólne pliki z A: apps/x', None),
+            ([epic(1, 'A', 'apps/x'), epic(3, 'C', 'apps/x')], ['a'], 'wspólne pliki z A: apps/x', None, {}, False),
+            # wait: the parallel hold
+            ([epic(1, 'A', 'apps/a'), epic(3, 'C', 'apps/c')], ['a'], 'równoległość wstrzymana: CI czerwone', c, {},
+             True),
         ]
-        for epics, branches, reason, waiting in cases:
+        for epics, branches, reason, waiting, kwargs, held in cases:
             with self.subTest(reason=reason):
                 if self.has_claims_file():
                     os.unlink(os.path.join(self.state, 'claims.json'))
-                refused = self.result(epics, branches=branches, extra=['--dir', 'c', '--reserve'])
+                if held:
+                    self.hold()
+                refused = self.result(epics, branches=branches, extra=['--dir', 'c', '--reserve'], **kwargs)
                 self.assertEqual((None, reason, False, None), (refused['epic'], refused['reason'],
                                                                refused['reserved'], refused['claim']))
                 self.assertFalse(self.has_claims_file())
-                forced = self.result(epics, branches=branches, extra=['--dir', 'c', '--reserve', '--force'])
+                forced = self.result(epics, branches=branches, extra=['--dir', 'c', '--reserve', '--force'],
+                                     **kwargs)
                 self.assertEqual(({'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title', 'tasks': 2,
                                    'minutes': 60.0}, reason, True),
                                  (forced['epic'], forced['reason'], forced['reserved']))
@@ -2579,6 +2597,20 @@ class GateCliTest(unittest.TestCase):
                 self.assertEqual(waiting, forced['waiting'])
                 self.assertEqual([('c', forced['claim'])],
                                  [(c['dir'], c['claim']) for c in self.claims_json()['claims']])
+
+    def test_force_never_overrides_the_room_of_two_active_epics(self):
+        # Step 2 is a hard limit: --force never starts a third active epic, also under a parallel hold.
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')]
+        for held in (False, True):
+            with self.subTest(held=held):
+                if held:
+                    self.hold()
+                result = self.result(epics, branches=['a', 'b'], extra=['--dir', 'c', '--reserve', '--force'])
+                self.assertEqual((None, 'dwa epiki aktywne: A, B', False, None),
+                                 (result['epic'], result['reason'], result['reserved'], result['claim']))
+                self.assertEqual({'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}, result['waiting'])
+                self.assertFalse(self.has_claims_file())
 
     def test_reservation_failing_before_its_output_writes_no_claim(self):
         os.makedirs(os.path.join(self.state, 'gate.jsonl'))
@@ -2898,6 +2930,12 @@ class HoldCliTest(unittest.TestCase):
         code, out, _ = self.cli('hold')
         self.assertEqual((2, ''), (code, out))
         self.assertFalse(os.path.exists(self.path))
+        for reason in ('', '  \t'):
+            with self.subTest(reason=reason):
+                code, out, err = self.cli('hold', '--reason', reason)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('--reason nie może być pusty', err)
+                self.assertFalse(os.path.exists(self.path))
 
     def test_unreadable_hold_exits_2_and_unhold_removes_it(self):
         os.makedirs(self.state)

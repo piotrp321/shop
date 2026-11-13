@@ -28,7 +28,8 @@ Skill odmawia startu i mówi dlaczego, gdy:
   i przed `ao epic start`;
 - bramka pracy równoległej nie rezerwuje epiku ani go nie wznawia (`night_queue.py gate --dir <epik> --reserve`;
   reguły, rezerwacja i wznowienie: [spec pracy równoległej](../parallel-work/spec.md), „Bramka” i „Rezerwacja”).
-  W dzień niespełniona bramka (kroki 2–7) daje pytanie „Uruchomić mimo bramki?”, a „tak” rezerwuje epik z `--force`;
+  W dzień niespełniona bramka (kroki 3–7 i wstrzymanie równoległości) daje pytanie „Uruchomić mimo bramki?”, a „tak”
+  rezerwuje epik z `--force`; dwa epiki aktywne (krok 2) to czekanie, którego `--force` nie omija;
   epik prowadzony przez inną sesję daje pytanie „Przejąć epik X od innej sesji?”, a „tak” przejmuje go z
   `--takeover`. W nocy niespełniona bramka to czekanie, bez pytania i bez wymuszenia;
 - `ao epic start --dry-run` kończy się odmową (np. epik już zarejestrowany z innego commita planu).

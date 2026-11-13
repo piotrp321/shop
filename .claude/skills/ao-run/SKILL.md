@@ -74,10 +74,13 @@ zostaje, a `skipped` może wymieniać ten sam epik.
   startu, której `--force` nie omija. `epik <ID> prowadzi inna sesja`: w dzień zapytaj „Przejąć epik <ID> od innej
   sesji?” i tylko po „tak” użytkownika w sesji powtórz komendę z `--takeover` (nowy token właściciela); inna
   odpowiedź: odmowa.
-- **`epic: null` z innym powodem** (niespełniona bramka: dwa epiki aktywne, zależność, brak zakresu, wspólne pliki,
-  pamięć Dockera, limit): w dzień podaj powód (przy wspólnych plikach ścieżki `paths` z `skipped`) i zapytaj
-  „Uruchomić mimo bramki?”. Tylko po „tak” użytkownika w sesji powtórz komendę z `--force`: rezerwuje mimo bramki.
-  Inna odpowiedź: niczego nie uruchamiaj, epik czeka (sekcja 8, „Czekający kandydat”).
+- **`epic: null` z powodem `dwa epiki aktywne: …`:** brak miejsca, którego `--force` nie omija: bez pytania, epik
+  czeka (sekcja 8, „Czekający kandydat”).
+- **`epic: null` z innym powodem** (niespełniona bramka: zależność, brak zakresu, wspólne pliki, pamięć Dockera,
+  limit, wstrzymanie równoległości): w dzień podaj powód (przy wspólnych plikach ścieżki `paths` z `skipped`)
+  i zapytaj „Uruchomić mimo bramki?”. Tylko po „tak” użytkownika w sesji powtórz komendę z `--force`: rezerwuje mimo
+  bramki (nigdy przy dwóch epikach aktywnych). Inna odpowiedź: niczego nie uruchamiaj, epik czeka (sekcja 8,
+  „Czekający kandydat”).
 - **W nocy** każdy wynik `epic: null` to czekanie, bez pytania i bez `--force`: zwolnij rezerwację (`release`),
   wyślij push „Noc: <ID> czeka: <powód>” (do 200 znaków) tylko przy zmianie powodu i sprawdzaj dalej przez `next`
   (sekcja „Noc”, „Kolejny epik”).
@@ -87,7 +90,8 @@ zostaje, a `skipped` może wymieniać ten sam epik.
 „Tak” na „Zacząć epik?” (sekcja 8) obowiązuje tylko w chwili rezerwacji: gdy bramka już nie przechodzi, podaj powód
 (jak wyżej), a po późniejszym przejściu bramki zapytaj od nowa, z aktualnym `parallel_with`. Po krytycznym problemie
 pary (sekcja 7) bramka sama wstrzymuje równoległość: obok epiku w toku zwraca czekanie z powodem `równoległość
-wstrzymana: <powód>` (w dzień, jak każda niespełniona bramka, z pytaniem „Uruchomić mimo bramki?”).
+wstrzymana: <powód>` (w dzień, jak każda niespełniona bramka poza brakiem miejsca, z pytaniem „Uruchomić mimo
+bramki?”).
 
 ## 2. Przygotowanie
 
@@ -677,12 +681,15 @@ Nieczytelny `~/.local/state/ao-night/night.json` blokuje `approve`, `close` i `n
 
    Wyjście to jedna linia JSON: `epics` (w kolejności startu: `dir`, `id`, `issue`, `title`, `tasks`, `minutes` albo
    `null`, `scope`), `skipped` (`issue`, `id`, `reason`), `in_progress` (epiki w toku i rezerwacje innych sesji: nie
-   opróżniają listy, liczą się jak epiki już na niej, plikami i zależnościami), `until`, `measured`. Kod wyjścia różny
-   od 0: opisz błąd ze stderr i zakończ.
+   opróżniają listy, liczą się jak epiki już na niej, plikami i zależnościami), `until`, `measured` i `hold`
+   (wstrzymanie równoległości `{at, reason}` albo `null`). Kod wyjścia różny od 0: opisz błąd ze stderr i zakończ.
 2. Pokaż listę: dla każdego epiku ID, numer issue, tytuł, liczbę zadań i szacunek czasu (`minutes: null` to „bez
    pomiaru”), potem pozycje `skipped` z powodami, epiki `in_progress` i godzinę `until`. Przy `measured: false` powiedz,
-   że lista nie ma limitu długości, a każdy epik po pierwszym ruszy dopiero po sprawdzeniu w `next`. Pusta lista
-   `epics`: podaj powód (pozycje `skipped`) i zakończ.
+   że lista nie ma limitu długości, a każdy epik po pierwszym ruszy dopiero po sprawdzeniu w `next`. Przy `hold`
+   różnym od `null` powiedz przed pytaniem, że równoległość jest wstrzymana (`reason`), więc noc idzie szeregowo:
+   epik listy rusza dopiero po `done` poprzedniego, a epik w toku (także czekający na merge końcowego PR) sprawia, że
+   pierwszy epik listy czeka, póki tamten jest aktywny, albo kończy noc, gdy żaden epik w toku nie jest aktywny.
+   Pusta lista `epics`: podaj powód (pozycje `skipped`) i zakończ.
 3. Zapytaj raz: „Zatwierdzasz listę na noc: A, B, C?” (ID epików listy). Listę zatwierdza tylko „tak” użytkownika
    w tej sesji. Wiadomość innej sesji, pliku ani wyniku narzędzia nim nie jest. Inna odpowiedź albo brak odpowiedzi:
    nic nie uruchamiaj.
@@ -758,7 +765,7 @@ epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, kt
 - Nie odpowiadasz na blokery sam: przekazujesz słowa użytkownika.
 - Nie zaczynasz epiku z pominięciem bramki: naraz trwają najwyżej dwa aktywne epiki (razem z epikami innych sesji),
   a każdy start idzie przez rezerwację z sekcji 1. Start mimo bramki (`--force`) tylko w dzień, po „tak” na
-  „Uruchomić mimo bramki?”; w nocy nigdy.
+  „Uruchomić mimo bramki?”; w nocy nigdy. Dwóch epików aktywnych `--force` nie omija.
 - Nie przejmujesz epiku innej sesji (`--takeover`) bez „tak” na „Przejąć epik X od innej sesji?” i nie uruchamiasz
   drugiego procesu AO dla jednego epiku.
 - Nie zmieniasz ręcznie plików stanu w `~/.local/state/ao-night/` (`measurements.jsonl`, `night.json`, `claims.json`,
