@@ -362,6 +362,26 @@ describe("ProductsView", () => {
       expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 1");
     });
 
+    it("keeps typing in the search field when the echo of its own write reaches the address late", async () => {
+      serve({ "": { items: [item("A")], next: null } });
+      wrapper = await mountView();
+      // A slow navigation: the echo of the write comes only after the staff member typed on.
+      wrapper.router.beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+
+      await wrapper.get("[data-testid=search]").setValue("buty");
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
+      await wrapper.get("[data-testid=search]").setValue("buty trail");
+      await vi.advanceTimersByTimeAsync(60);
+      await settle();
+
+      expect(wrapper.router.currentRoute.value.query).toEqual({ q: "buty" });
+      expect(wrapper.get<HTMLInputElement>("[data-testid=search]").element.value).toBe("buty trail");
+
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      expect(productQueries().at(-1)).toEqual({ q: "buty trail" });
+    });
+
     it("changes the page size from the first page", async () => {
       serve({ "": { items: [item("A")], next: null } });
       wrapper = await mountView();

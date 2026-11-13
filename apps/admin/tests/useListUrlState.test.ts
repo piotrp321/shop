@@ -233,7 +233,8 @@ describe("useListUrlState", () => {
 
     expect(m.list.query.value.status).toBe("published");
     expect(address(m)).toEqual({ status: "published" });
-    expect(m.fetchPage.mock.calls.length).toBeLessThanOrEqual(3);
+    // The first page on entering and one request for the two changes, which the pager batches into one query.
+    expect(m.fetchPage).toHaveBeenCalledTimes(2);
     expect(queries(m).at(-1)).toMatchObject({ status: "published" });
   });
 
@@ -295,6 +296,39 @@ describe("useListUrlState", () => {
       // One request, from the first page: the page change before it is not asked for again by the echo of the address.
       expect(m.fetchPage).toHaveBeenCalledTimes(1);
       expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: null, category: null, status: "draft", perPage: 25 }, after: null });
+    });
+
+    it("tells its own write from a change from outside: the echo leaves `address` alone, a change from outside sets it", async () => {
+      const m = await open("/products?q=buty");
+
+      m.list.set({ status: "draft" });
+      await flushPromises();
+      expect(address(m)).toEqual({ q: "buty", status: "draft" });
+      // `address` is what was read from outside; the echo of the own write would have set `status` in it.
+      expect(m.list.address.value).toEqual({ q: "buty", category: null, status: null, perPage: null });
+
+      await m.router.push({ path: "/products", query: { q: "namioty", status: "draft" } });
+      await flushPromises();
+      expect(m.list.address.value).toEqual({ q: "namioty", category: null, status: "draft", perPage: null });
+    });
+
+    it("restores the previous address on Back, from the first page, with one request", async () => {
+      const m = await open("/products?status=draft");
+      await m.router.push({ path: "/products", query: { status: "published", perPage: "50" } });
+      await flushPromises();
+      await m.pager.goNext();
+      expect(m.pager.hasPrevious.value).toBe(true);
+      m.fetchPage.mockClear();
+
+      m.router.back();
+      await vi.waitFor(() => expect(address(m)).toEqual({ status: "draft" }));
+      await flushPromises();
+
+      expect(m.list.query.value).toEqual({ q: null, category: null, status: "draft", perPage: 25 });
+      expect(m.list.address.value.status).toBe("draft");
+      expect(m.fetchPage).toHaveBeenCalledTimes(1);
+      expect(m.fetchPage).toHaveBeenCalledWith({ query: { q: null, category: null, status: "draft", perPage: 25 }, after: null });
+      expect(m.pager.hasPrevious.value).toBe(false);
     });
   });
 });
