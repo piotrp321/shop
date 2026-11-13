@@ -20,7 +20,7 @@ const SHORT_DESCRIPTION_LIMIT = 500;
 const LEAVE_MESSAGE = "Masz niezapisane zmiany. Czy na pewno chcesz opuścić ten formularz?";
 
 // The first message of an error or field marked invalid, in the order of the document; a disabled field cannot take focus.
-const FIRST_ERROR = '.p-message-error, [aria-invalid="true"]:not(:disabled)';
+const FIRST_ERROR = '.p-message-error, [data-form-error], [aria-invalid="true"]:not(:disabled)';
 const SUCCESS = ".p-message-success";
 const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
