@@ -283,8 +283,8 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   i usunięcie wiersza. Produkt bez osi pokazuje jeden wiersz „Wariant domyślny” bez pól. Usunięcie wiersza
   istniejącego wariantu (także usunięcie ostatniej osi, które usuwa pozostałe istniejące warianty) pyta w oknie
   potwierdzenia z nazwą wariantu („Usunąć wariant czarny / 42?”, „Cena i stan wariantu przestaną być widoczne
-  w panelu.”, czerwony „Usuń wariant czarny / 42”, „Wróć” z fokusem; po usunięciu fokus przechodzi na nagłówek
-  „Warianty”). Reguły
+  w panelu.”, czerwony „Usuń wariant czarny / 42”, „Wróć” z fokusem). Po usunięciu wiersza albo osi (z oknem
+  i bez) fokus przechodzi na nagłówek karty „Warianty”. Reguły
   (unikalność kombinacji, liczba wartości) sprawdza API; 422 wskazuje pole wiersza. Przed pierwszą publikacją osie
   można też przestawić (wartości w wierszach przestawiają się razem z osią).
 - Po pierwszej publikacji (`firstPublishedAt` z API) dodanie, usunięcie i przestawienie osi są niedostępne, a pod

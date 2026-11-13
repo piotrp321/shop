@@ -238,20 +238,20 @@ describe("ProductVariants", () => {
       expect(document.activeElement?.textContent).toBe("Warianty");
     });
 
-    it("puts the focus on the remove button of the row that took its place after a new row is removed without asking", async () => {
+    it("puts the focus on the heading „Warianty” after a new row is removed without asking, not on the next button", async () => {
       const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"] }, { variantId: null, values: ["zielone"] }, { variantId: null, values: ["żółte"] }]);
-      const buttons = () => wrapper.findAll("[data-testid=variant-remove]").map((button) => button.element as HTMLElement);
-      buttons()[1]!.focus();
+      (wrapper.findAll("[data-testid=variant-remove]")[1]!.element as HTMLElement).focus();
 
       await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
       await flushPromises();
 
       expect(wrapper.findAll("[data-testid=variant-row]")).toHaveLength(2);
       expect(dialog()).toBeNull();
-      expect(document.activeElement).toBe(buttons()[1]);
+      expect(document.activeElement).toBe(document.querySelector("h2"));
+      expect(document.activeElement?.textContent).toBe("Warianty");
     });
 
-    it("puts the focus on the heading „Warianty” after the last new row is removed, because its button is gone", async () => {
+    it("puts the focus on the heading „Warianty” after the last new row is removed", async () => {
       const wrapper = renderInForm([{ variantId: "v-1", values: ["czarne"] }, { variantId: null, values: ["zielone"] }]);
       (wrapper.findAll("[data-testid=variant-remove]")[1]!.element as HTMLElement).focus();
 
@@ -290,7 +290,7 @@ describe("ProductVariants", () => {
   describe("removing an axis without asking", () => {
     const axisButtons = (wrapper: VueWrapper) => wrapper.findAll("[data-testid=axis-remove]").map((button) => button.element as HTMLElement);
 
-    it("puts the focus on the remove button of the axis that took its place", async () => {
+    it("puts the focus on the heading „Warianty” after an axis is removed, not on the next button", async () => {
       const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"] }], ["Kolor", "Rozmiar"]);
       axisButtons(wrapper)[0]!.focus();
 
@@ -298,10 +298,10 @@ describe("ProductVariants", () => {
       await flushPromises();
 
       expect(axisButtons(wrapper)).toHaveLength(1);
-      expect(document.activeElement).toBe(axisButtons(wrapper)[0]);
+      expect(document.activeElement).toBe(document.querySelector("h2"));
     });
 
-    it("puts the focus on the heading „Warianty” after the last axis is removed, because its button is gone", async () => {
+    it("puts the focus on the heading „Warianty” after the last axis is removed", async () => {
       const wrapper = renderInForm([{ variantId: "v-1", values: ["czarny", "42"] }], ["Kolor", "Rozmiar"]);
       axisButtons(wrapper)[1]!.focus();
 

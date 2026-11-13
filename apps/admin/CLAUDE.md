@@ -200,7 +200,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   dodawania wierszy. Usunięcie wiersza istniejącego wariantu (i ostatniej osi, gdy usuwa istniejące warianty) pyta
   w `ConfirmDialog` z nazwą wariantu (wartości osi: „Usunąć wariant czarny / 42?”, czerwony „Usuń wariant czarny / 42”,
   opis „Cena i stan wariantu przestaną być widoczne w panelu.”; usunięcie ostatniej osi: „Usunąć oś Kolor?”), nowy wiersz
-  znika bez pytania; po usunięciu fokus przechodzi na nagłówek „Warianty” (`fallback-focus`), bo przycisk zniknął z wierszem (#251 F12). Po
+  znika bez pytania; po usunięciu wiersza albo osi (z oknem i bez) fokus przechodzi na nagłówek „Warianty” (z oknem przez
+  `fallback-focus`), bo zestaw przycisków się zmienił (#251 F12; następny element dostaje fokus tylko po usunięciu zdjęcia). Po
   pierwszej publikacji (`axesLocked` z `firstPublishedAt` API) dodanie, usunięcie i przestawienie osi są wyłączone
   i pod tabelą jest wyjaśnienie, a nazwy osi, wartości i wiersze zostają edytowalne. Panel nie liczy klucza
   porównania ani unikalności kombinacji, robi to API. `variantsErrors` ma tylko komunikaty całej sekcji (409
@@ -312,7 +313,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
   wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
-  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, `focus()`) i okruszki (`<nav aria-label="Okruszki">`
+  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
   `aria-current` każdy link do bieżącej trasy); używają go ekrany po migracji. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
   `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
@@ -332,7 +333,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   (przyklejony do dołu obszaru treści: „Niezapisane zmiany” albo prop `newLabel` przy `creating`, „Odrzuć” albo „Anuluj”
   i „Zapisz”; wyłączone w trakcie żądania; ustawia `scroll-padding-bottom` strony na swoją wysokość, więc pole z fokusem
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
-  niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”).
+  niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
+  bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
 - `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, pozostałe listy przejdą w
   ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
