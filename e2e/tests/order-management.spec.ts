@@ -129,7 +129,7 @@ test("support cancels Anna's paid order with a note, the panel shows the refund 
     await expect(admin.getByTestId("complete-refund")).toHaveCount(0);
     await expect(admin.getByTestId("status"), "completing the refund does not change the status").toHaveText("Anulowane");
 
-    // It is gone from the refunds to do (the switch is off after the reload of the list: set it again).
+    // It is gone from the refunds to do (the menu item opens the list with the switch on, from the address).
     await admin.getByTestId("back").click();
     await openMenuItem(admin, "Zwroty do wykonania", "Zamówienia");
     await admin.getByRole("searchbox", { name: "Szukaj po numerze zamówienia lub e-mailu" }).fill(number);

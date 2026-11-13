@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, reactive, watch } from "vue";
+import { computed, provide, reactive, useId, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import AppMenuItem from "./AppMenuItem.vue";
@@ -10,6 +10,7 @@ const emit = defineEmits<{ navigate: [] }>();
 
 const auth = useAuthStore();
 const route = useRoute();
+const instance = useId();
 
 // The roles come from /api/v1/admin/me; until they are known the items that need a role stay hidden.
 const sections = computed(() => menuFor(auth.staff));
@@ -31,6 +32,7 @@ watch(
 provide(MENU_CONTEXT, {
   currentId: computed(() => current.value?.leaf.id ?? null),
   isOpen: (groupId) => open.has(groupId),
+  regionId: (groupId) => `${instance}-group-${groupId}`,
   toggle: (groupId) => {
     if (open.has(groupId)) {
       open.delete(groupId);

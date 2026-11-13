@@ -69,6 +69,34 @@ test("the order list takes its filters from the address and the menu item „Zwr
     await expect(refundSwitch(page)).not.toBeChecked();
     await expect(current(page)).toHaveText("Lista zamówień");
     expect(await page.evaluate(() => (window as unknown as { openPage?: boolean }).openPage), "the page was not reloaded").toBe(true);
+
+    // A filter set in the list is not in the address, yet the menu item of the current address applies it again.
+    await openMenuItem(page, "Zwroty do wykonania", "Zamówienia");
+    await expect(refundSwitch(page)).toBeChecked();
+    query = nextOrderListQuery(page);
+    await page.locator("label[for=refund-pending]").click();
+    expect((await query).has("refund")).toBe(false);
+    await expect(refundSwitch(page)).not.toBeChecked();
+    await expect(page).toHaveURL(/\/orders\?refund=pending$/);
+    query = nextOrderListQuery(page);
+    await openMenuItem(page, "Zwroty do wykonania", "Zamówienia");
+    expect((await query).get("refund")).toBe("pending");
+    await expect(refundSwitch(page)).toBeChecked();
+    await expect(current(page)).toHaveText("Zwroty do wykonania");
+
+    await openMenuItem(page, "Lista zamówień", "Zamówienia");
+    await expect(page).toHaveURL(/\/orders$/);
+    await expect(refundSwitch(page)).not.toBeChecked();
+    query = nextOrderListQuery(page);
+    await page.locator("label[for=refund-pending]").click();
+    expect((await query).get("refund")).toBe("pending");
+    await expect(refundSwitch(page)).toBeChecked();
+    query = nextOrderListQuery(page);
+    await openMenuItem(page, "Lista zamówień", "Zamówienia");
+    expect((await query).has("refund")).toBe(false);
+    await expect(refundSwitch(page)).not.toBeChecked();
+    await expect(current(page)).toHaveText("Lista zamówień");
+    expect(await page.evaluate(() => (window as unknown as { openPage?: boolean }).openPage), "the page was not reloaded").toBe(true);
   } finally {
     await panel.close();
   }

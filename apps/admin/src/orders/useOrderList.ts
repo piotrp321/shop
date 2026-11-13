@@ -55,7 +55,7 @@ function failureMessage(status: number): string {
  */
 export function useOrderList() {
   const route = useRoute();
-  const path = route.path;
+  const routeName = route.name;
   const initial = filtersOf(route.query);
   const status = ref<OrderStatus | null>(initial.status);
   const refundPending = ref(initial.refundPending);
@@ -177,7 +177,7 @@ export function useOrderList() {
   watch(
     () => filtersOf(route.query),
     (filters) => {
-      if (route.path !== path || (filters.status === status.value && filters.refundPending === refundPending.value)) {
+      if (route.name !== routeName || (filters.status === status.value && filters.refundPending === refundPending.value)) {
         return;
       }
       status.value = filters.status;

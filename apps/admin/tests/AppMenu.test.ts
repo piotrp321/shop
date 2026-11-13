@@ -1,6 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, describe, expect, it } from "vitest";
+import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import AppMenu from "@/layout/AppMenu.vue";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
@@ -317,5 +318,84 @@ describe("AppMenu: choosing an item", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.fullPath).toBe("/orders?refund=pending");
+  });
+
+  it("navigates again to the current location, so a list that changed its filters locally takes them from the address", async () => {
+    const { wrapper: menu, router } = await mountMenu("/orders?refund=pending", ["admin"]);
+    const before = router.currentRoute.value;
+
+    await menu.get("a[href='/orders?refund=pending']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value, "a duplicate navigation would keep the same route object").not.toBe(before);
+    expect(router.currentRoute.value.fullPath).toBe("/orders?refund=pending");
+    expect(menu.emitted("navigate")).toHaveLength(1);
+  });
+
+  it("navigates again also on /orders without a query", async () => {
+    const { wrapper: menu, router } = await mountMenu("/orders", ["admin"]);
+    const before = router.currentRoute.value;
+
+    await menu.get("a[href='/orders']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value).not.toBe(before);
+  });
+
+  it.each([
+    ["Ctrl", { ctrlKey: true }],
+    ["Cmd", { metaKey: true }],
+    ["Shift", { shiftKey: true }],
+    ["Alt", { altKey: true }],
+    ["the middle button", { button: 1 }],
+  ])("leaves a click with %s to the browser: no navigation here and the drawer stays open", async (_name, init) => {
+    const { wrapper: menu, router } = await mountMenu("/orders", ["admin"]);
+    const before = router.currentRoute.value;
+    // jsdom cannot follow a link: this stands in for the browser, after the handler of the menu has run.
+    const stop = (event: Event) => event.preventDefault();
+    document.addEventListener("click", stop);
+
+    try {
+      await menu.get("a[href='/promotions']").trigger("click", init);
+      await menu.get("a[href='/orders']").trigger("click", init);
+      await flushPromises();
+    } finally {
+      document.removeEventListener("click", stop);
+    }
+
+    expect(router.currentRoute.value).toBe(before);
+    expect(menu.emitted("navigate")).toBeUndefined();
+  });
+});
+
+describe("AppMenu: two menus at once (sidebar and drawer)", () => {
+  it("gives every group region its own id, and a button controls the region of its own menu", async () => {
+    const router = createTestRouter();
+    await router.push("/orders");
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().staff = { id: "u1", username: "anna", roles: ["admin"] };
+    // The sidebar and the drawer are in one app, so one counter of the ids serves both.
+    wrapper = mount(
+      defineComponent({
+        components: { AppMenu },
+        template: '<div><AppMenu data-testid="sidebar" /><AppMenu data-testid="drawer" /></div>',
+      }),
+      { global: { plugins: [pinia, router] }, attachTo: document.body },
+    );
+
+    const ids = [...document.querySelectorAll("nav ul[id]")].map((list) => list.id);
+    expect(ids).toHaveLength(6);
+    expect(new Set(ids).size, "the ids are unique across both menus").toBe(6);
+    for (const testId of ["sidebar", "drawer"]) {
+      const menu = wrapper.get(`[data-testid=${testId}]`);
+      const buttons = menu.findAll("button[aria-controls]");
+      expect(buttons).toHaveLength(3);
+      for (const button of buttons) {
+        const region = document.getElementById(button.attributes("aria-controls") ?? "");
+        expect(region, "the region exists").not.toBeNull();
+        expect(menu.element.contains(region), "the region is in the same menu").toBe(true);
+      }
+    }
   });
 });

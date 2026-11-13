@@ -855,7 +855,7 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, ko
 ### Layout i dashboard
 
 - Layout (szczegóły i testy: `docs/features/admin-design/spec.md`, „Powłoka”): ciemny sidebar 260 px z menu w sekcjach
-  i grupach (pozycje według ról z `/me`, bieżąca pozycja z `aria-current`), od 1024 px w dół szuflada otwierana
+  i grupach (pozycje według ról z `/me`, bieżąca pozycja z `aria-current`), poniżej 1024 px szuflada otwierana
   przyciskiem „Menu”, link „Przejdź do treści”, topbar z wyszukiwarką produktów, linkiem „Sklep” (adres z `VITE_STORE_URL`)
   i kontem pracownika (login, polskie nazwy ról, menu z „Wyloguj”), stopka i kontener toastów. Trasy `/orders`
   mają strażnika roli (pulpit z komunikatem „Nie masz dostępu do tej strony.”). Problem z logowaniem i powrót

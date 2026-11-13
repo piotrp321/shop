@@ -37,7 +37,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
   szczegóły należą do pozycji listy, `/orders?refund=pending` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
   „Listy zamówień”, „Pulpit” tylko na `/`). `AppMenu` i `AppMenuItem` renderują ją: grupa to przycisk z `aria-expanded`
   i `aria-controls`, grupa bieżącej pozycji otwiera się przy wejściu i przy każdej zmianie trasy (zamyka ją tylko
-  przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Pozycja
+  przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Region grupy ma `id`
+z `useId()` instancji menu (sidebar i szuflada są razem w DOM). Klik w pozycję o celu równym bieżącej lokalizacji
+nawiguje ponownie (`force`, `replace`), bo stare listy nie zapisują swoich filtrów do adresu i router odrzuciłby push
+jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarce i nie zamyka szuflady. Pozycja
   „Stan systemu” dojdzie z ekranem (ADMIN-DESIGN-3). `AppTopbar`: przycisk „Menu” (`lg:hidden`), wyszukiwarka produktów
   (`role="search"`; fraza po przycięciu 2–100 punktów kodowych idzie do `/products?q=`, znaki sterujące i separatory
   wierszy liczą się jak spacje, pusta nic nie robi, za krótka i za długa pokazują „Wpisz od 2 do 100 znaków.” w stałym

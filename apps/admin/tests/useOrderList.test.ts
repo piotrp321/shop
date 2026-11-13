@@ -417,6 +417,33 @@ describe("useOrderList", () => {
       expect(mounted.list.items.value.map((item) => item.number)).toEqual(["R-9"]);
     });
 
+    it("takes the filters from the address again when the same location is navigated to after a change made in the list", async () => {
+      const { list, router } = await startAt("/orders?refund=pending");
+      list.setRefundPending(false);
+      await settle();
+      expect(router.currentRoute.value.fullPath, "the list does not write its filters to the address").toBe("/orders?refund=pending");
+      mocks.get.mockClear();
+      serve({ "": page(["R-9"]) });
+
+      await router.push({ path: "/orders", query: { refund: "pending" }, force: true, replace: true });
+      await settle();
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+      expect(list.refundPending.value).toBe(true);
+    });
+
+    it("applies the address of the list also when it is written with a trailing slash", async () => {
+      const { list, router } = await startAt("/orders");
+      mocks.get.mockClear();
+      serve({ "": page(["R-9"]) });
+
+      await router.push("/orders/?refund=pending");
+      await settle();
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+      expect(list.refundPending.value).toBe(true);
+    });
+
     it("returns to all orders when the address loses the filter", async () => {
       const { list, router } = await startAt("/orders?refund=pending");
       mocks.get.mockClear();
