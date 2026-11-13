@@ -1,6 +1,7 @@
 import { onUnmounted, type Ref, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { withStaleNote } from "./useDashboard";
 
 export type RecentOrder = components["schemas"]["BackofficeOrderListItem"];
 
@@ -24,6 +25,8 @@ export function useRecentOrders(allowed: Ref<boolean>) {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const forbidden = ref(false);
+  // The moment of the last successful fetch: the error of a failed refresh names it, as the dashboard does for its data.
+  let updatedAt: Date | null = null;
   let latest = 0;
 
   async function reload(): Promise<void> {
@@ -40,15 +43,16 @@ export function useRecentOrders(allowed: Ref<boolean>) {
       if (result.data) {
         items.value = result.data.items.slice(0, RECENT_ORDERS);
         loaded.value = true;
+        updatedAt = new Date();
         error.value = null;
         forbidden.value = false;
       } else {
-        error.value = failureMessage(result.response.status);
+        error.value = withStaleNote(failureMessage(result.response.status), updatedAt);
         forbidden.value = result.response.status === 403;
       }
     } catch {
       if (request === latest) {
-        error.value = "Nie udało się pobrać zamówień. Sprawdź połączenie z API.";
+        error.value = withStaleNote("Nie udało się pobrać zamówień. Sprawdź połączenie z API.", updatedAt);
         forbidden.value = false;
       }
     } finally {

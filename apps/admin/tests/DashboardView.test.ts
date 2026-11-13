@@ -235,6 +235,20 @@ describe("DashboardView", () => {
       expect(row.get("[data-testid=order-status]").text()).toBe("Wysłane");
     });
 
+    it.each([
+      ["new", "text-status-warning"],
+      ["paid", "text-status-info"],
+      ["shipped", "text-status-success"],
+      ["delivered", "text-status-info"],
+      ["cancelled", "text-status-danger"],
+      ["returned", "text-status-neutral"],
+    ] as const)("colours the status %s with %s", async (status, colour) => {
+      serve(dashboard(), { items: [order("R-1", { status })], nextCursor: null });
+      wrapper = await mountDashboard(["admin"]);
+
+      expect(wrapper.get("[data-testid=order-status]").classes()).toContain(colour);
+    });
+
     it("heads the columns Numer, Klient, Data, Pozycje, Kwota and Status", async () => {
       serve(dashboard(), { items: five, nextCursor: null });
       wrapper = await mountDashboard(["admin"]);
@@ -342,6 +356,50 @@ describe("DashboardView", () => {
 
         expect(wrapper.find("[data-testid=orders-error]").exists()).toBe(true);
         expect(wrapper.findAll("[data-testid=recent-order]")).toHaveLength(1);
+      });
+
+      it("names the time of the orders shown when their refresh fails, as the dashboard does for its data", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        try {
+          vi.setSystemTime(new Date(Date.UTC(2026, 10, 1, 13, 3, 12)));
+          serve(dashboard(), { items: [order("R-1")], nextCursor: null });
+          wrapper = await mountDashboard(["admin"]);
+
+          vi.setSystemTime(new Date(Date.UTC(2026, 10, 1, 13, 3, 42)));
+          failOrders({ error: { status: 500 }, response: { status: 500 } });
+          await wrapper.get("[data-testid=refresh]").trigger("click");
+          await flushPromises();
+
+          expect(wrapper.get("[data-testid=orders-error]").text()).toMatch(
+            /^Nie udało się pobrać zamówień \(HTTP 500\)\. Pokazane dane z 01\.11\.2026.*14:03:12 mogą być nieaktualne\./,
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("names the time of the orders also when the request fails to leave", async () => {
+        vi.useFakeTimers({ toFake: ["Date"] });
+        try {
+          vi.setSystemTime(new Date(Date.UTC(2026, 10, 1, 13, 3, 12)));
+          serve(dashboard(), { items: [order("R-1")], nextCursor: null });
+          wrapper = await mountDashboard(["admin"]);
+
+          failOrders(new TypeError("Failed to fetch"));
+          await wrapper.get("[data-testid=refresh]").trigger("click");
+          await flushPromises();
+
+          expect(wrapper.get("[data-testid=orders-error]").text()).toContain("Sprawdź połączenie z API. Pokazane dane z 01.11.2026");
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("adds no time to the error of the first load, which has no orders to name", async () => {
+        failOrders({ error: { status: 500 }, response: { status: 500 } });
+        wrapper = await mountDashboard(["admin"]);
+
+        expect(wrapper.get("[data-testid=orders-error]").text()).not.toContain("Pokazane dane");
       });
 
       it("moves the focus to the message when „Spróbuj ponownie” disappears with the message", async () => {

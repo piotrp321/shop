@@ -10,6 +10,11 @@ export function formatFetchTime(date: Date): string {
   return formatDateTime(date.toISOString());
 }
 
+/** Adds to an error the time of the data that stays on screen; without such data (the first load) the message is as it is. */
+export function withStaleNote(message: string, shownSince: Date | null): string {
+  return shownSince ? `${message} Pokazane dane z ${formatFetchTime(shownSince)} mogą być nieaktualne.` : message;
+}
+
 /**
  * Loads the dashboard on mount and every `intervalMs` after, except while the tab is hidden.
  * Returning to the tab refreshes at once when the last successful fetch (before the first one, the last
@@ -29,8 +34,8 @@ export function useDashboard(intervalMs = 30000, alongside?: () => void) {
   // Only the newest request may change the state; an older one that finishes late is ignored.
   let latest = 0;
 
-  function withStaleNote(message: string): string {
-    return updatedAt.value ? `${message} Pokazane dane z ${formatFetchTime(updatedAt.value)} mogą być nieaktualne.` : message;
+  function withNote(message: string): string {
+    return withStaleNote(message, updatedAt.value);
   }
 
   async function refresh(): Promise<void> {
@@ -48,11 +53,11 @@ export function useDashboard(intervalMs = 30000, alongside?: () => void) {
         updatedAt.value = new Date();
         error.value = null;
       } else {
-        error.value = withStaleNote(`Nie udało się pobrać danych dashboardu (HTTP ${result.response.status}).`);
+        error.value = withNote(`Nie udało się pobrać danych dashboardu (HTTP ${result.response.status}).`);
       }
     } catch {
       if (request === latest) {
-        error.value = withStaleNote("Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.");
+        error.value = withNote("Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.");
       }
     } finally {
       if (request === latest) {

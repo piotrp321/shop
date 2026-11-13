@@ -50,8 +50,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   „Wyloguj”; bez wczytanego pracownika „Konto” i „Wyloguj” też są). `useAccessDenied` czyta i czyści
   `history.state.denied` (komunikat na pulpicie po strażniku trasy).
 - `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`, `DiscountCodesView`, `DiscountCodeFormView`).
-- `src/dashboard/` – pulpit (`DashboardView`, `/`, H1 „Pulpit”, bez okruszków) i ekran „Stan systemu” (`SystemView`, `/system`,
-  tylko `admin`, okruszki „Pulpit › Stan systemu”). `useDashboard` (`GET /dashboard`) ładuje dane przy wejściu i co 30 s
+- `src/dashboard/` – komponenty i composables pulpitu i ekranu „Stan systemu”; widoki tras to `DashboardView` (`/`, H1
+  „Pulpit”, bez okruszków) i `SystemView` (`/system`, tylko `admin`, okruszki „Pulpit › Stan systemu”) w `src/views/`.
+  `useDashboard` (`GET /dashboard`) ładuje dane przy wejściu i co 30 s
   oprócz ukrytej karty, po powrocie do karty odświeża od razu, gdy minęło co najmniej 30 s; nieudane odświeżenie zostawia
   dane i podaje ich czas, a tylko najnowsze żądanie zmienia stan (opis: `docs/features/dashboard-data-freshness/spec.md`).
   Drugi argument `alongside` jest wołany przy każdym odświeżeniu (pulpit odświeża nim zamówienia). `FreshnessBar`:
@@ -63,7 +64,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   raz; do czasu wczytania `/me` karty nie ma) i `RecentOrders` (`useRecentOrders`: `GET /orders?perPage=5` tylko dla
   ról z `canViewOrders`, ładowane z odświeżeniem pulpitu i gdy `/me` pokaże dostęp; błąd, w tym 403 bez „Spróbuj
   ponownie”, zostaje w karcie z fokusem na jej nagłówku po ponowieniu, a nieudane odświeżenie zostawia pokazane
-  zamówienia). Pulpit nie pokazuje stanu systemu. „Stan systemu” (`SystemStatus`): usługi z polską etykietą (`labels.ts`:
+  zamówienia i podaje czas ich pobrania jak błąd pulpitu: `withStaleNote`; kolory statusów według tokenów spec:
+  Wysłane `success`, Dostarczone i Opłacone `info`, Czeka na płatność `warning`, Anulowane `danger`, Zwrócone `neutral`). Pulpit nie pokazuje stanu systemu. „Stan systemu” (`SystemStatus`): usługi z polską etykietą (`labels.ts`:
   `serviceLabel`, nieznana nazwa zostaje jak z API) i stanem „Działa” / „Nie działa” z opóźnieniem, „Zdarzenia czekające
   na wysłanie”, tabela kolejek w regionie `role="region"` z nazwą i `tabindex="0"` (przewijana w poziomie) i porównanie
   indeksu wyszukiwania z katalogiem; `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak

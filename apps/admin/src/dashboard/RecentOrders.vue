@@ -22,10 +22,10 @@ const props = defineProps<{
 const BADGES: Record<OrderStatus, "warning" | "info" | "success" | "neutral" | "danger"> = {
   new: "warning",
   paid: "info",
-  shipped: "info",
-  delivered: "success",
-  cancelled: "neutral",
-  returned: "danger",
+  shipped: "success",
+  delivered: "info",
+  cancelled: "danger",
+  returned: "neutral",
 };
 
 const heading = ref<HTMLElement | null>(null);

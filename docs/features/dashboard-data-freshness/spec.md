@@ -13,7 +13,7 @@ Elasticsearch, RabbitMQ i inne).
 ## Zachowanie
 
 Tylko panel (`apps/admin`). Bez zmian w API, kliencie TS i sklepie. Dotyczy pulpitu (kafle katalogu i karta
-„Ostatnie zamówienia”, odświeżana razem z nimi, ze stanem i błędem w swojej karcie) oraz ekranu „Stan systemu”
+„Ostatnie zamówienia”, odświeżana razem z nimi, ze stanem w swojej karcie; jej błąd też podaje czas pokazanych zamówień) oraz ekranu „Stan systemu”
 (`/system`), każdy z własnym `useDashboard` i tym samym `FreshnessBar`.
 
 - Obok przycisku „Odśwież” widać czas ostatniego udanego pobrania danych: `Dane z <data, GG:MM:SS>` w czasie polskim
