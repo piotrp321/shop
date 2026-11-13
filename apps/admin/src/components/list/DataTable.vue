@@ -26,7 +26,8 @@ import { focusAfterAction } from "@/lib/focus";
 
 /**
  * The table of a list on the `Table` of shadcn-vue (docs/features/admin-design/spec.md, „Standard listy”). The cells are
- * the slots `cell-<key>` (`row`), the empty list is the slot `empty`. It also shows what the list is in: a skeleton of
+ * the slots `cell-<key>` (`row`), the empty list is the slot `empty`; the main cell may also have a `lead` (a thumbnail)
+ * before its text, and under the text it shows the lines of the columns that are hidden. It also shows what the list is in: a skeleton of
  * rows for the first load, the table marked `aria-busy` for the later ones, and the error (`role="alert"`) with
  * „Spróbuj ponownie” (none for a 403). The error of a list that never loaded stands alone, without a table; the error
  * of a neighbouring page stands over the page that is shown. A retry ends with the focus where it can be: on
@@ -172,21 +173,37 @@ onMounted(measure);
                   :key="column.key"
                   :class="cellClass(column)"
                 >
+                  <div
+                    v-if="column.key === mainKey"
+                    class="flex items-center gap-3"
+                  >
+                    <slot
+                      name="lead"
+                      :row="row"
+                    />
+                    <div class="min-w-0 flex-1">
+                      <slot
+                        :name="`cell-${column.key}`"
+                        :row="row"
+                      />
+                      <div
+                        v-if="hiddenColumns.length > 0"
+                        class="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground"
+                      >
+                        <span
+                          v-for="hidden in hiddenColumns"
+                          :key="hidden.key"
+                          :data-testid="`line-${hidden.key}`"
+                          :class="HIDDEN_LINE[hidden.hideBelow!]"
+                        >{{ hidden.header }}: {{ hidden.text?.(row) }}</span>
+                      </div>
+                    </div>
+                  </div>
                   <slot
+                    v-else
                     :name="`cell-${column.key}`"
                     :row="row"
                   />
-                  <div
-                    v-if="column.key === mainKey && hiddenColumns.length > 0"
-                    class="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground"
-                  >
-                    <span
-                      v-for="hidden in hiddenColumns"
-                      :key="hidden.key"
-                      :data-testid="`line-${hidden.key}`"
-                      :class="HIDDEN_LINE[hidden.hideBelow!]"
-                    >{{ hidden.header }}: {{ hidden.text?.(row) }}</span>
-                  </div>
                 </TableCell>
               </TableRow>
             </TableBody>

@@ -146,6 +146,17 @@ describe("CategoryCombobox", () => {
     expect(input().value).toBe("Namioty");
   });
 
+  it("shows the name of the selected category when the tree arrives after the value (the address of a list names it first)", async () => {
+    const wrapper = mountCombobox({ nodes: [], modelValue: "c-tents" });
+    await flushPromises();
+    expect(input().value).toBe("");
+
+    await wrapper.setProps({ nodes });
+    await flushPromises();
+
+    expect(input().value).toBe("Namioty");
+  });
+
   it("selects several categories in multiple mode and lists them with a removal button each", async () => {
     const wrapper = mountCombobox({ multiple: true, modelValue: ["c-tents", "c-running"] });
     await flushPromises();

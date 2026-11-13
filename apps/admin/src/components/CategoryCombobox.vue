@@ -21,7 +21,9 @@ import { cn } from "@/lib/utils";
  * (`modelValue` is the category id or null) or several (`multiple`, `modelValue` is a list of ids). The options follow
  * the order of the tree, are indented by their level and are named by the full path („Turystyka › Biwak › Namioty”);
  * typing filters by name and path. The input is the Reka primitive rather than the search field of the ui combobox:
- * the bordered anchor of this field already carries the frame and the focus ring.
+ * the bordered anchor of this field already carries the frame and the focus ring. The input is keyed by the number of
+ * options: the primitive reads the name of the selected category once, so a value that arrives before the tree (the
+ * address of a list) needs the input made again when the tree is there.
  */
 const props = withDefaults(
   defineProps<{
@@ -162,6 +164,7 @@ async function remove(id: string) {
         </template>
         <ComboboxInput
           :id="inputId"
+          :key="options.length"
           :placeholder="placeholder"
           :display-value="(value: unknown) => (multiple ? '' : (nameById.get(String(value)) ?? ''))"
           class="min-w-24 flex-1 bg-transparent py-1 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed"

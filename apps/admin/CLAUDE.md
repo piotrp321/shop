@@ -71,7 +71,28 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   indeksu wyszukiwania z katalogiem; `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
   danych o stanie systemu”. Pliki bez PrimeVue i bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
-  list cen i stanów).
+  list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
+  `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
+  lista produktów, pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
+  `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
+  composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
+  równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
+  `items`, `loading`, `loaded`, `error`, `forbidden`, `hasPrevious`, `hasNext`, `pageNumber`, `range` (numery pierwszego
+  i ostatniego wiersza strony dla „Pokazano X–Y”, z rozmiaru strony, na której wiersze zostały pobrane), `goNext`,
+  `goPrevious`, `retry` (powtarza nieudane żądanie) i `refresh` (bieżąca strona po zapisie). Trzy przypadki błędu:
+  nieudana zmiana zapytania (także pierwsze wczytanie) usuwa wiersze i kursory (`loaded` false, zostaje `error`), bo
+  należą do poprzedniego zapytania (#251 F10); nieudana sąsiednia strona albo odświeżenie zostawia wyświetloną stronę.
+  Tylko najnowsze żądanie zmienia stan. `useListUrlState(schema)`: wyszukiwanie, filtry i rozmiar strony w adresie.
+  Parametr schematu: `parse(tekst)` (null: wartość pominięta, adres poprawiony), `fallback` (wartość bez parametru, nie jest
+  zapisywana do adresu), opcjonalnie `format` i `confirm(wartość)` (true, false albo undefined, gdy źródło jeszcze nie
+  odpowiedziało: tak sprawdzana jest kategoria w drzewie; `ready` jest false do rozstrzygnięcia, a odrzucona wartość jest
+  pomijana). Zwraca `query` (do `useCursorPager`), `address` (tekst każdego parametru z ostatniego odczytu adresu przy
+  wejściu i przy zmianie z zewnątrz: widok pokazuje w polu za krótkie `q`), `ready`, `set(patch)` i `clear()` (wszystkie
+  parametry do wartości domyślnych, rozmiar strony też). Zapis to `router.replace` (bez wpisu historii, parametry spoza
+  schematu zostają); własny zapis rozpoznaje po sygnaturze adresu, więc nie jest zmianą z zewnątrz i nie wysyła drugiego
+  żądania, a zmiana `route.query` z zewnątrz (menu, wyszukiwarka topbaru, Wstecz i Dalej) ustawia zapytanie jednym
+  przypisaniem, czyli jednym żądaniem od pierwszej strony. Zmiany adresu po opuszczeniu trasy widoku są pomijane
+  (nazwa trasy). Pusty i powtórzony parametr nie jest wartością.
 - `src/prices/` – lista cen (`/prices`): `usePriceList` (wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii,
   stronicowanie po kursorach ze stosem kursorów w panelu; strona to produkty z API, a `rows` ma wiersz na wariant pod
   nazwą swojego produktu, z etykietą wariantu w kolumnie „Wariant”, pustą dla wariantu domyślnego; zmiana ceny
@@ -107,8 +128,19 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   stanów wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu dialogu albo otwarciu innego
   wariantu jest ignorowana, błąd kolejnej strony zostawia wczytane wpisy i pozwala ponowić tę stronę.
 - `src/products/` – produkty (menu „Produkty”, trasy `/products`, `/products/new`, `/products/:id`). `useProductList`
-  (widok `ProductsView`): wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii (`useCategoryTree`) i statusu
-  (Wszystkie, Szkice, Opublikowane), stronicowanie po kursorach ze stosem kursorów w panelu, jak w `usePriceList`.
+  (widok `ProductsView`, `useProductList({ nodes, loaded })` z drzewem z `useCategoryTree`): na `useListUrlState`
+  (`q`, `category`, `status`, `perPage`) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage` idzie
+  tylko, gdy to nie 25, domyślne API), komunikaty błędów (403: „Nie masz dostępu do produktów.” bez ponowienia, 404:
+  kategoria nie istnieje) i wyszukiwanie: od 2 do 100 znaków (punkty kodowe) po 300 ms przerwy w pisaniu, przycięte;
+  do adresu i zapytania trafia dopiero zastosowana fraza, a za krótka albo za długa (też z adresu) zostaje w polu z
+  podpowiedzią (`searchHint`) i nie filtruje. Kategoria z adresu, której nie ma w drzewie (także przy błędzie drzewa),
+  jest pomijana, a przy kategorii w adresie lista czeka na drzewo przed pierwszym żądaniem. `clearFilters` czyści
+  wyszukiwanie, filtry i rozmiar strony (adres `/products`). `ProductsView`: karta z `ListToolbar` (wyszukiwanie,
+  `CategoryCombobox` „Kategoria”, Select „Status”, rozmiar strony, „Dodaj produkt” dla `admin` i `marketing`), `DataTable`
+  (kolumny Produkt, Kategoria, Warianty, Status, Ostatnia zmiana, Akcje; Kategoria ukryta poniżej 1024 px, Ostatnia zmiana
+  poniżej 900 px; miniatura 42 px albo placeholder, slug pod nazwą, data i pod nią godzina z sekundami, „Edytuj” i dla
+  opublikowanego „Podgląd w sklepie” `<VITE_STORE_URL>/p/<slug>` w nowej karcie), `ListPager` i `ListEmpty`. Po „Wyczyść
+  filtry” fokus trafia na pole wyszukiwania.
   `useProductForm` (widok `ProductFormView`): ładuje produkt (`GET /products/{id}`) albo zaczyna pusty formularz
   z wariantem domyślnym (bez osi, jeden wiersz `{variantId: null, values: []}`) i klasy podatkowe
   (`GET /tax-classes`). Panel niczego nie liczy: slug, `slugLocked`, status i wersja pochodzą z odpowiedzi API, a po
@@ -262,8 +294,30 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   w prop `label` (z `hideLabel` tylko dla czytników), opcje w kolejności drzewa z pełną ścieżką jako nazwą dostępną
   („Turystyka › Biwak › Namioty”) i wcięciem według poziomu, filtrowanie po nazwie i ścieżce bez względu na wielkość
   liter, „Usuń: <nazwa>” przy wybranych w trybie wielokrotnym (po usunięciu fokus przechodzi na „Usuń” następnej
-  etykiety, a bez niej poprzedniej albo na pole); `modelValue` w trybie pojedynczym to id albo `null`. Widoki jeszcze go nie używają (zadania ADMIN-DESIGN-4
-  i -5 oraz ADMIN-SCREENS).
+  etykiety, a bez niej poprzedniej albo na pole); `modelValue` w trybie pojedynczym to id albo `null`. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
+  (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Używa go lista
+  produktów; formularz produktu (ADMIN-DESIGN-5) i ceny oraz stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, pozostałe listy przejdą w
+  ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
+  `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
+  `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
+  swojej kolumny, więc żadna informacja nie ginie), slot `empty` dla pustej listy. Pokazuje też stan listy: szkielet
+  wierszy przy pierwszym wczytaniu, `aria-busy` na tabeli przy kolejnych, komunikat błędu (`role="alert"`,
+  `tabindex="-1"`, „Spróbuj ponownie” poza 403: po ponowieniu fokus zostaje na przycisku, a gdy znika, trafia na
+  komunikat, tabelę albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
+  błąd sąsiedniej strony nad nią. Tabela przewija się w swoim regionie (`role="region"` z nazwą z prop `label`,
+  `tabindex="0"`) z cieniem przy krawędzi, za którą jest dalsza treść; strona nie przewija się w poziomie. `ListToolbar`:
+  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem), sloty `filters` i
+  `actions`, „Wyczyść filtry” przy `filtered`, rozmiar strony (Select 10, 25, 50, etykieta „Wierszy na stronie”),
+  `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”), przyciski
+  „Poprzednia strona” i „Następna strona” z numerem strony; fokus zostaje na naciśniętym przycisku, a gdy kolejna strona go
+  wyłącza (ostatnia, pierwsza), przechodzi na drugi, chyba że pracownik sam przeniósł fokus poza pager. `ListEmpty`: „Brak
+  wyników dla wybranych filtrów.” z „Wyczyść filtry” przy filtrach, bez filtrów tekst listy (prop `emptyText`) i slot
+  `action` (przycisk główny listy, widoczny tylko dla roli, która może tworzyć). `RowActions`: kwadratowe przyciski 34 px z
+  ikoną i nazwą dostępną „Czasownik: nazwa obiektu” (zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”,
+  `target="_blank"` `rel="noopener"`) oraz podpowiedzią z tą samą nazwą (`TooltipProvider` jest w komponencie); zwykły link,
+  nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcję, której rola
+  nie wykona, widok w ogóle nie podaje.
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
@@ -326,6 +380,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Ekrany z listy
   `LEGACY_FILES` zostają na komponentach PrimeVue, PrimeIcons i motywie Aura do ADMIN-SCREENS; PrimeVue działa obok
   Tailwinda (style PrimeVue są poza warstwami CSS, więc wygrywają z preflightem).
+- Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
+  rozmiar strony 10/25/50, domyślnie 25) jest w adresie przez `useListUrlState`, stronicowanie przez `useCursorPager`, a
+  pozycja w stronicowaniu tylko w pamięci. Wzorem jest `ProductsView`. Ukrywanie kolumn to klasy CSS na progach 1024 i 900 px
+  (`hideBelow`), bez modelu tabeli; sortowania i zaznaczania nie ma (ADMIN-FEATURES).
 - Wygląd, standard listy, formularza i okien: `docs/features/admin-design/spec.md`; biblioteka i licencje:
   `docs/adr/admin-ui-library.md`.
 - Tokeny wyglądu są wyłącznie w `src/styles/tokens.css` (`--color-*: initial`: domyślnej palety Tailwinda nie ma).
@@ -363,7 +421,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
 - Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
   i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list
   rozwijanych trafia do `document.body`, więc testy montują z `attachTo: document.body` i czyszczą je po teście.
-  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne i filtrowanie; `tests/ui-accessible-names.test.ts`
+  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne i filtrowanie; `tests/ProductsView.test.ts` listę produktów
+  (rzędy, akcje, linie kolumn ukrytych, pasek narzędzi, adres, pager i fokus, puste stany, trzy przypadki błędu);
+  testy `useCursorPager` i `useListUrlState` używają routera w pamięci; `tests/ui-accessible-names.test.ts`
   nazwę „Zamknij” okien i brak angielskich nazw dostępnych w `src/components/ui/`.
 - `tests/tokens.test.ts` czyta `tokens.css` i sprawdza kontrast każdej pary tokenów; `tests/fonts.test.ts` sprawdza
   pliki Nunito, ich deklaracje i sumy SHA-256 w `THIRD_PARTY_NOTICES.md`.

@@ -46,6 +46,7 @@ function mountTable(props: Record<string, unknown> = {}) {
       ...props,
     },
     slots: {
+      lead: ({ row }: { row: Row }) => h("img", { "data-testid": "lead", alt: row.name }),
       "cell-name": ({ row }: { row: Row }) => h("strong", { "data-testid": "name" }, row.name),
       "cell-category": ({ row }: { row: Row }) => h("span", row.category),
       "cell-changed": ({ row }: { row: Row }) => h("span", row.changed),
@@ -101,6 +102,19 @@ describe("DataTable", () => {
     const changed = main.get("[data-testid=line-changed]");
     expect(changed.text()).toBe("Ostatnia zmiana: 12.11.2026, 10:34:05");
     expect(changed.classes()).toContain("min-[900px]:hidden");
+  });
+
+  it("shows the lead of the main cell before its text, and the lines of the hidden columns under the text, not under the lead", () => {
+    const table = mountTable();
+    const main = table.get("[data-testid=product-row]").findAll("td")[0]!;
+
+    const lead = main.get("[data-testid=lead]").element;
+    const text = main.get("[data-testid=name]").element;
+    const line = main.get("[data-testid=line-category]").element;
+    expect(lead.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(text.parentElement).toBe(line.parentElement!.parentElement);
+    expect(lead.parentElement).not.toBe(text.parentElement);
+    expect(table.get("[data-testid=product-row]").findAll("[data-testid=lead]")).toHaveLength(1);
   });
 
   it("has no line for a column that is never hidden", () => {

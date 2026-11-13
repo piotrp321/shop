@@ -17,11 +17,13 @@ function toTreeNode(category: CategoryNode): CategoryTreeNode {
 
 /**
  * Loads the category tree for the filter once, on mount. A failure leaves the filter empty and sets `error`;
- * the rest of the view does not depend on it.
+ * the rest of the view does not depend on it. `loaded` turns true when the attempt is over, whatever its result: a list
+ * that checks a category of its address against the tree waits for it.
  */
 export function useCategoryTree() {
   const nodes = ref<CategoryTreeNode[]>([]);
   const error = ref<string | null>(null);
+  const loaded = ref(false);
 
   onMounted(async () => {
     try {
@@ -33,8 +35,10 @@ export function useCategoryTree() {
       }
     } catch {
       error.value = "Nie udało się pobrać kategorii. Filtr kategorii jest niedostępny.";
+    } finally {
+      loaded.value = true;
     }
   });
 
-  return { nodes, error };
+  return { nodes, error, loaded };
 }
