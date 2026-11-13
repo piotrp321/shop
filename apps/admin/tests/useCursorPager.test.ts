@@ -307,6 +307,107 @@ describe("useCursorPager", () => {
     });
   });
 
+  describe("what shows while a new request runs", () => {
+    function hanging() {
+      const finishers: ((value: PageResult<Row>) => void)[] = [];
+      const fetchPage = vi.fn<(request: PageRequest<Query>) => Promise<PageResult<Row>>>();
+      return { fetchPage, finishers, hang: () => fetchPage.mockImplementationOnce(() => new Promise((resolve) => finishers.push(resolve))) };
+    }
+
+    it("drops the error of the old query as soon as a new query starts, and shows it again if the new one fails", async () => {
+      const { fetchPage, finishers, hang } = hanging();
+      fetchPage.mockImplementationOnce(async () => ({ error: "Nie udało się." }));
+      const { pager, query } = await start(fetchPage);
+      expect(pager.error.value).toBe("Nie udało się.");
+
+      hang();
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+      expect(pager.loading.value).toBe(true);
+      expect(pager.error.value).toBeNull();
+      expect(pager.forbidden.value).toBe(false);
+
+      finishers[0]!({ error: "Znowu.", forbidden: true });
+      await flushPromises();
+      expect(pager.error.value).toBe("Znowu.");
+      expect(pager.forbidden.value).toBe(true);
+    });
+
+    it("drops the error of a failed neighbouring page when the query changes", async () => {
+      const { fetchPage, finishers, hang } = hanging();
+      fetchPage.mockImplementationOnce(async () => ({ items: rows("A"), next: "c1" })).mockImplementationOnce(async () => ({ error: "Nie udało się." }));
+      const { pager, query } = await start(fetchPage);
+      await pager.goNext();
+      expect(pager.error.value).toBe("Nie udało się.");
+
+      hang();
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+      expect(pager.error.value).toBeNull();
+      expect(finishers).toHaveLength(1);
+    });
+
+    it("keeps the error while a retry runs", async () => {
+      const { fetchPage, hang } = hanging();
+      fetchPage.mockImplementationOnce(async () => ({ error: "Nie udało się." }));
+      const { pager } = await start(fetchPage);
+
+      hang();
+      void pager.retry();
+      await flushPromises();
+      expect(pager.loading.value).toBe(true);
+      expect(pager.error.value).toBe("Nie udało się.");
+    });
+
+    it("has no range while a new query loads, since the old rows are not of its first page", async () => {
+      const { fetchPage, finishers, hang } = hanging();
+      fetchPage
+        .mockImplementationOnce(async () => ({ items: rows("A"), next: "c1" }))
+        .mockImplementationOnce(async () => ({ items: rows("B", "C"), next: null }));
+      const { pager, query } = await start(fetchPage);
+      await pager.goNext();
+      expect(pager.range.value).toEqual({ from: 26, to: 27 });
+
+      hang();
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+      expect(pager.loading.value).toBe(true);
+      expect(names(pager)).toEqual(["B", "C"]);
+      expect(pager.range.value).toBeNull();
+
+      finishers[0]!({ items: rows("N"), next: null });
+      await flushPromises();
+      expect(pager.range.value).toEqual({ from: 1, to: 1 });
+    });
+
+    it("keeps the range of the page that is shown while a neighbouring page loads", async () => {
+      const { fetchPage, hang } = hanging();
+      fetchPage.mockImplementationOnce(async () => ({ items: rows("A", "B"), next: "c1" }));
+      const { pager } = await start(fetchPage);
+
+      hang();
+      void pager.goNext();
+      await flushPromises();
+      expect(pager.range.value).toEqual({ from: 1, to: 2 });
+      expect(pager.pageNumber.value).toBe(1);
+    });
+
+    it("is loading while it waits for the query to be ready, before the first answer", async () => {
+      const fetchPage = serve({ "": { items: rows("A"), next: null } });
+      const ready = ref(false);
+      const mounted = mountPager(fetchPage, { ready });
+      wrapper = mounted.wrapper;
+      await flushPromises();
+      expect(fetchPage).not.toHaveBeenCalled();
+      expect(mounted.pager.loading.value).toBe(true);
+
+      ready.value = true;
+      await flushPromises();
+      expect(mounted.pager.loading.value).toBe(false);
+      expect(mounted.pager.loaded.value).toBe(true);
+    });
+  });
+
   describe("403", () => {
     it("is reported as forbidden, and a later success clears it", async () => {
       const pages: Record<string, PageResult<Row>> = { "": { error: "Nie masz dostępu.", forbidden: true } };

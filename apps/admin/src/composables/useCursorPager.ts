@@ -30,7 +30,10 @@ type Kind = "query" | "page";
  * - A new query (including a new `perPage`, which `query` must carry) starts again from the first page and drops the
  *   cursors, because a cursor belongs to the query it came from. The old rows stay (the view marks the table busy)
  *   until the answer, and a failed answer removes them: rows and cursors of another query are never shown or paired
- *   with the new one (#251 F10), `loaded` is false and only `error` is left until a retry succeeds.
+ *   with the new one (#251 F10), `loaded` is false and only `error` is left until a retry succeeds. While it runs, the
+ *   error of the old query is gone (a retry keeps its error until the answer) and there is no `range`, as the rows on
+ *   the screen are not a page of the new query. `loading` is also true while the pager waits for `ready` before its
+ *   first answer, so that the view shows its skeleton.
  * - A failed change of the page, or of a refresh of the current page, keeps the page that is shown and its pager.
  * - Only the newest request may change the state; an older one that finishes late is ignored (`latest`).
  * - `retry` repeats the request that failed; `refresh` loads the current page again (after a write that moved it).
@@ -44,7 +47,7 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
   const items = shallowRef<Row[]>([]);
   const next = ref<string | null>(null);
   const cursors = ref<(string | null)[]>([null]);
-  const loading = ref(false);
+  const requesting = ref(false);
   const loaded = ref(false);
   const error = ref<string | null>(null);
   const forbidden = ref(false);
@@ -54,6 +57,8 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
   let attempted: { stack: (string | null)[]; kind: Kind } = { stack: [null], kind: "query" };
   let latest = 0;
 
+  // True also while the pager waits for `ready` before its first answer, so the list shows its skeleton, not an empty card.
+  const loading = computed(() => requesting.value || (!ready.value && !loaded.value && error.value === null));
   const hasPrevious = computed(() => cursors.value.length > 1);
   const hasNext = computed(() => next.value !== null);
   const pageNumber = computed(() => cursors.value.length);
@@ -65,14 +70,21 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
     return { from, to: from + items.value.length - 1 };
   });
 
-  async function load(stack: (string | null)[], kind: Kind): Promise<void> {
+  async function load(stack: (string | null)[], kind: Kind, fresh = false): Promise<void> {
     const request = ++latest;
     attempted = { stack, kind };
-    loading.value = true;
+    requesting.value = true;
     if (kind === "query") {
-      // The cursors belong to the old query: dropping them now means that a failed request cannot be paged with them.
+      // The cursors belong to the old query: dropping them now means that a failed request cannot be paged with them,
+      // and the old rows are not numbered as a page of it.
       cursors.value = [null];
       next.value = null;
+      shown.value = null;
+    }
+    if (fresh) {
+      // A new query is not a retry: the failure of the old one is not its state.
+      error.value = null;
+      forbidden.value = false;
     }
     const current = query.value;
     let result: PageResult<Row>;
@@ -84,7 +96,7 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
     if (request !== latest) {
       return;
     }
-    loading.value = false;
+    requesting.value = false;
     if ("error" in result) {
       error.value = result.error;
       forbidden.value = result.forbidden === true;
@@ -108,7 +120,7 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
     () => (ready.value ? JSON.stringify(query.value) : null),
     (key) => {
       if (key !== null) {
-        void load([null], "query");
+        void load([null], "query", true);
       }
     },
     { immediate: true },
