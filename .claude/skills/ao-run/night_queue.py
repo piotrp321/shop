@@ -48,18 +48,31 @@ unreadable night.json also exits 2); otherwise it recomputes the list and, when 
 writes <state>/night.json and prints it; otherwise exits 2.
 
 next: reads <state>/night.json and prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null,
-"reason": <str|null>, "started": [dirs], "left": [dirs]}, exit 0 also when `epic` is null. The candidate is the first
-list epic without a start event since `approved_at`. Reasons, in order: no list, night over, an epic of the night
-without a later done, list done. The first epic of the night is returned without further checks (and without reading
-the board, so its `issue` and `title` are null and `id` is the directory in upper case). Later ones must pass: still
-prepared on the board and not in progress, a time estimate, now + estimate <= until, usage status `ok`, and every
-window resetting after now + estimate has a usage estimate and stays <= 80% after adding it.
+"reason": <str|null>, "started": [dirs], "left": [dirs], "wait": <bool>, "claim": <token|null>}, exit 0 also when
+`epic` is null. Every epic of the night, also the first, starts through next: a returned `epic` is reserved
+(parallel_gate.reserve, 30 minutes) as the last step and `claim` is its token; otherwise `claim` is null. The
+candidate is the first list epic without a start event since `approved_at`. Running: a started list epic without a
+later done. In order: no list; night over (now > until); list done (all started, none running); then the gate
+context (board, reservations) is read: a running epic that is not active in it (e.g. no branch) -> `X bez pomiaru
+done`; all started and some running -> wait `wszystkie epiki listy ruszyły, w toku: <dirs>`. Then:
+(a) nothing in progress and nothing started: the first epic is returned without further checks (its `issue` and
+`title` are null and `id` is the directory in upper case);
+a valid reservation of the candidate by another session -> wait `epik X zarezerwowany albo w toku`; the candidate no
+longer prepared on the board -> `X nie jest już przygotowany[: <reason>]`;
+(b) something started, all started have done and nothing in progress is active: today's checks: a time estimate,
+now + estimate <= until, usage status `ok`, and every window resetting after now + estimate has a usage estimate and
+stays <= 80% after adding it;
+(c) otherwise, next to the epics in progress: gate steps 2-7 (evaluate; default stack reserve) and then now +
+estimate <= until (`X nie zdąży do HH:MM`). A wait or skip of the gate is `wait: true` while anything is active,
+else it ends the night.
+`wait: true` (with `epic` null and a reason) never ends the night and writes nothing; the session checks again later.
 
 close: records the end of the night: sets `ended_at` (now) and `reason` (default `zamknięta`) in night.json and prints
 it. No night.json: exit 2. A night that already ended keeps its first `ended_at` and `reason` (printed, exit 0).
 approve writes a fresh night.json without `ended_at`. next refuses a night with `ended_at` (`noc zakończona: <reason>`,
-checked right after the missing list, without reading the board); every other `epic: null` result of next records the
-end itself (`ended_at` and `reason` = its reason), so a later next refuses. An unreadable night.json is never written.
+checked right after the missing list, without reading the board); every other `epic: null` result of next without
+`wait` records the end itself (`ended_at` and `reason` = its reason), so a later next refuses. An unreadable
+night.json is never written.
 
 room: is there room in the usage limits for work outside the night estimates (the review after an epic merge). Prints
 one JSON line {"ok": true} or {"ok": false, "reason": <str>}, exit 0: usage status other than `ok` (also unreadable
@@ -549,8 +562,8 @@ def read_night(state_dir):
     return night
 
 
-def _next_result(epic_, reason, started, left):
-    return {'epic': epic_, 'reason': reason, 'started': started, 'left': left}
+def _next_result(epic_, reason, started, left, wait=False, claim=None):
+    return {'epic': epic_, 'reason': reason, 'started': started, 'left': left, 'wait': wait, 'claim': claim}
 
 
 def _percent(value):
@@ -627,37 +640,58 @@ def _next(args, run, now, stdin):
     started = [d for d in listed if any(e['epic'] == d and e['event'] == 'start' for e in since)]
     unstarted = [d for d in listed if d not in started]
 
-    def finish(epic_, reason):
+    running = [d for d in started if [e for e in since if e['epic'] == d][-1]['event'] != 'done']
+
+    def finish(epic_, reason, wait=False):
+        """Prints the result. Its only write is the last step: the reservation of a returned epic, or the end of the
+        night for `epic: null` without `wait`."""
         after = unstarted if epic_ is None else unstarted[1:]
-        if epic_ is None:
+        claim = None
+        if epic_ is not None:
+            claim = parallel_gate.reserve(args.state, epic_['dir'], now)
+        elif not wait:
             write_night(args.state, dict(night, ended_at=now.isoformat(), reason=reason))
-        print(json.dumps(_next_result(epic_, reason, started, after), ensure_ascii=False))
+        print(json.dumps(_next_result(epic_, reason, started, after, wait, claim), ensure_ascii=False))
         return 0
 
+    def until_text():
+        return until.astimezone(now.tzinfo).strftime('%H:%M')
+
     if now > until:
-        return finish(None, 'noc minęła (%s)' % until.astimezone(now.tzinfo).strftime('%H:%M'))
-    for d in started:
-        last = [e for e in since if e['epic'] == d][-1]
-        if last['event'] != 'done':
-            return finish(None, '%s bez pomiaru done' % d)
-    if not unstarted:
+        return finish(None, 'noc minęła (%s)' % until_text())
+    if not unstarted and not running:
         return finish(None, 'lista wykonana')
+    ctx = gate_context(run, args.state, now)
+    active = [p for p in ctx.in_progress if p['active']]
+    untracked = [d for d in running if d not in {p['dir'] for p in active}]
+    if untracked:
+        return finish(None, '%s bez pomiaru done' % untracked[0])
+    if not unstarted:
+        return finish(None, 'wszystkie epiki listy ruszyły, w toku: %s' % ', '.join(running), wait=True)
     directory = unstarted[0]
-    entry = None
-    if started:
-        entry = next((e for e in next_epic.board_epics(run) if e['dir'] == directory), None)
-        if entry is None or entry['state'] != 'prepared':
-            return finish(None, _not_prepared(directory, entry))
-    tasks = task_count(run, directory)
-    forecast = estimate(measurements(events), tasks)
-    candidate = {'dir': directory, 'id': entry['id'] if entry else directory.upper(),
-                 'issue': entry['number'] if entry else None, 'title': entry['title'] if entry else None,
-                 'tasks': tasks, 'minutes': forecast['minutes']}
-    if started:
-        reason = _forecast_failure(candidate['id'], forecast['minutes'], forecast['usage'], now, until, stdin)
-        if reason:
-            return finish(None, reason)
-    return finish(candidate, None)
+    if not ctx.in_progress and not started:
+        # The first epic of the night with nothing in progress: no further checks (and no board entry needed).
+        tasks = task_count(run, directory)
+        return finish({'dir': directory, 'id': directory.upper(), 'issue': None, 'title': None, 'tasks': tasks,
+                       'minutes': estimate(ctx.measured, tasks)['minutes']}, None)
+    entry = next((e for e in ctx.board if e['dir'] == directory), None)
+    if any(c['dir'] == directory for c in ctx.claims):
+        return finish(None, _conflict(entry['id'] if entry else directory.upper()), wait=True)
+    if entry is None or entry['state'] != 'prepared':
+        return finish(None, _not_prepared(directory, entry))
+    if started and not active:
+        # Serial: every started epic of the night has `done` and nothing else is active.
+        candidate = _epic_of(ctx, entry)
+        forecast = estimate(ctx.measured, candidate['tasks'])
+        reason = _forecast_failure(entry['id'], forecast['minutes'], forecast['usage'], now, until, stdin)
+        return finish(None, reason) if reason else finish(candidate, None)
+    # Next to epics in progress: gate steps 2-7, then the time until the end of the night.
+    found = evaluate(ctx, entry, _read_usage(stdin), DEFAULT_STACK_GIB * 1024)
+    if found['outcome'] != PASS:
+        return finish(None, found['reason'], wait=bool(active))
+    if now + timedelta(minutes=found['epic']['minutes']) > until:
+        return finish(None, '%s nie zdąży do %s' % (entry['id'], until_text()))
+    return finish(found['epic'], None)
 
 
 MAX_ROOM_HOURS = 24 * 365

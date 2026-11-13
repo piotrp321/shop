@@ -970,9 +970,9 @@ class NextCliTest(unittest.TestCase):
     def a_done(self):
         return [self.start('a', T0 + timedelta(minutes=10)), self.done('a', T0 + timedelta(minutes=90))]
 
-    def next(self, epics, stdin_text=None, branches=(), fail=None, now=NOW, runner=None):
+    def next(self, epics, stdin_text=None, branches=(), fail=None, now=NOW, runner=None, **runner_kwargs):
         out, err = io.StringIO(), io.StringIO()
-        runner = runner or BoardRunner(epics, branches, fail)
+        runner = runner or GateRunner(epics, branches, fail, **runner_kwargs)
         self.runner = runner
         stdin = io.StringIO(json.dumps(usage(10)) if stdin_text is None else stdin_text)
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -994,7 +994,8 @@ class NextCliTest(unittest.TestCase):
 
     def test_no_night_file(self):
         result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'brak zatwierdzonej listy', 'started': [], 'left': []}, result)
+        self.assertEqual({'epic': None, 'reason': 'brak zatwierdzonej listy', 'started': [], 'left': [], 'wait': False,
+                          'claim': None}, result)
         self.assertEqual([], self.runner.calls)
 
     def test_night_over(self):
@@ -1027,8 +1028,9 @@ class NextCliTest(unittest.TestCase):
         self.assertEqual({'dir': 'a', 'id': 'A', 'issue': None, 'title': None, 'tasks': 2, 'minutes': None},
                          result['epic'])
         self.assertIsNone(result['reason'])
-        self.assertEqual(([], ['b']), (result['started'], result['left']))
-        self.assertEqual([['git', 'show', 'origin/main:docs/features/a/plan.md']], self.runner.calls)
+        self.assertEqual(([], ['b'], False), (result['started'], result['left'], result['wait']))
+        # The board is read to see that nothing is in progress, but no gate step runs.
+        self.assertEqual([], [c for c in self.runner.calls if c[0] == 'docker' or c[-1].endswith('spec.md')])
 
     def test_first_epic_ignores_events_before_approval(self):
         self.night(['a', 'b'])
@@ -1040,9 +1042,9 @@ class NextCliTest(unittest.TestCase):
     def test_previous_epic_without_done(self):
         self.night(['a', 'b'])
         self.events(self.start('a', T0 + timedelta(minutes=10)))
-        result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'a bez pomiaru done', 'started': ['a'], 'left': ['b']}, result)
-        self.assertEqual([], self.runner.calls)
+        result = self.result(self.abc())   # a has no branch: nothing tracks it as an epic in progress
+        self.assertEqual({'epic': None, 'reason': 'a bez pomiaru done', 'started': ['a'], 'left': ['b'], 'wait': False,
+                          'claim': None}, result)
 
     def test_restarted_epic_without_later_done(self):
         self.night(['a', 'b'])
@@ -1053,7 +1055,8 @@ class NextCliTest(unittest.TestCase):
         self.night(['a'])
         self.events(*self.a_done())
         result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'lista wykonana', 'started': ['a'], 'left': []}, result)
+        self.assertEqual({'epic': None, 'reason': 'lista wykonana', 'started': ['a'], 'left': [], 'wait': False,
+                          'claim': None}, result)
 
     def test_returns_second_epic_with_estimate(self):
         self.night(['a', 'b', 'c'])
@@ -1062,6 +1065,7 @@ class NextCliTest(unittest.TestCase):
         self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title', 'tasks': 2, 'minutes': 80.0},
                          result['epic'])
         self.assertEqual((None, ['a'], ['c']), (result['reason'], result['started'], result['left']))
+        self.assertEqual(['b'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
 
     def test_board_is_read_after_the_first_epic(self):
         self.night(['a', 'b'])
@@ -1073,8 +1077,8 @@ class NextCliTest(unittest.TestCase):
         self.night(['a', 'b'])
         self.events(*self.a_done())
         result = self.result([epic(1, 'A', 'a')])
-        self.assertEqual({'epic': None, 'reason': 'B nie jest już przygotowany', 'started': ['a'], 'left': ['b']},
-                         result)
+        self.assertEqual({'epic': None, 'reason': 'B nie jest już przygotowany', 'started': ['a'], 'left': ['b'],
+                          'wait': False, 'claim': None}, result)
 
     def test_epic_no_longer_prepared_with_reason(self):
         self.night(['a', 'b'])
@@ -1171,6 +1175,156 @@ class NextCliTest(unittest.TestCase):
         self.assertEqual((1, ''), (code, out))
         self.assertIn('boom', err)
 
+
+    # --- parallel starts: reservation, gate next to epics in progress, waiting without ending the night ---
+
+    def claims_json(self):
+        with open(os.path.join(self.state, 'claims.json'), encoding='utf-8') as f:
+            return json.load(f)
+
+    def has_claims_file(self):
+        return os.path.exists(os.path.join(self.state, 'claims.json'))
+
+    def other_claims(self, *dirs):
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': NOW.isoformat(),
+                                   'expires_at': (NOW + timedelta(minutes=20)).isoformat()} for d in dirs],
+                       'owners': {}}, f)
+
+    def a_running(self):
+        return [*self.old_measurement(), self.start('a', T0 + timedelta(minutes=10))]
+
+    def docker_calls(self):
+        return [c for c in self.runner.calls if c[0] == 'docker']
+
+    def test_first_epic_gets_a_reservation(self):
+        self.night(['a', 'b'])
+        result = self.result(self.abc())
+        self.assertRegex(result['claim'], '^[0-9a-f]{16}$')
+        self.assertFalse(result['wait'])
+        self.assertEqual([{'dir': 'a', 'claim': result['claim'], 'at': NOW.isoformat(),
+                           'expires_at': (NOW + timedelta(minutes=30)).isoformat()}], self.claims_json()['claims'])
+
+    def x_and_ab(self, x_scope='apps/x', b_body=''):
+        return [epic(1, 'X', x_scope), epic(2, 'A', 'apps/a'), epic(3, 'B', 'apps/b', body=b_body)]
+
+    def test_first_epic_next_to_an_active_epic_of_another_session_passes_the_gate(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement())   # x has no event: started outside /ao-run, active
+        result = self.result(self.x_and_ab(), branches=['x'])
+        self.assertEqual({'dir': 'a', 'id': 'A', 'issue': 2, 'title': 'A: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertEqual((None, False), (result['reason'], result['wait']))
+        self.assertEqual(['a'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
+        self.assertTrue(self.docker_calls())
+
+    def test_first_epic_waits_for_the_gate_without_ending_the_night(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement())
+        result = self.result(self.x_and_ab(x_scope='apps/a'), branches=['x'])
+        self.assertEqual({'epic': None, 'reason': 'wspólne pliki z X: apps/a', 'started': [], 'left': ['a', 'b'],
+                          'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.assertFalse(self.has_claims_file())
+
+    def test_gate_refusal_with_nothing_active_ends_the_night(self):
+        self.night(['a', 'b'])
+        x_done = [self.start('x', T0 - timedelta(hours=3)), self.done('x', T0 - timedelta(hours=2))]
+        self.events(*self.old_measurement(), *x_done)   # x waits for the merge of its final PR: not active
+        result = self.result(self.x_and_ab(x_scope='apps/a'), branches=['x'])
+        self.assertEqual(('wspólne pliki z X: apps/a', False), (result['reason'], result['wait']))
+        self.assertEqual('wspólne pliki z X: apps/a', self.night_json()['reason'])
+
+    def test_parallel_start_of_the_next_epic_with_a_reservation(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        result = self.result(self.abc(), branches=['a'])
+        self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertEqual((None, ['a'], [], False),
+                         (result['reason'], result['started'], result['left'], result['wait']))
+        self.assertEqual(['b'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
+
+    def test_parallel_candidate_waits_and_the_night_goes_on(self):
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/a/b'), epic(3, 'C', 'apps/c')]
+        self.night(['a', 'b', 'c'])
+        self.events(*self.a_running())
+        for _ in range(2):
+            result = self.result(epics, branches=['a'])
+            self.assertEqual({'epic': None, 'reason': 'wspólne pliki z A: apps/a/b', 'started': ['a'],
+                              'left': ['b', 'c'], 'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.assertFalse(self.has_claims_file())
+
+    def test_two_active_epics_make_the_candidate_wait(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        self.other_claims('y')
+        result = self.result(self.abc(), branches=['a'])
+        self.assertEqual(('dwa epiki aktywne: A, Y', True), (result['reason'], result['wait']))
+
+    def test_dependency_on_a_running_epic_waits(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b', body='## Zależności\nPo A\n')]
+        result = self.result(epics, branches=['a'])
+        self.assertEqual(('zależy od A', True), (result['reason'], result['wait']))
+        self.assertNotIn('ended_at', self.night_json())
+
+    def test_usage_limit_with_a_running_epic_waits(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        result = self.result(self.abc(), branches=['a'], stdin_text=json.dumps(usage(72.04)))
+        self.assertEqual(('okno %s: 72.0%% + 4.0%% + 4.0%% > 80%%' % LABEL, True), (result['reason'], result['wait']))
+
+    def test_parallel_candidate_that_does_not_fit_before_until_ends_the_night(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        result = self.result(self.abc(), branches=['a'], now=UNTIL - timedelta(minutes=59))
+        self.assertEqual(('B nie zdąży do 07:00', False), (result['reason'], result['wait']))
+        self.assertEqual('B nie zdąży do 07:00', self.night_json()['reason'])
+
+    def test_whole_list_started_waits_for_the_running_epics(self):
+        self.night(['a', 'b'])
+        b_running = [self.start('b', T0 + timedelta(minutes=20))]
+        self.events(*self.a_done(), *b_running)
+        result = self.result(self.abc(), branches=['b'])
+        self.assertEqual({'epic': None, 'reason': 'wszystkie epiki listy ruszyły, w toku: b', 'started': ['a', 'b'],
+                          'left': [], 'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.events(*self.a_done(), *b_running, self.done('b', NOW - timedelta(minutes=1)))
+        self.assertEqual('lista wykonana', self.reason(self.abc(), branches=['b']))
+
+    def test_candidate_reserved_by_another_session_waits(self):
+        self.night(['a', 'b'])
+        self.other_claims('a')
+        result = self.result(self.abc())
+        self.assertEqual(('epik A zarezerwowany albo w toku', True), (result['reason'], result['wait']))
+        self.assertEqual(['tok-a'], [c['claim'] for c in self.claims_json()['claims']])
+
+    def test_after_done_an_active_epic_of_another_session_needs_the_gate(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'X', 'apps/b/x')]
+        result = self.result(epics, branches=['a', 'x'])
+        self.assertEqual(('wspólne pliki z X: apps/b/x', True), (result['reason'], result['wait']))
+
+    def test_reservation_failure_prints_nothing(self):
+        self.night(['a', 'b'])
+        error = night_queue.parallel_gate.StateFileError('nie można zapisać claims.json')
+        with mock.patch.object(night_queue.parallel_gate, 'reserve', side_effect=error):
+            code, out, err = self.next(self.abc())
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
+
+    def test_unreadable_claims_exit_2_without_writing(self):
+        self.night(['a', 'b'])
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.next(self.abc())
+        self.assertEqual((2, ''), (code, out))
+        self.assertNotIn('ended_at', self.night_json())
+
     # --- end of the night: close, ended_at, next recording the end, approve starting a fresh night ---
 
     def close(self, *extra):
@@ -1227,8 +1381,8 @@ class NextCliTest(unittest.TestCase):
         self.events(*self.a_done())
         self.close('--reason', 'A bez DONE')
         result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'noc zakończona: A bez DONE', 'started': ['a'], 'left': ['b', 'c']},
-                         result)
+        self.assertEqual({'epic': None, 'reason': 'noc zakończona: A bez DONE', 'started': ['a'], 'left': ['b', 'c'],
+                          'wait': False, 'claim': None}, result)
         self.assertEqual([], self.runner.calls)
 
     def test_next_after_close_refuses_before_night_over(self):
