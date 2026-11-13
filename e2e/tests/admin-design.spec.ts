@@ -425,6 +425,205 @@ test.describe("criterion 6: the shell", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Type (criterion 4) and the focus after a change of page (the sections „Dostępność” and „Standard formularza i okien”).
+
+test.describe("the text of the panel is set in Nunito, in the colour of the token `foreground`", () => {
+  test("body and H1 use Nunito from the files of the panel, and the text colour of the body is the token", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/");
+      await settle(page);
+      const style = await page.evaluate(() => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--foreground)";
+        document.body.append(probe);
+        const token = getComputedStyle(probe).color;
+        probe.remove();
+        return {
+          body: getComputedStyle(document.body).fontFamily,
+          h1: getComputedStyle(document.querySelector("h1")!).fontFamily,
+          bodyColor: getComputedStyle(document.body).color,
+          token,
+          faces: [...document.fonts].filter((face) => face.family.replace(/"/g, "") === "Nunito").map((face) => face.status),
+        };
+      });
+      expect(style.body, "font-family of <body>").toMatch(/^"?Nunito"?/);
+      expect(style.h1, "font-family of <h1>").toMatch(/^"?Nunito"?/);
+      expect(style.bodyColor, "the text colour of <body> is `foreground`").toBe(style.token);
+      expect(style.faces, "a file of Nunito is loaded").toContain("loaded");
+      expect(await page.evaluate(() => document.fonts.check("16px Nunito"))).toBe(true);
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+test.describe("the focus after a change of page is never on <body>: it is on the H1 of the new page", () => {
+  /** Waits a moment after the change: a focus that was on the H1 and then fell to <body> (a closing dialog) fails too. */
+  async function expectFocusOnHeading(page: Page, name: string): Promise<void> {
+    const heading = page.getByRole("heading", { level: 1, name, exact: true });
+    await expect(heading).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(heading, `the focus is on the H1 „${name}”`).toBeFocused();
+  }
+
+  test("Enter on the name of a product in the list opens its form with the focus on the H1", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/products");
+      await expect(page.getByTestId("product-row").first()).toBeVisible();
+      await settle(page);
+      await page.getByTestId("product-link").first().focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("variant-row").first()).toBeVisible();
+      await page.waitForTimeout(500);
+      await expect(page.getByRole("heading", { level: 1 }), "the focus is on the H1 of the form").toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("a crumb followed with „Opuść bez zapisu” leaves the focus on the H1 „Pulpit”", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, `/products/${productId}`);
+      await expect(page.getByTestId("variant-row").first()).toBeVisible();
+      await settle(page);
+      await page.getByTestId("name").fill(`${PRODUCT} x`);
+      await page.getByRole("navigation", { name: "Okruszki" }).getByRole("link", { name: "Pulpit" }).focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" }).getByRole("button", { name: "Opuść bez zapisu" }).press("Enter");
+      await expectFocusOnHeading(page, "Pulpit");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("„Zostań” in the question of unsaved changes does not move the focus off the form", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, `/products/${productId}`);
+      await expect(page.getByTestId("variant-row").first()).toBeVisible();
+      await settle(page);
+      await page.getByTestId("name").fill(`${PRODUCT} x`);
+      await page.getByRole("navigation", { name: "Okruszki" }).getByRole("link", { name: "Pulpit" }).focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" }).getByRole("button", { name: "Zostań" }).press("Enter");
+      await page.waitForTimeout(500);
+      expect(new URL(page.url()).pathname).toBe(`/products/${productId}`);
+      const onBody = await page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
+      expect(onBody, "the focus is not on <body> after „Zostań”").toBe(false);
+      await expect(page.getByRole("heading", { level: 1, name: "Pulpit" })).toHaveCount(0);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("„Dodaj produkt” and „Anuluj” leave the focus on the H1 of the page they open", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/products");
+      await expect(page.getByTestId("product-row").first()).toBeVisible();
+      await settle(page);
+      const main = page.locator("main");
+      await main.getByRole("link", { name: "Dodaj produkt" }).or(main.getByRole("button", { name: "Dodaj produkt" })).first().focus();
+      await page.keyboard.press("Enter");
+      await expectFocusOnHeading(page, "Nowy produkt");
+      await page.getByRole("link", { name: "Anuluj" }).or(page.getByRole("button", { name: "Anuluj" })).first().focus();
+      await page.keyboard.press("Enter");
+      await expectFocusOnHeading(page, "Produkty");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("the tile „Produkty” of the dashboard leaves the focus on the H1 of the list", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/");
+      await expect(page.getByTestId("updated-at")).toBeVisible();
+      await settle(page);
+      await page.locator("main").getByRole("link", { name: "Produkty", exact: true }).first().focus();
+      await page.keyboard.press("Enter");
+      await expectFocusOnHeading(page, "Produkty");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("a link of the dashboard to a screen that is not migrated yet leaves the focus on its H1", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/");
+      await expect(page.getByTestId("updated-at")).toBeVisible();
+      await settle(page);
+      await page.locator("main").getByRole("link", { name: "Aktywne promocje" }).focus();
+      await page.keyboard.press("Enter");
+      await expectFocusOnHeading(page, "Promocje");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("a code created on the legacy form keeps the focus on the message of the save, though the form moves to the route of the code", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      const created = {
+        id: "00000000-0000-4000-8000-00000000f0c5",
+        code: "FOKUS1",
+        kind: "percent",
+        value: 10,
+        minimumOrderGross: null,
+        startsAt: "2030-01-01T00:00:00+00:00",
+        endsAt: null,
+        usageLimit: null,
+        activeUses: 0,
+        enabled: true,
+        status: "planned",
+        version: 1,
+      };
+      // The answer is faked, so the test writes nothing to the database.
+      await page.route("**/api/v1/admin/discount-codes", async (route) => {
+        if (route.request().method() === "POST") await route.fulfill({ status: 201, json: created });
+        else await route.fallback();
+      });
+      await go(page, "/discount-codes/new");
+      await settle(page);
+      await page.getByTestId("code-input").fill("FOKUS1");
+      await page.getByTestId("value-input").fill("10");
+      await page.getByTestId("starts-input").fill("2030-01-01T10:00");
+      await page.getByTestId("save").focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("success-message")).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`/discount-codes/${created.id}$`));
+      await page.waitForTimeout(500);
+      await expect(page.getByTestId("success-message"), "the focus stays on the message of the save").toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("at 768 px an item chosen in the drawer leaves the focus on the H1 of the new page, not on „Menu”", async () => {
+    const page = await newPanelPage("admin", viewports.tablet);
+    try {
+      await go(page, "/");
+      await expect(page.getByTestId("updated-at")).toBeVisible();
+      await settle(page);
+      await page.getByRole("button", { name: "Menu", exact: true }).click();
+      const drawer = page.getByRole("dialog", { name: "Menu" });
+      await expect(drawer).toBeVisible();
+      await drawer.getByRole("link", { name: "Promocje", exact: true }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeVisible();
+      await expect(drawer).toBeHidden();
+      await page.waitForTimeout(500);
+      await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
 // The list of products on a narrow screen (criteria 7 and 22).
 
 test.describe("the list of products on narrow screens", () => {

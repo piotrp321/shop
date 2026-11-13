@@ -32,7 +32,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (`Sheet` z lewej: pułapka fokusu, `Escape` i wybór pozycji zamykają, fokus wraca na „Menu” przez `close-auto-focus`,
   powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`), stopka
   („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"`,
-  5 s) i `useIdleLogout` (15 min). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
+  5 s) i `useIdleLogout` (15 min). `usePageFocus`: po zmianie ścieżki trasy (inny ekran albo rekord; sama zmiana `query` lub `hash`, nawigacja
+  anulowana i pierwsze wczytanie niczego nie ruszają) wolny fokus (na `body`, np. po zniknięciu klikniętego linku, albo na `<main>`)
+  trafia na H1 nowej strony; do czasu pojawienia się H1 (widok ładuje dane) na `<main>`. Fokus, który ma istniejący element
+  (przeniesiony przez widok, np. formularz po zapisie przed `router.replace` na trasę utworzonego rekordu tą samą instancją,
+  pole, w którym jest pracownik, topbar, menu), zostaje. H1 ekranu niezmigrowanego dostaje `tabindex="-1"`. Pozycja wybrana w szufladzie,
+  która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
   Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
   szczegóły należą do pozycji listy, `/orders?refund=pending` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
@@ -365,7 +370,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
-  `@font-face` Nunito i pierścień fokusu. Importowany w `main.ts` przed `src/styles.css`.
+  `@font-face` Nunito i pierścień fokusu. Importowany w `main.ts`; w warstwie `base` ustawia też krój i kolor tekstu `body` (reguła poza warstwami wygrywałaby z Tailwindem).
 - `src/assets/fonts/` – Nunito (WOFF2, podzbiory `latin` i `latin-ext`, wagi 400–800); źródło, wersja, licencja
   i SHA-256 plików w `THIRD_PARTY_NOTICES.md` (test `tests/fonts.test.ts`).
 
