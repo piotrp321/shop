@@ -59,8 +59,9 @@ const NAMED_COLORS = [
 const COLOR_VALUE = String.raw`#[0-9a-f]{3}|\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(`;
 // An arbitrary Tailwind value or property holding such a colour: bg-[#fff], text-[rgb(0,0,0)], [background-color:#fff].
 const ARBITRARY_COLOR = String.raw`\[[^\]]*(${COLOR_VALUE})`;
-// A named colour as an arbitrary value or property: bg-[red], border-[color:red], [color:red].
-const NAMED_ARBITRARY_COLOR = String.raw`\[([a-z-]+:)?(${NAMED_COLORS})\]`;
+// A named colour as a member of an arbitrary value or property: bg-[red], [color:red], shadow-[0_0_0_2px_red],
+// bg-[linear-gradient(red,blue)]. It is delimited by [ _ , ( : ) ], so a token name (var(--kpi-blue)) is not a member.
+const NAMED_ARBITRARY_COLOR = String.raw`\[[^\]]*(?<=[\[_,(:])(${NAMED_COLORS})(?=[_,):\]])`;
 // A colour anywhere in a string of a bound style: '#fff', 'rgba(…)', 'red', but not a token name like var(--kpi-blue).
 const STYLE_COLOR = String.raw`${COLOR_VALUE}|(?<![\w-])(${NAMED_COLORS})(?![\w-])`;
 // Style properties that carry a colour, in camelCase or kebab-case.
@@ -69,6 +70,7 @@ const COLOR_STYLE_KEY = String.raw`^(background|fill|stroke|box-?shadow|text-?sh
 const colorMessage =
   "Colours come only from the tokens of src/styles/tokens.css: use a token class (e.g. bg-card, text-muted-foreground).";
 const styleMessage = "Colours in a bound style are only allowed as a token: var(--token).";
+const styleObjectMessage = "A bound style must be an object (or an array of objects) with plain keys; colours are only allowed as var(--token).";
 
 /** `no-restricted-syntax` entries for string literals and template literal parts with the given regexes. */
 const literalSelectors = (patterns, message, scope = "") =>
@@ -80,7 +82,8 @@ const literalSelectors = (patterns, message, scope = "") =>
 // Class strings in template expressions that vue/no-restricted-class does not see: inside a call (cn, cva),
 // a condition, or an attribute other than :class (e.g. a class prop of a component).
 const TEMPLATE_CLASS_CONTEXT = ":matches(CallExpression *, ConditionalExpression *, LogicalExpression *, VAttribute[directive=true]:not([key.argument.name='class']) *)";
-const BOUND_STYLE = "VAttribute[directive=true][key.name.name='bind'][key.argument.name='style'] ";
+const BOUND_STYLE_ATTRIBUTE = "VAttribute[directive=true][key.name.name='bind'][key.argument.name='style']";
+const BOUND_STYLE = `${BOUND_STYLE_ATTRIBUTE} `;
 
 export default defineConfig([
   ...tseslint.configs.recommended,
@@ -134,6 +137,18 @@ export default defineConfig([
           message,
         })),
         ...literalSelectors([STYLE_COLOR], styleMessage, BOUND_STYLE),
+        // A bound style is an object (or an array of objects) with plain keys: any other form (a template literal,
+        // a concatenation, a variable, a computed key, a spread) hides the colour from the checks above.
+        {
+          selector: `${BOUND_STYLE_ATTRIBUTE} > VExpressionContainer > :not(ObjectExpression, ArrayExpression)`,
+          message: styleObjectMessage,
+        },
+        {
+          selector: `${BOUND_STYLE_ATTRIBUTE} > VExpressionContainer > ArrayExpression > :not(ObjectExpression)`,
+          message: styleObjectMessage,
+        },
+        { selector: `${BOUND_STYLE}ObjectExpression > :not(Property)`, message: styleObjectMessage },
+        { selector: `${BOUND_STYLE}Property[computed=true]`, message: styleObjectMessage },
         {
           // A colour property with a computed value cannot be checked: only a literal var(--token) is allowed.
           selector: `${BOUND_STYLE}Property:matches([key.name=/${COLOR_STYLE_KEY}/i], [key.value=/${COLOR_STYLE_KEY}/i]):not([value.type='Literal'])`,

@@ -41,6 +41,27 @@ const ARBITRARY_COLOURS: [string, string][] = [
   ["an arbitrary property with a hex", "[background-color:#fff]"],
   ["an arbitrary property with a named colour", "[color:red]"],
   ["a modifier", `hover:${arbitrary("bg", "#fff")}`],
+  ["a named colour inside a shadow", arbitrary("shadow", "0_0_0_2px_red")],
+  ["a named colour inside an arbitrary property", "[box-shadow:0_0_0_2px_white]"],
+  ["a named colour inside a gradient", arbitrary("bg", "linear-gradient(red,blue)")],
+  ["a named colour after a comma and an underscore", arbitrary("bg", "linear-gradient(to_right,_navy,_var(--card))")],
+  ["a named colour as the fallback of a variable", arbitrary("bg", "var(--card,teal)")],
+];
+
+/** Arbitrary values that hold no colour: token variables, lengths, selectors, and names that only contain a colour name. */
+const NO_COLOUR_CLASSES = [
+  "bg-[var(--sidebar)]",
+  "bg-[var(--kpi-blue)]",
+  "text-[var(--kpi-red)]",
+  "shadow-[0_0_0_2px_var(--ring)]",
+  "w-[calc(100%-2rem)]",
+  "grid-cols-[1fr_auto]",
+  "has-[input:focus-visible]:outline-2",
+  "[&_svg:not([class*='size-'])]:size-4",
+  "data-[state=open]:animate-in",
+  "bg-[linear-gradient(var(--card),var(--interface))]",
+  "transition-[color,box-shadow]",
+  "w-(--reka-combobox-trigger-width)",
 ];
 
 describe("colours only from tokens: classes in the template of a .vue file", () => {
@@ -52,6 +73,10 @@ describe("colours only from tokens: classes in the template of a .vue file", () 
   it.each(ARBITRARY_COLOURS)("rejects %s in a bound class", async (_name, className) => {
     const errors = await lint(template(`<div :class="['p-2', '${className}']" />`), VUE);
     expect(ruleIds(errors)).toEqual(["vue/no-restricted-class"]);
+  });
+
+  it.each(NO_COLOUR_CLASSES)("accepts the arbitrary value %s in a static class", async (className) => {
+    expect(await lint(template(`<div class="p-2 ${className}" />`), VUE)).toEqual([]);
   });
 
   it("rejects an arbitrary colour as a key of a class object", async () => {
@@ -91,6 +116,10 @@ describe("colours only from tokens: strings in <script> and .ts files", () => {
     expect(ruleIds(await lint(code, TS))).toEqual(["no-restricted-syntax"]);
   });
 
+  it.each(NO_COLOUR_CLASSES)("accepts the arbitrary value %s in a string", async (className) => {
+    expect(await lint(`export const c = "p-2 ${className}";\n`, TS)).toEqual([]);
+  });
+
   it("rejects an arbitrary colour in a cva variant", async () => {
     const code = `import { cva } from "class-variance-authority";\nexport const v = cva("p-2", { variants: { tone: { x: "${arbitrary("bg", "#fff")}" } } });\n`;
     expect(ruleIds(await lint(code, TS))).toEqual(["no-restricted-syntax"]);
@@ -121,6 +150,8 @@ describe("only classes that exist in tokens.css", () => {
 });
 
 describe("styles only through classes", () => {
+  const TONE = 'const tone = "x";';
+
   it("rejects a static style attribute", async () => {
     const errors = await lint(template(`<div style="color: red" />`), VUE);
     expect(ruleIds(errors)).toEqual(["vue/no-restricted-static-attribute"]);
@@ -142,10 +173,31 @@ describe("styles only through classes", () => {
     ["a hex under a kebab-case key", `{ 'border-color': '#FFF' }`],
     ["rgba()", `{ boxShadow: '0 0 0 1px rgba(0,0,0,0.1)' }`],
     ["a fallback colour after a token", `{ color: 'var(--interface, #2563c9)' }`],
-    ["a string of declarations", `'color: red'`],
-    ["a template literal", "`color: #fff`"],
   ])("rejects a bound style with %s", async (_name, value) => {
     const errors = await lint(template(`<div :style="${value}" />`), VUE);
+    expect(ruleIds(errors)).toEqual(["vue/no-restricted-syntax"]);
+  });
+
+  // Not an object, so it is rejected as a form that cannot be checked; its colour is reported as well.
+  it.each([
+    ["a string of declarations", `'color: red'`],
+    ["a template literal", "`color: #fff`"],
+  ])("rejects a bound style that is %s with a colour, twice", async (_name, value) => {
+    const errors = await lint(template(`<div :style="${value}" />`), VUE);
+    expect(ruleIds(errors)).toEqual(["vue/no-restricted-syntax", "vue/no-restricted-syntax"]);
+  });
+
+  it.each([
+    ["a template literal built from a variable", "`background: ${tone}`", TONE],
+    ["a concatenation", "'color:' + tone", TONE],
+    ["a variable", "tone", TONE],
+    ["a call", "makeStyle(tone)", `${TONE} const makeStyle = (x: string) => ({ color: x });`],
+    ["a condition", "ok ? { width: '1px' } : { width: '2px' }", "const ok = true;"],
+    ["an object with a computed key", "{ [key]: tone }", `${TONE} const key = "color";`],
+    ["an object with a spread", "{ ...rest }", "const rest = { width: '1px' };"],
+    ["an array with a variable", "[{ width: '1px' }, tone]", TONE],
+  ])("rejects a bound style that is %s", async (_name, value, script) => {
+    const errors = await lint(template(`<div :style="${value}" />`, script), VUE);
     expect(ruleIds(errors)).toEqual(["vue/no-restricted-syntax"]);
   });
 
@@ -154,7 +206,13 @@ describe("styles only through classes", () => {
     expect(ruleIds(errors)).toEqual(["vue/no-restricted-syntax"]);
   });
 
-  it.each([[`{ color: 'var(--interface)' }`], [`{ '--progress': 'var(--kpi-blue)' }`], [`{ width: '10px' }`]])(
+  it.each([
+    [`{ color: 'var(--interface)' }`],
+    [`{ '--progress': 'var(--kpi-blue)' }`],
+    [`{ width: '10px' }`],
+    [`{ paddingLeft: \`${"${1 + 2}"}rem\` }`],
+    [`[{ width: '10px' }, { color: 'var(--interface)' }]`],
+  ])(
     "accepts the bound style %s",
     async (value) => {
       expect(await lint(template(`<div :style="${value}" />`), VUE)).toEqual([]);

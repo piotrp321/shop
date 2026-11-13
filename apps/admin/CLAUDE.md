@@ -205,7 +205,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
   w prop `label` (z `hideLabel` tylko dla czytników), opcje w kolejności drzewa z pełną ścieżką jako nazwą dostępną
   („Turystyka › Biwak › Namioty”) i wcięciem według poziomu, filtrowanie po nazwie i ścieżce bez względu na wielkość
-  liter, „Usuń: <nazwa>” przy wybranych w trybie wielokrotnym. Widoki jeszcze go nie używają (zadania ADMIN-DESIGN-4
+  liter, „Usuń: <nazwa>” przy wybranych w trybie wielokrotnym (po usunięciu fokus przechodzi na „Usuń” następnej
+  etykiety, a bez niej poprzedniej albo na pole); `modelValue` w trybie pojedynczym to id albo `null`. Widoki jeszcze go nie używają (zadania ADMIN-DESIGN-4
   i -5 oraz ADMIN-SCREENS).
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
@@ -273,13 +274,16 @@ Klienta API generuje `make api-client` z katalogu głównego.
   pól, fokus i ikony KPI ≥ 3:1).
 - Reguła koloru (`eslint.config.js`, pliki `src/**/*.{ts,vue}`): kolor „na sztywno” poza `tokens.css` jest błędem.
   `no-restricted-syntax` łapie wartości arbitralne z kolorem (`bg-[#fff]`, `text-[rgb(…)]`, `bg-[oklch(…)]`,
-  `color-mix`, kolory nazwane, także we właściwościach arbitralnych `[color:red]`) w łańcuchach `<script>` i `.ts`,
+  `color-mix`, kolory nazwane, także we właściwościach arbitralnych `[color:red]` i jako człon wartości złożonej:
+  `shadow-[0_0_0_2px_red]`, `bg-[linear-gradient(red,blue)]`; nazwa tokenu jak `var(--kpi-blue)` nie jest kolorem)
+  w łańcuchach `<script>` i `.ts`,
   `vue/no-restricted-class` te same wzorce w klasach szablonu, `vue/no-restricted-syntax` w wyrażeniach szablonu poza
-  `:class` (np. `cn(…)`, warunek) i kolory w `:style` (dozwolone tylko `var(--token)`; właściwość koloru z wartością
-  wyliczaną też jest błędem), `vue/no-restricted-static-attribute` statyczny `style`, `vue/no-restricted-block` bloki
+  `:class` (np. `cn(…)`, warunek) i w `:style`: tylko obiekt (albo tablica obiektów) z kluczami niewyliczanymi,
+  bez spreadu; szablonowy napis, konkatenacja, zmienna, wywołanie i warunek są błędem, a kolory w nim są dozwolone tylko
+  jako `var(--token)` (właściwość koloru z wartością wyliczaną też jest błędem), `vue/no-restricted-static-attribute` statyczny `style`, `vue/no-restricted-block` bloki
   `<style>`, a `better-tailwindcss/no-unknown-classes` (punkt wejścia `tokens.css`) klasy spoza tokenów, np.
-  `bg-red-500`. `no-restricted-imports` blokuje import PrimeVue i PrimeIcons. Wartości wyliczane w `<script>`
-  i przekazane do `:style` przez zmienną nie są analizowane.
+  `bg-red-500`. `no-restricted-imports` blokuje import PrimeVue i PrimeIcons. Kolor złożony w `<script>` poza
+  łańcuchem klas (np. wartość zbudowana z kawałków) nie jest analizowany.
 - `LEGACY_FILES` w `eslint.config.js`: jawne ścieżki plików jeszcze na PrimeVue (bez wzorców i katalogów); tylko
   reguły z punktu wyżej ich nie obejmują. Migracja ekranu usuwa jego pliki z listy, nowy plik na nią nie trafia (test
   reguł sprawdza, że każdy wpis istnieje i importuje PrimeVue). Lista znika z PrimeVue w ADMIN-SCREENS.
