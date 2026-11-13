@@ -152,12 +152,6 @@ def release(state_dir, directory, claim):
     return True
 
 
-def set_owner(state_dir, directory, token):
-    data = read_claims(state_dir)
-    data['owners'][directory] = token
-    _write_claims(state_dir, data)
-
-
 def owner(data, directory):
     return data['owners'].get(directory)
 

@@ -152,7 +152,7 @@ class ClaimsTest(unittest.TestCase):
         self.assertFalse(pg.release(self.dir, 'none', 'x'))
 
     def test_owner(self):
-        pg.set_owner(self.dir, 'cart', 'tok')
+        pg.claim_to_owner(self.dir, 'cart', 'tok', NOW)
         self.assertEqual('tok', pg.owner(pg.read_claims(self.dir), 'cart'))
         self.assertIsNone(pg.owner(pg.read_claims(self.dir), 'seo'))
 
