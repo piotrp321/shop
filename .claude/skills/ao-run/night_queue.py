@@ -23,6 +23,8 @@ the reason to stderr and exits 2.
 Shared state: start, done, approve, close, next, gate, release, hold and unhold hold the lock <state>/gate.lock
 (parallel_gate.state_lock, at most 120 s; then exit 2 `blokada bramki zajęta` without a write) for their whole
 read-decide-write. night.json, claims.json and parallel-hold.json are replaced atomically (temp file and os.replace).
+Every gh/git/docker command runs at most COMMAND_TIMEOUT (60) seconds, so a hung command never keeps the lock: it is
+killed and fails like any failed command (gh/git: exit 1; docker: a Docker failure, as below).
 
 start: counts the tasks in the manifest of origin/main:docs/features/<dir>/plan.md and appends a start event to
 <state>/measurements.jsonl with `docker`: the Docker memory {total_mib, ao_mib, other_mib}
@@ -138,7 +140,8 @@ wait; nothing in progress still passes, so serial work goes on. unhold: removes 
 prints {"removed": <bool>}, exit 0 also without a hold. An unreadable parallel-hold.json exits 2 in every command that
 reads the gate context (gate, next, propose, approve) and in hold; unhold removes it.
 
-Exit codes: 0 success; 1 a `git`/`gh` command failed or returned unexpected JSON, or a bad --hours of room; 2 usage
+Exit codes: 0 success; 1 a `git`/`gh` command failed, ran over 60 s or returned unexpected JSON, or a bad --hours of
+room; 2 usage
 and state errors (also an unreadable claims.json or parallel-hold.json, a busy gate lock and a bad --stack-gib).
 """
 import argparse
@@ -387,6 +390,8 @@ def _read_usage(stdin):
 
 
 LOCK_TIMEOUT = 120.0
+# Seconds per gh/git/docker command: a hung command must not keep the gate lock (exit 1 instead).
+COMMAND_TIMEOUT = 60
 
 
 def state_lock(state_dir):
@@ -1281,7 +1286,7 @@ def main(argv=None, run=None, now=None, stdin=None):
     now = now or datetime.now().astimezone()
     if args.command == 'room':
         return cmd_room(args, now, stdin)
-    run = run or next_epic.make_runner(args.repo)
+    run = run or next_epic.make_runner(args.repo, timeout=COMMAND_TIMEOUT)
     try:
         return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve,
                 'close': cmd_close, 'next': cmd_next, 'ahead': cmd_ahead,

@@ -4,7 +4,10 @@ import importlib.util
 import io
 import json
 import os
+import sys
+import time
 import unittest
+from unittest import mock
 
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'next_epic.py')
 spec = importlib.util.spec_from_file_location('next_epic', SCRIPT)
@@ -178,6 +181,32 @@ class SelectTest(unittest.TestCase):
             FakeRunner.__call__(self, args)})
         with self.assertRaises(next_epic.CommandError):
             next_epic.select(runner)
+
+
+SLOW = [sys.executable, '-c', 'import time; time.sleep(5)']
+
+
+class RunnerTest(unittest.TestCase):
+    def test_returns_stdout(self):
+        run = next_epic.make_runner(None)
+        self.assertEqual('ok\n', run([sys.executable, '-c', 'print("ok")']))
+
+    def test_failure_is_a_command_error(self):
+        run = next_epic.make_runner(None, timeout=10)
+        with self.assertRaisesRegex(next_epic.CommandError, 'bad'):
+            run([sys.executable, '-c', 'import sys; sys.exit("bad")'])
+
+    def test_command_over_the_timeout_is_a_command_error(self):
+        run = next_epic.make_runner(None, timeout=0.3)
+        began = time.monotonic()
+        with self.assertRaisesRegex(next_epic.CommandError, r'timed out after 0\.3 s'):
+            run(SLOW)
+        self.assertLess(time.monotonic() - began, 4)
+
+    def test_no_timeout_by_default(self):
+        with mock.patch.object(next_epic.subprocess, 'run', wraps=next_epic.subprocess.run) as spy:
+            next_epic.make_runner(None)([sys.executable, '-c', 'pass'])
+        self.assertIsNone(spy.call_args.kwargs['timeout'])
 
 
 class MainTest(unittest.TestCase):

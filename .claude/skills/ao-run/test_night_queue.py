@@ -2995,6 +2995,45 @@ class HoldCliTest(unittest.TestCase):
             release_child(proc)
 
 
+class CommandTimeoutTest(unittest.TestCase):
+    """gh/git/docker run with a timeout (COMMAND_TIMEOUT seconds) so a hung command never keeps the gate lock."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+
+    def test_timeout_is_60_seconds(self):
+        self.assertEqual(60, night_queue.COMMAND_TIMEOUT)
+
+    def slow_runner(self, timeouts):
+        real = night_queue.next_epic.make_runner
+
+        def make_runner(cwd, timeout=None):
+            timeouts.append(timeout)
+            run = real(self.dir, timeout=timeout)
+            return lambda args: run([sys.executable, '-c', 'import time; time.sleep(5)'])
+        return make_runner
+
+    def test_hung_command_under_the_lock_exits_1_and_frees_the_lock(self):
+        for argv in (['gate'], ['start', 'cart']):
+            with self.subTest(command=argv[0]):
+                timeouts = []
+                out, err = io.StringIO(), io.StringIO()
+                began = time.monotonic()
+                with mock.patch.object(night_queue, 'COMMAND_TIMEOUT', 0.3), \
+                        mock.patch.object(night_queue.next_epic, 'make_runner', self.slow_runner(timeouts)), \
+                        contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = night_queue.main(['--state', self.state] + argv, now=NOW,
+                                            stdin=io.StringIO(json.dumps(usage(10))))
+                self.assertEqual((1, ''), (code, out.getvalue()))
+                self.assertIn('timed out after 0.3 s', err.getvalue())
+                self.assertEqual([0.3], timeouts)
+                self.assertLess(time.monotonic() - began, 4)
+                with night_queue.parallel_gate.state_lock(self.state, timeout=0.1):
+                    pass
+
+
 class LockedWritesTest(unittest.TestCase):
     """Commands that read the shared state to decide and write it hold the gate lock: busy -> 2 without a write."""
 

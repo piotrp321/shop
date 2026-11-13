@@ -83,7 +83,11 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
 
 - **Blokada**: `fcntl.flock` na `gate.lock`. Trzymają ją wszystkie komendy, które czytają stan do decyzji albo
   zapisują stan wspólny: `gate --reserve`, `release`, `start`, `done`, `approve`, `close`, `next`, `hold` i `unhold`,
-  przez cały odczyt, sprawdzenie i zapis. Czekanie na blokadę najwyżej 120 s; potem kod 2 z powodem „blokada bramki zajęta”, bez zapisu.
+  przez cały odczyt, sprawdzenie i zapis. Czekanie na blokadę najwyżej 120 s; potem kod 2 z powodem „blokada bramki
+  zajęta”, bez zapisu. Każda komenda `gh`, `git` i `docker` tych komend trwa najwyżej 60 s, więc zawieszona komenda nie
+  trzyma blokady: po limicie jest przerywana i kończy się jak błąd komendy (`gh` i `git`: kod 1; `docker`: jak błąd
+  `docker`). Sesja wywołuje te komendy z limitem Bash co najmniej 300000 ms, a po kodzie 2 z „blokada bramki zajęta”
+  powtarza komendę raz, zanim uzna ją za błąd.
   `claims.json`, `night.json` i `parallel-hold.json` są zapisywane przez plik tymczasowy i `os.replace`, więc
   przerwany zapis nie zostawia nieczytelnego pliku.
 - **Rezerwacja**: wpis w `claims.json` (`dir`, `claim` (losowy token), `at`, `expires_at`), ważny 30 minut. Bramka
@@ -168,7 +172,8 @@ sprzed zmiany drugiego epiku. Dlatego:
   `active`, `in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`), `docker` (`total_mib`,
   `other_mib`, `ao_mib`, `free_mib`, `required_mib` albo `null`), `waiting` (`dir`, `id`, `issue`, `title` kandydata,
   którego kroki bramki skończyły się czekaniem, także przy `--force`, inaczej `null`). Każde wywołanie dopisuje wynik
-  do `gate.jsonl` (czas, kandydaci z wynikiem i `paths`, `waiting` jako katalog albo `null`, bez treści issues). Kod 1: błąd `gh` albo `git`; kod 2: błąd stanu
+  do `gate.jsonl` (czas, kandydaci z wynikiem i `paths`, `waiting` jako katalog albo `null`, bez treści issues). Kod 1:
+  błąd `gh` albo `git` (także komenda dłuższa niż 60 s); kod 2: błąd stanu
   (nieczytelny plik pomiarów, rezerwacji albo wstrzymania, zajęta blokada).
 - **`night_queue.py release <katalog> --claim TOKEN`**: usuwa własną rezerwację; brak jej: kod 0 bez zmiany.
 - **`night_queue.py hold --reason TEXT`**: zapisuje (pod blokadą, atomowo) `parallel-hold.json` z `at` i `reason`
@@ -358,6 +363,8 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   zapis atomowy (przerwany zapis nie psuje pliku); wznowienie: działający proces AO innej sesji (zajęta
   `orchestrator.lock`, także z `--force` i `--takeover`) → odmowa, właściciel z innym tokenem → odmowa, `--takeover`
   zmienia właściciela, ten sam token i epik bez właściciela → `resumed: true`.
+- Limit komend: wolna komenda (podstawiony proces dłuższy niż limit) w `gate` i `start` → kod 1 bez wyjścia, blokada
+  bramki wolna; `night_queue.py` przekazuje limit 60 s; `next_epic.make_runner` bez limitu działa jak dotąd.
 - `propose`: epik w toku nie opróżnia listy, reguła plików. `approve`: odmowa przy trwającej nocy, zgoda po
   `ended_at` i po `until`. `next`: pierwszy epik z rezerwacją, pierwszy epik przy epiku aktywnym innej sesji (bramka),
   start równoległy z rezerwacją, czekanie bez końca nocy, przypadki szeregowe bez zmian.
