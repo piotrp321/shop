@@ -90,7 +90,8 @@ function onOpenChange() {
 
 function onUpdate(value: unknown) {
   searchTerm.value = "";
-  emit("update:modelValue", value as string | string[] | null);
+  // Reka reports a cleared single selection as undefined; the contract is null.
+  emit("update:modelValue", (value ?? null) as string | string[] | null);
 }
 
 const root = ref<HTMLElement | null>(null);

@@ -1,4 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { ComboboxRoot } from "reka-ui";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineComponent, h, ref } from "vue";
 import CategoryCombobox from "@/components/CategoryCombobox.vue";
@@ -184,6 +185,14 @@ describe("CategoryCombobox", () => {
 
     expect(options()).toEqual([]);
     expect(document.body.textContent).toContain("Brak pasujących kategorii.");
+  });
+
+  it("emits null, not undefined, when the combobox clears a single selection", async () => {
+    const wrapper = mountCombobox({ modelValue: "c-tents" });
+    wrapper.findComponent(ComboboxRoot).vm.$emit("update:modelValue", undefined);
+    await flushPromises();
+
+    expect(wrapper.emitted("update:modelValue")).toEqual([[null]]);
   });
 });
 
