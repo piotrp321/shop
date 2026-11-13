@@ -1,6 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
-import { defineComponent, h } from "vue";
+import { h } from "vue";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -36,15 +36,13 @@ function buttonNames() {
 const ENGLISH_NAMES = /\b(close|cancel|continue|open|toggle|previous|next|more)\b/i;
 
 describe("Dialog", () => {
-  const Host = defineComponent({
-    setup: () => () =>
+  const Host = () =>
       h(Dialog, { open: true }, () =>
         h(DialogContent, null, () => [
           h(DialogHeader, null, () => [h(DialogTitle, null, () => "Zmień cenę"), h(DialogDescription, null, () => "Opis")]),
           h(DialogFooter, { showCloseButton: true }),
         ]),
-      ),
-  });
+      );
 
   it("names its close buttons „Zamknij” and has no English accessible name", async () => {
     wrapper = mount(Host, { attachTo: document.body });
@@ -57,8 +55,7 @@ describe("Dialog", () => {
 });
 
 describe("AlertDialog", () => {
-  const Host = defineComponent({
-    setup: () => () =>
+  const Host = () =>
       h(AlertDialog, { open: true }, () =>
         h(AlertDialogContent, null, () =>
           h(AlertDialogHeader, null, () => [
@@ -66,8 +63,7 @@ describe("AlertDialog", () => {
             h(AlertDialogDescription, null, () => "Opis"),
           ]),
         ),
-      ),
-  });
+      );
 
   it("names its close button „Zamknij” and has no English accessible name", async () => {
     wrapper = mount(Host, { attachTo: document.body });
@@ -80,14 +76,12 @@ describe("AlertDialog", () => {
 
 describe("Sheet", () => {
   it("names its close button „Zamknij”", async () => {
-    const Host = defineComponent({
-      setup: () => () =>
+    const Host = () =>
         h(Sheet, { open: true }, () =>
           h(SheetContent, { side: "left" }, () =>
             h(SheetHeader, null, () => [h(SheetTitle, null, () => "Menu"), h(SheetDescription, null, () => "Nawigacja")]),
           ),
-        ),
-    });
+        );
     wrapper = mount(Host, { attachTo: document.body });
     await flushPromises();
 
