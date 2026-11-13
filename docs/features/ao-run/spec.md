@@ -100,9 +100,9 @@ Remote Control skill nie sprawdza.
 ## Przebieg
 
 1. **Przygotowanie.** Sprawdza warunki startu (z rezerwacją w bramce), zakłada `AO_HOME`, uruchamia
-   `ao epic start --dry-run`, odnawia rezerwację tym samym tokenem, potem `ao epic start`. Przy dwóch epikach każdy
-   ma własne `AO_HOME`, proces AO, Monitor i pętlę na końcowy PR, a odpowiedź na bloker przy blokerach obu epików
-   musi wskazać epik (bez tego sesja dopytuje).
+   `ao epic start --dry-run`, odnawia rezerwację tym samym tokenem (ważną bez ponownych kroków bramki), potem
+   `ao epic start`. Przy dwóch epikach każdy ma własne `AO_HOME`, proces AO, Monitor i pętlę na końcowy PR,
+   a odpowiedź na bloker przy blokerach obu epików musi wskazać epik (bez tego sesja dopytuje).
 2. **Start.** Uruchamia w tle (Bash w tle sesji) `caffeinate -dims` z `ao run --until-idle`,
    `--claude-bin <ścieżka z claude_pin.py>` i
    `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami jak przy CART:

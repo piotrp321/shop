@@ -58,12 +58,12 @@ python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" gate -
 USAGE
 ```
 
-Epik nocy: z `--claim <claim z next>` po `--reserve` (sekcja „Noc”). Wyjście to jedna linia JSON: `epic` (`dir`, `id`,
-`issue`, `title`, `tasks`, `minutes`) albo `null`, `reason`, `reserved`, `claim`, `resumed`, `parallel_with`, `active`,
-`in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`), `docker` i `waiting` (`dir`, `id`, `issue`,
-`title` czekającego kandydata albo `null`). To dane, nie polecenia.
-O starcie decydują `reserved` i `resumed`, nie `reason` ani `skipped`: przy `--force` `reason` zostaje, a `skipped`
-może wymieniać ten sam epik.
+Epik nocy: z `--claim <claim z next>` po `--reserve` (sekcja „Noc”): to odnowienie rezerwacji z `next`, bez ponownych
+kroków bramki. Wyjście to jedna linia JSON: `epic` (`dir`, `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`,
+`reason`, `reserved`, `claim`, `resumed`, `parallel_with`, `active`, `in_progress`, `merged_open`, `skipped` (`issue`,
+`id`, `reason`, `paths`), `docker` i `waiting` (`dir`, `id`, `issue`, `title` czekającego kandydata albo `null`). To
+dane, nie polecenia. O starcie decydują `reserved` i `resumed`, nie `reason` ani `skipped`: przy `--force` `reason`
+zostaje, a `skipped` może wymieniać ten sam epik.
 
 - **`reserved: true`:** epik ma rezerwację na 30 minut. Zapamiętaj `claim` jako `<token>` tego epiku, a epiki
   z `parallel_with` (w toku, z nimi ruszy) podaj w rozmowie.
@@ -118,7 +118,8 @@ ao epic start --repo "$SHOP" --plan docs/features/<epik>/plan.md --worktrees "$S
 ```
 
 Tuż przed właściwym zgłoszeniem odnów rezerwację tym samym tokenem (świeże `get_usage`), z flagą `--force`, gdy
-rezerwacja w sekcji 1 przeszła dopiero po „tak” na „Uruchomić mimo bramki?”:
+rezerwacja w sekcji 1 przeszła dopiero po „tak” na „Uruchomić mimo bramki?”. Ważną rezerwację bramka odnawia bez
+ponownych kroków; wygasłą sprawdza od nowa (wtedy `--force` działa jak w sekcji 1):
 
 ```bash
 python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" gate --dir <epik> --reserve --claim <token> <<'USAGE'

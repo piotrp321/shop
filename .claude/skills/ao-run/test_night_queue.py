@@ -2389,6 +2389,79 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual([{'dir': 'a', 'claim': 'tok-a', 'at': NOW.isoformat(),
                            'expires_at': (later + timedelta(minutes=30)).isoformat()}], self.claims_json()['claims'])
 
+    def gate_step_commands(self):
+        """Commands of gate steps 4-6: scopes and branch diffs of the epics, Docker memory."""
+        return [c for c in self.runner.calls if c[0] == 'docker' or c[:2] == ['git', 'diff']
+                or (c[:2] == ['git', 'show'] and c[2].endswith('/spec.md'))]
+
+    def test_renewal_of_a_valid_own_claim_runs_no_gate_steps(self):
+        # The decision was taken under the lock when the claim was made: the renewal does not take it again, even
+        # when the files of the epics in progress, the memory or the limits would now refuse the epic.
+        self.events(*self.old_measurement(), self.start('y', NOW - timedelta(hours=1)),
+                    self.start('x', NOW - timedelta(hours=3)), self.done('x', NOW - timedelta(hours=2)))
+        small = {'info': str(1 * GIB), 'ps': '', 'stats': ''}
+        epics = [epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'X', 'apps/x'), epic(4, 'Y', 'apps/y')]
+        cases = [
+            # another session's reservation of B shares apps/x (no branch epic: no `gh pr list` either)
+            ('reservation of another session', {}, ['b'], ['b']),
+            # X waits for the merge (done) and shares apps/x, Y is active: the night stall after `next` case (b)
+            ('epics in progress from branches', {'branches': ['x', 'y']}, [], ['x', 'y']),
+        ]
+        for name, kwargs, others, parallel_with in cases:
+            with self.subTest(case=name):
+                with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+                    json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': NOW.isoformat(),
+                                           'expires_at': (NOW + timedelta(minutes=20)).isoformat()}
+                                          for d in ['a'] + others], 'owners': {}}, f)
+                later = NOW + timedelta(minutes=10)
+                result = self.result(epics, extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'], now=later,
+                                     docker=small, stdin_text=json.dumps(usage(79)), **kwargs)
+                self.assertEqual({'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': 2,
+                                  'minutes': 60.0}, result['epic'])
+                self.assertEqual((None, True, 'tok-a', False, [], None, None, parallel_with),
+                                 (result['reason'], result['reserved'], result['claim'], result['resumed'],
+                                  result['skipped'], result['waiting'], result['docker'], result['parallel_with']))
+                self.assertEqual([], self.gate_step_commands())
+                if not kwargs:
+                    self.assertEqual([], self.commands('gh', 'pr'))
+                claims = {c['dir']: c for c in self.claims_json()['claims']}
+                self.assertEqual((later + timedelta(minutes=30)).isoformat(), claims['a']['expires_at'])
+                self.assertEqual(NOW.isoformat(), claims['a']['at'])
+                self.assertEqual({'dir_arg': 'a', 'epic': 'a', 'reason': None, 'waiting': None, 'skipped': []},
+                                 {k: v for k, v in self.log()[-1].items() if k != 'at'})
+
+    def test_renewal_still_refuses_the_epic_itself(self):
+        cases = [
+            ([epic(1, 'A', 'apps/a', tasks=None)], {}, 'brak spec.md i plan.md z manifestem na origin/main'),
+            ([epic(2, 'B', 'apps/b')], {}, 'A nie ma na tablicy'),
+            ([epic(1, 'A', 'apps/a')], {'branches': ['a'], 'merged': ['a']}, 'A ma zmergowany końcowy PR'),
+        ]
+        for epics, kwargs, reason in cases:
+            with self.subTest(reason=reason):
+                self.claims('a')
+                before = self.claims_json()
+                result = self.result(epics, extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'], **kwargs)
+                self.assertEqual((None, reason, False, None),
+                                 (result['epic'], result['reason'], result['reserved'], result['claim']))
+                self.assertEqual(before, self.claims_json())
+
+    def test_expired_own_claim_is_evaluated_as_a_new_reservation(self):
+        self.events(*self.old_measurement(), self.start('x', NOW - timedelta(hours=3)),
+                    self.done('x', NOW - timedelta(hours=2)))
+        self.claims('a', expires=NOW - timedelta(seconds=1))
+        epics = [epic(1, 'A', 'apps/x'), epic(3, 'X', 'apps/x')]
+        refused = self.result(epics, branches=['x'], extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'])
+        self.assertEqual((None, 'wspólne pliki z X: apps/x', False, None),
+                         (refused['epic'], refused['reason'], refused['reserved'], refused['claim']))
+        self.assertTrue(self.gate_step_commands())
+        self.assertEqual([], night_queue.parallel_gate.valid_claims(self.claims_json(), NOW))
+        passed = self.result([epic(1, 'A', 'apps/a'), epic(3, 'X', 'apps/x')], branches=['x'],
+                             extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'])
+        self.assertEqual(('a', True, 'tok-a'), (passed['epic']['dir'], passed['reserved'], passed['claim']))
+        self.assertTrue(self.gate_step_commands())
+        self.assertEqual([('a', 'tok-a', NOW.isoformat())],
+                         [(c['dir'], c['claim'], c['at']) for c in self.claims_json()['claims']])
+
     def test_same_epic_with_another_token_is_refused_even_with_force(self):
         self.claims('a')
         before = self.claims_json()

@@ -108,9 +108,12 @@ free_mib, required_mib} | null, "waiting": {dir, id, issue, title} | null}, exit
 reason, waiting: <dir|null>, skipped: [{id, reason, paths}]} to <state>/gate.jsonl. `waiting` is the candidate whose
 steps ended in a wait (the wait the reason applies to; kept with --force), else null.
 --reserve and --claim need --dir (else exit 2). Without --reserve the gate reserves nothing. --reserve: when the
-candidate passes, parallel_gate.reserve under the same lock (`reserved: true`, `claim`: the token; the --claim token
-renews its own reservation). With --force also after a wait or skip of the steps (`epic` set, the gate's `reason`
-kept); --force never overrides the refusals of the epic itself (off the board, merged, not prepared, reserved).
+candidate passes, parallel_gate.reserve under the same lock (`reserved: true`, `claim`: the token, the --claim token
+when given). With --force also after a wait or skip of the steps (`epic` set, the gate's `reason` kept); --force never
+overrides the refusals of the epic itself (off the board, merged, not prepared, reserved). Renewal: --reserve --claim
+with the token of a valid reservation of --dir runs no gate steps (the decision was taken under the lock when the
+reservation was made; only the refusals of the epic itself apply) and renews it: `epic`, `reserved: true`, `claim`,
+`reason` null and a new `expires_at`. With an expired or missing reservation the gate decides as for a new one.
 Resume: --dir of an epic in progress from its branch runs no steps and reserves nothing. Refusals: the AO process of the
 epic runs (parallel_gate.orchestrator_running on <ao-root>/ao-<dir>, --ao-root default ~/.local/state):
 `epik X prowadzi działający proces AO`, whatever the flags; a recorded owner other than --claim: `epik X prowadzi
@@ -1021,11 +1024,13 @@ def _refusal(ctx, directory):
     return None, entry
 
 
-def gate_decision(ctx, dir_arg, usage_now, stack_mib):
+def gate_decision(ctx, dir_arg, usage_now, stack_mib, renewal=False):
     """The gate result for `--dir` (or the first board candidate that passes); writes nothing.
 
     Returns (result, entry). `entry` is the board entry of `--dir` when the gate steps ran on it (a prepared candidate)
-    or when it is in progress from its branch (no steps ran: the caller resumes it with gate_resume); otherwise None.
+    or when no steps ran: it is in progress from its branch (the caller resumes it with gate_resume) or, with
+    `renewal`, a prepared candidate whose valid reservation the caller renews (the decision was taken under the lock
+    when the reservation was made); otherwise None.
     """
     result = {'epic': None, 'reason': None, 'reserved': False, 'claim': None, 'resumed': False, 'parallel_with': [],
               'active': [p['dir'] for p in ctx.in_progress if p['active']],
@@ -1033,7 +1038,7 @@ def gate_decision(ctx, dir_arg, usage_now, stack_mib):
               'merged_open': ctx.merged_open, 'skipped': [], 'docker': None, 'waiting': None}
     if dir_arg is not None:
         result['reason'], entry = _refusal(ctx, dir_arg)
-        if entry is not None and entry['state'] == 'in_progress':
+        if entry is not None and (entry['state'] == 'in_progress' or renewal):
             return result, entry
         candidates = [entry] if entry else []
     else:
@@ -1088,8 +1093,9 @@ def gate_resume(ctx, result, entry, claim, takeover, ao_root):
 
 def gate_reserve(ctx, result, entry, claim, force):
     """Reservation of the `--dir` candidate `entry` after the gate steps: when it passed, or with `force` despite a
-    wait or skip of the steps (the gate's reason stays in the result). Writes nothing; returns (result, token): the
-    token the caller reserves (parallel_gate.reserve) as the last step, None when nothing is reserved."""
+    wait or skip of the steps (the gate's reason stays in the result) and for a renewal, which ran no steps. Writes
+    nothing; returns (result, token): the token the caller reserves (parallel_gate.reserve) as the last step, None
+    when nothing is reserved."""
     if result['epic'] is None and not force:
         return result, None
     token = claim if claim is not None else _new_token()
@@ -1122,12 +1128,14 @@ def cmd_gate(args, run, now, stdin):
     usage_now = _read_usage(stdin)
     with state_lock(args.state):
         ctx = gate_context(run, args.state, now, own=(args.dir, args.claim) if args.claim is not None else None)
-        result, entry = gate_decision(ctx, args.dir, usage_now, stack_gib * 1024)
+        # --reserve with the token of a valid reservation of --dir renews it without the gate steps.
+        renewal = args.reserve and ctx.own_claim
+        result, entry = gate_decision(ctx, args.dir, usage_now, stack_gib * 1024, renewal)
         owner = token = None
         if entry is not None and entry['state'] == 'in_progress':
             result, owner = gate_resume(ctx, result, entry, args.claim, args.takeover, args.ao_root)
         elif entry is not None and args.reserve:
-            result, token = gate_reserve(ctx, result, entry, args.claim, args.force)
+            result, token = gate_reserve(ctx, result, entry, args.claim, args.force or renewal)
         # Everything that can fail runs before the state write: a token in claims.json is always printed.
         append_gate_log(args.state, now, args.dir, result)
         if owner is not None:

@@ -82,13 +82,18 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
 - **Rezerwacja**: wpis w `claims.json` (`dir`, `claim` (losowy token), `at`, `expires_at`), ważny 30 minut. Bramka
   liczy epik z ważną rezerwacją jako epik w toku i aktywny (pliki z `Zakres:` jego `spec.md` na `origin/main`, rezerwa
   pamięci, pełny szacunek limitu). Wygasłe wpisy są pomijane i usuwane przy następnym zapisie.
-- **Token**: `gate --reserve` zwraca `claim`. `gate --dir <epik> --reserve --claim <token>` odnawia własną rezerwację
-  (nowe `expires_at`), a `start` i `release` przyjmują token. Ważna rezerwacja tego samego epiku z innym tokenem albo
+- **Token**: `gate --reserve` zwraca `claim`. `gate --dir <epik> --reserve --claim <token>` z tokenem ważnej rezerwacji
+  tego epiku odnawia ją (nowe `expires_at`) bez kroków bramki: decyzję podjęto pod blokadą przy zakładaniu rezerwacji,
+  a sama rezerwacja zajmuje miejsce, pamięć i limit; obowiązują tylko odmowy samego epiku (spoza tablicy, zmergowany,
+  nieprzygotowany). Wynik: `epic`, `reserved: true`, `claim` (ten token), `reason` `null`. Z tokenem rezerwacji
+  wygasłej albo nieistniejącej bramka sprawdza epik jak nową rezerwację (z tym tokenem). `start` i `release` przyjmują
+  token. Ważna rezerwacja tego samego epiku z innym tokenem albo
   epik już w toku to odmowa „epik X zarezerwowany albo w toku”, której `--force` nie omija: dwie sesje nie ruszą
   jednego epiku.
 - **Przebieg startu** (sekcja 1 skilla): `gate --dir <epik> --reserve` (albo z tokenem z `next`) przed
-  `ao epic start --dry-run`; tuż przed właściwym `ao epic start` odnowienie tym samym tokenem (wygasła albo przejęta
-  rezerwacja: brak startu). `night_queue.py start <epik> --claim <token>` (zaraz po udanym `ao epic start`) zapisuje
+  `ao epic start --dry-run`; tuż przed właściwym `ao epic start` odnowienie tym samym tokenem (bez ponownych kroków
+  bramki, więc epik nocy zarezerwowany przez `next` w przypadku (b) nie odpada na plikach epików czekających na merge;
+  wygasła rezerwacja: bramka od nowa, a gdy nie przechodzi albo rezerwację ma inna sesja, brak startu). `night_queue.py start <epik> --claim <token>` (zaraz po udanym `ao epic start`) zapisuje
   zdarzenie `start` i usuwa rezerwację w tej samej blokadzie. `ao epic start` od razu wypycha `epic/<epik>`, więc po
   usunięciu rezerwacji epik jest w toku z gałęzi. Odmowa w sekcjach 1–2 po rezerwacji: `release <epik> --claim
   <token>`. Rezerwacja niezwolniona (np. przerwana sesja) wygasa sama. `start` odmawia (kod 2, `epik X ma innego
@@ -323,7 +328,9 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   w `gate.jsonl`; `waiting` przy każdym czekaniu (także z `--dir` i `--force`), `null` przy przejściu i samych
   pominięciach.
 - Rezerwacja: `--reserve` zapisuje wpis z tokenem; druga sesja widzi rezerwację jako epik w toku i aktywny (miejsce,
-  pliki, pamięć, limit); kandydat nie jest porównywany z własną rezerwacją; odnowienie tym samym tokenem; ten sam epik
+  pliki, pamięć, limit); kandydat nie jest porównywany z własną rezerwacją; odnowienie tym samym tokenem bez kroków
+  bramki (także gdy pliki, pamięć i limit by odmówiły) i z odmowami samego epiku, wygasła rezerwacja z tokenem
+  sprawdzana jak nowa; ten sam epik
   z innym tokenem i z `--force` → odmowa; dwa procesy `gate --reserve` uruchomione naraz (prawdziwa blokada, osobne
   procesy): rezerwację dostaje dokładnie jeden; zajęta blokada dłużej niż limit → kod 2 bez zapisu; rezerwacja wygasła
   po 30 minutach; `start` z tokenem usuwa rezerwację; `release` z rezerwacją i bez; nieczytelny `claims.json` → kod 2;
