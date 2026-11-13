@@ -17,7 +17,9 @@ the reason to stderr and exits 2.
 
 start: counts the tasks in the manifest of origin/main:docs/features/<dir>/plan.md and appends a start event to
 <state>/measurements.jsonl. done: appends a done event for the latest start without one and prints the measurement
-(tasks, minutes, usage delta per limit window). A start/done pair is a measurement only through `measurements`.
+(tasks, minutes, usage delta per limit window, `overlap`: its interval intersects another epic's). A start/done pair is
+a measurement only through `measurements`. Estimates take time per task from all measurements and usage per task from
+the measurements without `overlap` (from all when none of them has the window).
 
 propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
 {"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
@@ -249,28 +251,38 @@ def _window_deltas(before, after):
 
 
 def measurements(events):
+    """Start/done pairs per epic. `overlap`: the pair's interval intersects an interval of another epic (a start
+    without a later done is open to the end), so its usage delta may contain the other epic's usage."""
     open_starts = {}
-    result = []
+    result, spans = [], []
     for event in events:
         kind, epic = event.get('event'), event.get('epic')
         if kind == 'start':
             open_starts[epic] = event
         elif kind == 'done' and epic in open_starts:
             start = open_starts.pop(epic)
-            minutes = (parse_time(event['at']) - parse_time(start['at'])).total_seconds() / 60
-            result.append({'epic': epic, 'tasks': start['tasks'], 'minutes': minutes,
+            begin, end = parse_time(start['at']), parse_time(event['at'])
+            result.append({'epic': epic, 'tasks': start['tasks'], 'minutes': (end - begin).total_seconds() / 60,
                            'usage': _window_deltas(start['usage'], event['usage'])})
+            spans.append((epic, begin, end))
+    others = spans + [(epic, parse_time(start['at']), None) for epic, start in open_starts.items()]
+    for item, (epic, begin, end) in zip(result, spans):
+        item['overlap'] = any(epic_ != epic and (end_ is None or begin < end_) and begin_ < end
+                              for epic_, begin_, end_ in others)
     return result
 
 
 def estimate(measured, tasks):
+    """Time per task from all measurements; usage per task and window only from measurements without `overlap`,
+    or from all of them when none without `overlap` has the window."""
     measured = [m for m in measured if m['tasks'] > 0]
     if not measured:
         return {'minutes': None, 'usage': {}}
     per_label = {}
-    for m in measured:
-        for label, delta in m['usage'].items():
-            per_label[label] = max(per_label.get(label, 0), delta / m['tasks'])
+    for label in {label for m in measured for label in m['usage']}:
+        having = [m for m in measured if label in m['usage']]
+        source = [m for m in having if not m.get('overlap')] or having
+        per_label[label] = max(m['usage'][label] / m['tasks'] for m in source)
     return {'minutes': tasks * max(m['minutes'] / m['tasks'] for m in measured),
             'usage': {label: tasks * rate for label, rate in per_label.items()}}
 

@@ -192,7 +192,7 @@ class MeasurementsTest(unittest.TestCase):
 
     def test_minutes_and_delta(self):
         got = night_queue.measurements(self.pair(usage(10), usage(18.5)))
-        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 60.0, 'usage': {LABEL: 8.5}}], got)
+        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 60.0, 'usage': {LABEL: 8.5}, 'overlap': False}], got)
 
     def test_z_suffix_times(self):
         events = self.pair(usage(1), usage(2))
@@ -236,7 +236,7 @@ class MeasurementsTest(unittest.TestCase):
              'usage': usage(5)},
             {'event': 'done', 'epic': 'cart', 'at': (T0 + timedelta(minutes=40)).isoformat(), 'usage': usage(9)},
         ]
-        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 4}}],
+        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 4}, 'overlap': False}],
                          night_queue.measurements(events))
 
     def test_start_without_done_and_done_without_start_give_nothing(self):
@@ -251,6 +251,38 @@ class MeasurementsTest(unittest.TestCase):
     def test_epics_are_independent(self):
         events = self.pair(usage(1), usage(2), epic='a') + self.pair(usage(1), usage(4), epic='b')
         self.assertEqual(['a', 'b'], [m['epic'] for m in night_queue.measurements(events)])
+
+    def event(self, kind, epic, minutes, tasks=2):
+        e = {'event': kind, 'epic': epic, 'at': (T0 + timedelta(minutes=minutes)).isoformat(), 'usage': usage(1)}
+        if kind == 'start':
+            e['tasks'] = tasks
+        return e
+
+    def overlaps(self, *events):
+        return {m['epic']: m['overlap'] for m in night_queue.measurements(list(events))}
+
+    def test_intersecting_intervals_of_two_epics_overlap(self):
+        got = self.overlaps(self.event('start', 'a', 0), self.event('start', 'b', 30), self.event('done', 'a', 60),
+                            self.event('done', 'b', 90), self.event('start', 'c', 100), self.event('done', 'c', 120))
+        self.assertEqual({'a': True, 'b': True, 'c': False}, got)
+
+    def test_touching_intervals_do_not_overlap(self):
+        got = self.overlaps(self.event('start', 'a', 0), self.event('done', 'a', 60), self.event('start', 'b', 60),
+                            self.event('done', 'b', 90))
+        self.assertEqual({'a': False, 'b': False}, got)
+
+    def test_start_without_done_is_open_to_the_end(self):
+        got = self.overlaps(self.event('start', 'a', 0), self.event('start', 'b', 300), self.event('done', 'b', 360))
+        self.assertEqual({'b': True}, got)
+
+    def test_open_start_after_the_measurement_does_not_overlap(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('done', 'b', 60), self.event('start', 'a', 61))
+        self.assertEqual({'b': False}, got)
+
+    def test_same_epic_twice_does_not_overlap_itself(self):
+        got = night_queue.measurements([self.event('start', 'a', 0), self.event('done', 'a', 60),
+                                        self.event('start', 'a', 30), self.event('done', 'a', 90)])
+        self.assertEqual([False, False], [m['overlap'] for m in got])
 
 
 class EstimateTest(unittest.TestCase):
@@ -267,6 +299,20 @@ class EstimateTest(unittest.TestCase):
     def test_measurement_without_windows_still_gives_minutes(self):
         ms = [{'epic': 'a', 'tasks': 2, 'minutes': 20.0, 'usage': {}}]
         self.assertEqual({'minutes': 50.0, 'usage': {}}, night_queue.estimate(ms, 5))
+
+    def test_usage_only_from_measurements_without_overlap(self):
+        ms = [
+            {'epic': 'a', 'tasks': 2, 'minutes': 100.0, 'usage': {'W': 40}, 'overlap': True},   # 50 min/task, W 20
+            {'epic': 'b', 'tasks': 2, 'minutes': 20.0, 'usage': {'W': 4}, 'overlap': False},    # 10 min/task, W 2
+        ]
+        self.assertEqual({'minutes': 150.0, 'usage': {'W': 6.0}}, night_queue.estimate(ms, 3))
+
+    def test_window_measured_only_with_overlap_falls_back_to_all(self):
+        ms = [
+            {'epic': 'a', 'tasks': 2, 'minutes': 20.0, 'usage': {'W': 40, 'F': 8}, 'overlap': True},
+            {'epic': 'b', 'tasks': 2, 'minutes': 20.0, 'usage': {'W': 4}, 'overlap': False},
+        ]
+        self.assertEqual({'minutes': 30.0, 'usage': {'W': 6.0, 'F': 12.0}}, night_queue.estimate(ms, 3))
 
 
 class ReadEventsTest(unittest.TestCase):
@@ -364,7 +410,8 @@ class MeasureCliTest(unittest.TestCase):
         self.cli('start', 'cart', json.dumps(usage(10)))
         code, out, err = self.cli('done', 'cart', json.dumps(usage(14)), now=T0 + timedelta(minutes=90))
         self.assertEqual(0, code, err)
-        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 90.0, 'usage': {LABEL: 4}}, json.loads(out))
+        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 90.0, 'usage': {LABEL: 4}, 'overlap': False},
+                         json.loads(out))
         self.assertEqual(['start', 'done'], [e['event'] for e in self.lines()])
 
     def test_done_twice_exits_2(self):
@@ -379,7 +426,8 @@ class MeasureCliTest(unittest.TestCase):
         self.cli('start', 'cart', json.dumps(usage(20)), now=T0 + timedelta(minutes=30))
         code, out, _ = self.cli('done', 'cart', json.dumps(usage(25)), now=T0 + timedelta(minutes=60))
         self.assertEqual(0, code)
-        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 5}}, json.loads(out))
+        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 5}, 'overlap': False},
+                         json.loads(out))
 
     def test_corrupt_state_exits_2_naming_line(self):
         os.makedirs(self.state)
