@@ -10,7 +10,7 @@ własny plan, przygotowany po merge'u części 1 (spec, P11).
 |---|---|---|
 | 1 | DEMO-DATA-1, DEMO-DATA-2 | |
 | 2 | DEMO-DATA-3, DEMO-DATA-4, DEMO-DATA-6 | |
-| 3 | DEMO-DATA-5 | |
+| 3 | DEMO-DATA-5, DEMO-DATA-7 | |
 
 Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
 
@@ -114,18 +114,33 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
     },
     {
       "id": "DEMO-DATA-6",
-      "title": "Demo photo pool of about 400 Unsplash photos in a private versioned R2 bucket",
-      "scope": "Photo pool (spec: Zdjęcia, P6, P10, U5): about 400 photos from images.unsplash.com (Unsplash License) in the tone of the current fixtures, 3-6 per product type photo group defined in DEMO-DATA-2 dictionaries, scaled to 1600 px on the longer side as JPEG; archive uploaded as immutable object demo-photos/v<N>/photos.tar to the user's private Cloudflare R2 bucket with apps/api/bin/upload-demo-photos (rclone image pinned by digest as in the chart, copyto --immutable) using the write token from the user's file outside the repo (~/.config/shop/demo-photos.env, DEMO_PHOTOS_*), never printing credentials; every file passes the Catalog upload rules (type by content, size, dimensions) before the upload; apps/api/fixtures/demo-data/photos.yaml (version, object key, files with SHA-256 (the archive is only transport), type group, alt text, source page, author, licence; no bucket address or credentials) and CREDITS; DemoData step 2 for profiles other than small downloads the archive through a separate Flysystem filesystem in config/packages/flysystem.yaml (AsyncAws S3 adapter, existing dependency) with read credentials from DEMO_PHOTOS_* variables, checks the SHA-256 of every file and the complete file set (mismatch or missing file: error without changes in Garage and the database), stores each file once in Garage, and without DEMO_PHOTOS_* fails before the first step; make seed-scale passes DEMO_PHOTOS_* from the user's file for profiles other than small. Not: changes to the 37 fixtures photos, a public archive or GitHub release.",
+      "title": "Photo pool download, verification and upload tooling for a private versioned R2 bucket",
+      "scope": "Photo pool tooling (spec: Zdjęcia, P6, P10, U5), tested on a small local archive, without choosing the pool: apps/api/bin/upload-demo-photos (builds the archive demo-photos/v<N>/photos.tar from a directory and photos.yaml, checks every file against the Catalog upload rules (type by content, size, dimensions) and the manifest sums, uploads with the rclone image pinned by digest as in the chart, copyto --immutable, using the write token from the user's file outside the repo (~/.config/shop/demo-photos.env, DEMO_PHOTOS_*), never printing credentials); the photos.yaml format in apps/api/fixtures/demo-data (version, object key, files with SHA-256 (the archive is only transport), type group, alt text, Unsplash photo id, source page, author, licence; no bucket address or credentials) with a schema check; DemoData step 2 for profiles other than small downloads the archive (about 1.6 GB at full pool size) through a separate Flysystem filesystem in config/packages/flysystem.yaml (AsyncAws S3 adapter, existing dependency) with read credentials from DEMO_PHOTOS_* variables into a temporary directory removed after the step also on error, checks the SHA-256 of every file and the complete file set (mismatch or missing file: error without changes in Garage and the database), stores each file once in Garage and assigns 1-3 keys from the type group, and without DEMO_PHOTOS_* fails before the first step; make seed-scale passes DEMO_PHOTOS_* from the user's file for profiles other than small. Not: choosing or uploading the real pool (DEMO-DATA-7), changes to the 37 fixtures photos, a public archive or GitHub release.",
       "acceptance_criteria": [
-        "The archive object exists in the private bucket under the key from photos.yaml, the file sums match photos.yaml, every file passes the Catalog upload rules, has type group, alt text, source, author and licence, and every product type group has 3-6 photos; the bucket has no public access (stated with the check used in the PR).",
-        "Script test with a substituted docker: upload-demo-photos passes copyto --immutable and never prints credential values.",
-        "Step 2 with a mismatching file checksum or a missing file fails without writing to Garage or the database (test with a local archive); with a matching archive every file is stored once under originals/<sha256>.<ext> (integration test on Garage); without DEMO_PHOTOS_* a profile other than small fails before the first step.",
+        "Script test with a substituted docker: upload-demo-photos passes copyto --immutable, refuses a file that fails the Catalog upload rules or its manifest sum before calling docker, and never prints credential values.",
+        "Step 2 with a mismatching file checksum or a missing file fails without writing to Garage or the database and removes its temporary directory (test with a local archive); with a matching archive every file is stored once under originals/<sha256>.<ext> (integration test on Garage); without DEMO_PHOTOS_* a profile other than small fails before the first step.",
         "Neither photos.yaml nor the step logs contain DEMO_PHOTOS_* values (test).",
         "Profile small keeps using fixtures/images without downloading; make -C apps/api check and test pass."
       ],
       "risk": "FAST",
       "depends_on": [
         "DEMO-DATA-2"
+      ]
+    },
+    {
+      "id": "DEMO-DATA-7",
+      "title": "Demo photo pool of about 4000 Unsplash photos uploaded to the private R2 bucket",
+      "scope": "Choosing the real photo pool (spec: Zdjęcia, P6, P10): about 4000 photos from images.unsplash.com (Unsplash License) in the tone of the current fixtures, 10-40 per product type photo group from the DEMO-DATA-2 dictionaries (about 33 on average, fewer only where Unsplash has no more matching photos), each Unsplash photo at most once, scaled to 1600 px on the longer side as JPEG; chosen in batches by department with pauses between downloads, and if the CDN starts blocking downloads the task stops and reports it without working around the protection; apps/api/fixtures/demo-data/photos.yaml with every file and CREDITS; archive uploaded once as a new immutable version with apps/api/bin/upload-demo-photos (DEMO-DATA-6) using the user's write token. The archive and photos never enter the repo. Not: changes to the tooling of DEMO-DATA-6 beyond fixes found while uploading, changes to the 37 fixtures photos.",
+      "acceptance_criteria": [
+        "The archive object exists in the private bucket under the key from photos.yaml and the file sums match photos.yaml (checked by downloading it with the read token, result in the PR); the bucket has no public access (stated with the check used in the PR).",
+        "photos.yaml lists about 4000 files, no Unsplash photo id twice, every photo group of the DEMO-DATA-2 dictionaries has 10-40 photos, and every file has type group, alt text, source, author and licence (test on photos.yaml).",
+        "Every file passes the Catalog upload rules; the PR states the archive size and lists the groups below 30 photos.",
+        "The photo step of a profile other than small, run alone on the task stack with the read token, downloads and verifies this archive and stores every file once in Garage (run shown in the PR); make -C apps/api check and test pass."
+      ],
+      "risk": "FAST",
+      "depends_on": [
+        "DEMO-DATA-2",
+        "DEMO-DATA-6"
       ]
     }
   ]
