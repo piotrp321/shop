@@ -196,6 +196,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   po utworzeniu kodu) na komunikat „Kod rabatowy zapisany.”. Odpowiedź żądania,
   które skończyło się po opuszczeniu formularza, jest ignorowana. Lista zamówień per kod jest poza panelem.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
+- `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
+  semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
+  `@font-face` Nunito i pierścień fokusu. Importowany w `main.ts` przed `src/styles.css`.
+- `src/assets/fonts/` – Nunito (WOFF2, podzbiory `latin` i `latin-ext`, wagi 400–800); źródło, wersja, licencja
+  i SHA-256 plików w `THIRD_PARTY_NOTICES.md` (test `tests/fonts.test.ts`).
 
 ## Konfiguracja i obraz produkcyjny
 
@@ -248,6 +253,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Komponenty PrimeVue zamiast własnych odpowiedników (`Button`, `DataTable`, `Tag`, `Message`, `Skeleton`
   i pozostałe). Własny komponent powstaje tylko wtedy, gdy PrimeVue nie ma odpowiednika.
 - Ikony z PrimeIcons. Kolory i odstępy z motywu Aura, bez kolorów „na sztywno”.
+- Tokeny wyglądu są wyłącznie w `src/styles/tokens.css` (`--color-*: initial`: domyślnej palety Tailwinda nie ma).
+  Nowy kolor to nowy token w tym pliku i para w `tests/tokens.test.ts` (kontrast WCAG 2.x: tekst ≥ 4,5:1, obramowania
+  pól, fokus i ikony KPI ≥ 3:1).
+- Krój Nunito z plików panelu, stos zapasowy `system-ui, sans-serif`. Cyfry Nunito są tabelaryczne bez cechy `tnum`
+  (podzbiory Google Fonts jej nie mają, ale każda cyfra 0–9 ma tę samą szerokość 600 jednostek przy wagach 400–800,
+  więc „111” i „888” są równej szerokości), dlatego kolumny liczbowe używają Nunito z `tabular-nums`, bez stosu
+  systemowego.
 - Teksty interfejsu po polsku.
 
 ## Testy
@@ -256,3 +268,5 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Testy leżą w `tests/` (reguły lintera w `tests/lint/`) lub obok kodu jako `*.test.ts`.
 - Logika w composables i store'ach (np. `useIdleLogout`, obsługa 401, guard routera) ma testy.
 - Test reguły ESLint sprawdza identyfikator reguły i liczbę błędów, nie tylko to, że coś zostało zgłoszone.
+- `tests/tokens.test.ts` czyta `tokens.css` i sprawdza kontrast każdej pary tokenów; `tests/fonts.test.ts` sprawdza
+  pliki Nunito, ich deklaracje i sumy SHA-256 w `THIRD_PARTY_NOTICES.md`.
