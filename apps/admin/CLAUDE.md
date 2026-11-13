@@ -22,7 +22,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (tokeny w pamięci).
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania. `/orders` i `/orders/:orderId` mają
-  strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`): rola bez dostępu trafia na
+  strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`), a `/system` strażnika
+  `canViewSystem` (`src/dashboard/permissions.ts`: tylko `admin`): rola bez dostępu trafia na
   pulpit z `history.state.denied`, który pokazuje „Nie masz dostępu do tej strony.” (`useAccessDenied`: odczyt i czyszczenie
   znacznika w tym samym wpisie historii, więc przeładowanie komunikatu nie powtarza); gdy `/me` się nie wczyta, trasa jest
   przepuszczana (dostęp sprawdza API).
@@ -31,7 +32,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (`Sheet` z lewej: pułapka fokusu, `Escape` i wybór pozycji zamykają, fokus wraca na „Menu” przez `close-auto-focus`,
   powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`), stopka
   („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"`,
-  5 s) i `useIdleLogout` (15 min). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing; grupy Katalog,
+  5 s) i `useIdleLogout` (15 min). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
   Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
   szczegóły należą do pozycji listy, `/orders?refund=pending` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
@@ -41,7 +42,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 z `useId()` instancji menu (sidebar i szuflada są razem w DOM). Klik w pozycję o celu równym bieżącej lokalizacji
 nawiguje ponownie (`force`, `replace`), bo stare listy nie zapisują swoich filtrów do adresu i router odrzuciłby push
 jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarce i nie zamyka szuflady. Pozycja
-  „Stan systemu” dojdzie z ekranem (ADMIN-DESIGN-3). `AppTopbar`: przycisk „Menu” (`lg:hidden`), wyszukiwarka produktów
+  „Stan systemu” (`/system`, sekcja System) jest tylko dla `admin`. `AppTopbar`: przycisk „Menu” (`lg:hidden`), wyszukiwarka produktów
   (`role="search"`; fraza po przycięciu 2–100 punktów kodowych idzie do `/products?q=`, znaki sterujące i separatory
   wierszy liczą się jak spacje, pusta nic nie robi, za krótka i za długa pokazują „Wpisz od 2 do 100 znaków.” w stałym
   regionie `role="status"` połączonym z polem przez `aria-describedby`, fokus zostaje w polu), link „Sklep” z
@@ -49,7 +50,26 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   „Wyloguj”; bez wczytanego pracownika „Konto” i „Wyloguj” też są). `useAccessDenied` czyta i czyści
   `history.state.denied` (komunikat na pulpicie po strażniku trasy).
 - `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`, `DiscountCodesView`, `DiscountCodeFormView`).
-- `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
+- `src/dashboard/` – komponenty i composables pulpitu i ekranu „Stan systemu”; widoki tras to `DashboardView` (`/`, H1
+  „Pulpit”, bez okruszków) i `SystemView` (`/system`, tylko `admin`, okruszki „Pulpit › Stan systemu”) w `src/views/`.
+  `useDashboard` (`GET /dashboard`) ładuje dane przy wejściu i co 30 s
+  oprócz ukrytej karty, po powrocie do karty odświeża od razu, gdy minęło co najmniej 30 s; nieudane odświeżenie zostawia
+  dane i podaje ich czas, a tylko najnowsze żądanie zmienia stan (opis: `docs/features/dashboard-data-freshness/spec.md`).
+  Drugi argument `alongside` jest wołany przy każdym odświeżeniu (pulpit odświeża nim zamówienia). `FreshnessBar`:
+  „Dane z <czas polski przez `formatDateTime`>” (`muted-foreground`, `aria-live="polite"`), „Odśwież” i komunikat błędu
+  (`role="alert"`); używają go oba ekrany. Pulpit: `KpiTile` (`title`, `icon`, `tone` z par `kpi-*`, `value`, opcjonalnie
+  `footer` i `to`: z `to` tytuł jest linkiem rozciągniętym na kafel), `CatalogTiles` („Produkty” z linkiem do `/products`
+  i stopką „Bez zdjęć”, „Kategorie” i „Bez zdjęć” bez linku, bo API nie ma dla nich ekranów), `TodoCard` („Do obsługi”:
+  linki bez liczb, wiersze z `todo.ts` według ról z `/me`: każda rola ma co najmniej jeden, rola z kilku widzi każdy
+  raz; do czasu wczytania `/me` karty nie ma) i `RecentOrders` (`useRecentOrders`: `GET /orders?perPage=5` tylko dla
+  ról z `canViewOrders`, ładowane z odświeżeniem pulpitu i gdy `/me` pokaże dostęp; błąd, w tym 403 bez „Spróbuj
+  ponownie”, zostaje w karcie z fokusem na jej nagłówku po ponowieniu, a nieudane odświeżenie zostawia pokazane
+  zamówienia i podaje czas ich pobrania jak błąd pulpitu: `withStaleNote`; kolory statusów według tokenów spec:
+  Wysłane `success`, Dostarczone i Opłacone `info`, Czeka na płatność `warning`, Anulowane `danger`, Zwrócone `neutral`). Pulpit nie pokazuje stanu systemu. „Stan systemu” (`SystemStatus`): usługi z polską etykietą (`labels.ts`:
+  `serviceLabel`, nieznana nazwa zostaje jak z API) i stanem „Działa” / „Nie działa” z opóźnieniem, „Zdarzenia czekające
+  na wysłanie”, tabela kolejek w regionie `role="region"` z nazwą i `tabindex="0"` (przewijana w poziomie) i porównanie
+  indeksu wyszukiwania z katalogiem; `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
+  danych o stanie systemu”. Pliki bez PrimeVue i bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list cen i stanów).
 - `src/prices/` – lista cen (`/prices`): `usePriceList` (wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii,
@@ -163,7 +183,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   procent, cena katalogowa jednostki) jest pod nazwą produktu, z kodem i bez.
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
   `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`): filtr
-  statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
+  statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone; także z adresu: `status` przy wejściu i przy zmianie `route.query`
+  przy otwartej liście, np. link „Aktywne promocje” z pulpitu; ustawia filtr według adresu, wraca na pierwszą stronę,
+  pomija nieznaną wartość, rozpoznaje swój widok po nazwie trasy i niczego nie zapisuje do adresu; filtr w widoku
+  pokazuje status listy) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
   w `useOrderList` (zmiana filtra porzuca wiersze i kursory; błąd następnej strony zostawia wyświetloną; 403 bez
   ponowienia). Status wiersza i jego etykieta (`format.ts`) pochodzą z API. Przycisk „Dodaj promocję” i cała edycja:
   tylko `admin` i `marketing` (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą
@@ -191,7 +214,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
 - `src/discount-codes/` – kody rabatowe (menu „Kody rabatowe”, trasy `/discount-codes`, `/discount-codes/new`,
   `/discount-codes/:id`: jedna ścieżka `discount-codes`, więc pozycja menu zostaje aktywna na formularzu).
   `useDiscountCodeList` (widok `DiscountCodesView`): filtr statusu (Wszystkie, Zaplanowane, Aktywne, Wygasłe,
-  Wyłączone), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
+  Wyłączone; także z adresu jak w `usePromotionList`, np. link „Kody rabatowe” z pulpitu; wyszukiwanie zostaje), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
   jest wysyłany i widok to mówi; wielkość liter normalizuje API) i stronicowanie po kursorach ze stosem kursorów
   w panelu, jak w `usePromotionList` (zmiana filtra albo wyszukiwania porzuca wiersze i kursory; błąd następnej strony
   zostawia wyświetloną; 403 bez ponowienia). Przyciski „Poprzednia” i „Następna” nie są wyłączane na czas ładowania

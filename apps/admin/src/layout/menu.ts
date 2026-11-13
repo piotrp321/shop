@@ -1,6 +1,7 @@
-import { LayoutDashboard, Package, Percent, ShoppingCart, Ticket } from "lucide-vue-next";
+import { Activity, LayoutDashboard, Package, Percent, ShoppingCart, Ticket } from "lucide-vue-next";
 import type { Component } from "vue";
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from "vue-router";
+import { canViewSystem } from "@/dashboard/permissions";
 import { canCompleteRefunds, canViewOrders } from "@/orders/permissions";
 import { canManageProducts } from "@/products/permissions";
 import type { StaffMe } from "@/stores/auth";
@@ -113,6 +114,11 @@ export const MENU: MenuSection[] = [
         matches: named("discount-codes", "discount-code-new", "discount-code"),
       },
     ],
+  },
+  {
+    id: "system",
+    title: "System",
+    entries: [{ kind: "leaf", id: "system", label: "Stan systemu", to: { name: "system" }, icon: Activity, matches: named("system"), visible: canViewSystem }],
   },
 ];
 

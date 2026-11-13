@@ -45,7 +45,7 @@ function queries(): Record<string, unknown>[] {
   return mocks.get.mock.calls.map(([, options]) => (options as { params: { query: Record<string, unknown> } }).params.query);
 }
 
-async function mountView(roles: StaffMe["roles"] = ["admin"], attach = false) {
+async function mountView(roles: StaffMe["roles"] = ["admin"], attach = false, path = "/discount-codes") {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().staff = { id: "u1", username: "anna", roles };
@@ -58,13 +58,13 @@ async function mountView(roles: StaffMe["roles"] = ["admin"], attach = false) {
       { path: "/discount-codes/:id", name: "discount-code", component: empty },
     ],
   });
-  await router.push("/discount-codes");
+  await router.push(path);
   const wrapper = mount(DiscountCodesView, {
     attachTo: attach ? document.body : undefined,
     global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[] },
   });
   await flushPromises();
-  return wrapper;
+  return Object.assign(wrapper, { router });
 }
 
 describe("DiscountCodesView", () => {
@@ -137,6 +137,36 @@ describe("DiscountCodesView", () => {
     wrapper.getComponent(SelectButton).vm.$emit("update:modelValue", "all");
     await flushPromises();
     expect(queries().at(-1)).toEqual({});
+  });
+
+  describe("status from the address", () => {
+    it("shows the list filtered by the status of the address, with that status selected", async () => {
+      serve({ "": { items: [item("LATO", { status: "active" })], next: null } });
+      wrapper = await mountView(["admin"], false, "/discount-codes?status=active");
+
+      expect(queries()).toEqual([{ status: "active" }]);
+      expect(wrapper.getComponent(SelectButton).props("modelValue")).toBe("active");
+    });
+
+    it("shows all codes for an unknown status of the address", async () => {
+      serve({ "": { items: [item("LATO")], next: null } });
+      wrapper = await mountView(["admin"], false, "/discount-codes?status=nope");
+
+      expect(queries()).toEqual([{}]);
+      expect(wrapper.getComponent(SelectButton).props("modelValue")).toBe("all");
+    });
+
+    it("switches the open list when the address changes, with one request", async () => {
+      serve({ "": { items: [item("LATO")], next: null } });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push({ name: "discount-codes", query: { status: "active" } });
+      await flushPromises();
+
+      expect(queries()).toEqual([{ status: "active" }]);
+      expect(wrapper.getComponent(SelectButton).props("modelValue")).toBe("active");
+    });
   });
 
   it("offers every status in the filter", async () => {

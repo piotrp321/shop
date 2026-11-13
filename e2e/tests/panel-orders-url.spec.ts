@@ -115,7 +115,7 @@ test("a role without access to the orders lands on the dashboard with a message 
 
     await page.reload();
 
-    await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Pulpit" })).toBeVisible();
     await expect(page.getByText("Nie masz dostępu do tej strony.")).toHaveCount(0);
   } finally {
     await panel.close();
