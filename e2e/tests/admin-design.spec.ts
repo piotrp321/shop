@@ -26,6 +26,9 @@ type Role = "admin" | "marketing";
 const contexts = new Map<Role, BrowserContext>();
 let productId = "";
 let orderId = "";
+let promotionId = "";
+let discountCodeId = "";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 async function signIn(browser: Browser, role: Role): Promise<BrowserContext> {
   const context = await browser.newContext({ locale: "pl-PL" });
@@ -76,6 +79,7 @@ test.beforeAll(async ({ browser }) => {
     const link = page.getByTestId("product-link").filter({ hasText: PRODUCT }).first();
     await expect(link, `the demo product „${PRODUCT}” is in the list`).toBeVisible();
     productId = (await link.getAttribute("href"))!.split("/").pop()!;
+    expect(productId, "the id of the demo product").toMatch(UUID);
 
     await go(page, "/orders");
     await expect(page.getByTestId("order-row").or(page.getByTestId("empty")).first()).toBeVisible();
@@ -87,6 +91,20 @@ test.beforeAll(async ({ browser }) => {
     await expect(number, "the list has an order").toBeVisible();
     const href = await number.evaluate((element) => (element.closest("a") ?? element.querySelector("a"))?.getAttribute("href") ?? "");
     orderId = href.split("/").pop()!;
+    expect(orderId, "the id of an order").toMatch(UUID);
+
+    // The edit pages of the screens that are not migrated yet: the first row of the demo promotions and discount codes.
+    await go(page, "/promotions");
+    const promotion = page.getByTestId("promotion-link").first();
+    await expect(promotion, "the demo data has a promotion").toBeVisible();
+    promotionId = (await promotion.getAttribute("href"))!.split("/").pop()!;
+    expect(promotionId, "the id of a promotion").toMatch(UUID);
+
+    await go(page, "/discount-codes");
+    const code = page.getByTestId("code-link").first();
+    await expect(code, "the demo data has a discount code").toBeVisible();
+    discountCodeId = (await code.getAttribute("href"))!.split("/").pop()!;
+    expect(discountCodeId, "the id of a discount code").toMatch(UUID);
   } finally {
     await page.close();
   }
@@ -338,8 +356,10 @@ function routes(): { path: string; current: string }[] {
     { path: `/orders/${orderId}`, current: "Lista zamówień" },
     { path: "/promotions", current: "Promocje" },
     { path: "/promotions/new", current: "Promocje" },
+    { path: `/promotions/${promotionId}`, current: "Promocje" },
     { path: "/discount-codes", current: "Kody rabatowe" },
     { path: "/discount-codes/new", current: "Kody rabatowe" },
+    { path: `/discount-codes/${discountCodeId}`, current: "Kody rabatowe" },
     { path: "/system", current: "Stan systemu" },
   ];
 }
