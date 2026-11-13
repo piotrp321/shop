@@ -1,11 +1,17 @@
-import type { TreeNode } from "primevue/treenode";
 import { onMounted, ref } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
 
-function toTreeNode(category: CategoryNode): TreeNode {
+/** A category of the tree; the shape of a PrimeVue `TreeNode`, so the views still on PrimeVue pass it to `TreeSelect`. */
+export interface CategoryTreeNode {
+  key: string;
+  label: string;
+  children: CategoryTreeNode[];
+}
+
+function toTreeNode(category: CategoryNode): CategoryTreeNode {
   return { key: category.id, label: category.name, children: category.children.map(toTreeNode) };
 }
 
@@ -14,7 +20,7 @@ function toTreeNode(category: CategoryNode): TreeNode {
  * the rest of the view does not depend on it.
  */
 export function useCategoryTree() {
-  const nodes = ref<TreeNode[]>([]);
+  const nodes = ref<CategoryTreeNode[]>([]);
   const error = ref<string | null>(null);
 
   onMounted(async () => {

@@ -1,0 +1,160 @@
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { afterEach, describe, expect, it } from "vitest";
+import { toast } from "vue-sonner";
+import { h } from "vue";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Toaster } from "@/components/ui/sonner";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+
+let wrapper: VueWrapper | undefined;
+
+afterEach(() => {
+  wrapper?.unmount();
+  wrapper = undefined;
+  document.body.innerHTML = "";
+});
+
+// The accessible names of the controls inside the opened content: the text and the labels of buttons.
+function buttonNames() {
+  return [...document.body.querySelectorAll("button")].map((button) =>
+    (button.getAttribute("aria-label") ?? button.textContent ?? "").trim(),
+  );
+}
+
+const ENGLISH_NAMES = /\b(close|cancel|continue|open|toggle|previous|next|more)\b/i;
+
+describe("Dialog", () => {
+  const Host = () =>
+      h(Dialog, { open: true }, () =>
+        h(DialogContent, null, () => [
+          h(DialogHeader, null, () => [h(DialogTitle, null, () => "Zmień cenę"), h(DialogDescription, null, () => "Opis")]),
+          h(DialogFooter, { showCloseButton: true }),
+        ]),
+      );
+
+  it("names its close buttons „Zamknij” and has no English accessible name", async () => {
+    wrapper = mount(Host, { attachTo: document.body });
+    await flushPromises();
+
+    const names = buttonNames();
+    expect(names).toEqual(["Zamknij", "Zamknij"]);
+    expect(document.body.textContent).not.toMatch(ENGLISH_NAMES);
+  });
+});
+
+describe("AlertDialog", () => {
+  const Host = () =>
+      h(AlertDialog, { open: true }, () =>
+        h(AlertDialogContent, null, () =>
+          h(AlertDialogHeader, null, () => [
+            h(AlertDialogTitle, null, () => "Usunąć wariant?"),
+            h(AlertDialogDescription, null, () => "Opis"),
+          ]),
+        ),
+      );
+
+  it("names its close button „Zamknij” and has no English accessible name", async () => {
+    wrapper = mount(Host, { attachTo: document.body });
+    await flushPromises();
+
+    expect(buttonNames()).toEqual(["Zamknij"]);
+    expect(document.body.textContent).not.toMatch(ENGLISH_NAMES);
+  });
+});
+
+describe("AlertDialog focus", () => {
+  const Host = () =>
+    h(AlertDialog, { open: true }, () =>
+      h(AlertDialogContent, null, () => [
+        h(AlertDialogHeader, null, () => [
+          h(AlertDialogTitle, null, () => "Usunąć wariant?"),
+          h(AlertDialogDescription, null, () => "Opis"),
+        ]),
+        h(AlertDialogCancel, null, () => "Wróć"),
+        h(AlertDialogAction, null, () => "Usuń"),
+      ]),
+    );
+
+  it("focuses the cancel button of the content, not the close button, when it opens", async () => {
+    wrapper = mount(Host, { attachTo: document.body });
+    await flushPromises();
+
+    expect(document.activeElement?.textContent?.trim()).toBe("Wróć");
+  });
+
+  it("still closes with the close button named „Zamknij”", async () => {
+    const emitted: boolean[] = [];
+    const Closing = () =>
+      h(AlertDialog, { open: true, "onUpdate:open": (value: boolean) => emitted.push(value) }, () =>
+        h(AlertDialogContent, null, () => [
+          h(AlertDialogHeader, null, () => [h(AlertDialogTitle, null, () => "Tytuł"), h(AlertDialogDescription, null, () => "Opis")]),
+          h(AlertDialogCancel, null, () => "Wróć"),
+        ]),
+      );
+    wrapper = mount(Closing, { attachTo: document.body });
+    await flushPromises();
+
+    [...document.body.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Zamknij")!.click();
+    await flushPromises();
+    expect(emitted).toEqual([false]);
+  });
+});
+
+describe("Sonner", () => {
+  it("names the region „Powiadomienia” and the close button of a toast „Zamknij powiadomienie”", async () => {
+    wrapper = mount(Toaster, { props: { closeButton: true }, attachTo: document.body });
+    toast("Zapisano");
+    await flushPromises();
+
+    // vue-sonner appends the hotkey to the name of the region („Powiadomienia alt+T”).
+    expect(document.body.querySelector("section")?.getAttribute("aria-label")).toMatch(/^Powiadomienia\b/);
+    expect(buttonNames()).toEqual(["Zamknij powiadomienie"]);
+  });
+});
+
+describe("Sheet", () => {
+  it("names its close button „Zamknij”", async () => {
+    const Host = () =>
+        h(Sheet, { open: true }, () =>
+          h(SheetContent, { side: "left" }, () =>
+            h(SheetHeader, null, () => [h(SheetTitle, null, () => "Menu"), h(SheetDescription, null, () => "Nawigacja")]),
+          ),
+        );
+    wrapper = mount(Host, { attachTo: document.body });
+    await flushPromises();
+
+    expect(buttonNames()).toEqual(["Zamknij"]);
+  });
+});
+
+// The sources of src/components/ui: every text that only a screen reader reads (sr-only, aria-label, title) is Polish.
+const sources = import.meta.glob<string>("../src/components/ui/**/*.vue", { query: "?raw", import: "default", eager: true });
+
+describe("src/components/ui", () => {
+  it("has no English accessible names in its sources", () => {
+    const names: string[] = [];
+    for (const [file, source] of Object.entries(sources)) {
+      for (const match of source.matchAll(/sr-only[^>]*>([^<]+)</g)) names.push(`${file}: ${match[1]!.trim()}`);
+      for (const match of source.matchAll(/\b(?:aria-label|title)="([^"]+)"/g)) names.push(`${file}: ${match[1]}`);
+    }
+
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => ENGLISH_NAMES.test(name))).toEqual([]);
+  });
+});

@@ -831,7 +831,9 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
 
 ## Panel (`apps/admin`)
 
-Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z presetem Aura, PrimeIcons.
+Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, komponenty shadcn-vue na Reka UI
+(`src/components/ui/`) i ikony Lucide; ekrany jeszcze niezmigrowane używają PrimeVue 4 z presetem Aura i PrimeIcons
+(wygląd: `docs/features/admin-design/spec.md`, biblioteka: `docs/adr/admin-ui-library.md`).
 
 ### Logowanie
 
@@ -1006,7 +1008,7 @@ Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależ
 | api (Composer) | `symfony/flex`, `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` (wraz z zależnościami przechodnimi: `elastic/transport`, `nyholm/psr7`, `psr/http-client`, `psr/http-factory`, `psr/http-message`, `php-http/httplug`, `php-http/promise`, `php-http/discovery` jako plugin Composera wyłączony w `allow-plugins`, `open-telemetry/api`, `open-telemetry/context`, `symfony/polyfill-php82`; klient HTTP to `symfony/http-client` przez `Psr18Client`) | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
 | api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` | `spx` |
 | store (npm) | `next`, `react`, `react-dom`, `openid-client`, `redis`, `openapi-fetch`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` | `typescript`, `@types/node`, `@types/react`, `@types/react-dom`, `tailwindcss`, `@tailwindcss/postcss`, `tw-animate-css`, `eslint`, `eslint-config-next`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `jsdom` |
-| admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom` |
+| admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch`, `reka-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `@vueuse/core`, `lucide-vue-next`, `vue-sonner` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom`, `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css` |
 | e2e (npm) | — | `@lhci/cli`, `@playwright/test`, `otpauth`, `typescript` |
 | obrazy | — | `socat` w obrazie `e2e` |
 
