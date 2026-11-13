@@ -256,6 +256,18 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Tokeny wyglądu są wyłącznie w `src/styles/tokens.css` (`--color-*: initial`: domyślnej palety Tailwinda nie ma).
   Nowy kolor to nowy token w tym pliku i para w `tests/tokens.test.ts` (kontrast WCAG 2.x: tekst ≥ 4,5:1, obramowania
   pól, fokus i ikony KPI ≥ 3:1).
+- Reguła koloru (`eslint.config.js`, pliki `src/**/*.{ts,vue}`): kolor „na sztywno” poza `tokens.css` jest błędem.
+  `no-restricted-syntax` łapie wartości arbitralne z kolorem (`bg-[#fff]`, `text-[rgb(…)]`, `bg-[oklch(…)]`,
+  `color-mix`, kolory nazwane, także we właściwościach arbitralnych `[color:red]`) w łańcuchach `<script>` i `.ts`,
+  `vue/no-restricted-class` te same wzorce w klasach szablonu, `vue/no-restricted-syntax` w wyrażeniach szablonu poza
+  `:class` (np. `cn(…)`, warunek) i kolory w `:style` (dozwolone tylko `var(--token)`; właściwość koloru z wartością
+  wyliczaną też jest błędem), `vue/no-restricted-static-attribute` statyczny `style`, `vue/no-restricted-block` bloki
+  `<style>`, a `better-tailwindcss/no-unknown-classes` (punkt wejścia `tokens.css`) klasy spoza tokenów, np.
+  `bg-red-500`. `no-restricted-imports` blokuje import PrimeVue i PrimeIcons. Wartości wyliczane w `<script>`
+  i przekazane do `:style` przez zmienną nie są analizowane.
+- `LEGACY_FILES` w `eslint.config.js`: jawne ścieżki plików jeszcze na PrimeVue (bez wzorców i katalogów); tylko
+  reguły z punktu wyżej ich nie obejmują. Migracja ekranu usuwa jego pliki z listy, nowy plik na nią nie trafia (test
+  reguł sprawdza, że każdy wpis istnieje i importuje PrimeVue). Lista znika z PrimeVue w ADMIN-SCREENS.
 - Krój Nunito z plików panelu, stos zapasowy `system-ui, sans-serif`. Cyfry Nunito są tabelaryczne bez cechy `tnum`
   (podzbiory Google Fonts jej nie mają, ale każda cyfra 0–9 ma tę samą szerokość 600 jednostek przy wagach 400–800,
   więc „111” i „888” są równej szerokości), dlatego kolumny liczbowe używają Nunito z `tabular-nums`, bez stosu
@@ -268,5 +280,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Testy leżą w `tests/` (reguły lintera w `tests/lint/`) lub obok kodu jako `*.test.ts`.
 - Logika w composables i store'ach (np. `useIdleLogout`, obsługa 401, guard routera) ma testy.
 - Test reguły ESLint sprawdza identyfikator reguły i liczbę błędów, nie tylko to, że coś zostało zgłoszone.
+- `tests/lint/color-rules.test.ts` sprawdza regułę koloru (identyfikator i liczba błędów dla każdej ścieżki i prób
+  obejścia, brak błędu dla klas z tokenów) i listę `LEGACY_FILES`; typy listy dla testu są w `eslint.config.d.ts`.
 - `tests/tokens.test.ts` czyta `tokens.css` i sprawdza kontrast każdej pary tokenów; `tests/fonts.test.ts` sprawdza
   pliki Nunito, ich deklaracje i sumy SHA-256 w `THIRD_PARTY_NOTICES.md`.
