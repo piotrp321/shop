@@ -36,10 +36,15 @@ const props = withDefaults(
     modelValue?: string | string[] | null;
     placeholder?: string;
     disabled?: boolean;
+    /**
+     * Single mode only: choosing the selected category again clears it (`null`), as a filter is cleared. Reka's combobox
+     * sets the chosen value either way, so it is done here; a field whose category is required leaves it off.
+     */
+    deselectable?: boolean;
     /** The `id` of the input, for an external `aria-describedby` or a label of the form; generated when omitted. */
     id?: string;
   }>(),
-  { hideLabel: false, multiple: false, modelValue: null, placeholder: "Szukaj kategorii", disabled: false, id: undefined },
+  { hideLabel: false, multiple: false, modelValue: null, placeholder: "Szukaj kategorii", disabled: false, deselectable: false, id: undefined },
 );
 
 const emit = defineEmits<{ "update:modelValue": [value: string | string[] | null] }>();
@@ -92,6 +97,10 @@ function onOpenChange() {
 
 function onUpdate(value: unknown) {
   searchTerm.value = "";
+  if (props.deselectable && !props.multiple && value === props.modelValue) {
+    emit("update:modelValue", null);
+    return;
+  }
   // Reka reports a cleared single selection as undefined; the contract is null.
   emit("update:modelValue", (value ?? null) as string | string[] | null);
 }

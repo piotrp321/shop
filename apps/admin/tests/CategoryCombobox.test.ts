@@ -198,6 +198,28 @@ describe("CategoryCombobox", () => {
     expect(document.body.textContent).toContain("Brak pasujących kategorii.");
   });
 
+  it("keeps the selected category when it is chosen again, unless the field is deselectable", async () => {
+    const wrapper = mountCombobox({ modelValue: "c-sport" });
+    await open();
+    options()[5]!.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("update:modelValue")).toEqual([["c-sport"]]);
+  });
+
+  it("clears the selected category when it is chosen again in a deselectable field, and selects another as usual", async () => {
+    const wrapper = mountCombobox({ modelValue: "c-sport", deselectable: true });
+    await open();
+    options()[5]!.click();
+    await flushPromises();
+    expect(wrapper.emitted("update:modelValue")).toEqual([[null]]);
+
+    await open();
+    options()[2]!.click();
+    await flushPromises();
+    expect(wrapper.emitted("update:modelValue")?.at(-1)).toEqual(["c-tents"]);
+  });
+
   it("emits null, not undefined, when the combobox clears a single selection", async () => {
     const wrapper = mountCombobox({ modelValue: "c-tents" });
     wrapper.findComponent(ComboboxRoot).vm.$emit("update:modelValue", undefined);

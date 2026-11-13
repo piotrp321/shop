@@ -170,6 +170,21 @@ describe("ProductsView", () => {
       expect(rows[1]!.find("[data-testid=action-preview]").exists()).toBe(false);
     });
 
+    it.each([
+      ["admin", true],
+      ["marketing", true],
+      ["support", false],
+      ["warehouse", false],
+    ] as const)("%s has the edit action: %s, and every role keeps the linked name and the preview", async (role, canEdit) => {
+      serve({ "": { items: [item("Buty", { slug: "buty-trailowe" })], next: null } });
+      wrapper = await mountView([role]);
+
+      const row = wrapper.get("[data-testid=product-row]");
+      expect(row.find("[data-testid=action-edit]").exists()).toBe(canEdit);
+      expect(row.get("[data-testid=product-link]").attributes("href")).toBe("/products/id-Buty");
+      expect(row.get("[data-testid=action-preview]").attributes("href")).toBe("http://store.test/p/buty-trailowe");
+    });
+
     it("keeps the category and the last change as lines of the main cell for the narrow screens", async () => {
       serve({ "": { items: [item("Buty")], next: null } });
       wrapper = await mountView();
@@ -351,7 +366,6 @@ describe("ProductsView", () => {
       serve({ "": { items: [item("A")], next: null } });
       wrapper = await mountView();
 
-      perPageSelect().vm.$emit("update:perPage", 10);
       perPageSelect().vm.$emit("update:modelValue", "10");
       await settle();
 
@@ -412,7 +426,19 @@ describe("ProductsView", () => {
       wrapper = await mountView([role]);
 
       expect(wrapper.get("[data-testid=empty]").text()).toContain("Nie ma jeszcze produktów.");
-      expect(wrapper.get("[data-testid=empty]").find("[data-testid=add-product]").exists()).toBe(visible);
+      expect(wrapper.get("[data-testid=empty]").find("[data-testid=empty-add-product]").exists()).toBe(visible);
+    });
+
+    it("gives the actions of the empty state their own test ids, so that no id is on the page twice", async () => {
+      serve({ "": { items: [], next: null } });
+      wrapper = await mountView();
+      expect(wrapper.findAll("[data-testid=add-product]")).toHaveLength(1);
+      expect(wrapper.findAll("[data-testid=empty-add-product]")).toHaveLength(1);
+      wrapper.unmount();
+
+      wrapper = await mountView(["admin"], "/products?status=draft");
+      expect(wrapper.findAll("[data-testid=clear-filters]")).toHaveLength(1);
+      expect(wrapper.findAll("[data-testid=empty-clear-filters]")).toHaveLength(1);
     });
 
     it("says there are no results for the filters, with „Wyczyść filtry”", async () => {
@@ -422,12 +448,33 @@ describe("ProductsView", () => {
       const empty = wrapper.get("[data-testid=empty]");
       expect(empty.text()).toContain("Brak wyników dla wybranych filtrów.");
       expect(empty.text()).not.toContain("Nie ma jeszcze produktów.");
-      expect(empty.find("[data-testid=add-product]").exists()).toBe(false);
+      expect(empty.find("[data-testid=empty-add-product]").exists()).toBe(false);
 
-      await empty.get("[data-testid=clear-filters]").trigger("click");
+      await empty.get("[data-testid=empty-clear-filters]").trigger("click");
       await settle();
       expect(wrapper.router.currentRoute.value.fullPath).toBe("/products");
       expect(document.activeElement).not.toBe(document.body);
+    });
+  });
+
+  describe("an empty page after the first", () => {
+    it("keeps the pager and says the page is empty, not that there are no products, so that the staff member can go back", async () => {
+      serve({ "": fullPage("A", "c1"), c1: { items: [], next: null } });
+      wrapper = await mountView();
+
+      await wrapper.get("[data-testid=next-page]").trigger("click");
+      await settle();
+
+      expect(wrapper.get("[data-testid=empty]").text()).toBe("Na tej stronie nie ma już wyników.");
+      expect(wrapper.find("[data-testid=empty-add-product]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=empty-clear-filters]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 2");
+      expect(wrapper.get<HTMLButtonElement>("[data-testid=next-page]").element.disabled).toBe(true);
+
+      await wrapper.get("[data-testid=previous-page]").trigger("click");
+      await settle();
+      expect(wrapper.findAll("[data-testid=product-row]")).toHaveLength(25);
+      expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 1");
     });
   });
 
@@ -463,6 +510,37 @@ describe("ProductsView", () => {
       expect(wrapper.find("[data-testid=next-page]").exists()).toBe(false);
     });
 
+    it("drops the alert and shows the skeleton when the filter changes again after a failure", async () => {
+      serve({ "": { items: [item("A")], next: null } });
+      wrapper = await mountView();
+      serve({}, 500);
+      statusSelect().vm.$emit("update:modelValue", "draft");
+      await settle();
+      expect(wrapper.find("[data-testid=list-error]").exists()).toBe(true);
+
+      mocks.get.mockImplementation(() => new Promise(() => {}));
+      statusSelect().vm.$emit("update:modelValue", "published");
+      await settle();
+
+      expect(wrapper.find("[data-testid=list-error]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=list-loading]").exists()).toBe(true);
+    });
+
+    it("does not show the range of the old page next to the first page while a new filter loads", async () => {
+      serve({ "": fullPage("A", "c1"), c1: fullPage("B", null) });
+      wrapper = await mountView();
+      await wrapper.get("[data-testid=next-page]").trigger("click");
+      await settle();
+      expect(wrapper.get("[data-testid=range]").text()).toBe("Pokazano 26–50");
+
+      mocks.get.mockImplementation(() => new Promise(() => {}));
+      statusSelect().vm.$emit("update:modelValue", "draft");
+      await settle();
+
+      expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 1");
+      expect(wrapper.get("[data-testid=range]").text()).toBe("");
+    });
+
     it("keeps the page that is shown when a neighbouring page fails", async () => {
       serve({ "": { items: [item("A")], next: "c1" } });
       wrapper = await mountView();
@@ -491,6 +569,31 @@ describe("ProductsView", () => {
       expect(alert.text()).toContain("Nie masz dostępu do produktów.");
       expect(document.activeElement).toBe(alert.element);
     });
+  });
+
+  it("shows the skeleton, not an empty card, while the list waits for the category tree of the address", async () => {
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    wrapper = await mountView(["admin"], "/products?category=c-sport");
+
+    expect(productQueries()).toEqual([]);
+    expect(wrapper.find("[data-testid=list-loading]").exists()).toBe(true);
+    expect(wrapper.find("[data-testid=empty]").exists()).toBe(false);
+  });
+
+  it("clears the category of the list when the selected one is chosen again", async () => {
+    serve({ "": { items: [item("A")], next: null } });
+    wrapper = await mountView(["admin"], "/products?category=c-sport");
+    expect(productQueries()).toEqual([{ category: "c-sport" }]);
+
+    const field = document.body.querySelector<HTMLInputElement>("[role=combobox]")!;
+    field.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await settle();
+    const option = [...document.body.querySelectorAll<HTMLElement>("[role=option]")].find((candidate) => candidate.getAttribute("aria-label") === "Sport")!;
+    option.click();
+    await settle();
+
+    expect(wrapper.router.currentRoute.value.query).toEqual({});
+    expect(productQueries().at(-1)).toEqual({});
   });
 
   it("shows a skeleton of rows while the first page loads", async () => {

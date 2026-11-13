@@ -51,8 +51,9 @@ const columns: ListColumn<ProductListItem>[] = [
   { key: "actions", header: "Akcje", align: "right" },
 ];
 
+// „Edytuj” only for a role that can change products: the name of the product still opens the form, read-only.
 function actionsOf(product: ProductListItem): RowAction[] {
-  const actions: RowAction[] = [{ key: "edit", label: "Edytuj", icon: Pencil, to: { name: "product", params: { id: product.id } } }];
+  const actions: RowAction[] = canAdd.value ? [{ key: "edit", label: "Edytuj", icon: Pencil, to: { name: "product", params: { id: product.id } } }] : [];
   if (product.status === "published") {
     actions.push({ key: "preview", label: "Podgląd w sklepie", icon: ExternalLink, href: `${storeUrl}/p/${encodeURIComponent(product.slug)}`, external: true });
   }
@@ -103,6 +104,7 @@ async function clearFilters() {
             placeholder="Wszystkie kategorie"
             :nodes="categories.nodes.value"
             :model-value="query.category"
+            deselectable
             :disabled="categories.nodes.value.length === 0"
             @update:model-value="list.selectCategory(($event as string | null) ?? null)"
           />
@@ -238,6 +240,7 @@ async function clearFilters() {
         <template #empty>
           <ListEmpty
             :filtered="filtered"
+            :later-page="hasPrevious"
             :empty-text="EMPTY_MESSAGE"
             @clear="clearFilters"
           >
@@ -247,7 +250,7 @@ async function clearFilters() {
             >
               <Button as-child>
                 <RouterLink
-                  data-testid="add-product"
+                  data-testid="empty-add-product"
                   :to="{ name: 'product-new' }"
                 >
                   <Plus aria-hidden="true" />
@@ -260,7 +263,7 @@ async function clearFilters() {
       </DataTable>
 
       <div
-        v-if="loaded && items.length > 0"
+        v-if="loaded && (items.length > 0 || hasPrevious)"
         class="border-t border-separator px-4 py-3"
       >
         <ListPager

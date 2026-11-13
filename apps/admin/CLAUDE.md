@@ -138,9 +138,13 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   wyszukiwanie, filtry i rozmiar strony (adres `/products`). `ProductsView`: karta z `ListToolbar` (wyszukiwanie,
   `CategoryCombobox` „Kategoria”, Select „Status”, rozmiar strony, „Dodaj produkt” dla `admin` i `marketing`), `DataTable`
   (kolumny Produkt, Kategoria, Warianty, Status, Ostatnia zmiana, Akcje; Kategoria ukryta poniżej 1024 px, Ostatnia zmiana
-  poniżej 900 px; miniatura 42 px albo placeholder, slug pod nazwą, data i pod nią godzina z sekundami, „Edytuj” i dla
-  opublikowanego „Podgląd w sklepie” `<VITE_STORE_URL>/p/<slug>` w nowej karcie), `ListPager` i `ListEmpty`. Po „Wyczyść
-  filtry” fokus trafia na pole wyszukiwania.
+  poniżej 900 px; miniatura 42 px albo placeholder, slug pod nazwą, data i pod nią godzina z sekundami; w Akcjach
+  „Edytuj” tylko dla `admin` i `marketing` (`canManageProducts`; nazwa produktu jest linkiem do formularza dla każdej
+  roli, a dla pozostałych formularz jest tylko do odczytu) i dla opublikowanego „Podgląd w sklepie”
+  `<VITE_STORE_URL>/p/<slug>` w nowej karcie dla każdej roli), `ListPager` i `ListEmpty`. Pusty stan ma własne
+  `data-testid` (`empty-add-product`, `empty-clear-filters`), bo pasek ma te same przyciski. Strona po pierwszej, na
+  którą API odpowie bez wierszy (lista zmieniła się od poprzedniej strony), zostawia pager z „Poprzednia strona”, a
+  pusty stan mówi tylko „Na tej stronie nie ma już wyników.”. Po „Wyczyść filtry” fokus trafia na pole wyszukiwania.
   `useProductForm` (widok `ProductFormView`): ładuje produkt (`GET /products/{id}`) albo zaczyna pusty formularz
   z wariantem domyślnym (bez osi, jeden wiersz `{variantId: null, values: []}`) i klasy podatkowe
   (`GET /tax-classes`). Panel niczego nie liczy: slug, `slugLocked`, status i wersja pochodzą z odpowiedzi API, a po
@@ -294,7 +298,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   w prop `label` (z `hideLabel` tylko dla czytników), opcje w kolejności drzewa z pełną ścieżką jako nazwą dostępną
   („Turystyka › Biwak › Namioty”) i wcięciem według poziomu, filtrowanie po nazwie i ścieżce bez względu na wielkość
   liter, „Usuń: <nazwa>” przy wybranych w trybie wielokrotnym (po usunięciu fokus przechodzi na „Usuń” następnej
-  etykiety, a bez niej poprzedniej albo na pole); `modelValue` w trybie pojedynczym to id albo `null`. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
+  etykiety, a bez niej poprzedniej albo na pole); `modelValue` w trybie pojedynczym to id albo `null`; z prop `deselectable` (tylko tryb pojedynczy; filtr listy produktów)
+  ponowny wybór zaznaczonej kategorii zdejmuje ją (`null`), bo `ComboboxItem` Reki w trybie pojedynczym zawsze ustawia
+  wybraną wartość i nie przełącza jej. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
   (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Używa go lista
   produktów; formularz produktu (ADMIN-DESIGN-5) i ceny oraz stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
 - `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, pozostałe listy przejdą w
@@ -302,7 +308,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
   swojej kolumny, więc żadna informacja nie ginie), slot `empty` dla pustej listy. Pokazuje też stan listy: szkielet
-  wierszy przy pierwszym wczytaniu, `aria-busy` na tabeli przy kolejnych, komunikat błędu (`role="alert"`,
+  wierszy przy pierwszym wczytaniu (także gdy lista czeka jeszcze na drzewo kategorii z adresu; `loading` z
+  `useCursorPager` jest wtedy prawdziwe) i po nieudanym zapytaniu, gdy filtr zmienia się znowu (nowe zapytanie czyści
+  stary błąd i zakres „Pokazano X–Y”; ponowienie zostawia błąd do odpowiedzi), `aria-busy` na tabeli przy kolejnych, komunikat błędu (`role="alert"`,
   `tabindex="-1"`, „Spróbuj ponownie” poza 403: po ponowieniu fokus zostaje na przycisku, a gdy znika, trafia na
   komunikat, tabelę albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
   błąd sąsiedniej strony nad nią. Tabela przewija się w swoim regionie (`role="region"` z nazwą z prop `label`,
@@ -312,8 +320,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”), przyciski
   „Poprzednia strona” i „Następna strona” z numerem strony; fokus zostaje na naciśniętym przycisku, a gdy kolejna strona go
   wyłącza (ostatnia, pierwsza), przechodzi na drugi, chyba że pracownik sam przeniósł fokus poza pager. `ListEmpty`: „Brak
-  wyników dla wybranych filtrów.” z „Wyczyść filtry” przy filtrach, bez filtrów tekst listy (prop `emptyText`) i slot
-  `action` (przycisk główny listy, widoczny tylko dla roli, która może tworzyć). `RowActions`: kwadratowe przyciski 34 px z
+  wyników dla wybranych filtrów.” z „Wyczyść filtry” (`empty-clear-filters`) przy filtrach, bez filtrów tekst listy
+  (prop `emptyText`) i slot `action` (przycisk główny listy, widoczny tylko dla roli, która może tworzyć); prop
+  `laterPage` (strona po pierwszej bez wierszy) pokazuje samo „Na tej stronie nie ma już wyników.”. `RowActions`: kwadratowe przyciski 34 px z
   ikoną i nazwą dostępną „Czasownik: nazwa obiektu” (zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”,
   `target="_blank"` `rel="noopener"`) oraz podpowiedzią z tą samą nazwą (`TooltipProvider` jest w komponencie); zwykły link,
   nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcję, której rola
