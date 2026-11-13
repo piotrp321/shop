@@ -27,6 +27,9 @@ fresh_copy() {
   # The tests compare the browser image of the smoke test with the image of the E2E tests.
   mkdir -p "$base/tree/e2e"
   cp "$TOOLS_REPO/e2e/Dockerfile" "$base/tree/e2e/Dockerfile"
+  # The tests of the panel run the hook that writes its /config.js at container start.
+  mkdir -p "$base/tree/apps/admin/docker"
+  cp "$TOOLS_REPO/apps/admin/docker/40-admin-config.sh" "$base/tree/apps/admin/docker/40-admin-config.sh"
   # The step shellcheck reads the scripts of the load measurement (load/k6.sh and load/smoke.sh are sourced by the scripts of infra/k8s).
   cp -R "$TOOLS_REPO/load" "$base/tree/load"
   # The tests of the load files read the Makefile and its fragments.
