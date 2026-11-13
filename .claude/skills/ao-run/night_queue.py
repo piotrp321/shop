@@ -31,9 +31,10 @@ epic gets an owner in claims.json: the --claim token (its reservation is removed
 owner recorded for the epic other than --claim (also without --claim): exit 2 `epik X ma innego właściciela`, nothing
 written. Prints the event plus `owner` (the token; not stored in measurements.jsonl). done: appends a done event for
 the latest start without one and prints the measurement (tasks, minutes, usage delta per limit window, `overlap`: its
-interval intersects another epic's). A start/done pair is a measurement only through `measurements`. Estimates take
-time per task from all measurements and usage per task from the measurements without `overlap` (from all when none of
-them has the window).
+interval intersects another epic's closed interval, or another epic's start without a later done lies in it; such an
+open start before the interval does not count). A start/done pair is a measurement only through `measurements`.
+Estimates take time per task from all measurements and usage per task from the measurements without `overlap` (from
+all when none of them has the window).
 
 propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
 {"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
@@ -340,8 +341,10 @@ def _window_deltas(before, after):
 
 
 def measurements(events):
-    """Start/done pairs per epic. `overlap`: the pair's interval intersects an interval of another epic (a start
-    without a later done is open to the end), so its usage delta may contain the other epic's usage."""
+    """Start/done pairs per epic. `overlap`: the pair's interval intersects a closed interval of another epic, or
+    another epic's open start (a start without a later done) lies in it (start <= open start < done), so its usage
+    delta may contain the other epic's usage. An open start before the pair taints nothing: a start whose done was
+    never recorded would otherwise mark every later measurement."""
     open_starts = {}
     result, spans = [], []
     for event in events:
@@ -354,10 +357,10 @@ def measurements(events):
             result.append({'epic': epic, 'tasks': start['tasks'], 'minutes': (end - begin).total_seconds() / 60,
                            'usage': _window_deltas(start['usage'], event['usage'])})
             spans.append((epic, begin, end))
-    others = spans + [(epic, parse_time(start['at']), None) for epic, start in open_starts.items()]
+    opened = [(epic, parse_time(start['at'])) for epic, start in open_starts.items()]
     for item, (epic, begin, end) in zip(result, spans):
-        item['overlap'] = any(epic_ != epic and (end_ is None or begin < end_) and begin_ < end
-                              for epic_, begin_, end_ in others)
+        item['overlap'] = (any(epic_ != epic and begin < end_ and begin_ < end for epic_, begin_, end_ in spans)
+                           or any(epic_ != epic and begin <= begin_ < end for epic_, begin_ in opened))
     return result
 
 

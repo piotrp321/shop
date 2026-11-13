@@ -244,9 +244,9 @@ python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" done <
 USAGE
 ```
 
-Wyjście to pomiar (zadania, minuty, przyrost okien limitu i `overlap`: czy przedział epiku nakłada się z innym
-epikiem). Kod wyjścia różny od 0: przekaż komunikat ze stderr i prowadź epik dalej; epik z listy nocy kończy wtedy
-noc po sobie (`close`, sekcja „Noc”).
+Wyjście to pomiar (zadania, minuty, przyrost okien limitu i `overlap`: przedział epiku przecina zamknięty przedział
+innego epiku albo zaczyna się w nim `start` innego epiku bez `done`). Kod wyjścia różny od 0: przekaż komunikat ze
+stderr i prowadź epik dalej; epik z listy nocy kończy wtedy noc po sobie (`close`, sekcja „Noc”).
 
 Dopisz do opisu końcowego PR linie `Closes #N` dla każdego issue z linii `Issues:` specyfikacji epiku na `origin/main`
 (issue epiku i issues, które epik realizuje; inne numery ze specyfikacji, np. zależności, się nie liczą). Komenda

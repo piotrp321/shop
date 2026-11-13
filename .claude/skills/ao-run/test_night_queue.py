@@ -314,9 +314,28 @@ class MeasurementsTest(unittest.TestCase):
                             self.event('done', 'b', 90))
         self.assertEqual({'a': False, 'b': False}, got)
 
-    def test_start_without_done_is_open_to_the_end(self):
-        got = self.overlaps(self.event('start', 'a', 0), self.event('start', 'b', 300), self.event('done', 'b', 360))
+    def test_open_start_before_the_measurement_does_not_overlap(self):
+        # A stale start without done (e.g. an epic whose done was never recorded) taints no later measurement.
+        got = self.overlaps(self.event('start', 'x', 0), self.event('start', 'y', 300), self.event('done', 'y', 360),
+                            self.event('start', 'z', 400), self.event('done', 'z', 460))
+        self.assertEqual({'y': False, 'z': False}, got)
+
+    def test_stale_open_start_keeps_the_overlap_of_closed_measurements(self):
+        got = self.overlaps(self.event('start', 'x', 0), self.event('start', 'y', 300), self.event('start', 'z', 330),
+                            self.event('done', 'y', 360), self.event('done', 'z', 460))
+        self.assertEqual({'y': True, 'z': True}, got)
+
+    def test_open_start_inside_the_measurement_overlaps(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('start', 'a', 30), self.event('done', 'b', 60))
         self.assertEqual({'b': True}, got)
+
+    def test_open_start_at_the_measurement_start_overlaps(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('start', 'a', 0), self.event('done', 'b', 60))
+        self.assertEqual({'b': True}, got)
+
+    def test_open_start_at_the_measurement_end_does_not_overlap(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('done', 'b', 60), self.event('start', 'a', 60))
+        self.assertEqual({'b': False}, got)
 
     def test_open_start_after_the_measurement_does_not_overlap(self):
         got = self.overlaps(self.event('start', 'b', 0), self.event('done', 'b', 60), self.event('start', 'a', 61))

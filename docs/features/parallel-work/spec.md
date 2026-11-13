@@ -230,7 +230,10 @@ sprzed zmiany drugiego epiku. Dlatego:
 - `start` w `measurements.jsonl` ma pole `docker`: pamięć Dockera `{total_mib, ao_mib, other_mib}` (pomiar jak
   w kroku 6 bramki, bez `free_mib` i `required_mib`, które zależą od liczby epików aktywnych) albo `null` przy błędzie
   `docker`; błąd nie przerywa zapisu. Nakładanie się epików wynika z przedziałów `start`–`done`, bez osobnego pola;
-  wynik `done` podaje je jako `overlap` (przedział epiku przecina przedział innego). Linie bez `docker` są poprawne.
+  wynik `done` podaje je jako `overlap`: przedział epiku przecina zamknięty przedział innego epiku albo w przedziale
+  (`start` ≤ chwila < `done`) zaczyna się `start` innego epiku bez późniejszego `done`. `start` bez `done` sprzed
+  przedziału go nie oznacza, więc porzucony `start` nie psuje późniejszych szacunków. Linie bez `docker` są
+  poprawne.
 
 ### Pomiar pierwszych dwóch par
 

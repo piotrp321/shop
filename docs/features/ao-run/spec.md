@@ -187,7 +187,8 @@ stan limitów z narzędzia aplikacji `get_usage` (obiekt `plan`). Pomiar zapisuj
 startu do `epic_done`, przyrost procentu każdego okna limitu i przy starcie pamięć Dockera (`docker`). Okno, które
 odnowiło się w trakcie (inne `resetsAt`), albo stan limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony
 bez `DONE` nie ma pomiaru. `start` zapisuje token jako właściciela epiku i odmawia (kod 2, bez zapisu), gdy epik ma
-innego właściciela; `done` podaje też `overlap` (przedział epiku nakłada się z innym).
+innego właściciela; `done` podaje też `overlap`: przedział epiku przecina zamknięty przedział innego epiku albo
+w przedziale zaczyna się `start` innego epiku bez `done` (`start` bez `done` sprzed przedziału go nie oznacza).
 
 ## Przegląd po merge'u
 
