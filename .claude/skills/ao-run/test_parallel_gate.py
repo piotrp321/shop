@@ -70,7 +70,8 @@ class WriteAtomicTest(unittest.TestCase):
             p = os.path.join(d, 'f.json')
             pg.write_atomic(p, 'one')
             pg.write_atomic(p, 'two')
-            self.assertEqual('two', open(p).read())
+            with open(p) as f:
+                self.assertEqual('two', f.read())
             self.assertEqual(['f.json'], os.listdir(d))
 
     def test_missing_directory(self):
@@ -90,7 +91,8 @@ class WriteAtomicTest(unittest.TestCase):
                     pg.write_atomic(p, 'new')
             finally:
                 os.chmod(d, 0o700)
-            self.assertEqual('old', open(p).read())
+            with open(p) as f:
+                self.assertEqual('old', f.read())
             self.assertEqual(['f'], os.listdir(d))
 
 
@@ -171,6 +173,19 @@ class ClaimsTest(unittest.TestCase):
         self.assertEqual(16, len(fresh))
         self.assertEqual(fresh, pg.owner(pg.read_claims(self.dir), 'seo'))
 
+    def test_claim_to_owner_keeps_other_sessions_valid_claim(self):
+        other = pg.reserve(self.dir, 'cart', NOW)
+        mine = pg.claim_to_owner(self.dir, 'cart', 'mine', NOW)
+        data = pg.read_claims(self.dir)
+        self.assertEqual('mine', mine)
+        self.assertEqual([other], [c['claim'] for c in data['claims']])
+        self.assertEqual('mine', pg.owner(data, 'cart'))
+
+    def test_claim_to_owner_drops_expired_other_claim(self):
+        pg.reserve(self.dir, 'cart', NOW)
+        pg.claim_to_owner(self.dir, 'cart', 'mine', NOW + timedelta(hours=1))
+        self.assertEqual([], pg.read_claims(self.dir)['claims'])
+
     def test_unreadable_and_wrong_shape(self):
         path = os.path.join(self.dir, 'claims.json')
         for text in ['{not json', '[]', '{"claims": {}}', '{"claims": [], "owners": []}',
@@ -199,6 +214,11 @@ class ClassificationTest(unittest.TestCase):
             with self.subTest(p=p):
                 self.assertTrue(pg.is_allowed(p))
         for p in denied:
+            with self.subTest(p=p):
+                self.assertFalse(pg.is_allowed(p))
+
+    def test_claude_md_never_allowed(self):
+        for p in ['docs/CLAUDE.md', 'docs/features/x/CLAUDE.md', 'CLAUDE.md']:
             with self.subTest(p=p):
                 self.assertFalse(pg.is_allowed(p))
 
@@ -283,6 +303,15 @@ class OrchestratorRunningTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             open(os.path.join(d, 'orchestrator.lock'), 'w').close()
             self.assertFalse(pg.orchestrator_running(d))
+
+    def test_unreadable_lock_file_counts_as_running(self):
+        if os.geteuid() == 0:
+            self.skipTest('root ignores file modes')
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'orchestrator.lock')
+            open(path, 'w').close()
+            os.chmod(path, 0)
+            self.assertTrue(pg.orchestrator_running(d))
 
     def test_held(self):
         with tempfile.TemporaryDirectory() as d:

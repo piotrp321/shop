@@ -164,14 +164,17 @@ def owner(data, directory):
 
 def claim_to_owner(state_dir, directory, claim, now):
     data = read_claims(state_dir)
-    data['claims'] = [c for c in data['claims'] if c['dir'] != directory]
     token = claim or secrets.token_hex(8)
+    data['claims'] = [c for c in data['claims']
+                      if c['dir'] != directory or (c['claim'] != token and _is_valid(c, now))]
     data['owners'][directory] = token
     _write_claims(state_dir, data)
     return token
 
 
 def is_allowed(path):
+    if is_claude_md(path):
+        return False
     return path in GENERATED or path == 'docs' or path.startswith('docs/') or path == 'README.md'
 
 
@@ -247,8 +250,10 @@ def orchestrator_running(ao_home):
     path = os.path.join(os.path.expanduser(ao_home), 'orchestrator.lock')
     try:
         fd = os.open(path, os.O_RDONLY)
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return False
+    except OSError:
+        return True
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
