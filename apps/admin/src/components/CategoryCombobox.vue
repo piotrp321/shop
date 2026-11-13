@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Check, ChevronDown, X } from "lucide-vue-next";
 import { ComboboxInput } from "reka-ui";
-import { computed, ref, useId } from "vue";
+import { computed, nextTick, ref, useId } from "vue";
 import { Badge } from "@/components/ui/badge";
 import {
   Combobox,
@@ -93,16 +93,26 @@ function onUpdate(value: unknown) {
   emit("update:modelValue", value as string | string[] | null);
 }
 
-function remove(id: string) {
-  emit(
-    "update:modelValue",
-    selectedIds.value.filter((selected) => selected !== id),
-  );
+const root = ref<HTMLElement | null>(null);
+
+// The removed chip takes the focus with it: it goes to the removal button of the next chip, the previous one when
+// the last chip was removed, and to the input when none is left.
+async function remove(id: string) {
+  const index = selectedIds.value.indexOf(id);
+  const remaining = selectedIds.value.filter((selected) => selected !== id);
+  emit("update:modelValue", remaining);
+  const neighbour = remaining[index] ?? remaining[index - 1];
+  await nextTick();
+  const button = neighbour === undefined ? null : [...(root.value?.querySelectorAll<HTMLElement>("[data-chip-remove]") ?? [])].find((element) => element.dataset.chipRemove === neighbour);
+  (button ?? root.value?.querySelector<HTMLElement>(`[id='${inputId}']`))?.focus();
 }
 </script>
 
 <template>
-  <div class="flex flex-col gap-1.5">
+  <div
+    ref="root"
+    class="flex flex-col gap-1.5"
+  >
     <Label
       :for="inputId"
       :class="hideLabel ? 'sr-only' : undefined"
@@ -138,6 +148,7 @@ function remove(id: string) {
               type="button"
               class="inline-flex size-6 items-center justify-center rounded-sm hover:bg-separator disabled:pointer-events-none"
               :aria-label="`Usuń: ${nameById.get(selectedId) ?? selectedId}`"
+              :data-chip-remove="selectedId"
               :disabled="disabled"
               @click="remove(selectedId)"
             >

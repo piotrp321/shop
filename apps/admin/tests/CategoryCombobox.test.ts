@@ -1,5 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
+import { defineComponent, h, ref } from "vue";
 import CategoryCombobox from "@/components/CategoryCombobox.vue";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 
@@ -108,7 +109,7 @@ describe("CategoryCombobox", () => {
     expect(optionNames()).toEqual(["Turystyka › Biwak › Namioty"]);
   });
 
-  it("filters by the path, ignoring case and Polish letters", async () => {
+  it("filters by the path, ignoring case and matching Polish letters as typed", async () => {
     mountCombobox();
     await open();
     await type("BIWAK");
@@ -183,5 +184,51 @@ describe("CategoryCombobox", () => {
 
     expect(options()).toEqual([]);
     expect(document.body.textContent).toContain("Brak pasujących kategorii.");
+  });
+});
+
+describe("CategoryCombobox focus after a removal", () => {
+  // A parent that owns the value, so that the removed chip really leaves the DOM.
+  function mountWithParent(initial: string[]) {
+    const Parent = defineComponent({
+      setup() {
+        const value = ref<string[]>(initial);
+        return () => h(CategoryCombobox, { nodes, label: "Kategoria", multiple: true, modelValue: value.value, "onUpdate:modelValue": (next: unknown) => (value.value = next as string[]) });
+      },
+    });
+    wrapper = mount(Parent, { attachTo: document.body });
+    return wrapper;
+  }
+
+  const removal = (name: string) => document.body.querySelector<HTMLButtonElement>(`button[aria-label='Usuń: ${name}']`)!;
+
+  async function remove(name: string) {
+    removal(name).focus();
+    removal(name).click();
+    await flushPromises();
+  }
+
+  it("moves the focus to the removal button of the next chip", async () => {
+    mountWithParent(["c-tents", "c-running", "c-sport"]);
+    await flushPromises();
+    await remove("Namioty");
+
+    expect(document.activeElement).toBe(removal("Bieganie"));
+  });
+
+  it("moves the focus to the previous chip when the last one is removed", async () => {
+    mountWithParent(["c-tents", "c-running", "c-sport"]);
+    await flushPromises();
+    await remove("Sport");
+
+    expect(document.activeElement).toBe(removal("Bieganie"));
+  });
+
+  it("moves the focus to the input when the only chip is removed", async () => {
+    mountWithParent(["c-tents"]);
+    await flushPromises();
+    await remove("Namioty");
+
+    expect(document.activeElement).toBe(input());
   });
 });
