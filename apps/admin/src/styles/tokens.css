@@ -101,10 +101,12 @@
   --interface: var(--palette-blue);
   --interface-hover: var(--palette-blue-deep);
   --interface-soft: var(--palette-blue-soft);
+  --interface-foreground: var(--palette-white);
   --primary: var(--palette-orange);
   --primary-hover: var(--palette-orange-deep);
   --primary-foreground: var(--palette-carbon);
   --destructive: var(--palette-red);
+  --destructive-foreground: var(--palette-white);
   --sidebar: var(--palette-graphite);
   --sidebar-accent: var(--palette-graphite-soft);
   --sidebar-foreground: var(--palette-fog);
@@ -169,10 +171,12 @@
   --color-interface: var(--interface);
   --color-interface-hover: var(--interface-hover);
   --color-interface-soft: var(--interface-soft);
+  --color-interface-foreground: var(--interface-foreground);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-foreground: var(--sidebar-foreground);

@@ -58,15 +58,15 @@ const PAIRS: Pair[] = [
   // Interface blue: links, the selected page, the action button.
   pair("interface", "card", TEXT),
   pair("interface", "background", TEXT),
-  pair("card", "interface", TEXT),
+  pair("interface-foreground", "interface", TEXT),
   pair("interface-hover", "card", TEXT),
-  pair("card", "interface-hover", TEXT),
+  pair("interface-foreground", "interface-hover", TEXT),
   pair("interface", "interface-soft", TEXT),
   pair("interface-hover", "interface-soft", TEXT),
   // The main button and the destructive one.
   pair("primary-foreground", "primary", TEXT),
   pair("primary-foreground", "primary-hover", TEXT),
-  pair("card", "destructive", TEXT),
+  pair("destructive-foreground", "destructive", TEXT),
   pair("destructive", "card", TEXT),
   pair("destructive", "background", TEXT),
   // The sidebar.
@@ -83,10 +83,11 @@ const PAIRS: Pair[] = [
   pair("status-neutral", "status-neutral-soft", TEXT),
   // Borders of fields, selects and checkboxes (WCAG 1.4.11) and the focus rings.
   pair("input-border", "card", GRAPHIC),
-  pair("interface", "card", GRAPHIC),
-  pair("interface", "background", GRAPHIC),
-  pair("primary", "sidebar", GRAPHIC),
-  pair("primary", "sidebar-accent", GRAPHIC),
+  pair("focus-ring", "card", GRAPHIC),
+  pair("focus-ring", "background", GRAPHIC),
+  pair("focus-ring", "table-head", GRAPHIC),
+  pair("focus-ring-dark", "sidebar", GRAPHIC),
+  pair("focus-ring-dark", "sidebar-accent", GRAPHIC),
   // The icons of the KPI tiles and the dots of their footers.
   ...["blue", "violet", "green", "teal", "amber"].flatMap((name) => [
     pair(`kpi-${name}`, `kpi-${name}-soft`, GRAPHIC),
