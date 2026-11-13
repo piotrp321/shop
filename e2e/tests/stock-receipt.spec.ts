@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
+import { openMenuItem } from "../support/panel-menu";
 import { loginStaff } from "../support/staff-login";
 
 // A change of the availability level purges the product in Varnish and revalidates its page in the store (no waiting
@@ -41,7 +42,7 @@ test("a stock receipt for a variant in the panel makes the product available on 
   await expectProductPageAvailability(page, "Niedostępny");
 
   await loginStaff(page, staff.warehouse);
-  await page.getByRole("link", { name: "Stany magazynowe" }).click();
+  await openMenuItem(page, "Stany magazynowe", "Katalog");
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(PRODUCT_NAME);
   // The unfiltered first page has many products: the product name as the only one (a name is shown on the first row of
   // each product, its variants follow) means the (debounced) search has been applied. Changing the stock earlier would let a late search

@@ -1,5 +1,6 @@
 import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { staff } from "./accounts";
+import { openMenuItem } from "./panel-menu";
 import { loginStaff } from "./staff-login";
 
 /**
@@ -23,8 +24,7 @@ export async function openPanelAs(browser: Browser, account: (typeof staff)[keyo
 
 /** The list of orders, reached from the menu of the panel (the page the staff member is on has the menu). */
 export async function openOrderList(page: Page): Promise<void> {
-  // The accessible name of a menu link starts with its icon, so the name is not matched exactly.
-  await page.getByRole("navigation", { name: "Menu główne" }).getByRole("link", { name: "Zamówienia" }).click();
+  await openMenuItem(page, "Lista zamówień", "Zamówienia");
   await expect(page.getByRole("heading", { level: 1, name: "Zamówienia" })).toBeVisible();
 }
 

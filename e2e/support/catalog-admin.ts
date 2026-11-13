@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { openMenuItem } from "./panel-menu";
 
 /** A product the tests create in the panel; the name and slug are unique per run, so a rerun never meets an earlier product. */
 export type NewProduct = {
@@ -100,7 +101,7 @@ async function chooseCategory(page: Page, category: string): Promise<void> {
  * panel shows the saved draft, whose address carries the product id (returned).
  */
 export async function createDraftInPanel(page: Page, product: NewProduct): Promise<string> {
-  await page.getByRole("link", { name: "Produkty" }).click();
+  await openMenuItem(page, "Lista produktów", "Katalog", "Produkty");
   await page.getByTestId("add-product").click();
   await expect(page.getByRole("heading", { level: 1, name: "Nowy produkt" })).toBeVisible();
 
@@ -144,7 +145,7 @@ export async function unpublishInPanel(page: Page): Promise<void> {
  * Resolves when the panel shows the received quantity as the physical stock.
  */
 export async function receiveStockInPanel(page: Page, productName: string, variantLabel: string, quantity: number): Promise<void> {
-  await page.getByRole("link", { name: "Stany magazynowe" }).click();
+  await openMenuItem(page, "Stany magazynowe", "Katalog");
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(productName);
   // A name shows on the first row of each product: the product as the only name means the (debounced) search is applied.
   await expect(page.getByTestId("name"), "the search narrows the list to the product").toHaveText([productName]);

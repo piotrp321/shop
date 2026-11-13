@@ -1,7 +1,9 @@
+import { createPinia, setActivePinia } from "pinia";
 import { createMemoryHistory } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clearLoginProblem, loginProblem } from "@/auth/loginProblem";
 import { createAppRouter } from "@/router";
+import { useAuthStore } from "@/stores/auth";
 
 function setup(user: { expired: boolean } | null) {
   const userManager = {
@@ -83,6 +85,9 @@ describe("router guard", () => {
 
   it("serves the order list at /orders to a signed-in user", async () => {
     const { router, userManager } = setup({ expired: false });
+    // The routes of the orders are guarded by the role of the staff member (tests/routerOrders.test.ts).
+    setActivePinia(createPinia());
+    useAuthStore().staff = { id: "u1", username: "anna", roles: ["support"] };
 
     await router.push("/orders");
 
@@ -93,6 +98,9 @@ describe("router guard", () => {
 
   it("serves the order detail at /orders/:orderId with the id as a parameter", async () => {
     const { router, userManager } = setup({ expired: false });
+    // The routes of the orders are guarded by the role of the staff member (tests/routerOrders.test.ts).
+    setActivePinia(createPinia());
+    useAuthStore().staff = { id: "u1", username: "anna", roles: ["support"] };
 
     await router.push("/orders/0192f0c4-0000-7000-8000-000000000001");
 

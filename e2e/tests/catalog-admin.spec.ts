@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { createDraftInPanel, newProduct, publishInPanel, receiveStockInPanel, solidPng, unpublishInPanel } from "../support/catalog-admin";
+import { openMenuItem } from "../support/panel-menu";
 import { changePriceInPanel, formatPln, normalize } from "../support/price-change";
 import { loginStaff, waitForBearerToken } from "../support/staff-login";
 import { urls } from "../support/urls";
@@ -152,7 +153,7 @@ test("the upload of an image refuses a file over upload_max_filesize and a reque
 
 test("support sees the list of products and a read-only form", async ({ page }) => {
   await loginStaff(page, staff.support);
-  await page.getByRole("link", { name: "Produkty" }).click();
+  await openMenuItem(page, "Lista produktów", "Katalog", "Produkty");
   await expect(page.getByRole("heading", { level: 1, name: "Produkty" })).toBeVisible();
   await expect(page.getByTestId("product-row").first()).toBeVisible();
   await expect(page.getByTestId("add-product"), "support cannot add products").toHaveCount(0);

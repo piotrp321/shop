@@ -55,6 +55,39 @@ describe("DashboardView", () => {
     vi.useRealTimers();
   });
 
+  describe("message of a denied page", () => {
+    afterEach(() => window.history.replaceState(null, ""));
+
+    it("shows „Nie masz dostępu do tej strony.” as an alert when the route guard sent the staff member here", async () => {
+      window.history.replaceState({ denied: true }, "");
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      const alert = wrapper.get("[data-testid=access-denied]");
+      expect(alert.attributes("role")).toBe("alert");
+      expect(alert.text()).toBe("Nie masz dostępu do tej strony.");
+    });
+
+    it("does not show it again after a reload, which keeps history.state", async () => {
+      window.history.replaceState({ denied: true }, "");
+      respondWith(dashboard());
+      wrapper = await mountView();
+      wrapper.unmount();
+
+      wrapper = await mountView();
+
+      expect(wrapper.find("[data-testid=access-denied]").exists()).toBe(false);
+    });
+
+    it("does not show it on a dashboard opened directly", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      expect(wrapper.find("[data-testid=access-denied]").exists()).toBe(false);
+      expect(wrapper.text()).not.toContain("Nie masz dostępu do tej strony.");
+    });
+  });
+
   it("shows the catalog numbers from the API", async () => {
     respondWith(dashboard());
     wrapper = await mountView();

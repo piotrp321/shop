@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { gridTiles } from "../support/listing";
+import { openMenuItem } from "../support/panel-menu";
 import { formatPln, normalize } from "../support/price-change";
 import { endActivePromotionsOf, offerOf, PanelToken, promotionDetails, warsawLocal } from "../support/promotions";
 import { loginStaff, waitForBearerToken } from "../support/staff-login";
@@ -63,7 +64,7 @@ test("a promotion created in the panel shows on the product page and on the list
       .toBe(false);
 
     // The marketing staff member plans a promotion from now on the whole product.
-    await page.getByRole("link", { name: "Promocje" }).click();
+    await openMenuItem(page, "Promocje");
     await page.getByTestId("add-promotion").click();
     await page.getByTestId("name-input").fill(PROMOTION_NAME);
     await page.getByTestId("percent-input").fill("20");

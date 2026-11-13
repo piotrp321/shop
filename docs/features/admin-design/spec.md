@@ -281,8 +281,12 @@ zostaje w composable listy i dopiero zastosowana fraza trafia do adresu.
 - **Stare listy do czasu ADMIN-SCREENS**: listy zamówień, promocji i kodów zostają na PrimeVue, ale czytają z adresu
   filtry, do których prowadzą menu i pulpit: zamówienia `status` i `refund=pending`, promocje i kody `status`. Przy
   wejściu i przy zmianie `route.query` przy zamontowanym widoku ustawiają filtr i wracają na pierwszą stronę;
-  nieznana wartość jest pomijana. Nie zapisują filtrów do adresu ani nie zmieniają innego zachowania. ADMIN-SCREENS
-  zastępuje to `useListUrlState`.
+  nieznana wartość jest pomijana. Nie zapisują filtrów do adresu ani nie zmieniają innego zachowania. Ponieważ adres
+  nie śledzi filtrów ustawionych w liście, pozycja menu, której cel jest równy bieżącej lokalizacji (np. „Zwroty do
+  wykonania” po wyłączeniu przełącznika w liście), nawiguje ponownie na ten adres (`force`, `replace`: bez nowego
+  wpisu historii), a lista bierze filtry z adresu; klik z Ctrl, Cmd, Shift, Alt albo środkowym przyciskiem zostaje
+  przeglądarce (nowa karta) i nie zamyka szuflady. Lista rozpoznaje „swój” widok po nazwie trasy, nie po ścieżce.
+  ADMIN-SCREENS zastępuje to `useListUrlState`.
 - **Rozmiar strony**: 10, 25 albo 50 (`perPage` istniejące w API, maksimum 100). Domyślnie 25; na Cenach i Stanach
   domyślnie 10, bo tam strona liczy produkty, a każdy ma wiersz na wariant. Zmiana rozmiaru wraca na pierwszą stronę.
   Wybór wariantów w formularzu promocji (`PromotionVariantPicker`, też na `usePriceList`) zostaje przy 25 produktach

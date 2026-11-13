@@ -15,6 +15,8 @@ import SheetOverlay from "./SheetOverlay.vue"
 interface SheetContentProps extends DialogContentProps {
   class?: HTMLAttributes["class"]
   side?: "top" | "right" | "bottom" | "left"
+  /** Classes of the close button, for a surface where the default colours do not read (the graphite sidebar). */
+  closeClass?: HTMLAttributes["class"]
 }
 
 defineOptions({
@@ -24,10 +26,11 @@ defineOptions({
 const props = withDefaults(defineProps<SheetContentProps>(), {
   class: undefined,
   side: "right",
+  closeClass: undefined,
 })
 const emits = defineEmits<DialogContentEmits>()
 
-const delegatedProps = reactiveOmit(props, "class", "side")
+const delegatedProps = reactiveOmit(props, "class", "side", "closeClass")
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
@@ -53,7 +56,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       <slot />
 
       <DialogClose
-        class="absolute top-4 right-4 rounded-sm text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none"
+        :class="cn('absolute top-4 right-4 rounded-sm text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none', closeClass)"
       >
         <X
           class="size-4"

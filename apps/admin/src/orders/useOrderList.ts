@@ -1,7 +1,8 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { type LocationQuery, useRoute } from "vue-router";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
-import type { OrderStatus } from "./format";
+import { type OrderStatus, STATUS_OPTIONS } from "./format";
 
 export type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
 
@@ -17,6 +18,15 @@ interface OrderQuery {
   refund?: "pending";
   q?: string;
   after?: string;
+}
+
+/**
+ * The filters of an address: `status` (a known status) and `refund=pending`. An unknown, empty or repeated value is
+ * skipped, so the list is the same as without it.
+ */
+function filtersOf(query: LocationQuery): { status: OrderStatus | null; refundPending: boolean } {
+  const status = STATUS_OPTIONS.find((option) => option.value === query.status)?.value ?? null;
+  return { status, refundPending: query.refund === "pending" };
 }
 
 function failureMessage(status: number): string {
@@ -37,10 +47,18 @@ function failureMessage(status: number): string {
  * below the current one. Changing a filter or the search starts again from the first page, because a cursor belongs to
  * the filters and the sort it came from. A failed request keeps the page that is shown and can be retried; a 403 is
  * reported as such (`forbidden`), a retry would not help. The panel computes nothing: it shows what the API sent.
+ *
+ * The status and the refund switch are also read from the address (`?status=paid`, `?refund=pending`: the menu and the
+ * dashboard link to them): on entering and whenever the query changes while the list is open (the menu item „Zwroty do
+ * wykonania” on `/orders`). Such a change sets both filters from the address and starts from the first page; the
+ * search stays. Changes of the filters made in the list are not written to the address (ADMIN-SCREENS).
  */
 export function useOrderList() {
-  const status = ref<OrderStatus | null>(null);
-  const refundPending = ref(false);
+  const route = useRoute();
+  const routeName = route.name;
+  const initial = filtersOf(route.query);
+  const status = ref<OrderStatus | null>(initial.status);
+  const refundPending = ref(initial.refundPending);
   // What the staff member typed; it reaches the list only through `submitSearch`.
   const search = ref("");
   const appliedSearch = ref<string | null>(null);
@@ -153,6 +171,20 @@ export function useOrderList() {
   function retry(): Promise<void> {
     return load(attempted);
   }
+
+  // A change of the query that leaves the page (the route is already the next one while this view is still mounted)
+  // must not ask for a list nobody will see.
+  watch(
+    () => filtersOf(route.query),
+    (filters) => {
+      if (route.name !== routeName || (filters.status === status.value && filters.refundPending === refundPending.value)) {
+        return;
+      }
+      status.value = filters.status;
+      refundPending.value = filters.refundPending;
+      void startFromFirstPage();
+    },
+  );
 
   onMounted(() => {
     void load([null]);

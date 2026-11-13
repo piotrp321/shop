@@ -1,50 +1,73 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { RouterLink } from "vue-router";
-import { type StaffMe, useAuthStore } from "@/stores/auth";
+import { computed, provide, reactive, useId, watch } from "vue";
+import { useRoute } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
+import AppMenuItem from "./AppMenuItem.vue";
+import { currentLeaf, menuFor } from "./menu";
+import { MENU_CONTEXT } from "./menuContext";
 
-type Role = StaffMe["roles"][number];
+const emit = defineEmits<{ navigate: [] }>();
 
-interface MenuItem {
-  label: string;
-  icon: string;
-  to: { name: string };
-  /** The roles that see the item; without it everyone does. Only hides the link: the API checks the access. */
-  roles?: Role[];
-}
-
-const allItems: MenuItem[] = [
-  { label: "Dashboard", icon: "pi pi-home", to: { name: "dashboard" } },
-  { label: "Produkty", icon: "pi pi-shopping-bag", to: { name: "products" } },
-  { label: "Ceny", icon: "pi pi-tag", to: { name: "prices" } },
-  { label: "Promocje", icon: "pi pi-percentage", to: { name: "promotions" } },
-  { label: "Kody rabatowe", icon: "pi pi-ticket", to: { name: "discount-codes" } },
-  { label: "Stany magazynowe", icon: "pi pi-box", to: { name: "inventory" } },
-  { label: "Zamówienia", icon: "pi pi-shopping-cart", to: { name: "orders" }, roles: ["admin", "support", "warehouse"] },
-];
+const auth = useAuthStore();
+const route = useRoute();
+const instance = useId();
 
 // The roles come from /api/v1/admin/me; until they are known the items that need a role stay hidden.
-const auth = useAuthStore();
-const items = computed(() =>
-  allItems.filter((item) => item.roles === undefined || (auth.staff?.roles.some((role) => item.roles?.includes(role)) ?? false)),
+const sections = computed(() => menuFor(auth.staff));
+const current = computed(() => currentLeaf(sections.value, route));
+
+// The groups the staff member opened or the route led into. A group opens when the current item is inside it (on
+// entering and on every move), and closes only by its button.
+const open = reactive(new Set<string>());
+watch(
+  current,
+  (found) => {
+    for (const group of found?.groups ?? []) {
+      open.add(group);
+    }
+  },
+  { immediate: true },
 );
+
+provide(MENU_CONTEXT, {
+  currentId: computed(() => current.value?.leaf.id ?? null),
+  isOpen: (groupId) => open.has(groupId),
+  regionId: (groupId) => `${instance}-group-${groupId}`,
+  toggle: (groupId) => {
+    if (open.has(groupId)) {
+      open.delete(groupId);
+    } else {
+      open.add(groupId);
+    }
+  },
+  chosen: () => emit("navigate"),
+});
 </script>
 
 <template>
-  <!-- PrimeVue variables keep today's look until the shell of ADMIN-DESIGN moves the menu onto the tokens. -->
   <nav
-    class="flex flex-col gap-1 px-3 py-4"
+    class="flex flex-col gap-5 px-3 py-4"
     aria-label="Menu główne"
   >
-    <RouterLink
-      v-for="item in items"
-      :key="item.label"
-      :to="item.to"
-      class="flex items-center gap-3 rounded-(--p-content-border-radius) px-3 py-2.5 text-(color:--p-text-color) no-underline hover:bg-(color:--p-content-hover-background)"
-      active-class="menu-item--active bg-(color:--p-highlight-background)! text-(color:--p-highlight-color)!"
+    <div
+      v-for="section in sections"
+      :key="section.id"
+      class="flex flex-col gap-1"
     >
-      <i :class="item.icon" />
-      <span>{{ item.label }}</span>
-    </RouterLink>
+      <p
+        data-testid="menu-section"
+        class="px-3 pb-1 text-xs font-bold tracking-widest text-sidebar-section uppercase"
+      >
+        {{ section.title }}
+      </p>
+      <ul class="flex flex-col gap-1">
+        <AppMenuItem
+          v-for="entry in section.entries"
+          :key="entry.id"
+          :entry="entry"
+          :depth="0"
+        />
+      </ul>
+    </div>
   </nav>
 </template>
