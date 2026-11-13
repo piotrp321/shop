@@ -60,9 +60,9 @@ origin/main plus docs/features/<dir> plus, with a branch, `git diff --name-only 
 Without --dir the candidates are the prepared, unreserved board epics in board order; with --dir only that epic
 (off the board, merged, in progress or not prepared: `epic` null with the reason). Steps against the epics in progress
 other than the candidate: none -> pass; two active -> wait; dependency on an open epic -> skip; no readable scope:
-candidate -> skip, epic in progress -> wait; a common path that is not allowed (parallel_gate.is_allowed) -> skip with
+candidate -> skip, epic in progress (also without spec.md on origin/main) -> wait; a common path that is not allowed (parallel_gate.is_allowed) -> skip with
 the blocking paths of all epics in progress; free Docker memory below one stack (--stack-gib, default 6) -> wait;
-usage status not `ok`, no estimate, or a window resetting after the candidate's estimated end above 80% with the full
+usage status not `ok`, no estimate, an active epic without a readable plan.md on origin/main, or a window resetting after the candidate's estimated end above 80% with the full
 estimates of the active epics and the candidate -> wait. A skip moves to the next candidate (with --dir it stops); a
 wait stops. Prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null, "reason", "reserved": false,
 "claim": null, "resumed": false, "parallel_with": [dirs], "active": [dirs], "in_progress": [{dir, id, issue}],
@@ -650,7 +650,14 @@ class GateContext:
         self.run, self.now, self.board, self.measured = run, now, board, measured
         self.in_progress, self.merged_open = in_progress, merged_open
         self.docker = None
-        self._files, self._tasks, self._fetched = {}, {}, False
+        self._files, self._tasks, self._fetched, self._on_main = {}, {}, False, None
+
+    def on_main(self, directory, name):
+        """Whether origin/main has docs/features/<directory>/<name> (one `git ls-tree` per call of the gate)."""
+        if self._on_main is None:
+            listing = self.run(['git', 'ls-tree', '-r', '--name-only', 'origin/main', 'docs/features/'])
+            self._on_main = {line.strip() for line in listing.splitlines()}
+        return 'docs/features/%s/%s' % (directory, name) in self._on_main
 
     def others(self, directory):
         """Epics in progress other than `directory` (a candidate is never compared with itself or its claim)."""
@@ -665,6 +672,8 @@ class GateContext:
         """Scope of the spec on origin/main plus, for a branch epic, its diff against origin/main (ScopeError)."""
         if directory not in self._files:
             try:
+                if not self.on_main(directory, 'spec.md'):
+                    raise ScopeError('brak spec.md na origin/main')
                 spec = self.run(['git', 'show', 'origin/main:docs/features/%s/spec.md' % directory])
                 paths = epic_scope(directory, parse_scope(spec))
                 if branch:
@@ -765,7 +774,14 @@ def check_usage(ctx, forecast, active, usage_now):
     if forecast['minutes'] is None:
         return 'brak pomiaru'
     end = ctx.now + timedelta(minutes=forecast['minutes'])
-    loads = [estimate(ctx.measured, ctx.tasks(p['dir']))['usage'] for p in active]
+    loads = []
+    for p in active:
+        if not ctx.on_main(p['dir'], 'plan.md'):
+            return '%s bez planu na main' % p['id']
+        try:
+            loads.append(estimate(ctx.measured, ctx.tasks(p['dir']))['usage'])
+        except StateError as error:
+            return str(error)
     for w in usage_now['windows']:
         label = w['label']
         if parse_time(w['resetsAt']) <= end:

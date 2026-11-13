@@ -1514,6 +1514,17 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual('A w toku bez zakresu: brak linii Zakres', result['reason'])
         self.assertEqual([], result['skipped'])
 
+    def test_epic_in_progress_without_spec_on_main_waits(self):
+        result = self.result([epic(1, 'A', 'apps/a', tasks=None), epic(2, 'B', 'apps/b')], branches=['a'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('A w toku bez zakresu: brak spec.md na origin/main', result['reason'])
+        self.assertEqual([], self.commands('git', 'show', 'origin/main:docs/features/a/spec.md'))
+
+    def test_claim_without_spec_on_main_waits(self):
+        self.claims('zzz')
+        result = self.result([epic(2, 'B', 'apps/b')])
+        self.assertEqual('ZZZ w toku bez zakresu: brak spec.md na origin/main', result['reason'])
+
     # Step 5: files
 
     def test_common_generated_files_and_docs_pass(self):
@@ -1661,6 +1672,42 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual('b', self.result(self.ab(), branches=['a'], stdin_text=json.dumps(usage(70)))['epic']['dir'])
         self.assertEqual('okno Weekly · all models: 71.0% + 6.0% + 4.0% > 80%',
                          self.reason(self.ab(), branches=['a'], stdin_text=json.dumps(usage(71))))
+
+    def test_active_epic_without_plan_on_main_waits(self):
+        self.events(*self.old_measurement())
+        # origin/main has the spec of A but no plan.md.
+        original = GateRunner.__call__
+
+        def without_plan(runner, args):
+            out_ = original(runner, args)
+            return out_.replace('docs/features/a/plan.md\n', '') if args[:2] == ['git', 'ls-tree'] else out_
+
+        with mock.patch.object(GateRunner, '__call__', without_plan):
+            self.assertEqual('A bez planu na main', self.reason(self.ab(), branches=['a']))
+
+    def test_active_epic_with_unreadable_manifest_waits(self):
+        self.events(*self.old_measurement())
+        original = GateRunner.__call__
+
+        def broken_manifest(runner, args):
+            if args == ['git', 'show', 'origin/main:docs/features/a/plan.md']:
+                runner.calls.append(list(args))
+                return '# Plan without a manifest\n'
+            return original(runner, args)
+
+        with mock.patch.object(GateRunner, '__call__', broken_manifest):
+            self.assertEqual('brak jednego bloku json z manifestem w plan.md epiku a',
+                             self.reason(self.ab(), branches=['a']))
+
+    def test_window_missing_in_the_estimate_of_an_active_epic_waits(self):
+        # Rates are shared by all epics, so the case needs per-epic estimates: patched estimate by task count.
+        ctx = night_queue.GateContext(run=None, now=NOW, board=[], measured=[], in_progress=[], merged_open=[])
+        ctx._tasks, ctx._on_main = {'a': 3}, {'docs/features/a/plan.md'}
+        estimates = {3: {'minutes': 90.0, 'usage': {}}}
+        with mock.patch.object(night_queue, 'estimate', lambda measured, tasks: estimates[tasks]):
+            reason = night_queue.check_usage(ctx, {'minutes': 60.0, 'usage': {LABEL: 4.0}},
+                                             [{'dir': 'a', 'id': 'A'}], usage(10))
+        self.assertEqual('okno %s bez pomiaru' % LABEL, reason)
 
     def test_epic_after_done_adds_no_usage(self):
         self.events(*self.old_measurement(), self.start('a', NOW - timedelta(hours=1)),
