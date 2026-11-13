@@ -256,7 +256,7 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   dzisiejszy błąd wczytania pracownika (`staff-error`); dostęp i tak sprawdza API (403 widoku). `/prices` nie dostaje
   strażnika: API pozwala każdemu pracownikowi czytać ceny, a zmianę ceny ukrywa już widok (tylko `admin`).
 - **Toast**: jeden kontener `vue-sonner` (`Toaster`) w layoucie, komunikaty sukcesu po polsku, region
-  `aria-live="polite"` o nazwie „Powiadomienia”, znikają po 5 s. Błędy nie idą do toastu: zostają przy miejscu,
+  `aria-live="polite"` o nazwie „Powiadomienia”, znikają po 5 s i zostają, dopóki kursor jest nad nimi. Błędy nie idą do toastu: zostają przy miejscu,
   którego dotyczą (`role="alert"`).
 - **Ekrany poza layoutem**: problem z logowaniem (`App.vue`) i powrót z logowania (`AuthCallbackView`) dostają wygląd
   karty na tle aplikacji ze znakiem Worf, komunikatem i przyciskiem „Zaloguj ponownie”. Strona logowania Keycloaka
@@ -326,7 +326,8 @@ zostaje w composable listy i dopiero zastosowana fraza trafia do adresu.
   Pager jest wtedy ukryty. Teksty „brak danych” standardu (produkty już je mają, pozostałe listy dostaną je w
   ADMIN-SCREENS): produkty „Nie ma jeszcze produktów.”, ceny i stany „Nie ma jeszcze produktów z wariantami.”,
   promocje „Nie ma jeszcze promocji.”, kody „Nie ma jeszcze kodów rabatowych.”, zamówienia „Nie ma jeszcze zamówień.”
-  (przy filtrach zamówienia mówią „Nie znaleziono zamówień.” zamiast wspólnego tekstu). Strona po pierwszej, na którą
+  (lista zamówień do ADMIN-SCREENS mówi jeszcze „Brak zamówień.” i przy filtrach „Nie znaleziono zamówień.”; te teksty
+  zastąpią tekst standardu i wspólne „Brak wyników dla wybranych filtrów.”). Strona po pierwszej, na którą
   API odpowie bez wierszy (lista zmieniła się od poprzedniej strony), zostawia pager z „Poprzednia strona”, a pusty
   stan mówi „Na tej stronie nie ma już wyników.”.
 - **Błąd**: komunikat `role="alert"` z „Spróbuj ponownie” (403 bez ponowienia). Zależnie od żądania:
