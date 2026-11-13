@@ -86,7 +86,7 @@ defineExpose({ focusMenuButton: () => (menuButton.value?.$el as HTMLElement | un
       <p
         :id="HINT_ID"
         role="status"
-        :class="hinted ? 'absolute top-full left-0 z-10 mt-1 rounded-md border bg-card px-3 py-1.5 text-xs font-semibold text-status-danger shadow-md' : 'sr-only'"
+        :class="hinted ? 'absolute top-full left-0 z-10 mt-1 w-max max-w-[calc(100vw-2rem)] rounded-md border bg-card px-3 py-1.5 text-xs font-semibold text-status-danger shadow-md' : 'sr-only'"
       >
         {{ hinted ? HINT : "" }}
       </p>
