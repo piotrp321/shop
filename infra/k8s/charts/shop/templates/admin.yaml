@@ -8,6 +8,9 @@ env:
     value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
   - name: VITE_ADMIN_URL
     value: {{ include "shop.url" (dict "root" . "sub" "admin") | quote }}
+  # The link "Sklep" of the topbar: the same address as STORE_URL of the store.
+  - name: VITE_STORE_URL
+    value: {{ include "shop.url" (dict "root" . "sub" "") | quote }}
 ports:
   - name: http
     containerPort: 8080

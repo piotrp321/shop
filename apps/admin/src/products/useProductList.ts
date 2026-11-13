@@ -1,6 +1,9 @@
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onUnmounted, type Ref, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import type { CategoryTreeNode } from "@/composables/useCategoryTree";
+import { type PageRequest, type PageResult, useCursorPager } from "@/composables/useCursorPager";
+import { type ListParam, useListUrlState } from "@/composables/useListUrlState";
 
 export type ProductListItem = components["schemas"]["ProductListItemResponse"];
 export type ProductStatus = ProductListItem["status"];
@@ -10,19 +13,43 @@ export const MIN_SEARCH_LENGTH = 2;
 export const MAX_SEARCH_LENGTH = 100;
 export const SEARCH_DEBOUNCE_MS = 300;
 
+/** The page sizes of the list; 25 is the default of the API, so it is not sent. */
+export const PER_PAGE_OPTIONS = [10, 25, 50];
+export const DEFAULT_PER_PAGE = 25;
+
+export const FORBIDDEN_MESSAGE = "Nie masz dostępu do produktów.";
+export const EMPTY_MESSAGE = "Nie ma jeszcze produktów.";
+const TOO_SHORT_HINT = "Wpisz co najmniej 2 znaki, aby wyszukać.";
+const TOO_LONG_HINT = "Wpisz najwyżej 100 znaków, aby wyszukać.";
+
+/** The tree of the category filter, as `useCategoryTree` gives it: `loaded` is true when the attempt to load it is over. */
+export interface CategoryLookup {
+  nodes: Ref<CategoryTreeNode[]>;
+  loaded: Ref<boolean>;
+}
+
 interface ProductQuery {
   q?: string;
   category?: string;
   status?: ProductStatus;
   after?: string;
+  perPage?: number;
 }
 
 function characters(text: string): number {
   return [...text].length;
 }
 
+function validTerm(text: string): string | null {
+  const term = text.trim();
+  const length = characters(term);
+  return length >= MIN_SEARCH_LENGTH && length <= MAX_SEARCH_LENGTH ? term : null;
+}
+
 function failureMessage(status: number): string {
   switch (status) {
+    case 403:
+      return FORBIDDEN_MESSAGE;
     case 404:
       return "Wybrana kategoria już nie istnieje. Wybierz inną.";
     case 400:
@@ -32,158 +59,158 @@ function failureMessage(status: number): string {
   }
 }
 
-/**
- * The product list with a search by name (from two characters, after a pause in typing), a category filter, a status
- * filter (null: all) and paging with the cursors of the API. The panel keeps the stack of the cursors it has visited:
- * `cursors[i]` is the `after` of page i (null for the first), so "previous" is the cursor below the current one.
- * Changing the search or a filter starts again from the first page. A failed request keeps the page that is shown
- * and can be retried.
- */
-export function useProductList() {
-  const search = ref("");
-  const categoryId = ref<string | null>(null);
-  const status = ref<ProductStatus | null>(null);
-  const items = ref<ProductListItem[]>([]);
-  const next = ref<string | null>(null);
-  const cursors = ref<(string | null)[]>([null]);
-  const loading = ref(false);
-  const loaded = ref(false);
-  const error = ref<string | null>(null);
+function categoryIds(nodes: CategoryTreeNode[]): Set<string> {
+  const ids = new Set<string>();
+  const walk = (level: CategoryTreeNode[]) => {
+    for (const node of level) {
+      ids.add(node.key);
+      walk(node.children);
+    }
+  };
+  walk(nodes);
+  return ids;
+}
 
-  // The term the list was last asked for (null: all names); a pending debounce compares against it.
-  let appliedTerm: string | null = null;
-  let attempted: (string | null)[] = [null];
+/**
+ * The product list: a search by name (from two characters, after a pause in typing), a category filter (also its
+ * subcategories: the API does that), a status filter (null: all) and a page size (10, 25 or 50). The search, the filters
+ * and the page size live in the address (`useListUrlState`: read on entering and on a change from outside, written
+ * when changed; only the applied search goes there, not what is being typed) and the paging is `useCursorPager`
+ * (cursor stack, late answers, retry, what a failure leaves on the screen). What stays here is the request to the API,
+ * its messages and the search with its pause and length rules. `categories` is the tree of the filter: a category of
+ * the address that it does not have is skipped (the API would answer 404), and the list waits for it only when the address
+ * has a category. Without it a category is taken as it comes.
+ */
+export function useProductList(categories?: CategoryLookup) {
+  const known = computed(() => (categories ? categoryIds(categories.nodes.value) : null));
+
+  const url = useListUrlState({
+    q: { parse: validTerm, fallback: null } satisfies ListParam<string, null>,
+    category: {
+      parse: (raw) => raw,
+      fallback: null,
+      confirm: categories ? (id) => (categories.loaded.value ? (known.value?.has(id) ?? false) : undefined) : undefined,
+    } satisfies ListParam<string, null>,
+    status: {
+      parse: (raw) => (raw === "draft" || raw === "published" ? raw : null),
+      fallback: null,
+    } satisfies ListParam<ProductStatus, null>,
+    perPage: {
+      parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
+      fallback: DEFAULT_PER_PAGE,
+    } satisfies ListParam<number, number>,
+  });
+
+  // What is typed in the field; only a term that passes the rules, after the pause, reaches the query and the address.
+  const search = ref(url.address.value.q ?? "");
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // Only the newest request may change the state; an older one that finishes late is ignored.
-  let latest = 0;
 
   const searchTooShort = computed(() => {
     const length = characters(search.value.trim());
     return length > 0 && length < MIN_SEARCH_LENGTH;
   });
-  const hasPrevious = computed(() => cursors.value.length > 1);
-  const hasNext = computed(() => next.value !== null);
-  const pageNumber = computed(() => cursors.value.length);
+  const searchHint = computed(() => {
+    if (searchTooShort.value) {
+      return TOO_SHORT_HINT;
+    }
+    return characters(search.value.trim()) > MAX_SEARCH_LENGTH ? TOO_LONG_HINT : null;
+  });
 
-  async function load(stack: (string | null)[]): Promise<void> {
-    const request = ++latest;
-    attempted = stack;
-    loading.value = true;
-    const query: ProductQuery = {};
-    if (appliedTerm !== null) {
-      query.q = appliedTerm;
+  async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<ProductListItem>> {
+    const apiQuery: ProductQuery = {};
+    if (query.q !== null) {
+      apiQuery.q = query.q;
     }
-    if (categoryId.value !== null) {
-      query.category = categoryId.value;
+    if (query.category !== null) {
+      apiQuery.category = query.category;
     }
-    if (status.value !== null) {
-      query.status = status.value;
+    if (query.status !== null) {
+      apiQuery.status = query.status;
     }
-    const after = stack[stack.length - 1];
+    if (query.perPage !== DEFAULT_PER_PAGE) {
+      apiQuery.perPage = query.perPage;
+    }
     if (after) {
-      query.after = after;
+      apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/products", { params: { query } });
-      if (request !== latest) {
-        return;
-      }
+      const result = await getApiClient().GET("/api/v1/admin/products", { params: { query: apiQuery } });
       if (result.data) {
-        items.value = result.data.items;
-        next.value = result.data.next;
-        cursors.value = stack;
-        loaded.value = true;
-        error.value = null;
-      } else {
-        error.value = failureMessage(result.response.status);
+        return { items: result.data.items, next: result.data.next };
       }
+      return { error: failureMessage(result.response.status), forbidden: result.response.status === 403 };
     } catch {
-      if (request === latest) {
-        error.value = "Nie udało się pobrać produktów. Sprawdź połączenie z API.";
-      }
-    } finally {
-      if (request === latest) {
-        loading.value = false;
-      }
+      return { error: "Nie udało się pobrać produktów. Sprawdź połączenie z API." };
     }
   }
+
+  const pager = useCursorPager(fetchPage, url.query, { ready: url.ready });
 
   watch(search, () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
       const term = search.value.trim();
       const length = characters(term);
-      if (length > 0 && length < MIN_SEARCH_LENGTH) {
-        // Too short to ask: the list stays as it is and the hint says why.
+      if (length > 0 && (length < MIN_SEARCH_LENGTH || length > MAX_SEARCH_LENGTH)) {
+        // Not a search the API takes: the list stays as it is and the hint says why.
         return;
       }
-      const effective = length >= MIN_SEARCH_LENGTH ? term : null;
-      if (effective !== appliedTerm) {
-        appliedTerm = effective;
-        startFromFirstPage();
-        void load([null]);
-      }
+      url.set({ q: length === 0 ? null : term });
     }, SEARCH_DEBOUNCE_MS);
   });
 
-  // The cursors and `next` belong to the list of the old filter. Dropping them now means that if the request for the
-  // new filter fails, the pager cannot pair the new filter with an old cursor: it stays off until a retry succeeds.
-  function startFromFirstPage(): void {
-    cursors.value = [null];
-    next.value = null;
-  }
+  // The address changed from outside: it is the new truth, also for what is in the field.
+  watch(url.address, (address) => {
+    clearTimeout(timer);
+    search.value = address.q ?? "";
+  });
+
+  const filtered = computed(() => url.query.value.q !== null || url.query.value.category !== null || url.query.value.status !== null);
 
   function selectCategory(id: string | null): void {
-    if (id !== categoryId.value) {
-      categoryId.value = id;
-      startFromFirstPage();
-      void load([null]);
-    }
+    url.set({ category: id });
   }
 
   function selectStatus(value: ProductStatus | null): void {
-    if (value !== status.value) {
-      status.value = value;
-      startFromFirstPage();
-      void load([null]);
-    }
+    url.set({ status: value });
   }
 
-  function goNext(): Promise<void> {
-    return next.value === null ? Promise.resolve() : load([...cursors.value, next.value]);
+  function setPerPage(size: number): void {
+    url.set({ perPage: size });
   }
 
-  function goPrevious(): Promise<void> {
-    return hasPrevious.value ? load(cursors.value.slice(0, -1)) : Promise.resolve();
+  /** Drops the search, the filters and the page size: the address is `/products` again. */
+  function clearFilters(): void {
+    clearTimeout(timer);
+    search.value = "";
+    url.clear();
   }
-
-  function retry(): Promise<void> {
-    return load(attempted);
-  }
-
-  onMounted(() => {
-    void load([null]);
-  });
 
   onUnmounted(() => {
     clearTimeout(timer);
-    latest++;
   });
 
   return {
     search,
     searchTooShort,
-    items,
-    loading,
-    loaded,
-    error,
-    hasPrevious,
-    hasNext,
-    pageNumber,
+    searchHint,
+    query: url.query,
+    filtered,
+    items: pager.items,
+    loading: pager.loading,
+    loaded: pager.loaded,
+    error: pager.error,
+    forbidden: pager.forbidden,
+    hasPrevious: pager.hasPrevious,
+    hasNext: pager.hasNext,
+    pageNumber: pager.pageNumber,
+    range: pager.range,
     selectCategory,
     selectStatus,
-    goNext,
-    goPrevious,
-    retry,
+    setPerPage,
+    clearFilters,
+    goNext: pager.goNext,
+    goPrevious: pager.goPrevious,
+    retry: pager.retry,
   };
 }

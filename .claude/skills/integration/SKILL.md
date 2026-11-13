@@ -262,7 +262,13 @@ JSON i AO powtarza rundę. Dlatego:
    z poprzednim HEAD, a po syncu z dopiskiem „DELTA po syncu”, merge'ami i plikami `conflicts` z `delta.py sync`). Dalej: werdykt, sekcja
    `## Lista odbioru` (pozycje z kroku 6, wynik QA na stosie w jednym zdaniu, liczba znalezisk `Minor`), znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
    (komenda, kod wyjścia, koniec wyjścia; dla testów z CI: run, SHA i joby z `delta.py ci`), werdykt i uwagi architekta, wyniki UX (sekcja `## Wyniki UX`: ekrany i stany z obejrzanymi zrzutami, znaleziska, w `DELTA` poprzednie
-   znaleziska „naprawione”/„nadal”, uwagi, ścieżka `AGENT_DIR`, albo powód pominięcia), wyniki QA w dwóch grupach: **wykonane**
+   znaleziska „naprawione”/„nadal”, uwagi, ścieżka `AGENT_DIR` ze zrzutami, albo powód pominięcia), sekcja `## Weryfikacja zgłoszeń epiku`, gdy
+   specyfikacja epiku ma sekcję „Zgłoszenia zamykane przez epik”: tabela (zgłoszenie, test, wynik), wiersz na zgłoszenie z jego
+   kolumny „Weryfikacja”; test to plik i nazwa z numerem zgłoszenia (`grep -rn "#<nr>" apps e2e/tests`; brak testu to wynik
+   „nie przechodzi”), a wynik to `przechodzi`, `nie przechodzi` z dowodem albo `niesprawdzone` z powodem. Wiersze dotyczące
+   interfejsu bierzesz z tabeli agenta UX, pozostałe z bramek `make test` i `make e2e` (test z numerem jest w uruchomionym
+   zestawie, a bramka przeszła). Zgłoszenie bez pozytywnego wyniku wypisz w werdykcie: nie zostaje w `Closes` końcowego
+   PR (właściciel sprawdza tę tabelę przed merge'em), wyniki QA w dwóch grupach: **wykonane**
    przeciw stosowi (scenariusz, komenda lub skrypt, wynik) i **propozycje testu** (kod w blokach), a gdy QA
    pracował statycznie, to zdanie z powodem, niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport
    jest dowodem dla AO i użytkownika, więc nie wklejaj pełnych logów.

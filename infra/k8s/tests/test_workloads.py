@@ -166,6 +166,14 @@ class WorkloadsTest(unittest.TestCase):
         self.assertEqual("http://api.localhost", env["VITE_API_URL"])
         self.assertEqual("http://auth.localhost", env["VITE_KEYCLOAK_URL"])
         self.assertEqual("http://admin.localhost", env["VITE_ADMIN_URL"])
+        self.assertEqual("http://localhost", env["VITE_STORE_URL"])
+
+    def test_admin_links_to_the_same_store_address_as_the_store_knows(self):
+        for case in ("ci", "prod"):
+            with self.subTest(case=case):
+                admin = env_of(containers(by_logical(case, "Deployment")["admin"])[0])
+                store = env_of(containers(by_logical(case, "Deployment")["store"])[0])
+                self.assertEqual(store["STORE_URL"], admin["VITE_STORE_URL"])
 
     def test_prod_fits_the_server(self):
         """8 vCore and 24 GB: CPU requests up to 7 vCPU, memory limits up to 20 GB (steady state), the shop and the application

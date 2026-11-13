@@ -6,7 +6,7 @@ import Message from "primevue/message";
 import SelectButton from "primevue/selectbutton";
 import Skeleton from "primevue/skeleton";
 import Tag from "primevue/tag";
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
 import { RouterLink } from "vue-router";
 import { formatDateTime } from "@/prices/format";
 import { STATUS_FILTER_OPTIONS, statusLabel, statusSeverity } from "@/promotions/format";
@@ -14,11 +14,14 @@ import { canManagePromotions } from "@/promotions/permissions";
 import { type PromotionStatus, usePromotionList } from "@/promotions/usePromotionList";
 import { useAuthStore } from "@/stores/auth";
 
-const { items, loading, loaded, error, forbidden, emptyText, hasPrevious, hasNext, pageNumber, selectStatus, goNext, goPrevious, retry } =
+const { status, items, loading, loaded, error, forbidden, emptyText, hasPrevious, hasNext, pageNumber, selectStatus, goNext, goPrevious, retry } =
   usePromotionList();
 
-const statusFilter = ref<"all" | PromotionStatus>("all");
-watch(statusFilter, (value) => selectStatus(value === "all" ? null : value));
+// The list owns the status (it also reads it from the address), so the filter shows and sets that one.
+const statusFilter = computed<"all" | PromotionStatus>({
+  get: () => status.value ?? "all",
+  set: (value) => void selectStatus(value === "all" ? null : value),
+});
 
 // Only hides the action: the API checks the permission. The roles come from /api/v1/admin/me.
 const auth = useAuthStore();

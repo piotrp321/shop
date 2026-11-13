@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { openMenuItem } from "./panel-menu";
 
 /** A product the tests create in the panel; the name and slug are unique per run, so a rerun never meets an earlier product. */
 export type NewProduct = {
@@ -82,17 +83,12 @@ export function solidPng(red: number, green: number, blue: number): Uint8Array {
   ]);
 }
 
-/** Opens a PrimeVue TreeSelect, narrows it to the category by its filter and picks the category. */
+/** Opens the combobox of the category field, narrows it to the category by typing and picks it (the option is named by its path). */
 async function chooseCategory(page: Page, category: string): Promise<void> {
-  await page.getByTestId("main-category").click();
-  await page.locator(".p-tree-filter input").fill(category);
-  // The filter keeps the matching category under its (collapsed) ancestors: open them until the category shows.
-  const item = page.getByRole("treeitem", { name: category, exact: true });
-  for (const toggle of await page.locator(".p-tree-node-toggle-button").all()) {
-    if (await item.isVisible()) break;
-    await toggle.click();
-  }
-  await item.click();
+  const combobox = page.getByRole("combobox", { name: "Kategoria główna" });
+  await combobox.click();
+  await combobox.fill(category);
+  await page.getByRole("option", { name: new RegExp(`(^| › )${category}$`) }).click();
 }
 
 /**
@@ -100,7 +96,7 @@ async function chooseCategory(page: Page, category: string): Promise<void> {
  * panel shows the saved draft, whose address carries the product id (returned).
  */
 export async function createDraftInPanel(page: Page, product: NewProduct): Promise<string> {
-  await page.getByRole("link", { name: "Produkty" }).click();
+  await openMenuItem(page, "Lista produktów", "Katalog", "Produkty");
   await page.getByTestId("add-product").click();
   await expect(page.getByRole("heading", { level: 1, name: "Nowy produkt" })).toBeVisible();
 
@@ -108,7 +104,7 @@ export async function createDraftInPanel(page: Page, product: NewProduct): Promi
   await page.getByLabel("Slug", { exact: true }).fill(product.slug);
   await page.getByLabel("Krótki opis").fill(product.description);
   await chooseCategory(page, product.category);
-  await page.getByTestId("tax-class").click();
+  await page.getByRole("combobox", { name: "Klasa podatkowa" }).click();
   await page.getByRole("option").first().click();
 
   await page.getByTestId("image-input").setInputFiles({ name: "e2e-photo.png", mimeType: "image/png", buffer: Buffer.from(solidPng(30, 120, 200)) });
@@ -144,7 +140,7 @@ export async function unpublishInPanel(page: Page): Promise<void> {
  * Resolves when the panel shows the received quantity as the physical stock.
  */
 export async function receiveStockInPanel(page: Page, productName: string, variantLabel: string, quantity: number): Promise<void> {
-  await page.getByRole("link", { name: "Stany magazynowe" }).click();
+  await openMenuItem(page, "Stany magazynowe", "Katalog");
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(productName);
   // A name shows on the first row of each product: the product as the only name means the (debounced) search is applied.
   await expect(page.getByTestId("name"), "the search narrows the list to the product").toHaveText([productName]);

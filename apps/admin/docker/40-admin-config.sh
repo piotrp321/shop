@@ -1,9 +1,10 @@
 #!/bin/sh
 # Runs from /docker-entrypoint.d before nginx starts: writes /config.js (window.__ADMIN_CONFIG__) from the environment.
 # The keys keep the names of the Vite variables the panel reads in development. A missing key stops the container.
+# ADMIN_CONFIG_DIR (default /tmp/admin-config, where nginx.conf reads it) is the output directory; only the test moves it.
 set -eu
 
-dir=/tmp/admin-config
+dir="${ADMIN_CONFIG_DIR:-/tmp/admin-config}"
 mkdir -p "$dir"
 out="$dir/config.js.tmp"
 
@@ -29,12 +30,14 @@ json_value() {
 api_url="$(json_value VITE_API_URL)"
 keycloak_url="$(json_value VITE_KEYCLOAK_URL)"
 admin_url="$(json_value VITE_ADMIN_URL)"
+store_url="$(json_value VITE_STORE_URL)"
 
 {
   printf 'window.__ADMIN_CONFIG__ = {\n'
   printf '  "VITE_API_URL": %s,\n' "$api_url"
   printf '  "VITE_KEYCLOAK_URL": %s,\n' "$keycloak_url"
-  printf '  "VITE_ADMIN_URL": %s\n' "$admin_url"
+  printf '  "VITE_ADMIN_URL": %s,\n' "$admin_url"
+  printf '  "VITE_STORE_URL": %s\n' "$store_url"
   printf '};\n'
 } > "$out"
 mv "$out" "$dir/config.js"

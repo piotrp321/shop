@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import Message from "primevue/message";
+import { LogIn } from "lucide-vue-next";
+import BrandMark from "@/components/BrandMark.vue";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { clearLoginProblem, LOGIN_SERVER_MESSAGE, loginProblem, reportLoginProblem } from "@/auth/loginProblem";
 import { clearSigninAttempt } from "@/auth/signinAttempt";
 import { getUserManager } from "@/auth/userManager";
@@ -20,30 +23,29 @@ async function signInAgain() {
 <template>
   <div
     v-if="loginProblem"
-    class="login-problem"
+    class="flex justify-center bg-background px-4 py-10"
   >
-    <Message
-      data-testid="login-problem"
-      severity="error"
+    <Card
+      data-testid="login-problem-card"
+      class="w-full max-w-md"
     >
-      {{ loginProblem }}
-    </Message>
-    <Button
-      data-testid="login-retry"
-      label="Zaloguj ponownie"
-      icon="pi pi-sign-in"
-      @click="signInAgain"
-    />
+      <CardContent class="flex flex-col items-start gap-5">
+        <BrandMark />
+        <Alert
+          data-testid="login-problem"
+          variant="destructive"
+        >
+          <AlertDescription>{{ loginProblem }}</AlertDescription>
+        </Alert>
+        <Button
+          data-testid="login-retry"
+          @click="signInAgain"
+        >
+          <LogIn aria-hidden="true" />
+          Zaloguj ponownie
+        </Button>
+      </CardContent>
+    </Card>
   </div>
   <RouterView />
 </template>
-
-<style scoped>
-.login-problem {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 1rem 1.5rem;
-}
-</style>

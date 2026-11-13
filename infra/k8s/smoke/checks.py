@@ -156,6 +156,8 @@ def check_admin_config():
     expect(status == 200, "/config.js of the panel answers")
     for key, sub in (("VITE_API_URL", "api"), ("VITE_KEYCLOAK_URL", "auth"), ("VITE_ADMIN_URL", "admin")):
         expect(f'"{key}": "http://{sub}.{DOMAIN}"' in text, f"/config.js has {key} of the environment")
+    # The store is the bare domain (the link "Sklep" of the topbar).
+    expect(f'"VITE_STORE_URL": "http://{DOMAIN}"' in text, "/config.js has VITE_STORE_URL of the environment")
     expect("no-cache" in headers.get("Cache-Control", ""), "/config.js is not cached")
     status, _, text = through_ingress("/auth/callback", "admin")
     expect(status == 200 and "<div id=" in text, "the panel serves index.html for /auth/callback")

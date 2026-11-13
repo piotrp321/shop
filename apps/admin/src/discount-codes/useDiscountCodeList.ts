@@ -1,6 +1,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { type LocationQuery, useRoute } from "vue-router";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { STATUS_FILTER_OPTIONS } from "./format";
 
 export type DiscountCodeListItem = components["schemas"]["DiscountCodeResponse"];
 export type DiscountCodeStatus = DiscountCodeListItem["status"];
@@ -17,6 +19,12 @@ interface CodeQuery {
   status?: DiscountCodeStatus;
   q?: string;
   after?: string;
+}
+
+/** The status of an address (`?status=active`): a known one; an unknown, empty or repeated value is skipped. */
+function statusOf(query: LocationQuery): DiscountCodeStatus | null {
+  const option = STATUS_FILTER_OPTIONS.find((candidate) => candidate.value === query.status);
+  return option === undefined || option.value === "all" ? null : option.value;
 }
 
 function failureMessage(status: number): string {
@@ -47,9 +55,15 @@ function characters(text: string): number {
  * cursor belongs to the filter it came from: after a failed request for a new filter the table and the pager stay off
  * until a retry succeeds. A failed move to a neighbouring page keeps the page that is shown. A 403 is reported as such
  * (`forbidden`), a retry would not help. The status and the uses of a row are the API's; the panel computes nothing.
+ *
+ * The status filter is also read from the address (`?status=active`: the dashboard links to it): on entering and
+ * whenever the query changes while the list is open. Such a change sets the filter from the address and starts from the
+ * first page; the search stays. A status chosen in the list is not written to the address (ADMIN-SCREENS).
  */
 export function useDiscountCodeList() {
-  const status = ref<DiscountCodeStatus | null>(null);
+  const route = useRoute();
+  const routeName = route.name;
+  const status = ref<DiscountCodeStatus | null>(statusOf(route.query));
   const search = ref("");
   const items = ref<DiscountCodeListItem[]>([]);
   const next = ref<string | null>(null);
@@ -149,6 +163,22 @@ export function useDiscountCodeList() {
     startFromFirstPage();
     return load([null]);
   }
+
+  // A change of the query that leaves the page (the route is already the next one while this view is still mounted)
+  // must not ask for a list nobody will see.
+  // The source is a new object on every change of the query, so navigating to the same address again (the menu does
+  // it, because a list does not write its filter to the address) applies the address over a filter chosen in the list.
+  watch(
+    () => ({ status: statusOf(route.query) }),
+    ({ status: fromAddress }) => {
+      if (route.name !== routeName || fromAddress === status.value) {
+        return;
+      }
+      status.value = fromAddress;
+      startFromFirstPage();
+      void load([null]);
+    },
+  );
 
   function goNext(): Promise<void> {
     return next.value === null ? Promise.resolve() : load([...cursors.value, next.value]);

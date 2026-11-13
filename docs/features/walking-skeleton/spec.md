@@ -831,7 +831,9 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
 
 ## Panel (`apps/admin`)
 
-Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z presetem Aura, PrimeIcons.
+Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, komponenty shadcn-vue na Reka UI
+(`src/components/ui/`) i ikony Lucide; ekrany jeszcze niezmigrowane używają PrimeVue 4 z presetem Aura i PrimeIcons
+(wygląd: `docs/features/admin-design/spec.md`, biblioteka: `docs/adr/admin-ui-library.md`).
 
 ### Logowanie
 
@@ -852,17 +854,26 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 
 ### Layout i dashboard
 
-- Layout: menu boczne (pozycja „Dashboard”), topbar z loginem pracownika, jego rolami (`Tag`) i przyciskiem
-  wylogowania.
-- Sekcja „Katalog”: kafle z liczbą produktów, liczbą kategorii i liczbą produktów bez zdjęć (wyróżniona
-  ostrzeżeniem, gdy jest większa od 0).
-- Sekcja „Stan systemu”, wyświetlana tylko gdy `system` nie jest `null`: usługi ze stanem (`Tag` up/down)
-  i opóźnieniem, liczba zdarzeń czekających w outboxie, tabela kolejek (`DataTable`: nazwa, wiadomości,
-  konsumenci), porównanie liczby dokumentów w ES z liczbą produktów w Postgresie z oznaczeniem rozbieżności.
-- `Skeleton` podczas ładowania, `Message` przy błędzie API, przycisk „Odśwież” i automatyczne odświeżanie co 30 s,
-  wstrzymane w ukrytej karcie. Obok przycisku widać czas ostatniego udanego pobrania, a komunikat błędu podaje czas
-  pokazanych danych (szczegóły: `docs/features/dashboard-data-freshness/spec.md`).
-- Dashboard pokazuje wyłącznie dane z API. Nie ma danych zmockowanych ani widgetów sprzedaży.
+- Layout (szczegóły i testy: `docs/features/admin-design/spec.md`, „Powłoka”): ciemny sidebar 260 px z menu w sekcjach
+  i grupach (pozycje według ról z `/me`, bieżąca pozycja z `aria-current`), poniżej 1024 px szuflada otwierana
+  przyciskiem „Menu”, link „Przejdź do treści”, topbar z wyszukiwarką produktów, linkiem „Sklep” (adres z `VITE_STORE_URL`)
+  i kontem pracownika (login, polskie nazwy ról, menu z „Wyloguj”), stopka i kontener toastów. Trasy `/orders`
+  mają strażnika roli (pulpit z komunikatem „Nie masz dostępu do tej strony.”). Problem z logowaniem i powrót
+  z logowania to karta ze znakiem Worf i przyciskiem „Zaloguj ponownie”.
+- Pulpit (`/`, H1 „Pulpit”; szczegóły: `docs/features/admin-design/spec.md`, „Pulpit i Stan systemu”): kafle katalogu
+  (`KpiTile`: „Produkty” z liczbą produktów jako link do `/products` i stopką „Bez zdjęć”, „Kategorie”, „Bez zdjęć”
+  z prośbą o uzupełnienie zdjęć, gdy jest ich więcej niż 0), karta „Do obsługi” (linki według ról, bez liczb) i dla ról
+  z dostępem do zamówień karta „Ostatnie zamówienia” (pięć najnowszych z `GET /orders?perPage=5`; jej błąd zostaje
+  w karcie). Pulpit nie pokazuje stanu systemu i niczego nie liczy.
+- Ekran „Stan systemu” (`/system`, tylko `admin`, pozycja „Stan systemu” w sekcji „System” menu): usługi z polską
+  etykietą i stanem „Działa” / „Nie działa” oraz opóźnieniem, liczba zdarzeń czekających na wysłanie, tabela kolejek
+  (nazwa, wiadomości, konsumenci) i porównanie liczby dokumentów w ES z liczbą produktów w Postgresie z oznaczeniem
+  rozbieżności. Pozostałe role strażnik trasy odsyła na pulpit z komunikatem „Nie masz dostępu do tej strony.”.
+- Szkielet podczas ładowania, komunikat błędu API (`role="alert"`), przycisk „Odśwież” i automatyczne odświeżanie co
+  30 s, wstrzymane w ukrytej karcie, na pulpicie i na „Stanie systemu”. Obok przycisku widać czas ostatniego udanego
+  pobrania (czas polski), a komunikat błędu podaje czas pokazanych danych (szczegóły:
+  `docs/features/dashboard-data-freshness/spec.md`).
+- Pulpit i „Stan systemu” pokazują wyłącznie dane z API. Nie ma danych zmockowanych ani kafli sprzedaży.
 
 ## Dane demo
 
@@ -1006,7 +1017,7 @@ Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależ
 | api (Composer) | `symfony/flex`, `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` (wraz z zależnościami przechodnimi: `elastic/transport`, `nyholm/psr7`, `psr/http-client`, `psr/http-factory`, `psr/http-message`, `php-http/httplug`, `php-http/promise`, `php-http/discovery` jako plugin Composera wyłączony w `allow-plugins`, `open-telemetry/api`, `open-telemetry/context`, `symfony/polyfill-php82`; klient HTTP to `symfony/http-client` przez `Psr18Client`) | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
 | api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` | `spx` |
 | store (npm) | `next`, `react`, `react-dom`, `openid-client`, `redis`, `openapi-fetch`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` | `typescript`, `@types/node`, `@types/react`, `@types/react-dom`, `tailwindcss`, `@tailwindcss/postcss`, `tw-animate-css`, `eslint`, `eslint-config-next`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `jsdom` |
-| admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom` |
+| admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch`, `reka-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `@vueuse/core`, `lucide-vue-next`, `vue-sonner` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom`, `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css` |
 | e2e (npm) | — | `@lhci/cli`, `@playwright/test`, `otpauth`, `typescript` |
 | obrazy | — | `socat` w obrazie `e2e` |
 

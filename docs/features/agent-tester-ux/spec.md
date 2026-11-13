@@ -72,14 +72,18 @@ Model Sonnet, wysiłek wysoki, narzędzia: Read, Grep, Glob, Bash, Write (tylko 
 
 Model Sonnet, wysiłek wysoki, narzędzia jak tester. W sklepie ocenia, oprócz użyteczności i dostępności, responsywność,
 spójność komponentów i jakość wizualną (sekcja „Pozostałe ekrany (VISUAL-DESIGN-9) i agent UX (VISUAL-DESIGN-10)”
-w `docs/features/visual-design/spec.md`); panel ocenia pod względem użyteczności i dostępności.
+w `docs/features/visual-design/spec.md`). Panel ocenia pod względem użyteczności i dostępności, a każdy epik zmieniający
+panel także przy rozmiarach 1280, 768 i 375 px, pod względem wyglądu według specyfikacji epiku, przejścia samą
+klawiaturą i reflow przy 320 px (sekcja „Panel” niżej).
 
 - **Ekrany:** w `/sweep` ekrany ścieżek i nowej funkcji z zakresu testera, w `/integration` ekrany i stany, które
-  zmienia diff epiku (także stany błędu, pusty stan i ładowanie). Sklep na 375, 768 i 1440 px, panel tylko na
-  desktopie. Konfiguracja agenta (`e2e/playwright.agent.config.ts`) ma projekty `desktop` (1280 × 720) i `mobile`
+  zmienia diff epiku (także stany błędu, pusty stan i ładowanie). Sklep na 375, 768 i 1440 px, panel na 1280, 768
+  i 375 px (reflow na 320 × 640 px). Konfiguracja agenta (`e2e/playwright.agent.config.ts`) ma projekty `desktop` (1280 × 720) i `mobile`
   (375 × 812); 768 i 1440 px agent ustawia we własnym skrypcie na projekcie `desktop` (`test.use({ viewport })` albo
-  `page.setViewportSize` przed `page.goto`), bez zmiany konfiguracji.
-- **Obowiązkowo ogląda zrzuty ekranu** z `snap` (czyta pliki PNG) dla każdego ekranu i każdego rozmiaru. Drzewo
+  `page.setViewportSize` przed `page.goto`), bez zmiany konfiguracji; w panelu tak samo ustawia 768, 375 i 320 px na
+  projekcie `desktop`.
+- **Obowiązkowo ogląda zrzuty ekranu** z `snap` (czyta pliki PNG) dla każdego ekranu i każdego rozmiaru, w panelu także
+  dla każdego otwartego okna, szuflady i menu. Drzewo
   dostępności (`ariaSnapshot`) i axe uzupełniają tę ocenę, nie zastępują jej.
 - **Sprawdza:** czy zadanie da się wykonać i czy ekran nie myli (etykiety, komunikaty błędów, potwierdzenia, stan
   ładowania), obsługę klawiaturą i widoczny fokus, nazwy dostępne i role, `alt` zdjęć, kontrast, wynik axe oraz w sklepie:
@@ -92,6 +96,21 @@ w `docs/features/visual-design/spec.md`); panel ocenia pod względem użyteczno�
     `visual-design` agent porównuje ekrany sklepu ze zrzutami makiety. Gdy sekcji „Wybrany kierunek”, tokenów
     kierunku albo makiety jeszcze nie ma, ocenia spójność i jakość wizualną bez zgodności z kierunkiem i nie zgłasza
     braku kierunku jako problemu.
+- **Panel** (każdy epik, który zmienia ekran panelu albo jego wspólną powłokę; opis ogólny, nie zależy od epiku):
+  - **1280, 768 i 375 px:** układ powłoki (sidebar stały od 1024 px, poniżej szuflada z przycisku „Menu”), brak poziomego
+    przewijania strony, okna i menu mieszczą się w szerokości ekranu;
+  - **wygląd na zrzutach każdego ekranu i otwartego okna** według specyfikacji epiku (tokeny, układ powłoki, karty,
+    kafle, tabela, pasek zapisu, okna): charakter, hierarchia i zgodność z opisem, nie różnice o piksel; odstępstwo
+    trafia do zgłoszenia tylko z mierzalnym oczekiwaniem. Gdy specyfikacja nie opisuje wyglądu panelu, agent ocenia
+    spójność ekranów między sobą;
+  - **przejście samą klawiaturą** każdego ekranu i okna: Tab i Shift+Tab przez wszystkie elementy, Enter i spacja na
+    przyciskach, `Escape` w oknach i szufladzie, strzałki w menu i listach wyboru; kolejność zgodna z układem, fokus
+    zawsze widoczny i nigdy na `body`, brak pułapek fokusu poza oknami;
+  - **reflow przy 320 × 640 px** (WCAG 1.4.10): bez przewijania strony w poziomie, każdy przycisk, link i pole osiągalny
+    Tabem i w całości widoczny po przewinięciu do niego, menu z szuflady; tabela szersza od ekranu przewija się w swoim
+    regionie dostępnym z klawiatury (wyjątek tabel danych);
+  - **ekrany niezmigrowane** (niezmienione przez epik) tylko pod kątem regresji: działają i są dostępne z nowej powłoki;
+    wyglądu względem nowej specyfikacji nie oceniamy.
 - **Problem wizualny** wymaga takiego samego odtworzenia jak pozostałe, testem z mierzalnym oczekiwaniem (rozmiar,
   położenie, odstęp, kolor ze stylu obliczonego, proporcje obrazu); samo wrażenie to uwaga albo hipoteza.
 - **Ocena dostępności według rzeczywistego wpływu:** naruszenie axe jest dowodem, nie wyrokiem. Agent potwierdza wpływ
@@ -166,6 +185,14 @@ Zmiana w `.claude/skills/integration/SKILL.md`, bez zmian w AO:
   zmienionym przez epik, który uniemożliwia albo myli wykonanie zadania, także osobie korzystającej z klawiatury lub
   czytnika ekranu. Pozostałe problemy na zmienionych ekranach to `Minor`. Problemy na niezmienionych ekranach i
   hipotezy to uwagi w raporcie, nie znaleziska. Weryfikacja z kroku 5 `/integration` obowiązuje także dla UX.
+- **Zrzuty** (każdy ekran i okno przy każdym rozmiarze) zapisuje agent w `AGENT_DIR`, czyli w katalogu wyników
+  `/integration` poza repo, a raport UX wskazuje ich ścieżkę.
+- **Weryfikacja zgłoszeń epiku:** gdy specyfikacja epiku ma sekcję „Zgłoszenia zamykane przez epik” (zgłoszenie, co
+  zamyka, gdzie, weryfikacja), raport UX ma tabelę (zgłoszenie, test, wynik): test to plik i nazwa testu z numerem
+  zgłoszenia w nazwie (albo „brak testu”), wynik to `przechodzi`, `nie przechodzi` z dowodem albo `niesprawdzone` z
+  powodem; agent sprawdza zachowanie z kolumny „Weryfikacja” skryptem na stosie. Raport `/integration` przejmuje tę
+  tabelę do swojej sekcji wyników UX, a właściciel sprawdza ją przed merge'em (zgłoszenie bez pozytywnego wyniku
+  nie zostaje w `Closes` końcowego PR).
 - Raport `/integration` dostaje sekcję wyników UX, a `checks` wpis `ux-review` (`passed`, `failed` albo `skipped`, gdy
   diff nie dotyka frontów). Kontrakt wyniku i walidator się nie zmieniają: dodatkowe wpisy `checks` są dozwolone.
 - Niedziałający `make e2e-agent` przy działającym stosie to uwaga w raporcie i `ux-review: skipped`, nie bloker.

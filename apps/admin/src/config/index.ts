@@ -1,5 +1,5 @@
 /** Keys of the runtime configuration: the names of the Vite variables, also used in window.__ADMIN_CONFIG__. */
-export type ConfigKey = "VITE_API_URL" | "VITE_KEYCLOAK_URL" | "VITE_ADMIN_URL";
+export type ConfigKey = "VITE_API_URL" | "VITE_KEYCLOAK_URL" | "VITE_ADMIN_URL" | "VITE_STORE_URL";
 
 export interface ConfigSources {
   /** window.__ADMIN_CONFIG__: written at container start by the production image (/config.js). */

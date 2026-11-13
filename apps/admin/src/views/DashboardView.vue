@@ -1,88 +1,77 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import Message from "primevue/message";
-import Skeleton from "primevue/skeleton";
-import CatalogStats from "@/dashboard/CatalogStats.vue";
-import SystemStatus from "@/dashboard/SystemStatus.vue";
-import { formatTime, useDashboard } from "@/dashboard/useDashboard";
+import { computed } from "vue";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import CatalogTiles from "@/dashboard/CatalogTiles.vue";
+import FreshnessBar from "@/dashboard/FreshnessBar.vue";
+import RecentOrders from "@/dashboard/RecentOrders.vue";
+import TodoCard from "@/dashboard/TodoCard.vue";
+import { todoFor } from "@/dashboard/todo";
+import { useDashboard } from "@/dashboard/useDashboard";
+import { useRecentOrders } from "@/dashboard/useRecentOrders";
+import { useAccessDenied } from "@/layout/useAccessDenied";
+import { canViewOrders } from "@/orders/permissions";
+import { useAuthStore } from "@/stores/auth";
 
-const { data, error, loading, updatedAt, refresh } = useDashboard();
+const accessDenied = useAccessDenied();
+
+// The roles come from /me, which the layout loads; the card and the rows only hide what the API would refuse anyway.
+const auth = useAuthStore();
+const rows = computed(() => todoFor(auth.staff));
+const ordersAllowed = computed(() => canViewOrders(auth.staff));
+
+const orders = useRecentOrders(ordersAllowed);
+const { data, error, loading, updatedAt, refresh } = useDashboard(30000, () => void orders.reload());
 </script>
 
 <template>
-  <div class="dashboard">
-    <div class="heading">
-      <h1>Dashboard</h1>
-      <div class="actions">
-        <span
-          v-if="updatedAt"
-          data-testid="updated-at"
-          class="updated-at"
-        >
-          Dane z {{ formatTime(updatedAt) }}
-        </span>
-        <Button
-          data-testid="refresh"
-          label="Odśwież"
-          icon="pi pi-refresh"
-          severity="secondary"
-          :loading="loading"
-          @click="refresh()"
-        />
-      </div>
-    </div>
-
-    <Message
-      v-if="error"
-      data-testid="dashboard-error"
-      severity="error"
+  <div class="flex flex-col gap-6">
+    <Alert
+      v-if="accessDenied"
+      data-testid="access-denied"
+      variant="destructive"
     >
-      {{ error }}
-    </Message>
+      <AlertDescription>Nie masz dostępu do tej strony.</AlertDescription>
+    </Alert>
 
-    <template v-if="data">
-      <CatalogStats :catalog="data.catalog" />
-      <SystemStatus
-        v-if="data.system"
-        :system="data.system"
-      />
-    </template>
+    <h1 class="text-xl font-bold text-heading">
+      Pulpit
+    </h1>
+    <FreshnessBar
+      :updated-at="updatedAt"
+      :loading="loading"
+      :error="error"
+      @refresh="refresh()"
+    />
+
+    <CatalogTiles
+      v-if="data"
+      :catalog="data.catalog"
+    />
     <div
       v-else-if="loading"
-      class="skeletons"
+      data-testid="dashboard-loading"
+      class="grid grid-cols-1 gap-6 xl:grid-cols-3"
     >
-      <Skeleton height="8rem" />
-      <Skeleton height="12rem" />
+      <Skeleton class="h-40" />
+      <Skeleton class="h-40" />
+      <Skeleton class="h-40" />
+    </div>
+
+    <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
+      <TodoCard
+        v-if="rows.length > 0"
+        :items="rows"
+      />
+      <RecentOrders
+        v-if="ordersAllowed"
+        :class="rows.length > 0 ? 'xl:col-span-2' : 'xl:col-span-3'"
+        :items="orders.items.value"
+        :loaded="orders.loaded.value"
+        :error="orders.error.value"
+        :forbidden="orders.forbidden.value"
+        :retry="orders.reload"
+      />
     </div>
   </div>
 </template>
-
-<style scoped>
-.dashboard {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.updated-at {
-  color: var(--p-text-muted-color);
-}
-
-.skeletons {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-</style>
