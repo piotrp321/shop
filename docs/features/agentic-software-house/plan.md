@@ -21,8 +21,8 @@ Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
 Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 76, zamkniętych 33.
-Kolejność kroków 16–22: 19a od razu, potem 16, 17 i 18; 19b po dwóch parach epików 19a; 11 po epiku SENTRY;
-na końcu 20, 21 i 22.
+Kolejność kroków 16–22: 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 16, 17 i 18; 19b po
+dwóch parach epików 19a; 11 po epiku SENTRY; na końcu 20, 21 i 22.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -44,7 +44,7 @@ na końcu 20, 21 i 22.
 | 16 | Bezpieczeństwo agentów | do zrobienia |
 | 17 | Evale agentów i workflowów | do zrobienia |
 | 18 | Pomiar, koszty i optymalizacja | do zrobienia |
-| 19 | Praca równoległa | 19a: do zrobienia, zatwierdzony do realizacji od razu; 19b: po dwóch parach epików 19a |
+| 19 | Praca równoległa | 19a: zrobione, pomiar dwóch pierwszych par epików do zrobienia; 19b: po dwóch parach epików 19a |
 | 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
 | 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
 | 22 | Porównanie Claude Code i OpenAI Codex | do zrobienia |
@@ -64,7 +64,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
 | | Kolejka epików: następny epik po merge'u i lista na noc | `/ao-run` w sesji z Remote Control | działa, lista na noc do sprawdzenia w pierwszej nocy |
-| | Praca równoległa: epiki naraz i zadania fali naraz, bramka ryzyka | `/ao-run` (19a), AO `--max-parallel` (19b) | krok 19 |
+| | Praca równoległa: epiki naraz i zadania fali naraz, bramka ryzyka | `/ao-run` z bramką `night_queue.py gate` (19a), AO `--max-parallel` (19b) | 19a działa, pomiar dwóch par do zrobienia; 19b: krok 19 |
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
@@ -151,7 +151,8 @@ flowchart TB
    - Przygotowujemy tyle epików do przodu, ile mieści noc: aż `night_queue.py ahead` pokaże pełną noc (suma
      szacunków z pomiaru; bez pomiaru jeden epik do przodu). Nie przygotowujemy wszystkich epików naraz, bo
      specyfikacja opisuje kod, którego jeszcze nie ma.
-   - Specyfikacja ma linię `Zakres:`: ścieżki, które epik zmienia. Z niej lista na noc sprawdza rozłączność epików.
+   - Specyfikacja ma linię `Zakres:`: ścieżki, które epik zmienia. Z niej bramka pracy równoległej i lista na noc
+     porównują pliki epików.
    - Specyfikacja ma sekcję „Wymagane przed startem”: sekrety, konta, usługi zewnętrzne, uprawnienia i decyzje
      infrastrukturalne potrzebne zadaniom. Przy akceptacji użytkownik potwierdza, że jego pozycje są gotowe albo
      będą przed `/ao-run`, żeby taki bloker nie wyszedł dopiero w trakcie zadania.
@@ -165,15 +166,17 @@ flowchart TB
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.
 3. **Wykonanie (AO, w nocy).**
    - Start epiku: sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane `spec.md`
-     i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku albo na
-     prośbę użytkownika.
-   - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, o rozłącznym
-     zakresie, bez zależności od otwartych epików i, przy pomiarze czasu, mieszczące się do rana. Użytkownik
-     zatwierdza ją jednym „tak”. Pierwszy epik rusza po „tak”, a każdy kolejny po `epic_done` poprzedniego, bez
-     czekania na merge, tylko gdy jego szacunek mieści się do rana i w limitach subskrypcji. Inaczej noc się kończy.
-   - Bez zgody sesja niczego nie uruchamia. Na raz trwa jeden epik z jednej sesji. Gdy działa epik innej sesji,
-     `/ao-run` przed startem opisuje pliki wspólne obu epików (CI, `CLAUDE.md`, kontrakt OpenAPI, klienci TS, menu
-     panelu) jako ryzyko konfliktu, bez blokowania startu. Zasilania sesja nie sprawdza: decyduje o nim użytkownik.
+     i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku, na
+     prośbę użytkownika, a w dzień także po starcie epiku i po jego `epic_done` (bramka proponuje wtedy epik
+     równoległy).
+   - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, bez wspólnych
+     plików wymuszających kolejkę (reguła plików bramki), bez zależności od otwartych epików i, przy pomiarze czasu,
+     mieszczące się do rana. Użytkownik zatwierdza ją jednym „tak”. Każdy epik listy rusza przez bramkę: równolegle
+     z trwającym albo po `epic_done` poprzedniego, bez czekania na merge, tylko gdy jego szacunek mieści się do rana
+     i w limitach subskrypcji. Gdy bramka nie przechodzi przy trwającym epiku, kolejny czeka; inaczej noc się kończy.
+   - Bez zgody sesja niczego nie uruchamia. Naraz trwają najwyżej dwa aktywne epiki, z jednej sesji albo z dwóch.
+     Każdy start idzie przez rezerwację w bramce (`docs/features/parallel-work/spec.md`), więc dwie sesje nie ruszą
+     jednego epiku ani trzeciego naraz. Zasilania sesja nie sprawdza: decyduje o nim użytkownik.
    - Praca równoległa (19a) jest domyślna: kolejny przygotowany epik, także z listy na noc, rusza naraz z trwającym,
      gdy przejdzie bramkę ryzyka; inaczej czeka na swoją kolej (wykonanie szeregowe jako rozwiązanie awaryjne).
    - Sesja z `/ao-run <epik>` uruchamia `ao epic start` i `ao run --until-idle`. AO prowadzi zadania przez
@@ -253,11 +256,12 @@ flowchart TB
 5. **Powiadomienia i kolejka epików przez aplikację Claude.** Przebieg AO prowadzi sesja Claude Code z Remote
    Control (włączone globalnie w aplikacji). Sesja śledzi zdarzenia AO (bloker, awaria, koniec epiku) i wysyła
    powiadomienie push do aplikacji Claude na telefonie. Odpowiedź na bloker użytkownik pisze w tej sesji, a sesja
-   wykonuje `ao answer`. Po merge'u końcowego PR ta sama sesja bierze następny przygotowany epik z tablicy i pyta
-   „Zacząć epik X?” (punkt 3 procesu). Instrukcja dla sesji jest w `shop`, bez zmian w kodzie AO. Mechanizm sprawdza
+   wykonuje `ao answer`. Po merge'u końcowego PR, a w dzień także po starcie epiku i po jego `epic_done`, ta sama
+   sesja bierze następny przygotowany epik z tablicy, który przechodzi bramkę, i pyta „Zacząć epik X?” (punkt 3
+   procesu). Instrukcja dla sesji jest w `shop`, bez zmian w kodzie AO. Mechanizm sprawdza
    pierwszy przebieg (krok 7). Przebieg epiku prowadzi skill `/ao-run <epik>` (`docs/features/ao-run/spec.md`).
-   Kolejkę prowadzi ten sam skill (sekcja „Następny epik”, `next_epic.py`): `/ao-run` bez argumentu wybiera
-   następny przygotowany epik z tablicy.
+   Kolejkę prowadzi ten sam skill (sekcja „Następny epik”, bramka `night_queue.py gate`): `/ao-run` bez argumentu
+   wybiera następny przygotowany epik z tablicy.
 6. **Przygotowanie epiku jednym skillem.** Skill `.claude/skills/prepare-epic/` i agent krytyka `spec-critic`
    w `shop`, bez zmian w AO (specyfikacja: `docs/features/prepare-epic/spec.md`):
    - kolejność i podział ról jak w punkcie 2 procesu, zasady analityka i podziału na zadania brane z `/brainstorm`
@@ -267,11 +271,12 @@ flowchart TB
 7. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, od `/prepare-epic` do odbioru, razem z pomiarem
    z punktu 5 procesu. Każdy kolejny epik idzie tym samym procesem.
 8. **Nocna kolejka kilku epików.** Przed snem użytkownik jedną zgodą zatwierdza listę przygotowanych epików na noc
-   (`/ao-run --noc`, punkt 3 procesu). Po `epic_done` jednego epiku sesja z `/ao-run` startuje następny z listy, bez
-   czekania na merge. Rano użytkownik odbiera kilka raportów. Opis jest w `docs/features/ao-run/spec.md` (sekcja
-   „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
-   - na jedną noc trafiają tylko epiki o rozłącznym zakresie, bo każdy startuje z `main` bez poprzednich;
-     `/prepare-epic` zapisuje zakres epiku w linii `Zakres:` specyfikacji, a lista sprawdza rozłączność;
+   (`/ao-run --noc`, punkt 3 procesu). Każdy epik listy rusza przez bramkę: równolegle z trwającym albo po `epic_done`
+   poprzedniego, bez czekania na merge. Rano użytkownik odbiera kilka raportów. Opis jest
+   w `docs/features/ao-run/spec.md` (sekcja „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
+   - na jedną noc trafiają tylko epiki bez wspólnych plików wymuszających kolejkę (reguła plików bramki, krok 19a),
+     bo każdy startuje z `main` bez poprzednich; `/prepare-epic` zapisuje zakres epiku w linii `Zakres:`
+     specyfikacji, a lista porównuje z niej pliki epików;
    - `/prepare-epic` przygotowuje tyle epików do przodu, ile mieści noc (`night_queue.py ahead`, punkt 2 procesu);
    - następny epik nie rusza, gdy jego szacunek nie mieści się do rana albo limit subskrypcji nie wystarczy na cały
      jego przebieg;
@@ -355,12 +360,14 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    szeregowe jest rozwiązaniem awaryjnym, gdy bramka wykryje realne ryzyko. Realizuje komponent „Pula środowisk”
    z ADR. Symulacja na 20 epikach z bazy AO: dwa zadania naraz skracają czas pracy wykonawców o 18%, DEPLOY-OPS o 26%,
    epiki poprawek o 35–37%; w DEPLOY-OPS szeregowa kolejka przesunęła bloker na noc (6,7 h postoju).
-   - **19a, bez zmian w AO, do realizacji od razu.** Epiki o rozłącznym zakresie trwają naraz. Bramka korzysta
-     z istniejących mechanizmów (`Zakres:`, rozłączność listy nocy, lista plików wspólnych w `/ao-run`, sync
-     i REPAIR) bez dublowania ich i dodaje: wspólne pliki edytowane ręcznie (CI, `CLAUDE.md`, `make/*.mk`)
-     wymuszają kolejkę, wspólne pliki generowane są dopuszczalne; wolna pamięć Dockera na kolejny stos; zapas limitu
-     subskrypcji. Konflikt, który istniejące mechanizmy rozwiązują automatycznie, nie blokuje startu. Pierwsze dwie
-     pary epików mierzymy: czas zegarowy, konflikty, interwencje, zużycie zasobów i koszt.
+   - **19a, bez zmian w AO: zrobione.** Epiki trwają naraz (najwyżej dwa aktywne), gdy kandydat przejdzie bramkę
+     ryzyka `night_queue.py gate` (`docs/features/parallel-work/spec.md`): wspólne pliki edytowane ręcznie (CI,
+     `CLAUDE.md`, `make/*.mk`, kod) wymuszają kolejkę, wspólne pliki generowane i dokumentacja są dopuszczalne;
+     wolna pamięć Dockera na kolejny stos; zapas limitu subskrypcji. Bramka korzysta z `Zakres:`, sync i REPAIR, bez
+     ich dublowania; rezerwacja pod blokadą nie pozwala dwóm sesjom ruszyć jednego epiku. Konflikt, który sync
+     i REPAIR rozwiązują automatycznie (także sync spójności dokumentów w parze), nie blokuje startu. Pierwsze dwie
+     pary epików mierzymy (`pairs.py`, blok pary w issue epiku): czas zegarowy, konflikty, interwencje, zużycie
+     zasobów i koszt.
    - **19b, zmiana w AO (piotrp321/agentic-orchestrator#50), po walidacji 19a.** `ao run --max-parallel 2`:
      niezależne zadania jednej fali równolegle, każde we własnym worktree i stosie; integracja i merge'e po kolei;
      kontrola zasobów i limitów; awaria jednego zadania nie zatrzymuje drugiego. Gdy dwie pierwsze pary 19a nie
@@ -421,6 +428,7 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
   a `plan.md` przechodzi walidator manifestu.
 - **Start epiku:** AO rusza z epikiem dopiero po „tak” użytkownika na pytanie „Zacząć epik X?” albo na listę nocy.
   Kolejny epik listy rusza bez pytania tylko przy spełnionych warunkach sekcji „Noc” z `docs/features/ao-run/spec.md`.
+  Start mimo niespełnionej bramki ryzyka i przejęcie epiku innej sesji: tylko w dzień, po osobnym „tak”.
 - **Merge do `main`:** końcowy PR epiku merguje użytkownik albo sesja `/ao-run` na jego polecenie w rozmowie (także
   z telefonu), po zielonym CI. Wyjątek bez osobnego polecenia: PR ze `spec.md` i `plan.md` z `/prepare-epic`, który
   skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie

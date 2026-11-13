@@ -79,8 +79,8 @@ sekcji „Poza zakresem” specyfikacji z powodem.
      zasady projektu).
    - Specyfikacja ma linię `Issues: #N, …` z issue epiku i wszystkimi issues, które epik realizuje (`/ao-run`
      buduje z niej listę `Closes #N`). Epik poprawek: krótka specyfikacja, jedna sekcja na issue.
-   - Pod linią `Issues:`, przed pierwszym nagłówkiem `## `, specyfikacja ma linię `Zakres: <ścieżka>, …` (lista na
-     noc w `/ao-run` sprawdza z niej rozłączność epików). Ścieżki w repo, bez `/` na początku i końcu, bez `..`
+   - Pod linią `Issues:`, przed pierwszym nagłówkiem `## `, specyfikacja ma linię `Zakres: <ścieżka>, …` (bramka
+     pracy równoległej i lista na noc w `/ao-run` porównują z niej pliki epików). Ścieżki w repo, bez `/` na początku i końcu, bez `..`
      i znaków `*?[`, rozdzielone przecinkami, opcjonalnie w odwrotnych apostrofach:
      - katalogi modułów, które epik zmienia (`apps/api/src/Catalog`, `apps/api/tests/Functional/Catalog`,
        `apps/store/src/catalog`, `apps/admin/src/prices`);

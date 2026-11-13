@@ -39,10 +39,13 @@ class CommandError(Exception):
         super().__init__('%s: %s' % (' '.join(args), detail))
 
 
-def make_runner(cwd):
+def make_runner(cwd, timeout=None):
+    """A command runner with cwd; `timeout` (seconds, None: none) kills a command that runs longer (CommandError)."""
     def run(args):
         try:
-            result = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+            result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise CommandError(args, 'timed out after %g s' % timeout)
         except OSError as e:
             raise CommandError(args, e.strerror or str(e))
         if result.returncode != 0:

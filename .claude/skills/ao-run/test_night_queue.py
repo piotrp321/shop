@@ -4,7 +4,10 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -16,6 +19,40 @@ spec.loader.exec_module(night_queue)
 
 def header(line):
     return '# Epic\n\nIssues: #1\n%s\n\n## Cel\nText\n' % line
+
+
+HOLDER = (
+    "import fcntl,sys\n"
+    "f=open(sys.argv[1],'a')\n"
+    "fcntl.flock(f,fcntl.LOCK_EX)\n"
+    "print('held',flush=True)\n"
+    "sys.stdin.read()\n"
+)
+
+
+def hold(path):
+    """A child process holding an exclusive flock on `path` until release_child."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    proc = subprocess.Popen([sys.executable, '-c', HOLDER, path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            text=True)
+    assert proc.stdout.readline().strip() == 'held'
+    return proc
+
+
+def release_child(proc):
+    proc.stdin.close()
+    proc.wait(10)
+    proc.stdout.close()
+
+
+def snapshot(directory):
+    """Contents of the files of `directory` (the lock file excluded)."""
+    found = {}
+    for name in sorted(os.listdir(directory)):
+        if name != 'gate.lock':
+            with open(os.path.join(directory, name), encoding='utf-8') as f:
+                found[name] = f.read()
+    return found
 
 
 class ParseScopeTest(unittest.TestCase):
@@ -147,15 +184,21 @@ def manifest(n):
 
 
 class ManifestRunner:
-    def __init__(self, files=None, fail=False):
+    def __init__(self, files=None, fail=False, docker=None):
+        # docker: answers of `docker info|ps|stats` by subcommand; None: every docker command fails.
         self.files = files or {}
         self.fail = fail
+        self.docker = docker
         self.calls = []
 
     def __call__(self, args):
         self.calls.append(list(args))
         if self.fail:
             raise night_queue.next_epic.CommandError(args, 'boom')
+        if args[0] == 'docker':
+            if self.docker is None:
+                raise night_queue.next_epic.CommandError(args, 'docker down')
+            return self.docker[args[1]]
         assert args[:2] == ['git', 'show'], args
         prefix = 'origin/main:docs/features/'
         assert args[2].startswith(prefix)
@@ -192,7 +235,7 @@ class MeasurementsTest(unittest.TestCase):
 
     def test_minutes_and_delta(self):
         got = night_queue.measurements(self.pair(usage(10), usage(18.5)))
-        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 60.0, 'usage': {LABEL: 8.5}}], got)
+        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 60.0, 'usage': {LABEL: 8.5}, 'overlap': False}], got)
 
     def test_z_suffix_times(self):
         events = self.pair(usage(1), usage(2))
@@ -236,7 +279,7 @@ class MeasurementsTest(unittest.TestCase):
              'usage': usage(5)},
             {'event': 'done', 'epic': 'cart', 'at': (T0 + timedelta(minutes=40)).isoformat(), 'usage': usage(9)},
         ]
-        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 4}}],
+        self.assertEqual([{'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 4}, 'overlap': False}],
                          night_queue.measurements(events))
 
     def test_start_without_done_and_done_without_start_give_nothing(self):
@@ -251,6 +294,57 @@ class MeasurementsTest(unittest.TestCase):
     def test_epics_are_independent(self):
         events = self.pair(usage(1), usage(2), epic='a') + self.pair(usage(1), usage(4), epic='b')
         self.assertEqual(['a', 'b'], [m['epic'] for m in night_queue.measurements(events)])
+
+    def event(self, kind, epic, minutes, tasks=2):
+        e = {'event': kind, 'epic': epic, 'at': (T0 + timedelta(minutes=minutes)).isoformat(), 'usage': usage(1)}
+        if kind == 'start':
+            e['tasks'] = tasks
+        return e
+
+    def overlaps(self, *events):
+        return {m['epic']: m['overlap'] for m in night_queue.measurements(list(events))}
+
+    def test_intersecting_intervals_of_two_epics_overlap(self):
+        got = self.overlaps(self.event('start', 'a', 0), self.event('start', 'b', 30), self.event('done', 'a', 60),
+                            self.event('done', 'b', 90), self.event('start', 'c', 100), self.event('done', 'c', 120))
+        self.assertEqual({'a': True, 'b': True, 'c': False}, got)
+
+    def test_touching_intervals_do_not_overlap(self):
+        got = self.overlaps(self.event('start', 'a', 0), self.event('done', 'a', 60), self.event('start', 'b', 60),
+                            self.event('done', 'b', 90))
+        self.assertEqual({'a': False, 'b': False}, got)
+
+    def test_open_start_before_the_measurement_does_not_overlap(self):
+        # A stale start without done (e.g. an epic whose done was never recorded) taints no later measurement.
+        got = self.overlaps(self.event('start', 'x', 0), self.event('start', 'y', 300), self.event('done', 'y', 360),
+                            self.event('start', 'z', 400), self.event('done', 'z', 460))
+        self.assertEqual({'y': False, 'z': False}, got)
+
+    def test_stale_open_start_keeps_the_overlap_of_closed_measurements(self):
+        got = self.overlaps(self.event('start', 'x', 0), self.event('start', 'y', 300), self.event('start', 'z', 330),
+                            self.event('done', 'y', 360), self.event('done', 'z', 460))
+        self.assertEqual({'y': True, 'z': True}, got)
+
+    def test_open_start_inside_the_measurement_overlaps(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('start', 'a', 30), self.event('done', 'b', 60))
+        self.assertEqual({'b': True}, got)
+
+    def test_open_start_at_the_measurement_start_overlaps(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('start', 'a', 0), self.event('done', 'b', 60))
+        self.assertEqual({'b': True}, got)
+
+    def test_open_start_at_the_measurement_end_does_not_overlap(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('done', 'b', 60), self.event('start', 'a', 60))
+        self.assertEqual({'b': False}, got)
+
+    def test_open_start_after_the_measurement_does_not_overlap(self):
+        got = self.overlaps(self.event('start', 'b', 0), self.event('done', 'b', 60), self.event('start', 'a', 61))
+        self.assertEqual({'b': False}, got)
+
+    def test_same_epic_twice_does_not_overlap_itself(self):
+        got = night_queue.measurements([self.event('start', 'a', 0), self.event('done', 'a', 60),
+                                        self.event('start', 'a', 30), self.event('done', 'a', 90)])
+        self.assertEqual([False, False], [m['overlap'] for m in got])
 
 
 class EstimateTest(unittest.TestCase):
@@ -267,6 +361,20 @@ class EstimateTest(unittest.TestCase):
     def test_measurement_without_windows_still_gives_minutes(self):
         ms = [{'epic': 'a', 'tasks': 2, 'minutes': 20.0, 'usage': {}}]
         self.assertEqual({'minutes': 50.0, 'usage': {}}, night_queue.estimate(ms, 5))
+
+    def test_usage_only_from_measurements_without_overlap(self):
+        ms = [
+            {'epic': 'a', 'tasks': 2, 'minutes': 100.0, 'usage': {'W': 40}, 'overlap': True},   # 50 min/task, W 20
+            {'epic': 'b', 'tasks': 2, 'minutes': 20.0, 'usage': {'W': 4}, 'overlap': False},    # 10 min/task, W 2
+        ]
+        self.assertEqual({'minutes': 150.0, 'usage': {'W': 6.0}}, night_queue.estimate(ms, 3))
+
+    def test_window_measured_only_with_overlap_falls_back_to_all(self):
+        ms = [
+            {'epic': 'a', 'tasks': 2, 'minutes': 20.0, 'usage': {'W': 40, 'F': 8}, 'overlap': True},
+            {'epic': 'b', 'tasks': 2, 'minutes': 20.0, 'usage': {'W': 4}, 'overlap': False},
+        ]
+        self.assertEqual({'minutes': 30.0, 'usage': {'W': 6.0, 'F': 12.0}}, night_queue.estimate(ms, 3))
 
 
 class ReadEventsTest(unittest.TestCase):
@@ -310,9 +418,9 @@ class MeasureCliTest(unittest.TestCase):
         self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
         self.state = os.path.join(self.dir, 'nested', 'state')
 
-    def cli(self, command, directory, stdin_text, run=None, now=T0):
+    def cli(self, command, directory, stdin_text, run=None, now=T0, extra=()):
         out, err = io.StringIO(), io.StringIO()
-        argv = ['--state', self.state, command, directory]
+        argv = ['--state', self.state, command, directory] + list(extra)
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = night_queue.main(argv, run=run or ManifestRunner({'cart': manifest(4)}), now=now,
                                     stdin=io.StringIO(stdin_text))
@@ -326,14 +434,90 @@ class MeasureCliTest(unittest.TestCase):
         code, out, err = self.cli('start', 'cart', json.dumps(usage(10)))
         self.assertEqual(0, code, err)
         event = json.loads(out)
-        self.assertEqual({'event': 'start', 'epic': 'cart', 'tasks': 4, 'at': T0.isoformat(), 'usage': usage(10)},
-                         event)
+        owner = event.pop('owner')
+        self.assertEqual({'event': 'start', 'epic': 'cart', 'tasks': 4, 'at': T0.isoformat(), 'usage': usage(10),
+                          'docker': None}, event)
         self.assertEqual([event], self.lines())
+        self.assertRegex(owner, '^[0-9a-f]{16}$')
+
+    def claims_json(self):
+        with open(os.path.join(self.state, 'claims.json'), encoding='utf-8') as f:
+            return json.load(f)
+
+    def write_claims(self, claims, owners=None):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': claims, 'owners': owners or {}}, f)
+
+    def claim(self, directory, token, expires=T0 + timedelta(minutes=20)):
+        return {'dir': directory, 'claim': token, 'at': T0.isoformat(), 'expires_at': expires.isoformat()}
+
+    def test_start_records_docker_memory(self):
+        docker = {'info': str(16 * 1024 ** 3), 'ps': 'ao-a-api-1\tao-a\nweb\tother\n',
+                  'stats': 'ao-a-api-1\t2GiB / 16GiB\nweb\t512MiB / 16GiB\n'}
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)),
+                                  run=ManifestRunner({'cart': manifest(4)}, docker=docker))
+        self.assertEqual(0, code, err)
+        expected = {'total_mib': 16384.0, 'ao_mib': 2048.0, 'other_mib': 512.0}
+        self.assertEqual(expected, json.loads(out)['docker'])
+        self.assertEqual(expected, self.lines()[0]['docker'])
+
+    def test_start_docker_failure_still_writes_the_event(self):
+        for docker in (None, {'info': 'garbage', 'ps': '', 'stats': ''}):
+            with self.subTest(docker=docker):
+                code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'tok'],
+                                          run=ManifestRunner({'cart': manifest(4)}, docker=docker))
+                self.assertEqual(0, code, err)
+                self.assertIsNone(json.loads(out)['docker'])
+                self.assertIsNone(self.lines()[-1]['docker'])
+
+    def test_start_with_claim_turns_the_reservation_into_the_owner(self):
+        self.write_claims([self.claim('cart', 'tok'), self.claim('other', 'theirs')])
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'tok'])
+        self.assertEqual(0, code, err)
+        self.assertEqual('tok', json.loads(out)['owner'])
+        self.assertEqual({'claims': [self.claim('other', 'theirs')], 'owners': {'cart': 'tok'}}, self.claims_json())
+        self.assertNotIn('owner', self.lines()[0])
+
+    def test_start_without_claim_records_a_new_owner(self):
+        self.write_claims([], owners={'old': 'x'})
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)))
+        self.assertEqual(0, code, err)
+        owner = json.loads(out)['owner']
+        self.assertEqual({'claims': [], 'owners': {'old': 'x', 'cart': owner}}, self.claims_json())
+
+    def test_start_refuses_an_epic_owned_by_another_session(self):
+        self.write_claims([self.claim('cart', 'mine')], owners={'cart': 'theirs'})
+        before = self.claims_json()
+        for extra in (['--claim', 'mine'], []):
+            with self.subTest(extra=extra):
+                code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=extra)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('epik CART ma innego właściciela', err)
+                self.assertFalse(os.path.exists(os.path.join(self.state, 'measurements.jsonl')))
+                self.assertEqual(before, self.claims_json())
+
+    def test_start_by_the_owner_keeps_it(self):
+        self.write_claims([], owners={'cart': 'mine'})
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'mine'])
+        self.assertEqual(0, code, err)
+        self.assertEqual('mine', json.loads(out)['owner'])
+        self.assertEqual({'claims': [], 'owners': {'cart': 'mine'}}, self.claims_json())
+
+    def test_start_with_unreadable_claims_exits_2_without_writing(self):
+        os.makedirs(self.state)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{oops')
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'tok'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'measurements.jsonl')))
 
     def test_start_with_unreadable_usage(self):
         for text in ['', 'garbage', '[1]', '{"status": "ok"}', '{"status": "ok", "windows": [1]}']:
             with self.subTest(text=text):
-                code, out, err = self.cli('start', 'cart', text)
+                # A fresh epic each time: a later start without the owner token is refused.
+                code, out, err = self.cli('start', 'cart', text, extra=['--claim', 'tok'])
                 self.assertEqual(0, code, err)
                 self.assertEqual({'status': 'unreadable'}, json.loads(out)['usage'])
 
@@ -364,7 +548,8 @@ class MeasureCliTest(unittest.TestCase):
         self.cli('start', 'cart', json.dumps(usage(10)))
         code, out, err = self.cli('done', 'cart', json.dumps(usage(14)), now=T0 + timedelta(minutes=90))
         self.assertEqual(0, code, err)
-        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 90.0, 'usage': {LABEL: 4}}, json.loads(out))
+        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 90.0, 'usage': {LABEL: 4}, 'overlap': False},
+                         json.loads(out))
         self.assertEqual(['start', 'done'], [e['event'] for e in self.lines()])
 
     def test_done_twice_exits_2(self):
@@ -375,11 +560,15 @@ class MeasureCliTest(unittest.TestCase):
         self.assertIn('brak start dla cart', err)
 
     def test_start_twice_latest_counts(self):
-        self.cli('start', 'cart', json.dumps(usage(10)))
-        self.cli('start', 'cart', json.dumps(usage(20)), now=T0 + timedelta(minutes=30))
+        _, out, _ = self.cli('start', 'cart', json.dumps(usage(10)))
+        owner = json.loads(out)['owner']
+        code, _, err = self.cli('start', 'cart', json.dumps(usage(20)), now=T0 + timedelta(minutes=30),
+                                extra=['--claim', owner])
+        self.assertEqual(0, code, err)
         code, out, _ = self.cli('done', 'cart', json.dumps(usage(25)), now=T0 + timedelta(minutes=60))
         self.assertEqual(0, code)
-        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 5}}, json.loads(out))
+        self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 5}, 'overlap': False},
+                         json.loads(out))
 
     def test_corrupt_state_exits_2_naming_line(self):
         os.makedirs(self.state)
@@ -449,11 +638,12 @@ class QueueCliTest(unittest.TestCase):
         with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
             f.write(json.dumps(start) + '\n' + json.dumps(done) + '\n')
 
-    def cli(self, command, epics, extra=(), branches=(), fail=None, now=T0):
+    def cli(self, command, epics, extra=(), branches=(), fail=None, now=T0, **runner_kwargs):
         out, err = io.StringIO(), io.StringIO()
         argv = ['--state', self.state, command] + list(extra)
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = night_queue.main(argv, run=BoardRunner(epics, branches, fail), now=now, stdin=io.StringIO(''))
+            code = night_queue.main(argv, run=GateRunner(epics, branches, fail, **runner_kwargs), now=now,
+                                    stdin=io.StringIO(''))
         return code, out.getvalue(), err.getvalue()
 
     def propose(self, epics, extra=(), **kwargs):
@@ -466,18 +656,84 @@ class QueueCliTest(unittest.TestCase):
 
     def test_output_shape(self):
         result = self.propose([epic(1, 'CART', 'apps/api/src/Cart', tasks=3)])
-        self.assertEqual({'epics', 'skipped', 'in_progress', 'until', 'measured'}, set(result))
+        self.assertEqual({'epics', 'skipped', 'in_progress', 'until', 'measured', 'hold'}, set(result))
+        self.assertIsNone(result['hold'])
         self.assertEqual({'dir': 'cart', 'id': 'CART', 'issue': 1, 'title': 'CART: title', 'tasks': 3,
                           'minutes': None, 'scope': ['apps/api/src/Cart', 'docs/features/cart']},
                          result['epics'][0])
         self.assertFalse(result['measured'])
         self.assertEqual([], result['skipped'] + result['in_progress'])
 
-    def test_in_progress_empties_list(self):
-        epics = [epic(1, 'CART', 'a'), epic(2, 'VARIANTS', 'b')]
+    def test_hold_is_reported_and_does_not_change_the_list(self):
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')]
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'parallel-hold.json'), 'w') as f:
+            json.dump({'at': T0.isoformat(), 'reason': 'para X+Y: CI czerwone'}, f)
+        result = self.propose(epics)
+        self.assertEqual({'at': T0.isoformat(), 'reason': 'para X+Y: CI czerwone'}, result['hold'])
+        self.assertEqual(['a', 'b'], self.dirs(result))
+
+    def claims(self, *dirs):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': T0.isoformat(),
+                                   'expires_at': (T0 + timedelta(minutes=20)).isoformat()} for d in dirs],
+                       'owners': {}}, f)
+
+    def test_in_progress_counts_like_an_epic_already_on_the_list(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/b'), epic(3, 'SEARCH', 'apps/a/x')]
         result = self.propose(epics, branches=['cart'])
-        self.assertEqual([], result['epics'])
+        self.assertEqual(['variants'], self.dirs(result))
         self.assertEqual([{'dir': 'cart', 'id': 'CART', 'issue': 1}], result['in_progress'])
+        self.assertEqual([{'issue': 3, 'id': 'SEARCH', 'reason': 'zakres wspólny z CART: apps/a/x'}],
+                         result['skipped'])
+
+    def test_branch_diff_of_an_epic_in_progress_counts(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/b'), epic(3, 'SEARCH', 'apps/c')]
+        result = self.propose(epics, branches=['cart'], diffs={'cart': ['apps/b/Outside.php']})
+        self.assertEqual(['search'], self.dirs(result))
+        self.assertEqual('zakres wspólny z CART: apps/b/Outside.php', result['skipped'][0]['reason'])
+
+    def test_merged_final_pr_is_not_in_progress(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/a')]
+        result = self.propose(epics, branches=['cart'], merged=['cart'])
+        self.assertEqual(['variants'], self.dirs(result))
+        self.assertEqual([], result['in_progress'])
+
+    def test_valid_claim_is_in_progress_and_no_candidate(self):
+        self.claims('variants')
+        epics = [epic(1, 'VARIANTS', 'apps/a'), epic(2, 'CART', 'apps/a/x'), epic(3, 'SEARCH', 'apps/c')]
+        result = self.propose(epics)
+        self.assertEqual(['search'], self.dirs(result))
+        self.assertEqual([{'dir': 'variants', 'id': 'VARIANTS', 'issue': 1}], result['in_progress'])
+        self.assertEqual([{'issue': 2, 'id': 'CART', 'reason': 'zakres wspólny z VARIANTS: apps/a/x'}],
+                         result['skipped'])
+
+    def test_dependency_on_an_epic_in_progress(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'PAY', 'apps/b', body='## Zależności\nPo CART\n')]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual([], self.dirs(result))
+        self.assertEqual('zależy od CART', result['skipped'][0]['reason'])
+
+    def test_epic_in_progress_without_scope_skips_every_candidate(self):
+        epics = [epic(1, 'CART', None), epic(2, 'VARIANTS', 'apps/b')]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual([], self.dirs(result))
+        self.assertEqual('CART w toku bez zakresu: brak linii Zakres', result['skipped'][0]['reason'])
+
+    def test_candidate_without_scope_is_skipped_while_an_epic_is_in_progress(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', None), epic(3, 'SEARCH', 'apps/c')]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual(['search'], self.dirs(result))
+        self.assertEqual([{'issue': 2, 'id': 'VARIANTS', 'reason': 'brak linii Zakres'}], result['skipped'])
+
+    def test_unreadable_claims_exit_2(self):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.cli('propose', [epic(1, 'A', 'apps/a')])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
 
     def test_in_progress_keeps_unprepared_in_skipped(self):
         epics = [epic(1, 'CART', 'a'), epic(2, 'LATER', 'b', tasks=None)]
@@ -524,11 +780,25 @@ class QueueCliTest(unittest.TestCase):
         epics = [epic(1, 'CART', 'a'), epic(2, 'VARIANTS', 'b'), epic(3, 'LAST', 'c', body=body)]
         self.assertEqual('zależy od CART', self.propose(epics)['skipped'][0]['reason'])
 
-    def test_shared_scope_names_path_of_candidate(self):
-        epics = [epic(1, 'CART', 'apps/api/openapi.json'), epic(2, 'VARIANTS', 'apps/api/openapi.json, apps/x')]
+    def test_shared_scope_names_the_common_path(self):
+        epics = [epic(1, 'CART', 'apps/api/src'), epic(2, 'VARIANTS', 'apps/api/src/Cart, apps/x')]
         result = self.propose(epics)
-        self.assertEqual([{'issue': 2, 'id': 'VARIANTS', 'reason': 'zakres wspólny z CART: apps/api/openapi.json'}],
+        self.assertEqual([{'issue': 2, 'id': 'VARIANTS', 'reason': 'zakres wspólny z CART: apps/api/src/Cart'}],
                          result['skipped'])
+
+    def test_common_generated_files_and_docs_are_allowed(self):
+        epics = [epic(1, 'CART', 'apps/api/openapi.json, docs/adr, README.md, apps/a'),
+                 epic(2, 'VARIANTS', 'apps/api/openapi.json, docs/adr/x.md, README.md, apps/b')]
+        self.assertEqual(['cart', 'variants'], self.dirs(self.propose(epics)))
+
+    def test_common_blocking_files_skip(self):
+        for path in ('CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml', 'make/api.mk', 'Makefile',
+                     'infra/k8s/README.md'):
+            with self.subTest(path=path):
+                epics = [epic(1, 'CART', '%s, apps/a' % path), epic(2, 'VARIANTS', '%s, apps/b' % path)]
+                result = self.propose(epics)
+                self.assertEqual(['cart'], self.dirs(result))
+                self.assertEqual('zakres wspólny z CART: %s' % path, result['skipped'][0]['reason'])
 
     def test_first_without_scope_is_alone(self):
         epics = [epic(1, 'CART', None), epic(2, 'VARIANTS', 'apps/x')]
@@ -650,6 +920,49 @@ class QueueCliTest(unittest.TestCase):
         code, out, _ = self.cli('approve', [epic(1, 'A', 'a')])
         self.assertEqual((2, ''), (code, out))
 
+    def write_night(self, **fields):
+        os.makedirs(self.state, exist_ok=True)
+        night = dict({'approved_at': (T0 - timedelta(hours=1)).isoformat(),
+                      'until': (T0 + timedelta(hours=8)).isoformat(), 'epics': ['old']}, **fields)
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            json.dump(night, f)
+        return night
+
+    def night_text(self):
+        with open(os.path.join(self.state, 'night.json'), encoding='utf-8') as f:
+            return f.read()
+
+    def test_approve_refused_while_a_night_runs(self):
+        night = self.write_night()
+        before = self.night_text()
+        for now in (T0, T0 + timedelta(hours=8)):
+            with self.subTest(now=now):
+                code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'], now=now)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('trwa noc zatwierdzona %s do %s' % (night['approved_at'], night['until']), err)
+                self.assertEqual(before, self.night_text())
+
+    def test_approve_allowed_after_the_end_of_the_night(self):
+        self.write_night(ended_at=T0.isoformat(), reason='lista wykonana')
+        code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'])
+        self.assertEqual(0, code, err)
+        self.assertEqual(['a'], json.loads(self.night_text())['epics'])
+
+    def test_approve_allowed_after_until(self):
+        self.write_night(until=(T0 - timedelta(seconds=1)).isoformat())
+        code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'])
+        self.assertEqual(0, code, err)
+        self.assertNotIn('ended_at', json.loads(self.night_text()))
+
+    def test_approve_with_an_unreadable_night_exits_2(self):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('night.json', err)
+        self.assertEqual('{', self.night_text())
+
 
 APPROVED = T0
 UNTIL = T0 + timedelta(hours=9)
@@ -686,9 +999,9 @@ class NextCliTest(unittest.TestCase):
     def a_done(self):
         return [self.start('a', T0 + timedelta(minutes=10)), self.done('a', T0 + timedelta(minutes=90))]
 
-    def next(self, epics, stdin_text=None, branches=(), fail=None, now=NOW, runner=None):
+    def next(self, epics, stdin_text=None, branches=(), fail=None, now=NOW, runner=None, **runner_kwargs):
         out, err = io.StringIO(), io.StringIO()
-        runner = runner or BoardRunner(epics, branches, fail)
+        runner = runner or GateRunner(epics, branches, fail, **runner_kwargs)
         self.runner = runner
         stdin = io.StringIO(json.dumps(usage(10)) if stdin_text is None else stdin_text)
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -710,7 +1023,8 @@ class NextCliTest(unittest.TestCase):
 
     def test_no_night_file(self):
         result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'brak zatwierdzonej listy', 'started': [], 'left': []}, result)
+        self.assertEqual({'epic': None, 'reason': 'brak zatwierdzonej listy', 'started': [], 'left': [], 'wait': False,
+                          'claim': None}, result)
         self.assertEqual([], self.runner.calls)
 
     def test_night_over(self):
@@ -743,8 +1057,9 @@ class NextCliTest(unittest.TestCase):
         self.assertEqual({'dir': 'a', 'id': 'A', 'issue': None, 'title': None, 'tasks': 2, 'minutes': None},
                          result['epic'])
         self.assertIsNone(result['reason'])
-        self.assertEqual(([], ['b']), (result['started'], result['left']))
-        self.assertEqual([['git', 'show', 'origin/main:docs/features/a/plan.md']], self.runner.calls)
+        self.assertEqual(([], ['b'], False), (result['started'], result['left'], result['wait']))
+        # The board is read to see that nothing is in progress, but no gate step runs.
+        self.assertEqual([], [c for c in self.runner.calls if c[0] == 'docker' or c[-1].endswith('spec.md')])
 
     def test_first_epic_ignores_events_before_approval(self):
         self.night(['a', 'b'])
@@ -756,9 +1071,9 @@ class NextCliTest(unittest.TestCase):
     def test_previous_epic_without_done(self):
         self.night(['a', 'b'])
         self.events(self.start('a', T0 + timedelta(minutes=10)))
-        result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'a bez pomiaru done', 'started': ['a'], 'left': ['b']}, result)
-        self.assertEqual([], self.runner.calls)
+        result = self.result(self.abc())   # a has no branch: nothing tracks it as an epic in progress
+        self.assertEqual({'epic': None, 'reason': 'a bez pomiaru done', 'started': ['a'], 'left': ['b'], 'wait': False,
+                          'claim': None}, result)
 
     def test_restarted_epic_without_later_done(self):
         self.night(['a', 'b'])
@@ -769,7 +1084,8 @@ class NextCliTest(unittest.TestCase):
         self.night(['a'])
         self.events(*self.a_done())
         result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'lista wykonana', 'started': ['a'], 'left': []}, result)
+        self.assertEqual({'epic': None, 'reason': 'lista wykonana', 'started': ['a'], 'left': [], 'wait': False,
+                          'claim': None}, result)
 
     def test_returns_second_epic_with_estimate(self):
         self.night(['a', 'b', 'c'])
@@ -778,6 +1094,7 @@ class NextCliTest(unittest.TestCase):
         self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title', 'tasks': 2, 'minutes': 80.0},
                          result['epic'])
         self.assertEqual((None, ['a'], ['c']), (result['reason'], result['started'], result['left']))
+        self.assertEqual(['b'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
 
     def test_board_is_read_after_the_first_epic(self):
         self.night(['a', 'b'])
@@ -789,8 +1106,8 @@ class NextCliTest(unittest.TestCase):
         self.night(['a', 'b'])
         self.events(*self.a_done())
         result = self.result([epic(1, 'A', 'a')])
-        self.assertEqual({'epic': None, 'reason': 'B nie jest już przygotowany', 'started': ['a'], 'left': ['b']},
-                         result)
+        self.assertEqual({'epic': None, 'reason': 'B nie jest już przygotowany', 'started': ['a'], 'left': ['b'],
+                          'wait': False, 'claim': None}, result)
 
     def test_epic_no_longer_prepared_with_reason(self):
         self.night(['a', 'b'])
@@ -887,6 +1204,251 @@ class NextCliTest(unittest.TestCase):
         self.assertEqual((1, ''), (code, out))
         self.assertIn('boom', err)
 
+
+    # --- parallel starts: reservation, gate next to epics in progress, waiting without ending the night ---
+
+    def claims_json(self):
+        with open(os.path.join(self.state, 'claims.json'), encoding='utf-8') as f:
+            return json.load(f)
+
+    def has_claims_file(self):
+        return os.path.exists(os.path.join(self.state, 'claims.json'))
+
+    def other_claims(self, *dirs):
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': NOW.isoformat(),
+                                   'expires_at': (NOW + timedelta(minutes=20)).isoformat()} for d in dirs],
+                       'owners': {}}, f)
+
+    def a_running(self):
+        return [*self.old_measurement(), self.start('a', T0 + timedelta(minutes=10))]
+
+    def docker_calls(self):
+        return [c for c in self.runner.calls if c[0] == 'docker']
+
+    def test_first_epic_gets_a_reservation(self):
+        self.night(['a', 'b'])
+        result = self.result(self.abc())
+        self.assertRegex(result['claim'], '^[0-9a-f]{16}$')
+        self.assertFalse(result['wait'])
+        self.assertEqual([{'dir': 'a', 'claim': result['claim'], 'at': NOW.isoformat(),
+                           'expires_at': (NOW + timedelta(minutes=30)).isoformat()}], self.claims_json()['claims'])
+
+    def x_and_ab(self, x_scope='apps/x', b_body=''):
+        return [epic(1, 'X', x_scope), epic(2, 'A', 'apps/a'), epic(3, 'B', 'apps/b', body=b_body)]
+
+    def test_first_epic_next_to_an_active_epic_of_another_session_passes_the_gate(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement())   # x has no event: started outside /ao-run, active
+        result = self.result(self.x_and_ab(), branches=['x'])
+        self.assertEqual({'dir': 'a', 'id': 'A', 'issue': 2, 'title': 'A: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertEqual((None, False), (result['reason'], result['wait']))
+        self.assertEqual(['a'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
+        self.assertTrue(self.docker_calls())
+
+    def test_first_epic_waits_for_the_gate_without_ending_the_night(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement())
+        result = self.result(self.x_and_ab(x_scope='apps/a'), branches=['x'])
+        self.assertEqual({'epic': None, 'reason': 'wspólne pliki z X: apps/a', 'started': [], 'left': ['a', 'b'],
+                          'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.assertFalse(self.has_claims_file())
+
+    def test_gate_refusal_with_nothing_active_ends_the_night(self):
+        self.night(['a', 'b'])
+        x_done = [self.start('x', T0 - timedelta(hours=3)), self.done('x', T0 - timedelta(hours=2))]
+        self.events(*self.old_measurement(), *x_done)   # x waits for the merge of its final PR: not active
+        result = self.result(self.x_and_ab(x_scope='apps/a'), branches=['x'])
+        self.assertEqual(('wspólne pliki z X: apps/a', False), (result['reason'], result['wait']))
+        self.assertEqual('wspólne pliki z X: apps/a', self.night_json()['reason'])
+
+    def test_parallel_start_of_the_next_epic_with_a_reservation(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        result = self.result(self.abc(), branches=['a'])
+        self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertEqual((None, ['a'], [], False),
+                         (result['reason'], result['started'], result['left'], result['wait']))
+        self.assertEqual(['b'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
+
+    def test_parallel_candidate_waits_and_the_night_goes_on(self):
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/a/b'), epic(3, 'C', 'apps/c')]
+        self.night(['a', 'b', 'c'])
+        self.events(*self.a_running())
+        for _ in range(2):
+            result = self.result(epics, branches=['a'])
+            self.assertEqual({'epic': None, 'reason': 'wspólne pliki z A: apps/a/b', 'started': ['a'],
+                              'left': ['b', 'c'], 'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.assertFalse(self.has_claims_file())
+
+    def test_two_active_epics_make_the_candidate_wait(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        self.other_claims('y')
+        result = self.result(self.abc(), branches=['a'])
+        self.assertEqual(('dwa epiki aktywne: A, Y', True), (result['reason'], result['wait']))
+
+    def test_dependency_on_a_running_epic_waits(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b', body='## Zależności\nPo A\n')]
+        result = self.result(epics, branches=['a'])
+        self.assertEqual(('zależy od A', True), (result['reason'], result['wait']))
+        self.assertNotIn('ended_at', self.night_json())
+
+    def test_usage_limit_with_a_running_epic_waits(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        result = self.result(self.abc(), branches=['a'], stdin_text=json.dumps(usage(72.04)))
+        self.assertEqual(('okno %s: 72.0%% + 4.0%% + 4.0%% > 80%%' % LABEL, True), (result['reason'], result['wait']))
+
+    def test_parallel_candidate_that_does_not_fit_before_until_waits(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        result = self.result(self.abc(), branches=['a'], now=UNTIL - timedelta(minutes=59))
+        self.assertEqual(('B nie zdąży do 07:00', True), (result['reason'], result['wait']))
+        self.assertNotIn('ended_at', self.night_json())
+        self.assertFalse(self.has_claims_file())
+
+    def x_waiting_for_merge(self):
+        return [self.start('x', T0 - timedelta(hours=3)), self.done('x', T0 - timedelta(hours=2))]
+
+    def test_first_epic_next_to_an_inactive_epic_in_progress_passes_the_gate(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.x_waiting_for_merge())   # x: done, final PR open
+        result = self.result(self.x_and_ab(), branches=['x'])
+        self.assertEqual({'dir': 'a', 'id': 'A', 'issue': 2, 'title': 'A: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertEqual((None, False), (result['reason'], result['wait']))
+        self.assertEqual(['a'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
+        self.assertTrue(self.docker_calls())
+
+    def test_first_epic_too_late_next_to_an_inactive_epic_in_progress_ends_the_night(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.x_waiting_for_merge())
+        result = self.result(self.x_and_ab(), branches=['x'], now=UNTIL - timedelta(minutes=59))
+        self.assertEqual(('A nie zdąży do 07:00', False), (result['reason'], result['wait']))
+        self.assertEqual('A nie zdąży do 07:00', self.night_json()['reason'])
+
+    def gate_log(self):
+        path = os.path.join(self.state, 'gate.jsonl')
+        if not os.path.exists(path):
+            return []
+        with open(path, encoding='utf-8') as f:
+            return [json.loads(line) for line in f]
+
+    def test_gate_evaluations_of_next_are_logged(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        claude_md = [epic(1, 'A', 'CLAUDE.md, apps/a'), epic(2, 'B', 'CLAUDE.md, apps/b')]
+        self.result(claude_md, branches=['a'])
+        self.other_claims('y')
+        self.result(self.abc(), branches=['a'])
+        self.other_claims()
+        self.result(self.abc(), branches=['a'], now=UNTIL - timedelta(minutes=59))
+        passed = self.result(self.abc(), branches=['a'])
+        at = NOW.isoformat()
+        self.assertEqual([
+            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: CLAUDE.md', 'waiting': None,
+             'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: CLAUDE.md', 'paths': ['CLAUDE.md']}]},
+            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'dwa epiki aktywne: A, Y', 'waiting': 'b',
+             'skipped': []},
+            {'at': (UNTIL - timedelta(minutes=59)).isoformat(), 'dir_arg': 'b', 'epic': None,
+             'reason': 'B nie zdąży do 07:00', 'waiting': None, 'skipped': []},
+            {'at': at, 'dir_arg': 'b', 'epic': 'b', 'reason': None, 'waiting': None, 'skipped': []},
+        ], self.gate_log())
+        self.assertEqual('b', passed['epic']['dir'])
+
+    def test_first_and_serial_epics_write_no_gate_log(self):
+        self.night(['a', 'b'])
+        self.assertEqual('a', self.result(self.abc())['epic']['dir'])
+        os.remove(os.path.join(self.state, 'claims.json'))   # `start a --claim` turns the reservation into the owner
+        self.events(*self.old_measurement(), *self.a_done())
+        self.assertEqual('b', self.result(self.abc())['epic']['dir'])
+        self.assertEqual([], self.gate_log())
+
+    def test_gate_log_failure_of_next_exits_2_without_writes(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, err = self.next(self.abc(), branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('gate.jsonl', err)
+        self.assertFalse(self.has_claims_file())
+        self.assertNotIn('ended_at', self.night_json())
+
+    def test_whole_list_started_waits_for_the_running_epics(self):
+        self.night(['a', 'b'])
+        b_running = [self.start('b', T0 + timedelta(minutes=20))]
+        self.events(*self.a_done(), *b_running)
+        result = self.result(self.abc(), branches=['b'])
+        self.assertEqual({'epic': None, 'reason': 'wszystkie epiki listy ruszyły, w toku: b', 'started': ['a', 'b'],
+                          'left': [], 'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.events(*self.a_done(), *b_running, self.done('b', NOW - timedelta(minutes=1)))
+        self.assertEqual('lista wykonana', self.reason(self.abc(), branches=['b']))
+
+    def hold(self):
+        code = night_queue.main(['--state', self.state, 'hold', '--reason', 'CI czerwone'], run=GateRunner([]),
+                                now=NOW, stdin=io.StringIO())
+        self.assertEqual(0, code)
+
+    def test_hold_makes_a_parallel_candidate_wait(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_running())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.hold()
+        result = self.result(self.abc(), branches=['a'])
+        self.assertEqual({'epic': None, 'reason': 'równoległość wstrzymana: CI czerwone', 'started': ['a'],
+                          'left': ['b'], 'wait': True, 'claim': None}, result)
+        self.assertNotIn('ended_at', self.night_json())
+        self.assertFalse(self.has_claims_file())
+        self.assertEqual(('b', 'równoległość wstrzymana: CI czerwone'),
+                         (self.gate_log()[-1]['waiting'], self.gate_log()[-1]['reason']))
+
+    def test_hold_keeps_serial_epics_of_the_night(self):
+        self.night(['a', 'b'])
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.hold()
+        self.assertEqual('a', self.result(self.abc())['epic']['dir'])
+        os.remove(os.path.join(self.state, 'claims.json'))
+        self.events(*self.old_measurement(), *self.a_done())   # a waits for its merge: serial case (b)
+        self.assertEqual('b', self.result(self.abc(), branches=['a'])['epic']['dir'])
+
+    def test_candidate_reserved_by_another_session_waits(self):
+        self.night(['a', 'b'])
+        self.other_claims('a')
+        result = self.result(self.abc())
+        self.assertEqual(('epik A zarezerwowany albo w toku', True), (result['reason'], result['wait']))
+        self.assertEqual(['tok-a'], [c['claim'] for c in self.claims_json()['claims']])
+
+    def test_after_done_an_active_epic_of_another_session_needs_the_gate(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'X', 'apps/b/x')]
+        result = self.result(epics, branches=['a', 'x'])
+        self.assertEqual(('wspólne pliki z X: apps/b/x', True), (result['reason'], result['wait']))
+
+    def test_reservation_failure_prints_nothing(self):
+        self.night(['a', 'b'])
+        error = night_queue.parallel_gate.StateFileError('nie można zapisać claims.json')
+        with mock.patch.object(night_queue.parallel_gate, 'reserve', side_effect=error):
+            code, out, err = self.next(self.abc())
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
+
+    def test_unreadable_claims_exit_2_without_writing(self):
+        self.night(['a', 'b'])
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.next(self.abc())
+        self.assertEqual((2, ''), (code, out))
+        self.assertNotIn('ended_at', self.night_json())
+
     # --- end of the night: close, ended_at, next recording the end, approve starting a fresh night ---
 
     def close(self, *extra):
@@ -943,8 +1505,8 @@ class NextCliTest(unittest.TestCase):
         self.events(*self.a_done())
         self.close('--reason', 'A bez DONE')
         result = self.result(self.abc())
-        self.assertEqual({'epic': None, 'reason': 'noc zakończona: A bez DONE', 'started': ['a'], 'left': ['b', 'c']},
-                         result)
+        self.assertEqual({'epic': None, 'reason': 'noc zakończona: A bez DONE', 'started': ['a'], 'left': ['b', 'c'],
+                          'wait': False, 'claim': None}, result)
         self.assertEqual([], self.runner.calls)
 
     def test_next_after_close_refuses_before_night_over(self):
@@ -1263,3 +1825,1304 @@ class RoomCliTest(unittest.TestCase):
     def test_reads_no_board(self):
         # no_commands raises on any command: room must not call gh or git.
         self.assertEqual(0, self.room(usage(10))[0])
+
+
+GIB = 1024 ** 3
+FETCH_EPICS = ['git', 'fetch', 'origin', 'refs/heads/epic/*:refs/remotes/origin/epic/*']
+
+
+class GateRunner(BoardRunner):
+    """BoardRunner plus the final PR state, branch diffs and docker commands read by the gate."""
+
+    def __init__(self, epics, branches=(), fail=None, merged=(), diffs=None, docker=None):
+        super().__init__(epics, branches, fail)
+        self.merged, self.diffs = set(merged), diffs or {}
+        self.docker = docker or {'info': str(64 * GIB), 'ps': '', 'stats': ''}
+
+    def __call__(self, args):
+        if args[:3] == ['gh', 'pr', 'list']:
+            head = args[args.index('--head') + 1]
+            answer = json.dumps([{'number': 99}] if head[len('epic/'):] in self.merged else [])
+        elif args[:2] == ['git', 'diff']:
+            answer = ''.join(p + '\n' for p in self.diffs.get(args[-1].split('origin/epic/')[1], ()))
+        elif args[0] == 'docker':
+            answer = self.docker[args[1]]
+        else:
+            return super().__call__(args)
+        self.calls.append(list(args))
+        if self.fail and list(args[:len(self.fail)]) == list(self.fail):
+            raise night_queue.next_epic.CommandError(args, 'boom')
+        return answer
+
+
+class GateCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+        self.ao_root = os.path.join(self.dir, 'ao-root')
+        os.makedirs(self.state)
+
+    def events(self, *events):
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            for e in events:
+                f.write(json.dumps(e) + '\n')
+
+    def start(self, epic_dir, at, tasks=2, usage_=None):
+        return {'event': 'start', 'epic': epic_dir, 'tasks': tasks, 'at': at.isoformat(), 'usage': usage_ or {}}
+
+    def done(self, epic_dir, at, usage_=None):
+        return {'event': 'done', 'epic': epic_dir, 'at': at.isoformat(), 'usage': usage_ or {}}
+
+    def old_measurement(self):
+        """30 min and 2 % of the weekly window per task."""
+        at = T0 - timedelta(hours=10)
+        return [self.start('old', at, 2, usage(10)), self.done('old', at + timedelta(minutes=60), usage(14))]
+
+    def claims(self, *dirs, expires=NOW + timedelta(minutes=20)):
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': NOW.isoformat(),
+                                   'expires_at': expires.isoformat()} for d in dirs], 'owners': {}}, f)
+
+    def gate(self, epics, extra=(), stdin_text=None, now=NOW, **runner_kwargs):
+        out, err = io.StringIO(), io.StringIO()
+        self.runner = GateRunner(epics, **runner_kwargs)
+        stdin = io.StringIO(json.dumps(usage(10)) if stdin_text is None else stdin_text)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'gate', '--ao-root', self.ao_root] + list(extra),
+                                    run=self.runner, now=now, stdin=stdin)
+        return code, out.getvalue(), err.getvalue()
+
+    def claims_json(self):
+        with open(os.path.join(self.state, 'claims.json'), encoding='utf-8') as f:
+            return json.load(f)
+
+    def owners(self, owners):
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [], 'owners': owners}, f)
+
+    def has_claims_file(self):
+        return os.path.exists(os.path.join(self.state, 'claims.json'))
+
+    def result(self, epics, **kwargs):
+        code, out, err = self.gate(epics, **kwargs)
+        self.assertEqual(0, code, err)
+        return json.loads(out)
+
+    def reason(self, epics, **kwargs):
+        result = self.result(epics, **kwargs)
+        self.assertIsNone(result['epic'])
+        return result['reason']
+
+    def commands(self, *prefix):
+        return [c for c in self.runner.calls if c[:len(prefix)] == list(prefix)]
+
+    def log(self):
+        with open(os.path.join(self.state, 'gate.jsonl'), encoding='utf-8') as f:
+            return [json.loads(line) for line in f]
+
+    # Step 1 and output
+
+    def test_nothing_in_progress_starts_serially(self):
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')])
+        self.assertEqual({'epic': {'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': 2, 'minutes': None},
+                          'reason': None, 'reserved': False, 'claim': None, 'resumed': False, 'parallel_with': [],
+                          'active': [], 'in_progress': [], 'merged_open': [], 'skipped': [], 'docker': None,
+                          'waiting': None}, result)
+        self.assertEqual([], self.commands('docker'))
+        self.assertEqual([], self.commands('gh', 'pr'))
+
+    def test_waiting_names_the_candidate_of_each_wait(self):
+        c = {'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}
+        b = {'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title'}
+        abc = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')]
+        two_active = [*self.old_measurement(), self.start('a', NOW - timedelta(hours=1))]
+        cases = [
+            ('room', two_active, abc, {'branches': ['a', 'b']}, c),
+            ('room with --dir', two_active, abc, {'branches': ['a', 'b'], 'extra': ['--dir', 'c']}, c),
+            ('epic in progress without scope', [], [epic(1, 'A', None), epic(2, 'B', 'apps/b')],
+             {'branches': ['a']}, b),
+            ('docker', self.old_measurement(), self.ab(), {'branches': ['a'], 'fail': ('docker',)}, b),
+            ('usage', [], self.ab(), {'branches': ['a']}, b),
+        ]
+        for name, events, epics, kwargs, waiting in cases:
+            with self.subTest(case=name):
+                self.events(*events)
+                result = self.result(epics, **kwargs)
+                self.assertIsNone(result['epic'])
+                self.assertIsNotNone(result['reason'])
+                self.assertEqual(waiting, result['waiting'])
+                self.assertEqual(waiting['dir'], self.log()[-1]['waiting'])
+
+    def test_waiting_is_null_on_a_pass_and_on_skips_only(self):
+        self.events(*self.old_measurement())
+        shared = [epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')]
+        cases = [
+            ('pass after a skip', shared, []),
+            ('skip only', shared[:2], []),
+            ('--dir skip', shared, ['--dir', 'b']),
+        ]
+        for name, epics, extra in cases:
+            with self.subTest(case=name):
+                result = self.result(epics, branches=['a'], extra=extra)
+                self.assertEqual(['B'], [s['id'] for s in result['skipped']])
+                self.assertIsNone(result['waiting'])
+                self.assertIsNone(self.log()[-1]['waiting'])
+
+    def hold(self, reason='CI czerwone'):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'hold', '--reason', reason], run=GateRunner([]), now=NOW)
+        self.assertEqual(0, code, err.getvalue())
+
+    def test_hold_makes_a_candidate_next_to_any_epic_in_progress_wait(self):
+        # After a critical problem of a pair epics run in parallel again only after the user's decision.
+        self.hold()
+        held = 'równoległość wstrzymana: CI czerwone'
+        b = {'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title'}
+        a_done = [self.start('a', NOW - timedelta(hours=3)), self.done('a', NOW - timedelta(hours=2))]
+        cases = [
+            ('active branch epic', [], {'branches': ['a']}, []),
+            ('branch epic waiting for its merge', a_done, {'branches': ['a']}, []),
+            ('reservation of another session', [], {}, ['a']),
+            ('--dir --reserve', [], {'branches': ['a'], 'extra': ['--dir', 'b', '--reserve']}, []),
+        ]
+        for name, events, kwargs, claims in cases:
+            with self.subTest(case=name):
+                self.events(*self.old_measurement(), *events)
+                self.claims(*claims)
+                result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], **kwargs)
+                self.assertEqual((None, held, b, False, None),
+                                 (result['epic'], result['reason'], result['waiting'], result['reserved'],
+                                  result['claim']))
+                self.assertEqual([], self.commands('docker'))
+                self.assertEqual([c for c in self.claims_json()['claims'] if c['dir'] == 'b'], [])
+
+    def test_hold_lets_an_epic_start_with_nothing_in_progress(self):
+        self.hold()
+        result = self.result([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--reserve'])
+        self.assertEqual(('a', None, True), (result['epic']['dir'], result['reason'], result['reserved']))
+
+    def test_unreadable_hold_exits_2(self):
+        for text in ('{oops', '[]', '{"at": "2026-11-13T10:00:00", "reason": "x"}', '{"at": "2026-11-13T10:00:00Z"}'):
+            with self.subTest(text=text):
+                with open(os.path.join(self.state, 'parallel-hold.json'), 'w') as f:
+                    f.write(text)
+                code, out, err = self.gate([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'])
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('parallel-hold.json', err)
+
+    def test_empty_board_gives_no_epic_and_no_reason(self):
+        result = self.result([])
+        self.assertEqual((None, None, []), (result['epic'], result['reason'], result['skipped']))
+
+    def test_candidate_next_to_an_epic_in_progress(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'])
+        self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertIsNone(result['reason'])
+        self.assertEqual(['a'], result['parallel_with'])
+        self.assertEqual(['a'], result['active'])
+        self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}], result['in_progress'])
+        self.assertEqual({'total_mib': 65536.0, 'other_mib': 0.0, 'ao_mib': 0.0, 'free_mib': 59392.0,
+                          'required_mib': 6144.0}, result['docker'])
+        self.assertEqual([['gh', 'pr', 'list', '--repo', 'piotrp321/shop', '--head', 'epic/a', '--base', 'main',
+                           '--state', 'merged', '--json', 'number', '--limit', '1']], self.commands('gh', 'pr'))
+
+    # Step 2: room
+
+    def test_two_active_epics_wait(self):
+        # A has a start without done, B has no event at all (started outside /ao-run): both active.
+        self.events(*self.old_measurement(), self.start('a', NOW - timedelta(hours=1)))
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')],
+                             branches=['a', 'b'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('dwa epiki aktywne: A, B', result['reason'])
+        self.assertEqual(['a', 'b'], result['active'])
+        self.assertIsNone(result['docker'])
+
+    def test_epic_after_done_takes_no_room(self):
+        self.events(*self.old_measurement(), self.start('a', NOW - timedelta(hours=1)),
+                    self.done('a', NOW - timedelta(minutes=30)))
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')],
+                             branches=['a', 'b'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual(['b'], result['active'])
+        self.assertEqual(['a', 'b'], result['parallel_with'])
+
+    def test_merged_final_pr_is_merged_open_and_not_in_progress(self):
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/a')], branches=['a'], merged=['a'])
+        self.assertEqual('b', result['epic']['dir'])
+        self.assertEqual([], result['in_progress'])
+        self.assertEqual([], result['active'])
+        self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}], result['merged_open'])
+        self.assertIsNone(result['docker'])
+
+    # Claims of other sessions
+
+    def test_valid_claim_is_in_progress_and_active(self):
+        self.claims('b')
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')],
+                             branches=['a'])
+        self.assertEqual('dwa epiki aktywne: A, B', result['reason'])
+        self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}, {'dir': 'b', 'id': 'B', 'issue': 2}],
+                         result['in_progress'])
+        self.assertEqual(['a', 'b'], result['active'])
+
+    def test_claim_off_the_board_uses_directory_as_id(self):
+        self.claims('zzz')
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'])
+        self.assertEqual('dwa epiki aktywne: A, ZZZ', result['reason'])
+        self.assertIn({'dir': 'zzz', 'id': 'ZZZ', 'issue': None}, result['in_progress'])
+
+    def test_claimed_epic_is_no_candidate_and_its_scope_counts(self):
+        self.events(*self.old_measurement())
+        self.claims('b')
+        result = self.result([epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/x'), epic(4, 'D', 'apps/d')])
+        self.assertEqual('d', result['epic']['dir'])
+        self.assertEqual([{'issue': 3, 'id': 'C', 'reason': 'wspólne pliki z B: apps/x', 'paths': ['apps/x']}],
+                         result['skipped'])
+        self.assertEqual(['b'], result['parallel_with'])
+        self.assertEqual([], self.commands('git', 'diff'))
+
+    def test_expired_claim_is_ignored(self):
+        self.claims('a', expires=NOW)
+        result = self.result([epic(1, 'A', 'apps/a')])
+        self.assertEqual(('a', []), (result['epic']['dir'], result['in_progress']))
+
+    def test_candidate_is_not_compared_with_its_own_claim(self):
+        self.events(*self.old_measurement())
+        self.claims('b')
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'],
+                             extra=['--dir', 'b', '--claim', 'tok-b'])
+        self.assertEqual('b', result['epic']['dir'])
+        self.assertEqual(['a'], result['parallel_with'])
+        self.assertEqual(['a'], result['active'])
+        self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}], result['in_progress'])
+
+    # Step 3: dependencies
+
+    def test_dependency_on_open_epic_skips_to_the_next_candidate(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b', body='## Zależności\n- A\n'),
+                              epic(3, 'C', 'apps/c')], branches=['a'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'zależy od A', 'paths': []}], result['skipped'])
+
+    # Step 4: scope
+
+    def test_candidate_without_scope_is_skipped(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', None), epic(3, 'C', 'apps/c')], branches=['a'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'brak linii Zakres', 'paths': []}], result['skipped'])
+
+    def test_epic_in_progress_without_scope_makes_every_candidate_wait(self):
+        result = self.result([epic(1, 'A', None), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')], branches=['a'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('A w toku bez zakresu: brak linii Zakres', result['reason'])
+        self.assertEqual([], result['skipped'])
+
+    def test_epic_in_progress_without_spec_on_main_waits(self):
+        result = self.result([epic(1, 'A', 'apps/a', tasks=None), epic(2, 'B', 'apps/b')], branches=['a'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('A w toku bez zakresu: brak spec.md na origin/main', result['reason'])
+        self.assertEqual([], self.commands('git', 'show', 'origin/main:docs/features/a/spec.md'))
+
+    def test_claim_without_spec_on_main_waits(self):
+        self.claims('zzz')
+        result = self.result([epic(2, 'B', 'apps/b')])
+        self.assertEqual('ZZZ w toku bez zakresu: brak spec.md na origin/main', result['reason'])
+
+    # Step 5: files
+
+    def test_common_generated_files_and_docs_pass(self):
+        self.events(*self.old_measurement())
+        shared = 'apps/api/openapi.json, apps/admin/src/api/schema.d.ts, README.md'
+        result = self.result([epic(1, 'A', 'apps/a, docs/adr, ' + shared), epic(2, 'B', 'apps/b, docs, ' + shared)],
+                             branches=['a'])
+        self.assertEqual('b', result['epic']['dir'])
+
+    def test_common_blocking_file_skips_the_candidate(self):
+        self.events(*self.old_measurement())
+        for path in ['CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml', 'make/demo.mk', 'Makefile',
+                     'infra/k8s/README.md', 'apps/admin/src/layout/AppMenu.vue', 'apps/api/src/Cart']:
+            with self.subTest(path=path):
+                result = self.result([epic(1, 'A', 'apps/a, ' + path), epic(2, 'B', path + ', apps/b'),
+                                      epic(3, 'C', 'apps/c')], branches=['a'])
+                self.assertEqual('c', result['epic']['dir'])
+                self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'wspólne pliki z A: %s' % path,
+                                   'paths': [path]}], result['skipped'])
+
+    def test_narrower_path_of_the_common_part_is_reported(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/api/src'), epic(2, 'B', 'apps/api/src/Cart/Domain')],
+                             branches=['a'])
+        self.assertEqual(['apps/api/src/Cart/Domain'], result['skipped'][0]['paths'])
+
+    def test_paths_from_all_epics_in_progress(self):
+        self.events(*self.old_measurement(), self.start('b', NOW - timedelta(hours=1)),
+                    self.done('b', NOW - timedelta(minutes=30)))
+        result = self.result([epic(1, 'A', 'apps/x, Makefile'), epic(2, 'B', 'apps/y'),
+                              epic(3, 'C', 'apps/x, apps/y, Makefile')], branches=['a', 'b'])
+        self.assertIsNone(result['epic'])
+        self.assertIsNone(result['reason'])
+        self.assertEqual([{'issue': 3, 'id': 'C', 'reason': 'wspólne pliki z A: Makefile, apps/x',
+                           'paths': ['Makefile', 'apps/x', 'apps/y']}], result['skipped'])
+
+    def test_file_outside_scope_in_the_branch_diff_blocks(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/shared')], branches=['a'],
+                             diffs={'a': ['apps/a/x.php', 'apps/shared/Kernel.php']})
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'wspólne pliki z A: apps/shared/Kernel.php',
+                           'paths': ['apps/shared/Kernel.php']}], result['skipped'])
+        self.assertEqual([FETCH_EPICS], self.commands(*FETCH_EPICS))
+        self.assertEqual([['git', 'diff', '--name-only', 'origin/main...origin/epic/a']], self.commands('git', 'diff'))
+        fetch, diff = self.runner.calls.index(FETCH_EPICS), self.runner.calls.index(self.commands('git', 'diff')[0])
+        self.assertLess(fetch, diff)
+
+    def test_lower_candidate_starts_before_a_skipped_higher_one(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')],
+                             branches=['a'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual(['B'], [s['id'] for s in result['skipped']])
+
+    # --dir
+
+    def test_dir_not_on_the_board(self):
+        self.assertEqual('ZZZ nie ma na tablicy', self.reason([epic(1, 'A', 'apps/a')], extra=['--dir', 'zzz']))
+
+    def test_dir_not_prepared(self):
+        self.assertEqual('brak spec.md i plan.md z manifestem na origin/main',
+                         self.reason([epic(1, 'A', 'apps/a', tasks=None)], extra=['--dir', 'a']))
+
+    def test_dir_in_progress_resumes(self):
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        self.assertEqual(('a', None, True), (result['epic']['dir'], result['reason'], result['resumed']))
+
+    def test_dir_with_merged_final_pr(self):
+        self.assertEqual('A ma zmergowany końcowy PR',
+                         self.reason([epic(1, 'A', 'apps/a')], branches=['a'], merged=['a'], extra=['--dir', 'a']))
+
+    def test_dir_skip_stops_with_its_reason(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')],
+                             branches=['a'], extra=['--dir', 'b'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('wspólne pliki z A: apps/x', result['reason'])
+        self.assertEqual(['B'], [s['id'] for s in result['skipped']])
+
+    def test_dir_checks_a_lower_epic(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')],
+                             branches=['a'], extra=['--dir', 'c'])
+        self.assertEqual(('c', []), (result['epic']['dir'], result['skipped']))
+
+    # Step 6: Docker memory
+
+    def ab(self):
+        return [epic(1, 'A', 'apps/a', tasks=3), epic(2, 'B', 'apps/b')]
+
+    def test_memory_too_small(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(12 * GIB), 'ps': 'web\tother\n', 'stats': 'web\t1GiB / 12GiB\n'}
+        result = self.result(self.ab(), branches=['a'], docker=docker)
+        self.assertEqual('pamięć Dockera: wolne 5120 MiB < 6144 MiB', result['reason'])
+        self.assertEqual({'total_mib': 12288.0, 'other_mib': 1024.0, 'ao_mib': 0.0, 'free_mib': 5120.0,
+                          'required_mib': 6144.0}, result['docker'])
+
+    def test_reserve_of_an_active_epic_without_a_stack(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(16 * GIB), 'ps': '', 'stats': ''}
+        result = self.result(self.ab(), branches=['a'], docker=docker, extra=['--stack-gib', '9'])
+        self.assertEqual('pamięć Dockera: wolne 7168 MiB < 9216 MiB', result['reason'])
+
+    def test_measured_ao_memory_above_the_reserve_counts(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(20 * GIB), 'ps': 'ao-a-api-1\tao-a-1\n', 'stats': 'ao-a-api-1\t10GiB / 20GiB\n'}
+        result = self.result(self.ab(), branches=['a'], docker=docker)
+        self.assertEqual('b', result['epic']['dir'])
+        self.assertEqual({'total_mib': 20480.0, 'other_mib': 0.0, 'ao_mib': 10240.0, 'free_mib': 10240.0,
+                          'required_mib': 6144.0}, result['docker'])
+
+    def test_docker_failure_waits(self):
+        self.events(*self.old_measurement())
+        result = self.result(self.ab(), branches=['a'], fail=('docker',))
+        self.assertIsNone(result['epic'])
+        self.assertIn('docker:', result['reason'])
+        self.assertIn('boom', result['reason'])
+        self.assertIsNone(result['docker'])
+
+    def test_unreadable_docker_output_waits(self):
+        self.events(*self.old_measurement())
+        result = self.result(self.ab(), branches=['a'], docker={'info': 'garbage', 'ps': '', 'stats': ''})
+        self.assertEqual(('docker: nieczytelne wyjście', None), (result['reason'], result['docker']))
+
+    # Step 7: usage limits
+
+    def test_no_measurement_waits(self):
+        self.assertEqual('brak pomiaru', self.reason(self.ab(), branches=['a']))
+
+    def test_usage_status_not_ok_waits(self):
+        self.events(*self.old_measurement())
+        self.assertEqual('stan limitów: stale', self.reason(self.ab(), branches=['a'],
+                                                             stdin_text=json.dumps(usage(10, status='stale'))))
+
+    def test_empty_and_invalid_stdin_wait(self):
+        self.events(*self.old_measurement())
+        for text in ['', '{oops', '[1]']:
+            with self.subTest(text=text):
+                self.assertEqual('stan limitów: unreadable', self.reason(self.ab(), branches=['a'], stdin_text=text))
+
+    def test_full_estimate_of_the_active_epic_counts(self):
+        # A has 3 tasks in its manifest: 6 %; candidate B 2 tasks: 4 %.
+        self.events(*self.old_measurement())
+        self.assertEqual('b', self.result(self.ab(), branches=['a'], stdin_text=json.dumps(usage(70)))['epic']['dir'])
+        self.assertEqual('okno Weekly · all models: 71.0% + 6.0% + 4.0% > 80%',
+                         self.reason(self.ab(), branches=['a'], stdin_text=json.dumps(usage(71))))
+
+    def test_active_epic_without_plan_on_main_waits(self):
+        self.events(*self.old_measurement())
+        # origin/main has the spec of A but no plan.md.
+        original = GateRunner.__call__
+
+        def without_plan(runner, args):
+            out_ = original(runner, args)
+            return out_.replace('docs/features/a/plan.md\n', '') if args[:2] == ['git', 'ls-tree'] else out_
+
+        with mock.patch.object(GateRunner, '__call__', without_plan):
+            self.assertEqual('A bez planu na main', self.reason(self.ab(), branches=['a']))
+
+    def test_active_epic_with_unreadable_manifest_waits(self):
+        self.events(*self.old_measurement())
+        original = GateRunner.__call__
+
+        def broken_manifest(runner, args):
+            if args == ['git', 'show', 'origin/main:docs/features/a/plan.md']:
+                runner.calls.append(list(args))
+                return '# Plan without a manifest\n'
+            return original(runner, args)
+
+        with mock.patch.object(GateRunner, '__call__', broken_manifest):
+            self.assertEqual('brak jednego bloku json z manifestem w plan.md epiku a',
+                             self.reason(self.ab(), branches=['a']))
+
+    def test_window_missing_in_the_estimate_of_an_active_epic_waits(self):
+        # Rates are shared by all epics, so the case needs per-epic estimates: patched estimate by task count.
+        ctx = night_queue.GateContext(run=None, now=NOW, board=[], measured=[], in_progress=[], merged_open=[])
+        ctx._tasks, ctx._on_main = {'a': 3}, {'docs/features/a/plan.md'}
+        estimates = {3: {'minutes': 90.0, 'usage': {}}}
+        with mock.patch.object(night_queue, 'estimate', lambda measured, tasks: estimates[tasks]):
+            reason = night_queue.check_usage(ctx, {'minutes': 60.0, 'usage': {LABEL: 4.0}},
+                                             [{'dir': 'a', 'id': 'A'}], usage(10))
+        self.assertEqual('okno %s bez pomiaru' % LABEL, reason)
+
+    def test_epic_after_done_adds_no_usage(self):
+        self.events(*self.old_measurement(), self.start('a', NOW - timedelta(hours=1)),
+                    self.done('a', NOW - timedelta(minutes=30)))
+        result = self.result(self.ab(), branches=['a'], stdin_text=json.dumps(usage(76)))
+        self.assertEqual('b', result['epic']['dir'])
+
+    def test_window_resetting_before_the_end_is_ignored(self):
+        self.events(*self.old_measurement())
+        before = (NOW + timedelta(minutes=60)).isoformat()
+        after = (NOW + timedelta(minutes=61)).isoformat()
+        self.assertEqual('b', self.result(self.ab(), branches=['a'],
+                                          stdin_text=json.dumps(usage(95, reset=before)))['epic']['dir'])
+        self.assertIn('95.0%', self.reason(self.ab(), branches=['a'], stdin_text=json.dumps(usage(95, reset=after))))
+
+    def test_window_without_measurement_waits(self):
+        self.events(*self.old_measurement())
+        plan = usage(10, extra_windows=[{'label': '5h', 'percentUsed': 1, 'resetsAt': RESET}])
+        self.assertEqual('okno 5h bez pomiaru', self.reason(self.ab(), branches=['a'], stdin_text=json.dumps(plan)))
+
+    def test_usage_estimate_ignores_overlapping_measurements(self):
+        at = T0 - timedelta(hours=5)
+        overlapping = [self.start('p', at, 2, usage(10)), self.start('q', at + timedelta(minutes=10), 2, usage(10)),
+                       self.done('p', at + timedelta(minutes=60), usage(60)),
+                       self.done('q', at + timedelta(minutes=70), usage(60))]
+        self.events(*self.old_measurement(), *overlapping)
+        self.assertEqual('b', self.result(self.ab(), branches=['a'], stdin_text=json.dumps(usage(70)))['epic']['dir'])
+
+    # gate.jsonl
+
+    def test_every_call_appends_to_gate_log(self):
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/x', body='secret body'), epic(2, 'B', 'apps/x', body='secret body'),
+                 epic(3, 'C', 'apps/c')]
+        self.result(epics, branches=['a'])
+        self.result(epics, branches=['a'], extra=['--dir', 'b'])
+        self.assertEqual([
+            {'at': NOW.isoformat(), 'dir_arg': None, 'epic': 'c', 'reason': None, 'waiting': None,
+             'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}]},
+            {'at': NOW.isoformat(), 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: apps/x',
+             'waiting': None, 'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}]},
+        ], self.log())
+
+    # Errors
+
+    def test_gh_failure_exits_1_without_log(self):
+        code, out, err = self.gate(self.ab(), branches=['a'], fail=('gh', 'pr', 'list'))
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'gate.jsonl')))
+
+    def test_git_failure_exits_1(self):
+        code, out, err = self.gate(self.ab(), branches=['a'], fail=('git', 'diff'))
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+
+    def test_unreadable_measurements_exit_2(self):
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            f.write('broken\n')
+        code, out, err = self.gate(self.ab(), branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('linia 1', err)
+
+    def test_unreadable_claims_exit_2(self):
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{oops')
+        code, out, err = self.gate(self.ab(), branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
+
+    def test_busy_lock_exits_2_without_log(self):
+        @contextlib.contextmanager
+        def busy(state_dir, **kwargs):
+            raise night_queue.parallel_gate.LockTimeout('blokada bramki zajęta')
+            yield
+
+        with mock.patch.object(night_queue.parallel_gate, 'state_lock', busy):
+            code, out, err = self.gate(self.ab(), branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('blokada bramki zajęta', err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'gate.jsonl')))
+
+    def test_gate_log_write_failure_exits_2(self):
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('gate.jsonl', err)
+
+    def test_bad_stack_gib_exits_2(self):
+        for value in ['0', '-1', 'x']:
+            with self.subTest(value=value):
+                code, out, _ = self.gate([epic(1, 'A', 'apps/a')], extra=['--stack-gib', value])
+                self.assertEqual((2, ''), (code, out))
+
+    # Reservation
+
+    def test_reserve_writes_a_claim_with_a_token(self):
+        result = self.result([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--reserve'])
+        self.assertEqual(('a', None, True, False), (result['epic']['dir'], result['reason'], result['reserved'],
+                                                    result['resumed']))
+        self.assertRegex(result['claim'], '^[0-9a-f]{16}$')
+        self.assertEqual({'claims': [{'dir': 'a', 'claim': result['claim'], 'at': NOW.isoformat(),
+                                      'expires_at': (NOW + timedelta(minutes=30)).isoformat()}], 'owners': {}},
+                         self.claims_json())
+        self.assertEqual('a', self.log()[-1]['epic'])
+
+    def test_read_only_gate_writes_no_claim(self):
+        result = self.result([epic(1, 'A', 'apps/a')], extra=['--dir', 'a'])
+        self.assertEqual(('a', False, None), (result['epic']['dir'], result['reserved'], result['claim']))
+        self.assertFalse(self.has_claims_file())
+
+    def test_reserve_and_claim_require_dir(self):
+        for extra in (['--reserve'], ['--claim', 'tok']):
+            with self.subTest(extra=extra):
+                code, out, err = self.gate([epic(1, 'A', 'apps/a')], extra=extra)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('--dir', err)
+        self.assertFalse(self.has_claims_file())
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'gate.jsonl')))
+
+    def reserve_a(self, epics, **kwargs):
+        """Session 1 reserves A while nothing is in progress (step 1)."""
+        first = self.result(epics, extra=['--dir', 'a', '--reserve'], **kwargs)
+        self.assertTrue(first['reserved'])
+        return first['claim']
+
+    def test_reservation_is_in_progress_for_another_session_files(self):
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')]
+        self.reserve_a(epics)
+        result = self.result(epics)
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}],
+                         result['skipped'])
+        self.assertEqual((['a'], ['a'], [{'dir': 'a', 'id': 'A', 'issue': 1}]),
+                         (result['parallel_with'], result['active'], result['in_progress']))
+
+    def test_reservation_takes_room(self):
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')]
+        self.reserve_a(epics)
+        self.assertEqual('dwa epiki aktywne: B, A', self.reason(epics, branches=['b']))
+
+    def test_reservation_takes_a_memory_reserve(self):
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')]
+        self.reserve_a(epics)
+        enough = {'info': str(12 * GIB), 'ps': '', 'stats': ''}
+        self.assertEqual('b', self.result(epics, docker=enough)['epic']['dir'])
+        small = {'info': str(11 * GIB), 'ps': '', 'stats': ''}
+        self.assertEqual('pamięć Dockera: wolne 5120 MiB < 6144 MiB', self.reason(epics, docker=small))
+
+    def test_reservation_counts_with_its_full_usage_estimate(self):
+        # A has 3 tasks in its manifest: 6 %; candidate B 2 tasks: 4 %.
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/a', tasks=3), epic(2, 'B', 'apps/b')]
+        self.reserve_a(epics)
+        self.assertEqual('b', self.result(epics, stdin_text=json.dumps(usage(70)))['epic']['dir'])
+        self.assertEqual('okno Weekly · all models: 71.0% + 6.0% + 4.0% > 80%',
+                         self.reason(epics, stdin_text=json.dumps(usage(71))))
+
+    def test_renewal_with_the_same_token(self):
+        self.claims('a')
+        later = NOW + timedelta(minutes=10)
+        result = self.result([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'],
+                             now=later)
+        self.assertEqual(('a', True, 'tok-a'), (result['epic']['dir'], result['reserved'], result['claim']))
+        self.assertEqual([{'dir': 'a', 'claim': 'tok-a', 'at': NOW.isoformat(),
+                           'expires_at': (later + timedelta(minutes=30)).isoformat()}], self.claims_json()['claims'])
+
+    def gate_step_commands(self):
+        """Commands of gate steps 4-6: scopes and branch diffs of the epics, Docker memory."""
+        return [c for c in self.runner.calls if c[0] == 'docker' or c[:2] == ['git', 'diff']
+                or (c[:2] == ['git', 'show'] and c[2].endswith('/spec.md'))]
+
+    def test_renewal_of_a_valid_own_claim_runs_no_gate_steps(self):
+        # The decision was taken under the lock when the claim was made: the renewal does not take it again, even
+        # when the files of the epics in progress, the memory or the limits would now refuse the epic.
+        self.events(*self.old_measurement(), self.start('y', NOW - timedelta(hours=1)),
+                    self.start('x', NOW - timedelta(hours=3)), self.done('x', NOW - timedelta(hours=2)))
+        small = {'info': str(1 * GIB), 'ps': '', 'stats': ''}
+        epics = [epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'X', 'apps/x'), epic(4, 'Y', 'apps/y')]
+        cases = [
+            # another session's reservation of B shares apps/x (no branch epic: no `gh pr list` either)
+            ('reservation of another session', {}, ['b'], ['b']),
+            # X waits for the merge (done) and shares apps/x, Y is active: the night stall after `next` case (b)
+            ('epics in progress from branches', {'branches': ['x', 'y']}, [], ['x', 'y']),
+        ]
+        for name, kwargs, others, parallel_with in cases:
+            with self.subTest(case=name):
+                with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+                    json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': NOW.isoformat(),
+                                           'expires_at': (NOW + timedelta(minutes=20)).isoformat()}
+                                          for d in ['a'] + others], 'owners': {}}, f)
+                later = NOW + timedelta(minutes=10)
+                result = self.result(epics, extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'], now=later,
+                                     docker=small, stdin_text=json.dumps(usage(79)), **kwargs)
+                self.assertEqual({'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': 2,
+                                  'minutes': 60.0}, result['epic'])
+                self.assertEqual((None, True, 'tok-a', False, [], None, None, parallel_with),
+                                 (result['reason'], result['reserved'], result['claim'], result['resumed'],
+                                  result['skipped'], result['waiting'], result['docker'], result['parallel_with']))
+                self.assertEqual([], self.gate_step_commands())
+                if not kwargs:
+                    self.assertEqual([], self.commands('gh', 'pr'))
+                claims = {c['dir']: c for c in self.claims_json()['claims']}
+                self.assertEqual((later + timedelta(minutes=30)).isoformat(), claims['a']['expires_at'])
+                self.assertEqual(NOW.isoformat(), claims['a']['at'])
+                self.assertEqual({'dir_arg': 'a', 'epic': 'a', 'reason': None, 'waiting': None, 'skipped': []},
+                                 {k: v for k, v in self.log()[-1].items() if k != 'at'})
+
+    def test_renewal_still_refuses_the_epic_itself(self):
+        cases = [
+            ([epic(1, 'A', 'apps/a', tasks=None)], {}, 'brak spec.md i plan.md z manifestem na origin/main'),
+            ([epic(2, 'B', 'apps/b')], {}, 'A nie ma na tablicy'),
+            ([epic(1, 'A', 'apps/a')], {'branches': ['a'], 'merged': ['a']}, 'A ma zmergowany końcowy PR'),
+        ]
+        for epics, kwargs, reason in cases:
+            with self.subTest(reason=reason):
+                self.claims('a')
+                before = self.claims_json()
+                result = self.result(epics, extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'], **kwargs)
+                self.assertEqual((None, reason, False, None),
+                                 (result['epic'], result['reason'], result['reserved'], result['claim']))
+                self.assertEqual(before, self.claims_json())
+
+    def test_expired_own_claim_is_evaluated_as_a_new_reservation(self):
+        self.events(*self.old_measurement(), self.start('x', NOW - timedelta(hours=3)),
+                    self.done('x', NOW - timedelta(hours=2)))
+        self.claims('a', expires=NOW - timedelta(seconds=1))
+        epics = [epic(1, 'A', 'apps/x'), epic(3, 'X', 'apps/x')]
+        refused = self.result(epics, branches=['x'], extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'])
+        self.assertEqual((None, 'wspólne pliki z X: apps/x', False, None),
+                         (refused['epic'], refused['reason'], refused['reserved'], refused['claim']))
+        self.assertTrue(self.gate_step_commands())
+        self.assertEqual([], night_queue.parallel_gate.valid_claims(self.claims_json(), NOW))
+        passed = self.result([epic(1, 'A', 'apps/a'), epic(3, 'X', 'apps/x')], branches=['x'],
+                             extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'])
+        self.assertEqual(('a', True, 'tok-a'), (passed['epic']['dir'], passed['reserved'], passed['claim']))
+        self.assertTrue(self.gate_step_commands())
+        self.assertEqual([('a', 'tok-a', NOW.isoformat())],
+                         [(c['dir'], c['claim'], c['at']) for c in self.claims_json()['claims']])
+
+    def test_same_epic_with_another_token_is_refused_even_with_force(self):
+        self.claims('a')
+        before = self.claims_json()
+        for extra in ([], ['--claim', 'mine'], ['--reserve'], ['--reserve', '--claim', 'mine'],
+                      ['--reserve', '--force'], ['--reserve', '--force', '--claim', 'mine']):
+            with self.subTest(extra=extra):
+                result = self.result([epic(1, 'A', 'apps/a')], extra=['--dir', 'a'] + extra)
+                self.assertEqual((None, 'epik A zarezerwowany albo w toku', False, None, False),
+                                 (result['epic'], result['reason'], result['reserved'], result['claim'],
+                                  result['resumed']))
+        self.assertEqual(before, self.claims_json())
+
+    def test_reservation_expires_after_30_minutes(self):
+        epics = [epic(1, 'A', 'apps/a')]
+        first = self.reserve_a(epics)
+        early = self.result(epics, extra=['--dir', 'a', '--reserve'], now=NOW + timedelta(minutes=29, seconds=59))
+        self.assertEqual((False, 'epik A zarezerwowany albo w toku'), (early['reserved'], early['reason']))
+        late = self.result(epics, extra=['--dir', 'a', '--reserve'], now=NOW + timedelta(minutes=30))
+        self.assertTrue(late['reserved'])
+        self.assertNotEqual(first, late['claim'])
+        self.assertEqual([late['claim']], [c['claim'] for c in self.claims_json()['claims']])
+
+    def test_force_reserves_despite_a_gate_refusal(self):
+        self.events(*self.old_measurement())
+        small = {'info': str(11 * GIB), 'ps': '', 'stats': ''}
+        c = {'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}
+        cases = [
+            # wait: Docker memory (step 6)
+            ([epic(1, 'A', 'apps/a'), epic(3, 'C', 'apps/c')], ['a'], 'pamięć Dockera: wolne 5120 MiB < 6144 MiB',
+             c, {'docker': small}, False),
+            # skip: common files
+            ([epic(1, 'A', 'apps/x'), epic(3, 'C', 'apps/x')], ['a'], 'wspólne pliki z A: apps/x', None, {}, False),
+            # wait: the parallel hold
+            ([epic(1, 'A', 'apps/a'), epic(3, 'C', 'apps/c')], ['a'], 'równoległość wstrzymana: CI czerwone', c, {},
+             True),
+        ]
+        for epics, branches, reason, waiting, kwargs, held in cases:
+            with self.subTest(reason=reason):
+                if self.has_claims_file():
+                    os.unlink(os.path.join(self.state, 'claims.json'))
+                if held:
+                    self.hold()
+                refused = self.result(epics, branches=branches, extra=['--dir', 'c', '--reserve'], **kwargs)
+                self.assertEqual((None, reason, False, None), (refused['epic'], refused['reason'],
+                                                               refused['reserved'], refused['claim']))
+                self.assertFalse(self.has_claims_file())
+                forced = self.result(epics, branches=branches, extra=['--dir', 'c', '--reserve', '--force'],
+                                     **kwargs)
+                self.assertEqual(({'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title', 'tasks': 2,
+                                   'minutes': 60.0}, reason, True),
+                                 (forced['epic'], forced['reason'], forced['reserved']))
+                # The gate's verdict stays in the output: a forced wait still names the waiting candidate.
+                self.assertEqual(waiting, forced['waiting'])
+                self.assertEqual([('c', forced['claim'])],
+                                 [(c['dir'], c['claim']) for c in self.claims_json()['claims']])
+
+    def test_force_never_overrides_the_room_of_two_active_epics(self):
+        # Step 2 is a hard limit: --force never starts a third active epic, also under a parallel hold.
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')]
+        for held in (False, True):
+            with self.subTest(held=held):
+                if held:
+                    self.hold()
+                result = self.result(epics, branches=['a', 'b'], extra=['--dir', 'c', '--reserve', '--force'])
+                self.assertEqual((None, 'dwa epiki aktywne: A, B', False, None),
+                                 (result['epic'], result['reason'], result['reserved'], result['claim']))
+                self.assertEqual({'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}, result['waiting'])
+                self.assertFalse(self.has_claims_file())
+
+    def test_reservation_failing_before_its_output_writes_no_claim(self):
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        for extra in (['--reserve'], ['--reserve', '--claim', 'mine']):
+            with self.subTest(extra=extra):
+                code, out, err = self.gate([epic(1, 'A', 'apps/a')], extra=['--dir', 'a'] + extra)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('gate.jsonl', err)
+                self.assertFalse(self.has_claims_file())
+
+    def test_renewal_failing_before_its_output_keeps_the_old_expiry(self):
+        self.claims('a')
+        before = self.claims_json()
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, _ = self.gate([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'],
+                                 now=NOW + timedelta(minutes=10))
+        self.assertEqual((2, ''), (code, out))
+        self.assertEqual(before, self.claims_json())
+
+    def test_force_does_not_override_refusals_of_the_epic_itself(self):
+        cases = [
+            ([epic(1, 'A', 'apps/a')], 'zzz', {}, 'ZZZ nie ma na tablicy'),
+            ([epic(1, 'A', 'apps/a', tasks=None)], 'a', {}, 'brak spec.md i plan.md z manifestem na origin/main'),
+            ([epic(1, 'A', 'apps/a')], 'a', {'branches': ['a'], 'merged': ['a']}, 'A ma zmergowany końcowy PR'),
+        ]
+        for epics, directory, kwargs, reason in cases:
+            with self.subTest(reason=reason):
+                result = self.result(epics, extra=['--dir', directory, '--reserve', '--force'], **kwargs)
+                self.assertEqual((None, reason, False, None),
+                                 (result['epic'], result['reason'], result['reserved'], result['claim']))
+        self.assertFalse(self.has_claims_file())
+
+    def test_takeover_is_ignored_outside_a_resume(self):
+        result = self.result([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--takeover'])
+        self.assertEqual(('a', False, False), (result['epic']['dir'], result['resumed'], result['reserved']))
+        self.assertFalse(self.has_claims_file())
+
+    def test_two_processes_reserve_at_once_and_exactly_one_gets_it(self):
+        ready = [os.path.join(self.dir, 'ready-%d' % i) for i in range(2)]
+        go = os.path.join(self.dir, 'go')
+        children = [subprocess.Popen([sys.executable, '-c', RACE_CHILD, os.path.dirname(SCRIPT), self.state,
+                                      self.ao_root, r, go], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    for r in ready]
+        try:
+            for r in ready:
+                for _ in range(1000):
+                    if os.path.exists(r):
+                        break
+                    time.sleep(0.01)
+            open(go, 'w').close()
+            outputs = [c.communicate(timeout=60) for c in children]
+        finally:
+            for c in children:
+                if c.poll() is None:
+                    c.kill()
+                    c.communicate()
+        results = []
+        for out, err in outputs:
+            answer = json.loads(out)
+            self.assertEqual(0, answer['code'], err)
+            results.append(json.loads(answer['out']))
+        winners = [r for r in results if r['reserved']]
+        losers = [r for r in results if not r['reserved']]
+        self.assertEqual((1, 1), (len(winners), len(losers)))
+        self.assertEqual((None, 'epik X zarezerwowany albo w toku'), (losers[0]['epic'], losers[0]['reason']))
+        self.assertEqual([winners[0]['claim']], [c['claim'] for c in self.claims_json()['claims']])
+
+    def test_busy_lock_with_reserve_exits_2_without_writes(self):
+        proc = hold(os.path.join(self.state, 'gate.lock'))
+        try:
+            with mock.patch.object(night_queue, 'LOCK_TIMEOUT', 0.3):
+                code, out, err = self.gate([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--reserve'])
+        finally:
+            release_child(proc)
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('blokada bramki zajęta', err)
+        self.assertEqual({}, snapshot(self.state))
+
+    # Resume
+
+    def hold_orchestrator(self, directory):
+        return hold(os.path.join(self.ao_root, 'ao-%s' % directory, 'orchestrator.lock'))
+
+    def test_resume_runs_no_gate_steps_and_records_a_new_owner(self):
+        self.events(*self.old_measurement())
+        # B is active and shares files with A: a gate would refuse A, a resume does not check.
+        result = self.result([epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x')], branches=['a', 'b'],
+                             extra=['--dir', 'a', '--reserve'])
+        self.assertEqual({'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertEqual((None, True, False, ['b']), (result['reason'], result['resumed'], result['reserved'],
+                                                       result['parallel_with']))
+        self.assertRegex(result['claim'], '^[0-9a-f]{16}$')
+        self.assertEqual({'claims': [], 'owners': {'a': result['claim']}}, self.claims_json())
+        self.assertEqual([], self.commands('docker'))
+        self.assertEqual('a', self.log()[-1]['epic'])
+
+    def test_resume_refused_while_the_ao_process_of_the_epic_runs(self):
+        # The user's scenario: another session's `ao run` for X holds orchestrator.lock.
+        self.owners({'x': 'tok'})
+        before = self.claims_json()
+        proc = self.hold_orchestrator('x')
+        try:
+            for extra in ([], ['--claim', 'tok'], ['--force'], ['--takeover'], ['--reserve', '--force', '--takeover'],
+                          ['--reserve', '--force', '--takeover', '--claim', 'tok']):
+                with self.subTest(extra=extra):
+                    result = self.result([epic(1, 'X', 'apps/x')], branches=['x'], extra=['--dir', 'x'] + extra)
+                    self.assertEqual((None, 'epik X prowadzi działający proces AO', False, False, None),
+                                     (result['epic'], result['reason'], result['resumed'], result['reserved'],
+                                      result['claim']))
+        finally:
+            release_child(proc)
+        self.assertEqual(before, self.claims_json())
+        resumed = self.result([epic(1, 'X', 'apps/x')], branches=['x'],
+                              extra=['--dir', 'x', '--reserve', '--claim', 'tok'])
+        self.assertEqual((True, 'tok'), (resumed['resumed'], resumed['claim']))
+
+    def test_resume_refused_for_another_owner(self):
+        self.owners({'a': 'theirs'})
+        for extra in ([], ['--claim', 'mine'], ['--force'], ['--reserve', '--force', '--claim', 'mine']):
+            with self.subTest(extra=extra):
+                result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'] + extra)
+                self.assertEqual((None, 'epik A prowadzi inna sesja', False, None),
+                                 (result['epic'], result['reason'], result['resumed'], result['claim']))
+        self.assertEqual({'claims': [], 'owners': {'a': 'theirs'}}, self.claims_json())
+
+    def test_takeover_records_a_new_owner(self):
+        self.owners({'a': 'theirs', 'b': 'other'})
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--reserve', '--takeover'])
+        self.assertEqual(('a', True), (result['epic']['dir'], result['resumed']))
+        self.assertNotIn(result['claim'], (None, 'theirs'))
+        self.assertEqual({'claims': [], 'owners': {'a': result['claim'], 'b': 'other'}}, self.claims_json())
+
+    def test_resume_with_the_owner_token(self):
+        self.owners({'a': 'mine'})
+        before = self.claims_json()
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'],
+                             extra=['--dir', 'a', '--reserve', '--claim', 'mine'])
+        self.assertEqual(('a', True, 'mine', None), (result['epic']['dir'], result['resumed'], result['claim'],
+                                                     result['reason']))
+        self.assertEqual(before, self.claims_json())
+
+    def test_resume_without_a_readable_plan_has_no_estimate(self):
+        original = GateRunner.__call__
+
+        def without_plan(runner, args):
+            out_ = original(runner, args)
+            return out_.replace('docs/features/a/plan.md\n', '') if args[:2] == ['git', 'ls-tree'] else out_
+
+        def broken_manifest(runner, args):
+            if args == ['git', 'show', 'origin/main:docs/features/a/plan.md']:
+                return '# Plan without a manifest\n'
+            return original(runner, args)
+
+        for patched in (without_plan, broken_manifest):
+            with self.subTest(case=patched.__name__), mock.patch.object(GateRunner, '__call__', patched):
+                self.owners({})
+                result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+                self.assertEqual(({'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': None,
+                                   'minutes': None}, True), (result['epic'], result['resumed']))
+
+    def test_resume_failing_before_its_output_records_no_owner(self):
+        # A failed step after the decision must not leave an owner token nobody received.
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--reserve'],
+                                   fail=('git', 'show', 'origin/main:docs/features/a/plan.md'))
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+        self.assertFalse(self.has_claims_file())
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--reserve'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('gate.jsonl', err)
+        self.assertFalse(self.has_claims_file())
+
+    def test_takeover_failing_before_its_output_keeps_the_old_owner(self):
+        self.owners({'a': 'theirs'})
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, _ = self.gate([epic(1, 'A', 'apps/a')], branches=['a'],
+                                 extra=['--dir', 'a', '--reserve', '--takeover'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertEqual({'claims': [], 'owners': {'a': 'theirs'}}, self.claims_json())
+
+    def test_resume_with_a_free_orchestrator_lock(self):
+        os.makedirs(os.path.join(self.ao_root, 'ao-a'))
+        open(os.path.join(self.ao_root, 'ao-a', 'orchestrator.lock'), 'w').close()
+        self.assertTrue(self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])['resumed'])
+
+    def test_resume_refused_while_another_session_holds_a_reservation(self):
+        # Session 1 reserved A and its `ao epic start` already pushed the branch, but `start` was not recorded yet.
+        self.claims('a')
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--takeover'])
+        self.assertEqual((None, 'epik A zarezerwowany albo w toku', False),
+                         (result['epic'], result['reason'], result['resumed']))
+        self.assertEqual({}, self.claims_json()['owners'])
+
+    def test_resume_with_its_own_reservation_makes_the_token_the_owner(self):
+        self.claims('a')
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'],
+                             extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'])
+        self.assertEqual((True, 'tok-a'), (result['resumed'], result['claim']))
+        self.assertEqual({'claims': [], 'owners': {'a': 'tok-a'}}, self.claims_json())
+
+    def test_resume_without_reserve_is_read_only(self):
+        # `gate --dir X` without --reserve only reads: no owner is recorded or changed and no token is printed.
+        cases = [({}, []), ({'a': 'theirs'}, ['--takeover']), ({'a': 'mine'}, ['--claim', 'mine']),
+                 ({}, ['--claim', 'tok-a'])]
+        for owners, extra in cases:
+            with self.subTest(owners=owners, extra=extra):
+                self.owners(owners)
+                if extra == ['--claim', 'tok-a']:
+                    self.claims('a')
+                before = self.claims_json()
+                result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'] + extra)
+                self.assertEqual(('a', None, True, False, None),
+                                 (result['epic']['dir'], result['reason'], result['resumed'], result['reserved'],
+                                  result['claim']))
+                self.assertEqual(before, self.claims_json())
+
+    def test_resume_without_reserve_keeps_the_refusals(self):
+        self.owners({'a': 'theirs'})
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        self.assertEqual((None, 'epik A prowadzi inna sesja', False, None),
+                         (result['epic'], result['reason'], result['resumed'], result['claim']))
+        self.assertEqual({'claims': [], 'owners': {'a': 'theirs'}}, self.claims_json())
+
+    def test_resume_without_reserve_and_without_claims_file_writes_none(self):
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        self.assertEqual((True, None), (result['resumed'], result['claim']))
+        self.assertFalse(self.has_claims_file())
+
+    def test_ao_root_defaults_to_local_state(self):
+        seen = []
+
+        def running(home):
+            seen.append(home)
+            return False
+
+        out = io.StringIO()
+        with mock.patch.object(night_queue.parallel_gate, 'orchestrator_running', running), \
+                contextlib.redirect_stdout(out):
+            code = night_queue.main(['--state', self.state, 'gate', '--dir', 'a'],
+                                    run=GateRunner([epic(1, 'A', 'apps/a')], branches=['a']), now=NOW,
+                                    stdin=io.StringIO(json.dumps(usage(10))))
+        self.assertEqual(0, code)
+        self.assertEqual([os.path.join('~/.local/state', 'ao-a')], seen)
+
+    # release
+
+    def release(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'release'] + list(argv), run=GateRunner([]), now=NOW)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_release_removes_the_own_claim(self):
+        self.claims('a', 'b')
+        code, out, err = self.release('a', '--claim', 'tok-a')
+        self.assertEqual((0, {'released': True}), (code, json.loads(out)), err)
+        self.assertEqual(['b'], [c['dir'] for c in self.claims_json()['claims']])
+
+    def test_release_without_a_matching_claim(self):
+        self.claims('a')
+        before = self.claims_json()
+        for argv in (['a', '--claim', 'other'], ['b', '--claim', 'tok-a']):
+            with self.subTest(argv=argv):
+                code, out, err = self.release(*argv)
+                self.assertEqual((0, {'released': False}), (code, json.loads(out)), err)
+        self.assertEqual(before, self.claims_json())
+        os.unlink(os.path.join(self.state, 'claims.json'))
+        code, out, _ = self.release('a', '--claim', 'tok-a')
+        self.assertEqual((0, {'released': False}), (code, json.loads(out)))
+
+    def test_release_errors_exit_2(self):
+        code, out, _ = self.release('a')
+        self.assertEqual((2, ''), (code, out))
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{oops')
+        code, out, err = self.release('a', '--claim', 'tok-a')
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
+
+
+RACE_CHILD = r"""
+import contextlib, io, json, os, sys, time
+sys.path.insert(0, sys.argv[1])
+import test_night_queue as t
+state, ao_root, ready, go = sys.argv[2:6]
+
+
+pg = t.night_queue.parallel_gate
+write_claims = pg._write_claims
+
+
+def slow_write(state_dir, data):
+    # A slow write between reading and writing claims.json: without the gate lock both processes would read an
+    # empty file and both reserve.
+    time.sleep(0.3)
+    write_claims(state_dir, data)
+
+
+pg._write_claims = slow_write
+runner = t.GateRunner([t.epic(1, 'X', 'apps/x')])
+open(ready, 'w').close()
+while not os.path.exists(go):
+    time.sleep(0.001)
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    code = t.night_queue.main(['--state', state, 'gate', '--ao-root', ao_root, '--dir', 'x', '--reserve'],
+                              run=runner, now=t.NOW, stdin=io.StringIO(json.dumps(t.usage(10))))
+print(json.dumps({'code': code, 'out': out.getvalue()}))
+"""
+
+
+class HoldCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+        self.path = os.path.join(self.state, 'parallel-hold.json')
+
+    def cli(self, *argv, now=NOW):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state] + list(argv), run=GateRunner([]), now=now)
+        return code, out.getvalue(), err.getvalue()
+
+    def stored(self):
+        with open(self.path, encoding='utf-8') as f:
+            return json.load(f)
+
+    def test_hold_writes_the_reason_and_a_second_hold_keeps_the_first(self):
+        code, out, err = self.cli('hold', '--reason', 'para A+B: CI czerwone')
+        expected = {'at': NOW.isoformat(), 'reason': 'para A+B: CI czerwone'}
+        self.assertEqual((0, expected), (code, json.loads(out)), err)
+        self.assertEqual(expected, self.stored())
+        code, out, err = self.cli('hold', '--reason', 'inny', now=NOW + timedelta(hours=1))
+        self.assertEqual((0, expected), (code, json.loads(out)), err)
+        self.assertEqual(expected, self.stored())
+
+    def test_unhold_removes_the_hold_and_is_idempotent(self):
+        self.cli('hold', '--reason', 'x')
+        code, out, err = self.cli('unhold')
+        self.assertEqual((0, {'removed': True}), (code, json.loads(out)), err)
+        self.assertFalse(os.path.exists(self.path))
+        code, out, err = self.cli('unhold')
+        self.assertEqual((0, {'removed': False}), (code, json.loads(out)), err)
+
+    def test_hold_needs_a_reason(self):
+        code, out, _ = self.cli('hold')
+        self.assertEqual((2, ''), (code, out))
+        self.assertFalse(os.path.exists(self.path))
+        for reason in ('', '  \t'):
+            with self.subTest(reason=reason):
+                code, out, err = self.cli('hold', '--reason', reason)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('--reason nie może być pusty', err)
+                self.assertFalse(os.path.exists(self.path))
+
+    def test_unreadable_hold_exits_2_and_unhold_removes_it(self):
+        os.makedirs(self.state)
+        with open(self.path, 'w') as f:
+            f.write('{oops')
+        code, out, err = self.cli('hold', '--reason', 'x')
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('parallel-hold.json', err)
+        with open(self.path) as f:
+            self.assertEqual('{oops', f.read())
+        code, out, err = self.cli('unhold')
+        self.assertEqual((0, {'removed': True}), (code, json.loads(out)), err)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_hold_is_written_atomically(self):
+        with mock.patch('os.replace', side_effect=OSError(5, 'boom')):
+            code, out, err = self.cli('hold', '--reason', 'x')
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('parallel-hold.json', err)
+        self.assertEqual(['gate.lock'], os.listdir(self.state))
+
+    def test_busy_lock_exits_2_without_writes(self):
+        os.makedirs(self.state)
+        proc = hold(os.path.join(self.state, 'gate.lock'))
+        try:
+            with mock.patch.object(night_queue, 'LOCK_TIMEOUT', 0.3):
+                code, out, err = self.cli('hold', '--reason', 'x')
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('blokada bramki zajęta', err)
+                self.assertFalse(os.path.exists(self.path))
+                with open(self.path, 'w') as f:
+                    f.write('{"at": "%s", "reason": "x"}' % NOW.isoformat())
+                code, out, err = self.cli('unhold')
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('blokada bramki zajęta', err)
+                self.assertTrue(os.path.exists(self.path))
+        finally:
+            release_child(proc)
+
+
+class CommandTimeoutTest(unittest.TestCase):
+    """gh/git/docker run with a timeout (COMMAND_TIMEOUT seconds) so a hung command never keeps the gate lock."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+
+    def test_timeout_is_60_seconds(self):
+        self.assertEqual(60, night_queue.COMMAND_TIMEOUT)
+
+    def slow_runner(self, timeouts):
+        real = night_queue.next_epic.make_runner
+
+        def make_runner(cwd, timeout=None):
+            timeouts.append(timeout)
+            run = real(self.dir, timeout=timeout)
+            return lambda args: run([sys.executable, '-c', 'import time; time.sleep(5)'])
+        return make_runner
+
+    def test_hung_command_under_the_lock_exits_1_and_frees_the_lock(self):
+        for argv in (['gate'], ['start', 'cart']):
+            with self.subTest(command=argv[0]):
+                timeouts = []
+                out, err = io.StringIO(), io.StringIO()
+                began = time.monotonic()
+                with mock.patch.object(night_queue, 'COMMAND_TIMEOUT', 0.3), \
+                        mock.patch.object(night_queue.next_epic, 'make_runner', self.slow_runner(timeouts)), \
+                        contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = night_queue.main(['--state', self.state] + argv, now=NOW,
+                                            stdin=io.StringIO(json.dumps(usage(10))))
+                self.assertEqual((1, ''), (code, out.getvalue()))
+                self.assertIn('timed out after 0.3 s', err.getvalue())
+                self.assertEqual([0.3], timeouts)
+                self.assertLess(time.monotonic() - began, 4)
+                with night_queue.parallel_gate.state_lock(self.state, timeout=0.1):
+                    pass
+
+
+class LockedWritesTest(unittest.TestCase):
+    """Commands that read the shared state to decide and write it hold the gate lock: busy -> 2 without a write."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+        os.makedirs(self.state)
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            json.dump({'approved_at': APPROVED.isoformat(), 'until': UNTIL.isoformat(), 'epics': ['b']}, f)
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            f.write(json.dumps({'event': 'start', 'epic': 'a', 'tasks': 2, 'at': T0.isoformat(), 'usage': {}}) + '\n')
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': 'b', 'claim': 'tok', 'at': NOW.isoformat(),
+                                   'expires_at': (NOW + timedelta(minutes=20)).isoformat()}], 'owners': {}}, f)
+
+    def test_busy_lock_exits_2_without_writes(self):
+        commands = [['start', 'b', '--claim', 'tok'], ['done', 'a'], ['approve', 'b'], ['close'], ['next'],
+                    ['release', 'b', '--claim', 'tok'], ['gate', '--dir', 'b', '--reserve', '--claim', 'tok',
+                                                         '--ao-root', os.path.join(self.dir, 'ao')]]
+        before = snapshot(self.state)
+        proc = hold(os.path.join(self.state, 'gate.lock'))
+        try:
+            with mock.patch.object(night_queue, 'LOCK_TIMEOUT', 0.3):
+                for argv in commands:
+                    with self.subTest(command=argv[0]):
+                        out, err = io.StringIO(), io.StringIO()
+                        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                            code = night_queue.main(['--state', self.state] + argv,
+                                                    run=GateRunner([epic(2, 'B', 'apps/b')]), now=NOW,
+                                                    stdin=io.StringIO(json.dumps(usage(10))))
+                        self.assertEqual((2, ''), (code, out.getvalue()))
+                        self.assertIn('blokada bramki zajęta', err.getvalue())
+                        self.assertEqual(before, snapshot(self.state))
+        finally:
+            release_child(proc)
+
+    def test_free_lock_lets_the_same_commands_write(self):
+        # The counterpart of the busy-lock test: without a held lock every command succeeds.
+        for argv in (['release', 'b', '--claim', 'tok'], ['done', 'a'], ['close']):
+            with self.subTest(command=argv[0]):
+                out, err = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = night_queue.main(['--state', self.state] + argv, run=GateRunner([]), now=NOW,
+                                            stdin=io.StringIO(json.dumps(usage(10))))
+                self.assertEqual(0, code, err.getvalue())
+
+    def test_night_json_is_replaced_atomically(self):
+        path = os.path.join(self.state, 'night.json')
+        with open(path) as f:
+            before = f.read()
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch('os.replace', side_effect=OSError(5, 'boom')), contextlib.redirect_stdout(out), \
+                contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'close'], run=GateRunner([]), now=NOW)
+        self.assertEqual((2, ''), (code, out.getvalue()))
+        self.assertIn('night.json', err.getvalue())
+        with open(path) as f:
+            self.assertEqual(before, f.read())
+        self.assertEqual([], [n for n in os.listdir(self.state) if n.startswith('.tmp-')])
