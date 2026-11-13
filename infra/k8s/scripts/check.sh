@@ -5,6 +5,9 @@
 #   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests, alerts,
 #                       bootstrap, gitignore
 #
+# CHECK_TESTS_FILTER=<pattern> runs only the tests whose name contains the pattern (unittest -k) in the step tests; the
+# self-test (selftest.sh) uses it to run the one test a case must break. A pattern that matches no test fails the step.
+#
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
 set -eu
@@ -13,7 +16,14 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
 
-steps="${*:-lint render schema images kubeconform shellcheck actionlint tests alerts bootstrap gitignore}"
+all_steps="lint render schema images kubeconform shellcheck actionlint tests alerts bootstrap gitignore"
+steps="${*:-$all_steps}"
+for name in $steps; do
+  case " $all_steps " in
+    *" $name "*) ;;
+    *) echo "check: unknown step '$name' (steps: $all_steps)" >&2; exit 2 ;;
+  esac
+done
 
 rev=0123456789abcdef0123456789abcdef01234567
 # The digests of the images built by us, which the profile prod requires.
@@ -195,8 +205,14 @@ do_actionlint() {
 
 do_tests() {
   [ -f "$work/prod.ndjson" ] || do_render
-  step "tests of the rendered chart and of the scripts"
-  tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
+  if [ -n "${CHECK_TESTS_FILTER:-}" ]; then
+    step "tests of the rendered chart and of the scripts matching '$CHECK_TESTS_FILTER'"
+    # unittest exits 5 when no test matches: a filter that selects nothing fails instead of passing.
+    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests -k "$CHECK_TESTS_FILTER"
+  else
+    step "tests of the rendered chart and of the scripts"
+    tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
+  fi
 }
 
 # The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the prod render,
