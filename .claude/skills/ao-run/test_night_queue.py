@@ -619,11 +619,12 @@ class QueueCliTest(unittest.TestCase):
         with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
             f.write(json.dumps(start) + '\n' + json.dumps(done) + '\n')
 
-    def cli(self, command, epics, extra=(), branches=(), fail=None, now=T0):
+    def cli(self, command, epics, extra=(), branches=(), fail=None, now=T0, **runner_kwargs):
         out, err = io.StringIO(), io.StringIO()
         argv = ['--state', self.state, command] + list(extra)
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = night_queue.main(argv, run=BoardRunner(epics, branches, fail), now=now, stdin=io.StringIO(''))
+            code = night_queue.main(argv, run=GateRunner(epics, branches, fail, **runner_kwargs), now=now,
+                                    stdin=io.StringIO(''))
         return code, out.getvalue(), err.getvalue()
 
     def propose(self, epics, extra=(), **kwargs):
@@ -643,11 +644,67 @@ class QueueCliTest(unittest.TestCase):
         self.assertFalse(result['measured'])
         self.assertEqual([], result['skipped'] + result['in_progress'])
 
-    def test_in_progress_empties_list(self):
-        epics = [epic(1, 'CART', 'a'), epic(2, 'VARIANTS', 'b')]
+    def claims(self, *dirs):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': T0.isoformat(),
+                                   'expires_at': (T0 + timedelta(minutes=20)).isoformat()} for d in dirs],
+                       'owners': {}}, f)
+
+    def test_in_progress_counts_like_an_epic_already_on_the_list(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/b'), epic(3, 'SEARCH', 'apps/a/x')]
         result = self.propose(epics, branches=['cart'])
-        self.assertEqual([], result['epics'])
+        self.assertEqual(['variants'], self.dirs(result))
         self.assertEqual([{'dir': 'cart', 'id': 'CART', 'issue': 1}], result['in_progress'])
+        self.assertEqual([{'issue': 3, 'id': 'SEARCH', 'reason': 'zakres wspólny z CART: apps/a/x'}],
+                         result['skipped'])
+
+    def test_branch_diff_of_an_epic_in_progress_counts(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/b'), epic(3, 'SEARCH', 'apps/c')]
+        result = self.propose(epics, branches=['cart'], diffs={'cart': ['apps/b/Outside.php']})
+        self.assertEqual(['search'], self.dirs(result))
+        self.assertEqual('zakres wspólny z CART: apps/b/Outside.php', result['skipped'][0]['reason'])
+
+    def test_merged_final_pr_is_not_in_progress(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/a')]
+        result = self.propose(epics, branches=['cart'], merged=['cart'])
+        self.assertEqual(['variants'], self.dirs(result))
+        self.assertEqual([], result['in_progress'])
+
+    def test_valid_claim_is_in_progress_and_no_candidate(self):
+        self.claims('variants')
+        epics = [epic(1, 'VARIANTS', 'apps/a'), epic(2, 'CART', 'apps/a/x'), epic(3, 'SEARCH', 'apps/c')]
+        result = self.propose(epics)
+        self.assertEqual(['search'], self.dirs(result))
+        self.assertEqual([{'dir': 'variants', 'id': 'VARIANTS', 'issue': 1}], result['in_progress'])
+        self.assertEqual([{'issue': 2, 'id': 'CART', 'reason': 'zakres wspólny z VARIANTS: apps/a/x'}],
+                         result['skipped'])
+
+    def test_dependency_on_an_epic_in_progress(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'PAY', 'apps/b', body='## Zależności\nPo CART\n')]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual([], self.dirs(result))
+        self.assertEqual('zależy od CART', result['skipped'][0]['reason'])
+
+    def test_epic_in_progress_without_scope_skips_every_candidate(self):
+        epics = [epic(1, 'CART', None), epic(2, 'VARIANTS', 'apps/b')]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual([], self.dirs(result))
+        self.assertEqual('CART w toku bez zakresu: brak linii Zakres', result['skipped'][0]['reason'])
+
+    def test_candidate_without_scope_is_skipped_while_an_epic_is_in_progress(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', None), epic(3, 'SEARCH', 'apps/c')]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual(['search'], self.dirs(result))
+        self.assertEqual([{'issue': 2, 'id': 'VARIANTS', 'reason': 'brak linii Zakres'}], result['skipped'])
+
+    def test_unreadable_claims_exit_2(self):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.cli('propose', [epic(1, 'A', 'apps/a')])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
 
     def test_in_progress_keeps_unprepared_in_skipped(self):
         epics = [epic(1, 'CART', 'a'), epic(2, 'LATER', 'b', tasks=None)]
@@ -694,11 +751,25 @@ class QueueCliTest(unittest.TestCase):
         epics = [epic(1, 'CART', 'a'), epic(2, 'VARIANTS', 'b'), epic(3, 'LAST', 'c', body=body)]
         self.assertEqual('zależy od CART', self.propose(epics)['skipped'][0]['reason'])
 
-    def test_shared_scope_names_path_of_candidate(self):
-        epics = [epic(1, 'CART', 'apps/api/openapi.json'), epic(2, 'VARIANTS', 'apps/api/openapi.json, apps/x')]
+    def test_shared_scope_names_the_common_path(self):
+        epics = [epic(1, 'CART', 'apps/api/src'), epic(2, 'VARIANTS', 'apps/api/src/Cart, apps/x')]
         result = self.propose(epics)
-        self.assertEqual([{'issue': 2, 'id': 'VARIANTS', 'reason': 'zakres wspólny z CART: apps/api/openapi.json'}],
+        self.assertEqual([{'issue': 2, 'id': 'VARIANTS', 'reason': 'zakres wspólny z CART: apps/api/src/Cart'}],
                          result['skipped'])
+
+    def test_common_generated_files_and_docs_are_allowed(self):
+        epics = [epic(1, 'CART', 'apps/api/openapi.json, docs/adr, README.md, apps/a'),
+                 epic(2, 'VARIANTS', 'apps/api/openapi.json, docs/adr/x.md, README.md, apps/b')]
+        self.assertEqual(['cart', 'variants'], self.dirs(self.propose(epics)))
+
+    def test_common_blocking_files_skip(self):
+        for path in ('CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml', 'make/api.mk', 'Makefile',
+                     'infra/k8s/README.md'):
+            with self.subTest(path=path):
+                epics = [epic(1, 'CART', '%s, apps/a' % path), epic(2, 'VARIANTS', '%s, apps/b' % path)]
+                result = self.propose(epics)
+                self.assertEqual(['cart'], self.dirs(result))
+                self.assertEqual('zakres wspólny z CART: %s' % path, result['skipped'][0]['reason'])
 
     def test_first_without_scope_is_alone(self):
         epics = [epic(1, 'CART', None), epic(2, 'VARIANTS', 'apps/x')]

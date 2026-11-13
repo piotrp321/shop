@@ -36,7 +36,13 @@ them has the window).
 propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
 {"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
 "in_progress": [{dir, id, issue}], "until": <iso>, "measured": <bool>}: the prepared epics that can run in one night.
-`until` is the next occurrence of HH:MM (default 07:00) local time. approve: recomputes the list and, when it equals
+`until` is the next occurrence of HH:MM (default 07:00) local time. The epics in progress (as in gate: branch epics
+without a merged final PR and valid reservations) do not empty the list: they count like epics already on it, with
+their files (scope plus branch diff). A candidate is skipped when it depends on an open epic, shares with an epic in
+progress or on the list a path that is not allowed (parallel_gate.is_allowed; `zakres wspólny z X: <path>`), has no
+readable scope while anything is in progress or listed (an epic without scope enters only alone, with nothing in
+progress), or makes the serial sum of the estimates end after `until`. An epic in progress without a readable scope
+skips every candidate (`X w toku bez zakresu: <error>`). approve: recomputes the list and, when it equals
 the given dirs in order, writes <state>/night.json and prints it; otherwise exits 2.
 
 next: reads <state>/night.json and prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null,
@@ -429,15 +435,34 @@ def parse_until(text, now):
     return until if until > now else at(now + timedelta(days=1))
 
 
+def _night_clash(ctx, scope, in_progress, chosen):
+    """The reason a candidate with `scope` cannot join the night list next to the epics in progress (their scope plus
+    branch diff) and the epics already chosen: a common path that is not allowed (step 5 of the gate), or an epic in
+    progress without a readable scope. None when it can join."""
+    others = []
+    for p in in_progress:
+        try:
+            others.append((p['id'], ctx.files(p['dir'], p['branch'])))
+        except ScopeError as error:
+            return '%s w toku bez zakresu: %s' % (p['id'], error)
+    others += [(c['id'], c['scope']) for c in chosen]
+    for name, files in others:
+        blocking = [path for path in parallel_gate.common_paths(scope, files) if not parallel_gate.is_allowed(path)]
+        if blocking:
+            return 'zakres wspólny z %s: %s' % (name, blocking[0])
+    return None
+
+
 def propose(run, state_dir, until_text, now):
     until = parse_until(until_text, now)
-    board = next_epic.board_epics(run)
-    measured = measurements(read_events(state_dir))
-    in_progress = [{'dir': e['dir'], 'id': e['id'], 'issue': e['number']} for e in board if e['state'] == 'in_progress']
+    ctx = gate_context(run, state_dir, now)
+    board, measured = ctx.board, ctx.measured
+    in_progress = [{'dir': p['dir'], 'id': p['id'], 'issue': p['issue']} for p in ctx.in_progress]
     skipped = [{'issue': e['number'], 'id': e['id'], 'reason': e['reason']}
                for e in board if e['state'] in ('invalid', 'unprepared')]
+    claimed = {p['dir'] for p in ctx.in_progress}
     chosen, minutes_total = [], 0.0
-    for e in ([] if in_progress else [e for e in board if e['state'] == 'prepared']):
+    for e in [e for e in board if e['state'] == 'prepared' and e['dir'] not in claimed]:
         def skip(reason):
             skipped.append({'issue': e['number'], 'id': e['id'], 'reason': reason})
         depends = dependency(board, e)
@@ -448,16 +473,15 @@ def propose(run, state_dir, until_text, now):
             skip('pierwszy epik listy %s nie ma zakresu' % chosen[0]['id'])
             continue
         try:
-            scope = epic_scope(e['dir'], parse_scope(run(['git', 'show', 'origin/main:docs/features/%s/spec.md' % e['dir']])))
+            scope = ctx.files(e['dir'], branch=False)
         except ScopeError as error:
-            if chosen:
+            if chosen or ctx.in_progress:
                 skip(str(error))
                 continue
             scope = None
-        clash = next(((c['id'], overlap(scope, c['scope'])[0]) for c in chosen
-                      if scope is not None and overlap(scope, c['scope'])), None)
+        clash = scope is not None and _night_clash(ctx, scope, ctx.in_progress, chosen)
         if clash:
-            skip('zakres wspólny z %s: %s' % clash)
+            skip(clash)
             continue
         tasks = task_count(run, e['dir'])
         minutes = estimate(measured, tasks)['minutes']
