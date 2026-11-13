@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import Card from "primevue/card";
-import Column from "primevue/column";
-import DataTable from "primevue/datatable";
-import Message from "primevue/message";
-import Tag from "primevue/tag";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { serviceLabel, serviceStatusLabel } from "./labels";
 import type { Dashboard } from "./useDashboard";
 
 type System = NonNullable<Dashboard["system"]>;
@@ -12,101 +11,138 @@ defineProps<{ system: System }>();
 </script>
 
 <template>
-  <section aria-labelledby="system-heading">
-    <h2 id="system-heading">
-      Stan systemu
-    </h2>
-
-    <h3>Usługi</h3>
-    <div class="tiles">
-      <Card
-        v-for="service in system.services"
-        :key="service.name"
-        data-testid="service"
+  <div class="flex flex-col gap-6">
+    <section
+      aria-labelledby="services-heading"
+      class="flex flex-col gap-4"
+    >
+      <h2
+        id="services-heading"
+        class="text-base font-bold text-heading"
       >
-        <template #content>
-          <div class="service">
-            <strong data-testid="service-name">{{ service.name }}</strong>
-            <Tag
+        Usługi
+      </h2>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card
+          v-for="service in system.services"
+          :key="service.name"
+          data-testid="service"
+          class="gap-3 p-4"
+        >
+          <strong
+            data-testid="service-name"
+            class="font-bold text-heading"
+          >{{ serviceLabel(service.name) }}</strong>
+          <div class="flex items-center gap-3">
+            <Badge
               data-testid="service-tag"
-              :severity="service.status === 'up' ? 'success' : 'danger'"
-              :value="service.status"
-            />
+              :variant="service.status === 'up' ? 'success' : 'danger'"
+            >
+              {{ serviceStatusLabel(service.status) }}
+            </Badge>
             <span
               v-if="service.latencyMs !== null"
-              class="latency"
+              class="ml-auto text-sm text-muted-foreground tabular-nums"
             >{{ service.latencyMs }} ms</span>
           </div>
-        </template>
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </section>
 
-    <h3>Outbox</h3>
-    <p>
-      Zdarzenia czekające w outboxie:
-      <strong data-testid="outbox-pending">{{ system.outbox.pending }}</strong>
-    </p>
+    <Card class="gap-3 p-5">
+      <h2 class="text-base font-bold text-heading">
+        Zdarzenia czekające na wysłanie
+      </h2>
+      <p class="text-2xl font-bold text-heading tabular-nums">
+        <span data-testid="outbox-pending">{{ system.outbox.pending }}</span>
+      </p>
+    </Card>
 
-    <h3>Kolejki</h3>
-    <DataTable
-      v-if="system.queues !== null"
-      data-testid="queues"
-      :value="system.queues"
-    >
-      <Column
-        field="name"
-        header="Nazwa"
-      />
-      <Column
-        field="messages"
-        header="Wiadomości"
-      />
-      <Column
-        field="consumers"
-        header="Konsumenci"
-      />
-      <template #empty>
-        Brak kolejek.
-      </template>
-    </DataTable>
-    <Message
-      v-else
-      severity="secondary"
-    >
-      Brak danych o kolejkach
-    </Message>
+    <Card class="gap-4 p-5">
+      <h2 class="text-base font-bold text-heading">
+        Kolejki
+      </h2>
+      <div
+        v-if="system.queues !== null"
+        role="region"
+        aria-label="Kolejki"
+        tabindex="0"
+        class="overflow-x-auto"
+      >
+        <table
+          data-testid="queues"
+          class="w-full caption-bottom text-sm"
+        >
+          <TableHeader>
+            <TableRow class="hover:bg-transparent">
+              <TableHead class="px-3 text-xs font-bold text-muted-foreground uppercase">
+                Nazwa
+              </TableHead>
+              <TableHead class="px-3 text-right text-xs font-bold text-muted-foreground uppercase">
+                Wiadomości
+              </TableHead>
+              <TableHead class="px-3 text-right text-xs font-bold text-muted-foreground uppercase">
+                Konsumenci
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="queue in system.queues"
+              :key="queue.name"
+            >
+              <TableCell class="px-3 font-bold">
+                {{ queue.name }}
+              </TableCell>
+              <TableCell class="px-3 text-right tabular-nums">
+                {{ queue.messages }}
+              </TableCell>
+              <TableCell class="px-3 text-right tabular-nums">
+                {{ queue.consumers }}
+              </TableCell>
+            </TableRow>
+            <TableRow
+              v-if="system.queues.length === 0"
+              class="hover:bg-transparent"
+            >
+              <TableCell
+                colspan="3"
+                class="px-3 text-muted-foreground"
+              >
+                Brak kolejek.
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </table>
+      </div>
+      <p
+        v-else
+        class="text-sm text-muted-foreground"
+      >
+        Brak danych o kolejkach
+      </p>
+    </Card>
 
-    <h3>Indeks wyszukiwania</h3>
-    <p data-testid="search-index">
-      Dokumenty w Elasticsearch: <strong>{{ system.searchIndex.indexedProducts ?? "brak danych" }}</strong>,
-      produkty w bazie: <strong>{{ system.searchIndex.catalogProducts }}</strong>
-    </p>
-    <Message
-      v-if="!system.searchIndex.inSync"
-      data-testid="out-of-sync"
-      severity="warn"
-    >
-      Rozbieżność: w indeksie {{ system.searchIndex.indexedProducts ?? "nieznana liczba" }} dokumentów,
-      a w bazie {{ system.searchIndex.catalogProducts }} produktów.
-    </Message>
-  </section>
+    <Card class="gap-3 p-5">
+      <h2 class="text-base font-bold text-heading">
+        Indeks wyszukiwania
+      </h2>
+      <p
+        data-testid="search-index"
+        class="text-sm"
+      >
+        Dokumenty w Elasticsearch: <strong>{{ system.searchIndex.indexedProducts ?? "brak danych" }}</strong>,
+        produkty w bazie: <strong>{{ system.searchIndex.catalogProducts }}</strong>
+      </p>
+      <p
+        v-if="!system.searchIndex.inSync"
+        data-testid="out-of-sync"
+        role="status"
+        class="rounded-lg border border-status-warning bg-status-warning-soft px-4 py-3 text-sm text-status-warning"
+      >
+        Rozbieżność: w indeksie {{ system.searchIndex.indexedProducts ?? "nieznana liczba" }} dokumentów,
+        a w bazie {{ system.searchIndex.catalogProducts }} produktów.
+      </p>
+    </Card>
+  </div>
 </template>
-
-<style scoped>
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: 1rem;
-}
-
-.service {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.latency {
-  margin-left: auto;
-  color: var(--p-text-muted-color);
-}
-</style>

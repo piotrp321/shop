@@ -37,6 +37,7 @@ function createTestRouter() {
         ],
       },
       { path: "/inventory", name: "inventory", component: empty },
+      { path: "/system", name: "system", component: empty },
       {
         path: "/orders",
         children: [
@@ -90,14 +91,16 @@ const ADMIN_LINKS = [
   ["Zwroty do wykonania", "/orders?refund=pending"],
   ["Promocje", "/promotions"],
   ["Kody rabatowe", "/discount-codes"],
+  ["Stan systemu", "/system"],
 ];
+const WITHOUT_SYSTEM = ADMIN_LINKS.filter(([label]) => label !== "Stan systemu");
 
 describe("AppMenu: structure and roles", () => {
-  it("is the navigation „Menu główne” with the sections Główne, Sklep and Marketing", async () => {
+  it("is the navigation „Menu główne” with the sections Główne, Sklep, Marketing and System", async () => {
     const { wrapper: menu } = await mountMenu("/", ["admin"]);
 
     expect(menu.get("nav").attributes("aria-label")).toBe("Menu główne");
-    expect(menu.findAll("[data-testid=menu-section]").map((section) => section.text())).toEqual(["Główne", "Sklep", "Marketing"]);
+    expect(menu.findAll("[data-testid=menu-section]").map((section) => section.text())).toEqual(["Główne", "Sklep", "Marketing", "System"]);
   });
 
   it("links everything for admin, with the groups Katalog, Produkty and Zamówienia", async () => {
@@ -107,29 +110,39 @@ describe("AppMenu: structure and roles", () => {
     expect(groupButtons(menu).map(([label]) => label)).toEqual(["Katalog", "Produkty", "Zamówienia"]);
   });
 
-  it("does not offer Stan systemu: the screen does not exist yet", async () => {
-    const { wrapper: menu } = await mountMenu("/", ["admin"]);
+  it.each([["marketing"], ["support"], ["warehouse"]] as [Role][])("does not offer Stan systemu to %s, and has no System section", async (role) => {
+    const { wrapper: menu } = await mountMenu("/", [role]);
 
     expect(menu.text()).not.toContain("Stan systemu");
+    expect(menu.findAll("[data-testid=menu-section]").map((section) => section.text())).not.toContain("System");
+  });
+
+  it("offers Stan systemu to admin even among other roles, and to nobody while the staff member is unknown", async () => {
+    const { wrapper: other } = await mountMenu("/", ["marketing", "admin"]);
+    expect(links(other)).toContainEqual(["Stan systemu", "/system"]);
+    other.unmount();
+
+    const { wrapper: unknown } = await mountMenu("/", null);
+    expect(unknown.text()).not.toContain("Stan systemu");
   });
 
   it("links the products, the new product and no orders for marketing", async () => {
     const { wrapper: menu } = await mountMenu("/", ["marketing"]);
 
-    expect(links(menu)).toEqual(ADMIN_LINKS.filter(([label]) => label !== "Lista zamówień" && label !== "Zwroty do wykonania"));
+    expect(links(menu)).toEqual(WITHOUT_SYSTEM.filter(([label]) => label !== "Lista zamówień" && label !== "Zwroty do wykonania"));
     expect(groupButtons(menu).map(([label]) => label)).toEqual(["Katalog", "Produkty"]);
   });
 
   it("links the orders and the refunds to do but not the new product for support", async () => {
     const { wrapper: menu } = await mountMenu("/", ["support"]);
 
-    expect(links(menu)).toEqual(ADMIN_LINKS.filter(([label]) => label !== "Dodaj produkt"));
+    expect(links(menu)).toEqual(WITHOUT_SYSTEM.filter(([label]) => label !== "Dodaj produkt"));
   });
 
   it("links the list of the orders but neither the refunds to do nor the new product for warehouse", async () => {
     const { wrapper: menu } = await mountMenu("/", ["warehouse"]);
 
-    expect(links(menu)).toEqual(ADMIN_LINKS.filter(([label]) => label !== "Dodaj produkt" && label !== "Zwroty do wykonania"));
+    expect(links(menu)).toEqual(WITHOUT_SYSTEM.filter(([label]) => label !== "Dodaj produkt" && label !== "Zwroty do wykonania"));
   });
 
   it("links the refunds to do for a member with the role among others", async () => {
@@ -181,6 +194,7 @@ describe("AppMenu: the current item", () => {
     ["/orders?status=paid", "Lista zamówień"],
     ["/orders/0192f0c4", "Lista zamówień"],
     ["/orders?refund=pending", "Zwroty do wykonania"],
+    ["/system", "Stan systemu"],
   ])("marks only %s as current: %s", async (path, label) => {
     const { wrapper: menu } = await mountMenu(path, ["admin"]);
 

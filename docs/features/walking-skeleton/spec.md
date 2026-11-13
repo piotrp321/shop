@@ -860,15 +860,20 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, ko
   i kontem pracownika (login, polskie nazwy ról, menu z „Wyloguj”), stopka i kontener toastów. Trasy `/orders`
   mają strażnika roli (pulpit z komunikatem „Nie masz dostępu do tej strony.”). Problem z logowaniem i powrót
   z logowania to karta ze znakiem Worf i przyciskiem „Zaloguj ponownie”.
-- Sekcja „Katalog”: kafle z liczbą produktów, liczbą kategorii i liczbą produktów bez zdjęć (wyróżniona
-  ostrzeżeniem, gdy jest większa od 0).
-- Sekcja „Stan systemu”, wyświetlana tylko gdy `system` nie jest `null`: usługi ze stanem (`Tag` up/down)
-  i opóźnieniem, liczba zdarzeń czekających w outboxie, tabela kolejek (`DataTable`: nazwa, wiadomości,
-  konsumenci), porównanie liczby dokumentów w ES z liczbą produktów w Postgresie z oznaczeniem rozbieżności.
-- `Skeleton` podczas ładowania, `Message` przy błędzie API, przycisk „Odśwież” i automatyczne odświeżanie co 30 s,
-  wstrzymane w ukrytej karcie. Obok przycisku widać czas ostatniego udanego pobrania, a komunikat błędu podaje czas
-  pokazanych danych (szczegóły: `docs/features/dashboard-data-freshness/spec.md`).
-- Dashboard pokazuje wyłącznie dane z API. Nie ma danych zmockowanych ani widgetów sprzedaży.
+- Pulpit (`/`, H1 „Pulpit”; szczegóły: `docs/features/admin-design/spec.md`, „Pulpit i Stan systemu”): kafle katalogu
+  (`KpiTile`: „Produkty” z liczbą produktów jako link do `/products` i stopką „Bez zdjęć”, „Kategorie”, „Bez zdjęć”
+  z prośbą o uzupełnienie zdjęć, gdy jest ich więcej niż 0), karta „Do obsługi” (linki według ról, bez liczb) i dla ról
+  z dostępem do zamówień karta „Ostatnie zamówienia” (pięć najnowszych z `GET /orders?perPage=5`; jej błąd zostaje
+  w karcie). Pulpit nie pokazuje stanu systemu i niczego nie liczy.
+- Ekran „Stan systemu” (`/system`, tylko `admin`, pozycja „Stan systemu” w sekcji „System” menu): usługi z polską
+  etykietą i stanem „Działa” / „Nie działa” oraz opóźnieniem, liczba zdarzeń czekających na wysłanie, tabela kolejek
+  (nazwa, wiadomości, konsumenci) i porównanie liczby dokumentów w ES z liczbą produktów w Postgresie z oznaczeniem
+  rozbieżności. Pozostałe role strażnik trasy odsyła na pulpit z komunikatem „Nie masz dostępu do tej strony.”.
+- Szkielet podczas ładowania, komunikat błędu API (`role="alert"`), przycisk „Odśwież” i automatyczne odświeżanie co
+  30 s, wstrzymane w ukrytej karcie, na pulpicie i na „Stanie systemu”. Obok przycisku widać czas ostatniego udanego
+  pobrania (czas polski), a komunikat błędu podaje czas pokazanych danych (szczegóły:
+  `docs/features/dashboard-data-freshness/spec.md`).
+- Pulpit i „Stan systemu” pokazują wyłącznie dane z API. Nie ma danych zmockowanych ani kafli sprzedaży.
 
 ## Dane demo
 

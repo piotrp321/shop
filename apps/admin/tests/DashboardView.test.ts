@@ -1,49 +1,32 @@
-import { flushPromises, mount } from "@vue/test-utils";
-import PrimeVue from "primevue/config";
+import { flushPromises, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { components } from "@/api/schema";
-import { primeVueOptions } from "@/primevue";
+import type { StaffMe } from "@/stores/auth";
 import DashboardView from "@/views/DashboardView.vue";
+import { callsTo, dashboard, describeFreshness, mocks, mountScreen, ORDERS, order, serve, system } from "./dashboardSupport";
 
-type Dashboard = components["schemas"]["DashboardResponse"];
-type System = NonNullable<Dashboard["system"]>;
+vi.mock("@/api/client", async () => {
+  const { mocks: shared } = await import("./dashboardMocks");
+  return { getApiClient: () => ({ GET: shared.get }) };
+});
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+type Role = StaffMe["roles"][number];
 
-vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
+const mountDashboard = (roles: StaffMe["roles"] | null = ["admin"]) => mountScreen(DashboardView, roles);
 
-const serviceNames = ["postgres", "redis", "elasticsearch", "rabbitmq", "keycloak", "garage", "imgproxy", "mailpit"];
-
-function system(overrides: Partial<System> = {}): System {
-  return {
-    services: serviceNames.map((name, index) => ({ name, status: "up" as const, latencyMs: index + 1 })),
-    outbox: { pending: 3 },
-    queues: [{ name: "events", messages: 7, consumers: 1 }],
-    searchIndex: { indexedProducts: 412, catalogProducts: 412, inSync: true },
-    ...overrides,
-  };
+/** The links of the card „Do obsługi” as [label, href]. */
+function todo(wrapper: VueWrapper) {
+  return wrapper.findAll("[data-testid=todo-item]").map((item) => [item.get("[data-testid=todo-label]").text(), item.attributes("href")]);
 }
 
-function dashboard(overrides: Partial<Dashboard> = {}): Dashboard {
-  return {
-    catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 0 },
-    system: system(),
-    ...overrides,
-  };
-}
-
-function respondWith(data: Dashboard) {
-  mocks.get.mockResolvedValue({ data, response: { status: 200 } });
-}
-
-async function mountView() {
-  const wrapper = mount(DashboardView, { global: { plugins: [[PrimeVue, primeVueOptions]] } });
-  await flushPromises();
-  return wrapper;
-}
+const PAID = ["Opłacone do wysłania", "/orders?status=paid"];
+const NEW = ["Czekają na płatność", "/orders?status=new"];
+const REFUNDS = ["Zwroty do wykonania", "/orders?refund=pending"];
+const INVENTORY = ["Stany magazynowe", "/inventory"];
+const PROMOTIONS = ["Aktywne promocje", "/promotions?status=active"];
+const CODES = ["Kody rabatowe", "/discount-codes?status=active"];
 
 describe("DashboardView", () => {
-  let wrapper: Awaited<ReturnType<typeof mountView>> | undefined;
+  let wrapper: VueWrapper | undefined;
 
   beforeEach(() => {
     mocks.get.mockReset();
@@ -52,7 +35,6 @@ describe("DashboardView", () => {
   afterEach(() => {
     wrapper?.unmount();
     wrapper = undefined;
-    vi.useRealTimers();
   });
 
   describe("message of a denied page", () => {
@@ -60,8 +42,8 @@ describe("DashboardView", () => {
 
     it("shows „Nie masz dostępu do tej strony.” as an alert when the route guard sent the staff member here", async () => {
       window.history.replaceState({ denied: true }, "");
-      respondWith(dashboard());
-      wrapper = await mountView();
+      serve(dashboard());
+      wrapper = await mountDashboard();
 
       const alert = wrapper.get("[data-testid=access-denied]");
       expect(alert.attributes("role")).toBe("alert");
@@ -70,369 +52,347 @@ describe("DashboardView", () => {
 
     it("does not show it again after a reload, which keeps history.state", async () => {
       window.history.replaceState({ denied: true }, "");
-      respondWith(dashboard());
-      wrapper = await mountView();
+      serve(dashboard());
+      wrapper = await mountDashboard();
       wrapper.unmount();
 
-      wrapper = await mountView();
+      wrapper = await mountDashboard();
 
       expect(wrapper.find("[data-testid=access-denied]").exists()).toBe(false);
     });
 
     it("does not show it on a dashboard opened directly", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
+      serve(dashboard());
+      wrapper = await mountDashboard();
 
       expect(wrapper.find("[data-testid=access-denied]").exists()).toBe(false);
       expect(wrapper.text()).not.toContain("Nie masz dostępu do tej strony.");
     });
   });
 
-  it("shows the catalog numbers from the API", async () => {
-    respondWith(dashboard());
-    wrapper = await mountView();
+  it("has „Pulpit” as the only H1 and no crumbs", async () => {
+    serve(dashboard());
+    wrapper = await mountDashboard();
 
-    expect(mocks.get).toHaveBeenCalledWith("/api/v1/admin/dashboard");
-    expect(wrapper.text()).toContain("Katalog");
-    expect(wrapper.get("[data-testid=product-count]").text()).toBe("412");
-    expect(wrapper.get("[data-testid=category-count]").text()).toBe("36");
-    expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("0");
+    expect(wrapper.findAll("h1").map((heading) => heading.text())).toEqual(["Pulpit"]);
+    expect(wrapper.find("nav[aria-label=Okruszki]").exists()).toBe(false);
   });
 
-  it("hides the 'Stan systemu' heading when system is null", async () => {
-    respondWith(dashboard({ system: null }));
-    wrapper = await mountView();
+  describe("tiles of the catalog", () => {
+    it("shows the numbers from the API", async () => {
+      serve(dashboard());
+      wrapper = await mountDashboard();
 
-    expect(wrapper.text()).toContain("Katalog");
-    expect(wrapper.text()).not.toContain("Stan systemu");
-    expect(wrapper.findAll("[data-testid=service-tag]")).toHaveLength(0);
-  });
-
-  it("shows eight service tags, in the API order, when system is present", async () => {
-    respondWith(dashboard());
-    wrapper = await mountView();
-
-    expect(wrapper.text()).toContain("Stan systemu");
-    const services = wrapper.findAll("[data-testid=service]");
-    expect(services).toHaveLength(8);
-    expect(services.map((service) => service.get("[data-testid=service-name]").text())).toEqual(serviceNames);
-    expect(wrapper.findAll("[data-testid=service-tag]")).toHaveLength(8);
-    expect(wrapper.findAll("[data-testid=service-tag].p-tag-success")).toHaveLength(8);
-    expect(services[0]?.text()).toContain("1 ms");
-  });
-
-  it("marks a service that is down and shows no latency for it", async () => {
-    const services = system().services.map((service) =>
-      service.name === "redis" ? { ...service, status: "down" as const, latencyMs: null } : service,
-    );
-    respondWith(dashboard({ system: system({ services }) }));
-    wrapper = await mountView();
-
-    const redis = wrapper.findAll("[data-testid=service]")[1];
-    expect(redis?.get("[data-testid=service-tag]").classes()).toContain("p-tag-danger");
-    expect(redis?.text()).not.toContain("ms");
-  });
-
-  it("shows the number of events waiting in the outbox and the queues table", async () => {
-    respondWith(dashboard());
-    wrapper = await mountView();
-
-    expect(wrapper.get("[data-testid=outbox-pending]").text()).toBe("3");
-    const queues = wrapper.get("[data-testid=queues]");
-    expect(queues.text()).toContain("events");
-    expect(queues.text()).toContain("7");
-  });
-
-  it("shows 'Brak danych o kolejkach' when queues is null", async () => {
-    respondWith(dashboard({ system: system({ queues: null }) }));
-    wrapper = await mountView();
-
-    expect(wrapper.text()).toContain("Brak danych o kolejkach");
-    expect(wrapper.find("[data-testid=queues]").exists()).toBe(false);
-  });
-
-  it("shows the search index comparison without a warning when in sync", async () => {
-    respondWith(dashboard());
-    wrapper = await mountView();
-
-    expect(wrapper.get("[data-testid=search-index]").text()).toContain("412");
-    expect(wrapper.find("[data-testid=out-of-sync]").exists()).toBe(false);
-  });
-
-  it("shows a discrepancy message when inSync is false", async () => {
-    respondWith(
-      dashboard({ system: system({ searchIndex: { indexedProducts: 400, catalogProducts: 412, inSync: false } }) }),
-    );
-    wrapper = await mountView();
-
-    const message = wrapper.get("[data-testid=out-of-sync]");
-    expect(message.find(".p-message-warn").exists()).toBe(true);
-    expect(message.text()).toContain("400");
-    expect(message.text()).toContain("412");
-  });
-
-  it("shows the discrepancy message with an unknown index count when indexedProducts is null", async () => {
-    respondWith(
-      dashboard({ system: system({ searchIndex: { indexedProducts: null, catalogProducts: 412, inSync: false } }) }),
-    );
-    wrapper = await mountView();
-
-    expect(wrapper.find("[data-testid=out-of-sync]").exists()).toBe(true);
-    expect(wrapper.get("[data-testid=search-index]").text()).toContain("brak danych");
-  });
-
-  it("warns when there are products without images", async () => {
-    respondWith(dashboard({ catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 8 } }));
-    wrapper = await mountView();
-
-    expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("8");
-    expect(wrapper.get("[data-testid=images-warning]").classes()).toContain("p-tag-warn");
-  });
-
-  it("shows no image warning when every product has an image", async () => {
-    respondWith(dashboard());
-    wrapper = await mountView();
-
-    expect(wrapper.find("[data-testid=images-warning]").exists()).toBe(false);
-  });
-
-  it("shows a skeleton while loading and no data", async () => {
-    mocks.get.mockReturnValue(new Promise(() => {}));
-    wrapper = await mountView();
-
-    expect(wrapper.find(".p-skeleton").exists()).toBe(true);
-    expect(wrapper.text()).not.toContain("Katalog");
-  });
-
-  it("shows an error Message when the API answers with an error", async () => {
-    mocks.get.mockResolvedValue({ error: { status: 503 }, response: { status: 503 } });
-    wrapper = await mountView();
-
-    const message = wrapper.get("[data-testid=dashboard-error]");
-    expect(message.find(".p-message-error").exists()).toBe(true);
-    expect(wrapper.find(".p-skeleton").exists()).toBe(false);
-  });
-
-  it("shows an error Message when the request fails", async () => {
-    mocks.get.mockRejectedValue(new TypeError("Failed to fetch"));
-    wrapper = await mountView();
-
-    expect(wrapper.get("[data-testid=dashboard-error]").text()).not.toContain("Failed to fetch");
-  });
-
-  it("reloads when 'Odśwież' is clicked and clears the error on success", async () => {
-    mocks.get.mockResolvedValueOnce({ error: { status: 503 }, response: { status: 503 } });
-    wrapper = await mountView();
-    expect(wrapper.find("[data-testid=dashboard-error]").exists()).toBe(true);
-
-    respondWith(dashboard());
-    await wrapper.get("[data-testid=refresh]").trigger("click");
-    await flushPromises();
-
-    expect(mocks.get).toHaveBeenCalledTimes(2);
-    expect(wrapper.find("[data-testid=dashboard-error]").exists()).toBe(false);
-    expect(wrapper.text()).toContain("Katalog");
-  });
-
-  it("refreshes every 30 seconds and stops after unmount", async () => {
-    vi.useFakeTimers();
-    respondWith(dashboard());
-    wrapper = await mountView();
-    expect(mocks.get).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(mocks.get).toHaveBeenCalledTimes(2);
-
-    wrapper.unmount();
-    await vi.advanceTimersByTimeAsync(90_000);
-    expect(mocks.get).toHaveBeenCalledTimes(2);
-  });
-
-  it("keeps the last data on screen during a refresh", async () => {
-    respondWith(dashboard());
-    wrapper = await mountView();
-
-    mocks.get.mockReturnValue(new Promise(() => {}));
-    await wrapper.get("[data-testid=refresh]").trigger("click");
-
-    expect(wrapper.find(".p-skeleton").exists()).toBe(false);
-    expect(wrapper.text()).toContain("Katalog");
-  });
-
-  it("ignores a stale response that arrives after a newer refresh", async () => {
-    vi.useFakeTimers();
-    let resolveFirst: (value: unknown) => void = () => {};
-    mocks.get.mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)));
-    wrapper = await mountView();
-
-    mocks.get.mockResolvedValueOnce({
-      data: dashboard({ catalog: { productCount: 2, categoryCount: 1, productsWithoutImages: 0 } }),
-      response: { status: 200 },
+      expect(callsTo("/api/v1/admin/dashboard")).toHaveLength(1);
+      expect(wrapper.get("[data-testid=product-count]").text()).toBe("412");
+      expect(wrapper.get("[data-testid=category-count]").text()).toBe("36");
+      expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("0");
     });
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(wrapper.get("[data-testid=product-count]").text()).toBe("2");
 
-    resolveFirst({
-      data: dashboard({ catalog: { productCount: 1, categoryCount: 1, productsWithoutImages: 0 } }),
-      response: { status: 200 },
+    it("formats a number of the API for Polish readers", async () => {
+      serve(dashboard({ catalog: { productCount: 12345, categoryCount: 36, productsWithoutImages: 0 } }));
+      wrapper = await mountDashboard();
+
+      expect(wrapper.get("[data-testid=product-count]").text().replace(/\s/g, " ")).toBe("12 345");
     });
-    await flushPromises();
 
-    expect(wrapper.get("[data-testid=product-count]").text()).toBe("2");
+    it("links the tile „Produkty” to the products, and the tiles „Kategorie” and „Bez zdjęć” to nothing", async () => {
+      serve(dashboard());
+      wrapper = await mountDashboard();
+
+      const tiles = wrapper.findAll("[data-testid=kpi-tile]");
+      expect(tiles.map((tile) => tile.get("[data-testid=kpi-title]").text())).toEqual(["Produkty", "Kategorie", "Bez zdjęć"]);
+      expect(tiles[0]?.findAll("a").map((link) => link.attributes("href"))).toEqual(["/products"]);
+      expect(tiles[1]?.find("a").exists()).toBe(false);
+      expect(tiles[2]?.find("a").exists()).toBe(false);
+    });
+
+    it("shows the products without images in the footer of „Produkty”", async () => {
+      serve(dashboard({ catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 8 } }));
+      wrapper = await mountDashboard();
+
+      const footer = wrapper.findAll("[data-testid=kpi-tile]")[0]?.get("[data-testid=kpi-footer]");
+      expect(footer?.text()).toContain("Bez zdjęć");
+      expect(footer?.text()).toContain("8");
+    });
+
+    it("asks to add the images when some products have none", async () => {
+      serve(dashboard({ catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 8 } }));
+      wrapper = await mountDashboard();
+
+      expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("8");
+      expect(wrapper.get("[data-testid=images-warning]").text()).toBe("Uzupełnij zdjęcia w formularzu produktu");
+    });
+
+    it("shows no such request when every product has an image", async () => {
+      serve(dashboard());
+      wrapper = await mountDashboard();
+
+      expect(wrapper.find("[data-testid=images-warning]").exists()).toBe(false);
+    });
+
+    it("does not show the system status, which has its own screen, even to an administrator", async () => {
+      serve(dashboard({ system: system() }));
+      wrapper = await mountDashboard(["admin"]);
+
+      expect(wrapper.find("[data-testid=service]").exists()).toBe(false);
+      expect(wrapper.text()).not.toContain("Stan systemu");
+    });
   });
 
-  it("ignores a stale failure that arrives after a newer successful refresh", async () => {
-    vi.useFakeTimers();
-    let rejectFirst: (reason: unknown) => void = () => {};
-    mocks.get.mockReturnValueOnce(new Promise((_resolve, reject) => (rejectFirst = reject)));
-    wrapper = await mountView();
+  describe("„Do obsługi” by role", () => {
+    it.each([
+      ["admin", [PAID, NEW, REFUNDS, INVENTORY, PROMOTIONS, CODES]],
+      ["support", [PAID, NEW, REFUNDS]],
+      ["warehouse", [PAID, INVENTORY]],
+      ["marketing", [PROMOTIONS, CODES]],
+    ] as [Role, string[][]][])("shows %s the rows of their role, in order", async (role, rows) => {
+      serve(dashboard({ system: null }));
+      wrapper = await mountDashboard([role]);
 
-    respondWith(dashboard());
-    await vi.advanceTimersByTimeAsync(30_000);
-    rejectFirst(new TypeError("Failed to fetch"));
-    await flushPromises();
+      expect(todo(wrapper)).toEqual(rows);
+      expect(rows.length, "every role sees at least one row").toBeGreaterThan(0);
+    });
 
-    expect(wrapper.find("[data-testid=dashboard-error]").exists()).toBe(false);
-    expect(wrapper.text()).toContain("Katalog");
+    it("shows a member with several roles the rows of all of them once, in order", async () => {
+      serve(dashboard({ system: null }));
+      wrapper = await mountDashboard(["warehouse", "marketing"]);
+
+      expect(todo(wrapper)).toEqual([PAID, INVENTORY, PROMOTIONS, CODES]);
+    });
+
+    it("has a label, a description and an arrow in every row, and no counts", async () => {
+      serve(dashboard({ system: null }));
+      wrapper = await mountDashboard(["admin"]);
+
+      for (const item of wrapper.findAll("[data-testid=todo-item]")) {
+        expect(item.find("[data-testid=todo-description]").text().length).toBeGreaterThan(0);
+        expect(item.findAll("svg[aria-hidden=true]").length).toBeGreaterThanOrEqual(2);
+      }
+      expect(wrapper.get("[data-testid=todo]").text()).not.toMatch(/\d/);
+    });
+
+    it("has a heading „Do obsługi” for the card", async () => {
+      serve(dashboard());
+      wrapper = await mountDashboard(["support"]);
+
+      expect(wrapper.findAll("h2").map((heading) => heading.text())).toContain("Do obsługi");
+    });
+
+    it("shows no rows until the staff member is known", async () => {
+      serve(dashboard());
+      wrapper = await mountDashboard(null);
+
+      expect(todo(wrapper)).toEqual([]);
+    });
   });
 
-  describe("data freshness", () => {
-    let visibility: DocumentVisibilityState = "visible";
+  describe("„Ostatnie zamówienia”", () => {
+    const five = ["R-5", "R-4", "R-3", "R-2", "R-1"].map((number, index) => order(number, { itemCount: index + 1 }));
 
-    function setVisibility(state: DocumentVisibilityState) {
-      visibility = state;
-      document.dispatchEvent(new Event("visibilitychange"));
-    }
+    it.each(["admin", "support", "warehouse"] as Role[])("asks for the five newest orders for %s", async (role) => {
+      serve(dashboard(), { items: five, nextCursor: null });
+      wrapper = await mountDashboard([role]);
 
-    beforeEach(() => {
-      visibility = "visible";
-      vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+      expect(callsTo(ORDERS)).toEqual([[ORDERS, { params: { query: { perPage: 5 } } }]]);
+      expect(wrapper.findAll("[data-testid=recent-order]")).toHaveLength(5);
+    });
+
+    it("does not ask for the orders of marketing, and has no card", async () => {
+      serve(dashboard());
+      wrapper = await mountDashboard(["marketing"]);
+
+      expect(callsTo(ORDERS)).toHaveLength(0);
+      expect(wrapper.find("[data-testid=recent-orders]").exists()).toBe(false);
+      expect(wrapper.text()).not.toContain("Ostatnie zamówienia");
+    });
+
+    it("asks for the orders once the staff member turns out to have access to them", async () => {
+      serve(dashboard(), { items: five, nextCursor: null });
+      wrapper = await mountDashboard(null);
+      expect(callsTo(ORDERS)).toHaveLength(0);
+
+      const { useAuthStore } = await import("@/stores/auth");
+      useAuthStore().staff = { id: "u1", username: "anna", roles: ["support"] };
+      await flushPromises();
+
+      expect(callsTo(ORDERS)).toHaveLength(1);
+      expect(wrapper.findAll("[data-testid=recent-order]")).toHaveLength(5);
+    });
+
+    it("shows the number as a link, the customer, the date, the units, the amount and the status of each order", async () => {
+      serve(dashboard(), { items: [order("R-100001", { itemCount: 3, status: "shipped" })], nextCursor: "next" });
+      wrapper = await mountDashboard(["admin"]);
+
+      const row = wrapper.get("[data-testid=recent-order]");
+      const number = row.get("a");
+      expect(number.text()).toBe("R-100001");
+      expect(number.attributes("href")).toBe("/orders/id-R-100001");
+      expect(row.get("[data-testid=order-customer]").text()).toBe("Anna Nowak");
+      expect(row.get("[data-testid=order-date]").text()).toMatch(/^05\.11\.2026.*13:30:00$/);
+      expect(row.get("[data-testid=order-items]").text()).toBe("3");
+      expect(row.get("[data-testid=order-total]").text().replace(/\s/g, " ")).toBe("399,98 zł");
+      expect(row.get("[data-testid=order-status]").text()).toBe("Wysłane");
+    });
+
+    it("heads the columns Numer, Klient, Data, Pozycje, Kwota and Status", async () => {
+      serve(dashboard(), { items: five, nextCursor: null });
+      wrapper = await mountDashboard(["admin"]);
+
+      expect(wrapper.get("[data-testid=recent-orders]").findAll("th").map((cell) => cell.text())).toEqual(["Numer", "Klient", "Data", "Pozycje", "Kwota", "Status"]);
+    });
+
+    it("links „Wszystkie zamówienia →” to the list of the orders", async () => {
+      serve(dashboard(), { items: five, nextCursor: null });
+      wrapper = await mountDashboard(["admin"]);
+
+      const link = wrapper.get("[data-testid=all-orders]");
+      expect(link.text()).toBe("Wszystkie zamówienia →");
+      expect(link.attributes("href")).toBe("/orders");
+    });
+
+    it("scrolls a table wider than the card in a named, focusable region", async () => {
+      serve(dashboard(), { items: five, nextCursor: null });
+      wrapper = await mountDashboard(["admin"]);
+
+      const region = wrapper.get("[data-testid=recent-orders] [role=region]");
+      expect(region.attributes("aria-label")).toBe("Ostatnie zamówienia");
+      expect(region.attributes("tabindex")).toBe("0");
+      expect(region.classes()).toContain("overflow-x-auto");
+    });
+
+    it("says there are no orders yet", async () => {
+      serve(dashboard(), { items: [], nextCursor: null });
+      wrapper = await mountDashboard(["admin"]);
+
+      expect(wrapper.get("[data-testid=recent-orders]").text()).toContain("Nie ma jeszcze zamówień.");
+      expect(wrapper.find("[data-testid=recent-order]").exists()).toBe(false);
+    });
+
+    it("shows a skeleton in the card while the orders load", async () => {
+      mocks.get.mockImplementation(async (path: string) => (path === ORDERS ? new Promise(() => {}) : { data: dashboard(), response: { status: 200 } }));
+      wrapper = await mountDashboard(["admin"]);
+
+      expect(wrapper.get("[data-testid=recent-orders]").find("[data-testid=orders-loading]").exists()).toBe(true);
+    });
+
+    describe("when the orders cannot be read", () => {
+      function failOrders(response: unknown) {
+        mocks.get.mockImplementation(async (path: string, ...rest: unknown[]) => {
+          if (path === ORDERS) {
+            if (response instanceof Error) {
+              throw response;
+            }
+            return response;
+          }
+          return { data: dashboard(), response: { status: 200 }, rest };
+        });
+      }
+
+      it("shows the error in the card, with „Spróbuj ponownie”, and leaves the rest of the dashboard alone", async () => {
+        failOrders({ error: { status: 500 }, response: { status: 500 } });
+        wrapper = await mountDashboard(["admin"]);
+
+        const card = wrapper.get("[data-testid=recent-orders]");
+        const message = card.get("[data-testid=orders-error]");
+        expect(message.attributes("role")).toBe("alert");
+        expect(message.text()).toContain("Nie udało się pobrać zamówień (HTTP 500).");
+        expect(card.get("[data-testid=orders-retry]").text()).toBe("Spróbuj ponownie");
+        expect(wrapper.find("[data-testid=dashboard-error]").exists()).toBe(false);
+        expect(wrapper.get("[data-testid=product-count]").text()).toBe("412");
+        expect(todo(wrapper)).toHaveLength(6);
+      });
+
+      it("explains a request that did not reach the API", async () => {
+        failOrders(new TypeError("Failed to fetch"));
+        wrapper = await mountDashboard(["admin"]);
+
+        const text = wrapper.get("[data-testid=orders-error]").text();
+        expect(text).toContain("Nie udało się pobrać zamówień. Sprawdź połączenie z API.");
+        expect(text).not.toContain("Failed to fetch");
+      });
+
+      it("gives no retry for a 403, which a retry would not change", async () => {
+        failOrders({ error: { status: 403 }, response: { status: 403 } });
+        wrapper = await mountDashboard(["admin"]);
+
+        expect(wrapper.get("[data-testid=orders-error]").text()).toContain("Nie masz dostępu do zamówień.");
+        expect(wrapper.find("[data-testid=orders-retry]").exists()).toBe(false);
+      });
+
+      it("loads the orders again on „Spróbuj ponownie” and clears the error", async () => {
+        failOrders({ error: { status: 500 }, response: { status: 500 } });
+        wrapper = await mountDashboard(["admin"]);
+        serve(dashboard(), { items: [order("R-1")], nextCursor: null });
+
+        await wrapper.get("[data-testid=orders-retry]").trigger("click");
+        await flushPromises();
+
+        expect(wrapper.find("[data-testid=orders-error]").exists()).toBe(false);
+        expect(wrapper.findAll("[data-testid=recent-order]")).toHaveLength(1);
+      });
+
+      it("keeps the orders on screen when a refresh of them fails", async () => {
+        serve(dashboard(), { items: [order("R-1")], nextCursor: null });
+        wrapper = await mountDashboard(["admin"]);
+
+        failOrders({ error: { status: 500 }, response: { status: 500 } });
+        await wrapper.get("[data-testid=refresh]").trigger("click");
+        await flushPromises();
+
+        expect(wrapper.find("[data-testid=orders-error]").exists()).toBe(true);
+        expect(wrapper.findAll("[data-testid=recent-order]")).toHaveLength(1);
+      });
+
+      it("moves the focus to the message when „Spróbuj ponownie” disappears with the message", async () => {
+        failOrders({ error: { status: 500 }, response: { status: 500 } });
+        wrapper = await mountDashboard(["admin"]);
+        serve(dashboard(), { items: [order("R-1")], nextCursor: null });
+
+        const retry = wrapper.get("[data-testid=orders-retry]");
+        (retry.element as HTMLElement).focus();
+        await retry.trigger("click");
+        await flushPromises();
+
+        expect(document.activeElement, "the focus does not fall to the body").not.toBe(document.body);
+        expect(wrapper.get("[data-testid=recent-orders]").element.contains(document.activeElement)).toBe(true);
+      });
+    });
+
+    it("loads the orders again on „Odśwież” and on the 30 s interval", async () => {
       vi.useFakeTimers();
-      vi.setSystemTime(new Date(2026, 10, 1, 14, 3, 12));
+      try {
+        serve(dashboard(), { items: five, nextCursor: null });
+        wrapper = await mountDashboard(["admin"]);
+        expect(callsTo(ORDERS)).toHaveLength(1);
+
+        await wrapper.get("[data-testid=refresh]").trigger("click");
+        await flushPromises();
+        expect(callsTo(ORDERS)).toHaveLength(2);
+
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(callsTo(ORDERS)).toHaveLength(3);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
+    it("shows a refreshed order list", async () => {
+      serve(dashboard(), { items: [order("R-1")], nextCursor: null });
+      wrapper = await mountDashboard(["admin"]);
 
-    it("shows the time of the last successful fetch", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
-
-      expect(wrapper.get("[data-testid=updated-at]").text()).toBe("Dane z 14:03:12");
-    });
-
-    it("shows no fetch time before the first successful fetch", async () => {
-      mocks.get.mockResolvedValue({ error: { status: 503 }, response: { status: 503 } });
-      wrapper = await mountView();
-
-      expect(wrapper.find("[data-testid=updated-at]").exists()).toBe(false);
-    });
-
-    it("keeps the data and names its time when a refresh fails", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
-
-      vi.setSystemTime(new Date(2026, 10, 1, 14, 3, 42));
-      mocks.get.mockResolvedValue({ error: { status: 503 }, response: { status: 503 } });
+      serve(dashboard(), { items: [order("R-2")], nextCursor: null });
       await wrapper.get("[data-testid=refresh]").trigger("click");
       await flushPromises();
 
-      expect(wrapper.get("[data-testid=dashboard-error]").text()).toContain(
-        "Pokazane dane z 14:03:12 mogą być nieaktualne.",
-      );
-      expect(wrapper.get("[data-testid=updated-at]").text()).toBe("Dane z 14:03:12");
-      expect(wrapper.text()).toContain("Katalog");
-    });
-
-    it("keeps the error message unchanged when there is no earlier data", async () => {
-      mocks.get.mockRejectedValue(new TypeError("Failed to fetch"));
-      wrapper = await mountView();
-
-      const text = wrapper.get("[data-testid=dashboard-error]").text();
-      expect(text).toBe("Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.");
-    });
-
-    it("does not call the API on intervals while the tab is hidden", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
-      expect(mocks.get).toHaveBeenCalledTimes(1);
-
-      visibility = "hidden";
-      await vi.advanceTimersByTimeAsync(90_000);
-
-      expect(mocks.get).toHaveBeenCalledTimes(1);
-    });
-
-    it("refreshes once on return to the tab after at least 30 seconds", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
-
-      visibility = "hidden";
-      await vi.advanceTimersByTimeAsync(95_000);
-      setVisibility("visible");
-      await flushPromises();
-
-      expect(mocks.get).toHaveBeenCalledTimes(2);
-      expect(wrapper.get("[data-testid=updated-at]").text()).toBe("Dane z 14:04:47");
-    });
-
-    it("does not refresh on return to the tab after less than 30 seconds", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
-
-      visibility = "hidden";
-      await vi.advanceTimersByTimeAsync(10_000);
-      setVisibility("visible");
-      await flushPromises();
-
-      expect(mocks.get).toHaveBeenCalledTimes(1);
-    });
-
-    it("keeps refreshing every 30 seconds counted from the refresh on return", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
-
-      visibility = "hidden";
-      await vi.advanceTimersByTimeAsync(75_000);
-      await vi.advanceTimersByTimeAsync(10_000);
-      setVisibility("visible");
-      await flushPromises();
-      expect(mocks.get).toHaveBeenCalledTimes(2);
-
-      await vi.advanceTimersByTimeAsync(29_000);
-      expect(mocks.get).toHaveBeenCalledTimes(2);
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(mocks.get).toHaveBeenCalledTimes(3);
-    });
-
-    it("does not refresh when the tab becomes hidden", async () => {
-      respondWith(dashboard());
-      wrapper = await mountView();
-
-      await vi.advanceTimersByTimeAsync(20_000);
-      setVisibility("hidden");
-      await flushPromises();
-
-      expect(mocks.get).toHaveBeenCalledTimes(1);
-    });
-
-    it("removes the timer and the visibilitychange listener on unmount", async () => {
-      const added = vi.spyOn(document, "addEventListener");
-      const removed = vi.spyOn(document, "removeEventListener");
-      respondWith(dashboard());
-      wrapper = await mountView();
-      expect(vi.getTimerCount()).toBe(1);
-      const listener = added.mock.calls.find(([type]) => type === "visibilitychange")?.[1];
-      expect(listener).toBeDefined();
-
-      wrapper.unmount();
-
-      expect(vi.getTimerCount()).toBe(0);
-      expect(removed).toHaveBeenCalledWith("visibilitychange", listener);
-      setVisibility("visible");
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(mocks.get).toHaveBeenCalledTimes(1);
+      expect(wrapper.findAll("[data-testid=recent-order] a").map((link) => link.text())).toEqual(["R-2"]);
     });
   });
+});
+
+describeFreshness("DashboardView", {
+  mount: () => mountDashboard(["admin"]),
+  withNumber: (value) => dashboard({ catalog: { productCount: value, categoryCount: 1, productsWithoutImages: 0 } }),
+  readNumber: (view) => view.get("[data-testid=product-count]").text(),
+  shown: "Produkty",
 });

@@ -30,6 +30,7 @@ async function mountLayout(path = "/", attach = false) {
           { path: "promotions", name: "promotions", component: { template: "<div />" } },
           { path: "discount-codes", name: "discount-codes", component: { template: "<div />" } },
           { path: "inventory", name: "inventory", component: { template: "<div />" } },
+          { path: "system", name: "system", component: { template: "<div />" } },
           { path: "orders", name: "orders", component: { template: "<div />" } },
         ],
       },
