@@ -63,9 +63,11 @@ longer prepared on the board -> `X nie jest już przygotowany[: <reason>]`;
 now + estimate <= until, usage status `ok`, and every window resetting after now + estimate has a usage estimate and
 stays <= 80% after adding it;
 (c) otherwise, next to the epics in progress: gate steps 2-7 (evaluate; default stack reserve) and then now +
-estimate <= until (`X nie zdąży do HH:MM`). A wait or skip of the gate is `wait: true` while anything is active,
-else it ends the night.
-`wait: true` (with `epic` null and a reason) never ends the night and writes nothing; the session checks again later.
+estimate <= until (`X nie zdąży do HH:MM`). A refusal (gate wait or skip, or too late) is `wait: true` while anything
+is active, else it ends the night. Each (c) evaluation appends a gate.jsonl line like `gate --dir <candidate>` ({at,
+dir_arg, epic, reason, skipped}; a too-late candidate has `epic` null and that reason) before the final write.
+`wait: true` (with `epic` null and a reason) never ends the night and writes nothing to night.json or claims.json;
+the session checks again later.
 
 close: records the end of the night: sets `ended_at` (now) and `reason` (default `zamknięta`) in night.json and prints
 it. No night.json: exit 2. A night that already ended keeps its first `ended_at` and `reason` (printed, exit 0).
@@ -571,13 +573,25 @@ def _not_prepared(directory, entry):
                                                 ': %s' % detail if detail else '')
 
 
+def _clock(until, now):
+    return until.astimezone(now.tzinfo).strftime('%H:%M')
+
+
+def _too_late(name, minutes, now, until):
+    """`X nie zdąży do HH:MM` when now + minutes is after `until`, else None."""
+    if now + timedelta(minutes=minutes) > until:
+        return '%s nie zdąży do %s' % (name, _clock(until, now))
+    return None
+
+
 def _forecast_failure(name, minutes, usage_estimate, now, until, stdin):
     """Checks 2-5 for a candidate with a time estimate `minutes`: the reason it may not start now, or None."""
     if minutes is None:
         return 'brak pomiaru'
     end = now + timedelta(minutes=minutes)
-    if end > until:
-        return '%s nie zdąży do %s' % (name, until.astimezone(now.tzinfo).strftime('%H:%M'))
+    late = _too_late(name, minutes, now, until)
+    if late:
+        return late
     usage_now = _read_usage(stdin)
     if usage_now['status'] != 'ok':
         return 'stan limitów: %s' % usage_now['status']
@@ -646,11 +660,8 @@ def _next(args, run, now, stdin):
         print(json.dumps(_next_result(epic_, reason, started, after, wait, claim), ensure_ascii=False))
         return 0
 
-    def until_text():
-        return until.astimezone(now.tzinfo).strftime('%H:%M')
-
     if now > until:
-        return finish(None, 'noc minęła (%s)' % until_text())
+        return finish(None, 'noc minęła (%s)' % _clock(until, now))
     if not unstarted and not running:
         return finish(None, 'lista wykonana')
     ctx = gate_context(run, args.state, now)
@@ -677,13 +688,17 @@ def _next(args, run, now, stdin):
         forecast = estimate(ctx.measured, candidate['tasks'])
         reason = _forecast_failure(entry['id'], forecast['minutes'], forecast['usage'], now, until, stdin)
         return finish(None, reason) if reason else finish(candidate, None)
-    # Next to epics in progress: gate steps 2-7, then the time until the end of the night.
+    # Next to epics in progress: gate steps 2-7, then the time until the end of the night. The evaluation goes to
+    # gate.jsonl like a `gate --dir` call (before the final write); a refusal waits while anything is active.
     found = evaluate(ctx, entry, _read_usage(stdin), DEFAULT_STACK_GIB * 1024)
-    if found['outcome'] != PASS:
-        return finish(None, found['reason'], wait=bool(active))
-    if now + timedelta(minutes=found['epic']['minutes']) > until:
-        return finish(None, '%s nie zdąży do %s' % (entry['id'], until_text()))
-    return finish(found['epic'], None)
+    epic_, reason = found['epic'], found['reason']
+    if epic_ is not None:
+        reason = _too_late(entry['id'], epic_['minutes'], now, until)
+        epic_ = None if reason else epic_
+    skipped = [{'issue': entry['number'], 'id': entry['id'], 'reason': found['reason'], 'paths': found['paths']}
+               ] if found['outcome'] == SKIP else []
+    append_gate_log(args.state, now, directory, {'epic': epic_, 'reason': reason, 'skipped': skipped})
+    return finish(epic_, reason, wait=epic_ is None and bool(active))
 
 
 MAX_ROOM_HOURS = 24 * 365
