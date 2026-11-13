@@ -254,23 +254,37 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   nazwa jako link do edycji, slug), kategoria główna, liczba wariantów, status (etykieta: „Szkic”, „Opublikowany”),
   ostatnia zmiana, akcje („Edytuj”, „Podgląd w sklepie” dla opublikowanego). Przycisk „Dodaj produkt” tylko dla
   `admin` i `marketing` (role z `/me`).
-- Formularz (`useProductForm`): sekcje „Dane” (nazwa, slug z podpowiedzią „pusty: wyliczony z nazwy”, zablokowany
-  przy `slugLocked` z wyjaśnieniem, krótki opis z licznikiem znaków, kategoria główna i dodatkowe z drzewa, klasa
-  podatkowa z `GET /tax-classes`), „Zdjęcia”, „Warianty”. Pracownik bez `MANAGE_PRODUCTS` widzi formularz tylko
-  do odczytu, bez akcji.
-- Wynik akcji (zapis, publikacja, wycofanie): formularz jest długi, więc po akcji panel przewija i ustawia fokus na
-  pierwszym błędzie w kolejności dokumentu (pole z błędem albo komunikat) albo, po sukcesie, na komunikacie sukcesu.
+- Formularz (`useProductForm`, układ według standardu formularza z `docs/features/admin-design/spec.md`): H1 („Nowy
+  produkt”, nazwa produktu, a gdy istniejący produkt się nie wczytał, „Nie udało się wczytać produktu”) z okruszkami
+  „Katalog › Produkty › produkt”. Kolumna główna: „Dane produktu” (nazwa, slug z podpowiedzią „pusty: wyliczony
+  z nazwy”, zablokowany przy `slugLocked` z wyjaśnieniem, krótki opis z licznikiem znaków, klasa podatkowa z
+  `GET /tax-classes` jako lista wyboru „Klasa podatkowa”), „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (tylko
+  zapisany produkt: etykieta, „Opublikuj” albo „Wycofaj z publikacji”) i „Organizacja” (kategoria główna i dodatkowe
+  z drzewa, wybór z wyszukiwaniem po nazwie i ścieżce). Pracownik bez `MANAGE_PRODUCTS` widzi formularz tylko do
+  odczytu, bez akcji i bez paska zapisu.
+- Pasek zapisu (przyklejony do dołu): „Niezapisane zmiany” z „Odrzuć” (przywraca produkt z ostatniej odpowiedzi API
+  bez żądania) i „Zapisz” pojawia się po pierwszej zmianie i znika po zapisie; nowy produkt ma go od początku
+  („Nowy produkt”, „Anuluj” wraca do listy). Pole z fokusem nie jest pod paskiem.
+- Wynik akcji (zapis, publikacja, wycofanie): po sukcesie toast („Produkt zapisany.”, „Produkt opublikowany.”,
+  „Produkt wycofany z publikacji.”); fokus przechodzi na H1 po zapisie (pasek zniknął razem z przyciskiem) albo na
+  nagłówek karty „Status” po publikacji i wycofaniu (przycisk został zastąpiony), chyba że pracownik w trakcie
+  żądania przeniósł fokus do pola: wtedy zostaje w polu. Po błędzie formularz jest długi, więc panel przewija i ustawia
+  fokus na pierwszym błędzie w kolejności dokumentu (pole z błędem albo komunikat).
 - Zdjęcia: wybór wielu plików; każdy wysyłany osobno, po kolei, ze statusem przy pliku (oczekuje, wysyłanie,
   gotowe, błąd z `detail` 422 albo ogólnym komunikatem i możliwością ponowienia); plik, którego klucz już jest
   w formularzu, nie jest dodawany drugi raz („To zdjęcie już jest w produkcie.”);
   po sukcesie miniatura i pole alt (wstępnie nazwa produktu, edytowalne); przesuwanie w górę i w dół, usunięcie;
   pierwsze oznaczone „Główne”; najwyżej 10 (przycisk wyłączony przy 10; z wybranych plików wysyłane są tylko
   te, które mieszczą się w wolnych miejscach, reszta ma błąd „Produkt może mieć najwyżej 10 zdjęć.”). Usunięcie zdjęcia z formularza nie usuwa
-  oryginału (K7).
+  oryginału (K7). Po usunięciu zdjęcia fokus trafia na przycisk usuwania następnego zdjęcia, a bez niego na „Dodaj
+  zdjęcia”; po ukryciu wyniku wysyłania na następny wynik albo „Dodaj zdjęcia”; błąd wysyłania pliku jest ogłaszany
+  (`role="alert"`).
 - Warianty: osie (0–2, dodanie, zmiana nazwy, usunięcie) i tabela wierszy: wartość dla każdej osi, dodanie
   i usunięcie wiersza. Produkt bez osi pokazuje jeden wiersz „Wariant domyślny” bez pól. Usunięcie wiersza
-  istniejącego wariantu (także usunięcie ostatniej osi, które usuwa pozostałe istniejące warianty) pyta o
-  potwierdzenie („Cena i stan wariantu przestaną być widoczne w panelu.”). Reguły
+  istniejącego wariantu (także usunięcie ostatniej osi, które usuwa pozostałe istniejące warianty) pyta w oknie
+  potwierdzenia z nazwą wariantu („Usunąć wariant czarny / 42?”, „Cena i stan wariantu przestaną być widoczne
+  w panelu.”, czerwony „Usuń wariant czarny / 42”, „Wróć” z fokusem; po usunięciu fokus przechodzi na nagłówek
+  „Warianty”). Reguły
   (unikalność kombinacji, liczba wartości) sprawdza API; 422 wskazuje pole wiersza. Przed pierwszą publikacją osie
   można też przestawić (wartości w wierszach przestawiają się razem z osią).
 - Po pierwszej publikacji (`firstPublishedAt` z API) dodanie, usunięcie i przestawienie osi są niedostępne, a pod
@@ -278,9 +292,11 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   zrób przez dodanie nowego wariantu i usunięcie starego.” Pola wartości zostają edytowalne; regułę klucza
   porównania sprawdza API (409 `variant-locked`), panel jej nie liczy.
 - Akcje: „Zapisz” (nowy: `POST`, potem przejście na `/products/:id`; edycja: `PUT` z wersją), „Opublikuj”
-  / „Wycofaj z publikacji” (wyłączone przy niezapisanych zmianach; wysyłają wersję). Wszystkie akcje są wyłączone
-  w trakcie żądania. Po sukcesie widok z odpowiedzi
-  API (nowa wersja) i komunikat. Opuszczenie formularza z niezapisanymi zmianami pyta o potwierdzenie.
+  / „Wycofaj z publikacji” (wyłączone przy niezapisanych zmianach z powodem „Najpierw zapisz zmiany.”; wysyłają
+  wersję). Wszystkie akcje są wyłączone w trakcie żądania. Po sukcesie widok z odpowiedzi
+  API (nowa wersja) i toast. Przejście na inną stronę panelu z niezapisanymi zmianami otwiera okno „Masz niezapisane
+  zmiany” z „Zostań” (domyślny fokus, także `Escape`) i „Opuść bez zapisu”, a zamknięcie karty ostrzega przeglądarka
+  (nie przy wylogowaniu).
 - Błędy: 422 przy polach (`violations[].propertyPath`), 422 bez `violations` jako komunikat formularza;
   409 po `type`: `product-modified` „Produkt został w międzyczasie zmieniony – odśwież” z przyciskiem odświeżenia
   (odrzuca zmiany formularza), `slug-taken` przy polu slug („Ten slug ma już inny produkt. Podaj własny slug.”, także gdy slug wyliczyło API
@@ -366,6 +382,7 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
 - Sklep (Vitest): `revalidate` przyjmuje `product-slug-<slug>`, `loadProduct` taguje szczegóły.
 - E2E `catalog-admin.spec.ts`: `marketing` tworzy produkt ze zdjęciem i wariantem, publikuje, `admin` ustawia cenę
   i przyjęcie; strona produktu pokazuje nazwę, zdjęcie i cenę; zmiana nazwy widoczna na stronie; wycofanie → 404.
+  Drugi test sprawdza pasek zapisu (pole z fokusem nad paskiem) i okno niezapisanych zmian („Zostań”, „Opuść bez zapisu”).
   Na buildzie produkcyjnym: wejście na slug przed publikacją (404), po publikacji strona produktu, po wycofaniu 404.
   Upload przez API: obraz przyjęty, plik ponad `upload_max_filesize` i żądanie ponad `post_max_size` → 422 „Plik jest
   za duży.”. `support` widzi listę i formularz tylko do odczytu, bez `/products/new`. Produktów nie da

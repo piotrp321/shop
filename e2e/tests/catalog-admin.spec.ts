@@ -86,7 +86,9 @@ test("marketing creates and publishes a product, admin prices it and receives st
   const renamed = `${product.name} nowa nazwa`;
   await page.getByTestId("name").fill(renamed);
   await page.getByTestId("save").click();
-  await expect(page.getByTestId("success-message")).toHaveText("Produkt zapisany.");
+  await expect(page.locator("section[aria-live=polite]").getByText("Produkt zapisany."), "the save is announced in a toast").toBeVisible();
+  await expect(page.getByRole("region", { name: "Zapis formularza" }), "the save bar goes away after the save").toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 }), "the focus is on the heading after the save").toBeFocused();
   await expect(page.getByTestId("form-error")).toHaveCount(0);
   await expect(page.getByTestId("slug")).toHaveValue(product.slug);
   await expect(page.getByTestId("slug")).toBeDisabled();
@@ -162,11 +164,51 @@ test("support sees the list of products and a read-only form", async ({ page }) 
   await expect(page.getByTestId("read-only-note")).toBeVisible();
   await expect(page.getByTestId("name")).toBeDisabled();
   await expect(page.getByTestId("slug")).toBeDisabled();
-  await expect(page.getByTestId("tax-class")).toHaveClass(/p-disabled/);
+  await expect(page.getByRole("combobox", { name: "Klasa podatkowa" })).toBeDisabled();
+  await expect(page.getByRole("region", { name: "Zapis formularza" }), "a read-only form has no save bar").toHaveCount(0);
   for (const action of ["save", "publish", "unpublish", "add-images", "add-axis", "add-variant"]) {
     await expect(page.getByTestId(action), `the read-only form has no "${action}"`).toHaveCount(0);
   }
 
   await page.goto(`${urls.admin}/products/new`);
   await expect(page, "the new product form is not for support").toHaveURL(/\/products$/);
+});
+
+test("product form: the save bar keeps a focused field in view, and leaving with unsaved changes asks first", async ({ page }) => {
+  // A short window, so that the form is taller than the screen and the focus has to scroll.
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await loginStaff(page, staff.marketing);
+  await openMenuItem(page, "Lista produktów", "Katalog", "Produkty");
+  await page.getByTestId("add-product").click();
+  await expect(page.getByRole("heading", { level: 1, name: "Nowy produkt" })).toBeVisible();
+
+  const bar = page.getByRole("region", { name: "Zapis formularza" });
+  await expect(bar, "a new product has the bar from the start").toContainText("Nowy produkt");
+  await expect(bar.getByRole("button", { name: "Anuluj" })).toBeVisible();
+
+  // The bar sticks to the bottom of the screen; a field that the focus scrolled to is above it, never under it.
+  for (const control of [page.getByTestId("add-axis"), page.getByRole("button", { name: "Dodaj zdjęcia" })]) {
+    await control.focus();
+    await expect(control).toBeFocused();
+    const field = await control.boundingBox();
+    const barBox = await bar.boundingBox();
+    expect(field && barBox && field.y + field.height <= barBox.y + 1, `the focused control (${JSON.stringify(field)}) is above the save bar (${JSON.stringify(barBox)})`).toBe(true);
+  }
+
+  // Leaving with an unsaved change asks; „Zostań” keeps the form.
+  await page.getByLabel("Nazwa", { exact: true }).fill("Zz E2E niezapisany");
+  await expect(bar).toContainText("Nowy produkt");
+  await page.getByRole("navigation", { name: "Menu główne" }).getByRole("link", { name: "Lista produktów", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Zostań" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Zostań" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/products\/new$/);
+  await expect(page.getByLabel("Nazwa", { exact: true })).toHaveValue("Zz E2E niezapisany");
+
+  // „Opuść bez zapisu” goes on to the list.
+  await page.getByRole("navigation", { name: "Menu główne" }).getByRole("link", { name: "Lista produktów", exact: true }).click();
+  await page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" }).getByRole("button", { name: "Opuść bez zapisu" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Produkty" })).toBeVisible();
 });
