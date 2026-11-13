@@ -98,7 +98,17 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
 - **Wymuszenie**: w dzień `gate --dir <epik> --reserve --force` zakłada rezerwację mimo niespełnionej bramki (wynik
   bramki zostaje w wyjściu), tylko po „tak” użytkownika na „Uruchomić mimo bramki?”. W nocy nie ma wymuszenia.
 - **Wznowienie**: `gate --dir` dla epiku, który jest już w toku z gałęzi (np. nowa sesja przejmuje epik po przerwanej),
-  zwraca `resumed: true` bez sprawdzeń i bez rezerwacji: epik już zajmuje swoje miejsce.
+  zwraca `resumed: true` bez sprawdzeń bramki i bez rezerwacji: epik już zajmuje swoje miejsce. Wznowienie nie może
+  uruchomić drugiego procesu AO dla epiku innej sesji:
+  - proces AO epiku działa (blokada `orchestrator.lock` w `~/.local/state/ao-<epik>` jest zajęta; sprawdzenie
+    współdzieloną blokadą bez czekania): odmowa „epik X prowadzi działający proces AO”, bez wyjątków (`--force` ani
+    `--takeover` jej nie omijają);
+  - `start` zapisuje właściciela epiku (token rezerwacji) w `claims.json`. Wznowienie z innym tokenem niż właściciel
+    to odmowa „epik X prowadzi inna sesja”, np. gdy tamta czeka na odpowiedź na bloker i jej `ao run` się zakończył.
+    `--takeover` przejmuje epik (nowy token właściciela) tylko w dzień, po „tak” użytkownika na „Przejąć epik X od
+    innej sesji?”. Epik bez zapisanego właściciela (uruchomiony poza `/ao-run`) wznawia się z nowym tokenem.
+  - Sesja, która prowadzi epik, przy ponownym `ao run` (sekcja 5 skilla) nie woła bramki: `ao run` sam odmawia, gdy
+    na tym `AO_HOME` działa już inny proces.
 
 ### Spójność dokumentów
 
@@ -132,7 +142,7 @@ sprzed zmiany drugiego epiku. Dlatego:
 
 ### Gdzie działa
 
-- **`night_queue.py gate [--dir <katalog>] [--reserve [--claim TOKEN] [--force]] [--stack-gib N]`** (stdin: obiekt
+- **`night_queue.py gate [--dir <katalog>] [--reserve [--claim TOKEN] [--force] [--takeover]] [--stack-gib N]`** (stdin: obiekt
   `plan` z `get_usage`): bez `--dir` szuka pierwszego kandydata z tablicy, który przechodzi bramkę; z `--dir`
   sprawdza ten epik (epik spoza tablicy albo nieprzygotowany: odmowa z powodem). Wynik (JSON, kod 0): `epic` (`dir`,
   `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`, `reason` (powód czekania albo odmowy, inaczej `null`),
@@ -297,7 +307,9 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   z innym tokenem i z `--force` → odmowa; dwa procesy `gate --reserve` uruchomione naraz (prawdziwa blokada, osobne
   procesy): rezerwację dostaje dokładnie jeden; zajęta blokada dłużej niż limit → kod 2 bez zapisu; rezerwacja wygasła
   po 30 minutach; `start` z tokenem usuwa rezerwację; `release` z rezerwacją i bez; nieczytelny `claims.json` → kod 2;
-  zapis atomowy (przerwany zapis nie psuje pliku).
+  zapis atomowy (przerwany zapis nie psuje pliku); wznowienie: działający proces AO innej sesji (zajęta
+  `orchestrator.lock`, także z `--force` i `--takeover`) → odmowa, właściciel z innym tokenem → odmowa, `--takeover`
+  zmienia właściciela, ten sam token i epik bez właściciela → `resumed: true`.
 - `propose`: epik w toku nie opróżnia listy, reguła plików. `approve`: odmowa przy trwającej nocy, zgoda po
   `ended_at` i po `until`. `next`: pierwszy epik z rezerwacją, pierwszy epik przy epiku aktywnym innej sesji (bramka),
   start równoległy z rezerwacją, czekanie bez końca nocy, dzisiejsze przypadki bez zmian.
