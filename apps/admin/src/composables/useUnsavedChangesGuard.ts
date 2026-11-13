@@ -35,11 +35,12 @@ export function useUnsavedChangesGuard(dirty: MaybeRefOrGetter<boolean>): Unsave
   }
 
   const removeGuard = router.beforeEach(() => {
+    // A newer navigation replaces the question of the older one, which is cancelled, also when the form is clean by now
+    // (a save finished meanwhile and moved to the page of the created record).
+    decide(false);
     if (!toValue(dirty)) {
       return true;
     }
-    // A newer navigation replaces the question of the older one, which is cancelled.
-    pending?.(false);
     return new Promise<boolean>((resolve) => {
       pending = resolve;
       asking.value = true;

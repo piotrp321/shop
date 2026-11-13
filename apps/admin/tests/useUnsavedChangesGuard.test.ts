@@ -30,6 +30,8 @@ async function mountGuard() {
     history: createMemoryHistory(),
     routes: [
       { path: "/form", name: "form", component: Form },
+      // The same component, so that the instance stays when a created record moves to its own route.
+      { path: "/form/:id", name: "form-saved", component: Form },
       { path: "/other", name: "other", component: empty },
       { path: "/third", name: "third", component: empty },
     ],
@@ -133,6 +135,21 @@ describe("useUnsavedChangesGuard", () => {
     await Promise.all([first, second]);
 
     expect(router.currentRoute.value.name).toBe("third");
+  });
+
+  it("closes a pending question when a newer navigation arrives after the form became clean (a save finished meanwhile)", async () => {
+    const { dirty, router, guard } = await mountGuard();
+    dirty.value = true;
+
+    const first = router.push("/other");
+    await flushPromises();
+    expect(guard.open.value).toBe(true);
+    dirty.value = false;
+    await router.replace("/form/p-1");
+
+    expect(guard.open.value).toBe(false);
+    expect(router.currentRoute.value.name).toBe("form-saved");
+    await first;
   });
 
   it("warns the browser when the tab is closed with unsaved changes only", async () => {
