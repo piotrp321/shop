@@ -173,6 +173,8 @@ export function useProductForm(options: ProductFormOptions) {
 
   // Only the newest load may change the state; an older one that finishes late is ignored.
   let latest = 0;
+  // The product as the API last sent it, which „discard” restores without a request.
+  let source: ProductEditView | null = null;
   // Set when the form is left: an answer that arrives later must not change it or send the staff member back to it.
   let disposed = false;
 
@@ -218,12 +220,14 @@ export function useProductForm(options: ProductFormOptions) {
   }
 
   function apply(data: ProductEditView): void {
+    source = data;
     form.value = fromView(data);
     view.value = stateOf(data);
     baseline.value = JSON.stringify(toBody(form.value));
   }
 
   function startNew(): void {
+    source = null;
     form.value = emptyForm();
     view.value = null;
     baseline.value = JSON.stringify(toBody(form.value));
@@ -301,6 +305,15 @@ export function useProductForm(options: ProductFormOptions) {
     if (id !== null) {
       await loadProduct(id);
     }
+  }
+
+  /** Throws away the unsaved changes: the form goes back to the product as the API last sent it, without a request. */
+  function discard(): void {
+    if (source === null || busy.value) {
+      return;
+    }
+    form.value = fromView(source);
+    clearFeedback();
   }
 
   function failure(action: Action, status: number, body: unknown): void {
@@ -572,6 +585,7 @@ export function useProductForm(options: ProductFormOptions) {
     publish,
     unpublish,
     refresh,
+    discard,
     moveImage,
     removeImage,
     addAxis,

@@ -229,6 +229,52 @@ describe("useProductForm", () => {
     });
   });
 
+  describe("discarding the changes", () => {
+    it("restores the product as the API sent it, without a request", async () => {
+      const { form } = await start();
+      mocks.get.mockClear();
+
+      form.form.value.name = "Inne buty";
+      form.removeImage(0);
+      form.addAxis();
+      form.discard();
+
+      expect(form.dirty.value).toBe(false);
+      expect(form.form.value.name).toBe("Buty biegowe");
+      expect(form.form.value.images.map((image) => image.key)).toEqual(["originals/a.jpg", "originals/b.jpg"]);
+      expect(form.form.value.variantAxes).toEqual(["Kolor"]);
+      expect(form.form.value.images[0]!.variants).toEqual(preview.variants);
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("restores the product as it was last saved and clears the messages", async () => {
+      const { form } = await start();
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę." }] }));
+      form.form.value.name = "";
+      await form.save();
+      expect(form.errorsAt("name")).toEqual(["Podaj nazwę."]);
+
+      form.discard();
+
+      expect(form.form.value.name).toBe("Buty biegowe");
+      expect(form.errorsAt("name")).toEqual([]);
+    });
+
+    it("does nothing while a request runs", async () => {
+      const { form } = await start();
+      const pending = deferred();
+      mocks.put.mockReturnValue(pending.promise);
+      form.form.value.name = "Inne buty";
+      const saving = form.save();
+
+      form.discard();
+
+      expect(form.form.value.name).toBe("Inne buty");
+      pending.resolve(ok(view({ name: "Inne buty", version: 4 })));
+      await saving;
+    });
+  });
+
   describe("saving a new product", () => {
     it("posts the form and then hands the new id over for navigation, showing the product of the API", async () => {
       const { form, onCreated } = await start({ id: null });

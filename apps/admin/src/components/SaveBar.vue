@@ -67,7 +67,7 @@ onBeforeUnmount(() => {
         type="button"
         variant="outline"
         data-testid="discard"
-        :disabled="busy"
+        :disabled="busy || saveDisabled"
         @click="$emit('discard')"
       >
         Odrzuć

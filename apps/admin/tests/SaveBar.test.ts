@@ -59,6 +59,14 @@ describe("SaveBar", () => {
     expect(button("Zapisz")?.disabled).toBe(true);
   });
 
+  it("does not let „Odrzuć” run while saving is not possible (a request or an upload is running)", async () => {
+    const bar = render({ saveDisabled: true });
+    expect(button("Odrzuć")?.disabled).toBe(true);
+
+    await bar.setProps({ saveDisabled: false });
+    expect(button("Odrzuć")?.disabled).toBe(false);
+  });
+
   describe("the room it takes at the bottom of the page", () => {
     beforeEach(() => {
       vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(64);
