@@ -274,3 +274,19 @@ describe("CategoryCombobox focus after a removal", () => {
     expect(document.activeElement).toBe(input());
   });
 });
+
+describe("CategoryCombobox in a form", () => {
+  it("marks the input invalid and points it at the error message", () => {
+    mountCombobox({ invalid: true, describedBy: "category-error" });
+
+    expect(input().getAttribute("aria-invalid")).toBe("true");
+    expect(input().getAttribute("aria-describedby")).toBe("category-error");
+  });
+
+  it("has neither attribute by default", () => {
+    mountCombobox();
+
+    expect(input().hasAttribute("aria-invalid")).toBe(false);
+    expect(input().hasAttribute("aria-describedby")).toBe(false);
+  });
+});

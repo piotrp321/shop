@@ -13,7 +13,8 @@ export interface Crumb {
 /**
  * The header of a screen: the H1 on the left and the crumbs on the right. The crumbs start with „Pulpit” (added here)
  * and `crumbs` ends with the current page (a form or a detail ends with the name of the object), shown without a link
- * and with `aria-current="page"`. `focus()` moves the focus to the H1, for the end of an action that removed its button.
+ * and with `aria-current="page"`. `focus()` moves the focus to the H1, for the end of an action that removed its button; `heading` is the element,
+ * for the `fallback-focus` of a dialog.
  */
 defineProps<{ title: string; crumbs: Crumb[] }>();
 
@@ -29,7 +30,7 @@ function follow(event: MouseEvent, to: RouteLocationRaw) {
   event.preventDefault();
   void router.push(to);
 }
-defineExpose({ focus: () => heading.value?.focus() });
+defineExpose({ heading, focus: () => heading.value?.focus() });
 </script>
 
 <template>

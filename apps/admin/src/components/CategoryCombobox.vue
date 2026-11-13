@@ -43,8 +43,21 @@ const props = withDefaults(
     deselectable?: boolean;
     /** The `id` of the input, for an external `aria-describedby` or a label of the form; generated when omitted. */
     id?: string;
+    /** A form field with an error: the input gets `aria-invalid`, and `describedBy` (ids of the hint and the error) points it at them. */
+    invalid?: boolean;
+    describedBy?: string;
   }>(),
-  { hideLabel: false, multiple: false, modelValue: null, placeholder: "Szukaj kategorii", disabled: false, deselectable: false, id: undefined },
+  {
+    hideLabel: false,
+    multiple: false,
+    modelValue: null,
+    placeholder: "Szukaj kategorii",
+    disabled: false,
+    deselectable: false,
+    id: undefined,
+    invalid: false,
+    describedBy: undefined,
+  },
 );
 
 const emit = defineEmits<{ "update:modelValue": [value: string | string[] | null] }>();
@@ -174,6 +187,8 @@ async function remove(id: string) {
         <ComboboxInput
           :id="inputId"
           :key="options.length"
+          :aria-invalid="invalid ? 'true' : undefined"
+          :aria-describedby="describedBy"
           :placeholder="placeholder"
           :display-value="(value: unknown) => (multiple ? '' : (nameById.get(String(value)) ?? ''))"
           class="min-w-24 flex-1 bg-transparent py-1 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed"

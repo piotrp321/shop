@@ -72,6 +72,12 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   danych o stanie systemu”. Pliki bez PrimeVue i bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
+  `useUnsavedChangesGuard(dirty)`: strażnik niezapisanych zmian formularza (globalny `router.beforeEach`, nie
+  `onBeforeRouteLeave`, bo po utworzeniu obiektu ta sama instancja przechodzi z trasy „nowy” na trasę utworzonego):
+  przejście na inną trasę przy `dirty` czeka na odpowiedź, którą dają `open` (okno; zamknięcie, np. `Escape`, to
+  zostanie), `stay()` i `leave()` (zamknięcie i potwierdzenie w jednym kliknięciu rozstrzyga potwierdzenie; nowsza
+  nawigacja unieważnia poprzednie pytanie), a zamknięcie karty ostrzega `beforeunload` poza wylogowaniem (`signingOut`
+  w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
   lista produktów, pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
@@ -159,19 +165,32 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   (`variantsErrors`); 403, 404, 503 i sieć to komunikat bez utraty danych formularza. Formularz widzi tylko do
   odczytu (bez akcji) pracownik bez roli `admin` ani `marketing` (`permissions.ts`, role z `/me`); `/products/new`
   bez tej roli przekierowuje na listę (`beforeEnter` w routerze, który w razie potrzeby sam pobiera `/me`).
-  `ProductFormView` pyta o potwierdzenie przy opuszczeniu formularza z niezapisanymi zmianami (globalny guard
-  routera, bo po utworzeniu produktu ta sama instancja przechodzi między trasami) i ostrzega przy zamknięciu karty, ale nie przy wylogowaniu (`signingOut` w store `auth`; blokada wylogowania po bezczynności
-  zostawiłaby sesję bez limitu). Odpowiedź żądania, które skończyło się po opuszczeniu formularza, jest ignorowana.
+  `discard()` przywraca formularz z ostatniej odpowiedzi API bez żądania (dla „Odrzuć” w pasku zapisu; nie działa w trakcie
+  żądania). `ProductFormView` stoi na standardzie formularza (niżej, „Wygląd”): `PageHeader` (H1 „Nowy produkt”, nazwa
+  produktu, „Produkt” do wczytania i „Nie udało się wczytać produktu” po błędzie wczytania istniejącego, #251 F9;
+  okruszki „Katalog › Produkty › produkt”), dwie kolumny od 1280 px (boczna 320 px: „Status” tylko dla zapisanego
+  produktu z etykietą, „Opublikuj” albo „Wycofaj z publikacji” i powodem „Najpierw zapisz zmiany.” przy niezapisanych
+  zmianach, oraz „Organizacja” z dwoma `CategoryCombobox`; główna: „Dane produktu” z klasą podatkową jako Select
+  „Klasa podatkowa”, `ProductImages`, `ProductVariants`; w źródle boczna jest przed główną, więc poniżej 1280 px stoi nad
+  nią), `SaveBar` (widoczny, gdy `dirty`, i od początku dla nowego produktu) i `UnsavedChangesDialog` z
+  `useUnsavedChangesGuard`. Odpowiedź żądania, które skończyło się po opuszczeniu formularza, jest ignorowana.
   Błąd 422 dla całej listy zdjęć (`images`) pokazuje sekcja „Zdjęcia”, dla jednego zdjęcia (`images[i]`) jego wiersz.
-  Zapis, publikacja i wycofanie zwracają wynik (`ActionResult`), po którym `ProductFormView` przewija i ustawia fokus
-  na pierwszym błędzie w kolejności dokumentu (pole z błędem albo komunikat, także w sekcjach „Zdjęcia” i „Warianty”),
-  a po sukcesie na komunikacie sukcesu; formularz jest długi, a wynik pojawia się daleko od przycisku.
+  Zapis, publikacja i wycofanie zwracają wynik (`ActionResult`), po którym `ProductFormView` robi `run`: po błędzie
+  przewija i ustawia fokus na pierwszym błędzie w kolejności dokumentu (element z `data-form-error`: komunikat pola,
+  formularza, sekcji, albo pole z `aria-invalid`, także w sekcjach „Zdjęcia” i „Warianty”; formularz jest długi, a wynik
+  pojawia się daleko od przycisku), a po sukcesie pokazuje toast z `message` composable („Produkt zapisany.”, „Produkt
+  opublikowany.”, „Produkt wycofany z publikacji.”) i przenosi fokus tam, gdzie był przycisk: po zapisie na H1 (pasek
+  zapisu zniknął razem z nim), po publikacji i wycofaniu na nagłówek karty „Status”. Wyjątek (#250 F16): gdy fokus
+  jest wtedy w polu formularza (pracownik przeszedł do niego w trakcie żądania), zostaje tam.
   `useImageUpload` (sekcja „Zdjęcia”, `ProductImages.vue`): pliki wysyłane po kolei jako `multipart` z osobnym
   statusem (oczekuje, wysyłanie, gotowe, błąd z `detail` 422 albo ogólnym komunikatem, ponowienie), klucz już
   obecny w formularzu nie jest dodawany drugi raz, z wybranych plików wysyłane są tylko te, które mieszczą się
   w limicie 10 zdjęć (pozostałe dostają błąd bez żądania). Nowe zdjęcie ma alt równy nazwie produktu.
-  `thumbnail.ts` buduje `src` i `srcset` z podpisanych adresów API. `ProductVariants.vue` to edytor wariantów
-  (sekcja „Warianty”): osie (0–2: dodanie, zmiana nazwy, przestawienie strzałkami razem z wartościami w wierszach,
+  `thumbnail.ts` buduje `src` i `srcset` z podpisanych adresów API. `ProductImages.vue`: po usunięciu zdjęcia fokus
+  przechodzi na przycisk usuwania zdjęcia, które zajęło jego miejsce, a bez następnego na „Dodaj zdjęcia”; po ukryciu
+  wyniku wysyłania na następny wynik albo „Dodaj zdjęcia” (nigdy `body`, #250 F8); błąd wysyłania pliku ma
+  `role="alert"` (#250 F14). Obie sekcje to `FormSection` na tokenach, bez PrimeVue. `ProductVariants.vue` to edytor wariantów
+  (karta „Warianty”): osie (0–2: dodanie, zmiana nazwy, przestawienie strzałkami razem z wartościami w wierszach,
   usunięcie) i tabela wierszy (pole wartości na oś, dodanie i usunięcie wiersza, 1–100 wierszy). Operacje na
   kształcie robi `useProductForm` (`addAxis`, `setAxis`, `removeAxis`, `moveAxis`, `addVariant`, `removeVariant`,
   `setValue`): dodanie osi dopisuje pustą wartość w każdym wierszu, usunięcie osi usuwa wartość na jej pozycji,
@@ -179,7 +198,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   oś dodana produktowi bez osi zachowuje wiersz domyślny z jego `variantId`. Nowy wiersz ma `variantId: null`,
   zachowane wiersze wysyłają swoje `variantId`. Produkt bez osi ma jeden wiersz „Wariant domyślny” bez pól i bez
   dodawania wierszy. Usunięcie wiersza istniejącego wariantu (i ostatniej osi, gdy usuwa istniejące warianty) pyta
-  w `Dialog` PrimeVue („Cena i stan wariantu przestaną być widoczne w panelu.”), nowy wiersz znika bez pytania. Po
+  w `ConfirmDialog` z nazwą wariantu (wartości osi: „Usunąć wariant czarny / 42?”, czerwony „Usuń wariant czarny / 42”,
+  opis „Cena i stan wariantu przestaną być widoczne w panelu.”; usunięcie ostatniej osi: „Usunąć oś Kolor?”), nowy wiersz
+  znika bez pytania; po usunięciu wiersza albo osi (z oknem i bez) fokus przechodzi na nagłówek „Warianty” (z oknem przez
+  `fallback-focus`), bo zestaw przycisków się zmienił (#251 F12; następny element dostaje fokus tylko po usunięciu zdjęcia). Po
   pierwszej publikacji (`axesLocked` z `firstPublishedAt` API) dodanie, usunięcie i przestawienie osi są wyłączone
   i pod tabelą jest wyjaśnienie, a nazwy osi, wartości i wiersze zostają edytowalne. Panel nie liczy klucza
   porównania ani unikalności kombinacji, robi to API. `variantsErrors` ma tylko komunikaty całej sekcji (409
@@ -291,7 +313,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
   wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
-  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, `focus()`) i okruszki (`<nav aria-label="Okruszki">`
+  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
   `aria-current` każdy link do bieżącej trasy); używają go ekrany po migracji. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
   `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
@@ -301,8 +323,18 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   etykiety, a bez niej poprzedniej albo na pole); `modelValue` w trybie pojedynczym to id albo `null`; z prop `deselectable` (tylko tryb pojedynczy; filtr listy produktów)
   ponowny wybór zaznaczonej kategorii zdejmuje ją (`null`), bo `ComboboxItem` Reki w trybie pojedynczym zawsze ustawia
   wybraną wartość i nie przełącza jej. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
-  (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Używa go lista
-  produktów; formularz produktu (ADMIN-DESIGN-5) i ceny oraz stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
+  (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Z prop
+  `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Używa go lista
+  produktów i formularz produktu; ceny i stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
+  Standard formularza (spec „Standard formularza i okien”; podłączony tylko do formularza produktu, reszta formularzy
+  w ADMIN-SCREENS): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
+  `FormField` (etykieta nad polem, podpowiedź w slocie `hint` i błędy pod nim z `data-form-error`, slot daje `describedBy`
+  i `invalid` do wstawienia na kontrolkę; kontrolka z własną etykietą, jak `CategoryCombobox`, pomija `label`), `SaveBar`
+  (przyklejony do dołu obszaru treści: „Niezapisane zmiany” albo prop `newLabel` przy `creating`, „Odrzuć” albo „Anuluj”
+  i „Zapisz”; wyłączone w trakcie żądania; ustawia `scroll-padding-bottom` strony na swoją wysokość, więc pole z fokusem
+  nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
+  niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
+  bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
 - `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, pozostałe listy przejdą w
   ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
@@ -389,6 +421,12 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Ekrany z listy
   `LEGACY_FILES` zostają na komponentach PrimeVue, PrimeIcons i motywie Aura do ADMIN-SCREENS; PrimeVue działa obok
   Tailwinda (style PrimeVue są poza warstwami CSS, więc wygrywają z preflightem).
+- Formularz według standardu (wzorem jest `ProductFormView`; promocja i kod rabatowy w ADMIN-SCREENS): `PageHeader`, dwie
+  kolumny od 1280 px, karty `FormSection`, pola `FormField` (etykieta nad polem, podpowiedź i błąd połączone przez
+  `aria-describedby`, `aria-invalid` przy błędzie), `SaveBar` i `useUnsavedChangesGuard` z `UnsavedChangesDialog` zamiast
+  `window.confirm`. Po zapisie toast (`vue-sonner`, region `aria-live`) i fokus na H1 (chyba że pracownik przeniósł go do
+  pola), po akcji, która zastępuje swój przycisk, na nagłówek karty; po błędzie na pierwszy `data-form-error` albo pole
+  `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`.
 - Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
   rozmiar strony 10/25/50, domyślnie 25) jest w adresie przez `useListUrlState`, stronicowanie przez `useCursorPager`, a
   pozycja w stronicowaniu tylko w pamięci. Wzorem jest `ProductsView`. Ukrywanie kolumn to klasy CSS na progach 1024 i 900 px
@@ -430,7 +468,11 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
 - Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
   i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list
   rozwijanych trafia do `document.body`, więc testy montują z `attachTo: document.body` i czyszczą je po teście.
-  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne i filtrowanie; `tests/ProductsView.test.ts` listę produktów
+  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne i filtrowanie;
+  `tests/ProductFormView.test.ts` formularz produktu (pola, błędy, pasek zapisu, okno niezapisanych zmian, toasty i fokus
+  po zapisie, publikacji i błędzie, błąd wczytania), `tests/ProductImages.test.ts` i `tests/ProductVariants.test.ts`
+  fokus po usunięciu, alert błędu wysyłania i okno usunięcia wariantu, `tests/useUnsavedChangesGuard.test.ts`,
+  `tests/SaveBar.test.ts` i `tests/FormField.test.ts` elementy standardu formularza; `tests/ProductsView.test.ts` listę produktów
   (rzędy, akcje, linie kolumn ukrytych, pasek narzędzi, adres, pager i fokus, puste stany, trzy przypadki błędu);
   testy `useCursorPager` i `useListUrlState` używają routera w pamięci; `tests/ui-accessible-names.test.ts`
   nazwę „Zamknij” okien i brak angielskich nazw dostępnych w `src/components/ui/`.

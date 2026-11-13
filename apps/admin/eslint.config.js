@@ -12,8 +12,6 @@ import tseslint from "typescript-eslint";
 export const LEGACY_FILES = [
   "src/main.ts",
   "src/primevue.ts",
-  "src/products/ProductImages.vue",
-  "src/products/ProductVariants.vue",
   "src/promotions/PromotionVariantPicker.vue",
   "src/views/DiscountCodeFormView.vue",
   "src/views/DiscountCodesView.vue",
@@ -21,7 +19,6 @@ export const LEGACY_FILES = [
   "src/views/OrderDetailView.vue",
   "src/views/OrdersView.vue",
   "src/views/PricesView.vue",
-  "src/views/ProductFormView.vue",
   "src/views/PromotionFormView.vue",
   "src/views/PromotionsView.vue",
 ];
