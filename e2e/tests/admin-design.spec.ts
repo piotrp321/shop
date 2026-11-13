@@ -93,16 +93,17 @@ test.beforeAll(async ({ browser }) => {
     orderId = href.split("/").pop()!;
     expect(orderId, "the id of an order").toMatch(UUID);
 
-    // The edit pages of the screens that are not migrated yet: the first row of the demo promotions and discount codes.
+    // The edit pages of the screens that are not migrated yet: the first row of the lists of promotions and discount codes
+    // (the demo data, or a row an earlier test added).
     await go(page, "/promotions");
     const promotion = page.getByTestId("promotion-link").first();
-    await expect(promotion, "the demo data has a promotion").toBeVisible();
+    await expect(promotion, "the list of promotions has a row").toBeVisible();
     promotionId = (await promotion.getAttribute("href"))!.split("/").pop()!;
     expect(promotionId, "the id of a promotion").toMatch(UUID);
 
     await go(page, "/discount-codes");
     const code = page.getByTestId("code-link").first();
-    await expect(code, "the demo data has a discount code").toBeVisible();
+    await expect(code, "the list of discount codes has a row").toBeVisible();
     discountCodeId = (await code.getAttribute("href"))!.split("/").pop()!;
     expect(discountCodeId, "the id of a discount code").toMatch(UUID);
   } finally {

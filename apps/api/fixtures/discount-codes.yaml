@@ -5,8 +5,9 @@
 # An amount code needs `minimumOrder` (grosze) greater than its amount; a percent code may have one. The codes have no
 # usage limit. A code the domain would refuse (or a repeated one) stops the seed with an error and nothing is changed.
 #
-# E2E tests create their own codes through the panel API (e2e/support/discount-codes.ts), they never redeem or change these;
-# the panel look test (admin-design.spec.ts) only opens the form of the first code of the list, so the list must not be empty.
+# E2E tests create their own codes through the panel API (e2e/support/discount-codes.ts), they never redeem or change
+# these; the panel look test (admin-design.spec.ts) only opens the form of the first code of the list, so the list must
+# not be empty.
 
 # 10% off any order, valid from the seed, no end.
 - code: "WITAJ10"
