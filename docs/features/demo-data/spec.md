@@ -70,8 +70,10 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   poświadczeń: nie da się na nie zalogować ani zamówić dla nich resetu hasła (realm `shop` ma
   `resetPasswordAllowed`, a poczta Keycloaka w `prod` idzie przez Brevo). Istnieją jako tożsamości, na które wskazują
   zamówienia i historia działań.
-- **P6. Pula zdjęć.** Około 400 zdjęć z Unsplash (Unsplash License), w tonacji obecnych zdjęć, przypisanych do typów
-  produktów (3–6 na typ), wybranych i przeskalowanych do 1600 px przez zadanie epiku; archiwum w prywatnym magazynie
+- **P6. Pula zdjęć.** Około 4000 zdjęć z Unsplash (Unsplash License), w tonacji obecnych zdjęć, przypisanych do grup
+  zdjęć typów produktów (10–40 na grupę, około 33 średnio, zależnie od tego, ile pasujących zdjęć ma Unsplash),
+  wybranych i przeskalowanych do 1600 px przez zadanie epiku; tyle, żeby na stronie listy jednego typu (24 produkty)
+  zdjęcia rzadko się powtarzały, a pomiar obejmował realną liczbę różnych oryginałów w imgproxy i Varnishu; archiwum w prywatnym magazynie
   (P10), w repo manifest z autorami, licencjami i sumami kontrolnymi. Testy i profil `small` używają 37 obecnych zdjęć
   z `apps/api/fixtures/images`.
 - **P7. Okres historii zamówień.** 3 lata przed chwilą odniesienia, z rosnącym ruchem i sezonowością.
@@ -88,8 +90,8 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   kopie zapasowe), w niezmiennych wersjach, z weryfikacją SHA-256 (sekcja „Zdjęcia”). W repo zostaje manifest.
 - **P11. Dwa końcowe PR.** Jeden epik w specyfikacji, z dotychczasowymi kryteriami i kolejnością zależności,
   dostarczany w dwóch częściach mergowanych po kolei, każda z własnym końcowym PR i własnymi kontrolami CI: część 1
-  (#482) generator i jego testy (zadania DEMO-DATA-1–6), część 2 (#486, DEMO-LOAD) integracja z k3d, k6 i przebieg
-  `medium` (dawne DEMO-DATA-7–9). AO prowadzi epik jako jedną gałąź i jeden końcowy PR, więc część 2 ma własne issue
+  (#482) generator i jego testy (zadania DEMO-DATA-1–7), część 2 (#486, DEMO-LOAD) integracja z k3d, k6 i przebieg
+  `medium`. AO prowadzi epik jako jedną gałąź i jeden końcowy PR, więc część 2 ma własne issue
   i plan, przygotowany po merge'u części 1.
 
 Wymagania dodatkowe użytkownika (2026-11-13):
@@ -325,11 +327,15 @@ Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
   i profilu `small` dostęp nie jest potrzebny.
 - **Pobieranie.** Krok zdjęć dla profili innych niż `small` pobiera archiwum przez osobny filesystem Flysystem
   (adapter AsyncAws S3, już w zależnościach) z danymi odczytu ze zmiennych `DEMO_PHOTOS_*`, sprawdza SHA-256 każdego
-  pliku i komplet plików z manifestu (niezgodność: błąd bez zmian w Garage i w bazie), zapisuje każdy plik raz do Garage pod kluczem
+  pliku i komplet plików z manifestu (niezgodność: błąd bez zmian w Garage i w bazie; archiwum około 1,6 GB rozpakowane
+  do katalogu tymczasowego usuwanego po kroku, także po błędzie), zapisuje każdy plik raz do Garage pod kluczem
   `originals/<sha256>.<rozszerzenie>` (format `FlysystemProductImageStorage`; test kontraktu) i przypisuje produktom
   klucze z grupy typu. Bez zmiennych `DEMO_PHOTOS_*` profil inny niż `small` kończy się błędem przed pierwszym krokiem.
   Profil `small` bierze 37 plików z `apps/api/fixtures/images` bez pobierania.
-- **Wysyłka.** Zadanie epiku wybiera zdjęcia z CDN `images.unsplash.com`, skaluje je, buduje archiwum, wysyła je
+- **Wysyłka.** Kod pobierania, weryfikacji i wysyłki powstaje i jest testowany na małym archiwum lokalnym (DEMO-DATA-6);
+  pulę wybiera osobne zadanie (DEMO-DATA-7) partiami po działach, z przerwami między pobraniami, bez duplikatów
+  (jedno zdjęcie Unsplash raz w puli). Gdy CDN zacznie blokować pobieranie, zadanie się zatrzymuje i zgłasza to, bez
+  obchodzenia ochrony. DEMO-DATA-7 pobiera zdjęcia z CDN `images.unsplash.com`, skaluje je, buduje archiwum, wysyła je
   skryptem `apps/api/bin/upload-demo-photos` (obraz `rclone` przypięty digestem jak w chartcie, `copyto --immutable`,
   więc istniejąca wersja nie zostanie nadpisana) z tokenem zapisu i commituje `photos.yaml`. Przed wysyłką każdy plik
   przechodzi te same reguły co upload w Catalog (typ po zawartości, rozmiar, wymiary). Archiwum ani zdjęcia puli nie
@@ -478,7 +484,8 @@ Aktualizacja `docs/features/search/spec.md`.
 15. `make seed-scale PROFILE=small` na stosie zadania kończy się kodem 0 (cały skrypt na prawdziwych usługach, wynik
     w PR części 1), a `make seed` po nim przywraca dane E2E.
 16. Pula zdjęć (P10): obiekt archiwum w prywatnym buckecie istnieje pod kluczem z manifestu, sumy plików zgadzają
-    się z manifestem, każdy plik spełnia reguły uploadu Catalog, bucket nie ma dostępu publicznego, a skrypt wysyłki
+    się z manifestem, pula ma około 4000 zdjęć bez duplikatów i 10–40 na grupę zdjęć, każdy plik spełnia reguły
+    uploadu Catalog, bucket nie ma dostępu publicznego, a skrypt wysyłki
     przekazuje `--immutable` (test skryptu z podstawionym `docker`).
 
 ## Ryzyka
@@ -506,13 +513,14 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
 ## Wymagane przed startem
 
 - Prywatny bucket Cloudflare R2 na pulę zdjęć (P10), bez dostępu publicznego, i dwa tokeny API ograniczone do niego:
-  zapis i odczyt (wysyłka puli, zadanie DEMO-DATA-6) oraz tylko odczyt (generator); endpoint, bucket i klucze w pliku
+  zapis i odczyt (wysyłka puli, zadanie DEMO-DATA-7) oraz tylko odczyt (generator); endpoint, bucket i klucze w pliku
   `~/.config/shop/demo-photos.env` (zmienne `DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`,
   `DEMO_PHOTOS_WRITE_ACCESS_KEY_ID`, `DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY`, `DEMO_PHOTOS_ACCESS_KEY_ID`,
   `DEMO_PHOTOS_SECRET_ACCESS_KEY`) — użytkownik: bucket, tokeny i plik przed `/ao-run` (wartości nigdy nie przechodzą
   przez rozmowę).
 - Pobieranie zdjęć z CDN `images.unsplash.com` bez klucza API: istnieje (tak powstały zdjęcia VISUAL-DESIGN-11,
-  PR #357; link „Download” blokuje ochrona przed botami).
+  PR #357; link „Download” blokuje ochrona przed botami). Przy około 4000 zdjęć nie było sprawdzane; blokada zatrzymuje
+  DEMO-DATA-7 (sekcja „Zdjęcia”).
 - (część 2) Przebieg `LOAD_DATA=medium` w zadaniu: Docker na komputerze użytkownika z co najmniej 10 CPU, 20 GiB pamięci
   (wymagania `load`) i około 32 GB wolnego miejsca (1,25 × szacunek `medium`, W2) w VM i na dysku komputera — istnieje (2026-11-13: 16 CPU, 31 GiB, w VM 873 GB wolnego,
   na dysku komputera 279 GiB wolnego).
