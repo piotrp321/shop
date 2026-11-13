@@ -257,8 +257,28 @@ osobno (EVALS #495 uruchamia nim evale w tym samym sandboxie): `--workdir <katal
 <.git>` (opcjonalnie), `--state-dir <katalog>` (powtarzalny: odczyt i zapis), `--read-dir <katalog>` (powtarzalny:
 tylko odczyt), `--deny-write <ścieżka>`
 (powtarzalny), `--no-network` (bez domen GitHuba i `allowLocalBinding`), `--no-docker` (bez gniazda Dockera); wynik
-JSON na stdout, nieistniejąca albo względna ścieżka to błąd. Reguły bezpieczeństwa są tylko w szablonie; opcje
-mogą je zaostrzyć, nie poluzować.
+JSON na stdout.
+
+- Opcje zaostrzające (`--deny-write`, `--no-network`, `--no-docker`) tylko dokładają ograniczenia. Opcje dostępu
+  (`--workdir`, `--git-common-dir`, `--state-dir`, `--read-dir`) **rozszerzają** odczyt albo zapis, więc o tym, co
+  wykonawca widzi, decyduje wywołujący. Reguły bezpieczeństwa (`denyRead`, `denyWrite`, flagi sandboxa, reguły `deny`,
+  `disableAllHooks`) są tylko w szablonie i żadna opcja ich nie usuwa.
+- Zaufane źródła ścieżek dostępu: wyłącznie wywołujący poza sandboxem, z wartości, których wykonawca nie kontroluje.
+  Wrapper: katalog roboczy procesu (nadaje go AO), `git rev-parse --git-common-dir` tego katalogu, `AGENT_AO_HOME`
+  (ustawia `ao-prepare`) i `AO_TASK_ID` (nadaje AO, wzorzec z listy niżej). Runner EVALS: katalog przypadku i katalog
+  przebiegu, które sam tworzy. Nigdy z treści repozytorium, wyjścia modelu ani plików w worktree.
+- Walidacja każdej ścieżki dostępu (błąd kończy skrypt kodem różnym od 0, bez wyniku): ścieżka bezwzględna,
+  istniejąca, katalog (`--git-common-dir`: katalog `.git`); bez komponentu będącego dowiązaniem symbolicznym
+  (`os.path.realpath` równe ścieżce po normalizacji, więc dowiązanie nie przekieruje dostępu na inny katalog); nie jest
+  `/`, `~` ani przodkiem `~`; nie jest przodkiem, potomkiem ani równa chronionym katalogom (`~/.ssh`, `~/.kube`,
+  `~/.config`, `~/Library`, `~/.claude`, `~/.docker`, `~/.local/state/shop-ops`); wrapper dodatkowo wymaga, żeby katalog
+  zadania był w `$AGENT_AO_HOME/tasks/`, katalog integracji w `$AGENT_AO_HOME/epics/<epik>/integration`, a
+  `$AGENT_AO_HOME` miał postać `~/.local/state/ao-<nazwa>` (po `realpath`).
+- Dowiązania tworzone przez wykonawcę w dozwolonych katalogach: Seatbelt sprawdza ścieżkę docelową po rozwiązaniu
+  dowiązania symbolicznego, więc dowiązanie do kanarka w worktree albo w katalogu zadania nie daje odczytu (przypadek
+  sondy). Dowiązanie twarde do pliku z katalogu zablokowanego dałoby ten sam i-węzeł pod dozwoloną ścieżką: sonda ma
+  przypadek `ln <kanarek> <worktree>/x` i odczytu `x`; gdy przejdzie, zadanie AGENT-SECURITY-3 zgłasza bloker
+  z wynikiem (decyzja użytkownika przed dalszą pracą).
 
 - `sandbox.enabled: true`, `failIfUnavailable: true` (bez sandboxa wykonawca nie startuje),
   `allowUnsandboxedCommands: false`, brak `excludedCommands`, `enableWeakerNetworkIsolation: true` (weryfikacja TLS
@@ -391,7 +411,8 @@ wykonawcy, nie konfigurację.
   domyślny.
 - Próby obejścia: `cat`, `sh -c`, `python3 -c`, proces w tle (`( … ) & wait`), `make` z tymczasowego Makefile,
   Read kanarka; `ls ~/.ssh ~/.kube ~/.config`; `security find-generic-password -s gh:github.com`;
-  `docker-credential-desktop list`; zapis do `~`, do innego worktree, do atrapy `$AO_HOME/agent-security`, bazy,
+  `docker-credential-desktop list`; odczyt kanarka przez dowiązanie symboliczne w worktree i w katalogu zadania
+  oraz przez dowiązanie twarde (`ln`) w worktree; zapis do `~`, do innego worktree, do atrapy `$AO_HOME/agent-security`, bazy,
   `events.jsonl`, katalogu innego zadania, `briefs/` i `attempts/` własnego zadania, odczyt stanu innego zadania;
   zapis do `<worktree>/.ao/teardown`; zapis hooka do `<.git>/hooks`, `git config core.hooksPath`
   i `git config core.fsmonitor` (także `--worktree`); curl do domeny spoza listy; WebFetch;
@@ -422,9 +443,11 @@ wykonawcy, nie konfigurację.
   nie przeszedł, limit czasu albo kosztu, błąd startu); kod 0 (wszystko przechodzi), 1 (przypadek nie przeszedł albo
   nie ma wyniku, limit), 2 (sonda nie mogła ruszyć: brak binarki, tokenu, odrzucony token, Docker, worktree).
   Kanarka nigdy nie wypisuje.
-- Testy `render_settings.py`: opcje dają oczekiwane ścieżki, `--no-network` i `--no-docker` usuwają domeny i gniazdo,
-  błędne ścieżki to błąd, żadna opcja nie usuwa `denyRead`, `denyWrite`, `allowUnsandboxedCommands: false`,
-  `disableAllHooks` ani reguł `deny`.
+- Testy `render_settings.py`: opcje dają oczekiwane ścieżki, `--no-network` i `--no-docker` usuwają domeny i gniazdo;
+  błędem są ścieżka względna, nieistniejąca, z dowiązaniem symbolicznym w dowolnym komponencie, `/`, `~` i jego
+  przodek, przodek, potomek albo równa chronionym katalogom; żadna opcja nie usuwa `denyRead`, `denyWrite`,
+  `allowUnsandboxedCommands: false`, `disableAllHooks` ani reguł `deny`. Testy wrappera: `AGENT_AO_HOME` spoza
+  `~/.local/state/ao-*`, katalog zadania poza `$AGENT_AO_HOME/tasks/` (także przez dowiązanie) to odmowa.
 - Testy bez modelu (CI przez `script-tests.sh`): ocena wyniku `stream-json` z atrapami (wyciek kanarka w wyniku
   narzędzia, próba niewykonana, brak przypadku, przekroczony koszt, urwane wyjście), limit czasu z atrapą binarki,
   która nie kończy pracy, sprzątanie po błędzie i po sygnale, kody wyjścia; wrapper z atrapą binarki,
@@ -436,11 +459,12 @@ wykonawcy, nie konfigurację.
 
 `tools/agent-security/ao-prepare` (skrypt z testami) wywoływany przez `/ao-run` w sekcji „Start” przed `ao run`:
 
-- po `git fetch origin main` kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json` i
-  `probe-cases.sh` z `origin/main` (`git show`, nie z drzewa roboczego sesji) do `$AO_HOME/agent-security/` (poza
+- po `git fetch origin main` kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json`, `probe.py`
+  i `probe-cases.sh` z `origin/main` (`git show`, nie z drzewa roboczego sesji) do `$AO_HOME/agent-security/` (poza
   zapisem wykonawcy i katalogami Dockera; kopia nie zmienia się w trakcie przebiegu);
 - odmawia startu, gdy istnieje któryś `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (droga 14);
-- uruchamia sondę (przebieg domyślny) na tej kopii z binarką przypiętą (`claude_pin.py`); kod różny od 0: AO nie
+- uruchamia sondę z kopii (`$AO_HOME/agent-security/probe.py`, nigdy z drzewa roboczego sesji) na wrapperze i profilu
+  z tej samej kopii, z binarką przypiętą (`claude_pin.py`); kod różny od 0: AO nie
   startuje, push „Epik <x>: sonda bezpieczeństwa nie przeszła (<reason>)”, w rozmowie czas, koszt i przyczyna;
 - wypisuje `--claude-bin "$AO_HOME/agent-security/claude-agent"` i zmienne `AGENT_CLAUDE_BIN`, `AGENT_AO_HOME`, które
   `/ao-run` przekazuje do `ao run`. Sonda działa przy każdym `ao run` i każdym wznowieniu, bez pomijania (P8).
@@ -505,7 +529,8 @@ wykonawcy, nie konfigurację.
    bez środowiska ani na atrapach z `env:` workflowu, `secrets['X']`, `toJSON(secrets)` i `secrets: inherit`.
 8. Cele produkcyjne: przy atrapie działającego procesu AO albo wykonawcy `kubeconfig`, `rerun`, `create-admin`,
    `restore` i `backups` odmawiają bez zmian; `kubeconfig` dopisuje `KUBE_DIR` do rejestru; bez niego działają jak dziś (test dymny i selftest bez zmian).
-9. `ao-prepare`: kopia z `origin/main` (nie z drzewa roboczego) w `$AO_HOME/agent-security/`, odmowa przy istniejącym
+9. `ao-prepare`: kopia pięciu plików (z `probe.py`) z `origin/main` (nie z drzewa roboczego) w
+   `$AO_HOME/agent-security/`, sonda uruchomiona z kopii, odmowa przy istniejącym
    `KUBE_DIR` z rejestru, sonda na kopii, wynik z `--claude-bin` i zmiennymi; sonda
    z kodem różnym od 0, limit czasu albo brak wyniku kończy go błędem z przyczyną (fail-closed). Testy z atrapą sondy i `claude_pin.py`. `/ao-run` startuje AO z jego wyniku
    i wysyła push przy błędzie.
