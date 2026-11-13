@@ -96,50 +96,50 @@ nothing is measured, when there is at least one epic.
 gate: the parallel epics gate (docs/features/parallel-work/spec.md, „Bramka”, „Rezerwacja”). Epics in progress: board
 epics with an `origin/epic/<dir>` branch whose final PR epic/<dir> -> main is not merged (merged ones go to
 `merged_open`), plus valid reservations (30 minutes) in <state>/claims.json except the caller's own one (--dir with the
---claim token), which is neither in progress, active nor listed for it. Active: reservations and branch epics whose
-last measurements.jsonl event is `start` or that have none. Files of an epic: its `Zakres:` on
-origin/main plus docs/features/<dir> plus, with a branch, `git diff --name-only origin/main...origin/epic/<dir>`.
-Without --dir the candidates are the prepared, unreserved board epics in board order; with --dir only that epic
-(off the board, merged, not prepared: `epic` null with the reason; a valid reservation of another token, also without
---claim: `epik X zarezerwowany albo w toku`). Steps against the epics in progress
-other than the candidate: none -> pass; two active -> wait; a parallel hold (parallel-hold.json, see hold) -> wait
-`równoległość wstrzymana: <reason>`; dependency on an open epic -> skip; no readable scope:
-candidate -> skip, epic in progress (also without spec.md on origin/main) -> wait; a common path that is not allowed (parallel_gate.is_allowed) -> skip with
-the blocking paths of all epics in progress; free Docker memory below one stack (--stack-gib, default 6) -> wait;
-usage status not `ok`, no estimate, an active epic without a readable plan.md on origin/main, or a window resetting after the candidate's estimated end above 80% with the full
-estimates of the active epics and the candidate -> wait. A skip moves to the next candidate (with --dir it stops); a
-wait stops. Prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null, "reason", "reserved": false,
+--claim token), which is neither in progress, active nor listed for it. Active: reservations and branch epics whose last
+measurements.jsonl event is `start` or that have none. Files of an epic: its `Zakres:` on origin/main plus
+docs/features/<dir> plus, with a branch, `git diff --name-only origin/main...origin/epic/<dir>`. Without --dir the
+candidates are the prepared, unreserved board epics in board order; with --dir only that epic (off the board, merged,
+not prepared: `epic` null with the reason; a valid reservation of another token, also without --claim: `epik X
+zarezerwowany albo w toku`). Steps against the epics in progress other than the candidate: none -> pass; two active ->
+wait; a parallel hold (parallel-hold.json, see hold) -> wait `równoległość wstrzymana: <reason>`; dependency on an open
+epic -> skip; no readable scope: candidate -> skip, epic in progress (also without spec.md on origin/main) -> wait; a
+common path that is not allowed (parallel_gate.is_allowed) -> skip with the blocking paths of all epics in progress;
+free Docker memory below one stack (--stack-gib, default 6) -> wait; usage status not `ok`, no estimate, an active epic
+without a readable plan.md on origin/main, or a window resetting after the candidate's estimated end above 80% with the
+full estimates of the active epics and the candidate -> wait. A skip moves to the next candidate (with --dir it stops);
+a wait stops. Prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null, "reason", "reserved": false,
 "claim": null, "resumed": false, "parallel_with": [dirs], "active": [dirs], "in_progress": [{dir, id, issue}],
 "merged_open": [{dir, id, issue}], "skipped": [{issue, id, reason, paths}], "docker": {total_mib, other_mib, ao_mib,
 free_mib, required_mib} | null, "waiting": {dir, id, issue, title} | null}, exit 0, and appends {at, dir_arg, epic,
 reason, waiting: <dir|null>, skipped: [{id, reason, paths}]} to <state>/gate.jsonl. `waiting` is the candidate whose
-steps ended in a wait (the wait the reason applies to; kept with --force), else null.
---reserve and --claim need --dir (else exit 2). Without --reserve the gate reserves nothing. --reserve: when the
-candidate passes, parallel_gate.reserve under the same lock (`reserved: true`, `claim`: the token, the --claim token
-when given). With --force also after a wait or skip of the steps (`epic` set, the gate's `reason` kept), except two
-active epics (step 2): no reservation, whatever the flags; --force never overrides the refusals of the epic itself
-(off the board, merged, not prepared, reserved). Renewal: --reserve --claim
-with the token of a valid reservation of --dir runs no gate steps (the decision was taken under the lock when the
-reservation was made; only the refusals of the epic itself apply) and renews it: `epic`, `reserved: true`, `claim`,
-`reason` null and a new `expires_at`. With an expired or missing reservation the gate decides as for a new one.
-Resume: --dir of an epic in progress from its branch runs no steps and reserves nothing. Refusals: the AO process of the
-epic runs (parallel_gate.orchestrator_running on <ao-root>/ao-<dir>, --ao-root default ~/.local/state):
-`epik X prowadzi działający proces AO`, whatever the flags; a recorded owner other than --claim: `epik X prowadzi
-inna sesja`, unless --takeover (a new owner token). Otherwise `resumed: true` and `epic` (tasks and minutes null
-without a readable plan.md on origin/main). Only with --reserve the resume records the owner: `claim` is the owner
+steps ended in a wait (the wait the reason applies to; kept with --force), else null. --reserve and --claim need --dir
+(else exit 2). Without --reserve the gate reserves nothing. --reserve: when the candidate passes, parallel_gate.reserve
+under the same lock (`reserved: true`, `claim`: the token, the --claim token when given). With --force also after a wait
+or skip of the steps (`epic` set, the gate's `reason` kept), except two active epics (step 2): no reservation, whatever
+the flags; --force never overrides the refusals of the epic itself (off the board, merged, not prepared, reserved).
+Renewal: --reserve --claim with the token of a valid reservation of --dir runs no gate steps (the decision was taken
+under the lock when the reservation was made; only the refusals of the epic itself apply) and renews it: `epic`,
+`reserved: true`, `claim`, `reason` null and a new `expires_at`. With an expired or missing reservation the gate decides
+as for a new one. Resume: --dir of an epic in progress from its branch runs no steps and reserves nothing. Refusals: the
+AO process of the epic runs (parallel_gate.orchestrator_running on <ao-root>/ao-<dir>, --ao-root default
+~/.local/state): `epik X prowadzi działający proces AO`, whatever the flags; a recorded owner other than --claim: `epik
+X prowadzi inna sesja`, unless --takeover (a new owner token). Otherwise `resumed: true` and `epic` (tasks and minutes
+null without a readable plan.md on origin/main). Only with --reserve the resume records the owner: `claim` is the owner
 token: --claim when it is the owner, else a new owner recorded in claims.json (the --claim token when it holds a valid
 reservation of the epic, else a fresh one). Without --reserve it only reads: `claim` null, nothing written (--takeover
-changes nothing). --takeover outside a resume is ignored. The reservation or owner write is the gate's last step
-(after gate.jsonl), so a failure never leaves a token in claims.json that was not printed.
+changes nothing). --takeover outside a resume is ignored. The reservation or owner write is the gate's last step (after
+gate.jsonl), so a failure never leaves a token in claims.json that was not printed.
 
 release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
 hold: the parallel hold after a critical problem of a pair (docs/features/parallel-work/spec.md, „Pomiar pierwszych
 dwóch par”): writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
-not overwritten); an empty or blank --reason exits 2. While it exists, the gate (also `next` case (c)) makes every candidate next to an epic in progress
-wait; nothing in progress still passes, so serial work goes on. unhold: removes the hold (the user's decision) and
-prints {"removed": <bool>}, exit 0 also without a hold. An unreadable parallel-hold.json exits 2 in every command that
-reads the gate context (gate, next, propose, approve) and in hold; unhold removes it.
+not overwritten); an empty or blank --reason exits 2. While it exists, the gate (also `next` case (c)) makes every
+candidate next to an epic in progress wait; nothing in progress still passes, so serial work goes on. unhold: removes
+the hold (the user's decision) and prints {"removed": <bool>}, exit 0 also without a hold. An unreadable
+parallel-hold.json exits 2 in every command that reads the gate context (gate, next, propose, approve) and in hold;
+unhold removes it.
 
 Exit codes: 0 success; 1 a `git`/`gh` command failed, ran over 60 s or returned unexpected JSON, or a bad --hours of
 room; 2 usage

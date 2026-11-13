@@ -48,11 +48,11 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
      `apps/store/src/api/schema.d.ts`, `apps/admin/src/api/schema.d.ts` (sync i REPAIR generują je od nowa) oraz
      dokumentacja `docs/**` i `README.md` w katalogu głównym (sync i REPAIR sprawdzają spójność treści, sekcja
      „Spójność dokumentów”).
-   - **Wymuszają kolejkę:** wspólne pliki edytowane ręcznie: CI (`.github/**`), każdy `CLAUDE.md`, `make/*.mk`
-     i główny `Makefile`, menu panelu (`apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`), inne
-     `README.md` (np. runbook `infra/k8s/README.md`) oraz każda inna wspólna ścieżka kodu, testów i konfiguracji
-     (porównanie po segmentach: `docs/features/ao-run/spec.md`, „Zakres epiku”). Czy dopuścić `CLAUDE.md`, rozstrzyga użytkownik po dwóch pierwszych parach
-     (sekcja „Ocena `CLAUDE.md`”).
+   - **Wymuszają kolejkę:** wspólne pliki edytowane ręcznie: CI (`.github/**`), każdy `CLAUDE.md`, `make/*.mk` i główny
+     `Makefile`, menu panelu (`apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`), inne `README.md`
+     (np. runbook `infra/k8s/README.md`) oraz każda inna wspólna ścieżka kodu, testów i konfiguracji (porównanie po
+     segmentach: `docs/features/ao-run/spec.md`, „Zakres epiku”). Czy dopuścić `CLAUDE.md`, rozstrzyga użytkownik po
+     dwóch pierwszych parach (sekcja „Ocena `CLAUDE.md`”).
 6. **Pamięć Dockera**: `wolna = MemTotal − pamięć kontenerów spoza AO − max(pamięć kontenerów AO, rezerwa × liczba
    epików aktywnych)` jest co najmniej rezerwą jednego stosu. Rezerwa: 6 GiB (`--stack-gib`, pomiar: stos ok. 4,9 GB).
    Kontenery AO to kontenery projektów Compose o nazwie `ao-*` (etykieta `com.docker.compose.project` z `docker ps`,
@@ -98,18 +98,19 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
   a sama rezerwacja zajmuje miejsce, pamięć i limit; obowiązują tylko odmowy samego epiku (spoza tablicy, zmergowany,
   nieprzygotowany). Wynik: `epic`, `reserved: true`, `claim` (ten token), `reason` `null`. Z tokenem rezerwacji
   wygasłej albo nieistniejącej bramka sprawdza epik jak nową rezerwację (z tym tokenem). `start` i `release` przyjmują
-  token. Ważna rezerwacja tego samego epiku z innym tokenem albo
-  epik już w toku to odmowa „epik X zarezerwowany albo w toku”, której `--force` nie omija: dwie sesje nie ruszą
-  jednego epiku.
+  token. Ważna rezerwacja tego samego epiku przez inną sesję (inny token) to odmowa „epik X zarezerwowany albo
+  w toku”, której `--force` nie omija: dwie sesje nie ruszą jednego epiku. Epik w toku z gałęzi idzie ścieżką
+  wznowienia („Wznowienie” niżej).
 - **Przebieg startu** (sekcja 1 skilla): `gate --dir <epik> --reserve` (albo z tokenem z `next`) przed
   `ao epic start --dry-run`; tuż przed właściwym `ao epic start` odnowienie tym samym tokenem (bez ponownych kroków
   bramki, więc epik nocy zarezerwowany przez `next` w przypadku (b) nie odpada na plikach epików czekających na merge;
-  wygasła rezerwacja: bramka od nowa, a gdy nie przechodzi albo rezerwację ma inna sesja, brak startu). `night_queue.py start <epik> --claim <token>` (zaraz po udanym `ao epic start`) zapisuje
-  zdarzenie `start` i usuwa rezerwację w tej samej blokadzie. `ao epic start` od razu wypycha `epic/<epik>`, więc po
-  usunięciu rezerwacji epik jest w toku z gałęzi. Odmowa w sekcjach 1–2 po rezerwacji: `release <epik> --claim
-  <token>`. Rezerwacja niezwolniona (np. przerwana sesja) wygasa sama. `start` odmawia (kod 2, `epik X ma innego
-  właściciela`, bez zapisu), gdy epik ma zapisanego właściciela innego niż `--claim` (także bez `--claim`), więc
-  ponowny `start` epiku wymaga tokenu właściciela.
+  wygasła rezerwacja: bramka od nowa, a gdy nie przechodzi albo rezerwację ma inna sesja, brak startu). `night_queue.py
+  start <epik> --claim <token>` (zaraz po udanym `ao epic start`) zapisuje zdarzenie `start` i usuwa rezerwację w tej
+  samej blokadzie. `ao epic start` od razu wypycha `epic/<epik>`, więc po usunięciu rezerwacji epik jest w toku
+  z gałęzi. Odmowa w sekcjach 1–2 po rezerwacji: `release <epik> --claim <token>`. Rezerwacja niezwolniona (np.
+  przerwana sesja) wygasa sama. `start` odmawia (kod 2, `epik X ma innego właściciela`, bez zapisu), gdy epik ma
+  zapisanego właściciela innego niż `--claim` (także bez `--claim`), więc ponowny `start` epiku wymaga tokenu
+  właściciela.
 - **Pytanie a rezerwacja**: `gate` bez `--reserve` tylko czyta (do pytania „Zacząć epik X?”), więc nie blokuje innych
   sesji na czas czekania na odpowiedź. „Tak” jest ważne tylko w chwili rezerwacji: gdy bramka już nie przechodzi,
   sesja podaje powód, a po późniejszym przejściu bramki pyta od nowa z aktualnym `parallel_with`.
@@ -168,17 +169,18 @@ sprzed zmiany drugiego epiku. Dlatego:
 
 ### Gdzie działa
 
-- **`night_queue.py gate [--dir <katalog>] [--reserve [--claim TOKEN] [--force] [--takeover]] [--stack-gib N]`** (stdin: obiekt
-  `plan` z `get_usage`): bez `--dir` szuka pierwszego kandydata z tablicy, który przechodzi bramkę; z `--dir`
-  sprawdza ten epik (epik spoza tablicy albo nieprzygotowany: odmowa z powodem). Wynik (JSON, kod 0): `epic` (`dir`,
-  `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`, `reason` (powód czekania albo odmowy, inaczej `null`),
-  `reserved`, `claim` (token albo `null`), `resumed`, `parallel_with` (katalogi epików w toku, z którymi epik ruszy),
-  `active`, `in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`), `docker` (`total_mib`,
+- **`night_queue.py gate [--dir <katalog>] [--reserve [--claim TOKEN] [--force] [--takeover]] [--stack-gib N]
+  [--ao-root DIR]`** (stdin: obiekt `plan` z `get_usage`; `--ao-root`: katalog z `ao-<epik>` do sprawdzenia procesu
+  AO przy wznowieniu, domyślnie `~/.local/state`): bez `--dir` szuka pierwszego kandydata z tablicy, który przechodzi
+  bramkę; z `--dir` sprawdza ten epik (epik spoza tablicy albo nieprzygotowany: odmowa z powodem). Wynik (JSON, kod 0): `epic`
+  (`dir`, `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`, `reason` (powód czekania albo odmowy, inaczej
+  `null`), `reserved`, `claim` (token albo `null`), `resumed`, `parallel_with` (katalogi epików w toku, z którymi epik
+  ruszy), `active`, `in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`), `docker` (`total_mib`,
   `other_mib`, `ao_mib`, `free_mib`, `required_mib` albo `null`), `waiting` (`dir`, `id`, `issue`, `title` kandydata,
-  którego kroki bramki skończyły się czekaniem, także przy `--force`, inaczej `null`). Każde wywołanie dopisuje wynik
-  do `gate.jsonl` (czas, kandydaci z wynikiem i `paths`, `waiting` jako katalog albo `null`, bez treści issues). Kod 1:
-  błąd `gh` albo `git` (także komenda dłuższa niż 60 s); kod 2: błąd stanu
-  (nieczytelny plik pomiarów, rezerwacji albo wstrzymania, zajęta blokada).
+  którego kroki bramki skończyły się czekaniem, także przy `--force`, inaczej `null`). Każde wywołanie dopisuje wynik do
+  `gate.jsonl` (czas, kandydaci z wynikiem i `paths`, `waiting` jako katalog albo `null`, bez treści issues). Kod 1:
+  błąd `gh` albo `git` (także komenda dłuższa niż 60 s); kod 2: błąd stanu (nieczytelny plik pomiarów, rezerwacji albo
+  wstrzymania, zajęta blokada).
 - **`night_queue.py release <katalog> --claim TOKEN`**: usuwa własną rezerwację; brak jej: kod 0 bez zmiany.
 - **`night_queue.py hold --reason TEXT`**: zapisuje (pod blokadą, atomowo) `parallel-hold.json` z `at` i `reason`
   i wypisuje go; istniejące wstrzymanie zostaje bez zmiany. **`night_queue.py unhold`**: usuwa je i wypisuje
@@ -211,7 +213,8 @@ sprzed zmiany drugiego epiku. Dlatego:
       aktywny: po sprawdzeniach szeregowych (szacunek czasu do `until`, stan limitów `ok`, okna do 80%, jak w spec
       `/ao-run`, „Kolejny epik”);
     - (c) w pozostałych przypadkach, także gdy epik innej sesji jest aktywny: gdy przechodzi bramkę (kroki 2–7
-      i wstrzymanie równoległości, rezerwa 6 GiB) i teraz + szacunek czasu nie przekracza `until` (inaczej powód `X nie zdąży do HH:MM`).
+      i wstrzymanie równoległości, rezerwa 6 GiB) i teraz + szacunek czasu nie przekracza `until` (inaczej powód
+      `X nie zdąży do HH:MM`).
     Odmowa w (c) (czekanie albo pominięcie w bramce, `nie zdąży`) przy czymkolwiek aktywnym to `epic: null`
     i `wait: true` z powodem: noc trwa, `next` niczego nie zapisuje. Bez aktywnego epiku ta sama odmowa kończy noc.
     Gdy wszystkie epiki listy ruszyły, a któryś jeszcze trwa, `next` czeka z powodem `wszystkie epiki listy ruszyły,
