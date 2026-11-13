@@ -1324,12 +1324,13 @@ class NextCliTest(unittest.TestCase):
         passed = self.result(self.abc(), branches=['a'])
         at = NOW.isoformat()
         self.assertEqual([
-            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: CLAUDE.md',
+            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: CLAUDE.md', 'waiting': None,
              'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: CLAUDE.md', 'paths': ['CLAUDE.md']}]},
-            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'dwa epiki aktywne: A, Y', 'skipped': []},
+            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'dwa epiki aktywne: A, Y', 'waiting': 'b',
+             'skipped': []},
             {'at': (UNTIL - timedelta(minutes=59)).isoformat(), 'dir_arg': 'b', 'epic': None,
-             'reason': 'B nie zdąży do 07:00', 'skipped': []},
-            {'at': at, 'dir_arg': 'b', 'epic': 'b', 'reason': None, 'skipped': []},
+             'reason': 'B nie zdąży do 07:00', 'waiting': None, 'skipped': []},
+            {'at': at, 'dir_arg': 'b', 'epic': 'b', 'reason': None, 'waiting': None, 'skipped': []},
         ], self.gate_log())
         self.assertEqual('b', passed['epic']['dir'])
 
@@ -1870,9 +1871,47 @@ class GateCliTest(unittest.TestCase):
         result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')])
         self.assertEqual({'epic': {'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': 2, 'minutes': None},
                           'reason': None, 'reserved': False, 'claim': None, 'resumed': False, 'parallel_with': [],
-                          'active': [], 'in_progress': [], 'merged_open': [], 'skipped': [], 'docker': None}, result)
+                          'active': [], 'in_progress': [], 'merged_open': [], 'skipped': [], 'docker': None,
+                          'waiting': None}, result)
         self.assertEqual([], self.commands('docker'))
         self.assertEqual([], self.commands('gh', 'pr'))
+
+    def test_waiting_names_the_candidate_of_each_wait(self):
+        c = {'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}
+        b = {'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title'}
+        abc = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')]
+        two_active = [*self.old_measurement(), self.start('a', NOW - timedelta(hours=1))]
+        cases = [
+            ('room', two_active, abc, {'branches': ['a', 'b']}, c),
+            ('room with --dir', two_active, abc, {'branches': ['a', 'b'], 'extra': ['--dir', 'c']}, c),
+            ('epic in progress without scope', [], [epic(1, 'A', None), epic(2, 'B', 'apps/b')],
+             {'branches': ['a']}, b),
+            ('docker', self.old_measurement(), self.ab(), {'branches': ['a'], 'fail': ('docker',)}, b),
+            ('usage', [], self.ab(), {'branches': ['a']}, b),
+        ]
+        for name, events, epics, kwargs, waiting in cases:
+            with self.subTest(case=name):
+                self.events(*events)
+                result = self.result(epics, **kwargs)
+                self.assertIsNone(result['epic'])
+                self.assertIsNotNone(result['reason'])
+                self.assertEqual(waiting, result['waiting'])
+                self.assertEqual(waiting['dir'], self.log()[-1]['waiting'])
+
+    def test_waiting_is_null_on_a_pass_and_on_skips_only(self):
+        self.events(*self.old_measurement())
+        shared = [epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')]
+        cases = [
+            ('pass after a skip', shared, []),
+            ('skip only', shared[:2], []),
+            ('--dir skip', shared, ['--dir', 'b']),
+        ]
+        for name, epics, extra in cases:
+            with self.subTest(case=name):
+                result = self.result(epics, branches=['a'], extra=extra)
+                self.assertEqual(['B'], [s['id'] for s in result['skipped']])
+                self.assertIsNone(result['waiting'])
+                self.assertIsNone(self.log()[-1]['waiting'])
 
     def test_empty_board_gives_no_epic_and_no_reason(self):
         result = self.result([])
@@ -2217,10 +2256,10 @@ class GateCliTest(unittest.TestCase):
         self.result(epics, branches=['a'])
         self.result(epics, branches=['a'], extra=['--dir', 'b'])
         self.assertEqual([
-            {'at': NOW.isoformat(), 'dir_arg': None, 'epic': 'c', 'reason': None,
+            {'at': NOW.isoformat(), 'dir_arg': None, 'epic': 'c', 'reason': None, 'waiting': None,
              'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}]},
             {'at': NOW.isoformat(), 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: apps/x',
-             'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}]},
+             'waiting': None, 'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}]},
         ], self.log())
 
     # Errors
@@ -2377,11 +2416,11 @@ class GateCliTest(unittest.TestCase):
         cases = [
             # wait: two active epics
             ([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')], ['a', 'b'],
-             'dwa epiki aktywne: A, B'),
+             'dwa epiki aktywne: A, B', {'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}),
             # skip: common files
-            ([epic(1, 'A', 'apps/x'), epic(3, 'C', 'apps/x')], ['a'], 'wspólne pliki z A: apps/x'),
+            ([epic(1, 'A', 'apps/x'), epic(3, 'C', 'apps/x')], ['a'], 'wspólne pliki z A: apps/x', None),
         ]
-        for epics, branches, reason in cases:
+        for epics, branches, reason, waiting in cases:
             with self.subTest(reason=reason):
                 if self.has_claims_file():
                     os.unlink(os.path.join(self.state, 'claims.json'))
@@ -2393,6 +2432,8 @@ class GateCliTest(unittest.TestCase):
                 self.assertEqual(({'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title', 'tasks': 2,
                                    'minutes': 60.0}, reason, True),
                                  (forced['epic'], forced['reason'], forced['reserved']))
+                # The gate's verdict stays in the output: a forced wait still names the waiting candidate.
+                self.assertEqual(waiting, forced['waiting'])
                 self.assertEqual([('c', forced['claim'])],
                                  [(c['dir'], c['claim']) for c in self.claims_json()['claims']])
 

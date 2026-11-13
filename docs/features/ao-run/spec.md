@@ -156,8 +156,8 @@ Remote Control skill nie sprawdza.
      Gdy trwa przegląd albo retro albo kolejka przeglądów nie jest pusta, „tak” czeka na jej
      koniec, a sesja mówi to w rozmowie
      i w pushu („Epik X ruszy po kolejce przeglądów”). Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
-   - `epic` jest `null` z powodem: kandydat czeka; push „Epik X czeka: <powód>”, bez pytania, a sesja sprawdza go
-     ponownie (spec pracy równoległej, „Ponowne sprawdzenie”), z pushem tylko przy zmianie powodu.
+   - `epic` jest `null` z powodem: kandydat czeka (pole `waiting`); push „Epik X czeka: <powód>”, bez pytania, a sesja
+     sprawdza go ponownie (spec pracy równoległej, „Ponowne sprawdzenie”), z pushem tylko przy zmianie powodu.
    - `epic` jest `null` bez powodu (brak kandydata): push (krótszy niż 200 znaków) z pierwszą pozycją `skipped`
      bramki z liczbą pozostałych, a bez niej z pierwszą pozycją `skipped` z `next_epic.py`, np. „Brak przygotowanego
      epiku: VARIANTS (#89) bez spec.md i plan.md na main, następny krok `/prepare-epic` (+2 inne)”; pełna lista

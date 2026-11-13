@@ -153,15 +153,15 @@ sprzed zmiany drugiego epiku. Dlatego:
   `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`, `reason` (powód czekania albo odmowy, inaczej `null`),
   `reserved`, `claim` (token albo `null`), `resumed`, `parallel_with` (katalogi epików w toku, z którymi epik ruszy),
   `active`, `in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`), `docker` (`total_mib`,
-  `other_mib`, `ao_mib`, `free_mib`, `required_mib` albo `null`). Każde wywołanie dopisuje wynik do `gate.jsonl`
-  (czas, kandydaci z wynikiem i `paths`, bez treści issues). Kod 1: błąd `gh` albo `git`; kod 2: błąd stanu
+  `other_mib`, `ao_mib`, `free_mib`, `required_mib` albo `null`), `waiting` (`dir`, `id`, `issue`, `title` kandydata,
+  którego kroki bramki skończyły się czekaniem, także przy `--force`, inaczej `null`). Każde wywołanie dopisuje wynik
+  do `gate.jsonl` (czas, kandydaci z wynikiem i `paths`, `waiting` jako katalog albo `null`, bez treści issues). Kod 1: błąd `gh` albo `git`; kod 2: błąd stanu
   (nieczytelny plik pomiarów albo rezerwacji, zajęta blokada).
 - **`night_queue.py release <katalog> --claim TOKEN`**: usuwa własną rezerwację; brak jej: kod 0 bez zmiany.
 - **`/ao-run` bez argumentu i po merge'u (sekcja 8 skilla):** sesja uruchamia `gate` zamiast `next_epic.py`.
   `epic` jest: push „Zacząć epik X?” albo, przy niepustym `parallel_with`, „Zacząć epik X równolegle z Y?”; start
-  tylko po „tak” użytkownika. `epic` null z `reason`: push „Epik X czeka: <powód>”, bez pytania; wynik bramki nie
-  podaje czekającego kandydata, więc X to pierwszy epik z `night_queue.py ahead` spoza `skipped` i `in_progress`
-  bramki. `epic` null bez `reason` (brak kandydata): push z pierwszą pozycją `skipped` bramki, a gdy jej brak,
+  tylko po „tak” użytkownika. `epic` null z `reason`: push „Epik X czeka: <powód>”, bez pytania; X to `waiting`
+  z wyniku bramki. `epic` null bez `reason` (brak kandydata): push z pierwszą pozycją `skipped` bramki, a gdy jej brak,
   z pierwszą pozycją `skipped` z `next_epic.py` (bramka nie widzi epików nieprzygotowanych).
 - **Po starcie epiku i po jego `epic_done`** (sekcje 4 i 6 skilla) sesja w dzień też uruchamia `gate`: tak proponuje
   drugi epik, póki pierwszy trwa.
@@ -320,7 +320,8 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   rezerwa epiku bez stosu, błąd `docker`, nieczytelne wyjście `docker`; limit: brak pomiaru, stan inny niż `ok`, pełny
   szacunek epiku aktywnego przekracza 80%, okno odnawiane przed końcem, szacunek zużycia bez pomiarów nakładających się;
   pusty i niepoprawny JSON na stdin; błąd `gh` albo `git` → kod 1, nieczytelny plik pomiarów → kod 2; wpis
-  w `gate.jsonl`.
+  w `gate.jsonl`; `waiting` przy każdym czekaniu (także z `--dir` i `--force`), `null` przy przejściu i samych
+  pominięciach.
 - Rezerwacja: `--reserve` zapisuje wpis z tokenem; druga sesja widzi rezerwację jako epik w toku i aktywny (miejsce,
   pliki, pamięć, limit); kandydat nie jest porównywany z własną rezerwacją; odnowienie tym samym tokenem; ten sam epik
   z innym tokenem i z `--force` → odmowa; dwa procesy `gate --reserve` uruchomione naraz (prawdziwa blokada, osobne

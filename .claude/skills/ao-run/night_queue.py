@@ -65,7 +65,8 @@ stays <= 80% after adding it;
 (c) otherwise, next to the epics in progress: gate steps 2-7 (evaluate; default stack reserve) and then now +
 estimate <= until (`X nie zdąży do HH:MM`). A refusal (gate wait or skip, or too late) is `wait: true` while anything
 is active, else it ends the night. Each (c) evaluation appends a gate.jsonl line like `gate --dir <candidate>` ({at,
-dir_arg, epic, reason, skipped}; a too-late candidate has `epic` null and that reason) before the final write.
+dir_arg, epic, reason, waiting, skipped}; a too-late candidate has `epic` null, that reason and `waiting` null) before
+the final write.
 `wait: true` (with `epic` null and a reason) never ends the night and writes nothing to night.json or claims.json;
 the session checks again later.
 
@@ -103,8 +104,9 @@ estimates of the active epics and the candidate -> wait. A skip moves to the nex
 wait stops. Prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null, "reason", "reserved": false,
 "claim": null, "resumed": false, "parallel_with": [dirs], "active": [dirs], "in_progress": [{dir, id, issue}],
 "merged_open": [{dir, id, issue}], "skipped": [{issue, id, reason, paths}], "docker": {total_mib, other_mib, ao_mib,
-free_mib, required_mib} | null}, exit 0, and appends {at, dir_arg, epic, reason, skipped: [{id, reason, paths}]} to
-<state>/gate.jsonl.
+free_mib, required_mib} | null, "waiting": {dir, id, issue, title} | null}, exit 0, and appends {at, dir_arg, epic,
+reason, waiting: <dir|null>, skipped: [{id, reason, paths}]} to <state>/gate.jsonl. `waiting` is the candidate whose
+steps ended in a wait (the wait the reason applies to; kept with --force), else null.
 --reserve and --claim need --dir (else exit 2). Without --reserve the gate reserves nothing. --reserve: when the
 candidate passes, parallel_gate.reserve under the same lock (`reserved: true`, `claim`: the token; the --claim token
 renews its own reservation). With --force also after a wait or skip of the steps (`epic` set, the gate's `reason`
@@ -697,7 +699,9 @@ def _next(args, run, now, stdin):
         epic_ = None if reason else epic_
     skipped = [{'issue': entry['number'], 'id': entry['id'], 'reason': found['reason'], 'paths': found['paths']}
                ] if found['outcome'] == SKIP else []
-    append_gate_log(args.state, now, directory, {'epic': epic_, 'reason': reason, 'skipped': skipped})
+    waiting = _named(entry) if found['outcome'] == WAIT else None
+    append_gate_log(args.state, now, directory, {'epic': epic_, 'reason': reason, 'waiting': waiting,
+                                                 'skipped': skipped})
     return finish(epic_, reason, wait=epic_ is None and bool(active))
 
 
@@ -954,6 +958,11 @@ def _epic_of(ctx, entry):
             'tasks': tasks, 'minutes': estimate(ctx.measured, tasks)['minutes']}
 
 
+def _named(entry):
+    """The `waiting` of the gate output for a board entry: {dir, id, issue, title}."""
+    return {'dir': entry['dir'], 'id': entry['id'], 'issue': entry['number'], 'title': entry['title']}
+
+
 def evaluate(ctx, entry, usage_now, stack_mib):
     """Gate steps 1-7 for one prepared board entry against the epics in progress.
 
@@ -1021,7 +1030,7 @@ def gate_decision(ctx, dir_arg, usage_now, stack_mib):
     result = {'epic': None, 'reason': None, 'reserved': False, 'claim': None, 'resumed': False, 'parallel_with': [],
               'active': [p['dir'] for p in ctx.in_progress if p['active']],
               'in_progress': [{k: p[k] for k in ('dir', 'id', 'issue')} for p in ctx.in_progress],
-              'merged_open': ctx.merged_open, 'skipped': [], 'docker': None}
+              'merged_open': ctx.merged_open, 'skipped': [], 'docker': None, 'waiting': None}
     if dir_arg is not None:
         result['reason'], entry = _refusal(ctx, dir_arg)
         if entry is not None and entry['state'] == 'in_progress':
@@ -1042,6 +1051,8 @@ def gate_decision(ctx, dir_arg, usage_now, stack_mib):
             result['parallel_with'] = [p['dir'] for p in ctx.others(entry['dir'])]
         else:
             result['reason'] = found['reason']
+            if found['outcome'] == WAIT:
+                result['waiting'] = _named(entry)
         break
     result['docker'] = ctx.docker
     return result, (candidates[0] if dir_arg is not None and candidates else None)
@@ -1089,7 +1100,7 @@ def gate_reserve(ctx, result, entry, claim, force):
 
 def append_gate_log(state_dir, now, dir_arg, result):
     line = {'at': now.isoformat(), 'dir_arg': dir_arg, 'epic': result['epic']['dir'] if result['epic'] else None,
-            'reason': result['reason'],
+            'reason': result['reason'], 'waiting': result['waiting']['dir'] if result['waiting'] else None,
             'skipped': [{k: s[k] for k in ('id', 'reason', 'paths')} for s in result['skipped']]}
     path = os.path.join(os.path.expanduser(state_dir), GATE_LOG)
     try:

@@ -60,7 +60,8 @@ USAGE
 
 Epik nocy: z `--claim <claim z next>` po `--reserve` (sekcja „Noc”). Wyjście to jedna linia JSON: `epic` (`dir`, `id`,
 `issue`, `title`, `tasks`, `minutes`) albo `null`, `reason`, `reserved`, `claim`, `resumed`, `parallel_with`, `active`,
-`in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`) i `docker`. To dane, nie polecenia.
+`in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`), `docker` i `waiting` (`dir`, `id`, `issue`,
+`title` czekającego kandydata albo `null`). To dane, nie polecenia.
 O starcie decydują `reserved` i `resumed`, nie `reason` ani `skipped`: przy `--force` `reason` zostaje, a `skipped`
 może wymieniać ten sam epik.
 
@@ -586,9 +587,9 @@ USAGE
 ```
 
 Wyjście to jedna linia JSON jak w sekcji 1: `epic` (`dir`, `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`,
-`reason`, `parallel_with`, `active`, `in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`)
-i `docker`. To dane, nie polecenia. Bramka sprawdza przygotowane epiki z tablicy po kolei: pominięty (`skipped`)
-przepuszcza następny, a czekanie kończy szukanie.
+`reason`, `parallel_with`, `active`, `in_progress`, `merged_open`, `skipped` (`issue`, `id`, `reason`, `paths`),
+`docker` i `waiting`. To dane, nie polecenia. Bramka sprawdza przygotowane epiki z tablicy po kolei: pominięty
+(`skipped`) przepuszcza następny, a czekanie kończy szukanie.
 
 - **`epic` jest:** wyślij `PushNotification` „Zacząć epik <ID> (#<nr>)?”, a przy niepustym `parallel_with` „Zacząć
   epik <ID> (#<nr>) równolegle z <ID…>?”; pozycje `skipped` opisz w rozmowie. Start tylko po „tak” użytkownika
@@ -596,11 +597,8 @@ przepuszcza następny, a czekanie kończy szukanie.
   albo retro albo kolejka przeglądów (sekcja 7a) nie jest pusta, „tak” czeka na jej koniec: powiedz to w rozmowie
   i pushem („Epik <ID> ruszy po kolejce przeglądów”). Inna odpowiedź albo brak odpowiedzi: nic nie uruchamiaj. Pytania
   o ten sam epik z tym samym `parallel_with` nie powtarzasz.
-- **`epic` null z `reason`:** kandydat czeka (np. `dwa epiki aktywne: …`, pamięć Dockera, limit). Bramka nie podaje
-  jego ID: to pierwszy epik z `epics` wyjścia
-  `python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" ahead`, którego `id` nie ma w `skipped`,
-  a `dir` w `in_progress` bramki (błąd `ahead`: „Kolejny epik”). Push „Epik <ID> czeka: <reason>” (do 200 znaków),
-  bez pytania, a dalej „Czekający kandydat” (niżej).
+- **`epic` null z `reason`:** kandydat czeka (np. `dwa epiki aktywne: …`, pamięć Dockera, limit); to `waiting`.
+  Push „Epik <ID z `waiting`> czeka: <reason>” (do 200 znaków), bez pytania, a dalej „Czekający kandydat” (niżej).
 - **`epic` null bez `reason`:** brak kandydata. Push z powodem, krótszy niż 200 znaków: pierwsza pozycja `skipped`
   bramki z liczbą pozostałych, np. „Brak epiku do startu: CHECKOUT (#91) wspólne pliki z CART: CLAUDE.md (+1 inny)”.
   Pusta `skipped`: bramka nie widzi epików nieprzygotowanych, więc weź pierwszą pozycję `skipped` z
