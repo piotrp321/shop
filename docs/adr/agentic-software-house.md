@@ -83,7 +83,8 @@ Zasady:
   zamiast tworzyć nowe frameworki.
 - AO odpowiada za orkiestrację, stan i wykonywanie, a nie za decyzje architektoniczne. Decyzje spoza granic
   zadania wracają jako blokery do skrzynki decyzji.
-- Równoległość jest domyślna: epiki o rozłącznym zakresie i niezależne zadania jednej fali wykonują się naraz, każde
+- Równoległość jest domyślna: epiki, które przejdą bramkę ryzyka (wspólne tylko pliki generowane i dokumentacja,
+  wolna pamięć Dockera na kolejny stos, zapas limitu), i niezależne zadania jednej fali wykonują się naraz, każde
   we własnym worktree i stosie, a integracja i merge'e po kolei. Wykonanie szeregowe jest rozwiązaniem awaryjnym,
   gdy bramka wykryje realne ryzyko.
 - Optymalizujemy czas zegarowy epiku, mierząc jednocześnie jakość, naprawy, interwencje człowieka i zużycie limitów.
@@ -122,4 +123,6 @@ Zasady:
   przez użytkownika. Jedyny autonomiczny merge do `main` to PR ze specyfikacją i planem z `/prepare-epic`,
   po akceptacji użytkownika i zielonym CI.
 - Epik startuje dopiero po „tak” użytkownika na pytanie „Zacząć epik X?” albo na listę nocy, a kolejny epik listy
-  rusza bez pytania tylko przy spełnionych warunkach nocy z `docs/features/ao-run/spec.md` (zakres, czas, limity).
+  rusza bez pytania tylko przy spełnionych warunkach nocy z `docs/features/ao-run/spec.md` (bramka, czas, limity).
+  Start mimo niespełnionej bramki i przejęcie epiku innej sesji wymagają osobnego „tak” użytkownika, w nocy ich nie
+  ma (`docs/features/parallel-work/spec.md`).
