@@ -276,6 +276,10 @@
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
+  /* The H1 that the shell focuses after a change of page (also on screens that are not migrated yet) shows no ring. */
+  main h1[tabindex="-1"]:focus-visible {
+    outline: none;
+  }
   /* On the graphite sidebar the ring is orange (6.7:1; `interface` has 2.9:1 there). */
   [data-surface="sidebar"] :focus-visible {
     outline-color: var(--focus-ring-dark);

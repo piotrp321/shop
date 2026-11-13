@@ -458,6 +458,136 @@ test.describe("the text of the panel is set in Nunito, in the colour of the toke
   });
 });
 
+test.describe("the focus after a change of page is never on <body>: it is on the H1 of the new page", () => {
+  /** Waits a moment after the change: a focus that was on the H1 and then fell to <body> (a closing dialog) fails too. */
+  async function expectFocusOnHeading(page: Page, name: string): Promise<void> {
+    const heading = page.getByRole("heading", { level: 1, name, exact: true });
+    await expect(heading).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(heading, `the focus is on the H1 „${name}”`).toBeFocused();
+  }
+
+  test("Enter on the name of a product in the list opens its form with the focus on the H1", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/products");
+      await expect(page.getByTestId("product-row").first()).toBeVisible();
+      await settle(page);
+      await page.getByTestId("product-link").first().focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("variant-row").first()).toBeVisible();
+      await page.waitForTimeout(500);
+      await expect(page.getByRole("heading", { level: 1 }), "the focus is on the H1 of the form").toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("a crumb followed with „Opuść bez zapisu” leaves the focus on the H1 „Pulpit”", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, `/products/${productId}`);
+      await expect(page.getByTestId("variant-row").first()).toBeVisible();
+      await settle(page);
+      await page.getByTestId("name").fill(`${PRODUCT} x`);
+      await page.getByRole("navigation", { name: "Okruszki" }).getByRole("link", { name: "Pulpit" }).focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" }).getByRole("button", { name: "Opuść bez zapisu" }).press("Enter");
+      await expectFocusOnHeading(page, "Pulpit");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("„Zostań” in the question of unsaved changes does not move the focus off the form", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, `/products/${productId}`);
+      await expect(page.getByTestId("variant-row").first()).toBeVisible();
+      await settle(page);
+      await page.getByTestId("name").fill(`${PRODUCT} x`);
+      await page.getByRole("navigation", { name: "Okruszki" }).getByRole("link", { name: "Pulpit" }).focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" }).getByRole("button", { name: "Zostań" }).press("Enter");
+      await page.waitForTimeout(500);
+      expect(new URL(page.url()).pathname).toBe(`/products/${productId}`);
+      const onBody = await page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
+      expect(onBody, "the focus is not on <body> after „Zostań”").toBe(false);
+      await expect(page.getByRole("heading", { level: 1, name: "Pulpit" })).toHaveCount(0);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("„Dodaj produkt” and „Anuluj” leave the focus on the H1 of the page they open", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/products");
+      await expect(page.getByTestId("product-row").first()).toBeVisible();
+      await settle(page);
+      const main = page.locator("main");
+      await main.getByRole("link", { name: "Dodaj produkt" }).or(main.getByRole("button", { name: "Dodaj produkt" })).first().focus();
+      await page.keyboard.press("Enter");
+      await expectFocusOnHeading(page, "Nowy produkt");
+      await page.getByRole("link", { name: "Anuluj" }).or(page.getByRole("button", { name: "Anuluj" })).first().focus();
+      await page.keyboard.press("Enter");
+      await expectFocusOnHeading(page, "Produkty");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("the tile „Produkty” of the dashboard leaves the focus on the H1 of the list", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/");
+      await expect(page.getByTestId("updated-at")).toBeVisible();
+      await settle(page);
+      await page.locator("main").getByRole("link", { name: "Produkty", exact: true }).first().focus();
+      await page.keyboard.press("Enter");
+      await expectFocusOnHeading(page, "Produkty");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("a screen that is not migrated yet gets the focus on its H1 too", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/");
+      await expect(page.getByTestId("updated-at")).toBeVisible();
+      await settle(page);
+      await panelMenu(page).getByRole("link", { name: "Promocje", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeVisible();
+      await page.waitForTimeout(500);
+      const onBody = await page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
+      expect(onBody, "the focus is not on <body> on a screen of PrimeVue").toBe(false);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("at 768 px an item chosen in the drawer leaves the focus on the H1 of the new page, not on „Menu”", async () => {
+    const page = await newPanelPage("admin", viewports.tablet);
+    try {
+      await go(page, "/");
+      await expect(page.getByTestId("updated-at")).toBeVisible();
+      await settle(page);
+      await page.getByRole("button", { name: "Menu", exact: true }).click();
+      const drawer = page.getByRole("dialog", { name: "Menu" });
+      await expect(drawer).toBeVisible();
+      await drawer.getByRole("link", { name: "Promocje", exact: true }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeVisible();
+      await expect(drawer).toBeHidden();
+      await page.waitForTimeout(500);
+      await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------------------------------------------------
 // The list of products on a narrow screen (criteria 7 and 22).
 

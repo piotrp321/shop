@@ -11,6 +11,7 @@ import { useIdleLogout } from "@/composables/useIdleLogout";
 import { useAuthStore } from "@/stores/auth";
 import AppMenu from "./AppMenu.vue";
 import AppTopbar from "./AppTopbar.vue";
+import { usePageFocus } from "./usePageFocus";
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -22,6 +23,12 @@ let idle: { stop(): void } | undefined;
 const main = ref<HTMLElement | null>(null);
 const topbar = ref<InstanceType<typeof AppTopbar> | null>(null);
 const drawerOpen = ref(false);
+const pageFocus = usePageFocus(main);
+watch(drawerOpen, (open) => {
+  if (open) {
+    pageFocus.resetChoice();
+  }
+});
 
 // The sidebar is fixed from 1024 px; a drawer left open when the window grows would hide nothing but duplicate the menu.
 const wide = useMediaQuery("(min-width: 1024px)");
@@ -48,10 +55,21 @@ function skipToContent() {
   main.value?.focus();
 }
 
-/** The drawer has no trigger inside it, so Reka does not know where to return the focus: it goes back to „Menu”. */
+/** An item of the drawer was chosen: the drawer closes, and a change of page it caused takes the focus (usePageFocus). */
+function chooseInDrawer() {
+  pageFocus.choseInDrawer();
+  drawerOpen.value = false;
+}
+
+/**
+ * The drawer has no trigger inside it, so Reka does not know where to return the focus: it goes back to „Menu”. Unless
+ * the chosen item opened another page: the focus is then on its H1, and „Menu” would take it from there.
+ */
 function returnFocusToMenuButton(event: Event) {
   event.preventDefault();
-  topbar.value?.focusMenuButton();
+  if (!pageFocus.takenByChoice()) {
+    topbar.value?.focusMenuButton();
+  }
 }
 
 onMounted(() => {
@@ -100,7 +118,7 @@ onBeforeUnmount(() => idle?.stop());
           <BrandMark inverted />
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <AppMenu @navigate="drawerOpen = false" />
+          <AppMenu @navigate="chooseInDrawer" />
         </div>
       </SheetContent>
     </Sheet>
