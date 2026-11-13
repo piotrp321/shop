@@ -91,7 +91,8 @@ epic runs (parallel_gate.orchestrator_running on <ao-root>/ao-<dir>, --ao-root d
 inna sesja`, unless --takeover (a new owner token). Otherwise `resumed: true`, `epic` (tasks and minutes null without a
 readable plan.md on origin/main), `claim`: the owner token: --claim when it is the owner, else a new
 owner recorded in claims.json (the --claim token when it holds a valid reservation of the epic, else a fresh one).
---takeover outside a resume is ignored.
+--takeover outside a resume is ignored. The reservation or owner write is the gate's last step (after gate.jsonl),
+so a failure never leaves a token in claims.json that was not printed.
 
 release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
@@ -103,6 +104,7 @@ import contextlib
 import json
 import os
 import re
+import secrets
 import sys
 from datetime import datetime, timedelta
 
@@ -954,42 +956,44 @@ def gate_decision(ctx, dir_arg, usage_now, stack_mib):
     return result, (candidates[0] if dir_arg is not None and candidates else None)
 
 
-def gate_resume(ctx, state_dir, result, entry, claim, takeover, ao_root):
+def _new_token():
+    return secrets.token_hex(8)
+
+
+def gate_resume(ctx, result, entry, claim, takeover, ao_root):
     """Resume of `entry`, in progress from its branch: no gate steps and no reservation, only the owner check
-    (spec parallel-work, „Wznowienie”). Records the owner token in claims.json when it changes."""
+    (spec parallel-work, „Wznowienie”). Writes nothing; returns (result, owner): `owner` is the new owner token the
+    caller records in claims.json as the last step (None when the owner stays or on a refusal)."""
     name = entry['id']
     if parallel_gate.orchestrator_running(os.path.join(ao_root, 'ao-%s' % entry['dir'])):
         result['reason'] = 'epik %s prowadzi działający proces AO' % name
-        return result
-    current = ctx.owners.get(entry['dir'])
+        return result, None
+    current, owner = ctx.owners.get(entry['dir']), None
     if current is None or current != claim:
         if current is not None and not takeover:
             result['reason'] = 'epik %s prowadzi inna sesja' % name
-            return result
+            return result, None
         # A new owner: the caller's own valid reservation becomes the owner token, else a fresh token.
-        claim = parallel_gate.claim_to_owner(state_dir, entry['dir'], claim if ctx.own_claim else None, ctx.now)
+        owner = claim = claim if claim is not None and ctx.own_claim else _new_token()
     epic_ = {'dir': entry['dir'], 'id': name, 'issue': entry['number'], 'title': entry['title'], 'tasks': None,
              'minutes': None}
     if ctx.on_main(entry['dir'], 'plan.md'):
         with contextlib.suppress(StateError):
             epic_ = _epic_of(ctx, entry)
     result.update(epic=epic_, resumed=True, claim=claim, parallel_with=[p['dir'] for p in ctx.others(entry['dir'])])
-    return result
+    return result, owner
 
 
-def gate_reserve(ctx, state_dir, result, entry, claim, force):
+def gate_reserve(ctx, result, entry, claim, force):
     """Reservation of the `--dir` candidate `entry` after the gate steps: when it passed, or with `force` despite a
-    wait or skip of the steps (the gate's reason stays in the result). A claim of another token is a conflict."""
+    wait or skip of the steps (the gate's reason stays in the result). Writes nothing; returns (result, token): the
+    token the caller reserves (parallel_gate.reserve) as the last step, None when nothing is reserved."""
     if result['epic'] is None and not force:
-        return result
-    epic_ = result['epic'] or _epic_of(ctx, entry)
-    try:
-        token = parallel_gate.reserve(state_dir, entry['dir'], ctx.now, claim)
-    except parallel_gate.ClaimConflict:
-        result.update(epic=None, reason=_conflict(entry['id']))
-        return result
-    result.update(epic=epic_, reserved=True, claim=token, parallel_with=[p['dir'] for p in ctx.others(entry['dir'])])
-    return result
+        return result, None
+    token = claim if claim is not None else _new_token()
+    result.update(epic=result['epic'] or _epic_of(ctx, entry), reserved=True, claim=token,
+                  parallel_with=[p['dir'] for p in ctx.others(entry['dir'])])
+    return result, token
 
 
 def append_gate_log(state_dir, now, dir_arg, result):
@@ -1017,11 +1021,22 @@ def cmd_gate(args, run, now, stdin):
     with state_lock(args.state):
         ctx = gate_context(run, args.state, now, own=(args.dir, args.claim) if args.claim is not None else None)
         result, entry = gate_decision(ctx, args.dir, usage_now, stack_gib * 1024)
+        owner = token = None
         if entry is not None and entry['state'] == 'in_progress':
-            result = gate_resume(ctx, args.state, result, entry, args.claim, args.takeover, args.ao_root)
+            result, owner = gate_resume(ctx, result, entry, args.claim, args.takeover, args.ao_root)
         elif entry is not None and args.reserve:
-            result = gate_reserve(ctx, args.state, result, entry, args.claim, args.force)
+            result, token = gate_reserve(ctx, result, entry, args.claim, args.force)
+        # Everything that can fail runs before the state write: a token in claims.json is always printed.
         append_gate_log(args.state, now, args.dir, result)
+        if owner is not None:
+            parallel_gate.claim_to_owner(args.state, args.dir, owner, now)
+        if token is not None:
+            try:
+                parallel_gate.reserve(args.state, args.dir, now, token)
+            except parallel_gate.ClaimConflict:
+                # Unreachable under the lock (_refusal already saw the claims); kept as a safe refusal.
+                result.update(epic=None, reason=_conflict(result['epic']['id']), reserved=False, claim=None,
+                              parallel_with=[])
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

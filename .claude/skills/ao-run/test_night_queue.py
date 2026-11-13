@@ -2039,6 +2039,24 @@ class GateCliTest(unittest.TestCase):
                 self.assertEqual([('c', forced['claim'])],
                                  [(c['dir'], c['claim']) for c in self.claims_json()['claims']])
 
+    def test_reservation_failing_before_its_output_writes_no_claim(self):
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        for extra in (['--reserve'], ['--reserve', '--claim', 'mine']):
+            with self.subTest(extra=extra):
+                code, out, err = self.gate([epic(1, 'A', 'apps/a')], extra=['--dir', 'a'] + extra)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('gate.jsonl', err)
+                self.assertFalse(self.has_claims_file())
+
+    def test_renewal_failing_before_its_output_keeps_the_old_expiry(self):
+        self.claims('a')
+        before = self.claims_json()
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, _ = self.gate([epic(1, 'A', 'apps/a')], extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'],
+                                 now=NOW + timedelta(minutes=10))
+        self.assertEqual((2, ''), (code, out))
+        self.assertEqual(before, self.claims_json())
+
     def test_force_does_not_override_refusals_of_the_epic_itself(self):
         cases = [
             ([epic(1, 'A', 'apps/a')], 'zzz', {}, 'ZZZ nie ma na tablicy'),
@@ -2178,6 +2196,26 @@ class GateCliTest(unittest.TestCase):
                 result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
                 self.assertEqual(({'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': None,
                                    'minutes': None}, True), (result['epic'], result['resumed']))
+
+    def test_resume_failing_before_its_output_records_no_owner(self):
+        # A failed step after the decision must not leave an owner token nobody received.
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'],
+                                   fail=('git', 'show', 'origin/main:docs/features/a/plan.md'))
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+        self.assertFalse(self.has_claims_file())
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('gate.jsonl', err)
+        self.assertFalse(self.has_claims_file())
+
+    def test_takeover_failing_before_its_output_keeps_the_old_owner(self):
+        self.owners({'a': 'theirs'})
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, _ = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--takeover'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertEqual({'claims': [], 'owners': {'a': 'theirs'}}, self.claims_json())
 
     def test_resume_with_a_free_orchestrator_lock(self):
         os.makedirs(os.path.join(self.ao_root, 'ao-a'))
