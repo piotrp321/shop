@@ -1,8 +1,11 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
+import { toast } from "vue-sonner";
 import { h } from "vue";
 import {
   AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogHeader,
@@ -16,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Toaster } from "@/components/ui/sonner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 let wrapper: VueWrapper | undefined;
@@ -71,6 +75,56 @@ describe("AlertDialog", () => {
 
     expect(buttonNames()).toEqual(["Zamknij"]);
     expect(document.body.textContent).not.toMatch(ENGLISH_NAMES);
+  });
+});
+
+describe("AlertDialog focus", () => {
+  const Host = () =>
+    h(AlertDialog, { open: true }, () =>
+      h(AlertDialogContent, null, () => [
+        h(AlertDialogHeader, null, () => [
+          h(AlertDialogTitle, null, () => "Usunąć wariant?"),
+          h(AlertDialogDescription, null, () => "Opis"),
+        ]),
+        h(AlertDialogCancel, null, () => "Wróć"),
+        h(AlertDialogAction, null, () => "Usuń"),
+      ]),
+    );
+
+  it("focuses the cancel button of the content, not the close button, when it opens", async () => {
+    wrapper = mount(Host, { attachTo: document.body });
+    await flushPromises();
+
+    expect(document.activeElement?.textContent?.trim()).toBe("Wróć");
+  });
+
+  it("still closes with the close button named „Zamknij”", async () => {
+    const emitted: boolean[] = [];
+    const Closing = () =>
+      h(AlertDialog, { open: true, "onUpdate:open": (value: boolean) => emitted.push(value) }, () =>
+        h(AlertDialogContent, null, () => [
+          h(AlertDialogHeader, null, () => [h(AlertDialogTitle, null, () => "Tytuł"), h(AlertDialogDescription, null, () => "Opis")]),
+          h(AlertDialogCancel, null, () => "Wróć"),
+        ]),
+      );
+    wrapper = mount(Closing, { attachTo: document.body });
+    await flushPromises();
+
+    [...document.body.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Zamknij")!.click();
+    await flushPromises();
+    expect(emitted).toEqual([false]);
+  });
+});
+
+describe("Sonner", () => {
+  it("names the region „Powiadomienia” and the close button of a toast „Zamknij powiadomienie”", async () => {
+    wrapper = mount(Toaster, { props: { closeButton: true }, attachTo: document.body });
+    toast("Zapisano");
+    await flushPromises();
+
+    // vue-sonner appends the hotkey to the name of the region („Powiadomienia alt+T”).
+    expect(document.body.querySelector("section")?.getAttribute("aria-label")).toMatch(/^Powiadomienia\b/);
+    expect(buttonNames()).toEqual(["Zamknij powiadomienie"]);
   });
 });
 

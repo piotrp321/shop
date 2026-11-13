@@ -5,10 +5,10 @@ import { X } from "lucide-vue-next"
 import { reactiveOmit } from "@vueuse/core"
 import { cn } from "@/lib/utils"
 import {
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogOverlay,
   AlertDialogPortal,
+  DialogClose,
   useForwardPropsEmits,
 } from "reka-ui"
 
@@ -16,7 +16,8 @@ defineOptions({
   inheritAttrs: false,
 })
 
-// The close button cancels like AlertDialogCancel and Escape; it has the Polish name „Zamknij”.
+// The close button closes like Escape and has the Polish name „Zamknij”. It is a DialogClose, not an AlertDialogCancel:
+// the last AlertDialogCancel to register receives the initial focus, and that must be the cancel button of the content.
 const props = withDefaults(defineProps<AlertDialogContentProps & { class?: HTMLAttributes["class"], showCloseButton?: boolean }>(), {
   class: undefined,
   showCloseButton: true,
@@ -46,14 +47,14 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     >
       <slot />
 
-      <AlertDialogCancel
+      <DialogClose
         v-if="showCloseButton"
         data-slot="alert-dialog-close"
         class="absolute top-4 right-4 rounded-sm text-muted-foreground transition-colors hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
       >
         <X aria-hidden="true" />
         <span class="sr-only">Zamknij</span>
-      </AlertDialogCancel>
+      </DialogClose>
     </AlertDialogContent>
   </AlertDialogPortal>
 </template>
