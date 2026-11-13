@@ -12,9 +12,10 @@ const HEADING_WAIT_MS = 10_000;
  *   (filters, pager and search of a list, `router.replace` of `useListUrlState`) is the same page and moves nothing; so
  *   does a navigation that did not happen (a guard that stayed, a duplicate) and the first load of the panel (the layout
  *   mounts after it, and the first Tab goes to „Przejdź do treści”).
- * - The focus is taken only when it is free: on <body> (the link that had it is gone with the old page), on <main>, or
- *   still on the element of the old page that the new one reuses (the same view for another record). A view that moved it
- *   itself while opening, and the topbar or the menu that the staff member used, keep it.
+ * - The focus is taken only when it is free: on <body> (the link that had it is gone with the old page) or on <main>.
+ *   Whatever has it otherwise keeps it: a view that moved it itself (a form that focuses its result and then moves to the
+ *   route of the record it created, which keeps the same instance of the view), a field the staff member is in, the topbar
+ *   or the menu they used. An element that has the focus and still exists is a trigger that stays.
  * - The H1 may appear only after the data has loaded: until then the focus goes to <main> (`tabindex="-1"`), and when
  *   the H1 appears and the focus is still free it moves there; a focus moved by the staff member meanwhile is not taken.
  * - The H1 of a screen that is not migrated yet has no `tabindex`: the shell gives it `-1`.
@@ -45,7 +46,7 @@ export function usePageFocus(main: Ref<HTMLElement | null>) {
     return document.activeElement === heading;
   }
 
-  function focusPage(before: Element | null, force: boolean) {
+  function focusPage(force: boolean) {
     cancelCurrent?.();
     let live = true;
     let observer: MutationObserver | null = null;
@@ -60,15 +61,14 @@ export function usePageFocus(main: Ref<HTMLElement | null>) {
     };
     cancelCurrent = finish;
 
-    // The new view is rendered after the next tick; until then the old one may still hold the focus.
+    // The new view is rendered after the next tick; the focus of a link of the old page is on <body> by then.
     void nextTick().then(() => {
       const area = main.value;
       if (!live || area === null) {
         finish();
         return;
       }
-      const reused = before !== null && document.activeElement === before && area.contains(before);
-      if (!force && !reused && !isFree(area)) {
+      if (!force && !isFree(area)) {
         finish();
         return;
       }
@@ -98,7 +98,7 @@ export function usePageFocus(main: Ref<HTMLElement | null>) {
       }
       return;
     }
-    focusPage(document.activeElement, choice === "pending");
+    focusPage(choice === "pending");
   });
 
   onBeforeUnmount(() => {

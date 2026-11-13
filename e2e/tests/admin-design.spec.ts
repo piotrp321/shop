@@ -551,18 +551,53 @@ test.describe("the focus after a change of page is never on <body>: it is on the
     }
   });
 
-  test("a screen that is not migrated yet gets the focus on its H1 too", async () => {
+  test("a link of the dashboard to a screen that is not migrated yet leaves the focus on its H1", async () => {
     const page = await newPanelPage("admin", viewports.desktop);
     try {
       await go(page, "/");
       await expect(page.getByTestId("updated-at")).toBeVisible();
       await settle(page);
-      await panelMenu(page).getByRole("link", { name: "Promocje", exact: true }).focus();
+      await page.locator("main").getByRole("link", { name: "Aktywne promocje" }).focus();
       await page.keyboard.press("Enter");
-      await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeVisible();
+      await expectFocusOnHeading(page, "Promocje");
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("a code created on the legacy form keeps the focus on the message of the save, though the form moves to the route of the code", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      const created = {
+        id: "00000000-0000-4000-8000-00000000f0c5",
+        code: "FOKUS1",
+        kind: "percent",
+        value: 10,
+        minimumOrderGross: null,
+        startsAt: "2030-01-01T00:00:00+00:00",
+        endsAt: null,
+        usageLimit: null,
+        activeUses: 0,
+        enabled: true,
+        status: "planned",
+        version: 1,
+      };
+      // The answer is faked, so the test writes nothing to the database.
+      await page.route("**/api/v1/admin/discount-codes", async (route) => {
+        if (route.request().method() === "POST") await route.fulfill({ status: 201, json: created });
+        else await route.fallback();
+      });
+      await go(page, "/discount-codes/new");
+      await settle(page);
+      await page.getByTestId("code-input").fill("FOKUS1");
+      await page.getByTestId("value-input").fill("10");
+      await page.getByTestId("starts-input").fill("2030-01-01T10:00");
+      await page.getByTestId("save").focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("success-message")).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`/discount-codes/${created.id}$`));
       await page.waitForTimeout(500);
-      const onBody = await page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
-      expect(onBody, "the focus is not on <body> on a screen of PrimeVue").toBe(false);
+      await expect(page.getByTestId("success-message"), "the focus stays on the message of the save").toBeFocused();
     } finally {
       await page.close();
     }

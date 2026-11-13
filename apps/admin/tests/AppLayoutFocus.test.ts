@@ -18,6 +18,8 @@ vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
 
 const page = (title: string, extra = "") => ({ template: `<div><h1 tabindex="-1">${title}</h1>${extra}</div>` });
 
+const form = page("Formularz", `<p id="saved" tabindex="-1">Zapisano.</p>`);
+
 const routes = [
   {
     path: "/",
@@ -26,6 +28,9 @@ const routes = [
       { path: "", name: "dashboard", component: page("Pulpit", `<a id="to-products" href="/products">Produkty</a>`) },
       { path: "products", name: "products", component: page("Produkty", `<button id="filter" type="button">Filtr</button>`) },
       { path: "products/:id", name: "product", component: page("Produkt", `<input id="field" />`) },
+      // One view for the new record and for the saved one: the instance stays as the route changes.
+      { path: "forms/new", name: "form-new", component: form },
+      { path: "forms/:id", name: "form", component: form },
       // Targets of the menu that the tests do not visit.
       { path: "products/new", name: "product-new", component: page("Nowy produkt") },
       { path: "prices", name: "prices", component: page("Ceny") },
@@ -106,14 +111,30 @@ describe("AppLayout: the focus after a change of page", () => {
     expect(active()).toBe(h1());
   });
 
-  it("moves the focus to the H1 when only a parameter of the route changes", async () => {
+  it("leaves the focus on an element of the page that still exists after the change (the field the staff member is in)", async () => {
     await mountShell("/products/1");
-    document.querySelector<HTMLElement>("#field")!.focus();
+    const field = document.querySelector<HTMLElement>("#field")!;
+    field.focus();
 
     await router.push("/products/2");
     await flushPromises();
 
-    expect(active()).toBe(h1());
+    expect(active()).toBe(field);
+  });
+
+  it("does not take the focus a form set itself when a created record moves it to its own route (slow guard of the router)", async () => {
+    await mountShell("/forms/new");
+    router.beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
+    // The form shows the result of the save and focuses it, then moves to the route of the created record: the same
+    // instance of the view stays, and the focus is set before the navigation ends.
+    const message = document.querySelector<HTMLElement>("#saved")!;
+    message.focus();
+
+    await router.replace({ name: "form", params: { id: "9" } });
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("form");
+    expect(active()).toBe(message);
   });
 
   it("does not move the focus when only the query or the hash changes (filters, pager, search of a list)", async () => {
