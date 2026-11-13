@@ -164,7 +164,8 @@ argocd_shop_ignores_missing_images_file() { replace infra/k8s/argocd/apps/shop.y
       releaseName: shop'; }
 # A (made-up) certificate of the controller in the repository: every key of init-env.sh must then be sealed.
 add_certificate() { printf -- '-----BEGIN CERTIFICATE-----\nMIIDselftest\n-----END CERTIFICATE-----\n' > "$tree/infra/k8s/environments/prod/sealed-secrets.pem"; }
-certificate_without_sealed_secrets() { add_certificate; }
+# The repository has the sealed secrets of production: the case removes them.
+certificate_without_sealed_secrets() { add_certificate; rm "$tree/infra/k8s/environments/prod/secrets/shop-secrets.yaml"; }
 # shellcheck disable=SC2016 # awk program
 certificate_with_a_key_unsealed() {
   add_certificate
