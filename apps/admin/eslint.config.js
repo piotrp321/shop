@@ -161,5 +161,21 @@ export default defineConfig([
       ],
     },
   },
+  {
+    // The shadcn-vue components are named after the element they wrap (Button, Dialog): single words by design.
+    // Only these names are exempt, and only inside src/components/ui; every other component keeps the rule.
+    files: ["src/components/ui/**/*.vue"],
+    rules: {
+      "vue/multi-word-component-names": [
+        "error",
+        {
+          ignores: [
+            "Alert", "Badge", "Breadcrumb", "Button", "Card", "Checkbox", "Combobox", "Dialog", "Input", "Label",
+            "Select", "Sheet", "Skeleton", "Sonner", "Switch", "Table", "Textarea", "Tooltip",
+          ],
+        },
+      ],
+    },
+  },
   globalIgnores(["dist/**", "coverage/**"]),
 ]);
