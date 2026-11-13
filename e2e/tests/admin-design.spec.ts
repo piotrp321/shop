@@ -425,6 +425,40 @@ test.describe("criterion 6: the shell", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Type (criterion 4) and the focus after a change of page (the sections „Dostępność” and „Standard formularza i okien”).
+
+test.describe("the text of the panel is set in Nunito, in the colour of the token `foreground`", () => {
+  test("body and H1 use Nunito from the files of the panel, and the text colour of the body is the token", async () => {
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/");
+      await settle(page);
+      const style = await page.evaluate(() => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--foreground)";
+        document.body.append(probe);
+        const token = getComputedStyle(probe).color;
+        probe.remove();
+        return {
+          body: getComputedStyle(document.body).fontFamily,
+          h1: getComputedStyle(document.querySelector("h1")!).fontFamily,
+          bodyColor: getComputedStyle(document.body).color,
+          token,
+          faces: [...document.fonts].filter((face) => face.family.replace(/"/g, "") === "Nunito").map((face) => face.status),
+        };
+      });
+      expect(style.body, "font-family of <body>").toMatch(/^"?Nunito"?/);
+      expect(style.h1, "font-family of <h1>").toMatch(/^"?Nunito"?/);
+      expect(style.bodyColor, "the text colour of <body> is `foreground`").toBe(style.token);
+      expect(style.faces, "a file of Nunito is loaded").toContain("loaded");
+      expect(await page.evaluate(() => document.fonts.check("16px Nunito"))).toBe(true);
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
 // The list of products on a narrow screen (criteria 7 and 22).
 
 test.describe("the list of products on narrow screens", () => {

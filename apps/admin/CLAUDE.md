@@ -365,7 +365,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
-  `@font-face` Nunito i pierścień fokusu. Importowany w `main.ts` przed `src/styles.css`.
+  `@font-face` Nunito i pierścień fokusu. Importowany w `main.ts`; w warstwie `base` ustawia też krój i kolor tekstu `body` (reguła poza warstwami wygrywałaby z Tailwindem).
 - `src/assets/fonts/` – Nunito (WOFF2, podzbiory `latin` i `latin-ext`, wagi 400–800); źródło, wersja, licencja
   i SHA-256 plików w `THIRD_PARTY_NOTICES.md` (test `tests/fonts.test.ts`).
 

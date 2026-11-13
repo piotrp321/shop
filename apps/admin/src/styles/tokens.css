@@ -265,6 +265,12 @@
 }
 
 @layer base {
+  /* The text of the panel: Nunito and the colour of the token `foreground`. They sit here, in the layer of Tailwind, because
+     a rule outside the layers beats it whatever its specificity; the margin is already reset by the preflight. */
+  body {
+    font-family: var(--font-sans);
+    color: var(--foreground);
+  }
   /* A visible focus ring on every interactive element: 2 px, `interface`, 2 px away (5.7:1 on white). */
   :focus-visible {
     outline: 2px solid var(--focus-ring);
