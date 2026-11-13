@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import Dialog from "primevue/dialog";
-import InputText from "primevue/inputtext";
-import Message from "primevue/message";
-import { computed, ref } from "vue";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-vue-next";
+import { computed, nextTick, ref, useId } from "vue";
+import ConfirmDialog from "@/components/ConfirmDialog.vue";
+import FormSection from "@/components/FormSection.vue";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MAX_AXES, MAX_VARIANTS, type VariantRow } from "./useProductForm";
 
 const props = defineProps<{
@@ -32,26 +35,36 @@ const emit = defineEmits<{
 
 const LOCKED_EXPLANATION =
   "Wartości istniejących wariantów można poprawić tylko w wielkości liter. Inną zmianę zrób przez dodanie nowego wariantu i usunięcie starego.";
+const CONSEQUENCE = "Cena i stan wariantu przestaną być widoczne w panelu.";
+
+const section = ref<InstanceType<typeof FormSection> | null>(null);
+const idPrefix = useId();
 
 /** What waits for the confirmation: removing a row of an existing variant, or the last axis that drops existing variants. */
-const pending = ref<{ kind: "row" | "axis"; index: number } | null>(null);
-const confirmVisible = computed({
-  get: () => pending.value !== null,
-  set: (visible: boolean) => {
-    if (!visible) {
-      pending.value = null;
-    }
-  },
-});
+const pending = ref<{ kind: "row" | "axis"; index: number; title: string; confirmLabel: string } | null>(null);
+// Kept apart from `pending`, so that the text stays while the dialog closes.
+const confirmOpen = ref(false);
 
 const noAxes = computed(() => props.axes.length === 0);
 const axisLabel = (position: number) => props.axes[position] || `Oś ${position + 1}`;
+/** The name of a variant is its values: „czarny / 42”. */
+const variantName = (index: number) => props.rows[index]?.values.filter((value) => value.trim() !== "").join(" / ") || String(index + 1);
+
+// A row or an axis removed without asking changes the set of buttons, so the focus goes to the heading of the card, as it
+// does after the confirmation (spec „Fokus, gdy wyzwalacz zniknął”).
+async function removeWithoutAsking(removal: () => void): Promise<void> {
+  removal();
+  await nextTick();
+  section.value?.focusHeading();
+}
 
 function removeRow(index: number): void {
   if (props.rows[index]?.variantId != null) {
-    pending.value = { kind: "row", index };
+    const name = variantName(index);
+    pending.value = { kind: "row", index, title: `Usunąć wariant ${name}?`, confirmLabel: `Usuń wariant ${name}` };
+    confirmOpen.value = true;
   } else {
-    emit("removeVariant", index);
+    void removeWithoutAsking(() => emit("removeVariant", index));
   }
 }
 
@@ -59,15 +72,15 @@ function removeAxis(index: number): void {
   // Without axes only the first row stays, so the other existing variants are removed with the last axis.
   const dropsExisting = props.axes.length === 1 && props.rows.slice(1).some((row) => row.variantId != null);
   if (dropsExisting) {
-    pending.value = { kind: "axis", index };
+    pending.value = { kind: "axis", index, title: `Usunąć oś ${axisLabel(index)}?`, confirmLabel: `Usuń oś ${axisLabel(index)}` };
+    confirmOpen.value = true;
   } else {
-    emit("removeAxis", index);
+    void removeWithoutAsking(() => emit("removeAxis", index));
   }
 }
 
 function confirm(): void {
   const current = pending.value;
-  pending.value = null;
   if (current?.kind === "row") {
     emit("removeVariant", current.index);
   } else if (current?.kind === "axis") {
@@ -76,38 +89,39 @@ function confirm(): void {
 }
 
 const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]`), ...props.errorsExactly(`variants[${index}].values`), ...props.errorsAt(`variants[${index}].variantId`)];
+const ids = (kind: string, ...parts: number[]) => `${idPrefix}-${kind}-${parts.join("-")}`;
 </script>
 
 <template>
-  <section
+  <FormSection
+    ref="section"
     data-testid="variants"
-    class="variants"
-    aria-labelledby="variants-heading"
+    title="Warianty"
   >
-    <h2 id="variants-heading">
-      Warianty
-    </h2>
-    <Message
+    <Alert
       v-for="title in errors"
       :key="title"
       data-testid="variants-error"
-      severity="error"
+      data-form-error
+      variant="destructive"
     >
       {{ title }}
-    </Message>
+    </Alert>
 
-    <div class="axes">
+    <div class="flex flex-col gap-2">
       <div
         v-for="(axis, position) in axes"
         :key="position"
-        class="axis"
+        class="flex flex-col gap-1"
       >
-        <div class="axis-row">
-          <InputText
+        <div class="flex items-center gap-1">
+          <Input
             data-testid="axis-name"
+            class="max-w-xs"
             :model-value="axis"
             :disabled="readOnly"
-            :invalid="errorsAt(`variantAxes[${position}]`).length > 0"
+            :aria-invalid="errorsAt(`variantAxes[${position}]`).length > 0 ? 'true' : undefined"
+            :aria-describedby="errorsAt(`variantAxes[${position}]`).length > 0 ? ids('axis-error', position) : undefined"
             :aria-label="`Nazwa osi ${position + 1}`"
             placeholder="Nazwa osi, np. Kolor"
             maxlength="30"
@@ -115,261 +129,204 @@ const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]
           />
           <template v-if="!readOnly">
             <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              class="border-0 bg-transparent"
               data-testid="axis-move-up"
-              icon="pi pi-arrow-up"
-              severity="secondary"
-              text
-              size="small"
               :disabled="axesLocked || position === 0"
               :aria-label="`Przesuń oś ${position + 1} wcześniej`"
               @click="emit('moveAxis', position, -1)"
-            />
+            >
+              <ArrowUp aria-hidden="true" />
+            </Button>
             <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              class="border-0 bg-transparent"
               data-testid="axis-move-down"
-              icon="pi pi-arrow-down"
-              severity="secondary"
-              text
-              size="small"
               :disabled="axesLocked || position === axes.length - 1"
               :aria-label="`Przesuń oś ${position + 1} później`"
               @click="emit('moveAxis', position, 1)"
-            />
+            >
+              <ArrowDown aria-hidden="true" />
+            </Button>
             <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              class="border-0 bg-transparent text-destructive"
               data-testid="axis-remove"
-              icon="pi pi-trash"
-              severity="secondary"
-              text
-              size="small"
               :disabled="axesLocked"
               :aria-label="`Usuń oś ${position + 1}`"
               @click="removeAxis(position)"
-            />
+            >
+              <Trash2 aria-hidden="true" />
+            </Button>
           </template>
         </div>
-        <Message
+        <p
           v-for="title in errorsAt(`variantAxes[${position}]`)"
+          :id="ids('axis-error', position)"
           :key="title"
           data-testid="axis-error"
-          severity="error"
-          size="small"
-          variant="simple"
+          data-form-error
+          class="text-sm text-status-danger"
         >
           {{ title }}
-        </Message>
+        </p>
       </div>
-      <div v-if="!readOnly">
+      <div
+        v-if="!readOnly"
+        class="flex flex-wrap items-center gap-x-3 gap-y-1"
+      >
         <Button
+          type="button"
+          variant="outline"
           data-testid="add-axis"
-          label="Dodaj oś"
-          icon="pi pi-plus"
-          severity="secondary"
           :disabled="axesLocked || axes.length >= MAX_AXES"
           @click="emit('addAxis')"
-        />
-        <small
+        >
+          <Plus aria-hidden="true" />
+          Dodaj oś
+        </Button>
+        <p
           v-if="!axesLocked && axes.length >= MAX_AXES"
-          class="hint"
-        > Produkt może mieć najwyżej {{ MAX_AXES }} osie.</small>
+          class="text-sm text-muted-foreground"
+        >
+          Produkt może mieć najwyżej {{ MAX_AXES }} osie.
+        </p>
       </div>
     </div>
 
-    <table class="table">
-      <thead v-if="!noAxes">
-        <tr>
-          <th
+    <Table
+      role="region"
+      aria-label="Warianty produktu"
+      tabindex="0"
+    >
+      <TableHeader v-if="!noAxes">
+        <TableRow>
+          <TableHead
             v-for="(_, position) in axes"
             :key="position"
             scope="col"
           >
             {{ axisLabel(position) }}
-          </th>
-          <th scope="col">
+          </TableHead>
+          <TableHead scope="col">
             <span class="sr-only">Akcje</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow
           v-for="(row, index) in rows"
           :key="row.variantId ?? `new-${index}`"
           data-testid="variant-row"
         >
-          <td v-if="noAxes">
+          <TableCell v-if="noAxes">
             Wariant domyślny
-          </td>
-          <td
+          </TableCell>
+          <TableCell
             v-for="(value, position) in row.values"
             :key="position"
+            class="align-top"
           >
-            <InputText
+            <Input
               data-testid="variant-value"
+              class="min-w-32"
               :model-value="value"
               :disabled="readOnly"
-              :invalid="errorsAt(`variants[${index}].values[${position}]`).length > 0"
+              :aria-invalid="errorsAt(`variants[${index}].values[${position}]`).length > 0 ? 'true' : undefined"
+              :aria-describedby="errorsAt(`variants[${index}].values[${position}]`).length > 0 ? ids('value-error', index, position) : undefined"
               :aria-label="`${axisLabel(position)}, wariant ${index + 1}`"
               maxlength="40"
               @update:model-value="emit('setValue', index, position, String($event ?? ''))"
             />
-            <Message
+            <p
               v-for="title in errorsAt(`variants[${index}].values[${position}]`)"
+              :id="ids('value-error', index, position)"
               :key="title"
               data-testid="value-error"
-              severity="error"
-              size="small"
-              variant="simple"
+              data-form-error
+              class="mt-1 text-sm whitespace-normal text-status-danger"
             >
               {{ title }}
-            </Message>
-          </td>
-          <td>
+            </p>
+          </TableCell>
+          <TableCell class="align-top">
             <Button
               v-if="!readOnly && !noAxes"
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              class="border-0 bg-transparent text-destructive"
               data-testid="variant-remove"
-              icon="pi pi-trash"
-              severity="secondary"
-              text
-              size="small"
               :disabled="rows.length <= 1"
               :aria-label="`Usuń wariant ${index + 1}`"
               @click="removeRow(index)"
-            />
-            <Message
+            >
+              <Trash2 aria-hidden="true" />
+            </Button>
+            <p
               v-for="title in rowErrors(index)"
               :key="title"
               data-testid="row-error"
-              severity="error"
-              size="small"
-              variant="simple"
+              data-form-error
+              class="text-sm whitespace-normal text-status-danger"
             >
               {{ title }}
-            </Message>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            </p>
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
 
-    <div v-if="!readOnly">
+    <div
+      v-if="!readOnly"
+      class="flex flex-wrap items-center gap-x-3 gap-y-1"
+    >
       <Button
+        type="button"
+        variant="outline"
         data-testid="add-variant"
-        label="Dodaj wariant"
-        icon="pi pi-plus"
-        severity="secondary"
         :disabled="noAxes || rows.length >= MAX_VARIANTS"
         @click="emit('addVariant')"
-      />
-      <small
+      >
+        <Plus aria-hidden="true" />
+        Dodaj wariant
+      </Button>
+      <p
         v-if="noAxes && !axesLocked"
-        class="hint"
-      > Dodaj oś, aby produkt mógł mieć więcej niż jeden wariant.</small>
-      <small
+        class="text-sm text-muted-foreground"
+      >
+        Dodaj oś, aby produkt mógł mieć więcej niż jeden wariant.
+      </p>
+      <p
         v-else-if="!noAxes && rows.length >= MAX_VARIANTS"
-        class="hint"
-      > Osiągnięto limit {{ MAX_VARIANTS }} wariantów.</small>
+        class="text-sm text-muted-foreground"
+      >
+        Osiągnięto limit {{ MAX_VARIANTS }} wariantów.
+      </p>
     </div>
 
     <p
       v-if="axesLocked && !readOnly"
       data-testid="variants-locked"
-      class="hint"
+      class="text-sm text-muted-foreground"
     >
       {{ LOCKED_EXPLANATION }}
     </p>
 
-    <Dialog
-      v-model:visible="confirmVisible"
-      modal
-      header="Usunąć wariant?"
-      :style="{ width: '28rem' }"
-    >
-      <div
-        data-testid="remove-confirm"
-        class="confirm"
-      >
-        <p>Cena i stan wariantu przestaną być widoczne w panelu.</p>
-        <div class="confirm-actions">
-          <Button
-            data-testid="remove-confirm-cancel"
-            label="Anuluj"
-            severity="secondary"
-            @click="confirmVisible = false"
-          />
-          <Button
-            data-testid="remove-confirm-accept"
-            label="Usuń"
-            icon="pi pi-trash"
-            severity="danger"
-            @click="confirm()"
-          />
-        </div>
-      </div>
-    </Dialog>
-  </section>
+    <ConfirmDialog
+      v-model:open="confirmOpen"
+      :title="pending?.title ?? ''"
+      :description="CONSEQUENCE"
+      :confirm-label="pending?.confirmLabel ?? ''"
+      destructive
+      :fallback-focus="section?.heading ?? null"
+      @confirm="confirm"
+    />
+  </FormSection>
 </template>
-
-<style scoped>
-.variants {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.hint {
-  color: var(--p-text-muted-color);
-  margin: 0;
-}
-
-.axes {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.axis {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.axis-row {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.table th,
-.table td {
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--p-content-border-color);
-  text-align: left;
-  vertical-align: top;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  margin: -1px;
-  border: 0;
-  padding: 0;
-}
-
-.confirm {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-</style>

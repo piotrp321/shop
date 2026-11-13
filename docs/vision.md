@@ -19,7 +19,7 @@ Projekt ma dwa cele:
 |---|---|---|
 | `apps/api` | PHP 8.5, Symfony 8, Doctrine ORM, PostgreSQL | REST API, cała logika biznesowa |
 | `apps/store` | Next.js (App Router), React, TypeScript, Tailwind CSS 4, shadcn/ui | Sklep dla klientów, SSR/ISR pod SEO |
-| `apps/admin` | Vue 3, Vite, TypeScript, Pinia, Vue Router, PrimeVue | Panel dla obsługi sklepu |
+| `apps/admin` | Vue 3, Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), Lucide, PrimeVue | Panel dla obsługi sklepu |
 | `infra` | Docker Compose | Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit |
 
 Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.

@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { staff } from "./accounts";
+import { openMenuItem } from "./panel-menu";
 import { loginStaff } from "./staff-login";
 
 // Two fixed amounts; a test takes the one the product does not have now, so every run really changes the price.
@@ -23,7 +24,7 @@ const digitsOf = (text: string) => Number(text.replace(/\D/g, ""));
  */
 export async function changePriceInPanel(page: Page, productName: string): Promise<PriceChange> {
   await loginStaff(page, staff.admin);
-  await page.getByRole("link", { name: "Ceny" }).click();
+  await openMenuItem(page, "Ceny", "Katalog");
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(productName);
   // The unfiltered first page has many rows: exactly one row means the (debounced) search has been applied. Changing
   // the price earlier would let a late search answer overwrite the row with the old price.

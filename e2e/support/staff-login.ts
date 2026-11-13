@@ -34,7 +34,7 @@ export async function loginStaff(page: Page, account: StaffAccount): Promise<voi
     // Rejected (reused code): the next code differs only in the next window.
     await page.waitForTimeout(OTP_PERIOD_MS - (Date.now() % OTP_PERIOD_MS) + 200);
   }
-  await expect(page.getByRole("heading", { name: "Dashboard" }), "the panel opens after the OTP step").toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pulpit" }), "the panel opens after the OTP step").toBeVisible();
 }
 
 /**

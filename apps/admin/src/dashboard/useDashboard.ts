@@ -1,11 +1,18 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { formatDateTime } from "@/prices/format";
 
 export type Dashboard = components["schemas"]["DashboardResponse"];
 
-export function formatTime(date: Date): string {
-  return [date.getHours(), date.getMinutes(), date.getSeconds()].map((part) => String(part).padStart(2, "0")).join(":");
+/** The moment of a fetch in Polish time, whatever the time zone of the browser („01.11.2026, 14:03:12”). */
+export function formatFetchTime(date: Date): string {
+  return formatDateTime(date.toISOString());
+}
+
+/** Adds to an error the time of the data that stays on screen; without such data (the first load) the message is as it is. */
+export function withStaleNote(message: string, shownSince: Date | null): string {
+  return shownSince ? `${message} Pokazane dane z ${formatFetchTime(shownSince)} mogą być nieaktualne.` : message;
 }
 
 /**
@@ -13,9 +20,11 @@ export function formatTime(date: Date): string {
  * Returning to the tab refreshes at once when the last successful fetch (before the first one, the last
  * attempt) is at least `intervalMs` old, and the interval then counts from that refresh.
  * A refresh keeps the last data on screen; a failed one sets `error` (naming the time of the data it keeps)
- * and keeps the data. `updatedAt` is the time of the last successful fetch.
+ * and keeps the data. `updatedAt` is the time of the last successful fetch. `alongside` is called with every refresh
+ * (the first load, the timer, the return to the tab and „Odśwież”), for the data of the screen that comes from other
+ * requests and keeps its own state.
  */
-export function useDashboard(intervalMs = 30000) {
+export function useDashboard(intervalMs = 30000, alongside?: () => void) {
   const data = ref<Dashboard | null>(null);
   const error = ref<string | null>(null);
   const loading = ref(false);
@@ -25,14 +34,15 @@ export function useDashboard(intervalMs = 30000) {
   // Only the newest request may change the state; an older one that finishes late is ignored.
   let latest = 0;
 
-  function withStaleNote(message: string): string {
-    return updatedAt.value ? `${message} Pokazane dane z ${formatTime(updatedAt.value)} mogą być nieaktualne.` : message;
+  function withNote(message: string): string {
+    return withStaleNote(message, updatedAt.value);
   }
 
   async function refresh(): Promise<void> {
     const request = ++latest;
     lastAttemptAt = Date.now();
     loading.value = true;
+    alongside?.();
     try {
       const result = await getApiClient().GET("/api/v1/admin/dashboard");
       if (request !== latest) {
@@ -43,11 +53,11 @@ export function useDashboard(intervalMs = 30000) {
         updatedAt.value = new Date();
         error.value = null;
       } else {
-        error.value = withStaleNote(`Nie udało się pobrać danych dashboardu (HTTP ${result.response.status}).`);
+        error.value = withNote(`Nie udało się pobrać danych dashboardu (HTTP ${result.response.status}).`);
       }
     } catch {
       if (request === latest) {
-        error.value = withStaleNote("Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.");
+        error.value = withNote("Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.");
       }
     } finally {
       if (request === latest) {

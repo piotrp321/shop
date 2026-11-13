@@ -12,7 +12,8 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
 - `apps/api` – Symfony 8, PHP 8.5, Doctrine, PostgreSQL. DDD + hexagonal.
 - `apps/store` – Next.js (App Router), React, TypeScript, Tailwind CSS 4, shadcn/ui. Sklep, strony katalogu
   renderowane na serwerze pod SEO.
-- `apps/admin` – Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue. Panel administracyjny.
+- `apps/admin` – Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), Lucide, PrimeVue
+  (do czasu migracji ekranów). Panel administracyjny.
 - `infra` – Docker Compose i konfiguracja usług
   (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit).
 - `infra/k8s` – chart Helm całego stosu (`charts/shop`, te same usługi i wersje obrazów co compose), profile wartości

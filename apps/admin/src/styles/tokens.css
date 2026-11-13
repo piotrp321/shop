@@ -1,0 +1,287 @@
+/*
+ * The only place where the appearance of the panel is defined (docs/features/admin-design/spec.md, „Tokeny i typografia”).
+ * Three layers:
+ * 1. The raw palette in @theme under `--palette-*`, a namespace that Tailwind does not turn into utilities, so classes
+ *    like bg-red-500 do not exist. `--color-*: initial` removes the default Tailwind palette.
+ * 2. The semantic layer in :root: the tokens of the spec (background, card, heading, interface, status-*, kpi-*, ...)
+ *    and the variable names that the shadcn-vue components use (--primary, --border, --ring, ...), all pointing at the
+ *    palette. Components use only these; @theme inline turns them into classes (bg-card, text-muted-foreground).
+ * 3. Shape and type: radii, shadows, the type scale and Nunito (WOFF2 files in src/assets/fonts/).
+ * tests/tokens.test.ts reads this file and checks the contrast of every pair of the spec (WCAG 2.x). The file is also
+ * the entry point of the Tailwind class check in ESLint, so it imports Tailwind itself.
+ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Nunito (SIL OFL 1.1, apps/admin/THIRD_PARTY_NOTICES.md): one variable font (wght 400-800) in two files. The browser
+   fetches only the file that holds a character the page uses; Polish letters other than „ó” are in latin-ext. */
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("../assets/fonts/nunito-latin-ext-wght.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("../assets/fonts/nunito-latin-wght.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@theme static {
+  --color-*: initial;
+
+  /* Surfaces and lines. */
+  --palette-white: #ffffff;
+  --palette-mist: #f4f5f9;
+  --palette-frost: #f9fafc;
+  --palette-hair: #eceef2;
+  --palette-ash: #eef0f4;
+
+  /* Text. */
+  --palette-ink: #3e4255;
+  --palette-ink-strong: #3a3d4f;
+  --palette-slate: #636a78;
+  --palette-steel: #878e9f;
+
+  /* Interface blue: links, selection, the action button, the focus ring. */
+  --palette-blue: #2563c9;
+  --palette-blue-deep: #1d4f9f;
+  --palette-blue-soft: #e3edfb;
+
+  /* The main action of Worf: orange with dark text. */
+  --palette-orange: #f68c36;
+  --palette-orange-deep: #e97f2a;
+  --palette-carbon: #1d1f24;
+  --palette-red: #c0283d;
+
+  /* Graphite: the sidebar. */
+  --palette-graphite: #1f2029;
+  --palette-graphite-soft: #272935;
+  --palette-fog: #a3abbd;
+  --palette-fog-dim: #8a93a5;
+
+  /* Status labels: text and pastel background. */
+  --palette-green-text: #0f7a55;
+  --palette-green-soft: #dcf5ee;
+  --palette-amber-text: #8f5a0a;
+  --palette-amber-soft: #fdf1dc;
+  --palette-red-text: #b4233a;
+  --palette-red-soft: #fde4e7;
+
+  /* KPI tiles: icon colour and its pastel circle. */
+  --palette-kpi-violet: #6d4fd8;
+  --palette-kpi-violet-soft: #ece9fd;
+  --palette-kpi-green: #11875f;
+  --palette-kpi-teal: #1f86b3;
+  --palette-kpi-teal-soft: #e0f3fa;
+  --palette-kpi-amber: #b7791f;
+}
+
+:root {
+  /* Tokens of the spec. */
+  --background: var(--palette-mist);
+  --card: var(--palette-white);
+  --table-head: var(--palette-frost);
+  --separator: var(--palette-hair);
+  --foreground: var(--palette-ink);
+  --heading: var(--palette-ink-strong);
+  --muted-foreground: var(--palette-slate);
+  --input-border: var(--palette-steel);
+  --interface: var(--palette-blue);
+  --interface-hover: var(--palette-blue-deep);
+  --interface-soft: var(--palette-blue-soft);
+  --interface-foreground: var(--palette-white);
+  --primary: var(--palette-orange);
+  --primary-hover: var(--palette-orange-deep);
+  --primary-foreground: var(--palette-carbon);
+  --destructive: var(--palette-red);
+  --destructive-foreground: var(--palette-white);
+  --sidebar: var(--palette-graphite);
+  --sidebar-accent: var(--palette-graphite-soft);
+  --sidebar-foreground: var(--palette-fog);
+  --sidebar-section: var(--palette-fog-dim);
+  --sidebar-active: var(--palette-white);
+  --status-success: var(--palette-green-text);
+  --status-success-soft: var(--palette-green-soft);
+  --status-warning: var(--palette-amber-text);
+  --status-warning-soft: var(--palette-amber-soft);
+  --status-danger: var(--palette-red-text);
+  --status-danger-soft: var(--palette-red-soft);
+  --status-info: var(--palette-blue-deep);
+  --status-info-soft: var(--palette-blue-soft);
+  --status-neutral: var(--palette-ink);
+  --status-neutral-soft: var(--palette-ash);
+  --focus-ring: var(--interface);
+  --focus-ring-dark: var(--primary);
+  --kpi-blue: var(--palette-blue);
+  --kpi-blue-soft: var(--palette-blue-soft);
+  --kpi-violet: var(--palette-kpi-violet);
+  --kpi-violet-soft: var(--palette-kpi-violet-soft);
+  --kpi-green: var(--palette-kpi-green);
+  --kpi-green-soft: var(--palette-green-soft);
+  --kpi-teal: var(--palette-kpi-teal);
+  --kpi-teal-soft: var(--palette-kpi-teal-soft);
+  --kpi-amber: var(--palette-kpi-amber);
+  --kpi-amber-soft: var(--palette-amber-soft);
+
+  /* Variable names of the shadcn-vue components. */
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--background);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--table-head);
+  --accent: var(--interface-soft);
+  --accent-foreground: var(--interface-hover);
+  --border: var(--separator);
+  --input: var(--input-border);
+  --ring: var(--interface);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent-foreground: var(--sidebar-active);
+  --sidebar-border: var(--sidebar-accent);
+  --sidebar-ring: var(--focus-ring-dark);
+
+  /* The backdrop of dialogs and drawers (instead of bg-black/50, which does not exist without the default palette). */
+  --overlay: rgb(0 0 0 / 50%);
+
+  --radius: 0.375rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-table-head: var(--table-head);
+  --color-separator: var(--separator);
+  --color-foreground: var(--foreground);
+  --color-heading: var(--heading);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-input-border: var(--input-border);
+  --color-interface: var(--interface);
+  --color-interface-hover: var(--interface-hover);
+  --color-interface-soft: var(--interface-soft);
+  --color-interface-foreground: var(--interface-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-section: var(--sidebar-section);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-status-success: var(--status-success);
+  --color-status-success-soft: var(--status-success-soft);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-soft: var(--status-warning-soft);
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-soft: var(--status-danger-soft);
+  --color-status-info: var(--status-info);
+  --color-status-info-soft: var(--status-info-soft);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-soft: var(--status-neutral-soft);
+  --color-focus-ring: var(--focus-ring);
+  --color-focus-ring-dark: var(--focus-ring-dark);
+  --color-kpi-blue: var(--kpi-blue);
+  --color-kpi-blue-soft: var(--kpi-blue-soft);
+  --color-kpi-violet: var(--kpi-violet);
+  --color-kpi-violet-soft: var(--kpi-violet-soft);
+  --color-kpi-green: var(--kpi-green);
+  --color-kpi-green-soft: var(--kpi-green-soft);
+  --color-kpi-teal: var(--kpi-teal);
+  --color-kpi-teal-soft: var(--kpi-teal-soft);
+  --color-kpi-amber: var(--kpi-amber);
+  --color-kpi-amber-soft: var(--kpi-amber-soft);
+
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-overlay: var(--overlay);
+
+  /* 4 px label of a status, 6 px controls, 8 px cards. */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.25rem;
+  --radius-md: var(--radius);
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.5rem;
+}
+
+@theme static {
+  --font-sans: "Nunito", system-ui, sans-serif;
+
+  /* Cards: 0 1px 3px at 6% black. Floating layers (menus, dialogs) are a little deeper; controls have none. */
+  --shadow-*: initial;
+  --shadow-2xs: 0 0 transparent;
+  --shadow-xs: 0 0 transparent;
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 6%);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 10%);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 12%);
+  --shadow-xl: 0 8px 24px rgb(0 0 0 / 12%);
+  --shadow-2xl: 0 8px 24px rgb(0 0 0 / 12%);
+
+  /* The type scale (1 rem = 16 px): interface text 15 px, second lines and hints 13 px, card title 16 px, H1 20 px,
+     KPI number 26 px, the wordmark 27 px. */
+  --text-*: initial;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.4;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 1.2;
+  --text-3xl: 1.6875rem;
+  --text-3xl--line-height: 1.1;
+}
+
+@layer base {
+  /* The text of the panel: Nunito and the colour of the token `foreground`. They sit here, in the layer of Tailwind, because
+     a rule outside the layers beats it whatever its specificity; the margin is already reset by the preflight. */
+  body {
+    font-family: var(--font-sans);
+    color: var(--foreground);
+  }
+  /* A visible focus ring on every interactive element: 2 px, `interface`, 2 px away (5.7:1 on white). */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  /* The H1 that the shell focuses after a change of page (also on screens that are not migrated yet) shows no ring. */
+  main h1[tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+  /* On the graphite sidebar the ring is orange (6.7:1; `interface` has 2.9:1 there). */
+  [data-surface="sidebar"] :focus-visible {
+    outline-color: var(--focus-ring-dark);
+  }
+}

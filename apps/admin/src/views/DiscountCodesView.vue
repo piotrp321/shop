@@ -7,7 +7,7 @@ import Message from "primevue/message";
 import SelectButton from "primevue/selectbutton";
 import Skeleton from "primevue/skeleton";
 import Tag from "primevue/tag";
-import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
+import { computed, nextTick, useTemplateRef } from "vue";
 import { RouterLink } from "vue-router";
 import { formatDiscount, formatPeriod, formatUses, STATUS_FILTER_OPTIONS, statusLabel, statusSeverity } from "@/discount-codes/format";
 import { canManageDiscountCodes } from "@/discount-codes/permissions";
@@ -17,6 +17,7 @@ import { CURRENCY } from "@/promotions/format";
 import { useAuthStore } from "@/stores/auth";
 
 const {
+  status,
   search,
   searchTooLong,
   items,
@@ -71,8 +72,11 @@ async function retryList(): Promise<void> {
   target?.focus();
 }
 
-const statusFilter = ref<"all" | DiscountCodeStatus>("all");
-watch(statusFilter, (value) => selectStatus(value === "all" ? null : value));
+// The list owns the status (it also reads it from the address), so the filter shows and sets that one.
+const statusFilter = computed<"all" | DiscountCodeStatus>({
+  get: () => status.value ?? "all",
+  set: (value) => void selectStatus(value === "all" ? null : value),
+});
 
 // Only hides the action: the API checks the permission. The roles come from /api/v1/admin/me.
 const auth = useAuthStore();

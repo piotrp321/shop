@@ -2,8 +2,10 @@ import type { UserManager } from "oidc-client-ts";
 import { createRouter, createWebHistory, type RouterHistory } from "vue-router";
 import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
+import { canViewSystem } from "@/dashboard/permissions";
 import { canManageDiscountCodes } from "@/discount-codes/permissions";
 import AppLayout from "@/layout/AppLayout.vue";
+import { canViewOrders } from "@/orders/permissions";
 import { canManageProducts } from "@/products/permissions";
 import { canManagePromotions } from "@/promotions/permissions";
 import { useAuthStore } from "@/stores/auth";
@@ -19,6 +21,7 @@ import ProductFormView from "@/views/ProductFormView.vue";
 import ProductsView from "@/views/ProductsView.vue";
 import PromotionFormView from "@/views/PromotionFormView.vue";
 import PromotionsView from "@/views/PromotionsView.vue";
+import SystemView from "@/views/SystemView.vue";
 
 type SessionManager = Pick<UserManager, "getUser" | "signinRedirect">;
 
@@ -93,8 +96,31 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
           },
           { path: "inventory", name: "inventory", component: InventoryView },
           {
+            path: "system",
+            name: "system",
+            component: SystemView,
+            // Only the administrators open it; the others land on the dashboard with a message. When /me cannot be read the
+            // route is let through: the API gives no system data to the others and the view says so.
+            beforeEnter: async () => {
+              const auth = useAuthStore();
+              if (auth.staff === null) {
+                await auth.load();
+              }
+              return auth.staff === null || canViewSystem(auth.staff) ? true : { name: "dashboard", state: { denied: true } };
+            },
+          },
+          {
             // One path for the list and the detail, so the menu item of the orders stays active on a detail.
             path: "orders",
+            // Only the staff with access to the orders open them; the others land on the dashboard with a message. When
+            // /me cannot be read the route is let through: the API checks the access and the view shows the 403.
+            beforeEnter: async () => {
+              const auth = useAuthStore();
+              if (auth.staff === null) {
+                await auth.load();
+              }
+              return auth.staff === null || canViewOrders(auth.staff) ? true : { name: "dashboard", state: { denied: true } };
+            },
             children: [
               { path: "", name: "orders", component: OrdersView },
               { path: ":orderId", name: "order-detail", component: OrderDetailView },

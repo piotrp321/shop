@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { customers, staff } from "../support/accounts";
 import { waitForOrderEmail } from "../support/mailpit";
 import { historyEntry, openOrderHistory, placeAndPayOrder } from "../support/orders";
+import { openMenuItem } from "../support/panel-menu";
 import { confirmWithNote, openOrderDetail, openOrderList, openPanelAs, searchOrder } from "../support/panel-orders";
 import { WEBHOOK_TIMEOUT_MS } from "../support/payment";
 import { logInAs } from "../support/shop";
@@ -112,7 +113,7 @@ test("support cancels Anna's paid order with a note, the panel shows the refund 
 
     // "Zwroty do wykonania" lists the order (found by its number among the refunds of earlier runs) with the amount.
     await admin.getByTestId("back").click();
-    await admin.getByText("Zwroty do wykonania", { exact: true }).click();
+    await openMenuItem(admin, "Zwroty do wykonania", "Zamówienia");
     const row = await searchOrder(admin, number);
     await expect(row.getByTestId("status")).toHaveText("Anulowane");
     await expect(row.getByTestId("refund-amount")).toHaveText(total);
@@ -128,9 +129,9 @@ test("support cancels Anna's paid order with a note, the panel shows the refund 
     await expect(admin.getByTestId("complete-refund")).toHaveCount(0);
     await expect(admin.getByTestId("status"), "completing the refund does not change the status").toHaveText("Anulowane");
 
-    // It is gone from the refunds to do (the switch is off after the reload of the list: set it again).
+    // It is gone from the refunds to do (the menu item opens the list with the switch on, from the address).
     await admin.getByTestId("back").click();
-    await admin.getByText("Zwroty do wykonania", { exact: true }).click();
+    await openMenuItem(admin, "Zwroty do wykonania", "Zamówienia");
     await admin.getByRole("searchbox", { name: "Szukaj po numerze zamówienia lub e-mailu" }).fill(number);
     await admin.getByRole("searchbox", { name: "Szukaj po numerze zamówienia lub e-mailu" }).press("Enter");
     await expect(admin.getByTestId("empty")).toHaveText("Nie znaleziono zamówień.");

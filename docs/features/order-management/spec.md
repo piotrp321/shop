@@ -294,9 +294,18 @@ sklepu się nie zmienia.
 - Menu „Zamówienia” (role z P6, z `/me`), trasa `/orders` (`OrdersView`): tabela (numer, data, klient, e-mail,
   status jako `Tag`, kwota), filtr statusu, przełącznik „Zwroty do wykonania” (kolumny kwoty i terminu zwrotu,
   `Tag` „Po terminie” według `overdue`), pole wyszukiwania (numer albo e-mail, po Enter), stronicowanie po kursorach
-  ze stosem kursorów jak `usePriceList`. Błąd listy: komunikat z „Spróbuj ponownie”; 403 (np. bezpośredni adres dla
-  roli bez dostępu): „Nie masz dostępu do zamówień.”. Pusta lista bez filtrów i wyszukiwania: „Brak zamówień.”;
-  z filtrem albo wyszukiwaniem: „Nie znaleziono zamówień.”.
+  ze stosem kursorów jak `usePriceList`. Błąd listy: komunikat z „Spróbuj ponownie”; 403 (zabezpieczenie, gdy API
+  odmówi mimo strażnika trasy): „Nie masz dostępu do zamówień.”. Pusta lista bez filtrów i wyszukiwania: „Brak
+  zamówień.”; z filtrem albo wyszukiwaniem: „Nie znaleziono zamówień.”.
+- Strażnik trasy: `/orders` i `/orders/:orderId` otwierają tylko `admin`, `support` i `warehouse` (role z `/me`,
+  które strażnik w razie potrzeby sam pobiera). Pozostałe role trafiają na pulpit (`history.state.denied`), który
+  pokazuje „Nie masz dostępu do tej strony.” (`role="alert"`) i czyści znacznik, więc przeładowanie komunikatu nie
+  powtarza. Gdy `/me` się nie wczyta, strażnik przepuszcza trasę, a dostęp sprawdza API (403 widoku). Menu ukrywa
+  pozycje tak samo, ale to strażnik i API egzekwują dostęp.
+- Filtry z adresu: lista czyta `status` (znany status) i `refund=pending` przy wejściu oraz przy każdej zmianie
+  `route.query` przy otwartej liście (pozycja menu „Zwroty do wykonania” na `/orders`): ustawia oba filtry według
+  adresu i wraca na pierwszą stronę, wyszukiwanie zostaje. Nieznana, pusta albo powtórzona wartość jest pomijana.
+  Zmiany filtrów w liście nie trafiają do adresu.
 - `/orders/:orderId` (`OrderDetailView`): kontakt, adres, pozycje, sumy, termin płatności dla `new`, historia
   statusów (data, zmiana, aktor, notatka), sekcja „Zwrot pieniędzy” (kwota, termin z „Po terminie”, wykonanie:
   data, pracownik, notatka) i przyciski z `allowedTransitions` („Oznacz jako wysłane”, „Oznacz jako dostarczone”,
