@@ -446,7 +446,7 @@ class MeasureCliTest(unittest.TestCase):
     def test_start_docker_failure_still_writes_the_event(self):
         for docker in (None, {'info': 'garbage', 'ps': '', 'stats': ''}):
             with self.subTest(docker=docker):
-                code, out, err = self.cli('start', 'cart', json.dumps(usage(10)),
+                code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'tok'],
                                           run=ManifestRunner({'cart': manifest(4)}, docker=docker))
                 self.assertEqual(0, code, err)
                 self.assertIsNone(json.loads(out)['docker'])
@@ -467,6 +467,24 @@ class MeasureCliTest(unittest.TestCase):
         owner = json.loads(out)['owner']
         self.assertEqual({'claims': [], 'owners': {'old': 'x', 'cart': owner}}, self.claims_json())
 
+    def test_start_refuses_an_epic_owned_by_another_session(self):
+        self.write_claims([self.claim('cart', 'mine')], owners={'cart': 'theirs'})
+        before = self.claims_json()
+        for extra in (['--claim', 'mine'], []):
+            with self.subTest(extra=extra):
+                code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=extra)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('epik CART ma innego właściciela', err)
+                self.assertFalse(os.path.exists(os.path.join(self.state, 'measurements.jsonl')))
+                self.assertEqual(before, self.claims_json())
+
+    def test_start_by_the_owner_keeps_it(self):
+        self.write_claims([], owners={'cart': 'mine'})
+        code, out, err = self.cli('start', 'cart', json.dumps(usage(10)), extra=['--claim', 'mine'])
+        self.assertEqual(0, code, err)
+        self.assertEqual('mine', json.loads(out)['owner'])
+        self.assertEqual({'claims': [], 'owners': {'cart': 'mine'}}, self.claims_json())
+
     def test_start_with_unreadable_claims_exits_2_without_writing(self):
         os.makedirs(self.state)
         with open(os.path.join(self.state, 'claims.json'), 'w') as f:
@@ -479,7 +497,8 @@ class MeasureCliTest(unittest.TestCase):
     def test_start_with_unreadable_usage(self):
         for text in ['', 'garbage', '[1]', '{"status": "ok"}', '{"status": "ok", "windows": [1]}']:
             with self.subTest(text=text):
-                code, out, err = self.cli('start', 'cart', text)
+                # A fresh epic each time: a later start without the owner token is refused.
+                code, out, err = self.cli('start', 'cart', text, extra=['--claim', 'tok'])
                 self.assertEqual(0, code, err)
                 self.assertEqual({'status': 'unreadable'}, json.loads(out)['usage'])
 
@@ -522,8 +541,11 @@ class MeasureCliTest(unittest.TestCase):
         self.assertIn('brak start dla cart', err)
 
     def test_start_twice_latest_counts(self):
-        self.cli('start', 'cart', json.dumps(usage(10)))
-        self.cli('start', 'cart', json.dumps(usage(20)), now=T0 + timedelta(minutes=30))
+        _, out, _ = self.cli('start', 'cart', json.dumps(usage(10)))
+        owner = json.loads(out)['owner']
+        code, _, err = self.cli('start', 'cart', json.dumps(usage(20)), now=T0 + timedelta(minutes=30),
+                                extra=['--claim', owner])
+        self.assertEqual(0, code, err)
         code, out, _ = self.cli('done', 'cart', json.dumps(usage(25)), now=T0 + timedelta(minutes=60))
         self.assertEqual(0, code)
         self.assertEqual({'epic': 'cart', 'tasks': 4, 'minutes': 30.0, 'usage': {LABEL: 5}, 'overlap': False},

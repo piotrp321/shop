@@ -25,12 +25,13 @@ read-decide-write. night.json and claims.json are replaced atomically (temp file
 start: counts the tasks in the manifest of origin/main:docs/features/<dir>/plan.md and appends a start event to
 <state>/measurements.jsonl with `docker`: the Docker memory {total_mib, ao_mib, other_mib}
 (parallel_gate.docker_snapshot) or null when `docker` fails (the event is still written). Then, in the same lock, the
-epic gets an owner in claims.json: the --claim token (its reservation is removed) or, without --claim, a new token.
-Prints the event plus `owner` (the token; not stored in measurements.jsonl). done: appends a done event for the latest
-start without one and prints the measurement (tasks, minutes, usage delta per limit window, `overlap`: its interval
-intersects another epic's). A start/done pair is a measurement only through `measurements`. Estimates take time per
-task from all measurements and usage per task from the measurements without `overlap` (from all when none of them has
-the window).
+epic gets an owner in claims.json: the --claim token (its reservation is removed) or, without --claim, a new token. An
+owner recorded for the epic other than --claim (also without --claim): exit 2 `epik X ma innego właściciela`, nothing
+written. Prints the event plus `owner` (the token; not stored in measurements.jsonl). done: appends a done event for
+the latest start without one and prints the measurement (tasks, minutes, usage delta per limit window, `overlap`: its
+interval intersects another epic's). A start/done pair is a measurement only through `measurements`. Estimates take
+time per task from all measurements and usage per task from the measurements without `overlap` (from all when none of
+them has the window).
 
 propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
 {"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
@@ -364,7 +365,9 @@ def cmd_start(args, run, now, stdin):
              'docker': _docker_memory(run)}
     with state_lock(args.state):
         read_events(args.state)
-        parallel_gate.read_claims(args.state)
+        current = parallel_gate.owner(parallel_gate.read_claims(args.state), args.dir)
+        if current is not None and current != args.claim:
+            raise StateError('epik %s ma innego właściciela' % args.dir.upper())
         append_event(args.state, event)
         owner = parallel_gate.claim_to_owner(args.state, args.dir, args.claim, now)
     print(json.dumps(dict(event, owner=owner), ensure_ascii=False))
