@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_KEYCLOAK_URL: string;
   /** Browser-facing URL of this panel. */
   readonly VITE_ADMIN_URL: string;
+  /** Browser-facing URL of the store (the link "Sklep" of the topbar). */
+  readonly VITE_STORE_URL: string;
 }
 
 interface ImportMeta {
@@ -15,5 +17,5 @@ interface ImportMeta {
 
 interface Window {
   /** Runtime configuration written by /config.js in the production image; absent (empty config.js) in development. */
-  __ADMIN_CONFIG__?: Partial<Record<"VITE_API_URL" | "VITE_KEYCLOAK_URL" | "VITE_ADMIN_URL", string>>;
+  __ADMIN_CONFIG__?: Partial<Record<"VITE_API_URL" | "VITE_KEYCLOAK_URL" | "VITE_ADMIN_URL" | "VITE_STORE_URL", string>>;
 }

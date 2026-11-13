@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # Production image: nginx (unprivileged, port 8080) serving dist. /config.js is generated at container start from
-# VITE_API_URL, VITE_KEYCLOAK_URL and VITE_ADMIN_URL; a missing variable stops the start with its name.
+# VITE_API_URL, VITE_KEYCLOAK_URL, VITE_ADMIN_URL and VITE_STORE_URL; a missing variable stops the start with its name.
 FROM nginxinc/nginx-unprivileged:1.30.6-alpine AS prod
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

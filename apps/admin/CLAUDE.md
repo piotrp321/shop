@@ -217,7 +217,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Konfiguracja i obraz produkcyjny
 
-- Panel czyta trzy adresy: `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL`. `readUrl` (`src/config`) bierze
+- Panel czyta cztery adresy: `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL` i `VITE_STORE_URL` (adres sklepu, cel linku „Sklep”
+  w topbarze). `readUrl` (`src/config`) bierze
   wartość najpierw z `window.__ADMIN_CONFIG__`, a gdy nie ma tam klucza (albo jest pusty), z `import.meta.env`.
   Brak klucza w obu źródłach to błąd z nazwą klucza. Końcowe `/` jest obcinane. Nie czytaj `import.meta.env` poza
   `src/config`.
@@ -227,9 +228,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   jest ostatni, bo compose buduje panel bez `target`. `docker build --target prod apps/admin` działa bez stosu.
 - `prod` to `nginxinc/nginx-unprivileged` (przypięta wersja, port 8080, użytkownik `nginx`) z `dist`. Przy starcie
   kontenera `docker/40-admin-config.sh` (hook `/docker-entrypoint.d`) zapisuje `/tmp/admin-config/config.js` ze
-  zmiennych środowiska `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL` jako `window.__ADMIN_CONFIG__ = {...}`
+  zmiennych środowiska `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL` i `VITE_STORE_URL` jako `window.__ADMIN_CONFIG__ = {...}`
   (wartości jako napisy JSON). Brak zmiennej, pusta wartość albo biały znak w wartości kończy start błędem z nazwą
-  zmiennej. Przy katalogu głównym tylko do odczytu `/tmp` musi być zapisywalny (`emptyDir`).
+  zmiennej (test `infra/k8s/tests/test_admin_config.py` uruchamia skrypt w `sh` z katalogiem wyjścia z `ADMIN_CONFIG_DIR`
+  w katalogu tymczasowym; biegnie w `make -C infra/k8s check`). Przy katalogu głównym tylko do odczytu `/tmp` musi być
+  zapisywalny (`emptyDir`).
 - `docker/nginx.conf`: `/config.js` z zapisanego pliku, fallback SPA na `index.html` (np. `/auth/callback`),
   `Cache-Control: no-cache` dla `index.html` i `/config.js`, długi cache tylko dla haszowanych `/assets/`.
 - Nagłówki bezpieczeństwa: `docker/security-headers.conf` (kopiowany do `/etc/nginx/security-headers.conf`) jest
