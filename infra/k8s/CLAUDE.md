@@ -177,6 +177,17 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
     `deploy-images`. Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu `DEPLOY_KEY` kończy się po smoke
     teście z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
     (dispatch na `main`) decyduje o wypychaniu obrazów, pliku digestów i jobie `deploy`.
+    Mapy źródeł sklepu i panelu (spec Sentry, P3, D10): krok `sentry` jobu `images` ustawia flagę wysyłki na `true`, gdy istnieje
+    sekret `SENTRY_AUTH_TOKEN` (porównanie z pustym napisem: krok widzi tylko wartość logiczną), inaczej pomija wysyłkę i dopisuje
+    to do podsumowania; sekret bez zmiennych repozytorium `SENTRY_ORG`, `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` kończy
+    job błędem przed budowaniem. Budowania sklepu i panelu dostają flagę, organizację i projekt jako `build-args`
+    (`SENTRY_UPLOAD`, `SENTRY_ORG`, `SENTRY_PROJECT`: `ARG` etapu `build`, więc część klucza cache), a token wyłącznie jako
+    wejście `secrets:` (`sentry_auth_token`, montowanie `--mount=type=secret` w Dockerfile; wartość nie jest nigdzie indziej:
+    ani w `build-args`, ani w `env` kroku, ani w skrypcie, ani w jobach `smoke` i `deploy`; test `SentrySourceMaps` w
+    `tests/test_deploy_workflow.py`). Job `smoke` (także na PR) buduje bez flagi i bez sekretu, a etapy `prod` obu aplikacji
+    nigdy nie mają plików `.map` (Dockerfile je usuwa; test dymny sprawdza po HTTP, że sklep i panel ich nie serwują, `smoke/checks.py`
+    `check_no_source_maps`). Wysyłka z sekretem, która się nie uda (zły token, Sentry niedostępny), kończy budowanie obrazu błędem,
+    więc nic nie jest wdrażane. Zmiana `apps/admin/vite.config.ts` uruchamia smoke test na PR jak `apps/store/next.config.ts`.
   - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch` na innej gałęzi: tylko smoke test
     na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
     `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba

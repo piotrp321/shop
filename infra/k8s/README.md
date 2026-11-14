@@ -431,11 +431,12 @@ kroku 3 działa bez Sentry; profil `ci` ich nie ma nigdy. DSN nie jest sekretem 
    `infra/k8s/environments/prod/values.yaml` (osobny mały PR, `make -C infra/k8s check`); merge robi **użytkownik**. Zdarzenia zaczynają
    płynąć po następnym wdrożeniu (sekcja 7).
 4. **użytkownik** – dla map źródeł sklepu i panelu (wysyłane z budowania obrazów w workflowie `deploy.yml`, tylko przy wdrożeniu z
-   `main`) tworzy w Sentry token (Organization Auth Token z prawem wysyłki wydań i map) i zapisuje go w GitHub jako sekret
+   `main`) tworzy w Sentry token (Organization Auth Token; wysyłka map nie tworzy wydań) i zapisuje go w GitHub jako sekret
    Actions `SENTRY_AUTH_TOKEN` (wartość tylko w tym miejscu, nigdy w rozmowie z agentem), a w zmiennych repozytorium (Actions
    variables) `SENTRY_ORG` (slug organizacji), `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` (slugi projektów). Bez sekretu
    workflow działa, a obrazy powstają bez map (w podsumowaniu runu jest wpis o pominięciu); z sekretem błąd wysyłki kończy
-   budowanie błędem.
+   budowanie błędem, a brak którejś z trzech zmiennych kończy job `images` błędem z jej nazwą, przed budowaniem. Mapy
+   nie zostają w obrazach (etapy `prod` nie mają plików `.map`).
 5. **agent** – po pierwszym wdrożeniu z DSN-ami (`make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`, `Healthy`) sprawdza, że
    kontenery `api`, `worker`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
    rewizji `image.tag`), a **użytkownik** w Sentry, że w trzech projektach pojawiają się zdarzenia z tą wersją i środowiskiem `demo`
