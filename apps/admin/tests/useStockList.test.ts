@@ -1,7 +1,9 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent } from "vue";
+import { defineComponent, ref } from "vue";
+import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
+import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { SEARCH_DEBOUNCE_MS, useStockList } from "@/inventory/useStockList";
 
 type StockList = components["schemas"]["StockListResponse"];
@@ -15,12 +17,16 @@ vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mo
 
 const STOCK = "/api/v1/admin/stock";
 
+function listed(overrides: Partial<ListedStock> = {}): ListedStock {
+  return { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00", ...overrides };
+}
+
 /** A product with one default variant (empty label) unless `variants` names others; `stock` is that variant's. */
 function item(name: string, overrides: { stock?: ListedStock | null; variants?: StockListItem["variants"] } = {}): StockListItem {
   return {
     productId: `id-${name}`,
     name,
-    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" } : overrides.stock }],
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? listed() : overrides.stock }],
   };
 }
 
@@ -40,21 +46,28 @@ async function settle() {
   await flushPromises();
 }
 
-function mountList() {
+async function mountList(address = "/inventory", tree?: CategoryTreeNode[] | null) {
   let list!: ReturnType<typeof useStockList>;
+  const empty = { template: "<div />" };
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/inventory", name: "inventory", component: empty }] });
+  const nodes = ref<CategoryTreeNode[]>(tree ?? []);
+  const loaded = ref(tree !== undefined && tree !== null);
+  await router.push(address);
   const wrapper = mount(
     defineComponent({
       setup() {
-        list = useStockList();
+        list = useStockList(tree === undefined ? undefined : { nodes, loaded });
         return () => null;
       },
     }),
+    { global: { plugins: [router] } },
   );
-  return { wrapper, list };
+  return { wrapper, list, router };
 }
 
 describe("useStockList", () => {
-  let wrapper: ReturnType<typeof mountList>["wrapper"] | undefined;
+  let wrapper: Awaited<ReturnType<typeof mountList>>["wrapper"] | undefined;
+  let router: Router | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -68,10 +81,11 @@ describe("useStockList", () => {
     vi.useRealTimers();
   });
 
-  async function start(pages: Record<string, StockList>, status?: number) {
+  async function start(pages: Record<string, StockList>, status?: number, address?: string) {
     serve(pages, status);
-    const mounted = mountList();
+    const mounted = await mountList(address);
     wrapper = mounted.wrapper;
+    router = mounted.router;
     await settle();
     return mounted.list;
   }
@@ -94,14 +108,32 @@ describe("useStockList", () => {
     ]);
   });
 
-  it("loads the first page of the stock list on mount", async () => {
+  it("asks for 10 products on the first page", async () => {
     const list = await start({ "": { items: [item("Bidon")], next: null } });
 
-    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: {} } });
+    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: { perPage: 10 } } });
     expect(list.items.value.map((row) => row.name)).toEqual(["Bidon"]);
     expect(list.loaded.value).toBe(true);
     expect(list.hasNext.value).toBe(false);
     expect(list.hasPrevious.value).toBe(false);
+  });
+
+  it("numbers the products of a page, not its variants, for „Pokazano produkty X–Y”", async () => {
+    const page = (prefix: string, next: string | null): StockList => ({
+      items: Array.from({ length: 10 }, (_, index) =>
+        item(`${prefix}${index}`, { variants: [{ variantId: `${prefix}${index}-a`, label: "a", stock: null }, { variantId: `${prefix}${index}-b`, label: "b", stock: null }] }),
+      ),
+      next,
+    });
+    const list = await start({ "": page("A", "c1"), c1: page("B", null) });
+    expect(list.range.value).toEqual({ from: 1, to: 10 });
+
+    await list.goNext();
+    await settle();
+
+    expect(list.rows.value).toHaveLength(20);
+    expect(list.range.value).toEqual({ from: 11, to: 20 });
+    expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
   });
 
   it("pages forward and back with the cursors of the API, keeping the cursor stack", async () => {
@@ -121,128 +153,251 @@ describe("useStockList", () => {
     expect(list.items.value.map((row) => row.name)).toEqual(["B"]);
     await list.goPrevious();
     expect(list.items.value.map((row) => row.name)).toEqual(["A"]);
-    expect(queries()).toEqual([{}, { after: "c1" }, { after: "c2" }, { after: "c1" }, {}]);
+    expect(queries()).toEqual([{ perPage: 10 }, { perPage: 10, after: "c1" }, { perPage: 10, after: "c2" }, { perPage: 10, after: "c1" }, { perPage: 10 }]);
     expect(list.hasPrevious.value).toBe(false);
   });
 
-  it("does not ask for a search shorter than two characters", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
+  describe("the state of the list is in the address", () => {
+    it("starts from the search, the category and the page size of the address, with one request", async () => {
+      const list = await start({ "": { items: [item("Bidon")], next: null } }, undefined, "/inventory?q=bidon&category=c-run&perPage=25");
 
-    list.search.value = "a";
-    await vi.advanceTimersByTimeAsync(1000);
-    await settle();
-
-    expect(queries()).toHaveLength(1);
-    expect(list.searchTooShort.value).toBe(true);
-  });
-
-  it("counts characters, not UTF-16 units", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
-
-    list.search.value = "😀";
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(queries()).toHaveLength(1);
-
-    list.search.value = "😀😀";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries().at(-1)).toEqual({ q: "😀😀" });
-  });
-
-  it("searches once after the typing pauses, with the trimmed term, and goes back to the full list when cleared", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
-
-    list.search.value = "bi";
-    await vi.advanceTimersByTimeAsync(100);
-    list.search.value = "  bidon ";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries()).toEqual([{}, { q: "bidon" }]);
-
-    list.search.value = "";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries().at(-1)).toEqual({});
-  });
-
-  it("starts from the first page when the search or the category changes", async () => {
-    const list = await start({
-      "": { items: [item("A")], next: "c1" },
-      c1: { items: [item("B")], next: null },
+      expect(queries()).toEqual([{ q: "bidon", category: "c-run", perPage: 25 }]);
+      expect(list.search.value).toBe("bidon");
+      expect(list.query.value).toEqual({ q: "bidon", category: "c-run", perPage: 25 });
+      expect(list.filtered.value).toBe(true);
     });
-    await list.goNext();
 
-    list.selectCategory("c-run");
-    await settle();
-    expect(queries().at(-1)).toEqual({ category: "c-run" });
-    expect(list.hasPrevious.value).toBe(false);
+    it("does not write the default page size (10) to the address, but writes the others, the category and the applied search", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      expect(router!.currentRoute.value.query).toEqual({});
 
-    list.search.value = "baton";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run" });
+      list.setPerPage(25);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ perPage: "25" });
+      expect(queries().at(-1)).toEqual({ perPage: 25 });
 
-    list.selectCategory(null);
-    await settle();
-    expect(queries().at(-1)).toEqual({ q: "baton" });
+      list.setPerPage(10);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries().at(-1)).toEqual({ perPage: 10 });
+
+      list.selectCategory("c-run");
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ category: "c-run" });
+      expect(queries().at(-1)).toEqual({ category: "c-run", perPage: 10 });
+
+      list.search.value = "  bidon ";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 50);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ category: "c-run", q: "bidon" });
+      expect(queries().at(-1)).toEqual({ q: "bidon", category: "c-run", perPage: 10 });
+    });
+
+    it("does not ask for a search shorter than two characters and says so in the hint", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      const calls = queries().length;
+
+      list.search.value = "a";
+      await vi.advanceTimersByTimeAsync(1000);
+      await settle();
+
+      expect(queries()).toHaveLength(calls);
+      expect(list.searchHint.value).toContain("2 znaki");
+    });
+
+    it("searches once after the typing pauses, and goes back to the full list when cleared", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+
+      list.search.value = "bi";
+      await vi.advanceTimersByTimeAsync(100);
+      list.search.value = "  bidon ";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      expect(queries()).toEqual([{ perPage: 10 }, { q: "bidon", perPage: 10 }]);
+
+      list.search.value = "";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      expect(queries().at(-1)).toEqual({ perPage: 10 });
+    });
+
+    it("starts from the first page when the search, the category or the page size changes", async () => {
+      const list = await start({
+        "": { items: [item("A")], next: "c1" },
+        c1: { items: [item("B")], next: null },
+      });
+      await list.goNext();
+      await settle();
+
+      list.selectCategory("c-run");
+      await settle();
+      expect(queries().at(-1)).toEqual({ category: "c-run", perPage: 10 });
+      expect(list.hasPrevious.value).toBe(false);
+
+      list.search.value = "baton";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run", perPage: 10 });
+
+      list.selectCategory(null);
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "baton", perPage: 10 });
+
+      serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      list.search.value = "";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      await list.goNext();
+      await settle();
+      expect(list.pageNumber.value).toBe(2);
+
+      list.setPerPage(50);
+      await settle();
+      expect(queries().at(-1)).toEqual({ perPage: 50 });
+      expect(list.pageNumber.value).toBe(1);
+    });
+
+    it("clears the search, the category and the page size: one request for the whole list", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } }, undefined, "/inventory?q=bidon&category=c-run&perPage=50");
+      const calls = queries().length;
+
+      list.clearFilters();
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(list.search.value).toBe("");
+      expect(queries().slice(calls)).toEqual([{ perPage: 10 }]);
+      expect(list.filtered.value).toBe(false);
+    });
   });
 
-  it("keeps the page that is shown and explains a failure, then retries", async () => {
-    const list = await start({ "": { items: [item("A")], next: "c1" } });
+  describe("errors", () => {
+    it("keeps the page that is shown and explains a failed change of the page, then retries", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" } });
 
-    serve({}, 500);
-    await list.goNext();
-    expect(list.error.value).toContain("HTTP 500");
-    expect(list.items.value.map((row) => row.name)).toEqual(["A"]);
-    expect(list.pageNumber.value).toBe(1);
+      serve({}, 500);
+      await list.goNext();
+      expect(list.error.value).toContain("HTTP 500");
+      expect(list.items.value.map((row) => row.name)).toEqual(["A"]);
+      expect(list.pageNumber.value).toBe(1);
 
-    serve({ c1: { items: [item("B")], next: null } });
-    await list.retry();
-    expect(list.error.value).toBeNull();
-    expect(list.items.value.map((row) => row.name)).toEqual(["B"]);
+      serve({ c1: { items: [item("B")], next: null } });
+      await list.retry();
+      expect(list.error.value).toBeNull();
+      expect(list.items.value.map((row) => row.name)).toEqual(["B"]);
+    });
+
+    it("shows no rows after a failed search, so rows of the old list are not taken for its result (#272)", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      serve({}, 500);
+
+      list.search.value = "bidon";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 50);
+      await settle();
+
+      expect(list.error.value).toBe("Nie udało się pobrać stanów magazynowych (HTTP 500).");
+      expect(list.rows.value).toEqual([]);
+      expect(list.loaded.value).toBe(false);
+    });
+
+    it("tells that the chosen category no longer exists on a 404", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+
+      serve({}, 404);
+      list.selectCategory("gone");
+      await settle();
+
+      expect(list.error.value).toContain("kategoria");
+    });
+
+    it("reports a 403 as forbidden, without a retry to offer", async () => {
+      const list = await start({}, 403);
+
+      expect(list.error.value).toBe("Nie masz dostępu do stanów magazynowych.");
+      expect(list.forbidden.value).toBe(true);
+    });
+
+    it("reports a network failure", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+
+      mocks.get.mockRejectedValue(new Error("offline"));
+      list.selectCategory("c1");
+      await settle();
+
+      expect(list.error.value).toContain("połączenie");
+    });
+
+    it("ignores an older response that arrives after a newer request", async () => {
+      serve({ "": { items: [item("A")], next: null } });
+      const mounted = await mountList();
+      wrapper = mounted.wrapper;
+      await settle();
+
+      let finishFirst!: (value: unknown) => void;
+      mocks.get.mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)));
+      mocks.get.mockImplementationOnce(async () => ({ data: { items: [item("Nowy")], next: null }, response: { status: 200 } }));
+      mounted.list.selectCategory("c1");
+      await settle();
+      mounted.list.selectCategory("c2");
+      await settle();
+      finishFirst({ data: { items: [item("Stary")], next: null }, response: { status: 200 } });
+      await settle();
+
+      expect(mounted.list.items.value.map((row) => row.name)).toEqual(["Nowy"]);
+    });
   });
 
-  it("tells that the chosen category no longer exists on a 404", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
+  describe("the saved stock is an overlay over the items of the pager", () => {
+    const state = (overrides: Partial<StockState> = {}): StockState => ({
+      variantId: "var-A",
+      physical: 15,
+      reserved: 4,
+      available: 11,
+      level: "in_stock",
+      version: 4,
+      updatedAt: "2026-11-02T13:00:00+00:00",
+      ...overrides,
+    });
 
-    serve({}, 404);
-    list.selectCategory("gone");
-    await settle();
+    it("does not write to the items of the pager, the rows show the saved stock", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
 
-    expect(list.error.value).toContain("kategoria");
-  });
+      await list.receiveStock("var-A", { quantity: 5, note: null, key: "k" });
 
-  it("reports a network failure", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+      expect(list.items.value[0]!.variants[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
 
-    mocks.get.mockRejectedValue(new Error("offline"));
-    await list.goNext().catch(() => undefined);
-    list.selectCategory("c1");
-    await settle();
+    it("keeps the saved stock while the list is being refreshed, and when the refresh answers with the old one", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
+      await list.receiveStock("var-A", { quantity: 5, note: null, key: "k" });
 
-    expect(list.error.value).toContain("połączenie");
-  });
+      let respond: (page: StockList) => void = () => undefined;
+      mocks.get.mockImplementation(() => new Promise((resolve) => (respond = (page) => resolve({ data: page, response: { status: 200 } }))));
+      const retrying = list.retry();
+      await settle();
+      expect(list.rows.value[0]!.stock?.physical, "during the request the row does not go back to the old stock").toBe(15);
 
-  it("ignores an older response that arrives after a newer request", async () => {
-    let finishFirst!: (value: unknown) => void;
-    mocks.get.mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)));
-    mocks.get.mockImplementationOnce(async () => ({ data: { items: [item("Nowy")], next: null }, response: { status: 200 } }));
-    const mounted = mountList();
-    wrapper = mounted.wrapper;
+      respond({ items: [item("A")], next: null });
+      await retrying;
+      await settle();
+      expect(list.rows.value[0]!.stock?.physical).toBe(15);
 
-    mounted.list.selectCategory("c1");
-    await settle();
-    finishFirst({ data: { items: [item("Stary")], next: null }, response: { status: 200 } });
-    await settle();
-
-    expect(mounted.list.items.value.map((row) => row.name)).toEqual(["Nowy"]);
+      serve({ "": { items: [item("A", { stock: listed({ physical: 20, version: 5 }) })], next: null } });
+      await list.retry();
+      await settle();
+      expect(list.rows.value[0]!.stock?.physical, "a newer version from the list wins").toBe(20);
+    });
   });
 });
 
 describe("useStockList: receipts and corrections", () => {
   const RECEIPTS = "/api/v1/admin/variants/{variantId}/stock/receipts";
   const CORRECTIONS = "/api/v1/admin/variants/{variantId}/stock/corrections";
-  let wrapper: ReturnType<typeof mountList>["wrapper"] | undefined;
+  let wrapper: Awaited<ReturnType<typeof mountList>>["wrapper"] | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -258,7 +413,7 @@ describe("useStockList: receipts and corrections", () => {
 
   async function start(pages: Record<string, StockList>) {
     serve(pages);
-    const mounted = mountList();
+    const mounted = await mountList();
     wrapper = mounted.wrapper;
     await settle();
     return mounted.list;
@@ -407,7 +562,7 @@ describe("useStockList: receipts and corrections", () => {
       serve({ c1: { items: [item("A", { stock: { physical: 15, reserved: 4, available: 11, level: "in_stock", version: 4, updatedAt: "2026-11-02T13:00:00+00:00" } })], next: null } });
 
       expect(await list.receiveStock("var-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
-      expect(queries().at(-1)).toEqual({ after: "c1" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
       expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
     });
 
@@ -489,7 +644,7 @@ describe("useStockList: receipts and corrections", () => {
       const result = await list.correctStock("var-A", correction);
 
       expect(result).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
-      expect(queries().at(-1)).toEqual({ after: "c1" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
       expect(list.rows.value[0]!.stock).toMatchObject({ physical: 12, version: 4 });
     });
 

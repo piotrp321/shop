@@ -15,7 +15,6 @@ export const LEGACY_FILES = [
   "src/promotions/PromotionVariantPicker.vue",
   "src/views/DiscountCodeFormView.vue",
   "src/views/DiscountCodesView.vue",
-  "src/views/InventoryView.vue",
   "src/views/OrderDetailView.vue",
   "src/views/OrdersView.vue",
   "src/views/PromotionFormView.vue",

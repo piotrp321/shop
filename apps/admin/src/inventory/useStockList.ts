@@ -1,10 +1,16 @@
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, shallowRef, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { useCursorPager } from "@/composables/useCursorPager";
+import { type ListParam, useListUrlState } from "@/composables/useListUrlState";
+import { MAX_NAME_SEARCH_LENGTH, NAME_SEARCH_DEBOUNCE_MS, useNameSearch, validNameTerm } from "@/composables/useNameSearch";
+import type { CategoryLookup } from "@/products/useProductList";
+import { fetchStockPage, type ListedStock, type StockListItem, stockRows } from "./stockPage";
 
-export type StockListItem = components["schemas"]["StockListItemResponse"];
-type ListedStock = components["schemas"]["ListedStockResponse"];
+export type { StockListItem, StockRow } from "./stockPage";
+
 type StockState = components["schemas"]["StockStateResponse"];
+
 type ReceiveStockRequest = components["schemas"]["ReceiveStockRequest"];
 type CorrectStockRequest = components["schemas"]["CorrectStockRequest"];
 
@@ -17,20 +23,6 @@ export type StockChange =
   | { status: "invalid"; fields: Partial<Record<ChangeField, string>>; message: string | null }
   | { status: "conflict"; message: string }
   | { status: "failed"; message: string };
-
-/**
- * A row of the stock list: one variant with the product it belongs to. `first` marks the first variant of a product,
- * the row that shows the name of the product above its other variants.
- */
-export interface StockRow {
-  productId: string;
-  name: string;
-  variantId: string;
-  /** The values of the variant, empty for the default variant. */
-  label: string;
-  stock: ListedStock | null;
-  first: boolean;
-}
 
 export const CONFLICT_MESSAGE = "Stan został w międzyczasie zmieniony – odśwież";
 
@@ -69,134 +61,91 @@ function invalidChange(body: unknown): StockChange {
   return { status: "invalid", fields: joined, message };
 }
 
-/** The API searches names of 2 to 100 characters (code points, as it counts them), not UTF-16 units. */
-export const MIN_SEARCH_LENGTH = 2;
-export const MAX_SEARCH_LENGTH = 100;
-export const SEARCH_DEBOUNCE_MS = 300;
+/** The rules of the search by name are in `useNameSearch`. */
+export const MAX_SEARCH_LENGTH = MAX_NAME_SEARCH_LENGTH;
+export const SEARCH_DEBOUNCE_MS = NAME_SEARCH_DEBOUNCE_MS;
 
-interface StockQuery {
-  q?: string;
-  category?: string;
-  after?: string;
-}
+/** The page sizes of the list, in products; the default of the list is 10 (the API's own default is 25, so the size is always sent). */
+export const PER_PAGE_OPTIONS = [10, 25, 50];
+export const DEFAULT_PER_PAGE = 10;
 
-function characters(text: string): number {
-  return [...text].length;
-}
-
-function failureMessage(status: number): string {
-  switch (status) {
-    case 404:
-      return "Wybrana kategoria już nie istnieje. Wybierz inną.";
-    case 400:
-      return `Nieprawidłowe parametry wyszukiwania (HTTP ${status}).`;
-    default:
-      return `Nie udało się pobrać stanów magazynowych (HTTP ${status}).`;
-  }
-}
+export const EMPTY_MESSAGE = "Nie ma jeszcze produktów z wariantami.";
 
 /**
- * The stock list with a search by name (from two characters, after a pause in typing), a category filter and paging
- * with the cursors of the API. A page holds products, each with its variants; `rows` has a row per variant, in the
- * order of the products and of their variants. The panel keeps the stack of the cursors it has visited: `cursors[i]`
- * is the `after` of page i (null for the first), so "previous" is the cursor below the current one. Changing the
- * search or the category starts again from the first page. A failed request keeps the page that is shown and can be
- * retried. Every number and level in a row is the API's; the panel only shows them.
+ * The stock list: a search by name, a category filter and a page size (10, 25 or 50 products). The state lives in the
+ * address (`useListUrlState`: `q`, `category`, `perPage`) and the paging is `useCursorPager` over products, each with
+ * all its variants, so „Pokazano produkty X–Y” counts products; `rows` has a row per variant (`stockRows`), in the order
+ * of the products and of their variants. The request is `fetchStockPage`, the search by name `useNameSearch`.
+ * `categories` is the tree of the filter, as in `useProductList`: a category of the address that it does not have is skipped.
+ * Every number and level in a row is the API's; the panel only shows them.
  *
- * `receiveStock` and `correctStock` send a change of one variant and put the stock the API answers with into its row (the panel
- * computes nothing). A list answer that was asked before such a change is not allowed to bring back the older stock:
- * a stock saved since the newest list request started wins when its version is greater.
+ * `receiveStock` and `correctStock` send a change of one variant. The stock the API answers with is an overlay over the
+ * items of the pager (`savedStocks`, not written to them): a row shows it while the stock of the list is older (a smaller
+ * version) or missing, so neither a request that is still running nor a late answer of the list brings the old stock
+ * back (the panel computes nothing). The overlay is never cleared.
  */
-export function useStockList() {
-  const search = ref("");
-  const categoryId = ref<string | null>(null);
-  const items = ref<StockListItem[]>([]);
-  const next = ref<string | null>(null);
-  const cursors = ref<(string | null)[]>([null]);
-  const loading = ref(false);
-  const loaded = ref(false);
-  const error = ref<string | null>(null);
-
-  // The term the list was last asked for (null: all names); a pending debounce compares against it.
-  let appliedTerm: string | null = null;
-  let attempted: (string | null)[] = [null];
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  // Only the newest request may change the state; an older one that finishes late is ignored.
-  let latest = 0;
-  // The stocks saved since the newest list request started, by variant. Its answer can predate such a save, so a row
-  // it brings is replaced by the saved stock when that is newer (a greater version). Cleared when a request starts:
-  // the next one is asked after those saves, so it already has them.
-  const savedSinceLoad = new Map<string, ListedStock>();
-
-  const searchTooShort = computed(() => {
-    const length = characters(search.value.trim());
-    return length > 0 && length < MIN_SEARCH_LENGTH;
+export function useStockList(categories?: CategoryLookup) {
+  const known = computed(() => {
+    const ids = new Set<string>();
+    const walk = (level: CategoryLookup["nodes"]["value"]) => {
+      for (const node of level) {
+        ids.add(node.key);
+        walk(node.children);
+      }
+    };
+    walk(categories?.nodes.value ?? []);
+    return ids;
   });
-  const hasPrevious = computed(() => cursors.value.length > 1);
-  const hasNext = computed(() => next.value !== null);
-  const pageNumber = computed(() => cursors.value.length);
-  const rows = computed<StockRow[]>(() =>
-    items.value.flatMap((item) =>
-      item.variants.map((variant, index) => ({
-        productId: item.productId,
-        name: item.name,
-        variantId: variant.variantId,
-        label: variant.label,
-        stock: variant.stock,
-        first: index === 0,
-      })),
-    ),
-  );
 
-  async function load(stack: (string | null)[]): Promise<void> {
-    const request = ++latest;
-    savedSinceLoad.clear();
-    attempted = stack;
-    loading.value = true;
-    const query: StockQuery = {};
-    if (appliedTerm !== null) {
-      query.q = appliedTerm;
-    }
-    if (categoryId.value !== null) {
-      query.category = categoryId.value;
-    }
-    const after = stack[stack.length - 1];
-    if (after) {
-      query.after = after;
-    }
-    try {
-      const result = await getApiClient().GET("/api/v1/admin/stock", { params: { query } });
-      if (request !== latest) {
-        return;
-      }
-      if (result.data) {
-        items.value = result.data.items.map(withSavedStock);
-        next.value = result.data.next;
-        cursors.value = stack;
-        loaded.value = true;
-        error.value = null;
-      } else {
-        error.value = failureMessage(result.response.status);
-      }
-    } catch {
-      if (request === latest) {
-        error.value = "Nie udało się pobrać stanów magazynowych. Sprawdź połączenie z API.";
-      }
-    } finally {
-      if (request === latest) {
-        loading.value = false;
-      }
-    }
+  const url = useListUrlState({
+    q: { parse: validNameTerm, fallback: null } satisfies ListParam<string, null>,
+    category: {
+      parse: (raw) => raw,
+      fallback: null,
+      confirm: categories ? (id) => (categories.loaded.value ? known.value.has(id) : undefined) : undefined,
+    } satisfies ListParam<string, null>,
+    perPage: {
+      parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
+      fallback: DEFAULT_PER_PAGE,
+    } satisfies ListParam<number, number>,
+  });
+
+  const name = useNameSearch({ initial: url.address.value.q, apply: (term) => url.set({ q: term }) });
+  const pager = useCursorPager(fetchStockPage, url.query, { ready: url.ready });
+
+  // The address changed from outside: it is the new truth, also for what is in the field.
+  watch(url.address, (address) => name.setFromAddress(address.q));
+
+  // The stocks saved in this view, by variant. Never cleared: a stock of the list with a version that is not older wins.
+  const savedStocks = shallowRef(new Map<string, ListedStock>());
+
+  const items = computed<StockListItem[]>(() =>
+    savedStocks.value.size === 0
+      ? pager.items.value
+      : pager.items.value.map((item) => ({
+          ...item,
+          variants: item.variants.map((variant) => {
+            const saved = savedStocks.value.get(variant.variantId);
+            return saved && (variant.stock === null || saved.version > variant.stock.version) ? { ...variant, stock: saved } : variant;
+          }),
+        })),
+  );
+  const rows = computed(() => stockRows(items.value));
+
+  const filtered = computed(() => url.query.value.q !== null || url.query.value.category !== null);
+
+  function selectCategory(id: string | null): void {
+    url.set({ category: id });
   }
 
-  function withSavedStock(item: StockListItem): StockListItem {
-    return {
-      ...item,
-      variants: item.variants.map((variant) => {
-        const saved = savedSinceLoad.get(variant.variantId);
-        return saved && (variant.stock === null || saved.version > variant.stock.version) ? { ...variant, stock: saved } : variant;
-      }),
-    };
+  function setPerPage(size: number): void {
+    url.set({ perPage: size });
+  }
+
+  /** Drops the search, the category and the page size: the address is `/inventory` again. */
+  function clearFilters(): void {
+    name.reset();
+    url.clear();
   }
 
   /** The row's stock from the answer of the API; a variant still without a record (version null) has none. */
@@ -211,12 +160,8 @@ export function useStockList() {
   function saveStock(variantId: string, state: StockState): void {
     const stock = rowStock(state);
     if (stock) {
-      savedSinceLoad.set(variantId, stock);
+      savedStocks.value = new Map(savedStocks.value).set(variantId, stock);
     }
-    items.value = items.value.map((item) => ({
-      ...item,
-      variants: item.variants.map((variant) => (variant.variantId === variantId ? { ...variant, stock } : variant)),
-    }));
   }
 
   function blankToNull(note: string | null): string | null {
@@ -256,7 +201,7 @@ export function useStockList() {
       // A 409 here is a reused key; the API says so in `detail`. The first request with this key may have been saved
       // although its answer was lost, so the page is reloaded to show the row as it is now (and not to receive twice).
       if (result.response.status === 409) {
-        await load(cursors.value);
+        await pager.refresh();
       }
       return changeFailure(result.response.status, result.error, "API odrzuciło przyjęcie");
     } catch {
@@ -291,7 +236,7 @@ export function useStockList() {
         return { status: "saved" };
       }
       if (result.response.status === 409) {
-        await load(cursors.value);
+        await pager.refresh();
         const row = rows.value.find((candidate) => candidate.variantId === variantId);
         if (row && (row.stock?.version ?? null) !== input.version) {
           return { status: "conflict", message: CONFLICT_MESSAGE };
@@ -303,75 +248,28 @@ export function useStockList() {
     }
   }
 
-  watch(search, () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      const term = search.value.trim();
-      const length = characters(term);
-      if (length > 0 && length < MIN_SEARCH_LENGTH) {
-        // Too short to ask: the list stays as it is and the hint says why.
-        return;
-      }
-      const effective = length >= MIN_SEARCH_LENGTH ? term : null;
-      if (effective !== appliedTerm) {
-        appliedTerm = effective;
-        startFromFirstPage();
-        void load([null]);
-      }
-    }, SEARCH_DEBOUNCE_MS);
-  });
-
-  // The cursors and `next` belong to the list of the old filter. Dropping them now means that if the request for the
-  // new filter fails, the pager cannot pair the new filter with an old cursor: it stays off until a retry succeeds.
-  function startFromFirstPage(): void {
-    cursors.value = [null];
-    next.value = null;
-  }
-
-  function selectCategory(id: string | null): void {
-    if (id !== categoryId.value) {
-      categoryId.value = id;
-      startFromFirstPage();
-      void load([null]);
-    }
-  }
-
-  function goNext(): Promise<void> {
-    return next.value === null ? Promise.resolve() : load([...cursors.value, next.value]);
-  }
-
-  function goPrevious(): Promise<void> {
-    return hasPrevious.value ? load(cursors.value.slice(0, -1)) : Promise.resolve();
-  }
-
-  function retry(): Promise<void> {
-    return load(attempted);
-  }
-
-  onMounted(() => {
-    void load([null]);
-  });
-
-  onUnmounted(() => {
-    clearTimeout(timer);
-    latest++;
-  });
-
   return {
-    search,
-    searchTooShort,
+    search: name.search,
+    searchTooShort: name.tooShort,
+    searchHint: name.hint,
+    query: url.query,
+    filtered,
     items,
     rows,
-    loading,
-    loaded,
-    error,
-    hasPrevious,
-    hasNext,
-    pageNumber,
+    loading: pager.loading,
+    loaded: pager.loaded,
+    error: pager.error,
+    forbidden: pager.forbidden,
+    hasPrevious: pager.hasPrevious,
+    hasNext: pager.hasNext,
+    pageNumber: pager.pageNumber,
+    range: pager.range,
     selectCategory,
-    goNext,
-    goPrevious,
-    retry,
+    setPerPage,
+    clearFilters,
+    goNext: pager.goNext,
+    goPrevious: pager.goPrevious,
+    retry: pager.retry,
     receiveStock,
     correctStock,
   };
