@@ -13,8 +13,9 @@
 #                                              unbroken copy runs next to the cases; the output of a case is printed whole,
 #                                              when the case ends.
 # What the cases share is the cache of the tools (TOOLS_CACHE): check.sh and render.sh write their files to directories named
-# by their process, a chart archive enters the cache of monitoring-render.sh only after its digest is checked, and
-# kubeconform only adds schema files to its cache.
+# by their process, and a chart archive enters the cache of monitoring-render.sh only after its digest is checked. kubeconform
+# writes the schemas it downloads to its cache in place, not atomically: on a cold cache two cases that run it at the same time
+# (with SELFTEST_FULL=1 all of them do) could read a half-written file, so run `make -C infra/k8s check` once before such a run.
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -29,12 +30,24 @@ if [ -z "$parallel" ]; then
   case "$parallel" in ''|*[!0-9]*|0) parallel=1 ;; esac
 fi
 case "$parallel" in
-  ''|*[!0-9]*|0) echo "selftest: SELFTEST_JOBS='$parallel' is not a positive integer" >&2; exit 2 ;;
+  ''|*[!0-9]*) echo "selftest: SELFTEST_JOBS='$parallel' is not a positive integer" >&2; exit 2 ;;
 esac
+# Leading zeros are dropped (00 is 0, and 08 is no octal number). More jobs than cases are of no use, and every slot is a byte in
+# a fifo of 64 KiB: the number is capped.
+given="$parallel"
+parallel="${parallel#"${parallel%%[!0]*}"}"
+case "$parallel" in
+  '') echo "selftest: SELFTEST_JOBS='$given' is not a positive integer" >&2; exit 2 ;;
+esac
+[ "${#parallel}" -le 3 ] && [ "$parallel" -le 256 ] || parallel=256
 
 mkdir -p "$TOOLS_CACHE"
 base="$(mktemp -d "$TOOLS_CACHE/selftest-XXXXXX")"
-# An interrupted run stops its jobs (the containers they started finish on their own) and removes every tree.
+case_no=0
+child_pids=""
+job_stopped=""
+# An interrupted run stops its jobs and the check.sh they run (the containers started by the steps finish on their own) and
+# removes every tree.
 cleanup() {
   # shellcheck disable=SC2086 # a list of process numbers
   [ -z "$child_pids" ] || kill $child_pids 2>/dev/null || true
@@ -55,15 +68,15 @@ while [ "$slot" -lt "$parallel" ]; do
   slot=$((slot + 1))
 done
 printf '\n' >&4
-case_no=0
-child_pids=""
-job_stopped=""
 
 # job_done <id> <label> <status of the job>: the EXIT trap of a job. A job that stopped without saying FAIL (a case whose setup
-# exited because it is out of date, a command that failed) fails the run too.
+# exited because it is out of date, a command that failed) fails the run too. Nothing in it may stop it half way (a closed
+# output, a failed cat): the print token goes back and the marker of the end is the last thing it writes. Without the marker
+# the run reports the job as lost (a job killed by the system never gets here).
 job_done() {
-  # A job that is stopped (an interrupted run) prints nothing and takes no token: the run is over.
+  # A job that is stopped (an interrupted run) prints nothing: the run is over.
   [ -z "$job_stopped" ] || return 0
+  set +e
   if [ "$3" -ne 0 ]; then
     : > "$base/failed-$1"
     grep -q '^selftest: FAIL' "$base/$1.err" || echo "selftest: FAIL $2: it stopped with the status $3" >> "$base/$1.err"
@@ -73,20 +86,33 @@ job_done() {
   cat "$base/$1.err" >&6
   printf '\n' >&4
   rm -rf "$base/tree-$1"
-  printf '\n' >&3
+  : > "$base/done-$1"
+  return 0
 }
 
-# start_job <id> <label> <command...>: runs the command in the background as soon as a slot is free, its output in files.
+# start_job <id> <label> <command...>: runs the command in the background as soon as a slot is free, its output in files. The
+# job is a subshell of a subshell: the outer one gives the slot back when the job is over, however it ended.
 start_job() {
   job_id="$1" job_label="$2"
   shift 2
+  printf '%s' "$job_label" > "$base/name-$job_id"
   read -r _ <&3
   (
-    job_stopped=""
-    trap 'job_stopped=1; exit 143' INT TERM
-    trap 'job_done "$job_id" "$job_label" "$?"' EXIT
-    "$@"
-  ) > "$base/$job_id.out" 2> "$base/$job_id.err" &
+    set +e
+    (
+      set -e
+      job_stopped=""
+      check_pid=""
+      # A stopped job stops its check.sh (run_check). A background job ignores SIGINT, so the run sends SIGTERM.
+      trap 'job_stopped=1; [ -z "$check_pid" ] || kill "$check_pid" 2>/dev/null; exit 143' TERM
+      trap 'job_done "$job_id" "$job_label" "$?"' EXIT
+      "$@"
+    ) > "$base/$job_id.out" 2> "$base/$job_id.err" &
+    job_pid=$!
+    trap 'kill "$job_pid" 2>/dev/null; exit 143' TERM
+    wait "$job_pid"
+    printf '\n' >&3
+  ) &
   child_pids="$child_pids $!"
 }
 
@@ -196,6 +222,19 @@ run_case() {
   start_job "$case_no" "$name" run_injected_case "$case_no" "$name" "$expected" "$check_steps" "$tests_filter" "$@"
 }
 
+# run_check <id> <tests filter> [<step>...]: check.sh of the tree of the job (all steps without arguments), its output in
+# $base/<id>.check, the status that of check.sh. It runs in the background, so that a stopped job can stop it.
+run_check() {
+  check_id="$1" check_filter="$2"
+  shift 2
+  CHECK_TESTS_FILTER="$check_filter" sh "$tree/infra/k8s/scripts/check.sh" "$@" > "$base/$check_id.check" 2>&1 &
+  check_pid=$!
+  check_status=0
+  wait "$check_pid" || check_status=$?
+  check_pid=""
+  return "$check_status"
+}
+
 # run_injected_case <id> <name> <expected> <check steps> <tests filter> <command that injects the error>: the body of the job of
 # a case; the status is 1 when the case fails.
 run_injected_case() {
@@ -204,10 +243,10 @@ run_injected_case() {
   fresh_copy "$id"
   "$@"
   # shellcheck disable=SC2086 # $check_steps is a list of steps
-  if output="$(CHECK_TESTS_FILTER="$tests_filter" sh "$tree/infra/k8s/scripts/check.sh" $check_steps 2>&1)"; then
+  if run_check "$id" "$tests_filter" $check_steps; then
     echo "selftest: FAIL $name: the check passed with the injected error" >&2
     return 1
-  elif printf '%s' "$output" | grep -qF -- "$expected"; then
+  elif output="$(cat "$base/$id.check")" && printf '%s' "$output" | grep -qF -- "$expected"; then
     echo "selftest: ok   $name (the check failed: $expected)"
   else
     echo "selftest: FAIL $name: the check failed, but not with '$expected':" >&2
@@ -219,7 +258,7 @@ run_injected_case() {
 # The unbroken copy passes the whole check.
 run_unbroken_copy() {
   fresh_copy unbroken
-  if CHECK_TESTS_FILTER='' sh "$tree/infra/k8s/scripts/check.sh" > /dev/null 2>&1; then
+  if run_check unbroken ''; then
     echo "selftest: ok   the unbroken copy passes the whole check"
   else
     echo "selftest: FAIL the unbroken copy does not pass the check" >&2
@@ -480,9 +519,18 @@ run_case "deploy.yml missing" "deploy.yml is missing" "actionlint" deploy_workfl
 wait
 # Every job is over: nothing is left for cleanup to stop (and no process number to be reused by another process).
 child_pids=""
-set -- "$base"/failed-*
 failures=0
-[ ! -e "$1" ] || failures=$#
+for name_file in "$base"/name-*; do
+  [ -e "$name_file" ] || continue
+  id="${name_file##*/name-}"
+  if [ ! -e "$base/done-$id" ]; then
+    # The job was killed (by the system, for lack of memory) before it could report.
+    echo "selftest: FAIL $(cat "$name_file"): it did not report a result" >&2
+    failures=$((failures + 1))
+  elif [ -e "$base/failed-$id" ]; then
+    failures=$((failures + 1))
+  fi
+done
 if [ "$failures" -ne 0 ]; then
   echo "selftest: $failures case(s) failed" >&2
   exit 1
