@@ -150,10 +150,11 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
   bezczynności (`useIdleLogout`). SDK jest w bundlu (CSP `script-src 'self'` bez zmian, bez skryptu z CDN). Nagłówki
   bezpieczeństwa i treść `security-headers.conf` bez zmian.
 - **D10. Mapy źródeł (P3).** Budowanie `prod` sklepu i panelu generuje mapy, wysyła je przy dostępnym sekrecie i usuwa
-  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, `filesToDeleteAfterUpload`), a bez sekretu nie
-  zostawia ich w etapie `prod`. Sekret trafia wyłącznie do kroków budowania w jobie `images`; job `smoke` (także na
+  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, w panelu też `filesToDeleteAfterUpload`) i `find ... -delete`
+  na końcu budowania, a bez sekretu nie zostawia ich w etapie `prod`. Sekret trafia wyłącznie do kroków budowania w jobie `images`; job `smoke` (także na
   PR) buduje bez niego. Flaga wysyłki to argument budowania (`ARG`), który wchodzi do klucza cache, więc warstwa
-  zbudowana bez wysyłki nie jest używana przy wysyłce. Telemetria wtyczek budowania wyłączona (`telemetry: false`).
+  zbudowana bez wysyłki nie jest używana przy wysyłce. Telemetria wtyczek budowania wyłączona (`telemetry: false`), a CLI Sentry, przez które wysyłają mapy, ma własną: wyłącza ją
+  `SENTRY_CLI_NO_TELEMETRY=1` w etapie `build` obu Dockerfile.
   Organizacja i projekty Sentry dla wysyłki ze zmiennych repozytorium GitHub (`SENTRY_ORG`, `SENTRY_PROJECT_STORE`,
   `SENTRY_PROJECT_ADMIN`); token nie trafia do warstw obrazu ani logu. Obraz `dev` i budowanie w `ci.yml` bez zmian.
 - **D11. Compose.** Plik compose się nie zmienia: api, worker i sklep mogą dostać `SENTRY_*` z `.env.local` (już czytają go

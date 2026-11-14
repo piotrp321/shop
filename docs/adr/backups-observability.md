@@ -139,7 +139,10 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   i panelu zgłasza SDK przeglądarki, błąd serwera sklepu `onRequestError`. Ograniczone limity darmowego planu chronią: próbkowanie 0,1,
   brak zdarzeń z 4xx, ochrona przed skokami i limity zdarzeń w ustawieniach projektów (runbook).
 - **Mapy źródeł sklepu i panelu** idą do Sentry z budowania obrazów produkcyjnych na `main` (job `images` workflowu `deploy.yml`,
-  token jako sekret budowania), dopasowane przez debug ID i usuwane z obrazu, więc nie są publiczne.
+  token jako sekret budowania, flaga wysyłki jako argument budowania, więc część klucza cache), dopasowane przez debug ID
+  i usuwane z obrazu: etapy `prod` nie zawierają żadnego pliku `.map`, więc mapy nie są publiczne. Bez sekretu wysyłka jest
+  pomijana (wpis w podsumowaniu runu), a wysyłka, która się nie uda, kończy budowanie obrazu błędem. Telemetria wtyczek budowania
+  jest wyłączona.
 
 ## Konsekwencje
 

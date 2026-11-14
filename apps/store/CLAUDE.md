@@ -44,7 +44,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - `apps/store/Dockerfile` ma etapy `node` (wspólna baza), `build`, `prod` i `dev`; `dev` jest ostatni, bo compose buduje
   sklep bez `target`. `docker build --target prod apps/store` działa bez stosu i bez sekretów.
-- `build` uruchamia `next build` z `STORE_STANDALONE=1`. Tylko ta zmienna włącza w `next.config.ts` `output:
+- `build` uruchamia `next build` z `STORE_STANDALONE=1` (mapy źródeł: patrz „Sentry”, w obrazie nie zostaje żaden `.map`). Tylko ta zmienna włącza w `next.config.ts` `output:
   "standalone"`; lokalny `STORE_MODE=production` (`next build` i `next start` w compose) buduje jak dotąd, bez standalone.
   Nie ustawiaj `STORE_STANDALONE` nigdzie poza Dockerfile.
 - `prod` zawiera tylko serwer standalone (prześledzone zależności, `.next/static`, `public`), działa jako użytkownik
@@ -646,8 +646,8 @@ Spec: `docs/features/sentry/spec.md`.
 - Serwer: `register` (tylko runtime `nodejs`) uruchamia `initServerSentry` (`src/observability/server.ts`), a błędy
   żądań (renderowanie, route handlery, server actions) zgłasza wyłącznie `onRequestError` (`captureRequestError` SDK):
   jeden błąd to jedno zdarzenie. Obsłużone błędy BFF (odpowiedź 502 i `console.error`) nie są zdarzeniami, a logi
-  konsoli nie trafiają do Sentry także jako breadcrumbs. `withSentryConfig` nie jest używany (mapy źródeł to osobne
-  zadanie), więc SDK nie owija komponentów ani tras.
+  konsoli nie trafiają do Sentry także jako breadcrumbs. SDK nie owija komponentów ani tras. `withSentryConfig` jest
+  używany tylko do map źródeł (patrz „Mapy źródeł”) i tylko w budowaniu obrazu z wysyłką.
 - Trace'y serwera: próbkowanie `SENTRY_TRACES_SAMPLE_RATE`, jedna transakcja na żądanie (`traceLifecycle: "static"`:
   domyślne w tej wersji SDK strumieniowanie pojedynczych spanów omija `beforeSendTransaction`, czyli filtr); `sentry-trace` i `baggage` dostają tylko wywołania do
   originów `API_INTERNAL_URL` i `API_CATALOG_URL` (`apiPropagationTargets`: wyrażenia zakotwiczone, bo cel tekstowy SDK
@@ -683,6 +683,23 @@ Spec: `docs/features/sentry/spec.md`.
   koszyka, jedyny sekret w ścieżkach, które sklep woła i obsługuje): w adresie żądania, nazwie transakcji, opisach
   i danych spanów, breadcrumbs i tekstach. Wzorce działają w czasie liniowym (adres e-mail zaczyna się tylko po znaku,
   którego w nim nie ma).
+- Mapy źródeł (spec: P3, D10; `sentryBuildOptions` i `withSourceMaps` w `next.config.ts`, test
+  `tests/sentry-source-maps.test.ts`): przy `SENTRY_UPLOAD=true` w budowaniu `prod` (Turbopack) build zapisuje mapy
+  przeglądarki i debug ID (`productionBrowserSourceMaps`, `turbopack.debugIds`), a hook `compiler.runAfterProductionCompile`
+  z `@sentry/nextjs` wysyła mapy serwera i przeglądarki, dopasowane przez debug ID (bez tworzenia release'u), usuwa je z
+  `.next/static` (`deleteSourcemapsAfterUpload`, domyślne usuwanie Turbopacka; bez `filesToDeleteAfterUpload`, bo hook działa
+  przed śladami tras i kopiowaniem `standalone`, a usunięte wcześniej mapy serwera mogłyby je zepsuć) i zdejmuje komentarze
+  `sourceMappingURL`; błąd wysyłki przerywa build (`errorHandler` rzuca), telemetria wtyczki jest wyłączona (`telemetry: false`),
+  a telemetrię CLI Sentry, przez które wtyczka wysyła, wyłącza `ENV SENTRY_CLI_NO_TELEMETRY=1` w etapie `build` Dockerfile. `withSentryConfig` (`@sentry/nextjs/config`, ładowany tylko przy wysyłce, bo ciągnie SDK
+  Node.js do każdego procesu czytającego config) działa na kopii configu, a z jego wyniku bierze się tylko te trzy ustawienia:
+  poza nimi dodaje m.in. meta tagi śladu w HTML (`experimental.clientTraceMetadata`), zewnętrzne pakiety, loadery i zmienne
+  wbudowane w bundle, więc to nie wchodzi do sklepu (test porównuje wynik z wejściowym configiem). Budowanie bez Turbopacka z flagą
+  kończy się błędem. Flaga bez `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` albo `SENTRY_PROJECT` też. Bez flagi `next.config.ts` jest jak
+  dotąd i nic nie idzie do Sentry. Dockerfile: flaga, organizacja i projekt to `ARG` etapu `build` (przed budowaniem, więc w
+  kluczu cache), token to sekret budowania `sentry_auth_token` (`RUN --mount=type=secret`, nigdy `ARG` ani `ENV`); po budowaniu
+  `find .next -name '*.map' -delete` usuwa każdy `.map` (serwera, `standalone` i puste pliki wejściowe tras, które Next zapisuje zawsze), więc etap
+  `prod` nigdy ich nie ma; test dymny (`infra/k8s/smoke/checks.py`) sprawdza, że sklep ich nie serwuje. Flagę ustawia tylko job
+  `images` workflowu `deploy.yml` (`infra/k8s/CLAUDE.md`).
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w
   `src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy (`infra/k8s/argocd/apps/monitoring.yaml`,
   korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy korpusu `store.log`, `api.log`
@@ -807,7 +824,7 @@ Spec: `docs/features/sentry/spec.md`.
   zegarów Vitest (`vi.useFakeTimers`); wywołanie `window.location.assign` jest za `navigateTo`, które testy podmieniają.
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
-- Sentry (`src/observability/*.test.ts`, `tests/instrumentation.test.ts`, `tests/sentry-lazy.test.ts`, `app/error.test.tsx`)
+- Sentry (`src/observability/*.test.ts`, `tests/instrumentation.test.ts`, `tests/sentry-lazy.test.ts`, `tests/sentry-source-maps.test.ts` (konfiguracja map źródeł), `app/error.test.tsx`)
   bez konta i bez ruchu do Sentry: test serwera uruchamia `register` z fałszywym DSN wskazującym lokalny serwer, który
   zbiera koperty, i lokalne atrapy API i Keycloaka; test przeglądarki działa na buildzie przeglądarkowym
   `@sentry/nextjs` (Vitest bierze inaczej build serwerowy; `vitest.config.ts` przetwarza go przez Vite) z transportem
