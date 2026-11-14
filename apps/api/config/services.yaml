@@ -27,6 +27,8 @@ parameters:
     # chunk takes from the database (drafts count).
     app.sitemap.chunk_size: 10000
     app.sitemap.row_limit: 50000
+    # Sampling of the traces without SENTRY_TRACES_SAMPLE_RATE (config/packages/sentry.yaml).
+    app.sentry.traces_sample_rate: '0'
 
 services:
     _defaults:
@@ -196,6 +198,38 @@ services:
     App\Catalog\Application\Port\SitemapProductSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
+    # The callbacks of the Sentry SDK (config/packages/sentry.yaml): the correlation tag and the filter of the events.
+    app.sentry.before_send:
+        class: Closure
+        factory: [Closure, fromCallable]
+        arguments: [['@App\Shared\Infrastructure\Observability\SentryEventProcessor', beforeSend]]
+    app.sentry.before_send_transaction:
+        class: Closure
+        factory: [Closure, fromCallable]
+        arguments: [['@App\Shared\Infrastructure\Observability\SentryEventProcessor', beforeSendTransaction]]
+    app.sentry.before_breadcrumb:
+        class: Closure
+        factory: [Closure, fromCallable]
+        arguments: [['@App\Shared\Infrastructure\Observability\SentryEventProcessor', beforeBreadcrumb]]
+
+    # The handler of the explicit logs of the application (config/packages/monolog.yaml): from `error` up, never a log
+    # with an exception in its context (it goes through the channel of its source), and without the context of the log.
+    app.sentry.monolog_handler:
+        class: Sentry\Monolog\LogToSentryIssueHandler
+        arguments:
+            $hub: '@Sentry\State\HubInterface'
+            $level: error
+            $fillExtraContext: false
+
+    # The console listener of the bundle reports the uncaught exceptions of the commands only when the error listener of
+    # the bundle is on, which it is not (ServerErrorReporter reports the HTTP errors): the same definition, reporting.
+    Sentry\SentryBundle\EventListener\ConsoleListener:
+        arguments: ['@Sentry\State\HubInterface', true]
+        tags:
+            - { name: kernel.event_listener, event: console.command, method: handleConsoleCommandEvent, priority: 128 }
+            - { name: kernel.event_listener, event: console.terminate, method: handleConsoleTerminateEvent, priority: -64 }
+            - { name: kernel.event_listener, event: console.error, method: handleConsoleErrorEvent, priority: -64 }
+
 when@test: &test
     parameters:
         # Integration tests use their own bucket, like the `_test` database.
@@ -323,5 +357,14 @@ when@test: &test
         # Replaced by the delivery tests with a builder that signs with the secrets of the shared test vector.
         App\PaymentSimulator\SimulatedWebhooks:
             public: true
+        # The HTTP client of the Sentry SDK in the tests (config/packages/sentry.yaml): keeps what would be sent.
+        App\Tests\Functional\Shared\Sentry\RecordingSentryHttpClient:
+            public: true
+        # The transport of the shared HTTP client (below the decorator of Sentry, priority -15): keeps the headers of
+        # the requests that leave the API.
+        App\Tests\Functional\Shared\Sentry\RecordingOutgoingHttpClient:
+            public: true
+            decorates: http_client.transport
+            decoration_priority: 0
 
 when@test_messaging: *test

@@ -16,6 +16,28 @@ final class CorsTest extends WebTestCase
         self::assertSame($admin, $response->headers->get('Access-Control-Allow-Origin'));
     }
 
+    /**
+     * The panel continues its trace in the API with sentry-trace and baggage (spec: docs/features/sentry/spec.md, D7).
+     */
+    public function testTheAdminOriginMaySendTheTracingHeadersOfSentry(): void
+    {
+        $admin = $this->env('ADMIN_URL');
+        $client = static::createClient();
+        $client->request('OPTIONS', '/api/v1/admin/orders', server: [
+            'HTTP_ORIGIN' => $admin,
+            'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET',
+            'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'authorization, sentry-trace, baggage',
+        ]);
+
+        $response = $client->getResponse();
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame($admin, $response->headers->get('Access-Control-Allow-Origin'));
+        $allowed = array_map(trim(...), explode(',', strtolower((string) $response->headers->get('Access-Control-Allow-Headers'))));
+        self::assertContains('sentry-trace', $allowed);
+        self::assertContains('baggage', $allowed);
+        self::assertContains('authorization', $allowed);
+    }
+
     public function testStoreOriginIsNotAllowed(): void
     {
         self::assertNull($this->preflight('/api/v1/anything', $this->env('STORE_URL'))->headers->get('Access-Control-Allow-Origin'));
