@@ -255,3 +255,4 @@ for name in $steps; do
   "do_$name"
 done
 printf '\ncheck: ok (%s)\n' "$steps"
+# probe
