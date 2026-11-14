@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Search } from "lucide-vue-next";
-import { computed, ref, useId } from "vue";
+import { computed, nextTick, ref, useId } from "vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCursorPager } from "@/composables/useCursorPager";
+import { usePagerFocus } from "@/composables/usePagerFocus";
 import { MAX_NAME_SEARCH_LENGTH, useNameSearch } from "@/composables/useNameSearch";
+import { focusAfterAction } from "@/lib/focus";
 import { formatMoney } from "@/prices/format";
 import { fetchPricePage, type PriceQuery, type PriceRow, priceRows } from "@/prices/pricePage";
 import { CURRENCY } from "./format";
@@ -38,6 +40,26 @@ const { loading, loaded, error, hasPrevious, hasNext, pageNumber, goNext, goPrev
 
 const hintId = useId();
 const searchField = ref<InstanceType<typeof Input> | null>(null);
+
+const previousButton = ref<InstanceType<typeof Button> | null>(null);
+const nextButton = ref<InstanceType<typeof Button> | null>(null);
+const retryButton = ref<InstanceType<typeof Button> | null>(null);
+const region = ref<HTMLElement | null>(null);
+const { press, onFocusOut } = usePagerFocus({ hasPrevious, hasNext, previous: previousButton, next: nextButton });
+
+function goTo(which: "previous" | "next"): void {
+  press(which);
+  void (which === "next" ? goNext() : goPrevious());
+}
+
+// A retry ends with the focus where it can be, never on the body: on the button while it is still there (the alert stays
+// after another failure), otherwise on the table that came, or on the search when the list is empty.
+async function retryAndRefocus(): Promise<void> {
+  const trigger = (retryButton.value?.$el as HTMLElement | undefined) ?? null;
+  await retry();
+  await nextTick();
+  focusAfterAction(trigger, region.value ?? ((searchField.value?.$el as HTMLElement | undefined) ?? null));
+}
 
 function focusSearch(): void {
   (searchField.value?.$el as HTMLElement | undefined)?.focus();
@@ -134,12 +156,12 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
       <AlertDescription class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span>{{ error }}</span>
         <Button
+          ref="retryButton"
           type="button"
           variant="outline"
           size="sm"
           data-testid="picker-retry"
-          :disabled="loading"
-          @click="retry()"
+          @click="retryAndRefocus()"
         >
           Spróbuj ponownie
         </Button>
@@ -156,6 +178,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
       </p>
       <div
         v-else
+        ref="region"
         role="region"
         aria-label="Warianty do wyboru"
         tabindex="0"
@@ -264,26 +287,29 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
     <div
       v-if="loaded"
       class="flex flex-wrap items-center justify-end gap-3"
+      @focusout="onFocusOut"
     >
       <Button
+        ref="previousButton"
         type="button"
         variant="outline"
         size="sm"
         data-testid="picker-previous"
-        :disabled="!hasPrevious || loading"
-        @click="goPrevious()"
+        :disabled="!hasPrevious"
+        @click="goTo('previous')"
       >
         <ChevronLeft aria-hidden="true" />
         Poprzednia
       </Button>
       <span class="min-w-20 text-center text-sm tabular-nums">Strona {{ pageNumber }}</span>
       <Button
+        ref="nextButton"
         type="button"
         variant="outline"
         size="sm"
         data-testid="picker-next"
-        :disabled="!hasNext || loading"
-        @click="goNext()"
+        :disabled="!hasNext"
+        @click="goTo('next')"
       >
         Następna
         <ChevronRight aria-hidden="true" />
