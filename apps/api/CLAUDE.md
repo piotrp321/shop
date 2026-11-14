@@ -870,6 +870,9 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   i mnożnik jak w produkcji, pilnuje tego `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
   Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s,
   timeouty DSN Redisa, limity klienta HTTP), czekają ich prawdziwy czas.
+- Baza `shop_test` ma `synchronous_commit = off` (`infra/postgres/init/10-create-databases.sh`, tylko świeży wolumen):
+  testy współbieżności zatwierdzają setki krótkich transakcji jedna po drugiej, a trwały commit (fsync) każdej z nich
+  dominuje ich czas na wolnym dysku. Blokady i izolacja się nie zmieniają.
 
 ## Czego nie robić
 
