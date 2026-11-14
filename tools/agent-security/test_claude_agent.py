@@ -175,14 +175,6 @@ class StartTest(WrapperTestCase):
         for path in fs['allowRead'] + fs['allowWrite']:
             self.assertFalse(path in (self.ao_home, os.path.join(self.ao_home, 'tasks')), path)
 
-    def test_the_user_tmpdir_and_runtime_scratch_are_writable(self):
-        fs = self.settings(self.started(*AO_ARGS))['sandbox']['filesystem']
-        self.assertIn(self.tmpdir, fs['allowWrite'])
-        self.assertIn(self.tmpdir, fs['allowRead'])
-        scratch = '/private/tmp/claude-%d' % os.getuid()
-        self.assertTrue(scratch in fs['allowRead'] or ('/tmp/claude-%d' % os.getuid()) in fs['allowRead'],
-                        fs['allowRead'])
-
     def test_integration_task_gets_the_integration_directory_of_its_epic(self):
         self.task_dir('X-INTEGRATION-2')
         settings = self.settings(self.started(*AO_ARGS, AO_TASK_ID='X-INTEGRATION-2'))

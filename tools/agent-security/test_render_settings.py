@@ -184,22 +184,23 @@ class RenderPathsTest(RenderTestCase):
         self.assertEqual(settings['sandbox']['network']['allowUnixSockets'], [])
         self.assertTrue(settings['sandbox']['network']['allowedDomains'])
 
-    def test_open_temp_reopens_a_denied_temp_path(self):
-        # a /tmp subpath that need not exist and whose /tmp form is a symlink is still accepted (trusted wrapper input)
-        settings = self.render('--workdir', self.work, '--open-temp', '/tmp/claude-501',
-                               '--open-temp', '/private/tmp/claude-501')
-        fs = settings['sandbox']['filesystem']
-        self.assertIn('/tmp/claude-501', fs['allowRead'])
-        self.assertIn('/tmp/claude-501', fs['allowWrite'])
-        self.assertIn('/private/tmp/claude-501', fs['allowRead'])
-        self.assertIn(self.home, fs['denyRead'])  # denyRead ~ (expanded) still present
+    def test_no_option_opens_a_shared_temporary_directory(self):
+        # The executor's temporary directories live in its worktree (claude-agent); nothing re-opens /tmp,
+        # /private/tmp or the user's /var/folders temp, so a symlink planted there cannot redirect access.
+        for value in ('/tmp/claude-501', '/private/tmp/claude-501', '/private/var/folders/x/T'):
+            self.refused('--workdir', self.work, '--open-temp', value)
+        for args in (('--workdir', self.work), ('--workdir', self.work, '--git-common-dir', self.git,
+                                                '--state-dir', self.task)):
+            fs = self.render(*args)['sandbox']['filesystem']
+            for path in fs['allowRead'] + fs['allowWrite']:
+                if path.startswith(self.tmp + '/'):
+                    continue   # the test's own directories (HOME) happen to live in the system temp
+                self.assertFalse(path.startswith(('/tmp', '/private/tmp', '/var/folders', '/private/var')), path)
 
-    def test_open_temp_rejects_home_and_protected_paths(self):
-        self.refused('--workdir', self.work, '--open-temp', self.home)
-        self.refused('--workdir', self.work, '--open-temp', os.path.join(self.home, '.ssh'))
-        self.refused('--workdir', self.work, '--open-temp', '/')
-        self.refused('--workdir', self.work, '--open-temp', 'relative/tmp')
-        self.refused('--workdir', self.work, '--open-temp', '/tmp/a*')
+    def test_the_module_has_no_temp_option(self):
+        module = load_module()
+        with self.assertRaises(TypeError):
+            module.render(template(), self.home, self.work, temp_dirs=['/tmp/claude-501'])
 
     def test_the_module_renders_the_same(self):
         module = load_module()

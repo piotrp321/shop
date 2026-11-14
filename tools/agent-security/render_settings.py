@@ -16,10 +16,6 @@ removes them. Every option only adds to them:
   --state-dir        read and write (a task directory of AO); also a working directory of the file tools.
   --read-dir         read only; also a working directory of the file tools.
   --deny-write       write-protected (absolute path; need not exist).
-  --open-temp        read and write, re-opening a path under a denyRead temp region (the sandbox runtime scratch
-                     /tmp/claude-<uid> and its /private form). Absolute, no glob, not /, ~ or a protected directory;
-                     the symlink and existence checks are skipped (the path is a fixed, wrapper-computed temp path,
-                     not user input, and /tmp is a symlink on macOS).
   --no-network       no GitHub domains and no allowLocalBinding (strictAllowlist stays: no network at all).
   --no-docker        no Docker socket.
 
@@ -106,20 +102,6 @@ def deny_path(path):
     return os.path.normpath(path)
 
 
-def temp_path(path, home):
-    """A fixed, wrapper-computed temp path to re-open (no symlink or existence check; /tmp is a symlink on macOS)."""
-    if not isinstance(path, str) or not os.path.isabs(path) or FORBIDDEN_CHARACTERS.search(path):
-        raise SettingsError('--open-temp %r: ścieżka musi być bezwzględna, bez znaków globu i sterujących' % (path,))
-    path = os.path.normpath(path)
-    if path == '/' or _inside(home, path):
-        raise SettingsError('--open-temp %s: to katalog główny, domowy albo jego przodek' % path)
-    for name in PROTECTED:
-        protected = os.path.join(home, name)
-        if _inside(path, protected) or _inside(protected, path):
-            raise SettingsError('--open-temp %s: nakłada się na chroniony katalog %s' % (path, protected))
-    return path
-
-
 def _expand(path, home):
     if path == '~':
         return home
@@ -134,8 +116,8 @@ def _add(items, values):
             items.append(value)
 
 
-def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dirs=(), deny_writes=(), temp_dirs=(),
-           network=True, docker=True):
+def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dirs=(), deny_writes=(), network=True,
+           docker=True):
     """The settings of one executor; the template is not changed. SettingsError for an invalid path."""
     home = os.path.realpath(home)
     workdir = access_path(workdir, home, '--workdir')
@@ -143,7 +125,6 @@ def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dir
     state = [access_path(p, home, '--state-dir') for p in state_dirs]
     read = [access_path(p, home, '--read-dir') for p in read_dirs]
     denied = [deny_path(p) for p in deny_writes]
-    temp = [temp_path(p, home) for p in temp_dirs]
 
     settings = copy.deepcopy(template)
     sandbox = settings['sandbox']
@@ -154,8 +135,8 @@ def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dir
         fs[key] = [_expand(p, home) for p in fs.get(key, [])]
     net['allowUnixSockets'] = [_expand(p, home) for p in net.get('allowUnixSockets', [])]
 
-    _add(fs['allowRead'], [workdir] + ([git_dir] if git_dir else []) + state + read + temp)
-    _add(fs['allowWrite'], [workdir] + ([git_dir] if git_dir else []) + state + temp)
+    _add(fs['allowRead'], [workdir] + ([git_dir] if git_dir else []) + state + read)
+    _add(fs['allowWrite'], [workdir] + ([git_dir] if git_dir else []) + state)
     protected = [os.path.join(workdir, '.ao')]
     if git_dir != os.path.join(workdir, '.git'):
         protected.append(os.path.join(workdir, '.git'))
@@ -192,13 +173,12 @@ def main(argv=None):
     parser.add_argument('--state-dir', action='append', default=[])
     parser.add_argument('--read-dir', action='append', default=[])
     parser.add_argument('--deny-write', action='append', default=[])
-    parser.add_argument('--open-temp', action='append', default=[])
     parser.add_argument('--no-network', action='store_true')
     parser.add_argument('--no-docker', action='store_true')
     args = parser.parse_args(argv)
     try:
         settings = render(load_template(), os.path.expanduser('~'), args.workdir, args.git_common_dir,
-                          args.state_dir, args.read_dir, args.deny_write, args.open_temp,
+                          args.state_dir, args.read_dir, args.deny_write,
                           network=not args.no_network, docker=not args.no_docker)
     except SettingsError as e:
         print('render_settings.py: %s' % e, file=sys.stderr)
