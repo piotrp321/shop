@@ -14,6 +14,7 @@
     "ipAllowList",
     "clientIpHeader",
     "clientIpHeaderWithoutAllowList",
+    "sentry",
     "secrets",
     "mailer",
     "brevo",
@@ -244,6 +245,55 @@
     "clientIpHeaderWithoutAllowList": {
       "type": "boolean",
       "description": "Confirms clientIpHeader without ipAllowList (the measurement on a local cluster); never with image.requireDigests."
+    },
+    "sentry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "tracesSampleRate",
+        "dsn"
+      ],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]*$",
+          "maxLength": 64,
+          "description": "SENTRY_ENVIRONMENT of an application with a DSN; empty: the application's own default."
+        },
+        "tracesSampleRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "SENTRY_TRACES_SAMPLE_RATE: the share of the traced transactions, 0 to 1."
+        },
+        "dsn": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "api",
+            "store",
+            "admin"
+          ],
+          "properties": {
+        "api": {
+          "type": "string",
+          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+          "description": "DSN of the api, the worker and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
+        },
+        "store": {
+          "type": "string",
+          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+          "description": "DSN of the store (its server and its browser); empty: Sentry off."
+        },
+        "admin": {
+          "type": "string",
+          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+          "description": "DSN of the admin panel; empty: Sentry off."
+        }
+          }
+        }
+      }
     },
     "secrets": {
       "type": "object",

@@ -83,8 +83,8 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
 
         $this->consume('events');
 
-        // A failed handler would put the message back through the retry delay (1 s ±10 %), so wait it out.
-        usleep(1_500_000);
+        // A failed handler would put the message back through the retry delay (100 ms ±10 %), so wait it out.
+        usleep(300_000);
         self::assertCount(1, $this->inbox->awaitMessages(1));
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->rows('failed'));
@@ -118,7 +118,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         $order = $this->place();
 
         $this->consumeOutboxAndEvents();
-        // `events` retries three times, 1 s, 3 s and 9 s apart.
+        // `events` retries three times, 100, 300 and 900 ms apart (1, 3 and 9 s in production).
         for ($retry = 1; $retry <= 3; ++$retry) {
             $this->consume('events', 20);
         }
@@ -141,8 +141,8 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         self::getContainer()->set(SystemClock::class, $clock);
         $order = $this->place();
         // Another handler claimed the sending of the confirmation and died before it marked the email sent; its lease
-        // ends in 3 seconds.
-        new DbalOrderNotifications($this->connection())->claim(OrderId::fromString($order->orderId), NotificationKind::Confirmation, $clock->now->modify('-5 minutes')->modify('+3 seconds'));
+        // ends in 1 second.
+        new DbalOrderNotifications($this->connection())->claim(OrderId::fromString($order->orderId), NotificationKind::Confirmation, $clock->now->modify('-5 minutes')->modify('+1 second'));
 
         $this->consumeOutboxAndEvents();
 
@@ -150,12 +150,12 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         self::assertNull($this->confirmationSentAt($order->orderId));
         self::assertSame(0, $this->rows('failed'));
 
-        // The message comes back one second after the end of the lease, 4 seconds after the first attempt.
-        $clock->now = $clock->now->modify('+4 seconds');
+        // The message comes back one second after the end of the lease, 2 seconds after the first attempt.
+        $clock->now = $clock->now->modify('+2 seconds');
         $start = microtime(true);
         $this->consume('events', 15);
 
-        self::assertGreaterThanOrEqual(2.5, microtime(true) - $start, 'the retry waited for the end of the lease');
+        self::assertGreaterThanOrEqual(1.5, microtime(true) - $start, 'the retry waited for the end of the lease');
         self::assertCount(1, $this->inbox->awaitMessages(1));
         self::assertEquals($clock->now, $this->confirmationSentAt($order->orderId));
         self::assertSame(0, $this->rows('failed'));
@@ -208,7 +208,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 2, '--time-limit' => 10]);
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 2, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }

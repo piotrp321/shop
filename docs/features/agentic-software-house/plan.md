@@ -170,8 +170,8 @@ flowchart TB
      i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku, na
      prośbę użytkownika, a w dzień także po starcie epiku i po jego `epic_done` (bramka proponuje wtedy epik
      równoległy).
-   - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, bez wspólnych
-     plików wymuszających kolejkę (reguła plików bramki), bez zależności od otwartych epików i, przy pomiarze czasu,
+   - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, bez wspólnego
+     kodu aplikacji (reguła plików bramki), bez zależności od otwartych epików i, przy pomiarze czasu,
      mieszczące się do rana. Użytkownik zatwierdza ją jednym „tak”. Każdy epik listy rusza przez bramkę: równolegle
      z trwającym albo po `epic_done` poprzedniego, bez czekania na merge, tylko gdy jego szacunek mieści się do rana
      i w limitach subskrypcji. Gdy bramka nie przechodzi przy trwającym epiku, kolejny czeka; inaczej noc się kończy.
@@ -275,8 +275,8 @@ flowchart TB
    (`/ao-run --noc`, punkt 3 procesu). Każdy epik listy rusza przez bramkę: równolegle z trwającym albo po `epic_done`
    poprzedniego, bez czekania na merge. Rano użytkownik odbiera kilka raportów. Opis jest
    w `docs/features/ao-run/spec.md` (sekcja „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
-   - na jedną noc trafiają tylko epiki bez wspólnych plików wymuszających kolejkę (reguła plików bramki, krok 19a),
-     bo każdy startuje z `main` bez poprzednich; `/prepare-epic` zapisuje zakres epiku w linii `Zakres:`
+   - na jedną noc trafiają tylko epiki bez wspólnego kodu aplikacji (reguła plików bramki, krok 19a), bo każdy
+     startuje z `main` bez poprzednich, a pozostałe wspólne pliki łączy REPAIR; `/prepare-epic` zapisuje zakres epiku w linii `Zakres:`
      specyfikacji, a lista porównuje z niej pliki epików;
    - `/prepare-epic` przygotowuje tyle epików do przodu, ile mieści noc (`night_queue.py ahead`, punkt 2 procesu);
    - następny epik nie rusza, gdy jego szacunek nie mieści się do rana albo limit subskrypcji nie wystarczy na cały
@@ -363,19 +363,21 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    z ADR. Symulacja na 20 epikach z bazy AO: dwa zadania naraz skracają czas pracy wykonawców o 18%, DEPLOY-OPS o 26%,
    epiki poprawek o 35–37%; w DEPLOY-OPS szeregowa kolejka przesunęła bloker na noc (6,7 h postoju).
    - **19a, bez zmian w AO: zrobione.** Epiki trwają naraz (najwyżej dwa aktywne), gdy kandydat przejdzie bramkę
-     ryzyka `night_queue.py gate` (`docs/features/parallel-work/spec.md`): wspólne pliki edytowane ręcznie (CI,
-     `CLAUDE.md`, `make/*.mk`, kod) wymuszają kolejkę, wspólne pliki generowane i dokumentacja są dopuszczalne;
-     wolna pamięć Dockera na kolejny stos; zapas limitu subskrypcji. Bramka korzysta z `Zakres:`, sync i REPAIR, bez
+     ryzyka `night_queue.py gate` (`docs/features/parallel-work/spec.md`): kolejkę wymusza tylko wspólny kod
+     aplikacji (`apps/*/src`, `apps/*/app`), a wspólne CI, `CLAUDE.md`, `Makefile`, testy, konfiguracja,
+     infrastruktura i dokumentacja nie; wolna pamięć Dockera na kolejny stos; zapas limitu subskrypcji. Bramka korzysta z `Zakres:`, sync i REPAIR, bez
      ich dublowania; rezerwacja pod blokadą nie pozwala dwóm sesjom ruszyć jednego epiku. Konflikt, który sync
-     i REPAIR rozwiązują automatycznie (także sync spójności dokumentów w parze), nie blokuje startu. Pierwsze dwie
-     pary epików mierzymy (`pairs.py`, blok pary w issue epiku): czas zegarowy, konflikty, interwencje, zużycie
-     zasobów i koszt.
+     i REPAIR rozwiązują automatycznie (także sync spójności dokumentów w parze), nie blokuje startu. Scalenie kończą
+     testy na połączonym stanie. Każdą parę mierzymy (`pairs.py`, zapis `pairs.py record`, blok pary w issue epiku):
+     czas zegarowy, pary dopuszczone, konflikty (rozwiązane automatycznie i wymagające człowieka), regresje,
+     interwencje, wspólne `CLAUDE.md` i kod, zużycie zasobów i koszt. Wstrzymanie tylko przy krytycznym problemie.
    - **19b, zmiana w AO (piotrp321/agentic-orchestrator#50), po walidacji 19a.** `ao run --max-parallel 2`:
      niezależne zadania jednej fali równolegle, każde we własnym worktree i stosie; integracja i merge'e po kolei;
      kontrola zasobów i limitów; awaria jednego zadania nie zatrzymuje drugiego. Gdy dwie pierwsze pary 19a nie
      pokażą krytycznego problemu, 19b rusza bez kolejnej akceptacji użytkownika. Krytyczny problem: zepsuty `main`,
      konflikt, którego sync i REPAIR nie rozwiązały bez ręcznej poprawki, przebieg przerwany przez brak zasobów albo
-     limitu, albo więcej napraw lub interwencji niż w porównywalnych epikach szeregowych.
+     limitu, albo więcej ręcznych poprawek lub interwencji niż w porównywalnych epikach szeregowych (REPAIR i sync
+     automatyczny się nie liczą).
 20. **Asystent zakupowy i serwer MCP katalogu.** Osobny, niezależny epik przez `/prepare-epic`, poza „Zakresem MVP”,
    który nie blokuje MVP (zmianę `docs/vision.md` robi przygotowanie epiku). Asystent w sklepie sięga do wyszukiwarki
    i karty produktu przez tool calling i nasz serwer MCP katalogu (tylko odczyt); serwer jest jedyną drogą asystenta

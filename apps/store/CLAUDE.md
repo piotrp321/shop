@@ -44,7 +44,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - `apps/store/Dockerfile` ma etapy `node` (wspólna baza), `build`, `prod` i `dev`; `dev` jest ostatni, bo compose buduje
   sklep bez `target`. `docker build --target prod apps/store` działa bez stosu i bez sekretów.
-- `build` uruchamia `next build` z `STORE_STANDALONE=1`. Tylko ta zmienna włącza w `next.config.ts` `output:
+- `build` uruchamia `next build` z `STORE_STANDALONE=1` (mapy źródeł: patrz „Sentry”, w obrazie nie zostaje żaden `.map`). Tylko ta zmienna włącza w `next.config.ts` `output:
   "standalone"`; lokalny `STORE_MODE=production` (`next build` i `next start` w compose) buduje jak dotąd, bez standalone.
   Nie ustawiaj `STORE_STANDALONE` nigdzie poza Dockerfile.
 - `prod` zawiera tylko serwer standalone (prześledzone zależności, `.next/static`, `public`), działa jako użytkownik
@@ -90,6 +90,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/seo/` – mapa strony i `robots.txt`: `xml.ts` (budowanie `sitemapindex` i `urlset` z ucieczką `& < > " '`),
   `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`), `store-url.ts` (`STORE_URL` czytany przy
   żądaniu) i `home-json-ld.ts` (JSON-LD strony głównej).
+- `instrumentation.ts` – start SDK Sentry serwera (`register`) i `onRequestError`; `src/observability/` – Sentry (patrz
+  „Sentry”): `config.ts` (odczyt zmiennych, bez SDK), `filter.ts` i `options.ts` (jedyny filtr zdarzeń i opcje danych,
+  serwer i przeglądarka), `server.ts` (SDK serwera), `browser.ts` (SDK przeglądarki, osobny chunk) i `lazy.ts`
+  (leniwe wejście przeglądarki bez SDK).
 - `src/site.ts` – `STORE_NAME`, jedyne miejsce nazwy sklepu: znak słowny w `SiteHeader`, `title` i `description`
   w `app/layout.tsx`, tytuły i opisy w `page-metadata.ts` i `product-metadata.ts` oraz JSON-LD strony głównej. Nie wpisuj
   nazwy w komponentach ani w metadanych.
@@ -613,10 +617,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Przełączniki wdrożenia (`GET /api/site`)
 
-- Route handler (dynamiczny, `Cache-Control: no-store`) zwraca `{ demoNotice, customerAccounts }` ze zmiennych serwera
+- Route handler (dynamiczny, `Cache-Control: no-store`) zwraca `{ demoNotice, customerAccounts, sentry }` ze zmiennych serwera
   `STORE_DEMO_NOTICE` (domyślnie `false`) i `STORE_CUSTOMER_ACCOUNTS` (domyślnie `true`). Wartością jest `true` albo
   `false` (wielkość liter i spacje wokół bez znaczenia); każda inna, także pusta, daje wartość domyślną. Bez zmiennych
-  sklep działa jak lokalnie i w testach. Wartości ustawia chart (`environments/prod/values.yaml`).
+  sklep działa jak lokalnie i w testach. Wartości ustawia chart (`environments/prod/values.yaml`). `sentry` to
+  `{ dsn, environment, release }` Sentry dla przeglądarki z `SENTRY_DSN`, `SENTRY_ENVIRONMENT` i `SENTRY_RELEASE`
+  (puste: `null`) albo `null` bez DSN; nigdy próbkowanie (patrz „Sentry”).
 - Przełączniki czyta tylko przeglądarka: `SiteSwitchesProvider` w `app/layout.tsx` woła `loadSiteSwitches()`
   (`src/api/client.ts`) raz na stronę i rozdaje wynik przez `useSiteSwitches()`. Layout i strony nie czytają tych
   zmiennych na serwerze, więc HTML stron statycznych i ISR jest taki sam w każdym wdrożeniu. Nie czytaj ich w kodzie
@@ -625,7 +631,79 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zostanie wysłane ani pobrane.”, gdy `demoNotice`. `AccountMenu` nie pokazuje „Zaloguj się”, gdy `!customerAccounts`,
   i czeka z linkiem na odczyt przełączników, żeby nie mignął. Zalogowany klient nadal widzi „Wyloguj się”.
 - Błąd odczytu (sieć, status nie-2xx, zły JSON, przełącznik niebędący booleanem) daje stan domyślny: bez paska,
-  z linkiem.
+  z linkiem. `sentry`, które nie jest obiektem z niepustym `dsn` i napisami albo `null` w `environment` i `release`,
+  to brak Sentry. `SiteSwitchesProvider` z `sentry` startuje SDK przeglądarki (patrz „Sentry”).
+
+## Sentry
+
+Spec: `docs/features/sentry/spec.md`.
+
+- Konfiguracja: zmienne serwera `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE`
+  (liczba od 0 do 1 zapisana cyframi, inna wartość albo brak to 0), czytane przy starcie serwera
+  (`src/observability/config.ts`). Bez DSN (brak, pusty, same spacje) SDK nie startuje, a `instrumentation.ts` nie
+  ładuje nawet jego modułu: sklep działa jak bez Sentry. Compose ich nie ustawia (można je dodać w `.env.local`),
+  wartości wdrożenia ustawia chart.
+- Serwer: `register` (tylko runtime `nodejs`) uruchamia `initServerSentry` (`src/observability/server.ts`), a błędy
+  żądań (renderowanie, route handlery, server actions) zgłasza wyłącznie `onRequestError` (`captureRequestError` SDK):
+  jeden błąd to jedno zdarzenie. Obsłużone błędy BFF (odpowiedź 502 i `console.error`) nie są zdarzeniami, a logi
+  konsoli nie trafiają do Sentry także jako breadcrumbs. SDK nie owija komponentów ani tras. `withSentryConfig` jest
+  używany tylko do map źródeł (patrz „Mapy źródeł”) i tylko w budowaniu obrazu z wysyłką.
+- Trace'y serwera: próbkowanie `SENTRY_TRACES_SAMPLE_RATE`, jedna transakcja na żądanie (`traceLifecycle: "static"`:
+  domyślne w tej wersji SDK strumieniowanie pojedynczych spanów omija `beforeSendTransaction`, czyli filtr); `sentry-trace` i `baggage` dostają tylko wywołania do
+  originów `API_INTERNAL_URL` i `API_CATALOG_URL` (`apiPropagationTargets`: wyrażenia zakotwiczone, bo cel tekstowy SDK
+  pasuje w dowolnym miejscu adresu), nigdy Keycloak ani Redis. Serwer nie kontynuuje trace'ów z przychodzących żądań:
+  nagłówki `sentry-trace`, `baggage`, `traceparent` i `tracestate` znikają z żądania przy `http.server.request.start`
+  (Node.js, przed SDK i Next.js), więc każde żądanie zaczyna nowy trace, a nagłówek z internetu nie wymusza śledzenia.
+- Przeglądarka: tylko błędy, bez trace'ów (bez `browserTracingIntegration` i `tracesSampleRate`, więc żądania
+  przeglądarki nie niosą `sentry-trace`), bez Replay, sesji i Feedback. SDK ładuje się leniwie: `SiteSwitchesProvider`
+  po odczycie `/api/site` z polem `sentry` woła `startBrowserSentry` (`src/observability/lazy.ts`), które pobiera
+  `src/observability/browser.ts` przez `import()` (osobny chunk) i startuje SDK raz na stronę. Bez DSN (`sentry: null`)
+  albo przy błędzie odczytu `/api/site` przeglądarka nie pobiera chunka Sentry i nie wysyła nic poza localhost; błąd
+  ładowania chunka albo startu SDK zostawia stronę bez Sentry. Błędy sprzed startu SDK są pomijane.
+  `app/error.tsx` zgłasza błąd przez `reportBrowserError` z `lazy.ts`: tylko gdy SDK już wystartowało i tylko błąd bez
+  `digest` (błąd z `digest` przyszedł z serwera, który zgłosił go w `onRequestError`); wygląd strony błędu się nie
+  zmienia. Tylko `browser.ts` i `server.ts` importują SDK, a oba są importowane wyłącznie przez `import()`
+  (`tests/sentry-lazy.test.ts`); inne moduły biorą z `@sentry/nextjs` tylko typy. CSP i nagłówki z `next.config.ts` są
+  bez zmian: SDK jest w chunku z `/_next/`, a CSP nie ma `connect-src`.
+- Opcje danych (`src/observability/options.ts`): ta wersja SDK nie ma `sendDefaultPii`; jego odpowiednik
+  `dataCollection` wyłącza użytkownika, ciasteczka, treści, query stringi, zmienne i linie źródła ramek, a z nagłówków
+  zbiera tylko `User-Agent`, `Content-Type`, `Accept`. Filtr i tak usuwa to samo ze wszystkiego, co SDK wysyła.
+- Filtr zdarzeń (`src/observability/filter.ts`, `filterEvent` i `filterBreadcrumb`) to jedna funkcja dla serwera
+  i przeglądarki, wołana z `beforeSend`, `beforeSendTransaction` i `beforeBreadcrumb`. Z żądania zostają metoda, adres
+  bez query i fragmentu i nagłówki `User-Agent`, `Content-Type`, `Accept`; bez ciasteczek, treści, query stringu,
+  adresu klienta, użytkownika i `extra`. Query i fragment znikają z nazw transakcji, nazw spanów HTTP, adresów
+  w danych spanów, kontekstów i breadcrumbs (`fetch`, `xhr`, `navigation`, `http`) i z adresów ramek; dane o query,
+  nagłówkach, ciasteczkach, treści i kliencie są usuwane, breadcrumbs `console` (przeglądarka i Node) też, ramki bez
+  `vars`. Spany Redisa (`db.system.name` albo `db.system` = `redis`) zachowują w nazwie, `db.query.text`
+  i `db.statement` tylko nazwę polecenia (klucze niosą adres klienta limitu logowania i id sesji), bez `cache.key`;
+  root span Redisa daje transakcji tę samą nazwę. Teksty (komunikaty, wartości wyjątków, breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same
+  wzorce co Alloy i filtr api (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL,
+  klucz=wartość z sekretami, `Failing row contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`,
+  adresy IP. Sklep, tak jak filtr api, maskuje też identyfikator koszyka gościa w ścieżce `/guest-carts/<id>` (klucz dostępu do
+  koszyka, jedyny sekret w ścieżkach, które sklep woła i obsługuje): w adresie żądania, nazwie transakcji, opisach
+  i danych spanów, breadcrumbs i tekstach. Wzorce działają w czasie liniowym (adres e-mail zaczyna się tylko po znaku,
+  którego w nim nie ma).
+- Mapy źródeł (spec: P3, D10; `sentryBuildOptions` i `withSourceMaps` w `next.config.ts`, test
+  `tests/sentry-source-maps.test.ts`): przy `SENTRY_UPLOAD=true` w budowaniu `prod` (Turbopack) build zapisuje mapy
+  przeglądarki i debug ID (`productionBrowserSourceMaps`, `turbopack.debugIds`), a hook `compiler.runAfterProductionCompile`
+  z `@sentry/nextjs` wysyła mapy serwera i przeglądarki, dopasowane przez debug ID (bez tworzenia release'u), usuwa je z
+  `.next/static` (`deleteSourcemapsAfterUpload`, domyślne usuwanie Turbopacka; bez `filesToDeleteAfterUpload`, bo hook działa
+  przed śladami tras i kopiowaniem `standalone`, a usunięte wcześniej mapy serwera mogłyby je zepsuć) i zdejmuje komentarze
+  `sourceMappingURL`; błąd wysyłki przerywa build (`errorHandler` rzuca), telemetria wtyczki jest wyłączona (`telemetry: false`),
+  a telemetrię CLI Sentry, przez które wtyczka wysyła, wyłącza `ENV SENTRY_CLI_NO_TELEMETRY=1` w etapie `build` Dockerfile. `withSentryConfig` (`@sentry/nextjs/config`, ładowany tylko przy wysyłce, bo ciągnie SDK
+  Node.js do każdego procesu czytającego config) działa na kopii configu, a z jego wyniku bierze się tylko te trzy ustawienia:
+  poza nimi dodaje m.in. meta tagi śladu w HTML (`experimental.clientTraceMetadata`), zewnętrzne pakiety, loadery i zmienne
+  wbudowane w bundle, więc to nie wchodzi do sklepu (test porównuje wynik z wejściowym configiem). Budowanie bez Turbopacka z flagą
+  kończy się błędem. Flaga bez `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` albo `SENTRY_PROJECT` też. Bez flagi `next.config.ts` jest jak
+  dotąd i nic nie idzie do Sentry. Dockerfile: flaga, organizacja i projekt to `ARG` etapu `build` (przed budowaniem, więc w
+  kluczu cache), token to sekret budowania `sentry_auth_token` (`RUN --mount=type=secret`, nigdy `ARG` ani `ENV`); po budowaniu
+  `find .next -name '*.map' -delete` usuwa każdy `.map` (serwera, `standalone` i puste pliki wejściowe tras, które Next zapisuje zawsze), więc etap
+  `prod` nigdy ich nie ma; test dymny (`infra/k8s/smoke/checks.py`) sprawdza, że sklep ich nie serwuje. Flagę ustawia tylko job
+  `images` workflowu `deploy.yml` (`infra/k8s/CLAUDE.md`).
+- Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w
+  `src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy (`infra/k8s/argocd/apps/monitoring.yaml`,
+  korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy korpusu `store.log`, `api.log`
+  i `postgres.log` (kontener sklepu widzi tylko `apps/store`): zmiana korpusu zmienia też kopię.
 
 ## Konto: historia zamówień
 
@@ -746,6 +824,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zegarów Vitest (`vi.useFakeTimers`); wywołanie `window.location.assign` jest za `navigateTo`, które testy podmieniają.
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
+- Sentry (`src/observability/*.test.ts`, `tests/instrumentation.test.ts`, `tests/sentry-lazy.test.ts`, `tests/sentry-source-maps.test.ts` (konfiguracja map źródeł), `app/error.test.tsx`)
+  bez konta i bez ruchu do Sentry: test serwera uruchamia `register` z fałszywym DSN wskazującym lokalny serwer, który
+  zbiera koperty, i lokalne atrapy API i Keycloaka; test przeglądarki działa na buildzie przeglądarkowym
+  `@sentry/nextjs` (Vitest bierze inaczej build serwerowy; `vitest.config.ts` przetwarza go przez Vite) z transportem
+  testowym.
 - Strona główna (`src/home/`) i jej stan domyślny w `app/page.test.tsx`; liczba żądań w `app/page.requests.test.tsx`.
 - Logika w komponentach (np. budowa `srcset`, mega menu, panel filtrów i sortowanie), `listing-query.ts` (mapowanie
   parametrów URL na zapytanie API i adresy), strony listingów (`app/page.test.tsx`, `app/c/`, `app/szukaj/`, liczba

@@ -17,5 +17,17 @@ interface ImportMeta {
 
 interface Window {
   /** Runtime configuration written by /config.js in the production image; absent (empty config.js) in development. */
-  __ADMIN_CONFIG__?: Partial<Record<"VITE_API_URL" | "VITE_KEYCLOAK_URL" | "VITE_ADMIN_URL" | "VITE_STORE_URL", string>>;
+  __ADMIN_CONFIG__?: Partial<
+    Record<
+      | "VITE_API_URL"
+      | "VITE_KEYCLOAK_URL"
+      | "VITE_ADMIN_URL"
+      | "VITE_STORE_URL"
+      | "SENTRY_DSN"
+      | "SENTRY_ENVIRONMENT"
+      | "SENTRY_RELEASE"
+      | "SENTRY_TRACES_SAMPLE_RATE",
+      string
+    >
+  >;
 }
