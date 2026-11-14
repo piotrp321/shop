@@ -37,7 +37,7 @@ AGENT-ISOLATION (#498).
 | 1 | Treść issue, PR lub komentarza od S1 w danych `/groom`, `/prepare-epic`, `/sweep`, `/retro`, `/integration`, `/ao-run` | bramka pochodzenia (R1) | testy bramki z atrapą `gh` i testy skryptów, które jej używają |
 | 2 | Bash wykonawcy (także `sh -c`, `python3 -c`, proces w tle, `make`) czyta sekret z A1–A3 | `denyRead` profilu sandboxa (R2) | sonda (R6), kanarki |
 | 3 | Read, Grep, Glob wykonawcy czytają sekret | `blockReadsOutsideWorkingDirectories` i reguły `deny` (R2) | sonda |
-| 3a | Import `@<ścieżka>` w `CLAUDE.md` albo `!` w skillu zmienionym przez wykonawcę | ustawienia profilu i zachowanie CLI w `-p` | sonda: kanarka brak w `stream-json` |
+| 3a | Import `@<ścieżka>` w `CLAUDE.md` albo `!` w skillu zmienionym przez wykonawcę | ustawienia profilu i zachowanie CLI w `-p` | sonda: kanarka brak w `stream-json`, losowego znacznika z importowanego pliku brak w wyjściu modelu |
 | 4 | Ucieczka przez `dangerouslyDisableSandbox` albo `excludedCommands` | `allowUnsandboxedCommands: false`, bez `excludedCommands` (R2) | sonda |
 | 5 | Poluzowanie profilu, hook albo MCP z repozytorium | wrapper odmawia startu przy zmianie `.claude/settings*.json` lub `.mcp.json` względem merge-base z `origin/main`, `disableAllHooks`, `--strict-mcp-config` (R2) | testy wrappera, sonda |
 | 6 | Kontener montuje `~/.ssh` | udostępnianie plików Docker Desktop tylko `~/Development/claude` i katalogi tymczasowe (R3) | sonda |
@@ -49,7 +49,7 @@ AGENT-ISOLATION (#498).
 | 12 | Zmieniony `.ao/teardown` albo `.ao/setup` | `denyWrite` dla `<worktree>/.ao`, `deny` Edit/Write `.ao/**` (R2) | sonda |
 | 13 | Podmiana wrappera, profilu, bazy AO, `events.jsonl`, stanu innego zadania | kopia w `$AO_HOME/agent-security/`, dostęp tylko do katalogu własnego zadania (R2, R7) | sonda |
 | 14 | Kubeconfig produkcji w `KUBE_DIR` w trakcie przebiegu AO | cele montujące `KUBE_DIR` odmawiają przy działającym AO albo wykonawcy; rejestr `KUBE_DIR`, `ao-prepare` odmawia startu (R5, R7) | testy celów i `ao-prepare` |
-| 15 | Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST, GraphQL) | bypass rulesetów merge'a tylko dla roli admin w trybie `pull_request`, token wykonawcy bez Administration (R4, R8) | `tools/rulesets/test_rulesets.py`, sonda: `current_user_can_bypass` = `never` |
+| 15 | Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST, GraphQL) | rulesety merge'a bez aktora bypass, token wykonawcy bez Administration (R4, R8) | `tools/rulesets/test_rulesets.py`, sonda: `current_user_can_bypass` = `never` |
 
 **Luki, które epik świadomie zostawia:**
 
@@ -61,15 +61,25 @@ AGENT-ISOLATION (#498).
 - Sieć kontenerów Dockera nie jest ograniczona; skutek ogranicza zakres tokenu (R4) i bramka wdrożenia (R5).
 - Merge do `main` przez wykonawcę po zielonym CI jest technicznie możliwy (tożsamość tokenu to użytkownik); wdrożenie
   zatrzymuje R5. Osobna tożsamość agentów (GitHub App) to propozycja zgłoszenia.
-- Sesje interaktywne i proces AO mają token użytkownika z rolą admin, więc technicznie mogą zmergować z bypassem
-  rulesetu i zatwierdzić wdrożenie. Chroni zasada w `CLAUDE.md` i skillach (agent nigdy nie używa bypassu) i to, że AO
-  nie wywołuje `--admin`: granica promptu. Zamyka ją osobna tożsamość dla wszystkich agentów (#498 albo osobne
+- Sesje interaktywne i proces AO mają token użytkownika z rolą admin, więc technicznie mogą zatwierdzić wdrożenie
+  i zmienić rulesety (np. dodać aktora bypass). Chroni zasada w `CLAUDE.md` i skillach (agent nie zmienia rulesetów
+  ani nie zatwierdza wdrożeń): granica promptu. Zamyka ją osobna tożsamość dla wszystkich agentów (#498 albo osobne
   zgłoszenie).
 - Sesje interaktywne nie mają sandboxa Bash i mogą wywołać `gh` z pominięciem bramki: granica promptu.
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
   końcowego PR przez użytkownika.
 - Logi CI i wyjście zależności czytane przez `/delivery` nie przechodzą przez bramkę; chronią R2–R5.
-- `TMPDIR` użytkownika jest czytelny i zapisywalny dla wykonawcy (wymaga go sandbox), w tym `KUBE_DIR` operacji.
+- Nakładka `mktemp` jest wygodą pracy, nie granicą bezpieczeństwa: wykonawca steruje `PATH` własnego Basha i może
+  wywołać `/usr/bin/mktemp`, który w sandboxie się nie uda. Granicą jest profil (brak zapisu do `/var/folders/…`).
+- Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu), w tym `KUBE_DIR`
+  operacji. Katalogi tymczasowe wykonawcy są w jego worktree (`.agent-tmp/`) i w prywatnym katalogu przebiegu
+  `/private/tmp/agent.<losowy>/claude-<uid>` (`TMPDIR` poleceń Bash) i znikają po jego końcu.
+- W `claude-<uid>` katalogu tymczasowego Claude Code wykonawca może zapisywać pliki, które czyta i pisze sam Claude
+  Code poza sandboxem (wyniki poleceń Bash, katalogi projektu), tak jak w domyślnym sandboxie Claude Code. Przed
+  podmianą tych plików chroni tylko przypięta binarka (sprawdza tożsamość plików wyników); gniazdo komunikacji sesji
+  (`cc-socks`) i sam katalog przebiegu są dla wykonawcy zamknięte. To samo dotyczy
+  `<worktree>/.agent-tmp/run.<losowy>/tmp`, `TMPDIR` samego procesu Claude Code (pliki tymczasowe, które Claude Code
+  tworzy i czyta poza sandboxem): leży w worktree, które wykonawca zapisuje.
 - `GITHUB_TOKEN` workflowu z gałęzi zadania może dostać `packages: write` i wypchnąć obraz do GHCR; podmiana obrazu
   wdrożenia wymaga zgadnięcia SHA commita `main` po squashu.
 - Przypięta binarka Claude Code i wtyczki z `~/.claude/plugins` są zaufane (łańcuch dostaw poza zakresem).
@@ -88,11 +98,15 @@ AGENT-ISOLATION (#498).
   pokazuje zgłoszenia zewnętrzne użytkownikowi jako numer, autora i link, a użytkownik, który chce się nimi zająć,
   przepisuje je we własne issue.
 - **R2. Sandbox i wrapper wykonawców AO.** Wykonawcy działają w sandboxie Claude Code (na macOS Seatbelt), także dla
-  procesów potomnych Bash: odczyt `~` zabroniony poza listą ścieżek pracy, zapis tylko w worktree, `TMPDIR`, `.git`
-  głównego klonu (bez hooków i konfiguracji) i katalogu własnego zadania, sieć tylko do GitHuba i lokalnego stosu, bez
-  `dangerouslyDisableSandbox`, hooków i MCP z repozytorium. Profil (`executor-settings.json`, `render_settings.py`)
+  procesów potomnych Bash: odczyt `~` zabroniony poza listą ścieżek pracy, zapis tylko w worktree (z katalogami
+  tymczasowymi zadania), `.git` głównego klonu (bez hooków i konfiguracji) i katalogu własnego zadania, sieć tylko do
+  GitHuba i lokalnego stosu (przez proxy sandboxa, które odrzuca inne domeny), bez `dangerouslyDisableSandbox`, hooków i MCP z repozytorium. Profil (`executor-settings.json`, `render_settings.py`)
   przekazuje wrapper `claude-agent` (`--claude-bin` AO) flagą `--settings`; wrapper odmawia startu przy zmianie
-  `.claude/settings*.json` lub `.mcp.json` w gałęzi.
+  `.claude/settings*.json` lub `.mcp.json` w gałęzi. Wrapper dopisuje też na początek `PATH` wykonawcy nakładkę
+  `mktemp` (`bin/mktemp` z tej samej kopii poza zapisem wykonawcy, w profilu tylko do odczytu): `mktemp` bez szablonu
+  (także `-d` i `-t`) na macOS pisze do katalogu tymczasowego użytkownika (`/var/folders/…/T`), którego wykonawca nie
+  zapisuje, a skrypty repozytorium wołają goły `mktemp -d`; nakładka daje systemowemu `mktemp` jawny szablon w `TMPDIR`
+  zadania, a wywołania z szablonem zostawia bez zmian.
 - **R3. Docker.** Docker Desktop udostępnia kontenerom tylko `~/Development/claude` i katalogi tymczasowe.
 - **R4. Token wykonawców.** Fine-grained PAT tylko dla `shop`, bez Administration, Deployments, Environments, Secrets
   i Variables, czytany z Keychain wyłącznie przez wrapper i sondę; wykonawca nigdy nie startuje z tokenem użytkownika.
@@ -102,16 +116,14 @@ AGENT-ISOLATION (#498).
 - **R6. Sonda prób obejścia.** `tools/agent-security/probe.py` uruchamia prawdziwy proces wykonawcy (ta sama binarka,
   wrapper, profil i flagi co AO, model Haiku) i sprawdza próby obejścia z dróg 2–9, 11–13 i 15 oraz przypadki pracy
   (git, `gh`, Docker, stan zadania); drogę 10 sprawdza test workflowów, drogę 14 testy celów i `ao-prepare`. Fail-closed: kod 0 tylko, gdy każdy przypadek ma wynik i przeszedł.
-- **R7. Start AO.** `tools/agent-security/ao-prepare` kopiuje wrapper, profil i sondę z `origin/main` do
+- **R7. Start AO.** `tools/agent-security/ao-prepare` kopiuje wrapper, profil, nakładkę `mktemp` i sondę z `origin/main` do
   `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru i uruchamia sondę przed każdym
   `ao run` i wznowieniem; sonda, która nie przeszła, blokuje start.
-- **R8. Bypass tylko dla użytkownika.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) nie mają aktora
-  bypass; `main-merge` i `epic-merge` (PR i checki `checks`, `e2e`) mają jednego: rolę admin repozytorium
-  (`RepositoryRole` 5) w trybie `pull_request`. Hipoteza do potwierdzenia na prawdziwym tokenie (P13): fine-grained
-  PAT wykonawcy bez Administration nie korzysta z bypassu roli admin, mimo że jego tożsamością jest użytkownik. Sonda
-  sprawdza `current_user_can_bypass` rulesetów merge'a (`never` dla tokenu wykonawcy, `pull_requests_only` dla
-  tokenu użytkownika); ta sama wartość dla obu to bloker do decyzji użytkownika (osobna tożsamość agentów albo
-  rezygnacja z bypassu).
+- **R8. Merge tylko z zielonym CI, bez bypassu.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) oraz
+  `main-merge` i `epic-merge` (PR i checki `checks`, `e2e`) nie mają żadnego aktora bypass: nikt, także użytkownik,
+  nie zmerguje PR do `main` ani `epic/*` bez zielonych `checks` i `e2e`. Sonda sprawdza, że
+  `current_user_can_bypass` rulesetów merge'a z tokenem wykonawcy to `never`; odbiór sprawdza to samo dla tokenu
+  użytkownika i puste `bypass_actors` obu rulesetów merge'a w GitHubie.
 
 ## Uzasadnienie
 
@@ -121,8 +133,15 @@ AGENT-ISOLATION (#498).
   procesie wykonawcy, a nie test konfiguracji, wykrywa zmianę zachowania nowej wersji CLI przed pracą.
 - Ograniczony token i środowisko `production` zamykają skutki, których sandbox nie zamknie (kontener Dockera, kod
   poza sandboxem): bez Administration i Deployments wykonawca nie zmieni rulesetu ani nie zatwierdzi wdrożenia.
-- Rozdzielenie rulesetów merge'a i rulesetów bez bypassu wynika z tego, że GitHub stosuje listę aktorów bypass do
-  wszystkich reguł rulesetu.
+- Bypass rulesetu nadaje się roli (admin), a nie tokenowi: fine-grained PAT wykonawcy, którego tożsamością jest
+  właściciel repozytorium, dostałby przy aktorze bypass roli admin ten sam bypass (`pull_requests_only`) co token
+  użytkownika, mimo braku uprawnienia Administration. Rulesety merge'a nie mają więc żadnego aktora i oba tokeny mają
+  `never`; przy jednej tożsamości to jedyna techniczna granica. Osobna tożsamość agentów (#498) pozwoliłaby nadać
+  bypass wyłącznie użytkownikowi.
+- Nakładka `mktemp` zamiast poszerzenia profilu o `/var/folders/…/T`: w tym katalogu są `KUBE_DIR` operacji
+  produkcyjnych i pliki innych procesów, więc zapis tam nie wchodzi w grę. Zmiana skryptów repozytorium na jawne
+  szablony w `TMPDIR` byłaby poprawniejsza u źródła, ale to zmiana poza zakresem epiku (osobne zgłoszenie); nakładka
+  nie wymaga jej i nie szkodzi skryptom, które już mają szablon.
 - Pełna izolacja (osobny użytkownik systemu, lifecycle AO w sandboxie, osobna tożsamość GitHub agentów) wymaga zmian
   w zamrożonym AO i nowej infrastruktury, więc jest osobnym epikiem (#498).
 

@@ -1,0 +1,279 @@
+#!/bin/sh
+# claude-agent: the Claude Code binary of AO executors (`ao run --claude-bin`), in the sandbox profile of
+# executor-settings.json (spec docs/features/agent-security/spec.md, R2). POSIX sh.
+#
+#   claude-agent --version | auth status ...    passed to $AGENT_CLAUDE_BIN unchanged, without settings (AO preflight)
+#   claude-agent <AO arguments>                 $AGENT_CLAUDE_BIN <AO arguments> --settings <JSON> --strict-mcp-config
+#                                               --setting-sources project
+#
+# Environment: AGENT_CLAUDE_BIN (the pinned binary), AGENT_AO_HOME (~/.local/state/ao-<name>, set by ao-prepare),
+# AO_TASK_ID (set by AO). The settings come from render_settings.py next to this script: the working directory, the
+# .git of the main clone, the task directory $AGENT_AO_HOME/tasks/$AO_TASK_ID (its briefs and attempts write-protected)
+# and, for <EPIC>-INTEGRATION-<n>, $AGENT_AO_HOME/epics/<epic>/integration.
+#
+# Refuses to start (exit 2, the reason on stderr) when a variable, the task, the template or the executor token is
+# missing, when a path goes through a symlink, when arguments would replace the profile, and when
+# .claude/settings.json, .claude/settings.local.json or .mcp.json differ from the merge-base of HEAD with main in the
+# branch, the index, the working tree or as untracked files (P12). The SHA of main comes from `git ls-remote origin`,
+# not from refs/remotes/origin/main, which the executor can move.
+#
+# The executor gets the executor token (Keychain shop-agent-github-token) as GH_TOKEN, git over HTTPS with a credential
+# helper reading GH_TOKEN (GIT_CONFIG_* variables), no SSH_AUTH_SOCK, and TMPDIR, BUILDX_CONFIG, GH_CONFIG_DIR and
+# XDG_CACHE_HOME in a per-run directory under <workdir>/.agent-tmp (never the shared /tmp or the user's temp). The
+# binary runs as a child: the wrapper passes INT/TERM/HUP on, returns the binary's exit code and removes the per-run
+# directory afterwards. --version and auth status are exec'd as they are.
+#
+# The executor's PATH starts with bin/ next to this script (the mktemp overlay: a bare `mktemp` on macOS writes to the
+# user's read-only temp, the overlay gives the system mktemp a template in TMPDIR). The directory is read-only in the
+# profile and must come from a copy the executor cannot write (ao-prepare copies bin/ with the other files); the
+# environment has AGENT_EXECUTOR_SANDBOX=1, which the tests of tools/agent-security read.
+set -u
+
+TOKEN_SERVICE=shop-agent-github-token
+PROTECTED_FILES='.claude/settings.json .claude/settings.local.json .mcp.json'
+
+die() {
+    printf 'claude-agent: %s\n' "$*" >&2
+    exit 2
+}
+
+# git outside the sandbox: no fsmonitor, hooks or external diff from a configuration the executor might have planted,
+# and no history the executor can fake in the shared .git it writes: replace objects (refs/replace), grafts
+# (info/grafts) and the commit-graph file would let it change what the merge-base of the P12 check is or contains.
+g() {
+    GIT_NO_REPLACE_OBJECTS=1 GIT_GRAFT_FILE=/dev/null \
+        git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.commitGraph=false \
+        -c advice.graftFileDeprecated=false "$@"
+}
+
+[ -n "${AGENT_CLAUDE_BIN:-}" ] || die "brak AGENT_CLAUDE_BIN (binarka wersji przypiętej przez AO, z ao-prepare)"
+[ -f "$AGENT_CLAUDE_BIN" ] && [ -x "$AGENT_CLAUDE_BIN" ] || die "AGENT_CLAUDE_BIN $AGENT_CLAUDE_BIN nie jest plikiem wykonywalnym"
+
+if [ "$#" -eq 1 ] && [ "$1" = --version ]; then
+    exec "$AGENT_CLAUDE_BIN" --version
+fi
+if [ "$#" -ge 2 ] && [ "$1" = auth ] && [ "$2" = status ]; then
+    exec "$AGENT_CLAUDE_BIN" "$@"
+fi
+
+for arg in "$@"; do
+    case $arg in
+    --settings | --settings=* | --setting-sources | --setting-sources=* | --mcp-config | --mcp-config=* | \
+        --add-dir | --add-dir=* | --plugin-dir | --plugin-dir=* | --dangerously-skip-permissions | \
+        --allow-dangerously-skip-permissions)
+        die "argument $arg zastąpiłby profil wykonawcy: odmowa" ;;
+    esac
+done
+
+[ -n "${AGENT_AO_HOME:-}" ] || die "brak AGENT_AO_HOME (katalog AO ~/.local/state/ao-<nazwa>, z ao-prepare)"
+[ -n "${AO_TASK_ID:-}" ] || die "brak AO_TASK_ID (AO nadaje go zadaniom z hookiem .ao/setup)"
+case $AO_TASK_ID in
+[A-Za-z0-9]*) ;;
+*) die "AO_TASK_ID $AO_TASK_ID spoza wzorca [A-Za-z0-9][A-Za-z0-9._-]*" ;;
+esac
+case $AO_TASK_ID in
+*[!A-Za-z0-9._-]*) die "AO_TASK_ID $AO_TASK_ID spoza wzorca [A-Za-z0-9][A-Za-z0-9._-]*" ;;
+esac
+
+here=$(cd -P -- "$(dirname -- "$0")" && pwd -P) || die "nie można ustalić katalogu wrappera"
+[ -f "$here/executor-settings.json" ] || die "brak szablonu $here/executor-settings.json"
+[ -f "$here/render_settings.py" ] || die "brak $here/render_settings.py"
+# The mktemp overlay (bin/mktemp next to this script) goes first in the executor's PATH. It runs in the sandbox, so the
+# directory is read-only in the profile; it must be a real directory with a real executable file, and its path must not
+# contain a colon, which would split the PATH entry.
+overlay_dir=$here/bin
+case $here in *:*) die "katalog wrappera $here zawiera dwukropek: nie można go dopisać do PATH" ;; esac
+[ -d "$overlay_dir" ] && [ ! -L "$overlay_dir" ] && [ -f "$overlay_dir/mktemp" ] && [ ! -L "$overlay_dir/mktemp" ] &&
+    [ -x "$overlay_dir/mktemp" ] ||
+    die "brak nakładki $overlay_dir/mktemp (wykonywalny plik w katalogu bez dowiązań symbolicznych)"
+
+home=$(cd -P -- "${HOME:-/nonexistent}" 2>/dev/null && pwd -P) || die "brak katalogu domowego HOME"
+case $AGENT_AO_HOME in /*) ;; *) die "AGENT_AO_HOME $AGENT_AO_HOME nie jest ścieżką bezwzględną" ;; esac
+ao_home=$(cd -P -- "$AGENT_AO_HOME" 2>/dev/null && pwd -P) || die "brak katalogu AGENT_AO_HOME $AGENT_AO_HOME"
+name=${ao_home#"$home/.local/state/ao-"}
+case $name in
+"$ao_home" | "" | */*) die "AGENT_AO_HOME $AGENT_AO_HOME (po rozwiązaniu dowiązań $ao_home) nie ma postaci $home/.local/state/ao-<nazwa>" ;;
+esac
+
+# The real path of an existing directory equal to the path itself: no symlink anywhere in it.
+real_dir() {
+    [ -d "$1" ] || return 1
+    real=$(cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
+    [ "$real" = "$1" ]
+}
+
+task_dir=$ao_home/tasks/$AO_TASK_ID
+[ -d "$task_dir" ] || die "nieznane zadanie $AO_TASK_ID: brak katalogu $task_dir"
+real_dir "$task_dir" || die "katalog zadania $task_dir prowadzi przez dowiązanie symboliczne"
+
+integration_dir=
+round=${AO_TASK_ID##*-INTEGRATION-}
+if [ "$round" != "$AO_TASK_ID" ] && [ -n "$round" ] && [ "${round#*[!0-9]}" = "$round" ]; then
+    epic=${AO_TASK_ID%-INTEGRATION-*}
+    wanted=$(printf '%s' "$epic" | tr '[:upper:]' '[:lower:]')
+    found=
+    count=0
+    for dir in "$ao_home"/epics/*; do
+        [ -d "$dir" ] || continue
+        candidate=$(basename -- "$dir" | tr '[:upper:]' '[:lower:]')
+        if [ "$candidate" = "$wanted" ]; then
+            found=$dir
+            count=$((count + 1))
+        fi
+    done
+    [ "$count" -eq 1 ] || die "zadanie integracji $AO_TASK_ID: $count katalogów epiku $epic w $ao_home/epics (wymagany dokładnie jeden)"
+    integration_dir=$found/integration
+    real_dir "$integration_dir" || die "katalog integracji $integration_dir nie istnieje albo prowadzi przez dowiązanie"
+fi
+
+workdir=$(pwd -P) || die "nie można ustalić katalogu roboczego"
+top=$(g rev-parse --show-toplevel 2>/dev/null) || die "katalog roboczy $workdir nie jest checkoutem git"
+common=$(g rev-parse --git-common-dir 2>/dev/null) || die "git rev-parse --git-common-dir nie powiódł się w $workdir"
+case $common in /*) ;; *) common=$top/$common ;; esac
+git_dir=$(cd -P -- "$common" 2>/dev/null && pwd -P) || die "brak katalogu .git $common"
+
+# P12: the protected files against the merge-base with the current main of origin.
+main_sha=$(g -C "$top" ls-remote origin refs/heads/main 2>/dev/null | awk '$2 == "refs/heads/main" { print $1 }')
+case $main_sha in
+[0-9a-f]*) ;;
+*) die "git ls-remote origin refs/heads/main nie zwrócił SHA main" ;;
+esac
+case $main_sha in *[!0-9a-f]*) die "git ls-remote origin zwrócił nieprawidłowy SHA" ;; esac
+if ! g -C "$top" cat-file -e "$main_sha^{commit}" 2>/dev/null; then
+    g -C "$top" fetch --quiet --no-tags origin "$main_sha" 2>/dev/null || die "git fetch origin $main_sha nie powiódł się"
+    g -C "$top" cat-file -e "$main_sha^{commit}" 2>/dev/null || die "brak commita main $main_sha po git fetch"
+fi
+base=$(g -C "$top" merge-base HEAD "$main_sha" 2>/dev/null) || die "brak merge-base HEAD z main $main_sha"
+# shellcheck disable=SC2086 # the file list is a fixed list of paths without spaces
+changed=$(
+    {
+        g -C "$top" diff --no-ext-diff --no-textconv --name-only "$base" -- $PROTECTED_FILES || echo '<git diff failed>'
+        g -C "$top" diff --cached --no-ext-diff --no-textconv --name-only "$base" -- $PROTECTED_FILES || echo '<git diff --cached failed>'
+        g -C "$top" ls-files --others -- $PROTECTED_FILES || echo '<git ls-files failed>'
+    } | sort -u | tr '\n' ' '
+)
+[ -z "$changed" ] || die "gałąź albo drzewo robocze zmienia chronione ustawienia względem merge-base z main ($base): $changed- epik zmieniający te pliki nie idzie przez AO"
+
+token=$(security find-generic-password -s "$TOKEN_SERVICE" -w 2>/dev/null) || token=
+[ -n "$token" ] || die "brak tokenu wykonawcy w Keychain ($TOKEN_SERVICE); zapisz fine-grained PAT dla piotrp321/shop: security add-generic-password -s $TOKEN_SERVICE -a shop -w"
+
+# Task temporary directories (spec R2): in the worktree, which the executor may already write, never in the shared
+# /tmp or the user's temp. Each run gets its own directory under $workdir/.agent-tmp, removed when the executor ends.
+# The root must be a real directory of this user inside the worktree: a symlink or a foreign owner is a refusal,
+# because the wrapper later deletes what is under it.
+temp_root=$workdir/.agent-tmp
+if [ -e "$temp_root" ] || [ -L "$temp_root" ]; then
+    [ ! -L "$temp_root" ] && [ -d "$temp_root" ] || die "$temp_root nie jest katalogiem (dowiązanie albo plik): odmowa"
+else
+    mkdir -m 700 "$temp_root" 2>/dev/null || die "nie można utworzyć katalogu tymczasowego zadania $temp_root"
+fi
+real_dir "$temp_root" || die "katalog tymczasowy zadania $temp_root prowadzi przez dowiązanie symboliczne: odmowa"
+[ -n "$(find "$temp_root" -prune -user "$(id -u)")" ] || die "katalog tymczasowy zadania $temp_root należy do innego użytkownika: odmowa"
+
+run_tmp=
+claude_tmp=
+child=
+cleanup() {
+    # Re-checked: the executor may have swapped a component for a symlink while it ran.
+    if [ -n "$run_tmp" ]; then
+        if real_dir "$run_tmp" && real_dir "$temp_root"; then
+            rm -rf -- "$run_tmp"
+            rmdir -- "$temp_root" 2>/dev/null
+        else
+            printf 'claude-agent: %s\n' "nie usunięto $run_tmp: ścieżka prowadzi przez dowiązanie symboliczne" >&2
+        fi
+    fi
+    if [ -n "$claude_tmp" ]; then
+        if real_dir "$claude_tmp"; then
+            rm -rf -- "$claude_tmp"
+        else
+            printf 'claude-agent: %s\n' "nie usunięto $claude_tmp: ścieżka prowadzi przez dowiązanie symboliczne" >&2
+        fi
+    fi
+}
+trap cleanup EXIT
+run_tmp=$(mktemp -d "$temp_root/run.XXXXXX") || { run_tmp=; die "mktemp nie utworzył katalogu w $temp_root"; }
+real_dir "$run_tmp" || { run_tmp=; die "katalog tymczasowy przebiegu w $temp_root prowadzi przez dowiązanie symboliczne: odmowa"; }
+for sub in tmp buildx gh cache; do
+    mkdir -m 700 "$run_tmp/$sub" || die "nie można utworzyć $run_tmp/$sub"
+done
+
+# Claude Code's own temporary directory (CLAUDE_CODE_TMPDIR, spec R2). Claude Code gives every sandboxed Bash command
+# TMPDIR=<CLAUDE_CODE_TMPDIR>/claude-<uid>, whatever TMPDIR the wrapper sets, and keeps the session's messaging socket
+# in <CLAUDE_CODE_TMPDIR>/cc-socks. Each run gets a fresh directory with a short random name directly in the system
+# temp: <dir>/claude-<uid> must fit 44 bytes (AF_UNIX sockets), which a path in the worktree does not, and Claude Code
+# would fall back to /tmp/claude-<uid>, shared by every session. It must be this user's real directory with mode 0700;
+# render_settings.py opens only its claude-<uid>, never the directory itself, /tmp or other sessions' directories.
+temp_parent=$(cd -P /tmp 2>/dev/null && pwd -P) || die "brak katalogu /tmp"
+claude_tmp=$(mktemp -d "$temp_parent/agent.XXXXXX") || { claude_tmp=; die "mktemp nie utworzył katalogu Claude Code w $temp_parent"; }
+if ! real_dir "$claude_tmp" || [ -z "$(find "$claude_tmp" -prune -type d -user "$(id -u)" -perm 700)" ]; then
+    rmdir -- "$claude_tmp" 2>/dev/null
+    refused=$claude_tmp
+    claude_tmp=
+    die "katalog Claude Code $refused w $temp_parent nie jest prywatnym katalogiem bieżącego użytkownika (0700, bez dowiązania): odmowa"
+fi
+mkdir -m 700 "$claude_tmp/claude-$(id -u)" || die "nie można utworzyć $claude_tmp/claude-$(id -u)"
+
+integration_opt=''
+[ -n "$integration_dir" ] && integration_opt="--state-dir $integration_dir"
+# shellcheck disable=SC2086 # integration_opt is an option list built above, intentionally word-split
+settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
+    --state-dir "$task_dir" $integration_opt --claude-tmpdir "$claude_tmp" --read-dir "$overlay_dir" \
+    --deny-write "$overlay_dir" --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
+
+unset SSH_AUTH_SOCK
+TMPDIR=$run_tmp/tmp
+BUILDX_CONFIG=$run_tmp/buildx      # buildx state and activity, not the read-only ~/.docker/buildx
+GH_TOKEN=$token
+GH_CONFIG_DIR=$run_tmp/gh
+XDG_CACHE_HOME=$run_tmp/cache      # gh writes its run-log cache here, not under the denied ~/.cache
+CLAUDE_CODE_TMPDIR=$claude_tmp
+PATH=$overlay_dir${PATH:+:$PATH}   # mktemp of the overlay first
+AGENT_EXECUTOR_SANDBOX=1           # the run is in the executor sandbox (tests skip what needs the system /tmp)
+export TMPDIR BUILDX_CONFIG XDG_CACHE_HOME CLAUDE_CODE_TMPDIR PATH AGENT_EXECUTOR_SANDBOX
+GIT_CONFIG_COUNT=4
+GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf
+GIT_CONFIG_VALUE_0=git@github.com:
+GIT_CONFIG_KEY_1=url.https://github.com/.insteadOf
+GIT_CONFIG_VALUE_1=ssh://git@github.com/
+GIT_CONFIG_KEY_2=credential.helper
+GIT_CONFIG_VALUE_2=
+GIT_CONFIG_KEY_3=credential.helper
+# shellcheck disable=SC2016,SC2089 # a literal helper, expanded by git's shell when it runs, not here
+GIT_CONFIG_VALUE_3='!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
+# shellcheck disable=SC2090 # GIT_CONFIG_VALUE_3 is passed on literally
+export GH_TOKEN GH_CONFIG_DIR GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 \
+    GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2 GIT_CONFIG_KEY_3 GIT_CONFIG_VALUE_3
+
+# The executor runs as a child (not exec), so the EXIT trap removes the temporary directories after it. INT, TERM and
+# HUP sent to the wrapper are passed on; a background child of a non-interactive shell ignores SIGINT, so INT goes on
+# as TERM. A signal already ignored when the wrapper starts (INT when the caller runs it in an asynchronous list) stays
+# ignored, for the wrapper (a POSIX shell cannot trap it) and for the binary, as without the wrapper. stdin is handed
+# over explicitly (a background job would otherwise read /dev/null) through a descriptor that was not open: the
+# descriptors the wrapper inherits (AO passes its lock descriptors) reach the binary unchanged.
+forward() {
+    [ -n "$child" ] && kill -"$1" "$child" 2>/dev/null
+}
+stdin_fd=
+for fd in 9 8 7 6 5 4 3; do
+    if ! eval "true <&$fd" 2>/dev/null && ! eval "true >&$fd" 2>/dev/null; then
+        stdin_fd=$fd
+        break
+    fi
+done
+[ -n "$stdin_fd" ] || die "brak wolnego deskryptora 3-9 na stdin wykonawcy (wszystkie odziedziczone)"
+trap 'forward TERM' INT TERM
+trap 'forward HUP' HUP
+eval "exec $stdin_fd<&0"
+(
+    eval "exec 0<&$stdin_fd $stdin_fd<&-"
+    exec "$AGENT_CLAUDE_BIN" "$@" --settings "$settings" --strict-mcp-config --setting-sources project
+) &
+child=$!
+eval "exec $stdin_fd<&-"
+while :; do
+    wait "$child"
+    status=$?
+    kill -0 "$child" 2>/dev/null || break
+done
+exit "$status"

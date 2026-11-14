@@ -34,3 +34,9 @@ docker-compose.override.yml
 !infra/k8s/environments/prod/sealed-secrets.pem
 *.key
 ###< Secrets / local env ###
+
+###> Agent executors ###
+# Temporary directories of a sandboxed AO executor (TMPDIR, BUILDX_CONFIG, GH_CONFIG_DIR, XDG_CACHE_HOME), created in
+# its worktree by tools/agent-security/claude-agent and removed when the executor ends.
+/.agent-tmp/
+###< Agent executors ###
