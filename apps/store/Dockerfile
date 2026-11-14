@@ -8,17 +8,30 @@ ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
 # Production build: dependencies of the lock file and `next build` with output "standalone", switched on by
-# STORE_STANDALONE only here (next.config.ts), so `STORE_MODE=production` in Compose builds as before. The build needs
-# no secrets and calls no service: it prerenders without API_CATALOG_URL and its pages fall back (see CLAUDE.md).
+# STORE_STANDALONE only here (next.config.ts), so `STORE_MODE=production` in Compose builds as before. The build calls
+# no service: it prerenders without API_CATALOG_URL and its pages fall back (see CLAUDE.md).
+#
+# Source maps (next.config.ts): the deploy workflow builds with SENTRY_UPLOAD=true when it has the Sentry token, which
+# it passes as the build secret `sentry_auth_token` (a secret mount: never an argument, never in a layer or the log).
+# Without the flag the build needs no secret. The arguments are declared right before the build, so their values are
+# part of its cache key: a layer built without an upload is never reused for one. Whatever the flag, no .map file stays
+# in the image.
 FROM node AS build
 
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
+ARG SENTRY_UPLOAD=false
+ARG SENTRY_ORG=
+ARG SENTRY_PROJECT=
 # The store has no public/ directory yet; the runtime stage copies it.
-RUN mkdir -p public \
-    && STORE_STANDALONE=1 npm run build
+RUN --mount=type=secret,id=sentry_auth_token \
+    mkdir -p public \
+    && if [ "$SENTRY_UPLOAD" = true ]; then \
+      SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token)" && export SENTRY_AUTH_TOKEN || exit 1; \
+    fi; \
+    STORE_STANDALONE=1 npm run build && find .next -name '*.map' -delete
 
 # Production image: the standalone server only (traced dependencies, no npm, no sources). `.next/cache` (ISR) is
 # written at run time, so `.next` belongs to the unprivileged user.
