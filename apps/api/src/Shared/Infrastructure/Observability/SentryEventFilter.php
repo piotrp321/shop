@@ -25,7 +25,8 @@ use Sentry\Tracing\Span;
  * The texts (messages, values of exceptions, breadcrumbs, names of spans, also the SQL of Doctrine spans, which has
  * placeholders but may have literals, and the remaining string data) are masked with the formats of the log masking of
  * Alloy (infra/k8s/argocd/apps/monitoring.yaml): e-mail addresses, JWT, Bearer tokens, passwords in addresses, values of
- * keys of secrets, the rows and keys of PostgreSQL, the parameters of DBAL, IP addresses. A new format of customer data
+ * keys of secrets, the rows and keys of PostgreSQL, the parameters of DBAL, IP addresses, and with one more pattern
+ * that is not of Alloy: the identifier of a guest cart in a path `/guest-carts/<id>`. A new format of customer data
  * in the logs or exceptions is a new pattern here and in Alloy (apps/api/CLAUDE.md).
  */
 final readonly class SentryEventFilter
@@ -85,6 +86,9 @@ final readonly class SentryEventFilter
         ['#(?:^|[^0-9a-zA-Z:])(::1)\b#m', self::REDACTED],
         // IPv4 addresses.
         ['#\b([0-9]{1,3}(?:\.[0-9]{1,3}){3})\b#m', self::REDACTED],
+        // Not a format of Alloy: the identifier of a guest cart in a path of the API, the key of access to the cart
+        // (docs/features/cart/spec.md). It is in the address of every request to the routes of a guest cart.
+        ['#(?i)/guest-carts/([^/?\#\s"\'<>\\\\]+)#m', self::REDACTED],
     ];
 
     /**

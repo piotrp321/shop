@@ -808,7 +808,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `SentryEventFilter`: z żądania zostają metoda, adres bez query i nagłówki `User-Agent`, `Content-Type`, `Accept`;
     bez użytkownika, ciasteczek, treści i adresu klienta; `extra` tylko `correlation_id`, wartości kontekstów poza `trace`
     usunięte; bez query w nazwach transakcji, spanów HTTP i breadcrumbs, bez danych o nagłówkach, ciasteczkach,
-    treści, parametrach zapytań i kliencie; ramki bez `vars`; teksty maskowane wzorcami Alloy. Spany Doctrine mają SQL
+    treści, parametrach zapytań i kliencie; ramki bez `vars`; teksty maskowane wzorcami Alloy i identyfikator koszyka
+    gościa ze ścieżki `/guest-carts/<id>` (klucz dostępu do koszyka, wzorzec spoza Alloy). Spany Doctrine mają SQL
     z placeholderami (SDK nie zbiera parametrów).
   - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w `SentryEventFilter::MASKS` i w Alloy
     (`infra/k8s/argocd/apps/monitoring.yaml`, korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma

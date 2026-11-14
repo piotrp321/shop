@@ -26,6 +26,8 @@ final class SentryEventFilterTest extends TestCase
 {
     private const string EMAIL = 'jan.kowalski@example.pl';
     private const string JWT = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTYiLCJlbWFpbCI6ImphbkBleGFtcGxlLnBsIn0.c2lnbmF0dXJlLXNlY3JldA';
+    private const string CART_ID = 'a76d8b8d-a070-48da-bb73-bd2674c26f09';
+    private const string VARIANT_ID = '0f1c7d4e-5b2a-4c3d-9e8f-1a2b3c4d5e6f';
     private const string QUERY = 'q=jan.kowalski%40example.pl&discountCode=RABAT-SECRET&returnTo=%2Faccount&code=v-oidc-code&state=v-oidc-state';
 
     private SentryEventFilter $filter;
@@ -214,6 +216,55 @@ final class SentryEventFilterTest extends TestCase
             ['http.url' => 'http://varnish/api/v1/products', 'url.full' => 'http://varnish/api/v1/products', 'http.request.method' => 'GET'],
             array_filter($span->getData(), static fn (mixed $value): bool => null !== $value),
         );
+    }
+
+    public function testTheIdentifierOfAGuestCartIsMaskedInTheRequestAndTheNameOfATransaction(): void
+    {
+        $event = Event::createTransaction();
+        $event->setRequest(['method' => 'POST', 'url' => 'http://api/api/v1/guest-carts/'.self::CART_ID.'/items?x=1']);
+        $event->setTransaction('POST /api/v1/guest-carts/'.self::CART_ID.'/items/'.self::VARIANT_ID.'?x=1');
+
+        $this->filter->filterEvent($event);
+
+        self::assertSame('http://api/api/v1/guest-carts/[REDACTED]/items', $event->getRequest()['url'] ?? null);
+        self::assertSame('POST /api/v1/guest-carts/[REDACTED]/items/'.self::VARIANT_ID, $event->getTransaction());
+    }
+
+    public function testTheGuestCartPlaceholderOfARouteTemplateIsMaskedToo(): void
+    {
+        $event = Event::createTransaction();
+        $event->setTransaction('/api/v1/guest-carts/{cartId}/items/{variantId}');
+
+        $this->filter->filterEvent($event);
+
+        self::assertSame('/api/v1/guest-carts/[REDACTED]/items/{variantId}', $event->getTransaction());
+    }
+
+    public function testTheIdentifierOfAGuestCartIsMaskedInTheHttpSpansTheBreadcrumbsAndTheTexts(): void
+    {
+        $address = 'http://api/api/v1/guest-carts/'.self::CART_ID.'/items/'.self::VARIANT_ID;
+        $span = new Span(SpanContext::make()->setOp('http.client')->setDescription('PUT '.$address.'?x=1')->setData([
+            'http.url' => $address.'?x=1',
+            'url.full' => $address,
+        ]));
+        $event = Event::createTransaction();
+        $event->setSpans([$span]);
+        $event->setBreadcrumb([new Breadcrumb(Breadcrumb::LEVEL_INFO, Breadcrumb::TYPE_HTTP, 'http', 'PUT '.$address.'?x=1', ['url' => $address])]);
+        $event->setMessage('No cart at '.$address);
+        $exception = new ExceptionDataBag(new \RuntimeException('x'));
+        $exception->setValue('Cart "/guest-carts/'.self::CART_ID.'" is gone');
+        $event->setExceptions([$exception]);
+
+        $this->filter->filterEvent($event);
+
+        $masked = 'http://api/api/v1/guest-carts/[REDACTED]/items/'.self::VARIANT_ID;
+        self::assertSame('PUT '.$masked, $span->getDescription());
+        self::assertSame($masked, $span->getData()['http.url'] ?? null);
+        self::assertSame($masked, $span->getData()['url.full'] ?? null);
+        self::assertSame('PUT '.$masked, $event->getBreadcrumbs()[0]->getMessage());
+        self::assertSame(['url' => $masked], $event->getBreadcrumbs()[0]->getMetadata());
+        self::assertSame('No cart at '.$masked, $event->getMessage());
+        self::assertSame('Cart "/guest-carts/[REDACTED]" is gone', $event->getExceptions()[0]->getValue());
     }
 
     public function testADoctrineSpanKeepsItsPlaceholdersAndLosesItsLiteralsAndParameters(): void
