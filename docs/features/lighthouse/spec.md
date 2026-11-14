@@ -68,10 +68,10 @@ i `entrypoint.sh`, a nie od `e2e/lighthouse`.
 
 ## CI
 
-- Cel `lighthouse` jest na liście `CI_AFTER_E2E` (`make/e2e.mk`). Pierwsza część E2E w CI (job `e2e shard 1`) uruchamia go
+- Cel `lighthouse` jest na liście `CI_AFTER_E2E` (`make/e2e.mk`). Ostatnia część E2E w CI (job `e2e shard 3`) uruchamia go
   krokiem `make ci-after-e2e` (`RUN="docker compose exec -T" E2E_FLAGS=-T E2E_BUILD=`, `if: env.FULL_CI == 'true' && matrix.after_e2e`) po kroku `make e2e`. Cele tej
   listy działają także po błędzie jednego z nich, więc niespełniona asercja nie pomija testów `init-env.sh` ani
-  pozostałych sprawdzeń. Bez nowego wymaganego checka: blokujący wynik SEO robi czerwony job `e2e shard 1`, a przez niego wymagany `e2e`.
+  pozostałych sprawdzeń. Bez nowego wymaganego checka: blokujący wynik SEO robi czerwony job `e2e shard 3`, a przez niego wymagany `e2e`.
   Gdy `make e2e` się nie udał, pomiar nie rusza (domyślne zachowanie kroków).
 - Krok „Lighthouse medians in the step summary” z `if: always() && env.FULL_CI == 'true' && matrix.after_e2e` dopisuje `medians.md` do
   `$GITHUB_STEP_SUMMARY` (gdy plik istnieje, także po błędzie asercji), żeby mediany były widoczne w podsumowaniu
@@ -108,7 +108,7 @@ i `entrypoint.sh`, a nie od `e2e/lighthouse`.
 5. Niespełniona asercja SEO (sprawdzana progiem nie do spełnienia): kod ≠ 0, a raport, `manifest.json` i `medians.md`
    są w `e2e/lighthouse-results/`.
 6. `make e2e` i `make e2e-agent` nie są dotknięte pomiarem (argument inny niż `lighthouse` idzie do Playwrighta).
-7. Pierwsza część E2E w CI (`e2e shard 1`) uruchamia pomiar po `make e2e` i `init-env.sh tests`, wysyła artefakt `lighthouse-results` także po
+7. Ostatnia część E2E w CI (`e2e shard 3`) uruchamia pomiar po `make e2e` i `init-env.sh tests`, wysyła artefakt `lighthouse-results` także po
    niespełnionej asercji i pokazuje mediany w podsumowaniu kroku; lista wymaganych checków bez zmian.
 8. `summary.mjs` ma testy `node --test` uruchamiane w `make e2e-check`: mediana z 3 przebiegów dla każdej z pięciu
    metryk w jednostkach z D10, przebieg bez pliku i z wartością `null` (pominięty, „—” bez żadnej wartości), brak
