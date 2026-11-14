@@ -302,8 +302,8 @@ final class SentryEventFilterTest extends TestCase
         ];
         yield 'postgres: DETAIL of a unique violation' => [
             '2026-11-11 10:00:00.123 UTC [87] DETAIL:  Key (email)=(jan.kowalski@example.pl) already exists.',
-            ['jan.kowalski', 'kowalski@', 'example.pl'],
-            ['Key (email)='],
+            ['jan.kowalski', 'kowalski@', 'example.pl', 'Key (email)=', 'already exists'],
+            ['[87] DETAIL:'],
         ];
         yield 'postgres: STATEMENT' => [
             "2026-11-11 10:00:00.123 UTC [87] STATEMENT:  INSERT INTO customer (email, name) VALUES ('jan.kowalski@example.pl', 'Jan Kowalski')",
@@ -327,15 +327,85 @@ final class SentryEventFilterTest extends TestCase
         ];
         yield 'postgres: DETAIL of a foreign key' => [
             'DETAIL:  Key (sku)=(PL-SECRET-SKU-9) is not present in table "product".',
-            ['PL-SECRET-SKU-9'],
-            ['Key (sku)=', 'is not present in table "product"'],
+            ['PL-SECRET-SKU-9', 'Key (sku)=', 'is not present in table'],
+            ['DETAIL:'],
+        ];
+    }
+
+    /**
+     * Alloy drops a whole line DETAIL: or STATEMENT: of PostgreSQL, wherever the value in it has a parenthesis.
+     */
+    #[DataProvider('detailLines')]
+    public function testADetailLineOfPostgresLosesItsWholeText(string $text, string $expected): void
+    {
+        self::assertSame($expected, $this->filter->mask($text));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function detailLines(): iterable
+    {
+        yield 'a row with a parenthesis at the start of a line' => [
+            'DETAIL:  Failing row contains (0193, Jan Kowalski, ul. Długa 5 (II p.), +48 600 100 200, Warszawa).',
+            'DETAIL:  [REDACTED]',
+        ];
+        yield 'a row after the prefix of a log line' => [
+            '2026-11-11 10:00:00.123 UTC [87] DETAIL:  Failing row contains (0193, Jan Kowalski, ul. Długa 5 (II p.), +48 600 100 200, Warszawa).',
+            '2026-11-11 10:00:00.123 UTC [87] DETAIL:  [REDACTED]',
+        ];
+        yield 'a key with a parenthesis in the value' => [
+            'DETAIL:  Key (variant_id, period)=(Jan Kowalski (x), y) already exists.',
+            'DETAIL:  [REDACTED]',
+        ];
+        yield 'a detail without values' => [
+            'DETAIL:  Process 87 waits for ShareLock on transaction 4711; blocked by process 88.',
+            'DETAIL:  [REDACTED]',
+        ];
+        yield 'a detail in the line of a message of more lines' => [
+            "SQLSTATE[23505]: Unique violation\nDETAIL:  Key (email)=(Jan (x) Kowalski) already exists.\npassword=Hunter2",
+            "SQLSTATE[23505]: Unique violation\nDETAIL:  [REDACTED]\npassword=[REDACTED]",
+        ];
+    }
+
+    /**
+     * The row and the key of PostgreSQL inside another text (the message of an exception has them on one line, after
+     * the code of the error): masked up to the last parenthesis of the line, so a parenthesis in a value does not
+     * end the value.
+     */
+    #[DataProvider('valuesInAnotherText')]
+    public function testARowAndAKeyOfPostgresInAnotherTextAreMaskedToTheEndOfTheValue(string $text, string $expected): void
+    {
+        self::assertSame($expected, $this->filter->mask($text));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function valuesInAnotherText(): iterable
+    {
+        yield 'a row' => [
+            'SQLSTATE[23514]: Check violation: 7 ERROR:  new row for relation "customer" violates check constraint "customer_phone_check" Failing row contains (0193, Jan Kowalski, ul. Długa 5 (II p.), +48 600 100 200, Warszawa).',
+            'SQLSTATE[23514]: Check violation: 7 ERROR:  new row for relation "customer" violates check constraint "customer_phone_check" Failing row contains ([REDACTED]).',
+        ];
+        yield 'a key' => [
+            'SQLSTATE[23505]: Unique violation: 7 ERROR: duplicate key Key (variant_id, period)=(Jan Kowalski (x), y) already exists.',
+            'SQLSTATE[23505]: Unique violation: 7 ERROR: duplicate key Key (variant_id, period)=([REDACTED]) already exists.',
+        ];
+        yield 'a row of a value that ends with a parenthesis' => [
+            'Failing row contains (1, Jan Kowalski (x)).',
+            'Failing row contains ([REDACTED]).',
+        ];
+        yield 'a row that is cut before its end' => [
+            'Failing row contains (1, Jan Kowalski, ul. Dłu',
+            'Failing row contains ([REDACTED]',
         ];
     }
 
     public function testAMessageOfMoreLinesIsMaskedOnEveryLine(): void
     {
         self::assertSame(
-            "SQLSTATE[23505]: Unique violation\nDETAIL:  Key (email)=([REDACTED]) already exists.\npassword=[REDACTED]",
+            "SQLSTATE[23505]: Unique violation\nDETAIL:  [REDACTED]\npassword=[REDACTED]",
             $this->filter->mask("SQLSTATE[23505]: Unique violation\nDETAIL:  Key (email)=(".self::EMAIL.") already exists.\npassword=Hunter2"),
         );
     }

@@ -48,11 +48,11 @@ final readonly class SentryEventFilter
 
     /**
      * The masks in the order of Alloy: a pattern and what replaces its first group. The lines of a text are masked
-     * one by one (m), every pattern works on bytes, so a text that is not valid UTF-8 is masked too. STATEMENT of
-     * PostgreSQL, which Alloy drops as a whole line, loses the text of the statement.
+     * one by one (m), every pattern works on bytes, so a text that is not valid UTF-8 is masked too. DETAIL and
+     * STATEMENT of PostgreSQL, which Alloy drops as whole lines, lose the text of the line.
      */
     private const array MASKS = [
-        ['#(?:^|\]\s)\s*STATEMENT:\s*(.+)$#m', self::REDACTED],
+        ['#(?:^|\]\s)\s*(?:DETAIL|STATEMENT):\s*(.+)$#m', self::REDACTED],
         // JWT.
         ['#(eyJ[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*)+)#m', self::REDACTED],
         // Bearer tokens.
@@ -73,8 +73,9 @@ final readonly class SentryEventFilter
         ['#://[^/\s:@"]*:([^@/\s"]+)@#m', self::REDACTED],
         // The parameters of a query in the message of DBAL (with params [...]).
         ['#with params \[((?:[^\]\\\\]|\\\\.)*)\]#m', self::REDACTED],
-        // The values of a row and of a key of PostgreSQL.
-        ['#(?:Failing row contains |Key \([^)]*\)=)\(([^)]*)\)#m', self::REDACTED],
+        // The values of a row and of a key of PostgreSQL outside a line DETAIL: up to the last parenthesis of the line
+        // (a value may have its own), or the end of the line when it is cut.
+        ['#(?:Failing row contains |Key \(.*?\)=)\((.*(?=\))|.*)#m', self::REDACTED],
         // E-mail addresses, also with the @ written as %40 in an address.
         ['#([^\s"\'<>(),;:\[\]\\\\=@/%&?]+@[^\s"\'<>(),;\[\]\\\\@/:]+\.[^\s"\'<>(),;\[\]\\\\@/:.&?]{2,})#m', self::REDACTED],
         ['#([^\s"\'<>(),;:\[\]\\\\=@/&?]+%40[^\s"\'<>(),;\[\]\\\\&]+)#m', self::REDACTED],
