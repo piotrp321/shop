@@ -69,6 +69,8 @@ AGENT-ISOLATION (#498).
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
   końcowego PR przez użytkownika.
 - Logi CI i wyjście zależności czytane przez `/delivery` nie przechodzą przez bramkę; chronią R2–R5.
+- Nakładka `mktemp` jest wygodą pracy, nie granicą bezpieczeństwa: wykonawca steruje `PATH` własnego Basha i może
+  wywołać `/usr/bin/mktemp`, który w sandboxie się nie uda. Granicą jest profil (brak zapisu do `/var/folders/…`).
 - Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu), w tym `KUBE_DIR`
   operacji. Katalogi tymczasowe wykonawcy są w jego worktree (`.agent-tmp/`) i w prywatnym katalogu przebiegu
   `/private/tmp/agent.<losowy>/claude-<uid>` (`TMPDIR` poleceń Bash) i znikają po jego końcu.
@@ -100,7 +102,11 @@ AGENT-ISOLATION (#498).
   tymczasowymi zadania), `.git` głównego klonu (bez hooków i konfiguracji) i katalogu własnego zadania, sieć tylko do
   GitHuba i lokalnego stosu (przez proxy sandboxa, które odrzuca inne domeny), bez `dangerouslyDisableSandbox`, hooków i MCP z repozytorium. Profil (`executor-settings.json`, `render_settings.py`)
   przekazuje wrapper `claude-agent` (`--claude-bin` AO) flagą `--settings`; wrapper odmawia startu przy zmianie
-  `.claude/settings*.json` lub `.mcp.json` w gałęzi.
+  `.claude/settings*.json` lub `.mcp.json` w gałęzi. Wrapper dopisuje też na początek `PATH` wykonawcy nakładkę
+  `mktemp` (`bin/mktemp` z tej samej kopii poza zapisem wykonawcy, w profilu tylko do odczytu): `mktemp` bez szablonu
+  (także `-d` i `-t`) na macOS pisze do katalogu tymczasowego użytkownika (`/var/folders/…/T`), którego wykonawca nie
+  zapisuje, a skrypty repozytorium wołają goły `mktemp -d`; nakładka daje systemowemu `mktemp` jawny szablon w `TMPDIR`
+  zadania, a wywołania z szablonem zostawia bez zmian.
 - **R3. Docker.** Docker Desktop udostępnia kontenerom tylko `~/Development/claude` i katalogi tymczasowe.
 - **R4. Token wykonawców.** Fine-grained PAT tylko dla `shop`, bez Administration, Deployments, Environments, Secrets
   i Variables, czytany z Keychain wyłącznie przez wrapper i sondę; wykonawca nigdy nie startuje z tokenem użytkownika.
@@ -110,7 +116,7 @@ AGENT-ISOLATION (#498).
 - **R6. Sonda prób obejścia.** `tools/agent-security/probe.py` uruchamia prawdziwy proces wykonawcy (ta sama binarka,
   wrapper, profil i flagi co AO, model Haiku) i sprawdza próby obejścia z dróg 2–9, 11–13 i 15 oraz przypadki pracy
   (git, `gh`, Docker, stan zadania); drogę 10 sprawdza test workflowów, drogę 14 testy celów i `ao-prepare`. Fail-closed: kod 0 tylko, gdy każdy przypadek ma wynik i przeszedł.
-- **R7. Start AO.** `tools/agent-security/ao-prepare` kopiuje wrapper, profil i sondę z `origin/main` do
+- **R7. Start AO.** `tools/agent-security/ao-prepare` kopiuje wrapper, profil, nakładkę `mktemp` i sondę z `origin/main` do
   `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru i uruchamia sondę przed każdym
   `ao run` i wznowieniem; sonda, która nie przeszła, blokuje start.
 - **R8. Merge tylko z zielonym CI, bez bypassu.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) oraz
@@ -132,6 +138,10 @@ AGENT-ISOLATION (#498).
   użytkownika, mimo braku uprawnienia Administration. Rulesety merge'a nie mają więc żadnego aktora i oba tokeny mają
   `never`; przy jednej tożsamości to jedyna techniczna granica. Osobna tożsamość agentów (#498) pozwoliłaby nadać
   bypass wyłącznie użytkownikowi.
+- Nakładka `mktemp` zamiast poszerzenia profilu o `/var/folders/…/T`: w tym katalogu są `KUBE_DIR` operacji
+  produkcyjnych i pliki innych procesów, więc zapis tam nie wchodzi w grę. Zmiana skryptów repozytorium na jawne
+  szablony w `TMPDIR` byłaby poprawniejsza u źródła, ale to zmiana poza zakresem epiku (osobne zgłoszenie); nakładka
+  nie wymaga jej i nie szkodzi skryptom, które już mają szablon.
 - Pełna izolacja (osobny użytkownik systemu, lifecycle AO w sandboxie, osobna tożsamość GitHub agentów) wymaga zmian
   w zamrożonym AO i nowej infrastruktury, więc jest osobnym epikiem (#498).
 
