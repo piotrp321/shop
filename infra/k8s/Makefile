@@ -30,6 +30,8 @@ check:
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing without the absent for a metric that is gone, NodeDiskFull
 # firing at exactly 85 percent, an alert rule that PromQL cannot parse).
+# Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
+# only: CI does not run it (workflow k8s-selftest.yml, started by hand).
 selftest:
 	sh scripts/selftest.sh
 
