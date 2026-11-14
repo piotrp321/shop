@@ -875,8 +875,10 @@ class FakeRunner:
                              'repository': 'piotrp321/shop'}, 'labels': ['epic']}]})
         if args[:3] == ['gh', 'issue', 'list']:
             if '--label' in args and 'epic' in args and '--state' in args and args[args.index('--state') + 1] == 'open':
-                return json.dumps([{'number': 267, 'title': 'HARDENING: bezpieczeństwo', 'body': ''},
-                                   {'number': 400, 'title': 'RETRO: retrospektywa', 'body': ''}])
+                # The board's open epic issues, read through the gate: the authors of the issues of the epics.
+                authors = {i['number']: i.get('author') for i in self.epic_issues}
+                return json.dumps([dict(gh_item(n, title=t, body=''), author=authors.get(n, by()))
+                                   for n, t in ((267, 'HARDENING: bezpieczeństwo'), (400, 'RETRO: retrospektywa'))])
             if '--label' in args and 'epic' in args:
                 return json.dumps(self.epic_issues)
             if 'piotrp321/agentic-orchestrator' in args:

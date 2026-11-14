@@ -96,7 +96,8 @@ AGENT-ISOLATION (#498).
   Komentarze są oceniane każdy po swoim autorze; komentarzy review PR bramka nie pobiera. Błąd `gh` albo nieoczekiwana
   odpowiedź kończy wywołanie błędem bez wyniku: bramka nigdy nie przepuszcza treści, gdy nie zna uprawnień. `/groom`
   pokazuje zgłoszenia zewnętrzne użytkownikowi jako numer, autora i link, a użytkownik, który chce się nimi zająć,
-  przepisuje je we własne issue.
+  przepisuje je we własne issue. Kolejka `/ao-run` (`next_epic.py`, `night_queue.py`) czyta issues epików przez
+  bramkę: issue `epic` niezaufanego autora nie jest epikiem kolejki i jest pomijane z powodem, bez tytułu i treści.
 - **R2. Sandbox i wrapper wykonawców AO.** Wykonawcy działają w sandboxie Claude Code (na macOS Seatbelt), także dla
   procesów potomnych Bash: odczyt `~` zabroniony poza listą ścieżek pracy, zapis tylko w worktree (z katalogami
   tymczasowymi zadania), `.git` głównego klonu (bez hooków i konfiguracji) i katalogu własnego zadania, sieć tylko do
@@ -116,9 +117,14 @@ AGENT-ISOLATION (#498).
 - **R6. Sonda prób obejścia.** `tools/agent-security/probe.py` uruchamia prawdziwy proces wykonawcy (ta sama binarka,
   wrapper, profil i flagi co AO, model Haiku) i sprawdza próby obejścia z dróg 2–9, 11–13 i 15 oraz przypadki pracy
   (git, `gh`, Docker, stan zadania); drogę 10 sprawdza test workflowów, drogę 14 testy celów i `ao-prepare`. Fail-closed: kod 0 tylko, gdy każdy przypadek ma wynik i przeszedł.
-- **R7. Start AO.** `tools/agent-security/ao-prepare` kopiuje wrapper, profil, nakładkę `mktemp` i sondę z `origin/main` do
-  `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru i uruchamia sondę przed każdym
-  `ao run` i wznowieniem; sonda, która nie przeszła, blokuje start.
+- **R7. Start AO.** `/ao-run` startuje każde `ao run` (także wznowienie) wyłącznie przez
+  `tools/agent-security/ao-prepare` i z jego wyniku: skrypt kopiuje wrapper, profil, nakładkę `mktemp` i sondę
+  z commita `main` publicznego `piotrp321/shop` pod stałym adresem GitHuba (SHA z `git ls-remote`, commit pobrany do
+  prywatnego repozytorium w `$AO_HOME`, `git` bez obiektów zastępczych i graftów; nie z drzewa roboczego sesji ani
+  z głównego klonu, którego `.git` z refami, obiektami i konfiguracją wykonawcy i kontenery mogą zapisać) do `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru
+  (przed sondą i po niej) i przy działającym AO na tym `AO_HOME` (kopia nie zmienia się
+  w trakcie przebiegu) i uruchamia sondę z kopii z binarką przypiętą przez AO; sonda, która nie przeszła, nie skończyła
+  się w limicie czasu albo nie dała wyniku, blokuje start (fail-closed), a sesja wysyła push z przyczyną.
 - **R8. Merge tylko z zielonym CI, bez bypassu.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) oraz
   `main-merge` i `epic-merge` (PR i checki `checks`, `e2e`) nie mają żadnego aktora bypass: nikt, także użytkownik,
   nie zmerguje PR do `main` ani `epic/*` bez zielonych `checks` i `e2e`. Sonda sprawdza, że

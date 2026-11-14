@@ -615,11 +615,16 @@ wykonawcy, nie konfigurację.
 
 `tools/agent-security/ao-prepare` (skrypt z testami) wywoływany przez `/ao-run` w sekcji „Start” przed `ao run`:
 
-- po `git fetch origin main` kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json`, `probe.py`,
-  `probe-cases.sh` i `bin/mktemp` (nakładka z R2, do `$AO_HOME/agent-security/bin/mktemp`, wykonywalna) z
-  `origin/main` (`git show`, nie z drzewa roboczego sesji) do `$AO_HOME/agent-security/` (poza zapisem wykonawcy
-  i katalogami Dockera; kopia nie zmienia się w trakcie przebiegu);
-- odmawia startu, gdy istnieje któryś `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (droga 14);
+- kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json`, `probe.py`, `probe-cases.sh`
+  i `bin/mktemp` (nakładka z R2, do `$AO_HOME/agent-security/bin/mktemp`, wykonywalna) z `main` na GitHubie do
+  `$AO_HOME/agent-security/` (poza zapisem wykonawcy i katalogami Dockera; kopia nie zmienia się w trakcie
+  przebiegu). Źródło to stały adres `https://github.com/piotrp321/shop.git` (tylko `https` i `ssh`), nie drzewo
+  robocze sesji ani główny klon, którego `.git` wykonawcy i kontenery mogą zapisać (`refs/replace`, przestawiony
+  `refs/remotes/origin/main`, podłożony `.git/commondir`, zmieniony adres `origin`): SHA z `git ls-remote` tego
+  adresu, commit pobrany po SHA do prywatnego repozytorium `$AO_HOME/agent-security-src.git` i czytany przez `ls-tree` i `cat-file blob`, `git` bez
+  obiektów zastępczych, graftów, commit-graph, fsmonitora i hooków (jak wrapper);
+- odmawia startu, gdy istnieje któryś `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (droga 14), przed
+  sondą i ponownie po niej;
 - uruchamia sondę z kopii (`$AO_HOME/agent-security/probe.py`, nigdy z drzewa roboczego sesji) na wrapperze i profilu
   z tej samej kopii, z binarką przypiętą (`claude_pin.py`); kod różny od 0: AO nie
   startuje, push „Epik <x>: sonda bezpieczeństwa nie przeszła (<reason>)”, w rozmowie czas, koszt i przyczyna;
