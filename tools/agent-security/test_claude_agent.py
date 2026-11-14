@@ -356,6 +356,7 @@ class RefusalTest(WrapperTestCase):
 
     def test_missing_token(self):
         stderr = self.refused(*AO_ARGS, FAKE_TOKEN=None)
+        self.assertNotIn('hint:', stderr)   # only the wrapper's own message, no git advice
         self.assertIn('shop-agent-github-token', stderr)
         self.assertIn('security add-generic-password', stderr)
 

@@ -37,7 +37,8 @@ die() {
 # (info/grafts) and the commit-graph file would let it change what the merge-base of the P12 check is or contains.
 g() {
     GIT_NO_REPLACE_OBJECTS=1 GIT_GRAFT_FILE=/dev/null \
-        git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.commitGraph=false "$@"
+        git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.commitGraph=false \
+        -c advice.graftFileDeprecated=false "$@"
 }
 
 [ -n "${AGENT_CLAUDE_BIN:-}" ] || die "brak AGENT_CLAUDE_BIN (binarka wersji przypiętej przez AO, z ao-prepare)"
