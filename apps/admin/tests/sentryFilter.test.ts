@@ -153,6 +153,44 @@ describe("filterEvent: query strings and fragments (path 2)", () => {
     });
   });
 
+  it("removes the query parameters that the integration of the router of the SDK writes as the attributes `query.<key>`", () => {
+    // The pageload span (the first navigation) and the navigation spans get them from the router (to.query), with every value.
+    const queryAttributes = {
+      "query.code": "v-oidc-code",
+      "query.state": "v-oidc-state",
+      "query.session_state": "v-session-state",
+      "query.iss": "http://auth.test",
+      "query.q": EMAIL,
+      "query.status": "new",
+      "query.refund": ["pending", "x"],
+    };
+    const event: Event = {
+      type: "transaction",
+      transaction: "auth-callback",
+      contexts: {
+        trace: {
+          trace_id: "771a43a4192642f0b136d5159a501700",
+          span_id: "9c2a6db8c79068a2",
+          op: "pageload",
+          data: { "sentry.origin": "auto.pageload.vue", ...queryAttributes, "params.orderId": "0b9e8d7c-6a5b-4c3d-8e2f-1a0b9c8d7e6f", "route.id": "auth-callback" },
+        },
+      },
+      spans: [span("navigation", "orders", { "sentry.op": "navigation", ...queryAttributes })],
+      breadcrumbs: [{ category: "navigation", data: { from: "/", to: "/orders", ...queryAttributes } }],
+    };
+
+    const filtered = filterEvent(event);
+
+    expect(filtered.contexts?.trace?.data).toEqual({
+      "sentry.origin": "auto.pageload.vue",
+      "params.orderId": "0b9e8d7c-6a5b-4c3d-8e2f-1a0b9c8d7e6f",
+      "route.id": "auth-callback",
+    });
+    expect(filtered.spans?.[0]?.data).toEqual({ "sentry.op": "navigation" });
+    expect(filtered.breadcrumbs?.[0]?.data).toEqual({ from: "/", to: "/orders" });
+    expectNoneOf(JSON.stringify(filtered), [...PLANTED_IN_QUERY, "pending", "query."]);
+  });
+
   it("removes the query and the fragment from the addresses of the frames", () => {
     const event: Event = {
       exception: {

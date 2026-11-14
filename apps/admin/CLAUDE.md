@@ -438,7 +438,9 @@ Spec: `docs/features/sentry/spec.md`.
   `Content-Type`, `Accept`; bez ciasteczek, treści, query stringu i adresu klienta; z użytkownika tylko `id`; bez `extra`.
   Query i fragment znikają z nazw transakcji, nazw spanów (HTTP, zasobów, nawigacji) i ich danych, adresów w danych
   kontekstów i breadcrumbs (`fetch`, `xhr`, `navigation`) i z adresów ramek (`q` wyszukiwania zamówień to e-mail, `code`
-  i `state` z `/auth/callback`); breadcrumbs `console` są odrzucane, ramki bez `vars`. Teksty (komunikaty, wartości wyjątków,
+  i `state` z `/auth/callback`). Znikają też atrybuty `query.<klucz>`, które integracja routera SDK zapisuje dla każdego
+  parametru zapytania trasy w spanie pageload i spanach nawigacji (a stamtąd w `contexts.trace.data` transakcji); parametry
+  ścieżki (`params.<klucz>`, `url.path.parameter.<klucz>`) zostają. Breadcrumbs `console` są odrzucane, ramki bez `vars`. Teksty (komunikaty, wartości wyjątków,
   breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same wzorce co Alloy, filtr sklepu i filtr api
   (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL, klucz=wartość z sekretami, `Failing row
   contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`, adresy IP. Wzorce działają w czasie liniowym.
@@ -527,7 +529,7 @@ Spec: `docs/features/sentry/spec.md`.
   (rzędy, akcje, linie kolumn ukrytych, pasek narzędzi, adres, pager i fokus, puste stany, trzy przypadki błędu);
   testy `useCursorPager` i `useListUrlState` używają routera w pamięci; `tests/ui-accessible-names.test.ts`
   nazwę „Zamknij” okien i brak angielskich nazw dostępnych w `src/components/ui/`.
-- Sentry (`tests/sentryFilter.test.ts`, `tests/sentry.test.ts`, `tests/sentryTracing.test.ts`, `tests/config.test.ts`) bez konta
+- Sentry (`tests/sentryFilter.test.ts`, `tests/sentry.test.ts`, `tests/sentryTracing.test.ts`, `tests/config.test.ts`; nawigacje routera z `code`, `state` i `q` w `sentryTracing.test.ts` na fałszywych zegarach, bo spany nawigacji kończą się po bezczynności) bez konta
   i bez ruchu do Sentry: prawdziwe SDK z fałszywym DSN i transportem testowym zbierającym koperty (opcja `transport` w trzecim
   argumencie `initSentry`). SDK opakowuje `fetch`, `history`, `console` i `window.onerror` raz na stronę, więc `fetch` testu jest
   podmieniony raz przed pierwszym `init` (`vi.stubGlobal`), a testy śladów są w osobnym pliku z jednym klientem (próbkowanie 1).

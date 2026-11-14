@@ -111,8 +111,7 @@ afterEach(async () => {
 describe("without a DSN", () => {
   it.each([[{ SENTRY_DSN: "" }], [{ SENTRY_DSN: "  " }], [{ SENTRY_DSN: undefined }]])(
     "does not call the SDK at all (%j)",
-    async (config) => {
-      
+    (config) => {
       expect(start(config)).toBe(false);
 
       expect(Sentry.init).not.toHaveBeenCalled();
@@ -127,8 +126,8 @@ describe("without a DSN", () => {
     expect(sent()).toEqual([]);
   });
 
-  it("sets no user: setSentryUser is a no-op", async () => {
-        start({ SENTRY_DSN: "" });
+  it("sets no user: setSentryUser is a no-op", () => {
+    start({ SENTRY_DSN: "" });
 
     setSentryUser(SUB);
 
@@ -138,23 +137,21 @@ describe("without a DSN", () => {
 
 describe("the options of the SDK", () => {
   const config = { dsn: DSN, environment: "demo", release: "abc123", tracesSampleRate: 0.1 };
-  const build = async () => {
-        return buildSentryOptions(config, API, newRouter());
-  };
+  const build = () => buildSentryOptions(config, API, newRouter());
 
-  it("passes the DSN, the environment, the release and the sample rate", async () => {
-    expect(await build()).toMatchObject({ dsn: DSN, environment: "demo", release: "abc123", tracesSampleRate: 0.1 });
+  it("passes the DSN, the environment, the release and the sample rate", () => {
+    expect(build()).toMatchObject({ dsn: DSN, environment: "demo", release: "abc123", tracesSampleRate: 0.1 });
   });
 
-  it("does not attach the props of components and collects no data of the user", async () => {
-    expect(await build()).toMatchObject({
+  it("does not attach the props of components and collects no data of the user", () => {
+    expect(build()).toMatchObject({
       attachProps: false,
       dataCollection: { userInfo: false, cookies: false, httpBodies: [], urlQueryParams: false, stackFrameVariables: false },
     });
   });
 
-  it("has the tracing of the router and no Pinia integration and no Replay", async () => {
-    const names = ((await build()).integrations as Array<{ name: string }>).map(({ name }) => name);
+  it("has the tracing of the router and no Pinia integration and no Replay", () => {
+    const names = (build().integrations as Array<{ name: string }>).map(({ name }) => name);
     expect(names).toEqual(["BrowserTracing"]);
     expect(names.join()).not.toMatch(/pinia|replay/i);
   });
@@ -170,19 +167,19 @@ describe("the options of the SDK", () => {
     }
   });
 
-  it("sends transactions through beforeSendTransaction (a transaction per page, not streamed spans)", async () => {
-    expect((await build()).traceLifecycle).toBe("static");
+  it("sends transactions through beforeSendTransaction (a transaction per page, not streamed spans)", () => {
+    expect(build().traceLifecycle).toBe("static");
   });
 
-  it("filters events, transactions and breadcrumbs with the one filter", async () => {
-    const { beforeSend, beforeSendTransaction, beforeBreadcrumb } = await build();
+  it("filters events, transactions and breadcrumbs with the one filter", () => {
+    const { beforeSend, beforeSendTransaction, beforeBreadcrumb } = build();
     expect(beforeSend).toBeTypeOf("function");
     expect(beforeSendTransaction).toBe(beforeSend);
     expect(beforeBreadcrumb).toBeTypeOf("function");
   });
 
-  it("propagates the trace only to the API: anchored, not to a host that starts like it, not to Keycloak", async () => {
-    const targets = (await build()).tracePropagationTargets as RegExp[];
+  it("propagates the trace only to the API: anchored, not to a host that starts like it, not to Keycloak", () => {
+    const targets = build().tracePropagationTargets as RegExp[];
     const propagates = (url: string) => targets.some((target) => target.test(url));
 
     expect(targets).toHaveLength(1);
@@ -195,15 +192,15 @@ describe("the options of the SDK", () => {
     expect(propagates(`${KEYCLOAK}/realms/shop/protocol/openid-connect/token`)).toBe(false);
   });
 
-  it("escapes the characters of the address of the API in the pattern", async () => {
-        const [target] = buildSentryOptions(config, "http://localhost:8000/v1", newRouter()).tracePropagationTargets as RegExp[];
+  it("escapes the characters of the address of the API in the pattern", () => {
+    const [target] = buildSentryOptions(config, "http://localhost:8000/v1", newRouter()).tracePropagationTargets as RegExp[];
     expect(target!.test("http://localhost:8000/v1/me")).toBe(true);
     expect(target!.test("http://localhost:8000/v1x/me")).toBe(false);
     expect(target!.test("http://localhostX8000/v1/me")).toBe(false);
   });
 
-  it("leaves the environment and the release out when they are not configured", async () => {
-        const bare = buildSentryOptions({ ...config, environment: null, release: null }, API, newRouter());
+  it("leaves the environment and the release out when they are not configured", () => {
+    const bare = buildSentryOptions({ ...config, environment: null, release: null }, API, newRouter());
     expect(bare.environment).toBeUndefined();
     expect(bare.release).toBeUndefined();
   });
@@ -220,8 +217,7 @@ describe("the options of the SDK", () => {
 });
 
 describe("events with a DSN", () => {
-  it("starts the SDK once, with the environment and the release", async () => {
-    
+  it("starts the SDK once, with the environment and the release", () => {
     expect(start({ SENTRY_ENVIRONMENT: "demo", SENTRY_RELEASE: "abc123" })).toBe(true);
 
     expect(Sentry.init).toHaveBeenCalledTimes(1);
@@ -229,7 +225,7 @@ describe("events with a DSN", () => {
   });
 
   it("sends an unhandled exception with the id of the staff member only and without the query of the page (paths 2 and 6)", async () => {
-        start();
+    start();
     await useAuthStore().load();
     window.history.replaceState({}, "", `/auth/callback?${CALLBACK}&${SEARCH}#fragment`);
 
@@ -246,7 +242,7 @@ describe("events with a DSN", () => {
   });
 
   it("sends no headers but three, no cookies and no address (path 1)", async () => {
-        start();
+    start();
     document.cookie = "KEYCLOAK_SESSION=v-keycloak-cookie";
 
     Sentry.captureException(new Error("boom"));
@@ -261,7 +257,7 @@ describe("events with a DSN", () => {
   });
 
   it("keeps the query of the navigation and of the calls to the API out of the breadcrumbs, and the console", async () => {
-        start();
+    start();
     window.history.pushState({}, "", `/orders?${SEARCH}`);
     await apiClient(API).GET("/api/v1/admin/orders", { params: { query: { q: "jan.kowalski@example.pl" } } });
     console.error("Search failed for jan.kowalski@example.pl");
@@ -277,7 +273,7 @@ describe("events with a DSN", () => {
   });
 
   it("masks an e-mail in the message of an exception (path 4)", async () => {
-        start();
+    start();
 
     Sentry.captureException(new Error("Order of jan.kowalski@example.pl failed"));
     await Sentry.flush(2000);

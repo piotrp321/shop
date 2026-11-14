@@ -25,9 +25,13 @@ export const REDACTED = "[REDACTED]";
 /** The headers of a request that are kept, in lower case. */
 const KEPT_HEADERS = new Set(["user-agent", "content-type", "accept"]);
 
-/** The data of spans, contexts and breadcrumbs that is removed: queries, headers, cookies, bodies, the client. */
+/**
+ * The data of spans, contexts and breadcrumbs that is removed: queries, headers, cookies, bodies, the client. `query.<key>` is
+ * what the integration of the router of the SDK writes for every query parameter of a route (`code` and `state` of
+ * /auth/callback, the `q` of the order search); the parameters of the path (`params.<key>`) stay.
+ */
 const REMOVED_DATA =
-  /(^|[._])(query|fragment|query_string|arguments)$|header|cookie|body|^db\.query\.parameter|^user\.|^client\.|^net\.peer\.|client_ip|ip_address/i;
+  /(^|[._])(query|fragment|query_string|arguments)$|^query\.|header|cookie|body|^db\.query\.parameter|^user\.|^client\.|^net\.peer\.|client_ip|ip_address/i;
 
 /** The data of spans, contexts and breadcrumbs that is an address: its query and fragment are removed. */
 const ADDRESS_DATA = /(^|[._])(url|full|target|path|href|uri|from|to)$/i;

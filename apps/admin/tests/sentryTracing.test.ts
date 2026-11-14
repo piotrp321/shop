@@ -52,6 +52,8 @@ vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => 
   return new Response("{}", { status: 200 });
 }) as typeof fetch);
 
+let router: ReturnType<typeof createRouter>;
+
 beforeAll(() => {
   window.__ADMIN_CONFIG__ = {
     VITE_API_URL: API,
@@ -59,7 +61,15 @@ beforeAll(() => {
     SENTRY_DSN: "https://public@o0.ingest.de.sentry.io/1",
     SENTRY_TRACES_SAMPLE_RATE: "1",
   };
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/:rest(.*)*", component: Blank }] });
+  router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/auth/callback", name: "auth-callback", component: Blank },
+      { path: "/orders", name: "orders", component: Blank },
+      { path: "/orders/:orderId", name: "order", component: Blank },
+      { path: "/:rest(.*)*", component: Blank },
+    ],
+  });
   expect(initSentry(createApp(Blank), router, { transport })).toBe(true);
 });
 
@@ -113,5 +123,42 @@ describe("transactions", () => {
     const http = transaction!.spans.find((span) => span.op === "http.client");
     expect(http?.description).toBe(`GET ${API}/api/v1/admin/orders`);
     expect(JSON.stringify(transaction)).not.toMatch(PLANTED);
+  });
+});
+
+describe("navigations of the router", () => {
+  // The integration of the router of the SDK writes every query parameter of the route as the attribute `query.<key>` of the
+  // pageload span (the first navigation) and of the navigation spans: they end up in the data of the transaction.
+  /** Runs the navigations, lets the idle spans of the SDK end (fake timers) and returns all that was sent. */
+  async function navigate(...paths: string[]): Promise<string> {
+    vi.useFakeTimers();
+    for (const path of paths) {
+      await router.push(path);
+      await vi.advanceTimersByTimeAsync(5_000);
+    }
+    await vi.advanceTimersByTimeAsync(60_000);
+    vi.useRealTimers();
+    await Sentry.flush(2000);
+    return JSON.stringify(envelopes);
+  }
+
+  it("sends no query parameter of the pageload and of the navigations: not /auth/callback (code, state), not the search of orders (q)", async () => {
+    const sent = await navigate(
+      "/auth/callback?code=v-oidc-code&state=v-oidc-state&session_state=v-session-state&iss=http%3A%2F%2Fauth.test",
+      "/orders?q=jan.kowalski%40example.pl&status=new",
+      "/orders?q=fraza-wyszukiwania",
+    );
+
+    const transactions = envelopes.flatMap(([, items]) => items.filter(([header]) => header.type === "transaction").map(([, payload]) => payload));
+    expect(transactions.map(({ transaction }) => transaction)).toEqual(expect.arrayContaining(["auth-callback", "orders"]));
+    expect(sent).not.toMatch(/v-oidc-code|v-oidc-state|v-session-state|auth\.test|jan\.kowalski|example\.pl|fraza-wyszukiwania/);
+    expect(sent).not.toMatch(/"query\./);
+  });
+
+  it("keeps the parameters of the path of the route (the id of an order is not a query)", async () => {
+    const sent = await navigate("/orders/0b9e8d7c-6a5b-4c3d-8e2f-1a0b9c8d7e6f?q=jan.kowalski%40example.pl");
+
+    expect(sent).toContain("0b9e8d7c-6a5b-4c3d-8e2f-1a0b9c8d7e6f");
+    expect(sent).not.toMatch(/jan\.kowalski|"query\./);
   });
 });
