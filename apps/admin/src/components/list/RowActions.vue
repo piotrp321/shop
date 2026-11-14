@@ -7,11 +7,16 @@ export interface RowAction {
   /** The verb, e.g. „Edytuj”; the accessible name and the tooltip add the name of the object. */
   label: string;
   icon: Component;
-  /** A page of the panel (a plain link that the router follows) or `href`, an address outside it. */
+  /**
+   * A page of the panel (a plain link that the router follows) or `href`, an address outside it. An action with neither
+   * is a button: pressing it emits `select` with its key, and the list decides what it does (opens a window).
+   */
   to?: RouteLocationRaw;
   href?: string;
   /** Opens in a new tab; the accessible name says so. */
   external?: boolean;
+  /** The `data-testid` of the action when it is not `action-<key>`. */
+  testid?: string;
 }
 </script>
 
@@ -26,6 +31,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
  * it on hover and focus. An action that the role can never do is not passed in at all.
  */
 const props = defineProps<{ name: string; actions: RowAction[] }>();
+const emit = defineEmits<{ select: [key: string] }>();
 
 const router = useRouter();
 
@@ -56,12 +62,26 @@ const labelOf = (action: RowAction) => `${action.label}: ${props.name}`;
         :key="action.key"
       >
         <TooltipTrigger as-child>
+          <button
+            v-if="action.to === undefined && action.href === undefined"
+            type="button"
+            :aria-label="labelOf(action)"
+            :data-testid="action.testid ?? `action-${action.key}`"
+            :class="buttonVariants({ variant: 'outline', size: 'icon-sm' })"
+            @click="emit('select', action.key)"
+          >
+            <component
+              :is="action.icon"
+              aria-hidden="true"
+            />
+          </button>
           <a
+            v-else
             :href="targetOf(action)"
             :aria-label="action.external ? labelOf(action) + NEW_TAB : labelOf(action)"
             :target="action.external ? '_blank' : undefined"
             :rel="action.external ? 'noopener' : undefined"
-            :data-testid="`action-${action.key}`"
+            :data-testid="action.testid ?? `action-${action.key}`"
             :class="buttonVariants({ variant: 'outline', size: 'icon-sm' })"
             @click="follow($event, action)"
           >

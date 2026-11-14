@@ -72,6 +72,21 @@ describe("RowActions", () => {
     expect(tooltip?.textContent).toContain("Edytuj: Buty trailowe Norvane Grań 300");
   });
 
+  it("makes a button of an action without an address: it names itself like a link and tells the list which action was chosen", async () => {
+    const { wrapper } = await mountActions([{ key: "change", label: "Zmień cenę", icon: Pencil, testid: "change-price" }]);
+
+    expect(document.body.querySelector("a")).toBeNull();
+    const button = document.body.querySelector("button")!;
+    expect(button.getAttribute("type")).toBe("button");
+    expect(button.getAttribute("aria-label")).toBe("Zmień cenę: Buty trailowe Norvane Grań 300");
+    expect(button.getAttribute("data-testid")).toBe("change-price");
+
+    button.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("select")).toEqual([["change"]]);
+  });
+
   it("renders nothing for an empty list of actions", async () => {
     await mountActions([]);
 
