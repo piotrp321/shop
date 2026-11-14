@@ -283,7 +283,8 @@ jobs:
       # Static analysis needs no services; it runs in the background next to the unit tests and the contract freshness.
       - name: make check in the background
         if: env.FULL_CI == 'true' && matrix.name == 'static'
-        run: sh .github/scripts/background.sh start check make check RUN="$CI_RUN"
+        run: |
+          sh .github/scripts/background.sh start check sh -c 'for t in "make -C apps/api phpstan" "make -C apps/api deptrac" "make -C apps/api cs-check" "make -C apps/store check" "make -C apps/admin check" "make -C infra/k8s check"; do s=$(date +%s); $t RUN="$0" >/dev/null 2>&1; echo "TIMING $t $(( $(date +%s) - s ))s"; done' "$CI_RUN"
 
       # The unit suite needs neither services nor a database: it runs in seconds.
       - name: api unit tests
@@ -312,7 +313,20 @@ jobs:
         if: env.FULL_CI == 'true' && matrix.phpunit_args != ''
         env:
           PHPUNIT_ARGS: ${{ matrix.phpunit_args }}
-        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS"
+        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS --log-junit var/junit.xml"
+
+      - name: TIMING per directory
+        if: always() && matrix.phpunit_args != ''
+        run: |
+          python3 -I - <<'PY'
+          import xml.etree.ElementTree as ET, collections
+          t = collections.Counter(); n = collections.Counter()
+          for c in ET.parse('apps/api/var/junit.xml').iter('testcase'):
+              f = c.get('file', '').split('/tests/')[-1]
+              k = '/'.join(f.split('/')[:2])
+              t[k] += float(c.get('time', 0)); n[k] += 1
+          for k, v in sorted(t.items(), key=lambda x: -x[1]): print('TIMING', k, round(v, 1), n[k])
+          PY
 
       # The store and admin suites and the VCL tests (varnishtest in the image of the varnish service, without the
       # stack) run side by side, next to the script tests started above; every suite runs to the end and any failure
