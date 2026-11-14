@@ -17,7 +17,9 @@ Zasady:
   - braków: zachowania niezbędnego do implementacji, którego szkic nie opisuje (błędy widoczne dla użytkownika,
     uprawnienia, cykl życia danych, puste i brakujące dane);
   - sprzeczności: w szkicu, ze specyfikacjami istniejących funkcji (`docs/features/`), z kodem, z `CLAUDE.md`
-    i `docs/vision.md`;
+    i `docs/vision.md`; w UI także układ, który zmienia kolejność elementów między szerokościami ekranu (kolumny,
+    `order`, obszary siatki), przy wymaganiu kolejności fokusu zgodnej z układem: DOM ma jedną kolejność, a CSS
+    `reading-flow` działa tylko w Chromium, więc szkic wskazuje szerokość z wyjątkiem albo zmienia wymaganie;
   - przypadków brzegowych: współbieżność, nieaktualny widok, limity, paginacja, propagacja błędów do UI;
   - nieweryfikowalnych kryteriów akceptacji i wymagań z issue bez pokrycia w szkicu;
   - niekompletnej sekcji „Wymagane przed startem”: sekret, konto, usługa zewnętrzna, uprawnienie albo artefakt
