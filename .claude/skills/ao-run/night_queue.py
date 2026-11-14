@@ -133,8 +133,8 @@ gate.jsonl), so a failure never leaves a token in claims.json that was not print
 
 release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
-hold: the parallel hold after a critical problem of a pair (docs/features/parallel-work/spec.md, „Pomiar pierwszych
-dwóch par”): writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
+hold: the parallel hold after a critical problem of a pair (docs/features/parallel-work/spec.md, „Metryki
+par”): writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
 not overwritten); an empty or blank --reason exits 2. While it exists, the gate (also `next` case (c)) makes every
 candidate next to an epic in progress wait; nothing in progress still passes, so serial work goes on. unhold: removes
 the hold (the user's decision) and prints {"removed": <bool>}, exit 0 also without a hold. An unreadable
