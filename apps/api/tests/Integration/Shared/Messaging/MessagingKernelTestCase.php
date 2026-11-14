@@ -96,7 +96,7 @@ abstract class MessagingKernelTestCase extends KernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => [$transport], '--limit' => 1, '--time-limit' => $timeLimit]);
+        $tester->execute(['receivers' => [$transport], '--limit' => 1, '--time-limit' => $timeLimit, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }

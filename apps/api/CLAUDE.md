@@ -862,6 +862,14 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
 - Każdy endpoint: co najmniej jeden test funkcjonalny, w tym przypadek bez autoryzacji i z błędnymi danymi.
 - Dane testowe przez fabryki (Foundry), a nie tablice budowane ręcznie w każdym teście.
 - Poprawka błędu zaczyna się od testu, który ten błąd odtwarza i nie przechodzi.
+- Testy współbieżności forkują uczestników (`ConcurrentCommands`, `ParallelProcesses`, webhook w
+  `StartPaymentConcurrencyTest`). Rodzic woła przed forkiem `gc_collect_cycles()`: niezebrane cykle (np. połączenie AMQP po
+  teście z kernelem `test_messaging`) dziecko odziedziczyłoby, a `Kernel::shutdown()` w jego procesie uruchomiłby ich
+  destruktory na gnieździe wspólnym z rodzicem i czekał ~30 s na odpowiedź brokera.
+- Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 100 ms zamiast 1 s (liczba prób
+  i mnożnik jak w produkcji, pilnuje tego `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
+  Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s,
+  timeouty DSN Redisa, limity klienta HTTP), czekają ich prawdziwy czas.
 
 ## Czego nie robić
 

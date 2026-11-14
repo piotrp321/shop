@@ -172,7 +172,7 @@ final class RepriceOnTaxClassChangeTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => $messages, '--time-limit' => 10]);
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => $messages, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 

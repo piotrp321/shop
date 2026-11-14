@@ -85,8 +85,8 @@ final class EventFlowTest extends MessagingKernelTestCase
 
         $this->consume('events');
 
-        // A failed handler would put the message back through the retry delay (1 s ±10 %), so wait it out.
-        usleep(1_500_000);
+        // A failed handler would put the message back through the retry delay (100 ms ±10 %), so wait it out.
+        usleep(300_000);
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->rows('failed'));
         // The second handling read the product again, later, and wrote it again.
@@ -182,8 +182,8 @@ final class EventFlowTest extends MessagingKernelTestCase
         self::assertSame($requestId, $byMessage['{class} was handled successfully (acknowledging to transport).'] ?? null, 'the identifier of the entry of the worker');
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
 
-        // The retry comes back to the queue after its delay (1 s ±10 %); it must not reach a later test.
-        usleep(1_500_000);
+        // The retry comes back to the queue after its delay (100 ms ±10 %); it must not reach a later test.
+        usleep(300_000);
         self::assertCount(1, $this->drainEvents());
     }
 
@@ -212,7 +212,7 @@ final class EventFlowTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 2, '--time-limit' => 10]);
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 2, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }
