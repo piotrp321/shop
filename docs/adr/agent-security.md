@@ -75,7 +75,9 @@ AGENT-ISOLATION (#498).
 - W `claude-<uid>` katalogu tymczasowego Claude Code wykonawca może zapisywać pliki, które czyta i pisze sam Claude
   Code poza sandboxem (wyniki poleceń Bash, katalogi projektu), tak jak w domyślnym sandboxie Claude Code. Przed
   podmianą tych plików chroni tylko przypięta binarka (sprawdza tożsamość plików wyników); gniazdo komunikacji sesji
-  (`cc-socks`) i sam katalog przebiegu są dla wykonawcy zamknięte.
+  (`cc-socks`) i sam katalog przebiegu są dla wykonawcy zamknięte. To samo dotyczy
+  `<worktree>/.agent-tmp/run.<losowy>/tmp`, `TMPDIR` samego procesu Claude Code (pliki tymczasowe, które Claude Code
+  tworzy i czyta poza sandboxem): leży w worktree, które wykonawca zapisuje.
 - `GITHUB_TOKEN` workflowu z gałęzi zadania może dostać `packages: write` i wypchnąć obraz do GHCR; podmiana obrazu
   wdrożenia wymaga zgadnięcia SHA commita `main` po squashu.
 - Przypięta binarka Claude Code i wtyczki z `~/.claude/plugins` są zaufane (łańcuch dostaw poza zakresem).
