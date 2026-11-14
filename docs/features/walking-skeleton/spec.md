@@ -992,15 +992,17 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 `.github/workflows/ci.yml`, uruchamiany przy każdym pull requeście (także ze zmianami wyłącznie w dokumentacji)
 i pushu na `main`, więc job `checks` może być wymaganym checkiem gałęzi `main`. Nowe uruchomienie dla tego samego
 PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
+Job `checks` tylko zbiera wynik czterech części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
+i ma tylko obrazy i usługi, których potrzebuje. W każdej: obrazy deweloperskie `api`, `store` i `admin` pobrane
+z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
+Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
 
-1. Budowa obrazów deweloperskich `api`, `store` i `admin` z cache buildx (`type=gha`).
-2. Instalacja zależności do wolumenów, jak lokalnie.
-3. `make check` z `RUN="docker compose run --rm --no-deps -T"`.
-4. Testy z tym samym `RUN`: `make -C apps/api test` (wszystkie suity api), `make -C apps/store test`
-   (z Redisem), `make -C apps/admin test`. Zmiana, która dodaje testy na usługach stosu, w tym samym PR
-   uruchamia w CI te usługi przed testami.
-5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
-   `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
+1. `static`: `make check`, suita `unit` api (bez usług) i aktualność kontraktu: `make -C apps/api openapi`
+   i `make api-client`, potem `git diff --exit-code` na `apps/api/openapi.json`, `apps/api/openapi-admin.json`
+   i obu `schema.d.ts`.
+2. `front`: `make -C apps/store test` (z Redisem), `make -C apps/admin test`, testy VCL i testy skryptów.
+3. `api integration` i `api functional`: `make -C apps/api test` z `PHPUNIT_ARGS` jednej z suit, na usługach stosu.
+   Zmiana, która dodaje testy na usługach stosu, w tym samym PR uruchamia w CI te usługi przed testami.
 
 Osobny job `e2e` najpierw sprawdza typy testów i uruchamia testy skryptu median (`make e2e-check`), potem uruchamia pełny
 stos (`make up`, `make seed`) i `make e2e`. Po `make e2e` i testach `init-env.sh` uruchamia `make lighthouse` (sklep
