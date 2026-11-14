@@ -77,7 +77,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
   w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
   razem z `image.requireDigests` kończą render błędem; blok `sentry` (`environment`, `tracesSampleRate`, `dsn.api`, `dsn.store`,
-  `dsn.admin`, domyślnie puste, w `prod` `environment: demo` i `tracesSampleRate: 0.1`, DSN-y wpisuje osobny PR po założeniu projektów Sentry,
+  `dsn.admin`, domyślnie puste, w `prod` `environment: demo` i `tracesSampleRate: 0.1`, DSN-y trzech projektów Sentry tylko w `prod`,
   `README.md` sekcja 10): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (`image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` tylko dla
   aplikacji z niepustym DSN, przez helper `shop.sentryEnv`; DSN api w `shop.apiEnv` (api, worker, Joby, init kontenery, CronJoby
   `cart-purge-expired` i `restore`), DSN sklepu tylko w sklepie, panelu tylko w panelu; bez DSN żadnej `SENTRY_*` (także w `prod`
