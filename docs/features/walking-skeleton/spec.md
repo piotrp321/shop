@@ -993,14 +993,15 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 i pushu na `main`, więc job `checks` może być wymaganym checkiem gałęzi `main`. Nowe uruchomienie dla tego samego
 PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
 Job `checks` tylko zbiera wynik czterech części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
-i ma tylko obrazy i usługi, których potrzebuje. W każdej: obrazy deweloperskie `api`, `store` i `admin` pobrane
-z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
+i ma tylko obrazy i usługi, których potrzebuje. W częściach z obrazami: obrazy deweloperskie `api`, `store` i `admin`
+pobrane z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
 Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
 
-1. `static`: `make check`, suita `unit` api (bez usług) i aktualność kontraktu: `make -C apps/api openapi`
-   i `make api-client`, potem `git diff --exit-code` na `apps/api/openapi.json`, `apps/api/openapi-admin.json`
-   i obu `schema.d.ts`.
-2. `front`: `make -C apps/store test` (z Redisem), `make -C apps/admin test`, testy VCL i testy skryptów.
+1. `k8s`: `make -C infra/k8s check` (bez obrazów i usług).
+2. `apps`: `make check-code` (`make check` bez `infra/k8s`), suita `unit` api (bez usług), aktualność kontraktu
+   (`make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na `apps/api/openapi.json`,
+   `apps/api/openapi-admin.json` i obu `schema.d.ts`), `make -C apps/store test` (z Redisem),
+   `make -C apps/admin test`, testy VCL i testy skryptów.
 3. `api integration` i `api functional`: `make -C apps/api test` z `PHPUNIT_ARGS` jednej z suit, na usługach stosu.
    Zmiana, która dodaje testy na usługach stosu, w tym samym PR uruchamia w CI te usługi przed testami.
 

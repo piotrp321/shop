@@ -161,7 +161,7 @@ JSON i AO powtarza rundę. Dlatego:
      Pozostałe pliki Git połączył sam, a skrypt potwierdził, że merge ich nie zmienił.
    - **Pliki generowane** mają być wygenerowane od nowa z połączonych źródeł. Dotyczy to plików z `generated`, a także
      sytuacji, gdy `conflicts` dotyka kontrolerów, DTO albo konfiguracji OpenAPI. Gdy `delta.py ci` z kroku 2 zwrócił
-     0, sprawdził to krok „Contract freshness” części `checks part static`. W przeciwnym razie:
+     0, sprawdził to krok „Contract freshness” części `checks part apps`. W przeciwnym razie:
      1. Uruchom `make -C apps/api openapi RUN="docker compose exec -T"` i
         `make api-client RUN="docker compose exec -T"`.
      2. Uruchom

@@ -164,7 +164,7 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   `sync/<epik>-main`: merge commit (`--merge`). Gałęzi `epic/*` po merge'u końcowego PR nie usuwamy (ruleset `epic`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check`, testy wszystkich aplikacji i E2E przy każdym PR i każdym
   pushu na `main` i `epic/**`. Wymagany check `checks` zbiera wynik czterech
-  części (`checks part static`, `front`, `api integration`, `api functional`, każda na własnym runnerze), wymagany
+  części (`checks part k8s`, `apps`, `api integration`, `api functional`, każda na własnym runnerze), wymagany
   check `e2e` wynik trzech części E2E (`e2e shard 1`…`3`, każda na własnym stosie); ostatnia po `make e2e` uruchamia
   `make ci-after-e2e` (sprawdzenia na stosie z fragmentów `make/*.mk`, w tym Lighthouse; opis w `e2e/CLAUDE.md`).
   Testy skryptów (CI, skille, hooki AO, rulesety) `.github/scripts/script-tests.sh` znajduje po położeniu, więc nowy skill nie zmienia
