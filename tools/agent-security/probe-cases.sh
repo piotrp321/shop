@@ -93,6 +93,49 @@ rulesets_case() {
     fi
 }
 
+# work_mktemp: `mktemp` and `mktemp -d` without a template, as the repository's scripts call them. On macOS the system
+# mktemp makes the name in _CS_DARWIN_USER_TEMP_DIR (/var/folders/.../T, the user's temp, read-only for the executor),
+# whatever TMPDIR says; the overlay first in the executor's PATH (tools/agent-security/bin/mktemp) must put both in the
+# TMPDIR of the task (Bash gets <CLAUDE_CODE_TMPDIR>/claude-<uid>), writable, and TMPDIR itself is not the user's temp
+# (/var/folders/.../T): a result there would be the system mktemp's, not the task's. What the case
+# made is removed again.
+mktemp_case() {
+    status=fail
+    base=${TMPDIR:-}
+    while [ "${base%/}" != "$base" ]; do base=${base%/}; done
+    f=$(mktemp 2>/dev/null) || f=
+    d=$(mktemp -d 2>/dev/null) || d=
+    if [ -n "$base" ] && [ -f "$f" ] && [ -d "$d" ] && [ "$(dirname -- "$f")" = "$base" ] &&
+        [ "$(dirname -- "$d")" = "$base" ] && (echo x > "$f") 2>/dev/null && (echo x > "$d/probe-file") 2>/dev/null; then
+        case $base in
+        /var/folders/*/T | /private/var/folders/*/T) ;;   # the user's temp itself
+        *) status=pass ;;
+        esac
+    fi
+    [ -z "$f" ] || rm -f -- "$f" 2>/dev/null
+    [ -z "$d" ] || { rm -f -- "$d/probe-file" 2>/dev/null; rmdir -- "$d" 2>/dev/null; }
+    verdict work_mktemp "$status"
+}
+
+# write_mktemp_overlay: the mktemp the executor runs must be the overlay (not /usr/bin or /bin), and its directory
+# must be read-only: nothing can be planted in it and the file itself cannot be opened for writing (an append of
+# nothing). A file planted by a failing
+# case is removed again.
+mktemp_overlay_case() {
+    found=$(command -v mktemp 2>/dev/null) || found=
+    case $found in
+    /usr/bin/mktemp | /bin/mktemp | '' | [!/]*)
+        verdict write_mktemp_overlay fail
+        return ;;
+    esac
+    dir=$(dirname -- "$found")
+    (printf '%s\n' "$MARKER" > "$dir/probe-planted") 2>/dev/null
+    planted=
+    [ -e "$dir/probe-planted" ] && planted=1
+    rm -f "$dir/probe-planted" 2>/dev/null
+    if [ -z "$planted" ] && ! (: >> "$found") 2>/dev/null; then verdict write_mktemp_overlay pass; else verdict write_mktemp_overlay fail; fi
+}
+
 # Python helpers, `python3 -c "$PY_..." KIND ARGS...`. PY_SOCKET connect|bind PATH: exit 0 when the Unix socket at PATH
 # accepted the connection or could be bound (a bound probe socket is removed again). PY_PROXY proxy URL REQUEST: sends
 # REQUEST ("CONNECT host:port" or "GET http://host/") straight to the proxy at URL, with its credentials, and prints
@@ -275,6 +318,7 @@ write_blocked ao_teardown_write ./.ao/teardown
 
 # --- Path 13: AO state --------------------------------------------------------
 write_blocked write_agent_security_copy "$AO_HOME/agent-security/claude-agent"
+mktemp_overlay_case
 append_blocked write_ao_db "$AO_HOME/orchestrator.db"
 append_blocked write_events_jsonl "$AO_HOME/events.jsonl"
 write_blocked write_other_task "$AO_HOME/tasks/OTHER-TASK-1/planted"
@@ -293,9 +337,7 @@ else
     verdict work_delivery_state_checkpoint fail
 fi
 if out=$(cat "$TASK_DIR/briefs/1.md" 2>/dev/null) && [ -n "$out" ]; then verdict work_read_brief pass; else verdict work_read_brief fail; fi
-# mktemp without arguments, as the repository's scripts call it. On macOS it uses _CS_DARWIN_USER_TEMP_DIR
-# (/var/folders/.../T), not the TMPDIR Claude Code gives to Bash (<CLAUDE_CODE_TMPDIR>/claude-<uid>).
-if t=$(mktemp 2>/dev/null) && [ -f "$t" ]; then rm -f "$t"; verdict work_mktemp pass; else verdict work_mktemp fail; fi
+mktemp_case
 if git commit -q --allow-empty -m 'probe work commit' >/dev/null 2>&1; then verdict work_git_commit pass; else verdict work_git_commit fail; fi
 LOCAL_REMOTE=./.probe-remote.git
 if git init -q --bare "$LOCAL_REMOTE" >/dev/null 2>&1 && git push -q -u "$LOCAL_REMOTE" HEAD:refs/heads/probe >/dev/null 2>&1; then

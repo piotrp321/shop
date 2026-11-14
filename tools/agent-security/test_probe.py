@@ -490,6 +490,95 @@ class CasesScriptHelpersTest(SourcedCasesTestCase):
         self.assertEqual(os.listdir(self.cwd), [])
 
 
+class MktempCasesTest(SourcedCasesTestCase):
+    """work_mktemp: a bare `mktemp` and `mktemp -d` (as the repository's scripts call them) must make a file and a
+    directory in the TMPDIR of the task and not in the user's temp (/var/folders), and both must be writable.
+    write_mktemp_overlay: the directory of the mktemp the executor finds (the overlay) cannot be written."""
+
+    STUB = '#!/bin/sh\nd=${FAKE_MKTEMP_DIR:?}\ncase ${1:-} in -d) exec /usr/bin/mktemp -d "$d/tmp.XXXXXX" ;; esac\n' \
+           'exec /usr/bin/mktemp "$d/tmp.XXXXXX"\n'
+
+    def setUp(self):
+        super().setUp()
+        self.task_tmp = os.path.join(self.tmp, 'task-tmp')
+        self.elsewhere = os.path.join(self.tmp, 'elsewhere')
+        os.makedirs(self.task_tmp)
+        os.makedirs(self.elsewhere)
+        with open(os.path.join(self.bin, 'mktemp'), 'w') as f:
+            f.write(self.STUB)
+        os.chmod(os.path.join(self.bin, 'mktemp'), 0o555)
+
+    def verdict(self, function, case, **extra):
+        out = self.run_sourced('. "%s"; %s' % (CASES_SCRIPT, function), **extra)
+        lines = out.strip().splitlines()
+        self.assertEqual(len(lines), 1, out)
+        verdict = json.loads(lines[0])
+        self.assertEqual(verdict['case'], case)
+        return verdict['status']
+
+    def mktemp_case(self, **extra):
+        return self.verdict('mktemp_case', 'work_mktemp', **extra)
+
+    def test_both_in_tmpdir_pass(self):
+        self.assertEqual(self.mktemp_case(TMPDIR=self.task_tmp, FAKE_MKTEMP_DIR=self.task_tmp), 'pass')
+        self.assertEqual(os.listdir(self.task_tmp), [], 'the case left what it made')
+
+    def test_a_trailing_slash_of_tmpdir_passes(self):
+        self.assertEqual(self.mktemp_case(TMPDIR=self.task_tmp + '/', FAKE_MKTEMP_DIR=self.task_tmp), 'pass')
+
+    def test_results_outside_tmpdir_fail(self):
+        # What the system mktemp does on macOS: the user's temp, whatever TMPDIR says.
+        self.assertEqual(self.mktemp_case(TMPDIR=self.task_tmp, FAKE_MKTEMP_DIR=self.elsewhere), 'fail')
+        self.assertEqual(os.listdir(self.elsewhere), [], 'the case left what it made')
+
+    def test_a_failing_mktemp_fails(self):
+        self.assertEqual(self.mktemp_case(TMPDIR=self.task_tmp, FAKE_MKTEMP_DIR=os.path.join(self.tmp, 'missing')),
+                         'fail')
+
+    def test_an_unset_or_empty_tmpdir_fails(self):
+        self.assertEqual(self.mktemp_case(TMPDIR='', FAKE_MKTEMP_DIR=self.task_tmp), 'fail')
+
+    def test_the_users_temp_is_not_the_temp_of_the_task(self):
+        users_temp = os.path.realpath(tempfile.gettempdir())
+        if not users_temp.startswith(('/var/folders/', '/private/var/folders/')) or not os.access(users_temp, os.W_OK):
+            self.skipTest('no writable /var/folders temp here')
+        self.assertEqual(self.mktemp_case(TMPDIR=users_temp, FAKE_MKTEMP_DIR=users_temp), 'fail')
+
+    def test_a_read_only_result_fails(self):
+        # a mktemp that makes the file read-only: the executor could not use it
+        os.chmod(os.path.join(self.bin, 'mktemp'), 0o755)
+        with open(os.path.join(self.bin, 'mktemp'), 'w') as f:
+            f.write(self.STUB.replace('exec /usr/bin/mktemp "$d/tmp.XXXXXX"',
+                                      'f=$(/usr/bin/mktemp "$d/tmp.XXXXXX") && chmod 400 "$f" && echo "$f"'))
+        self.assertEqual(self.mktemp_case(TMPDIR=self.task_tmp, FAKE_MKTEMP_DIR=self.task_tmp), 'fail')
+
+    def overlay_case(self):
+        return self.verdict('mktemp_overlay_case', 'write_mktemp_overlay')
+
+    @unittest.skipIf(os.getuid() == 0, 'the refusals are emulated with permissions, which root ignores')
+    def test_a_read_only_overlay_directory_passes(self):
+        os.chmod(self.bin, 0o555)
+        self.addCleanup(os.chmod, self.bin, 0o755)
+        self.assertEqual(self.overlay_case(), 'pass')
+
+    def test_a_writable_overlay_directory_fails_and_leaves_nothing(self):
+        self.assertEqual(self.overlay_case(), 'fail')
+        self.assertEqual(sorted(os.listdir(self.bin)), sorted(['mktemp'] + list(self.STUBBED) + ['gh']))
+
+    def test_the_system_mktemp_is_not_the_overlay(self):
+        os.remove(os.path.join(self.bin, 'mktemp'))
+        self.assertEqual(self.overlay_case(), 'fail')
+
+    def test_both_cases_are_in_the_probe(self):
+        self.assertIn('write_mktemp_overlay', probe.SCRIPT_CASES)
+        self.assertEqual((probe.CASE_BY_NAME['write_mktemp_overlay']['layer'],
+                          probe.CASE_BY_NAME['write_mktemp_overlay']['kind']), ('sandbox', 'bypass'))
+        with open(CASES_SCRIPT) as f:
+            source = f.read()
+        self.assertIn('mktemp_case\n', source)
+        self.assertIn('mktemp_overlay_case\n', source)
+
+
 FAKE_PYTHON = '''#!/bin/sh
 # python3 -c CODE KIND ARGS...: the socket and proxy helpers of probe-cases.sh, answered from the environment.
 case $3 in

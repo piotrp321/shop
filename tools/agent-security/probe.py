@@ -122,6 +122,7 @@ CASES = (
     _case('ao_teardown_write', 'sandbox', 'bypass', 'script'),
     # Path 13: AO state.
     _case('write_agent_security_copy', 'sandbox', 'bypass', 'script'),
+    _case('write_mktemp_overlay', 'sandbox', 'bypass', 'script'),
     _case('write_ao_db', 'sandbox', 'bypass', 'script'),
     _case('write_events_jsonl', 'sandbox', 'bypass', 'script'),
     _case('write_other_task', 'sandbox', 'bypass', 'script'),
