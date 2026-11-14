@@ -376,7 +376,8 @@ otwarte z komentarzem, czego brakuje. Test weryfikacji ma numer zgłoszenia w na
    po potwierdzeniu „Zakończ teraz” fokus na nagłówku „Status”, po usunięciu na H1 listy); ponowny odczyt po „Zakończ
    teraz” z wyłączonymi „Zapisz” i „Zakończ teraz” i opisem „Promocja kończy się”; `ended` w odpowiedzi `PUT` albo
    odczytu: toast „Promocja zakończona.” i tryb tylko do odczytu z kartą „Status”; ponowienia co 1 s najwyżej 5 razy,
-   potem komunikat z godziną końca; błąd z „Odśwież”; brak żądań po odmontowaniu (testy komponentu z fałszywym
+   potem komunikat z godziną końca i stan z ostatniej odpowiedzi (bez niezapisanych zmian); błąd z „Odśwież”, a gdy
+   odświeżenie też zawiedzie, fokus na H1; brak żądań po odmontowaniu (testy komponentu z fałszywym
    zegarem).
 10. Szczegóły zamówienia: oś czasu pokazuje wpisy `history` w kolejności z API z czasem w `<time>`, zmianą („Opłacone →
     Wysłane”), aktorem („Klient”, „System”, login pracownika, „Pracownik” bez loginu) i notatką; „Inne zamówienia

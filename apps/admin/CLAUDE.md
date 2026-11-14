@@ -95,6 +95,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   zostanie), `stay()` i `leave()` (zamknięcie i potwierdzenie w jednym kliknięciu rozstrzyga potwierdzenie; nowsza
   nawigacja unieważnia poprzednie pytanie), a zamknięcie karty ostrzega `beforeunload` poza wylogowaniem (`signingOut`
   w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
+  `usePagerFocus({ hasPrevious, hasNext, previous, next })`: fokus pagera z dwoma przyciskami (`ListPager`, wybór wariantów
+  promocji): zostaje na naciśniętym przycisku, a gdy kolejna strona go wyłącza, przechodzi na drugi, chyba że pracownik sam
+  przeniósł fokus poza pager; `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
   lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji i wybór wariantów promocji; lista zamówień ma jeszcze własną kopię do ADMIN-SCREENS).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
@@ -329,8 +332,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   „Promocja kończy się.” (region `role="status"` w karcie „Status”, istniejący przed tekstem). Odczyt ze `status: ended`
   (albo taka odpowiedź `PUT`) daje toast „Promocja zakończona.” (przez `onEnded`, a przy `ended` w odpowiedzi `PUT` przez
   wynik wywołania), tryb tylko do odczytu i fokus na nagłówku „Status”; wyczerpane ponowienia zostawiają promocję aktywną
-  z `endNotice` („Koniec promocji ustawiony na <czas>.” z ostatniej odpowiedzi); błąd odczytu to `endError` z „Odśwież”.
-  Odczyt `active` nie nadpisuje tego, co pracownik wpisał w międzyczasie. Opuszczenie formularza przerywa czekanie
+  z `endNotice` („Koniec promocji ustawiony na <czas>.” z ostatniej odpowiedzi); bez niezapisanych zmian formularz, `view`
+  i wersja pochodzą z tej ostatniej odpowiedzi; błąd odczytu to `endError` z „Odśwież”, a gdy odświeżenie też zawiedzie
+  (`loadError` zastępuje formularz), fokus trafia na H1. Odczyt `active` nie nadpisuje tego, co pracownik wpisał
+  w międzyczasie. Opuszczenie formularza przerywa czekanie
   (bez żądań po odmontowaniu). Czasy są wpisywane
   i pokazywane w `Europe/Warsaw` (pole `datetime-local`, nie `DatePicker`, bo ten liczy w strefie przeglądarki):
   `time.ts` zamienia je z i na moment RFC 3339 przez `Intl`, bez bibliotek (godzina z przejścia na czas letni, która
@@ -344,7 +349,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   w `Alert` z tokenem `status-danger` (kontrast, #446) i link do listy. `PromotionVariantPicker.vue` (shadcn-vue, bez
   PrimeVue): wybór wariantów przez `useCursorPager(fetchPricePage, …)` z zapytaniem w pamięci (25 produktów na
   stronę, bez rozmiaru i stanu w adresie), `priceRows` i `useNameSearch` (wyszukiwanie od 2 znaków, podpowiedź w regionie
-  `status`, stronicowanie „Poprzednia”/„Następna”), „Dodaj” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane;
+  `status`, stronicowanie „Poprzednia”/„Następna” z fokusem `usePagerFocus` jak w `ListPager`, bez wyłączania przycisków na czas żądania;
+  „Spróbuj ponownie” zostawia fokus na sobie, a gdy komunikat znika, daje go tabeli albo polu wyszukiwania), „Dodaj” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane;
   „Dodaj cały produkt” jest wyłączony, gdy nie ma czego dodać). Przyciski mają nazwy z nazwą wariantu („Dodaj: <produkt> /
   <wariant>”, „Dodaj cały produkt: <produkt>”, „Usuń: <produkt> / <wariant>”, #304 F5); fokus (#304 F4): otwarcie wyboru
   na pole wyszukiwania, po dodaniu wraca na pole wyszukiwania (przycisk, który go miał, jest już wyłączony), po
