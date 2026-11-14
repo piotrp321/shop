@@ -38,6 +38,9 @@ final class RecordingOutgoingHttpClient implements HttpClientInterface
         return array_map(static fn (array $names): array => array_keys($names), $this->requests);
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
         $names = [];
@@ -55,6 +58,9 @@ final class RecordingOutgoingHttpClient implements HttpClientInterface
         return $this->inner->stream($responses, $timeout);
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     public function withOptions(array $options): static
     {
         $clone = new self($this->inner->withOptions($options));
