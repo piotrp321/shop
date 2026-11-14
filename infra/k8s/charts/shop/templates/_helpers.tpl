@@ -375,3 +375,24 @@ when it is empty.
   value: {{ .Values.clientIpHeader | quote }}
 {{- end }}
 {{- end }}
+
+{{- /*
+SENTRY_* of one application (dict "root" "app": api, store or admin): the DSN of the application (values sentry.dsn.<app>), the
+environment (sentry.environment, when set), the release (image.tag, the revision of the images) and the sample rate of the traces
+(sentry.tracesSampleRate), nothing when the DSN is empty: without a DSN the SDK of the application stays off.
+*/ -}}
+{{- define "shop.sentryEnv" -}}
+{{- $dsn := get .root.Values.sentry.dsn .app }}
+{{- if $dsn }}
+- name: SENTRY_DSN
+  value: {{ $dsn | quote }}
+{{- with .root.Values.sentry.environment }}
+- name: SENTRY_ENVIRONMENT
+  value: {{ . | quote }}
+{{- end }}
+- name: SENTRY_RELEASE
+  value: {{ required "image.tag (the revision) is required" .root.Values.image.tag | quote }}
+- name: SENTRY_TRACES_SAMPLE_RATE
+  value: {{ .root.Values.sentry.tracesSampleRate | quote }}
+{{- end }}
+{{- end }}

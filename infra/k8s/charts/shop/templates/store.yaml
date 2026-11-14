@@ -27,6 +27,10 @@ env:
     value: {{ .Values.customerAccounts | quote }}
   # The checkout copies this header of the browser's request to the API (docs/features/hardening/spec.md, D2).
   {{- include "shop.clientIpHeaderEnv" . | nindent 2 }}
+  {{- /* Sentry of the server of the store, only with a DSN (docs/features/sentry/spec.md, D3). */}}
+  {{- with include "shop.sentryEnv" (dict "root" . "app" "store") }}
+  {{- . | trim | nindent 2 }}
+  {{- end }}
 {{ include "shop.envFromSecret" . }}
 ports:
   - name: http

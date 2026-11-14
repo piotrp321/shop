@@ -11,6 +11,10 @@ env:
   # The link "Sklep" of the topbar: the same address as STORE_URL of the store.
   - name: VITE_STORE_URL
     value: {{ include "shop.url" (dict "root" . "sub" "") | quote }}
+  {{- /* Sentry of the panel (keys of /config.js, written by docker/40-admin-config.sh), only with a DSN (docs/features/sentry/spec.md, D3). */}}
+  {{- with include "shop.sentryEnv" (dict "root" . "app" "admin") }}
+  {{- . | trim | nindent 2 }}
+  {{- end }}
 ports:
   - name: http
     containerPort: 8080
