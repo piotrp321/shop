@@ -298,6 +298,10 @@ deploy_without_pipefail() { replace .github/workflows/deploy.yml '    shell: bas
 deploy_push_not_atomic() { replace .github/scripts/deploy-ref.sh 'git push --atomic "$remote"' 'git push "$remote"'; }
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
 deploy_without_the_render_check() { replace .github/workflows/deploy.yml 'run: sh infra/k8s/scripts/verify-images.sh "$RUNNER_TEMP/values-images.yaml" "$GITHUB_SHA"' 'run: "true"'; }
+deploy_without_the_environment() { replace .github/workflows/deploy.yml '    environment: production' '    # no environment'; }
+# shellcheck disable=SC2016 # the text is a line of the workflow, with an expression
+workflow_env_with_a_secret() { replace .github/workflows/deploy.yml '  COMPOSE_PROJECT_NAME: deploy' '  COMPOSE_PROJECT_NAME: deploy
+  LEAK: ${{ secrets.OTHER }}'; }
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
 smoke_values_for_every_event() { replace .github/workflows/deploy.yml 'if [ "$DEPLOY" = true ]; then' 'if true; then'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
@@ -459,6 +463,8 @@ run_case "runs for main cancelled" "test_runs_for_main_are_never_cancelled_and_o
 run_case "deploy.yml steps without pipefail (smoke test piped to tee)" "test_every_run_step_has_pipefail" "tests" deploy_without_pipefail
 run_case "deploy pushing the two branches without --atomic" "test_the_script_pushes_both_branches_in_one_atomic_push" "tests" deploy_push_not_atomic
 run_case "deploy without the check of the render of prod" "test_the_render_of_prod_is_checked_before_anything_is_published" "tests" deploy_without_the_render_check
+run_case "deploy job without the environment production" "test_no_workflow_uses_a_secret_outside_a_main_only_environment" "tests" deploy_without_the_environment
+run_case "a secret in the env of the workflow" "env/LEAK: a secret at the level of the workflow" "tests=test_no_workflow_uses_a_secret" workflow_env_with_a_secret
 run_case "smoke test on the registry images for every event" "test_on_a_deployment_the_first_install_uses_the_values_file_and_the_registry" "tests" smoke_values_for_every_event
 run_case "images values generator accepting a short digest" "test_a_missing_or_malformed_digest_fails_and_writes_nothing" "tests" generator_accepts_short_digests
 run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" "tests" package_cleanup_added

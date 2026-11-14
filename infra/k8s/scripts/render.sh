@@ -85,9 +85,15 @@ if [ -n "$sealed_files" ]; then
 else
   : > "$out/sealed.ndjson"
 fi
-# The deployment workflow as JSON, for tests/test_deploy_workflow.py.
+# The deployment workflow as JSON, for tests/test_deploy_workflow.py, and every workflow of the repository (workflows/<file>.json,
+# both extensions GitHub reads) for its rule on secrets.
 [ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "render: .github/workflows/deploy.yml is missing" >&2; exit 1; }
 yq -o=json '.' < "$TOOLS_REPO/.github/workflows/deploy.yml" > "$out/deploy-workflow.json"
+mkdir -p "$out/workflows"
+for workflow in "$TOOLS_REPO"/.github/workflows/*.yml "$TOOLS_REPO"/.github/workflows/*.yaml; do
+  [ -f "$workflow" ] || continue
+  yq -o=json '.' < "$workflow" > "$out/workflows/${workflow##*/}.json"
+done
 # The charts of the applications prometheus-crds and monitoring with the values of their manifests (monitoring.yaml,
 # monitoring.ndjson, prometheus-crds.yaml, ... for kubeconform and tests/test_monitoring.py) and the log masking run in a real
 # Alloy (masking-output.log for tests/test_log_masking.py).
