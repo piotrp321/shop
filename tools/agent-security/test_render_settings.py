@@ -184,6 +184,23 @@ class RenderPathsTest(RenderTestCase):
         self.assertEqual(settings['sandbox']['network']['allowUnixSockets'], [])
         self.assertTrue(settings['sandbox']['network']['allowedDomains'])
 
+    def test_open_temp_reopens_a_denied_temp_path(self):
+        # a /tmp subpath that need not exist and whose /tmp form is a symlink is still accepted (trusted wrapper input)
+        settings = self.render('--workdir', self.work, '--open-temp', '/tmp/claude-501',
+                               '--open-temp', '/private/tmp/claude-501')
+        fs = settings['sandbox']['filesystem']
+        self.assertIn('/tmp/claude-501', fs['allowRead'])
+        self.assertIn('/tmp/claude-501', fs['allowWrite'])
+        self.assertIn('/private/tmp/claude-501', fs['allowRead'])
+        self.assertIn(self.home, fs['denyRead'])  # denyRead ~ (expanded) still present
+
+    def test_open_temp_rejects_home_and_protected_paths(self):
+        self.refused('--workdir', self.work, '--open-temp', self.home)
+        self.refused('--workdir', self.work, '--open-temp', os.path.join(self.home, '.ssh'))
+        self.refused('--workdir', self.work, '--open-temp', '/')
+        self.refused('--workdir', self.work, '--open-temp', 'relative/tmp')
+        self.refused('--workdir', self.work, '--open-temp', '/tmp/a*')
+
     def test_the_module_renders_the_same(self):
         module = load_module()
         settings = module.render(template(), self.home, self.work, git_common_dir=self.git, state_dirs=[self.task])

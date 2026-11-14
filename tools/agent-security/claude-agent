@@ -137,21 +137,36 @@ changed=$(
 token=$(security find-generic-password -s "$TOKEN_SERVICE" -w 2>/dev/null) || token=
 [ -n "$token" ] || die "brak tokenu wykonawcy w Keychain ($TOKEN_SERVICE); zapisz fine-grained PAT dla piotrp321/shop: security add-generic-password -s $TOKEN_SERVICE -a shop -w"
 
-if [ -n "$integration_dir" ]; then
-    settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
-        --state-dir "$task_dir" --state-dir "$integration_dir" \
-        --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
-else
-    settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
-        --state-dir "$task_dir" \
-        --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
+# Temporary directories the executor and its tools need to write (spec R2: "katalog tymczasowy użytkownika"): the user
+# TMPDIR (a real path, read+write) and the Claude Code sandbox runtime scratch /tmp/claude-<uid>, re-opened in both
+# the symlink (/tmp) and the real (/private/tmp) form, because Seatbelt matches the literal path a command uses and
+# docker compose writes its build context under /tmp/claude-<uid>. allowRead takes precedence over the denyRead /tmp.
+temp_opts=''
+runtime_scratch=/tmp/claude-$(id -u)
+mkdir -p "$runtime_scratch" 2>/dev/null
+if tmpdir_real=$(cd -P -- "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P); then
+    temp_opts="--open-temp $tmpdir_real"
 fi
+temp_opts="$temp_opts --open-temp $runtime_scratch"
+runtime_real=$(cd -P -- "$runtime_scratch" 2>/dev/null && pwd -P) || runtime_real=
+[ -n "$runtime_real" ] && [ "$runtime_real" != "$runtime_scratch" ] && temp_opts="$temp_opts --open-temp $runtime_real"
+
+integration_opt=''
+[ -n "$integration_dir" ] && integration_opt="--state-dir $integration_dir"
+# shellcheck disable=SC2086 # integration_opt and temp_opts are option lists built above, intentionally word-split
+settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
+    --state-dir "$task_dir" $integration_opt $temp_opts \
+    --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
 
 gh_config=$(mktemp -d "${TMPDIR:-/tmp}/claude-agent-gh.$AO_TASK_ID.XXXXXX") || die "mktemp nie utworzył GH_CONFIG_DIR"
+gh_cache="$gh_config/cache"
+mkdir -p "$gh_cache" 2>/dev/null
 
 unset SSH_AUTH_SOCK
 GH_TOKEN=$token
 GH_CONFIG_DIR=$gh_config
+XDG_CACHE_HOME=$gh_cache   # gh writes its run-log cache here, not under the denied ~/.cache
+export XDG_CACHE_HOME
 GIT_CONFIG_COUNT=4
 GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf
 GIT_CONFIG_VALUE_0=git@github.com:

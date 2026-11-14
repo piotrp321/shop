@@ -46,6 +46,8 @@ class WrapperTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.tmpdir = os.path.join(self.tmp, 'tmp')  # a TMPDIR that is not an ancestor of HOME
+        os.makedirs(self.tmpdir)
         self.home = os.path.join(self.tmp, 'home')
         self.ao_home = os.path.join(self.home, '.local/state/ao-x')
         self.task = self.task_dir('X-1')
@@ -93,7 +95,7 @@ class WrapperTestCase(unittest.TestCase):
         env = {'PATH': self.bin + os.pathsep + os.environ.get('PATH', '/usr/bin:/bin'), 'HOME': self.home,
                'AGENT_CLAUDE_BIN': self.claude, 'AGENT_AO_HOME': self.ao_home, 'AO_TASK_ID': 'X-1',
                'FAKE_TOKEN': TOKEN, 'FAKE_CLAUDE_RECORD': self.record, 'FAKE_SECURITY_LOG': self.security_log,
-               'SSH_AUTH_SOCK': '/tmp/ssh-agent.sock', 'TMPDIR': self.tmp, **GIT_ENV}
+               'SSH_AUTH_SOCK': '/tmp/ssh-agent.sock', 'TMPDIR': self.tmpdir, **GIT_ENV}
         for key, value in overrides.items():
             if value is None:
                 env.pop(key, None)
@@ -173,6 +175,14 @@ class StartTest(WrapperTestCase):
         for path in fs['allowRead'] + fs['allowWrite']:
             self.assertFalse(path in (self.ao_home, os.path.join(self.ao_home, 'tasks')), path)
 
+    def test_the_user_tmpdir_and_runtime_scratch_are_writable(self):
+        fs = self.settings(self.started(*AO_ARGS))['sandbox']['filesystem']
+        self.assertIn(self.tmpdir, fs['allowWrite'])
+        self.assertIn(self.tmpdir, fs['allowRead'])
+        scratch = '/private/tmp/claude-%d' % os.getuid()
+        self.assertTrue(scratch in fs['allowRead'] or ('/tmp/claude-%d' % os.getuid()) in fs['allowRead'],
+                        fs['allowRead'])
+
     def test_integration_task_gets_the_integration_directory_of_its_epic(self):
         self.task_dir('X-INTEGRATION-2')
         settings = self.settings(self.started(*AO_ARGS, AO_TASK_ID='X-INTEGRATION-2'))
@@ -209,7 +219,7 @@ class StartTest(WrapperTestCase):
         env = self.started(*AO_ARGS)['env']
         self.assertEqual(env['GH_TOKEN'], TOKEN)
         self.assertTrue(os.path.isdir(env['GH_CONFIG_DIR']))
-        self.assertTrue(env['GH_CONFIG_DIR'].startswith(self.tmp + '/claude-agent-gh.X-1.'))
+        self.assertTrue(env['GH_CONFIG_DIR'].startswith(self.tmpdir + '/claude-agent-gh.X-1.'))
         self.assertNotIn('SSH_AUTH_SOCK', env)
         count = int(env['GIT_CONFIG_COUNT'])
         pairs = [(env['GIT_CONFIG_KEY_%d' % i], env['GIT_CONFIG_VALUE_%d' % i]) for i in range(count)]

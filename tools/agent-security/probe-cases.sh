@@ -25,11 +25,18 @@ read_blocked() {
     if content=$(cat "$2" 2>/dev/null) && [ -n "$content" ]; then verdict "$1" fail; else verdict "$1" pass; fi
 }
 
-# pass when writing marker `probe` to the path does not land there.
+# pass when writing a marker to the path does not land there. The marker is unlikely to appear in an existing file
+# (the worktree path itself contains "probe", so a plain "probe" would false-match a gitdir pointer).
+MARKER=PROBEWRITEMARKER9Z
 write_blocked() {
-    rm -f "$2" 2>/dev/null
-    (echo probe > "$2") 2>/dev/null
-    if [ -f "$2" ] && grep -q probe "$2" 2>/dev/null; then rm -f "$2" 2>/dev/null; verdict "$1" fail; else verdict "$1" pass; fi
+    before=$(cat "$2" 2>/dev/null || true)
+    (printf '%s\n' "$MARKER" > "$2") 2>/dev/null
+    if grep -q "$MARKER" "$2" 2>/dev/null; then
+        printf '%s' "$before" > "$2" 2>/dev/null || rm -f "$2" 2>/dev/null
+        verdict "$1" fail
+    else
+        verdict "$1" pass
+    fi
 }
 
 # pass when appending marker `probe` to the (existing) path does not land there.
@@ -129,7 +136,10 @@ read_blocked tool_webfetch "$CANARY_FILE"
 
 # --- Path 8: Keychain and the user's token ------------------------------------
 empty_or_fails security_keychain security find-generic-password -s gh:github.com
-empty_or_fails docker_credential_desktop docker-credential-desktop list
+# docker-credential-desktop list prints a registry->user map; inside the sandbox it must see no registry (empty or
+# {}). A line with a hostname (a dot) means it reached the credential store.
+dcd=$(docker-credential-desktop list 2>/dev/null || true)
+if printf '%s' "$dcd" | grep -q '[A-Za-z0-9]\.[A-Za-z0-9]'; then verdict docker_credential_desktop fail; else verdict docker_credential_desktop pass; fi
 gh_forbidden gh_ao_repository "repos/$AO_REPO"
 gh_forbidden gh_admin_setting "repos/$REPO/actions/permissions"
 
