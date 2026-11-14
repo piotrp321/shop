@@ -38,10 +38,6 @@
         <bootstrap class="DAMA\DoctrineTestBundle\PHPUnit\PHPUnitExtension"/>
     </extensions>
 
-    <logging>
-        <junit outputFile="php://stderr"/>
-    </logging>
-
     <source>
         <include>
             <directory>src</directory>
