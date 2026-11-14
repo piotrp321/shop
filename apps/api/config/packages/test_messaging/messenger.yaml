@@ -6,3 +6,7 @@ framework:
         transports:
             events:
                 dsn: 'amqp://%env(urlencode:RABBITMQ_USER)%:%env(urlencode:RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/test/events'
+                # The retries of `events` (messenger.yaml: 3 tries after 1, 3 and 9 s) come 10 times sooner, so the tests
+                # of the retries do not wait 13 s for them; the count and the growth of the delays stay the same.
+                retry_strategy:
+                    delay: 100
