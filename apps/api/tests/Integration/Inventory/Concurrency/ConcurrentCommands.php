@@ -57,7 +57,6 @@ final class ConcurrentCommands
             throw new \RuntimeException('Cannot create the directory of the outcomes.');
         }
 
-        $P0 = hrtime(true);
         $control->executeStatement('SELECT pg_advisory_lock(CAST(? AS int), CAST(? AS int))', [self::BARRIER_NAMESPACE, $barrier]);
         $children = [];
         $problems = [];
@@ -75,18 +74,14 @@ final class ConcurrentCommands
                 $children[$index] = $pid;
             }
 
-            $P1 = hrtime(true);
             if ([] === $problems) {
                 $problems = self::waitAtTheBarrier($control, $barrier, $children, $deadline);
             }
-            $P2 = hrtime(true);
         } finally {
             $control->executeStatement('SELECT pg_advisory_unlock(CAST(? AS int), CAST(? AS int))', [self::BARRIER_NAMESPACE, $barrier]);
         }
 
         $problems = [...$problems, ...self::waitForAll($children, $deadline)];
-        $P3 = hrtime(true);
-        file_put_contents('php://stderr', sprintf("RUNPHASES n=%d %s fork %.0f barrier %.0f waitall %.0f ms\n", \count($commands), $commands[0]::class, ($P1 - $P0) / 1e6, ($P2 - $P1) / 1e6, ($P3 - $P2) / 1e6));
         $outcomes = [];
         foreach (array_keys($children) as $index) {
             $file = self::outcomeFile($directory, $index);
@@ -131,11 +126,9 @@ final class ConcurrentCommands
         try {
             // The parent's DAMA connection belongs to the parent (and to its open transaction): this process opens
             // a connection of its own, which commits.
-            $T0 = hrtime(true); $R0 = getrusage();
             StaticDriver::setKeepStaticConnections(false);
             $kernel = new Kernel($environment, false);
             $kernel->boot();
-            $T1 = hrtime(true);
             $container = $kernel->getContainer()->get('test.service_container');
             \assert($container instanceof ContainerInterface);
             $connection = $container->get('doctrine.dbal.default_connection');
@@ -143,11 +136,9 @@ final class ConcurrentCommands
             \assert($connection instanceof Connection && $bus instanceof MessageBusInterface);
 
             // A participant that waits for a lock that is never released ends with an error instead of hanging.
-            $T2 = hrtime(true);
             $connection->executeStatement("SET statement_timeout = '30s'");
             $connection->executeStatement('SELECT pg_advisory_lock_shared(CAST(? AS int), CAST(? AS int))', [self::BARRIER_NAMESPACE, $barrier]);
 
-            $T3 = hrtime(true);
             try {
                 $result = $bus->dispatch($command)->last(HandledStamp::class)?->getResult();
                 $outcome = Outcome::success($result);
@@ -157,8 +148,6 @@ final class ConcurrentCommands
                 $outcome = Outcome::failure(1 === \count($wrapped) ? $wrapped[0] : $failure);
             }
 
-            $T4 = hrtime(true); $R1 = getrusage();
-            file_put_contents('php://stderr', sprintf("PHASES ".$command::class." t=%.3f boot %.0f services %.0f barrier %.0f dispatch %.0f ms cpu %.0f ms\n", microtime(true), ($T1-$T0)/1e6, ($T2-$T1)/1e6, ($T3-$T2)/1e6, ($T4-$T3)/1e6, (($R1['ru_utime.tv_sec']-$R0['ru_utime.tv_sec'])+($R1['ru_utime.tv_usec']-$R0['ru_utime.tv_usec'])/1e6+($R1['ru_stime.tv_sec']-$R0['ru_stime.tv_sec'])+($R1['ru_stime.tv_usec']-$R0['ru_stime.tv_usec'])/1e6)*1000));
             $connection->executeStatement('SELECT pg_advisory_unlock_shared(CAST(? AS int), CAST(? AS int))', [self::BARRIER_NAMESPACE, $barrier]);
             $connection->close();
         } catch (\Throwable $failure) {
