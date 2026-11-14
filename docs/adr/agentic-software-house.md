@@ -83,7 +83,7 @@ Zasady:
   zamiast tworzyć nowe frameworki.
 - AO odpowiada za orkiestrację, stan i wykonywanie, a nie za decyzje architektoniczne. Decyzje spoza granic
   zadania wracają jako blokery do skrzynki decyzji.
-- Równoległość jest domyślna: epiki, które przejdą bramkę ryzyka (wspólne tylko pliki generowane i dokumentacja,
+- Równoległość jest domyślna: epiki, które przejdą bramkę ryzyka (bez wspólnego kodu aplikacji,
   wolna pamięć Dockera na kolejny stos, zapas limitu), i niezależne zadania jednej fali wykonują się naraz, każde
   we własnym worktree i stosie, a integracja i merge'e po kolei. Wykonanie szeregowe jest rozwiązaniem awaryjnym,
   gdy bramka wykryje realne ryzyko.

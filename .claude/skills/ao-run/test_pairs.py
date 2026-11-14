@@ -99,7 +99,22 @@ class PairsTest(unittest.TestCase):
         with open(path, encoding='utf-8') as f:
             return [json.loads(line) for line in f if line.strip()]
 
+    def pair_ab(self):
+        self.write('measurements.jsonl', [
+            start('a', '2026-11-14T08:00:00Z'), start('b', '2026-11-14T08:10:00Z'),
+            done('a', '2026-11-14T09:00:00Z'), done('b', '2026-11-14T09:30:00Z')])
+
+    def test_record_refuses_epics_that_are_not_a_pair(self):
+        self.pair_ab()
+        for a, b in [('a', 'c'), ('CART', 'VARIANTS'), ('c', 'd')]:
+            with self.subTest(pair=(a, b)):
+                code, out, err = self.record(a, b, verdict())
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('nie są parą', err)
+                self.assertIsNone(self.pairs_file())
+
     def test_record_writes_a_line(self):
+        self.pair_ab()
         code, out, err = self.record('a', 'b', verdict(conflicts=2, auto_resolved=1, shared=['CLAUDE.md']))
         self.assertEqual((0, ''), (code, err))
         line = dict(verdict(conflicts=2, auto_resolved=1, shared=['CLAUDE.md']), at=NOW.isoformat(), epics=['a', 'b'])
@@ -108,6 +123,7 @@ class PairsTest(unittest.TestCase):
         self.assertEqual(0, self.record('a', 'b', verdict(shared=None))[0])
 
     def test_record_refuses_a_bad_verdict(self):
+        self.pair_ab()
         bad = [
             'not json', '[]', json.dumps({k: v for k, v in verdict().items() if k != 'shared'}),
             json.dumps(verdict(extra=1)), json.dumps(verdict(conflicts=-1)), json.dumps(verdict(conflicts=1.5)),
@@ -127,7 +143,15 @@ class PairsTest(unittest.TestCase):
         self.assertEqual((2, ''), (code, out))
         self.assertIsNone(self.pairs_file())
 
+    def test_record_not_first_argument_is_explained(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = pairs.main(['--state', self.state, 'record', 'a', 'b'], now=NOW, stdin=io.StringIO('{}'))
+        self.assertEqual((2, ''), (code, out.getvalue()))
+        self.assertIn('record musi być pierwszym argumentem', err.getvalue())
+
     def test_record_with_a_busy_lock_exit_2_without_write(self):
+        self.pair_ab()
         busy = mock.patch.object(pairs.parallel_gate, 'state_lock',
                                  side_effect=pairs.parallel_gate.LockTimeout('blokada bramki zajęta'))
         with busy:
@@ -142,7 +166,6 @@ class PairsTest(unittest.TestCase):
             done('a', '2026-11-14T09:00:00Z'), done('b', '2026-11-14T09:30:00Z')])
         self.assertIsNone(self.result()['pairs'][0]['record'])
         self.record('b', 'a', verdict(conflicts=3, auto_resolved=3))
-        self.record('a', 'c', verdict(conflicts=9, auto_resolved=0))
         self.record('a', 'b', verdict(conflicts=1, auto_resolved=1))
         record = self.result()['pairs'][0]['record']
         self.assertEqual(['a', 'b'], record['epics'])
@@ -158,9 +181,8 @@ class PairsTest(unittest.TestCase):
                                       auto_resolved=1, doc_fixes=1, interventions=1, regressions=1))
         self.record('c', 'd', verdict(shared=['apps/store/src/x.ts', 'apps/store/src/api/schema.d.ts'], conflicts=1,
                                       auto_resolved=1, interventions=2, critical=[1, 4]))
-        self.record('e', 'f', verdict(shared=None))
         summary = self.result()['summary']
-        self.assertEqual({'admitted': 2, 'recorded': 3, 'conflicts': 3, 'auto_resolved': 2, 'needed_intervention': 1,
+        self.assertEqual({'admitted': 2, 'recorded': 2, 'conflicts': 3, 'auto_resolved': 2, 'needed_intervention': 1,
                           'doc_fixes': 1, 'interventions': 3, 'regressions': 1, 'critical_pairs': 1,
                           'claude_md': {'pairs': 1, 'conflicts': 2, 'auto_resolved': 1, 'needed_intervention': 1,
                                         'doc_fixes': 1, 'interventions': 1, 'regressions': 1, 'critical_pairs': 0},

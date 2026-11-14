@@ -31,11 +31,13 @@ summary: admitted (number of pairs), recorded (pairs with a record), the sums of
 of each pair, needed_intervention (conflicts - auto_resolved) and critical_pairs (records with non-empty `critical`);
 then the same sums with `pairs` for records whose `shared` holds a CLAUDE.md (claude_md) or application code (code).
 
-record appends {at, epics: [A, B], ...verdict} to <state>/pairs.jsonl under the gate lock and prints it. The verdict
+record (the first argument) refuses A and B that are not a pair of the report (directories, in any order), then
+appends {at, epics: [A, B], ...verdict} to <state>/pairs.jsonl under the gate lock and prints it. The verdict
 has exactly: shared (list of non-empty paths or null), the VERDICT_COUNTS (non-negative integers, auto_resolved at
 most conflicts) and critical (distinct numbers 1-4). A later record of the same pair replaces an earlier one.
 
-Exit codes: 0 success; 2 an unreadable state file, a bad verdict, A equal to B or a busy gate lock (nothing written).
+Exit codes: 0 success; 2 an unreadable state file, a bad verdict, A equal to B, epics that are
+not a pair, `record` not as the first argument or a busy gate lock (nothing written).
 """
 import argparse
 import json
@@ -284,6 +286,9 @@ def report(args, now):
 def record(args, now, stdin):
     if args.a == args.b:
         raise VerdictError('para wymaga dwóch różnych epików')
+    found = find_pairs(night_queue.read_events(args.state), now, os.devnull)
+    if _pair_key(args.a, args.b) not in {_pair_key(*(m['dir'] for m in p['epics'])) for p in found}:
+        raise VerdictError('%s i %s nie są parą w measurements.jsonl (podaj katalogi epików)' % (args.a, args.b))
     try:
         verdict = json.loads(stdin.read())
     except ValueError:
@@ -303,7 +308,11 @@ def record(args, now, stdin):
 
 def main(argv=None, now=None, stdin=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    parser = argparse.ArgumentParser(description='Metrics of parallel epic pairs.')
+    if 'record' in argv[1:] and argv[:1] != ['record']:
+        print('record musi być pierwszym argumentem: pairs.py record A B [--state DIR]', file=sys.stderr)
+        return 2
+    parser = argparse.ArgumentParser(description='Metrics of parallel epic pairs; `pairs.py record A B [--state '
+                                                 'DIR]` (first argument) stores the verdict of a pair from stdin.')
     parser.add_argument('--state', default='~/.local/state/ao-night')
     if argv[:1] == ['record']:
         parser.add_argument('command')

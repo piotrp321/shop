@@ -372,15 +372,13 @@ zamykaj istniejącego: końcowy PR zostaje ten sam, razem z liniami `Closes`. Do
   ```bash
   cd "$SHOP" && git fetch origin main 'refs/heads/epic/*:refs/remotes/origin/epic/*' &&
   p="$(gh pr list --head epic/<P> --base main --state merged --json mergeCommit -q '.[0].mergeCommit.oid // empty')" &&
-  [ -n "$p" ] && ! git merge-base --is-ancestor "$p" origin/epic/<epik> &&
-  b="$(git merge-base origin/main origin/epic/<epik>)" &&
-  comm -12 <(git diff --name-only "$b"..origin/main | sort) <(git diff --name-only origin/main...origin/epic/<epik> | sort)
+  [ -n "$p" ] && ! git merge-base --is-ancestor "$p" origin/epic/<epik> && echo sync
   ```
 
-  Niepuste wyjście to wspólne pliki faktycznych zmian obu stron (dowolne, także spoza deklaracji: ryzyko konfliktu
-  znaczeniowego): procedura bez pytania. Puste wyjście albo kod różny od 0 (`<P>`
-  niezmergowany, merge `<P>` już jest w gałęzi epiku, więc sync wykonany raz się nie powtarza, także po rundzie
-  `DELTA`): bez syncu. Błąd `gh` albo `git` opisz w rozmowie.
+  Wyjście `sync`: procedura bez pytania, także gdy epiki nie zmieniły wspólnego pliku (CI końcowego PR nie widziało
+  zmian `<P>`; sync kończy się testami na połączonym stanie). Puste wyjście albo kod różny od 0 (`<P>` niezmergowany,
+  merge `<P>` już jest w gałęzi epiku, więc sync wykonany raz się nie powtarza, także po rundzie `DELTA`): bez syncu.
+  Błąd `gh` albo `git` opisz w rozmowie.
 
 Zgodą na procedurę w parze (sync spójności i konflikt) jest akceptacja specyfikacji pracy równoległej; obejmuje też
 merge PR synchronizacji do `epic/<epik>` po zielonym CI. Na starcie syncu w parze wyślij push „`<epik>`: sync
@@ -479,9 +477,10 @@ main --state all --json number,state,mergeCommit`), zbierz werdykt:
   „Ręczne poprawki” ani odpowiedzi człowieka (`ao answer`, pytanie w syncu);
 - `doc_fixes`: pozycje „poprawione” w liniach „Spójność dokumentów” opisów tych PR;
 - `interventions`: interwencje z `ao report` obu epików;
-- `regressions`: runy `ci.yml` z wynikiem `failure` (`gh run list --workflow ci.yml --branch <gałąź> --json
-  conclusion,headSha`) dla gałęzi każdego PR REPAIR i `sync/<epik>-main`, dla `epic/<dir>` na commitach po ich
-  merge'u i dla `main` na commicie merge'u końcowego PR;
+- `regressions`: runy `ci.yml` z wynikiem `failure` na połączonym stanie, każdy commit osobno (`gh run list --workflow
+  ci.yml --commit <sha> --json conclusion,event`): merge commit `git merge origin/main` każdego PR REPAIR
+  i `sync/<epik>-main` (pierwszy run po scaleniu, przed poprawkami), commit jego merge'u do `epic/<dir>` i commit
+  merge'u końcowego PR na `main`;
 - `critical`: numery krytycznych problemów (niżej), `[]` przy braku.
 
 Zapisz werdykt (stan lokalny, bez pytania; ponowny zapis poprawia poprzedni):

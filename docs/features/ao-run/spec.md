@@ -302,7 +302,7 @@ czasu). Reguły:
     w toku, i wtedy jest jedynym; epik w toku bez czytelnego zakresu pomija każdego kandydata;
   - przy pomiarze czasu suma szacunków listy z nim mieści się do `until` szeregowo (wykonanie szeregowe jest
     rozwiązaniem awaryjnym, więc lista ma się zmieścić także bez równoległości);
-- kandydat, który nie wchodzi, trafia do `skipped` z powodem (np. „zakres wspólny z VARIANTS: CLAUDE.md”, „zależy od
+- kandydat, który nie wchodzi, trafia do `skipped` z powodem (np. „zakres wspólny z VARIANTS: apps/api/src/Cart”, „zależy od
   CHECKOUT”, „nie mieści się do 07:00”), a sprawdzanie idzie dalej: niższy epik może wejść przed wyższym;
 - bez pomiaru czasu lista nie ma limitu długości; kolejne epiki i tak ruszają dopiero po sprawdzeniu w `next`.
 
@@ -360,8 +360,8 @@ wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo
   (wyżej, „Konflikt końcowego PR poza AO”).
 - Binarka z Homebrew znika przy `brew upgrade` (katalog starej wersji w `Caskroom`). Gdy zniknie w trakcie epiku,
   AO nie uruchomi kolejnego wykonawcy; trwalsza jest kopia z instalatora natywnego (`claude install <wersja>`).
-- CI końcowego PR drugiego epiku przeszło na `main` bez pierwszego. Reguła plików bramki i sync spójności
-  zmniejszają, ale nie wykluczają konfliktu znaczeniowego. Pozostałe ograniczenia pracy równoległej: spec pracy
+- Reguła plików bramki, sync spójności w parze i testy po scaleniu zmniejszają, ale nie wykluczają konfliktu
+  znaczeniowego. Pozostałe ograniczenia pracy równoległej: spec pracy
   równoległej, „Ograniczenia”.
 
 ## Czego skill nie robi

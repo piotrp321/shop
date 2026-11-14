@@ -159,13 +159,15 @@ sprzed zmiany drugiego epiku. Dlatego:
   zgadzają się z obu zmianami. Niespójność naprawia ten sam merge commit; niespójność wymagająca decyzji o zachowaniu:
   `BLOCKED` jak przy konflikcie. Pliki generowane zmienione po obu stronach powstają od nowa także bez konfliktu.
   Wynik („Spójność dokumentów: <plik>: zgodne / poprawione: …”) trafia do opisu PR i `integration_notes`.
-- **Sync spójności w parze.** Para: epik P zmergowany pierwszy i epik Q z otwartym końcowym PR. Sesja Q uruchamia
-  procedurę `sync/<epik>-main` (sekcja 6a skilla) dla Q, gdy jednocześnie:
+- **Sync spójności w parze.** Para: epik P zmergowany pierwszy i epik Q z otwartym końcowym PR. Rulesety nie wymagają gałęzi
+  „up to date”, więc bez syncu CI końcowego PR Q nie widziało zmian P, także gdy oba epiki zmieniły różne pliki tej
+  samej aplikacji albo konfiguracji. Sesja Q uruchamia procedurę `sync/<epik>-main` (sekcja 6a skilla) dla Q, gdy
+  jednocześnie:
   - Q ma `epic_done` (wcześniej zmiany `main` wprowadza AO: REPAIR przy konflikcie końcowego PR);
   - commit merge'u P nie jest przodkiem `origin/epic/<Q>` (`git merge-base --is-ancestor`), więc sync wykonany raz się
-    nie powtarza, także po rundzie `DELTA` i ponownym `epic_done`;
-  - faktyczne zmiany obu stron mają wspólny plik (dowolny, także spoza deklaracji):
-    `git diff --name-only <merge-base>..origin/main` i `git diff --name-only origin/main...origin/epic/<Q>`.
+    nie powtarza, także po rundzie `DELTA` i ponownym `epic_done`.
+  Wspólny plik nie jest warunkiem: sync bez konfliktu też kończy się testami na połączonym stanie (sekcja „Testy po
+  scaleniu”), a o kontroli spójności decyduje lista plików zmienionych po obu stronach.
   Gdy końcowy PR Q ma konflikt, a AO nie działa, ta sama procedura rozwiązuje konflikt. Zgodą na procedurę dla par
   (także przy konflikcie) jest akceptacja tej specyfikacji (`CLAUDE.md`: PR `sync/<epik>-main` merguje skill po zgodzie
   użytkownika na procedurę i zielonym CI). Końcowy PR Q `MERGED` albo `CLOSED` w trakcie syncu: sesja przerywa,
@@ -287,7 +289,8 @@ jest pomijany w całości. Metryki zbieramy dla każdej pary, nie tylko dla dwó
   plików `CLAUDE.md` (ID, pierwsze i ostatnie pominięcie, liczba; z linii sprzed obecnej reguły plików);
   `code_blocked`: epiki, które `gate.jsonl` pominął z powodu ścieżki blokującej według obecnej reguły (kod aplikacji;
   te same pola), czyli koszt konserwatywnej reguły dla kodu; oraz `summary` (niżej). Kod 2: nieczytelny plik stanu.
-- **`pairs.py record <A> <B> [--state DIR]`** (stdin: obiekt JSON werdyktu) dopisuje do `<state>/pairs.jsonl` linię
+- **`pairs.py record <A> <B> [--state DIR]`** (`record` jako pierwszy argument; stdin: obiekt JSON werdyktu)
+  odmawia, gdy katalogi `A` i `B` nie są parą raportu (w dowolnej kolejności), i dopisuje do `<state>/pairs.jsonl` linię
   `{at, epics: [A, B], …werdykt}` pod blokadą bramki i wypisuje ją (kod 0). Werdykt ma dokładnie pola:
   - `shared`: pliki zmienione przez oba epiki (`git diff --name-only <merge>^1 <merge>` dla commitu merge'u końcowego
     PR każdego epiku, część wspólna list) albo `null`, gdy któryś końcowy PR jest `CLOSED`;
@@ -298,8 +301,9 @@ jest pomijany w całości. Metryki zbieramy dla każdej pary, nie tylko dla dwó
   - `doc_fixes`: niespójności dokumentów naprawione automatycznie (pozycje „poprawione” w liniach „Spójność
     dokumentów” opisów PR obu epików);
   - `interventions`: interwencje obu epików (`ao report`);
-  - `regressions`: czerwone checki `checks` albo `e2e` na połączonym stanie (sekcja „Testy po scaleniu”): runy PR
-    REPAIR i `sync/<epik>-main`, HEAD gałęzi epiku po ich merge'u i `main` po merge'u końcowego PR;
+  - `regressions`: czerwone checki `checks` albo `e2e` na połączonym stanie (sekcja „Testy po scaleniu”): run CI na
+    merge commicie każdego PR REPAIR i `sync/<epik>-main` (pierwszy run po scaleniu, przed poprawkami), run na
+    commicie jego merge'u do gałęzi epiku i run na `main` na commicie merge'u końcowego PR;
   - `critical`: numery krytycznych problemów (niżej), pusta lista przy braku.
   Liczby to nieujemne całkowite. Brak lub nadmiar pola, zła wartość, `A` równe `B`, nieczytelny JSON albo zajęta
   blokada: kod 2 bez zapisu. Ponowny zapis tej samej pary jest poprawką: liczy się ostatni.
@@ -350,10 +354,13 @@ Decyzja należy do użytkownika; zmiana reguły to PR do tej specyfikacji i `par
 ### Ograniczenia
 
 - Zakres to deklaracja. Epik, który zmieni plik spoza niej, może skonfliktować z drugim; naprawia to REPAIR albo
-  sync (sekcja „Spójność dokumentów”, warunek z faktycznych zmian).
-- CI końcowego PR drugiego epiku przeszło bez pierwszego. Reguła dla kodu aplikacji, sync spójności i testy po
-  scaleniu zmniejszają, ale nie wykluczają konfliktu znaczeniowego; konfliktu znaczeniowego w konfiguracji,
-  infrastrukturze albo CI bramka nie blokuje, łapią go dopiero testy po scaleniu.
+  sync spójności w parze (sekcja „Spójność dokumentów”).
+- Reguła dla kodu aplikacji, sync spójności w parze i testy po scaleniu zmniejszają, ale nie wykluczają konfliktu
+  znaczeniowego: testy łapią tylko to, co sprawdzają. Konfliktu znaczeniowego w konfiguracji, infrastrukturze albo CI
+  bramka nie blokuje; łapią go testy syncu spójności w parze (lokalne i CI PR syncu), a gdy ich nie ma, CI na `main`
+  (krytyczny problem 1).
+- Epik zmergowany pierwszy w parze nie jest synchronizowany: jego CI przeszło bez zmian drugiego, które jeszcze nie
+  były na `main`. Drugi epik przechodzi sync spójności w parze, więc połączony stan sprawdza CI PR syncu.
 - Rezerwacja i blokada działają między sesjami na jednym komputerze. Epik uruchomiony poza `/ao-run` widać dopiero po
   wypchnięciu jego gałęzi `epic/*`.
 - Rezerwa pamięci jest stała (6 GiB na stos); pamięć szczytowa nie jest mierzona. REPAIR i sync epiku po `done` nie
@@ -382,7 +389,7 @@ Implementacja to osobna praca w repozytorium AO (piotrp321/agentic-orchestrator#
   i wobec epików szeregowych o podobnej liczbie zadań; konflikty zadań, interwencje, awarie stosu i koszt jak w bloku
   pary.
 
-Warunek startu: dwie pierwsze pary epików 19a zamknięte i bez krytycznego problemu (sekcja „Pomiar pierwszych dwóch
+Warunek startu: dwie pierwsze pary epików 19a zamknięte i bez krytycznego problemu (sekcja „Metryki
 par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
 
 ## Pliki
@@ -446,6 +453,6 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką nie), `code_blocked` (ścieżka kodu tak, sama ścieżka dopuszczona nie),
   `record` przy parze (także w odwrotnej kolejności epików, ostatni zapis wygrywa), `summary` z wierszami `claude_md`
   i `code`, brak `gate.jsonl` i `pairs.jsonl`, nieczytelny plik → kod 2. `record`: poprawny zapis, brak i nadmiar pola,
-  liczba ujemna, ułamkowa albo logiczna, `auto_resolved` większe od `conflicts`, zły numer w `critical`, `shared` nie
+  para spoza raportu, `record` nie jako pierwszy argument, liczba ujemna, ułamkowa albo logiczna, `auto_resolved` większe od `conflicts`, zły numer w `critical`, `shared` nie
   będące listą ścieżek ani `null`, `A` równe `B`, nieczytelny JSON, zajęta blokada → kod 2 bez zapisu.
 - Testy skryptów `/delivery` w `.github/scripts/script-tests.sh` (jeśli sprawdzają treść sekcji) dalej przechodzą.
