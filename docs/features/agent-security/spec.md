@@ -394,7 +394,9 @@ JSON na stdout.
   katalogu; `mktemp` bez szablonu na macOS bierze `_CS_DARWIN_USER_TEMP_DIR` (`/var/folders/…/T`), a nie `TMPDIR`,
   i w sandboxie się nie udaje (Ryzyka);
 - binarkę uruchamia jako proces potomny (nie `exec`), przekazuje jej `INT`, `TERM` i `HUP` (`INT` jako `TERM`, bo
-  proces w tle nieinteraktywnej powłoki ignoruje `SIGINT`) i stdin, zwraca jej kod wyjścia i po jej końcu (także po
+  proces w tle nieinteraktywnej powłoki ignoruje `SIGINT`) i stdin (przez wolny deskryptor z 3–9, więc odziedziczone
+  deskryptory, np. blokady AO, docierają do binarki bez zmian; brak wolnego to odmowa startu), zwraca jej kod wyjścia
+  i po jej końcu (także po
   sygnale) usuwa katalog przebiegu w `.agent-tmp` i katalog tymczasowy Claude Code (po ponownym sprawdzeniu
   dowiązań);
 - ustawia dla procesu wykonawcy `git` przez HTTPS zamiast SSH

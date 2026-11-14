@@ -23,6 +23,13 @@ FAKE_CLAUDE = '''#!%s
 import json, os, sys, time
 TEMP_VARIABLES = ('TMPDIR', 'BUILDX_CONFIG', 'GH_CONFIG_DIR', 'XDG_CACHE_HOME')
 stdin = sys.stdin.read() if os.environ.get('FAKE_READ_STDIN') else None
+fds = {}
+for fd in range(3, 10):
+    try:
+        os.lseek(fd, 0, 0)
+        fds[str(fd)] = os.read(fd, 100).decode()
+    except OSError:
+        pass
 claude_tmp = os.environ.get('CLAUDE_CODE_TMPDIR')
 claude_tmp_state = None
 if claude_tmp and os.path.lexists(claude_tmp):
@@ -30,7 +37,7 @@ if claude_tmp and os.path.lexists(claude_tmp):
     claude_tmp_state = {'mode': info.st_mode & 0o7777, 'uid': info.st_uid, 'link': os.path.islink(claude_tmp),
                         'entries': sorted(os.listdir(claude_tmp)) if os.path.isdir(claude_tmp) else None}
 with open(os.environ['FAKE_CLAUDE_RECORD'], 'w') as f:
-    json.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'pid': os.getpid(), 'stdin': stdin,
+    json.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'pid': os.getpid(), 'stdin': stdin, 'fds': fds,
                'dirs': {k: os.path.isdir(os.environ.get(k, '')) for k in TEMP_VARIABLES},
                'claude_tmp': claude_tmp_state}, f)
 print('fake claude ran')
@@ -335,6 +342,35 @@ class TaskTempDirTest(WrapperTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.recorded()['stdin'], '{"type":"user"}\n')
         self.assertIn('fake claude ran', result.stdout)
+
+    def run_with_open_fds(self, numbers):
+        # Like AO, which passes its lock descriptors to the executor (pass_fds): the descriptors are open before the
+        # wrapper starts.
+        opens = ' '.join('%d<"$FD_DIR/%d"' % (n, n) for n in numbers)
+        fd_dir = os.path.join(self.tmp, 'fds')
+        os.makedirs(fd_dir, exist_ok=True)
+        for n in numbers:
+            write(os.path.join(fd_dir, str(n)), 'inherited descriptor %d\n' % n)
+        return subprocess.run(['sh', '-c', 'exec %s; exec sh "$WRAPPER" "$@"' % opens, 'sh', *AO_ARGS],
+                              cwd=self.work, capture_output=True, text=True, input='{"type":"user"}\n',
+                              env=self.env(FAKE_READ_STDIN='1', FD_DIR=fd_dir, WRAPPER=WRAPPER))
+
+    def test_inherited_descriptors_reach_the_binary_unchanged(self):
+        for numbers in ((3,), (3, 4, 5, 6, 7, 8), (4, 9)):
+            with self.subTest(numbers=numbers):
+                if os.path.exists(self.record):
+                    os.remove(self.record)
+                result = self.run_with_open_fds(numbers)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                record = self.recorded()
+                self.assertEqual(record['fds'], {str(n): 'inherited descriptor %d\n' % n for n in numbers})
+                self.assertEqual(record['stdin'], '{"type":"user"}\n')
+
+    def test_no_free_descriptor_for_stdin_is_refused(self):
+        result = self.run_with_open_fds(range(3, 10))
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(os.path.exists(self.record), 'the binary ran')
+        self.assertIn('deskryptor', result.stderr)
 
     def run_and_signal(self, signum):
         process = subprocess.Popen(['sh', WRAPPER, *AO_ARGS], cwd=self.work, stdout=subprocess.PIPE,

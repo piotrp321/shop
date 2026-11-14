@@ -232,16 +232,28 @@ export GH_TOKEN GH_CONFIG_DIR GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE
 
 # The executor runs as a child (not exec), so the EXIT trap removes the temporary directories after it. INT, TERM and
 # HUP sent to the wrapper are passed on; a background child of a non-interactive shell ignores SIGINT, so INT goes on
-# as TERM. stdin is handed over explicitly (a background job would otherwise read /dev/null).
+# as TERM. stdin is handed over explicitly (a background job would otherwise read /dev/null) through a descriptor that
+# was not open: the descriptors the wrapper inherits (AO passes its lock descriptors) reach the binary unchanged.
 forward() {
     [ -n "$child" ] && kill -"$1" "$child" 2>/dev/null
 }
+stdin_fd=
+for fd in 9 8 7 6 5 4 3; do
+    if ! eval "true <&$fd" 2>/dev/null && ! eval "true >&$fd" 2>/dev/null; then
+        stdin_fd=$fd
+        break
+    fi
+done
+[ -n "$stdin_fd" ] || die "brak wolnego deskryptora 3-9 na stdin wykonawcy (wszystkie odziedziczone)"
 trap 'forward TERM' INT TERM
 trap 'forward HUP' HUP
-exec 3<&0
-"$AGENT_CLAUDE_BIN" "$@" --settings "$settings" --strict-mcp-config --setting-sources project 0<&3 3<&- &
+eval "exec $stdin_fd<&0"
+(
+    eval "exec 0<&$stdin_fd $stdin_fd<&-"
+    exec "$AGENT_CLAUDE_BIN" "$@" --settings "$settings" --strict-mcp-config --setting-sources project
+) &
 child=$!
-exec 3<&-
+eval "exec $stdin_fd<&-"
 while :; do
     wait "$child"
     status=$?
