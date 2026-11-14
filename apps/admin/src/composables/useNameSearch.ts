@@ -72,8 +72,8 @@ export function useNameSearch(options: NameSearchOptions) {
 
   function setFromAddress(term: string | null): void {
     clearTimeout(timer);
-    synced = term ?? "";
-    search.value = synced;
+    search.value = term ?? "";
+    synced = search.value.trim();
   }
 
   function reset(): void {

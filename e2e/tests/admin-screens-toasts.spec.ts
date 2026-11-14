@@ -34,7 +34,9 @@ const forms: ToastForm[] = [
   },
 ];
 
-const sizes = [viewports.desktop, viewports.phone, viewports.reflow];
+// 620 and 639 px lie between the breakpoint of vue-sonner (600 px) and the one of the panel (640 px); 640 px is the first
+// width of the toast as a card.
+const sizes = [viewports.desktop, { width: 640, height: 900 }, { width: 639, height: 900 }, { width: 620, height: 900 }, viewports.phone, viewports.reflow];
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
@@ -64,7 +66,7 @@ async function boxesOf(locator: Locator): Promise<{ label: string; x: number; y:
   for (const element of await locator.all()) {
     const box = await element.boundingBox();
     if (box) {
-      const label = (await element.getAttribute("aria-label")) ?? (await element.innerText()).trim() ?? (await element.evaluate((node) => node.tagName));
+      const label = (await element.getAttribute("aria-label")) || (await element.innerText()).trim() || (await element.evaluate((node) => node.tagName));
       boxes.push({ label, ...box });
     }
   }
@@ -100,6 +102,16 @@ for (const form of forms) {
         await expect(bar).toBeVisible();
         await settle(page);
         await expect(toasts.first(), "the toast is still there with the save bar").toBeVisible();
+
+        // Below 640 px the toast spans the screen with a margin of 16 px; from 640 px it is a card 24 px from the right edge.
+        const toast = (await boxesOf(toasts.first()))[0]!;
+        const margin = size.width < 640 ? 16 : 24;
+        expect(Math.abs(toast.x + toast.width - (size.width - margin)), `the right edge of the toast is ${margin} px from the edge of the screen (toast ${JSON.stringify(toast)})`).toBeLessThanOrEqual(1);
+        if (size.width < 640) {
+          expect(Math.abs(toast.x - 16), `the toast starts 16 px from the left edge (toast ${JSON.stringify(toast)})`).toBeLessThanOrEqual(1);
+        } else {
+          expect(toast.width, "the toast is a card, not the width of the screen").toBeLessThan(size.width - 2 * 16);
+        }
 
         const covered = [...(await boxesOf(bar.getByRole("button"))), ...(await boxesOf(page.locator("header").locator("a, button, input")))];
         expect(covered.length, "the save bar and the top bar have controls").toBeGreaterThan(2);

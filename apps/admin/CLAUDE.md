@@ -36,8 +36,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`), stopka
   („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"` o nazwie
   dokładnie „Powiadomienia”, bez skrótu klawiszowego vue-sonner, który doklejałby się do nazwy; 5 s; `position="top-right"` z odsunięciem
-  pod topbar, `TOAST_TOP` w `AppLayout`, więc toast nie zasłania paska zapisu ani topbaru; do 600 px na szerokość ekranu
-  z marginesem 16 px) i `useIdleLogout` (15 min). `usePageFocus`: po zmianie ścieżki trasy (inny ekran albo rekord; sama zmiana `query` lub `hash`, nawigacja
+  pod topbar, `TOAST_TOP` w `AppLayout`, więc toast nie zasłania paska zapisu ani topbaru; poniżej 640 px na szerokość ekranu
+  z marginesem 16 px: klasy `max-sm:…!` `TOAST_NARROW`, bo vue-sonner robi to dopiero do 600 px) i `useIdleLogout` (15 min). `usePageFocus`: po zmianie ścieżki trasy (inny ekran albo rekord; sama zmiana `query` lub `hash`, nawigacja
   anulowana i pierwsze wczytanie niczego nie ruszają) wolny fokus (na `body`, np. po zniknięciu klikniętego linku, albo na `<main>`)
   trafia na H1 nowej strony; do czasu pojawienia się H1 (widok ładuje dane) na `<main>`. Fokus, który ma istniejący element
   (przeniesiony przez widok, np. formularz po zapisie przed `router.replace` na trasę utworzonego rekordu tą samą instancją,
