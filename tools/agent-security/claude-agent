@@ -22,6 +22,11 @@
 # XDG_CACHE_HOME in a per-run directory under <workdir>/.agent-tmp (never the shared /tmp or the user's temp). The
 # binary runs as a child: the wrapper passes INT/TERM/HUP on, returns the binary's exit code and removes the per-run
 # directory afterwards. --version and auth status are exec'd as they are.
+#
+# The executor's PATH starts with bin/ next to this script (the mktemp overlay: a bare `mktemp` on macOS writes to the
+# user's read-only temp, the overlay gives the system mktemp a template in TMPDIR). The directory is read-only in the
+# profile and must come from a copy the executor cannot write (ao-prepare copies bin/ with the other files); the
+# environment has AGENT_EXECUTOR_SANDBOX=1, which the tests of tools/agent-security read.
 set -u
 
 TOKEN_SERVICE=shop-agent-github-token
@@ -73,6 +78,14 @@ esac
 here=$(cd -P -- "$(dirname -- "$0")" && pwd -P) || die "nie można ustalić katalogu wrappera"
 [ -f "$here/executor-settings.json" ] || die "brak szablonu $here/executor-settings.json"
 [ -f "$here/render_settings.py" ] || die "brak $here/render_settings.py"
+# The mktemp overlay (bin/mktemp next to this script) goes first in the executor's PATH. It runs in the sandbox, so the
+# directory is read-only in the profile; it must be a real directory with a real executable file, and its path must not
+# contain a colon, which would split the PATH entry.
+overlay_dir=$here/bin
+case $here in *:*) die "katalog wrappera $here zawiera dwukropek: nie można go dopisać do PATH" ;; esac
+[ -d "$overlay_dir" ] && [ ! -L "$overlay_dir" ] && [ -f "$overlay_dir/mktemp" ] && [ ! -L "$overlay_dir/mktemp" ] &&
+    [ -x "$overlay_dir/mktemp" ] ||
+    die "brak nakładki $overlay_dir/mktemp (wykonywalny plik w katalogu bez dowiązań symbolicznych)"
 
 home=$(cd -P -- "${HOME:-/nonexistent}" 2>/dev/null && pwd -P) || die "brak katalogu domowego HOME"
 case $AGENT_AO_HOME in /*) ;; *) die "AGENT_AO_HOME $AGENT_AO_HOME nie jest ścieżką bezwzględną" ;; esac
@@ -205,8 +218,8 @@ integration_opt=''
 [ -n "$integration_dir" ] && integration_opt="--state-dir $integration_dir"
 # shellcheck disable=SC2086 # integration_opt is an option list built above, intentionally word-split
 settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
-    --state-dir "$task_dir" $integration_opt --claude-tmpdir "$claude_tmp" \
-    --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
+    --state-dir "$task_dir" $integration_opt --claude-tmpdir "$claude_tmp" --read-dir "$overlay_dir" \
+    --deny-write "$overlay_dir" --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
 
 unset SSH_AUTH_SOCK
 TMPDIR=$run_tmp/tmp
@@ -215,7 +228,9 @@ GH_TOKEN=$token
 GH_CONFIG_DIR=$run_tmp/gh
 XDG_CACHE_HOME=$run_tmp/cache      # gh writes its run-log cache here, not under the denied ~/.cache
 CLAUDE_CODE_TMPDIR=$claude_tmp
-export TMPDIR BUILDX_CONFIG XDG_CACHE_HOME CLAUDE_CODE_TMPDIR
+PATH=$overlay_dir${PATH:+:$PATH}   # mktemp of the overlay first
+AGENT_EXECUTOR_SANDBOX=1           # the run is in the executor sandbox (tests skip what needs the system /tmp)
+export TMPDIR BUILDX_CONFIG XDG_CACHE_HOME CLAUDE_CODE_TMPDIR PATH AGENT_EXECUTOR_SANDBOX
 GIT_CONFIG_COUNT=4
 GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf
 GIT_CONFIG_VALUE_0=git@github.com:

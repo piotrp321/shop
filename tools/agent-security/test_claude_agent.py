@@ -17,6 +17,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WRAPPER = os.path.join(HERE, 'claude-agent')
+OVERLAY = os.path.join(HERE, 'bin', 'mktemp')
 TOKEN = 'github_pat_fake_executor_token'
 
 FAKE_CLAUDE = '''#!%s
@@ -36,10 +37,18 @@ if claude_tmp and os.path.lexists(claude_tmp):
     info = os.lstat(claude_tmp)
     claude_tmp_state = {'mode': info.st_mode & 0o7777, 'uid': info.st_uid, 'link': os.path.islink(claude_tmp),
                         'entries': sorted(os.listdir(claude_tmp)) if os.path.isdir(claude_tmp) else None}
+mktemp = None
+if os.environ.get('FAKE_RUN_MKTEMP'):
+    import subprocess
+    mktemp = {'command': subprocess.run(['sh', '-c', 'command -v mktemp'], capture_output=True, text=True).stdout.strip()}
+    for key, args in (('file', ['mktemp']), ('dir', ['mktemp', '-d']), ('prefix', ['mktemp', '-t', 'probe'])):
+        result = subprocess.run(args, capture_output=True, text=True)
+        path = result.stdout.strip()
+        mktemp[key] = {'code': result.returncode, 'path': path, 'stderr': result.stderr, 'exists': os.path.exists(path)}
 with open(os.environ['FAKE_CLAUDE_RECORD'], 'w') as f:
     json.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'pid': os.getpid(), 'stdin': stdin, 'fds': fds,
                'dirs': {k: os.path.isdir(os.environ.get(k, '')) for k in TEMP_VARIABLES},
-               'claude_tmp': claude_tmp_state}, f)
+               'claude_tmp': claude_tmp_state, 'mktemp': mktemp}, f)
 print('fake claude ran')
 sys.stdout.flush()
 if os.environ.get('FAKE_SLEEP'):
@@ -496,6 +505,107 @@ class ClaudeTmpdirTest(WrapperTestCase):
 
     def test_a_failed_mktemp_is_refused(self):
         self.assertIn(TEMP_PARENT, self.fake_mktemp('fail'))
+
+
+class MktempOverlayTest(WrapperTestCase):
+    """B7: the executor's PATH starts with the directory bin/ next to the wrapper, which holds the mktemp overlay
+    (a bare `mktemp` on macOS writes to the user's temp, read-only for the executor). The directory is read-only in the
+    profile: readable (the executor runs the overlay), never writable, also when the wrapper sits in the worktree."""
+
+    BIN = os.path.join(HERE, 'bin')
+
+    def test_the_overlay_directory_is_first_in_path_and_the_old_path_follows(self):
+        env = self.started(*AO_ARGS)['env']
+        entries = env['PATH'].split(os.pathsep)
+        self.assertEqual(entries[0], os.path.realpath(self.BIN))
+        self.assertEqual(entries[1:], self.env()['PATH'].split(os.pathsep))
+
+    def test_a_bare_mktemp_of_the_executor_lands_in_its_tmpdir(self):
+        record = self.started(*AO_ARGS, FAKE_RUN_MKTEMP='1')
+        mktemp = record['mktemp']
+        self.assertEqual(mktemp['command'], os.path.join(os.path.realpath(self.BIN), 'mktemp'))
+        tmpdir = record['env']['TMPDIR']
+        for key in ('file', 'dir', 'prefix'):
+            self.assertEqual(mktemp[key]['code'], 0, mktemp[key])
+            self.assertEqual(os.path.dirname(mktemp[key]['path']), tmpdir, key)
+            self.assertTrue(mktemp[key]['exists'], key)
+
+    def test_the_profile_reads_the_overlay_directory_and_never_writes_it(self):
+        fs = self.settings(self.started(*AO_ARGS))['sandbox']['filesystem']
+        overlay = os.path.realpath(self.BIN)
+        self.assertIn(overlay, fs['allowRead'])
+        self.assertNotIn(overlay, fs['allowWrite'])
+        self.assertIn(overlay, fs['denyWrite'])
+        for granted in fs['allowWrite']:
+            self.assertFalse(overlay.startswith(granted.rstrip('/') + '/') and granted != self.work, granted)
+
+    def test_the_overlay_stays_write_protected_when_the_wrapper_is_in_the_worktree(self):
+        copy = os.path.join(self.work, 'tools/agent-security')
+        shutil.copytree(HERE, copy, ignore=shutil.ignore_patterns('test_*', '__pycache__'))
+        self.git('add', '-A')
+        self.git('commit', '-q', '-m', 'wrapper in the worktree')
+        result = subprocess.run(['sh', os.path.join(copy, 'claude-agent'), *AO_ARGS], cwd=self.work,
+                                capture_output=True, text=True, env=self.env())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        settings = self.settings(self.recorded())
+        overlay = os.path.join(self.work, 'tools/agent-security/bin')
+        self.assertIn(overlay, settings['sandbox']['filesystem']['denyWrite'])
+        self.assertIn('Edit(/%s/**)' % overlay, settings['permissions']['deny'])
+
+    def copy_of_the_wrapper(self, bin_setup):
+        copy = os.path.join(self.tmp, 'copy')
+        os.makedirs(copy)
+        for name in ('claude-agent', 'render_settings.py', 'executor-settings.json'):
+            shutil.copy(os.path.join(HERE, name), copy)
+        bin_setup(copy)
+        return copy
+
+    def refused_copy(self, bin_setup):
+        copy = self.copy_of_the_wrapper(bin_setup)
+        result = subprocess.run(['sh', os.path.join(copy, 'claude-agent'), *AO_ARGS], cwd=self.work,
+                                capture_output=True, text=True, env=self.env())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(self.record), 'the binary ran')
+        self.assertIn('bin/mktemp', result.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.work, '.agent-tmp')), 'the temp root stayed')
+
+    def test_a_wrapper_without_the_overlay_is_refused(self):
+        self.refused_copy(lambda copy: None)
+
+    def test_an_overlay_that_is_not_executable_is_refused(self):
+        def setup(copy):
+            os.makedirs(os.path.join(copy, 'bin'))
+            write(os.path.join(copy, 'bin/mktemp'), '#!/bin/sh\n', 0o644)
+        self.refused_copy(setup)
+
+    def test_an_overlay_that_is_a_symlink_is_refused(self):
+        def setup(copy):
+            os.makedirs(os.path.join(copy, 'bin'))
+            os.symlink('/usr/bin/mktemp', os.path.join(copy, 'bin/mktemp'))
+        self.refused_copy(setup)
+
+    def test_an_overlay_directory_that_is_a_symlink_is_refused(self):
+        def setup(copy):
+            elsewhere = os.path.join(self.tmp, 'elsewhere-bin')
+            write(os.path.join(elsewhere, 'mktemp'), '#!/bin/sh\n', 0o755)
+            os.symlink(elsewhere, os.path.join(copy, 'bin'))
+        self.refused_copy(setup)
+
+    def test_a_wrapper_directory_with_a_colon_is_refused(self):
+        # PATH entries are separated by colons: such a directory would put another one first.
+        copy = os.path.join(self.tmp, 'a:b')
+        os.makedirs(os.path.join(copy, 'bin'))
+        for name in ('claude-agent', 'render_settings.py', 'executor-settings.json'):
+            shutil.copy(os.path.join(HERE, name), copy)
+        shutil.copy(OVERLAY, os.path.join(copy, 'bin/mktemp'))
+        result = subprocess.run(['sh', os.path.join(copy, 'claude-agent'), *AO_ARGS], cwd=self.work,
+                                capture_output=True, text=True, env=self.env())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(self.record), 'the binary ran')
+        self.assertIn(':', result.stderr)
+
+    def test_the_marker_of_the_executor_sandbox_is_set(self):
+        self.assertEqual(self.started(*AO_ARGS)['env'].get('AGENT_EXECUTOR_SANDBOX'), '1')
 
 
 class RefusalTest(WrapperTestCase):
