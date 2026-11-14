@@ -398,7 +398,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen i lista stanów, pozostałe listy przejdą w
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów i lista kodów rabatowych, pozostałe listy przejdą w
   ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu

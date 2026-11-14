@@ -66,7 +66,7 @@ test.beforeAll(async ({ browser }) => {
     orderId = href.split("/").pop()!;
     expect(orderId, "the id of an order").toMatch(UUID);
 
-    // The edit pages of the screens that are not migrated yet: the first row of the lists of promotions and discount codes
+    // The pages of an edited promotion and discount code (promotions are not migrated yet): the first row of their lists
     // (the demo data, or a row an earlier test added).
     await go(page, "/promotions");
     const promotion = page.getByTestId("promotion-link").first();

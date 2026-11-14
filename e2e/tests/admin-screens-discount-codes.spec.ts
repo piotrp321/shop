@@ -356,21 +356,23 @@ test.describe("the form", () => {
     }
   });
 
-  test("puts the side column before the main one in the document: Tab starts on the switch „Aktywny”", async () => {
+  test("from the H1 the Tab key reaches the switch „Aktywny” of the side column before the field „Kod” of the main one", async () => {
     test.setTimeout(60_000);
     const page = await newPanelPage("admin", viewports.desktop);
     try {
-      await go(page, `/discount-codes/${activeCodeId}`);
+      await go(page, "/discount-codes/new");
       await settle(page);
-      await page.getByRole("heading", { level: 1 }).focus();
-      await page.keyboard.press("Tab");
-      // The breadcrumbs come before the content: the first stop after the H1 is a link, then the switch.
-      const order = await page.evaluate(() => {
-        const aside = document.querySelector("[data-testid=enabled]")!;
-        const main = document.querySelector("[data-testid=value-input]")!;
-        return aside.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING ? "side first" : "main first";
-      });
-      expect(order).toBe("side first");
+      await page.getByRole("heading", { level: 1, name: "Nowy kod rabatowy" }).focus();
+
+      const visited: string[] = [];
+      for (let step = 0; step < 12 && !visited.includes("code-input"); step++) {
+        await page.keyboard.press("Tab");
+        visited.push(await page.evaluate(() => document.activeElement?.getAttribute("data-testid") ?? document.activeElement?.tagName ?? ""));
+      }
+
+      expect(visited, "the Tab key reaches the field „Kod”").toContain("code-input");
+      expect(visited.indexOf("enabled"), `the switch comes before the field „Kod” (${visited.join(", ")})`).toBeGreaterThanOrEqual(0);
+      expect(visited.indexOf("enabled")).toBeLessThan(visited.indexOf("code-input"));
     } finally {
       await page.close();
     }

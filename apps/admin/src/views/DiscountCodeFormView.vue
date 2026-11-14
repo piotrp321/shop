@@ -176,7 +176,7 @@ const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-
         v-else-if="termsLocked"
         data-testid="terms-locked-note"
       >
-        <AlertDescription>Kod już obowiązuje: rodzaj, wartość, minimum i początek są zablokowane. Możesz zmienić koniec, włączenie i limit.</AlertDescription>
+        <AlertDescription>Kod już obowiązuje: rodzaj, wartość, minimum i początek są zablokowane. Możesz zmienić koniec, „Aktywny” i limit.</AlertDescription>
       </Alert>
       <Alert
         v-if="error"

@@ -215,7 +215,7 @@ describe("useDiscountCodeList", () => {
     await type(list, "ab ");
     expect(mocks.get).toHaveBeenCalledTimes(calls);
 
-    await type(list, "   ");
+    await type(list, "   ");
     expect(queries().at(-1)).toEqual({});
   });
 

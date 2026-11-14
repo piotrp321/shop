@@ -496,7 +496,7 @@ describe("DiscountCodeFormView", () => {
       for (const field of ["ends-input", "limit-input", "enabled"]) {
         expect(disabled(wrapper, field), field).toBe(false);
       }
-      expect(wrapper.get("[data-testid=terms-locked-note]").text()).toContain("rodzaj, wartość, minimum i początek są zablokowane");
+      expect(wrapper.get("[data-testid=terms-locked-note]").text()).toContain("rodzaj, wartość, minimum i początek są zablokowane. Możesz zmienić koniec, „Aktywny” i limit.");
       expect(wrapper.get("[data-testid=active-uses]").text()).toBe("7");
     });
 
