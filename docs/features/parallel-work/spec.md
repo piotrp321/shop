@@ -181,13 +181,32 @@ sprzed zmiany drugiego epiku. Dlatego:
 ### Testy po scaleniu
 
 Merge bez konfliktu tekstowego nie dowodzi, że połączony kod działa. Dlatego każde scalenie zmian drugiego epiku
-(REPAIR, sync spójności, tryb poprawki) kończy się testami na połączonym stanie:
+(REPAIR, sync spójności, tryb poprawki) sprawdza zintegrowany stan epiku, czyli epik razem ze zmianami z `main`,
+a nie tylko poprawność samego merge'u Git:
 
 - lokalnie, przed wypchnięciem merge commitu (`/delivery`, „Konflikt z gałęzią docelową lub z `main`”): `make check`
-  i testy każdej aplikacji, która ma plik zmieniony po obu stronach od merge-base, nie tylko pliki w konflikcie;
+  i testy każdej aplikacji, którą zmienia epik od merge-base (`git diff --name-only <merge-base> HEAD` sprzed merge'u),
+  oraz każdej aplikacji z plikiem zmienionym po obu stronach, nie tylko pliki w konflikcie; do tego kontrola migracji
+  (niżej);
 - w CI: PR REPAIR i `sync/<epik>-main` trafia do `epic/<epik>` dopiero po zielonych wymaganych checkach `checks`
-  i `e2e` (ruleset `epic-merge`), potem CI biegnie jeszcze raz na HEAD gałęzi epiku, a końcowy PR do `main` wymaga
-  tych samych checków.
+  (`make check` i testy wszystkich aplikacji na świeżym stosie) i `e2e` (ruleset `epic-merge`), potem CI biegnie
+  jeszcze raz na HEAD gałęzi epiku, a końcowy PR do `main` wymaga tych samych checków.
+
+**Migracje.** Wspólne migracje nie blokują startu (reguła plików). Kolizję wykrywa scalenie:
+
+- wykrycie: migracje dodane albo zmienione po obu stronach od merge-base (`git diff --name-only "$b" origin/<gałąź>
+  -- apps/api/migrations` i `git diff --name-only "$b" HEAD -- apps/api/migrations` przed merge'em, obie niepuste);
+- kolizja: migracje obu stron zmieniają tę samą tabelę (nazwy tabel z ich SQL), mają tę samą wersję albo strona
+  epiku zmienia migrację, która jest już na `main` (migracja z `main` jest niezmienna, bo mogła być wdrożona). Przy
+  tej samej tabeli wynik nie może zależeć od kolejności: na produkcji migracje epiku wykonają się po migracjach
+  z `main`, na świeżej bazie po wersjach, więc migracja epiku starsza od migracji z `main` wykona się w innej
+  kolejności niż od zera. Kolizję usuwa poprawka migracji epiku w tym samym merge commicie; kolizja wymagająca decyzji
+  o schemacie: `BLOCKED` jak przy konflikcie;
+- weryfikacja na połączonym kodzie, w obu kolejnościach: lokalnie `make -C apps/api test` (`init-test` wykonuje na
+  bazie testowej stosu migracje jeszcze niewykonane, jak na produkcji) i w CI `checks` (świeża baza, wszystkie
+  migracje od zera, testy zgodności schematu z mapowaniem `*SchemaTest`);
+- wynik w opisie PR i `integration_notes`: linia `Migracje: <pliki z main> / <pliki epiku>; kolizje: brak / <tabela>:
+  <rozstrzygnięcie>` albo `Migracje: brak migracji po obu stronach`.
 
 Czerwony check na połączonym stanie to regresja w metrykach par (sekcja „Metryki par”), także gdy REPAIR ją naprawił.
 Regresja naprawiona automatycznie nie zatrzymuje innych epików; krytyczny problem to dopiero czerwone CI na `main`.
@@ -402,8 +421,8 @@ par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
 - `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: metryki par i zapis werdyktu (`record`).
 - `.claude/skills/ao-run/next_epic.py`: bez zmiany zachowania; wspólny odczyt tablicy zostaje w nim.
 - `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4, 5, 6, 6a, 7, 7a, 8, „Noc” i „Czego nie robisz”.
-- `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów, pliki generowane bez konfliktu i testy
-  aplikacji z plikami zmienionymi po obu stronach w sekcji „Konflikt z gałęzią docelową lub z `main`”.
+- `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów, pliki generowane bez konfliktu, kontrola migracji
+  i testy stanu zintegrowanego w sekcji „Konflikt z gałęzią docelową lub z `main`”.
 - Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: wskazują
   tę specyfikację), plan Agentic Software House (status kroku 19, rola „Praca równoległa”, punkt 3 procesu).
 

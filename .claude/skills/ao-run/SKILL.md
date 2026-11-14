@@ -402,9 +402,11 @@ Bash tej sesji wraca po każdym wywołaniu do jej katalogu roboczego, więc każ
    konfliktu), reszta semantycznie z obu stron, kontrola `git diff origin/main...HEAD` i spójności każdego dokumentu
    zmienionego po obu stronach od merge-base. Nigdy squash ani rebase. Konflikt albo niespójność, których nie da się
    rozstrzygnąć bez decyzji o zachowaniu: zatrzymaj się i zapytaj użytkownika.
-3. `make check` i testy każdej aplikacji z plikiem zmienionym po obu stronach od merge-base, nie tylko z plikami
-   w konflikcie (`make -C apps/<app> test`). Czerwone: napraw w tym
-   samym merge'u albo zapytaj użytkownika.
+3. Stan zintegrowany epiku, nie tylko merge: `make check` i testy każdej aplikacji, którą zmienia epik od merge-base
+   (`git diff --name-only "$b" HEAD` sprzed merge'u), i każdej z plikiem zmienionym po obu stronach
+   (`make -C apps/<app> test`), oraz kontrola migracji ze skilla `/delivery` (kolizje, `make -C apps/api test`).
+   Czerwone: napraw w tym samym merge'u albo zapytaj użytkownika. PR syncu mergujesz dopiero po zielonych `checks`
+   i `e2e` (pełny stan: wszystkie aplikacje, migracje od zera, E2E).
 4. Push i PR do gałęzi epiku:
 
    ```bash
@@ -413,7 +415,7 @@ Bash tej sesji wraca po każdym wywołaniu do jej katalogu roboczego, więc każ
    ```
 
    Opis PR: pliki w konflikcie, sposób rozwiązania każdego, linia „Spójność dokumentów: …” (wynik kontroli z kroku 2),
-   wynik kontroli i testów.
+   linia „Migracje: …” i wynik kontroli i testów stanu zintegrowanego (krok 3).
 5. CI: `gh pr checks <nr sync> --watch --required`. Zaraz po `gh pr create` checki mogą jeszcze nie być zgłoszone
    („no checks reported”): to nie jest czerwone CI, ponów po minucie. Zielone (`cd "$SHOP"`):
    `gh pr merge <nr sync> --merge --match-head-commit <sha>`, nigdy `--squash`, `--admin`, `--auto` ani
