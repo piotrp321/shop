@@ -4,6 +4,11 @@ python3 -m unittest discover -s tools/agent-security -p 'test_*.py'
 The overlay is run as the executor's Bash would find it (first in PATH, with TMPDIR set), against the real system
 mktemp. On macOS a bare `mktemp` uses _CS_DARWIN_USER_TEMP_DIR (/var/folders/.../T) whatever TMPDIR says, so a result
 in TMPDIR proves the overlay's explicit template; on Linux the system mktemp already honours TMPDIR.
+
+Where the GNU mktemp (Linux) and the BSD mktemp (macOS) differ (several templates: BSD makes them all, GNU refuses
+"too many templates"; -t: a prefix argument in BSD, a flag without one in GNU), the overlay passes the call on and the
+test runs the system mktemp with the same arguments: the same exit status, the same error message and nothing made on
+an error, and on success the results where the overlay puts them.
 """
 import os
 import re
@@ -45,6 +50,40 @@ class OverlayTestCase(unittest.TestCase):
     def mktemp(self, *args, cwd=None, timeout=60, **env):
         return subprocess.run(['mktemp', *args], cwd=cwd or self.cwd, capture_output=True, text=True,
                               env=self.env(**env), timeout=timeout)
+
+    def system(self, *args, **env):
+        return subprocess.run([SYSTEM_MKTEMP, *args], cwd=self.cwd, capture_output=True, text=True,
+                              env=self.env(**env))
+
+    def remove_later(self, result):
+        for path in result.stdout.splitlines():
+            path = os.path.join(self.cwd, path)
+            self.addCleanup(lambda p=path: shutil.rmtree(p, True) if os.path.isdir(p) else
+                            os.path.lexists(p) and os.unlink(p))
+
+    def snapshot(self):
+        return {d: sorted(os.listdir(d)) for d in (self.tmpdir, self.other, self.cwd)}
+
+    def like_system(self, *args, **env):
+        """The overlay against the system mktemp with the same arguments, for a call where GNU and BSD mktemp differ:
+        the same exit status and error message, on an error no output and nothing made. Returns the overlay's paths
+        (none after an error)."""
+        before = self.snapshot()
+        ours = self.mktemp(*args, **env)
+        self.remove_later(ours)
+        after = self.snapshot()
+        theirs = self.system(*args, **env)
+        self.remove_later(theirs)
+        self.assertEqual(ours.returncode, theirs.returncode, (args, ours.stderr, theirs.stderr))
+        self.assertEqual(ours.stderr, theirs.stderr, args)
+        if ours.returncode != 0:
+            self.assertNotEqual(ours.stderr, '', args)
+            self.assertEqual(ours.stdout, '', args)
+            self.assertEqual(after, before, '%r made something despite the error' % (args,))
+            return []
+        paths = ours.stdout.splitlines()
+        self.assertEqual(len(paths), len(theirs.stdout.splitlines()), args)
+        return paths
 
     def made(self, *args, **env):
         result = self.mktemp(*args, **env)
@@ -165,11 +204,12 @@ class PrefixAndDirectoryOptionsTest(OverlayTestCase):
         self.assertEqual(os.listdir(self.tmpdir), [])
 
     def test_a_missing_option_argument_is_the_system_mktemp_error(self):
+        # The call goes on unchanged: an error of the BSD mktemp (and of GNU for -p); GNU's -t takes no argument, so
+        # `-t` and `-d -t` make tmp.X in TMPDIR there.
         for args in (('-t',), ('-p',), ('-d', '-t'), ('-dp',)):
-            result = self.mktemp(*args)
-            self.assertNotEqual(result.returncode, 0, args)
-            self.assertNotEqual(result.stderr, '', args)
-        self.assertEqual(os.listdir(self.tmpdir), [])
+            with self.subTest(args=args):
+                for path in self.like_system(*args):
+                    self.assertEqual(os.path.dirname(path), self.tmpdir, args)
 
 
 class ExplicitTemplateTest(OverlayTestCase):
@@ -192,7 +232,11 @@ class ExplicitTemplateTest(OverlayTestCase):
         self.assertEqual(os.listdir(self.tmpdir), [])
 
     def test_several_templates(self):
-        first, second = self.made(os.path.join(self.other, 'a.XXXXXX'), os.path.join(self.tmpdir, 'b.XXXXXX'))
+        # Passed on unchanged: the BSD mktemp makes both, the GNU mktemp refuses (too many templates).
+        paths = self.like_system(os.path.join(self.other, 'a.XXXXXX'), os.path.join(self.tmpdir, 'b.XXXXXX'))
+        if not paths:
+            return
+        first, second = paths
         self.assertEqual(os.path.dirname(first), self.other)
         self.assertEqual(os.path.dirname(second), self.tmpdir)
         self.assertTrue(os.path.isfile(first) and os.path.isfile(second))
@@ -207,9 +251,13 @@ class ExplicitTemplateTest(OverlayTestCase):
         self.assertTrue(os.path.isfile(path))
 
     def test_a_template_after_t_gets_both(self):
-        # `mktemp -t foo bar.XXXXXX`: the prefix in TMPDIR and the relative template in the working directory.
-        first, second = self.made('-t', 'foo', os.path.join(self.other, 'bar.XXXXXX'))
-        self.assertEqual(os.path.dirname(first), self.tmpdir)
+        # `mktemp -t foo other/bar.XXXXXX`: with the BSD mktemp the prefix in TMPDIR (the system one puts it in
+        # /var/folders) and the template where it says; the GNU mktemp refuses two templates, the overlay too.
+        paths = self.like_system('-t', 'foo', os.path.join(self.other, 'bar.XXXXXX'))
+        if not paths:
+            return
+        first, second = paths
+        self.assert_in(first, self.tmpdir, prefix='foo.')
         self.assertEqual(os.path.dirname(second), self.other)
 
     def test_double_dash_ends_the_options(self):
@@ -264,10 +312,6 @@ class ErrorPathTest(OverlayTestCase):
 class UnsetTmpdirTest(OverlayTestCase):
     """Without a usable TMPDIR the overlay has no directory of its own to choose and does not invent one (the shared
     /tmp would be one): the call goes to the system mktemp unchanged, as without the overlay."""
-
-    def system(self, *args, **env):
-        return subprocess.run([SYSTEM_MKTEMP, *args], cwd=self.cwd, capture_output=True, text=True,
-                              env=self.env(**env))
 
     def assert_same_as_system(self, *args, **env):
         ours = self.mktemp(*args, **env)
