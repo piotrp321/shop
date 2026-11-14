@@ -12,12 +12,18 @@ that does not exist) and, for `validate`, proposals that do not pass.
       Writes DIR/input.json (default DIR: <retro-home>/EPIC) and prints its path. input.json has the incidents of the
       whole history of AO runs (docs/features/retro/spec.md, "Incydenty"), the facts of the plan "Status"
       (`status/in-progress`, `status/last-epic`, `status/agent-issues`, `status/pending-retro`), the registers, the
-      items of the open retro PR and the open issues to check duplicates against.
+      items of the open retro PR and the open issues to check duplicates against. GitHub content (epic issues and
+      their comments, PRs into epic/*, the open retro PR, open issues) comes through the origin gate
+      tools/agent-security/github_trust.py, AO issues judged by the permission in the AO repository: a measurement
+      comment counts only from a trusted author, an untrusted epic issue, comment or task PR is only an entry of
+      `external` {source, number, author, url} and an untrusted open issue is {number, author, url, trusted: false}.
+      A failing gate (gh, unknown permission) is exit code 1 like a failing `gh`.
   retro.py validate DIR
       Checks DIR/proposals.json against DIR/input.json ("Walidacja"; the plan without a manifest for `status` items
       is looked up in `--repo`). Prints {"ok": bool, "errors": [{"item": n|null, "code", "message"}]}; exit 0 when
       ok, 2 otherwise. Codes: proposals, schema, limit, field, file, unknown_incident, class, threshold, open_pr,
-      rejected, applied, existing_issue, status. A missing input.json is exit 2 with a message on stderr.
+      rejected, applied, existing_issue (also an open issue without `trusted: true`), status. A missing input.json
+      is exit 2 with a message on stderr.
   retro.py observe DIR [--pr N --branch B]
       Appends to observations.jsonl the observations of DIR/proposals.json and the key and incidents of every `fix`
       and `issue` item (no row twice). Records in <retro-home>/<epic>/state.json the `issue` items as
@@ -57,7 +63,8 @@ itself and passes the outcome as the reason of `defer`.
 The data of AO runs (`<ao-home>/ao-<epic>/`) is only read: `orchestrator.db` is opened read-only (SQLite URI
 `mode=ro`), the other files are read as text, and `ao` is never run (`ao report` rewrites `report.md`, and every `ao`
 command in a directory without a database creates a new one). `gh` and `git` go through the runner of
-`next_epic.make_runner`, which tests replace with a fake one.
+`next_epic.make_runner`, the gate through `github_trust.make_runner` (it keeps the output of a failed permission
+call, so a 404 is an untrusted author); tests replace both with one fake runner.
 
 Paths (defaults as in the specification, each can be overridden by an option or an environment variable):
   AO_STATE_HOME     ~/.local/state            directories ao-<epic>/
@@ -103,6 +110,8 @@ def _load(name):
 
 ao_events = _load('ao_events')
 next_epic = _load('next_epic')
+sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'tools', 'agent-security'))
+import github_trust  # noqa: E402  (the origin gate: content of authors without write access comes without it)
 
 SHOP = next_epic.REPOSITORY
 AO_REPOSITORY = 'piotrp321/agentic-orchestrator'
@@ -833,12 +842,12 @@ def pending_epics(epics, retro_home):
     return [e['id'] for e in sorted(waiting, key=lambda e: (e['merged_at'], e['id']))]
 
 
-def open_retro_pr(run, retro_home):
-    """{number, branch, items} of the open pull request whose branch starts with `retro/`, else None. The items are
-    those of the `pr.items` of every state.json whose `pr.number` is that PR."""
-    prs = gh_list(run, ['gh', 'pr', 'list', '--repo', SHOP, '--state', 'open', '--json', 'number,headRefName',
-                        '--limit', '100'])
-    found = next((p for p in prs if str(p.get('headRefName', '')).startswith('retro/')), None)
+def open_retro_pr(gate, retro_home):
+    """{number, branch, items} of the open pull request of a trusted author whose branch starts with `retro/`, else
+    None (a fork can name its branch `retro/...`). The items are those of the `pr.items` of every state.json whose
+    `pr.number` is that PR."""
+    prs = gate.prs(state='open', limit=100, fields=('headRefName',))
+    found = next((p for p in prs if p['trusted'] and str(p.get('headRefName', '')).startswith('retro/')), None)
     if found is None:
         return None
     items = []
@@ -893,18 +902,44 @@ def epic_title_id(title):
     return (title or '').partition(':')[0].strip().lower()
 
 
-def collect(epic_id, paths, run):
-    """The contents of input.json for the retrospective of epic_id (see the module docstring)."""
+def make_gates(run):
+    """The origin gates of the shop and AO repositories on `run` (a test runner answers the permission calls too):
+    the author of AO content is judged by the permission in the AO repository."""
+    return {SHOP: github_trust.Gate(run, repo=SHOP), AO_REPOSITORY: github_trust.Gate(run, repo=AO_REPOSITORY)}
+
+
+def external_record(source, number, record):
+    """An entry of `external` in input.json: only where an untrusted record is, never what it says."""
+    return {'source': source, 'number': number, 'author': record.get('author'), 'url': record.get('url')}
+
+
+def collect(epic_id, paths, run, gates=None):
+    """The contents of input.json for the retrospective of epic_id (see the module docstring). GitHub content (epic
+    issues and their comments, task PRs, the open retro PR, open issues) comes through the origin gates `gates`
+    (default: make_gates(run)); a record of an author without write access gives only `external` or an untrusted
+    record ({number, author, url, trusted: false}). `gh` calls without content (states, merge dates, counts) do not
+    use the gate."""
     epics = discover_epics(paths['ao_home'])
     if epic_id not in [e['id'] for e in epics]:
         raise ValueError('ao-%s is not the run of a finished epic (DONE with a final PR) in %s'
                          % (epic_id, paths['ao_home']))
+    gates = gates or make_gates(run)
+    shop = gates[SHOP]
     commit = run(['git', 'rev-parse', 'origin/main']).strip()
-    issues = {}
-    for issue in gh_list(run, ['gh', 'issue', 'list', '--repo', SHOP, '--label', 'epic', '--state', 'all', '--json',
-                               'number,title,comments', '--limit', '200']):
-        comments = [c.get('body') for c in issue.get('comments') or [] if isinstance(c, dict)]
-        issues.setdefault(epic_title_id(issue.get('title')), {'number': issue.get('number'), 'comments': comments})
+    issues, trusted_epics, external = {}, set(), []
+    for issue in shop.issues(state='all', labels=('epic',), limit=200, fields=('title', 'comments')):
+        if not issue['trusted']:
+            # no title: the issue cannot be told from an epic issue, so it never takes an epic's place
+            external.append(external_record('epic_issue', issue['number'], issue))
+            continue
+        trusted_epics.add(issue['number'])
+        comments = []
+        for c in issue.get('comments') or []:
+            if c['trusted']:
+                comments.append(c['body'])
+            else:
+                external.append(external_record('epic_comment', issue['number'], c))
+        issues.setdefault(epic_title_id(issue.get('title')), {'number': issue['number'], 'comments': comments})
 
     entries, incidents, facts, measurements = [], [], [], {}
     for epic in epics:
@@ -928,16 +963,17 @@ def collect(epic_id, paths, run):
         found += sweep
         facts += sweep_facts
         if name == epic_id:
-            task_prs = gh_list(run, ['gh', 'pr', 'list', '--repo', SHOP, '--base', 'epic/%s' % name, '--state',
-                                     'merged', '--json', 'number,title,body', '--limit', '200'])
-            found += unasked_incidents(name, task_prs)
+            task_prs = shop.prs(state='merged', base='epic/%s' % name, limit=200, fields=('title', 'body'))
+            external += [external_record('task_pr', p['number'], p) for p in task_prs if not p['trusted']]
+            found += unasked_incidents(name, [p for p in task_prs if p['trusted']])
         incidents += sorted(found, key=lambda i: (KIND_ORDER.index(i['kind']), i['at'] or 0, i['key']))
     entries.sort(key=lambda e: (e['merged_at'] is None, e['merged_at'] or 0, e['created_at'] or 0, e['id']))
     order = {e['id']: n for n, e in enumerate(entries)}
     incidents.sort(key=lambda i: order[i['epic']])   # stable: keeps the order inside an epic
 
+    # The board carries issue titles without the gate: only epics whose issue is trusted are shown.
     board = next_epic.board_epics(run)
-    running = [e for e in board if e['state'] in ('in_progress', 'prepared')]
+    running = [e for e in board if e['state'] in ('in_progress', 'prepared') and e['number'] in trusted_epics]
     merged = [e for e in entries if e['merged_at'] is not None]
     last = max(merged, key=lambda e: (e['merged_at'], e['id'])) if merged else None
     last_numbers = (measurements.get(last['id']) or {}) if last else {}
@@ -951,6 +987,7 @@ def collect(epic_id, paths, run):
          'wait_min': last_numbers.get('wait_min'), 'manual_fixes': last_numbers.get('manual_count'),
          'measurement': bool(last_numbers)},
     ]
+    # Counts only (number and state, no content): without the gate.
     agent = gh_list(run, ['gh', 'issue', 'list', '--repo', SHOP, '--label', 'agent', '--state', 'all', '--json',
                           'number,state', '--limit', '1000'])
     status.append({'id': 'status/agent-issues', 'open': sum(1 for i in agent if i.get('state') == 'OPEN'),
@@ -958,19 +995,20 @@ def collect(epic_id, paths, run):
     status.append({'id': 'status/pending-retro', 'epics': pending_epics(entries, paths['retro_home'])})
 
     registers = read_registers(paths['retro_home'])
-    retro_pr = open_retro_pr(run, paths['retro_home'])
+    retro_pr = open_retro_pr(shop, paths['retro_home'])
+    fields = ('title', 'body', 'labels')
     open_issues = {
-        'ao': gh_list(run, ['gh', 'issue', 'list', '--repo', AO_REPOSITORY, '--state', 'open', '--json',
-                            'number,title,body,labels', '--limit', '200']),
-        'shop': gh_list(run, ['gh', 'issue', 'list', '--repo', SHOP, '--state', 'open', '--label', 'tech-debt',
-                              '--label', 'agent', '--json', 'number,title,body,labels', '--limit', '200']),
+        'ao': gates[AO_REPOSITORY].issues(state='open', limit=200, fields=fields),
+        'shop': shop.issues(state='open', labels=('tech-debt', 'agent'), limit=200, fields=fields),
     }
     for items in open_issues.values():
         for item in items:
-            item['body'] = cut(item.get('body') or '', 2000)
+            if item['trusted']:
+                item['body'] = cut(item.get('body') or '', 2000)
+    external.sort(key=lambda e: (e['source'], e['number'], e['url'] or ''))
     return {'schema': 1, 'epic': epic_id, 'generated_at': int(time.time()), 'commit': commit, 'epics': entries,
             'incidents': incidents, 'facts': facts, 'status': status, 'registers': registers,
-            'open_retro_pr': retro_pr, 'open_issues': open_issues}
+            'open_retro_pr': retro_pr, 'open_issues': open_issues, 'external': external}
 
 
 def report_text(epic, facts):
@@ -1577,6 +1615,9 @@ class Validation:
         issues = data.get('open_issues') if isinstance(data.get('open_issues'), dict) else {}
         self.open_issues = {repo_name: {i.get('number') for i in issues.get(repo_name) or [] if isinstance(i, dict)}
                             for repo_name in ('ao', 'shop')}
+        self.trusted_issues = {repo_name: {i.get('number') for i in issues.get(repo_name) or []
+                                           if isinstance(i, dict) and i.get('trusted') is True}
+                               for repo_name in ('ao', 'shop')}
         self.repo = repo
         self.input = data
 
@@ -1685,10 +1726,14 @@ class Validation:
         elif existing is None and not filled(body):
             self.add(n, 'field', 'item %s: body (a new issue) or existing_issue (a comment) is required' % n)
         elif existing is not None:
-            known = self.open_issues[item['repo']] if item.get('repo') in ('ao', 'shop') else set()
+            repo_name = item.get('repo') if item.get('repo') in ('ao', 'shop') else None
+            known = self.open_issues[repo_name] if repo_name else set()
             if isinstance(existing, bool) or not isinstance(existing, int) or existing not in known:
                 self.add(n, 'existing_issue', 'item %s: existing_issue %r is not an open issue of the input data '
                                               '(repo %s)' % (n, existing, item.get('repo')))
+            elif existing not in self.trusted_issues[repo_name]:
+                self.add(n, 'existing_issue', 'item %s: existing_issue %r is an issue of an author without write '
+                                              'access (repo %s): its content is unknown' % (n, existing, repo_name))
 
     def check_threshold(self, item, known):
         n = item['n']
@@ -1889,7 +1934,9 @@ def main(argv=None, run=None):
         if args.command == 'collect':
             check_epic_name(args.epic)
             paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home}
-            data = collect(args.epic, paths, run or next_epic.make_runner(args.repo))
+            # The gate's own runner keeps the output of a failed `gh api --include`, so a 404 is an untrusted author.
+            gates = None if run else make_gates(github_trust.make_runner(args.repo))
+            data = collect(args.epic, paths, run or next_epic.make_runner(args.repo), gates)
             print(write_json(args.out or os.path.join(args.retro_home, args.epic), 'input.json', data))
         elif args.command == 'pending':
             print_json(cmd_pending(args, run or next_epic.make_runner(args.repo)))
@@ -1914,7 +1961,7 @@ def main(argv=None, run=None):
     except (Refusal, ValueError) as e:
         print('retro: %s' % e, file=sys.stderr)
         return 2
-    except (next_epic.CommandError, RetroError, OSError) as e:
+    except (next_epic.CommandError, github_trust.GateError, RetroError, OSError) as e:
         print('retro: %s' % e, file=sys.stderr)
         return 1
     return 0
