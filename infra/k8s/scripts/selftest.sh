@@ -4,47 +4,119 @@
 # A case runs only the steps of check.sh that must catch its error, and in the step tests only the tests it must break:
 # the error makes the whole check fail as well, since the whole check runs these steps and these tests too.
 #
-# Usage: selftest.sh        (make -C infra/k8s selftest; CI runs it for a change of infra/k8s)
+# Usage: selftest.sh        (make -C infra/k8s selftest; on demand: CI does not run it, `gh workflow run k8s-selftest.yml` does)
 #        SELFTEST_ONLY='<regex>' selftest.sh   only the cases whose name matches the regular expression (grep -E, case
 #                                              insensitive); the unbroken copy is then not run. For working on a case.
 #        SELFTEST_FULL=1 selftest.sh           every case runs the whole check (all steps, all tests).
+#        SELFTEST_JOBS=<n> selftest.sh         n cases at a time (default: the CPUs of the Docker daemon, which run the tools;
+#                                              1 runs them one after another). Every case has a tree of its own and the
+#                                              unbroken copy runs next to the cases; the output of a case is printed whole,
+#                                              when the case ends.
+# What the cases share is the cache of the tools (TOOLS_CACHE): check.sh and render.sh write their files to directories named
+# by their process, a chart archive enters the cache of monitoring-render.sh only after its digest is checked, and
+# kubeconform only adds schema files to its cache.
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
 
+parallel="${SELFTEST_JOBS:-}"
+if [ -z "$parallel" ]; then
+  # The containers of the tools run in the Docker daemon, which on a laptop has fewer CPUs than the host.
+  parallel="$(docker info --format '{{.NCPU}}' 2>/dev/null || true)"
+  case "$parallel" in ''|*[!0-9]*|0) parallel="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)" ;; esac
+  case "$parallel" in ''|*[!0-9]*|0) parallel=1 ;; esac
+fi
+case "$parallel" in
+  ''|*[!0-9]*|0) echo "selftest: SELFTEST_JOBS='$parallel' is not a positive integer" >&2; exit 2 ;;
+esac
+
 mkdir -p "$TOOLS_CACHE"
 base="$(mktemp -d "$TOOLS_CACHE/selftest-XXXXXX")"
-trap 'rm -rf "$base"' EXIT
-failures=0
+# An interrupted run stops its jobs (the containers they started finish on their own) and removes every tree.
+cleanup() {
+  # shellcheck disable=SC2086 # a list of process numbers
+  [ -z "$child_pids" ] || kill $child_pids 2>/dev/null || true
+  rm -rf "$base"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
+# Two fifos work as semaphores, so that a waiting job blocks and does not poll: slots holds a token for every job that may run
+# at once (the parent takes one before it starts a job, the job gives it back), printing holds one token that a job takes while
+# it prints its output. Descriptors 5 and 6 are the real output, as the output of a job goes to files.
+mkfifo "$base/slots" "$base/printing"
+exec 3<> "$base/slots" 4<> "$base/printing" 5>&1 6>&2
+slot=0
+while [ "$slot" -lt "$parallel" ]; do
+  printf '\n' >&3
+  slot=$((slot + 1))
+done
+printf '\n' >&4
+case_no=0
+child_pids=""
+job_stopped=""
+
+# job_done <id> <label> <status of the job>: the EXIT trap of a job. A job that stopped without saying FAIL (a case whose setup
+# exited because it is out of date, a command that failed) fails the run too.
+job_done() {
+  # A job that is stopped (an interrupted run) prints nothing and takes no token: the run is over.
+  [ -z "$job_stopped" ] || return 0
+  if [ "$3" -ne 0 ]; then
+    : > "$base/failed-$1"
+    grep -q '^selftest: FAIL' "$base/$1.err" || echo "selftest: FAIL $2: it stopped with the status $3" >> "$base/$1.err"
+  fi
+  read -r _ <&4
+  cat "$base/$1.out" >&5
+  cat "$base/$1.err" >&6
+  printf '\n' >&4
+  rm -rf "$base/tree-$1"
+  printf '\n' >&3
+}
+
+# start_job <id> <label> <command...>: runs the command in the background as soon as a slot is free, its output in files.
+start_job() {
+  job_id="$1" job_label="$2"
+  shift 2
+  read -r _ <&3
+  (
+    job_stopped=""
+    trap 'job_stopped=1; exit 143' INT TERM
+    trap 'job_done "$job_id" "$job_label" "$?"' EXIT
+    "$@"
+  ) > "$base/$job_id.out" 2> "$base/$job_id.err" &
+  child_pids="$child_pids $!"
+}
+
+# fresh_copy <id>: the tree of the job with that id.
 fresh_copy() {
-  rm -rf "$base/tree"
-  mkdir -p "$base/tree"
+  tree="$base/tree-$1"
+  rm -rf "$tree"
+  mkdir -p "$tree"
   # cp -R keeps the symlinks of charts/shop/files as they are; they stay relative and so point into the copy.
-  cp -R "$TOOLS_REPO/infra" "$base/tree/infra"
+  cp -R "$TOOLS_REPO/infra" "$tree/infra"
   # The tests compare the browser image of the smoke test with the image of the E2E tests.
-  mkdir -p "$base/tree/e2e"
-  cp "$TOOLS_REPO/e2e/Dockerfile" "$base/tree/e2e/Dockerfile"
+  mkdir -p "$tree/e2e"
+  cp "$TOOLS_REPO/e2e/Dockerfile" "$tree/e2e/Dockerfile"
   # The tests of the panel run the hook that writes its /config.js at container start.
-  mkdir -p "$base/tree/apps/admin/docker"
-  cp "$TOOLS_REPO/apps/admin/docker/40-admin-config.sh" "$base/tree/apps/admin/docker/40-admin-config.sh"
+  mkdir -p "$tree/apps/admin/docker"
+  cp "$TOOLS_REPO/apps/admin/docker/40-admin-config.sh" "$tree/apps/admin/docker/40-admin-config.sh"
   # The step shellcheck reads the scripts of the load measurement (load/k6.sh and load/smoke.sh are sourced by the scripts of infra/k8s).
-  cp -R "$TOOLS_REPO/load" "$base/tree/load"
+  cp -R "$TOOLS_REPO/load" "$tree/load"
   # The tests of the load files read the Makefile and its fragments.
-  cp "$TOOLS_REPO/Makefile" "$base/tree/Makefile"
-  cp -R "$TOOLS_REPO/make" "$base/tree/make"
+  cp "$TOOLS_REPO/Makefile" "$tree/Makefile"
+  cp -R "$TOOLS_REPO/make" "$tree/make"
   # actionlint checks the workflows.
-  mkdir -p "$base/tree/.github"
-  cp -R "$TOOLS_REPO/.github/workflows" "$base/tree/.github/workflows"
+  mkdir -p "$tree/.github"
+  cp -R "$TOOLS_REPO/.github/workflows" "$tree/.github/workflows"
   # The deployment script is shellchecked and its push is tested.
-  mkdir -p "$base/tree/.github/scripts"
-  cp "$TOOLS_REPO/.github/scripts/deploy-ref.sh" "$base/tree/.github/scripts/deploy-ref.sh"
+  mkdir -p "$tree/.github/scripts"
+  cp "$TOOLS_REPO/.github/scripts/deploy-ref.sh" "$tree/.github/scripts/deploy-ref.sh"
   # The step gitignore asks git about the rules of .gitignore, so the copy is a (fresh, empty) repository with the same rules.
-  cp "$TOOLS_REPO/.gitignore" "$base/tree/.gitignore"
-  git init -q "$base/tree"
-  tree="$base/tree"
+  cp "$TOOLS_REPO/.gitignore" "$tree/.gitignore"
+  git init -q "$tree"
 }
 
 # replace <file of the copy> <from> <to>: literal replacement of the first occurrence; fails if the text is not there.
@@ -97,10 +169,11 @@ drop_extra_object() {
   mv "$file.new" "$file"
 }
 
-# case <name> <expected text in the output> <steps> <command that injects the error>
+# run_case <name> <expected text in the output> <steps> <command that injects the error>
 # <steps> are the steps of check.sh that must catch the error. In it, tests=<pattern> runs only the tests whose name
 # contains the pattern; a bare tests runs only the test named by the expected text when it is a test name (test_...),
-# else all tests.
+# else all tests. The case runs as a job, in a tree of its own: the command that injects the error exits when the case is
+# out of date, and that counts as a failure of the case.
 run_case() {
   name="$1" expected="$2" case_steps="$3"
   shift 3
@@ -119,18 +192,38 @@ run_case() {
   if [ -n "${SELFTEST_FULL:-}" ]; then
     check_steps="" tests_filter=""
   fi
-  fresh_copy
+  case_no=$((case_no + 1))
+  start_job "$case_no" "$name" run_injected_case "$case_no" "$name" "$expected" "$check_steps" "$tests_filter" "$@"
+}
+
+# run_injected_case <id> <name> <expected> <check steps> <tests filter> <command that injects the error>: the body of the job of
+# a case; the status is 1 when the case fails.
+run_injected_case() {
+  id="$1" name="$2" expected="$3" check_steps="$4" tests_filter="$5"
+  shift 5
+  fresh_copy "$id"
   "$@"
   # shellcheck disable=SC2086 # $check_steps is a list of steps
   if output="$(CHECK_TESTS_FILTER="$tests_filter" sh "$tree/infra/k8s/scripts/check.sh" $check_steps 2>&1)"; then
     echo "selftest: FAIL $name: the check passed with the injected error" >&2
-    failures=$((failures + 1))
+    return 1
   elif printf '%s' "$output" | grep -qF -- "$expected"; then
     echo "selftest: ok   $name (the check failed: $expected)"
   else
     echo "selftest: FAIL $name: the check failed, but not with '$expected':" >&2
     printf '%s\n' "$output" | tail -n 15 >&2
-    failures=$((failures + 1))
+    return 1
+  fi
+}
+
+# The unbroken copy passes the whole check.
+run_unbroken_copy() {
+  fresh_copy unbroken
+  if CHECK_TESTS_FILTER='' sh "$tree/infra/k8s/scripts/check.sh" > /dev/null 2>&1; then
+    echo "selftest: ok   the unbroken copy passes the whole check"
+  else
+    echo "selftest: FAIL the unbroken copy does not pass the check" >&2
+    return 1
   fi
 }
 
@@ -296,10 +389,9 @@ node_disk_full_at_exactly_85_percent() { replace infra/k8s/charts/shop/templates
 alert_rule_with_a_syntax_error() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'expr: absent(kube_node_info)' 'expr: absent(kube_node_info) and'; }
 nothing_broken() { :; }
 
+# The slowest job starts first.
 if [ -z "${SELFTEST_ONLY:-}" ]; then
-  echo "selftest: the unbroken copy passes"
-  fresh_copy
-  CHECK_TESTS_FILTER='' sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
+  start_job unbroken "the unbroken copy" run_unbroken_copy
 fi
 
 run_case "broken template" "unexpected EOF" "lint" broken_template
@@ -385,6 +477,12 @@ run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: Node
 run_case "alert rule with a PromQL syntax error" "parse error" "alerts" alert_rule_with_a_syntax_error
 run_case "deploy.yml missing" "deploy.yml is missing" "actionlint" deploy_workflow_missing
 
+wait
+# Every job is over: nothing is left for cleanup to stop (and no process number to be reused by another process).
+child_pids=""
+set -- "$base"/failed-*
+failures=0
+[ ! -e "$1" ] || failures=$#
 if [ "$failures" -ne 0 ]; then
   echo "selftest: $failures case(s) failed" >&2
   exit 1
