@@ -132,7 +132,9 @@ except (OSError, ValueError, IndexError):
 # session's messaging socket (<run dir>/cc-socks) included, accepts a connection; the messaging socket cannot be
 # removed; no file or socket can be planted in the run directory or next to the messaging socket. On macOS the
 # sandbox's proxy listens on a localhost TCP port (proxy_case), not on a socket here. Without the variables of Claude
-# Code, or with Claude Code's fallback to the shared /tmp/claude-<uid>, the path is not the wrapper's: fail.
+# Code, or with Claude Code's fallback to the shared /tmp/claude-<uid>, the path is not the wrapper's: fail. The
+# sandbox does not let Bash list the run directory itself, so sockets are also searched in claude-<uid> (and TMPDIR when
+# it lies in the run directory), which it can read.
 claude_tmp_case() {
     tmp=${CLAUDE_CODE_TMPDIR:-}
     msg=${CLAUDE_CODE_MESSAGING_SOCKET:-}
@@ -140,7 +142,9 @@ claude_tmp_case() {
     case $root in /|/tmp|/private/tmp) verdict claude_tmpdir_sockets fail; return ;; esac
     if [ ! -d "$tmp" ] || [ -z "$msg" ]; then verdict claude_tmpdir_sockets fail; return; fi
     held=
-    if { find "$root" -type s 2>/dev/null; printf '%s\n' "$msg"; } | while IFS= read -r sock; do
+    temp=
+    case ${TMPDIR:-} in "$root"/*) temp=$TMPDIR ;; esac
+    if { find "$root" "$tmp" ${temp:+"$temp"} -type s 2>/dev/null; printf '%s\n' "$msg"; } | while IFS= read -r sock; do
         if python3 -c "$PY_SOCKET" connect "$sock" 2>/dev/null; then echo connected; fi
     done | grep -q connected; then
         held=1

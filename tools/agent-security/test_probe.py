@@ -493,7 +493,9 @@ class CasesScriptHelpersTest(SourcedCasesTestCase):
 FAKE_PYTHON = '''#!/bin/sh
 # python3 -c CODE KIND ARGS...: the socket and proxy helpers of probe-cases.sh, answered from the environment.
 case $3 in
-connect) exit "${FAKE_CONNECT:-1}" ;;
+connect)
+    if [ -n "${FAKE_CONNECT_PATH:-}" ]; then [ "$4" = "$FAKE_CONNECT_PATH" ]; exit; fi
+    exit "${FAKE_CONNECT:-1}" ;;
 bind) exit "${FAKE_BIND:-1}" ;;
 proxy) printf '%s\\n' "${FAKE_PROXY_STATUS:-}"; exit 0 ;;
 esac
@@ -555,6 +557,16 @@ class ClaudeTmpdirCaseTest(SourcedCasesTestCase):
         os.chmod(self.root, 0o700)
         self.assertEqual(self.case(), 'fail')
         self.assertEqual(sorted(os.listdir(self.root)), sorted(['cc-socks', os.path.basename(self.claude_tmp)]))
+
+    def test_a_socket_in_the_claude_directory_is_found_when_the_run_directory_cannot_be_listed(self):
+        # In the sandbox the run directory itself is not readable, its claude-<uid> (TMPDIR of Bash) is.
+        inner = os.path.join(self.claude_tmp, 'inner.sock')
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(inner)
+        self.addCleanup(listener.close)
+        os.chmod(self.root, 0o100)
+        self.assertEqual(self.case(FAKE_CONNECT_PATH=inner), 'fail')
+        self.assertEqual(self.case(FAKE_CONNECT_PATH=os.path.join(self.root, 'elsewhere.sock')), 'pass')
 
     def test_a_socket_bound_next_to_the_messaging_socket_fails(self):
         self.assertEqual(self.case(FAKE_BIND='0'), 'fail')
