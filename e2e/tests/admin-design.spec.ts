@@ -1,11 +1,10 @@
-import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { customers, staff } from "../support/accounts";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
+import { customers } from "../support/accounts";
 import { placeAndPayOrder } from "../support/orders";
 import { panelMenu } from "../support/panel-menu";
 import { documentWidths, expectControlsReachable, expectWithinWidth, settle, textContrast, viewports, WCAG_TAGS } from "../support/panel-layout";
+import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
 import { logInAs } from "../support/shop";
-import { loginStaff } from "../support/staff-login";
 import { urls } from "../support/urls";
 
 // The look and the accessibility of the screens of ADMIN-DESIGN part 1 (docs/features/admin-design/spec.md, criteria 5 to
@@ -22,36 +21,11 @@ const PRODUCT = "Buty trailowe Norvane Hala 500";
 // product (50 units in the demo stock, fixtures/stock.yaml) and pays at the simulator.
 const ORDERED_PRODUCT = PRODUCT;
 
-type Role = "admin" | "marketing";
-const contexts = new Map<Role, BrowserContext>();
 let productId = "";
 let orderId = "";
 let promotionId = "";
 let discountCodeId = "";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-async function signIn(browser: Browser, role: Role): Promise<BrowserContext> {
-  const context = await browser.newContext({ locale: "pl-PL" });
-  context.setDefaultTimeout(10_000);
-  context.setDefaultNavigationTimeout(20_000);
-  const page = await context.newPage();
-  await loginStaff(page, staff[role]);
-  await page.close();
-  return context;
-}
-
-/** A new page of the signed-in staff member at the size of the window; the caller closes it. */
-async function newPanelPage(role: Role, size: { width: number; height: number }): Promise<Page> {
-  const page = await contexts.get(role)!.newPage();
-  await page.setViewportSize(size);
-  return page;
-}
-
-/** Opens an address of the panel and waits for the page to be the panel (the sign-in by the session of Keycloak passes by itself). */
-async function go(page: Page, path: string): Promise<void> {
-  await page.goto(`${urls.admin}${path}`);
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-}
 
 /** Places one order as Jan in the store, in a browser context of its own. */
 async function placeOrder(browser: Browser): Promise<void> {
@@ -70,8 +44,7 @@ async function placeOrder(browser: Browser): Promise<void> {
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(300_000);
-  contexts.set("admin", await signIn(browser, "admin"));
-  contexts.set("marketing", await signIn(browser, "marketing"));
+  await signInPanelRoles(browser, ["admin", "marketing"]);
 
   const page = await newPanelPage("admin", viewports.desktop);
   try {
@@ -111,25 +84,10 @@ test.beforeAll(async ({ browser }) => {
   }
 });
 
-test.afterAll(async () => {
-  await Promise.all([...contexts.values()].map((context) => context.close()));
-  contexts.clear();
-});
+test.afterAll(closePanelContexts);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The screens and windows of the epic.
-
-type PanelState = {
-  name: string;
-  role: Role;
-  /** Opens the screen (and the window); returns the window as the element the controls of the check are in, or null for a plain screen. */
-  open: (page: Page) => Promise<Locator | null>;
-  /** The widths the state exists at: the drawer of the menu replaces the sidebar below 1024 px only. */
-  minWidth?: number;
-  maxWidth?: number;
-  /** A window or a menu: the width checks of the phone (criterion 8) apply. */
-  overlay?: boolean;
-};
 
 const dialogByName = (page: Page, name: string | RegExp) => page.getByRole("alertdialog", { name });
 
@@ -257,26 +215,6 @@ async function openProduct(page: Page): Promise<void> {
 
 const widthsOf = (state: PanelState, candidates: { width: number; height: number }[]) =>
   candidates.filter(({ width }) => width >= (state.minWidth ?? 0) && width <= (state.maxWidth ?? Infinity));
-
-/** Opens the state at the size, runs the check, and closes the page (a page with unsaved changes would ask before it leaves). */
-async function inState(state: PanelState, size: { width: number; height: number }, check: (page: Page, overlay: Locator | null) => Promise<void>): Promise<void> {
-  const page = await newPanelPage(state.role, size);
-  try {
-    const overlay = await state.open(page);
-    await settle(page);
-    await check(page, overlay);
-  } finally {
-    await page.close();
-  }
-}
-
-async function violationsOf(page: Page, tags: string[] | null, rules?: string[]): Promise<string[]> {
-  let builder = new AxeBuilder({ page });
-  if (tags !== null) builder = builder.withTags(tags);
-  if (rules !== undefined) builder = builder.withRules(rules);
-  const results = await builder.analyze();
-  return results.violations.map((violation) => `${violation.id} (${violation.impact}): ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`);
-}
 
 test.describe("criterion 5: axe with the rules of WCAG 2.2 AA", () => {
   for (const state of states) {
