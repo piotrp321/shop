@@ -13,8 +13,6 @@ export const LEGACY_FILES = [
   "src/main.ts",
   "src/primevue.ts",
   "src/promotions/PromotionVariantPicker.vue",
-  "src/views/DiscountCodeFormView.vue",
-  "src/views/DiscountCodesView.vue",
   "src/views/OrderDetailView.vue",
   "src/views/OrdersView.vue",
   "src/views/PromotionFormView.vue",

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
-import { EMPTY_MESSAGE, FILTERED_EMPTY_MESSAGE, SEARCH_DEBOUNCE_MS, useDiscountCodeList } from "@/discount-codes/useDiscountCodeList";
+import { SEARCH_DEBOUNCE_MS, useDiscountCodeList } from "@/discount-codes/useDiscountCodeList";
 
 type CodeList = components["schemas"]["DiscountCodeListResponse"];
 type Code = components["schemas"]["DiscountCodeResponse"];
@@ -85,12 +85,12 @@ describe("useDiscountCodeList", () => {
     vi.useRealTimers();
   });
 
-  async function mounted(pages: Record<string, CodeList> = { "": page(["A"]) }) {
+  async function mounted(pages: Record<string, CodeList> = { "": page(["A"]) }, path?: string) {
     serve(pages);
-    const result = await mountList();
+    const result = await mountList(path);
     wrapper = result.wrapper;
     await flushPromises();
-    return result.list;
+    return Object.assign(result.list, { router: result.router });
   }
 
   async function type(list: Awaited<ReturnType<typeof mounted>>, text: string) {
@@ -99,7 +99,7 @@ describe("useDiscountCodeList", () => {
     await flushPromises();
   }
 
-  it("loads the first page without a filter, a search or a cursor", async () => {
+  it("loads the first page without a filter, a search, a page size or a cursor", async () => {
     const list = await mounted({ "": page(["A", "B"], "c1") });
 
     expect(mocks.get).toHaveBeenCalledWith(CODES, { params: { query: {} } });
@@ -108,6 +108,7 @@ describe("useDiscountCodeList", () => {
     expect(list.hasNext.value).toBe(true);
     expect(list.hasPrevious.value).toBe(false);
     expect(list.pageNumber.value).toBe(1);
+    expect(list.range.value).toEqual({ from: 1, to: 2 });
   });
 
   it("pages forward and back with the cursors of the API", async () => {
@@ -132,7 +133,8 @@ describe("useDiscountCodeList", () => {
     const list = await mounted({ "": page(["A"], "c1"), c1: page(["B"], null) });
     await list.goNext();
 
-    await list.selectStatus("active");
+    list.selectStatus("active");
+    await flushPromises();
 
     expect(queries().at(-1)).toEqual({ status: "active" });
     expect(list.pageNumber.value).toBe(1);
@@ -142,39 +144,57 @@ describe("useDiscountCodeList", () => {
   it("keeps the status filter while paging and drops it for all statuses", async () => {
     const list = await mounted({ "": page(["A"], "c1"), c1: page(["B"], null) });
 
-    await list.selectStatus("expired");
+    list.selectStatus("expired");
+    await flushPromises();
     await list.goNext();
     expect(queries().at(-1)).toEqual({ status: "expired", after: "c1" });
 
-    await list.selectStatus(null);
+    list.selectStatus(null);
+    await flushPromises();
     expect(queries().at(-1)).toEqual({});
   });
 
   it("does not ask again for the status that is already chosen", async () => {
     const list = await mounted();
 
-    await list.selectStatus(null);
+    list.selectStatus(null);
+    await flushPromises();
 
     expect(mocks.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the page size only when it is not the default of 25, and starts from the first page for a new one", async () => {
+    const list = await mounted({ "": page(["A"], "c1"), c1: page(["B"]) });
+    await list.goNext();
+
+    list.setPerPage(10);
+    await flushPromises();
+    expect(queries().at(-1)).toEqual({ perPage: 10 });
+    expect(list.pageNumber.value).toBe(1);
+
+    list.setPerPage(25);
+    await flushPromises();
+    expect(queries().at(-1)).toEqual({});
   });
 
   it("searches by the beginning of the code after a pause in typing, from one character", async () => {
     const list = await mounted({ "": page(["A"], "c1"), c1: page(["B"]) });
     await list.goNext();
 
-    list.search.value = "wit";
+    list.search.value = "w";
     await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS - 1);
     expect(mocks.get).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1);
     await flushPromises();
 
-    expect(queries().at(-1)).toEqual({ q: "wit" });
+    expect(queries().at(-1)).toEqual({ q: "w" });
     expect(list.pageNumber.value).toBe(1);
   });
 
   it("asks once for a burst of typing and keeps the status with the search", async () => {
     const list = await mounted();
-    await list.selectStatus("active");
+    list.selectStatus("active");
+    await flushPromises();
 
     list.search.value = "W";
     await vi.advanceTimersByTimeAsync(100);
@@ -195,8 +215,49 @@ describe("useDiscountCodeList", () => {
     await type(list, "ab ");
     expect(mocks.get).toHaveBeenCalledTimes(calls);
 
-    await type(list, "   ");
+    await type(list, "   ");
     expect(queries().at(-1)).toEqual({});
+  });
+
+  it("trims a no-break space the way the API does", async () => {
+    const list = await mounted();
+
+    await type(list, " ab ");
+
+    expect(queries().at(-1)).toEqual({ q: "ab" });
+  });
+
+  it.each([
+    ["U+200B (zero width space)", "​"],
+    ["U+00AD (soft hyphen)", "­"],
+    ["U+2060 (word joiner)", "⁠"],
+    ["a space, U+200B and a space", " ​ "],
+  ])("#336: a search of only %s is an empty search: the whole list, and no request with q", async (_name, text) => {
+    const list = await mounted();
+    await type(list, "ab");
+    mocks.get.mockClear();
+
+    await type(list, text);
+
+    expect(queries()).toEqual([{}]);
+    expect(list.filtered.value).toBe(false);
+  });
+
+  it("#336: a search of only an invisible character on an empty field asks for nothing", async () => {
+    const list = await mounted();
+    mocks.get.mockClear();
+
+    await type(list, "​");
+
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it("#336: trims invisible characters around a term and sends the term alone", async () => {
+    const list = await mounted();
+
+    await type(list, "​LATO⁠");
+
+    expect(queries().at(-1)).toEqual({ q: "LATO" });
   });
 
   it("does not search for a term longer than a code can be, and says so", async () => {
@@ -205,9 +266,9 @@ describe("useDiscountCodeList", () => {
     await type(list, "A".repeat(33));
 
     expect(mocks.get).toHaveBeenCalledTimes(1);
-    expect(list.searchTooLong.value).toBe(true);
+    expect(list.searchHint.value).toBe("Kod ma najwyżej 32 znaki.");
     await type(list, "A".repeat(32));
-    expect(list.searchTooLong.value).toBe(false);
+    expect(list.searchHint.value).toBeNull();
     expect(queries().at(-1)).toEqual({ q: "A".repeat(32) });
   });
 
@@ -215,7 +276,8 @@ describe("useDiscountCodeList", () => {
     const list = await mounted({ "": page(["A"], "c1") });
     serve({}, 500);
 
-    await list.selectStatus("planned");
+    list.selectStatus("planned");
+    await flushPromises();
 
     expect(list.items.value).toEqual([]);
     expect(list.loaded.value).toBe(false);
@@ -277,130 +339,133 @@ describe("useDiscountCodeList", () => {
     wrapper = result.wrapper;
     serve({ "": page(["Fresh"]) });
 
-    await result.list.selectStatus("active");
+    result.list.selectStatus("active");
+    await flushPromises();
     release({ data: page(["Stale"]), response: { status: 200 } });
     await flushPromises();
 
     expect(result.list.items.value.map((item) => item.code)).toEqual(["Fresh"]);
   });
 
-  it("says why the list is empty: nothing yet, or nothing for the filter or the search", async () => {
+  it("tells a filtered list from an unfiltered one", async () => {
     const list = await mounted({ "": { items: [], next: null } });
-    expect(list.emptyText.value).toBe(EMPTY_MESSAGE);
+    expect(list.filtered.value).toBe(false);
 
-    await list.selectStatus("expired");
-    expect(list.emptyText.value).toBe(FILTERED_EMPTY_MESSAGE);
+    list.selectStatus("expired");
+    await flushPromises();
+    expect(list.filtered.value).toBe(true);
 
-    await list.selectStatus(null);
-    expect(list.emptyText.value).toBe(EMPTY_MESSAGE);
+    list.selectStatus(null);
+    await flushPromises();
+    expect(list.filtered.value).toBe(false);
     await type(list, "ab");
-    expect(list.emptyText.value).toBe(FILTERED_EMPTY_MESSAGE);
+    expect(list.filtered.value).toBe(true);
   });
 
-  describe("status from the address", () => {
-    /** Starts the list at `path` and keeps the router, to change the address of the open list. */
-    async function startAt(path: string) {
-      serve({ "": page(["A"]) });
-      const mounted = await mountList(path);
-      wrapper = mounted.wrapper;
-      await flushPromises();
-      return mounted;
-    }
+  describe("the state in the address", () => {
+    it("reads the status, the search and the page size of the address with one request, and puts the search in the field", async () => {
+      const list = await mounted({ "": page(["LATO"]) }, "/discount-codes?status=active&q=LATO&perPage=10");
 
-    it("reads the status from the address with one request", async () => {
-      const { list } = await startAt("/discount-codes?status=active");
-
-      expect(queries()).toEqual([{ status: "active" }]);
-      expect(list.status.value).toBe("active");
+      expect(queries()).toEqual([{ status: "active", q: "LATO", perPage: 10 }]);
+      expect(list.query.value).toEqual({ q: "LATO", status: "active", perPage: 10 });
+      expect(list.search.value).toBe("LATO");
+      expect(list.filtered.value).toBe(true);
     });
 
-    it.each(["/discount-codes?status=nope", "/discount-codes?status=", "/discount-codes?status=active&status=planned", "/discount-codes?status[]=active", "/discount-codes?status=ACTIVE"])("skips an unknown value of %s and lists everything", async (path) => {
-      const { list } = await startAt(path);
+    it.each([
+      "/discount-codes?status=nope",
+      "/discount-codes?status=",
+      "/discount-codes?status=all",
+      "/discount-codes?status=active&status=planned",
+      "/discount-codes?status=ACTIVE",
+      "/discount-codes?perPage=7",
+      `/discount-codes?q=${"A".repeat(33)}`,
+      "/discount-codes?q=%E2%80%8B",
+    ])("skips an invalid value of %s, lists everything and corrects the address", async (path) => {
+      const list = await mounted({ "": page(["A"]) }, path);
 
       expect(queries()).toEqual([{}]);
-      expect(list.status.value).toBeNull();
+      expect(list.query.value).toEqual({ q: null, status: null, perPage: 25 });
+      expect(list.router.currentRoute.value.fullPath).toBe("/discount-codes");
     });
 
-    it("switches the open list to the status of a changed address, from the first page and without a reload", async () => {
-      serve({ "": page(["B"], "c1"), c1: page(["A"]) });
-      const mounted = await mountList("/discount-codes");
-      wrapper = mounted.wrapper;
+    it("does not take a parameter of another name (status[]) as the status", async () => {
+      const list = await mounted({ "": page(["A"]) }, "/discount-codes?status[]=active");
+
+      expect(queries()).toEqual([{}]);
+      expect(list.query.value.status).toBeNull();
+    });
+
+    it("writes a chosen status, a search and a page size to the address without a new entry of the history", async () => {
+      const list = await mounted();
+      const push = vi.spyOn(list.router, "push");
+
+      list.selectStatus("active");
       await flushPromises();
-      await mounted.list.goNext();
-      expect(mounted.list.pageNumber.value).toBe(2);
+      await type(list, "lato");
+      list.setPerPage(50);
+      await flushPromises();
+
+      expect(list.router.currentRoute.value.fullPath).toBe("/discount-codes?q=lato&status=active&perPage=50");
+      expect(push, "a change replaces the entry of the history").not.toHaveBeenCalled();
+    });
+
+    it("switches the open list to the filters of a changed address, from the first page", async () => {
+      const list = await mounted({ "": page(["B"], "c1"), c1: page(["A"]) });
+      await list.goNext();
+      expect(list.pageNumber.value).toBe(2);
       mocks.get.mockClear();
       serve({ "": page(["Z"]) });
 
-      await mounted.router.push({ path: "/discount-codes", query: { status: "active" } });
+      await list.router.push({ path: "/discount-codes", query: { status: "active", q: "ZI" } });
       await flushPromises();
 
-      expect(queries()).toEqual([{ status: "active" }]);
-      expect(mounted.list.status.value).toBe("active");
-      expect(mounted.list.pageNumber.value).toBe(1);
-      expect(mounted.list.items.value.map((item) => item.code)).toEqual(["Z"]);
+      expect(queries()).toEqual([{ status: "active", q: "ZI" }]);
+      expect(list.query.value.status).toBe("active");
+      expect(list.search.value, "the field follows the address").toBe("ZI");
+      expect(list.pageNumber.value).toBe(1);
+      expect(list.items.value.map((item) => item.code)).toEqual(["Z"]);
     });
 
-    it("takes the filter from the address again when the same location is navigated to after a change made in the list", async () => {
-      const { list, router } = await startAt("/discount-codes?status=active");
-      await list.selectStatus("expired");
-      expect(router.currentRoute.value.fullPath, "the list does not write its filter to the address").toBe("/discount-codes?status=active");
-      mocks.get.mockClear();
-      serve({ "": page(["Z"]) });
-
-      await router.push({ path: "/discount-codes", query: { status: "active" }, force: true, replace: true });
-      await flushPromises();
-
-      expect(queries()).toEqual([{ status: "active" }]);
-      expect(list.status.value).toBe("active");
-    });
-
-    it("returns to all when the address loses the filter", async () => {
-      const { list, router } = await startAt("/discount-codes?status=active");
+    it("returns to all when the address loses the filters", async () => {
+      const list = await mounted({ "": page(["A"]) }, "/discount-codes?status=active");
       mocks.get.mockClear();
 
-      await router.push("/discount-codes");
+      await list.router.push("/discount-codes");
       await flushPromises();
 
       expect(queries()).toEqual([{}]);
-      expect(list.status.value).toBeNull();
+      expect(list.query.value.status).toBeNull();
     });
 
-    it("does not ask again when the address changes without the known filter changing", async () => {
-      const { router } = await startAt("/discount-codes?status=active");
+    it("does not ask again when the address changes without the parameters of the list changing", async () => {
+      const list = await mounted({ "": page(["A"]) }, "/discount-codes?status=active");
       mocks.get.mockClear();
 
-      await router.push({ path: "/discount-codes", query: { status: "active", utm: "x" } });
+      await list.router.push({ path: "/discount-codes", query: { status: "active", utm: "x" } });
       await flushPromises();
 
       expect(mocks.get).not.toHaveBeenCalled();
     });
 
-    it("keeps the search when the address changes", async () => {
-      const { list, router } = await startAt("/discount-codes");
-      list.search.value = "LATO";
-      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
-      await flushPromises();
+    it("drops the search, the filters and the page size on clearFilters: the address is the list again", async () => {
+      const list = await mounted({ "": page(["A"]) }, "/discount-codes?status=active&q=LATO&perPage=10");
       mocks.get.mockClear();
 
-      await router.push({ path: "/discount-codes", query: { status: "active" } });
+      list.clearFilters();
       await flushPromises();
 
-      expect(queries()).toEqual([{ status: "active", q: "LATO" }]);
-    });
-
-    it("does not write the filter it is given back to the address", async () => {
-      const { list, router } = await startAt("/discount-codes");
-
-      await list.selectStatus("active");
-
-      expect(router.currentRoute.value.fullPath).toBe("/discount-codes");
+      expect(queries()).toEqual([{}]);
+      expect(list.search.value).toBe("");
+      expect(list.filtered.value).toBe(false);
+      expect(list.router.currentRoute.value.fullPath).toBe("/discount-codes");
     });
 
     it("does not ask for the list when the staff member leaves the page", async () => {
-      const { router } = await startAt("/discount-codes?status=active");
+      const list = await mounted({ "": page(["A"]) }, "/discount-codes?status=active");
       mocks.get.mockClear();
 
-      await router.push("/products");
+      await list.router.push("/products");
       await flushPromises();
 
       expect(mocks.get).not.toHaveBeenCalled();
