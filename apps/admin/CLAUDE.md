@@ -444,6 +444,15 @@ Spec: `docs/features/sentry/spec.md`.
   breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same wzorce co Alloy, filtr sklepu i filtr api
   (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL, klucz=wartość z sekretami, `Failing row
   contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`, adresy IP. Wzorce działają w czasie liniowym.
+- Mapy źródeł (`sentrySourceMaps` w `vite.config.ts`, test `tests/vite-config.test.ts`; spec: P3, D10): wtyczka
+  `@sentry/vite-plugin` (zależność deweloperska) jest ładowana tylko przy `SENTRY_UPLOAD=true` w budowaniu `prod`. Wtedy build
+  zapisuje mapy „hidden” (bez komentarza `sourceMappingURL` w bundlu), wtyczka wysyła je dopasowane przez debug ID (bez
+  tworzenia release'u) i usuwa (`deleteSourcemapsAfterUpload`, `filesToDeleteAfterUpload`), a błąd wysyłki przerywa build
+  (`errorHandler` rzuca). Telemetria wtyczki wyłączona (`telemetry: false`). Flaga i `SENTRY_ORG`, `SENTRY_PROJECT` to `ARG` etapu
+  `build` (domyślnie `false`, puste), token to sekret budowania `sentry_auth_token` (`RUN --mount=type=secret`, nigdy `ARG`
+  ani `ENV`); flaga włączona bez tokenu, organizacji albo projektu kończy build błędem, a nie obrazem bez map. Bez flagi
+  wtyczka nie jest ładowana i nic nie idzie do Sentry. Dockerfile na końcu usuwa każdy `.map` z `dist`. Flagę ustawia tylko
+  job `images` workflowu `deploy.yml`; dokumentacja: `infra/k8s/CLAUDE.md`.
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w `src/observability/filter.ts`,
   w filtrze sklepu `apps/store/src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy
   (`infra/k8s/argocd/apps/monitoring.yaml`, korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy
@@ -529,7 +538,7 @@ Spec: `docs/features/sentry/spec.md`.
   (rzędy, akcje, linie kolumn ukrytych, pasek narzędzi, adres, pager i fokus, puste stany, trzy przypadki błędu);
   testy `useCursorPager` i `useListUrlState` używają routera w pamięci; `tests/ui-accessible-names.test.ts`
   nazwę „Zamknij” okien i brak angielskich nazw dostępnych w `src/components/ui/`.
-- Sentry (`tests/sentryFilter.test.ts`, `tests/sentry.test.ts`, `tests/sentryTracing.test.ts`, `tests/config.test.ts`; nawigacje routera z `code`, `state` i `q` w `sentryTracing.test.ts` na fałszywych zegarach, bo spany nawigacji kończą się po bezczynności) bez konta
+- Sentry (`tests/sentryFilter.test.ts`, `tests/sentry.test.ts`, `tests/sentryTracing.test.ts`, `tests/config.test.ts`, `tests/vite-config.test.ts` (konfiguracja wysyłki map); nawigacje routera z `code`, `state` i `q` w `sentryTracing.test.ts` na fałszywych zegarach, bo spany nawigacji kończą się po bezczynności) bez konta
   i bez ruchu do Sentry: prawdziwe SDK z fałszywym DSN i transportem testowym zbierającym koperty (opcja `transport` w trzecim
   argumencie `initSentry`). SDK opakowuje `fetch`, `history`, `console` i `window.onerror` raz na stronę, więc `fetch` testu jest
   podmieniony raz przed pierwszym `init` (`vi.stubGlobal`), a testy śladów są w osobnym pliku z jednym klientem (próbkowanie 1).
