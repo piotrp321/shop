@@ -69,7 +69,8 @@ AGENT-ISOLATION (#498).
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
   końcowego PR przez użytkownika.
 - Logi CI i wyjście zależności czytane przez `/delivery` nie przechodzą przez bramkę; chronią R2–R5.
-- `TMPDIR` użytkownika jest czytelny i zapisywalny dla wykonawcy (wymaga go sandbox), w tym `KUBE_DIR` operacji.
+- Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu), w tym `KUBE_DIR`
+  operacji. Katalogi tymczasowe wykonawcy są w jego worktree (`.agent-tmp/`) i znikają po jego końcu.
 - `GITHUB_TOKEN` workflowu z gałęzi zadania może dostać `packages: write` i wypchnąć obraz do GHCR; podmiana obrazu
   wdrożenia wymaga zgadnięcia SHA commita `main` po squashu.
 - Przypięta binarka Claude Code i wtyczki z `~/.claude/plugins` są zaufane (łańcuch dostaw poza zakresem).
@@ -88,9 +89,9 @@ AGENT-ISOLATION (#498).
   pokazuje zgłoszenia zewnętrzne użytkownikowi jako numer, autora i link, a użytkownik, który chce się nimi zająć,
   przepisuje je we własne issue.
 - **R2. Sandbox i wrapper wykonawców AO.** Wykonawcy działają w sandboxie Claude Code (na macOS Seatbelt), także dla
-  procesów potomnych Bash: odczyt `~` zabroniony poza listą ścieżek pracy, zapis tylko w worktree, `TMPDIR`, `.git`
-  głównego klonu (bez hooków i konfiguracji) i katalogu własnego zadania, sieć tylko do GitHuba i lokalnego stosu, bez
-  `dangerouslyDisableSandbox`, hooków i MCP z repozytorium. Profil (`executor-settings.json`, `render_settings.py`)
+  procesów potomnych Bash: odczyt `~` zabroniony poza listą ścieżek pracy, zapis tylko w worktree (z katalogami
+  tymczasowymi zadania), `.git` głównego klonu (bez hooków i konfiguracji) i katalogu własnego zadania, sieć tylko do
+  GitHuba i lokalnego stosu, bez `dangerouslyDisableSandbox`, hooków i MCP z repozytorium. Profil (`executor-settings.json`, `render_settings.py`)
   przekazuje wrapper `claude-agent` (`--claude-bin` AO) flagą `--settings`; wrapper odmawia startu przy zmianie
   `.claude/settings*.json` lub `.mcp.json` w gałęzi.
 - **R3. Docker.** Docker Desktop udostępnia kontenerom tylko `~/Development/claude` i katalogi tymczasowe.

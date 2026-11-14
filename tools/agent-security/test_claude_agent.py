@@ -7,10 +7,12 @@ environment; git is the real one (the origin is local, so `git ls-remote origin`
 import json
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -18,10 +20,17 @@ WRAPPER = os.path.join(HERE, 'claude-agent')
 TOKEN = 'github_pat_fake_executor_token'
 
 FAKE_CLAUDE = '''#!%s
-import json, os, sys
+import json, os, sys, time
+TEMP_VARIABLES = ('TMPDIR', 'BUILDX_CONFIG', 'GH_CONFIG_DIR', 'XDG_CACHE_HOME')
+stdin = sys.stdin.read() if os.environ.get('FAKE_READ_STDIN') else None
 with open(os.environ['FAKE_CLAUDE_RECORD'], 'w') as f:
-    json.dump({'argv': sys.argv[1:], 'env': dict(os.environ)}, f)
+    json.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'pid': os.getpid(), 'stdin': stdin,
+               'dirs': {k: os.path.isdir(os.environ.get(k, '')) for k in TEMP_VARIABLES}}, f)
 print('fake claude ran')
+sys.stdout.flush()
+if os.environ.get('FAKE_SLEEP'):
+    time.sleep(float(os.environ['FAKE_SLEEP']))
+sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
 ''' % sys.executable
 
 FAKE_SECURITY = '''#!/bin/sh
@@ -208,10 +217,11 @@ class StartTest(WrapperTestCase):
         self.refused(*AO_ARGS, AO_TASK_ID='Z-INTEGRATION-1')
 
     def test_environment_of_the_executor(self):
-        env = self.started(*AO_ARGS)['env']
+        record = self.started(*AO_ARGS)
+        env = record['env']
         self.assertEqual(env['GH_TOKEN'], TOKEN)
-        self.assertTrue(os.path.isdir(env['GH_CONFIG_DIR']))
-        self.assertTrue(env['GH_CONFIG_DIR'].startswith(self.tmpdir + '/claude-agent-gh.X-1.'))
+        self.assertTrue(record['dirs']['GH_CONFIG_DIR'])
+        self.assertTrue(env['GH_CONFIG_DIR'].startswith(self.work + '/.agent-tmp/'), env['GH_CONFIG_DIR'])
         self.assertNotIn('SSH_AUTH_SOCK', env)
         count = int(env['GIT_CONFIG_COUNT'])
         pairs = [(env['GIT_CONFIG_KEY_%d' % i], env['GIT_CONFIG_VALUE_%d' % i]) for i in range(count)]
@@ -236,6 +246,106 @@ class StartTest(WrapperTestCase):
         result = subprocess.run(['sh', '-c', helper[1:] + ' "$@"', 'helper', 'store'], capture_output=True,
                                 text=True, env={'GH_TOKEN': TOKEN, 'PATH': os.environ['PATH']}, input='')
         self.assertNotIn(TOKEN, result.stdout)
+
+
+TEMP_VARIABLES = ('TMPDIR', 'BUILDX_CONFIG', 'GH_CONFIG_DIR', 'XDG_CACHE_HOME')
+
+
+class TaskTempDirTest(WrapperTestCase):
+    """The executor's temporary directories live in its worktree, apart from the shared /tmp and the user's temp, and
+    the wrapper removes them when the executor ends (normally, with an error or on a signal)."""
+
+    def temp_root(self):
+        return os.path.join(self.work, '.agent-tmp')
+
+    def assert_removed(self, record):
+        for name in TEMP_VARIABLES:
+            self.assertFalse(os.path.exists(record['env'][name]), name)
+        self.assertFalse(os.path.exists(self.temp_root()), 'the task temp root stayed')
+
+    def test_temp_directories_are_in_the_worktree_and_set_for_the_executor(self):
+        record = self.started(*AO_ARGS)
+        for name in TEMP_VARIABLES:
+            self.assertTrue(record['env'][name].startswith(self.temp_root() + '/'), (name, record['env'][name]))
+            self.assertTrue(record['dirs'][name], '%s did not exist while the executor ran' % name)
+        self.assertNotEqual(record['env']['TMPDIR'], self.tmpdir)
+        self.assert_removed(record)
+
+    def test_two_runs_get_separate_directories(self):
+        first = self.started(*AO_ARGS)['env']['TMPDIR']
+        os.remove(self.record)
+        self.assertNotEqual(first, self.started(*AO_ARGS)['env']['TMPDIR'])
+
+    def test_exit_code_of_the_binary_is_returned_and_the_directory_removed(self):
+        result = self.run_wrapper(*AO_ARGS, FAKE_EXIT='7')
+        self.assertEqual(result.returncode, 7, result.stderr)
+        self.assert_removed(self.recorded())
+
+    def test_stdin_reaches_the_binary(self):
+        result = subprocess.run(['sh', WRAPPER, *AO_ARGS], cwd=self.work, capture_output=True, text=True,
+                                env=self.env(FAKE_READ_STDIN='1'), input='{"type":"user"}\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.recorded()['stdin'], '{"type":"user"}\n')
+        self.assertIn('fake claude ran', result.stdout)
+
+    def run_and_signal(self, signum):
+        process = subprocess.Popen(['sh', WRAPPER, *AO_ARGS], cwd=self.work, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, env=self.env(FAKE_SLEEP='60'))
+        self.addCleanup(lambda: process.poll() is None and process.kill())
+        for _ in range(400):
+            if os.path.exists(self.record) and os.path.getsize(self.record):
+                break
+            time.sleep(0.05)
+        record = self.recorded()
+        time.sleep(0.2)
+        process.send_signal(signum)
+        process.wait(timeout=30)
+        self.assertNotEqual(process.returncode, 0)
+        for _ in range(100):
+            if not self.alive(record['pid']):
+                break
+            time.sleep(0.05)
+        self.assertFalse(self.alive(record['pid']), 'the executor survived the signal to the wrapper')
+        self.assert_removed(record)
+
+    @staticmethod
+    def alive(pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        # a zombie of the wrapper's child is not alive work: check the state through ps
+        state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+        return bool(state) and not state.startswith('Z')
+
+    def test_sigterm_to_the_wrapper(self):
+        self.run_and_signal(signal.SIGTERM)
+
+    def test_sigint_to_the_wrapper(self):
+        self.run_and_signal(signal.SIGINT)
+
+    def test_sighup_to_the_wrapper(self):
+        self.run_and_signal(signal.SIGHUP)
+
+    def test_a_symlink_in_place_of_the_temp_root_is_refused(self):
+        elsewhere = os.path.join(self.tmp, 'elsewhere')
+        os.makedirs(elsewhere)
+        os.symlink(elsewhere, self.temp_root())
+        stderr = self.refused(*AO_ARGS)
+        self.assertIn('.agent-tmp', stderr)
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertTrue(os.path.islink(self.temp_root()))
+
+    def test_a_file_in_place_of_the_temp_root_is_refused(self):
+        write(self.temp_root(), 'x\n')
+        self.assertIn('.agent-tmp', self.refused(*AO_ARGS))
+
+    def test_the_temp_root_is_ignored_by_git(self):
+        repository = os.path.dirname(os.path.dirname(HERE))
+        result = subprocess.run(['git', 'check-ignore', '-q', '.agent-tmp/run.x/tmp/file'], cwd=repository)
+        self.assertEqual(result.returncode, 0, '.agent-tmp is not in .gitignore')
 
 
 class RefusalTest(WrapperTestCase):

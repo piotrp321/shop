@@ -93,7 +93,9 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
   Fine-grained tokens, potem Keychain.
 - Udostępnianie plików w Docker Desktop (P2) ograniczone do `~/Development/claude` i katalogów tymczasowych
   (`/private/var/folders`, `/private/tmp`, `/tmp`): Settings → Resources → File sharing. Po co: sonda zadania
-  AGENT-SECURITY-3 sprawdza, że kontener nie widzi `~` poza tymi katalogami. Źródło: użytkownik. Od tej chwili
+  AGENT-SECURITY-3 sprawdza, że kontener nie widzi `~` poza tymi katalogami. Wykonawcy katalogów tymczasowych hosta
+  nie potrzebują (ich katalogi tymczasowe są w worktree, R2); udostępnione zostają dla operacji użytkownika
+  (`KUBE_DIR` z `mktemp -d`). Źródło: użytkownik. Od tej chwili
   `KUBE_DIR` celów produkcyjnych musi leżeć w katalogu udostępnionym (runbook z AGENT-SECURITY-4); projekty Dockera
   spoza `~/Development/claude` wymagają dopisania ich katalogu.
 - Środowisko GitHub `production` (P3): wymagane zatwierdzenie przez użytkownika, „Prevent self-review” wyłączone,
@@ -227,8 +229,8 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
 - Logi CI i wyjście zależności czytane przez `/delivery` nie przechodzą przez bramkę (treść z kodu repozytorium i jego
   zależności); chronią R2–R5.
 - Sesje interaktywne z Bash mogą wywołać `gh` z pominięciem bramki; to granica promptu (P10).
-- Katalog tymczasowy użytkownika (`TMPDIR`, `/var/folders/…`) jest czytelny i zapisywalny dla wykonawcy (wymaga go
-  sandbox i narzędzia); leżą tam m.in. `KUBE_DIR` operacji użytkownika (droga 14) i pliki tymczasowe innych procesów.
+- Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu; profil nie ma go
+  w `denyRead`); leżą tam m.in. `KUBE_DIR` operacji użytkownika (droga 14) i pliki tymczasowe innych procesów.
 - `GITHUB_TOKEN` workflowu z gałęzi zadania (Workflows RW) może dostać `packages: write` i wypchnąć obraz do GHCR.
   Wdrożenie bierze obraz pod tagiem SHA commita `main`, którego przed merge'em nie da się poznać (squash), więc
   podmiana wymaga zgadnięcia SHA; test pliku workflowu nie zatrzyma workflowu, który już działa na gałęzi. Bez
@@ -325,7 +327,7 @@ JSON na stdout.
   `-INTEGRATION-` dostaje katalog integracji. Katalog
   epiku zadania integracji wrapper znajduje w `$AO_HOME/epics/` po prefiksie identyfikatora (bez rozróżniania
   wielkości liter); brak albo kilka pasujących to odmowa.
-- Zapis: worktree, katalog tymczasowy użytkownika, `.git` głównego klonu (commity w worktree),
+- Zapis: worktree (w nim katalogi tymczasowe zadania, wrapper), `.git` głównego klonu (commity w worktree),
   `$AO_HOME/tasks/<AO_TASK_ID>` i katalog integracji epiku (jak przy odczycie). `denyWrite`: `<worktree>/.ao`,
   `<worktree>/.git` (plik `gitdir:`), `<.git>/hooks`, `<.git>/config`, `<.git>/worktrees/*/config*`,
   `<.git>/worktrees/*/commondir` i `gitdir`, `$AO_HOME/tasks/<AO_TASK_ID>/briefs` i `attempts` (pisze je AO);
@@ -356,7 +358,18 @@ JSON na stdout.
 - czyta token wykonawcy z Keychain (`security find-generic-password -s shop-agent-github-token -w`) poza sandboxem
   i ustawia `GH_TOKEN`; brak tokenu kończy wrapper błędem z instrukcją (wykonawca nigdy nie startuje z tokenem
   użytkownika);
-- ustawia dla procesu wykonawcy `GH_CONFIG_DIR` w katalogu tymczasowym, `git` przez HTTPS zamiast SSH
+- tworzy katalogi tymczasowe zadania w worktree (`<worktree>/.agent-tmp/run.<losowy>/`, w `.gitignore`), nigdy we
+  wspólnym `/tmp` ani w katalogu tymczasowym użytkownika (`/var/folders/…`): `TMPDIR`, `BUILDX_CONFIG` (stan buildx
+  zamiast `~/.docker/buildx`, tylko do odczytu), `GH_CONFIG_DIR` i `XDG_CACHE_HOME` (pamięć podręczna logów `gh`).
+  `.agent-tmp` musi być katalogiem bieżącego użytkownika bez dowiązania w żadnym komponencie, inaczej odmowa.
+  Binarkę uruchamia jako proces potomny (nie `exec`), przekazuje jej `INT`, `TERM` i `HUP` (`INT` jako `TERM`, bo
+  proces w tle nieinteraktywnej powłoki ignoruje `SIGINT`) i stdin, zwraca jej kod wyjścia i po jej końcu usuwa
+  katalog przebiegu (po ponownym sprawdzeniu dowiązań). Claude Code 2.1.311 nadpisuje `TMPDIR` poleceń Bash
+  w sandboxie na `/tmp/claude-<uid>` (ścieżka per-uid pod `CLAUDE_CODE_TMPDIR` w worktree przekracza 44 bajty, limit
+  gniazd AF_UNIX), a `/tmp` jest w `denyRead`, więc polecenia używające `TMPDIR` (`mktemp` bez szablonu,
+  `docker compose build`) nie działają w sandboxie (Ryzyka). `CLAUDE_CODE_TMPDIR` wrapper nie ustawia: katalog
+  tymczasowy samego Claude Code (gniazda, wyniki poleceń) zostaje poza zapisem wykonawcy;
+- ustawia dla procesu wykonawcy `git` przez HTTPS zamiast SSH
   (`url.https://github.com/.insteadOf git@github.com:`) i pomocnika poświadczeń czytającego `GH_TOKEN` (zmienne
   `GIT_CONFIG_COUNT`/`KEY`/`VALUE`, bez zmian w `.git/config` i `~/.gitconfig`); usuwa `SSH_AUTH_SOCK`.
 
@@ -605,6 +618,10 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 
 - Nowa wersja Claude Code zmienia zachowanie sandboxa albo nazwy ustawień: sonda przy każdym starcie AO wykrywa to
   przed pracą.
+- Claude Code 2.1.311 daje poleceniom Bash w sandboxie `TMPDIR=/tmp/claude-<uid>`, zablokowany profilem: `mktemp`
+  bez szablonu i `docker compose build` (BuildKit: `os.TempDir`) w sandboxie wykonawcy nie działają, a przypadek
+  sondy `work_docker_compose_build` nie przechodzi. Rozszerzenie profilu (otwarcie `/tmp/claude-<uid>`) albo inne
+  obejście to decyzja użytkownika (raport AGENT-SECURITY-3).
 - Za wąska lista odczytu lub sieci psuje pracę wykonawcy w rzadkim przypadku: bloker z `Operation not permitted`,
   poprawka profilu w PR. Pierwszy epik po AGENT-SECURITY-5 to pomiar: blokery wywołane profilem w raporcie odbioru.
 - `disableAllHooks` wyłącza hook startowy wtyczki superpowers u wykonawców; skille wtyczki zostają dostępne.

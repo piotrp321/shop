@@ -17,8 +17,11 @@
 # branch, the index, the working tree or as untracked files (P12). The SHA of main comes from `git ls-remote origin`,
 # not from refs/remotes/origin/main, which the executor can move.
 #
-# The executor gets the executor token (Keychain shop-agent-github-token) as GH_TOKEN, its own GH_CONFIG_DIR, git over
-# HTTPS with a credential helper reading GH_TOKEN (GIT_CONFIG_* variables) and no SSH_AUTH_SOCK.
+# The executor gets the executor token (Keychain shop-agent-github-token) as GH_TOKEN, git over HTTPS with a credential
+# helper reading GH_TOKEN (GIT_CONFIG_* variables), no SSH_AUTH_SOCK, and TMPDIR, BUILDX_CONFIG, GH_CONFIG_DIR and
+# XDG_CACHE_HOME in a per-run directory under <workdir>/.agent-tmp (never the shared /tmp or the user's temp). The
+# binary runs as a child: the wrapper passes INT/TERM/HUP on, returns the binary's exit code and removes the per-run
+# directory afterwards. --version and auth status are exec'd as they are.
 set -u
 
 TOKEN_SERVICE=shop-agent-github-token
@@ -144,15 +147,43 @@ settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-
     --state-dir "$task_dir" $integration_opt \
     --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
 
-gh_config=$(mktemp -d "${TMPDIR:-/tmp}/claude-agent-gh.$AO_TASK_ID.XXXXXX") || die "mktemp nie utworzył GH_CONFIG_DIR"
-gh_cache="$gh_config/cache"
-mkdir -p "$gh_cache" 2>/dev/null
+# Task temporary directories (spec R2): in the worktree, which the executor may already write, never in the shared
+# /tmp or the user's temp. Each run gets its own directory under $workdir/.agent-tmp, removed when the executor ends.
+# The root must be a real directory of this user inside the worktree: a symlink or a foreign owner is a refusal,
+# because the wrapper later deletes what is under it.
+temp_root=$workdir/.agent-tmp
+if [ -e "$temp_root" ] || [ -L "$temp_root" ]; then
+    [ ! -L "$temp_root" ] && [ -d "$temp_root" ] || die "$temp_root nie jest katalogiem (dowiązanie albo plik): odmowa"
+else
+    mkdir -m 700 "$temp_root" 2>/dev/null || die "nie można utworzyć katalogu tymczasowego zadania $temp_root"
+fi
+real_dir "$temp_root" || die "katalog tymczasowy zadania $temp_root prowadzi przez dowiązanie symboliczne: odmowa"
+[ -n "$(find "$temp_root" -prune -user "$(id -u)")" ] || die "katalog tymczasowy zadania $temp_root należy do innego użytkownika: odmowa"
+run_tmp=$(mktemp -d "$temp_root/run.XXXXXX") || die "mktemp nie utworzył katalogu w $temp_root"
+real_dir "$run_tmp" || die "katalog tymczasowy przebiegu $run_tmp prowadzi przez dowiązanie symboliczne: odmowa"
+
+child=
+cleanup() {
+    # Re-checked: the executor may have swapped a component for a symlink while it ran.
+    if real_dir "$run_tmp" && real_dir "$temp_root"; then
+        rm -rf -- "$run_tmp"
+        rmdir -- "$temp_root" 2>/dev/null
+    else
+        printf 'claude-agent: %s\n' "nie usunięto $run_tmp: ścieżka prowadzi przez dowiązanie symboliczne" >&2
+    fi
+}
+trap cleanup EXIT
+for sub in tmp buildx gh cache; do
+    mkdir -m 700 "$run_tmp/$sub" || die "nie można utworzyć $run_tmp/$sub"
+done
 
 unset SSH_AUTH_SOCK
+TMPDIR=$run_tmp/tmp
+BUILDX_CONFIG=$run_tmp/buildx      # buildx state and activity, not the read-only ~/.docker/buildx
 GH_TOKEN=$token
-GH_CONFIG_DIR=$gh_config
-XDG_CACHE_HOME=$gh_cache   # gh writes its run-log cache here, not under the denied ~/.cache
-export XDG_CACHE_HOME
+GH_CONFIG_DIR=$run_tmp/gh
+XDG_CACHE_HOME=$run_tmp/cache      # gh writes its run-log cache here, not under the denied ~/.cache
+export TMPDIR BUILDX_CONFIG XDG_CACHE_HOME
 GIT_CONFIG_COUNT=4
 GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf
 GIT_CONFIG_VALUE_0=git@github.com:
@@ -161,9 +192,27 @@ GIT_CONFIG_VALUE_1=ssh://git@github.com/
 GIT_CONFIG_KEY_2=credential.helper
 GIT_CONFIG_VALUE_2=
 GIT_CONFIG_KEY_3=credential.helper
-# shellcheck disable=SC2016 # expanded by git's shell when the helper runs, not here
+# shellcheck disable=SC2016,SC2089 # a literal helper, expanded by git's shell when it runs, not here
 GIT_CONFIG_VALUE_3='!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
+# shellcheck disable=SC2090 # GIT_CONFIG_VALUE_3 is passed on literally
 export GH_TOKEN GH_CONFIG_DIR GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 \
     GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2 GIT_CONFIG_KEY_3 GIT_CONFIG_VALUE_3
 
-exec "$AGENT_CLAUDE_BIN" "$@" --settings "$settings" --strict-mcp-config --setting-sources project
+# The executor runs as a child (not exec), so the EXIT trap removes the temporary directories after it. INT, TERM and
+# HUP sent to the wrapper are passed on; a background child of a non-interactive shell ignores SIGINT, so INT goes on
+# as TERM. stdin is handed over explicitly (a background job would otherwise read /dev/null).
+forward() {
+    [ -n "$child" ] && kill -"$1" "$child" 2>/dev/null
+}
+trap 'forward TERM' INT TERM
+trap 'forward HUP' HUP
+exec 3<&0
+"$AGENT_CLAUDE_BIN" "$@" --settings "$settings" --strict-mcp-config --setting-sources project 0<&3 3<&- &
+child=$!
+exec 3<&-
+while :; do
+    wait "$child"
+    status=$?
+    kill -0 "$child" 2>/dev/null || break
+done
+exit "$status"
