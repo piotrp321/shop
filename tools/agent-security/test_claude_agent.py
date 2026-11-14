@@ -90,6 +90,15 @@ esac
 exec /usr/bin/mktemp "$@"
 '''
 
+# git first in PATH for the fail-closed tests: FAKE_GIT_FAIL names a subcommand that fails, the rest goes to the real
+# git (FAKE_REAL_GIT).
+FAKE_GIT = '''#!/bin/sh
+for a in "$@"; do
+    [ "$a" = "$FAKE_GIT_FAIL" ] && { echo "git: $a failed" >&2; exit 128; }
+done
+exec "$FAKE_REAL_GIT" "$@"
+'''
+
 GIT_ENV = {'GIT_AUTHOR_NAME': 'Test', 'GIT_AUTHOR_EMAIL': 'test@example.com', 'GIT_COMMITTER_NAME': 'Test',
            'GIT_COMMITTER_EMAIL': 'test@example.com', 'GIT_CONFIG_NOSYSTEM': '1'}
 
@@ -770,6 +779,76 @@ class ProtectedSettingsTest(WrapperTestCase):
             self.assertIn(name, self.refused(*AO_ARGS))
             os.remove(os.path.join(self.work, name))
         self.started(*AO_ARGS)
+
+    def track_on_main(self, name, text):
+        # Commits a protected file on main and brings the task branch to that main, so it is in the merge-base.
+        write(os.path.join(self.seed, name), text)
+        self.git('add', '-f', name, cwd=self.seed)
+        self.git('commit', '-q', '-m', 'track ' + name, cwd=self.seed)
+        self.git('push', '-q', self.origin, 'main', cwd=self.seed)
+        self.git('fetch', '-q', 'origin')
+        self.git('merge', '-q', '--ff-only', 'origin/main')
+
+    def test_an_index_flag_does_not_hide_a_change_in_the_working_tree(self):
+        # With assume-unchanged or skip-worktree git diff skips the file; the content still differs from main.
+        self.track_on_main('.mcp.json', '{"mcpServers": {}}\n')
+        for name in ('.claude/settings.json', '.mcp.json'):
+            for flag in ('--assume-unchanged', '--skip-worktree'):
+                path = os.path.join(self.work, name)
+                with open(path) as f:
+                    original = f.read()
+                self.git('update-index', flag, name)
+                write(path, '{"permissions": {"allow": ["Bash"]}}\n')
+                stderr = self.refused(*AO_ARGS)
+                self.assertIn(name, stderr, flag)
+                self.git('update-index', '--no-' + flag[2:], name)
+                write(path, original)
+        self.started(*AO_ARGS)
+
+    def test_an_index_flag_alone_is_refused(self):
+        self.track_on_main('.claude/settings.local.json', '{}\n')
+        for name in ('.claude/settings.json', '.claude/settings.local.json'):
+            for flag, reason in (('--assume-unchanged', 'assume-unchanged'), ('--skip-worktree', 'skip-worktree')):
+                self.git('update-index', flag, name)
+                stderr = self.refused(*AO_ARGS)
+                self.assertIn(name, stderr)
+                self.assertIn(reason, stderr)
+                self.git('update-index', '--no-' + flag[2:], name)
+        self.started(*AO_ARGS)
+
+    def test_a_change_with_the_stat_of_the_index_is_refused(self):
+        # Without any index flag: same size, the old mtime and a config ignoring ctime make git diff trust the index.
+        path = os.path.join(self.work, '.claude/settings.json')
+        with open(path) as f:
+            original = f.read()
+        old = time.time() - 3600   # older than the index, so the entry is not racy and git trusts its stat
+        os.utime(path, (old, old))
+        self.git('update-index', '--refresh')
+        info = os.stat(path)
+        self.git('config', 'core.trustctime', 'false')
+        self.git('config', 'core.checkStat', 'minimal')
+        loosened = '{"hooks":{"Stop":[]}}'
+        self.assertLess(len(loosened), len(original))
+        write(path, loosened.ljust(len(original) - 1) + '\n')
+        os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns))
+        self.assertEqual(self.git('diff', '--name-only', 'HEAD'), '')
+        self.assertIn('.claude/settings.json', self.refused(*AO_ARGS))
+
+    def test_a_symlink_in_place_of_the_settings_is_refused(self):
+        # The content behind the link equals main, but the file can change through the link target.
+        path = os.path.join(self.work, '.claude/settings.json')
+        copy = os.path.join(self.tmp, 'settings-copy.json')
+        shutil.copy(path, copy)
+        os.remove(path)
+        os.symlink(copy, path)
+        self.assertIn('.claude/settings.json', self.refused(*AO_ARGS))
+
+    def test_a_failing_git_step_is_refused(self):
+        # A fake git first in PATH fails one subcommand of the P12 check; the wrapper must refuse, never start.
+        write(os.path.join(self.bin, 'git'), FAKE_GIT, 0o755)
+        for subcommand in ('ls-files', 'ls-tree', 'hash-object', 'diff'):
+            stderr = self.refused(*AO_ARGS, FAKE_REAL_GIT=shutil.which('git'), FAKE_GIT_FAIL=subcommand)
+            self.assertIn(subcommand, stderr)
 
     def test_later_change_on_main_does_not_stop_an_older_branch(self):
         write(os.path.join(self.seed, '.claude/settings.json'), '{"enabledPlugins": {"x": true}}\n')

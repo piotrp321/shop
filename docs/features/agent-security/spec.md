@@ -380,7 +380,10 @@ JSON na stdout.
   nieśledzone (P12). SHA `main` wrapper pobiera na świeżo poza sandboxem (`git ls-remote origin refs/heads/main`
   i `git fetch` tego SHA), bo wykonawca ma zapis do `.git` i mógłby przestawić `refs/remotes/origin/main`; z tego
   samego powodu git wrappera pomija obiekty zastępcze (`GIT_NO_REPLACE_OBJECTS=1`), grafty (`GIT_GRAFT_FILE=/dev/null`)
-  i plik commit-graph (`core.commitGraph=false`), którymi wykonawca zmieniłby merge-base albo jego zawartość;
+  i plik commit-graph (`core.commitGraph=false`), którymi wykonawca zmieniłby merge-base albo jego zawartość.
+  `git diff` ufa statowi indeksu, więc wrapper porównuje też surową treść każdego z tych plików (`git hash-object
+  --no-filters`) z blobem w merge-base (dowiązanie symboliczne albo plik tylko po jednej stronie to różnica)
+  i odmawia startu, gdy indeks oznacza któryś z nich flagą `assume-unchanged` albo `skip-worktree`;
 - czyta token wykonawcy z Keychain (`security find-generic-password -s shop-agent-github-token -w`) poza sandboxem
   i ustawia `GH_TOKEN`; brak tokenu kończy wrapper błędem z instrukcją (wykonawca nigdy nie startuje z tokenem
   użytkownika);
