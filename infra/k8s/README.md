@@ -415,8 +415,8 @@ poszerzenia wyjątku node-exportera albo usunięcia polityki.
 Błędy i trace'y api (z workerem i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
 (`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Każda aplikacja włącza SDK tylko przy swoim DSN: chart
 przekazuje go jako `SENTRY_DSN` razem z `SENTRY_ENVIRONMENT` (`sentry.environment`, w `prod` `demo`), `SENTRY_RELEASE` (rewizja
-obrazów, `image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` (`sentry.tracesSampleRate`, w `prod` 0,1). `prod` ma puste DSN-y, więc do
-kroku 3 działa bez Sentry; profil `ci` ich nie ma nigdy. DSN nie jest sekretem (jest w przeglądarce), więc leży w
+obrazów, `image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` (`sentry.tracesSampleRate`, w `prod` 0,1). `prod` ma DSN-y trzech projektów
+organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem (jest w przeglądarce), więc leży w
 `environments/prod/values.yaml`, nie w Sealed Secrets; `make -C infra/k8s check` sprawdza jego format
 (`https://<klucz>@<host>/<id projektu>`) i `tracesSampleRate` (0 do 1).
 
