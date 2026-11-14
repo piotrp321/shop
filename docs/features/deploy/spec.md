@@ -45,7 +45,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
   nadużyciami (#181); środowisko ma przełączniki i działającą weryfikację e-mail.
 - Testy obciążeniowe.
 - Zakup serwera, domeny, założenie kont zewnętrznych (Cloudflare, Brevo), ruleset,
-  środowisko `production` i deploy key na GitHubie oraz samo uruchomienie na serwerze – według runbooka (agent prowadzi kroki oznaczone
+  środowiska `production` i `sentry` oraz deploy key na GitHubie oraz samo uruchomienie na serwerze – według runbooka (agent prowadzi kroki oznaczone
   „agent”). Repo, jego testy i CI nie wymagają serwera ani zmian w ustawieniach repo.
 - Sprawdzenie nazwy sklepu w bazach znaków towarowych (UPRP, EUIPO).
 - Zmiany środowiska lokalnego poza wspólnym skryptem seedów i przełącznikami sklepu (ich wartości domyślne dają zachowanie lokalne).
@@ -418,7 +418,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     tylko raportuje).
 - Runbook `infra/k8s/README.md` jest sekwencją tych celów i kroków w Cloudflare, Brevo i GitHubie, oznaczonych:
   „agent”, „zgoda użytkownika” (firewall, operacje kasujące dane, konta), „użytkownik” (zakupy, konta zewnętrzne,
-  wartości sekretów, Cloudflare Access, ruleset, środowisko `production` i deploy key, backup VPS-a w OVH). Zawiera sprawdzenia po uruchomieniu: żądanie na IP
+  wartości sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a w OVH). Zawiera sprawdzenia po uruchomieniu: żądanie na IP
   serwera spoza Cloudflare odrzucone, logowanie do panelu przez Access, e-mail z `create-admin` dotarł, próby
   rulesetów `deploy` i `deploy-push` na obu gałęziach (`deploy`, `deploy-images`).
 
@@ -445,8 +445,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 26.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
-  `environments/prod/sealed-secrets.pem`. Główny `make check` woła `check` chartu, więc działa on w wymaganym jobie
-  `checks` i w bramkach AO. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
+  `environments/prod/sealed-secrets.pem`. `check` chartu działa w części `checks part k8s` wymaganego
+  checku `checks`, a lokalnie i w bramkach AO woła go główny `make check`. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
   non-fast-forward) i struktury rulesetów (`tools/rulesets`) uruchamia job narzędzi repo w `ci.yml`.
 - `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
   klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,

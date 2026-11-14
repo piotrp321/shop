@@ -45,6 +45,12 @@ final class ConcurrentCommands
             throw new \RuntimeException('The concurrency tests need the pcntl and posix extensions.');
         }
 
+        // Garbage cycles the parent has not collected yet are inherited by every child, whose kernel shutdown
+        // (gc_collect_cycles) then runs their destructors there: an AMQP connection left by an earlier test closes on
+        // a socket it shares with the parent and waits for a reply that never comes (about 30 s). The parent collects
+        // them first.
+        gc_collect_cycles();
+
         $barrier = random_int(1, 0x7FFFFFFF);
         $directory = sys_get_temp_dir().'/inventory-concurrency-'.bin2hex(random_bytes(8));
         if (!mkdir($directory, 0o700)) {

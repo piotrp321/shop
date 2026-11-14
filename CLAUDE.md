@@ -55,7 +55,7 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     Cele z `KUBE_DIR` (`kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`) odmawiają pracy w trakcie przebiegu AO
     (opis: `infra/k8s/CLAUDE.md`). Kroki runbooka
     `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access,
-    ruleset, środowisko `production` i deploy key, backup VPS-a) nie są jego decyzją ani czynnością.
+    ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a) nie są jego decyzją ani czynnością.
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
 - Tryb sklepu wybiera zmienna `STORE_MODE` dla `make up`: `dev` (domyślnie) uruchamia `next dev`, `production` robi
   `next build` i uruchamia `next start`. Inna wartość zatrzymuje kontener sklepu, a nieudany build też, więc `make up`
@@ -176,10 +176,10 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   (np. `gh pr merge <nr> --squash --delete-branch`). Jedyny wyjątek to PR do `epic/*` z zadania REPAIR i PR
   `sync/<epik>-main`: merge commit (`--merge`). Gałęzi `epic/*` po merge'u końcowego PR nie usuwamy (ruleset `epic`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check`, testy wszystkich aplikacji i E2E przy każdym PR i każdym
-  pushu na `main` i `epic/**`. Wymagany check `e2e` zbiera wynik dwóch części E2E (`e2e shard 1` i `2`, każda
-  na własnym stosie); pierwsza po `make e2e` uruchamia `make ci-after-e2e` (sprawdzenia na stosie z fragmentów
-  `make/*.mk`, w tym Lighthouse; opis w `e2e/CLAUDE.md`). Testy skryptów (CI,
-  skille, hooki AO, rulesety) `.github/scripts/script-tests.sh` znajduje po położeniu, więc nowy skill nie zmienia
+  pushu na `main` i `epic/**`. Wymagane checki `checks` i `e2e` zbierają wynik części (`checks part …`,
+  `e2e shard …`), z których każda biegnie na własnym runnerze; ostatnia część E2E po `make e2e` uruchamia
+  `make ci-after-e2e` (sprawdzenia na stosie z fragmentów `make/*.mk`, w tym Lighthouse; opis w `e2e/CLAUDE.md`).
+  Testy skryptów (CI, skille, hooki AO, rulesety) `.github/scripts/script-tests.sh` znajduje po położeniu, więc nowy skill nie zmienia
   `ci.yml`. Wyjątki dotyczą tylko PR (`.github/scripts/scope.sh`): PR zmieniający wyłącznie
   dokumentację niczego nie uruchamia, a PR zmieniający wyłącznie narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`,
   ewentualnie z dokumentacją) uruchamia tylko testy skryptów, a PR zmieniający wyłącznie wdrożenie Kubernetes

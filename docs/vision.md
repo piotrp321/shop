@@ -246,8 +246,15 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
   więc jedno żądanie da się prześledzić przez wszystkie procesy, które uruchomiło.
 - Health checki dla API i wszystkich usług w docker-compose.
 - Profilowanie PHP lokalnie przez SPX (php-spx): rozszerzenie tylko w obrazie deweloperskim API,
-  włączane na żądanie, z podglądem flame graph w przeglądarce. W środowisku demo wydajność śledzimy
-  przez Sentry Performance (#180); logi i metryki klastra są w Grafana Cloud (niżej, środowisko wdrożeniowe).
+  włączane na żądanie, z podglądem flame graph w przeglądarce.
+- Sentry SaaS (darmowy plan, region UE) w środowisku wdrożeniowym: błędy API, workera, serwera sklepu i przeglądarek sklepu
+  i panelu (jedno zdarzenie na błąd, bez błędów 4xx) z wersją (rewizja obrazu), środowiskiem i correlation ID oraz trace'y
+  (Sentry Performance: żądania API ze spanami bazy, klienta HTTP i Redisa, renderowanie sklepu, nawigacja panelu, połączone
+  nagłówkami między procesami; próbkowanie 0,1). Zdarzenia są filtrowane po stronie SDK: bez danych osobowych klientów,
+  tokenów, ciasteczek, treści żądań, query stringów i parametrów SQL. SDK działa tylko przy DSN z konfiguracji wdrożenia, więc
+  lokalny stos i testy nie wysyłają niczego. Mapy źródeł sklepu i panelu są wysyłane przy budowaniu obrazów produkcyjnych
+  (`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Logi i metryki klastra są w Grafana Cloud (niżej,
+  środowisko wdrożeniowe).
 
 **Bezpieczeństwo**
 - Rate limiting (Symfony RateLimiter, Redis) na składaniu zamówień, rozpoczęciu płatności i webhookach dostawców;
@@ -345,7 +352,6 @@ Kolejne kroki, osobne zgłoszenia:
 
 - **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
   uploadów.
-- **Sentry** (#180): Sentry SaaS (darmowy plan) dla API, store i admin, także Sentry Performance.
 
 ## Poza zakresem (na razie)
 

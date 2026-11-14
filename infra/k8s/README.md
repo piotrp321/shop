@@ -5,7 +5,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
 - **agent** – wykonuje go Claude Code celem Makefile albo zmianą w repo (PR), gdy użytkownik zlecił uruchomienie środowiska;
 - **zgoda użytkownika** – agent opisuje, co zrobi, pyta w rozmowie i czeka na odpowiedź; dopiero potem uruchamia (firewall,
   operacje kasujące dane, zakładanie kont);
-- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowisko `production` i deploy key,
+- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowiska `production` i `sentry`, deploy key,
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
@@ -29,7 +29,7 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
    buduje i testuje obrazy, a job `deploy` czeka na zatwierdzenie w środowisku `production` (1.3); bez sekretu `DEPLOY_KEY`
    tego środowiska kończy się po nim z ostrzeżeniem (nic nie publikuje).
 
-## 1. GitHub: obrazy, ruleset, środowisko `production`, deploy key
+## 1. GitHub: obrazy, ruleset, środowiska `production` i `sentry`, deploy key
 
 Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
@@ -68,10 +68,17 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
    Sekret repozytorium `DEPLOY_KEY` założony wcześniej (zanim workflow dostał środowisko) **użytkownik** usuwa po merge'u końcowego
    PR epiku AGENT-SECURITY: `gh secret delete DEPLOY_KEY`. Wartości sekretu GitHub nie zwraca, więc klucz do środowiska bierze
-   z menedżera haseł albo generuje nowy (stary deploy key wtedy usuwa: `gh repo deploy-key delete <id>`). Kolejny sekret Actions
-   (np. `SENTRY_AUTH_TOKEN`) dostaje środowisko tylko dla `main` (bez zatwierdzenia, jeśli ma działać bez niego) i trafia do listy
-   `MAIN_ONLY_ENVIRONMENTS` w `infra/k8s/tests/test_deploy_workflow.py` razem z opisem tutaj; test czyta pliki workflowów,
-   ale ustawień środowisk w GitHubie nie widzi, więc te kroki **użytkownik** sprawdza sam.
+   z menedżera haseł albo generuje nowy (stary deploy key wtedy usuwa: `gh repo deploy-key delete <id>`).
+
+   Środowisko `sentry` (sekret `SENTRY_AUTH_TOKEN` map źródeł, sekcja 10, krok 4): **użytkownik** zakłada je przed pierwszym
+   wdrożeniem z workflowem, który ma `environment: sentry` w jobie `images`. Settings → Environments → New environment
+   `sentry`, **bez** Required reviewers (job `images` ma działać bez zatwierdzenia), **Deployment branches and tags** → Selected
+   branches and tags → reguła `main`. Brakujące środowisko GitHub zakłada sam i bez zabezpieczeń, więc kolejność ma znaczenie.
+   Sekret repozytorium `SENTRY_AUTH_TOKEN`, jeśli istnieje, **użytkownik** usuwa po merge'u końcowego PR epiku AGENT-SECURITY:
+   `gh secret delete SENTRY_AUTH_TOKEN` (wartości GitHub nie zwraca, więc token bierze z menedżera haseł albo tworzy nowy w
+   Sentry). Kolejny sekret Actions dostaje środowisko tylko dla `main` (bez zatwierdzenia, jeśli ma działać bez niego) i trafia
+   do listy `MAIN_ONLY_ENVIRONMENTS` w `infra/k8s/tests/test_deploy_workflow.py` razem z opisem tutaj; test czyta pliki
+   workflowów, ale ustawień środowisk w GitHubie nie widzi, więc te kroki **użytkownik** sprawdza sam.
 
 4. **zgoda użytkownika** – uruchom wdrożenie ponownie: `gh workflow run deploy.yml --ref main` (obrazy z tagiem tego
    samego commita zostają, nie są przebudowywane). Krok `Publish deploy and deploy-images` tworzy gałęzie `deploy` i `deploy-images`.
@@ -259,6 +266,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
 | Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, punkt kontaktowy: użytkownik | siedem reguł w rulerze; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
+| Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
 
 ## 7. Eksploatacja
@@ -450,3 +458,46 @@ manifestu: błąd `forbidden` w logu operatora albo Alloy to reguła do dopisani
 obiektów RBAC), nie powrót do RBAC chartu. Pod nowej wersji odrzucony przez politykę dopuszczania (zdarzenie `FailedCreate`
 z `ValidatingAdmissionPolicy` w przestrzeni `monitoring`, wypisuje je `monitoring-smoke`) to zmiana do przeglądu, nie powód do
 poszerzenia wyjątku node-exportera albo usunięcia polityki.
+
+## 10. Błędy i trace'y: Sentry
+
+Błędy i trace'y api (z workerem i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
+(`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Każda aplikacja włącza SDK tylko przy swoim DSN: chart
+przekazuje go jako `SENTRY_DSN` razem z `SENTRY_ENVIRONMENT` (`sentry.environment`, w `prod` `demo`), `SENTRY_RELEASE` (rewizja
+obrazów, `image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` (`sentry.tracesSampleRate`, w `prod` 0,1). `prod` ma puste DSN-y, więc do
+kroku 3 działa bez Sentry; profil `ci` ich nie ma nigdy. DSN nie jest sekretem (jest w przeglądarce), więc leży w
+`environments/prod/values.yaml`, nie w Sealed Secrets; `make -C infra/k8s check` sprawdza jego format
+(`https://<klucz>@<host>/<id projektu>`) i `tracesSampleRate` (0 do 1).
+
+1. **użytkownik** – zakłada konto Sentry (darmowy plan) i organizację w regionie UE (adresy `*.ingest.de.sentry.io`) oraz trzy projekty:
+   `api` (PHP/Symfony; obejmuje api, worker i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
+   i podaje go agentowi (DSN nie jest tajny).
+2. **użytkownik** – w ustawieniach Sentry (limity darmowego planu są małe, a DSN jawny, więc każdy może wysyłać zdarzenia do
+   projektu): włącza ochronę przed skokami (Spike Protection) dla organizacji i ustawia limit zdarzeń na każdym projekcie
+   (Client Keys → Configure → Rate Limiting), tak żeby jeden projekt nie zużył miesięcznego limitu. „Data Scrubber” (Security & Privacy)
+   zostaje włączony: filtr aplikacji nie zna każdego formatu danych, a Data Scrubber jest drugą warstwą po stronie Sentry.
+3. **agent** – wpisuje trzy DSN-y w `sentry.dsn.api`, `sentry.dsn.store` i `sentry.dsn.admin` w
+   `infra/k8s/environments/prod/values.yaml` (osobny mały PR, `make -C infra/k8s check`); merge robi **użytkownik**. Zdarzenia zaczynają
+   płynąć po następnym wdrożeniu (sekcja 7).
+4. **użytkownik** – dla map źródeł sklepu i panelu (wysyłane z budowania obrazów w workflowie `deploy.yml`, tylko przy wdrożeniu z
+   `main`) tworzy w Sentry token (Organization Auth Token; wysyłka map nie tworzy wydań) i zapisuje go w GitHub jako sekret
+   środowiska `sentry` (sekcja 1, krok 3; job `images` działa w tym środowisku, bez zatwierdzenia, tylko z `main`):
+   `gh secret set SENTRY_AUTH_TOKEN --env sentry` (wartość tylko w tym miejscu, nigdy w rozmowie z agentem; sekret repozytorium
+   o tej nazwie nie może istnieć), a w zmiennych repozytorium (Actions variables) `SENTRY_ORG` (slug organizacji), `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` (slugi projektów). Bez sekretu
+   workflow działa, a obrazy powstają bez map (w podsumowaniu runu jest wpis o pominięciu); z sekretem błąd wysyłki kończy
+   budowanie błędem, a brak którejś z trzech zmiennych kończy job `images` błędem z jej nazwą, przed budowaniem. Mapy
+   nie zostają w obrazach (etapy `prod` nie mają plików `.map`).
+5. **agent** – po pierwszym wdrożeniu z DSN-ami (`make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`, `Healthy`) sprawdza, że
+   kontenery `api`, `worker`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
+   rewizji `image.tag`), a **użytkownik** w Sentry, że w trzech projektach pojawiają się zdarzenia z tą wersją i środowiskiem `demo`
+   oraz trace'y (próbkowanie 0,1, więc widać je po pewnym ruchu).
+6. **użytkownik** (z agentem) – po wdrożeniu przegląd próbki zdarzeń w Sentry (Issues i Performance każdego z trzech projektów,
+   także zdarzenie z przeglądarki) pod kątem danych osobowych i tajnych: adresów e-mail, imion i adresów w treści wyjątków,
+   tokenów, ciasteczek, nagłówków, treści formularzy, query stringów w adresach, parametrów SQL i identyfikatora koszyka gościa.
+   Znalezisko to nowy wzorzec w filtrze zdarzeń aplikacji i w maskowaniu Alloy (`extraLogProcessingStages`) w jednym PR (agent) albo
+   wyłączenie źródła (usunięcie DSN z `values.yaml` aplikacji); do czasu poprawki zdarzenia z tym formatem usuwa się w Sentry.
+7. **użytkownik** – po pierwszym miesiącu sprawdza zużycie limitów darmowego planu (Usage Stats); przy przekroczeniu Sentry gubi zdarzenia do
+   końca okresu rozliczeniowego (aplikacje działają dalej). Powiadomienia i reguły alertów Sentry ustawia w jego ustawieniach, poza
+   repozytorium.
+
+Gdy klaster dostanie NetworkPolicy dla ruchu wychodzącego, trzeba dopuścić ruch do `*.ingest.de.sentry.io`.

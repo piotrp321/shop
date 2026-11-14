@@ -206,10 +206,15 @@ class ClaimsTest(unittest.TestCase):
 
 class ClassificationTest(unittest.TestCase):
     def test_is_allowed(self):
-        allowed = list(pg.GENERATED) + ['docs/vision.md', 'docs', 'docs/features/x/spec.md', 'README.md']
-        denied = ['infra/k8s/README.md', 'CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml',
-                  'make/demo-data.mk', 'Makefile', 'apps/admin/src/layout/AppMenu.vue', 'apps/api/src/Cart/Cart.php',
-                  'docsx/a.md', 'apps/api']
+        allowed = list(pg.GENERATED) + list(pg.REGISTRATION) + [
+            'docs/vision.md', 'docs', 'docs/features/x/spec.md', 'README.md', 'infra/k8s/README.md', 'CLAUDE.md',
+            'apps/api/CLAUDE.md', '.github/workflows/ci.yml', '.github', 'make/demo-data.mk', 'Makefile', 'infra',
+            'infra/k8s/tests', 'apps/api/tests/Unit/Cart', 'apps/admin/tests', 'e2e', 'apps/api/config',
+            'apps/api/composer.json', 'apps/store/package-lock.json', 'apps/api/migrations', '.claude/skills/ao-run',
+            '.ao', 'tools', 'apps/api/src/CLAUDE.md', 'apps/store/src/README.md', 'apps/store/public']
+        denied = ['apps/api/src', 'apps/api/src/Cart/Cart.php', 'apps/store/src/components', 'apps/store/app',
+                  'apps/store/app/page.tsx', 'apps/admin/src/main.ts', 'apps/new/src/x.ts', 'apps/api', 'apps/new',
+                  'apps']
         for p in allowed:
             with self.subTest(p=p):
                 self.assertTrue(pg.is_allowed(p))
@@ -217,10 +222,23 @@ class ClassificationTest(unittest.TestCase):
             with self.subTest(p=p):
                 self.assertFalse(pg.is_allowed(p))
 
-    def test_claude_md_never_allowed(self):
-        for p in ['docs/CLAUDE.md', 'docs/features/x/CLAUDE.md', 'CLAUDE.md']:
+    def test_bypass_attempts_are_code(self):
+        # A directory that holds a generated or registration file is still code; prefixes compare by segments.
+        for p in ['apps/store/src/api', 'apps/admin/src/api', 'apps/admin/src/layout', 'apps/admin/src/router',
+                  'apps/store/src/api/schema.d.ts.bak', 'apps/admin/src/layout/AppMenu.vue.orig',
+                  'apps/api/src/Cart/CLAUDE.md.php', 'apps/api/src/READMEx.md']:
             with self.subTest(p=p):
                 self.assertFalse(pg.is_allowed(p))
+        for p in ['apps/api/srcx', 'apps/api/src-old', 'apps/store/application', 'apps/api/tests/src',
+                  'docs/apps/api/src', 'infra/apps/api/src', 'apps/api/config/src']:
+            with self.subTest(p=p):
+                self.assertTrue(pg.is_allowed(p))
+
+    def test_is_app_code(self):
+        self.assertTrue(pg.is_app_code('apps/api/src/Cart/Cart.php'))
+        self.assertFalse(pg.is_app_code('apps/api/tests/Unit/CartTest.php'))
+        self.assertFalse(pg.is_app_code('apps/store/src/api/schema.d.ts'))
+        self.assertTrue(pg.is_app_code('apps'))
 
     def test_is_claude_md(self):
         self.assertTrue(pg.is_claude_md('CLAUDE.md'))

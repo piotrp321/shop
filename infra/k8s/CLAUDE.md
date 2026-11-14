@@ -69,7 +69,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
   (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
   runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
-  „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset, środowisko `production` i deploy key, backup VPS-a)
+  „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a)
   nie są jego decyzją ani czynnością.
 
 ## Co sprawdza `check`
@@ -83,7 +83,13 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
   jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
   w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
-  razem z `image.requireDigests` kończą render błędem) oraz testy
+  razem z `image.requireDigests` kończą render błędem; blok `sentry` (`environment`, `tracesSampleRate`, `dsn.api`, `dsn.store`,
+  `dsn.admin`, domyślnie puste, w `prod` `environment: demo` i `tracesSampleRate: 0.1`, DSN-y wpisuje osobny PR po założeniu projektów Sentry,
+  `README.md` sekcja 10): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (`image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` tylko dla
+  aplikacji z niepustym DSN, przez helper `shop.sentryEnv`; DSN api w `shop.apiEnv` (api, worker, Joby, init kontenery, CronJoby
+  `cart-purge-expired` i `restore`), DSN sklepu tylko w sklepie, panelu tylko w panelu; bez DSN żadnej `SENTRY_*` (także w `prod`
+  i `ci`, `tests/test_sentry.py`); schemat odrzuca `tracesSampleRate` spoza 0–1 i DSN innego kształtu niż
+  `https://<klucz>@<host>/<id projektu>`) oraz testy
   skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
   `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
   robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within` tylko po kopii `nightly` (kopia `pre-restore` niczego nie przycina); weryfikacja: snapshot `nightly` tego klastra
@@ -160,16 +166,17 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   (atrapy `k3s`, `apt-get`, `ufw`, `sysctl`), brak workflowu usuwającego wersje pakietów GHCR oraz to, że `.gitignore`
   nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście). Testy workflowów
   (`tests/test_deploy_workflow.py`, `render.sh` zamienia na JSON każdy plik `.github/workflows/*.yml` i `*.yaml`): job `deploy`
-  ma `environment: production` (nazwa albo obiekt z literalną nazwą), a żadne wyrażenie z kontekstem `secrets` inne niż
+  ma `environment: production` (nazwa albo obiekt z literalną nazwą), tylko on (inny job może mieć wyłącznie środowisko z
+  `MAIN_ONLY_ENVIRONMENTS` poza `production`: `images` ma `sentry`, bez zatwierdzenia), a żadne wyrażenie z kontekstem `secrets` inne niż
   `secrets.GITHUB_TOKEN` (w każdej pisowni: wielkie litery, spacje, `secrets['X']`, `toJSON(secrets)`, `format(…)`, `env:`,
   `with:`, skrypt, `if`) nie występuje poza jobem ze środowiskiem z listy `MAIN_ONLY_ENVIRONMENTS` (środowiska z polityką
-  gałęzi „tylko `main`”, opisane w runbooku); na poziomie workflowu i przy `secrets: inherit` jest błąd zawsze. Test widzi
+  gałęzi „tylko `main`”: `production` i `sentry`, opisane w runbooku); na poziomie workflowu i przy `secrets: inherit` jest błąd zawsze. Test widzi
   pliki, nie ustawienia środowisk w GitHubie (to pozycja użytkownika w runbooku), i odrzuca atrapy z tymi obejściami.
   Testy `ao-guard.sh` i celów (`tests/test_ao_guard.py`: atrapa `ps` z liniami jak na komputerze użytkownika, cele uruchamiane
   przepisami z Makefile na atrapach `docker` i `ssh`: z AO, runnerem albo `claude-agent` każdy z pięciu celów odmawia bez wywołania
   `docker`/`ssh` i bez zmian w `KUBE_DIR`, procesy podobne do AO przepuszcza, błąd `ps` jest odmową, bez AO cele działają jak
   dotąd) i rejestru `KUBE_DIR` (`tests/test_server_scripts.py`). `selftest` ma przypadki: `deploy.yml` bez środowiska
-  `production` i sekret w `env:` workflowu.
+  `production`, `images` bez środowiska `sentry`, `images` w środowisku `production` i sekret w `env:` workflowu.
 
 ## Gałęzie `deploy` i `deploy-images`
 
@@ -193,6 +200,19 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
     środowiska z polityką „tylko `main`” (pilnuje tego test). Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu
     `DEPLOY_KEY` kończy się po smoke teście i zatwierdzeniu z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
     (dispatch na `main`) decyduje o wypychaniu obrazów, pliku digestów i jobie `deploy`.
+    Job `images` działa w środowisku `sentry` (bez zatwierdzenia, polityka gałęzi tylko `main`; runbook 1.3), którego sekretem jest
+    `SENTRY_AUTH_TOKEN`; działa tylko przy dispatchu na `main`, więc workflow z innej gałęzi nie dotyka tego sekretu.
+    Mapy źródeł sklepu i panelu (spec Sentry, P3, D10): krok `sentry` jobu `images` ustawia flagę wysyłki na `true`, gdy istnieje
+    sekret `SENTRY_AUTH_TOKEN` (porównanie z pustym napisem: krok widzi tylko wartość logiczną), inaczej pomija wysyłkę i dopisuje
+    to do podsumowania; sekret bez zmiennych repozytorium `SENTRY_ORG`, `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` kończy
+    job błędem przed budowaniem. Budowania sklepu i panelu dostają flagę, organizację i projekt jako `build-args`
+    (`SENTRY_UPLOAD`, `SENTRY_ORG`, `SENTRY_PROJECT`: `ARG` etapu `build`, więc część klucza cache), a token wyłącznie jako
+    wejście `secrets:` (`sentry_auth_token`, montowanie `--mount=type=secret` w Dockerfile; wartość nie jest nigdzie indziej:
+    ani w `build-args`, ani w `env` kroku, ani w skrypcie, ani w jobach `smoke` i `deploy`; test `SentrySourceMaps` w
+    `tests/test_deploy_workflow.py`). Job `smoke` (także na PR) buduje bez flagi i bez sekretu, a etapy `prod` obu aplikacji
+    nigdy nie mają plików `.map` (Dockerfile je usuwa; test dymny sprawdza po HTTP, że sklep i panel ich nie serwują, `smoke/checks.py`
+    `check_no_source_maps`). Wysyłka z sekretem, która się nie uda (zły token, Sentry niedostępny), kończy budowanie obrazu błędem,
+    więc nic nie jest wdrażane. Zmiana `apps/admin/vite.config.ts` uruchamia smoke test na PR jak `apps/store/next.config.ts`.
   - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch` na innej gałęzi: tylko smoke test
     na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
     `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba

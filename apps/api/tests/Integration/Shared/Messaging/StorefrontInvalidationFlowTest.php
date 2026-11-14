@@ -66,7 +66,7 @@ final class StorefrontInvalidationFlowTest extends MessagingKernelTestCase
     }
 
     /**
-     * A failed invalidation goes through the retries of `events` (1 s, then 3 s, 9 s) and succeeds on a retry.
+     * A failed invalidation goes through the retries of `events` (100 ms, then 300 ms, 900 ms in the test kernel) and succeeds on a retry.
      */
     public function testAFailedInvalidationOfAProductChangeIsRetried(): void
     {
@@ -77,8 +77,8 @@ final class StorefrontInvalidationFlowTest extends MessagingKernelTestCase
         $this->consumeOutboxAndEvents(2);
 
         self::assertSame(0, $this->rows('failed'));
-        // The retry comes back to the queue after its delay (1 s ±10 %).
-        usleep(1_500_000);
+        // The retry comes back to the queue after its delay (100 ms ±10 %).
+        $this->awaitEventsInQueue(1);
         self::assertSame(1, $this->eventsInQueue());
 
         $this->cache->failure = null;
@@ -124,7 +124,7 @@ final class StorefrontInvalidationFlowTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => $messages, '--time-limit' => 10]);
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => $messages, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }

@@ -103,9 +103,12 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
   polityka gałęzi wdrożenia „tylko `main`”, sekret środowiska `DEPLOY_KEY`. Po co: job `deploy` czeka na
   zatwierdzenie i tylko w tym środowisku ma klucz (R5). Źródło: użytkownik: Settings → Environments. Sekret
   repozytorium `DEPLOY_KEY` użytkownik usuwa po merge'u końcowego PR epiku (runbook `infra/k8s/README.md`).
-- Każdy kolejny sekret Actions poza `GITHUB_TOKEN` (np. `SENTRY_AUTH_TOKEN`): środowisko GitHub z polityką gałęzi
-  „tylko `main`” (bez zatwierdzenia, gdy ma działać bez niego) z sekretem środowiska i wpisem w
-  `MAIN_ONLY_ENVIRONMENTS` testu workflowów (R5). Źródło: użytkownik (runbook).
+- Środowisko GitHub `sentry` (R5): polityka gałęzi „tylko `main`”, bez wymaganego zatwierdzenia, sekret środowiska
+  `SENTRY_AUTH_TOKEN` (job `images` ma `environment: sentry`). Sekret repozytorium o tej nazwie użytkownik usuwa po
+  merge'u końcowego PR epiku. Źródło: użytkownik (runbook `infra/k8s/README.md`).
+- Każdy kolejny sekret Actions poza `GITHUB_TOKEN`: środowisko GitHub z polityką gałęzi „tylko `main`” (bez
+  zatwierdzenia, gdy ma działać bez niego) z sekretem środowiska i wpisem w `MAIN_ONLY_ENVIRONMENTS` testu
+  workflowów (R5). Źródło: użytkownik (runbook).
 - Rulesety z R8 w GitHubie zgodne z `tools/rulesets/`: cztery rulesety bez aktora bypass (aktora z `main-merge`
   i `epic-merge` usuwa użytkownik przez `-X PUT` z plików). Po co: przypadek sondy R8 i odbiór (kryterium 11); bez
   rulesetów sonda nie przepuści startu AO. Źródło: użytkownik (wymaga uprawnień admina repozytorium).
@@ -122,7 +125,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 - A2 GitHub: token `gh` użytkownika w Keychain (`repo`, `admin:public_key`, `gist`), klucz `~/.ssh/id_rsa` (git przez
   SSH do wszystkich repozytoriów, także prywatnego AO), rulesety `main`, `main-merge`, `epic`, `epic-merge`, `deploy`
   (merge do `main` i `epic/*` tylko z zielonym CI, R8), sekrety Actions
-  (`DEPLOY_KEY`; `SENTRY_AUTH_TOKEN` po epiku SENTRY), `GITHUB_TOKEN` workflowów.
+  (`DEPLOY_KEY`, `SENTRY_AUTH_TOKEN`), `GITHUB_TOKEN` workflowów.
 - A3 Host: `~/.config/shop/demo-photos.env`, poświadczenia rejestrów Dockera (`credsStore: desktop`), Keychain,
   `~/.claude`, pliki innych projektów, baza stanu AO (`$AO_HOME`), kod wykonywany poza sandboxem (AO, `.ao/*`,
   hooki git, wrapper wykonawcy).
@@ -472,9 +475,10 @@ i sam AO używają nadal tokenu użytkownika.
   tylko w jobie ze środowiskiem z polityką „tylko `main`” (`production` albo inne, opisane w runbooku); na poziomie
   workflowu i w `secrets: inherit` jest zabronione. Test w `infra/k8s/tests/test_deploy_workflow.py` obejmuje
   wszystkie pliki `.github/workflows/*.yml`, z przypadkami obejścia jako atrapami, które muszą nie przejść. Środowiska
-  z polityką „tylko `main`” wymienia stała `MAIN_ONLY_ENVIRONMENTS` testu (dziś `production`); epik, który doda sekret
-  (np. `SENTRY_AUTH_TOKEN` w SENTRY), stosuje tę zasadę: środowisko bez zatwierdzenia, tylko `main`, wpis w stałej
-  i w runbooku (pozycja użytkownika).
+  z polityką „tylko `main`” wymienia stała `MAIN_ONLY_ENVIRONMENTS` testu (`production` i `sentry`: job `images` z
+  `SENTRY_AUTH_TOKEN` ma `environment: sentry`); kolejny sekret stosuje tę zasadę: środowisko bez zatwierdzenia, tylko
+  `main`, wpis w stałej i w runbooku (pozycja użytkownika). Środowisko `production` ma tylko job `deploy`: test odrzuca
+  inny job z `environment: production` i ze środowiskiem spoza listy.
 - Cele `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` (zapisują albo montują `KUBE_DIR`; `reinitialize`
   i `status` działają przez SSH, a wykonawca nie ma `~/.ssh` ani `SSH_AUTH_SOCK`) wołają w Makefile najpierw
   `infra/k8s/scripts/ao-guard.sh <cel>` i odmawiają pracy (kod 1, bez zmian, komunikat na stderr: zatrzymaj AO albo
@@ -723,9 +727,10 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 - `docs/adr/agentic-software-house.md`: wiersz „Bezpieczeństwo agentów” wskazuje ADR.
 - `docs/features/groom/spec.md`, `docs/features/prepare-epic/spec.md`: bramka i zgłoszenia zewnętrzne.
 - `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`: bramka.
-- `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `docs/features/deploy/spec.md`: środowisko `production`, zasada
-  sekretów w środowiskach, cele produkcyjne niedostępne w trakcie przebiegu AO, `KUBE_DIR` tymczasowy, usunięcie
-  sekretu repozytorium `DEPLOY_KEY`.
+- `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `docs/features/deploy/spec.md`: środowiska `production` i `sentry`,
+  zasada sekretów w środowiskach, cele produkcyjne niedostępne w trakcie przebiegu AO, `KUBE_DIR` tymczasowy, usunięcie
+  sekretów repozytorium `DEPLOY_KEY` i `SENTRY_AUTH_TOKEN`.
+- `docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`: `SENTRY_AUTH_TOKEN` jako sekret środowiska `sentry`.
 - `CLAUDE.md`: zasada „treść z GitHuba dla agentów tylko przez `tools/agent-security/github_trust.py`”, wykonawcy AO
   w sandboxie z sondą przed startem (wskaźnik do ADR), sekrety Actions tylko w środowiskach `main`, cele produkcyjne
   niedostępne w trakcie przebiegu AO, rulesety R8 bez aktora bypass i zakaz zmiany rulesetów przez agentów.

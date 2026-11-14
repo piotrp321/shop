@@ -80,6 +80,19 @@ ipAllowList:
 clientIpHeader: ""
 clientIpHeaderWithoutAllowList: false
 
+# Sentry (docs/features/sentry/spec.md, D1 and D3). An application gets SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE (image.tag) and
+# SENTRY_TRACES_SAMPLE_RATE only when its DSN is not empty; without one its SDK stays off. The DSN is public (it is in the browser), so it is
+# a plain value of environments/<env>/values.yaml, not a secret. dsn.api serves the api, the worker and the jobs, dsn.store the server of
+# the store (and its browser), dsn.admin the panel. Format: https://<key>@<host>/<project id>.
+sentry:
+  environment: ""
+  # The share of the transactions that are traced (0 to 1).
+  tracesSampleRate: 0
+  dsn:
+    api: ""
+    store: ""
+    admin: ""
+
 secrets:
   # true: the chart renders the Secret from `values` (the ci profile). false: the Secret `name` is created outside the
   # chart (a SealedSecret in prod).

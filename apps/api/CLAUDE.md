@@ -8,7 +8,9 @@ Zasady wspólne dla całego repo są w głównym `CLAUDE.md`, opis domeny w `doc
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
-  argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`
+  argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`.
+  CI uruchamia suity `unit`, `integration` i `functional` z `phpunit.dist.xml` po nazwie, w osobnych częściach
+  `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
@@ -546,7 +548,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
   każdy 5xx: klient może tylko spróbować później, a komunikat wyjątku zostaje w logu. Domena nie zna statusów HTTP,
-  mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
+  mapowanie jest w `Shared\Infrastructure\Http`: jedyne `ExceptionStatus::of()`, z którego biorą status
+  `ProblemDetailsSubscriber` i zgłaszanie błędów do Sentry. Komunikat bez danych wewnętrznych i wejścia użytkownika
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Sześć 409 produktu (`slug-taken`, `slug-locked`, `product-modified`, `product-not-publishable`, `variant-locked`,
@@ -786,6 +789,42 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - Testy: jednostkowe `tests/Unit/Shared/Observability`, funkcjonalny nagłówek
     `tests/Functional/Shared/CorrelationIdTest.php`, integracyjny przez outbox, RabbitMQ i konsumenta
     `EventFlowTest` (kernel `test_messaging`).
+- Sentry (`docs/features/sentry/spec.md`, `config/packages/sentry.yaml`, `sentry/sentry-symfony`): zmienne `SENTRY_DSN`,
+  `SENTRY_ENVIRONMENT` (bez niej środowisko kernela), `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE` (bez niej 0,
+  parametr `app.sentry.traces_sample_rate`) czytane przy starcie (`%env(default:…)%`). Bez DSN SDK nic nie wysyła, zły
+  DSN to błąd konfiguracji. Zdarzenie błędu idzie od razu (limit połączenia i odpowiedzi 2 s), transakcja po odpowiedzi
+  (`kernel.terminate`). `send_default_pii: false`, `max_request_body_size: none`, handler błędów PHP SDK wyłączony,
+  w `prod.ini` `zend.exception_ignore_args = On`. Błąd fatalny PHP w workerze i konsoli (np. OOM, limit czasu) nie jest
+  zdarzeniem Sentry (handler błędów SDK wyłączony, kanał `php` wykluczony): trafia tylko do logów.
+  - Jeden kanał na źródło, jeden błąd to jedno zdarzenie: HTTP zgłasza `ServerErrorReporter`
+    (`Shared\Infrastructure\Observability`, `kernel.exception` z priorytetem -99, tuż przed `ProblemDetailsSubscriber`,
+    który ustawia odpowiedź i zatrzymuje propagację) tylko dla statusu ≥ 500 z `ExceptionStatus`, a listener błędów
+    bundla jest wyłączony; konsolę listener konsoli bundla (`services.yaml` definiuje go z raportowaniem, które bundle
+    wiąże z listenerem błędów); workera listener Messengera bundla tylko po ostatniej próbie (`capture_soft_fails:
+    false`), z osobnym kontekstem Sentry na wiadomość; jawne logi aplikacji od `error` handler `sentry` w
+    `monolog.yaml` (`LogToSentryIssueHandler`: bez kontekstu logu, bez wpisów z `context.exception`) we wszystkich
+    kanałach poza `request`, `console`, `messenger`, `php`, `deprecation` i `cache`. Handlera breadcrumbs nie ma. Nowe
+    zgłaszanie do Sentry idzie jednym z tych kanałów, nie obok.
+  - `SentryEventProcessor` (callbacki `before_send`, `before_send_transaction`, `before_breadcrumb`: serwisy
+    `app.sentry.*`) dodaje tag `correlation_id` z `CorrelationId` w chwili wysyłki i przepuszcza wszystko przez
+    `SentryEventFilter`: z żądania zostają metoda, adres bez query i nagłówki `User-Agent`, `Content-Type`, `Accept`;
+    bez użytkownika, ciasteczek, treści i adresu klienta; `extra` tylko `correlation_id`, wartości kontekstów poza `trace`
+    usunięte; bez query w nazwach transakcji, spanów HTTP i breadcrumbs, bez danych o nagłówkach, ciasteczkach,
+    treści, parametrach zapytań i kliencie; ramki bez `vars`; teksty maskowane wzorcami Alloy i identyfikator koszyka
+    gościa ze ścieżki `/guest-carts/<id>` (klucz dostępu do koszyka, wzorzec spoza Alloy). Spany Doctrine mają SQL
+    z placeholderami (SDK nie zbiera parametrów).
+  - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w `SentryEventFilter::MASKS` i w Alloy
+    (`infra/k8s/argocd/apps/monitoring.yaml`, korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma
+    kopię wierszy korpusu `api.log` i `postgres.log` (kontener api widzi tylko `apps/api`): zmiana korpusu zmienia też
+    kopię.
+  - Trace'y: `/health` nie jest śledzony (`ignore_transactions`), api kontynuuje trace z `sentry-trace` i `baggage`
+    (CORS dopuszcza je z `ADMIN_URL`), ale nie przekazuje trace'a dalej: wywołania wychodzące (Keycloak, Varnish, sklep,
+    płatności) nie niosą `sentry-trace` ani `baggage` (`trace_propagation_targets: []`), także bez DSN. Spany Doctrine,
+    klienta HTTP i pul cache (bundle dekoruje każdą pulę jako `<pula>.traceable`).
+  - Testy: jednostkowe `tests/Unit/Shared/Observability` i `ExceptionStatusTest`, funkcjonalne
+    `tests/Functional/Shared/Sentry*Test.php` na prawdziwym transporcie SDK z klientem HTTP, który zapisuje koperty
+    (`RecordingSentryHttpClient`, `when@test`; wywołania wychodzące: `RecordingOutgoingHttpClient` pod `http_client`), i fałszywym DSN (`SentryEnvironment`: zmienne przed startem kernela,
+    reset statycznego stanu SDK).
 - Transport Messengera `scheduled` (Doctrine,
   `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
   `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
@@ -827,7 +866,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Obraz Docker (`apps/api/Dockerfile`), etapy po kolei: `runtime` (FrankenPHP, rozszerzenia PHP, `app.ini`, Caddyfile),
   `base` z `runtime` (Composer, git, unzip, entrypoint `composer install` przy zmianie `composer.lock`), `build`
   z `base` (`composer install --no-dev --classmap-authoritative`, kod aplikacji, rozgrzany cache `prod`), `prod`
-  z `runtime` (kod i `vendor` z `build`, `docker/php/conf.d/prod.ini` z opcache bez sprawdzania znaczników czasu,
+  z `runtime` (kod i `vendor` z `build`, `docker/php/conf.d/prod.ini` z opcache bez sprawdzania znaczników czasu i bez argumentów w śladach wyjątków,
   `APP_ENV=prod`, `APP_DEBUG=0`, bez Composera, gita, SPX, pakietów dev i entrypointu instalującego zależności;
   `fixtures/` jest w obrazie, `tests/` nie) i `dev` z `base` jako ostatni etap (compose i CI budują `target: dev`).
   Produkcyjny obraz buduje się `docker build --target prod apps/api` bez stosu i bez sekretów: cache `prod` rozgrzewa
@@ -862,6 +901,16 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
 - Każdy endpoint: co najmniej jeden test funkcjonalny, w tym przypadek bez autoryzacji i z błędnymi danymi.
 - Dane testowe przez fabryki (Foundry), a nie tablice budowane ręcznie w każdym teście.
 - Poprawka błędu zaczyna się od testu, który ten błąd odtwarza i nie przechodzi.
+- Testy współbieżności forkują uczestników (`ConcurrentCommands`, `ParallelProcesses`, webhook w
+  `StartPaymentConcurrencyTest`). Rodzic woła przed forkiem `gc_collect_cycles()`: niezebrane cykle (np. połączenie AMQP po
+  teście z kernelem `test_messaging`) dziecko odziedziczyłoby, a `Kernel::shutdown()` w jego procesie uruchomiłby ich
+  destruktory na gnieździe wspólnym z rodzicem i czekał ~30 s na odpowiedź brokera.
+- Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 100 ms zamiast 1 s (liczba prób
+  i mnożnik jak w produkcji, pilnuje tego `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
+  Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s w
+  `ProbesTest`, timeouty DSN Redisa, limity w `DashboardTimingTest` i podobne), czekają ich prawdziwy czas; test wolnego
+  sklepu (`HttpStorefrontCacheTest`) używa klienta z pomniejszonymi limitami. Test, który czeka na powrót ponowienia do
+  kolejki, odpytuje ją co 20 ms (`awaitEventsInQueue`, do 3 s) zamiast spać.
 
 ## Czego nie robić
 
