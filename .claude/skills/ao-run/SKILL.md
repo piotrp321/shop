@@ -240,7 +240,10 @@ Zaraz po starcie zadania tła sprawdź, czy kolejny epik może ruszyć równoleg
 Zacznij na zdarzeniu `epic_done` albo gdy `ao status --epic <epik>` pokazuje `DONE` (po resynchronizacji lub po
 zakończeniu zadania tła AO). AO ustawia `DONE` dopiero przy zielonym CI końcowego PR i `MERGEABLE`, a czerwone CI
 naprawia sam (jeden rerun, potem `<EPIK>-REPAIR-n` i runda `DELTA`), więc nie czekaj na CI sam. Na `final_pr_created`
-wysyłasz tylko push z linkiem (krok 3). Przeczytaj `ao report --epic <epik>` oraz sekcję „Lista odbioru” z ostatniego
+wyślij push z linkiem (krok 3) i od razu dopisz linie `Closes #N` komendą `Closes` z dalszej części tej sekcji
+(`<nr>` z pushu). `Closes` działa dopiero przy merge'u, a AO nie zmienia opisu PR po jego utworzeniu, więc linie są
+w opisie także wtedy, gdy użytkownik zmerguje PR przed `DONE` albo epik skończy się jako `BLOCKED`. Kod wyjścia różny
+od 0: podaj w pushu i w rozmowie listę `Closes #N` do dopisania ręcznie. Przeczytaj `ao report --epic <epik>` oraz sekcję „Lista odbioru” z ostatniego
 raportu `/integration`: plik z najwyższym numerem rundy `$AO_HOME/epics/<epik>/integration/round-N.md`.
 
 Przed raportem, raz na epik, zapisz koniec pomiaru (stan limitów jak w sekcji 2, świeże wywołanie `get_usage`):
@@ -255,7 +258,8 @@ Wyjście to pomiar (zadania, minuty, przyrost okien limitu i `overlap`: przedzia
 innego epiku albo zaczyna się w nim `start` innego epiku bez `done`). Kod wyjścia różny od 0: przekaż komunikat ze
 stderr i prowadź epik dalej; epik z listy nocy kończy wtedy noc po sobie (`close`, sekcja „Noc”).
 
-Dopisz do opisu końcowego PR linie `Closes #N` dla każdego issue z linii `Issues:` specyfikacji epiku na `origin/main`
+W raporcie odbioru powtórz tę komendę (dopisuje tylko brakujące linie): dopisz do opisu końcowego PR linie
+`Closes #N` dla każdego issue z linii `Issues:` specyfikacji epiku na `origin/main`
 (issue epiku i issues, które epik realizuje; inne numery ze specyfikacji, np. zależności, się nie liczą). Komenda
 dopisuje tylko brakujące linie, więc jej powtórzenie niczego nie dubluje:
 
@@ -296,7 +300,8 @@ Zostaw w rozmowie raport odbioru:
 - **Link do końcowego PR i dopisane linie `Closes #N`** (albo lista do dopisania ręcznie, gdy komenda się nie udała).
 
 Gdy epik kończy się jako `BLOCKED` (np. `max_repairs`, `epic_timeout`) albo AO zatrzymał się bez `DONE`, nie buduj raportu
-odbioru ani pomiaru (`done`): opisz ten stan i powiedz, co użytkownik musi rozstrzygnąć. Epik z listy nocy kończy
+odbioru ani pomiaru (`done`): opisz ten stan i powiedz, co użytkownik musi rozstrzygnąć; gdy końcowy PR istnieje,
+uruchom komendę `Closes` z tej sekcji i podaj jej ostatnią linię. Epik z listy nocy kończy
 wtedy noc (`close`, sekcja „Noc”).
 
 Wyślij push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Końcowy PR merguje użytkownik albo ty na jego
