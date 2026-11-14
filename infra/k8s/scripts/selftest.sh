@@ -38,6 +38,9 @@ fresh_copy() {
   # The deployment script is shellchecked and its push is tested.
   mkdir -p "$base/tree/.github/scripts"
   cp "$TOOLS_REPO/.github/scripts/deploy-ref.sh" "$base/tree/.github/scripts/deploy-ref.sh"
+  # The tests of the hook of the panel run apps/admin/docker/40-admin-config.sh.
+  mkdir -p "$base/tree/apps/admin/docker"
+  cp "$TOOLS_REPO/apps/admin/docker/40-admin-config.sh" "$base/tree/apps/admin/docker/40-admin-config.sh"
   # The step gitignore asks git about the rules of .gitignore, so the copy is a (fresh, empty) repository with the same rules.
   cp "$TOOLS_REPO/.gitignore" "$base/tree/.gitignore"
   git init -q "$base/tree"
