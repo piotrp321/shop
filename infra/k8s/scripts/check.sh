@@ -131,6 +131,29 @@ do_schema() {
       --set 'clientIpHeader=CF Connecting IP'
     expect_failure "clientIpHeaderWithoutAllowList that is not a boolean" "/clientIpHeaderWithoutAllowList" \
       -f environments/ci/values.yaml --set image.tag=$rev --set-string clientIpHeaderWithoutAllowList=true
+    # Sentry (docs/features/sentry/spec.md, D1 and D3): the sample rate is a fraction, a DSN has the shape https://<key>@<host>/<project>.
+    expect_failure "sentry.tracesSampleRate above 1" "maximum: got 1.5, want 1" $prod --set image.tag=$rev $digests \
+      --set-json sentry.tracesSampleRate=1.5
+    expect_failure "sentry.tracesSampleRate below 0" "minimum: got -0.1, want 0" $prod --set image.tag=$rev $digests \
+      --set-json sentry.tracesSampleRate=-0.1
+    expect_failure "sentry.tracesSampleRate that is a string" "/sentry/tracesSampleRate" $prod --set image.tag=$rev $digests \
+      --set-string sentry.tracesSampleRate=0.1
+    expect_failure "a value of sentry that does not exist" "'tracing' not allowed" $prod --set image.tag=$rev $digests \
+      --set sentry.tracing=true
+    expect_failure "a DSN of an application that does not exist" "'worker' not allowed" $prod --set image.tag=$rev $digests \
+      --set sentry.dsn.worker=https://key@o1.ingest.de.sentry.io/1
+    for app in api store admin; do
+      expect_failure "sentry.dsn.$app with http" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=http://key@o1.ingest.de.sentry.io/1"
+      expect_failure "sentry.dsn.$app without the key" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://o1.ingest.de.sentry.io/1"
+      expect_failure "sentry.dsn.$app without the project" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://key@o1.ingest.de.sentry.io"
+      expect_failure "sentry.dsn.$app with a project that is no number" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://key@o1.ingest.de.sentry.io/api"
+      expect_failure "sentry.dsn.$app with whitespace" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://key@o1.ingest.de.sentry.io/1 "
+    done
   }
 }
 
