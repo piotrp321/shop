@@ -24,14 +24,15 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
    serwera to root albo konto z `sudo` bez hasła (`sudo -n`).
 3. **agent** – ustawia domenę w `infra/k8s/environments/prod/values.yaml` (`global.domain`) i nadawcę poczty (`mailer.from`,
    `keycloak.mailFrom`, jeśli ma być inny niż domyślny `zamowienia@`/`konto@<domena>`), PR do `main`; merge robi
-   **użytkownik**. Wdrożenie (`deploy.yml`) startuje tylko na życzenie użytkownika (sekcja 7), nie po merge'u. Na tym etapie
+   **użytkownik**. Wdrożenie (`deploy.yml`) startuje tylko na życzenie użytkownika (sekcja 7), nie po merge'u. Po
+   merge'u **zgoda użytkownika** i `gh workflow run deploy.yml --ref main`; na tym etapie workflow
    buduje i testuje obrazy, ale bez sekretu `DEPLOY_KEY` kończy się po smoke teście z ostrzeżeniem (nic nie publikuje).
 
 ## 1. GitHub: obrazy, ruleset, deploy key
 
 Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
-1. Widoczność pakietów GHCR: po pierwszym udanym wdrożeniu (run `deploy.yml` na `main`, sekcja 7) pakiety `shop/api`, `shop/store`, `shop/admin`
+1. Widoczność pakietów GHCR: po pierwszym udanym wdrożeniu (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`, sekcja 7) pakiety `shop/api`, `shop/store`, `shop/admin`
    i `shop/elasticsearch` ustaw na **publiczne** (Packages → pakiet → Package settings → Change visibility), żeby k3s
    pobierało je bez `imagePullSecret`. Nie włączaj żadnej retencji ani czyszczenia wersji pakietów: obrazy z digestami, do
    których odwołują się snapshoty `deploy-images`, są potrzebne do cofnięcia wersji (workflow też niczego nie usuwa).
@@ -53,8 +54,8 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    rm -f /tmp/shop-deploy-key /tmp/shop-deploy-key.pub
    ```
 
-4. Uruchom ponownie ostatni run `Deploy` na `main` (Actions → Re-run all jobs; obrazy z tym tagiem zostają, nie są
-   przebudowywane). Krok `Publish deploy and deploy-images` tworzy gałęzie `deploy` i `deploy-images`.
+4. **zgoda użytkownika** – uruchom wdrożenie ponownie: `gh workflow run deploy.yml --ref main` (obrazy z tagiem tego
+   samego commita zostają, nie są przebudowywane). Krok `Publish deploy and deploy-images` tworzy gałęzie `deploy` i `deploy-images`.
 5. Próby rulesetów, osobno dla `deploy` i dla `deploy-images` (zapisz wyniki w komentarzu do zgłoszenia #175):
 
    | Próba | Oczekiwany wynik |
@@ -235,7 +236,8 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   automatyczną synchronizację aplikacji `root`, a potem aplikacji `shop` (kolejność ma znaczenie: `root` z `selfHeal`
   przywraca z gita `syncPolicy` aplikacji `shop`, a Argo CD nie synchronizuje do innej rewizji aplikacji z automatyczną
   synchronizacją) i synchronizuje `shop` z poprzednim snapshotem `deploy-images` (jego obrazy są w GHCR). Potem robi revert
-  na `main`, a po opublikowaniu nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
+  na `main`, uruchamia wdrożenie (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`), a po opublikowaniu
+  nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
   `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
   port-forward svc/argocd-server 8080:80'`, hasło w sekrecie `argocd-initial-admin-secret` (**użytkownik**).

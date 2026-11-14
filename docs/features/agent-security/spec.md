@@ -102,7 +102,7 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
 **Aktywa.**
 
 - A1 Produkcja: klucz SSH serwera `~/.ssh/shop`, kubeconfig klastra (`~/.kube/*` i `KUBE_DIR` operacji, cluster-admin),
-  wdrożenie (merge do `main` uruchamia `deploy.yml`, który sekretem `DEPLOY_KEY` przesuwa gałąź `deploy`).
+  wdrożenie (`deploy.yml` uruchomiony przez `workflow_dispatch` na `main` sekretem `DEPLOY_KEY` przesuwa gałąź `deploy`).
 - A2 GitHub: token `gh` użytkownika w Keychain (`repo`, `admin:public_key`, `gist`), klucz `~/.ssh/id_rsa` (git przez
   SSH do wszystkich repozytoriów, także prywatnego AO), rulesety `main`, `epic`, `deploy`, sekrety Actions
   (`DEPLOY_KEY`; `SENTRY_AUTH_TOKEN` po epiku SENTRY), `GITHUB_TOKEN` workflowów.
@@ -154,7 +154,8 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
    nie znajduje elementu) i dostaje ograniczony token (R4). Sprawdzenie: sonda: `security` i
    `docker-credential-desktop list` niczego nie zwracają, token nie widzi `piotrp321/agentic-orchestrator` ani
    ustawień wymagających administracji repozytorium.
-9. Merge do `main` przez wykonawcę (token z prawem merge'u) uruchamia wdrożenie → job `deploy` w środowisku
+9. Uruchomienie `deploy.yml` na `main` przez wykonawcę (`workflow_dispatch`: token z Actions RW, bez merge'u; albo merge
+   z prawem merge'u, a potem dispatch) uruchamia wdrożenie → job `deploy` w środowisku
    `production` z wymaganym zatwierdzeniem; token wykonawcy bez Deployments: write nie zatwierdzi wdrożenia (R4, R5).
    Sprawdzenie: test `deploy.yml` (`test_deploy_workflow.py`) i sonda: `POST …/actions/runs/<nieistniejący>/
    pending_deployments` z tokenem wykonawcy dostaje `403` (brak uprawnienia), nie `404`.
@@ -543,7 +544,7 @@ wykonawcy, nie konfigurację.
 - Za wąska lista odczytu lub sieci psuje pracę wykonawcy w rzadkim przypadku: bloker z `Operation not permitted`,
   poprawka profilu w PR. Pierwszy epik po AGENT-SECURITY-5 to pomiar: blokery wywołane profilem w raporcie odbioru.
 - `disableAllHooks` wyłącza hook startowy wtyczki superpowers u wykonawców; skille wtyczki zostają dostępne.
-- Zatwierdzanie każdego wdrożenia dodaje użytkownikowi jedną czynność na merge do `main`.
+- Zatwierdzanie każdego wdrożenia dodaje użytkownikowi jedną czynność na każde uruchomienie `deploy.yml` na `main`.
 - Awaria produkcji w trakcie przebiegu AO (także nocnej kolejki) wymaga zatrzymania AO przed `restore`, `rerun`,
   `backups` i `create-admin`.
 - Koszt sondy przy każdym `ao run`: jeden krótki przebieg Haiku; eksperymenty przy przygotowaniu kosztowały około

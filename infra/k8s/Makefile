@@ -14,7 +14,8 @@ check:
 # auth ingress exposing the master realm, a job in a wave before its dependency, an image without a digest, a chart
 # allowed on Kubernetes older than 1.36, Brevo allowed without its secret, keycloak-config printing a secret,
 # create-admin going on without tak, deploy.yml needing a job that does not exist, an unquoted variable in its scripts, no
-# smoke test before deploy, images pushed for every event, runs for main cancelled, steps of deploy.yml without pipefail,
+# smoke test before deploy, images pushed for every event, deploy.yml triggered by a push, a deployment for a dispatch on any
+# branch, runs for main cancelled, steps of deploy.yml without pipefail,
 # the two deploy branches pushed without --atomic, no check of the render before the push, a short digest accepted by
 # the images values generator, a workflow that deletes package versions, the certificate of Sealed Secrets ignored by git,
 # deploy.yml missing, a backup repository without its password, the backup CronJob without concurrencyPolicy Forbid, the

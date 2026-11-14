@@ -459,7 +459,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 - CI (`deploy.yml`): `smoke` na `ubuntu-latest` dla PR zmieniających `infra/**`, `apps/*/Dockerfile`,
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
   `apps/admin/package-lock.json`, `apps/store/next.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)
-i na `workflow_dispatch` na innej gałęzi niż `main` (próba: tylko smoke, nic nie jest wypychane i `deploy` się nie
+  i na `workflow_dispatch` na innej gałęzi niż `main` (próba: tylko smoke, nic nie jest wypychane i `deploy` się nie
   przesuwa), oraz zawsze przed wdrożeniem (`workflow_dispatch` na `main`: obrazy, smoke, `deploy`). Push do `main` nie
   uruchamia `deploy.yml`. `workflow_dispatch` GitHub oferuje dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`);
   wcześniej próbę daje zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).

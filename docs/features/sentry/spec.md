@@ -34,8 +34,8 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
 - **P2. Przeglądarka sklepu.** Sklep w przeglądarce zgłasza tylko błędy, bez trace'ów i bez Session Replay; SDK
   przeglądarki ładuje się dopiero po odczycie DSN z `/api/site` (osobny chunk), więc bez DSN strona nie pobiera kodu
   Sentry, a budżety Lighthouse się nie zmieniają. Błędy przeglądarki sprzed inicjalizacji SDK są pomijane (przyjęte).
-- **P3. Mapy źródeł.** Wysyłane z budowania obrazów `prod` w jobie `images` workflowu `deploy.yml` (tylko `push` na
-  `main`) tokenem `SENTRY_AUTH_TOKEN` (sekret GitHub Actions, montowany jako sekret budowania), dopasowane przez debug
+- **P3. Mapy źródeł.** Wysyłane z budowania obrazów `prod` w jobie `images` workflowu `deploy.yml` (tylko
+  `workflow_dispatch` na `main`) tokenem `SENTRY_AUTH_TOKEN` (sekret GitHub Actions, montowany jako sekret budowania), dopasowane przez debug
   ID; po wysłaniu usuwane z obrazu. Bez sekretu krok wysyłki się pomija i obraz powstaje bez map. Wymaga zależności
   deweloperskiej `@sentry/vite-plugin` w panelu (sklep ma wtyczkę w `@sentry/nextjs`).
 - **P4. Próbkowanie trace'ów.** `tracesSampleRate` z wartości chartu, w `prod` 0,1 dla api, sklepu i panelu; żądania

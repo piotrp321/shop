@@ -10,6 +10,7 @@ import unittest
 from support import REPO, RENDER
 
 APPS = ("api", "store", "admin", "elasticsearch")
+PUSH_EVENT = re.compile(r"event_name\s*[!=]=\s*'push'|GITHUB_EVENT_NAME\"?\s*=\s*push")
 SHA_PIN = re.compile(r"^[\w.-]+/[\w.-]+@[0-9a-f]{40}$")
 
 workflow = json.loads((RENDER / "deploy-workflow.json").read_text())
@@ -51,7 +52,18 @@ class Triggers(unittest.TestCase):
     def test_there_is_no_push_trigger(self):
         self.assertNotIn("push", workflow["on"])
         self.assertEqual({"pull_request", "workflow_dispatch"}, set(workflow["on"]))
-        self.assertNotRegex(json.dumps(workflow), r"event_name\s*[!=]=\s*'push'|GITHUB_EVENT_NAME\"? = push")
+        # Neither an expression nor a shell script asks whether the event is a push.
+        texts = [json.dumps(workflow["concurrency"]), json.dumps(workflow["env"])]
+        texts += [str(job.get("if", "")) for job in jobs.values()]
+        texts += [str(step.get("if", "")) for job in jobs.values() for step in job["steps"]]
+        texts += [json.dumps(step.get("env", {})) for job in jobs.values() for step in job["steps"]]
+        texts += run_scripts()
+        for text in texts:
+            self.assertIsNone(PUSH_EVENT.search(text), text)
+
+    def test_the_push_check_catches_the_old_forms(self):
+        for old in ("github.event_name == 'push'", "github.event_name != 'push'", 'if [ "$GITHUB_EVENT_NAME" = push ]; then'):
+            self.assertIsNotNone(PUSH_EVENT.search(old), old)
 
     def test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main(self):
         self.assertEqual(ON_MAIN, jobs["images"]["if"])

@@ -317,8 +317,8 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   platformy (Argo CD, Sealed Secrets, `k8s-monitoring` z Grafana Alloy, `prometheus-operator-crds`).
 - **GitOps**: Argo CD (app-of-apps w `infra/k8s/argocd/`) śledzi gałąź `deploy-images`. Zmiana w repo → Argo
   synchronizuje klaster, bez ręcznego `kubectl apply`.
-- **CI**: GitHub Actions z każdego commita na `main` buduje cztery obrazy produkcyjne (api, store, admin,
-  elasticsearch), wypycha je do GitHub Container Registry, uruchamia smoke test na k3d na tych obrazach i dopiero
+- **CI**: GitHub Actions na życzenie użytkownika (`workflow_dispatch` na `main`, nie po każdym pushu) buduje cztery
+  obrazy produkcyjne (api, store, admin, elasticsearch) z bieżącego commita `main`, wypycha je do GitHub Container Registry, uruchamia smoke test na k3d na tych obrazach i dopiero
   po zielonym jednym atomowym pushem przesuwa `deploy` (fast-forward na commit z `main`) i dodaje do `deploy-images`
   snapshot: ten commit plus plik z tagiem i digestami obrazów. Obrazy są wdrażane po digeście.
 - **Sekrety**: nigdy w repo w postaci jawnej; Sealed Secrets (certyfikat kontrolera w repo, klucz prywatny w kopii
