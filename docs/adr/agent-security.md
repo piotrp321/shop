@@ -118,9 +118,11 @@ AGENT-ISOLATION (#498).
   wrapper, profil i flagi co AO, model Haiku) i sprawdza próby obejścia z dróg 2–9, 11–13 i 15 oraz przypadki pracy
   (git, `gh`, Docker, stan zadania); drogę 10 sprawdza test workflowów, drogę 14 testy celów i `ao-prepare`. Fail-closed: kod 0 tylko, gdy każdy przypadek ma wynik i przeszedł.
 - **R7. Start AO.** `/ao-run` startuje każde `ao run` (także wznowienie) wyłącznie przez
-  `tools/agent-security/ao-prepare` i z jego wyniku: skrypt po `git fetch origin main` kopiuje wrapper, profil,
-  nakładkę `mktemp` i sondę z jednego commita `origin/main` (nie z drzewa roboczego sesji) do `$AO_HOME/agent-security/`,
-  odmawia startu przy istniejącym `KUBE_DIR` z rejestru i przy działającym AO na tym `AO_HOME` (kopia nie zmienia się
+  `tools/agent-security/ao-prepare` i z jego wyniku: skrypt kopiuje wrapper, profil, nakładkę `mktemp` i sondę
+  z commita `main` na zdalnym repozytorium (SHA z `git ls-remote`, commit pobrany do prywatnego repozytorium
+  w `$AO_HOME`, `git` bez obiektów zastępczych i graftów; nie z drzewa roboczego sesji ani ze wspólnego `.git` klonu,
+  do którego wykonawcy piszą) do `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru
+  (przed sondą i po niej) i przy działającym AO na tym `AO_HOME` (kopia nie zmienia się
   w trakcie przebiegu) i uruchamia sondę z kopii z binarką przypiętą przez AO; sonda, która nie przeszła, nie skończyła
   się w limicie czasu albo nie dała wyniku, blokuje start (fail-closed), a sesja wysyła push z przyczyną.
 - **R8. Merge tylko z zielonym CI, bez bypassu.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) oraz

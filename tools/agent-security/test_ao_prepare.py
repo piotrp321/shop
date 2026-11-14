@@ -36,6 +36,11 @@ if mode == 'noisy':
     sys.stdout.flush()
 if mode == 'hang':
     time.sleep(600)
+if mode == 'kubedir':
+    # An operation starts while the probe runs: kubeconfig records a new KUBE_DIR.
+    os.makedirs(os.environ['FAKE_KUBE_DIR'])
+    with open(os.environ['FAKE_KUBE_REGISTRY'], 'a') as f:
+        f.write(os.environ['FAKE_KUBE_DIR'] + '\n')
 cases = [{'name': 'bash_cat_canary', 'layer': 'sandbox', 'kind': 'bypass', 'status': 'pass'}]
 payload = {'mode': 'default', 'cases': cases, 'total_cost_usd': 0.0041, 'elapsed_s': 12.5, 'reason': None}
 code = 0
@@ -48,6 +53,8 @@ elif mode == 'fail2':
     code = 2
 elif mode == 'failedcase':
     cases[0]['status'] = 'fail'
+elif mode == 'notdict':
+    payload['cases'] = ['bash_cat_canary']
 if mode == 'badjson':
     open(result, 'w').write('{not json')
 elif mode != 'noresult':
@@ -306,6 +313,61 @@ class AoPrepareTest(unittest.TestCase):
             code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE=mode))
             self.assert_refused(code, out, err, 'sonda bezpieczeństwa nie przeszła', text)
 
+
+    # ------------------------------------------------------------ the shared .git of the main clone is not trusted
+
+    def assert_copy_is_remote_main(self):
+        for name in FILES:
+            with open(self.copy(name)) as f:
+                self.assertEqual(origin_content(name, 'v2'), f.read(), name)
+        self.assertEqual('v2', self.probe_record()['version'])
+        self.assertFalse(os.path.exists(self.record + '.worktree'), 'probe.py of the attacker ran')
+
+    def test_replace_objects_planted_in_the_main_clone_do_not_change_the_copy(self):
+        git(self.repo, 'fetch', '-q', 'origin', 'main')
+        for name in ('probe.py', 'claude-agent'):
+            good = git(self.repo, 'rev-parse', 'origin/main:tools/agent-security/%s' % name)
+            bad = subprocess.run(['git', '-C', self.repo, 'hash-object', '-w', '--stdin'], check=True,
+                                 capture_output=True, text=True,
+                                 input='#!/usr/bin/env python3\nimport os\nopen(os.environ["FAKE_PROBE_RECORD"]'
+                                       ' + ".worktree", "w").write("planted")\n').stdout.strip()
+            git(self.repo, 'replace', good, bad)
+        code, out, err = self.prepare()
+        self.assertEqual(0, code, err)
+        self.assert_copy_is_remote_main()
+        self.assertEqual(self.main_sha, self.values(out)['MAIN_SHA'])
+
+    def test_a_moved_origin_main_in_the_main_clone_does_not_change_the_copy(self):
+        # The attacker's commit has the working-tree files (its probe.py marks that it ran); every git call on the
+        # main clone moves refs/remotes/origin/main to it right after, as an executor racing ao-prepare would.
+        git(self.repo, 'checkout', '-q', '-b', 'attack')
+        git(self.repo, 'add', '-A')
+        git(self.repo, 'commit', '-q', '-m', 'attack')
+        attack = git(self.repo, 'rev-parse', 'HEAD')
+        shim = os.path.join(self.tmp, 'shim')
+        real = shutil.which('git')
+        write(os.path.join(shim, 'git'), '#!/bin/sh\n"$REAL_GIT" "$@"; code=$?\n'
+              'case " $* " in *" -C $ATTACK_REPO "*) "$REAL_GIT" -C "$ATTACK_REPO" update-ref '
+              'refs/remotes/origin/main "$ATTACK_SHA" ;; esac\nexit $code\n', 0o755)
+        code, out, err = self.prepare(env=self.env(PATH=shim + os.pathsep + os.environ['PATH'], REAL_GIT=real,
+                                                   ATTACK_REPO=self.repo, ATTACK_SHA=attack))
+        self.assertEqual(0, code, err)
+        self.assert_copy_is_remote_main()
+        self.assertEqual(self.main_sha, self.values(out)['MAIN_SHA'])
+
+    def test_a_kube_dir_registered_while_the_probe_runs_stops_it(self):
+        kube_dir = os.path.join(self.tmp, 'kube.during')
+        os.makedirs(os.path.dirname(self.registry), exist_ok=True)
+        code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE='kubedir', FAKE_KUBE_DIR=kube_dir,
+                                                   FAKE_KUBE_REGISTRY=self.registry))
+        self.assert_refused(code, out, err, 'KUBE_DIR', kube_dir)
+
+    def test_a_case_that_is_not_an_object_is_a_refusal_with_the_reason(self):
+        code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE='notdict'))
+        self.assert_refused(code, out, err, 'sonda bezpieczeństwa nie przeszła', 'bash_cat_canary')
+        with open(os.path.join(self.ao_home, 'probe-runs.jsonl')) as f:
+            self.assertEqual(1, len(f.readlines()))
+
     # ------------------------------------------------------------ other refusals
 
     def test_a_failing_pin_stops_it_with_the_reason(self):
@@ -332,7 +394,7 @@ class AoPrepareTest(unittest.TestCase):
 
     def test_a_failing_fetch_stops_it(self):
         git(self.repo, 'remote', 'set-url', 'origin', os.path.join(self.tmp, 'missing.git'))
-        self.assert_refused(*self.prepare(), 'git fetch')
+        self.assert_refused(*self.prepare(), 'git ls-remote')
         self.assertFalse(os.path.exists(self.record))
 
     def test_missing_git_stops_it(self):

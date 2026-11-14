@@ -18,18 +18,24 @@ on stdout:
      infra/k8s/scripts/kubeconfig.sh) still exists (also as a dangling symlink); a missing registry is no KUBE_DIR, an
      unreadable registry or a relative entry is a refusal;
   3. the pinned binary from claude_pin.py (exit 0 and an absolute path of an executable file; otherwise its stderr);
-  4. `git fetch origin main`, then the six files claude-agent, render_settings.py, executor-settings.json, probe.py,
-     probe-cases.sh and bin/mktemp of that one commit of origin/main (`git show <sha>:tools/agent-security/<file>`,
-     never the working tree) go to a new directory in $AO_HOME that replaces $AO_HOME/agent-security whole; a file
-     that is missing or not a regular blob (a symlink) is a refusal. Files keep the executable bit of git and lose
-     every write bit;
+  4. the six files claude-agent, render_settings.py, executor-settings.json, probe.py, probe-cases.sh and bin/mktemp
+     of the commit `main` points to on the remote. Nothing is read from the shared .git of the main clone, which the
+     executors write (refs, objects: replace objects, a moved refs/remotes/origin/main): only the URL of `origin` from
+     its configuration (write-protected for executors). The SHA comes from `git ls-remote <url> refs/heads/main`; the
+     commit is fetched by that SHA into the private bare repository $AO_HOME/agent-security-src.git (outside the
+     executors' reach) and read there with `ls-tree` and `cat-file blob`. Every git call runs without replace
+     objects, grafts, commit-graph, fsmonitor and hooks (as the wrapper's). The files go to a new directory in
+     $AO_HOME that replaces $AO_HOME/agent-security whole; a file that is missing or not a regular blob (a symlink)
+     is a refusal. Files keep the executable bit of git and lose every write bit;
   5. the probe of the copy ($AO_HOME/agent-security/probe.py, default pass) with --claude-bin on the copied wrapper,
      --agent-claude-bin on the pinned binary, --timeout and --cost-limit, run from --repo without CLAUDE* variables.
      A probe exit other than 0, the outer time limit (--outer-timeout, default --probe-timeout + 600 s: SIGTERM to
      the probe, SIGKILL to its process group after --term-grace), a missing or unreadable result, or a result with a
      reason or a case that did not pass is a refusal `sonda bezpieczeństwa nie przeszła (<reason>); czas <s> s,
      koszt <usd> USD` (`koszt brak danych` without a cost). SIGTERM, SIGINT or SIGHUP of ao-prepare stops the probe
-     the same way.
+     the same way;
+  6. the KUBE_DIR registry once more (step 2) after the probe, which takes minutes: an operation started meanwhile
+     still stops the start.
 
 The probe's stdout and stderr go to the stderr of ao-prepare. Every probe run appends {at, main, code, seconds,
 cost_usd, reason} to $AO_HOME/probe-runs.jsonl (time and cost for the acceptance report) and keeps its result JSON
@@ -42,7 +48,7 @@ stdout exactly these KEY=VALUE lines (one per line; the value is everything afte
   AGENT_AO_HOME=<AO_HOME>                              environment of `ao run` (read by the wrapper)
   PROBE_SECONDS=<wall time of the probe>
   PROBE_COST_USD=<total_cost_usd of the probe, or empty>
-  MAIN_SHA=<the origin/main commit of the copy>
+  MAIN_SHA=<the commit of the copy: main on the remote, from ls-remote>
 Exit codes: 0 AO may start with the output; 1 refused (any step above); 2 usage error.
 """
 import argparse
@@ -50,6 +56,7 @@ import datetime
 import fcntl
 import json
 import os
+import re
 import shutil
 import signal
 import stat
@@ -70,6 +77,13 @@ TERM_GRACE = 120        # seconds between SIGTERM to the probe and SIGKILL to it
 GIT_TIMEOUT = 120
 PIN_TIMEOUT = 120
 REGISTRY = os.path.join('.local', 'state', 'shop-ops', 'kube-dirs')
+SOURCE_REPO = 'agent-security-src.git'
+SHA = re.compile(r'^(?:[0-9a-f]{40}|[0-9a-f]{64})$')
+# git outside the sandbox, as in the wrapper: no replace objects, grafts or commit-graph an executor could plant, no
+# fsmonitor or hooks from a configuration.
+GIT = ['git', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '-c', 'core.commitGraph=false',
+       '-c', 'advice.graftFileDeprecated=false', '-c', 'fetch.fsckObjects=true']
+GIT_ENV = {'GIT_NO_REPLACE_OBJECTS': '1', 'GIT_GRAFT_FILE': '/dev/null', 'GIT_TERMINAL_PROMPT': '0'}
 
 
 class Refused(Exception):
@@ -173,11 +187,13 @@ def pinned_binary(pin_script, ao_dir):
 
 
 def _git(repo, *args, text=True):
-    argv = ['git', '-C', repo] + list(args)
+    argv = GIT + ['-C', repo] + list(args)
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    env.update(GIT_ENV)
     try:
-        result = subprocess.run(argv, capture_output=True, text=text, timeout=GIT_TIMEOUT)
+        result = subprocess.run(argv, capture_output=True, text=text, timeout=GIT_TIMEOUT, env=env)
     except subprocess.TimeoutExpired:
-        raise Refused('%s nie skończył w %d s' % (' '.join(argv[3:]), GIT_TIMEOUT))
+        raise Refused('git %s nie skończył w %d s' % (' '.join(args), GIT_TIMEOUT))
     except OSError as e:
         raise Refused('git %s: %s' % (args[0], e.strerror or e))
     if result.returncode != 0:
@@ -186,26 +202,45 @@ def _git(repo, *args, text=True):
     return result.stdout
 
 
+def source_repo(repo, ao_home):
+    """(private bare repository with the commit of main on the remote, that commit): see step 4."""
+    url = _git(repo, 'config', '--get', 'remote.origin.url').strip()
+    if not url or '\n' in url:
+        raise Refused('brak adresu remote origin w %s' % repo)
+    heads = _git(ao_home, 'ls-remote', url, 'refs/heads/main').split()
+    if len(heads) != 2 or heads[1] != 'refs/heads/main' or not SHA.match(heads[0]):
+        raise Refused('git ls-remote %s refs/heads/main: brak gałęzi main' % url)
+    sha = heads[0]
+    source = os.path.join(ao_home, SOURCE_REPO)
+    if os.path.islink(source) or (os.path.lexists(source) and not os.path.isdir(source)):
+        raise Refused('%s nie jest katalogiem' % source)
+    if not os.path.isdir(source):
+        _git(ao_home, 'init', '-q', '--bare', source)
+    _git(source, 'fetch', '-q', '--no-tags', '--no-write-fetch-head', url, sha)
+    if _git(source, 'cat-file', '-t', sha).strip() != 'commit':
+        raise Refused('%s na zdalnym main nie jest commitem' % sha)
+    return source, sha
+
+
 def copy_from_main(repo, ao_home):
-    """Fetches origin/main and writes the six files of its commit to $AO_HOME/agent-security; returns the commit."""
-    _git(repo, 'fetch', 'origin', 'main')
-    sha = _git(repo, 'rev-parse', '--verify', 'refs/remotes/origin/main^{commit}').strip()
+    """Writes the six files of main on the remote to $AO_HOME/agent-security (step 4); returns the commit."""
+    source, sha = source_repo(repo, ao_home)
     modes = {}
-    for line in _git(repo, 'ls-tree', '-r', sha, '--', SOURCE + '/').splitlines():
+    for line in _git(source, 'ls-tree', '-r', '--full-tree', sha, '--', SOURCE + '/').splitlines():
         meta, _, path = line.partition('\t')
         parts = meta.split()
         if len(parts) == 3:
-            modes[path] = (parts[0], parts[1])
+            modes[path] = (parts[0], parts[1], parts[2])
     staging = tempfile.mkdtemp(prefix='.agent-security.', dir=ao_home)
     try:
         for name in FILES:
             path = '%s/%s' % (SOURCE, name)
-            mode, kind = modes.get(path, (None, None))
+            mode, kind, blob = modes.get(path, (None, None, None))
             if mode is None:
                 raise Refused('brak %s na origin/main (%s)' % (path, sha[:12]))
             if kind != 'blob' or mode not in ('100644', '100755'):
                 raise Refused('%s na origin/main nie jest zwykłym plikiem (tryb %s)' % (path, mode))
-            data = _git(repo, 'show', '%s:%s' % (sha, path), text=False)
+            data = _git(source, 'cat-file', 'blob', blob, text=False)
             target = os.path.join(staging, name)
             os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
             with open(target, 'xb') as f:
@@ -230,7 +265,10 @@ def copy_from_main(repo, ao_home):
 
 
 def _stop(proc, grace):
-    """SIGTERM to the probe (it cleans up), SIGKILL to its process group when it is still there after `grace`."""
+    """SIGTERM to the probe (it cleans up), SIGKILL to its process group when it is still there after `grace`. A
+    further signal to ao-prepare meanwhile is ignored, so the SIGKILL always comes."""
+    for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(s, signal.SIG_IGN)
     if proc.poll() is None:
         try:
             proc.terminate()
@@ -311,9 +349,11 @@ def judge(code, interrupted, result, problem):
         return _line(reason)
     if not result['cases']:
         return 'wynik sondy bez przypadków'
-    failed = [c.get('name') for c in result['cases'] if not isinstance(c, dict) or c.get('status') != 'pass']
-    if failed:
-        return 'kod 0, ale przypadek %s nie przeszedł' % failed[0]
+    for case in result['cases']:
+        if not isinstance(case, dict):
+            return 'kod 0, ale nieczytelny przypadek w wyniku: %s' % _line(json.dumps(case, ensure_ascii=False))[:200]
+        if case.get('status') != 'pass':
+            return 'kod 0, ale przypadek %s nie przeszedł' % case.get('name')
     return None
 
 
@@ -357,6 +397,7 @@ def prepare(args):
         spent = 'czas %.1f s, koszt %s' % (seconds, '%s USD' % cost if cost is not None else 'brak danych')
         if reason:
             raise Refused('sonda bezpieczeństwa nie przeszła (%s); %s' % (reason, spent))
+        check_kube_dirs(os.path.join(os.path.expanduser('~'), REGISTRY))
         print('ao-prepare: sonda przeszła; %s, main %s' % (spent, sha[:12]), file=sys.stderr)
         values = (('AO_CLAUDE_BIN', os.path.join(copy, 'claude-agent')), ('AGENT_CLAUDE_BIN', binary),
                   ('AGENT_AO_HOME', ao_home), ('PROBE_SECONDS', '%.1f' % seconds),

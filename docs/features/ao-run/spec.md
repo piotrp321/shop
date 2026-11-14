@@ -106,17 +106,22 @@ Remote Control skill nie sprawdza.
   `ao run` (spec agent-security, R7). Kolejno, pierwszy niespełniony krok to odmowa (kod 1, jedna linia
   `ao-prepare: <przyczyna>` na stderr, nic na stdout): jedno `ao-prepare` na `AO_HOME` i brak procesu AO na nim (kopia
   nie zmienia się w trakcie przebiegu); żaden `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (zapisuje go
-  `infra/k8s/scripts/kubeconfig.sh`) nie istnieje; binarka przypięta z `claude_pin.py`; po `git fetch origin main`
-  sześć plików jednego commita `origin/main` (`claude-agent`, `render_settings.py`, `executor-settings.json`,
-  `probe.py`, `probe-cases.sh`, `bin/mktemp`; `git show`, nigdy drzewo robocze sesji, bit wykonywalności jak w gicie,
-  bez prawa zapisu) w nowym katalogu, który zastępuje cały `$AO_HOME/agent-security/`; sonda z tej kopii (przebieg
+  `infra/k8s/scripts/kubeconfig.sh`) nie istnieje; binarka przypięta z `claude_pin.py`; sześć plików commita, na
+  który wskazuje `main` na zdalnym repozytorium (`claude-agent`, `render_settings.py`, `executor-settings.json`,
+  `probe.py`, `probe-cases.sh`, `bin/mktemp`; bit wykonywalności jak w gicie, bez prawa zapisu) w nowym katalogu,
+  który zastępuje cały `$AO_HOME/agent-security/`. Źródłem nie jest ani drzewo robocze sesji, ani wspólny `.git`
+  głównego klonu, który wykonawcy zapisują (obiekty `refs/replace`, przestawiony `refs/remotes/origin/main`): z klonu
+  `ao-prepare` czyta tylko adres `origin` z konfiguracji (chronionej przed zapisem wykonawcy), SHA bierze z
+  `git ls-remote <adres> refs/heads/main`, pobiera ten commit do prywatnego repozytorium
+  `$AO_HOME/agent-security-src.git` i czyta je przez `ls-tree` i `cat-file blob`, każde wywołanie `git` bez obiektów
+  zastępczych, graftów, commit-graph, fsmonitora i hooków (jak wrapper); sonda z tej kopii (przebieg
   domyślny) na skopiowanym wrapperze z przypiętą binarką, z katalogu klonu, bez zmiennych `CLAUDE*`, z zewnętrznym
   limitem czasu. Kod sondy różny od 0, limit czasu, brak albo nieczytelny wynik, wynik z przyczyną albo z przypadkiem
   innym niż `pass` to odmowa „sonda bezpieczeństwa nie przeszła (<przyczyna>); czas …, koszt …”. Każdy przebieg
   sondy dopisuje wiersz do `$AO_HOME/probe-runs.jsonl` (`at`, `main`, `code`, `seconds`, `cost_usd`, `reason`), a wynik
-  zostaje w `$AO_HOME/probe-result.json`. Sukces: kod 0 i na stdout linie `KLUCZ=wartość`: `AO_CLAUDE_BIN`
+  zostaje w `$AO_HOME/probe-result.json`. Po sondzie (trwa minuty) rejestr `KUBE_DIR` jest sprawdzany ponownie. Sukces: kod 0 i na stdout linie `KLUCZ=wartość`: `AO_CLAUDE_BIN`
   (wrapper kopii, dla `--claude-bin`), `AGENT_CLAUDE_BIN`, `AGENT_AO_HOME` (środowisko `ao run`), `PROBE_SECONDS`,
-  `PROBE_COST_USD`, `MAIN_SHA`.
+  `PROBE_COST_USD`, `MAIN_SHA` (SHA z `ls-remote`).
 - Katalog przebiegu `$HOME/.local/state/ao-<epik>/` (`AO_HOME`, poza repo) z `events.jsonl`, dziennikiem `run.log`,
   kopią sandboxa `agent-security/` i wynikami sondy (`probe-runs.jsonl`, `probe-result.json`).
 - Katalog stanu wspólnego `$HOME/.local/state/ao-night/` (poza repo, jeden dla wszystkich sesji `/ao-run` na
@@ -448,11 +453,12 @@ bramka pochodzenia: issue `epic` niezaufanego autora nie trafia do `propose`, `a
 ani `ahead`, `propose` podaje je w `skipped`, tytuł i treść nie pojawiają się w wyjściu, błąd zapytania o uprawnienia
 → kod 1). `python3 -m unittest discover -s tools/agent-security -p 'test_ao_prepare.py'`: `ao-prepare` z prawdziwym
 repozytorium tymczasowym z `origin`, atrapą sondy zapisaną na `origin/main` i atrapą `claude_pin.py` (sześć plików
-z `origin/main` po `fetch`, nie z drzewa roboczego, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
+z `main` zdalnego repozytorium, nie z drzewa roboczego, także przy obiektach `refs/replace` i przestawionym
+`refs/remotes/origin/main` w klonie, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
 z kopii, na wrapperze kopii, z przypiętą binarką i bez zmiennych `CLAUDE*`, a zmieniony `probe.py` drzewa roboczego
 nie rusza; starsza kopia zastąpiona w całości; wynik z `AO_CLAUDE_BIN` kopii i zmiennymi, bez wyjścia sondy na stdout; zapis przebiegów; istniejący
-`KUBE_DIR` z rejestru, także jako wiszące dowiązanie, wpis względny i nieczytelny rejestr zatrzymują, nieistniejący
-wpis nie; sonda z kodem 1 albo 2, limit czasu z zabiciem sondy, brak, nieczytelny albo niespójny wynik, błąd
+`KUBE_DIR` z rejestru, także jako wiszące dowiązanie i zarejestrowany w trakcie sondy, wpis względny i nieczytelny
+rejestr zatrzymują, nieistniejący wpis nie; przypadek wyniku, który nie jest obiektem, to odmowa z przyczyną; sonda z kodem 1 albo 2, limit czasu z zabiciem sondy, brak, nieczytelny albo niespójny wynik, błąd
 `claude_pin.py`, plik brakujący albo dowiązanie na `origin/main`, nieudany `fetch`, brak `git`, AO działające na tym
 `AO_HOME` i zły `AO_HOME` → kod różny od 0 z przyczyną; brak argumentów → kod 2). CI uruchamia testy skilli tak jak dla
 `delivery` i `integration`. Sam przebieg sprawdza krok 7 planu (CART-FIXES), a nocną kolejkę pierwsza noc po kroku 8.
