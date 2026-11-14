@@ -323,14 +323,21 @@ class ClaudeTmpdirTest(RenderTestCase):
         return path
 
     def test_only_the_claude_directory_of_the_run_is_opened(self):
+        # Compared with the same render without --claude-tmpdir, so the paths of the test's own directory (in the temp
+        # of the process, which may itself be under /tmp, as on Linux without TMPDIR) do not count, wherever it is.
         run = self.run_dir()
         fs = self.render('--workdir', self.work, '--claude-tmpdir', run)['sandbox']['filesystem']
+        without = self.render('--workdir', self.work)['sandbox']['filesystem']
         inner = os.path.join(run, CLAUDE_UID_DIR)
-        self.assertIn(inner, fs['allowRead'])
-        self.assertIn(inner, fs['allowWrite'])
-        opened = [p for p in fs['allowRead'] + fs['allowWrite'] if p.startswith(TEMP_PARENT + '/')
-                  or p.startswith('/tmp/') or p.startswith('/private/tmp/')]
-        self.assertEqual(set(opened), {inner})
+        for key in ('allowRead', 'allowWrite'):
+            self.assertEqual(set(fs[key]) - set(without[key]), {inner}, key)
+            self.assertEqual(set(without[key]) - set(fs[key]), set(), key)
+        shared = {'/tmp', '/private/tmp', TEMP_PARENT, run, os.path.join(TEMP_PARENT, CLAUDE_UID_DIR)}
+        for path in fs['allowRead'] + fs['allowWrite']:
+            self.assertNotIn(path, shared)
+            self.assertFalse(path != inner and (inner + '/').startswith(path.rstrip('/') + '/'),
+                             '%s opens the run directory or above it' % path)
+            self.assertFalse(path != inner and path.startswith(run + '/'), path)
         for path in ('/tmp', '/private/tmp'):
             self.assertIn(path, fs['denyRead'])
 
