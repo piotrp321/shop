@@ -90,6 +90,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/seo/` – mapa strony i `robots.txt`: `xml.ts` (budowanie `sitemapindex` i `urlset` z ucieczką `& < > " '`),
   `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`), `store-url.ts` (`STORE_URL` czytany przy
   żądaniu) i `home-json-ld.ts` (JSON-LD strony głównej).
+- `src/observability/` – Sentry (patrz „Sentry”): `filter.ts` (jedyny filtr zdarzeń, serwer i przeglądarka).
 - `src/site.ts` – `STORE_NAME`, jedyne miejsce nazwy sklepu: znak słowny w `SiteHeader`, `title` i `description`
   w `app/layout.tsx`, tytuły i opisy w `page-metadata.ts` i `product-metadata.ts` oraz JSON-LD strony głównej. Nie wpisuj
   nazwy w komponentach ani w metadanych.
@@ -626,6 +627,25 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i czeka z linkiem na odczyt przełączników, żeby nie mignął. Zalogowany klient nadal widzi „Wyloguj się”.
 - Błąd odczytu (sieć, status nie-2xx, zły JSON, przełącznik niebędący booleanem) daje stan domyślny: bez paska,
   z linkiem.
+
+## Sentry
+
+Spec: `docs/features/sentry/spec.md`.
+
+- Filtr zdarzeń (`src/observability/filter.ts`, `filterEvent` i `filterBreadcrumb`) to jedna funkcja dla serwera
+  i przeglądarki, wołana z `beforeSend`, `beforeSendTransaction` i `beforeBreadcrumb`. Z żądania zostają metoda, adres
+  bez query i fragmentu i nagłówki `User-Agent`, `Content-Type`, `Accept`; bez ciasteczek, treści, query stringu,
+  adresu klienta, użytkownika i `extra`. Query i fragment znikają z nazw transakcji, nazw spanów HTTP, adresów
+  w danych spanów, kontekstów i breadcrumbs (`fetch`, `xhr`, `navigation`, `http`) i z adresów ramek; dane o query,
+  nagłówkach, ciasteczkach, treści i kliencie są usuwane, breadcrumbs `console` (przeglądarka i Node) też, ramki bez
+  `vars`. Teksty (komunikaty, wartości wyjątków, breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same
+  wzorce co Alloy i filtr api (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL,
+  klucz=wartość z sekretami, `Failing row contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`,
+  adresy IP. Wzorce działają w czasie liniowym (adres e-mail zaczyna się tylko po znaku, którego w nim nie ma).
+- Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w
+  `src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy (`infra/k8s/argocd/apps/monitoring.yaml`,
+  korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy korpusu `store.log`, `api.log`
+  i `postgres.log` (kontener sklepu widzi tylko `apps/store`): zmiana korpusu zmienia też kopię.
 
 ## Konto: historia zamówień
 
