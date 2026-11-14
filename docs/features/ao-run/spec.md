@@ -450,7 +450,7 @@ ani `ahead`, `propose` podaje je w `skipped`, tytuł i treść nie pojawiają si
 repozytorium tymczasowym z `origin`, atrapą sondy zapisaną na `origin/main` i atrapą `claude_pin.py` (sześć plików
 z `origin/main` po `fetch`, nie z drzewa roboczego, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
 z kopii, na wrapperze kopii, z przypiętą binarką i bez zmiennych `CLAUDE*`, a zmieniony `probe.py` drzewa roboczego
-nie rusza; starsza kopia zastąpiona w całości; wynik z `AO_CLAUDE_BIN` kopii i zmiennymi; zapis przebiegów; istniejący
+nie rusza; starsza kopia zastąpiona w całości; wynik z `AO_CLAUDE_BIN` kopii i zmiennymi, bez wyjścia sondy na stdout; zapis przebiegów; istniejący
 `KUBE_DIR` z rejestru, także jako wiszące dowiązanie, wpis względny i nieczytelny rejestr zatrzymują, nieistniejący
 wpis nie; sonda z kodem 1 albo 2, limit czasu z zabiciem sondy, brak, nieczytelny albo niespójny wynik, błąd
 `claude_pin.py`, plik brakujący albo dowiązanie na `origin/main`, nieudany `fetch`, brak `git`, AO działające na tym
