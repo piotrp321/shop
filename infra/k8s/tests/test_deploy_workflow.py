@@ -1,18 +1,38 @@
 """The deployment workflow (.github/workflows/deploy.yml, read as JSON from scripts/render.sh): who pushes images, who
-moves the branch `deploy` and when. Each test names a property of docs/features/deploy/spec.md ("Wdrożenie nowej
+moves the branch `deploy` and when (only a dispatch on main, started on the user's request). Each test names a property of docs/features/deploy/spec.md ("Wdrożenie nowej
 wersji", D4) that a careless edit of the workflow would break without any other check noticing."""
 
 import json
 import re
+import types
 import unittest
 
 from support import REPO, RENDER
 
 APPS = ("api", "store", "admin", "elasticsearch")
+PUSH_EVENT = re.compile(r"event_name\s*[!=]=\s*'push'|GITHUB_EVENT_NAME\"?\s*=\s*push")
 SHA_PIN = re.compile(r"^[\w.-]+/[\w.-]+@[0-9a-f]{40}$")
 
 workflow = json.loads((RENDER / "deploy-workflow.json").read_text())
 jobs = workflow["jobs"]
+
+# A deployment is a dispatch on main, nothing else: not a push, not a pull request, not a dispatch on another branch.
+ON_MAIN = "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
+EVENTS = (
+    ("workflow_dispatch", "refs/heads/main", True),
+    ("workflow_dispatch", "refs/heads/feat/x", False),
+    ("workflow_dispatch", "refs/heads/main-2", False),
+    ("workflow_dispatch", "refs/tags/main", False),
+    ("pull_request", "refs/pull/1/merge", False),
+    ("push", "refs/heads/main", False),
+)
+
+
+def evaluate(expression, event, ref):
+    """The few operators the conditions use (==, !=, &&, ||) on github.event_name and github.ref."""
+    github = types.SimpleNamespace(event_name=event, ref=ref)
+    python = expression.strip().removeprefix("${{").removesuffix("}}").replace("&&", " and ").replace("||", " or ")
+    return eval(python, {"__builtins__": {}}, {"github": github})  # noqa: S307 - our own workflow, fixed vocabulary
 
 
 def steps(job):
@@ -29,10 +49,40 @@ def run_scripts(job=None):
 
 
 class Triggers(unittest.TestCase):
-    def test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main(self):
-        self.assertEqual(["main"], workflow["on"]["push"]["branches"])
-        self.assertEqual("github.event_name == 'push'", jobs["images"]["if"])
-        self.assertEqual("github.event_name == 'push'", jobs["deploy"]["if"])
+    def test_there_is_no_push_trigger(self):
+        self.assertNotIn("push", workflow["on"])
+        self.assertEqual({"pull_request", "workflow_dispatch"}, set(workflow["on"]))
+        # Neither an expression nor a shell script asks whether the event is a push.
+        texts = [json.dumps(workflow["concurrency"]), json.dumps(workflow["env"])]
+        texts += [str(job.get("if", "")) for job in jobs.values()]
+        texts += [str(step.get("if", "")) for job in jobs.values() for step in job["steps"]]
+        texts += [json.dumps(step.get("env", {})) for job in jobs.values() for step in job["steps"]]
+        texts += run_scripts()
+        for text in texts:
+            self.assertIsNone(PUSH_EVENT.search(text), text)
+
+    def test_the_push_check_catches_the_old_forms(self):
+        for old in ("github.event_name == 'push'", "github.event_name != 'push'", 'if [ "$GITHUB_EVENT_NAME" = push ]; then'):
+            self.assertIsNotNone(PUSH_EVENT.search(old), old)
+
+    def test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main(self):
+        self.assertEqual(ON_MAIN, jobs["images"]["if"])
+        self.assertEqual(ON_MAIN, jobs["deploy"]["if"])
+        self.assertEqual("${{ %s }}" % ON_MAIN, workflow["env"]["DEPLOY"])
+
+    def test_the_conditions_hold_only_for_a_dispatch_on_main(self):
+        for event, ref, expected in EVENTS:
+            for expression in (jobs["images"]["if"], jobs["deploy"]["if"], workflow["env"]["DEPLOY"]):
+                self.assertIs(expected, evaluate(expression, event, ref), f"{event} on {ref}: {expression}")
+
+    def test_a_dispatch_on_another_branch_is_a_smoke_rehearsal_only(self):
+        # Everything that publishes or needs the registry (the images, the values file, the pull of the pushed images, the
+        # token) hangs on the one condition; the smoke job itself runs for every event, and nothing else asks for the event.
+        self.assertNotIn("event_name", jobs["smoke"]["if"])
+        for step in steps("smoke"):
+            self.assertNotIn("event_name", step.get("if", ""), step.get("name"))
+        gated = [s["name"] for s in steps("smoke") if s.get("if") == "env.DEPLOY == 'true'"]
+        self.assertEqual(["Write the images values file", "Pull the pushed images by digest"], gated)
 
     def test_pull_requests_run_the_smoke_test_for_the_files_that_decide_the_images(self):
         paths = workflow["on"]["pull_request"]["paths"]
@@ -42,8 +92,11 @@ class Triggers(unittest.TestCase):
         self.assertIn("workflow_dispatch", workflow["on"])
 
     def test_runs_for_main_are_never_cancelled_and_other_runs_are(self):
-        self.assertIn("github.event_name == 'push' && 'main'", workflow["concurrency"]["group"])
-        self.assertEqual("${{ github.event_name != 'push' }}", workflow["concurrency"]["cancel-in-progress"])
+        self.assertEqual("deploy-${{ github.ref }}", workflow["concurrency"]["group"])
+        self.assertEqual("${{ github.ref != 'refs/heads/main' }}", workflow["concurrency"]["cancel-in-progress"])
+        for event, ref, _ in EVENTS:
+            cancel = evaluate(workflow["concurrency"]["cancel-in-progress"], event, ref)
+            self.assertIs(ref != "refs/heads/main", cancel, (event, ref))
 
 
 class Images(unittest.TestCase):
@@ -87,20 +140,20 @@ class Images(unittest.TestCase):
 
 
 class Smoke(unittest.TestCase):
-    def test_it_runs_after_the_images_on_main_and_never_pushes(self):
+    def test_it_runs_after_the_images_on_a_deployment_and_never_pushes(self):
         self.assertEqual("images", jobs["smoke"]["needs"])
         condition = jobs["smoke"]["if"]
         self.assertIn("needs.images.result == 'success'", condition)
         self.assertIn("needs.images.result == 'skipped'", condition)
         self.assertNotIn("failure", condition)
 
-    def test_on_main_it_uses_the_pushed_images_by_digest_otherwise_it_builds_them(self):
+    def test_on_a_deployment_it_uses_the_pushed_images_by_digest_otherwise_it_builds_them(self):
         pull = next(s for s in steps("smoke") if s.get("name") == "Pull the pushed images by digest")
-        self.assertEqual("github.event_name == 'push'", pull["if"])
+        self.assertEqual("env.DEPLOY == 'true'", pull["if"])
         self.assertIn('"$IMAGE_PREFIX/$app@${!digest}"', pull["run"])
         for step in steps("smoke"):
             if uses(step, "docker/build-push-action"):
-                self.assertEqual("github.event_name != 'push'", step["if"])
+                self.assertEqual("env.DEPLOY != 'true'", step["if"])
                 self.assertIs(True, step["with"]["load"])
 
     def test_the_images_are_loaded_into_the_daemon_that_smoke_sh_builds_on(self):
@@ -179,16 +232,17 @@ class ImagesValuesFile(unittest.TestCase):
 
 
 class SmokeValues(unittest.TestCase):
-    def test_on_main_the_first_install_uses_the_values_file_and_the_registry(self):
+    def test_on_a_deployment_the_first_install_uses_the_values_file_and_the_registry(self):
         smoke = next(s for s in steps("smoke") if s.get("name") == "Smoke test")
-        self.assertIn('if [ "$GITHUB_EVENT_NAME" = push ]; then', smoke["run"])
+        self.assertIn('if [ "$DEPLOY" = true ]; then', smoke["run"])
         self.assertIn('export SMOKE_VALUES="$RUNNER_TEMP/values-images.yaml"', smoke["run"])
         self.assertLess(smoke["run"].index("export SMOKE_VALUES"), smoke["run"].index("make -C infra/k8s smoke"))
         self.assertLess(step_index("smoke", "Write the images values file"), step_index("smoke", "Smoke test"))
 
-    def test_the_token_is_read_only_for_packages_and_only_given_on_main(self):
+    def test_the_token_is_read_only_for_packages_and_only_given_on_a_deployment(self):
         smoke = next(s for s in steps("smoke") if s.get("name") == "Smoke test")
-        self.assertEqual("${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}", smoke["env"]["SMOKE_GHCR_TOKEN"])
+        self.assertEqual("${{ env.DEPLOY == 'true' && secrets.GITHUB_TOKEN || '' }}", smoke["env"]["SMOKE_GHCR_TOKEN"])
+        self.assertEqual("${{ env.DEPLOY == 'true' && github.actor || '' }}", smoke["env"]["SMOKE_GHCR_USER"])
         self.assertEqual("read", jobs["smoke"]["permissions"]["packages"])
         self.assertNotIn("SMOKE_GHCR_TOKEN", smoke["run"])
         holders = [(j, s.get("name")) for j in jobs for s in steps(j) if "SMOKE_GHCR_TOKEN" in json.dumps(s.get("env", {}))]

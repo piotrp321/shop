@@ -1,0 +1,38 @@
+# The self-test of the checks of infra/k8s (make -C infra/k8s selftest, infra/k8s/scripts/selftest.sh): each case injects
+# an error into a copy of the tree and runs the step of check.sh that must catch it, and the unbroken copy passes the
+# whole check. Cases run in parallel, one per CPU of the runner.
+#
+# On demand only: CI does not run it. Start it from the Actions tab or with `gh workflow run k8s-selftest.yml --ref <branch>`
+# (GitHub offers it once this file is on the default branch), e.g. before merging a change of the steps of check.sh or of
+# the files its cases read (infra/, .github/, load/, make/, Makefile, e2e/Dockerfile, .gitignore). The input `only` is a
+# regular expression for SELFTEST_ONLY: only the cases whose name matches run, and the unbroken copy does not.
+name: Self-test of the checks of infra/k8s
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Only the cases whose name matches this regular expression (grep -E, case insensitive); empty: all cases'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+# Every run: step gets `bash --noprofile --norc -eo pipefail {0}`; without `shell:` GitHub uses `bash -e {0}` (no pipefail).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Self-test of the checks of infra/k8s
+        env:
+          SELFTEST_ONLY: ${{ inputs.only }}
+        run: make -C infra/k8s selftest

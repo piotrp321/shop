@@ -51,6 +51,8 @@ fetch() {
     return 1
   fi
   archive="$charts/$chart-$version.tgz"
+  # The cache is shared by every run of the tools, also by the cases of the self-test running at the same time: an archive
+  # enters it only after its digest is checked (and by an atomic mv), and a cached archive is never deleted here.
   if [ ! -f "$archive" ]; then
     pulled="$(mktemp -d "$charts/pull-XXXXXX")"
     if ! helm pull "$chart" --repo "$repo" --version "$version" --destination "/cache/charts/${pulled##*/}" > /dev/null; then
@@ -58,13 +60,18 @@ fetch() {
       echo "monitoring-render: cannot download $chart $version from $repo (the network is needed once per version)" >&2
       return 1
     fi
+    actual="$(sha256_of "$pulled/$chart-$version.tgz")"
+    if [ "$actual" != "$expected" ]; then
+      rm -rf "$pulled"
+      echo "monitoring-render: the archive of $chart $version has sha256 $actual, not the $expected of scripts/monitoring-render.sh" >&2
+      return 1
+    fi
     mv "$pulled/$chart-$version.tgz" "$archive"
     rm -rf "$pulled"
   fi
   actual="$(sha256_of "$archive")"
   if [ "$actual" != "$expected" ]; then
-    rm -f "$archive"
-    echo "monitoring-render: the archive of $chart $version has sha256 $actual, not the $expected of scripts/monitoring-render.sh" >&2
+    echo "monitoring-render: the archive of $chart $version has sha256 $actual, not the $expected of scripts/monitoring-render.sh (delete $archive if the cache is damaged)" >&2
     return 1
   fi
   printf '%s %s %s\n' "$chart" "$version" "$actual"

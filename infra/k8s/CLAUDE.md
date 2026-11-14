@@ -25,8 +25,11 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje: każdy przypadek uruchamia tylko krok
   `check.sh`, który ma ten błąd wyłapać, a w kroku `tests` tylko test, który ma się nie udać (`CHECK_TESTS_FILTER`);
   nieuszkodzona kopia przechodzi pełny `check`; `SELFTEST_FULL=1` uruchamia przy każdym przypadku pełny `check`;
-  `SELFTEST_ONLY='<regex>'` wybiera przypadki po nazwie; CI uruchamia wszystkie przypadki przy zmianie `infra/k8s`,
-  więc lokalnie agent uruchamia tylko przypadki, które dodał albo zmienił, i przypadki testów, które zmienił);
+  `SELFTEST_ONLY='<regex>'` wybiera przypadki po nazwie; przypadki działają równolegle, po jednym na procesor demona Dockera,
+  każdy we własnym drzewie (`SELFTEST_JOBS=<n>` ustawia liczbę, `1` to kolejno; wyjście przypadku jest drukowane w całości, po jego
+  zakończeniu); CI go nie uruchamia: wszystkie przypadki idą na żądanie (`make -C infra/k8s selftest` lokalnie albo
+  `gh workflow run k8s-selftest.yml --ref <gałąź> [-f only=<regex>]`, pole `only` to `SELFTEST_ONLY`), a agent uruchamia lokalnie tylko
+  przypadki, które dodał albo zmienił, i przypadki testów, które zmienił);
   `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
   i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
   e-mail z akcjami `UPDATE_PASSWORD` i `CONFIGURE_TOTP`, link ważny 12 h; istniejący login albo e-mail: błąd, kod 3,
@@ -159,14 +162,16 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   wartości `prod` i `values-images.yaml`. Obie gałęzie przesuwa wyłącznie workflow `.github/workflows/deploy.yml` jednym
   `git push --atomic` (`.github/scripts/deploy-ref.sh`: bez `--force`, deploy keyem z sekretu repo `DEPLOY_KEY`), nikt
   ich nie edytuje ręcznie. Workflow:
-  - push do `main`: buduje i wypycha cztery obrazy produkcyjne `ghcr.io/piotrp321/shop/<app>:<sha>` (api, store, admin,
-    elasticsearch; ich digesty są w podsumowaniu runu), raz generuje `values-images.yaml`
+  - `workflow_dispatch` na `main` (wdrożenie tylko na życzenie użytkownika: `gh workflow run deploy.yml --ref main`, agent
+    uruchamia je wyłącznie na jego wyraźne polecenie w rozmowie; push do `main` niczego nie wdraża): buduje i wypycha cztery obrazy produkcyjne
+    `ghcr.io/piotrp321/shop/<app>:<sha>` (api, store, admin, elasticsearch; ich digesty są w podsumowaniu runu), raz generuje `values-images.yaml`
     (`infra/k8s/scripts/images-values.sh`), uruchamia smoke test na tych obrazach (`make -C infra/k8s smoke` na
     `ubuntu-latest`; z `SMOKE_VALUES=<ten plik>` pierwsza instalacja pobiera obrazy z GHCR po digeście) i dopiero po zielonym
     oraz po sprawdzeniu renderu `prod` z tym plikiem (`infra/k8s/scripts/verify-images.sh`) przesuwa `deploy` i
     `deploy-images`. Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu `DEPLOY_KEY` kończy się po smoke
-    teście z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy).
-  - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch`: tylko smoke test
+    teście z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
+    (dispatch na `main`) decyduje o wypychaniu obrazów, pliku digestów i jobie `deploy`.
+  - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch` na innej gałęzi: tylko smoke test
     na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
     `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba
     na jego gałęzi odbywa się przez zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).

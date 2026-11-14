@@ -44,7 +44,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
-      selftest: ${{ steps.selftest.outputs.selftest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,21 +64,6 @@ jobs:
             scope="$(sh .github/scripts/scope.sh "$BASE_SHA" "$HEAD_SHA")"
           fi
           echo "scope=$scope" | tee -a "$GITHUB_OUTPUT"
-
-      # The self-test of infra/k8s copies infra/, .github/, load/, make/, Makefile, e2e/Dockerfile and .gitignore: a pull
-      # request that touches none of them skips it. Pushes, and any error of git diff, run it.
-      - name: Does the change touch what the self-test of infra/k8s reads
-        id: selftest
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          selftest=true
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] \
-            && git diff --quiet "$BASE_SHA...$HEAD_SHA" -- infra .github load make Makefile e2e/Dockerfile .gitignore; then
-            selftest=false
-          fi
-          echo "selftest=$selftest" | tee -a "$GITHUB_OUTPUT"
 
   checks:
     needs: scope
@@ -287,21 +271,6 @@ jobs:
       - name: Wait for the script tests
         if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
         run: sh .github/scripts/background.sh wait script-tests
-
-  # The self-test of the checks of infra/k8s (make -C infra/k8s selftest): each case injects an error and runs the step of
-  # the check that must catch it, and the unbroken copy passes the whole check. It runs here on every case, so agents run
-  # locally only the cases they add or change. Its own job next to `checks` and `e2e`, so it does not lengthen them; not a
-  # required check, but /delivery waits for every check of a pull request.
-  k8s-selftest:
-    needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.selftest != 'false' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Self-test of the checks of infra/k8s
-        run: make -C infra/k8s selftest
 
   # End-to-end tests on the full stack: Playwright drives the store and the panel in a browser. The suite runs in
   # matrix.include parts (`make e2e E2E_SHARD`), each on its own runner with its own stack, so the parts run side by
