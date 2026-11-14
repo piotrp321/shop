@@ -67,9 +67,11 @@ export async function expectControlsReachable(page: Page, root: Locator | null):
     await expect.poll(() => root.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   }
 
+  // A date and time field is a control of several stops of the Tab key (its parts and the button of the calendar: 7 in Chromium).
+  const dateFields = await container.evaluate((element) => element.querySelectorAll('input[type^="date"], input[type="time"]').length);
   const visited = new Set<number>();
   const problems: string[] = [];
-  for (let step = 0; step < total + 12 && visited.size < total; step++) {
+  for (let step = 0; step < total + 12 + 6 * dateFields && visited.size < total; step++) {
     await page.keyboard.press("Tab");
     const state = await page.evaluate(() => {
       const item = document.activeElement as HTMLElement | null;
