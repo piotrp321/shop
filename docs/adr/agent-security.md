@@ -126,9 +126,10 @@ AGENT-ISOLATION (#498).
 - Ograniczony token i środowisko `production` zamykają skutki, których sandbox nie zamknie (kontener Dockera, kod
   poza sandboxem): bez Administration i Deployments wykonawca nie zmieni rulesetu ani nie zatwierdzi wdrożenia.
 - Bypass rulesetu nadaje się roli (admin), a nie tokenowi: fine-grained PAT wykonawcy, którego tożsamością jest
-  właściciel repozytorium, dostaje ten sam bypass (`pull_requests_only`) co token użytkownika, mimo braku uprawnienia
-  Administration. Przy jednej tożsamości jedyną techniczną granicą jest brak aktora bypass; osobna tożsamość agentów
-  (#498) pozwoliłaby nadać bypass wyłącznie użytkownikowi.
+  właściciel repozytorium, dostałby przy aktorze bypass roli admin ten sam bypass (`pull_requests_only`) co token
+  użytkownika, mimo braku uprawnienia Administration. Rulesety merge'a nie mają więc żadnego aktora i oba tokeny mają
+  `never`; przy jednej tożsamości to jedyna techniczna granica. Osobna tożsamość agentów (#498) pozwoliłaby nadać
+  bypass wyłącznie użytkownikowi.
 - Pełna izolacja (osobny użytkownik systemu, lifecycle AO w sandboxie, osobna tożsamość GitHub agentów) wymaga zmian
   w zamrożonym AO i nowej infrastruktury, więc jest osobnym epikiem (#498).
 

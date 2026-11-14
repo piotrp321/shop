@@ -67,8 +67,9 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
 - P13. Nikt, także użytkownik, nie zmerguje PR do `main` ani `epic/*` bez zielonych `checks` i `e2e`: rulesety
   merge'a (`main-merge`, `epic-merge`) i rulesety zakazu usuwania i force-pusha (`main`, `epic`) nie mają aktora
   bypass. Bypass nadaje się roli, nie tokenowi: fine-grained PAT wykonawcy bez Administration, którego tożsamością
-  jest właściciel (P4), dostaje bypass roli admin tak samo jak token użytkownika (sprawdzone na prawdziwym tokenie:
-  `pull_requests_only` dla obu). Przy jednej tożsamości jedyną techniczną granicą jest więc brak aktora bypass.
+  jest właściciel (P4), dostałby bypass roli admin tak samo jak token użytkownika, gdyby ruleset merge'a miał aktora
+  `RepositoryRole` admin (`current_user_can_bypass` = `pull_requests_only` dla obu tokenów). Bez aktora oba tokeny
+  mają `never`. Przy jednej tożsamości jedyną techniczną granicą jest więc brak aktora bypass.
   Osobna tożsamość agentów zostaje w #498.
 
 ## Poza zakresem
@@ -605,8 +606,9 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 - Sonda (R6), przypadek warstwy `token`: `gh api repos/piotrp321/shop/rulesets` z tokenem wykonawcy (identyfikatory
   po nazwie), potem `gh api repos/piotrp321/shop/rulesets/<id>` (lista nie zwraca pola), a `current_user_can_bypass`
   rulesetów `main-merge` i `epic-merge` musi być `never`; brak rulesetu albo inna wartość to
-  `fail` z przyczyną. Odbiór (sesja `/ao-run` z tokenem użytkownika) sprawdza `never` także dla tokenu użytkownika
-  i puste `bypass_actors` obu rulesetów merge'a.
+  `fail` z przyczyną. Odbiór (sesja `/ao-run` z tokenem użytkownika, AGENT-SECURITY-5) sprawdza `never` także dla
+  tokenu użytkownika i puste `bypass_actors` obu rulesetów merge'a; oczekiwana wartość to `never` dla obu tokenów,
+  a każda inna (także `pull_requests_only` tokenu użytkownika) to bloker dla użytkownika.
 
 ## Scenariusze błędów
 
