@@ -51,13 +51,15 @@ const props = withDefaults(
      */
     groupKey?: (row: Row) => string;
     groupTestid?: string;
+    /** The `data-testid` of the error message; a list that keeps the identifier of its old view passes it. */
+    errorTestid?: string;
     loading: boolean;
     loaded: boolean;
     error: string | null;
     forbidden: boolean;
     retry: () => Promise<void>;
   }>(),
-  { rowTestid: "row", groupKey: undefined, groupTestid: "group-row" },
+  { rowTestid: "row", groupKey: undefined, groupTestid: "group-row", errorTestid: "list-error" },
 );
 
 interface Section {
@@ -132,7 +134,7 @@ onMounted(measure);
       ref="alertElement"
       role="alert"
       tabindex="-1"
-      data-testid="list-error"
+      :data-testid="errorTestid"
       class="m-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive px-4 py-3 text-sm text-destructive"
     >
       <span>{{ error }}</span>

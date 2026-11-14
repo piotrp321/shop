@@ -18,7 +18,6 @@ export const LEGACY_FILES = [
   "src/views/InventoryView.vue",
   "src/views/OrderDetailView.vue",
   "src/views/OrdersView.vue",
-  "src/views/PricesView.vue",
   "src/views/PromotionFormView.vue",
   "src/views/PromotionsView.vue",
 ];

@@ -5,8 +5,11 @@ import DataTable from "primevue/datatable";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Skeleton from "primevue/skeleton";
+import { computed, ref } from "vue";
+import { MAX_NAME_SEARCH_LENGTH, useNameSearch } from "@/composables/useNameSearch";
+import { useCursorPager } from "@/composables/useCursorPager";
 import { formatMoney } from "@/prices/format";
-import { MAX_SEARCH_LENGTH, type PriceRow, usePriceList } from "@/prices/usePriceList";
+import { fetchPricePage, type PriceQuery, type PriceRow, priceRows } from "@/prices/pricePage";
 import { CURRENCY } from "./format";
 import type { PromotionVariant } from "./usePromotionForm";
 
@@ -14,11 +17,23 @@ import type { PromotionVariant } from "./usePromotionForm";
  * Chooses variants from the price list (`GET /api/v1/admin/prices`): a search by name, a row per variant with its
  * catalog price, and the buttons to add one variant or all the variants of a product. A variant without a price is not
  * offered (the API refuses it in a promotion). What is added goes up as `add`; the parent decides what it does with it.
+ * The list is the pager over `fetchPricePage` with a query in memory: 25 products per page, no page size to choose and
+ * nothing in the address (the address belongs to the form of the promotion).
  */
 const props = defineProps<{ chosen: string[] }>();
 const emit = defineEmits<{ add: [variants: PromotionVariant[]]; close: [] }>();
 
-const { search, searchTooShort, rows, loading, loaded, error, hasPrevious, hasNext, pageNumber, goNext, goPrevious, retry } = usePriceList();
+const MAX_SEARCH_LENGTH = MAX_NAME_SEARCH_LENGTH;
+const PICKER_PAGE_SIZE = 25;
+
+const query = ref<PriceQuery>({ q: null, category: null, perPage: PICKER_PAGE_SIZE });
+const name = useNameSearch({ apply: (term) => (query.value = { ...query.value, q: term }) });
+const pager = useCursorPager(fetchPricePage, query);
+
+const search = name.search;
+const searchTooShort = name.tooShort;
+const rows = computed(() => priceRows(pager.items.value));
+const { loading, loaded, error, hasPrevious, hasNext, pageNumber, goNext, goPrevious, retry } = pager;
 
 function toVariant(row: PriceRow): PromotionVariant {
   return {

@@ -84,7 +84,8 @@ describe("RowActions", () => {
     button.click();
     await flushPromises();
 
-    expect(wrapper.emitted("select")).toEqual([["change"]]);
+    // The button comes with the key: the list gives the focus back to it when the window it opened closes.
+    expect(wrapper.emitted("select")).toEqual([["change", button]]);
   });
 
   it("renders nothing for an empty list of actions", async () => {

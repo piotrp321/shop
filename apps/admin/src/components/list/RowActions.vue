@@ -9,7 +9,7 @@ export interface RowAction {
   icon: Component;
   /**
    * A page of the panel (a plain link that the router follows) or `href`, an address outside it. An action with neither
-   * is a button: pressing it emits `select` with its key, and the list decides what it does (opens a window).
+   * is a button: pressing it emits `select` with its key and the button, and the list decides what it does (opens a window).
    */
   to?: RouteLocationRaw;
   href?: string;
@@ -31,7 +31,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
  * it on hover and focus. An action that the role can never do is not passed in at all.
  */
 const props = defineProps<{ name: string; actions: RowAction[] }>();
-const emit = defineEmits<{ select: [key: string] }>();
+const emit = defineEmits<{ select: [key: string, trigger: HTMLElement] }>();
 
 const router = useRouter();
 
@@ -68,7 +68,7 @@ const labelOf = (action: RowAction) => `${action.label}: ${props.name}`;
             :aria-label="labelOf(action)"
             :data-testid="action.testid ?? `action-${action.key}`"
             :class="buttonVariants({ variant: 'outline', size: 'icon-sm' })"
-            @click="emit('select', action.key)"
+            @click="emit('select', action.key, $event.currentTarget as HTMLElement)"
           >
             <component
               :is="action.icon"

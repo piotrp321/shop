@@ -245,6 +245,15 @@ describe("DataTable", () => {
     });
   });
 
+  it("gives the error the test id the list asks for, `list-error` by default", () => {
+    expect(mountTable({ error: "Błąd." }).find("[data-testid=list-error]").exists()).toBe(true);
+    wrapper?.unmount();
+
+    const named = mountTable({ error: "Błąd.", errorTestid: "prices-error" });
+    expect(named.get("[data-testid=prices-error]").text()).toContain("Błąd.");
+    expect(named.find("[data-testid=list-error]").exists()).toBe(false);
+  });
+
   describe("rows of a group", () => {
     interface Variant {
       id: string;
