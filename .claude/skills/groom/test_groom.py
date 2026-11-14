@@ -90,7 +90,7 @@ class CollectRunner:
         if args[:3] == ['gh', 'project', 'item-list']:
             return json.dumps({'items': [board_item(n, t, l) for n, t, b, l, a in self.epics]})
         if args[:3] == ['gh', 'issue', 'list'] and '--label' in args:
-            return json.dumps([{'number': n, 'title': t, 'body': b} for n, t, b, l, a in self.epics])
+            return json.dumps([gh_issue(n, l, b, t, a) for n, t, b, l, a in self.epics])
         if args[:3] == ['gh', 'issue', 'list']:
             issues = (self.issues + [gh_issue(n, l, b, t, a) for n, t, b, l, a in self.epics]
                       + [gh_issue(9000 + i, ['bug']) for i in range(self.limit_pad)])

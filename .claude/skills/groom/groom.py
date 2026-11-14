@@ -230,14 +230,14 @@ def collect_input(run, worktree, rejected, now, gate=None):
     raw = [r for r in raw if r['trusted']]
 
     # Open epics: the open `epic` issues of trusted authors (the list above has every open issue). The board of
-    # next_epic.py reads epics without the gate, so only the board order and state of a trusted epic are used,
-    # never its text.
+    # next_epic.py reads the epic issues through the same gate, but its titles come from the project board, so only
+    # the board order and state of a trusted epic are used, never its text.
     try:
         open_epics = [i for i in raw if 'epic' in [l['name'] for l in i.get('labels') or []]]
     except (KeyError, TypeError):
         raise next_epic.CommandError(list_args, 'unexpected JSON shape')
     by_number = {i['number']: i for i in open_epics}
-    board = {e['number']: e for e in next_epic.board_epics(run) if e['number'] in by_number}
+    board = {e['number']: e for e in next_epic.board_epics(run, gate=gate) if e['number'] in by_number}
     try:
         epics, order = [], list(board) + [n for n in by_number if n not in board]
         for number in order:

@@ -971,8 +971,9 @@ def collect(epic_id, paths, run, gates=None):
     order = {e['id']: n for n, e in enumerate(entries)}
     incidents.sort(key=lambda i: order[i['epic']])   # stable: keeps the order inside an epic
 
-    # The board carries issue titles without the gate: only epics whose issue is trusted are shown.
-    board = next_epic.board_epics(run)
+    # The board reads the open epic issues through the same gate; its titles come from the project board, so only
+    # epics whose issue is trusted are shown.
+    board = next_epic.board_epics(run, gate=shop)
     running = [e for e in board if e['state'] in ('in_progress', 'prepared') and e['number'] in trusted_epics]
     merged = [e for e in entries if e['merged_at'] is not None]
     last = max(merged, key=lambda e: (e['merged_at'], e['id'])) if merged else None

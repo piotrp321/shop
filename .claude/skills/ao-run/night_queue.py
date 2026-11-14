@@ -38,6 +38,12 @@ open start before the interval does not count). A start/done pair is a measureme
 Estimates take time per task from all measurements and usage per task from the measurements without `overlap` (from
 all when none of them has the window).
 
+Board: every command that reads the board (propose, approve, next, ahead, gate) reads the open epic issues through
+the origin gate tools/agent-security/github_trust.py (next_epic.board_epics). An epic issue of an author without
+write access is never an epic of the queue or a candidate: it has no ID or directory (its title is never read), so
+it is never listed, chosen, reserved or matched by --dir; propose lists it in `skipped` as {issue, id: null, reason,
+author, url}. A permission lookup the gate cannot judge fails closed like a failed gh command (exit 1).
+
 propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
 {"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
 "in_progress": [{dir, id, issue}], "until": <iso>, "measured": <bool>, "hold": {at, reason} | null}: the prepared epics
@@ -493,8 +499,7 @@ def propose(run, state_dir, until_text, now):
     ctx = gate_context(run, state_dir, now)
     board, measured = ctx.board, ctx.measured
     in_progress = [{'dir': p['dir'], 'id': p['id'], 'issue': p['issue']} for p in ctx.in_progress]
-    skipped = [{'issue': e['number'], 'id': e['id'], 'reason': e['reason']}
-               for e in board if e['state'] in ('invalid', 'unprepared')]
+    skipped = [next_epic.skipped_entry(e) for e in board if e['state'] in ('untrusted', 'invalid', 'unprepared')]
     claimed = {p['dir'] for p in ctx.in_progress}
     chosen, minutes_total = [], 0.0
     for e in [e for e in board if e['state'] == 'prepared' and e['dir'] not in claimed]:
