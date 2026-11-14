@@ -18,6 +18,10 @@ WORKDIR /app
 # in the image.
 FROM node AS build
 
+# The plugin uploads through the Sentry CLI used as a library, which has telemetry of its own (on by default, not covered by
+# `telemetry: false` of the plugin). This variable switches it off, so the build sends nothing but the maps.
+ENV SENTRY_CLI_NO_TELEMETRY=1
+
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 

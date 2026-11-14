@@ -139,7 +139,7 @@ jobs:
               fi
             done
             echo "upload=true" >> "$GITHUB_OUTPUT"
-            echo "Source maps of the store and the admin: uploaded to Sentry ($SENTRY_ORG, projects $SENTRY_PROJECT_STORE and $SENTRY_PROJECT_ADMIN) by the builds of this run and deleted from the images." >> "$GITHUB_STEP_SUMMARY"
+            echo "Source maps of the store and the admin: upload enabled ($SENTRY_ORG, projects $SENTRY_PROJECT_STORE and $SENTRY_PROJECT_ADMIN) for the builds of this run; an image that already exists is not rebuilt, so its maps are not uploaded again." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "upload=false" >> "$GITHUB_OUTPUT"
             echo "Source maps of the store and the admin: upload skipped, the secret SENTRY_AUTH_TOKEN is not set (the images are built without maps)." >> "$GITHUB_STEP_SUMMARY"

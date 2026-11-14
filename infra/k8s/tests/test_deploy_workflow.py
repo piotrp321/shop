@@ -378,7 +378,9 @@ class Permissions(unittest.TestCase):
                     self.assertRegex(step["uses"], SHA_PIN)
 
 
-TOKEN_EXPRESSION = re.compile(r"secrets\.SENTRY_AUTH_TOKEN")
+# Any way of reading the secret: `secrets.SENTRY_AUTH_TOKEN`, `secrets['SENTRY_AUTH_TOKEN']`, `secrets["SENTRY_AUTH_TOKEN"]`.
+# The steps are searched as JSON text, where a double quote is written as backslash and quote, hence the optional backslash.
+TOKEN_EXPRESSION = re.compile(r"""secrets(?:\.|\[\s*\\?['"])SENTRY_AUTH_TOKEN(?:\\?['"]\s*\])?""")
 # The only forms in which the value of the secret may be read: a comparison with the empty string (a boolean, never the
 # value) and, in the build steps of the job images, the secret input of the build.
 TOKEN_PRESENCE = "${{ secrets.SENTRY_AUTH_TOKEN != '' }}"
@@ -420,7 +422,9 @@ class SentrySourceMaps(unittest.TestCase):
         for name, job in jobs.items():
             self.assertNotIn("SENTRY_AUTH_TOKEN", json.dumps({k: v for k, v in job.items() if k != "steps"}), name)
         for script in run_scripts():
-            self.assertNotRegex(script, r"\$\{\{[^}]*secrets\.SENTRY")
+            self.assertNotRegex(script, r"\$\{\{[^}]*secrets(\.|\[\s*['\"])SENTRY")
+        # No expression hands over every secret at once (toJSON(secrets) would put the token in a script or a log).
+        self.assertNotRegex(json.dumps(workflow), r"(?i)tojson\(\s*secrets\s*\)")
 
     def test_the_token_is_never_a_build_argument_or_an_environment_variable_of_a_step(self):
         for name, job in jobs.items():
@@ -462,6 +466,11 @@ class SentrySourceMaps(unittest.TestCase):
         self.assertIn('echo "upload=true" >> "$GITHUB_OUTPUT"', script)
         self.assertIn('echo "upload=false" >> "$GITHUB_OUTPUT"', script)
         self.assertIn("upload skipped", script)
+        # The note is written before the builds, and a build is skipped for an image that exists: it says that the upload
+        # is on, not that the maps were sent.
+        self.assertIn("upload enabled", script)
+        self.assertIn("is not rebuilt, so its maps are not uploaded again", script)
+        self.assertNotRegex(script, r"(?i)\buploaded to sentry\b")
         self.assertIn("GITHUB_STEP_SUMMARY", script)
         # The secret is set but the organisation or a project is not: the build must not go on to an upload that fails late.
         self.assertIn("::error::", script)
@@ -508,6 +517,15 @@ class SentrySourceMaps(unittest.TestCase):
             self.assertRegex(text, r"errorHandler", config)
             self.assertIn("SENTRY_UPLOAD", text, config)
             self.assertIn("SENTRY_AUTH_TOKEN", text, config)
+
+    def test_the_builds_switch_off_the_telemetry_of_the_sentry_cli(self):
+        # The plugins upload through the Sentry CLI (as a library), which has its own telemetry, on by default and not
+        # affected by `telemetry: false`; only SENTRY_CLI_NO_TELEMETRY=1 turns it off, and only the build stage has it.
+        for app in ("store", "admin"):
+            dockerfile = f"apps/{app}/Dockerfile"
+            self.assertRegex(stage(dockerfile, "build"), r"(?m)^ENV SENTRY_CLI_NO_TELEMETRY=1$", app)
+            for other in ("node", "prod", "dev"):
+                self.assertNotIn("SENTRY_CLI_NO_TELEMETRY", stage(dockerfile, other), f"{dockerfile}: {other}")
 
     def test_the_header_of_the_workflow_describes_the_source_maps(self):
         header = (REPO / ".github/workflows/deploy.yml").read_text().split("\nname: Deploy", 1)[0]
