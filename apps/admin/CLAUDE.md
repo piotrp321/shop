@@ -96,7 +96,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nawigacja unieważnia poprzednie pytanie), a zamknięcie karty ostrzega `beforeunload` poza wylogowaniem (`signingOut`
   w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, lista cen i wybór wariantów promocji; pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
+  lista produktów, lista cen, lista stanów i wybór wariantów promocji; pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
@@ -147,27 +147,47 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   pierwsza strona historii wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu okna albo otwarciu
   innego wariantu jest ignorowana. `format.ts` ma też `formatDateTime` (czas polski niezależnie od strefy przeglądarki)
   i `sourceLabel` (etykiety źródeł zmiany: Pracownik, Dane demo, Uzgodnienie podatkowe).
-- `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `useStockList` (wyszukiwanie od
-  2 znaków z opóźnieniem, filtr kategorii, stronicowanie po kursorach ze stosem kursorów w panelu;
-  strona to produkty z API, a `rows` ma wiersz na wariant pod nazwą swojego produktu, z etykietą wariantu w kolumnie
-  „Wariant”, pustą dla wariantu domyślnego),
-  `format.ts` (`levelLabel`: etykieta i kolor poziomu z API: Dostępny, Ostatnie sztuki, Niedostępny; `movementTypeLabel`,
-  `movementReasonLabel`, `movementSourceLabel` i `formatDelta` dla historii stanów). Wariant bez
-  rekordu (`stock: null`) pokazuje zera w kolumnach liczbowych i „—” zamiast poziomu; panel nie przypisuje mu poziomu.
-  Przyjęcie, korekta i historia dotyczą wariantu wiersza (dialogi pokazują nazwę produktu z etykietą wariantu).
-  Przyciski „Przyjęcie” i „Korekta” w wierszu oraz ich dialogi (w `InventoryView`) widzą tylko role `admin` i
-  `warehouse` (role z `/me`; API sprawdza niezależnie). `receiveStock` i `correctStock` w `useStockList`: stan
-  wariantu z odpowiedzi API zastępuje jego wiersz, a spóźniona odpowiedź listy z niższą wersją stanu go nie nadpisuje. Klucz
-  `Idempotency-Key` (UUID z `crypto.randomUUID()`) powstaje przy otwarciu dialogu przyjęcia i jest wysyłany ponownie
-  przy ponowieniu zapisu; nowy dialog to nowy klucz. Korekta wysyła `version` wiersza (null bez rekordu), a notatkę
-  wymaga przy powodzie „Inne”. 422: `violations[].propertyPath` wskazuje pole, a 422 bez `violations` (np. ponad
-  1 000 000) i 403 pokazuje komunikat w dialogu. 409 przyjęcia (klucz użyty z inną treścią) pokazuje `detail` z API i odświeża bieżącą stronę, bo pierwsze przyjęcie z tym kluczem mogło się zapisać mimo zgubionej odpowiedzi. Oba 409 korekty mają
-  `type: about:blank`, więc panel nie czyta `detail`: na 409 odświeża bieżącą stronę i jeśli wersja wiersza różni się od
-  wysłanej, pokazuje „Stan został w międzyczasie zmieniony – odśwież”, w przeciwnym razie `detail` z API (poniżej
-  zarezerwowanego).
-  `useStockHistory` (dialog „Historia” w `InventoryView`, dostępny dla każdego pracownika): pierwsza strona historii
-  stanów wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu dialogu albo otwarciu innego
-  wariantu jest ignorowana, błąd kolejnej strony zostawia wczytane wpisy i pozwala ponowić tę stronę.
+- `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `fetchStockPage` i `stockRows`
+  (`stockPage.ts`: żądanie `GET /stock` z `perPage` zawsze w żądaniu, domyślne API to 25, panel zaczyna od 10, i rozbicie
+  produktów strony na wiersze wariantów), `useStockList(kategorie)` na `useListUrlState` (`q`, `category`, `perPage`: 10, 25
+  albo 50 produktów, 10 nie trafia do adresu), `useCursorPager` i `useNameSearch` (jak `usePriceList`; kategoria z adresu, której
+  nie ma w drzewie, jest pomijana). Strona to produkty z API, więc „Pokazano produkty X–Y” liczy produkty, a `rows` ma wiersz na
+  wariant w kolejności produktów i ich wariantów. Stan z odpowiedzi na przyjęcie i korektę jest nakładką `savedStocks` nad
+  `items` pagera (nie zapisuje do nich i nie jest czyszczona): wiersz pokazuje go, dopóki wersja stanu z listy nie jest
+  nowsza albo stan z listy jest `null`, więc ani trwające żądanie, ani spóźniona odpowiedź listy nie przywracają starego
+  stanu. 403 listy: „Nie masz dostępu do stanów magazynowych.” bez ponowienia, 404: kategoria nie istnieje.
+  `format.ts` (`levelLabel`: etykieta i wariant `Badge` poziomu z API: Dostępny `success`, Ostatnie sztuki `warning`,
+  Niedostępny `danger`; `movementTypeLabel`, `movementReasonLabel`, `movementSourceLabel` i `formatDelta` dla historii stanów).
+  `parseCount.ts` (pole liczby okien przyjęcia i korekty: tekst przycięty, także o spacje nierozdzielające, na liczbę
+  całkowitą z ASCII cyfr, pusty tekst to komunikat pola, inny „Podaj liczbę całkowitą.”, ponad bezpieczny zakres „Liczba
+  jest za duża.”; zakres wartości sprawdza API). `InventoryView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie
+  produktu”, `CategoryCombobox` „Kategoria”, rozmiar strony), `DataTable` z wierszami grup (`product-row` z `<th
+  scope="rowgroup">` i pogrubioną `name`, bez akcji), pod nim `stock-row` z kolumnami Wariant („Wariant domyślny” dla pustej
+  etykiety), Fizycznie, Zarezerwowane (ukryte poniżej 1024 px jako linia komórki Wariant), Dostępne (pogrubione), Poziom
+  (`Badge`) i Akcje (`RowActions`: przyciski ikon „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/me`;
+  API sprawdza niezależnie), „Historia” dla każdego pracownika; nazwa „Przyjęcie: <produkt> / <wariant>”). Wariant bez rekordu
+  (`stock: null`) pokazuje „—” w liczbach i w komórce poziomu, bez `Badge`; panel nie przypisuje mu poziomu.
+  Okna to `Dialog`: „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
+  nazwa produktu z wariantem w opisie, pola `Input` z `inputmode="numeric"` („Przyjęta ilość (szt.)”, „Stan policzony
+  (szt.)”), powód korekty jako `Select` „Powód” (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka (przy powodzie
+  „Inne” wymagana), „Przyjmij” i „Zapisz korektę” w wariancie `interface`. Fokus trafia w pierwsze pole po otwarciu (także
+  Enterem), a po zapisie na przycisk, który okno otworzył (`RowActions` podaje go w `select`; gdy zniknął, na H1);
+  po błędzie fokus trafia w pole, które API wskazuje (422: `violations[].propertyPath`), a bez pola na komunikat (`Alert`).
+  Po zapisie okno się zamyka i pojawia się toast „Przyjęto N szt.: <produkt> / <wariant>” albo „Stan skorygowany: <produkt> /
+  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` w `useStockList`: klucz
+  `Idempotency-Key` (UUID z `crypto.randomUUID()`) powstaje przy otwarciu okna przyjęcia i jest wysyłany ponownie
+  przy ponowieniu zapisu; nowe okno to nowy klucz. Korekta wysyła `version` wiersza (null bez rekordu). 422 bez `violations`
+  (np. ponad 1 000 000), 403, 404 i sieć pokazują komunikat w oknie. 409 przyjęcia (klucz użyty z inną treścią) pokazuje
+  `detail` z API i odświeża bieżącą stronę (`refresh`), bo pierwsze przyjęcie z tym kluczem mogło się zapisać mimo
+  zgubionej odpowiedzi. Oba 409 korekty mają `type: about:blank`, więc panel nie czyta `detail`: na 409 odświeża bieżącą
+  stronę i jeśli wersja wiersza różni się od wysłanej, pokazuje „Stan został w międzyczasie zmieniony – odśwież”, w przeciwnym
+  razie `detail` z API (poniżej zarezerwowanego). Odpowiedź na zapis z innego otwarcia okna jest pomijana.
+  `useStockHistory` (okno „Historia stanu”, `history-dialog`, dostępne dla każdego pracownika, szerokość
+  `min(56rem, 100vw - 2rem)`): pierwsza strona historii stanów wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź
+  po zamknięciu okna albo otwarciu innego wariantu jest ignorowana, błąd kolejnej strony zostawia wczytane wpisy i pozwala
+  ponowić tę stronę (po zniknięciu przycisku fokus trafia na „Zamknij”). `DataTable` okna ma 11 kolumn w przewijanym regionie
+  „Historia stanu” (`role="region"`, `tabindex="0"`): Data, Rodzaj, Zmiana fizycznego i Stan fizyczny po zmianie zostają
+  poniżej 1024 px, reszta (zarezerwowane, powód, notatka, referencja, źródło, pracownik) jest liniami komórki daty.
 - `src/products/` – produkty (menu „Produkty”, trasy `/products`, `/products/new`, `/products/:id`). `useProductList`
   (widok `ProductsView`, `useProductList({ nodes, loaded })` z drzewem z `useCategoryTree`): na `useListUrlState`
   (`q`, `category`, `status`, `perPage`) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage` idzie
@@ -360,7 +380,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   wybraną wartość i nie przełącza jej. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
   (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Z prop
   `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Używa go lista
-  produktów, lista cen i formularz produktu; stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
+  produktów, lista cen, lista stanów i formularz produktu.
   Standard formularza (spec „Standard formularza i okien”; podłączony tylko do formularza produktu, reszta formularzy
   w ADMIN-SCREENS): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
   `FormField` (etykieta nad polem, podpowiedź w slocie `hint` i błędy pod nim z `data-form-error`, slot daje `describedBy`
@@ -370,7 +390,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów i lista cen, pozostałe listy przejdą w
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen i lista stanów, pozostałe listy przejdą w
   ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
