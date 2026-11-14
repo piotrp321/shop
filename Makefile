@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test api-client ci-after-e2e
+.PHONY: up down logs ps seed check check-code test api-client ci-after-e2e
 
 # Targets of one area live in make/<area>.mk with their own .PHONY line. A fragment adds its target to `check` with
 # CHECK_TARGETS += <target>, to `test` with TEST_TARGETS += <target> and to the CI stack checks after the E2E tests with
@@ -47,12 +47,16 @@ ps:
 seed:
 	$(RUN) api bin/seed-demo
 
-# The last one checks the Helm chart of infra/k8s (render, manifests, scripts, tests of the render); it needs only Docker.
-check:
+# `check-code`: the static analysis of the apps and the checks of the make/*.mk fragments. `check` adds the checks of the
+# Helm chart of infra/k8s (render, manifests, scripts, tests of the render), which need only Docker; CI runs the two in
+# separate jobs.
+check: check-code
+	$(MAKE) -C infra/k8s check
+
+check-code:
 	$(MAKE) -C apps/api check
 	$(MAKE) -C apps/store check
 	$(MAKE) -C apps/admin check
-	$(MAKE) -C infra/k8s check
 	$(call run_each,$(CHECK_TARGETS))
 
 test:
