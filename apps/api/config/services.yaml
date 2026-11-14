@@ -360,5 +360,11 @@ when@test: &test
         # The HTTP client of the Sentry SDK in the tests (config/packages/sentry.yaml): keeps what would be sent.
         App\Tests\Functional\Shared\Sentry\RecordingSentryHttpClient:
             public: true
+        # The transport of the shared HTTP client (below the decorator of Sentry, priority -15): keeps the headers of
+        # the requests that leave the API.
+        App\Tests\Functional\Shared\Sentry\RecordingOutgoingHttpClient:
+            public: true
+            decorates: http_client.transport
+            decoration_priority: 0
 
 when@test_messaging: *test

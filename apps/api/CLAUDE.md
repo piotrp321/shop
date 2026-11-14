@@ -792,7 +792,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   parametr `app.sentry.traces_sample_rate`) czytane przy starcie (`%env(default:…)%`). Bez DSN SDK nic nie wysyła, zły
   DSN to błąd konfiguracji. Zdarzenie błędu idzie od razu (limit połączenia i odpowiedzi 2 s), transakcja po odpowiedzi
   (`kernel.terminate`). `send_default_pii: false`, `max_request_body_size: none`, handler błędów PHP SDK wyłączony,
-  w `prod.ini` `zend.exception_ignore_args = On`.
+  w `prod.ini` `zend.exception_ignore_args = On`. Błąd fatalny PHP w workerze i konsoli (np. OOM, limit czasu) nie jest
+  zdarzeniem Sentry (handler błędów SDK wyłączony, kanał `php` wykluczony): trafia tylko do logów.
   - Jeden kanał na źródło, jeden błąd to jedno zdarzenie: HTTP zgłasza `ServerErrorReporter`
     (`Shared\Infrastructure\Observability`, `kernel.exception` z priorytetem -99, tuż przed `ProblemDetailsSubscriber`,
     który ustawia odpowiedź i zatrzymuje propagację) tylko dla statusu ≥ 500 z `ExceptionStatus`, a listener błędów
@@ -814,11 +815,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     kopię wierszy korpusu `api.log` i `postgres.log` (kontener api widzi tylko `apps/api`): zmiana korpusu zmienia też
     kopię.
   - Trace'y: `/health` nie jest śledzony (`ignore_transactions`), api kontynuuje trace z `sentry-trace` i `baggage`
-    (CORS dopuszcza je z `ADMIN_URL`). Spany Doctrine, klienta HTTP i pul cache (bundle dekoruje każdą pulę jako
-    `<pula>.traceable`).
+    (CORS dopuszcza je z `ADMIN_URL`), ale nie przekazuje trace'a dalej: wywołania wychodzące (Keycloak, Varnish, sklep,
+    płatności) nie niosą `sentry-trace` ani `baggage` (`trace_propagation_targets: []`), także bez DSN. Spany Doctrine,
+    klienta HTTP i pul cache (bundle dekoruje każdą pulę jako `<pula>.traceable`).
   - Testy: jednostkowe `tests/Unit/Shared/Observability` i `ExceptionStatusTest`, funkcjonalne
     `tests/Functional/Shared/Sentry*Test.php` na prawdziwym transporcie SDK z klientem HTTP, który zapisuje koperty
-    (`RecordingSentryHttpClient`, `when@test`), i fałszywym DSN (`SentryEnvironment`: zmienne przed startem kernela,
+    (`RecordingSentryHttpClient`, `when@test`; wywołania wychodzące: `RecordingOutgoingHttpClient` pod `http_client`), i fałszywym DSN (`SentryEnvironment`: zmienne przed startem kernela,
     reset statycznego stanu SDK).
 - Transport Messengera `scheduled` (Doctrine,
   `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione

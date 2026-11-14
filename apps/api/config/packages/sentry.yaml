@@ -17,6 +17,10 @@ sentry:
         release: '%env(default::SENTRY_RELEASE)%'
         # 0 by default: only a caller that sent its decision in sentry-trace makes a request traced (D7, P8).
         traces_sample_rate: '%env(float:default:app.sentry.traces_sample_rate:SENTRY_TRACES_SAMPLE_RATE)%'
+        # The calls of the API to other services (Keycloak, Varnish, the shop, the payments) carry no sentry-trace and
+        # no baggage: only the panel sends a trace to the API (D7), and without a DSN nothing changes in them (D1). The
+        # spans of the HTTP client stay.
+        trace_propagation_targets: []
         # The probes are not traced (P4).
         ignore_transactions: ['GET health', 'HEAD health']
         # No personal data and no body of requests from the SDK; the rest is removed by the filter (D4).
