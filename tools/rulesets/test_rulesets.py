@@ -7,6 +7,11 @@ actor at all) and `deploy-push` (the rules `creation` and `update`, whose only b
 nobody else can create the branch on any commit). The tests also try the
 ways of weakening them: a bypass actor in the ruleset with the unconditional rules, another actor type, a mode other
 than `always`, another rule next to `creation` and `update`, either of them missing, a wider ref pattern.
+
+`main` and `epic/*` follow the same split: `main` and `epic` (deletion and non-fast-forward, no bypass actor) and
+`main-merge` and `epic-merge` (pull request and the required checks `checks` and `e2e`), whose only bypass actor is the
+repository admin role in `pull_request` mode, so only the owner can merge a pull request without green CI and nobody
+can push directly, delete the branch or force-push. The tests try the ways of widening that bypass.
 """
 import copy
 import json
@@ -16,6 +21,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 UNCONDITIONAL = {"deletion", "non_fast_forward"}
 DEPLOY_REFS = ["refs/heads/deploy", "refs/heads/deploy-images"]
+MERGE_RULES = ["pull_request", "required_status_checks"]
+REQUIRED_CHECKS = {"checks", "e2e"}
+ADMIN_ROLE_ID = 5
 
 
 def load(name):
@@ -59,6 +67,42 @@ def problems(deploy, push):
             found.append("deploy-push: the bypass mode is not always")
     if UNCONDITIONAL & {rule.get("type") for rule in push.get("rules", [])}:
         found.append("deploy-push: has deletion or non_fast_forward next to a bypass actor")
+    return found
+
+
+
+def merge_problems(plain, merge):
+    """What is wrong with a branch's pair of rulesets: `plain` without bypass, `merge` with the owner's bypass."""
+    found = []
+    base = plain.get("name")
+    if merge.get("name") != f"{base}-merge":
+        found.append(f"{base}: the merge ruleset is not named {base}-merge")
+    for ruleset in (plain, merge):
+        name = ruleset.get("name")
+        if ruleset.get("target") != "branch":
+            found.append(f"{name}: target is not branch")
+        if ruleset.get("enforcement") != "active":
+            found.append(f"{name}: enforcement is not active")
+    if plain.get("conditions") != merge.get("conditions"):
+        found.append(f"{base}: the ref pattern of the merge ruleset differs from its pair")
+    plain_types = [rule.get("type") for rule in plain.get("rules", [])]
+    if sorted(plain_types) != sorted(UNCONDITIONAL):
+        found.append(f"{base}: the rules are {plain_types}, not deletion and non_fast_forward")
+    if plain.get("bypass_actors") != []:
+        found.append(f"{base}: has a bypass actor (it would lift deletion and non_fast_forward for it)")
+    merge_types = sorted(rule.get("type") for rule in merge.get("rules", []))
+    if merge_types != MERGE_RULES:
+        found.append(f"{base}-merge: the rules are {merge_types}, not pull_request and required_status_checks")
+    checks = set()
+    for rule in merge.get("rules", []):
+        if rule.get("type") == "required_status_checks":
+            parameters = rule.get("parameters", {})
+            checks = {check.get("context") for check in parameters.get("required_status_checks", [])}
+    if not REQUIRED_CHECKS <= checks:
+        found.append(f"{base}-merge: the required checks {sorted(checks)} lack checks or e2e")
+    expected_actor = {"actor_type": "RepositoryRole", "actor_id": ADMIN_ROLE_ID, "bypass_mode": "pull_request"}
+    if merge.get("bypass_actors") != [expected_actor]:
+        found.append(f"{base}-merge: the only bypass actor must be the admin role in pull_request mode")
     return found
 
 
@@ -193,6 +237,108 @@ class AttemptsToWeakenThem(unittest.TestCase):
         push = copy.deepcopy(self.push)
         push["rules"][0]["parameters"] = {"update_allows_fetch_and_merge": True}
         self.assert_caught(self.deploy, push, "parameters")
+
+
+class MergeRulesets(unittest.TestCase):
+    def test_the_files_as_committed_have_no_problems(self):
+        for base in ("main", "epic"):
+            self.assertEqual([], merge_problems(load(f"{base}.json"), load(f"{base}-merge.json")), base)
+
+    def test_ref_patterns(self):
+        self.assertEqual(["~DEFAULT_BRANCH"], load("main.json")["conditions"]["ref_name"]["include"])
+        self.assertEqual(["refs/heads/epic/*"], load("epic.json")["conditions"]["ref_name"]["include"])
+
+    def test_epic_branches_can_be_created_from_main(self):
+        rule = next(r for r in load("epic-merge.json")["rules"] if r["type"] == "required_status_checks")
+        self.assertTrue(rule["parameters"]["do_not_enforce_on_create"])
+
+    def test_epic_allows_squash_and_merge_commit(self):
+        rule = next(r for r in load("epic-merge.json")["rules"] if r["type"] == "pull_request")
+        self.assertEqual({"squash", "merge"}, set(rule["parameters"]["allowed_merge_methods"]))
+
+
+class AttemptsToWidenTheMergeBypass(unittest.TestCase):
+    """Each widening of the owner's bypass must be caught."""
+
+    def setUp(self):
+        self.pairs = [(load(f"{base}.json"), load(f"{base}-merge.json")) for base in ("main", "epic")]
+
+    def assert_caught(self, change_plain, change_merge, expected):
+        for plain, merge in self.pairs:
+            plain, merge = copy.deepcopy(plain), copy.deepcopy(merge)
+            change_plain(plain)
+            change_merge(merge)
+            found = merge_problems(plain, merge)
+            self.assertTrue(any(expected in line for line in found), f"{expected!r} not in {found}")
+
+    @staticmethod
+    def keep(_):
+        pass
+
+    def set_actor(self, **fields):
+        def change(merge):
+            merge["bypass_actors"][0].update(fields)
+        return change
+
+    def test_bypass_mode_always_or_exempt(self):
+        for mode in ("always", "exempt"):
+            self.assert_caught(self.keep, self.set_actor(bypass_mode=mode), "only bypass actor")
+
+    def test_write_or_maintain_role(self):
+        for role in (4, 2):
+            self.assert_caught(self.keep, self.set_actor(actor_id=role), "only bypass actor")
+
+    def test_integration_or_deploy_key(self):
+        self.assert_caught(self.keep, self.set_actor(actor_type="Integration", actor_id=1), "only bypass actor")
+        self.assert_caught(self.keep, self.set_actor(actor_type="DeployKey", actor_id=None), "only bypass actor")
+
+    def test_second_actor(self):
+        def change(merge):
+            merge["bypass_actors"].append({"actor_type": "DeployKey", "actor_id": None, "bypass_mode": "always"})
+        self.assert_caught(self.keep, change, "only bypass actor")
+
+    def test_no_actor(self):
+        def change(merge):
+            merge["bypass_actors"] = []
+        self.assert_caught(self.keep, change, "only bypass actor")
+
+    def test_bypass_actor_on_the_plain_ruleset(self):
+        def change(plain):
+            plain["bypass_actors"] = [{"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "pull_request"}]
+        self.assert_caught(change, self.keep, "has a bypass actor")
+
+    def test_unconditional_rule_moved_to_the_merge_ruleset(self):
+        for moved in ("deletion", "non_fast_forward"):
+            def change_plain(plain, moved=moved):
+                plain["rules"] = [rule for rule in plain["rules"] if rule["type"] != moved]
+
+            def change_merge(merge, moved=moved):
+                merge["rules"].append({"type": moved})
+            self.assert_caught(change_plain, change_merge, "the rules are")
+
+    def test_missing_required_check(self):
+        for dropped in ("checks", "e2e"):
+            def change(merge, dropped=dropped):
+                for rule in merge["rules"]:
+                    if rule["type"] == "required_status_checks":
+                        checks = rule["parameters"]["required_status_checks"]
+                        rule["parameters"]["required_status_checks"] = [c for c in checks if c["context"] != dropped]
+            self.assert_caught(self.keep, change, "lack checks or e2e")
+
+    def test_missing_pull_request_rule(self):
+        def change(merge):
+            merge["rules"] = [rule for rule in merge["rules"] if rule["type"] != "pull_request"]
+        self.assert_caught(self.keep, change, "not pull_request and required_status_checks")
+
+    def test_ref_pattern_differs_from_its_pair(self):
+        def change(merge):
+            merge["conditions"]["ref_name"]["exclude"] = ["refs/heads/epic/x"]
+        self.assert_caught(self.keep, change, "ref pattern")
+
+    def test_not_active(self):
+        def change(merge):
+            merge["enforcement"] = "evaluate"
+        self.assert_caught(self.keep, change, "enforcement")
 
 
 class MissingFile(unittest.TestCase):

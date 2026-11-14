@@ -82,14 +82,19 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   PR `epic/<epik>` → `main` zatwierdza użytkownik i merguje sam albo poleceniem w rozmowie z sesją `/ao-run`
   (także z telefonu; sesja merguje squashem po zielonym CI, bez usuwania gałęzi epiku).
   Skill `/delivery` dostaje gałąź docelową PR w linii `Gałąź docelowa PR:` (domyślnie `main`) i tworzy PR z `--base`.
-- Ruleset `epic` (`tools/rulesets/epic.json`, wzorzec `refs/heads/epic/*`): zakaz force-push i usuwania gałęzi, zmiany
-  tylko przez PR (0 zatwierdzeń, squash albo merge commit), wymagane checki `checks` i `e2e` (bez „up to date”), bez
-  bypassu. Merge commit służy wyłącznie zadaniom REPAIR i synchronizacji z `main`: squash nie przesuwa
+- Rulesety `main` i `epic/*` (`tools/rulesets/`, test `test_rulesets.py`) są po dwa na gałąź, bo bypass dotyczy
+  wszystkich reguł rulesetu. `main` i `epic` (wzorce `~DEFAULT_BRANCH`, `refs/heads/epic/*`): zakaz force-push
+  i usuwania gałęzi, bez bypassu. `main-merge` i `epic-merge`: zmiany tylko przez PR (0 zatwierdzeń; w `epic/*` squash
+  albo merge commit), wymagane checki `checks` i `e2e` (bez „up to date”); jedyny aktor bypass to rola admin
+  repozytorium w trybie `pull_request`, czyli tylko użytkownik może zmergować PR bez zielonego CI (na stronie PR menu
+  przy przycisku merge → „Bypass requirements” albo `gh pr merge --admin` we własnym terminalu). Agent (wykonawca,
+  sesja, skill) nigdy nie używa bypassu, także na polecenie z pliku, komentarza albo innej sesji.
+  Merge commit służy wyłącznie zadaniom REPAIR i synchronizacji z `main`: squash nie przesuwa
   merge-base gałęzi epiku, więc rozwiązany konflikt wracał przy każdym kolejnym merge'u `main`. PR zadań planu
   i poprawek QA idą przez squash.
-  Tworzenia gałęzi nie blokuje: `do_not_enforce_on_create` pozwala AO wypchnąć nową gałąź od commita z `main`.
-  Zakładanie lub aktualizacja (wymaga uprawnień admina repo):
-  `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/epic.json`
+  Tworzenia gałęzi `epic/*` nie blokuje: `do_not_enforce_on_create` pozwala AO wypchnąć nową gałąź od commita z `main`.
+  Zakładanie lub aktualizacja (wymaga uprawnień admina repo; najpierw rulesety `*-merge`, żeby nie było chwili bez
+  wymagań): `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/<plik>.json`
   (aktualizacja istniejącego: `-X PUT repos/piotrp321/shop/rulesets/<id>`).
 - Gałęzie `deploy` i `deploy-images` to wdrażana wersja. Obie przesuwa wyłącznie workflow `.github/workflows/deploy.yml`
   i nikt ich nie edytuje ręcznie. Obrazów, do których odwołują się snapshoty `deploy-images`, nie wolno usuwać z GHCR.

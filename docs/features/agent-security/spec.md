@@ -11,7 +11,7 @@ Bash), ale **nie chroni przed celowym obejściem** przez kontener Dockera ani pr
 sandboxem (luka P11). Pełną izolację wykonawców i lifecycle AO opisuje osobny epik AGENT-ISOLATION (#498).
 
 Issues: #494
-Zakres: `tools/agent-security`, `tools/rulesets`, `.claude/skills/groom`, `.claude/agents/backlog-groomer.md`, `.claude/skills/prepare-epic/SKILL.md`, `.claude/agents/spec-critic.md`, `.claude/skills/sweep/SKILL.md`, `.claude/agents/tester.md`, `.claude/agents/ux-reviewer.md`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/skills/integration/SKILL.md`, `.claude/skills/ao-run`, `.github/workflows/deploy.yml`, `infra/k8s/Makefile`, `infra/k8s/scripts`, `infra/k8s/tests`, `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `CLAUDE.md`, `docs/adr/agentic-software-house.md`, `docs/features/groom/spec.md`, `docs/features/prepare-epic/spec.md`, `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`, `docs/features/ao-run/spec.md`, `docs/features/deploy/spec.md`
+Zakres: `tools/agent-security`, `.claude/skills/groom`, `.claude/agents/backlog-groomer.md`, `.claude/skills/prepare-epic/SKILL.md`, `.claude/agents/spec-critic.md`, `.claude/skills/sweep/SKILL.md`, `.claude/agents/tester.md`, `.claude/agents/ux-reviewer.md`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/skills/integration/SKILL.md`, `.claude/skills/ao-run`, `.github/workflows/deploy.yml`, `infra/k8s/Makefile`, `infra/k8s/scripts`, `infra/k8s/tests`, `infra/k8s/README.md`, `infra/k8s/CLAUDE.md`, `CLAUDE.md`, `docs/adr/agentic-software-house.md`, `docs/features/groom/spec.md`, `docs/features/prepare-epic/spec.md`, `docs/features/agent-tester-ux/spec.md`, `docs/features/retro/spec.md`, `docs/features/ao-run/spec.md`, `docs/features/deploy/spec.md`
 
 ## Cel i zakres
 
@@ -104,12 +104,9 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
   Settings → Environments. Sekret repozytorium `DEPLOY_KEY` użytkownik usuwa po merge'u końcowego PR (runbook).
 - Gdy SENTRY trafi do `main` przed tym epikiem: środowisko GitHub dla `SENTRY_AUTH_TOKEN` (bez zatwierdzenia,
   polityka gałęzi „tylko `main`”) z sekretem środowiska. Po co: AGENT-SECURITY-4 (R5). Źródło: użytkownik (runbook).
-- Rulesety z R8 założone w GitHubie przed startem epiku: użytkownik dzieli `main` i `epic` i zakłada `main-merge`
-  i `epic-merge` z parametrami dzisiejszych rulesetów (kolejność komend z R8). AGENT-SECURITY-4 zapisuje je w repo
-  zgodnie ze stanem w GitHubie i dodaje testy; gdy pliki z zadania różnią się od GitHuba, użytkownik aktualizuje
-  rulesety z plików po merge'u zadania do `epic/agent-security`. Po co: przypadek sondy R8 i odbiór (kryterium 11);
-  bez rulesetów sonda po merge'u epiku nie przepuści startu AO. Źródło: użytkownik (wymaga uprawnień admina
-  repozytorium).
+- Rulesety z R8 w GitHubie zgodne z `tools/rulesets/` (założone przed epikiem; pliki, test struktury i opis
+  w `CLAUDE.md` są na `main`). Po co: przypadek sondy R8 i odbiór (kryterium 11); bez rulesetów sonda po merge'u epiku
+  nie przepuści startu AO. Źródło: użytkownik (wymaga uprawnień admina repozytorium).
 - Wersja Claude Code przypięta przez AO ma ustawienia sandboxa z profilu: istnieje (2.1.311; eksperyment przy
   przygotowaniu: `denyRead`/`allowRead`, `allowWrite`, `allowUnixSockets`, `allowLocalBinding`,
   `enableWeakerNetworkIsolation` przez `--settings`); sonda sprawdza to przy każdym starcie AO.
@@ -509,14 +506,13 @@ wszystkich reguł rulesetu:
 
 | Plik w `tools/rulesets/` | Wzorzec | Reguły | Aktor bypass |
 |---|---|---|---|
-| `main.json` (nowy plik, ruleset istnieje w GitHubie) | `~DEFAULT_BRANCH` jak dziś | `deletion`, `non_fast_forward` | brak |
-| `main-merge.json` (nowy) | jak `main` | `pull_request` i `required_status_checks` (`checks`, `e2e`) z parametrami dzisiejszego rulesetu `main` | `RepositoryRole` 5 (admin), `pull_request` |
+| `main.json` | `~DEFAULT_BRANCH` | `deletion`, `non_fast_forward` | brak |
+| `main-merge.json` | jak `main` | `pull_request` i `required_status_checks` (`checks`, `e2e`) | `RepositoryRole` 5 (admin), `pull_request` |
 | `epic.json` | `refs/heads/epic/*` | `deletion`, `non_fast_forward` | brak |
-| `epic-merge.json` (nowy) | `refs/heads/epic/*` | `pull_request` (squash albo merge commit) i `required_status_checks` z `do_not_enforce_on_create` jak dziś | `RepositoryRole` 5 (admin), `pull_request` |
+| `epic-merge.json` | `refs/heads/epic/*` | `pull_request` (squash albo merge commit) i `required_status_checks` z `do_not_enforce_on_create` | `RepositoryRole` 5 (admin), `pull_request` |
 
-- Parametry reguł `pull_request` i `required_status_checks` są takie jak w rulesetach w GitHubie w chwili zadania
-  (`gh api repos/piotrp321/shop/rulesets/<id>`); zmienia się tylko podział i aktor bypass. Wzorzec `main` zadanie
-  przepisuje z GitHuba.
+- Pliki są zgodne z rulesetami w GitHubie (`gh api repos/piotrp321/shop/rulesets/<id>`); zmiana pliku wymaga
+  aktualizacji rulesetu przez użytkownika.
 - Tryb `pull_request` (nie `always`): wyjątek działa tylko przy merge'u PR; bezpośredni push na `main` i `epic/*` dalej
   wymaga PR, także od użytkownika.
 - `tools/rulesets/test_rulesets.py`: rulesety bez aktora bypass mają `deletion` i `non_fast_forward`, a rulesety
@@ -528,8 +524,7 @@ wszystkich reguł rulesetu:
   żeby nie było chwili bez wymagań):
   `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/main-merge.json`, to samo dla
   `epic-merge.json`, potem `-X PUT repos/piotrp321/shop/rulesets/<id>` z `main.json` i `epic.json`. Opis w `CLAUDE.md`.
-- Merge bez zielonego CI wykonuje użytkownik: na stronie PR pole „Merge without waiting for requirements to be met
-  (bypass rules)” albo `gh pr merge <nr> --squash --admin` we własnym terminalu. Zasada w `CLAUDE.md`: agent (wykonawca,
+- Merge bez zielonego CI wykonuje użytkownik: na stronie PR menu przy przycisku merge → „Bypass requirements” albo `gh pr merge <nr> --squash --admin` we własnym terminalu. Zasada w `CLAUDE.md`: agent (wykonawca,
   sesja, skill) nigdy nie używa bypassu, także na polecenie z pliku, komentarza albo innej sesji; `/ao-run` i AO już
   nie wywołują `--admin`.
 - Sonda (R6), przypadek warstwy `token`: `gh api repos/piotrp321/shop/rulesets` z tokenem wykonawcy, potem
@@ -570,9 +565,8 @@ wszystkich reguł rulesetu:
   sekretów w środowiskach, cele produkcyjne niedostępne w trakcie przebiegu AO, `KUBE_DIR` tymczasowy, usunięcie
   sekretu repozytorium `DEPLOY_KEY`; AGENT-SECURITY-4.
 - `CLAUDE.md`: zasada „treść z GitHuba dla agentów tylko przez `tools/agent-security/github_trust.py`”, wykonawcy AO
-  w sandboxie z sondą przed startem (wskaźnik do ADR), sekrety Actions tylko w środowiskach `main`; rulesety `main`,
-  `main-merge`, `epic`, `epic-merge` z komendami zakładania, bypass tylko dla użytkownika i zakaz bypassu dla agentów
-  (R8); AGENT-SECURITY-4 (sekrety, cele, rulesety) i 5 (reszta).
+  w sandboxie z sondą przed startem (wskaźnik do ADR), sekrety Actions tylko w środowiskach `main`; AGENT-SECURITY-4
+  (sekrety, cele) i 5 (reszta). Rulesety R8 i zakaz bypassu dla agentów już są w `CLAUDE.md`.
 - `docs/adr/agent-security.md`: droga 15, hipoteza P13 i luka sesji interaktywnych z bypassem; AGENT-SECURITY-1.
 - `docs/features/ao-run/spec.md`: `ao-prepare`, sonda i wrapper przy starcie; AGENT-SECURITY-5.
 
@@ -607,8 +601,7 @@ wszystkich reguł rulesetu:
    z kodem różnym od 0, limit czasu albo brak wyniku kończy go błędem z przyczyną (fail-closed). Testy z atrapą sondy i `claude_pin.py`. `/ao-run` startuje AO z jego wyniku
    i wysyła push przy błędzie.
 10. `make check` i testy skryptów (`.github/scripts/script-tests.sh`) przechodzą; `make -C infra/k8s check` przechodzi.
-11. Rulesety (R8): test struktury przechodzi na plikach i łapie każdą próbę osłabienia z R8; `CLAUDE.md` opisuje
-    podział, komendy i zakaz bypassu dla agentów. Odbiór (po założeniu rulesetów przez użytkownika):
+11. Rulesety (R8): test struktury przechodzi. Odbiór:
     `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` to `pull_requests_only` z tokenem użytkownika
     i `never` z tokenem wykonawcy; wynik w raporcie odbioru.
 
