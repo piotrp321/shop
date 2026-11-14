@@ -103,7 +103,8 @@ class NoSourceMaps(unittest.TestCase):
         main = text[text.index("def main():"):]
         basic = main[main.index('"basic"'):main.index('"snapshot"')]
         self.assertIn("check_no_source_maps()", basic)
-        self.assertIn("source maps", text.split('"""', 2)[1])
+        # The docstring of the module lists the checks of `basic` (its lines wrap).
+        self.assertIn("source maps", " ".join(text.split('"""', 2)[1].split()))
 
 
 if __name__ == "__main__":
