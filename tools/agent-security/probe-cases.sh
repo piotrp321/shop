@@ -76,6 +76,23 @@ succeeds() {
     if "$@" >/dev/null 2>&1; then verdict "$name" pass; else verdict "$name" fail; fi
 }
 
+# R8: current_user_can_bypass of main-merge and epic-merge for this token must be never. The list endpoint does not
+# carry the field, so each ruleset is read by its id; a missing ruleset or no answer is a fail.
+rulesets_case() {
+    found=
+    for name in epic-merge main-merge; do
+        id=$(gh api "repos/$REPO/rulesets" --jq ".[] | select(.name == \"$name\") | .id" 2>/dev/null | head -n 1)
+        value=
+        [ -n "$id" ] && value=$(gh api "repos/$REPO/rulesets/$id" --jq '.current_user_can_bypass // ""' 2>/dev/null)
+        found="$found$name=${value:-absent};"
+    done
+    if [ "$found" = 'epic-merge=never;main-merge=never;' ]; then
+        verdict rulesets_bypass_never pass
+    else
+        verdict rulesets_bypass_never fail
+    fi
+}
+
 if [ "${PROBE_CASES_LIB:-}" = 1 ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -185,12 +202,7 @@ read_blocked read_other_task_state "$AO_HOME/tasks/OTHER-TASK-1/delivery-state.j
 write_blocked write_home "$HOME/probe-planted"
 
 # --- Path 15: merge bypass (R8) -----------------------------------------------
-bypass=$(gh api "repos/$REPO/rulesets" --jq '.[]|select(.name=="main-merge" or .name=="epic-merge")|.name+"="+(.current_user_can_bypass//"absent")' 2>/dev/null | sort)
-if [ "$bypass" = "$(printf 'epic-merge=never\nmain-merge=never')" ]; then
-    verdict rulesets_bypass_never pass
-else
-    verdict rulesets_bypass_never fail
-fi
+rulesets_case
 
 # --- Work cases (must succeed) ------------------------------------------------
 if (echo work > "$TASK_DIR/probe-checkpoint") 2>/dev/null && [ -f "$TASK_DIR/probe-checkpoint" ]; then

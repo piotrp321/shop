@@ -361,6 +361,36 @@ class CasesScriptHelpersTest(unittest.TestCase):
         self.assertIn('expect_http gh_admin_setting 403', source)
         self.assertIn('expect_http gh_ao_repository 404', source)
 
+    def rulesets_verdict(self, main, epic, missing=''):
+        # A fake gh answering the rulesets list (ids 1 and 2 by name) and each ruleset with its bypass value.
+        with open(os.path.join(self.bin, 'gh'), 'w') as f:
+            f.write('#!/bin/sh\n'
+                    'case "$2" in\n'
+                    '  repos/piotrp321/shop/rulesets)\n'
+                    '    case "$*" in *main-merge*) [ "$FAKE_MISSING" = main ] || echo 1 ;; '
+                    '*epic-merge*) [ "$FAKE_MISSING" = epic ] || echo 2 ;; esac ;;\n'
+                    '  repos/piotrp321/shop/rulesets/1) echo "$FAKE_MAIN" ;;\n'
+                    '  repos/piotrp321/shop/rulesets/2) echo "$FAKE_EPIC" ;;\n'
+                    '  *) exit 9 ;;\n'
+                    'esac\n')
+        out = self.run_sourced('. "%s"; rulesets_case' % CASES_SCRIPT, FAKE_MAIN=main, FAKE_EPIC=epic,
+                               FAKE_MISSING=missing)
+        lines = out.strip().splitlines()
+        return json.loads(lines[-1])['status'] if lines else None
+
+    def test_rulesets_case_reads_each_ruleset(self):
+        # The list endpoint has no current_user_can_bypass: the value comes from GET rulesets/<id>.
+        self.assertEqual(self.rulesets_verdict('never', 'never'), 'pass')
+
+    def test_rulesets_case_fails_unless_both_are_never(self):
+        self.assertEqual(self.rulesets_verdict('pull_requests_only', 'never'), 'fail')
+        self.assertEqual(self.rulesets_verdict('never', 'always'), 'fail')
+        self.assertEqual(self.rulesets_verdict('', 'never'), 'fail')
+
+    def test_rulesets_case_fails_for_a_missing_ruleset(self):
+        self.assertEqual(self.rulesets_verdict('never', 'never', missing='main'), 'fail')
+        self.assertEqual(self.rulesets_verdict('never', 'never', missing='epic'), 'fail')
+
     def test_library_mode_runs_no_case(self):
         self.assertEqual(self.run_sourced('. "%s"' % CASES_SCRIPT), '')
         self.assertEqual(os.listdir(self.cwd), [])

@@ -563,8 +563,9 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
   żeby nie było chwili bez wymagań): `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/<plik>.json`
   albo `-X PUT repos/piotrp321/shop/rulesets/<id>` dla istniejącego. Opis w `CLAUDE.md`. Zasada w `CLAUDE.md`: agent
   (wykonawca, sesja, skill) nie zmienia rulesetów ani nie dodaje aktora bypass.
-- Sonda (R6), przypadek warstwy `token`: `gh api repos/piotrp321/shop/rulesets` z tokenem wykonawcy, potem
-  `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` musi być `never`; brak rulesetu albo inna wartość to
+- Sonda (R6), przypadek warstwy `token`: `gh api repos/piotrp321/shop/rulesets` z tokenem wykonawcy (identyfikatory
+  po nazwie), potem `gh api repos/piotrp321/shop/rulesets/<id>` (lista nie zwraca pola), a `current_user_can_bypass`
+  rulesetów `main-merge` i `epic-merge` musi być `never`; brak rulesetu albo inna wartość to
   `fail` z przyczyną. Odbiór (sesja `/ao-run` z tokenem użytkownika) sprawdza `never` także dla tokenu użytkownika
   i puste `bypass_actors` obu rulesetów merge'a.
 
