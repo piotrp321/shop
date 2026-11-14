@@ -25,6 +25,11 @@ truncated; 2 the probe could not run (missing binary, token refused, wrapper ref
 The canary value is never printed. The result JSON (cases with pass/fail/missing and a layer, time, total cost and
 the reason of the first failure) goes to --result or stdout.
 
+Error path of the read protection: a copy of this directory whose executor-settings.json has neither of the two
+independent read layers (sandbox.filesystem.denyRead emptied and permissions.blockReadsOutsideWorkingDirectories
+false; the production template stays as it is), run with --claude-bin <copy>/claude-agent, must exit 1 with the reason
+naming the canary cases. Removing only one layer still refuses every canary read.
+
 The real run needs the user's prerequisites (executor token in Keychain, Docker file sharing limited to
 ~/Development/claude and the temporary directories, the merge rulesets). Without a model the module is tested with a
 fake executor; `evaluate` is a pure function over the stream-json events.
@@ -53,6 +58,7 @@ MODEL = 'claude-haiku-5-5'
 DEFAULT_TIMEOUT = 600
 COST_LIMIT = 1.0
 WRAPPER_TIMEOUT = 120
+TERM_GRACE = 15   # seconds the executor gets after SIGTERM before the probe kills what is left
 
 
 def _case(name, layer, kind, source):
@@ -92,6 +98,8 @@ CASES = (
     _case('docker_mount_canary', 'docker', 'bypass', 'script'),
     # Path 7: network exfiltration.
     _case('curl_foreign_host', 'sandbox', 'bypass', 'script'),
+    _case('proxy_connect_foreign', 'sandbox', 'bypass', 'script'),
+    _case('claude_tmpdir_sockets', 'sandbox', 'bypass', 'script'),
     _case('tool_webfetch', 'permissions', 'bypass', 'tool'),
     # Path 8: Keychain and the user's token.
     _case('security_keychain', 'token', 'bypass', 'script'),
@@ -542,8 +550,11 @@ class Probe:
         return pids, {groups[p] for p in pids if p in groups}
 
     def _kill_child(self):
-        """Kills the executor, its process group and every descendant (collected before the kill, while the tree
-        still hangs together) with the descendants' process groups; never the probe's own group."""
+        """Ends the executor: SIGTERM first and up to TERM_GRACE seconds for it to end (the wrapper passes it on and
+        removes its temporary directories, .agent-tmp/run.* and the /private/tmp run directory, in its EXIT trap,
+        which SIGKILL would skip), then SIGKILL for its process group and every descendant (collected before the
+        signals, while the tree still hangs together) with the descendants' process groups; never the probe's own
+        group."""
         child = self._child
         if child is None:
             return
@@ -553,6 +564,11 @@ class Probe:
             try:
                 pgids.add(os.getpgid(child.pid))
             except OSError:
+                pass
+            try:
+                child.send_signal(signal.SIGTERM)
+                child.wait(timeout=TERM_GRACE)
+            except (OSError, subprocess.TimeoutExpired):
                 pass
         for pgid in pgids - {own}:
             try:

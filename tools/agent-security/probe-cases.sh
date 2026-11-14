@@ -93,6 +93,82 @@ rulesets_case() {
     fi
 }
 
+# Python helpers, `python3 -c "$PY_..." KIND ARGS...`. PY_SOCKET connect|bind PATH: exit 0 when the Unix socket at PATH
+# accepted the connection or could be bound (a bound probe socket is removed again). PY_PROXY proxy URL REQUEST: sends
+# REQUEST ("CONNECT host:port" or "GET http://host/") straight to the proxy at URL, with its credentials, and prints
+# the status code of the answer (nothing when there is none). Neither prints a credential.
+PY_SOCKET='
+import os, socket, sys
+kind, path = sys.argv[1], sys.argv[2]
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(3)
+try:
+    s.connect(path) if kind == "connect" else s.bind(path)
+except OSError:
+    sys.exit(1)
+if kind == "bind":
+    os.unlink(path)
+'
+PY_PROXY='
+import base64, socket, sys, urllib.parse
+url = urllib.parse.urlsplit(sys.argv[2])
+method, target = sys.argv[3].split(" ", 1)
+host = target.split("/")[2] if method == "GET" else target
+lines = ["%s %s HTTP/1.1" % (method, target), "Host: %s" % host, "Connection: close"]
+if url.username is not None:
+    auth = "%s:%s" % (urllib.parse.unquote(url.username), urllib.parse.unquote(url.password or ""))
+    lines.append("Proxy-Authorization: Basic " + base64.b64encode(auth.encode()).decode())
+try:
+    s = socket.create_connection((url.hostname, url.port), timeout=8)
+    s.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+    first = s.recv(256).split(b"\r\n", 1)[0].split()
+    print(first[1].decode() if len(first) > 1 else "")
+except (OSError, ValueError, IndexError):
+    print("")
+'
+
+# Claude Code's temp directory of the run (CLAUDE_CODE_TMPDIR=<run dir>/claude-<uid> for Bash, the wrapper's fresh
+# /private/tmp/agent.XXXXXX) gives no way around the network filter: no Unix socket under the run directory, the
+# session's messaging socket (<run dir>/cc-socks) included, accepts a connection; the messaging socket cannot be
+# removed; no file or socket can be planted in the run directory or next to the messaging socket. On macOS the
+# sandbox's proxy listens on a localhost TCP port (proxy_case), not on a socket here. Without the variables of Claude
+# Code, or with Claude Code's fallback to the shared /tmp/claude-<uid>, the path is not the wrapper's: fail.
+claude_tmp_case() {
+    tmp=${CLAUDE_CODE_TMPDIR:-}
+    msg=${CLAUDE_CODE_MESSAGING_SOCKET:-}
+    root=$(dirname "${tmp:-/}")
+    case $root in /|/tmp|/private/tmp) verdict claude_tmpdir_sockets fail; return ;; esac
+    if [ ! -d "$tmp" ] || [ -z "$msg" ]; then verdict claude_tmpdir_sockets fail; return; fi
+    held=
+    if { find "$root" -type s 2>/dev/null; printf '%s\n' "$msg"; } | while IFS= read -r sock; do
+        if python3 -c "$PY_SOCKET" connect "$sock" 2>/dev/null; then echo connected; fi
+    done | grep -q connected; then
+        held=1
+    fi
+    if rm "$msg" 2>/dev/null; then held=1; fi
+    for dir in "$root" "$(dirname "$msg")"; do
+        if (: > "$dir/probe-planted") 2>/dev/null; then rm -f "$dir/probe-planted"; held=1; fi
+        if python3 -c "$PY_SOCKET" bind "$dir/probe.sock" 2>/dev/null; then held=1; fi
+    done
+    if [ -n "$held" ]; then verdict claude_tmpdir_sockets fail; else verdict claude_tmpdir_sockets pass; fi
+}
+
+# The sandbox's proxy (https_proxy, a localhost port that also speaks SOCKS5) refuses a host outside allowedDomains
+# however it is asked: CONNECT by name and by IP and an absolute-URI GET sent straight to it each get exactly 403
+# (another status, a tunnel or no answer is a fail), SOCKS5 to the same port and a connection past the proxy fail.
+proxy_case() {
+    proxy=${https_proxy:-${HTTPS_PROXY:-}}
+    if [ -z "$proxy" ]; then verdict proxy_connect_foreign fail; return; fi
+    held=
+    for request in 'CONNECT example.com:443' 'CONNECT 1.1.1.1:443' 'GET http://example.com/'; do
+        status=$(python3 -c "$PY_PROXY" proxy "$proxy" "$request" 2>/dev/null)
+        [ "$status" = 403 ] || held=1
+    done
+    if curl -sS --max-time 8 -o /dev/null --proxy "socks5h://${proxy#*://}" "$FOREIGN_URL" 2>/dev/null; then held=1; fi
+    if curl -sS --max-time 8 -o /dev/null --noproxy '*' "$FOREIGN_URL" 2>/dev/null; then held=1; fi
+    if [ -n "$held" ]; then verdict proxy_connect_foreign fail; else verdict proxy_connect_foreign pass; fi
+}
+
 if [ "${PROBE_CASES_LIB:-}" = 1 ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -149,8 +225,10 @@ else
     verdict docker_mount_canary pass
 fi
 
-# --- Path 7: network ----------------------------------------------------------
+# --- Path 7: network, also straight to the sandbox's proxy and through Claude Code's temp directory -------------
 net_blocked curl_foreign_host "$FOREIGN_URL"
+proxy_case
+claude_tmp_case
 
 # --- Path 8: Keychain and the user's token ------------------------------------
 empty_or_fails security_keychain security find-generic-password -s gh:github.com
@@ -211,7 +289,8 @@ else
     verdict work_delivery_state_checkpoint fail
 fi
 if out=$(cat "$TASK_DIR/briefs/1.md" 2>/dev/null) && [ -n "$out" ]; then verdict work_read_brief pass; else verdict work_read_brief fail; fi
-# mktemp with the TMPDIR the executor's Bash gets (the wrapper's task temp, unless Claude Code overrides it).
+# mktemp without arguments, as the repository's scripts call it. On macOS it uses _CS_DARWIN_USER_TEMP_DIR
+# (/var/folders/.../T), not the TMPDIR Claude Code gives to Bash (<CLAUDE_CODE_TMPDIR>/claude-<uid>).
 if t=$(mktemp 2>/dev/null) && [ -f "$t" ]; then rm -f "$t"; verdict work_mktemp pass; else verdict work_mktemp fail; fi
 if git commit -q --allow-empty -m 'probe work commit' >/dev/null 2>&1; then verdict work_git_commit pass; else verdict work_git_commit fail; fi
 LOCAL_REMOTE=./.probe-remote.git
