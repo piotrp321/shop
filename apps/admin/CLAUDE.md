@@ -17,10 +17,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Struktura
 
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
-- `src/config/` – `readUrl(klucz)`: jedyny czytnik konfiguracji (adresy API, Keycloaka i panelu), patrz „Konfiguracja”.
+- `src/config/` – `readUrl(klucz)`: jedyny czytnik konfiguracji (adresy API, Keycloaka i panelu), patrz „Konfiguracja”;
+  `readSentryConfig()`: opcjonalne klucze Sentry, patrz „Sentry”.
+- `src/observability/` – Sentry (patrz „Sentry”): `index.ts` (`initSentry`, `setSentryUser`), `options.ts` (opcje SDK i adresy
+  propagacji trace'ów) i `filter.ts` (jedyny filtr zdarzeń).
 - `src/auth/` – logowanie OIDC (`oidc-client-ts`): `config.ts` (adresy przez `readUrl`), `userManager.ts`
   (tokeny w pamięci).
-- `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
+- `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`; ustawia i czyści użytkownika Sentry, patrz „Sentry”).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania. `/orders` i `/orders/:orderId` mają
   strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`), a `/system` strażnika
   `canViewSystem` (`src/dashboard/permissions.ts`: tylko `admin`): rola bez dostępu trafia na
@@ -388,8 +391,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
 - `prod` to `nginxinc/nginx-unprivileged` (przypięta wersja, port 8080, użytkownik `nginx`) z `dist`. Przy starcie
   kontenera `docker/40-admin-config.sh` (hook `/docker-entrypoint.d`) zapisuje `/tmp/admin-config/config.js` ze
   zmiennych środowiska `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL` i `VITE_STORE_URL` jako `window.__ADMIN_CONFIG__ = {...}`
-  (wartości jako napisy JSON). Brak zmiennej, pusta wartość albo biały znak w wartości kończy start błędem z nazwą
-  zmiennej (test `infra/k8s/tests/test_admin_config.py` uruchamia skrypt w `sh` z katalogiem wyjścia z `ADMIN_CONFIG_DIR`
+  (wartości jako napisy JSON). Opcjonalne `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE`
+  dostają w pliku klucz o tej samej nazwie tylko wtedy, gdy są ustawione i niepuste (bez nich plik jest taki jak z czterema
+  adresami; biały znak w wartości opcjonalnej kończy start błędem jak w adresie). Brak zmiennej adresu, pusta wartość albo
+  biały znak w wartości kończy start błędem z nazwą zmiennej (test `infra/k8s/tests/test_admin_config.py` uruchamia skrypt w `sh` z katalogiem wyjścia z `ADMIN_CONFIG_DIR`
   w katalogu tymczasowym; biegnie w `make -C infra/k8s check`). Przy katalogu głównym tylko do odczytu `/tmp` musi być
   zapisywalny (`emptyDir`).
 - `docker/nginx.conf`: `/config.js` z zapisanego pliku, fallback SPA na `index.html` (np. `/auth/callback`),
@@ -403,6 +408,44 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   skryptów inline ani zewnętrznych: skrypt spoza własnego origin (poza `/config.js` i bundlem) zablokuje CSP.
   Nowa lokalizacja w `nginx.conf` musi dołączać ten plik. Obraz deweloperski (Vite) nagłówków nie ma; nagłówki
   i załadowanie panelu bez naruszeń CSP sprawdza test dymny chartu (`make -C infra/k8s smoke`, obraz produkcyjny).
+
+## Sentry
+
+Spec: `docs/features/sentry/spec.md`.
+
+- Konfiguracja: opcjonalne klucze `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE` w `/config.js`
+  (patrz „Konfiguracja i obraz produkcyjny”), czytane przez `readSentryConfig` (`src/config`) tylko z `window.__ADMIN_CONFIG__`:
+  w `vite dev` Sentry nie działa (pusty `config.js`, `import.meta.env` nie jest czytany). `tracesSampleRate` to liczba od 0 do 1
+  zapisana cyframi, inna wartość albo brak to 0. Wartości wdrożenia ustawia chart.
+- Aktywacja tylko z DSN: `initSentry` (`main.ts`, przed zainstalowaniem routera i `mount`) bez DSN (brak, pusty, same białe znaki)
+  nie woła `Sentry.init` i nic nie wysyła; zły format DSN to zachowanie SDK (nic nie jest wysyłane, panel działa). SDK
+  (`@sentry/vue`) jest w bundlu, więc CSP (`script-src 'self'`) i nagłówki bezpieczeństwa są bez zmian.
+- Opcje (`buildSentryOptions`): `attachProps: false` (propsy komponentów nie trafiają do błędów), bez integracji Pinii
+  (`createSentryPiniaPlugin` w stanie store'ów ma pracownika i dane zamówień), bez Replay i Feedback, `sendDefaultPii` nie
+  istnieje w tej wersji SDK: odpowiada mu `dataCollection` (bez użytkownika, ciasteczek, treści, query stringów, zmiennych
+  ramek i linii źródła, z nagłówków tylko `User-Agent`, `Content-Type`, `Accept`). `traceLifecycle: "static"`: transakcja na
+  stronę albo nawigację, wysyłana przez `beforeSendTransaction` (domyślne strumieniowanie spanów omija filtr).
+  `browserTracingIntegration({ router })` daje transakcje nawigacji.
+- Propagacja trace'ów: `sentry-trace` i `baggage` dostają tylko żądania do API (`tracePropagationTargets` to wyrażenie
+  zakotwiczone na adresie z `VITE_API_URL`: cel tekstowy SDK pasuje w dowolnym miejscu adresu), nigdy Keycloak ani inny host.
+  CORS api dopuszcza te nagłówki.
+- Użytkownik: `setSentryUser(id)` po wczytaniu `/me` w store `auth` (`StaffMeResponse.id`, `sub`; bez loginu i e-maila),
+  `setSentryUser(null)` na początku każdego wylogowania (`logout`, także po bezczynności, bo `useIdleLogout` woła `logout`),
+  również gdy wylogowanie się nie uda (sesja się kończy; ponowne wczytanie `/me` ustawia id znowu). Bez
+  zainicjowanego SDK to nic nie robi. Nie ustawiaj innych pól użytkownika.
+- Filtr zdarzeń (`src/observability/filter.ts`, `filterEvent` i `filterBreadcrumb`) to jedna funkcja wołana z `beforeSend`,
+  `beforeSendTransaction` i `beforeBreadcrumb`. Z żądania zostają metoda, adres bez query i fragmentu i nagłówki `User-Agent`,
+  `Content-Type`, `Accept`; bez ciasteczek, treści, query stringu i adresu klienta; z użytkownika tylko `id`; bez `extra`.
+  Query i fragment znikają z nazw transakcji, nazw spanów (HTTP, zasobów, nawigacji) i ich danych, adresów w danych
+  kontekstów i breadcrumbs (`fetch`, `xhr`, `navigation`) i z adresów ramek (`q` wyszukiwania zamówień to e-mail, `code`
+  i `state` z `/auth/callback`); breadcrumbs `console` są odrzucane, ramki bez `vars`. Teksty (komunikaty, wartości wyjątków,
+  breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same wzorce co Alloy, filtr sklepu i filtr api
+  (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL, klucz=wartość z sekretami, `Failing row
+  contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`, adresy IP. Wzorce działają w czasie liniowym.
+- Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w `src/observability/filter.ts`,
+  w filtrze sklepu `apps/store/src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy
+  (`infra/k8s/argocd/apps/monitoring.yaml`, korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy
+  korpusu `store.log`, `api.log` i `postgres.log` (kontener panelu widzi tylko `apps/admin`): zmiana korpusu zmienia też kopię.
 
 ## Dane i API
 
@@ -484,5 +527,11 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   (rzędy, akcje, linie kolumn ukrytych, pasek narzędzi, adres, pager i fokus, puste stany, trzy przypadki błędu);
   testy `useCursorPager` i `useListUrlState` używają routera w pamięci; `tests/ui-accessible-names.test.ts`
   nazwę „Zamknij” okien i brak angielskich nazw dostępnych w `src/components/ui/`.
+- Sentry (`tests/sentryFilter.test.ts`, `tests/sentry.test.ts`, `tests/sentryTracing.test.ts`, `tests/config.test.ts`) bez konta
+  i bez ruchu do Sentry: prawdziwe SDK z fałszywym DSN i transportem testowym zbierającym koperty (opcja `transport` w trzecim
+  argumencie `initSentry`). SDK opakowuje `fetch`, `history`, `console` i `window.onerror` raz na stronę, więc `fetch` testu jest
+  podmieniony raz przed pierwszym `init` (`vi.stubGlobal`), a testy śladów są w osobnym pliku z jednym klientem (próbkowanie 1).
+  Wywołania sieci w testach idą przez wygenerowanego klienta (ESLint blokuje globalny `fetch`). Czyszczenie po teście: tylko
+  zakres izolacji (`getIsolationScope().setUser(null)`), bo użytkownik „wyczyszczony” na bieżącym zakresie nadpisuje id w kolejnych zdarzeniach.
 - `tests/tokens.test.ts` czyta `tokens.css` i sprawdza kontrast każdej pary tokenów; `tests/fonts.test.ts` sprawdza
   pliki Nunito, ich deklaracje i sumy SHA-256 w `THIRD_PARTY_NOTICES.md`.
