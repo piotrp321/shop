@@ -22,9 +22,8 @@ Zakres: `tools/agent-security`, `.claude/skills/groom`, `.claude/agents/backlog-
   worktree i katalogami zadania w AO, bez sieci poza GitHubem i lokalnym stosem, bez ucieczki z sandboxa, bez hooków
   i serwerów MCP z repozytorium.
 - Wykonawcy AO używają tokenu GitHub ograniczonego do repozytorium `shop`, bez administracji i zatwierdzania wdrożeń.
-- Wymagania merge'a do `main` i `epic/*` (PR, checki `checks` i `e2e`) może pominąć tylko rola admin repozytorium
-  i tylko w PR (bypass), czyli użytkownik; zakazu usuwania i force-pusha nie pomija nikt. Sonda sprawdza, że token
-  wykonawców bypassu nie ma (R8).
+- Wymagań merge'a do `main` i `epic/*` (PR, checki `checks` i `e2e`) ani zakazu usuwania i force-pusha nie pomija
+  nikt, także użytkownik: rulesety nie mają aktora bypass. Sonda sprawdza, że token wykonawców bypassu nie ma (R8).
 - Docker, którego wykonawcy potrzebują do stosu, nie daje dostępu do katalogu domowego poza udostępnionymi katalogami.
 - Wdrożenie na produkcję wymaga zatwierdzenia przez użytkownika; sekrety Actions poza `GITHUB_TOKEN` dostaje tylko
   kod z `main`; cele produkcyjne `infra/k8s` nie działają w trakcie przebiegu AO.
@@ -65,14 +64,12 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
 - P12. Wykonawca nie startuje, gdy gałąź albo drzewo robocze zmienia `.claude/settings.json`,
   `.claude/settings.local.json` albo `.mcp.json` względem `git merge-base HEAD origin/main` (zmiana tych plików na
   `main` nie zatrzymuje starszych gałęzi); epik zmieniający te pliki nie idzie przez AO.
-- P13. Użytkownik może zmergować PR do `main` i `epic/*` bez zielonego CI: aktor bypass rulesetów merge'a to rola
-  admin repozytorium (`RepositoryRole`, `actor_id` 5; w repozytorium konta prywatnego ma ją tylko właściciel) w trybie
-  `pull_request`. Zakaz usuwania i force-pusha jest w osobnych rulesetach bez aktora bypass, bo bypass obejmuje
-  wszystkie reguły rulesetu. Tożsamość tokenu wykonawców to nadal użytkownik (P4), więc to, czy fine-grained PAT bez
-  Administration korzysta z bypassu roli admin, jest hipotezą do potwierdzenia na prawdziwym tokenie (R8). Gdy token
-  wykonawcy ma bypass, zadanie zgłasza bloker z wynikiem (decyzja użytkownika: osobna tożsamość agentów, #498, albo
-  rezygnacja z bypassu). Sesje interaktywne i proces AO z tokenem użytkownika technicznie mogą użyć bypassu; chroni
-  zasada, że agent nigdy go nie używa (luka).
+- P13. Nikt, także użytkownik, nie zmerguje PR do `main` ani `epic/*` bez zielonych `checks` i `e2e`: rulesety
+  merge'a (`main-merge`, `epic-merge`) i rulesety zakazu usuwania i force-pusha (`main`, `epic`) nie mają aktora
+  bypass. Bypass nadaje się roli, nie tokenowi: fine-grained PAT wykonawcy bez Administration, którego tożsamością
+  jest właściciel (P4), dostaje bypass roli admin tak samo jak token użytkownika (sprawdzone na prawdziwym tokenie:
+  `pull_requests_only` dla obu). Przy jednej tożsamości jedyną techniczną granicą jest więc brak aktora bypass.
+  Osobna tożsamość agentów zostaje w #498.
 
 ## Poza zakresem
 
@@ -104,8 +101,9 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
   Settings → Environments. Sekret repozytorium `DEPLOY_KEY` użytkownik usuwa po merge'u końcowego PR (runbook).
 - Gdy SENTRY trafi do `main` przed tym epikiem: środowisko GitHub dla `SENTRY_AUTH_TOKEN` (bez zatwierdzenia,
   polityka gałęzi „tylko `main`”) z sekretem środowiska. Po co: AGENT-SECURITY-4 (R5). Źródło: użytkownik (runbook).
-- Rulesety z R8 w GitHubie zgodne z `tools/rulesets/` (założone przed epikiem; pliki, test struktury i opis
-  w `CLAUDE.md` są na `main`). Po co: przypadek sondy R8 i odbiór (kryterium 11); bez rulesetów sonda po merge'u epiku
+- Rulesety z R8 w GitHubie zgodne z `tools/rulesets/`: cztery rulesety bez aktora bypass (pary założone przed
+  epikiem; aktora bypass z `main-merge` i `epic-merge` użytkownik usuwa po merge'u PR zadania AGENT-SECURITY-3 do
+  `epic/agent-security`, przez `-X PUT` z plików). Po co: przypadek sondy R8 i odbiór (kryterium 11); bez rulesetów sonda po merge'u epiku
   nie przepuści startu AO. Źródło: użytkownik (wymaga uprawnień admina repozytorium).
 - Wersja Claude Code przypięta przez AO ma ustawienia sandboxa z profilu: istnieje (2.1.311; eksperyment przy
   przygotowaniu: `denyRead`/`allowRead`, `allowWrite`, `allowUnixSockets`, `allowLocalBinding`,
@@ -119,7 +117,7 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
   wdrożenie (`deploy.yml` uruchomiony przez `workflow_dispatch` na `main` sekretem `DEPLOY_KEY` przesuwa gałąź `deploy`).
 - A2 GitHub: token `gh` użytkownika w Keychain (`repo`, `admin:public_key`, `gist`), klucz `~/.ssh/id_rsa` (git przez
   SSH do wszystkich repozytoriów, także prywatnego AO), rulesety `main`, `main-merge`, `epic`, `epic-merge`, `deploy`
-  (bypass wymagań merge'a dla roli admin, R8), sekrety Actions
+  (merge do `main` i `epic/*` tylko z zielonym CI, R8), sekrety Actions
   (`DEPLOY_KEY`; `SENTRY_AUTH_TOKEN` po epiku SENTRY), `GITHUB_TOKEN` workflowów.
 - A3 Host: `~/.config/shop/demo-photos.env`, poświadczenia rejestrów Dockera (`credsStore: desktop`), Keychain,
   `~/.claude`, pliki innych projektów, baza stanu AO (`$AO_HOME`), kod wykonywany poza sandboxem (AO, `.ao/*`,
@@ -201,10 +199,10 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
     `KUBE_DIR` po operacji (R5, R7, P7). Sprawdzenie: testy celów z atrapą listy procesów i testy `ao-prepare`
     z rejestrem.
 15. Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST albo GraphQL) do `main` albo
-    `epic/*` bez zielonego CI → aktor bypass rulesetów merge'a to tylko rola admin w trybie `pull_request`, token
-    wykonawcy bez Administration (R4, R8, P13). Sprawdzenie: test struktury rulesetów z próbami osłabienia i sonda:
-    `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` z tokenem wykonawcy to `never`; odbiór porównuje
-    z tokenem użytkownika (`pull_requests_only`), żeby sprawdzenie odróżniało oba tokeny.
+    `epic/*` bez zielonego CI → rulesety merge'a bez aktora bypass, token wykonawcy bez Administration, więc nie
+    doda aktora (R4, R8, P13). Sprawdzenie: test struktury rulesetów z próbami dodania aktora i sonda:
+    `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` z tokenem wykonawcy to `never`; odbiór sprawdza
+    `never` także z tokenem użytkownika i puste `bypass_actors` obu rulesetów merge'a w GitHubie.
 
 **Luki, które epik świadomie zostawia** (każda z powodem; propozycje osobnych zgłoszeń):
 
@@ -221,10 +219,9 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
   tożsamość tokenu to użytkownik); wdrożenie zatrzymuje R5. Osobna tożsamość agentów (GitHub App z wymaganym
   zatwierdzeniem w `main`) to propozycja zgłoszenia.
 - Sesje interaktywne (`/ao-run`, `/prepare-epic`, `/groom`, `/retro`) i proces AO mają token użytkownika z rolą admin,
-  więc technicznie mogą zmergować z bypassem (R8). Chroni zasada w `CLAUDE.md` i skillach (agent nigdy nie używa
-  bypassu: `--admin`, pole „bypass rules”) i to, że AO nie wywołuje `--admin`; to granica promptu jak P10. Zamyka ją
-  dopiero osobna tożsamość dla wszystkich agentów, z której token użytkownika nie trafia do ich środowiska (#498 albo
-  osobne zgłoszenie).
+  więc technicznie mogą zmienić rulesety (dodać aktora bypass) albo zatwierdzić wdrożenie. Chroni zasada w `CLAUDE.md`
+  (agent nie zmienia rulesetów); to granica promptu jak P10. Zamyka ją dopiero osobna tożsamość dla wszystkich
+  agentów, z której token użytkownika nie trafia do ich środowiska (#498 albo osobne zgłoszenie).
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
   końcowego PR przez użytkownika.
 - Logi CI i wyjście zależności czytane przez `/delivery` nie przechodzą przez bramkę (treść z kodu repozytorium i jego
@@ -378,8 +375,8 @@ Sonda sprawdza ustawienie przy każdym starcie AO.
 
 Fine-grained PAT z „Wymaganych przed startem” (P4) w Keychain, czytany wyłącznie przez wrapper i sondę. Bez
 Administration (rulesety, ustawienia), Deployments i Environments (zatwierdzanie wdrożeń), Secrets i Variables,
-tylko repozytorium `shop`; bez bypassu rulesetów merge'a (R8, hipoteza P13). Sesje interaktywne i sam AO używają
-nadal tokenu użytkownika.
+tylko repozytorium `shop`; bez bypassu rulesetów merge'a (R8: rulesety bez aktora bypass, P13). Sesje interaktywne
+i sam AO używają nadal tokenu użytkownika.
 
 ### R5. Operacje produkcyjne
 
@@ -499,38 +496,36 @@ wykonawcy, nie konfigurację.
   `/ao-run` przekazuje do `ao run`. Sonda działa przy każdym `ao run` i każdym wznowieniu, bez pomijania (P8).
 - Czas i koszt sondy trafiają do raportu odbioru epiku.
 
-### R8. Bypass wymagań merge'a tylko dla użytkownika
+### R8. Merge tylko z zielonym CI, bez bypassu
 
-Rulesety `main` i `epic` dzielą się po dwa, jak `deploy` i `deploy-push`, bo GitHub stosuje listę aktorów bypass do
-wszystkich reguł rulesetu:
+Rulesety `main` i `epic` dzielą się po dwa, jak `deploy` i `deploy-push`: zakaz usuwania i force-pusha osobno od
+wymagań merge'a. Żaden z nich nie ma aktora bypass:
 
 | Plik w `tools/rulesets/` | Wzorzec | Reguły | Aktor bypass |
 |---|---|---|---|
 | `main.json` | `~DEFAULT_BRANCH` | `deletion`, `non_fast_forward` | brak |
-| `main-merge.json` | jak `main` | `pull_request` i `required_status_checks` (`checks`, `e2e`) | `RepositoryRole` 5 (admin), `pull_request` |
+| `main-merge.json` | jak `main` | `pull_request` i `required_status_checks` (`checks`, `e2e`) | brak |
 | `epic.json` | `refs/heads/epic/*` | `deletion`, `non_fast_forward` | brak |
-| `epic-merge.json` | `refs/heads/epic/*` | `pull_request` (squash albo merge commit) i `required_status_checks` z `do_not_enforce_on_create` | `RepositoryRole` 5 (admin), `pull_request` |
+| `epic-merge.json` | `refs/heads/epic/*` | `pull_request` (squash albo merge commit) i `required_status_checks` z `do_not_enforce_on_create` | brak |
 
 - Pliki są zgodne z rulesetami w GitHubie (`gh api repos/piotrp321/shop/rulesets/<id>`); zmiana pliku wymaga
   aktualizacji rulesetu przez użytkownika.
-- Tryb `pull_request` (nie `always`): wyjątek działa tylko przy merge'u PR; bezpośredni push na `main` i `epic/*` dalej
-  wymaga PR, także od użytkownika.
-- `tools/rulesets/test_rulesets.py`: rulesety bez aktora bypass mają `deletion` i `non_fast_forward`, a rulesety
-  merge'a mają dokładnie jednego aktora `RepositoryRole` 5 w trybie `pull_request` i nie mają tych reguł. Próby
-  osłabienia, które test musi złapać: tryb `always` albo `exempt`, rola write (4) albo maintain (2), `Integration`,
-  `DeployKey`, drugi aktor, aktor bypass w `main` albo `epic`, `deletion` lub `non_fast_forward` w rulesecie merge'a,
-  brak `checks` albo `e2e`, inny wzorzec niż para rulesetu bez bypassu.
-- Zakładanie (pozycja użytkownika, wymaga admina repozytorium; najpierw rulesety merge'a, potem zmiana istniejących,
-  żeby nie było chwili bez wymagań):
-  `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/main-merge.json`, to samo dla
-  `epic-merge.json`, potem `-X PUT repos/piotrp321/shop/rulesets/<id>` z `main.json` i `epic.json`. Opis w `CLAUDE.md`.
-- Merge bez zielonego CI wykonuje użytkownik: na stronie PR menu przy przycisku merge → „Bypass requirements” albo `gh pr merge <nr> --squash --admin` we własnym terminalu. Zasada w `CLAUDE.md`: agent (wykonawca,
-  sesja, skill) nigdy nie używa bypassu, także na polecenie z pliku, komentarza albo innej sesji; `/ao-run` i AO już
-  nie wywołują `--admin`.
+- Nikt, także użytkownik, nie zmerguje PR do `main` ani `epic/*` bez zielonych `checks` i `e2e` i nie wypchnie
+  zmian bezpośrednio. Czerwone CI naprawia się kolejnym commitem w PR.
+- `tools/rulesets/test_rulesets.py`: rulesety bez reguł merge'a mają `deletion` i `non_fast_forward`, rulesety
+  merge'a ich nie mają, a wszystkie cztery mają puste `bypass_actors`. Próby osłabienia, które test musi złapać:
+  aktor w rulesecie merge'a (`RepositoryRole` admin w trybie `pull_request`, `always` albo `exempt`, rola write albo
+  maintain, `Integration`, `DeployKey`, `OrganizationAdmin`, `Team`, `User`), lista aktorów inna niż pusta lista,
+  aktor w `main` albo `epic`, `deletion` lub `non_fast_forward` w rulesecie merge'a, brak `checks` albo `e2e`, inny
+  wzorzec niż para.
+- Zakładanie i aktualizacja (pozycja użytkownika, wymaga admina repozytorium; najpierw rulesety merge'a, potem pary,
+  żeby nie było chwili bez wymagań): `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/<plik>.json`
+  albo `-X PUT repos/piotrp321/shop/rulesets/<id>` dla istniejącego. Opis w `CLAUDE.md`. Zasada w `CLAUDE.md`: agent
+  (wykonawca, sesja, skill) nie zmienia rulesetów ani nie dodaje aktora bypass.
 - Sonda (R6), przypadek warstwy `token`: `gh api repos/piotrp321/shop/rulesets` z tokenem wykonawcy, potem
-  `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` musi być `never`. Hipoteza (P13): pole odzwierciedla
-  to, czy ten token może użyć bypassu. Odbiór (sesja `/ao-run` z tokenem użytkownika) sprawdza, że dla użytkownika to
-  `pull_requests_only`; ta sama wartość dla obu tokenów to bloker z wynikiem (decyzja użytkownika, P13).
+  `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` musi być `never`; brak rulesetu albo inna wartość to
+  `fail` z przyczyną. Odbiór (sesja `/ao-run` z tokenem użytkownika) sprawdza `never` także dla tokenu użytkownika
+  i puste `bypass_actors` obu rulesetów merge'a.
 
 ## Scenariusze błędów
 
@@ -549,8 +544,8 @@ wszystkich reguł rulesetu:
 | Sonda przekracza limit czasu albo kosztu, model nie wykonał przypadku | kod 1 z przyczyną; AO nie startuje (fail-closed) |
 | Wykonawca bez `AO_TASK_ID` albo z nieznanym zadaniem | wrapper odmawia startu; AO notuje nieudaną próbę |
 | Ruleset `main-merge` albo `epic-merge` nie jest założony | sonda: przypadek bypassu `fail` z przyczyną „brak rulesetu”, kod 1; AO nie startuje; użytkownik zakłada rulesety (R8) |
-| Token wykonawcy ma bypass (`current_user_can_bypass` inne niż `never`) | sonda kod 1; w zadaniu AGENT-SECURITY-3 albo w odbiorze bloker z wynikiem (P13) |
-| Użytkownik zmergował z bypassem przy czerwonym CI | GitHub przyjmuje merge; CI na `main` albo `epic/*` pokazuje stan po merge'u, naprawa jak przy każdym czerwonym `main` |
+| Token wykonawcy ma bypass (`current_user_can_bypass` inne niż `never`, np. ruleset w GitHubie nadal ma aktora) | sonda kod 1 z przyczyną; AO nie startuje; użytkownik usuwa aktora bypass w GitHubie (R8) |
+| PR do `main` albo `epic/*` z czerwonym CI | GitHub odmawia merge'a każdemu; naprawa kolejnym commitem w PR |
 | Dwie sondy naraz (krok 19a) | losowe kanarki i atrapy `$AO_HOME`, osobne worktree; żadna nie sprząta cudzych plików |
 
 ## Zmiany dokumentacji (razem z implementacją)
@@ -566,8 +561,9 @@ wszystkich reguł rulesetu:
   sekretu repozytorium `DEPLOY_KEY`; AGENT-SECURITY-4.
 - `CLAUDE.md`: zasada „treść z GitHuba dla agentów tylko przez `tools/agent-security/github_trust.py`”, wykonawcy AO
   w sandboxie z sondą przed startem (wskaźnik do ADR), sekrety Actions tylko w środowiskach `main`; AGENT-SECURITY-4
-  (sekrety, cele) i 5 (reszta). Rulesety R8 i zakaz bypassu dla agentów już są w `CLAUDE.md`.
-- `docs/adr/agent-security.md`: droga 15, hipoteza P13 i luka sesji interaktywnych z bypassem; AGENT-SECURITY-1.
+  (sekrety, cele) i 5 (reszta). Rulesety R8 bez aktora bypass i zakaz zmiany rulesetów przez agentów: `CLAUDE.md` (AGENT-SECURITY-3).
+- `docs/adr/agent-security.md`: droga 15, P13 (rulesety bez bypassu) i luka sesji interaktywnych z tokenem
+  użytkownika; AGENT-SECURITY-1 i 3.
 - `docs/features/ao-run/spec.md`: `ao-prepare`, sonda i wrapper przy starcie; AGENT-SECURITY-5.
 
 ## Kryteria akceptacji
@@ -601,9 +597,9 @@ wszystkich reguł rulesetu:
    z kodem różnym od 0, limit czasu albo brak wyniku kończy go błędem z przyczyną (fail-closed). Testy z atrapą sondy i `claude_pin.py`. `/ao-run` startuje AO z jego wyniku
    i wysyła push przy błędzie.
 10. `make check` i testy skryptów (`.github/scripts/script-tests.sh`) przechodzą; `make -C infra/k8s check` przechodzi.
-11. Rulesety (R8): test struktury przechodzi. Odbiór:
-    `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` to `pull_requests_only` z tokenem użytkownika
-    i `never` z tokenem wykonawcy; wynik w raporcie odbioru.
+11. Rulesety (R8): test struktury przechodzi. Odbiór: `current_user_can_bypass` rulesetów `main-merge`
+    i `epic-merge` to `never` z tokenem wykonawcy i z tokenem użytkownika, a `bypass_actors` obu rulesetów merge'a
+    w GitHubie jest puste; wynik w raporcie odbioru.
 
 ## Ryzyka
 
@@ -617,7 +613,7 @@ wszystkich reguł rulesetu:
   `backups` i `create-admin`.
 - Koszt sondy przy każdym `ao run`: jeden krótki przebieg Haiku; eksperymenty przy przygotowaniu kosztowały około
   0,004 USD i trwały poniżej minuty, limit 1 USD to zabezpieczenie.
-- Merge z bypassem przy czerwonym CI psuje `main` albo gałąź epiku (np. #503 z czerwonym `k8s-selftest` i naprawa
-  #505); decyzja i naprawa należą do użytkownika.
+- Bez bypassu PR z niestabilnym albo czerwonym z przyczyn zewnętrznych CI (awaria GitHuba, rejestru) czeka na
+  zielony przebieg także u użytkownika; obejściem jest ponowienie CI albo poprawka w PR, nie merge.
 - Luki P11 i lifecycle AO zostają do osobnych zgłoszeń; ADR nazywa je wprost, żeby sandbox nie był brany za pełną
   izolację.

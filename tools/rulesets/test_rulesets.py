@@ -8,10 +8,11 @@ nobody else can create the branch on any commit). The tests also try the
 ways of weakening them: a bypass actor in the ruleset with the unconditional rules, another actor type, a mode other
 than `always`, another rule next to `creation` and `update`, either of them missing, a wider ref pattern.
 
-`main` and `epic/*` follow the same split: `main` and `epic` (deletion and non-fast-forward, no bypass actor) and
-`main-merge` and `epic-merge` (pull request and the required checks `checks` and `e2e`), whose only bypass actor is the
-repository admin role in `pull_request` mode, so only the owner can merge a pull request without green CI and nobody
-can push directly, delete the branch or force-push. The tests try the ways of widening that bypass.
+`main` and `epic/*` follow the same split into two rulesets: `main` and `epic` (deletion and non-fast-forward) and
+`main-merge` and `epic-merge` (pull request and the required checks `checks` and `e2e`). None of the four has a bypass
+actor, so nobody, the repository owner included, can merge a pull request without green `checks` and `e2e`, push
+directly, delete the branch or force-push. The tests try the ways of adding a bypass actor back (any actor type and
+mode) and of weakening the rules.
 """
 import copy
 import json
@@ -23,7 +24,6 @@ UNCONDITIONAL = {"deletion", "non_fast_forward"}
 DEPLOY_REFS = ["refs/heads/deploy", "refs/heads/deploy-images"]
 MERGE_RULES = ["pull_request", "required_status_checks"]
 REQUIRED_CHECKS = {"checks", "e2e"}
-ADMIN_ROLE_ID = 5
 
 
 def load(name):
@@ -72,7 +72,8 @@ def problems(deploy, push):
 
 
 def merge_problems(plain, merge):
-    """What is wrong with a branch's pair of rulesets: `plain` without bypass, `merge` with the owner's bypass."""
+    """What is wrong with a branch's pair of rulesets: `plain` (deletion, non-fast-forward) and `merge` (pull request,
+    required checks), both without a bypass actor."""
     found = []
     base = plain.get("name")
     if merge.get("name") != f"{base}-merge":
@@ -100,9 +101,8 @@ def merge_problems(plain, merge):
             checks = {check.get("context") for check in parameters.get("required_status_checks", [])}
     if not REQUIRED_CHECKS <= checks:
         found.append(f"{base}-merge: the required checks {sorted(checks)} lack checks or e2e")
-    expected_actor = {"actor_type": "RepositoryRole", "actor_id": ADMIN_ROLE_ID, "bypass_mode": "pull_request"}
-    if merge.get("bypass_actors") != [expected_actor]:
-        found.append(f"{base}-merge: the only bypass actor must be the admin role in pull_request mode")
+    if merge.get("bypass_actors") != []:
+        found.append(f"{base}-merge: has a bypass actor (it could merge without green checks and e2e)")
     return found
 
 
@@ -244,6 +244,11 @@ class MergeRulesets(unittest.TestCase):
         for base in ("main", "epic"):
             self.assertEqual([], merge_problems(load(f"{base}.json"), load(f"{base}-merge.json")), base)
 
+    def test_nobody_can_bypass_the_merge_rulesets(self):
+        for base in ("main", "epic"):
+            self.assertEqual([], load(f"{base}-merge.json")["bypass_actors"], base)
+            self.assertEqual([], load(f"{base}.json")["bypass_actors"], base)
+
     def test_ref_patterns(self):
         self.assertEqual(["~DEFAULT_BRANCH"], load("main.json")["conditions"]["ref_name"]["include"])
         self.assertEqual(["refs/heads/epic/*"], load("epic.json")["conditions"]["ref_name"]["include"])
@@ -257,8 +262,21 @@ class MergeRulesets(unittest.TestCase):
         self.assertEqual({"squash", "merge"}, set(rule["parameters"]["allowed_merge_methods"]))
 
 
-class AttemptsToWidenTheMergeBypass(unittest.TestCase):
-    """Each widening of the owner's bypass must be caught."""
+class AttemptsToWeakenTheMergeRulesets(unittest.TestCase):
+    """Each way of adding a bypass actor or weakening the merge rules must be caught."""
+
+    BYPASS_ACTORS = (
+        {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "pull_request"},
+        {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "always"},
+        {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "exempt"},
+        {"actor_type": "RepositoryRole", "actor_id": 4, "bypass_mode": "pull_request"},
+        {"actor_type": "RepositoryRole", "actor_id": 2, "bypass_mode": "always"},
+        {"actor_type": "Integration", "actor_id": 1, "bypass_mode": "always"},
+        {"actor_type": "DeployKey", "actor_id": None, "bypass_mode": "always"},
+        {"actor_type": "OrganizationAdmin", "actor_id": 1, "bypass_mode": "pull_request"},
+        {"actor_type": "Team", "actor_id": 1, "bypass_mode": "pull_request"},
+        {"actor_type": "User", "actor_id": 1, "bypass_mode": "pull_request"},
+    )
 
     def setUp(self):
         self.pairs = [(load(f"{base}.json"), load(f"{base}-merge.json")) for base in ("main", "epic")]
@@ -275,32 +293,21 @@ class AttemptsToWidenTheMergeBypass(unittest.TestCase):
     def keep(_):
         pass
 
-    def set_actor(self, **fields):
-        def change(merge):
-            merge["bypass_actors"][0].update(fields)
-        return change
+    def test_any_bypass_actor_on_the_merge_ruleset(self):
+        for actor in self.BYPASS_ACTORS:
+            def change(merge, actor=actor):
+                merge["bypass_actors"] = [dict(actor)]
+            self.assert_caught(self.keep, change, "-merge: has a bypass actor")
 
-    def test_bypass_mode_always_or_exempt(self):
-        for mode in ("always", "exempt"):
-            self.assert_caught(self.keep, self.set_actor(bypass_mode=mode), "only bypass actor")
+    def test_a_bypass_list_that_is_not_an_empty_list(self):
+        for value in (None, {}, [{}]):
+            def change(merge, value=value):
+                merge["bypass_actors"] = value
+            self.assert_caught(self.keep, change, "-merge: has a bypass actor")
 
-    def test_write_or_maintain_role(self):
-        for role in (4, 2):
-            self.assert_caught(self.keep, self.set_actor(actor_id=role), "only bypass actor")
-
-    def test_integration_or_deploy_key(self):
-        self.assert_caught(self.keep, self.set_actor(actor_type="Integration", actor_id=1), "only bypass actor")
-        self.assert_caught(self.keep, self.set_actor(actor_type="DeployKey", actor_id=None), "only bypass actor")
-
-    def test_second_actor(self):
-        def change(merge):
-            merge["bypass_actors"].append({"actor_type": "DeployKey", "actor_id": None, "bypass_mode": "always"})
-        self.assert_caught(self.keep, change, "only bypass actor")
-
-    def test_no_actor(self):
-        def change(merge):
-            merge["bypass_actors"] = []
-        self.assert_caught(self.keep, change, "only bypass actor")
+        def drop(merge):
+            del merge["bypass_actors"]
+        self.assert_caught(self.keep, drop, "-merge: has a bypass actor")
 
     def test_bypass_actor_on_the_plain_ruleset(self):
         def change(plain):

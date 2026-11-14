@@ -49,7 +49,7 @@ AGENT-ISOLATION (#498).
 | 12 | Zmieniony `.ao/teardown` albo `.ao/setup` | `denyWrite` dla `<worktree>/.ao`, `deny` Edit/Write `.ao/**` (R2) | sonda |
 | 13 | Podmiana wrappera, profilu, bazy AO, `events.jsonl`, stanu innego zadania | kopia w `$AO_HOME/agent-security/`, dostęp tylko do katalogu własnego zadania (R2, R7) | sonda |
 | 14 | Kubeconfig produkcji w `KUBE_DIR` w trakcie przebiegu AO | cele montujące `KUBE_DIR` odmawiają przy działającym AO albo wykonawcy; rejestr `KUBE_DIR`, `ao-prepare` odmawia startu (R5, R7) | testy celów i `ao-prepare` |
-| 15 | Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST, GraphQL) | bypass rulesetów merge'a tylko dla roli admin w trybie `pull_request`, token wykonawcy bez Administration (R4, R8) | `tools/rulesets/test_rulesets.py`, sonda: `current_user_can_bypass` = `never` |
+| 15 | Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST, GraphQL) | rulesety merge'a bez aktora bypass, token wykonawcy bez Administration (R4, R8) | `tools/rulesets/test_rulesets.py`, sonda: `current_user_can_bypass` = `never` |
 
 **Luki, które epik świadomie zostawia:**
 
@@ -61,9 +61,9 @@ AGENT-ISOLATION (#498).
 - Sieć kontenerów Dockera nie jest ograniczona; skutek ogranicza zakres tokenu (R4) i bramka wdrożenia (R5).
 - Merge do `main` przez wykonawcę po zielonym CI jest technicznie możliwy (tożsamość tokenu to użytkownik); wdrożenie
   zatrzymuje R5. Osobna tożsamość agentów (GitHub App) to propozycja zgłoszenia.
-- Sesje interaktywne i proces AO mają token użytkownika z rolą admin, więc technicznie mogą zmergować z bypassem
-  rulesetu i zatwierdzić wdrożenie. Chroni zasada w `CLAUDE.md` i skillach (agent nigdy nie używa bypassu) i to, że AO
-  nie wywołuje `--admin`: granica promptu. Zamyka ją osobna tożsamość dla wszystkich agentów (#498 albo osobne
+- Sesje interaktywne i proces AO mają token użytkownika z rolą admin, więc technicznie mogą zatwierdzić wdrożenie
+  i zmienić rulesety (np. dodać aktora bypass). Chroni zasada w `CLAUDE.md` i skillach (agent nie zmienia rulesetów
+  ani nie zatwierdza wdrożeń): granica promptu. Zamyka ją osobna tożsamość dla wszystkich agentów (#498 albo osobne
   zgłoszenie).
 - Sesje interaktywne nie mają sandboxa Bash i mogą wywołać `gh` z pominięciem bramki: granica promptu.
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
@@ -105,13 +105,11 @@ AGENT-ISOLATION (#498).
 - **R7. Start AO.** `tools/agent-security/ao-prepare` kopiuje wrapper, profil i sondę z `origin/main` do
   `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru i uruchamia sondę przed każdym
   `ao run` i wznowieniem; sonda, która nie przeszła, blokuje start.
-- **R8. Bypass tylko dla użytkownika.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) nie mają aktora
-  bypass; `main-merge` i `epic-merge` (PR i checki `checks`, `e2e`) mają jednego: rolę admin repozytorium
-  (`RepositoryRole` 5) w trybie `pull_request`. Hipoteza do potwierdzenia na prawdziwym tokenie (P13): fine-grained
-  PAT wykonawcy bez Administration nie korzysta z bypassu roli admin, mimo że jego tożsamością jest użytkownik. Sonda
-  sprawdza `current_user_can_bypass` rulesetów merge'a (`never` dla tokenu wykonawcy, `pull_requests_only` dla
-  tokenu użytkownika); ta sama wartość dla obu to bloker do decyzji użytkownika (osobna tożsamość agentów albo
-  rezygnacja z bypassu).
+- **R8. Merge tylko z zielonym CI, bez bypassu.** Rulesety `main` i `epic` (zakaz usuwania i force-pusha) oraz
+  `main-merge` i `epic-merge` (PR i checki `checks`, `e2e`) nie mają żadnego aktora bypass: nikt, także użytkownik,
+  nie zmerguje PR do `main` ani `epic/*` bez zielonych `checks` i `e2e`. Sonda sprawdza, że
+  `current_user_can_bypass` rulesetów merge'a z tokenem wykonawcy to `never`; odbiór sprawdza to samo dla tokenu
+  użytkownika i puste `bypass_actors` obu rulesetów merge'a w GitHubie.
 
 ## Uzasadnienie
 
@@ -121,8 +119,10 @@ AGENT-ISOLATION (#498).
   procesie wykonawcy, a nie test konfiguracji, wykrywa zmianę zachowania nowej wersji CLI przed pracą.
 - Ograniczony token i środowisko `production` zamykają skutki, których sandbox nie zamknie (kontener Dockera, kod
   poza sandboxem): bez Administration i Deployments wykonawca nie zmieni rulesetu ani nie zatwierdzi wdrożenia.
-- Rozdzielenie rulesetów merge'a i rulesetów bez bypassu wynika z tego, że GitHub stosuje listę aktorów bypass do
-  wszystkich reguł rulesetu.
+- Bypass rulesetu nadaje się roli (admin), a nie tokenowi: fine-grained PAT wykonawcy, którego tożsamością jest
+  właściciel repozytorium, dostaje ten sam bypass (`pull_requests_only`) co token użytkownika, mimo braku uprawnienia
+  Administration. Przy jednej tożsamości jedyną techniczną granicą jest brak aktora bypass; osobna tożsamość agentów
+  (#498) pozwoliłaby nadać bypass wyłącznie użytkownikowi.
 - Pełna izolacja (osobny użytkownik systemu, lifecycle AO w sandboxie, osobna tożsamość GitHub agentów) wymaga zmian
   w zamrożonym AO i nowej infrastruktury, więc jest osobnym epikiem (#498).
 
