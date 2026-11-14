@@ -1,26 +1,30 @@
-# Deployment (docs/features/deploy/spec.md, "Wdrożenie nowej wersji" and D4).
+# Deployment (docs/features/deploy/spec.md, "Wdrożenie nowej wersji" and D4). A version reaches the server only when the
+# user asks for it: `gh workflow run deploy.yml --ref main`. Nothing deploys on a push.
 #
-#   push to main        images -> smoke -> deploy: builds the four production images and pushes them to GitHub Container
-#                       Registry tagged with the commit SHA and writes the images values file (the revision and the four
-#                       digests, infra/k8s/scripts/images-values.sh) once. The smoke test installs the chart with that
-#                       very file, so the cluster pulls the images from the registry by digest. Only after it passes, and
-#                       after the render of prod with that file is checked, does one atomic push move the branch `deploy`
-#                       to the commit by fast-forward and add a snapshot commit (the commit plus the file) to the branch
-#                       `deploy-images`, which Argo CD tracks (.github/scripts/deploy-ref.sh, deploy key from the secret
-#                       DEPLOY_KEY; without the secret it ends with a warning, not an error).
+#   workflow_dispatch   on main (refs/heads/main): images -> smoke -> deploy. Builds the four production images and pushes
+#     on main           them to GitHub Container Registry tagged with the commit SHA and writes the images values file (the
+#                       revision and the four digests, infra/k8s/scripts/images-values.sh) once. The smoke test installs
+#                       the chart with that very file, so the cluster pulls the images from the registry by digest. Only
+#                       after it passes, and after the render of prod with that file is checked, does one atomic push move
+#                       the branch `deploy` to the commit by fast-forward and add a snapshot commit (the commit plus the
+#                       file) to the branch `deploy-images`, which Argo CD tracks (.github/scripts/deploy-ref.sh, deploy
+#                       key from the secret DEPLOY_KEY; without the secret it ends with a warning, not an error).
+#   workflow_dispatch   on any other branch: smoke only, on that branch; the images are built from the GitHub Actions
+#                       cache, nothing is pushed and `deploy` does not move. GitHub offers it only once this file is on the
+#                       default branch (main), so before the merge of the epic the rehearsal on the epic branch is the pull
+#                       request event (this file is in the paths below).
 #   pull request        smoke only, when the change touches the files that decide the images and the chart (paths
 #                       below); the images are built from the GitHub Actions cache and never pushed. Not a required check.
-#   workflow_dispatch   smoke only, on the branch it is started on; nothing is pushed and `deploy` does not move. GitHub
-#                       offers it only once this file is on the default branch (main), so before the merge of the epic
-#                       the rehearsal on the epic branch is the pull request event (this file is in the paths below).
 #
-# Runs for main are never cancelled: one runs, at most one waits, and a waiting one is replaced by the newer commit, so
-# the latest commit is deployed. A pull request run is superseded by the next push to the same PR.
+# env.DEPLOY ("true" for a dispatch on main) is the one switch of everything above; the jobs `images` and `deploy` repeat
+# the same expression because the env context is not available in a job's `if`.
+#
+# Runs for main are never cancelled: one runs, at most one waits, and a waiting one is replaced by the newer request, which
+# runs on the then latest commit, so the latest commit is deployed. A run for any other ref is superseded by the next one
+# for the same ref (the next push to the same PR).
 name: Deploy
 
 on:
-  push:
-    branches: [main]
   pull_request:
     paths:
       - 'infra/**'
@@ -36,8 +40,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.event_name == 'push' && 'main' || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -49,6 +53,9 @@ defaults:
     shell: bash
 
 env:
+  # A deployment: a dispatch on main (the string "true" or "false"). Pushing images, the images values file and `deploy` hang
+  # on it, nothing else; see the header.
+  DEPLOY: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
   # The images of the chart (image.registry); k3s pulls them without credentials once the packages are public.
   IMAGE_PREFIX: ghcr.io/piotrp321/shop
   # The registry name the smoke test expects for the cluster of COMPOSE_PROJECT_NAME (infra/k8s/scripts/smoke.sh:
@@ -60,7 +67,7 @@ jobs:
   # Builds and pushes the four production images with the tag <commit sha>. An image that is already in the registry
   # under that tag (a re-run of the same commit) is kept, not rebuilt, so one tag never gets two digests.
   images:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -215,13 +222,13 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # The smoke test (make -C infra/k8s smoke) on an empty k3d cluster. On main the first install uses the images values
+  # The smoke test (make -C infra/k8s smoke) on an empty k3d cluster. On a deployment the first install uses the images values
   # file of the job above, so the cluster pulls the pushed images from the registry by digest (the later phases of the
   # test run on the same images, loaded from the local daemon); otherwise it runs on images built here from the cache of
   # GitHub Actions.
   smoke:
     needs: images
-    # `images` is skipped unless this is a push to main; a failed or cancelled one stops the smoke test.
+    # `images` is skipped unless this is a dispatch on main; a failed or cancelled one stops the smoke test.
     if: ${{ !cancelled() && (needs.images.result == 'success' || needs.images.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -238,12 +245,12 @@ jobs:
       # (the default builder) sees. The builds below name this builder and load their result into the daemon.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         id: buildx
-        if: github.event_name != 'push'
+        if: env.DEPLOY != 'true'
         with:
           use: false
 
       - name: Write the images values file
-        if: github.event_name == 'push'
+        if: env.DEPLOY == 'true'
         env:
           IMAGES_VALUES: ${{ needs.images.outputs.values }}
           IMAGES_VALUES_SHA256: ${{ needs.images.outputs.values_sha256 }}
@@ -253,7 +260,7 @@ jobs:
 
       # The later phases of the smoke test (new revisions, a broken migration) build on the images in the local daemon.
       - name: Pull the pushed images by digest
-        if: github.event_name == 'push'
+        if: env.DEPLOY == 'true'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DIGEST_API: ${{ needs.images.outputs.api }}
@@ -270,7 +277,7 @@ jobs:
           done
 
       - name: Build api image
-        if: github.event_name != 'push'
+        if: env.DEPLOY != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/api
@@ -282,7 +289,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=deploy-api
 
       - name: Build store image
-        if: github.event_name != 'push'
+        if: env.DEPLOY != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/store
@@ -294,7 +301,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=deploy-store
 
       - name: Build admin image
-        if: github.event_name != 'push'
+        if: env.DEPLOY != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/admin
@@ -306,7 +313,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=deploy-admin
 
       - name: Build elasticsearch image
-        if: github.event_name != 'push'
+        if: env.DEPLOY != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: infra/elasticsearch
@@ -318,14 +325,14 @@ jobs:
 
       # The runner is sampled every 10 s while the test runs, so the summary shows the peak memory and disk used
       # (smoke.sh adds the peaks of the cluster itself to its log).
-      # On main SMOKE_VALUES is the images values file: the first install pulls the images from the registry by digest, with
+      # On a deployment SMOKE_VALUES is the images values file: the first install pulls the images from the registry by digest, with
       # the token of the run (packages: read) given to k3d in a private registries file that is never printed.
       - name: Smoke test
         env:
-          SMOKE_GHCR_USER: ${{ github.event_name == 'push' && github.actor || '' }}
-          SMOKE_GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
+          SMOKE_GHCR_USER: ${{ env.DEPLOY == 'true' && github.actor || '' }}
+          SMOKE_GHCR_TOKEN: ${{ env.DEPLOY == 'true' && secrets.GITHUB_TOKEN || '' }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
+          if [ "$DEPLOY" = true ]; then
             export SMOKE_VALUES="$RUNNER_TEMP/values-images.yaml"
           fi
           df -m --output=used,size / | tail -n 1 > "$RUNNER_TEMP/disk-start"
@@ -371,7 +378,7 @@ jobs:
   # DEPLOY_KEY the job ends with a warning. A failed check or push publishes nothing.
   deploy:
     needs: [images, smoke]
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

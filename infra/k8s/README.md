@@ -24,14 +24,14 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
    serwera to root albo konto z `sudo` bez hasła (`sudo -n`).
 3. **agent** – ustawia domenę w `infra/k8s/environments/prod/values.yaml` (`global.domain`) i nadawcę poczty (`mailer.from`,
    `keycloak.mailFrom`, jeśli ma być inny niż domyślny `zamowienia@`/`konto@<domena>`), PR do `main`; merge robi
-   **użytkownik**. Na tym etapie pipeline `deploy.yml` buduje i testuje obrazy, ale bez sekretu `DEPLOY_KEY` kończy się po
-   smoke teście z ostrzeżeniem (nic nie publikuje).
+   **użytkownik**. Wdrożenie (`deploy.yml`) startuje tylko na życzenie użytkownika (sekcja 7), nie po merge'u. Na tym etapie
+   buduje i testuje obrazy, ale bez sekretu `DEPLOY_KEY` kończy się po smoke teście z ostrzeżeniem (nic nie publikuje).
 
 ## 1. GitHub: obrazy, ruleset, deploy key
 
 Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
-1. Widoczność pakietów GHCR: po pierwszym udanym runie `deploy.yml` na `main` pakiety `shop/api`, `shop/store`, `shop/admin`
+1. Widoczność pakietów GHCR: po pierwszym udanym wdrożeniu (run `deploy.yml` na `main`, sekcja 7) pakiety `shop/api`, `shop/store`, `shop/admin`
    i `shop/elasticsearch` ustaw na **publiczne** (Packages → pakiet → Package settings → Change visibility), żeby k3s
    pobierało je bez `imagePullSecret`. Nie włączaj żadnej retencji ani czyszczenia wersji pakietów: obrazy z digestami, do
    których odwołują się snapshoty `deploy-images`, są potrzebne do cofnięcia wersji (workflow też niczego nie usuwa).
@@ -155,7 +155,8 @@ Wszystko **użytkownik**.
 
 ## 5. Pierwsze wdrożenie
 
-1. Po merge'ach z 2.5 i 3.5 workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
+1. **zgoda użytkownika** – po merge'ach z 2.5 i 3.5 agent uruchamia wdrożenie (`gh workflow run deploy.yml --ref main`, sekcja 7).
+   Workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
    `secrets` i `shop` (fale: kontroler, sekrety, sklep). Pierwsza synchronizacja na pustym klastrze trwa kilkanaście minut
    (Elasticsearch, migracje, wczytanie danych demo).
 2. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`/`Healthy`, pody `Running`, Joby `Complete`.
@@ -222,9 +223,13 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 
 ## 7. Eksploatacja
 
-- **Nowa wersja**: merge PR do `main`; pipeline sam publikuje snapshot, a Argo CD synchronizuje klaster. Błąd renderu albo
-  migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej (aplikacja `Degraded`).
-- **Cofnięcie wersji**: revert na `main` (nowe wdrożenie). Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;
+- **Nowa wersja**: merge PR do `main` niczego nie wdraża. Wdrożenie startuje tylko na życzenie: **zgoda użytkownika**, potem
+  `gh workflow run deploy.yml --ref main` (obrazy, smoke test, publikacja snapshotu; postęp: `gh run list --workflow deploy.yml`,
+  `gh run watch`), a Argo CD synchronizuje klaster. Wdraża się bieżący commit `main`; drugie uruchomienie w trakcie pierwszego
+  czeka, a trzecie zastępuje drugie. Błąd renderu albo migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej
+  (aplikacja `Degraded`). Uruchomienie na innej gałęzi (`--ref <gałąź>`) to tylko próba: smoke test, nic nie jest
+  wypychane i `deploy` się nie przesuwa.
+- **Cofnięcie wersji**: revert na `main` i nowe uruchomienie wdrożenia. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;
   cofnięcie o więcej wersji to synchronizacja `shop` ze starszym snapshotem `deploy-images` (jak niżej) i odtworzenie kopii
   z czasu tej wersji (8.; `restore` odmawia kopii nowszej niż wdrożony kod) albo `reinitialize`. Awaryjnie **użytkownik** wyłącza w Argo CD
   automatyczną synchronizację aplikacji `root`, a potem aplikacji `shop` (kolejność ma znaczenie: `root` z `selfHeal`

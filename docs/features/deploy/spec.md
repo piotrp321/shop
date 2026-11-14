@@ -17,7 +17,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 ## Cel i zakres
 
 - Produkcyjne obrazy `api` (także dla workera, Jobów i CronJobów), `store`, `admin` i `elasticsearch`, budowane
-  w GitHub Actions z każdego commita na `main` i wypychane do GHCR.
+  w GitHub Actions z commita `main` przy wdrożeniu na życzenie użytkownika i wypychane do GHCR.
 - Helm chart całego stosu w `infra/k8s/`, wdrażany przez Argo CD z gałęzi `deploy-images` (snapshoty gałęzi `deploy`
   z plikiem digestów obrazów).
 - Sekrety w repo tylko zaszyfrowane (Sealed Secrets).
@@ -59,7 +59,9 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
   platformy: Argo CD, Sealed Secrets, `k8s-monitoring` (Grafana Alloy) i `prometheus-operator-crds` (CRD, m.in.
   `PrometheusRule`), każdy przypięty wersją jako osobna aplikacja Argo CD.
 - **D3. Nazwy usług w klastrze takie jak w compose**; wewnętrzne adresy i VCL (`api:80`) bez zmian.
-- **D4. Gałęzie `deploy` i `deploy-images`, przesuwane jednym atomowym pushem.** `deploy` przesuwa się wyłącznie
+- **D4. Gałęzie `deploy` i `deploy-images`, przesuwane jednym atomowym pushem, tylko na życzenie użytkownika.** Wdrożenie
+  nie startuje po merge'u ani pushu do `main`: uruchamia je użytkownik albo agent na jego wyraźne polecenie
+  (`gh workflow run deploy.yml --ref main`, zdarzenie `workflow_dispatch` na `main`). `deploy` przesuwa się wyłącznie
   fast-forwardem na zatwierdzony commit z `main` (historia `main` jest liniowa, więc `deploy` jest zawsze jej przodkiem).
   `deploy-images` to kolejne snapshoty: każdy commit ma drzewo commita z `deploy` plus wygenerowany plik
   `infra/k8s/environments/prod/values-images.yaml` (`image.tag: <sha>` i `image.digests.{api,store,admin,elasticsearch}`)
@@ -108,7 +110,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
   Lokalny `--import-realm` z kontami demo działa jak w compose.
 - **D10. Ograniczenia startowe są wartościami chartu** (`environments/prod/values.yaml`): `demoNotice`, `noindex`,
   `customerAccounts` (rejestracja w realmie `shop` i link logowania w sklepie), `orderMail` (`brevo` albo `mailpit`).
-  Zmiana to commit z wartością, który przechodzi zwykły pipeline (build z cache, smoke, wdrożenie); kod i obrazy się
+  Zmiana to commit z wartością, który przechodzi zwykły pipeline (build z cache, smoke, a na życzenie wdrożenie); kod i obrazy się
   nie zmieniają. Cloudflare Access jest konfiguracją Cloudflare (runbook).
 - **D11. Joby wersji nazwane sumą kontrolną** rewizji i konfiguracji Joba (`<job>-<hash>`): nowa rewizja albo zmiana
   wartości dotyczących Joba daje nowy Job, a ten sam stan nie uruchamia go ponownie. Bez `ttlSecondsAfterFinished`.
@@ -221,8 +223,10 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 
 ## Wdrożenie nowej wersji
 
-1. Merge PR do `main` uruchamia `.github/workflows/deploy.yml`. Grupa `concurrency` bez anulowania trwającego runu:
-   działa jeden, czeka najwyżej jeden, pośrednie są pomijane, więc wdraża się najnowszy commit.
+1. Merge PR do `main` niczego nie wdraża. Wdrożenie uruchamia na życzenie użytkownika
+   `gh workflow run deploy.yml --ref main` (zdarzenie `workflow_dispatch` na `main`: `.github/workflows/deploy.yml`
+   wdraża wtedy bieżący commit `main`). Grupa `concurrency` bez anulowania trwającego runu `main`: działa jeden, czeka
+   najwyżej jeden, pośrednie są pomijane, więc wdraża się najnowszy commit.
 2. Workflow buduje i wypycha obrazy `api`, `store`, `admin`, `elasticsearch` z tagiem SHA; wdrażane są po digeście
    (D4). Digesty czterech obrazów są w podsumowaniu runu i w outputach joba `images`, który raz generuje z nich plik
    `values-images.yaml` (output wieloliniowy z sumą kontrolną; kolejne joby zapisują te same bajty i sprawdzają sumę).
@@ -238,7 +242,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
    −3, −2, −1, 0 i 1) z `deploy-images` (charty `sealed-secrets`, `prometheus-crds` i `monitoring` z ich repozytoriów Helm, w
    przypiętych wersjach); chart `shop` rozkłada zasoby w falach. `monitoring` jest ostatni: brak konta Grafana Cloud albo
    zły token zostawia `Degraded` tylko tę aplikację, a sklep działa i się wdraża.
-6. Wycofanie wersji: revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
+6. Wycofanie wersji: revert na `main` i nowe uruchomienie wdrożenia. Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
    `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
    `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
    `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji to starszy snapshot
@@ -455,9 +459,10 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 - CI (`deploy.yml`): `smoke` na `ubuntu-latest` dla PR zmieniających `infra/**`, `apps/*/Dockerfile`,
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
   `apps/admin/package-lock.json`, `apps/store/next.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)
-  i na `workflow_dispatch` (bez przesuwania `deploy`), oraz zawsze na `main` przed wdrożeniem. `workflow_dispatch`
-  GitHub oferuje dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); wcześniej próbę daje zdarzenie
-  `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
+i na `workflow_dispatch` na innej gałęzi niż `main` (próba: tylko smoke, nic nie jest wypychane i `deploy` się nie
+  przesuwa), oraz zawsze przed wdrożeniem (`workflow_dispatch` na `main`: obrazy, smoke, `deploy`). Push do `main` nie
+  uruchamia `deploy.yml`. `workflow_dispatch` GitHub oferuje dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`);
+  wcześniej próbę daje zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
   `smoke` nie jest wymaganym checkiem `main`.
 
 ## Scenariusze błędów
@@ -467,7 +472,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 | Pierwsza synchronizacja na pustym klastrze | fale i initContainery; `initialize` wczytuje katalog; bez ręcznych kroków |
 | Kolejne wdrożenie | `initialize` widzi dane i nic nie zmienia; `keycloak-config` dodaje tylko brakujące zasoby realmów |
 | Pusty katalog, ale są zamówienia | `initialize` kończy się błędem stanu, dane nietknięte, synchronizacja czerwona |
-| Nieudany build albo smoke test na `main` | `deploy` i `deploy-images` bez zmian, działa poprzednia wersja, workflow czerwony |
+| Nieudany build albo smoke test wdrożenia (`workflow_dispatch` na `main`) | `deploy` i `deploy-images` bez zmian, działa poprzednia wersja, workflow czerwony |
 | Render `prod` z plikiem digestów nie zgadza się z plikiem albo odrzucony push (non-fast-forward, ruleset) | nic nie jest opublikowane (atomowy push), workflow czerwony |
 | Rewizja `deploy-images` bez pliku `values-images.yaml` albo z brakującym digestem | render chartu kończy się błędem z nazwą wartości, synchronizacja nie startuje, działa poprzednia wersja |
 | Nieudana migracja | Job `migrate` pada, nowe `api` i `worker` nie są gotowe, stare działają, aplikacja w Argo `Degraded` |
@@ -492,8 +497,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 5. Przełączniki sklepu: testy komponentów i `/api/site` (z flagami, bez nich, błąd odczytu) i smoke test na obrazie
    zbudowanym bez flag.
 6. `deploy.yml` przechodzi `actionlint`; uruchomiony w PR zmieniającym pliki z filtra ścieżek (zdarzenie `pull_request`; na
-   `main` także `workflow_dispatch`) buduje obrazy i przechodzi smoke test, a bez sekretu deploy keya kończy się bez
-   przesuwania `deploy` i `deploy-images`. Na `main` smoke test instaluje chart z plikiem digestów (obrazy z GHCR), a
+   innej gałęzi niż `main` także `workflow_dispatch`) buduje obrazy i przechodzi smoke test, a bez sekretu deploy keya
+   kończy się bez przesuwania `deploy` i `deploy-images`. Przy wdrożeniu (`workflow_dispatch` na `main`) smoke test instaluje chart z plikiem digestów (obrazy z GHCR), a
    publikacja to jeden atomowy push po sprawdzeniu renderu (test na lokalnym repo bare, także odrzucony
    non-fast-forward, który nie przesuwa żadnej gałęzi).
 7. `initialize` i `keycloak-config` są idempotentne (smoke: upgrade z nową rewizją bez zmian danych i realmów; realm
