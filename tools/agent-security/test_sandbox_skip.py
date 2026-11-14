@@ -9,6 +9,7 @@ set. On a host and in CI they never skip: an unusable /tmp or socket there is a 
 import importlib.util
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -95,11 +96,13 @@ class SocketSkipReasonTest(unittest.TestCase):
         self.missing = os.path.join(self.tmp, 'missing')   # bind there fails like a refused bind
 
     def test_can_bind_in_a_directory_that_allows_it_and_leaves_nothing(self):
+        sandbox_skip.require_unix_sockets(self)   # proving that bind works needs a bind: not in the sandbox
         self.assertTrue(sandbox_skip.can_bind_unix_socket(self.tmp))
         self.assertEqual(os.listdir(self.tmp), [])
         self.assertFalse(sandbox_skip.can_bind_unix_socket(self.missing))
 
     def test_the_default_directory_is_the_temp_of_the_process(self):
+        sandbox_skip.require_unix_sockets(self)
         self.assertTrue(sandbox_skip.can_bind_unix_socket())
 
     def test_the_sandbox_where_bind_is_refused_skips_with_the_reason(self):
@@ -109,6 +112,7 @@ class SocketSkipReasonTest(unittest.TestCase):
         self.assertIn('Unix', reason)
 
     def test_the_sandbox_where_bind_works_does_not_skip(self):
+        sandbox_skip.require_unix_sockets(self)
         self.assertIsNone(sandbox_skip.socket_skip_reason(SANDBOX, self.tmp))
 
     def test_a_host_or_ci_never_skips(self):
@@ -122,6 +126,31 @@ class SocketSkipReasonTest(unittest.TestCase):
             sandbox_skip.require_unix_sockets(case, SANDBOX, self.missing)
         sandbox_skip.require_unix_sockets(case, {}, self.missing)
         sandbox_skip.require_unix_sockets(case, SANDBOX, self.tmp)
+
+
+class ProcessListSkipTest(unittest.TestCase):
+    """ps: the sandbox does not let the executor run it, so a test that finds processes through it cannot run there."""
+
+    NOT_ALLOWED = ['/nonexistent/ps']
+
+    def test_can_run_tells_a_command_that_starts_from_one_that_does_not(self):
+        self.assertTrue(sandbox_skip.can_run([sys.executable, '-c', 'pass']))
+        self.assertFalse(sandbox_skip.can_run(self.NOT_ALLOWED))
+
+    def test_skips_only_in_the_sandbox_that_cannot_run_the_command(self):
+        reason = sandbox_skip.command_skip_reason(SANDBOX, self.NOT_ALLOWED)
+        self.assertIn('sandbox', reason)
+        self.assertIn('/nonexistent/ps', reason)
+        self.assertIsNone(sandbox_skip.command_skip_reason(SANDBOX, [sys.executable, '-c', 'pass']))
+        self.assertIsNone(sandbox_skip.command_skip_reason({}, self.NOT_ALLOWED))
+        self.assertIsNone(sandbox_skip.command_skip_reason(dict(SANDBOX, CI='true'), self.NOT_ALLOWED))
+
+    def test_require_skips_only_when_the_reason_holds(self):
+        case = RequireTest.Case()
+        with self.assertRaises(unittest.SkipTest):
+            sandbox_skip.require_command(case, self.NOT_ALLOWED, SANDBOX)
+        sandbox_skip.require_command(case, self.NOT_ALLOWED, {})
+        sandbox_skip.require_command(case, [sys.executable, '-c', 'pass'], SANDBOX)
 
 
 class RequireTest(unittest.TestCase):

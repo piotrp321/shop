@@ -1017,6 +1017,9 @@ class ProbeRunTest(ProbeRunTestCase):
         return bool(state) and not state.startswith('Z')
 
     def test_a_timeout_kills_descendants_in_their_own_session(self):
+        # The probe finds the descendants through ps, which the executor's sandbox does not allow: skipped there, with
+        # the reason, never on a host or in CI (sandbox_skip.py).
+        sandbox_skip.require_command(self)
         grandchild_file = os.path.join(self.tmp, 'grandchild')
         p = self.make_probe(timeout_s=3)
         code, _ = p.run(env=self.env('detached', FAKE_GRANDCHILD=grandchild_file))
