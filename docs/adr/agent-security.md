@@ -37,7 +37,7 @@ AGENT-ISOLATION (#498).
 | 1 | Treść issue, PR lub komentarza od S1 w danych `/groom`, `/prepare-epic`, `/sweep`, `/retro`, `/integration`, `/ao-run` | bramka pochodzenia (R1) | testy bramki z atrapą `gh` i testy skryptów, które jej używają |
 | 2 | Bash wykonawcy (także `sh -c`, `python3 -c`, proces w tle, `make`) czyta sekret z A1–A3 | `denyRead` profilu sandboxa (R2) | sonda (R6), kanarki |
 | 3 | Read, Grep, Glob wykonawcy czytają sekret | `blockReadsOutsideWorkingDirectories` i reguły `deny` (R2) | sonda |
-| 3a | Import `@<ścieżka>` w `CLAUDE.md` albo `!` w skillu zmienionym przez wykonawcę | ustawienia profilu i zachowanie CLI w `-p` | sonda: kanarka brak w `stream-json` |
+| 3a | Import `@<ścieżka>` w `CLAUDE.md` albo `!` w skillu zmienionym przez wykonawcę | ustawienia profilu i zachowanie CLI w `-p` | sonda: kanarka brak w `stream-json`, losowego znacznika z importowanego pliku brak w wyjściu modelu |
 | 4 | Ucieczka przez `dangerouslyDisableSandbox` albo `excludedCommands` | `allowUnsandboxedCommands: false`, bez `excludedCommands` (R2) | sonda |
 | 5 | Poluzowanie profilu, hook albo MCP z repozytorium | wrapper odmawia startu przy zmianie `.claude/settings*.json` lub `.mcp.json` względem merge-base z `origin/main`, `disableAllHooks`, `--strict-mcp-config` (R2) | testy wrappera, sonda |
 | 6 | Kontener montuje `~/.ssh` | udostępnianie plików Docker Desktop tylko `~/Development/claude` i katalogi tymczasowe (R3) | sonda |
