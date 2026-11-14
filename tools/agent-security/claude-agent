@@ -1,0 +1,168 @@
+#!/bin/sh
+# claude-agent: the Claude Code binary of AO executors (`ao run --claude-bin`), in the sandbox profile of
+# executor-settings.json (spec docs/features/agent-security/spec.md, R2). POSIX sh.
+#
+#   claude-agent --version | auth status ...    passed to $AGENT_CLAUDE_BIN unchanged, without settings (AO preflight)
+#   claude-agent <AO arguments>                 $AGENT_CLAUDE_BIN <AO arguments> --settings <JSON> --strict-mcp-config
+#                                               --setting-sources project
+#
+# Environment: AGENT_CLAUDE_BIN (the pinned binary), AGENT_AO_HOME (~/.local/state/ao-<name>, set by ao-prepare),
+# AO_TASK_ID (set by AO). The settings come from render_settings.py next to this script: the working directory, the
+# .git of the main clone, the task directory $AGENT_AO_HOME/tasks/$AO_TASK_ID (its briefs and attempts write-protected)
+# and, for <EPIC>-INTEGRATION-<n>, $AGENT_AO_HOME/epics/<epic>/integration.
+#
+# Refuses to start (exit 2, the reason on stderr) when a variable, the task, the template or the executor token is
+# missing, when a path goes through a symlink, when arguments would replace the profile, and when
+# .claude/settings.json, .claude/settings.local.json or .mcp.json differ from the merge-base of HEAD with main in the
+# branch, the index, the working tree or as untracked files (P12). The SHA of main comes from `git ls-remote origin`,
+# not from refs/remotes/origin/main, which the executor can move.
+#
+# The executor gets the executor token (Keychain shop-agent-github-token) as GH_TOKEN, its own GH_CONFIG_DIR, git over
+# HTTPS with a credential helper reading GH_TOKEN (GIT_CONFIG_* variables) and no SSH_AUTH_SOCK.
+set -u
+
+TOKEN_SERVICE=shop-agent-github-token
+PROTECTED_FILES='.claude/settings.json .claude/settings.local.json .mcp.json'
+
+die() {
+    printf 'claude-agent: %s\n' "$*" >&2
+    exit 2
+}
+
+# git outside the sandbox: no fsmonitor, hooks or external diff from a configuration the executor might have planted.
+g() {
+    git -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"
+}
+
+[ -n "${AGENT_CLAUDE_BIN:-}" ] || die "brak AGENT_CLAUDE_BIN (binarka wersji przypiętej przez AO, z ao-prepare)"
+[ -f "$AGENT_CLAUDE_BIN" ] && [ -x "$AGENT_CLAUDE_BIN" ] || die "AGENT_CLAUDE_BIN $AGENT_CLAUDE_BIN nie jest plikiem wykonywalnym"
+
+if [ "$#" -eq 1 ] && [ "$1" = --version ]; then
+    exec "$AGENT_CLAUDE_BIN" --version
+fi
+if [ "$#" -ge 2 ] && [ "$1" = auth ] && [ "$2" = status ]; then
+    exec "$AGENT_CLAUDE_BIN" "$@"
+fi
+
+for arg in "$@"; do
+    case $arg in
+    --settings | --settings=* | --setting-sources | --setting-sources=* | --mcp-config | --mcp-config=* | \
+        --add-dir | --add-dir=* | --plugin-dir | --plugin-dir=* | --dangerously-skip-permissions | \
+        --allow-dangerously-skip-permissions)
+        die "argument $arg zastąpiłby profil wykonawcy: odmowa" ;;
+    esac
+done
+
+[ -n "${AGENT_AO_HOME:-}" ] || die "brak AGENT_AO_HOME (katalog AO ~/.local/state/ao-<nazwa>, z ao-prepare)"
+[ -n "${AO_TASK_ID:-}" ] || die "brak AO_TASK_ID (AO nadaje go zadaniom z hookiem .ao/setup)"
+case $AO_TASK_ID in
+[A-Za-z0-9]*) ;;
+*) die "AO_TASK_ID $AO_TASK_ID spoza wzorca [A-Za-z0-9][A-Za-z0-9._-]*" ;;
+esac
+case $AO_TASK_ID in
+*[!A-Za-z0-9._-]*) die "AO_TASK_ID $AO_TASK_ID spoza wzorca [A-Za-z0-9][A-Za-z0-9._-]*" ;;
+esac
+
+here=$(cd -P -- "$(dirname -- "$0")" && pwd -P) || die "nie można ustalić katalogu wrappera"
+[ -f "$here/executor-settings.json" ] || die "brak szablonu $here/executor-settings.json"
+[ -f "$here/render_settings.py" ] || die "brak $here/render_settings.py"
+
+home=$(cd -P -- "${HOME:-/nonexistent}" 2>/dev/null && pwd -P) || die "brak katalogu domowego HOME"
+case $AGENT_AO_HOME in /*) ;; *) die "AGENT_AO_HOME $AGENT_AO_HOME nie jest ścieżką bezwzględną" ;; esac
+ao_home=$(cd -P -- "$AGENT_AO_HOME" 2>/dev/null && pwd -P) || die "brak katalogu AGENT_AO_HOME $AGENT_AO_HOME"
+name=${ao_home#"$home/.local/state/ao-"}
+case $name in
+"$ao_home" | "" | */*) die "AGENT_AO_HOME $AGENT_AO_HOME (po rozwiązaniu dowiązań $ao_home) nie ma postaci $home/.local/state/ao-<nazwa>" ;;
+esac
+
+# The real path of an existing directory equal to the path itself: no symlink anywhere in it.
+real_dir() {
+    [ -d "$1" ] || return 1
+    real=$(cd -P -- "$1" 2>/dev/null && pwd -P) || return 1
+    [ "$real" = "$1" ]
+}
+
+task_dir=$ao_home/tasks/$AO_TASK_ID
+[ -d "$task_dir" ] || die "nieznane zadanie $AO_TASK_ID: brak katalogu $task_dir"
+real_dir "$task_dir" || die "katalog zadania $task_dir prowadzi przez dowiązanie symboliczne"
+
+integration_dir=
+round=${AO_TASK_ID##*-INTEGRATION-}
+if [ "$round" != "$AO_TASK_ID" ] && [ -n "$round" ] && [ "${round#*[!0-9]}" = "$round" ]; then
+    epic=${AO_TASK_ID%-INTEGRATION-*}
+    wanted=$(printf '%s' "$epic" | tr '[:upper:]' '[:lower:]')
+    found=
+    count=0
+    for dir in "$ao_home"/epics/*; do
+        [ -d "$dir" ] || continue
+        candidate=$(basename -- "$dir" | tr '[:upper:]' '[:lower:]')
+        if [ "$candidate" = "$wanted" ]; then
+            found=$dir
+            count=$((count + 1))
+        fi
+    done
+    [ "$count" -eq 1 ] || die "zadanie integracji $AO_TASK_ID: $count katalogów epiku $epic w $ao_home/epics (wymagany dokładnie jeden)"
+    integration_dir=$found/integration
+    real_dir "$integration_dir" || die "katalog integracji $integration_dir nie istnieje albo prowadzi przez dowiązanie"
+fi
+
+workdir=$(pwd -P) || die "nie można ustalić katalogu roboczego"
+top=$(g rev-parse --show-toplevel 2>/dev/null) || die "katalog roboczy $workdir nie jest checkoutem git"
+common=$(g rev-parse --git-common-dir 2>/dev/null) || die "git rev-parse --git-common-dir nie powiódł się w $workdir"
+case $common in /*) ;; *) common=$top/$common ;; esac
+git_dir=$(cd -P -- "$common" 2>/dev/null && pwd -P) || die "brak katalogu .git $common"
+
+# P12: the protected files against the merge-base with the current main of origin.
+main_sha=$(g -C "$top" ls-remote origin refs/heads/main 2>/dev/null | awk '$2 == "refs/heads/main" { print $1 }')
+case $main_sha in
+[0-9a-f]*) ;;
+*) die "git ls-remote origin refs/heads/main nie zwrócił SHA main" ;;
+esac
+case $main_sha in *[!0-9a-f]*) die "git ls-remote origin zwrócił nieprawidłowy SHA" ;; esac
+if ! g -C "$top" cat-file -e "$main_sha^{commit}" 2>/dev/null; then
+    g -C "$top" fetch --quiet --no-tags origin "$main_sha" 2>/dev/null || die "git fetch origin $main_sha nie powiódł się"
+    g -C "$top" cat-file -e "$main_sha^{commit}" 2>/dev/null || die "brak commita main $main_sha po git fetch"
+fi
+base=$(g -C "$top" merge-base HEAD "$main_sha" 2>/dev/null) || die "brak merge-base HEAD z main $main_sha"
+# shellcheck disable=SC2086 # the file list is a fixed list of paths without spaces
+changed=$(
+    {
+        g -C "$top" diff --no-ext-diff --no-textconv --name-only "$base" -- $PROTECTED_FILES || echo '<git diff failed>'
+        g -C "$top" diff --cached --no-ext-diff --no-textconv --name-only "$base" -- $PROTECTED_FILES || echo '<git diff --cached failed>'
+        g -C "$top" ls-files --others -- $PROTECTED_FILES || echo '<git ls-files failed>'
+    } | sort -u | tr '\n' ' '
+)
+[ -z "$changed" ] || die "gałąź albo drzewo robocze zmienia chronione ustawienia względem merge-base z main ($base): $changed- epik zmieniający te pliki nie idzie przez AO"
+
+token=$(security find-generic-password -s "$TOKEN_SERVICE" -w 2>/dev/null) || token=
+[ -n "$token" ] || die "brak tokenu wykonawcy w Keychain ($TOKEN_SERVICE); zapisz fine-grained PAT dla piotrp321/shop: security add-generic-password -s $TOKEN_SERVICE -a shop -w"
+
+if [ -n "$integration_dir" ]; then
+    settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
+        --state-dir "$task_dir" --state-dir "$integration_dir" \
+        --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
+else
+    settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
+        --state-dir "$task_dir" \
+        --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
+fi
+
+gh_config=$(mktemp -d "${TMPDIR:-/tmp}/claude-agent-gh.$AO_TASK_ID.XXXXXX") || die "mktemp nie utworzył GH_CONFIG_DIR"
+
+unset SSH_AUTH_SOCK
+GH_TOKEN=$token
+GH_CONFIG_DIR=$gh_config
+GIT_CONFIG_COUNT=4
+GIT_CONFIG_KEY_0=url.https://github.com/.insteadOf
+GIT_CONFIG_VALUE_0=git@github.com:
+GIT_CONFIG_KEY_1=url.https://github.com/.insteadOf
+GIT_CONFIG_VALUE_1=ssh://git@github.com/
+GIT_CONFIG_KEY_2=credential.helper
+GIT_CONFIG_VALUE_2=
+GIT_CONFIG_KEY_3=credential.helper
+# shellcheck disable=SC2016 # expanded by git's shell when the helper runs, not here
+GIT_CONFIG_VALUE_3='!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
+export GH_TOKEN GH_CONFIG_DIR GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 \
+    GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2 GIT_CONFIG_KEY_3 GIT_CONFIG_VALUE_3
+
+exec "$AGENT_CLAUDE_BIN" "$@" --settings "$settings" --strict-mcp-config --setting-sources project
