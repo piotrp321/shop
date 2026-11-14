@@ -49,7 +49,7 @@ python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" releas
 ```
 
 Wyjście `{"released": true}` albo `{"released": false}` (rezerwacji już nie było; nic więcej nie robisz). Odmowa dla
-epiku z listy nocy to koniec nocy: zapisz go przez `night_queue.py close --reason "<powód>"` przed pushem (sekcja
+epiku z listy nocy to koniec nocy: zapisz go przez `night_queue.py close` z powodem w cytowanym heredoc przed pushem (sekcja
 „Noc”, „Koniec nocy”). Wyjątek: wynik bramki `epic: null` w nocy to czekanie, nie koniec nocy (niżej).
 
 Zasilania nie sprawdzasz i o baterię nie pytasz: o zasilaniu decyduje użytkownik.
@@ -229,8 +229,8 @@ ruszył (wynik bez wartości). Wyślij push „Epik <epik>: sonda bezpieczeństw
 przy nieudanej sondzie tekst w nawiasie po „sonda bezpieczeństwa nie przeszła”, przy innej odmowie cały tekst po
 `ao-prepare: `; cały push do 200 znaków), a w rozmowie podaj całą linię: przyczynę, czas i koszt sondy. Nie ponawiasz sam i niczego nie obchodzisz (nie zmieniasz profilu, nie startujesz AO bez sondy): krok 4
 uruchamiasz ponownie dopiero na polecenie użytkownika w rozmowie, po usunięciu przyczyny (np. usunięty `KUBE_DIR`,
-odnowiony token wykonawcy, zainstalowana binarka). Epik z listy nocy kończy wtedy noc (`close --reason "sonda: <reason>"`,
-sekcja „Noc”).
+odnowiony token wykonawcy, zainstalowana binarka). Epik z listy nocy kończy wtedy noc (`close` z powodem
+„sonda: <reason>” w cytowanym heredoc, sekcja „Noc”, „Koniec nocy”: przyczyna zawiera komunikaty `git` i sondy).
 
 Zaraz po starcie zadania tła sprawdź, czy kolejny epik może ruszyć równolegle: w dzień wykonaj sekcję 8, w nocy
 `next` (sekcja „Noc”, „Kolejny epik”).
@@ -828,8 +828,14 @@ kończy nocy (sekcja 5: czekasz na odpowiedź). Zatrzymanie na poziomie epiku (`
 kończy ją. Najpierw zapisz koniec nocy, potem push:
 
 ```bash
-python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" close --reason "<powód>"
+python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" close --reason "$(cat <<'REASON'
+<powód>
+REASON
+)"
 ```
+
+Powód wklejasz dosłownie w cytowany heredoc (jak odpowiedź w `ao answer`), żeby `"`, `$` i odwrotne apostrofy
+z komunikatów `git`, `gh` i sondy przeszły bez zmian i niczego nie uruchomiły.
 
 (`next` zwracające `null` bez `wait` zapisuje koniec samo, `close` wtedy nic nie zmienia. Kod 2 przy `close`: brak
 listy, pomiń; nieczytelny `night.json`: zasada wyżej). Kolejny `next` po `close` odmawia (`noc zakończona: <powód>`),
