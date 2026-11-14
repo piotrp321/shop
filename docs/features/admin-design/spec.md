@@ -256,7 +256,9 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   dzisiejszy błąd wczytania pracownika (`staff-error`); dostęp i tak sprawdza API (403 widoku). `/prices` nie dostaje
   strażnika: API pozwala każdemu pracownikowi czytać ceny, a zmianę ceny ukrywa już widok (tylko `admin`).
 - **Toast**: jeden kontener `vue-sonner` (`Toaster`) w layoucie, komunikaty sukcesu po polsku, region
-  `aria-live="polite"` o nazwie „Powiadomienia”, znikają po 5 s i zostają, dopóki kursor jest nad nimi. Błędy nie idą
+  `aria-live="polite"` o nazwie dokładnie „Powiadomienia” (bez skrótu klawiszowego w nazwie), znikają po 5 s i zostają,
+  dopóki kursor jest nad nimi. Toasty są w prawym górnym rogu, pod topbarem (poniżej 640 px na szerokość ekranu
+  z marginesem 16 px), więc nie zasłaniają przyklejonego do dołu paska zapisu ani topbaru. Błędy nie idą
   do toastu: zostają przy miejscu, którego dotyczą (`role="alert"`).
 - **Ekrany poza layoutem**: problem z logowaniem (`App.vue`) i powrót z logowania (`AuthCallbackView`) dostają wygląd
   karty na tle aplikacji ze znakiem Worf, komunikatem i przyciskiem „Zaloguj ponownie”. Strona logowania Keycloaka
@@ -267,7 +269,7 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
 
 Jeden zestaw komponentów w `src/components/list/` dla wszystkich sześciu list (produkty, ceny, stany, promocje, kody,
 zamówienia; na standardzie stoi lista produktów, pozostałe przejdą na niego w ADMIN-SCREENS): `DataTable` (na komponencie
-`Table` shadcn-vue), `ListToolbar`, `ListPager`, `ListEmpty`, `RowActions` oraz dwa composables w `src/composables/`:
+`Table` shadcn-vue), `ListToolbar`, `ListPager`, `ListEmpty`, `RowActions` oraz trzy composables w `src/composables/`:
 
 - `useListUrlState(schema)`: jedyne źródło wyszukiwania, filtrów i rozmiaru strony. Czyta je z query stringu przy
   wejściu, zapisuje zmiany (`router.replace`) i zwraca reaktywne zapytanie. Listy nie trzymają już własnych kopii
@@ -277,11 +279,18 @@ zamówienia; na standardzie stoi lista produktów, pozostałe przejdą na niego 
   z `perPage`, czyszczeniem wierszy po błędzie i zakresem „Pokazano X–Y”. Używa jej `useProductList`; composables
   cen, stanów, promocji, kodów i zamówień mają do ADMIN-SCREENS własne kopie stosu kursorów. Każde zachowanie
   standardu jest testowane raz.
+- `useNameSearch({ initial, apply })`: jedno miejsce reguł wyszukiwania po nazwie: fraza po przycięciu ma od 2 do 100
+  znaków (punkty kodowe), po 300 ms przerwy w pisaniu trafia do `apply` (pusta, także same spacje, to `null`: brak filtra),
+  a za krótka albo za długa nie jest stosowana i dostaje podpowiedź (`hint`). Zwraca pole (`search`), `tooShort`, `hint`,
+  `reset` (czyści pole i anuluje oczekujące opóźnienie) i `setFromAddress` (wartość z adresu, np. Wstecz, ustawia pole bez
+  `apply`); opóźnienie jest anulowane też przy odmontowaniu. Używa go `useProductList` (`apply` zapisuje `q` do adresu);
+  reguły wyszukiwania kodów (od 1 znaku) i zamówień (po Enterze) zostają w ich composables. Reguły są testowane raz,
+  w `tests/useNameSearch.test.ts`.
 
 Composables list (`useProductList` i pozostałe) zostają przy tym, co jest ich własne: budowie zapytania API,
 komunikatach błędów, rozbiciu na wiersze wariantów i logice zapisu (wersje cen i stanów, idempotencja, `ignored`).
-Wyszukiwanie z opóźnieniem i regułami długości (od 2 znaków dla nazw, od 1 znaku dla kodów, po Enterze dla zamówień)
-zostaje w composable listy i dopiero zastosowana fraza trafia do adresu.
+Wyszukiwanie po nazwie ma `useNameSearch`, a reguły kodów (od 1 znaku) i zamówień (po Enterze) zostają w composable listy;
+do adresu trafia dopiero zastosowana fraza.
 
 - **Pasek narzędzi**: wyszukiwarka (gdzie API ją ma, z dzisiejszymi regułami długości i opóźnienia), filtry listy
   (Select albo Combobox z etykietą widoczną albo dostępną), przycisk „Wyczyść filtry” widoczny, gdy jakikolwiek filtr

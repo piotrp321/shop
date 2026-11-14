@@ -6,9 +6,13 @@ import { Toaster as Sonner } from "vue-sonner"
 import "vue-sonner/style.css"
 import { cn } from "@/lib/utils"
 
-// Polish names of the region and of the close button of a toast (vue-sonner defaults to English).
+// Polish names of the region and of the close button of a toast (vue-sonner defaults to English). vue-sonner appends the
+// label of its hotkey to the name of the region ("Powiadomienia alt+T") and focuses the toasts when the hotkey is pressed.
+// "Key" is a hotkey without a label (the label drops "Key") that no keyboard event can match (a code is "KeyT", not
+// "Key"): the name is exactly "Powiadomienia" and there is no hotkey, which the panel does not document either.
 const props = withDefaults(defineProps<ToasterProps>(), {
   containerAriaLabel: "Powiadomienia",
+  hotkey: () => ["Key"],
 })
 const toastOptions = computed(() => ({ closeButtonAriaLabel: "Zamknij powiadomienie", ...props.toastOptions }))
 </script>
