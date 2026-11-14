@@ -119,9 +119,9 @@ AGENT-ISOLATION (#498).
   (git, `gh`, Docker, stan zadania); drogę 10 sprawdza test workflowów, drogę 14 testy celów i `ao-prepare`. Fail-closed: kod 0 tylko, gdy każdy przypadek ma wynik i przeszedł.
 - **R7. Start AO.** `/ao-run` startuje każde `ao run` (także wznowienie) wyłącznie przez
   `tools/agent-security/ao-prepare` i z jego wyniku: skrypt kopiuje wrapper, profil, nakładkę `mktemp` i sondę
-  z commita `main` na zdalnym repozytorium (SHA z `git ls-remote`, commit pobrany do prywatnego repozytorium
-  w `$AO_HOME`, `git` bez obiektów zastępczych i graftów; nie z drzewa roboczego sesji ani ze wspólnego `.git` klonu,
-  do którego wykonawcy piszą) do `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru
+  z commita `main` publicznego `piotrp321/shop` pod stałym adresem GitHuba (SHA z `git ls-remote`, commit pobrany do
+  prywatnego repozytorium w `$AO_HOME`, `git` bez obiektów zastępczych i graftów; nie z drzewa roboczego sesji ani
+  z głównego klonu, którego `.git` z refami, obiektami i konfiguracją wykonawcy i kontenery mogą zapisać) do `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru
   (przed sondą i po niej) i przy działającym AO na tym `AO_HOME` (kopia nie zmienia się
   w trakcie przebiegu) i uruchamia sondę z kopii z binarką przypiętą przez AO; sonda, która nie przeszła, nie skończyła
   się w limicie czasu albo nie dała wyniku, blokuje start (fail-closed), a sesja wysyła push z przyczyną.

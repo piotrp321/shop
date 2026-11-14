@@ -107,14 +107,16 @@ Remote Control skill nie sprawdza.
   `ao-prepare: <przyczyna>` na stderr, nic na stdout): jedno `ao-prepare` na `AO_HOME` i brak procesu AO na nim (kopia
   nie zmienia się w trakcie przebiegu); żaden `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (zapisuje go
   `infra/k8s/scripts/kubeconfig.sh`) nie istnieje; binarka przypięta z `claude_pin.py`; sześć plików commita, na
-  który wskazuje `main` na zdalnym repozytorium (`claude-agent`, `render_settings.py`, `executor-settings.json`,
+  który wskazuje `main` publicznego `piotrp321/shop` na GitHubie (`claude-agent`, `render_settings.py`, `executor-settings.json`,
   `probe.py`, `probe-cases.sh`, `bin/mktemp`; bit wykonywalności jak w gicie, bez prawa zapisu) w nowym katalogu,
-  który zastępuje cały `$AO_HOME/agent-security/`. Źródłem nie jest ani drzewo robocze sesji, ani wspólny `.git`
-  głównego klonu, który wykonawcy zapisują (obiekty `refs/replace`, przestawiony `refs/remotes/origin/main`): z klonu
-  `ao-prepare` czyta tylko adres `origin` z konfiguracji (chronionej przed zapisem wykonawcy), SHA bierze z
-  `git ls-remote <adres> refs/heads/main`, pobiera ten commit do prywatnego repozytorium
-  `$AO_HOME/agent-security-src.git` i czyta je przez `ls-tree` i `cat-file blob`, każde wywołanie `git` bez obiektów
-  zastępczych, graftów, commit-graph, fsmonitora i hooków (jak wrapper); sonda z tej kopii (przebieg
+  który zastępuje cały `$AO_HOME/agent-security/`. Źródło to stały adres `https://github.com/piotrp321/shop.git`
+  (`git` dopuszcza dla niego tylko `https` i `ssh`). Nic nie pochodzi z drzewa roboczego sesji ani z głównego klonu,
+  którego `.git` wykonawcy i kontenery mogą zapisać: ani obiekty i refy (`refs/replace`, przestawiony
+  `refs/remotes/origin/main`), ani konfiguracja (podłożony `.git/commondir` albo `include`, adres `origin` zmieniony
+  przez Dockera). SHA pochodzi z `git ls-remote <źródło> refs/heads/main`, commit jest pobierany po SHA (`--depth=1`) do prywatnego repozytorium
+  `$AO_HOME/agent-security-src.git` (przez `--git-dir`) i czytany przez `ls-tree` i `cat-file blob`, każde wywołanie
+  `git` bez obiektów zastępczych, graftów, commit-graph, fsmonitora i hooków (jak wrapper). Opcja `--source-url`
+  zmienia źródło tylko w testach z lokalnym repozytorium; `/ao-run` jej nie podaje; sonda z tej kopii (przebieg
   domyślny) na skopiowanym wrapperze z przypiętą binarką, z katalogu klonu, bez zmiennych `CLAUDE*`, z zewnętrznym
   limitem czasu. Kod sondy różny od 0, limit czasu, brak albo nieczytelny wynik, wynik z przyczyną albo z przypadkiem
   innym niż `pass` to odmowa „sonda bezpieczeństwa nie przeszła (<przyczyna>); czas …, koszt …”. Każdy przebieg
@@ -452,9 +454,10 @@ stan limitów inny niż `ok`, pusty i niepoprawny JSON, zły argument → kod 1;
 bramka pochodzenia: issue `epic` niezaufanego autora nie trafia do `propose`, `approve`, `gate` (także z `--dir`)
 ani `ahead`, `propose` podaje je w `skipped`, tytuł i treść nie pojawiają się w wyjściu, błąd zapytania o uprawnienia
 → kod 1). `python3 -m unittest discover -s tools/agent-security -p 'test_ao_prepare.py'`: `ao-prepare` z prawdziwym
-repozytorium tymczasowym z `origin`, atrapą sondy zapisaną na `origin/main` i atrapą `claude_pin.py` (sześć plików
-z `main` zdalnego repozytorium, nie z drzewa roboczego, także przy obiektach `refs/replace` i przestawionym
-`refs/remotes/origin/main` w klonie, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
+repozytorium tymczasowym jako źródłem (`--source-url`), atrapą sondy zapisaną na jego `main` i atrapą `claude_pin.py`
+(sześć plików z `main` źródła, nie z drzewa roboczego, także przy obiektach `refs/replace` i przestawionym
+`refs/remotes/origin/main` w klonie; bez `--source-url` atrapa `git` widzi `ls-remote` adresu GitHuba z samymi
+`https` i `ssh`, także przy podłożonym `.git/commondir` i obcym adresie `origin` w konfiguracji klonu, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
 z kopii, na wrapperze kopii, z przypiętą binarką i bez zmiennych `CLAUDE*`, a zmieniony `probe.py` drzewa roboczego
 nie rusza; starsza kopia zastąpiona w całości; wynik z `AO_CLAUDE_BIN` kopii i zmiennymi, bez wyjścia sondy na stdout; zapis przebiegów; istniejący
 `KUBE_DIR` z rejestru, także jako wiszące dowiązanie i zarejestrowany w trakcie sondy, wpis względny i nieczytelny

@@ -193,9 +193,9 @@ Każde `ao run` (pierwszy start, ponowne `run` po blokerze, po `ao resume` albo 
 każdy epik nocy) uruchamiasz wyłącznie tym poleceniem: najpierw `tools/agent-security/ao-prepare`, potem AO z jego
 wyniku, w jednym poleceniu tła. Nigdy go nie pomijasz, nie startujesz AO z wyniku wcześniejszego `ao-prepare` ani
 z innym `--claude-bin` i nie uruchamiasz `python3 -m orchestrator … run` inaczej (spec agent-security, R7 i P8).
-`ao-prepare` (opis w docstringu skryptu) kopiuje z `main` na GitHubie (SHA z `git ls-remote`, commit pobrany do
-prywatnego repozytorium w `$AO_HOME`; nigdy z drzewa roboczego sesji ani ze wspólnego `.git` klonu, który wykonawcy
-zapisują) wrapper `claude-agent`, profil sandboxa, sondę i nakładkę `mktemp` do `$AO_HOME/agent-security/`, odmawia, gdy
+`ao-prepare` (opis w docstringu skryptu) kopiuje z `main` na GitHubie (stały adres `piotrp321/shop`, SHA z
+`git ls-remote`, commit pobrany do prywatnego repozytorium w `$AO_HOME`; nigdy z drzewa roboczego sesji ani z klonu,
+którego `.git` wykonawcy zapisują; opcji `--source-url` dla testów nie podajesz) wrapper `claude-agent`, profil sandboxa, sondę i nakładkę `mktemp` do `$AO_HOME/agent-security/`, odmawia, gdy
 istnieje zarejestrowany `KUBE_DIR` operacji produkcyjnej (przed sondą i po niej), bierze binarkę z `claude_pin.py` i uruchamia sondę prób
 obejścia z tej kopii (model Haiku, do kilkunastu minut z przygotowaniem). Wykonawcy AO działają potem przez wrapper
 z kopii, w sandboxie z profilu.

@@ -618,9 +618,10 @@ wykonawcy, nie konfigurację.
 - kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json`, `probe.py`, `probe-cases.sh`
   i `bin/mktemp` (nakładka z R2, do `$AO_HOME/agent-security/bin/mktemp`, wykonywalna) z `main` na GitHubie do
   `$AO_HOME/agent-security/` (poza zapisem wykonawcy i katalogami Dockera; kopia nie zmienia się w trakcie
-  przebiegu). Źródłem nie jest drzewo robocze sesji ani wspólny `.git` głównego klonu, do którego wykonawcy piszą
-  (`refs/replace`, przestawiony `refs/remotes/origin/main`): SHA z `git ls-remote` adresu `origin`, commit pobrany do
-  prywatnego repozytorium `$AO_HOME/agent-security-src.git` i czytany przez `ls-tree` i `cat-file blob`, `git` bez
+  przebiegu). Źródło to stały adres `https://github.com/piotrp321/shop.git` (tylko `https` i `ssh`), nie drzewo
+  robocze sesji ani główny klon, którego `.git` wykonawcy i kontenery mogą zapisać (`refs/replace`, przestawiony
+  `refs/remotes/origin/main`, podłożony `.git/commondir`, zmieniony adres `origin`): SHA z `git ls-remote` tego
+  adresu, commit pobrany po SHA do prywatnego repozytorium `$AO_HOME/agent-security-src.git` i czytany przez `ls-tree` i `cat-file blob`, `git` bez
   obiektów zastępczych, graftów, commit-graph, fsmonitora i hooków (jak wrapper);
 - odmawia startu, gdy istnieje któryś `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (droga 14), przed
   sondą i ponownie po niej;

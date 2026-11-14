@@ -154,8 +154,10 @@ class AoPrepareTest(unittest.TestCase):
         return env
 
     def prepare(self, *extra_args, args=None, env=None, timeout=60):
+        # Tests read the copy from the local `origin` through --source-url (the default source is GitHub).
         argv = args if args is not None else ['--repo', self.repo, '--ao-home', self.ao_home, '--ao-dir', self.tmp,
-                                              '--pin-script', self.pin, '--probe-timeout', '30']
+                                              '--pin-script', self.pin, '--probe-timeout', '30',
+                                              '--source-url', self.origin]
         result = subprocess.run([sys.executable, AO_PREPARE] + argv + list(extra_args), capture_output=True,
                                 text=True, env=env or self.env(), timeout=timeout)
         return result.returncode, result.stdout, result.stderr
@@ -368,6 +370,53 @@ class AoPrepareTest(unittest.TestCase):
         with open(os.path.join(self.ao_home, 'probe-runs.jsonl')) as f:
             self.assertEqual(1, len(f.readlines()))
 
+    # ------------------------------------------------------------ the source is pinned to GitHub
+
+    GITHUB = 'https://github.com/piotrp321/shop.git'
+
+    def default_source_calls(self, env_extra=None):
+        """Runs ao-prepare without --source-url with a fake git that records its arguments and fails ls-remote (no
+        network); returns the recorded calls."""
+        shim = os.path.join(self.tmp, 'recording-git')
+        calls = os.path.join(self.tmp, 'git-calls.jsonl')
+        write(os.path.join(shim, 'git'), '#!/usr/bin/env python3\nimport json, os, subprocess, sys\n'
+              'open(os.environ["RECORD_GIT_CALLS"], "a").write(json.dumps(sys.argv[1:]) + "\\n")\n'
+              'if "ls-remote" in sys.argv: sys.exit(2)\n'
+              'sys.exit(subprocess.call([os.environ["REAL_GIT"]] + sys.argv[1:]))\n', 0o755)
+        args = ['--repo', self.repo, '--ao-home', self.ao_home, '--ao-dir', self.tmp, '--pin-script', self.pin]
+        env = self.env(PATH=shim + os.pathsep + os.environ['PATH'], REAL_GIT=shutil.which('git'), RECORD_GIT_CALLS=calls)
+        env.update(env_extra or {})
+        code, out, err = self.prepare(args=args, env=env)
+        self.assert_refused(code, out, err, 'git ls-remote')
+        with open(calls) as f:
+            return [json.loads(line) for line in f]
+
+    def ls_remote(self, calls):
+        found = [c for c in calls if 'ls-remote' in c]
+        self.assertEqual(1, len(found), calls)
+        return found[0]
+
+    def test_the_default_source_is_main_on_github_over_https_or_ssh_only(self):
+        call = self.ls_remote(self.default_source_calls())
+        self.assertEqual([self.GITHUB, 'refs/heads/main'], call[-2:])
+        for setting in ('protocol.allow=never', 'protocol.https.allow=always', 'protocol.ssh.allow=always'):
+            self.assertIn(setting, call)
+
+    def test_a_planted_commondir_in_the_main_clone_does_not_change_the_source(self):
+        evil = os.path.join(self.tmp, 'evil-common')
+        os.makedirs(evil)
+        write(os.path.join(evil, 'config'), '[remote "origin"]\n\turl = %s\n' % os.path.join(self.tmp, 'evil.git'))
+        write(os.path.join(self.repo, '.git', 'commondir'), evil + '\n')
+        calls = self.default_source_calls()
+        self.assertEqual(self.GITHUB, self.ls_remote(calls)[-2])
+        self.assertNotIn('evil', json.dumps(calls))
+
+    def test_a_foreign_url_in_the_clone_config_does_not_change_the_source(self):
+        git(self.repo, 'remote', 'set-url', 'origin', os.path.join(self.tmp, 'evil.git'))
+        calls = self.default_source_calls()
+        self.assertEqual(self.GITHUB, self.ls_remote(calls)[-2])
+        self.assertNotIn('evil', json.dumps(calls))
+
     # ------------------------------------------------------------ other refusals
 
     def test_a_failing_pin_stops_it_with_the_reason(self):
@@ -380,7 +429,7 @@ class AoPrepareTest(unittest.TestCase):
         git(self.other, 'rm', '-q', 'tools/agent-security/bin/mktemp')
         git(self.other, 'commit', '-q', '-m', 'drop')
         git(self.other, 'push', '-q', 'origin', 'HEAD:main')
-        self.assert_refused(*self.prepare(), 'bin/mktemp', 'origin/main')
+        self.assert_refused(*self.prepare(), 'bin/mktemp', 'na main w')
         self.assertFalse(os.path.exists(self.record))
 
     def test_a_symlink_on_origin_main_stops_it(self):
@@ -393,8 +442,9 @@ class AoPrepareTest(unittest.TestCase):
         self.assert_refused(*self.prepare(), 'probe-cases.sh')
 
     def test_a_failing_fetch_stops_it(self):
-        git(self.repo, 'remote', 'set-url', 'origin', os.path.join(self.tmp, 'missing.git'))
-        self.assert_refused(*self.prepare(), 'git ls-remote')
+        args = ['--repo', self.repo, '--ao-home', self.ao_home, '--ao-dir', self.tmp, '--pin-script', self.pin,
+                '--source-url', os.path.join(self.tmp, 'missing.git')]
+        self.assert_refused(*self.prepare(args=args), 'git ls-remote')
         self.assertFalse(os.path.exists(self.record))
 
     def test_missing_git_stops_it(self):

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Prepares the start of AO in /ao-run: a copy of the executor sandbox from origin/main and the bypass probe on it
+"""Prepares the start of AO in /ao-run: a copy of the executor sandbox from main on GitHub and the bypass probe on it
 (spec docs/features/agent-security/spec.md, R7). Python 3.9+, standard library only.
 
   ao-prepare --repo DIR --ao-home DIR [--ao-dir DIR] [--pin-script PATH] [--probe-timeout S] [--cost-limit USD]
-             [--outer-timeout S] [--term-grace S]
+             [--outer-timeout S] [--term-grace S] [--source-url URL]
 
-The arguments come only from the trusted caller (the /ao-run session): --repo is the main clone of shop (its origin
-is fetched and read, and the probe runs there), --ao-home the AO directory of the epic ($HOME/.local/state/ao-<name>,
+The arguments come only from the trusted caller (the /ao-run session): --repo is the main clone of shop (the probe
+runs there; git never reads it), --ao-home the AO directory of the epic ($HOME/.local/state/ao-<name>,
 an existing real directory without symlinks), --ao-dir the AO checkout given to claude_pin.py (default: its own
 default), --pin-script claude_pin.py (default: .claude/skills/ao-run/claude_pin.py of the tree this script is in).
+--source-url replaces the source of the copy (default https://github.com/piotrp321/shop.git) for the tests with a
+local repository; /ao-run never passes it.
 
 Steps, in order; the first that fails ends the run with exit 1 and one line `ao-prepare: <reason>` on stderr, nothing
 on stdout:
@@ -19,12 +21,14 @@ on stdout:
      unreadable registry or a relative entry is a refusal;
   3. the pinned binary from claude_pin.py (exit 0 and an absolute path of an executable file; otherwise its stderr);
   4. the six files claude-agent, render_settings.py, executor-settings.json, probe.py, probe-cases.sh and bin/mktemp
-     of the commit `main` points to on the remote. Nothing is read from the shared .git of the main clone, which the
-     executors write (refs, objects: replace objects, a moved refs/remotes/origin/main): only the URL of `origin` from
-     its configuration (write-protected for executors). The SHA comes from `git ls-remote <url> refs/heads/main`; the
-     commit is fetched by that SHA into the private bare repository $AO_HOME/agent-security-src.git (outside the
-     executors' reach) and read there with `ls-tree` and `cat-file blob`. Every git call runs without replace
-     objects, grafts, commit-graph, fsmonitor and hooks (as the wrapper's). The files go to a new directory in
+     of the commit `main` points to in the source: the public repository piotrp321/shop on GitHub, a fixed address
+     (git allows only https and ssh for it). Nothing comes from the main clone, whose .git executors and containers
+     can write: not its objects or refs (replace objects, a moved refs/remotes/origin/main) and not its
+     configuration (a planted .git/commondir or include, a remote URL changed through Docker). The SHA comes from
+     `git ls-remote <source> refs/heads/main`; the commit is
+     fetched by that SHA (--depth=1) into the private bare repository $AO_HOME/agent-security-src.git (outside the
+     executors' reach, used through --git-dir) and read there with `ls-tree` and `cat-file blob`. Every git call runs
+     without replace objects, grafts, commit-graph, fsmonitor and hooks (as the wrapper's). The files go to a new directory in
      $AO_HOME that replaces $AO_HOME/agent-security whole; a file that is missing or not a regular blob (a symlink)
      is a refusal. Files keep the executable bit of git and lose every write bit;
   5. the probe of the copy ($AO_HOME/agent-security/probe.py, default pass) with --claude-bin on the copied wrapper,
@@ -78,6 +82,9 @@ GIT_TIMEOUT = 120
 PIN_TIMEOUT = 120
 REGISTRY = os.path.join('.local', 'state', 'shop-ops', 'kube-dirs')
 SOURCE_REPO = 'agent-security-src.git'
+GITHUB_SOURCE = 'https://github.com/piotrp321/shop.git'
+# The fixed GitHub source: only https and ssh (also after a url.insteadOf of the user's configuration).
+GITHUB_PROTOCOLS = ['-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always']
 SHA = re.compile(r'^(?:[0-9a-f]{40}|[0-9a-f]{64})$')
 # git outside the sandbox, as in the wrapper: no replace objects, grafts or commit-graph an executor could plant, no
 # fsmonitor or hooks from a configuration.
@@ -186,28 +193,28 @@ def pinned_binary(pin_script, ao_dir):
     return _check_path(path, 'binarka przypięta')
 
 
-def _git(repo, *args, text=True):
-    argv = GIT + ['-C', repo] + list(args)
+def _git(*args, text=True, config=()):
+    """git with the hardening of GIT and GIT_ENV, run from / (no repository is discovered from the working
+    directory); the private repository is always named with --git-dir."""
+    argv = GIT + list(config) + list(args)
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     env.update(GIT_ENV)
     try:
-        result = subprocess.run(argv, capture_output=True, text=text, timeout=GIT_TIMEOUT, env=env)
+        result = subprocess.run(argv, capture_output=True, text=text, timeout=GIT_TIMEOUT, env=env, cwd='/')
     except subprocess.TimeoutExpired:
         raise Refused('git %s nie skończył w %d s' % (' '.join(args), GIT_TIMEOUT))
     except OSError as e:
-        raise Refused('git %s: %s' % (args[0], e.strerror or e))
+        raise Refused('git: %s' % (e.strerror or e))
     if result.returncode != 0:
         err = result.stderr if text else result.stderr.decode('utf-8', 'replace')
         raise Refused('git %s: %s' % (' '.join(args), _line(err) or 'kod %d' % result.returncode))
     return result.stdout
 
 
-def source_repo(repo, ao_home):
-    """(private bare repository with the commit of main on the remote, that commit): see step 4."""
-    url = _git(repo, 'config', '--get', 'remote.origin.url').strip()
-    if not url or '\n' in url:
-        raise Refused('brak adresu remote origin w %s' % repo)
-    heads = _git(ao_home, 'ls-remote', url, 'refs/heads/main').split()
+def source_repo(ao_home, url):
+    """(private bare repository with the commit of main in the source, that commit): see step 4."""
+    config = GITHUB_PROTOCOLS if url == GITHUB_SOURCE else ()
+    heads = _git('ls-remote', url, 'refs/heads/main', config=config).split()
     if len(heads) != 2 or heads[1] != 'refs/heads/main' or not SHA.match(heads[0]):
         raise Refused('git ls-remote %s refs/heads/main: brak gałęzi main' % url)
     sha = heads[0]
@@ -215,18 +222,19 @@ def source_repo(repo, ao_home):
     if os.path.islink(source) or (os.path.lexists(source) and not os.path.isdir(source)):
         raise Refused('%s nie jest katalogiem' % source)
     if not os.path.isdir(source):
-        _git(ao_home, 'init', '-q', '--bare', source)
-    _git(source, 'fetch', '-q', '--no-tags', '--no-write-fetch-head', url, sha)
-    if _git(source, 'cat-file', '-t', sha).strip() != 'commit':
-        raise Refused('%s na zdalnym main nie jest commitem' % sha)
+        _git('init', '-q', '--bare', source)
+    _git('--git-dir', source, 'fetch', '-q', '--no-tags', '--no-write-fetch-head', '--depth=1', url, sha,
+         config=config)
+    if _git('--git-dir', source, 'cat-file', '-t', sha).strip() != 'commit':
+        raise Refused('%s na main w %s nie jest commitem' % (sha, url))
     return source, sha
 
 
-def copy_from_main(repo, ao_home):
-    """Writes the six files of main on the remote to $AO_HOME/agent-security (step 4); returns the commit."""
-    source, sha = source_repo(repo, ao_home)
+def copy_from_main(ao_home, url):
+    """Writes the six files of main in the source to $AO_HOME/agent-security (step 4); returns the commit."""
+    source, sha = source_repo(ao_home, url)
     modes = {}
-    for line in _git(source, 'ls-tree', '-r', '--full-tree', sha, '--', SOURCE + '/').splitlines():
+    for line in _git('--git-dir', source, 'ls-tree', '-r', '--full-tree', sha, '--', SOURCE + '/').splitlines():
         meta, _, path = line.partition('\t')
         parts = meta.split()
         if len(parts) == 3:
@@ -237,10 +245,10 @@ def copy_from_main(repo, ao_home):
             path = '%s/%s' % (SOURCE, name)
             mode, kind, blob = modes.get(path, (None, None, None))
             if mode is None:
-                raise Refused('brak %s na origin/main (%s)' % (path, sha[:12]))
+                raise Refused('brak %s na main w %s (%s)' % (path, url, sha[:12]))
             if kind != 'blob' or mode not in ('100644', '100755'):
-                raise Refused('%s na origin/main nie jest zwykłym plikiem (tryb %s)' % (path, mode))
-            data = _git(source, 'cat-file', 'blob', blob, text=False)
+                raise Refused('%s na main w %s nie jest zwykłym plikiem (tryb %s)' % (path, url, mode))
+            data = _git('--git-dir', source, 'cat-file', 'blob', blob, text=False)
             target = os.path.join(staging, name)
             os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
             with open(target, 'xb') as f:
@@ -374,11 +382,14 @@ def record_run(ao_home, sha, code, seconds, cost, reason, result_path):
 def prepare(args):
     ao_home = ao_home_of(args.ao_home)
     repo = _check_path(os.path.abspath(args.repo), '--repo')
+    if not os.path.isdir(repo) or not os.path.lexists(os.path.join(repo, '.git')):
+        raise Refused('--repo %s nie jest klonem git shop (brak .git)' % repo)
+    url = _check_path(args.source_url, '--source-url')
     fd = lock(ao_home)
     try:
         check_kube_dirs(os.path.join(os.path.expanduser('~'), REGISTRY))
         binary = pinned_binary(os.path.abspath(args.pin_script), args.ao_dir)
-        sha = copy_from_main(repo, ao_home)
+        sha = copy_from_main(ao_home, url)
         copy = os.path.join(ao_home, COPY)
         handle, result_path = tempfile.mkstemp(prefix='.probe-result.', suffix='.json', dir=ao_home)
         os.close(handle)
@@ -430,7 +441,7 @@ def _usd(text):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Kopia sandboxa wykonawców z origin/main i sonda przed startem AO.')
-    parser.add_argument('--repo', required=True, help='główny klon shop (origin, katalog sondy)')
+    parser.add_argument('--repo', required=True, help='główny klon shop (katalog sondy)')
     parser.add_argument('--ao-home', required=True, help='katalog AO epiku: $HOME/.local/state/ao-<nazwa>')
     parser.add_argument('--ao-dir', help='checkout AO dla claude_pin.py')
     parser.add_argument('--pin-script', default=DEFAULT_PIN, help='claude_pin.py')
@@ -438,6 +449,8 @@ def main(argv=None):
     parser.add_argument('--cost-limit', type=_usd, default=COST_LIMIT)
     parser.add_argument('--outer-timeout', type=_seconds)
     parser.add_argument('--term-grace', type=_seconds, default=TERM_GRACE)
+    parser.add_argument('--source-url', default=GITHUB_SOURCE,
+                        help='źródło kopii (domyślnie main na GitHubie); tylko testy z lokalnym repozytorium')
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
