@@ -1,0 +1,412 @@
+#!/usr/bin/env python3
+"""Prepares the start of AO in /ao-run: a copy of the executor sandbox from origin/main and the bypass probe on it
+(spec docs/features/agent-security/spec.md, R7). Python 3.9+, standard library only.
+
+  ao-prepare --repo DIR --ao-home DIR [--ao-dir DIR] [--pin-script PATH] [--probe-timeout S] [--cost-limit USD]
+             [--outer-timeout S] [--term-grace S]
+
+The arguments come only from the trusted caller (the /ao-run session): --repo is the main clone of shop (its origin
+is fetched and read, and the probe runs there), --ao-home the AO directory of the epic ($HOME/.local/state/ao-<name>,
+an existing real directory without symlinks), --ao-dir the AO checkout given to claude_pin.py (default: its own
+default), --pin-script claude_pin.py (default: .claude/skills/ao-run/claude_pin.py of the tree this script is in).
+
+Steps, in order; the first that fails ends the run with exit 1 and one line `ao-prepare: <reason>` on stderr, nothing
+on stdout:
+  1. one ao-prepare per AO_HOME (flock on $AO_HOME/agent-security.lock) and no AO process on it (its
+     orchestrator.lock is held): the copy never changes while AO runs on it;
+  2. no KUBE_DIR recorded in ~/.local/state/shop-ops/kube-dirs (one absolute path per line, written by
+     infra/k8s/scripts/kubeconfig.sh) still exists (also as a dangling symlink); a missing registry is no KUBE_DIR, an
+     unreadable registry or a relative entry is a refusal;
+  3. the pinned binary from claude_pin.py (exit 0 and an absolute path of an executable file; otherwise its stderr);
+  4. `git fetch origin main`, then the six files claude-agent, render_settings.py, executor-settings.json, probe.py,
+     probe-cases.sh and bin/mktemp of that one commit of origin/main (`git show <sha>:tools/agent-security/<file>`,
+     never the working tree) go to a new directory in $AO_HOME that replaces $AO_HOME/agent-security whole; a file
+     that is missing or not a regular blob (a symlink) is a refusal. Files keep the executable bit of git and lose
+     every write bit;
+  5. the probe of the copy ($AO_HOME/agent-security/probe.py, default pass) with --claude-bin on the copied wrapper,
+     --agent-claude-bin on the pinned binary, --timeout and --cost-limit, run from --repo without CLAUDE* variables.
+     A probe exit other than 0, the outer time limit (--outer-timeout, default --probe-timeout + 600 s: SIGTERM to
+     the probe, SIGKILL to its process group after --term-grace), a missing or unreadable result, or a result with a
+     reason or a case that did not pass is a refusal `sonda bezpieczeństwa nie przeszła (<reason>); czas <s> s,
+     koszt <usd> USD` (`koszt brak danych` without a cost). SIGTERM, SIGINT or SIGHUP of ao-prepare stops the probe
+     the same way.
+
+Every probe run appends {at, main, code, seconds, cost_usd, reason} to $AO_HOME/probe-runs.jsonl (time and cost for
+the acceptance report) and keeps its result JSON in $AO_HOME/probe-result.json.
+
+Success: exit 0, the line `ao-prepare: sonda przeszła; czas <s> s, koszt <usd> USD, main <sha>` on stderr and on
+stdout exactly these KEY=VALUE lines (one per line; the value is everything after the first `=`, never a line break):
+  AO_CLAUDE_BIN=<AO_HOME>/agent-security/claude-agent   for `ao run --claude-bin`
+  AGENT_CLAUDE_BIN=<pinned binary>                     environment of `ao run` (read by the wrapper)
+  AGENT_AO_HOME=<AO_HOME>                              environment of `ao run` (read by the wrapper)
+  PROBE_SECONDS=<wall time of the probe>
+  PROBE_COST_USD=<total_cost_usd of the probe, or empty>
+  MAIN_SHA=<the origin/main commit of the copy>
+Exit codes: 0 AO may start with the output; 1 refused (any step above); 2 usage error.
+"""
+import argparse
+import datetime
+import fcntl
+import json
+import os
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_PIN = os.path.join(HERE, '..', '..', '.claude', 'skills', 'ao-run', 'claude_pin.py')
+SOURCE = 'tools/agent-security'
+FILES = ('claude-agent', 'render_settings.py', 'executor-settings.json', 'probe.py', 'probe-cases.sh', 'bin/mktemp')
+COPY = 'agent-security'
+PROBE_TIMEOUT = 600
+COST_LIMIT = 1.0
+OUTER_MARGIN = 600      # seconds the probe gets for its setup and cleanup on top of --probe-timeout
+TERM_GRACE = 120        # seconds between SIGTERM to the probe and SIGKILL to its process group
+GIT_TIMEOUT = 120
+PIN_TIMEOUT = 120
+REGISTRY = os.path.join('.local', 'state', 'shop-ops', 'kube-dirs')
+
+
+class Refused(Exception):
+    """AO must not start; the message is the reason shown to the user."""
+
+
+class Interrupted(Exception):
+    pass
+
+
+def _line(text):
+    return ' '.join(str(text).split())
+
+
+def _check_path(value, what):
+    if any(ord(c) < 32 or c == '\x7f' for c in value):
+        raise Refused('%s zawiera znak sterujący' % what)
+    return value
+
+
+def ao_home_of(value):
+    """The real AO directory $HOME/.local/state/ao-<name>, without a symlink in its path."""
+    _check_path(value, 'AO_HOME')
+    if not os.path.isabs(value):
+        raise Refused('AO_HOME %s nie jest ścieżką bezwzględną' % value)
+    path = os.path.normpath(value)
+    home = os.path.realpath(os.path.expanduser('~'))
+    parent, name = os.path.split(path)
+    if (not os.path.isdir(path) or os.path.realpath(path) != path or parent != os.path.join(home, '.local', 'state')
+            or not name.startswith('ao-') or name == 'ao-' or ':' in path):
+        raise Refused('AO_HOME %s nie jest istniejącym katalogiem %s/.local/state/ao-<nazwa> bez dowiązań '
+                      'symbolicznych' % (value, home))
+    return path
+
+
+def _flocked(path):
+    """Whether another process holds a flock on `path` (no file: no)."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+def lock(ao_home):
+    fd = os.open(os.path.join(ao_home, 'agent-security.lock'), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise Refused('inne ao-prepare działa na %s' % ao_home)
+    if _flocked(os.path.join(ao_home, 'orchestrator.lock')):
+        os.close(fd)
+        raise Refused('proces AO działa na %s: kopia wrappera i profilu nie zmienia się w trakcie przebiegu' % ao_home)
+    return fd
+
+
+def check_kube_dirs(registry):
+    try:
+        with open(registry, encoding='utf-8') as f:
+            entries = [line.rstrip('\n') for line in f]
+    except FileNotFoundError:
+        return
+    except (OSError, UnicodeDecodeError) as e:
+        raise Refused('nieczytelny rejestr KUBE_DIR %s: %s' % (registry, getattr(e, 'strerror', None) or e))
+    for entry in entries:
+        if not entry.strip():
+            continue
+        if not os.path.isabs(entry):
+            raise Refused('rejestr KUBE_DIR %s ma wpis, który nie jest ścieżką bezwzględną: %s' % (registry, entry))
+        if os.path.lexists(entry):
+            raise Refused('istnieje KUBE_DIR %s (rejestr %s): usuń go po operacji produkcyjnej (runbook '
+                          'infra/k8s/README.md), potem uruchom AO' % (entry, registry))
+
+
+def pinned_binary(pin_script, ao_dir):
+    args = [sys.executable, '-I', pin_script] + (['--ao-dir', ao_dir] if ao_dir else [])
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=PIN_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise Refused('claude_pin.py nie skończył w %d s' % PIN_TIMEOUT)
+    except OSError as e:
+        raise Refused('claude_pin.py: %s' % (e.strerror or e))
+    if result.returncode != 0:
+        raise Refused('binarka przypięta przez AO niedostępna (claude_pin.py kod %d): %s'
+                      % (result.returncode, _line(result.stderr) or 'bez komunikatu'))
+    path = result.stdout.strip()
+    if '\n' in path or not os.path.isabs(path) or not os.path.isfile(path) or not os.access(path, os.X_OK):
+        raise Refused('claude_pin.py nie podał bezwzględnej ścieżki pliku wykonywalnego: %s' % _line(path))
+    return _check_path(path, 'binarka przypięta')
+
+
+def _git(repo, *args, text=True):
+    argv = ['git', '-C', repo] + list(args)
+    try:
+        result = subprocess.run(argv, capture_output=True, text=text, timeout=GIT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise Refused('%s nie skończył w %d s' % (' '.join(argv[3:]), GIT_TIMEOUT))
+    except OSError as e:
+        raise Refused('git %s: %s' % (args[0], e.strerror or e))
+    if result.returncode != 0:
+        err = result.stderr if text else result.stderr.decode('utf-8', 'replace')
+        raise Refused('git %s: %s' % (' '.join(args), _line(err) or 'kod %d' % result.returncode))
+    return result.stdout
+
+
+def copy_from_main(repo, ao_home):
+    """Fetches origin/main and writes the six files of its commit to $AO_HOME/agent-security; returns the commit."""
+    _git(repo, 'fetch', 'origin', 'main')
+    sha = _git(repo, 'rev-parse', '--verify', 'refs/remotes/origin/main^{commit}').strip()
+    modes = {}
+    for line in _git(repo, 'ls-tree', '-r', sha, '--', SOURCE + '/').splitlines():
+        meta, _, path = line.partition('\t')
+        parts = meta.split()
+        if len(parts) == 3:
+            modes[path] = (parts[0], parts[1])
+    staging = tempfile.mkdtemp(prefix='.agent-security.', dir=ao_home)
+    try:
+        for name in FILES:
+            path = '%s/%s' % (SOURCE, name)
+            mode, kind = modes.get(path, (None, None))
+            if mode is None:
+                raise Refused('brak %s na origin/main (%s)' % (path, sha[:12]))
+            if kind != 'blob' or mode not in ('100644', '100755'):
+                raise Refused('%s na origin/main nie jest zwykłym plikiem (tryb %s)' % (path, mode))
+            data = _git(repo, 'show', '%s:%s' % (sha, path), text=False)
+            target = os.path.join(staging, name)
+            os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
+            with open(target, 'xb') as f:
+                f.write(data)
+            os.chmod(target, 0o555 if mode == '100755' else 0o444)
+        os.chmod(staging, 0o755)
+        final = os.path.join(ao_home, COPY)
+        old = None
+        if os.path.lexists(final):
+            old = tempfile.mkdtemp(prefix='.agent-security-old.', dir=ao_home)
+            os.rename(final, os.path.join(old, COPY))
+        os.rename(staging, final)
+        staging = None
+        if old:
+            shutil.rmtree(old, ignore_errors=True)
+    except OSError as e:
+        raise Refused('kopia do %s/%s nie powiodła się: %s' % (ao_home, COPY, e.strerror or e))
+    finally:
+        if staging:
+            shutil.rmtree(staging, ignore_errors=True)
+    return sha
+
+
+def _stop(proc, grace):
+    """SIGTERM to the probe (it cleans up), SIGKILL to its process group when it is still there after `grace`."""
+    if proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            pass
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    proc.wait()
+
+
+def run_probe(repo, copy, binary, result_path, probe_timeout, cost_limit, outer_timeout, grace):
+    """(exit code or None after the outer limit or a signal, interruption reason or None, wall seconds)."""
+    argv = [sys.executable, '-I', os.path.join(copy, 'probe.py'), '--claude-bin', os.path.join(copy, 'claude-agent'),
+            '--agent-claude-bin', binary, '--timeout', str(probe_timeout), '--cost-limit', repr(cost_limit),
+            '--result', result_path]
+    env = {k: v for k, v in os.environ.items() if not k.startswith('CLAUDE')}
+
+    def interrupt(signum, frame):
+        raise Interrupted(signum)
+
+    previous = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+    began = time.monotonic()
+    proc = None
+    try:
+        for s in previous:
+            signal.signal(s, interrupt)
+        try:
+            proc = subprocess.Popen(argv, cwd=repo, env=env, stdin=subprocess.DEVNULL, start_new_session=True)
+        except OSError as e:
+            raise Refused('sonda bezpieczeństwa nie przeszła (nie uruchomiono %s: %s)'
+                          % (argv[2], e.strerror or e))
+        try:
+            return proc.wait(timeout=outer_timeout), None, time.monotonic() - began
+        except subprocess.TimeoutExpired:
+            _stop(proc, grace)
+            return None, 'przekroczony limit czasu ao-prepare %d s' % outer_timeout, time.monotonic() - began
+        except Interrupted as e:
+            _stop(proc, grace)
+            return None, 'przerwano sygnałem %s' % e.args[0], time.monotonic() - began
+    finally:
+        for s, handler in previous.items():
+            signal.signal(s, handler)
+
+
+def read_result(path):
+    """(result dict or None, problem or None)."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+    except FileNotFoundError:
+        return None, 'brak wyniku sondy'
+    except (OSError, UnicodeDecodeError) as e:
+        return None, 'nieczytelny wynik sondy: %s' % (getattr(e, 'strerror', None) or e)
+    try:
+        result = json.loads(text)
+    except ValueError:
+        return None, 'nieczytelny wynik sondy (to nie JSON)'
+    if not isinstance(result, dict) or not isinstance(result.get('cases'), list):
+        return None, 'nieczytelny wynik sondy (brak listy przypadków)'
+    return result, None
+
+
+def judge(code, interrupted, result, problem):
+    """The reason the probe did not pass, or None."""
+    if interrupted:
+        return interrupted
+    reason = result.get('reason') if result else None
+    if code != 0:
+        return _line(reason) if reason else '%s, kod sondy %d' % (problem or 'wynik bez przyczyny', code)
+    if problem:
+        return problem
+    if reason:
+        return _line(reason)
+    if not result['cases']:
+        return 'wynik sondy bez przypadków'
+    failed = [c.get('name') for c in result['cases'] if not isinstance(c, dict) or c.get('status') != 'pass']
+    if failed:
+        return 'kod 0, ale przypadek %s nie przeszedł' % failed[0]
+    return None
+
+
+def _cost(result):
+    cost = (result or {}).get('total_cost_usd')
+    return cost if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None
+
+
+def record_run(ao_home, sha, code, seconds, cost, reason, result_path):
+    entry = {'at': datetime.datetime.now().astimezone().isoformat(timespec='seconds'), 'main': sha, 'code': code,
+             'seconds': round(seconds, 1), 'cost_usd': cost, 'reason': reason}
+    with open(os.path.join(ao_home, 'probe-runs.jsonl'), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    if os.path.exists(result_path):
+        os.replace(result_path, os.path.join(ao_home, 'probe-result.json'))
+
+
+def prepare(args):
+    ao_home = ao_home_of(args.ao_home)
+    repo = _check_path(os.path.abspath(args.repo), '--repo')
+    fd = lock(ao_home)
+    try:
+        check_kube_dirs(os.path.join(os.path.expanduser('~'), REGISTRY))
+        binary = pinned_binary(os.path.abspath(args.pin_script), args.ao_dir)
+        sha = copy_from_main(repo, ao_home)
+        copy = os.path.join(ao_home, COPY)
+        handle, result_path = tempfile.mkstemp(prefix='.probe-result.', suffix='.json', dir=ao_home)
+        os.close(handle)
+        os.remove(result_path)    # the probe writes it; a missing file means no result
+        try:
+            outer = args.outer_timeout if args.outer_timeout is not None else args.probe_timeout + OUTER_MARGIN
+            code, interrupted, seconds = run_probe(repo, copy, binary, result_path, args.probe_timeout,
+                                                   args.cost_limit, outer, args.term_grace)
+            result, problem = read_result(result_path)
+            reason = judge(code, interrupted, result, problem)
+            cost = _cost(result)
+            record_run(ao_home, sha, code if code is not None else -1, seconds, cost, reason, result_path)
+        finally:
+            if os.path.exists(result_path):
+                os.remove(result_path)
+        spent = 'czas %.1f s, koszt %s' % (seconds, '%s USD' % cost if cost is not None else 'brak danych')
+        if reason:
+            raise Refused('sonda bezpieczeństwa nie przeszła (%s); %s' % (reason, spent))
+        print('ao-prepare: sonda przeszła; %s, main %s' % (spent, sha[:12]), file=sys.stderr)
+        values = (('AO_CLAUDE_BIN', os.path.join(copy, 'claude-agent')), ('AGENT_CLAUDE_BIN', binary),
+                  ('AGENT_AO_HOME', ao_home), ('PROBE_SECONDS', '%.1f' % seconds),
+                  ('PROBE_COST_USD', '' if cost is None else str(cost)), ('MAIN_SHA', sha))
+        sys.stdout.write(''.join('%s=%s\n' % (k, v) for k, v in values))
+        return 0
+    finally:
+        os.close(fd)
+
+
+def _seconds(text):
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError('oczekiwano liczby sekund, jest %r' % text)
+    if value < 1:
+        raise argparse.ArgumentTypeError('oczekiwano co najmniej 1 s, jest %r' % text)
+    return value
+
+
+def _usd(text):
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError('oczekiwano kwoty USD, jest %r' % text)
+    if not 0 < value < float('inf'):
+        raise argparse.ArgumentTypeError('oczekiwano kwoty USD większej od 0, jest %r' % text)
+    return value
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Kopia sandboxa wykonawców z origin/main i sonda przed startem AO.')
+    parser.add_argument('--repo', required=True, help='główny klon shop (origin, katalog sondy)')
+    parser.add_argument('--ao-home', required=True, help='katalog AO epiku: $HOME/.local/state/ao-<nazwa>')
+    parser.add_argument('--ao-dir', help='checkout AO dla claude_pin.py')
+    parser.add_argument('--pin-script', default=DEFAULT_PIN, help='claude_pin.py')
+    parser.add_argument('--probe-timeout', type=_seconds, default=PROBE_TIMEOUT)
+    parser.add_argument('--cost-limit', type=_usd, default=COST_LIMIT)
+    parser.add_argument('--outer-timeout', type=_seconds)
+    parser.add_argument('--term-grace', type=_seconds, default=TERM_GRACE)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
+    try:
+        return prepare(args)
+    except Refused as e:
+        print('ao-prepare: %s' % _line(e), file=sys.stderr)
+        return 1
+    except OSError as e:
+        print('ao-prepare: błąd zapisu albo odczytu %s: %s' % (e.filename or '', e.strerror or e), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
