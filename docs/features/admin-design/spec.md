@@ -322,8 +322,8 @@ do adresu trafia dopiero zastosowana fraza.
   ADMIN-SCREENS zastępuje to `useListUrlState`.
 - **Rozmiar strony** (ma go lista produktów; pozostałe listy dostaną go w ADMIN-SCREENS): 10, 25 albo 50 (`perPage`
   istniejące w API, maksimum 100). Domyślnie 25; na Cenach i Stanach domyślnie 10, bo tam strona liczy produkty,
-  a każdy ma wiersz na wariant. Zmiana rozmiaru wraca na pierwszą stronę. Wybór wariantów w formularzu promocji (`PromotionVariantPicker`, też na `usePriceList`) zostaje przy 25 produktach
-  na stronę, bez wyboru rozmiaru i bez stanu w adresie.
+  a każdy ma wiersz na wariant. Zmiana rozmiaru wraca na pierwszą stronę. Wybór wariantów w formularzu promocji (`PromotionVariantPicker`) składa listę z `fetchPricePage` i `priceRows` przez
+  `useCursorPager` (bez `usePriceList`): 25 produktów na stronę, bez wyboru rozmiaru i bez stanu w adresie.
 - **Stopka**: „Pokazano X–Y” (`role="status"`, numer pierwszego i ostatniego wiersza strony liczony z numeru strony,
   rozmiaru i liczby elementów odpowiedzi; na Cenach i Stanach liczy produkty: „Pokazano produkty X–Y”) i pager
   z przyciskami „Poprzednia strona” / „Następna strona” (ikony ze strzałkami, nazwy dostępne) oraz numerem bieżącej

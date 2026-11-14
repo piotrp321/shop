@@ -244,4 +244,84 @@ describe("DataTable", () => {
       expect(document.activeElement).toBe(table.get("[data-testid=empty-region]").element);
     });
   });
+
+  it("gives the error the test id the list asks for, `list-error` by default", () => {
+    expect(mountTable({ error: "Błąd." }).find("[data-testid=list-error]").exists()).toBe(true);
+    wrapper?.unmount();
+
+    const named = mountTable({ error: "Błąd.", errorTestid: "prices-error" });
+    expect(named.get("[data-testid=prices-error]").text()).toContain("Błąd.");
+    expect(named.find("[data-testid=list-error]").exists()).toBe(false);
+  });
+
+  describe("rows of a group", () => {
+    interface Variant {
+      id: string;
+      product: string;
+      label: string;
+    }
+    const variants: Variant[] = [
+      { id: "v1", product: "Buty", label: "40" },
+      { id: "v2", product: "Buty", label: "41" },
+      { id: "v3", product: "Plecak", label: "" },
+    ];
+    const variantColumns: ListColumn<Variant>[] = [
+      { key: "label", header: "Wariant", main: true },
+      { key: "gross", header: "Brutto" },
+      { key: "net", header: "Netto", hideBelow: "lg", text: () => "52,29 zł" },
+    ];
+
+    function mountGrouped() {
+      return mount(DataTable<Variant>, {
+        props: {
+          label: "Lista cen",
+          columns: variantColumns,
+          rows: variants,
+          rowKey: (row: Variant) => row.id,
+          rowTestid: "price-row",
+          groupKey: (row: Variant) => row.product,
+          groupTestid: "product-row",
+          loading: false,
+          loaded: true,
+          error: null,
+          forbidden: false,
+          retry: async () => {},
+        },
+        slots: {
+          group: ({ row }: { row: Variant }) => h("strong", { "data-testid": "name" }, row.product),
+          "cell-label": ({ row }: { row: Variant }) => h("span", row.label),
+          "cell-gross": () => h("span", "54,90 zł"),
+          "cell-net": () => h("span", "52,29 zł"),
+        },
+        attachTo: document.body,
+      });
+    }
+
+    it("puts a row of the group before the first row of each group, with one header cell over the whole width", () => {
+      wrapper = mountGrouped();
+
+      const groups = wrapper.findAll("[data-testid=product-row]");
+      expect(groups.map((group) => group.get("[data-testid=name]").text())).toEqual(["Buty", "Plecak"]);
+      const head = groups[0]!.get("th");
+      expect(head.attributes("scope")).toBe("rowgroup");
+      expect(head.attributes("colspan")).toBe("3");
+      expect(groups[0]!.findAll("td")).toHaveLength(0);
+      // The rows of the variants stay what the row test id says; the row of a group is not one of them.
+      expect(wrapper.findAll("[data-testid=price-row]")).toHaveLength(3);
+      expect(wrapper.findAll("[data-testid=price-row]").some((row) => row.find("[data-testid=name]").exists())).toBe(false);
+    });
+
+    it("keeps the group row right before the rows of its group, in the order of the rows", () => {
+      wrapper = mountGrouped();
+
+      const order = wrapper.findAll("tbody tr").map((row) => row.attributes("data-testid"));
+      expect(order).toEqual(["product-row", "price-row", "price-row", "product-row", "price-row"]);
+    });
+
+    it("shows a group row also on a table without hidden columns, and no group row without a group key", () => {
+      wrapper = mountTable();
+      expect(wrapper.findAll("[data-testid=group-row]")).toHaveLength(0);
+      expect(wrapper.findAll("tbody tr")).toHaveLength(2);
+    });
+  });
 });

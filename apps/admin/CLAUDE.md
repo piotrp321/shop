@@ -85,7 +85,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   danych o stanie systemu”. Pliki bez PrimeVue i bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
-  `useNameSearch({ initial, apply })`: jedyne miejsce reguł wyszukiwania po nazwie (od 2 do 100 znaków w punktach kodowych po
+  `useNameSearch({ initial, apply })`: jedyne miejsce reguł wyszukiwania po nazwie listy produktów, listy cen i wyboru wariantów promocji (od 2 do 100 znaków w punktach kodowych po
   przycięciu, 300 ms przerwy w pisaniu, pusta fraza i same spacje to `null`, podpowiedź dla frazy za krótkiej i za długiej);
   zwraca `search`, `tooShort`, `hint`, `reset` (czyści pole i anuluje opóźnienie) i `setFromAddress` (wartość z adresu ustawia
   pole bez `apply`); opóźnienie jest anulowane też przy odmontowaniu. Reguły są testowane raz, w `tests/useNameSearch.test.ts`.
@@ -96,7 +96,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nawigacja unieważnia poprzednie pytanie), a zamknięcie karty ostrzega `beforeunload` poza wylogowaniem (`signingOut`
   w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
+  lista produktów, lista cen i wybór wariantów promocji; pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
@@ -116,21 +116,39 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   żądania, a zmiana `route.query` z zewnątrz (menu, wyszukiwarka topbaru, Wstecz i Dalej) ustawia zapytanie jednym
   przypisaniem, czyli jednym żądaniem od pierwszej strony. Zmiany adresu po opuszczeniu trasy widoku są pomijane
   (nazwa trasy). Pusty i powtórzony parametr nie jest wartością.
-- `src/prices/` – lista cen (`/prices`): `usePriceList` (wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii,
-  stronicowanie po kursorach ze stosem kursorów w panelu; strona to produkty z API, a `rows` ma wiersz na wariant pod
-  nazwą swojego produktu, z etykietą wariantu w kolumnie „Wariant”, pustą dla wariantu domyślnego; zmiana ceny
-  wariantu wiersza: zapisana cena z API zastępuje wiersz, a spóźniona odpowiedź listy z niższą wersją ceny jej nie
-  nadpisuje, 409 odświeża bieżącą stronę, a 409 po `type` `price-locked-by-promotion`, czyli wariant w aktywnej promocji,
-  zwraca `locked` z `detail` z API: `PricesView` pokazuje go przy polu ceny, bez komunikatu o zmianie w międzyczasie
-  i bez odświeżania wiersza), `format.ts` (kwoty z groszy i stawki z punktów
-  bazowych przez `Intl`, bez liczenia czegokolwiek), `parseGross.ts` (tekst kwoty w złotych na grosze na cyfrach
-  tekstu, bez `float`; zakres kwoty sprawdza API). Dialog „Zmień cenę” w `PricesView` widzi tylko rola `admin`
-  (role z `/me`). `usePriceHistory` (dialog „Historia” w `PricesView`, dostępny dla każdego pracownika): pierwsza
-  strona historii wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu dialogu albo otwarciu
+- `src/prices/` – lista cen (`/prices`, widok `PricesView`). `pricePage.ts`: czyste funkcje `fetchPricePage({ query, after })`
+  (`GET /prices`; `perPage` idzie do API zawsze, bo domyślne API to 25, a lista zaczyna od 10; błędy: 403 „Nie masz dostępu do
+  cen.” bez ponowienia, 404 kategoria, 400, sieć) i `priceRows(items)` (wiersz na wariant, `first` oznacza pierwszy wariant
+  produktu), typ `PriceRow`. `usePriceList({ nodes, loaded })` składa z nich listę jak `useProductList`: `useListUrlState` (`q`,
+  `category`, `perPage`: 10, 25, 50, domyślnie 10, a 10 nie trafia do adresu), `useCursorPager` stronicujący produkty (więc
+  „Pokazano produkty X–Y” liczy produkty, a zmiana rozmiaru wraca na pierwszą stronę) i `useNameSearch`; `rows` rozbija strony
+  na warianty. Zmiana ceny wariantu (`changePrice`): zapisana cena z API jest nakładką w `computed` nad `items` pagera
+  (`savedPrices`, nie zapisuje do `items` i nie jest czyszczona na starcie żądania), obowiązuje, dopóki cena z listy nie ma
+  wersji nowszej albo jest `null`, więc ani trwające odświeżenie, ani spóźniona odpowiedź listy nie przywraca starej ceny;
+  409 odświeża bieżącą stronę (`refresh`), a 409 po `type` `price-locked-by-promotion`, czyli wariant w aktywnej promocji,
+  zwraca `locked` z `detail` z API: widok pokazuje go przy polu ceny, bez komunikatu o zmianie w międzyczasie i bez
+  odświeżania. `PricesView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie produktu”, `CategoryCombobox`
+  „Kategoria”, rozmiar strony), `DataTable` z wierszami grup (`groupKey`: wiersz `product-row` z `<th scope="rowgroup">` na
+  całą szerokość: `name` pogrubiona i `tax-class`, czyli polska nazwa klasy z `fetchTaxClasses` (`src/products/taxClasses.ts`,
+  wspólne z formularzem produktu; kod spoza listy albo błąd żądania daje sam kod, bez komunikatu), bez akcji), pod nim
+  `price-row` z kolumnami Wariant („Wariant domyślny” dla pustej etykiety), Brutto (pogrubione), Netto i VAT (ukryte poniżej
+  1024 px jako linie komórki Wariant), Stawka (z `Badge` nieaktualnej stawki) i Akcje (`RowActions` z przyciskami ikon „Zmień
+  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`:
+  „Zmień cenę” (`change-dialog`, szerokość `min(28rem, 100vw - 2rem)`, fokus w `gross-input` także po otwarciu Enterem,
+  „Zapisz cenę” w wariancie `interface`, błędy 422 i `locked` przy polu z fokusem w polu, 403, 404, sieć i `conflict` w
+  `Alert` z fokusem; po zapisie okno się zamyka, toast „Cena zapisana: <produkt> / <wariant>” i fokus wraca na „Zmień
+  cenę” wiersza, a odpowiedź na zapis z innego otwarcia okna jest pomijana) i „Historia ceny” (`history-dialog`, szerokość
+  `min(56rem, 100vw - 2rem)`, `DataTable` bez błędu własnego: Data zmiany, Brutto i Źródło zostają poniżej 1024 px, reszta jest
+  liniami komórki daty; błąd i „Pokaż więcej” poza tabelą, po zniknięciu przycisku fokus trafia na „Zamknij”). Okno zamyka się
+  z fokusem na przycisku, który je otworzył (`RowActions` podaje go w `select`), a gdy zniknął, na H1. Fokus po zmianie strony,
+  błędzie i 403 daje standard (`useCursorPager`, `ListPager`), bez obsługi w widoku. `format.ts` (kwoty z groszy i stawki z
+  punktów bazowych przez `Intl`, bez liczenia czegokolwiek), `parseGross.ts` (tekst kwoty w złotych na grosze na cyfrach
+  tekstu, bez `float`; zakres kwoty sprawdza API). `usePriceHistory` (okno „Historia ceny”, dostępne dla każdego pracownika):
+  pierwsza strona historii wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu okna albo otwarciu
   innego wariantu jest ignorowana. `format.ts` ma też `formatDateTime` (czas polski niezależnie od strefy przeglądarki)
   i `sourceLabel` (etykiety źródeł zmiany: Pracownik, Dane demo, Uzgodnienie podatkowe).
 - `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `useStockList` (wyszukiwanie od
-  2 znaków z opóźnieniem, filtr kategorii, stronicowanie po kursorach ze stosem kursorów w panelu, jak w `usePriceList`;
+  2 znaków z opóźnieniem, filtr kategorii, stronicowanie po kursorach ze stosem kursorów w panelu;
   strona to produkty z API, a `rows` ma wiersz na wariant pod nazwą swojego produktu, z etykietą wariantu w kolumnie
   „Wariant”, pustą dla wariantu domyślnego),
   `format.ts` (`levelLabel`: etykieta i kolor poziomu z API: Dostępny, Ostatnie sztuki, Niedostępny; `movementTypeLabel`,
@@ -170,7 +188,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   pusty stan mówi tylko „Na tej stronie nie ma już wyników.”. Po „Wyczyść filtry” fokus trafia na pole wyszukiwania.
   `useProductForm` (widok `ProductFormView`): ładuje produkt (`GET /products/{id}`) albo zaczyna pusty formularz
   z wariantem domyślnym (bez osi, jeden wiersz `{variantId: null, values: []}`) i klasy podatkowe
-  (`GET /tax-classes`). Panel niczego nie liczy: slug, `slugLocked`, status i wersja pochodzą z odpowiedzi API, a po
+  (`GET /tax-classes` przez `fetchTaxClasses` z `taxClasses.ts`, wspólnego z listą cen). Panel niczego nie liczy: slug, `slugLocked`, status i wersja pochodzą z odpowiedzi API, a po
   każdym sukcesie formularz jest budowany z odpowiedzi. `dirty` porównuje formularz ze stanem z API. „Zapisz”:
   nowy produkt `POST` i `onCreated(id)` (widok przechodzi na `/products/:id` tą samą instancją, bez ponownego
   pobrania), istniejący `PUT` z `version`. „Opublikuj” i „Wycofaj z publikacji” wysyłają `version` i są wyłączone
@@ -282,8 +300,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   (`errorsAt`), 422 bez `violations`, 403, 404, 503 i sieć to komunikat bez utraty formularza; 409 po `type`:
   `promotion-overlap` oznacza warianty z `conflictingVariantIds` („Koliduje z inną promocją”) i zostawia formularz,
   pozostałe (wersja `about:blank` z własnym komunikatem, `promotion-not-editable` i inne z `detail`) pokazują komunikat
-  i przeładowują promocję z API. `PromotionVariantPicker.vue`: wybór wariantów przez `usePriceList` (wyszukiwanie od
-  2 znaków, stronicowanie), „Dodaj wariant” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane; „Dodaj cały produkt” jest wyłączony, gdy nie ma czego dodać); lista
+  i przeładowują promocję z API. `PromotionVariantPicker.vue`: wybór wariantów przez `useCursorPager(fetchPricePage, …)` z zapytaniem w pamięci (25 produktów na
+  stronę, bez rozmiaru i stanu w adresie), `priceRows` i `useNameSearch` (wyszukiwanie od 2 znaków, stronicowanie), „Dodaj wariant” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane; „Dodaj cały produkt” jest wyłączony, gdy nie ma czego dodać); lista
   wybranych z „Usuń”, wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
   się po opuszczeniu formularza, jest ignorowana.
 - `src/discount-codes/` – kody rabatowe (menu „Kody rabatowe”, trasy `/discount-codes`, `/discount-codes/new`,
@@ -342,7 +360,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   wybraną wartość i nie przełącza jej. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
   (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Z prop
   `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Używa go lista
-  produktów i formularz produktu; ceny i stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
+  produktów, lista cen i formularz produktu; stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
   Standard formularza (spec „Standard formularza i okien”; podłączony tylko do formularza produktu, reszta formularzy
   w ADMIN-SCREENS): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
   `FormField` (etykieta nad polem, podpowiedź w slocie `hint` i błędy pod nim z `data-form-error`, slot daje `describedBy`
@@ -352,8 +370,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, pozostałe listy przejdą w
-  ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów i lista cen, pozostałe listy przejdą w
+  ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
   swojej kolumny, więc żadna informacja nie ginie), slot `empty` dla pustej listy. Pokazuje też stan listy: szkielet
@@ -374,8 +392,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `laterPage` (strona po pierwszej bez wierszy) pokazuje samo „Na tej stronie nie ma już wyników.”. `RowActions`: kwadratowe przyciski 34 px z
   ikoną i nazwą dostępną „Czasownik: nazwa obiektu” (zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”,
   `target="_blank"` `rel="noopener"`) oraz podpowiedzią z tą samą nazwą (`TooltipProvider` jest w komponencie); zwykły link,
-  nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcję, której rola
-  nie wykona, widok w ogóle nie podaje.
+  nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcja bez `to` i `href` to przycisk (`select` z kluczem akcji i przyciskiem, `testid`
+  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje.
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,

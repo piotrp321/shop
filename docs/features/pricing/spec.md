@@ -490,20 +490,33 @@ z tokenem realmu `shop`: 401):
 ## Panel (`apps/admin`)
 
 - Pozycja menu „Ceny” i trasa `/prices`. Promocje mają własną pozycję „Promocje” (`docs/features/promotions/spec.md`).
-- Lista: wyszukiwanie po nazwie (od 2 znaków, z opóźnieniem), filtr kategorii (drzewo), stronicowanie
-  „następna/poprzednia” po kursorach (strona to produkty). Wiersz na wariant, warianty pod nazwą swojego produktu
-  (nazwa i klasa w pierwszym wierszu produktu); kolumny nazwa, wariant (etykieta, pusta dla wariantu domyślnego),
-  klasa, brutto, netto, VAT, stawka, oznaczenie nieaktualnej stawki. „Zmień cenę” i „Historia” dotyczą wariantu
-  wiersza.
-- „Zmień cenę” (tylko dla roli `admin`, role z `/api/v1/admin/me`; API sprawdza niezależnie):
+- Lista (H1 „Ceny”, okruszki „Pulpit › Katalog › Ceny”, standard listy panelu: `docs/features/admin-design/spec.md`):
+  wyszukiwanie po nazwie produktu (od 2 do 100 znaków, z opóźnieniem), filtr kategorii `CategoryCombobox` (z
+  podkategoriami), rozmiar strony 10, 25 albo 50 produktów (domyślnie 10; do API idzie zawsze) i „Wyczyść filtry”.
+  Wyszukiwanie, kategoria i rozmiar strony są w adresie (`q`, `category`, `perPage`; 10 nie jest zapisywane). Stronicowanie
+  „następna/poprzednia” po kursorach, strona to produkty, a „Pokazano produkty X–Y” liczy produkty niezależnie od liczby
+  wariantów. Lista jest pogrupowana po produkcie: wiersz produktu (nazwa pogrubiona i polska nazwa klasy podatkowej z
+  `GET /api/v1/admin/tax-classes`, a dla kodu spoza listy albo przy błędzie tego żądania sam kod) bez akcji, a pod nim wiersz
+  na wariant z etykietą wariantu („Wariant domyślny” dla pustej). Kolumny: wariant, brutto (pogrubione), netto, VAT, stawka
+  z oznaczeniem nieaktualnej stawki, akcje. Poniżej 1024 px netto i VAT są liniami komórki wariantu. Błąd przy zmianie
+  zapytania ukrywa tabelę i pager do udanego ponowienia; 403 nie ma ponowienia. Cena zapisana z odpowiedzi API jest
+  nakładką nad stroną z listy, więc odświeżenie, także spóźnione, nie przywraca starej ceny.
+- „Zmień cenę” i „Historia” to przyciski ikon wiersza wariantu z nazwą dostępną „Zmień cenę: <produkt> / <wariant>”.
+- „Zmień cenę” (okno `Dialog`; tylko dla roli `admin`, role z `/api/v1/admin/me`; API sprawdza niezależnie):
+  - fokus w polu ceny po otwarciu, także klawiaturą; przycisk „Zapisz cenę” i „Anuluj”; okno mieści się w 375 px;
   - pole brutto w PLN, zamiana tekstu na grosze bez `float` w osobnym helperze;
   - podgląd stawki z `applicableVatRate`, bez liczenia netto na froncie;
   - 409 po `type`: `price-locked-by-promotion` (wariant w aktywnej promocji) pokazuje `detail` przy polu ceny, bez
     komunikatu o zmianie w międzyczasie i bez odświeżania wiersza; każdy inny 409: „Cena została w międzyczasie zmieniona
-    – odśwież” i odświeżenie wiersza;
+    – odśwież” i odświeżenie bieżącej strony;
   - 422: komunikat naruszenia z API przy polu; kwota poza zakresem daje „Cena brutto musi wynosić od 0,01 zł do
-    999 999,99 zł.” (zakres zdefiniowany tylko w API).
-- „Historia”: wpisy od najnowszych, „Pokaż więcej”, etykiety źródeł (Pracownik, Dane demo, Uzgodnienie podatkowe).
+    999 999,99 zł.” (zakres zdefiniowany tylko w API);
+  - po błędzie fokus trafia na pole z błędem albo na komunikat okna; po zapisie okno się zamyka, toast „Cena zapisana:
+    <produkt> / <wariant>” i fokus wraca na „Zmień cenę” wiersza.
+- „Historia” (okno `Dialog`): wpisy od najnowszych, „Pokaż więcej”, etykiety źródeł (Pracownik, Dane demo, Uzgodnienie
+  podatkowe); poniżej 1024 px zostają Data zmiany, Brutto i Źródło, a reszta jest liniami komórki daty.
+- Wybór wariantów promocji (`docs/features/promotions/spec.md`) czyta tę samą listę z własnym zapytaniem w pamięci: 25
+  produktów na stronę, bez stanu w adresie.
 
 ## Scenariusze błędów
 

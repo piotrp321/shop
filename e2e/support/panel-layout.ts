@@ -77,6 +77,9 @@ export async function expectControlsReachable(page: Page, root: Locator | null):
       item.scrollIntoView({ block: "center", inline: "center" });
       const rect = item.getBoundingClientRect();
       const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      // The tooltip of the focused button is placed before the scroll moved the button (it follows a frame later) and goes
+      // away with the focus (WCAG 1.4.13), so it is not another element that covers the control.
+      const tooltip = hit?.closest("[data-reka-popper-content-wrapper]")?.querySelector("[role=tooltip]") != null;
       const label = `${item.tagName.toLowerCase()}:${(item.getAttribute("aria-label") || item.innerText || item.getAttribute("name") || "").trim().replace(/\s+/g, " ").slice(0, 40)}`;
       return {
         n: Number(item.dataset.reflowN),
@@ -84,7 +87,7 @@ export async function expectControlsReachable(page: Page, root: Locator | null):
         // A scrolling region (a table in its card) is taller than the window by design: it is checked from side to side only.
         inWindow: rect.left >= -0.5 && rect.right <= innerWidth + 0.5 && (rect.height > innerHeight || (rect.top >= -0.5 && rect.bottom <= innerHeight + 0.5)),
         rect: `${Math.round(rect.left)}..${Math.round(rect.right)} x ${Math.round(rect.top)}..${Math.round(rect.bottom)}`,
-        covered: rect.height > innerHeight ? false : hit === null || !(item.contains(hit) || hit.contains(item)),
+        covered: rect.height > innerHeight || tooltip ? false : hit === null || !(item.contains(hit) || hit.contains(item)),
       };
     });
     if (state === null || visited.has(state.n)) continue;

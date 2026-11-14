@@ -476,7 +476,7 @@ describe("PromotionFormView", () => {
     it("lists the products of the price list with a row per variant", async () => {
       const wrapper = await openPicker();
 
-      expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: {} } });
+      expect(mocks.get).toHaveBeenCalledWith(PRICES, { params: { query: { perPage: 25 } } });
       const pickerRows = wrapper.findAll("[data-testid=picker-row]");
       expect(pickerRows.map((row) => row.text())).toEqual([
         expect.stringContaining("Namiot Tarvik"),
@@ -566,7 +566,7 @@ describe("PromotionFormView", () => {
       await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
       await flushPromises();
 
-      expect(mocks.get).toHaveBeenLastCalledWith(PRICES, { params: { query: { q: "śpi" } } });
+      expect(mocks.get).toHaveBeenLastCalledWith(PRICES, { params: { query: { q: "śpi", perPage: 25 } } });
     });
 
     it("closes the picker and keeps the chosen variants", async () => {
