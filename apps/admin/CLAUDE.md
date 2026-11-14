@@ -83,6 +83,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   danych o stanie systemu”. Pliki bez PrimeVue i bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
+  `useNameSearch({ initial, apply })`: jedyne miejsce reguł wyszukiwania po nazwie (od 2 do 100 znaków w punktach kodowych po
+  przycięciu, 300 ms przerwy w pisaniu, pusta fraza i same spacje to `null`, podpowiedź dla frazy za krótkiej i za długiej);
+  zwraca `search`, `tooShort`, `hint`, `reset` (czyści pole i anuluje opóźnienie) i `setFromAddress` (wartość z adresu ustawia
+  pole bez `apply`); opóźnienie jest anulowane też przy odmontowaniu. Reguły są testowane raz, w `tests/useNameSearch.test.ts`.
   `useUnsavedChangesGuard(dirty)`: strażnik niezapisanych zmian formularza (globalny `router.beforeEach`, nie
   `onBeforeRouteLeave`, bo po utworzeniu obiektu ta sama instancja przechodzi z trasy „nowy” na trasę utworzonego):
   przejście na inną trasę przy `dirty` czeka na odpowiedź, którą dają `open` (okno; zamknięcie, np. `Escape`, to
@@ -148,9 +152,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   (widok `ProductsView`, `useProductList({ nodes, loaded })` z drzewem z `useCategoryTree`): na `useListUrlState`
   (`q`, `category`, `status`, `perPage`) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage` idzie
   tylko, gdy to nie 25, domyślne API), komunikaty błędów (403: „Nie masz dostępu do produktów.” bez ponowienia, 404:
-  kategoria nie istnieje) i wyszukiwanie: od 2 do 100 znaków (punkty kodowe) po 300 ms przerwy w pisaniu, przycięte;
-  do adresu i zapytania trafia dopiero zastosowana fraza, a za krótka albo za długa (też z adresu) zostaje w polu z
-  podpowiedzią (`searchHint`) i nie filtruje. Kategoria z adresu, której nie ma w drzewie (także przy błędzie drzewa),
+  kategoria nie istnieje) i połączenie wyszukiwania z adresem: reguły ma `useNameSearch` (od 2 do 100 znaków w punktach
+  kodowych po 300 ms przerwy w pisaniu, przycięte; `apply` zapisuje `q` do adresu); do adresu i zapytania trafia dopiero
+  zastosowana fraza, a za krótka albo za długa (też z adresu) zostaje w polu z podpowiedzią (`searchHint`) i nie filtruje. Kategoria z adresu, której nie ma w drzewie (także przy błędzie drzewa),
   jest pomijana, a przy kategorii w adresie lista czeka na drzewo przed pierwszym żądaniem. `clearFilters` czyści
   wyszukiwanie, filtry i rozmiar strony (adres `/products`). `ProductsView`: karta z `ListToolbar` (wyszukiwanie,
   `CategoryCombobox` „Kategoria”, Select „Status”, rozmiar strony, „Dodaj produkt” dla `admin` i `marketing`), `DataTable`
