@@ -66,7 +66,7 @@ api-client:
 	$(RUN) store npx openapi-typescript /contract/openapi.json -o src/api/schema.d.ts
 	$(RUN) admin npx openapi-typescript /contract/openapi-admin.json -o src/api/schema.d.ts
 
-# The CI checks on the running stack after `make e2e` (in the second e2e part of CI): every target of CI_AFTER_E2E runs,
+# The CI checks on the running stack after `make e2e` (in the first e2e part of CI): every target of CI_AFTER_E2E runs,
 # also after one of them failed (a failed Lighthouse assertion must not hide the other checks), and the failed ones are
 # listed at the end. An empty list is an error, so missing fragments cannot pass for green.
 ci-after-e2e:
