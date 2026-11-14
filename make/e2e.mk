@@ -8,15 +8,22 @@ E2E_FLAGS ?=
 # with the GitHub Actions cache before and passes E2E_BUILD= to use it as it is.
 E2E_BUILD ?= --build
 
+# One part of the suite, e.g. E2E_SHARD=1/2 (Playwright `--shard`: whole spec files, in file order, split by the number of
+# tests). CI runs each part on its own stack. E2E_SHARD_WEIGHTS=41:59 (one weight per part, the same in every part)
+# moves the boundary by the share of tests; it is Playwright's PWTEST_SHARD_WEIGHTS, which is not documented: without
+# it the split is even and every test still runs once. Both empty: the whole suite.
+E2E_SHARD ?=
+E2E_SHARD_WEIGHTS ?=
+
 # Playwright tests against the running stack (`make up` and `make seed` first). A failing test or an unreachable service
-# fails the target.
+# fails the target. With E2E_SHARD only that part of the suite runs.
 e2e:
 	mkdir -p e2e/test-results
-	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) e2e
+	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) $(if $(E2E_SHARD_WEIGHTS),-e PWTEST_SHARD_WEIGHTS=$(E2E_SHARD_WEIGHTS)) e2e $(if $(E2E_SHARD),--shard=$(E2E_SHARD))
 
 # Type-checks the e2e package and runs the tests of the Lighthouse median script (e2e/lighthouse/summary.test.mjs). Needs
 # no running services, only the e2e image (not part of `check`, which would pull the Playwright image for every
-# developer; CI runs it in the e2e job).
+# developer; CI runs it in every e2e part).
 e2e-check:
 	docker compose --profile e2e run --rm $(E2E_BUILD) --no-deps $(E2E_FLAGS) --entrypoint npx e2e tsc --noEmit
 	docker compose --profile e2e run --rm $(E2E_BUILD) --no-deps $(E2E_FLAGS) --entrypoint node e2e --test lighthouse/summary.test.mjs
