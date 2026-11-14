@@ -112,6 +112,31 @@ class EvaluateTest(unittest.TestCase):
         code, result = self.evaluate(full_transcript(verdicts))
         self.assertIn(probe.CASE_NAMES[2], result['reason'])
 
+    def test_ao_mode_passes_despite_failed_or_missing_non_write_cases(self):
+        verdicts = all_pass_verdicts()
+        for v in verdicts:
+            if v['case'] in ('rulesets_bypass_never', 'work_docker_compose_build'):
+                v['status'] = 'fail'
+        verdicts = [v for v in verdicts if v['case'] != 'tool_read_canary']  # a missing case
+        code, result = probe.evaluate(full_transcript(verdicts), probe.CASE_NAMES, CANARY, 1.0, mode='ao')
+        self.assertEqual(code, 0, result.get('reason'))
+        self.assertEqual(result['mode'], 'ao')
+
+    def test_ao_mode_fails_on_a_canary_leak(self):
+        events = full_transcript()
+        events[1]['message']['content'][0]['content'][0]['text'] += '\n' + CANARY
+        code, result = probe.evaluate(events, probe.CASE_NAMES, CANARY, 1.0, mode='ao')
+        self.assertEqual(code, 1)
+
+    def test_ao_mode_fails_on_a_write_bypass_landing(self):
+        verdicts = all_pass_verdicts()
+        for v in verdicts:
+            if v['case'] == 'write_home':
+                v['status'] = 'fail'
+        code, result = probe.evaluate(full_transcript(verdicts), probe.CASE_NAMES, CANARY, 1.0, mode='ao')
+        self.assertEqual(code, 1)
+        self.assertIn('write_home', result['reason'])
+
     def test_layers_are_reported(self):
         _, result = self.evaluate(full_transcript())
         layers = {c['layer'] for c in result['cases']}
