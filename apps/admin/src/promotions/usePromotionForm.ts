@@ -27,6 +27,12 @@ export interface PromotionFormOptions {
   onCreated: (id: string) => void;
   /** Called after a promotion was deleted, so that the view can leave its page. */
   onDeleted: () => void;
+  /**
+   * Called with „Promocja zakończona.” when the promotion that „Zakończ teraz” left active is read as ended, which is
+   * after `endNow` has returned. Not called when the answer of the PUT was already `ended`: the view says that from the
+   * result of the call.
+   */
+  onEnded?: (message: string) => void;
 }
 
 /** How an action ended; null when it did not start or its answer came after the form was left. */
@@ -40,6 +46,15 @@ const MISSING_END = "Podaj koniec promocji.";
 const MISSING_START = "Podaj początek promocji albo wybierz „od teraz”.";
 const IMPOSSIBLE_TIME = "Ta godzina nie istnieje w czasie polskim (zmiana czasu) albo data jest niepoprawna.";
 const PERCENT_NOT_WHOLE = "Podaj procent jako liczbę całkowitą.";
+const ENDED_MESSAGE = "Promocja zakończona.";
+const END_READ_FAILED = "Nie udało się odczytać promocji po zakończeniu. Odśwież, żeby zobaczyć jej stan.";
+
+/** The API sets the end a moment ahead of the browser: the view waits for it and one second more, then reads again. */
+const END_READ_GRACE_MS = 1000;
+/** A read that still says „active” (the clock of the browser differs from the server's) is repeated this often... */
+const END_READ_RETRY_MS = 1000;
+/** ...and this many times at most, after the first read. */
+const END_READ_RETRIES = 5;
 
 function emptyForm(): PromotionFormData {
   return { name: "", percentOff: "", startNow: false, startsAt: "", endsAt: "", variants: [] };
@@ -115,6 +130,12 @@ export function usePromotionForm(options: PromotionFormOptions) {
   const error = ref<string | null>(null);
   const fieldErrors = ref<Record<string, string[]>>({});
   const conflicting = ref<Set<string>>(new Set());
+  // „Zakończ teraz” left the promotion active (the end is a moment ahead): the form waits and reads it again.
+  const ending = ref(false);
+  // Where the wait for the end stopped: the end the API set, or why the promotion could not be read.
+  const endNotice = ref<string | null>(null);
+  const endError = ref<string | null>(null);
+  let endTimer: ReturnType<typeof setTimeout> | undefined;
 
   // Only the newest load may change the state; an older one that finishes late is ignored.
   let latest = 0;
@@ -126,8 +147,8 @@ export function usePromotionForm(options: PromotionFormOptions) {
   const scheduleLocked = computed(() => status.value === "active");
   const dirty = computed(() => signature(form.value) !== baseline.value);
   const idle = computed(() => !busy.value && loaded.value);
-  const canSave = computed(() => idle.value && !readOnly.value && (view.value === null || dirty.value));
-  const canEndNow = computed(() => idle.value && options.canManage() && status.value === "active" && !dirty.value);
+  const canSave = computed(() => idle.value && !ending.value && !readOnly.value && (view.value === null || dirty.value));
+  const canEndNow = computed(() => idle.value && !ending.value && options.canManage() && status.value === "active" && !dirty.value);
   const canDelete = computed(() => idle.value && options.canManage() && status.value === "planned" && !dirty.value);
 
   /** The messages for a field path and everything under it (`variantIds[1]` is under `variantIds`). */
@@ -145,9 +166,17 @@ export function usePromotionForm(options: PromotionFormOptions) {
     return conflicting.value.has(variantId);
   }
 
+  function stopEnding(): void {
+    clearTimeout(endTimer);
+    endTimer = undefined;
+    ending.value = false;
+  }
+
   function clearFeedback(): void {
     message.value = null;
     error.value = null;
+    endNotice.value = null;
+    endError.value = null;
     fieldErrors.value = {};
     conflicting.value = new Set();
   }
@@ -210,6 +239,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
     if (id !== null && view.value?.id === id) {
       return;
     }
+    stopEnding();
     clearFeedback();
     if (id === null) {
       latest++;
@@ -225,6 +255,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
   onBeforeUnmount(() => {
     disposed = true;
     latest++;
+    stopEnding();
   });
   watch(
     () => options.promotionId(),
@@ -234,10 +265,21 @@ export function usePromotionForm(options: PromotionFormOptions) {
   /** Discards the changes and shows the promotion as the API has it now. */
   async function refresh(): Promise<void> {
     const id = view.value?.id ?? options.promotionId();
+    stopEnding();
     clearFeedback();
     if (id !== null) {
       await loadPromotion(id);
     }
+  }
+
+  /** Throws away the unsaved changes: the form goes back to the promotion as the API last sent it, without a request. */
+  function discard(): void {
+    const current = view.value;
+    if (current === null || busy.value) {
+      return;
+    }
+    form.value = fromView(current);
+    clearFeedback();
   }
 
   /** A time as the API gets it: the stored moment when the text is what it shows, else the typed time as UTC. */
@@ -360,7 +402,11 @@ export function usePromotionForm(options: PromotionFormOptions) {
 
   type Outcome = { data?: PromotionView; error?: unknown; response: { status: number } };
 
-  async function perform(allowed: boolean, request: () => Promise<Outcome> | null, success: string | ((saved: PromotionView) => string)): Promise<ActionResult> {
+  async function perform(
+    allowed: boolean,
+    request: () => Promise<Outcome> | null,
+    success: string | ((saved: PromotionView) => string | null),
+  ): Promise<ActionResult> {
     if (!allowed) {
       return null;
     }
@@ -417,8 +463,51 @@ export function usePromotionForm(options: PromotionFormOptions) {
   }
 
   /**
-   * Ends an active promotion: sends the stored promotion with the end set to the time of the browser. When the clock of
-   * the browser is ahead of the server's, the API only shortens the promotion, so the message follows its status.
+   * Reads the promotion again once its end has passed (the end the API set, and one second more) and, while it is still
+   * active because the clock of the browser differs from the server's, every second, at most 5 more times. An `ended`
+   * answer shows the promotion as ended (the form becomes read-only) and says so through `onEnded`; the last `active`
+   * one leaves it active with `endNotice`; a failed read is `endError`. While it waits, `ending` disables saving and
+   * ending. Leaving the form stops it. An `active` answer does not replace what the staff member typed meanwhile.
+   */
+  function watchEnd(saved: PromotionView): void {
+    ending.value = true;
+    let retries = 0;
+
+    const read = async (): Promise<void> => {
+      endTimer = undefined;
+      const request = ++latest;
+      const result = await fetchPromotion(saved.id);
+      if (disposed || request !== latest) {
+        return;
+      }
+      if (result === null || !("data" in result)) {
+        ending.value = false;
+        endError.value = END_READ_FAILED;
+        return;
+      }
+      if (result.data.status === "ended") {
+        apply(result.data);
+        ending.value = false;
+        message.value = ENDED_MESSAGE;
+        options.onEnded?.(ENDED_MESSAGE);
+        return;
+      }
+      if (retries < END_READ_RETRIES) {
+        retries++;
+        endTimer = setTimeout(() => void read(), END_READ_RETRY_MS);
+        return;
+      }
+      ending.value = false;
+      endNotice.value = `Koniec promocji ustawiony na ${formatDateTime(result.data.endsAt)}.`;
+    };
+
+    endTimer = setTimeout(() => void read(), Math.max(Date.parse(saved.endsAt) - Date.now(), 0) + END_READ_GRACE_MS);
+  }
+
+  /**
+   * Ends an active promotion: sends the stored promotion with the end set to the time of the browser. The API sets the
+   * end a moment ahead, so its answer is usually still `active`: the form then waits and reads the promotion again
+   * (`watchEnd`, #304 F7). An answer that is already `ended` ends it at once.
    */
   function endNow(): Promise<ActionResult> {
     const current = view.value;
@@ -436,7 +525,13 @@ export function usePromotionForm(options: PromotionFormOptions) {
             version: current!.version,
           },
         }),
-      (saved) => (saved.status === "ended" ? "Promocja zakończona." : `Koniec promocji ustawiony na ${formatDateTime(saved.endsAt)}.`),
+      (saved) => {
+        if (saved.status === "active") {
+          watchEnd(saved);
+          return null;
+        }
+        return ENDED_MESSAGE;
+      },
     );
   }
 
@@ -510,12 +605,16 @@ export function usePromotionForm(options: PromotionFormOptions) {
     canDelete,
     message,
     error,
+    ending,
+    endNotice,
+    endError,
     errorsAt,
     isConflicting,
     save,
     endNow,
     remove,
     refresh,
+    discard,
     addVariants,
     removeVariant,
   };

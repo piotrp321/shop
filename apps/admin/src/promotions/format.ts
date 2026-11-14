@@ -21,11 +21,6 @@ export function statusVariant(status: PromotionStatus): BadgeVariant {
   return statuses[status].variant;
 }
 
-// Until the form of a promotion leaves PrimeVue (the next commit).
-export function statusSeverity(status: PromotionStatus): "info" | "success" | "secondary" {
-  return status === "planned" ? "info" : status === "active" ? "success" : "secondary";
-}
-
 export const STATUS_FILTER_OPTIONS: { label: string; value: "all" | PromotionStatus }[] = [
   { label: "Wszystkie", value: "all" },
   { label: "Zaplanowane", value: "planned" },

@@ -69,17 +69,18 @@ async function start(options: Setup = {}) {
   const canManage = ref(options.canManage ?? true);
   const onCreated = vi.fn();
   const onDeleted = vi.fn();
+  const onEnded = vi.fn();
   let form!: ReturnType<typeof usePromotionForm>;
   const wrapper = mount(
     defineComponent({
       setup() {
-        form = usePromotionForm({ promotionId: () => id.value, canManage: () => canManage.value, onCreated, onDeleted });
+        form = usePromotionForm({ promotionId: () => id.value, canManage: () => canManage.value, onCreated, onDeleted, onEnded });
         return () => null;
       },
     }),
   );
   await flushPromises();
-  return { form, wrapper, id, canManage, onCreated, onDeleted };
+  return { form, wrapper, id, canManage, onCreated, onDeleted, onEnded };
 }
 
 function servePromotion(data: Promotion | null = promotion()) {
@@ -438,15 +439,204 @@ describe("usePromotionForm", () => {
       expect(form.message.value).toBe("Promocja zakończona.");
     });
 
-    it("says that the end was set, not that the promotion ended, when the API leaves it active", async () => {
-      // The clock of the browser is ahead of the server: the API only shortens the promotion.
-      const { form } = await open(promotion({ status: "active" }));
-      mocks.put.mockResolvedValue(ok(promotion({ status: "active", endsAt: "2026-11-15T10:20:31+00:00" })));
+    describe("when the API leaves the promotion active (#304 F7)", () => {
+      // The API sets the end a moment ahead, so the answer of the PUT is still „active”: the form waits for that
+      // moment and reads the promotion again.
+      const NOW = "2026-11-15T10:20:30.000Z";
+      const setEnd = (endsAt: string) => mocks.put.mockResolvedValue(ok(promotion({ status: "active", endsAt })));
 
-      expect(await form.endNow()).toBe("success");
+      async function openActive() {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+        vi.setSystemTime(new Date(NOW));
+        return open(promotion({ status: "active" }));
+      }
 
-      expect(form.status.value).toBe("active");
-      expect(form.message.value).toBe(`Koniec promocji ustawiony na ${formatDateTime("2026-11-15T10:20:31+00:00")}.`);
+      /** Answers the next reads with the promotion as `status` with the end `endsAt`. */
+      function serveRead(status: "active" | "ended", endsAt: string) {
+        mocks.get.mockImplementation(async () => ok(promotion({ status, endsAt })));
+      }
+
+      it("disables saving and ending, with nothing said yet, and reads again once the end has passed and one second more", async () => {
+        const { form, onEnded } = await openActive();
+        setEnd("2026-11-15T10:20:33+00:00");
+        mocks.get.mockClear();
+
+        expect(await form.endNow()).toBe("success");
+
+        expect(form.ending.value).toBe(true);
+        expect(form.canEndNow.value).toBe(false);
+        expect(form.canSave.value).toBe(false);
+        expect(form.message.value).toBeNull();
+        expect(form.status.value).toBe("active");
+        serveRead("ended", "2026-11-15T10:20:33+00:00");
+
+        await vi.advanceTimersByTimeAsync(3999);
+        expect(mocks.get).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await flushPromises();
+
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+        expect(mocks.get).toHaveBeenCalledWith(PROMOTION, { params: { path: { id: "promo-1" } } });
+        expect(form.ending.value).toBe(false);
+        expect(form.status.value).toBe("ended");
+        expect(form.readOnly.value).toBe(true);
+        expect(form.message.value).toBe("Promocja zakończona.");
+        expect(onEnded).toHaveBeenCalledWith("Promocja zakończona.");
+      });
+
+      it("waits one second only for an end that has passed already", async () => {
+        const { form } = await openActive();
+        setEnd("2026-11-15T10:20:29+00:00");
+        mocks.get.mockClear();
+        await form.endNow();
+        serveRead("ended", "2026-11-15T10:20:29+00:00");
+
+        await vi.advanceTimersByTimeAsync(999);
+        expect(mocks.get).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await flushPromises();
+
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+        expect(form.status.value).toBe("ended");
+      });
+
+      it("reads again every second, at most 5 times, and then says when the end is set, from the last answer", async () => {
+        const { form, onEnded } = await openActive();
+        setEnd("2026-11-15T10:20:30+00:00");
+        mocks.get.mockClear();
+        await form.endNow();
+        // The clock of the browser differs from the server's: the promotion is still active.
+        serveRead("active", "2026-11-15T10:20:45+00:00");
+
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+        expect(form.ending.value).toBe(true);
+        for (let retry = 1; retry <= 5; retry++) {
+          await vi.advanceTimersByTimeAsync(999);
+          expect(mocks.get).toHaveBeenCalledTimes(retry);
+          await vi.advanceTimersByTimeAsync(1);
+          expect(mocks.get).toHaveBeenCalledTimes(retry + 1);
+        }
+        await flushPromises();
+
+        expect(mocks.get).toHaveBeenCalledTimes(6);
+        expect(form.ending.value).toBe(false);
+        expect(form.status.value).toBe("active");
+        expect(form.endNotice.value).toBe(`Koniec promocji ustawiony na ${formatDateTime("2026-11-15T10:20:45+00:00")}.`);
+        expect(form.message.value).toBeNull();
+        expect(onEnded).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(mocks.get).toHaveBeenCalledTimes(6);
+      });
+
+      it("stops at the first read that says ended, without the remaining retries", async () => {
+        const { form } = await openActive();
+        setEnd("2026-11-15T10:20:30+00:00");
+        mocks.get.mockClear();
+        await form.endNow();
+        serveRead("active", "2026-11-15T10:20:30+00:00");
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(mocks.get).toHaveBeenCalledTimes(2);
+        serveRead("ended", "2026-11-15T10:20:30+00:00");
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(mocks.get).toHaveBeenCalledTimes(3);
+        expect(form.status.value).toBe("ended");
+        expect(form.message.value).toBe("Promocja zakończona.");
+        expect(form.endNotice.value).toBeNull();
+      });
+
+      it.each([
+        ["a failed read", () => mocks.get.mockResolvedValue(problem(500))],
+        ["a read that does not reach the API", () => mocks.get.mockRejectedValue(new TypeError("network down"))],
+      ])("ends the wait with an error for %s, and „Odśwież” (refresh) clears it", async (_name, fail) => {
+        const { form } = await openActive();
+        setEnd("2026-11-15T10:20:30+00:00");
+        await form.endNow();
+        mocks.get.mockClear();
+        fail();
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await flushPromises();
+
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+        expect(form.ending.value).toBe(false);
+        expect(form.endError.value).toContain("Nie udało się odczytać promocji");
+        expect(form.endNotice.value).toBeNull();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(mocks.get).toHaveBeenCalledTimes(1);
+
+        serveRead("ended", "2026-11-15T10:20:30+00:00");
+        await form.refresh();
+        expect(form.endError.value).toBeNull();
+        expect(form.status.value).toBe("ended");
+      });
+
+      it("keeps what the staff member typed meanwhile while the promotion is still active", async () => {
+        const { form } = await openActive();
+        setEnd("2026-11-15T10:20:30+00:00");
+        await form.endNow();
+        form.form.value.name = "Inna nazwa";
+        serveRead("active", "2026-11-15T10:20:30+00:00");
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await flushPromises();
+
+        expect(form.form.value.name).toBe("Inna nazwa");
+        expect(form.dirty.value).toBe(true);
+        expect(form.ending.value).toBe(true);
+        expect(form.canSave.value).toBe(false);
+      });
+
+      it("makes no request after the form is left", async () => {
+        const { form, wrapper: mountedWrapper, onEnded } = await openActive();
+        wrapper = undefined;
+        setEnd("2026-11-15T10:20:33+00:00");
+        await form.endNow();
+        mocks.get.mockClear();
+        serveRead("ended", "2026-11-15T10:20:33+00:00");
+
+        mountedWrapper.unmount();
+        await vi.advanceTimersByTimeAsync(30_000);
+        await flushPromises();
+
+        expect(mocks.get).not.toHaveBeenCalled();
+        expect(onEnded).not.toHaveBeenCalled();
+      });
+
+      it("ignores the answer of a read that comes after the form was left", async () => {
+        const { form, wrapper: mountedWrapper, onEnded } = await openActive();
+        wrapper = undefined;
+        setEnd("2026-11-15T10:20:30+00:00");
+        await form.endNow();
+        let release!: (value: unknown) => void;
+        mocks.get.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+        await vi.advanceTimersByTimeAsync(1000);
+
+        mountedWrapper.unmount();
+        release(ok(promotion({ status: "ended" })));
+        await flushPromises();
+
+        expect(onEnded).not.toHaveBeenCalled();
+        expect(form.status.value).toBe("active");
+      });
+
+      it("does not wait for a promotion the PUT already ended", async () => {
+        const { form, onEnded } = await openActive();
+        mocks.put.mockResolvedValue(ok(promotion({ status: "ended", endsAt: NOW })));
+        mocks.get.mockClear();
+
+        await form.endNow();
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(form.ending.value).toBe(false);
+        expect(mocks.get).not.toHaveBeenCalled();
+        expect(form.message.value).toBe("Promocja zakończona.");
+        expect(onEnded, "the view says it from the result of the call").not.toHaveBeenCalled();
+      });
     });
 
     it("does nothing for a promotion that is not active", async () => {
@@ -712,6 +902,44 @@ describe("usePromotionForm", () => {
 
       expect(await saving).toBeNull();
       expect(onCreated).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("discarding", () => {
+    it("goes back to the promotion as the API last sent it, without a request, and clears the messages", async () => {
+      const { form } = await open();
+      form.form.value.name = "Zmieniona";
+      form.removeVariant("v-1");
+      form.error.value = "Coś.";
+      mocks.get.mockClear();
+
+      form.discard();
+
+      expect(form.form.value.name).toBe("Jesień w górach");
+      expect(form.form.value.variants.map((variant) => variant.variantId)).toEqual(["v-1", "v-2"]);
+      expect(form.error.value).toBeNull();
+      expect(form.dirty.value).toBe(false);
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("does nothing for a new promotion, which has nothing to go back to", async () => {
+      const { form } = await open(promotion(), { id: null });
+      form.form.value.name = "Nowa";
+
+      form.discard();
+
+      expect(form.form.value.name).toBe("Nowa");
+    });
+
+    it("does nothing while a request runs", async () => {
+      const { form } = await open();
+      form.form.value.name = "Zmieniona";
+      mocks.put.mockReturnValue(new Promise(() => {}));
+      void form.save();
+
+      form.discard();
+
+      expect(form.form.value.name).toBe("Zmieniona");
     });
   });
 

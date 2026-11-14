@@ -18,8 +18,10 @@ withDefaults(
     newLabel?: string;
     busy?: boolean;
     saveDisabled?: boolean;
+    /** The id of the element that says why „Zapisz” is off (e.g. „Promocja kończy się”); it describes the button. */
+    saveDescribedBy?: string;
   }>(),
-  { creating: false, newLabel: "Nowy obiekt", busy: false, saveDisabled: false },
+  { creating: false, newLabel: "Nowy obiekt", busy: false, saveDisabled: false, saveDescribedBy: undefined },
 );
 defineEmits<{ save: []; discard: []; cancel: [] }>();
 
@@ -76,6 +78,7 @@ onBeforeUnmount(() => {
         type="button"
         data-testid="save"
         :aria-busy="busy"
+        :aria-describedby="saveDescribedBy"
         :disabled="saveDisabled || busy"
         @click="$emit('save')"
       >
