@@ -336,7 +336,8 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    - izolacja uprawnień i ochrona sekretów na poziomie systemu (sandbox), bo reguła narzędzia Read nie zatrzymuje
      `cat` w Bash;
    - testy prób obejścia w prawdziwych procesach AO, także przez Bash i procesy potomne;
-   - agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych.
+   - agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych;
+   - merge bez zielonego CI (bypass rulesetów `main` i `epic/*`) może wykonać tylko użytkownik, agenci nie.
 17. **Evale agentów i workflowów.** Realizuje komponent „Metryki i evale” z ADR:
    - evale pojedynczych agentów (`code-reviewer`, `spec-critic`, `backlog-groomer`, `retro-analyst`, próby prompt
      injection) przy każdej zmianie agenta albo skilla;
