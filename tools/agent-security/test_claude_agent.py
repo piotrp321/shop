@@ -394,16 +394,43 @@ class TaskTempDirTest(WrapperTestCase):
         self.assertFalse(os.path.exists(self.record), 'the binary ran')
         self.assertIn('deskryptor', result.stderr)
 
+    FORWARDED = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+
+    @classmethod
+    def default_signals(cls):
+        # The wrapper starts with the default dispositions, as AO starts it. A signal ignored on entry (SIGINT in an
+        # asynchronous list: CI starts the script tests with `&`, so this process and its children inherit
+        # SIG_IGN) cannot be trapped by a POSIX shell, and the wrapper and the binary rightly keep ignoring it.
+        for signum in cls.FORWARDED:
+            signal.signal(signum, signal.SIG_DFL)
+
+    def stop(self, process, record_pid):
+        # After a failed assertion: TERM lets the wrapper clean up, then nothing of the run is left behind.
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        if record_pid and self.alive(record_pid):
+            os.kill(record_pid, signal.SIGKILL)
+        for stream in (process.stdout, process.stderr):
+            stream.close()
+
     def run_and_signal(self, signum):
         self.require_system_tmp()
         process = subprocess.Popen(['sh', WRAPPER, *AO_ARGS], cwd=self.work, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, text=True, env=self.env(FAKE_SLEEP='60'))
-        self.addCleanup(lambda: process.poll() is None and process.kill())
+                                   stderr=subprocess.PIPE, text=True, env=self.env(FAKE_SLEEP='60'),
+                                   preexec_fn=self.default_signals)
+        pid = []
+        self.addCleanup(lambda: self.stop(process, pid and pid[0]))
         for _ in range(400):
             if os.path.exists(self.record) and os.path.getsize(self.record):
                 break
             time.sleep(0.05)
         record = self.recorded()
+        pid.append(record['pid'])
         time.sleep(0.2)
         process.send_signal(signum)
         process.wait(timeout=30)

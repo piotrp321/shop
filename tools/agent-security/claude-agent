@@ -247,8 +247,10 @@ export GH_TOKEN GH_CONFIG_DIR GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE
 
 # The executor runs as a child (not exec), so the EXIT trap removes the temporary directories after it. INT, TERM and
 # HUP sent to the wrapper are passed on; a background child of a non-interactive shell ignores SIGINT, so INT goes on
-# as TERM. stdin is handed over explicitly (a background job would otherwise read /dev/null) through a descriptor that
-# was not open: the descriptors the wrapper inherits (AO passes its lock descriptors) reach the binary unchanged.
+# as TERM. A signal already ignored when the wrapper starts (INT when the caller runs it in an asynchronous list) stays
+# ignored, for the wrapper (a POSIX shell cannot trap it) and for the binary, as without the wrapper. stdin is handed
+# over explicitly (a background job would otherwise read /dev/null) through a descriptor that was not open: the
+# descriptors the wrapper inherits (AO passes its lock descriptors) reach the binary unchanged.
 forward() {
     [ -n "$child" ] && kill -"$1" "$child" 2>/dev/null
 }
