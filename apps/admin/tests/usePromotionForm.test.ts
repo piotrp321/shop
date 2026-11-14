@@ -529,6 +529,40 @@ describe("usePromotionForm", () => {
         expect(mocks.get).toHaveBeenCalledTimes(6);
       });
 
+      it("shows the state of the last answer when the retries are used up and nothing is unsaved: the form, the view and the version", async () => {
+        const { form } = await openActive();
+        setEnd("2026-11-15T10:20:30+00:00");
+        await form.endNow();
+        const last = promotion({ status: "active", endsAt: "2026-11-15T10:25:45+00:00", version: 9, updatedByName: "ktoś.inny" });
+        mocks.get.mockImplementation(async () => ok(last));
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        await flushPromises();
+
+        expect(form.ending.value).toBe(false);
+        expect(form.endNotice.value).toBe(`Koniec promocji ustawiony na ${formatDateTime("2026-11-15T10:25:45+00:00")}.`);
+        expect(form.view.value?.version).toBe(9);
+        expect(form.view.value?.endsAt).toBe("2026-11-15T10:25:45+00:00");
+        expect(form.form.value.endsAt).toBe("2026-11-15T11:25:45");
+        expect(form.dirty.value).toBe(false);
+      });
+
+      it("leaves the edit as it is when the retries are used up and the form has unsaved changes", async () => {
+        const { form } = await openActive();
+        setEnd("2026-11-15T10:20:30+00:00");
+        await form.endNow();
+        form.form.value.name = "Inna nazwa";
+        mocks.get.mockImplementation(async () => ok(promotion({ status: "active", endsAt: "2026-11-15T10:25:45+00:00", version: 9 })));
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        await flushPromises();
+
+        expect(form.endNotice.value).toBe(`Koniec promocji ustawiony na ${formatDateTime("2026-11-15T10:25:45+00:00")}.`);
+        expect(form.form.value.name).toBe("Inna nazwa");
+        expect(form.view.value?.version).toBe(4);
+        expect(form.dirty.value).toBe(true);
+      });
+
       it("stops at the first read that says ended, without the remaining retries", async () => {
         const { form } = await openActive();
         setEnd("2026-11-15T10:20:30+00:00");

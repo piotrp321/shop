@@ -598,7 +598,7 @@ describe("PromotionFormView", () => {
 
       it("#304: reads again every second at most 5 times, then says when the end is set, in Polish time", async () => {
         const wrapper = await endAndWait();
-        mocks.get.mockImplementation(async () => ({ data: promotion({ status: "active", endsAt: "2026-11-15T10:20:45+00:00" }), response: { status: 200 } }));
+        mocks.get.mockImplementation(async () => ({ data: promotion({ status: "active", endsAt: "2026-11-15T10:20:45+00:00", version: 9 }), response: { status: 200 } }));
 
         await vi.advanceTimersByTimeAsync(2000);
         expect(mocks.get).toHaveBeenCalledTimes(1);
@@ -616,6 +616,11 @@ describe("PromotionFormView", () => {
         expect(text(card("Status").querySelector("[data-testid=promotion-status]"))).toBe("Aktywna");
         expect(wrapper.find("[data-testid=ending-note]").exists()).toBe(false);
         expect(endButton(wrapper).attributes("disabled")).toBeUndefined();
+        // The state is the one of the last answer: the next save carries its version, not the one of the PUT.
+        await wrapper.get("[data-testid=name-input]").setValue("Inna nazwa");
+        mocks.put.mockResolvedValue({ data: promotion({ status: "active", version: 10 }), response: { status: 200 } });
+        await click(wrapper, "save");
+        expect(mocks.put.mock.calls.at(-1)![1].body.version).toBe(9);
       });
 
       it("#304: ends the wait with an error and „Odśwież” when the read fails, and „Odśwież” shows the promotion as it is", async () => {
@@ -637,6 +642,24 @@ describe("PromotionFormView", () => {
 
         expect(wrapper.find("[data-testid=end-error]").exists()).toBe(false);
         expect(text(card("Status").querySelector("[data-testid=promotion-status]"))).toBe("Zakończona");
+        expect(document.activeElement).toBe(heading("h2", "Status"));
+      });
+
+      it("#304: puts the focus on the H1 when „Odśwież” fails as well, as the form and its button give way to the message", async () => {
+        const wrapper = await endAndWait();
+        mocks.get.mockResolvedValue({ data: undefined, error: {}, response: { status: 500 } });
+        await vi.advanceTimersByTimeAsync(2000);
+        await settle();
+        const refresh = wrapper.get("[data-testid=end-error] button");
+        (refresh.element as HTMLButtonElement).focus();
+
+        await refresh.trigger("click");
+        await settle();
+
+        expect(wrapper.get("[data-testid=load-error]").text()).toContain("Nie udało się pobrać promocji (HTTP 500).");
+        expect(wrapper.find("[data-testid=end-error]").exists()).toBe(false);
+        expect(document.activeElement).not.toBe(document.body);
+        expect(document.activeElement).toBe(heading("h1"));
       });
 
       it("#304: makes no request after the form is left", async () => {

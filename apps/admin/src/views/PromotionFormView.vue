@@ -136,11 +136,16 @@ async function discardChanges(): Promise<void> {
   header.value?.focus();
 }
 
-// „Odśwież” is gone with the message about a failed read, so the focus goes to the heading of the card.
+// „Odśwież” is gone with the message about a failed read, so the focus goes to the heading of the card; when the read
+// fails as well, the message of the load replaces the form and the card with it, so it goes to the H1.
 async function refreshAfterEnd(): Promise<void> {
   await refresh();
   await nextTick();
-  statusCard.value?.focusHeading();
+  if (statusCard.value === null) {
+    header.value?.focus();
+  } else {
+    statusCard.value.focusHeading();
+  }
 }
 
 const { open: leaveOpen, leave } = useUnsavedChangesGuard(() => dirty.value);
