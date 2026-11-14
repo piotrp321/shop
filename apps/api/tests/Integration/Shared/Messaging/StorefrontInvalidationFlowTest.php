@@ -78,7 +78,7 @@ final class StorefrontInvalidationFlowTest extends MessagingKernelTestCase
 
         self::assertSame(0, $this->rows('failed'));
         // The retry comes back to the queue after its delay (100 ms ±10 %).
-        usleep(300_000);
+        $this->awaitEventsInQueue(1);
         self::assertSame(1, $this->eventsInQueue());
 
         $this->cache->failure = null;

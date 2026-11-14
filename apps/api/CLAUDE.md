@@ -868,11 +868,10 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   destruktory na gnieździe wspólnym z rodzicem i czekał ~30 s na odpowiedź brokera.
 - Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 100 ms zamiast 1 s (liczba prób
   i mnożnik jak w produkcji, pilnuje tego `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
-  Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s,
-  timeouty DSN Redisa, limity klienta HTTP), czekają ich prawdziwy czas.
-- Baza `shop_test` ma `synchronous_commit = off` (`infra/postgres/init/10-create-databases.sh`, tylko świeży wolumen):
-  testy współbieżności zatwierdzają setki krótkich transakcji jedna po drugiej, a trwały commit (fsync) każdej z nich
-  dominuje ich czas na wolnym dysku. Blokady i izolacja się nie zmieniają.
+  Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s w
+  `ProbesTest`, timeouty DSN Redisa, limity w `DashboardTimingTest` i podobne), czekają ich prawdziwy czas; test wolnego
+  sklepu (`HttpStorefrontCacheTest`) używa klienta z pomniejszonymi limitami. Test, który czeka na powrót ponowienia do
+  kolejki, odpytuje ją co 20 ms (`awaitEventsInQueue`, do 3 s) zamiast spać.
 
 ## Czego nie robić
 

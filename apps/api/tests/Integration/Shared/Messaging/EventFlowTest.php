@@ -183,7 +183,7 @@ final class EventFlowTest extends MessagingKernelTestCase
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
 
         // The retry comes back to the queue after its delay (100 ms ±10 %); it must not reach a later test.
-        usleep(300_000);
+        $this->awaitEventsInQueue(1);
         self::assertCount(1, $this->drainEvents());
     }
 
