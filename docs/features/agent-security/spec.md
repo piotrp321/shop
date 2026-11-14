@@ -354,7 +354,9 @@ JSON na stdout.
 - odmawia startu (kod różny od 0, komunikat na stderr), gdy `.claude/settings.json`, `.claude/settings.local.json`
   albo `.mcp.json` różnią się od merge-base `HEAD` z `main` w commitach gałęzi, w drzewie roboczym albo jako pliki
   nieśledzone (P12). SHA `main` wrapper pobiera na świeżo poza sandboxem (`git ls-remote origin refs/heads/main`
-  i `git fetch` tego SHA), bo wykonawca ma zapis do `.git` i mógłby przestawić `refs/remotes/origin/main`;
+  i `git fetch` tego SHA), bo wykonawca ma zapis do `.git` i mógłby przestawić `refs/remotes/origin/main`; z tego
+  samego powodu git wrappera pomija obiekty zastępcze (`GIT_NO_REPLACE_OBJECTS=1`), grafty (`GIT_GRAFT_FILE=/dev/null`)
+  i plik commit-graph (`core.commitGraph=false`), którymi wykonawca zmieniłby merge-base albo jego zawartość;
 - czyta token wykonawcy z Keychain (`security find-generic-password -s shop-agent-github-token -w`) poza sandboxem
   i ustawia `GH_TOKEN`; brak tokenu kończy wrapper błędem z instrukcją (wykonawca nigdy nie startuje z tokenem
   użytkownika);

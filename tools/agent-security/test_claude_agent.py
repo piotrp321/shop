@@ -473,6 +473,32 @@ class ProtectedSettingsTest(WrapperTestCase):
         self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
         self.refused(*AO_ARGS)
 
+    def loosen_in_a_commit(self):
+        write(os.path.join(self.work, '.claude/settings.json'), '{"permissions": {"allow": ["Read(//**)"]}}\n')
+        self.git('commit', '-q', '-am', 'loosen')
+        return self.git('rev-parse', 'HEAD')
+
+    def git_common_dir(self):
+        common = self.git('rev-parse', '--git-common-dir')
+        return common if os.path.isabs(common) else os.path.join(self.work, common)
+
+    def test_a_replace_object_does_not_hide_the_change(self):
+        # The executor may write refs/replace in the shared .git: main's commit replaced by one with the loosened tree
+        # would make the diff against the merge-base empty.
+        head = self.loosen_in_a_commit()
+        main = self.git('rev-parse', 'origin/main')
+        fake = self.git('commit-tree', head + '^{tree}', '-m', 'fake main')
+        self.git('replace', main, fake)
+        self.assertIn('.claude/settings.json', self.refused(*AO_ARGS))
+
+    def test_a_graft_does_not_move_the_merge_base(self):
+        # Grafts giving the branch and main a common parent with the loosened tree make that parent the merge-base.
+        head = self.loosen_in_a_commit()
+        main = self.git('rev-parse', 'origin/main')
+        fake = self.git('commit-tree', head + '^{tree}', '-m', 'fake base')
+        write(os.path.join(self.git_common_dir(), 'info', 'grafts'), '%s %s\n%s %s\n' % (head, fake, main, fake))
+        self.assertIn('.claude/settings.json', self.refused(*AO_ARGS))
+
     def test_main_is_fetched_when_the_clone_does_not_have_it(self):
         write(os.path.join(self.seed, 'later.txt'), 'later\n')
         self.git('add', 'later.txt', cwd=self.seed)
