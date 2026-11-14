@@ -48,8 +48,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   klastrem przez kubeconfig z `KUBE_DIR` (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w
   przestrzeni `KUBE_NAMESPACE` (domyślnie `shop`). Agent uruchamia `create-admin` i `restore` tylko po zgodzie użytkownika
   w rozmowie; `backups` sam. Te cztery i `kubeconfig` (cele, które zapisują albo montują `KUBE_DIR`, czyli kubeconfig
-  produkcji) wołają w Makefile najpierw `scripts/ao-guard.sh` i odmawiają (kod 1, bez zmian, z komunikatem „zatrzymaj AO albo
-  poczekaj na koniec przebiegu”), gdy działa AO (`python3 -m orchestrator … run`) albo żywy wykonawca (proces `claude-agent`
+  produkcji) wołają w Makefile najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0, bez zmian, z komunikatem po angielsku: zatrzymaj AO albo
+  poczekaj na koniec przebiegu), gdy działa AO (`python3 -m orchestrator … run`) albo żywy wykonawca (proces `claude-agent`
   albo runner AO `orchestrator/runner.py`); błąd `ps` też jest odmową, a żadna zmienna nie wyłącza sprawdzenia. Skrypty
   `rerun.sh`, `create-admin.sh`, `restore.sh` i `backups.sh` same go nie wołają, bo woła je `smoke.sh` (test dymny działa też
   w trakcie przebiegu AO). `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej (runbook,

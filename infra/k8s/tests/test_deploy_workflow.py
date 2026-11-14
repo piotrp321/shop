@@ -401,10 +401,28 @@ MAIN_ONLY_ENVIRONMENTS = ("production",)
 # A workflow expression is case-insensitive and allows spaces around the dot: `SECRETS .X`, `secrets . X`, `secrets['X']`,
 # `toJSON(secrets)` and `format('{0}', secrets.X)` all read a secret. The context is the word `secrets` that is not a property
 # of another object (`steps.a.outputs.secrets`) nor part of a longer name. Only the dotted GITHUB_TOKEN is exempt.
-EXPRESSION = re.compile(r"\$\{\{(.*?)(?:\}\}|\Z)", re.S)
 STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
 SECRETS_CONTEXT = re.compile(r"(?<![\w.\-])secrets(?![\w\-])", re.I)
 GITHUB_TOKEN = re.compile(r"\s*\.\s*github_token(?![\w\-])", re.I)
+
+
+def expressions(text):
+    """The text between `${{` and `}}` of every expression of a string. The end is the first `}}` outside a string literal:
+    GitHub reads `'}}'` as part of the literal (the apostrophes switch the state, so `''` inside a literal is an escape that
+    leaves it as it was). An expression that is not closed goes to the end of the string."""
+    found = []
+    start = text.find("${{")
+    while start != -1:
+        index, quoted = start + 3, False
+        while index < len(text):
+            if text[index] == "'":
+                quoted = not quoted
+            elif not quoted and text.startswith("}}", index):
+                break
+            index += 1
+        found.append(text[start + 3:index])
+        start = text.find("${{", index + 2)
+    return found
 
 
 def environment_name(job):
@@ -427,7 +445,7 @@ def strings(node, path=()):
 
 def reads_a_secret(text):
     """Whether the expressions of a string use the context `secrets` for anything but secrets.GITHUB_TOKEN."""
-    for expression in EXPRESSION.findall(text):
+    for expression in expressions(text):
         code = STRING_LITERAL.sub("''", expression)
         for match in SECRETS_CONTEXT.finditer(code):
             if not GITHUB_TOKEN.match(code, match.end()):
@@ -524,6 +542,9 @@ class SecretsOnlyInMainOnlyEnvironments(unittest.TestCase):
             "${{ github.ref == 'main' && secrets.X || '' }}", "${{ secrets.GITHUB_TOKENX }}", "${{ secrets.GITHUB_TOKEN_2 }}",
             "${{ secrets['GITHUB_TOKEN'] }}", "${{ secrets }}", "${{ secrets.GITHUB_TOKEN && secrets.X }}", "a ${{ x }} b ${{ secrets.X }}",
             "${{ secrets.X", "${{ secrets.GITHUB_TOKEN }} ${{ secrets.X }}", "${{\nsecrets.X\n}}",
+            # `}}` inside a string literal does not end the expression (the reader of GitHub tracks the apostrophes)
+            "${{ format('}}', secrets.X) }}", "${{ format('{0}}}', secrets.X) }}", "${{ '}}' }} ${{ secrets.X }}",
+            "${{ format('it''s }}', secrets.X) }}",
         )
         for form in forms:
             self.assertTrue(reads_a_secret(form), form)
@@ -533,7 +554,8 @@ class SecretsOnlyInMainOnlyEnvironments(unittest.TestCase):
             "${{ secrets.GITHUB_TOKEN }}", "${{ SECRETS.github_token }}", "${{ secrets . GITHUB_TOKEN }}", "${{ github.token }}",
             "${{ env.DEPLOY == 'true' && secrets.GITHUB_TOKEN || '' }}", "${{ steps.digests.outputs.secrets }}", "${{ needs.images.outputs.secrets }}",
             "${{ github.ref == 'secrets' }}", "${{ 'secrets.X' }}", "${{ vars.secrets }}", "${{ my-secrets.X }}", "secrets.X is not an expression",
-            "echo secrets", "${{ github.sha }}", "",
+            "echo secrets", "${{ github.sha }}", "", "${{ format('}}', github.sha) }}", "${{ '}}' }} secrets.X",
+            "${{ format('{0}}}', secrets.GITHUB_TOKEN) }}",
         )
         for form in forms:
             self.assertFalse(reads_a_secret(form), form)

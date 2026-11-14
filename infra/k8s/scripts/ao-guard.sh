@@ -44,7 +44,8 @@ fi
 
 found="$(printf '%s\n' "$listing" | awk '
   function base(path,   b) { b = path; sub(/.*\//, "", b); return b }
-  function is_python(token) { return base(token) ~ /^[Pp]ython[0-9.]*$/ }
+  # python, Python (macOS), python3, python3.13, python3.13t (free-threaded), python3-intel64; not python3-config or pythonista.
+  function is_python(token) { return base(token) ~ /^[Pp]ython[0-9]*(\.[0-9]+)*[tdm]*(-(intel64|arm64|x86_64|universal2|i386))?$/ }
   # What may stand before the wrapper of the executor on a command line: a shell, an interpreter, env and the like, their
   # options, assignments and the names given to env -u.
   function wrapper_like(i,   token) {

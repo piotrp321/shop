@@ -407,8 +407,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej; trwałych kubeconfigów produkcji nie
     trzyma się w katalogach udostępnionych Dockerowi. Cel zapisuje bezwzględną ścieżkę w rejestrze
     `~/.local/state/shop-ops/kube-dirs`, z którego czyta start AO przez `/ao-run` (odmawia, dopóki zapisany katalog istnieje).
-    `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają bez zmian (kod 1, komunikat „zatrzymaj AO albo
-    poczekaj na koniec przebiegu”), gdy działa AO albo jego wykonawca (`scripts/ao-guard.sh`, wołany w Makefile, nie w
+    `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
+    poczekaj na koniec przebiegu), gdy działa AO albo jego wykonawca (`scripts/ao-guard.sh`, wołany w Makefile, nie w
     skryptach, więc test dymny działa jak dotąd); błąd listy procesów jest odmową.
   - `status`: stan aplikacji Argo, podów i Jobów (tylko odczyt).
   - `rerun JOB=…`: ponowienie Joba wersji (D11).

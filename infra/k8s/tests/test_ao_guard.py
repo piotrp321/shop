@@ -32,6 +32,8 @@ INNOCENT = (
     " 1202   900 python3 -m unittest discover -s orchestrator/tests",
     " 1203   900 python3 -m orchestratorx run",
     " 1204   900 python3 orchestrator.py run",
+    " 1205   900 /usr/bin/python3-config -m orchestrator run --help-not-python",
+    " 1206   900 /usr/bin/pythonista -m orchestrator run",
     " 1300   900 vim orchestrator/runner.py",
     " 1301   900 cat /Users/pp/Development/claude/agentic-orchestrator/orchestrator/runner.py",
     " 1302   900 cat tools/agent-security/claude-agent",
@@ -48,6 +50,8 @@ AO_RUN = (
     "77460 77443 python3 -m orchestrator run --home /Users/pp/.local/state/ao-x",
     "77460 77443 /usr/bin/python3 -m orchestrator --home /Users/pp/.local/state/ao-x run",
     "77460 77443 /opt/homebrew/bin/python3.13 -u -m orchestrator --home /Users/pp/.local/state/ao-x run --until-idle",
+    "77460 77443 /opt/homebrew/bin/python3.13t -m orchestrator --home /Users/pp/.local/state/ao-x run",
+    "77460 77443 /usr/bin/python3-intel64 -m orchestrator --home /Users/pp/.local/state/ao-x run",
     "77461 77460 caffeinate -dims env PYTHONPATH=/Users/pp/Development/claude/agentic-orchestrator python3 -m orchestrator "
     "--home /Users/pp/.local/state/ao-agent-security run --until-idle --max-budget-usd 30",
     "66276 56071 /bin/zsh -c source /Users/pp/.claude/shell-snapshots/snapshot.sh && python3 -m orchestrator --home /x run",
