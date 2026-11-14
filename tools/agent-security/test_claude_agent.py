@@ -46,6 +46,30 @@ printf '%s\\n' "$*" >> "$FAKE_SECURITY_LOG"
 printf '%s\\n' "$FAKE_TOKEN"
 '''
 
+TEMP_PARENT = os.path.realpath('/tmp')   # /private/tmp on macOS
+CLAUDE_UID_DIR = 'claude-%d' % os.getuid()
+
+# mktemp first in PATH: logs every run directory it makes in the system temp, so the cleanup of a test removes only
+# those, never the run directory of an executor running at the same time; FAKE_MKTEMP_BAD makes one the wrapper must
+# refuse.
+FAKE_MKTEMP = '''#!/bin/sh
+last=
+for a in "$@"; do last=$a; done
+case $last in
+"$FAKE_TEMP_PARENT"/*)
+    [ "${FAKE_MKTEMP_BAD:-}" = fail ] && { echo "mktemp: cannot create" >&2; exit 1; }
+    d=$(/usr/bin/mktemp "$@") || exit
+    printf '%s\\n' "$d" >> "$FAKE_MKTEMP_LOG"
+    case ${FAKE_MKTEMP_BAD:-} in
+    mode) chmod 755 "$d" ;;
+    symlink) ln -s "$d" "$d.link" && printf '%s\\n' "$d.link" >> "$FAKE_MKTEMP_LOG" && d=$d.link ;;
+    esac
+    echo "$d"
+    exit ;;
+esac
+exec /usr/bin/mktemp "$@"
+'''
+
 GIT_ENV = {'GIT_AUTHOR_NAME': 'Test', 'GIT_AUTHOR_EMAIL': 'test@example.com', 'GIT_COMMITTER_NAME': 'Test',
            'GIT_COMMITTER_EMAIL': 'test@example.com', 'GIT_CONFIG_NOSYSTEM': '1'}
 
@@ -71,6 +95,9 @@ class WrapperTestCase(unittest.TestCase):
         os.makedirs(os.path.join(self.ao_home, 'epics/x/integration'))
         self.bin = os.path.join(self.tmp, 'bin')
         write(os.path.join(self.bin, 'security'), FAKE_SECURITY, 0o755)
+        write(os.path.join(self.bin, 'mktemp'), FAKE_MKTEMP, 0o755)
+        self.mktemp_log = os.path.join(self.tmp, 'mktemp.log')
+        self.addCleanup(self.remove_created_run_dirs)
         self.claude = os.path.join(self.tmp, 'claude')
         write(self.claude, FAKE_CLAUDE, 0o755)
         self.record = os.path.join(self.tmp, 'record.json')
@@ -79,6 +106,19 @@ class WrapperTestCase(unittest.TestCase):
         self.clone = os.path.join(self.home, 'Development/claude/shop')
         self.work = os.path.join(self.home, 'Development/claude/shop-X-1')
         self.make_repositories()
+
+    def created_run_dirs(self):
+        if not os.path.exists(self.mktemp_log):
+            return []
+        with open(self.mktemp_log) as f:
+            return [line for line in f.read().splitlines() if line.startswith(TEMP_PARENT + '/agent.')]
+
+    def remove_created_run_dirs(self):
+        for path in self.created_run_dirs():
+            if os.path.islink(path):
+                os.unlink(path)
+            elif os.path.isdir(path):
+                shutil.rmtree(path, True)
 
     def task_dir(self, task_id):
         path = os.path.join(self.ao_home, 'tasks', task_id)
@@ -111,7 +151,8 @@ class WrapperTestCase(unittest.TestCase):
         env = {'PATH': self.bin + os.pathsep + os.environ.get('PATH', '/usr/bin:/bin'), 'HOME': self.home,
                'AGENT_CLAUDE_BIN': self.claude, 'AGENT_AO_HOME': self.ao_home, 'AO_TASK_ID': 'X-1',
                'FAKE_TOKEN': TOKEN, 'FAKE_CLAUDE_RECORD': self.record, 'FAKE_SECURITY_LOG': self.security_log,
-               'SSH_AUTH_SOCK': '/tmp/ssh-agent.sock', 'TMPDIR': self.tmpdir, **GIT_ENV}
+               'SSH_AUTH_SOCK': '/tmp/ssh-agent.sock', 'TMPDIR': self.tmpdir, 'FAKE_MKTEMP_LOG': self.mktemp_log,
+               'FAKE_TEMP_PARENT': TEMP_PARENT, **GIT_ENV}
         for key, value in overrides.items():
             if value is None:
                 env.pop(key, None)
@@ -355,45 +396,10 @@ class TaskTempDirTest(WrapperTestCase):
         self.assertEqual(result.returncode, 0, '.agent-tmp is not in .gitignore')
 
 
-TEMP_PARENT = os.path.realpath('/tmp')   # /private/tmp on macOS
-CLAUDE_UID_DIR = 'claude-%d' % os.getuid()
-
-# mktemp that, for the run directory in the system temp, makes a directory the wrapper must refuse.
-FAKE_MKTEMP = '''#!/bin/sh
-last=
-for a in "$@"; do last=$a; done
-case $last in
-"$FAKE_TEMP_PARENT"/*)
-    case ${FAKE_MKTEMP_BAD:-} in
-    mode) d=$(/usr/bin/mktemp -d "$last") && chmod 755 "$d" && echo "$d"; exit ;;
-    symlink) d=$(/usr/bin/mktemp -d "$last") && l="$d.link" && ln -s "$d" "$l" && echo "$l"; exit ;;
-    fail) echo "mktemp: cannot create" >&2; exit 1 ;;
-    esac ;;
-esac
-exec /usr/bin/mktemp "$@"
-'''
-
-
 class ClaudeTmpdirTest(WrapperTestCase):
     """CLAUDE_CODE_TMPDIR (B4): every run gets a fresh directory with a short random name directly in the system temp
     (/private/tmp on macOS), mode 0700, owned by the user, holding only claude-<uid>, the TMPDIR Claude Code gives to
     Bash. Only claude-<uid> is opened in the profile; the wrapper removes the directory after the executor."""
-
-    def run_dirs(self):
-        return {name for name in os.listdir(TEMP_PARENT) if name.startswith('agent.')}
-
-    def setUp(self):
-        super().setUp()
-        self.before = self.run_dirs()
-        self.addCleanup(self.remove_new_run_dirs, self.before)
-
-    def remove_new_run_dirs(self, before):
-        for name in self.run_dirs() - before:
-            path = os.path.join(TEMP_PARENT, name)
-            if os.path.islink(path):
-                os.unlink(path)
-            else:
-                shutil.rmtree(path, True)
 
     def test_a_fresh_private_directory_in_the_system_temp(self):
         record = self.started(*AO_ARGS, CLAUDE_CODE_TMPDIR='/tmp')
@@ -429,13 +435,25 @@ class ClaudeTmpdirTest(WrapperTestCase):
         self.assertEqual(result.returncode, 3, result.stderr)
         self.assertFalse(os.path.lexists(self.recorded()['env']['CLAUDE_CODE_TMPDIR']))
 
+    def test_cleanup_leaves_run_directories_of_other_sessions(self):
+        # A real executor may start while the tests run; its run directory (its session's sockets) must survive the
+        # cleanup of this test.
+        other = tempfile.mkdtemp(prefix='agent.', dir=TEMP_PARENT)
+        try:
+            self.started(*AO_ARGS)
+            self.doCleanups()
+            self.assertTrue(os.path.isdir(other), 'the cleanup of the test removed a run directory it did not make')
+        finally:
+            shutil.rmtree(other, True)
+
     def fake_mktemp(self, bad):
-        write(os.path.join(self.bin, 'mktemp'), FAKE_MKTEMP, 0o755)
-        return self.refused(*AO_ARGS, FAKE_MKTEMP_BAD=bad, FAKE_TEMP_PARENT=TEMP_PARENT)
+        return self.refused(*AO_ARGS, FAKE_MKTEMP_BAD=bad)
 
     def test_a_directory_with_other_permissions_is_refused(self):
         self.assertIn(TEMP_PARENT, self.fake_mktemp('mode'))
-        self.assertEqual(self.run_dirs(), self.before, 'the refused (empty) run directory stayed')
+        made = self.created_run_dirs()
+        self.assertEqual(len(made), 1)
+        self.assertFalse(os.path.lexists(made[0]), 'the refused (empty) run directory stayed')
 
     def test_a_symlink_is_refused(self):
         self.assertIn(TEMP_PARENT, self.fake_mktemp('symlink'))
