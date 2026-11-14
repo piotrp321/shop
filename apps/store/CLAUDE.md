@@ -687,15 +687,17 @@ Spec: `docs/features/sentry/spec.md`.
   `tests/sentry-source-maps.test.ts`): przy `SENTRY_UPLOAD=true` w budowaniu `prod` (Turbopack) build zapisuje mapy
   przeglądarki i debug ID (`productionBrowserSourceMaps`, `turbopack.debugIds`), a hook `compiler.runAfterProductionCompile`
   z `@sentry/nextjs` wysyła mapy serwera i przeglądarki, dopasowane przez debug ID (bez tworzenia release'u), usuwa je z
-  `.next/static` i zdejmuje komentarze `sourceMappingURL`; błąd wysyłki przerywa build (`errorHandler` rzuca), telemetria wtyczki
-  jest wyłączona (`telemetry: false`). `withSentryConfig` (`@sentry/nextjs/config`, ładowany tylko przy wysyłce, bo ciągnie SDK
+  `.next/static` (`deleteSourcemapsAfterUpload`, domyślne usuwanie Turbopacka; bez `filesToDeleteAfterUpload`, bo hook działa
+  przed śladami tras i kopiowaniem `standalone`, a usunięte wcześniej mapy serwera mogłyby je zepsuć) i zdejmuje komentarze
+  `sourceMappingURL`; błąd wysyłki przerywa build (`errorHandler` rzuca), telemetria wtyczki jest wyłączona (`telemetry: false`),
+  a telemetrię CLI Sentry, przez które wtyczka wysyła, wyłącza `ENV SENTRY_CLI_NO_TELEMETRY=1` w etapie `build` Dockerfile. `withSentryConfig` (`@sentry/nextjs/config`, ładowany tylko przy wysyłce, bo ciągnie SDK
   Node.js do każdego procesu czytającego config) działa na kopii configu, a z jego wyniku bierze się tylko te trzy ustawienia:
   poza nimi dodaje m.in. meta tagi śladu w HTML (`experimental.clientTraceMetadata`), zewnętrzne pakiety, loadery i zmienne
   wbudowane w bundle, więc to nie wchodzi do sklepu (test porównuje wynik z wejściowym configiem). Budowanie bez Turbopacka z flagą
   kończy się błędem. Flaga bez `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` albo `SENTRY_PROJECT` też. Bez flagi `next.config.ts` jest jak
   dotąd i nic nie idzie do Sentry. Dockerfile: flaga, organizacja i projekt to `ARG` etapu `build` (przed budowaniem, więc w
   kluczu cache), token to sekret budowania `sentry_auth_token` (`RUN --mount=type=secret`, nigdy `ARG` ani `ENV`); po budowaniu
-  `find .next -name '*.map' -delete` usuwa każdy `.map` (także puste pliki wejściowe tras, które Next zapisuje zawsze), więc etap
+  `find .next -name '*.map' -delete` usuwa każdy `.map` (serwera, `standalone` i puste pliki wejściowe tras, które Next zapisuje zawsze), więc etap
   `prod` nigdy ich nie ma; test dymny (`infra/k8s/smoke/checks.py`) sprawdza, że sklep ich nie serwuje. Flagę ustawia tylko job
   `images` workflowu `deploy.yml` (`infra/k8s/CLAUDE.md`).
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w

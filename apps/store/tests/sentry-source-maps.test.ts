@@ -37,11 +37,13 @@ describe("sentryBuildOptions", () => {
     });
   });
 
-  it("deletes the maps after the upload", () => {
-    expect(sentryBuildOptions(UPLOAD)?.sourcemaps).toMatchObject({
-      deleteSourcemapsAfterUpload: true,
-      filesToDeleteAfterUpload: [".next/**/*.map"],
-    });
+  it("deletes the uploaded maps of .next/static after the upload, and nothing else", () => {
+    // The hook runs before Next traces the routes and copies the standalone output, which may list server maps: deleting
+    // them there (filesToDeleteAfterUpload) could break that copy. The Dockerfile removes the rest when the build is done.
+    const sourcemaps = sentryBuildOptions(UPLOAD)?.sourcemaps;
+
+    expect(sourcemaps).toEqual({ deleteSourcemapsAfterUpload: true });
+    expect(sourcemaps).not.toHaveProperty("filesToDeleteAfterUpload");
   });
 
   it("turns off the instrumentation of the build and the tunnel", () => {

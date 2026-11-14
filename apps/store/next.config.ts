@@ -56,12 +56,14 @@ export function sentryBuildOptions(env: Record<string, string | undefined>): Sen
     authToken: env.SENTRY_AUTH_TOKEN,
     org: env.SENTRY_ORG,
     project: env.SENTRY_PROJECT,
-    // No data about the build goes to Sentry (the plugin sends its own errors and timings by default).
+    // The plugin sends its own errors and timings by default; the telemetry of the Sentry CLI under it is switched off by
+    // SENTRY_CLI_NO_TELEMETRY in the Dockerfile.
     telemetry: false,
     // The release comes from the runtime configuration; maps are matched by debug ID, so no release is created.
     release: { create: false, finalize: false, setCommits: false, deploy: false },
-    // The plugin deletes what it uploaded from .next/static; the Dockerfile removes every other .map after the build.
-    sourcemaps: { deleteSourcemapsAfterUpload: true, filesToDeleteAfterUpload: [".next/**/*.map"] },
+    // The plugin deletes what it uploaded from .next/static (its default for Turbopack). Server maps stay until the build
+    // is done, because Next traces and copies the standalone output after this hook; the Dockerfile removes them then.
+    sourcemaps: { deleteSourcemapsAfterUpload: true },
     // Nothing but the maps: no wrapping of routes and server functions, no loaders at build time, no tunnel.
     buildTimeInstrumentation: false,
     routeManifestInjection: false,
