@@ -96,7 +96,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nawigacja unieważnia poprzednie pytanie), a zamknięcie karty ostrzega `beforeunload` poza wylogowaniem (`signingOut`
   w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, lista cen, lista stanów, lista kodów rabatowych i wybór wariantów promocji; pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
+  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji i wybór wariantów promocji; lista zamówień ma jeszcze własną kopię do ADMIN-SCREENS).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
@@ -295,13 +295,14 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   z API. Zamówienie bez kodu ma jedną kolumnę „Wartość brutto” jak dotąd. Kopia promocji pozycji (`promotion`: nazwa,
   procent, cena katalogowa jednostki) jest pod nazwą produktu, z kodem i bez.
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
-  `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`): filtr
-  statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone; także z adresu: `status` przy wejściu i przy zmianie `route.query`
-  przy otwartej liście, np. link „Aktywne promocje” z pulpitu; ustawia filtr według adresu, wraca na pierwszą stronę,
-  pomija nieznaną wartość, rozpoznaje swój widok po nazwie trasy i niczego nie zapisuje do adresu; filtr w widoku
-  pokazuje status listy) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
-  w `useOrderList` (zmiana filtra porzuca wiersze i kursory; błąd następnej strony zostawia wyświetloną; 403 bez
-  ponowienia). Status wiersza i jego etykieta (`format.ts`) pochodzą z API. Przycisk „Dodaj promocję” i cała edycja:
+  `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Promocje”,
+  `ListToolbar` bez wyszukiwania, bo API nie szuka promocji, `DataTable`, `ListPager`) na `useListUrlState` (`status` jako
+  `Select` „Status”: Wszystkie, Zaplanowane, Aktywne, Zakończone, i `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
+  odczyt przy wejściu i przy zmianie z zewnątrz, np. link „Aktywne promocje” z pulpitu, zapis przez `replace`, nieznana
+  wartość jest pomijana, a adres poprawiany) i `useCursorPager` (stos kursorów, spóźnione odpowiedzi, ponowienie, skutek
+  błędu; 403 bez ponowienia; „Wyczyść filtry” kładzie fokus na filtrze statusu). Kolumny: Nazwa (link), Obniżka, Początek
+  i Koniec (poniżej 1024 px jako linie komórki Nazwa), Status (`Badge` z tokenami `status-*`), Warianty i Akcje („Edytuj:
+  <nazwa>” dla ról z prawem zmiany). Status wiersza i jego etykieta (`format.ts`) pochodzą z API. Przycisk „Dodaj promocję” i cała edycja:
   tylko `admin` i `marketing` (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą
   listę i szczegóły tylko do odczytu, a `/promotions/new` bez tej roli przekierowuje na listę (`beforeEnter`, jak
   `/products/new`). `usePromotionForm` (widok `PromotionFormView`): ładuje promocję (`GET /promotions/{id}`) albo zaczyna

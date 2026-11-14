@@ -16,7 +16,6 @@ export const LEGACY_FILES = [
   "src/views/OrderDetailView.vue",
   "src/views/OrdersView.vue",
   "src/views/PromotionFormView.vue",
-  "src/views/PromotionsView.vue",
 ];
 
 // Every CSS named colour (CSS Color Module Level 4), so that bg-[rebeccapurple] is caught as well as bg-[red].
