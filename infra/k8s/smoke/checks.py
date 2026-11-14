@@ -265,9 +265,9 @@ def check_auth_bypasses():
 
 def check_store_switches():
     """The switches of /api/site (the browser part is checked by smoke.sh with a real browser); the HTML of the pages does
-    not depend on them."""
+    not depend on them. The profile ci has no Sentry DSN, so the field sentry is null."""
     status, headers, text = through_ingress("/api/site")
-    expect(status == 200 and json.loads(text) == {"demoNotice": True, "customerAccounts": False},
+    expect(status == 200 and json.loads(text) == {"demoNotice": True, "customerAccounts": False, "sentry": None},
            f"/api/site of the store gives the switches of the profile ci ({status}: {text[:100]})")
     expect(headers.get("Cache-Control") == "no-store", "/api/site is not cached")
     for path in ("/", "/cart"):

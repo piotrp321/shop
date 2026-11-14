@@ -3,14 +3,17 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadSiteSwitches } from "@/api/client";
+import { startBrowserSentry } from "@/observability/lazy";
 import { DemoNotice, SiteSwitchesProvider, useSiteSwitches } from "./SiteSwitches";
 
 vi.mock("@/api/client", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/api/client")>()), loadSiteSwitches: vi.fn() }));
+vi.mock("@/observability/lazy", () => ({ startBrowserSentry: vi.fn(async () => {}) }));
 
 const NOTICE = "Sklep demonstracyjny: płatności i zamówienia są symulowane, nic nie zostanie wysłane ani pobrane.";
 
 beforeEach(() => {
   vi.mocked(loadSiteSwitches).mockReset();
+  vi.mocked(startBrowserSentry).mockClear();
 });
 
 afterEach(cleanup);
@@ -76,5 +79,32 @@ describe("SiteSwitchesProvider", () => {
   it("is loaded with the default state, bar off and accounts on, when nothing is provided", () => {
     render(<Probe />);
     expect(screen.getByTestId("probe").textContent).toBe("true:true");
+  });
+});
+
+describe("Sentry in the browser", () => {
+  const sentry = { dsn: "https://public@o1.ingest.de.sentry.io/2", environment: "demo", release: "abc123" };
+
+  it("starts the SDK with the configuration of /api/site, once, after reading it", async () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: true, customerAccounts: true, sentry });
+    render(page());
+
+    await screen.findByText(NOTICE);
+    expect(startBrowserSentry).toHaveBeenCalledTimes(1);
+    expect(startBrowserSentry).toHaveBeenCalledWith(sentry);
+  });
+
+  it("does not start the SDK without a configuration (no DSN or a failed read)", async () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: true, sentry: null });
+    render(page());
+
+    await screen.findByText("true:true");
+    expect(startBrowserSentry).not.toHaveBeenCalled();
+  });
+
+  it("does not start the SDK on the server", () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: true, sentry });
+    renderToStaticMarkup(page());
+    expect(startBrowserSentry).not.toHaveBeenCalled();
   });
 });
