@@ -517,14 +517,53 @@ class Probe:
 
     # -- cleanup -------------------------------------------------------------
 
-    def _kill_child(self):
-        child = self._child
-        if child is None or child.poll() is not None:
-            return
+    @staticmethod
+    def _process_tree(root):
+        """(pids, process groups) of every descendant of root. Claude Code starts Bash commands in their own process
+        group, so a kill of the executor's group alone leaves the sandboxed commands running."""
         try:
-            os.killpg(os.getpgid(child.pid), signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            pass
+            out = subprocess.run(['ps', '-A', '-o', 'pid=,ppid=,pgid='], capture_output=True, text=True,
+                                 timeout=30).stdout
+        except (OSError, subprocess.SubprocessError):
+            return set(), set()
+        children, groups = {}, {}
+        for line in out.splitlines():
+            fields = line.split()
+            if len(fields) == 3 and all(f.isdigit() for f in fields):
+                pid, ppid, pgid = (int(f) for f in fields)
+                children.setdefault(ppid, []).append(pid)
+                groups[pid] = pgid
+        pids, todo = set(), [root]
+        while todo:
+            for pid in children.get(todo.pop(), []):
+                if pid not in pids:
+                    pids.add(pid)
+                    todo.append(pid)
+        return pids, {groups[p] for p in pids if p in groups}
+
+    def _kill_child(self):
+        """Kills the executor, its process group and every descendant (collected before the kill, while the tree
+        still hangs together) with the descendants' process groups; never the probe's own group."""
+        child = self._child
+        if child is None:
+            return
+        pids, pgids = self._process_tree(child.pid)
+        own = os.getpgrp()
+        if child.poll() is None:
+            try:
+                pgids.add(os.getpgid(child.pid))
+            except OSError:
+                pass
+        for pgid in pgids - {own}:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except OSError:
+                pass
+        for pid in pids | ({child.pid} if child.poll() is None else set()):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
         try:
             child.wait(timeout=10)
         except subprocess.TimeoutExpired:

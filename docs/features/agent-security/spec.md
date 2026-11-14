@@ -429,7 +429,8 @@ wykonawcy, nie konfigurację.
   wyniku (model go nie wykonał, wyjście urwane), przekroczony limit kosztu (`--max-budget-usd 1`, zabezpieczenie,
   nie zakładany koszt) albo limit czasu (`--timeout`, domyślnie 10 min; po nim sonda zabija grupę procesów) to odmowa.
 - Sprzątanie: po każdym wyjściu (także błędzie, limicie czasu i przerwaniu sygnałem `INT`, `TERM`, `HUP`) sonda
-  kończy swoje procesy i nasłuch na `127.0.0.1`, usuwa kontenery, obrazy, sieci i wolumeny z etykietą przebiegu albo
+  kończy całe drzewo procesów wykonawcy (zebrane przed zabiciem, z grupami procesów potomków: Claude Code uruchamia
+  polecenia Bash we własnej grupie, poza grupą wykonawcy) i nasłuch na `127.0.0.1`, usuwa kontenery, obrazy, sieci i wolumeny z etykietą przebiegu albo
   projektu compose o nazwie etykiety (`docker run --rm --label`, `docker compose -p <etykieta>`), worktree
   (`git worktree remove`, `git worktree prune`), repozytoria przypadków wrappera, kanarki i atrapę `$AO_HOME`. Test:
   po przebiegu i po przerwaniu brak procesów, kontenerów i plików przebiegu. Obraz bazowy `busybox` zostaje w pamięci

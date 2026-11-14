@@ -450,6 +450,12 @@ if mode == 'stderr':
 if mode == 'refuse':
     sys.stderr.write('claude-agent: brak tokenu wykonawcy\\n')
     sys.exit(2)
+if mode == 'detached':
+    # Like Claude Code's Bash tool: a command in its own session, out of reach of a kill of the executor's group.
+    import subprocess
+    grandchild = subprocess.Popen(['sh', '-c', 'sleep 300; sleep 300'], start_new_session=True)
+    open(os.environ['FAKE_GRANDCHILD'], 'w').write(str(grandchild.pid))
+    mode = 'sleep'
 if mode == 'sleep':
     open(os.environ['FAKE_STARTED'], 'w').write('started')
     while True:
@@ -669,6 +675,29 @@ class ProbeRunTest(ProbeRunTestCase):
 
     def test_cleanup_after_sigint(self):
         self.signal_cleanup(signal.SIGINT)
+
+    @staticmethod
+    def alive(pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+        return bool(state) and not state.startswith('Z')
+
+    def test_a_timeout_kills_descendants_in_their_own_session(self):
+        grandchild_file = os.path.join(self.tmp, 'grandchild')
+        p = self.make_probe(timeout_s=3)
+        code, _ = p.run(env=self.env('detached', FAKE_GRANDCHILD=grandchild_file))
+        self.assertEqual(code, 1)
+        with open(grandchild_file) as f:
+            pid = int(f.read())
+        self.addCleanup(lambda: self.alive(pid) and os.kill(pid, signal.SIGKILL))
+        for _ in range(100):
+            if not self.alive(pid):
+                break
+            time.sleep(0.05)
+        self.assertFalse(self.alive(pid), 'a descendant of the executor survived the probe')
 
     def test_cleanup_after_sighup(self):
         self.signal_cleanup(signal.SIGHUP)
