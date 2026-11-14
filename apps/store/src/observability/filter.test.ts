@@ -58,6 +58,95 @@ describe("filterEvent: the request (path 1)", () => {
   });
 });
 
+describe("filterEvent: the key of a guest cart in the paths (paths 1 and 2)", () => {
+  // The identifier of a guest cart is the key of access to it (docs/features/cart/spec.md): it never leaves in a path.
+  const CART = "3f2c9a1e-7b4d-4c8e-9a6f-1d2e3c4b5a69";
+  const VARIANT = "0b9e8d7c-6a5b-4c3d-8e2f-1a0b9c8d7e6f";
+
+  it("masks it in the address of the request and in the name of the transaction", () => {
+    const event: Event = {
+      type: "transaction",
+      transaction: `GET /api/v1/guest-carts/${CART}/summary`,
+      request: { method: "GET", url: `http://api/api/v1/guest-carts/${CART}/items/${VARIANT}?x=1` },
+    };
+
+    const filtered = filterEvent(event);
+
+    expect(filtered.request?.url).toBe(`http://api/api/v1/guest-carts/${REDACTED}/items/${VARIANT}`);
+    expect(filtered.transaction).toBe(`GET /api/v1/guest-carts/${REDACTED}/summary`);
+  });
+
+  it("masks it in the name and the data of an HTTP span and of the root span", () => {
+    const event: Event = {
+      type: "transaction",
+      contexts: {
+        trace: {
+          trace_id: "771a43a4192642f0b136d5159a501700",
+          span_id: "9c2a6db8c79068a2",
+          op: "http.client",
+          description: `DELETE http://api/api/v1/guest-carts/${CART}`,
+          data: { "url.full": `http://api/api/v1/guest-carts/${CART}` },
+        },
+      },
+      spans: [
+        {
+          span_id: "a1",
+          trace_id: "t1",
+          start_timestamp: 1,
+          status: "ok",
+          op: "http.client",
+          description: `GET http://api/api/v1/guest-carts/${CART}/items?x=1`,
+          data: {
+            "http.url": `http://api/api/v1/guest-carts/${CART}/items`,
+            "url.full": `http://api/api/v1/guest-carts/${CART}/items`,
+            "url.path": `/api/v1/guest-carts/${CART}/items`,
+            "http.target": `/api/v1/guest-carts/${CART}/items`,
+            url: `http://api/api/v1/guest-carts/${CART}`,
+            "otel.name": `GET /api/v1/guest-carts/${CART}`,
+            "http.response.status_code": 200,
+          },
+        },
+      ],
+    };
+
+    const filtered = filterEvent(event);
+
+    expect(filtered.contexts?.trace?.description).toBe(`DELETE http://api/api/v1/guest-carts/${REDACTED}`);
+    expect(filtered.contexts?.trace?.data).toEqual({ "url.full": `http://api/api/v1/guest-carts/${REDACTED}` });
+    expect(filtered.spans?.[0]?.description).toBe(`GET http://api/api/v1/guest-carts/${REDACTED}/items`);
+    expect(filtered.spans?.[0]?.data).toEqual({
+      "http.url": `http://api/api/v1/guest-carts/${REDACTED}/items`,
+      "url.full": `http://api/api/v1/guest-carts/${REDACTED}/items`,
+      "url.path": `/api/v1/guest-carts/${REDACTED}/items`,
+      "http.target": `/api/v1/guest-carts/${REDACTED}/items`,
+      url: `http://api/api/v1/guest-carts/${REDACTED}`,
+      "otel.name": `GET /api/v1/guest-carts/${REDACTED}`,
+      "http.response.status_code": 200,
+    });
+  });
+
+  it.each([
+    ["http", "http", { method: "POST", url: `http://api/api/v1/guest-carts/${CART}/items` }],
+    ["fetch", "http", { method: "GET", url: `http://api/api/v1/guest-carts/${CART}/summary` }],
+    ["xhr", "http", { method: "PATCH", url: `http://api/api/v1/guest-carts/${CART}/items/${VARIANT}` }],
+    ["navigation", "navigation", { from: `/api/v1/guest-carts/${CART}`, to: "/cart" }],
+  ])("masks it in a %s breadcrumb", (category, type, data) => {
+    const filtered = filterBreadcrumb({ category, type, message: `GET http://api/api/v1/guest-carts/${CART}`, data });
+    expect(JSON.stringify(filtered)).not.toContain(CART);
+    expect(filtered?.message).toBe(`GET http://api/api/v1/guest-carts/${REDACTED}`);
+  });
+
+  it("masks it in a text, but not the other segments of a path", () => {
+    expect(mask(`Request to /api/v1/guest-carts/${CART}/items/${VARIANT} failed with status 404`)).toBe(
+      `Request to /api/v1/guest-carts/${REDACTED}/items/${VARIANT} failed with status 404`,
+    );
+    expect(mask("POST http://api/api/v1/guest-carts")).toBe("POST http://api/api/v1/guest-carts");
+    expect(mask("GET /api/v1/orders/0b9e8d7c-6a5b-4c3d-8e2f-1a0b9c8d7e6f/payment")).toBe(
+      "GET /api/v1/orders/0b9e8d7c-6a5b-4c3d-8e2f-1a0b9c8d7e6f/payment",
+    );
+  });
+});
+
 describe("filterEvent: identity (path 6)", () => {
   it("removes the user, his address and the extra data", () => {
     const event: Event = {

@@ -677,7 +677,10 @@ Spec: `docs/features/sentry/spec.md`.
   `vars`. Teksty (komunikaty, wartości wyjątków, breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same
   wzorce co Alloy i filtr api (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL,
   klucz=wartość z sekretami, `Failing row contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`,
-  adresy IP. Wzorce działają w czasie liniowym (adres e-mail zaczyna się tylko po znaku, którego w nim nie ma).
+  adresy IP. Tylko sklep maskuje też identyfikator koszyka gościa w ścieżce `/guest-carts/<id>` (klucz dostępu do
+  koszyka, jedyny sekret w ścieżkach, które sklep woła i obsługuje): w adresie żądania, nazwie transakcji, opisach
+  i danych spanów, breadcrumbs i tekstach. Wzorce działają w czasie liniowym (adres e-mail zaczyna się tylko po znaku,
+  którego w nim nie ma).
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w
   `src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy (`infra/k8s/argocd/apps/monitoring.yaml`,
   korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy korpusu `store.log`, `api.log`

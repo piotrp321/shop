@@ -108,6 +108,8 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
     w opisie spanu `db` maskuje ten sam zestaw wzorców co niżej;
   - argumenty ramek stosu (`vars`); w api także `zend.exception_ignore_args=On` w `prod.ini`;
   - breadcrumbs `console` (przeglądarka i Node);
+  - w sklepie identyfikator koszyka gościa ze ścieżki `/guest-carts/<id>` (klucz dostępu do koszyka) w adresach,
+    nazwach transakcji, opisach i danych spanów, breadcrumbs i tekstach;
   - w api pola `extra` i `context` poza `correlation_id`.
 
   W komunikatach i wartościach wyjątków, komunikatach zdarzeń, breadcrumbs i opisach spanów filtr maskuje te same formaty co Alloy

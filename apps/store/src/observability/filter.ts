@@ -11,7 +11,8 @@ type TraceContext = NonNullable<NonNullable<Event["contexts"]>["trace"]>;
  * - the query and fragment of the name of a transaction, of the names of HTTP spans, of the addresses in the data of
  *   spans, contexts and breadcrumbs (`fetch`, `xhr`, `navigation`, `http`) and of the addresses of the frames; the
  *   data about queries, headers, cookies, bodies and the client;
- * - the console breadcrumbs (browser and Node) and the arguments of the stack frames (`vars`).
+ * - the console breadcrumbs (browser and Node) and the arguments of the stack frames (`vars`);
+ * - the identifier of a guest cart (the key of access to it) in a path `/guest-carts/<id>`, in every masked text.
  *
  * The texts (messages, values of exceptions, breadcrumbs, names of spans, tags and the remaining string data) are
  * masked with the formats of the log masking of Alloy (infra/k8s/argocd/apps/monitoring.yaml), the same as the filter
@@ -82,6 +83,9 @@ const MASKS: Array<[RegExp, string]> = [
   [new RegExp(String.raw`(?:^|[^0-9a-zA-Z:])(::1)\b`, "dgm"), REDACTED],
   // IPv4 addresses.
   [new RegExp(String.raw`\b([0-9]{1,3}(?:\.[0-9]{1,3}){3})\b`, "dgm"), REDACTED],
+  // Not a format of Alloy: the identifier of a guest cart in a path of the API, the key of access to the cart
+  // (docs/features/cart/spec.md), the only secret in the paths that the store calls or serves.
+  [new RegExp(String.raw`/guest-carts/([^/?#\s"'<>\\]+)`, "dgim"), REDACTED],
 ];
 
 /** The text with the first group of every match of the pattern replaced. */
