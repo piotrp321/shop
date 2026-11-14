@@ -509,7 +509,8 @@ wykonawcy, nie konfigurację.
   (pozycja „Odbiór”).
 - Wynik: JSON z listą przypadków (`pass`/`fail`/`missing`, warstwa: `sandbox`, `permissions`, `docker`, `token`,
   `wrapper`), czasem, kosztem (`total_cost_usd` przebiegu) i przyczyną odmowy (`reason`: pierwszy przypadek, który
-  nie przeszedł, limit czasu albo kosztu, błąd startu); kod 0 (wszystko przechodzi), 1 (przypadek nie przeszedł albo
+  nie przeszedł, przy wycieku przypadek narzędzia albo miejsce, w którym pojawił się kanarek, limit czasu albo
+  kosztu, błąd startu); kod 0 (wszystko przechodzi), 1 (przypadek nie przeszedł albo
   nie ma wyniku, limit czasu albo kosztu, także gdy binarka sama zakończyła się po przekroczeniu
   `--max-budget-usd`), 2 (sonda nie mogła ruszyć: brak binarki, wrapper odmówił startu albo binarka skończyła się
   przed startem sesji, odrzucony token, Docker, worktree; przyczyna z końcówki stderr wykonawcy, którą sonda zbiera

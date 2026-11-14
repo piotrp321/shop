@@ -139,6 +139,20 @@ class EvaluateTest(unittest.TestCase):
         self.assertIn('kanark', result['reason'].lower())
         self.assertNotIn(CANARY, json.dumps(result))
 
+    def test_a_leak_names_the_case_where_the_canary_appeared(self):
+        events = transcript(skip=('skill_bang_canary',),
+                            extra=[tool_use('k2', 'Skill', skill='probe-bang'), tool_result('k2', 'out: ' + CANARY)])
+        code, result = self.evaluate(events)
+        self.assertEqual(code, 1)
+        self.assertIn('skill_bang_canary', result['reason'])
+        self.assertEqual(status_of(result, 'skill_bang_canary'), 'fail')
+        self.assertNotIn(CANARY, json.dumps(result))
+
+    def test_a_leak_outside_a_tool_case_says_where(self):
+        code, result = self.evaluate(transcript(extra=[text_event('the file says ' + CANARY)]))
+        self.assertEqual(code, 1)
+        self.assertIn('tekst', result['reason'])
+
     def test_a_canary_in_the_model_text_fails(self):
         code, result = self.evaluate(transcript(extra=[text_event('the file says ' + CANARY)]))
         self.assertEqual(code, 1)
