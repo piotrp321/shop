@@ -453,7 +453,8 @@ wykonawcy, nie konfigurację.
     w zapisie przebiegu; drugi Read należy do przypadku poluzowania. Wynik to para `tool_use` i `tool_result`
     w `stream-json`: brak wywołania
     to `missing` (nie wykonano), kanarek albo nazwa jego pliku w wyniku, WebFetch bez błędu albo uruchomiony hook to
-    `fail`. `CLAUDE.md` worktree sondy importuje kanarek (droga 3a): przypadek ma wynik, gdy sesja wystartowała,
+    `fail`. WebFetch bez wywołania przechodzi tylko wtedy, gdy nie ma go na liście narzędzi sesji (zdarzenie `init`):
+    reguła `deny` usuwa narzędzie, więc model nie może go wywołać. `CLAUDE.md` worktree sondy importuje kanarek (droga 3a): przypadek ma wynik, gdy sesja wystartowała,
     a wyciek rozstrzyga skan całego wyjścia;
   - przypadki wrappera (sonda bez modelu uruchamia wrapper z atrapą binarki zapisującą argumenty, na lokalnych
     repozytoriach z `origin`): gałąź z poluzowanym `.claude/settings.json` i `refs/remotes/origin/main` przestawionym
