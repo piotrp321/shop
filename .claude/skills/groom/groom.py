@@ -11,13 +11,17 @@
 
 State directory (--state, default ~/.local/state/shop-groom): `rejected.jsonl`.
 
-collect: reads the open issues of piotrp321/shop (`gh issue list --limit 500`; a result of exactly 500 is an error),
-the open epics (board state from next_epic.py, specs from the worktree on disk), the taken epic IDs and the rejected
-entries, and writes <run_dir>/input.json (or --out FILE, e.g. input-now.json for a fresh look at a pending list). Prints one JSON line {input, issues, epics, commit}. The commands run with
-cwd = the worktree.
+collect: reads the open issues of piotrp321/shop through the origin gate tools/agent-security/github_trust.py
+(`gh issue list --limit 500`; a result of exactly 500 is an error), the open epics (the open `epic` issues of trusted
+authors, board state from next_epic.py, specs from the worktree on disk), the taken epic IDs and the rejected
+entries, and writes <run_dir>/input.json (or --out FILE, e.g. input-now.json for a fresh look at a pending list).
+Issues and epics of authors without write access are not in `issues` or `epics`: only in `external` as the records of
+the gate ({number, author, url, trusted: false}, no title, body or labels). Prints one JSON line
+{input, issues, epics, commit, external, external_summary}; external_summary is the line for the user
+"Zgłoszenia zewnętrzne: #N od @autor, <link>; …" or null. The commands run with cwd = the worktree.
 
 validate: checks <run_dir>/proposals.json against input.json (schema, kinds, limits, the rejected entries, the fix
-epic rules), computes the scope collisions of the fix epic with the prepared and in-progress epics and writes them to
+epic rules, no issue from `external` of input.json or of --current), computes the scope collisions of the fix epic with the prepared and in-progress epics and writes them to
 `fix_epic.collisions` and to its `## Zależności` section. Prints one JSON line {ok, errors, collisions}; every error
 is also a line on stderr. With --current FILE (a fresh `collect --out`) assignments to open epics, open -FIXES epics,
 taken IDs and labels are checked against that file; issue numbers and the earlier rejections stay with input.json.
@@ -46,8 +50,8 @@ the spec and plan of the epic. Prints one JSON line {ok, checks: [{name, ok, det
 `gate`; exit 0 when it passes, 3 when it does not, 1 on a `git` error (then `gate` is cleared). Earlier gate
 results are ignored.
 
-Exit codes: 0 success; 1 a `git`/`gh` command failed, returned unexpected JSON or the limit of 500 issues was
-reached (collect), the issue has no /groom origin (origin); 2 usage and state errors (missing files, a list that is
+Exit codes: 0 success; 1 a `git`/`gh` command failed (also in the origin gate), returned unexpected JSON or the
+limit of 500 issues was reached (collect), the issue has no /groom origin (origin); 2 usage and state errors (missing files, a list that is
 already decided, bad --approve/--reject, a bad state.json); 3 the list does not validate, the gate does not pass.
 """
 import argparse
@@ -61,6 +65,8 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ao-run'))
 import next_epic  # noqa: E402  (CommandError, the command runner and the board shared with next_epic.py)
 import night_queue  # noqa: E402  (parse_scope, overlap, epic_scope, dependencies_section)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'tools', 'agent-security'))
+import github_trust  # noqa: E402  (the origin gate: issues of authors without write access come without content)
 
 REPOSITORY = next_epic.REPOSITORY
 OWNER = next_epic.OWNER
@@ -203,25 +209,39 @@ def _read_spec(worktree, directory):
         return None
 
 
-def collect_input(run, worktree, rejected, now):
+def external_summary(external):
+    """The line about the issues of authors without write access shown to the user, or None."""
+    if not external:
+        return None
+    return 'Zgłoszenia zewnętrzne: ' + '; '.join(
+        '#%d od %s, %s' % (e['number'], '@%s' % e['author'] if e.get('author') else 'nieznanego autora', e['url'])
+        for e in sorted(external, key=lambda e: e['number']))
+
+
+def collect_input(run, worktree, rejected, now, gate=None):
+    """gate: a github_trust.Gate for piotrp321/shop (default: one on `run`, so a test runner answers it too)."""
+    gate = gate or github_trust.Gate(run, repo=REPOSITORY)
     commit = run(['git', 'rev-parse', 'HEAD']).strip()
-    list_args = ['gh', 'issue', 'list', '--repo', REPOSITORY, '--state', 'open', '--limit', str(ISSUE_LIMIT),
-                 '--json', 'number,title,body,labels,author,updatedAt']
-    raw = next_epic._json(run, list_args)
-    if not isinstance(raw, list):
-        raise next_epic.CommandError(list_args, 'unexpected JSON shape')
+    raw = gate.issues(state='open', limit=ISSUE_LIMIT, fields=('title', 'body', 'labels', 'updatedAt'))
+    list_args = ['gh', 'issue', 'list', '--repo', REPOSITORY, '--state', 'open', '--limit', str(ISSUE_LIMIT)]
     if len(raw) >= ISSUE_LIMIT:
         raise next_epic.CommandError(list_args, 'osiągnięto limit %d zgłoszeń, przegląd byłby niepełny' % ISSUE_LIMIT)
+    external = sorted((r for r in raw if not r['trusted']), key=lambda r: r['number'])
+    raw = [r for r in raw if r['trusted']]
 
-    board = {e['number']: e for e in next_epic.board_epics(run)}
-    epic_args = ['gh', 'issue', 'list', '--repo', REPOSITORY, '--label', 'epic', '--state', 'open',
-                 '--json', 'number,title,body', '--limit', '200']
-    open_epics = next_epic._json(run, epic_args)
+    # Open epics: the open `epic` issues of trusted authors (the list above has every open issue). The board of
+    # next_epic.py reads epics without the gate, so only the board order and state of a trusted epic are used,
+    # never its text.
     try:
-        epics, order = [], list(board) + [int(i['number']) for i in open_epics if int(i['number']) not in board]
-        by_number = {int(i['number']): i for i in open_epics}
+        open_epics = [i for i in raw if 'epic' in [l['name'] for l in i.get('labels') or []]]
+    except (KeyError, TypeError):
+        raise next_epic.CommandError(list_args, 'unexpected JSON shape')
+    by_number = {i['number']: i for i in open_epics}
+    board = {e['number']: e for e in next_epic.board_epics(run) if e['number'] in by_number}
+    try:
+        epics, order = [], list(board) + [n for n in by_number if n not in board]
         for number in order:
-            source = board.get(number) or by_number[number]
+            source = by_number[number]
             title = source.get('title') or ''
             body = source.get('body') or ''
             epic_id = next_epic._epic_id(title)
@@ -238,7 +258,7 @@ def collect_input(run, worktree, rejected, now):
             epics.append({'id': epic_id, 'number': number, 'title': title, 'dir': directory, 'state': state,
                           'issues': sorted({r for r in refs if r != number}), 'scope': scope})
     except (KeyError, TypeError, ValueError, AttributeError):
-        raise next_epic.CommandError(epic_args, 'unexpected JSON shape')
+        raise next_epic.CommandError(list_args, 'unexpected JSON shape')
 
     assigned = {}
     for e in epics:
@@ -252,7 +272,7 @@ def collect_input(run, worktree, rejected, now):
                 continue    # every other issue has a kind label or none: both are reviewed
             body = i.get('body') or ''
             issues.append({'number': int(i['number']), 'title': i.get('title') or '', 'body': body, 'labels': labels,
-                           'author': (i.get('author') or {}).get('login'), 'updatedAt': i['updatedAt'],
+                           'author': i.get('author'), 'updatedAt': i['updatedAt'],
                            'weight': weight_of(body), 'assigned_epic': assigned.get(int(i['number']))})
     except (KeyError, TypeError, ValueError, AttributeError):
         raise next_epic.CommandError(list_args, 'unexpected JSON shape')
@@ -269,7 +289,7 @@ def collect_input(run, worktree, rejected, now):
     taken = sorted({d.lower() for d in directories} | {b.lower() for b in branches}
                    | {e['id'].lower() for e in epics if e['id']})
     return {'schema': 1, 'collected_at': now.isoformat(), 'commit': commit, 'issues': issues, 'epics': epics,
-            'taken_ids': taken, 'rejected': rejected}
+            'taken_ids': taken, 'rejected': rejected, 'external': external}
 
 
 def cmd_collect(args, run, now):
@@ -277,7 +297,8 @@ def cmd_collect(args, run, now):
     if not os.path.isdir(worktree):
         raise StateError('brak katalogu worktree: %s' % args.worktree)
     rejected = read_rejected(args.state)
-    data = collect_input(run or next_epic.make_runner(worktree), worktree, rejected, now)
+    gate = None if run else github_trust.Gate(github_trust.make_runner(worktree), repo=REPOSITORY)
+    data = collect_input(run or next_epic.make_runner(worktree), worktree, rejected, now, gate)
     run_dir = os.path.expanduser(args.run_dir)
     path = os.path.expanduser(args.out) if args.out else os.path.join(run_dir, INPUT_FILE)
     try:
@@ -287,7 +308,8 @@ def cmd_collect(args, run, now):
         raise StateError('nie można utworzyć katalogu przebiegu: %s' % (e.strerror or e))
     _write_json(path, data)
     print(json.dumps({'input': path, 'issues': len(data['issues']), 'epics': len(data['epics']),
-                      'commit': data['commit']}, ensure_ascii=False))
+                      'commit': data['commit'], 'external': data['external'],
+                      'external_summary': external_summary(data['external'])}, ensure_ascii=False))
     return 0
 
 
@@ -306,7 +328,11 @@ def _expected_fix_id(scope_first, taken):
     return candidate
 
 
-def _check_item(errors, item, position, original, by_number, assigned, rejected):
+def _external_error(number):
+    return 'issue #%d jest zgłoszeniem zewnętrznym (autor bez prawa zapisu); przepisz je we własne issue' % number
+
+
+def _check_item(errors, item, position, original, by_number, assigned, rejected, external):
     def err(text):
         errors.append('pozycja %d: %s' % (position, text))
 
@@ -326,7 +352,9 @@ def _check_item(errors, item, position, original, by_number, assigned, rejected)
     if len(set(issues)) != len(issues):
         err('issues: numery się powtarzają')
     for number in issues:
-        if number not in original:
+        if number in external:
+            err(_external_error(number))
+        elif number not in original:
             err('issue #%d nie jest w danych wejściowych' % number)
         if number in assigned:
             err('issue #%d jest przypisane do otwartego epiku %s' % (number, assigned[number]))
@@ -390,7 +418,7 @@ def _check_rejected(err, item, kind, issues, by_number, rejected):
         err('zgłoszenia zmieniły się po odrzuceniu: brak poprawnego pola previously_rejected')
 
 
-def _check_fix_epic(errors, fix, data, original, by_number, assigned, in_items, rejected):
+def _check_fix_epic(errors, fix, data, original, by_number, assigned, in_items, rejected, external):
     """data: the epics and taken IDs to check against; by_number: current issue state; original: input.json issues."""
     def err(text):
         errors.append('epik poprawek: %s' % text)
@@ -441,6 +469,9 @@ def _check_fix_epic(errors, fix, data, original, by_number, assigned, in_items, 
     _check_rejected(err, fix, 'fix_epic', issues, original, rejected)
     for number in dict.fromkeys(issues):
         issue = by_number.get(number)
+        if number in external:
+            err(_external_error(number))
+            continue
         if issue is None or number not in original:
             err('issue #%d nie jest w danych wejściowych' % number)
             continue
@@ -510,7 +541,9 @@ def check(props, data, rejected, current=None):
         if name in props and not (isinstance(props[name], list) and all(isinstance(v, str) for v in props[name])):
             errors.append('%s: oczekiwano listy tekstów' % name)
     view = current if current is not None else data
-    original = {i['number']: i for i in data.get('issues', [])}
+    external = {e.get('number') for source in (data, current or {}) for e in source.get('external') or []
+                if isinstance(e, dict)}
+    original = {i['number']: i for i in data.get('issues', []) if i['number'] not in external}
     by_number = dict(original)
     by_number.update({i['number']: i for i in view.get('issues', [])})
     assigned = {}
@@ -524,7 +557,7 @@ def check(props, data, rejected, current=None):
     if len(items) > ITEM_LIMIT:
         errors.append('items: za dużo pozycji (%d, limit %d)' % (len(items), ITEM_LIMIT))
     for position, item in enumerate(items, 1):
-        _check_item(errors, item, position, original, by_number, assigned, rejected)
+        _check_item(errors, item, position, original, by_number, assigned, rejected, external)
     in_items = {}
     for position, item in enumerate(items, 1):
         for number in dict.fromkeys(_used(item)):
@@ -538,7 +571,7 @@ def check(props, data, rejected, current=None):
     fix = props.get('fix_epic')
     collisions = []
     if 'fix_epic' in props and fix is not None:
-        _check_fix_epic(errors, fix, view, original, by_number, assigned, in_items, rejected)
+        _check_fix_epic(errors, fix, view, original, by_number, assigned, in_items, rejected, external)
         if not errors and fix.get('scope'):
             collisions = find_collisions(fix, view)
     return errors, collisions
@@ -1015,7 +1048,7 @@ def main(argv=None, run=None, now=None):
         for error in e.errors:
             print('groom: %s' % error, file=sys.stderr)
         return 3
-    except (next_epic.CommandError, NoOrigin) as e:
+    except (next_epic.CommandError, NoOrigin, github_trust.GateError) as e:
         print('groom: %s' % e, file=sys.stderr)
         return 1
 
