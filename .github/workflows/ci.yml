@@ -125,6 +125,10 @@ jobs:
         if: needs.scope.result != 'success'
         run: echo "::error::The scope job did not succeed" && exit 1
 
+      - name: TEMPORARY failing part
+        if: matrix.name == 'api functional'
+        run: echo '::error::temporary failure' && exit 1
+
       - name: Nothing to run in this part for the scope of the change
         if: env.PART_ACTIVE != 'true'
         run: echo "The change is $SCOPE only"
