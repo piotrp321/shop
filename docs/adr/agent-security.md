@@ -100,8 +100,8 @@ AGENT-ISOLATION (#498).
   gałęzi „tylko `main`”; każdy sekret Actions poza `GITHUB_TOKEN` jest sekretem środowiska dostępnego tylko z `main`.
   Cele `infra/k8s` montujące `KUBE_DIR` odmawiają pracy, gdy działa proces AO albo wykonawca.
 - **R6. Sonda prób obejścia.** `tools/agent-security/probe.py` uruchamia prawdziwy proces wykonawcy (ta sama binarka,
-  wrapper, profil i flagi co AO, model Haiku) i sprawdza próby obejścia z dróg 2–15 oraz przypadki pracy (git, `gh`,
-  Docker, stan zadania). Fail-closed: kod 0 tylko, gdy każdy przypadek ma wynik i przeszedł.
+  wrapper, profil i flagi co AO, model Haiku) i sprawdza próby obejścia z dróg 2–9, 11–13 i 15 oraz przypadki pracy
+  (git, `gh`, Docker, stan zadania); drogę 10 sprawdza test workflowów, drogę 14 testy celów i `ao-prepare`. Fail-closed: kod 0 tylko, gdy każdy przypadek ma wynik i przeszedł.
 - **R7. Start AO.** `tools/agent-security/ao-prepare` kopiuje wrapper, profil i sondę z `origin/main` do
   `$AO_HOME/agent-security/`, odmawia startu przy istniejącym `KUBE_DIR` z rejestru i uruchamia sondę przed każdym
   `ao run` i wznowieniem; sonda, która nie przeszła, blokuje start.

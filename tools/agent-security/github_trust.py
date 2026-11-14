@@ -21,7 +21,10 @@ Records (`author` is the login string or null):
   trusted:   {number, author, url, <the requested fields as `gh` gives them>, trusted: true}.
   Comments (field `comments` of issues, the `comments` command): each judged by its own author;
   trusted {author, body, createdAt, url, trusted: true}, untrusted {author, url, trusted: false}.
-  The comments of an untrusted issue are never returned. Review comments of pull requests are never fetched.
+  The field `comments` of an untrusted issue record is never returned (the record has only the four fields).
+  The `comments` command (Gate.comments) does not judge the issue: it returns every comment judged by its own
+  author, so trusted comments come with their body also under an issue of an untrusted author.
+  Review comments of pull requests are never fetched.
 
 FIELDS (comma separated; number, author and url are always included):
   issues, issue: title, body, labels, state, createdAt, updatedAt, closedAt, comments
@@ -268,6 +271,8 @@ class Gate:
         return self._list(args, fields, 'pull')
 
     def comments(self, number):
+        """Comment records of issue <number>, each judged by its own author; the issue author is not judged, so
+        trusted comments under an untrusted issue are returned with their body."""
         args = ['gh', 'issue', 'view', _number(number), '--repo', self.repo, '--json', 'comments']
         data = self._json(args)
         if not isinstance(data, dict):
