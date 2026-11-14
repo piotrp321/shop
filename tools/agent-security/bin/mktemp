@@ -1,0 +1,165 @@
+#!/bin/sh
+# mktemp of the AO executor (spec docs/features/agent-security/spec.md, R2). POSIX sh. claude-agent puts the directory
+# of this file first in the PATH of the executor (a trusted copy outside what the executor can write).
+#
+# Why: on macOS a `mktemp` or `mktemp -d` without a template, and `-t prefix`, make the name in
+# confstr(_CS_DARWIN_USER_TEMP_DIR) (/var/folders/.../T), not in $TMPDIR. That directory is the user's own temp and
+# read-only for the executor, while the repository's scripts call a bare `mktemp -d` (.github/scripts/test_*.sh,
+# infra/k8s/scripts/*.sh, ...). This script gives the system mktemp an explicit template in the directory of the task
+# instead, so the result is always in $TMPDIR (or in the directory of -p).
+#
+# It is a convenience, not a boundary: the executor controls the PATH of its own Bash and can call /usr/bin/mktemp.
+#
+#   mktemp [-d] [-q] [-u]                   $TMPDIR/tmp.XXXXXXXXXX
+#   mktemp [-d] [-q] [-u] -t PREFIX         $TMPDIR/PREFIX.XXXXXXXXXX
+#   mktemp [...] -p DIR | --tmpdir[=DIR]    the same in DIR (an empty or omitted DIR means $TMPDIR; -p wins over $TMPDIR)
+#   mktemp [...] TEMPLATE...                passed to the system mktemp unchanged (with -p DIR: relative to DIR, as the
+#                                           system mktemp does it); with -t, the template of -t is added
+#
+# The system mktemp, by absolute path (a call through PATH would loop), also gets the call unchanged when it has no
+# directory to choose (TMPDIR unset or empty and no -p DIR: no invented /tmp, which every session shares) and when an
+# option is not known here (its own error message). Options are those of the BSD mktemp: -d -q -u -t PREFIX -p DIR,
+# bundled (-dq, -dp DIR, -tPREFIX), --directory --quiet --dry-run --tmpdir[=DIR] and their unambiguous abbreviations,
+# `--` ends the options.
+set -u
+
+real=/usr/bin/mktemp
+[ -x "$real" ] || { printf 'mktemp: %s not found\n' "$real" >&2; exit 127; }
+
+canon=
+# longopt NAME: canon = the long option NAME names (exactly or as the only option it is the beginning of).
+longopt() {
+    canon=
+    count=0
+    for full in directory tmpdir quiet dry-run; do
+        if [ "$1" = "$full" ]; then
+            canon=$full
+            return 0
+        fi
+    done
+    for full in directory tmpdir quiet dry-run; do
+        case $full in
+        "$1"*)
+            canon=$full
+            count=$((count + 1)) ;;
+        esac
+    done
+    [ "$count" -eq 1 ]
+}
+
+# scan ARGS...: sets ok=0 when an option is unknown or lacks its value; otherwise the flags, the prefix of -t, the
+# directory of -p, the number of templates and `classes`: one letter per argument, k (a template, kept) or d (an option
+# or its value, dropped). The arguments of the script stay as they are.
+scan() {
+    ok=1 classes= templates=0 dflag= qflag= uflag= have_t= prefix= have_p= pdir= ended=
+    while [ "$#" -gt 0 ]; do
+        arg=$1
+        shift
+        if [ -n "$ended" ]; then
+            classes=${classes}k
+            templates=$((templates + 1))
+            continue
+        fi
+        case $arg in
+        --)
+            ended=1
+            classes=${classes}d ;;
+        --*)
+            name=${arg#--}
+            value=
+            has_value=
+            case $name in
+            *=*)
+                value=${name#*=}
+                name=${name%%=*}
+                has_value=1 ;;
+            esac
+            longopt "$name" || { ok=0; return; }
+            classes=${classes}d
+            case $canon in
+            tmpdir)
+                have_p=1
+                pdir=$value ;;
+            *)
+                [ -z "$has_value" ] || { ok=0; return; }
+                case $canon in
+                directory) dflag=1 ;;
+                quiet) qflag=1 ;;
+                dry-run) uflag=1 ;;
+                esac ;;
+            esac ;;
+        -?*)
+            classes=${classes}d
+            rest=${arg#-}
+            while [ -n "$rest" ]; do
+                c=${rest%"${rest#?}"}
+                rest=${rest#?}
+                case $c in
+                d) dflag=1 ;;
+                q) qflag=1 ;;
+                u) uflag=1 ;;
+                t | p)
+                    if [ -n "$rest" ]; then
+                        value=$rest
+                        rest=
+                    else
+                        [ "$#" -gt 0 ] || { ok=0; return; }
+                        value=$1
+                        shift
+                        classes=${classes}d
+                    fi
+                    if [ "$c" = t ]; then
+                        have_t=1
+                        prefix=$value
+                    else
+                        have_p=1
+                        pdir=$value
+                    fi ;;
+                *) ok=0; return ;;
+                esac
+            done ;;
+        *)
+            classes=${classes}k
+            templates=$((templates + 1)) ;;
+        esac
+    done
+}
+
+scan "$@"
+[ "$ok" -eq 1 ] || exec "$real" "$@"
+# A template of its own and no -t: the call says where it goes.
+[ -n "$have_t" ] || [ "$templates" -eq 0 ] || exec "$real" "$@"
+
+base=${TMPDIR:-}
+[ -z "$have_p" ] || [ -z "$pdir" ] || base=$pdir
+[ -n "$base" ] || exec "$real" "$@"
+while :; do
+    case $base in
+    */) base=${base%/} ;;
+    *) break ;;
+    esac
+done
+
+# The templates of the call (relative to the directory of -p, when there is one) are what is left of the arguments.
+n=$#
+while [ "$n" -gt 0 ]; do
+    arg=$1
+    shift
+    kind=${classes%"${classes#?}"}
+    classes=${classes#?}
+    if [ "$kind" = k ]; then
+        [ -z "$have_p" ] || arg=$base/$arg
+        set -- "$@" "$arg"
+    fi
+    n=$((n - 1))
+done
+if [ -n "$have_t" ]; then
+    set -- "$base/$prefix.XXXXXXXXXX" "$@"
+elif [ "$templates" -eq 0 ]; then
+    set -- "$base/tmp.XXXXXXXXXX"
+fi
+set -- -- "$@"
+[ -z "$uflag" ] || set -- -u "$@"
+[ -z "$qflag" ] || set -- -q "$@"
+[ -z "$dflag" ] || set -- -d "$@"
+exec "$real" "$@"
