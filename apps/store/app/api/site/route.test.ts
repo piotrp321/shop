@@ -5,9 +5,10 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-const read = async (env: { demo?: string; accounts?: string }) => {
+const read = async (env: { demo?: string; accounts?: string; dsn?: string }) => {
   vi.stubEnv("STORE_DEMO_NOTICE", env.demo);
   vi.stubEnv("STORE_CUSTOMER_ACCOUNTS", env.accounts);
+  vi.stubEnv("SENTRY_DSN", env.dsn);
   const response = await GET();
   return { response, body: await response.json() };
 };
@@ -16,7 +17,7 @@ describe("GET /api/site", () => {
   it("defaults to no demo notice and customer accounts on when the variables are not set", async () => {
     const { response, body } = await read({});
     expect(response.status).toBe(200);
-    expect(body).toEqual({ demoNotice: false, customerAccounts: true });
+    expect(body).toEqual({ demoNotice: false, customerAccounts: true, sentry: null });
   });
 
   it.each([
@@ -26,20 +27,20 @@ describe("GET /api/site", () => {
     ["false", "false", false, false],
   ])("STORE_DEMO_NOTICE=%s and STORE_CUSTOMER_ACCOUNTS=%s", async (demo, accounts, demoNotice, customerAccounts) => {
     const { body } = await read({ demo, accounts });
-    expect(body).toEqual({ demoNotice, customerAccounts });
+    expect(body).toEqual({ demoNotice, customerAccounts, sentry: null });
   });
 
   it("reads each variable on its own", async () => {
-    expect((await read({ demo: "true" })).body).toEqual({ demoNotice: true, customerAccounts: true });
-    expect((await read({ accounts: "false" })).body).toEqual({ demoNotice: false, customerAccounts: false });
+    expect((await read({ demo: "true" })).body).toEqual({ demoNotice: true, customerAccounts: true, sentry: null });
+    expect((await read({ accounts: "false" })).body).toEqual({ demoNotice: false, customerAccounts: false, sentry: null });
   });
 
   it("ignores case and surrounding spaces of true and false", async () => {
-    expect((await read({ demo: " TRUE ", accounts: "False" })).body).toEqual({ demoNotice: true, customerAccounts: false });
+    expect((await read({ demo: " TRUE ", accounts: "False" })).body).toEqual({ demoNotice: true, customerAccounts: false, sentry: null });
   });
 
   it.each(["", "1", "0", "yes", "no", "on", "tru"])("falls back to the default for the unknown value %j", async (value) => {
-    expect((await read({ demo: value, accounts: value })).body).toEqual({ demoNotice: false, customerAccounts: true });
+    expect((await read({ demo: value, accounts: value })).body).toEqual({ demoNotice: false, customerAccounts: true, sentry: null });
   });
 
   it("is never cached", async () => {
@@ -51,5 +52,31 @@ describe("GET /api/site", () => {
   it("reads the variables on every call", async () => {
     expect((await read({ demo: "true" })).body.demoNotice).toBe(true);
     expect((await read({ demo: "false" })).body.demoNotice).toBe(false);
+  });
+
+  it("gives the browser no Sentry without SENTRY_DSN", async () => {
+    vi.stubEnv("SENTRY_ENVIRONMENT", "demo");
+    vi.stubEnv("SENTRY_RELEASE", "abc123");
+    expect((await read({})).body.sentry).toBeNull();
+    expect((await read({ dsn: "  " })).body.sentry).toBeNull();
+  });
+
+  it("gives the browser the DSN, the environment and the release of Sentry, never the sample rate", async () => {
+    vi.stubEnv("SENTRY_ENVIRONMENT", "demo");
+    vi.stubEnv("SENTRY_RELEASE", "abc123");
+    vi.stubEnv("SENTRY_TRACES_SAMPLE_RATE", "0.1");
+    expect((await read({ dsn: "https://public@o1.ingest.de.sentry.io/2" })).body.sentry).toEqual({
+      dsn: "https://public@o1.ingest.de.sentry.io/2",
+      environment: "demo",
+      release: "abc123",
+    });
+  });
+
+  it("gives null for the environment and the release of Sentry that are not set", async () => {
+    expect((await read({ dsn: "https://public@o1.ingest.de.sentry.io/2" })).body.sentry).toEqual({
+      dsn: "https://public@o1.ingest.de.sentry.io/2",
+      environment: null,
+      release: null,
+    });
   });
 });

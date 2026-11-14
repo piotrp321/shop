@@ -44,16 +44,35 @@ export async function loadAccountSession(): Promise<AccountSessionResult> {
   }
 }
 
-/** Body of the store's own `GET /api/site` (route handler in app/api/site): the switches of this deployment. */
-export type SiteSwitches = { demoNotice: boolean; customerAccounts: boolean };
+/** Sentry of the browser in `/api/site`: `null` without a DSN on the server. */
+export type SiteSentry = { dsn: string; environment: string | null; release: string | null };
+
+/**
+ * Body of the store's own `GET /api/site` (route handler in app/api/site): the switches of this deployment and the
+ * configuration of Sentry for the browser (a missing `sentry` is `null`).
+ */
+export type SiteSwitches = { demoNotice: boolean; customerAccounts: boolean; sentry?: SiteSentry | null };
 
 /** The state of a store without the variables, and of a failed read. */
-export const DEFAULT_SITE_SWITCHES: SiteSwitches = { demoNotice: false, customerAccounts: true };
+export const DEFAULT_SITE_SWITCHES = { demoNotice: false, customerAccounts: true, sentry: null } satisfies SiteSwitches;
+
+const nullableText = (value: unknown) => value === null || typeof value === "string";
+
+function siteSentry(value: unknown): SiteSentry | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const { dsn, environment, release } = value as Record<string, unknown>;
+  if (typeof dsn !== "string" || dsn === "" || !nullableText(environment) || !nullableText(release)) {
+    return null;
+  }
+  return { dsn, environment: environment as string | null, release: release as string | null };
+}
 
 /**
  * For the browser: asks the store's `/api/site` (same origin) for the switches of this deployment. A failed read, an
- * error status or a body that is not JSON gives the defaults, and so does every switch that is not a boolean. Never
- * rejects.
+ * error status or a body that is not JSON gives the defaults, and so does every switch that is not a boolean and a
+ * configuration of Sentry that is not one (no Sentry). Never rejects.
  */
 export async function loadSiteSwitches(): Promise<SiteSwitches> {
   try {
@@ -66,6 +85,7 @@ export async function loadSiteSwitches(): Promise<SiteSwitches> {
       demoNotice: typeof body?.demoNotice === "boolean" ? body.demoNotice : DEFAULT_SITE_SWITCHES.demoNotice,
       customerAccounts:
         typeof body?.customerAccounts === "boolean" ? body.customerAccounts : DEFAULT_SITE_SWITCHES.customerAccounts,
+      sentry: siteSentry(body?.sentry),
     };
   } catch {
     return DEFAULT_SITE_SWITCHES;

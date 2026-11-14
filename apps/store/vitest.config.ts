@@ -35,5 +35,8 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}", "app/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"],
     // ESLint with the real project config on several fragments is slower than a unit test.
     testTimeout: 30_000,
+    // The browser build of @sentry/nextjs (src/observability/browser.test.ts) imports `next/router` without an
+    // extension, which Node cannot resolve in a package without exports; Vite resolves it when it processes the build.
+    server: { deps: { inline: [/@sentry\/nextjs\/build\/esm\/(index\.client\.js|client\/)/] } },
   },
 });
