@@ -288,9 +288,11 @@ jobs:
       matrix:
         include:
           - index: 1
-            after_e2e: true
+            after_e2e: false
           - index: 2
             after_e2e: false
+          - index: 3
+            after_e2e: true
     env:
       SCOPE: ${{ needs.scope.outputs.scope }}
       FULL_CI: ${{ needs.scope.outputs.scope == 'full' }}
@@ -473,14 +475,15 @@ jobs:
         run: make seed RUN="docker compose exec -T"
 
       # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
-      # per part) put the boundary after about 26% of the tests (admin-design to catalog-admin): those spec files take
-      # longer per test and the first part also runs the checks after the tests, which take ~2 min. When tests are
-      # added, move the boundary so that the parts end about together.
+      # per part, 52:59:89 of 190 tests) put the boundaries after 50 tests (admin-design to catalog-admin: slow per test)
+      # and after 106 (catalog to price-change); the last part (product-gallery to visual-screens, 84 fast tests) also
+      # runs the checks after the tests, which take ~2 min. A spec file belongs to the part in which its first test
+      # starts before the boundary. When tests are added, move the boundaries so that the parts end about together.
       - name: make e2e
         if: env.FULL_CI == 'true'
         env:
           E2E_SHARD: ${{ matrix.index }}/${{ strategy.job-total }}
-          E2E_SHARD_WEIGHTS: '26:74'
+          E2E_SHARD_WEIGHTS: '52:59:89'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
       # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk

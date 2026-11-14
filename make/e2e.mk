@@ -8,8 +8,8 @@ E2E_FLAGS ?=
 # with the GitHub Actions cache before and passes E2E_BUILD= to use it as it is.
 E2E_BUILD ?= --build
 
-# One part of the suite, e.g. E2E_SHARD=1/2 (Playwright `--shard`: whole spec files, in file order, split by the number of
-# tests). CI runs each part on its own stack. E2E_SHARD_WEIGHTS=26:74 (one weight per part, the same in every part)
+# One part of the suite, e.g. E2E_SHARD=1/3 (Playwright `--shard`: whole spec files, in file order, split by the number of
+# tests). CI runs each part on its own stack. E2E_SHARD_WEIGHTS=52:59:89 (one weight per part, the same in every part)
 # moves the boundary by the share of tests; it is Playwright's PWTEST_SHARD_WEIGHTS, which is not documented: without
 # it the split is even and every test still runs once. Both empty: the whole suite.
 E2E_SHARD ?=
