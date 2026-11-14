@@ -4,6 +4,7 @@ Each test builds a temporary HOME (resolved, without symlinks) with a fake AO ho
 clone and a task worktree, and puts a fake `security` first in PATH. The fake Claude binary records its arguments and
 environment; git is the real one (the origin is local, so `git ls-remote origin` works offline).
 """
+import importlib.util
 import json
 import os
 import shutil
@@ -16,6 +17,9 @@ import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+spec = importlib.util.spec_from_file_location('system_tmp', os.path.join(HERE, 'system_tmp.py'))
+system_tmp = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(system_tmp)
 WRAPPER = os.path.join(HERE, 'claude-agent')
 OVERLAY = os.path.join(HERE, 'bin', 'mktemp')
 TOKEN = 'github_pat_fake_executor_token'
@@ -176,6 +180,11 @@ class WrapperTestCase(unittest.TestCase):
                 env[key] = value
         return env
 
+    def require_system_tmp(self):
+        # The wrapper makes /private/tmp/agent.XXXXXX, which the executor's sandbox does not allow: a test that lets
+        # the wrapper start is skipped there (with the reason), never on a host or in CI (system_tmp.py).
+        system_tmp.require(self)
+
     def run_wrapper(self, *args, cwd=None, **env):
         return subprocess.run(['sh', WRAPPER, *args], cwd=cwd or self.work, capture_output=True, text=True,
                               env=self.env(**env))
@@ -185,6 +194,7 @@ class WrapperTestCase(unittest.TestCase):
             return json.load(f)
 
     def started(self, *args, cwd=None, **env):
+        self.require_system_tmp()
         result = self.run_wrapper(*args, cwd=cwd, **env)
         self.assertEqual(result.returncode, 0, result.stderr)
         return self.recorded()
@@ -341,11 +351,13 @@ class TaskTempDirTest(WrapperTestCase):
         self.assertNotEqual(first, self.started(*AO_ARGS)['env']['TMPDIR'])
 
     def test_exit_code_of_the_binary_is_returned_and_the_directory_removed(self):
+        self.require_system_tmp()
         result = self.run_wrapper(*AO_ARGS, FAKE_EXIT='7')
         self.assertEqual(result.returncode, 7, result.stderr)
         self.assert_removed(self.recorded())
 
     def test_stdin_reaches_the_binary(self):
+        self.require_system_tmp()
         result = subprocess.run(['sh', WRAPPER, *AO_ARGS], cwd=self.work, capture_output=True, text=True,
                                 env=self.env(FAKE_READ_STDIN='1'), input='{"type":"user"}\n')
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -353,6 +365,7 @@ class TaskTempDirTest(WrapperTestCase):
         self.assertIn('fake claude ran', result.stdout)
 
     def run_with_open_fds(self, numbers):
+        self.require_system_tmp()
         # Like AO, which passes its lock descriptors to the executor (pass_fds): the descriptors are open before the
         # wrapper starts.
         opens = ' '.join('%d<"$FD_DIR/%d"' % (n, n) for n in numbers)
@@ -382,6 +395,7 @@ class TaskTempDirTest(WrapperTestCase):
         self.assertIn('deskryptor', result.stderr)
 
     def run_and_signal(self, signum):
+        self.require_system_tmp()
         process = subprocess.Popen(['sh', WRAPPER, *AO_ARGS], cwd=self.work, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, env=self.env(FAKE_SLEEP='60'))
         self.addCleanup(lambda: process.poll() is None and process.kill())
@@ -476,11 +490,13 @@ class ClaudeTmpdirTest(WrapperTestCase):
         self.assertNotEqual(first, self.started(*AO_ARGS)['env']['CLAUDE_CODE_TMPDIR'])
 
     def test_removed_after_an_error_exit_with_what_claude_code_put_there(self):
+        self.require_system_tmp()
         result = self.run_wrapper(*AO_ARGS, FAKE_EXIT='3')
         self.assertEqual(result.returncode, 3, result.stderr)
         self.assertFalse(os.path.lexists(self.recorded()['env']['CLAUDE_CODE_TMPDIR']))
 
     def test_cleanup_leaves_run_directories_of_other_sessions(self):
+        self.require_system_tmp()
         # A real executor may start while the tests run; its run directory (its session's sockets) must survive the
         # cleanup of this test.
         other = tempfile.mkdtemp(prefix='agent.', dir=TEMP_PARENT)
@@ -495,12 +511,14 @@ class ClaudeTmpdirTest(WrapperTestCase):
         return self.refused(*AO_ARGS, FAKE_MKTEMP_BAD=bad)
 
     def test_a_directory_with_other_permissions_is_refused(self):
+        self.require_system_tmp()
         self.assertIn(TEMP_PARENT, self.fake_mktemp('mode'))
         made = self.created_run_dirs()
         self.assertEqual(len(made), 1)
         self.assertFalse(os.path.lexists(made[0]), 'the refused (empty) run directory stayed')
 
     def test_a_symlink_is_refused(self):
+        self.require_system_tmp()
         self.assertIn(TEMP_PARENT, self.fake_mktemp('symlink'))
 
     def test_a_failed_mktemp_is_refused(self):
@@ -540,6 +558,7 @@ class MktempOverlayTest(WrapperTestCase):
             self.assertFalse(overlay.startswith(granted.rstrip('/') + '/') and granted != self.work, granted)
 
     def test_the_overlay_stays_write_protected_when_the_wrapper_is_in_the_worktree(self):
+        self.require_system_tmp()
         copy = os.path.join(self.work, 'tools/agent-security')
         shutil.copytree(HERE, copy, ignore=shutil.ignore_patterns('test_*', '__pycache__'))
         self.git('add', '-A')

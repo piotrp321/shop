@@ -18,6 +18,16 @@ TEMPLATE = os.path.join(HERE, 'executor-settings.json')
 SCRIPT = os.path.join(HERE, 'render_settings.py')
 
 
+def load_system_tmp():
+    spec = importlib.util.spec_from_file_location('system_tmp', os.path.join(HERE, 'system_tmp.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+system_tmp = load_system_tmp()
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location('render_settings', SCRIPT)
     module = importlib.util.module_from_spec(spec)
@@ -301,6 +311,9 @@ class ClaudeTmpdirTest(RenderTestCase):
     directory itself (the session's messaging sockets), /tmp, or the per-uid directory shared by other sessions."""
 
     def run_dir(self, mode=0o700, inner_mode=0o700, inner=True, inner_name=CLAUDE_UID_DIR):
+        # Run directories are made in the system temp, which the executor's sandbox does not allow: skipped there
+        # (with the reason), never on a host or in CI (system_tmp.py).
+        system_tmp.require(self)
         path = tempfile.mkdtemp(prefix='agent.', dir=TEMP_PARENT)
         self.addCleanup(shutil.rmtree, path, True)
         if inner:

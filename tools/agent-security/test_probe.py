@@ -25,6 +25,9 @@ CASES_SCRIPT = os.path.join(HERE, 'probe-cases.sh')
 spec = importlib.util.spec_from_file_location('probe', SCRIPT)
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
+spec = importlib.util.spec_from_file_location('system_tmp', os.path.join(HERE, 'system_tmp.py'))
+system_tmp = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(system_tmp)
 
 CANARY = 'CANARY-abc123-secret'
 CANARY_DIR = '/home/u/.agent-security-canary-x'
@@ -1052,6 +1055,9 @@ class WrapperCasesTest(unittest.TestCase):
     """The wrapper cases run the real claude-agent (a fake `security` gives the token)."""
 
     def setUp(self):
+        # The wrapper makes /private/tmp/agent.XXXXXX, which the executor's sandbox does not allow: skipped there
+        # (with the reason), never on a host or in CI (system_tmp.py).
+        system_tmp.require(self)
         self.tmp = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.home = os.path.join(self.tmp, 'home')
