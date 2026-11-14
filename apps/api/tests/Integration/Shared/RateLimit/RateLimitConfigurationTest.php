@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Shared\RateLimit;
 use Monolog\Handler\FingersCrossedHandler;
 use Monolog\Handler\StreamHandler;
 use PHPUnit\Framework\TestCase;
+use Sentry\Monolog\LogToSentryIssueHandler;
 use Symfony\Component\Cache\Adapter\RedisAdapter;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
@@ -92,7 +93,8 @@ final class RateLimitConfigurationTest extends TestCase
 
         $appHandlers = self::handlersOf($definitions, 'monolog.logger');
         self::assertNotContains($cacheHandlers[0], $appHandlers, 'the other channels do not use it');
-        self::assertSame([FingersCrossedHandler::class], array_values(array_unique(array_map(static fn (string $id): ?string => $definitions[$id]->getClass(), $appHandlers))), 'the other channels keep the buffer');
+        // Next to it, the handler of the errors for Sentry (config/packages/monolog.yaml), which keeps nothing.
+        self::assertSame([FingersCrossedHandler::class, LogToSentryIssueHandler::class], array_values(array_unique(array_map(static fn (string $id): ?string => $definitions[$id]->getClass(), $appHandlers))), 'the other channels keep the buffer');
     }
 
     /**
