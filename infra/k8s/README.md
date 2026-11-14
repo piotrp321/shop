@@ -5,7 +5,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
 - **agent** – wykonuje go Claude Code celem Makefile albo zmianą w repo (PR), gdy użytkownik zlecił uruchomienie środowiska;
 - **zgoda użytkownika** – agent opisuje, co zrobi, pyta w rozmowie i czeka na odpowiedź; dopiero potem uruchamia (firewall,
   operacje kasujące dane, zakładanie kont);
-- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset i deploy key,
+- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowisko `production` i deploy key,
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
@@ -26,9 +26,10 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
    `keycloak.mailFrom`, jeśli ma być inny niż domyślny `zamowienia@`/`konto@<domena>`), PR do `main`; merge robi
    **użytkownik**. Wdrożenie (`deploy.yml`) startuje tylko na życzenie użytkownika (sekcja 7), nie po merge'u. Po
    merge'u **zgoda użytkownika** i `gh workflow run deploy.yml --ref main`; na tym etapie workflow
-   buduje i testuje obrazy, ale bez sekretu `DEPLOY_KEY` kończy się po smoke teście z ostrzeżeniem (nic nie publikuje).
+   buduje i testuje obrazy, a job `deploy` czeka na zatwierdzenie w środowisku `production` (1.3); bez sekretu `DEPLOY_KEY`
+   tego środowiska kończy się po nim z ostrzeżeniem (nic nie publikuje).
 
-## 1. GitHub: obrazy, ruleset, deploy key
+## 1. GitHub: obrazy, ruleset, środowisko `production`, deploy key
 
 Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
@@ -43,16 +44,34 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/deploy-push.json
    ```
 
-3. Deploy key z prawem zapisu i sekret repo `DEPLOY_KEY` (repo ma mieć **tylko jeden** deploy key, bo aktor `DeployKey`
-   obejmuje każdy):
+3. Środowisko `production` i deploy key z prawem zapisu. Job `deploy` workflowu (jedyny, który używa `DEPLOY_KEY`) działa
+   w środowisku `production`, a każdy sekret Actions poza `GITHUB_TOKEN` leży wyłącznie w środowisku, które przyjmuje tylko
+   gałąź `main` (workflow z gałęzi zadania nie dostaje wtedy ani sekretu, ani zatwierdzenia). Środowisko trzeba skonfigurować
+   **przed pierwszym przebiegiem** workflowu z `environment: production`: GitHub zakłada brakujące środowisko sam i bez żadnych
+   zabezpieczeń. Settings → Environments → New environment `production`:
+   - **Required reviewers**: użytkownik (zatwierdza wdrożenie; agenci nie mają uprawnienia, a token wykonawców AO nie ma
+     Deployments: write). **Prevent self-review** wyłączone: użytkownik uruchamia wdrożenie i sam je zatwierdza, a przy
+     włączonej opcji nikt nie mógłby go zatwierdzić.
+   - **Deployment branches and tags** → Selected branches and tags → reguła `main` (nazwa gałęzi, bez wzorców i tagów).
+   - **Environment secrets**: `DEPLOY_KEY` (poniżej). Sekret repozytorium o tej nazwie nie może istnieć: sekrety repozytorium
+     są widoczne w każdym workflowu, także z gałęzi zadania.
+
+   Repo ma mieć **tylko jeden** deploy key, bo aktor `DeployKey` obejmuje każdy:
 
    ```sh
    ssh-keygen -t ed25519 -N '' -C shop-deploy -f /tmp/shop-deploy-key
    gh repo deploy-key list                      # powinno być puste
    gh repo deploy-key add /tmp/shop-deploy-key.pub --allow-write --title shop-deploy
-   gh secret set DEPLOY_KEY < /tmp/shop-deploy-key
+   gh secret set DEPLOY_KEY --env production < /tmp/shop-deploy-key
    rm -f /tmp/shop-deploy-key /tmp/shop-deploy-key.pub
    ```
+
+   Sekret repozytorium `DEPLOY_KEY` założony wcześniej (zanim workflow dostał środowisko) **użytkownik** usuwa po merge'u końcowego
+   PR epiku AGENT-SECURITY: `gh secret delete DEPLOY_KEY`. Wartości sekretu GitHub nie zwraca, więc klucz do środowiska bierze
+   z menedżera haseł albo generuje nowy (stary deploy key wtedy usuwa: `gh repo deploy-key delete <id>`). Kolejny sekret Actions
+   (np. `SENTRY_AUTH_TOKEN`) dostaje środowisko tylko dla `main` (bez zatwierdzenia, jeśli ma działać bez niego) i trafia do listy
+   `MAIN_ONLY_ENVIRONMENTS` w `infra/k8s/tests/test_deploy_workflow.py` razem z opisem tutaj; test czyta pliki workflowów,
+   ale ustawień środowisk w GitHubie nie widzi, więc te kroki **użytkownik** sprawdza sam.
 
 4. **zgoda użytkownika** – uruchom wdrożenie ponownie: `gh workflow run deploy.yml --ref main` (obrazy z tagiem tego
    samego commita zostają, nie są przebudowywane). Krok `Publish deploy and deploy-images` tworzy gałęzie `deploy` i `deploy-images`.
@@ -104,8 +123,28 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    ```
 
 5. **agent** – commituje certyfikat (jest publiczny) w PR do `main`; merge robi **użytkownik**.
-6. **agent** – `make -C infra/k8s kubeconfig HOST=<user>@<adres> KUBE_DIR=<katalog poza repo>` (kubeconfig jest potrzebny do
-   `rerun` i `create-admin`; zawiera dane administratora klastra, nie trafia do repo).
+6. **agent** – `kubeconfig` pobiera kubeconfig klastra (dane administratora klastra, nie trafia do repo) do katalogu, z
+   którego korzystają `rerun`, `create-admin`, `restore` i `backups` (`KUBE_DIR`). Katalog powstaje na jedną operację i znika
+   po niej:
+
+   ```sh
+   KUBE_DIR="$(mktemp -d)"                      # katalog udostępniony Dockerowi (cele montują go w kontenerze)
+   make -C infra/k8s kubeconfig HOST=<user>@<adres> KUBE_DIR="$KUBE_DIR"
+   make -C infra/k8s backups KUBE_DIR="$KUBE_DIR"   # albo rerun, create-admin, restore
+   rm -rf "$KUBE_DIR"
+   ```
+
+   - Trwałych kubeconfigów produkcji nie trzyma się w katalogach udostępnionych Dockerowi ani w katalogu domowym: kontener
+     wykonawcy AO i jego Docker widzą te katalogi, a kubeconfig daje administratora klastra. Przy każdej operacji pobiera się go
+     od nowa.
+   - `kubeconfig` zapisuje bezwzględną ścieżkę `KUBE_DIR` w rejestrze `~/.local/state/shop-ops/kube-dirs` (prywatny plik, jedna
+     ścieżka w wierszu). `ao-prepare` (start AO przez `/ao-run`) odmawia, dopóki któryś zapisany katalog istnieje, więc
+     zapomniany `KUBE_DIR` zatrzymuje start AO, aż go usuniesz.
+   - `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
+     działa AO (`python3 -m orchestrator … run`) albo jego wykonawca (proces `claude-agent` albo runner AO): zatrzymaj AO albo
+     poczekaj na koniec przebiegu (wykonawca przeżywa śmierć AO, więc samo zatrzymanie AO nie zawsze wystarcza: poczekaj, aż
+     skończą się jego procesy). Błąd `ps` też jest odmową. Test dymny (`smoke`) tych odmów nie dotyczy. Słowo `tak` w
+     `create-admin` i `restore` podaje się na standardowym wejściu tego celu.
 
 ## 3. Sekrety
 
@@ -226,8 +265,11 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 
 - **Nowa wersja**: merge PR do `main` niczego nie wdraża. Wdrożenie startuje tylko na życzenie: **zgoda użytkownika**, potem
   `gh workflow run deploy.yml --ref main` (obrazy, smoke test, publikacja snapshotu; postęp: `gh run list --workflow deploy.yml`,
-  `gh run watch`), a Argo CD synchronizuje klaster. Wdraża się bieżący commit `main`; drugie uruchomienie w trakcie pierwszego
-  czeka, a trzecie zastępuje drugie. Błąd renderu albo migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej
+  `gh run watch`), a Argo CD synchronizuje klaster. Job `deploy` czeka na zatwierdzenie w środowisku `production`: **użytkownik**
+  zatwierdza je na stronie przebiegu (Review deployments), z powiadomienia albo w aplikacji mobilnej GitHuba; agent tego nie robi.
+  Wdraża się bieżący commit `main`; przebieg czekający na zatwierdzenie zajmuje grupę `concurrency` dla `main`, więc nowsze
+  przebiegi czekają za nim (najwyżej jeden, najnowszy: trzecie uruchomienie zastępuje drugie). Odrzucenie starszego
+  (Reject) przepuszcza najnowszy, który wdraża bieżący commit `main`, a przebieg niezatwierdzony w ciągu 30 dni wygasa. Błąd renderu albo migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej
   (aplikacja `Degraded`). Uruchomienie na innej gałęzi (`--ref <gałąź>`) to tylko próba: smoke test, nic nie jest
   wypychane i `deploy` się nie przesuwa.
 - **Cofnięcie wersji**: revert na `main` i nowe uruchomienie wdrożenia. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;

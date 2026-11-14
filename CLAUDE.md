@@ -50,9 +50,12 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `infra/k8s` ma własny `Makefile`: test dymny, pomiar obciążenia, Joby i cele serwera (opis: `infra/k8s/CLAUDE.md`).
     Agent wykonuje operacje na serwerze wyłącznie tymi celami. `create-admin` i `restore` uruchamia tylko po
     zgodzie użytkownika w rozmowie. Wdrożenie nowej wersji na serwer (`gh workflow run deploy.yml --ref main`) uruchamia
-    tylko na wyraźne polecenie użytkownika w rozmowie: merge do `main` niczego nie wdraża. Kroki runbooka
+    tylko na wyraźne polecenie użytkownika w rozmowie: merge do `main` niczego nie wdraża, a samo wdrożenie czeka jeszcze na
+    zatwierdzenie użytkownika w środowisku `production` w GitHubie (także z aplikacji mobilnej), którego agent nie zatwierdza.
+    Cele z `KUBE_DIR` (`kubeconfig`, `rerun`, `create-admin`, `restore`, `backups`) odmawiają pracy w trakcie przebiegu AO
+    (opis: `infra/k8s/CLAUDE.md`). Kroki runbooka
     `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access,
-    ruleset i deploy key, backup VPS-a) nie są jego decyzją ani czynnością.
+    ruleset, środowisko `production` i deploy key, backup VPS-a) nie są jego decyzją ani czynnością.
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
 - Tryb sklepu wybiera zmienna `STORE_MODE` dla `make up`: `dev` (domyślnie) uruchamia `next dev`, `production` robi
   `next build` i uruchamia `next start`. Inna wartość zatrzymuje kontener sklepu, a nieudany build też, więc `make up`
@@ -96,6 +99,9 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   Zakładanie lub aktualizacja (wymaga uprawnień admina repo; najpierw rulesety `*-merge`, żeby nie było chwili bez
   wymagań): `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/<plik>.json`
   (aktualizacja istniejącego: `-X PUT repos/piotrp321/shop/rulesets/<id>`).
+- Sekret Actions inny niż `GITHUB_TOKEN` jest tylko sekretem środowiska GitHub z polityką gałęzi „tylko `main`”, nigdy
+  sekretem repozytorium, `env:` workflowu ani `secrets: inherit` (pilnuje tego test workflowów w `make -C infra/k8s check`;
+  nowe środowisko dopisuje się do listy w teście i do runbooka `infra/k8s/README.md`).
 - Gałęzie `deploy` i `deploy-images` to wdrażana wersja. Obie przesuwa wyłącznie workflow `.github/workflows/deploy.yml`
   i nikt ich nie edytuje ręcznie. Obrazów, do których odwołują się snapshoty `deploy-images`, nie wolno usuwać z GHCR.
   Działanie workflowu i rulesety `deploy` i `deploy-push`: `infra/k8s/CLAUDE.md`.

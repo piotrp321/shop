@@ -44,8 +44,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 - Włączenie publicznej rejestracji i wysyłki zamówień przez Brevo: wymaga polityki prywatności i zabezpieczeń przed
   nadużyciami (#181); środowisko ma przełączniki i działającą weryfikację e-mail.
 - Testy obciążeniowe.
-- Zakup serwera, domeny, założenie kont zewnętrznych (Cloudflare, Brevo), ruleset
-  i deploy key na GitHubie oraz samo uruchomienie na serwerze – według runbooka (agent prowadzi kroki oznaczone
+- Zakup serwera, domeny, założenie kont zewnętrznych (Cloudflare, Brevo), ruleset,
+  środowisko `production` i deploy key na GitHubie oraz samo uruchomienie na serwerze – według runbooka (agent prowadzi kroki oznaczone
   „agent”). Repo, jego testy i CI nie wymagają serwera ani zmian w ustawieniach repo.
 - Sprawdzenie nazwy sklepu w bazach znaków towarowych (UPRP, EUIPO).
 - Zmiany środowiska lokalnego poza wspólnym skryptem seedów i przełącznikami sklepu (ich wartości domyślne dają zachowanie lokalne).
@@ -77,7 +77,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
   zbudowaniu obrazów z tagiem SHA raz generuje plik (`infra/k8s/scripts/images-values.sh`), smoke test instaluje chart
   dokładnie z tym plikiem, a po zielonym smoke teście i sprawdzeniu renderu `prod` z tym plikiem
   (`infra/k8s/scripts/verify-images.sh`) przesuwa obie gałęzie jednym `git push --atomic` (`.github/scripts/deploy-ref.sh`,
-  deploy key z sekretu repo `DEPLOY_KEY`, bez `--force`): błąd walidacji albo pusha nie publikuje niczego, a przy
+  deploy key z sekretu `DEPLOY_KEY` środowiska `production`, bez `--force`): błąd walidacji albo pusha nie publikuje niczego, a przy
   odrzuconym non-fast-forward żadna gałąź się nie przesuwa. Bypass rulesetu dotyczy wszystkich jego reguł, więc obie
   gałęzie chronią dwa rulesety na `refs/heads/deploy` i `refs/heads/deploy-images`: `deploy` (`tools/rulesets/deploy.json`:
   `deletion` i `non_fast_forward`, bez żadnego aktora bypass) zabrania usunięcia i force pusha wszystkim, a `deploy-push`
@@ -236,8 +236,17 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
    że pody api, store, admin i elasticsearch działają na tych digestach.
 4. Po zielonym smoke teście workflow sprawdza render `prod` z tym plikiem (każdy obraz własny to dokładnie
    `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z pliku) i jednym atomowym pushem przesuwa `deploy` fast-forwardem na ten
-   commit oraz dodaje snapshot do `deploy-images` (D4). Bez sekretu z deploy keyem (przed krokiem runbooka) workflow
-   kończy się po smoke teście z ostrzeżeniem, bez błędu.
+   commit oraz dodaje snapshot do `deploy-images` (D4). Ten job (`deploy`, jedyny z sekretem `DEPLOY_KEY`) działa w środowisku
+   GitHub `production`: wymaga zatwierdzenia przez użytkownika (wymagany recenzent, „Prevent self-review” wyłączone, bo
+   uruchamia i zatwierdza ta sama osoba), przyjmuje tylko gałąź `main`, a `DEPLOY_KEY` jest sekretem tego środowiska (sekret
+   repozytorium o tej nazwie nie istnieje). Zatwierdza się w GitHubie: na stronie przebiegu, z powiadomienia albo w aplikacji
+   mobilnej. Przebieg czekający na zatwierdzenie zajmuje grupę `concurrency` dla `main`, więc nowsze czekają za nim (najwyżej
+   jeden, najnowszy); odrzucenie starszego przepuszcza najnowszy, a niezatwierdzony przebieg wygasa po 30 dniach. Zasada dla
+   całego repozytorium: sekret Actions inny niż `GITHUB_TOKEN` jest tylko sekretem środowiska z polityką gałęzi „tylko `main`”,
+   bo workflow z gałęzi zadania (token agenta może go tam dodać) nie dostaje wtedy ani sekretu, ani zatwierdzenia;
+   `infra/k8s/tests/test_deploy_workflow.py` czyta każdy plik `.github/workflows` i pilnuje tego (ustawień środowisk w GitHubie
+   nie widzi: to krok runbooka). Bez sekretu z deploy keyem (przed krokiem runbooka) workflow kończy się po smoke teście
+   i zatwierdzeniu z ostrzeżeniem, bez błędu.
 5. Argo CD synchronizuje `root`, a przez niego `prometheus-crds`, `sealed-secrets`, `secrets`, `shop` i `monitoring` (fale
    −3, −2, −1, 0 i 1) z `deploy-images` (charty `sealed-secrets`, `prometheus-crds` i `monitoring` z ich repozytoriów Helm, w
    przypiętych wersjach); chart `shop` rozkłada zasoby w falach. `monitoring` jest ostatni: brak konta Grafana Cloud albo
@@ -394,7 +403,13 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     to błąd zgłaszany przed zastosowaniem `root` (sekrety z repo nie dałyby się odszyfrować), nic nie jest nadpisywane.
     Kontroler nie rotuje klucza (`keyrenewperiod: "0"`), więc certyfikat w repo i kopia klucza zostają aktualne.
     `argocd-cm` ma standardową customizację zdrowia `Application`, więc `root` czeka na aplikacje-dzieci w falach.
-  - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun` i `create-admin`.
+  - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun`, `create-admin`, `restore` i `backups`.
+    `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej; trwałych kubeconfigów produkcji nie
+    trzyma się w katalogach udostępnionych Dockerowi. Cel zapisuje bezwzględną ścieżkę w rejestrze
+    `~/.local/state/shop-ops/kube-dirs`, z którego czyta start AO przez `/ao-run` (odmawia, dopóki zapisany katalog istnieje).
+    `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają bez zmian (kod różny od 0, komunikat po angielsku: zatrzymaj AO albo
+    poczekaj na koniec przebiegu), gdy działa AO albo jego wykonawca (`scripts/ao-guard.sh`, wołany w Makefile, nie w
+    skryptach, więc test dymny działa jak dotąd); błąd listy procesów jest odmową.
   - `status`: stan aplikacji Argo, podów i Jobów (tylko odczyt).
   - `rerun JOB=…`: ponowienie Joba wersji (D11).
   - `create-admin`, `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa przez `bin/seed-demo` w podzie api):
@@ -403,7 +418,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     tylko raportuje).
 - Runbook `infra/k8s/README.md` jest sekwencją tych celów i kroków w Cloudflare, Brevo i GitHubie, oznaczonych:
   „agent”, „zgoda użytkownika” (firewall, operacje kasujące dane, konta), „użytkownik” (zakupy, konta zewnętrzne,
-  wartości sekretów, Cloudflare Access, ruleset i deploy key, backup VPS-a w OVH). Zawiera sprawdzenia po uruchomieniu: żądanie na IP
+  wartości sekretów, Cloudflare Access, ruleset, środowisko `production` i deploy key, backup VPS-a w OVH). Zawiera sprawdzenia po uruchomieniu: żądanie na IP
   serwera spoza Cloudflare odrzucone, logowanie do panelu przez Access, e-mail z `create-admin` dotarł, próby
   rulesetów `deploy` i `deploy-push` na obu gałęziach (`deploy`, `deploy-images`).
 
@@ -498,7 +513,9 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
    zbudowanym bez flag.
 6. `deploy.yml` przechodzi `actionlint`; uruchomiony w PR zmieniającym pliki z filtra ścieżek (zdarzenie `pull_request`; na
    innej gałęzi niż `main` także `workflow_dispatch`) buduje obrazy i przechodzi smoke test, a bez sekretu deploy keya
-   kończy się bez przesuwania `deploy` i `deploy-images`. Przy wdrożeniu (`workflow_dispatch` na `main`) smoke test instaluje chart z plikiem digestów (obrazy z GHCR), a
+   kończy się bez przesuwania `deploy` i `deploy-images`. Job `deploy` ma `environment: production`, a żaden plik w
+   `.github/workflows` nie używa sekretu innego niż `GITHUB_TOKEN` poza jobem ze środowiskiem „tylko `main`” (test
+   w `make -C infra/k8s check` z atrapami obejść). Przy wdrożeniu (`workflow_dispatch` na `main`) smoke test instaluje chart z plikiem digestów (obrazy z GHCR), a
    publikacja to jeden atomowy push po sprawdzeniu renderu (test na lokalnym repo bare, także odrzucony
    non-fast-forward, który nie przesuwa żadnej gałęzi).
 7. `initialize` i `keycloak-config` są idempotentne (smoke: upgrade z nową rewizją bez zmian danych i realmów; realm
@@ -506,7 +523,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 8. `seal-secrets.sh` na ścieżce błędu nie zapisuje plików, a ponowne uruchomienie nie zmienia istniejących sekretów;
    po dodaniu certyfikatu do repo `check` wymaga zaszyfrowanej wartości dla każdego klucza `init-env.sh`.
 9. `bootstrap` przechodzi `shellcheck`, uruchomiony dwa razy w kontenerze z Ubuntu 26.04 (bez k3s) nie psuje
-   konfiguracji; cele z potwierdzeniem bez `tak` niczego nie zmieniają.
+   konfiguracji; cele z potwierdzeniem bez `tak` niczego nie zmieniają; cele z `KUBE_DIR` odmawiają bez zmian przy
+   działającym AO albo jego wykonawcy (testy na atrapie listy procesów w `make -C infra/k8s check`).
 10. Runbook prowadzi od pustego serwera do działającego środowiska (z próbami rulesetów, Access, poczty
     i `ipAllowList`); wykonuje się go na serwerze, poza AO, z dostępami od użytkownika.
 

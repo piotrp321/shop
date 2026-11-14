@@ -8,7 +8,8 @@
 #                       after it passes, and after the render of prod with that file is checked, does one atomic push move
 #                       the branch `deploy` to the commit by fast-forward and add a snapshot commit (the commit plus the
 #                       file) to the branch `deploy-images`, which Argo CD tracks (.github/scripts/deploy-ref.sh, deploy
-#                       key from the secret DEPLOY_KEY; without the secret it ends with a warning, not an error).
+#                       key from the secret DEPLOY_KEY of the environment production; without the secret it ends with a
+#                       warning, not an error).
 #   workflow_dispatch   on any other branch: smoke only, on that branch; the images are built from the GitHub Actions
 #                       cache, nothing is pushed and `deploy` does not move. GitHub offers it only once this file is on the
 #                       default branch (main), so before the merge of the epic the rehearsal on the epic branch is the pull
@@ -18,6 +19,9 @@
 #
 # env.DEPLOY ("true" for a dispatch on main) is the one switch of everything above; the jobs `images` and `deploy` repeat
 # the same expression because the env context is not available in a job's `if`.
+#
+# The job `deploy` waits in the environment `production` until the user approves it (GitHub: the run page, the notification
+# or the mobile app), and only there is a secret of Actions other than GITHUB_TOKEN used (tests/test_deploy_workflow.py).
 #
 # Runs for main are never cancelled: one runs, at most one waits, and a waiting one is replaced by the newer request, which
 # runs on the then latest commit, so the latest commit is deployed. A run for any other ref is superseded by the next one
@@ -381,6 +385,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The user approves the deployment here (Settings > Environments > production: required reviewer, branch policy main
+    # only), and DEPLOY_KEY is a secret of this environment: a workflow on another branch gets neither the approval
+    # nor the key (infra/k8s/README.md, "Environment production").
+    environment: production
     permissions:
       contents: read
     steps:
