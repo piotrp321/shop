@@ -47,13 +47,20 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   identyfikator, czas, host, tagi, rewizja; tylko odczyt). `rerun`, `create-admin`, `restore` i `backups` łączą się z
   klastrem przez kubeconfig z `KUBE_DIR` (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w
   przestrzeni `KUBE_NAMESPACE` (domyślnie `shop`). Agent uruchamia `create-admin` i `restore` tylko po zgodzie użytkownika
-  w rozmowie; `backups` sam.
+  w rozmowie; `backups` sam. Te cztery i `kubeconfig` (cele, które zapisują albo montują `KUBE_DIR`, czyli kubeconfig
+  produkcji) wołają w Makefile najpierw `scripts/ao-guard.sh` i odmawiają (kod 1, bez zmian, z komunikatem „zatrzymaj AO albo
+  poczekaj na koniec przebiegu”), gdy działa AO (`python3 -m orchestrator … run`) albo żywy wykonawca (proces `claude-agent`
+  albo runner AO `orchestrator/runner.py`); błąd `ps` też jest odmową, a żadna zmienna nie wyłącza sprawdzenia. Skrypty
+  `rerun.sh`, `create-admin.sh`, `restore.sh` i `backups.sh` same go nie wołają, bo woła je `smoke.sh` (test dymny działa też
+  w trakcie przebiegu AO). `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej (runbook,
+  2.6); `kubeconfig` dopisuje jego bezwzględną ścieżkę do rejestru `~/.local/state/shop-ops/kube-dirs` (jedna ścieżka w
+  wierszu), z którego czyta `ao-prepare` i odmawia startu AO, dopóki zapisany katalog istnieje.
   Serwer obsługują cele (po SSH, `HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `make -C infra/k8s bootstrap HOST=…
   [SEALED_KEY_FILE=<kopia klucza>]` (czysty Ubuntu 26.04: k3s w przypiętej wersji, ufw, aktualizacje bezpieczeństwa, Argo CD,
   Sealed Secrets, aplikacja `root`; idempotentny; bez roota albo na innym systemie kończy się błędem przed zmianami;
   zapisuje certyfikat kontrolera do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma, a rozbieżny
   certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun`, `create-admin`, `restore`
-  i `backups`),
+  i `backups`; zapisuje `KUBE_DIR` w rejestrze, patrz wyżej),
   `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby i logi nieudanych Jobów), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
   demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup grafana"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
@@ -62,7 +69,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
   (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
   runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
-  „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset i deploy key, backup VPS-a)
+  „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset, środowisko `production` i deploy key, backup VPS-a)
   nie są jego decyzją ani czynnością.
 
 ## Co sprawdza `check`
@@ -151,7 +158,18 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   zaszyfrowaną wartość w `environments/prod/secrets/`; jawny Secret w tym katalogu to błąd), `seal-secrets.sh`
   i skrypty serwera na atrapach `docker` i `ssh`, `server-bootstrap.sh` dwa razy w kontenerze Ubuntu 26.04 bez k3s
   (atrapy `k3s`, `apt-get`, `ufw`, `sysctl`), brak workflowu usuwającego wersje pakietów GHCR oraz to, że `.gitignore`
-  nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście).
+  nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście). Testy workflowów
+  (`tests/test_deploy_workflow.py`, `render.sh` zamienia na JSON każdy plik `.github/workflows/*.yml` i `*.yaml`): job `deploy`
+  ma `environment: production` (nazwa albo obiekt z literalną nazwą), a żadne wyrażenie z kontekstem `secrets` inne niż
+  `secrets.GITHUB_TOKEN` (w każdej pisowni: wielkie litery, spacje, `secrets['X']`, `toJSON(secrets)`, `format(…)`, `env:`,
+  `with:`, skrypt, `if`) nie występuje poza jobem ze środowiskiem z listy `MAIN_ONLY_ENVIRONMENTS` (środowiska z polityką
+  gałęzi „tylko `main`”, opisane w runbooku); na poziomie workflowu i przy `secrets: inherit` jest błąd zawsze. Test widzi
+  pliki, nie ustawienia środowisk w GitHubie (to pozycja użytkownika w runbooku), i odrzuca atrapy z tymi obejściami.
+  Testy `ao-guard.sh` i celów (`tests/test_ao_guard.py`: atrapa `ps` z liniami jak na komputerze użytkownika, cele uruchamiane
+  przepisami z Makefile na atrapach `docker` i `ssh`: z AO, runnerem albo `claude-agent` każdy z pięciu celów odmawia bez wywołania
+  `docker`/`ssh` i bez zmian w `KUBE_DIR`, procesy podobne do AO przepuszcza, błąd `ps` jest odmową, bez AO cele działają jak
+  dotąd) i rejestru `KUBE_DIR` (`tests/test_server_scripts.py`). `selftest` ma przypadki: `deploy.yml` bez środowiska
+  `production` i sekret w `env:` workflowu.
 
 ## Gałęzie `deploy` i `deploy-images`
 
@@ -160,7 +178,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `infra/k8s/environments/prod/values-images.yaml` (`image.tag` i digesty czterech obrazów; nie ma go na `main`), z
   rodzicami: poprzedni snapshot i commit z `deploy`. Aplikacja `shop` ma jedno źródło: chart z `deploy-images` z plikami
   wartości `prod` i `values-images.yaml`. Obie gałęzie przesuwa wyłącznie workflow `.github/workflows/deploy.yml` jednym
-  `git push --atomic` (`.github/scripts/deploy-ref.sh`: bez `--force`, deploy keyem z sekretu repo `DEPLOY_KEY`), nikt
+  `git push --atomic` (`.github/scripts/deploy-ref.sh`: bez `--force`, deploy keyem z sekretu `DEPLOY_KEY` środowiska
+  `production`), nikt
   ich nie edytuje ręcznie. Workflow:
   - `workflow_dispatch` na `main` (wdrożenie tylko na życzenie użytkownika: `gh workflow run deploy.yml --ref main`, agent
     uruchamia je wyłącznie na jego wyraźne polecenie w rozmowie; push do `main` niczego nie wdraża): buduje i wypycha cztery obrazy produkcyjne
@@ -168,8 +187,11 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
     (`infra/k8s/scripts/images-values.sh`), uruchamia smoke test na tych obrazach (`make -C infra/k8s smoke` na
     `ubuntu-latest`; z `SMOKE_VALUES=<ten plik>` pierwsza instalacja pobiera obrazy z GHCR po digeście) i dopiero po zielonym
     oraz po sprawdzeniu renderu `prod` z tym plikiem (`infra/k8s/scripts/verify-images.sh`) przesuwa `deploy` i
-    `deploy-images`. Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu `DEPLOY_KEY` kończy się po smoke
-    teście z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
+    `deploy-images`. Job `deploy` (jedyny z `DEPLOY_KEY`) działa w środowisku `production` (wymagane zatwierdzenie użytkownika,
+    „Prevent self-review” wyłączone, polityka gałęzi tylko `main`), więc czeka na zatwierdzenie w GitHubie (strona przebiegu,
+    powiadomienie albo aplikacja mobilna; agent go nie zatwierdza). Każdy sekret Actions poza `GITHUB_TOKEN` jest sekretem
+    środowiska z polityką „tylko `main`” (pilnuje tego test). Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu
+    `DEPLOY_KEY` kończy się po smoke teście i zatwierdzeniu z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
     (dispatch na `main`) decyduje o wypychaniu obrazów, pliku digestów i jobie `deploy`.
   - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch` na innej gałęzi: tylko smoke test
     na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
@@ -180,8 +202,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
     typ `DeployKey`) obejmują `refs/heads/deploy` i `refs/heads/deploy-images`, bez wymogu PR. Aktor `DeployKey` to
     każdy deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia).
     Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak rulesetu `epic` (główny `CLAUDE.md`), osobno każdy plik
-    (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`). Rulesety, deploy key i sekret
-    `DEPLOY_KEY` zakłada się po merge'u epiku według runbooka wdrożenia.
+    (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`). Rulesety, deploy key, środowisko `production`
+    i jego sekret `DEPLOY_KEY` zakłada się według runbooka wdrożenia (sekret repozytorium `DEPLOY_KEY` użytkownik usuwa).
   - Obrazy, do których odwołują się snapshoty `deploy-images`, nie mogą być usuwane z GHCR (cofnięcie wersji to powrót do
     starszego snapshotu): żadna retencja pakietów ani workflow nie usuwa ich wersji (test w `make -C infra/k8s check`).
   - Test struktury rulesetów: `python3 -m unittest discover -s tools/rulesets -p 'test_*.py'`.
