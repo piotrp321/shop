@@ -23,17 +23,17 @@ final readonly class SentryEventProcessor
     {
     }
 
-    public function beforeSend(Event $event, ?EventHint $hint): ?Event
+    public function beforeSend(Event $event, ?EventHint $hint): Event
     {
         return $this->filter->filterEvent($this->tagged($event));
     }
 
-    public function beforeSendTransaction(Event $transaction, ?EventHint $hint): ?Event
+    public function beforeSendTransaction(Event $transaction, ?EventHint $hint): Event
     {
         return $this->filter->filterEvent($this->tagged($transaction));
     }
 
-    public function beforeBreadcrumb(Breadcrumb $breadcrumb): ?Breadcrumb
+    public function beforeBreadcrumb(Breadcrumb $breadcrumb): Breadcrumb
     {
         return $this->filter->filterBreadcrumb($breadcrumb);
     }

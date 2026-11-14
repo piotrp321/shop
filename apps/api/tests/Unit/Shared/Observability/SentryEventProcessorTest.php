@@ -36,8 +36,8 @@ final class SentryEventProcessorTest extends TestCase
 
         $sent = $this->processor->beforeSend($event, null);
 
-        self::assertSame($id, $sent?->getTags()['correlation_id'] ?? null);
-        self::assertNull($sent?->getUser());
+        self::assertSame($id, $sent->getTags()['correlation_id'] ?? null);
+        self::assertNull($sent->getUser());
     }
 
     public function testATransactionGetsTheCurrentCorrelationIdentifierAndIsFiltered(): void
@@ -48,8 +48,8 @@ final class SentryEventProcessorTest extends TestCase
 
         $sent = $this->processor->beforeSendTransaction($transaction, null);
 
-        self::assertSame($id, $sent?->getTags()['correlation_id'] ?? null);
-        self::assertSame('GET http://localhost/auth/callback', $sent?->getTransaction());
+        self::assertSame($id, $sent->getTags()['correlation_id'] ?? null);
+        self::assertSame('GET http://localhost/auth/callback', $sent->getTransaction());
     }
 
     public function testATagLeftByEarlierWorkIsReplacedByTheCurrentIdentifier(): void
@@ -58,7 +58,7 @@ final class SentryEventProcessorTest extends TestCase
         $event->setTag('correlation_id', 'an-earlier-message');
         $id = $this->correlationId->start();
 
-        self::assertSame($id, $this->processor->beforeSend($event, null)?->getTags()['correlation_id'] ?? null);
+        self::assertSame($id, $this->processor->beforeSend($event, null)->getTags()['correlation_id'] ?? null);
     }
 
     public function testWithoutAnIdentifierTheEventHasNoCorrelationTag(): void
@@ -66,13 +66,13 @@ final class SentryEventProcessorTest extends TestCase
         $event = Event::createEvent();
         $event->setTag('correlation_id', 'an-earlier-message');
 
-        self::assertArrayNotHasKey('correlation_id', $this->processor->beforeSend($event, null)?->getTags() ?? []);
+        self::assertArrayNotHasKey('correlation_id', $this->processor->beforeSend($event, null)->getTags());
     }
 
     public function testABreadcrumbIsFiltered(): void
     {
         $breadcrumb = new Breadcrumb(Breadcrumb::LEVEL_INFO, Breadcrumb::TYPE_DEFAULT, 'app', 'Sent to jan.kowalski@example.pl');
 
-        self::assertSame('Sent to [REDACTED]', $this->processor->beforeBreadcrumb($breadcrumb)?->getMessage());
+        self::assertSame('Sent to [REDACTED]', $this->processor->beforeBreadcrumb($breadcrumb)->getMessage());
     }
 }
