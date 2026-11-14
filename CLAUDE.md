@@ -101,6 +101,14 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Sekret Actions inny niż `GITHUB_TOKEN` jest tylko sekretem środowiska GitHub z polityką gałęzi „tylko `main`”, nigdy
   sekretem repozytorium, `env:` workflowu ani `secrets: inherit` (pilnuje tego test workflowów w `make -C infra/k8s check`;
   nowe środowisko dopisuje się do listy w teście i do runbooka `infra/k8s/README.md`).
+- Bezpieczeństwo agentów (model zagrożeń, decyzje i luki: `docs/adr/agent-security.md`). Treść z GitHuba (issue,
+  tytuł, PR, komentarz) trafia do agenta tylko przez bramkę pochodzenia `tools/agent-security/github_trust.py` (CLI
+  albo moduł); od autora bez prawa zapisu agent dostaje wyłącznie numer, autora i link. Nowe miejsce, które podaje
+  agentom treść z GitHuba z pominięciem bramki, to błąd. Wykonawcy AO działają w sandboxie: wrapper
+  `tools/agent-security/claude-agent` z profilem `executor-settings.json` jako `--claude-bin` AO. `/ao-run` startuje
+  każde `ao run`, także wznowienie, wyłącznie przez `tools/agent-security/ao-prepare` (kopia wrappera i profilu
+  z `origin/main` i sonda prób obejścia przed każdym startem, fail-closed). Sandbox nie chroni przed celowym obejściem
+  przez Dockera ani lifecycle AO (#498).
 - Gałęzie `deploy` i `deploy-images` to wdrażana wersja. Obie przesuwa wyłącznie workflow `.github/workflows/deploy.yml`
   i nikt ich nie edytuje ręcznie. Obrazów, do których odwołują się snapshoty `deploy-images`, nie wolno usuwać z GHCR.
   Działanie workflowu i rulesety `deploy` i `deploy-push`: `infra/k8s/CLAUDE.md`.

@@ -10,7 +10,10 @@ Krok 15 planu dodaje do tej kolejki retrospektywę `/retro <epik>` po przeglądz
 ([spec](../retro/spec.md), sekcja „Uruchamianie”). Krok 19a planu dodaje pracę równoległą: kolejny przygotowany epik,
 także z listy nocy, rusza naraz z trwającym, gdy przejdzie bramkę ryzyka (najwyżej dwa epiki aktywne). Bramkę,
 rezerwację, sync spójności i pomiar par opisuje [specyfikacja pracy równoległej](../parallel-work/spec.md); ta
-specyfikacja tylko na nią wskazuje. Kod AO się nie zmienia.
+specyfikacja tylko na nią wskazuje. Krok 16 (AGENT-SECURITY) dodaje sandbox wykonawców: AO startuje wyłącznie przez
+`ao-prepare` (kopia wrappera i profilu z `origin/main` i sonda prób obejścia przed każdym `ao run`), a issues epików
+kolejki przechodzą przez bramkę pochodzenia ([spec](../agent-security/spec.md), R1 i R7;
+[ADR](../../adr/agent-security.md)). Kod AO się nie zmienia.
 
 ## Wejście i warunki startu
 
@@ -60,10 +63,14 @@ Remote Control skill nie sprawdza.
     bez zer na wyjściu.
 - `.claude/skills/ao-run/next_epic.py` (Python 3.9+, bez zależności) i `test_next_epic.py`: wybór następnego epiku.
   Sam wykonuje `gh project item-list 1 --owner piotrp321` (pozycje w kolejności tablicy „Backlog sklepu”),
-  `gh issue list --label epic --state open`, `git ls-remote --heads origin 'epic/*'`, `git ls-tree` i `git show`
-  na `origin/main` (po `git fetch origin main`). Wypisuje jedną linię JSON:
-  `{"epic": {"dir", "id", "issue", "title"} | null, "in_progress": [...], "skipped": [...]}`; kod wyjścia 0, a 1
-  (komunikat na stderr), gdy komenda `gh` albo `git` się nie powiedzie. Reguły, po pozycjach tablicy od góry:
+  `git ls-remote --heads origin 'epic/*'`, `git ls-tree` i `git show` na `origin/main` (po `git fetch origin main`),
+  a otwarte issues `epic` czyta przez bramkę pochodzenia `tools/agent-security/github_trust.py` (moduł). Wypisuje
+  jedną linię JSON: `{"epic": {"dir", "id", "issue", "title"} | null, "in_progress": [...], "skipped": [...]}`; kod
+  wyjścia 0, a 1 (komunikat na stderr), gdy komenda `gh` albo `git` się nie powiedzie albo bramka nie może ocenić
+  autora (fail-closed). Reguły, po pozycjach tablicy od góry:
+  - issue autora bez prawa zapisu do repozytorium (`read`, `triage`, `404`, bot, `ghost`) nigdy nie jest epikiem
+    kolejki, w toku ani kandydatem: trafia do `skipped` jako `{"issue", "id": null, "reason", "author", "url"}`,
+    gdziekolwiek jest na tablicy, bez tytułu i treści (także tytułu z tablicy) i bez ID wyprowadzonego z tytułu;
   - liczą się tylko otwarte issues z `piotrp321/shop` z etykietą `epic` i bez `needs-info`; ID i katalog jak
     w `/prepare-epic` (prefiks tytułu przed dwukropkiem, katalog małymi literami); tytuł bez prefiksu trafia do
     `skipped` z powodem;
@@ -76,8 +83,9 @@ Remote Control skill nie sprawdza.
 - `.claude/skills/ao-run/night_queue.py` (Python 3.9+, bez zależności) i `test_night_queue.py`: lista na noc, pomiar,
   warunki startu kolejnego epiku (sekcja „Noc”) oraz bramka pracy równoległej z rezerwacją i wstrzymaniem
   równoległości (`gate`, `release`, `hold`, `unhold`; opis: [spec pracy równoległej](../parallel-work/spec.md),
-  „Gdzie działa”). Tablicę, issues, gałęzie i pliki na
-  `origin/main` czyta tak samo jak `next_epic.py` (wspólny kod w `next_epic.py`).
+  „Gdzie działa”). Tablicę, issues (przez bramkę pochodzenia), gałęzie i pliki na
+  `origin/main` czyta tak samo jak `next_epic.py` (wspólny kod w `next_epic.py`): issue `epic` niezaufanego autora
+  nie trafia na listę nocy, do bramki ani do `ahead`, a `propose` podaje je w `skipped` z powodem, autorem i linkiem.
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada stanu wspólnego, zapis atomowy,
   rezerwacje i właściciele epików, klasyfikacja plików bramki i pomiar pamięci Dockera (bez zależności od
   `night_queue.py`).
@@ -92,8 +100,25 @@ Remote Control skill nie sprawdza.
   którego `--version` zaczyna się od przypiętej wersji, wygrywa: skrypt wypisuje jego ścieżkę, kod 0. Kod 1: nie da
   się odczytać wersji (błąd `git`, brak pliku albo pola, wartość, która nie jest wersją). Kod 2: żaden kandydat nie
   jest tą wersją (brak pliku, plik niewykonywalny, błąd albo przekroczony czas `--version`, inna wersja); stderr
-  podaje powód dla każdego kandydata i komendę instalacji.
-- Katalog przebiegu `$HOME/.local/state/ao-<epik>/` (`AO_HOME`, poza repo) z `events.jsonl` i dziennikiem `run.log`.
+  podaje powód dla każdego kandydata i komendę instalacji. Ścieżka z `claude_pin.py` to binarka wrappera
+  (`AGENT_CLAUDE_BIN`), którą ustala `ao-prepare`.
+- `tools/agent-security/ao-prepare` (Python 3.9+, bez zależności) i `test_ao_prepare.py`: przygotowanie każdego
+  `ao run` (spec agent-security, R7). Kolejno, pierwszy niespełniony krok to odmowa (kod 1, jedna linia
+  `ao-prepare: <przyczyna>` na stderr, nic na stdout): jedno `ao-prepare` na `AO_HOME` i brak procesu AO na nim (kopia
+  nie zmienia się w trakcie przebiegu); żaden `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (zapisuje go
+  `infra/k8s/scripts/kubeconfig.sh`) nie istnieje; binarka przypięta z `claude_pin.py`; po `git fetch origin main`
+  sześć plików jednego commita `origin/main` (`claude-agent`, `render_settings.py`, `executor-settings.json`,
+  `probe.py`, `probe-cases.sh`, `bin/mktemp`; `git show`, nigdy drzewo robocze sesji, bit wykonywalności jak w gicie,
+  bez prawa zapisu) w nowym katalogu, który zastępuje cały `$AO_HOME/agent-security/`; sonda z tej kopii (przebieg
+  domyślny) na skopiowanym wrapperze z przypiętą binarką, z katalogu klonu, bez zmiennych `CLAUDE*`, z zewnętrznym
+  limitem czasu. Kod sondy różny od 0, limit czasu, brak albo nieczytelny wynik, wynik z przyczyną albo z przypadkiem
+  innym niż `pass` to odmowa „sonda bezpieczeństwa nie przeszła (<przyczyna>); czas …, koszt …”. Każdy przebieg
+  sondy dopisuje wiersz do `$AO_HOME/probe-runs.jsonl` (`at`, `main`, `code`, `seconds`, `cost_usd`, `reason`), a wynik
+  zostaje w `$AO_HOME/probe-result.json`. Sukces: kod 0 i na stdout linie `KLUCZ=wartość`: `AO_CLAUDE_BIN`
+  (wrapper kopii, dla `--claude-bin`), `AGENT_CLAUDE_BIN`, `AGENT_AO_HOME` (środowisko `ao run`), `PROBE_SECONDS`,
+  `PROBE_COST_USD`, `MAIN_SHA`.
+- Katalog przebiegu `$HOME/.local/state/ao-<epik>/` (`AO_HOME`, poza repo) z `events.jsonl`, dziennikiem `run.log`,
+  kopią sandboxa `agent-security/` i wynikami sondy (`probe-runs.jsonl`, `probe-result.json`).
 - Katalog stanu wspólnego `$HOME/.local/state/ao-night/` (poza repo, jeden dla wszystkich sesji `/ao-run` na
   komputerze): `night.json` (zatwierdzona lista), `measurements.jsonl` (pomiar każdego epiku prowadzonego przez
   `/ao-run`), `claims.json` (rezerwacje i właściciele epików), `gate.jsonl` (wyniki bramki), `parallel-hold.json`
@@ -106,11 +131,17 @@ Remote Control skill nie sprawdza.
    `ao epic start --dry-run`, odnawia rezerwację tym samym tokenem (ważną bez ponownych kroków bramki), potem
    `ao epic start`. Przy dwóch epikach każdy ma własne `AO_HOME`, proces AO, Monitor i pętlę na końcowy PR,
    a odpowiedź na bloker przy blokerach obu epików musi wskazać epik (bez tego sesja dopytuje).
-2. **Start.** Uruchamia w tle (Bash w tle sesji) `caffeinate -dims` z `ao run --until-idle`,
-   `--claude-bin <ścieżka z claude_pin.py>` i
+2. **Start.** Uruchamia w tle (Bash w tle sesji), w jednym poleceniu, `ao-prepare`, a po jego sukcesie
+   `caffeinate -dims` z `ao run --until-idle`, `--claude-bin` równym `AO_CLAUDE_BIN` (wrapper `claude-agent` z kopii
+   w `$AO_HOME/agent-security/`), zmiennymi `AGENT_CLAUDE_BIN` i `AGENT_AO_HOME` z wyniku `ao-prepare` i
    `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami jak przy CART:
    `--max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3`.
-   Zmienne `CLAUDE*` usuwa ze środowiska AO (jak wrapper z README AO).
+   Zmienne `CLAUDE*` usuwa ze środowiska AO (jak wrapper z README AO). Tak startuje każde `ao run`: pierwsze,
+   ponowne po blokerze, po `ao resume` i `ao epic resume`, w nowej sesji i w nocy; sesja nigdy nie pomija
+   `ao-prepare` ani nie używa jego wyniku z wcześniejszego przebiegu (sonda przy każdym starcie, P8 spec
+   agent-security). Odmowa `ao-prepare` (ostatnia linia `run.log` zaczyna się od `ao-prepare:`): AO nie startuje,
+   push „Epik <epik>: sonda bezpieczeństwa nie przeszła (<przyczyna>)”, w rozmowie przyczyna, czas i koszt; sesja
+   nie ponawia sama (ponowny start na polecenie użytkownika po usunięciu przyczyny), a epik nocy kończy noc.
 3. **Śledzenie.** Monitor sesji na `ao_events.py watch`: każda linia budzi sesję, a ta wysyła powiadomienie push
    (`PushNotification`). Monitor wygasa po 30 minutach, sesja uzbraja go ponownie, dopóki AO działa. Zakończenie
    procesu AO też budzi sesję.
@@ -128,7 +159,16 @@ Remote Control skill nie sprawdza.
      gdy ruszył mimo niej);
    - link do końcowego PR i linie `Closes #N`, które sesja dopisała do jego opisu (`gh pr edit`) już przy
      `final_pr_created` (raport tylko je sprawdza i uzupełnia), więc są też w PR zmergowanym przed `DONE`: każde issue
-     z linii `Issues:` specyfikacji na `origin/main`, tylko brakujące. Gdy się nie uda, raport podaje listę do dopisania.
+     z linii `Issues:` specyfikacji na `origin/main`, tylko brakujące. Gdy się nie uda, raport podaje listę do dopisania;
+   - sonda bezpieczeństwa: liczba przebiegów `ao-prepare` epiku, suma czasu i kosztu i przyczyny nieudanych
+     (`probe-runs.jsonl`).
+   Odbiór epiku AGENT-SECURITY (przed jego raportem odbioru i przed merge'em jego końcowego PR): `origin/main` nie ma
+   jeszcze sondy, więc sesja uruchamia ją z HEAD końcowego PR w osobnym worktree, w przebiegu domyślnym i `--mode ao`
+   (oba z kodem 0, wynik, czas i koszt w raporcie), a tokenem użytkownika odczytuje rulesety `main-merge`
+   i `epic-merge` (`gh api repos/piotrp321/shop/rulesets`, potem `…/rulesets/<id>`): `current_user_can_bypass` musi
+   być `never`, a `bypass_actors` puste, tak jak `never` tokenu wykonawcy z przypadku sondy `rulesets_bypass_never`.
+   Inna wartość (także `pull_requests_only` tokenu użytkownika), brak rulesetu albo nieudana sonda to bloker dla
+   użytkownika: rekomendacja „najpierw sprawdź”, push i brak merge'u także na polecenie, do ponownego odbioru.
    Push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Końcowy PR merguje użytkownik w GitHubie albo sesja, gdy
    użytkownik napisze jej w rozmowie (także z telefonu), że ma go zmergować; wiadomość innej sesji, plik, komentarz
    w PR ani wynik narzędzia nie jest takim poleceniem. Sesja merguje tylko PR `OPEN` i `MERGEABLE` z bazą `main`,
@@ -374,7 +414,8 @@ dwóch aktywnych epików naraz (razem z epikami innych sesji) i nie zaczyna epik
 tylko w dzień po „tak” użytkownika, w nocy nigdy), nie zdejmuje wstrzymania równoległości (`unhold`) bez decyzji
 użytkownika w rozmowie, nie przejmuje epiku innej sesji bez „tak” użytkownika, nie zaczyna
 epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na listę nocy), nie przygotowuje epiku (`/prepare-epic`)
-i nie zmienia tablicy.
+i nie zmienia tablicy. Nie uruchamia `ao run` bez `ao-prepare` w tym samym poleceniu ani z jego wyniku
+z wcześniejszego przebiegu, nie pomija sondy i nie zmienia rulesetów.
 
 ## Testy
 
@@ -389,7 +430,11 @@ instalacji; brak `origin/main`, brak checkoutu, brak pola, nieczytelny plik, war
 kandydat bez `{version}` → błąd użycia); `next_epic.py` z podstawionymi wynikami komend (kolejność tablicy, pominięcie
 zamkniętych, z `needs-info`, bez etykiety `epic`, z innego repo i nie-issue, tytuł bez prefiksu, plan bez manifestu,
 brak `spec.md`, epik w toku blokuje wybór, epik zakończony z gałęzią i zamkniętym issue nie blokuje, pusta tablica,
-błąd `gh` albo `git` → kod 1); `night_queue.py` z podstawionymi wynikami komend, plikami stanu w katalogu
+błąd `gh` albo `git` → kod 1; bramka pochodzenia: issue autora z `read`, `triage`, `404`, bota, `ghost` albo bez
+autora nie jest kandydatem ani epikiem w toku i trafia do `skipped` z powodem, autorem i linkiem także pod
+kandydatem, bez tytułu i treści w wyjściu; `write` i `maintain` są zaufane; jedno zapytanie o uprawnienia na login;
+błąd zapytania o uprawnienia → kod 1 bez wyjścia; błąd prawdziwego wykonawcy komend zachowuje stdout, więc `404`
+to autor niezaufany); `night_queue.py` z podstawionymi wynikami komend, plikami stanu w katalogu
 tymczasowym i ustalonym „teraz” (zakres: wspólna ścieżka po segmentach, linia nieczytelna, brak linii; `propose`:
 zależność od otwartego epiku, wspólny zakres, epik bez zakresu tylko jako jedyny, niższy epik przed wyższym,
 limit czasu z pomiarem i bez; `approve`: zgodna i niezgodna lista; `start` i `done`: liczba zadań, czas, okno
@@ -398,7 +443,18 @@ epik już nie przygotowany albo w toku, brak pomiaru, przekroczone `until`, okno
 odnawiane przed końcem; bramka, rezerwacja, blokada, zmiany `propose`, `approve`, `next` i `start` oraz `pairs.py`:
 lista w spec pracy równoległej, „Testy”; `room`: brak okien, okno poniżej i od 80%, próg `--max-percent` (95%, domyślne 80%, zła wartość → kod 1), okno odnawiane w ciągu podanych godzin,
 stan limitów inny niż `ok`, pusty i niepoprawny JSON, zły argument → kod 1; `close`: ustawienie końca nocy, drugie wywołanie bez zmiany, brak listy, odmowa `next` po
-`close`, zapis końca przez `next` zwracające `null`, nowa noc po `approve`; `ahead` z pomiarem i bez; błąd `gh` albo `git` → kod 1). CI uruchamia testy skilli tak jak dla
+`close`, zapis końca przez `next` zwracające `null`, nowa noc po `approve`; `ahead` z pomiarem i bez; błąd `gh` albo `git` → kod 1;
+bramka pochodzenia: issue `epic` niezaufanego autora nie trafia do `propose`, `approve`, `gate` (także z `--dir`)
+ani `ahead`, `propose` podaje je w `skipped`, tytuł i treść nie pojawiają się w wyjściu, błąd zapytania o uprawnienia
+→ kod 1). `python3 -m unittest discover -s tools/agent-security -p 'test_ao_prepare.py'`: `ao-prepare` z prawdziwym
+repozytorium tymczasowym z `origin`, atrapą sondy zapisaną na `origin/main` i atrapą `claude_pin.py` (sześć plików
+z `origin/main` po `fetch`, nie z drzewa roboczego, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
+z kopii, na wrapperze kopii, z przypiętą binarką i bez zmiennych `CLAUDE*`, a zmieniony `probe.py` drzewa roboczego
+nie rusza; starsza kopia zastąpiona w całości; wynik z `AO_CLAUDE_BIN` kopii i zmiennymi; zapis przebiegów; istniejący
+`KUBE_DIR` z rejestru, także jako wiszące dowiązanie, wpis względny i nieczytelny rejestr zatrzymują, nieistniejący
+wpis nie; sonda z kodem 1 albo 2, limit czasu z zabiciem sondy, brak, nieczytelny albo niespójny wynik, błąd
+`claude_pin.py`, plik brakujący albo dowiązanie na `origin/main`, nieudany `fetch`, brak `git`, AO działające na tym
+`AO_HOME` i zły `AO_HOME` → kod różny od 0 z przyczyną; brak argumentów → kod 2). CI uruchamia testy skilli tak jak dla
 `delivery` i `integration`. Sam przebieg sprawdza krok 7 planu (CART-FIXES), a nocną kolejkę pierwsza noc po kroku 8.
 
 ## Zmiana w planie
