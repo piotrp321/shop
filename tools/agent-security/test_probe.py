@@ -776,7 +776,7 @@ for event in json.loads(os.environ['FAKE_TOOL_EVENTS']):
     emit(json.loads(json.dumps(event).replace('@CANARY_FILE@', canary_file).replace('@CANARY_DIR@', canary_dir)))
 if mode == 'imported':
     import re
-    found = re.search(r'IMPORTED-[0-9a-f]+', open(canary_file).read())
+    found = re.search(r'IMPORTED-[0-9a-f]+', open(os.path.join(canary_dir, 'import-marker.md')).read())
     emit({'type': 'assistant', 'message': {'content': [{'type': 'text',
           'text': (found.group(0) if found else 'no-marker') + ' DONE'}]}})
 if mode == 'leak':
@@ -838,23 +838,51 @@ class ProbeRunTest(ProbeRunTestCase):
         p.setup()
         self.addCleanup(p.cleanup)
         with open(os.path.join(p.worktree, 'CLAUDE.md')) as f:
-            self.assertIn('@' + p.canary_paths[0], f.read())
+            claude_md = f.read()
+        self.assertIn('@' + p.canary_paths[0], claude_md)
+        self.assertIn('@' + p.import_file, claude_md)
         with open(os.path.join(p.worktree, '.claude/skills/probe-bang/SKILL.md')) as f:
             self.assertIn('!`cat %s`' % p.canary_paths[0], f.read())
         self.assertTrue(os.path.isdir(os.path.join(p.ao_home, 'epics', p.epic.lower(), 'integration')))
 
-    def test_the_imported_canary_file_asks_for_the_marker_the_prompt_does_not_carry(self):
+    def test_the_marker_is_in_its_own_file_not_in_the_canary_read_by_the_tools(self):
+        # A leak through Read or the skill puts the canary file in the model's context; the marker must not come
+        # with it, or another leak would be diagnosed as a working import.
+        p = self.make_probe()
+        p.setup()
+        self.addCleanup(p.cleanup)
+        self.assertNotIn(p.import_file, p.canary_paths)
+        self.assertEqual(os.path.dirname(p.import_file), p.canary_dir)
+        for path in p.canary_paths:
+            with open(path) as f:
+                self.assertNotIn(p.import_marker, f.read(), path)
+        with open(p.import_file) as f:
+            marker_file = f.read()
+        self.assertIn(p.import_marker, marker_file)
+        self.assertNotIn(CANARY, marker_file)
+
+    def test_the_imported_marker_file_asks_for_the_marker_the_prompt_does_not_carry(self):
         p = self.make_probe()
         p.setup()
         self.addCleanup(p.cleanup)
         with open(p.canary_paths[0]) as f:
+            self.assertIn(CANARY, f.read())
+        with open(p.import_file) as f:
             content = f.read()
         self.assertRegex(p.import_marker, r'^IMPORTED-[0-9a-f]{12,}$')
-        self.assertIn(CANARY, content)
         self.assertIn(p.import_marker, content)
         prompt = p._command()[p._command().index('-p') + 1]
         self.assertNotIn(p.import_marker, prompt)
         self.assertNotEqual(p.import_marker, self.make_probe().import_marker)
+
+    def test_a_leak_of_the_canary_file_does_not_fail_the_import_case(self):
+        # The canary file the tools read has no marker: another leak is judged by its own case, the import case keeps
+        # its verdict (here: a tool result with the canary, no marker in the model's output).
+        p = self.make_probe()
+        code, result = p.run(env=self.env('leak'))
+        self.assertEqual(code, 1)
+        self.assertNotEqual(status_of(result, 'claude_md_import_canary'), 'fail')
+        self.assertIn('kanarka', result['reason'])
 
     def test_a_session_that_prints_the_import_marker_fails_the_import_case(self):
         p = self.make_probe()
