@@ -312,21 +312,36 @@ class EvaluateAoModeTest(unittest.TestCase):
 
 
 class CasesScriptHelpersTest(unittest.TestCase):
-    """The helpers of probe-cases.sh, sourced in library mode with a fake gh in PATH."""
+    """The helpers of probe-cases.sh, sourced in library mode with a fake gh in PATH. The script runs in an empty
+    directory with HOME there and failing stubs for every tool with effects outside it, so a broken library mode
+    cannot run real cases against the repository, the user's git configuration, GitHub or Docker."""
+
+    STUBBED = ('git', 'docker', 'docker-credential-desktop', 'security', 'curl', 'make', 'python3', 'ln')
 
     def setUp(self):
         self.tmp = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        with open(os.path.join(self.tmp, 'gh'), 'w') as f:
+        self.bin = os.path.join(self.tmp, 'bin')
+        self.cwd = os.path.join(self.tmp, 'cwd')
+        os.makedirs(self.bin)
+        os.makedirs(self.cwd)
+        with open(os.path.join(self.bin, 'gh'), 'w') as f:
             f.write('#!/bin/sh\n[ "$1 $2" = "api -i" ] || exit 9\n'
                     'printf "HTTP/2.0 %s X\\r\\n\\r\\n{}\\n" "$FAKE_STATUS"\n[ "$FAKE_STATUS" = 200 ]\n')
-        os.chmod(os.path.join(self.tmp, 'gh'), 0o755)
+        for name in self.STUBBED:
+            with open(os.path.join(self.bin, name), 'w') as f:
+                f.write('#!/bin/sh\nexit 97\n')
+        for name in os.listdir(self.bin):
+            os.chmod(os.path.join(self.bin, name), 0o755)
+
+    def run_sourced(self, command, **extra):
+        env = dict(os.environ, PATH=self.bin + os.pathsep + os.environ['PATH'], PROBE_CASES_LIB='1', HOME=self.cwd,
+                   PROBE_AO_HOME=os.path.join(self.cwd, 'ao'), **extra)
+        return subprocess.run(['sh', '-c', command], capture_output=True, text=True, env=env, cwd=self.cwd).stdout
 
     def verdict(self, expected, status):
-        command = '. "%s"; expect_http probe_case %s repos/x' % (CASES_SCRIPT, expected)
-        env = dict(os.environ, PATH=self.tmp + os.pathsep + os.environ['PATH'], PROBE_CASES_LIB='1',
-                   FAKE_STATUS=status)
-        out = subprocess.run(['sh', '-c', command], capture_output=True, text=True, env=env).stdout
+        out = self.run_sourced('. "%s"; expect_http probe_case %s repos/x' % (CASES_SCRIPT, expected),
+                               FAKE_STATUS=status)
         return json.loads(out.strip().splitlines()[-1])['status']
 
     def test_only_the_expected_status_passes(self):
@@ -347,10 +362,8 @@ class CasesScriptHelpersTest(unittest.TestCase):
         self.assertIn('expect_http gh_ao_repository 404', source)
 
     def test_library_mode_runs_no_case(self):
-        env = dict(os.environ, PROBE_CASES_LIB='1')
-        out = subprocess.run(['sh', '-c', '. "%s"' % CASES_SCRIPT], capture_output=True, text=True, env=env,
-                             cwd=self.tmp).stdout
-        self.assertEqual(out, '')
+        self.assertEqual(self.run_sourced('. "%s"' % CASES_SCRIPT), '')
+        self.assertEqual(os.listdir(self.cwd), [])
 
 
 FAKE_EXECUTOR = '''#!%s
