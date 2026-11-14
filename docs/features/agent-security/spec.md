@@ -93,8 +93,9 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
   Fine-grained tokens, potem Keychain.
 - Udostępnianie plików w Docker Desktop (P2) ograniczone do `~/Development/claude` i katalogów tymczasowych
   (`/private/var/folders`, `/private/tmp`, `/tmp`): Settings → Resources → File sharing. Po co: sonda zadania
-  AGENT-SECURITY-3 sprawdza, że kontener nie widzi `~` poza tymi katalogami. Wykonawcy katalogów tymczasowych hosta
-  nie potrzebują (ich katalogi tymczasowe są w worktree, R2); udostępnione zostają dla operacji użytkownika
+  AGENT-SECURITY-3 sprawdza, że kontener nie widzi `~` poza tymi katalogami. Kontenery wykonawców
+  montują tylko worktree; katalogi tymczasowe wykonawców są w worktree i w prywatnym katalogu przebiegu
+  w `/private/tmp` (R2); udostępnione zostają dla operacji użytkownika
   (`KUBE_DIR` z `mktemp -d`). Źródło: użytkownik. Od tej chwili
   `KUBE_DIR` celów produkcyjnych musi leżeć w katalogu udostępnionym (runbook z AGENT-SECURITY-4); projekty Dockera
   spoza `~/Development/claude` wymagają dopisania ich katalogu.
@@ -280,12 +281,13 @@ Użycie (zastępuje bezpośrednie `gh … --json body,title,comments` w miejscac
 `tools/agent-security/render_settings.py` (Python 3.9+, biblioteka standardowa), wywoływany przez wrapper i dostępny
 osobno (EVALS #495 uruchamia nim evale w tym samym sandboxie): `--workdir <katalog roboczy>`, `--git-common-dir
 <.git>` (opcjonalnie), `--state-dir <katalog>` (powtarzalny: odczyt i zapis), `--read-dir <katalog>` (powtarzalny:
-tylko odczyt), `--deny-write <ścieżka>`
+tylko odczyt), `--claude-tmpdir <katalog>` (katalog tymczasowy Claude Code przebiegu: odczyt i zapis tylko jego
+podkatalogu `claude-<uid>`), `--deny-write <ścieżka>`
 (powtarzalny), `--no-network` (bez domen GitHuba i `allowLocalBinding`), `--no-docker` (bez gniazda Dockera); wynik
 JSON na stdout.
 
 - Opcje zaostrzające (`--deny-write`, `--no-network`, `--no-docker`) tylko dokładają ograniczenia. Opcje dostępu
-  (`--workdir`, `--git-common-dir`, `--state-dir`, `--read-dir`) **rozszerzają** odczyt albo zapis, więc o tym, co
+  (`--workdir`, `--git-common-dir`, `--state-dir`, `--read-dir`, `--claude-tmpdir`) **rozszerzają** odczyt albo zapis, więc o tym, co
   wykonawca widzi, decyduje wywołujący. Reguły bezpieczeństwa (`denyRead`, `denyWrite`, flagi sandboxa, reguły `deny`,
   `disableAllHooks`) są tylko w szablonie i żadna opcja ich nie usuwa.
 - Zaufane źródła ścieżek dostępu: wyłącznie wywołujący poza sandboxem, z wartości, których wykonawca nie kontroluje.
@@ -299,6 +301,14 @@ JSON na stdout.
   `~/.config`, `~/Library`, `~/.claude`, `~/.docker`, `~/.local/state/shop-ops`); wrapper dodatkowo wymaga, żeby katalog
   zadania był w `$AGENT_AO_HOME/tasks/`, katalog integracji w `$AGENT_AO_HOME/epics/<epik>/integration`, a
   `$AGENT_AO_HOME` miał postać `~/.local/state/ao-<nazwa>` (po `realpath`).
+- Walidacja `--claude-tmpdir` (bez wyjątków dla `/tmp`): ścieżka bezwzględna i znormalizowana, bez dowiązania
+  w żadnym komponencie, bezpośredni podkatalog `/private/tmp` (na Linuksie `/tmp`, czyli `realpath /tmp`), nazwa
+  inna niż wspólne katalogi Claude Code (`claude-*`, `cc-socks*`), prawdziwy katalog bieżącego użytkownika z trybem
+  `0700`, świeży: zawiera wyłącznie pusty podkatalog `claude-<uid>` (też `0700`, bieżący użytkownik, bez dowiązania).
+  Odczyt i zapis dostaje tylko `<katalog>/claude-<uid>` (jedna dosłowna ścieżka, bez formy `/tmp/…`: Seatbelt
+  sprawdza ścieżkę po rozwiązaniu dowiązania `/tmp`). Nie da się nią otworzyć `/tmp`, `/private/tmp`, wspólnego
+  `/tmp/claude-<uid>` innych sesji ani katalogu przebiegu innego wykonawcy (ma już `cc-socks` i zawartość
+  `claude-<uid>`).
 - Dowiązania tworzone przez wykonawcę w dozwolonych katalogach: Seatbelt sprawdza ścieżkę docelową po rozwiązaniu
   dowiązania symbolicznego, więc dowiązanie do kanarka w worktree albo w katalogu zadania nie daje odczytu (przypadek
   sondy). Dowiązanie twarde do pliku z katalogu zablokowanego dałoby ten sam i-węzeł pod dozwoloną ścieżką: sonda ma
@@ -314,7 +324,8 @@ JSON na stdout.
   katalog zadania `$AO_HOME/tasks/<AO_TASK_ID>` (stan `/delivery`, dziennik dowodów, briefy rund:
   `orchestrator/core.py` `state_file`, `brief_file`), dla zadania `<EPIK>-INTEGRATION-<n>` także
   `$AO_HOME/epics/<epik>/integration` (`orchestrator/integration.py` `report_path`), `~/.docker` (wtyczki CLI),
-  `~/.gitconfig`, `~/.config/git`. Dokładną listę ustala zadanie sondą (najmniejsza, przy której przechodzą
+  `~/.gitconfig`, `~/.config/git`, katalog `claude-<uid>` w katalogu tymczasowym Claude Code przebiegu (`--claude-tmpdir`).
+  Dokładną listę ustala zadanie sondą (najmniejsza, przy której przechodzą
   przypadki pracy). Zablokowane zostają m.in. `~/.ssh`, `~/.kube`, `~/.config`, `~/Library` (Keychain),
   `~/.claude`, drzewo robocze głównego klonu, inne katalogi `~/Development` (prywatne AO, worktree innych zadań
   i sesji), stan innych zadań i epików, baza
@@ -328,7 +339,8 @@ JSON na stdout.
   epiku zadania integracji wrapper znajduje w `$AO_HOME/epics/` po prefiksie identyfikatora (bez rozróżniania
   wielkości liter); brak albo kilka pasujących to odmowa.
 - Zapis: worktree (w nim katalogi tymczasowe zadania, wrapper), `.git` głównego klonu (commity w worktree),
-  `$AO_HOME/tasks/<AO_TASK_ID>` i katalog integracji epiku (jak przy odczycie). `denyWrite`: `<worktree>/.ao`,
+  `$AO_HOME/tasks/<AO_TASK_ID>` i katalog integracji epiku (jak przy odczycie), `claude-<uid>` katalogu tymczasowego
+  Claude Code przebiegu (`TMPDIR` poleceń Bash). `denyWrite`: `<worktree>/.ao`,
   `<worktree>/.git` (plik `gitdir:`), `<.git>/hooks`, `<.git>/config`, `<.git>/worktrees/*/config*`,
   `<.git>/worktrees/*/commondir` i `gitdir`, `$AO_HOME/tasks/<AO_TASK_ID>/briefs` i `attempts` (pisze je AO);
   ścieżki chronione przez Claude Code (`.claude/settings*.json`, `.mcp.json`) zostają zablokowane.
@@ -363,16 +375,26 @@ JSON na stdout.
   i ustawia `GH_TOKEN`; brak tokenu kończy wrapper błędem z instrukcją (wykonawca nigdy nie startuje z tokenem
   użytkownika);
 - tworzy katalogi tymczasowe zadania w worktree (`<worktree>/.agent-tmp/run.<losowy>/`, w `.gitignore`), nigdy we
-  wspólnym `/tmp` ani w katalogu tymczasowym użytkownika (`/var/folders/…`): `TMPDIR`, `BUILDX_CONFIG` (stan buildx
-  zamiast `~/.docker/buildx`, tylko do odczytu), `GH_CONFIG_DIR` i `XDG_CACHE_HOME` (pamięć podręczna logów `gh`).
-  `.agent-tmp` musi być katalogiem bieżącego użytkownika bez dowiązania w żadnym komponencie, inaczej odmowa.
-  Binarkę uruchamia jako proces potomny (nie `exec`), przekazuje jej `INT`, `TERM` i `HUP` (`INT` jako `TERM`, bo
-  proces w tle nieinteraktywnej powłoki ignoruje `SIGINT`) i stdin, zwraca jej kod wyjścia i po jej końcu usuwa
-  katalog przebiegu (po ponownym sprawdzeniu dowiązań). Claude Code 2.1.311 nadpisuje `TMPDIR` poleceń Bash
-  w sandboxie na `/tmp/claude-<uid>` (ścieżka per-uid pod `CLAUDE_CODE_TMPDIR` w worktree przekracza 44 bajty, limit
-  gniazd AF_UNIX), a `/tmp` jest w `denyRead`, więc polecenia używające `TMPDIR` (`mktemp` bez szablonu,
-  `docker compose build`) nie działają w sandboxie (Ryzyka). `CLAUDE_CODE_TMPDIR` wrapper nie ustawia: katalog
-  tymczasowy samego Claude Code (gniazda, wyniki poleceń) zostaje poza zapisem wykonawcy;
+  wspólnym `/tmp` ani w katalogu tymczasowym użytkownika (`/var/folders/…`): `TMPDIR` procesu Claude Code,
+  `BUILDX_CONFIG` (stan buildx zamiast `~/.docker/buildx`, tylko do odczytu), `GH_CONFIG_DIR` i `XDG_CACHE_HOME`
+  (pamięć podręczna logów `gh`). `.agent-tmp` musi być katalogiem bieżącego użytkownika bez dowiązania w żadnym
+  komponencie, inaczej odmowa;
+- tworzy na każdy przebieg świeży katalog tymczasowy Claude Code (`CLAUDE_CODE_TMPDIR`): `mktemp -d
+  /private/tmp/agent.<losowy>` i w nim pusty `claude-<uid>` (`0700`); po utworzeniu sprawdza, że to prawdziwy katalog
+  bieżącego użytkownika z trybem `0700` bez dowiązania (inaczej usuwa pusty katalog i odmawia), i przekazuje go
+  `render_settings.py` w `--claude-tmpdir`. Claude Code 2.1.311 daje poleceniom Bash w sandboxie
+  `TMPDIR=<katalog>/claude-<uid>` (niezależnie od `TMPDIR` wrappera) i trzyma gniazdo komunikacji sesji
+  w `<katalog>/cc-socks`; profil otwiera tylko `claude-<uid>`, więc wykonawca nie usunie ani nie podmieni gniazda,
+  a `/tmp`, `/private/tmp` i wspólny `/tmp/claude-<uid>` innych sesji zostają w `denyRead`. Katalog jest
+  w `/private/tmp`, bo `<katalog>/claude-<uid>` musi mieć najwyżej 44 bajty (gniazda AF_UNIX); dłuższa ścieżka
+  (np. w worktree) sprawia, że Claude Code wraca do wspólnego `/tmp/claude-<uid>`. `mktemp` z szablonem
+  w `$TMPDIR` albo z `-p "$TMPDIR"`, Python `tempfile` i `docker compose build` (Go `os.TempDir`) działają w tym
+  katalogu; `mktemp` bez szablonu na macOS bierze `_CS_DARWIN_USER_TEMP_DIR` (`/var/folders/…/T`), a nie `TMPDIR`,
+  i w sandboxie się nie udaje (Ryzyka);
+- binarkę uruchamia jako proces potomny (nie `exec`), przekazuje jej `INT`, `TERM` i `HUP` (`INT` jako `TERM`, bo
+  proces w tle nieinteraktywnej powłoki ignoruje `SIGINT`) i stdin, zwraca jej kod wyjścia i po jej końcu (także po
+  sygnale) usuwa katalog przebiegu w `.agent-tmp` i katalog tymczasowy Claude Code (po ponownym sprawdzeniu
+  dowiązań);
 - ustawia dla procesu wykonawcy `git` przez HTTPS zamiast SSH
   (`url.https://github.com/.insteadOf git@github.com:`) i pomocnika poświadczeń czytającego `GH_TOKEN` (zmienne
   `GIT_CONFIG_COUNT`/`KEY`/`VALUE`, bez zmian w `.git/config` i `~/.gitconfig`); usuwa `SSH_AUTH_SOCK`.
@@ -656,10 +678,12 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 
 - Nowa wersja Claude Code zmienia zachowanie sandboxa albo nazwy ustawień: sonda przy każdym starcie AO wykrywa to
   przed pracą.
-- Claude Code 2.1.311 daje poleceniom Bash w sandboxie `TMPDIR=/tmp/claude-<uid>`, zablokowany profilem: `mktemp`
-  bez szablonu i `docker compose build` (BuildKit: `os.TempDir`) w sandboxie wykonawcy nie działają, a przypadek
-  sondy `work_docker_compose_build` nie przechodzi. Rozszerzenie profilu (otwarcie `/tmp/claude-<uid>`) albo inne
-  obejście to decyzja użytkownika (raport AGENT-SECURITY-3).
+- `mktemp` bez szablonu na macOS (także `mktemp -d`) tworzy plik w `_CS_DARWIN_USER_TEMP_DIR`
+  (`/var/folders/…/T`, katalog tymczasowy użytkownika, w którym są też `KUBE_DIR` operacji), a nie w `TMPDIR`;
+  ten katalog jest dla wykonawcy tylko do odczytu, więc polecenie się nie udaje, a przypadek sondy `work_mktemp` nie
+  przechodzi. Dotyczy to skryptów repozytorium z gołym `mktemp -d` (np. `.github/scripts/test_*.sh`,
+  `infra/k8s/scripts/tools.sh`). Rozwiązanie (poszerzenie profilu albo zmiana skryptów lub przypadku) to decyzja
+  użytkownika (raport AGENT-SECURITY-3).
 - Za wąska lista odczytu lub sieci psuje pracę wykonawcy w rzadkim przypadku: bloker z `Operation not permitted`,
   poprawka profilu w PR. Pierwszy epik po AGENT-SECURITY-5 to pomiar: blokery wywołane profilem w raporcie odbioru.
 - `disableAllHooks` wyłącza hook startowy wtyczki superpowers u wykonawców; skille wtyczki zostają dostępne.

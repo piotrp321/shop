@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE = os.path.join(HERE, 'executor-settings.json')
@@ -185,8 +186,8 @@ class RenderPathsTest(RenderTestCase):
         self.assertTrue(settings['sandbox']['network']['allowedDomains'])
 
     def test_no_option_opens_a_shared_temporary_directory(self):
-        # The executor's temporary directories live in its worktree (claude-agent); nothing re-opens /tmp,
-        # /private/tmp or the user's /var/folders temp, so a symlink planted there cannot redirect access.
+        # Only --claude-tmpdir touches the system temp, and only for a fresh run directory (ClaudeTmpdirTest); nothing
+        # re-opens /tmp, /private/tmp or the user's /var/folders temp, so a symlink planted there cannot redirect access.
         for value in ('/tmp/claude-501', '/private/tmp/claude-501', '/private/var/folders/x/T'):
             self.refused('--workdir', self.work, '--open-temp', value)
         for args in (('--workdir', self.work), ('--workdir', self.work, '--git-common-dir', self.git,
@@ -197,7 +198,7 @@ class RenderPathsTest(RenderTestCase):
                     continue   # the test's own directories (HOME) happen to live in the system temp
                 self.assertFalse(path.startswith(('/tmp', '/private/tmp', '/var/folders', '/private/var')), path)
 
-    def test_the_module_has_no_temp_option(self):
+    def test_the_module_has_no_other_temp_option(self):
         module = load_module()
         with self.assertRaises(TypeError):
             module.render(template(), self.home, self.work, temp_dirs=['/tmp/claude-501'])
@@ -288,6 +289,97 @@ class RenderValidationTest(RenderTestCase):
                                 env=env)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, '')
+
+
+TEMP_PARENT = os.path.realpath('/tmp')   # /private/tmp on macOS, /tmp on Linux
+CLAUDE_UID_DIR = 'claude-%d' % os.getuid()
+
+
+class ClaudeTmpdirTest(RenderTestCase):
+    """--claude-tmpdir: the CLAUDE_CODE_TMPDIR of one executor run, a fresh directory the wrapper made directly in the
+    system temp. Only its claude-<uid> subdirectory (the TMPDIR Claude Code gives to Bash) is opened, never the run
+    directory itself (the session's messaging sockets), /tmp, or the per-uid directory shared by other sessions."""
+
+    def run_dir(self, mode=0o700, inner_mode=0o700, inner=True, inner_name=CLAUDE_UID_DIR):
+        path = tempfile.mkdtemp(prefix='agent.', dir=TEMP_PARENT)
+        self.addCleanup(shutil.rmtree, path, True)
+        if inner:
+            os.mkdir(os.path.join(path, inner_name))
+            os.chmod(os.path.join(path, inner_name), inner_mode)
+        os.chmod(path, mode)
+        return path
+
+    def test_only_the_claude_directory_of_the_run_is_opened(self):
+        run = self.run_dir()
+        fs = self.render('--workdir', self.work, '--claude-tmpdir', run)['sandbox']['filesystem']
+        inner = os.path.join(run, CLAUDE_UID_DIR)
+        self.assertIn(inner, fs['allowRead'])
+        self.assertIn(inner, fs['allowWrite'])
+        opened = [p for p in fs['allowRead'] + fs['allowWrite'] if p.startswith(TEMP_PARENT + '/')
+                  or p.startswith('/tmp/') or p.startswith('/private/tmp/')]
+        self.assertEqual(set(opened), {inner})
+        for path in ('/tmp', '/private/tmp'):
+            self.assertIn(path, fs['denyRead'])
+
+    def test_the_module_renders_the_same(self):
+        run = self.run_dir()
+        settings = load_module().render(template(), self.home, self.work, claude_tmpdir=run)
+        self.assertEqual(settings, self.render('--workdir', self.work, '--claude-tmpdir', run))
+
+    def test_the_system_temp_itself_is_refused(self):
+        for path in ('/tmp', '/private/tmp', TEMP_PARENT):
+            self.refused('--workdir', self.work, '--claude-tmpdir', path)
+
+    def test_the_shared_per_uid_directory_of_other_sessions_is_refused(self):
+        shared = os.path.join(TEMP_PARENT, CLAUDE_UID_DIR)
+        self.refused('--workdir', self.work, '--claude-tmpdir', shared)
+        self.refused('--workdir', self.work, '--claude-tmpdir', os.path.join(TEMP_PARENT, 'cc-socks'))
+
+    def test_a_directory_another_session_already_uses_is_refused(self):
+        used = self.run_dir()
+        os.mkdir(os.path.join(used, 'cc-socks'))
+        self.refused('--workdir', self.work, '--claude-tmpdir', used)
+        busy = self.run_dir()
+        os.mkdir(os.path.join(busy, CLAUDE_UID_DIR, 'project'))
+        self.refused('--workdir', self.work, '--claude-tmpdir', busy)
+
+    def test_a_directory_without_its_claude_subdirectory_is_refused(self):
+        self.refused('--workdir', self.work, '--claude-tmpdir', self.run_dir(inner=False))
+
+    def test_other_permissions_are_refused(self):
+        for mode, inner_mode in ((0o755, 0o700), (0o750, 0o700), (0o700, 0o755), (0o700, 0o777)):
+            self.refused('--workdir', self.work, '--claude-tmpdir', self.run_dir(mode, inner_mode))
+
+    def test_a_symlink_is_refused(self):
+        run = self.run_dir()
+        link = os.path.join(TEMP_PARENT, 'agent.link-%d' % os.getpid())
+        os.symlink(run, link)
+        self.addCleanup(os.unlink, link)
+        self.refused('--workdir', self.work, '--claude-tmpdir', link)
+        if TEMP_PARENT != '/tmp':   # macOS: /tmp is a symlink to /private/tmp
+            self.refused('--workdir', self.work, '--claude-tmpdir', '/tmp/' + os.path.basename(run))
+        inner_target = self.run_dir()
+        swapped = self.run_dir(inner=False)
+        os.symlink(os.path.join(inner_target, CLAUDE_UID_DIR), os.path.join(swapped, CLAUDE_UID_DIR))
+        self.refused('--workdir', self.work, '--claude-tmpdir', swapped)
+
+    def test_a_directory_deeper_or_outside_the_system_temp_is_refused(self):
+        run = self.run_dir()
+        self.refused('--workdir', self.work, '--claude-tmpdir', os.path.join(run, CLAUDE_UID_DIR))
+        elsewhere = self.mkdir('home/Development/claude/run')
+        os.mkdir(os.path.join(elsewhere, CLAUDE_UID_DIR), 0o700)
+        os.chmod(elsewhere, 0o700)
+        self.refused('--workdir', self.work, '--claude-tmpdir', elsewhere)
+        self.refused('--workdir', self.work, '--claude-tmpdir', 'tmp/agent.x')
+
+    def test_another_owner_is_refused(self):
+        # As another user: the directory and its claude-<uid> subdirectory are named for that user but owned by us.
+        other = os.getuid() + 1
+        run = self.run_dir(inner_name='claude-%d' % other)
+        module = load_module()
+        with mock.patch.object(module.os, 'getuid', return_value=other):
+            with self.assertRaises(module.SettingsError):
+                module.render(template(), self.home, self.work, claude_tmpdir=run)
 
 
 class SecurityRulesStayTest(RenderTestCase):

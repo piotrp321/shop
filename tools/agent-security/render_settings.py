@@ -3,7 +3,7 @@
 this script. Python 3.9+, standard library only.
 
   render_settings.py --workdir DIR [--git-common-dir GITDIR] [--state-dir DIR]... [--read-dir DIR]...
-                     [--deny-write PATH]... [--no-network] [--no-docker]
+                     [--claude-tmpdir DIR] [--deny-write PATH]... [--no-network] [--no-docker]
 
 Prints the settings JSON on stdout and exits 0. The security rules (sandbox flags, denyRead, the deny rules,
 disableAllHooks, the denyWrite paths derived from the directories) come from the template and this script; no option
@@ -15,6 +15,11 @@ removes them. Every option only adds to them:
                      write-protected.
   --state-dir        read and write (a task directory of AO); also a working directory of the file tools.
   --read-dir         read only; also a working directory of the file tools.
+  --claude-tmpdir    the CLAUDE_CODE_TMPDIR of this run: a fresh directory directly in the system temp (/private/tmp
+                     on macOS), owned by the current user, mode 0700, holding only an empty claude-<uid> (mode 0700).
+                     Claude Code gives Bash TMPDIR=<dir>/claude-<uid>; only that subdirectory becomes readable and
+                     writable. The directory itself (the session's messaging sockets), /tmp and the per-uid directory
+                     shared by other sessions (/tmp/claude-<uid>) stay closed.
   --deny-write       write-protected (absolute path; need not exist).
   --no-network       no GitHub domains and no allowLocalBinding (strictAllowlist stays: no network at all).
   --no-docker        no Docker socket.
@@ -29,7 +34,7 @@ Exit codes: 0 rendered; 1 a path or the template is invalid; 2 usage error. Noth
 
 Module interface (EVALS runs its cases in the same sandbox):
   render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dirs=(), deny_writes=(), network=True,
-         docker=True) -> dict
+         docker=True, claude_tmpdir=None) -> dict
   load_template(path=TEMPLATE) -> dict
   SettingsError: an invalid path or template.
 """
@@ -38,6 +43,7 @@ import copy
 import json
 import os
 import re
+import stat
 import sys
 
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'executor-settings.json')
@@ -45,6 +51,8 @@ PROTECTED = ('.ssh', '.kube', '.config', 'Library', '.claude', '.docker', '.loca
 GIT_PROTECTED = ('hooks', 'config*', 'worktrees/*/config*', 'worktrees/*/commondir', 'worktrees/*/gitdir')
 FORBIDDEN_CHARACTERS = re.compile(r'[*?\[\]{}\x00-\x1f\x7f  ]')
 DOCKER_SOCKET_SUFFIX = 'docker.sock'
+TEMP_PARENT = os.path.realpath('/tmp')   # /private/tmp on macOS
+CLAUDE_SHARED_NAMES = ('claude-', 'cc-socks')   # Claude Code's per-uid directory and sockets shared by sessions
 
 
 class SettingsError(Exception):
@@ -96,6 +104,50 @@ def access_path(path, home, option, git_dir=False):
     return path
 
 
+def _private_dir(path, option):
+    """SettingsError unless path is a real directory (not a symlink) of the current user with mode 0700."""
+    try:
+        info = os.lstat(path)
+    except OSError as e:
+        raise SettingsError('%s %s: brak katalogu (%s)' % (option, path, e.strerror))
+    if not stat.S_ISDIR(info.st_mode):
+        raise SettingsError('%s %s: to nie katalog (dowiązanie albo plik)' % (option, path))
+    if info.st_uid != os.getuid():
+        raise SettingsError('%s %s: katalog należy do innego użytkownika (uid %d)' % (option, path, info.st_uid))
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        raise SettingsError('%s %s: uprawnienia %03o zamiast 700' % (option, path, stat.S_IMODE(info.st_mode)))
+
+
+def claude_tmp_path(path, option='--claude-tmpdir'):
+    """The claude-<uid> subdirectory of a fresh run directory for CLAUDE_CODE_TMPDIR; SettingsError otherwise."""
+    if not isinstance(path, str) or not path:
+        raise SettingsError('%s: pusta ścieżka' % option)
+    if FORBIDDEN_CHARACTERS.search(path):
+        raise SettingsError('%s %r: ścieżka ze znakiem globu albo sterującym' % (option, path))
+    if not os.path.isabs(path) or os.path.normpath(path) != path or path.startswith('//'):
+        raise SettingsError('%s %s: ścieżka musi być bezwzględna i znormalizowana' % (option, path))
+    if os.path.dirname(path) != TEMP_PARENT or os.path.basename(path) in ('', '.', '..'):
+        raise SettingsError('%s %s: to nie bezpośredni podkatalog %s' % (option, path, TEMP_PARENT))
+    if os.path.basename(path).startswith(CLAUDE_SHARED_NAMES):
+        raise SettingsError('%s %s: to wspólny katalog Claude Code innych sesji' % (option, path))
+    if os.path.realpath(path) != path:
+        raise SettingsError('%s %s: ścieżka zawiera dowiązanie symboliczne' % (option, path))
+    _private_dir(path, option)
+    name = 'claude-%d' % os.getuid()
+    try:
+        entries = sorted(os.listdir(path))
+    except OSError as e:
+        raise SettingsError('%s %s: nie można odczytać katalogu (%s)' % (option, path, e.strerror))
+    if entries != [name]:
+        raise SettingsError('%s %s: katalog nie jest świeży (oczekiwany tylko pusty %s, jest: %s)'
+                            % (option, path, name, ', '.join(entries) or 'nic'))
+    inner = os.path.join(path, name)
+    _private_dir(inner, option)
+    if os.listdir(inner):
+        raise SettingsError('%s %s: katalog %s nie jest pusty' % (option, path, name))
+    return inner
+
+
 def deny_path(path):
     if not isinstance(path, str) or not os.path.isabs(path) or FORBIDDEN_CHARACTERS.search(path):
         raise SettingsError('--deny-write %r: ścieżka musi być bezwzględna, bez znaków globu i sterujących' % (path,))
@@ -117,7 +169,7 @@ def _add(items, values):
 
 
 def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dirs=(), deny_writes=(), network=True,
-           docker=True):
+           docker=True, claude_tmpdir=None):
     """The settings of one executor; the template is not changed. SettingsError for an invalid path."""
     home = os.path.realpath(home)
     workdir = access_path(workdir, home, '--workdir')
@@ -125,6 +177,7 @@ def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dir
     state = [access_path(p, home, '--state-dir') for p in state_dirs]
     read = [access_path(p, home, '--read-dir') for p in read_dirs]
     denied = [deny_path(p) for p in deny_writes]
+    claude_tmp = [claude_tmp_path(claude_tmpdir)] if claude_tmpdir is not None else []
 
     settings = copy.deepcopy(template)
     sandbox = settings['sandbox']
@@ -135,8 +188,8 @@ def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dir
         fs[key] = [_expand(p, home) for p in fs.get(key, [])]
     net['allowUnixSockets'] = [_expand(p, home) for p in net.get('allowUnixSockets', [])]
 
-    _add(fs['allowRead'], [workdir] + ([git_dir] if git_dir else []) + state + read)
-    _add(fs['allowWrite'], [workdir] + ([git_dir] if git_dir else []) + state)
+    _add(fs['allowRead'], [workdir] + ([git_dir] if git_dir else []) + state + read + claude_tmp)
+    _add(fs['allowWrite'], [workdir] + ([git_dir] if git_dir else []) + state + claude_tmp)
     protected = [os.path.join(workdir, '.ao')]
     if git_dir != os.path.join(workdir, '.git'):
         protected.append(os.path.join(workdir, '.git'))
@@ -172,6 +225,7 @@ def main(argv=None):
     parser.add_argument('--git-common-dir')
     parser.add_argument('--state-dir', action='append', default=[])
     parser.add_argument('--read-dir', action='append', default=[])
+    parser.add_argument('--claude-tmpdir')
     parser.add_argument('--deny-write', action='append', default=[])
     parser.add_argument('--no-network', action='store_true')
     parser.add_argument('--no-docker', action='store_true')
@@ -179,7 +233,8 @@ def main(argv=None):
     try:
         settings = render(load_template(), os.path.expanduser('~'), args.workdir, args.git_common_dir,
                           args.state_dir, args.read_dir, args.deny_write,
-                          network=not args.no_network, docker=not args.no_docker)
+                          network=not args.no_network, docker=not args.no_docker,
+                          claude_tmpdir=args.claude_tmpdir)
     except SettingsError as e:
         print('render_settings.py: %s' % e, file=sys.stderr)
         return 1

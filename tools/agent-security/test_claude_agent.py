@@ -23,9 +23,16 @@ FAKE_CLAUDE = '''#!%s
 import json, os, sys, time
 TEMP_VARIABLES = ('TMPDIR', 'BUILDX_CONFIG', 'GH_CONFIG_DIR', 'XDG_CACHE_HOME')
 stdin = sys.stdin.read() if os.environ.get('FAKE_READ_STDIN') else None
+claude_tmp = os.environ.get('CLAUDE_CODE_TMPDIR')
+claude_tmp_state = None
+if claude_tmp and os.path.lexists(claude_tmp):
+    info = os.lstat(claude_tmp)
+    claude_tmp_state = {'mode': info.st_mode & 0o7777, 'uid': info.st_uid, 'link': os.path.islink(claude_tmp),
+                        'entries': sorted(os.listdir(claude_tmp)) if os.path.isdir(claude_tmp) else None}
 with open(os.environ['FAKE_CLAUDE_RECORD'], 'w') as f:
     json.dump({'argv': sys.argv[1:], 'env': dict(os.environ), 'pid': os.getpid(), 'stdin': stdin,
-               'dirs': {k: os.path.isdir(os.environ.get(k, '')) for k in TEMP_VARIABLES}}, f)
+               'dirs': {k: os.path.isdir(os.environ.get(k, '')) for k in TEMP_VARIABLES},
+               'claude_tmp': claude_tmp_state}, f)
 print('fake claude ran')
 sys.stdout.flush()
 if os.environ.get('FAKE_SLEEP'):
@@ -259,8 +266,8 @@ class TaskTempDirTest(WrapperTestCase):
         return os.path.join(self.work, '.agent-tmp')
 
     def assert_removed(self, record):
-        for name in TEMP_VARIABLES:
-            self.assertFalse(os.path.exists(record['env'][name]), name)
+        for name in TEMP_VARIABLES + ('CLAUDE_CODE_TMPDIR',):
+            self.assertFalse(os.path.lexists(record['env'][name]), name)
         self.assertFalse(os.path.exists(self.temp_root()), 'the task temp root stayed')
 
     def test_temp_directories_are_in_the_worktree_and_set_for_the_executor(self):
@@ -346,6 +353,95 @@ class TaskTempDirTest(WrapperTestCase):
         repository = os.path.dirname(os.path.dirname(HERE))
         result = subprocess.run(['git', 'check-ignore', '-q', '.agent-tmp/run.x/tmp/file'], cwd=repository)
         self.assertEqual(result.returncode, 0, '.agent-tmp is not in .gitignore')
+
+
+TEMP_PARENT = os.path.realpath('/tmp')   # /private/tmp on macOS
+CLAUDE_UID_DIR = 'claude-%d' % os.getuid()
+
+# mktemp that, for the run directory in the system temp, makes a directory the wrapper must refuse.
+FAKE_MKTEMP = '''#!/bin/sh
+last=
+for a in "$@"; do last=$a; done
+case $last in
+"$FAKE_TEMP_PARENT"/*)
+    case ${FAKE_MKTEMP_BAD:-} in
+    mode) d=$(/usr/bin/mktemp -d "$last") && chmod 755 "$d" && echo "$d"; exit ;;
+    symlink) d=$(/usr/bin/mktemp -d "$last") && l="$d.link" && ln -s "$d" "$l" && echo "$l"; exit ;;
+    fail) echo "mktemp: cannot create" >&2; exit 1 ;;
+    esac ;;
+esac
+exec /usr/bin/mktemp "$@"
+'''
+
+
+class ClaudeTmpdirTest(WrapperTestCase):
+    """CLAUDE_CODE_TMPDIR (B4): every run gets a fresh directory with a short random name directly in the system temp
+    (/private/tmp on macOS), mode 0700, owned by the user, holding only claude-<uid>, the TMPDIR Claude Code gives to
+    Bash. Only claude-<uid> is opened in the profile; the wrapper removes the directory after the executor."""
+
+    def run_dirs(self):
+        return {name for name in os.listdir(TEMP_PARENT) if name.startswith('agent.')}
+
+    def setUp(self):
+        super().setUp()
+        self.before = self.run_dirs()
+        self.addCleanup(self.remove_new_run_dirs, self.before)
+
+    def remove_new_run_dirs(self, before):
+        for name in self.run_dirs() - before:
+            path = os.path.join(TEMP_PARENT, name)
+            if os.path.islink(path):
+                os.unlink(path)
+            else:
+                shutil.rmtree(path, True)
+
+    def test_a_fresh_private_directory_in_the_system_temp(self):
+        record = self.started(*AO_ARGS, CLAUDE_CODE_TMPDIR='/tmp')
+        path = record['env']['CLAUDE_CODE_TMPDIR']
+        self.assertEqual(os.path.dirname(path), TEMP_PARENT)
+        self.assertEqual(record['claude_tmp'], {'mode': 0o700, 'uid': os.getuid(), 'link': False,
+                                                'entries': [CLAUDE_UID_DIR]})
+        # Claude Code keeps <dir>/claude-<uid> for AF_UNIX sockets only up to 44 bytes, else it falls back to the
+        # shared /tmp/claude-<uid>.
+        self.assertLessEqual(len(os.path.join(path, CLAUDE_UID_DIR).encode()), 44)
+        self.assertFalse(os.path.lexists(path), 'the run directory stayed')
+
+    def test_the_profile_opens_only_its_claude_directory(self):
+        record = self.started(*AO_ARGS)
+        path = record['env']['CLAUDE_CODE_TMPDIR']
+        fs = self.settings(record)['sandbox']['filesystem']
+        inner = os.path.join(path, CLAUDE_UID_DIR)
+        self.assertIn(inner, fs['allowRead'])
+        self.assertIn(inner, fs['allowWrite'])
+        for granted in fs['allowRead'] + fs['allowWrite']:
+            if granted.startswith(('/tmp', '/private/tmp', TEMP_PARENT + '/')) and not granted.startswith(self.tmp):
+                self.assertEqual(granted, inner)
+        for denied in ('/tmp', '/private/tmp'):
+            self.assertIn(denied, fs['denyRead'])
+
+    def test_two_runs_get_separate_directories(self):
+        first = self.started(*AO_ARGS)['env']['CLAUDE_CODE_TMPDIR']
+        os.remove(self.record)
+        self.assertNotEqual(first, self.started(*AO_ARGS)['env']['CLAUDE_CODE_TMPDIR'])
+
+    def test_removed_after_an_error_exit_with_what_claude_code_put_there(self):
+        result = self.run_wrapper(*AO_ARGS, FAKE_EXIT='3')
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertFalse(os.path.lexists(self.recorded()['env']['CLAUDE_CODE_TMPDIR']))
+
+    def fake_mktemp(self, bad):
+        write(os.path.join(self.bin, 'mktemp'), FAKE_MKTEMP, 0o755)
+        return self.refused(*AO_ARGS, FAKE_MKTEMP_BAD=bad, FAKE_TEMP_PARENT=TEMP_PARENT)
+
+    def test_a_directory_with_other_permissions_is_refused(self):
+        self.assertIn(TEMP_PARENT, self.fake_mktemp('mode'))
+        self.assertEqual(self.run_dirs(), self.before, 'the refused (empty) run directory stayed')
+
+    def test_a_symlink_is_refused(self):
+        self.assertIn(TEMP_PARENT, self.fake_mktemp('symlink'))
+
+    def test_a_failed_mktemp_is_refused(self):
+        self.assertIn(TEMP_PARENT, self.fake_mktemp('fail'))
 
 
 class RefusalTest(WrapperTestCase):
