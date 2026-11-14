@@ -76,7 +76,13 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
   jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
   w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
-  razem z `image.requireDigests` kończą render błędem) oraz testy
+  razem z `image.requireDigests` kończą render błędem; blok `sentry` (`environment`, `tracesSampleRate`, `dsn.api`, `dsn.store`,
+  `dsn.admin`, domyślnie puste, w `prod` `environment: demo` i `tracesSampleRate: 0.1`, DSN-y wpisuje osobny PR po założeniu projektów Sentry,
+  `README.md` sekcja 10): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (`image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` tylko dla
+  aplikacji z niepustym DSN, przez helper `shop.sentryEnv`; DSN api w `shop.apiEnv` (api, worker, Joby, init kontenery, CronJoby
+  `cart-purge-expired` i `restore`), DSN sklepu tylko w sklepie, panelu tylko w panelu; bez DSN żadnej `SENTRY_*` (także w `prod`
+  i `ci`, `tests/test_sentry.py`); schemat odrzuca `tracesSampleRate` spoza 0–1 i DSN innego kształtu niż
+  `https://<klucz>@<host>/<id projektu>`) oraz testy
   skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
   `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
   robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within` tylko po kopii `nightly` (kopia `pre-restore` niczego nie przycina); weryfikacja: snapshot `nightly` tego klastra
@@ -171,6 +177,17 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
     `deploy-images`. Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu `DEPLOY_KEY` kończy się po smoke
     teście z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
     (dispatch na `main`) decyduje o wypychaniu obrazów, pliku digestów i jobie `deploy`.
+    Mapy źródeł sklepu i panelu (spec Sentry, P3, D10): krok `sentry` jobu `images` ustawia flagę wysyłki na `true`, gdy istnieje
+    sekret `SENTRY_AUTH_TOKEN` (porównanie z pustym napisem: krok widzi tylko wartość logiczną), inaczej pomija wysyłkę i dopisuje
+    to do podsumowania; sekret bez zmiennych repozytorium `SENTRY_ORG`, `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` kończy
+    job błędem przed budowaniem. Budowania sklepu i panelu dostają flagę, organizację i projekt jako `build-args`
+    (`SENTRY_UPLOAD`, `SENTRY_ORG`, `SENTRY_PROJECT`: `ARG` etapu `build`, więc część klucza cache), a token wyłącznie jako
+    wejście `secrets:` (`sentry_auth_token`, montowanie `--mount=type=secret` w Dockerfile; wartość nie jest nigdzie indziej:
+    ani w `build-args`, ani w `env` kroku, ani w skrypcie, ani w jobach `smoke` i `deploy`; test `SentrySourceMaps` w
+    `tests/test_deploy_workflow.py`). Job `smoke` (także na PR) buduje bez flagi i bez sekretu, a etapy `prod` obu aplikacji
+    nigdy nie mają plików `.map` (Dockerfile je usuwa; test dymny sprawdza po HTTP, że sklep i panel ich nie serwują, `smoke/checks.py`
+    `check_no_source_maps`). Wysyłka z sekretem, która się nie uda (zły token, Sentry niedostępny), kończy budowanie obrazu błędem,
+    więc nic nie jest wdrażane. Zmiana `apps/admin/vite.config.ts` uruchamia smoke test na PR jak `apps/store/next.config.ts`.
   - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch` na innej gałęzi: tylko smoke test
     na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
     `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba

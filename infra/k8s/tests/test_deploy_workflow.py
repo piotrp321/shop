@@ -378,5 +378,159 @@ class Permissions(unittest.TestCase):
                     self.assertRegex(step["uses"], SHA_PIN)
 
 
+# Any way of reading the secret: `secrets.SENTRY_AUTH_TOKEN`, `secrets['SENTRY_AUTH_TOKEN']`, `secrets["SENTRY_AUTH_TOKEN"]`.
+# The steps are searched as JSON text, where a double quote is written as backslash and quote, hence the optional backslash.
+TOKEN_EXPRESSION = re.compile(r"""secrets(?:\.|\[\s*\\?['"])SENTRY_AUTH_TOKEN(?:\\?['"]\s*\])?""")
+# The only forms in which the value of the secret may be read: a comparison with the empty string (a boolean, never the
+# value) and, in the build steps of the job images, the secret input of the build.
+TOKEN_PRESENCE = "${{ secrets.SENTRY_AUTH_TOKEN != '' }}"
+SENTRY_BUILDS = {"build-store": "SENTRY_PROJECT_STORE", "build-admin": "SENTRY_PROJECT_ADMIN"}
+
+
+def stage(dockerfile, name):
+    """The text of one stage of a Dockerfile (from its FROM line to the next one)."""
+    text = (REPO / dockerfile).read_text()
+    parts = re.split(r"(?m)^(?=FROM )", text)
+    return next(part for part in parts if re.match(rf"FROM \S+ AS {name}\b", part))
+
+
+class SentrySourceMaps(unittest.TestCase):
+    """Source maps of the store and the admin (docs/features/sentry/spec.md, P3, D10, threat model paths 7 and 8): the
+    token of the upload exists only as a build secret of the two builds in the job images, and the maps never stay in
+    the images."""
+
+    def sentry_builds(self):
+        return {step["id"]: step for step in steps("images") if step.get("id") in SENTRY_BUILDS}
+
+    def test_the_token_is_a_secret_input_of_the_two_builds_in_the_images_job_and_nowhere_else(self):
+        for name, job in jobs.items():
+            for step in job["steps"]:
+                text = json.dumps(step)
+                for match in TOKEN_EXPRESSION.finditer(text):
+                    rest = text[match.end():match.end() + 12]
+                    where = f"{name}: {step.get('name')}"
+                    comparison = rest.startswith(" != ''") or rest.startswith(" == ''")
+                    own_secret_input = (
+                        name == "images"
+                        and step.get("id") in SENTRY_BUILDS
+                        and TOKEN_EXPRESSION.search(step["with"].get("secrets", ""))
+                        and len(TOKEN_EXPRESSION.findall(text)) == 1
+                    )
+                    self.assertTrue(comparison or own_secret_input, where)
+        # Nothing else of the workflow reads the secret: not the workflow env, not the job envs, not a script.
+        self.assertNotIn("SENTRY_AUTH_TOKEN", json.dumps({k: v for k, v in workflow.items() if k != "jobs"}))
+        for name, job in jobs.items():
+            self.assertNotIn("SENTRY_AUTH_TOKEN", json.dumps({k: v for k, v in job.items() if k != "steps"}), name)
+        for script in run_scripts():
+            self.assertNotRegex(script, r"\$\{\{[^}]*secrets(\.|\[\s*['\"])SENTRY")
+        # No expression hands over every secret at once (toJSON(secrets) would put the token in a script or a log).
+        self.assertNotRegex(json.dumps(workflow), r"(?i)tojson\(\s*secrets\s*\)")
+
+    def test_the_token_is_never_a_build_argument_or_an_environment_variable_of_a_step(self):
+        for name, job in jobs.items():
+            for step in job["steps"]:
+                for key, value in step.get("env", {}).items():
+                    self.assertNotIn("SENTRY_AUTH_TOKEN", key, f"{name}: {step.get('name')}")
+                    if TOKEN_EXPRESSION.search(str(value)):
+                        self.assertEqual(TOKEN_PRESENCE, value, f"{name}: {step.get('name')}: {key}")
+                args = step.get("with", {}).get("build-args", "")
+                self.assertNotRegex(args, r"(?i)secret|token|AUTH", f"{name}: {step.get('name')}")
+
+    def test_the_smoke_and_deploy_jobs_and_the_smoke_builds_know_nothing_of_sentry(self):
+        for name in ("smoke", "deploy"):
+            self.assertNotRegex(json.dumps(jobs[name]), r"(?i)sentry", name)
+        for step in steps("images"):
+            if uses(step, "docker/build-push-action") and step.get("id") not in SENTRY_BUILDS:
+                self.assertNotRegex(json.dumps(step), r"(?i)sentry", step.get("id"))
+
+    def test_the_store_and_the_admin_are_built_with_the_flag_the_organisation_the_project_and_the_secret(self):
+        builds = self.sentry_builds()
+        self.assertEqual(sorted(SENTRY_BUILDS), sorted(builds))
+        for build_id, project in SENTRY_BUILDS.items():
+            args = dict(line.split("=", 1) for line in builds[build_id]["with"]["build-args"].splitlines())
+            self.assertEqual("${{ steps.sentry.outputs.upload }}", args["SENTRY_UPLOAD"])
+            self.assertEqual("${{ vars.SENTRY_ORG }}", args["SENTRY_ORG"])
+            self.assertEqual("${{ vars.%s }}" % project, args["SENTRY_PROJECT"])
+            self.assertEqual({"SENTRY_UPLOAD", "SENTRY_ORG", "SENTRY_PROJECT"}, set(args))
+            # An empty value is no valid secret for the build action, so the input is empty unless the upload is on.
+            self.assertEqual(
+                "${{ steps.sentry.outputs.upload == 'true' && format('sentry_auth_token={0}', secrets.SENTRY_AUTH_TOKEN) || '' }}",
+                builds[build_id]["with"]["secrets"],
+            )
+
+    def test_the_flag_is_true_only_when_the_secret_is_set_and_the_summary_says_when_the_upload_is_skipped(self):
+        step = next(s for s in steps("images") if s.get("id") == "sentry")
+        self.assertEqual(TOKEN_PRESENCE, step["env"]["HAS_TOKEN"])
+        self.assertEqual("${{ vars.SENTRY_ORG }}", step["env"]["SENTRY_ORG"])
+        script = step["run"]
+        self.assertIn('echo "upload=true" >> "$GITHUB_OUTPUT"', script)
+        self.assertIn('echo "upload=false" >> "$GITHUB_OUTPUT"', script)
+        self.assertIn("upload skipped", script)
+        # The note is written before the builds, and a build is skipped for an image that exists: it says that the upload
+        # is on, not that the maps were sent.
+        self.assertIn("upload enabled", script)
+        self.assertIn("is not rebuilt, so its maps are not uploaded again", script)
+        self.assertNotRegex(script, r"(?i)\buploaded to sentry\b")
+        self.assertIn("GITHUB_STEP_SUMMARY", script)
+        # The secret is set but the organisation or a project is not: the build must not go on to an upload that fails late.
+        self.assertIn("::error::", script)
+        names = [s.get("name") for s in steps("images")]
+        self.assertLess(names.index(step["name"]), names.index("Build and push store"))
+        self.assertLess(names.index(step["name"]), names.index("Build and push admin"))
+
+    def test_the_images_job_alone_may_see_the_secret_on_a_deployment_only(self):
+        self.assertEqual(ON_MAIN, jobs["images"]["if"])
+        for event, ref, expected in EVENTS:
+            self.assertIs(expected, evaluate(jobs["images"]["if"], event, ref))
+
+    def test_the_admin_config_is_a_trigger_of_the_smoke_test_like_the_one_of_the_store(self):
+        paths = workflow["on"]["pull_request"]["paths"]
+        self.assertIn("apps/store/next.config.ts", paths)
+        self.assertIn("apps/admin/vite.config.ts", paths)
+
+    def test_the_dockerfiles_take_the_token_from_a_secret_mount_after_the_flag(self):
+        for app in ("store", "admin"):
+            dockerfile = f"apps/{app}/Dockerfile"
+            build = stage(dockerfile, "build")
+            self.assertRegex(build, r"(?m)^ARG SENTRY_UPLOAD=false$")
+            self.assertRegex(build, r"(?m)^ARG SENTRY_ORG=$")
+            self.assertRegex(build, r"(?m)^ARG SENTRY_PROJECT=$")
+            self.assertRegex(build, r"RUN --mount=type=secret,id=sentry_auth_token\b")
+            # The arguments are declared before the RUN that builds, so they are part of its cache key.
+            self.assertLess(build.index("ARG SENTRY_UPLOAD"), build.index("--mount=type=secret"))
+            # The token is read from the mount, never from an argument or a layer.
+            self.assertIn("/run/secrets/sentry_auth_token", build)
+            text = (REPO / dockerfile).read_text()
+            self.assertNotRegex(text, r"(?m)^\s*(ARG|ENV)\s+SENTRY_AUTH_TOKEN")
+            for later in ("prod", "dev"):
+                self.assertNotRegex(stage(dockerfile, later), r"(?i)sentry", f"{dockerfile}: {later}")
+
+    def test_the_production_build_removes_every_map_after_the_build(self):
+        for app, root in (("store", ".next"), ("admin", "dist")):
+            build = stage(f"apps/{app}/Dockerfile", "build")
+            self.assertRegex(build, rf"find {re.escape(root)} -name '\*\.map' -delete", app)
+
+    def test_the_plugins_send_no_telemetry_and_fail_the_build_when_the_upload_fails(self):
+        for config in ("apps/store/next.config.ts", "apps/admin/vite.config.ts"):
+            text = (REPO / config).read_text()
+            self.assertRegex(text, r"telemetry:\s*false", config)
+            self.assertRegex(text, r"errorHandler", config)
+            self.assertIn("SENTRY_UPLOAD", text, config)
+            self.assertIn("SENTRY_AUTH_TOKEN", text, config)
+
+    def test_the_builds_switch_off_the_telemetry_of_the_sentry_cli(self):
+        # The plugins upload through the Sentry CLI (as a library), which has its own telemetry, on by default and not
+        # affected by `telemetry: false`; only SENTRY_CLI_NO_TELEMETRY=1 turns it off, and only the build stage has it.
+        for app in ("store", "admin"):
+            dockerfile = f"apps/{app}/Dockerfile"
+            self.assertRegex(stage(dockerfile, "build"), r"(?m)^ENV SENTRY_CLI_NO_TELEMETRY=1$", app)
+            for other in ("node", "prod", "dev"):
+                self.assertNotIn("SENTRY_CLI_NO_TELEMETRY", stage(dockerfile, other), f"{dockerfile}: {other}")
+
+    def test_the_header_of_the_workflow_describes_the_source_maps(self):
+        header = (REPO / ".github/workflows/deploy.yml").read_text().split("\nname: Deploy", 1)[0]
+        self.assertIn("source maps", header.lower())
+
+
 if __name__ == "__main__":
     unittest.main()

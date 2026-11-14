@@ -3,8 +3,8 @@
 The pod reaches the services by their names and the ingresses through Traefik with the Host header, so no port of
 the host is involved. Usage: python - <command> [argument]
 
-  basic         the checks of a new installation (search analysis, API, store, switches, panel and its security headers, realms, store login,
-                image, order e-mail)
+  basic         the checks of a new installation (search analysis, API, store, switches, panel and its security headers, no source
+                maps served by the store and the panel, realms, store login, image, order e-mail)
   snapshot      prints a JSON snapshot of what an upgrade must not change (products, realms)
   compare       compares the snapshot given as the argument with the current state
   users         prints a JSON of the users of the realms and of their credentials (ids and dates, no secrets)
@@ -189,6 +189,53 @@ def check_admin_security_headers():
     expect("immutable" in headers.get("Cache-Control", ""), "the bundle keeps its long Cache-Control")
 
 
+SCRIPT_SRC = re.compile(r'<script[^>]*\ssrc="([^"]+)"')
+# The comment that points a script or a stylesheet at its map, at the end of the file (where bundlers write it), possibly
+# followed by the debug ID comment of Sentry.
+SOURCE_MAPPING_COMMENT = re.compile(
+    r"(?://[#@]|/\*[#@])\s*sourceMappingURL=[^\s*]+\s*(?:\*/)?\s*(?://# debugId=[0-9a-fA-F-]+\s*)?$"
+)
+
+
+def script_paths(page):
+    """The `src` of every script tag of an HTML page."""
+    return SCRIPT_SRC.findall(page)
+
+
+def is_source_map(status, text):
+    """A 200 whose body is a JSON object with `mappings`: the 200 with index.html that the panel answers for an unknown
+    path (the fallback of the single page application) is not a map."""
+    if status != 200:
+        return False
+    try:
+        document = json.loads(text)
+    except ValueError:
+        return False
+    return isinstance(document, dict) and "mappings" in document
+
+
+def has_source_mapping_comment(text):
+    return SOURCE_MAPPING_COMMENT.search(text[-1000:]) is not None
+
+
+def check_no_source_maps():
+    """D10, threat model path 7: the production stages of the store and the panel hold no source map. The pod cannot read
+    the file system of an image, so it asks for the map of every script of the home page and of the panel and looks for the
+    comment that would point a browser at one (the maps stay in Sentry, uploaded by the build of the images)."""
+    for sub, name in (("", "the store"), ("admin", "the panel")):
+        _, _, page = through_ingress("/", sub)
+        scripts = script_paths(page)
+        expect(len(scripts) > 0, f"the home page of {name} loads scripts ({len(scripts)})")
+        for path in scripts:
+            parts = urllib.parse.urlsplit(path)
+            map_path = parts.path + ".map"
+            status, _, body = through_ingress(map_path, sub)
+            expect(not is_source_map(status, body), f"{name} serves no source map at {map_path} (status {status})")
+            status, _, body = through_ingress(path, sub)
+            expect(status == 200, f"{name} serves the script {path}")
+            expect(not has_source_mapping_comment(body), f"the script {parts.path} of {name} has no sourceMappingURL comment")
+
+
 def check_store_and_api_security_headers():
     """D10 on the production images: the store sends the headers of the panel except script-src, the API nosniff."""
     store = {**ADMIN_SECURITY_HEADERS, "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"}
@@ -265,9 +312,9 @@ def check_auth_bypasses():
 
 def check_store_switches():
     """The switches of /api/site (the browser part is checked by smoke.sh with a real browser); the HTML of the pages does
-    not depend on them."""
+    not depend on them. The profile ci has no Sentry DSN, so the field sentry is null."""
     status, headers, text = through_ingress("/api/site")
-    expect(status == 200 and json.loads(text) == {"demoNotice": True, "customerAccounts": False},
+    expect(status == 200 and json.loads(text) == {"demoNotice": True, "customerAccounts": False, "sentry": None},
            f"/api/site of the store gives the switches of the profile ci ({status}: {text[:100]})")
     expect(headers.get("Cache-Control") == "no-store", "/api/site is not cached")
     for path in ("/", "/cart"):
@@ -578,6 +625,7 @@ def main():
         check_admin_config()
         check_admin_security_headers()
         check_store_and_api_security_headers()
+        check_no_source_maps()
         check_realms()
         check_store_login()
         check_image()

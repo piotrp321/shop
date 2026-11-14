@@ -57,17 +57,18 @@ describe("loadAccountSession", () => {
 });
 
 describe("loadSiteSwitches", () => {
-  const DEFAULTS = { demoNotice: false, customerAccounts: true };
+  const DEFAULTS = { demoNotice: false, customerAccounts: true, sentry: null };
+  const sentry = { dsn: "https://public@o1.ingest.de.sentry.io/2", environment: "demo", release: "abc123" };
 
   it("asks the store's own /api/site, same origin and uncached", async () => {
-    const fetch = stubFetch(async () => Response.json({ demoNotice: true, customerAccounts: false }));
+    const fetch = stubFetch(async () => Response.json({ demoNotice: true, customerAccounts: false, sentry: null }));
 
-    expect(await loadSiteSwitches()).toEqual({ demoNotice: true, customerAccounts: false });
+    expect(await loadSiteSwitches()).toEqual({ demoNotice: true, customerAccounts: false, sentry: null });
     expect(fetch).toHaveBeenCalledWith("/api/site", { credentials: "same-origin", cache: "no-store" });
   });
 
   it("gives the defaults for an error status", async () => {
-    stubFetch(async () => Response.json({ demoNotice: true, customerAccounts: false }, { status: 503 }));
+    stubFetch(async () => Response.json({ demoNotice: true, customerAccounts: false, sentry }, { status: 503 }));
     expect(await loadSiteSwitches()).toEqual(DEFAULTS);
   });
 
@@ -89,7 +90,27 @@ describe("loadSiteSwitches", () => {
     stubFetch(async () => Response.json(null));
     expect(await loadSiteSwitches()).toEqual(DEFAULTS);
     stubFetch(async () => Response.json({ demoNotice: true }));
-    expect(await loadSiteSwitches()).toEqual({ demoNotice: true, customerAccounts: true });
+    expect(await loadSiteSwitches()).toEqual({ demoNotice: true, customerAccounts: true, sentry: null });
+  });
+
+  it("gives the configuration of Sentry for the browser", async () => {
+    stubFetch(async () => Response.json({ demoNotice: false, customerAccounts: true, sentry }));
+    expect(await loadSiteSwitches()).toEqual({ demoNotice: false, customerAccounts: true, sentry });
+    stubFetch(async () => Response.json({ demoNotice: false, customerAccounts: true, sentry: { dsn: sentry.dsn, environment: null, release: null } }));
+    expect((await loadSiteSwitches()).sentry).toEqual({ dsn: sentry.dsn, environment: null, release: null });
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["not an object", "https://public@o1.ingest.de.sentry.io/2"],
+    ["without a DSN", { environment: "demo", release: "abc123" }],
+    ["with an empty DSN", { dsn: "", environment: null, release: null }],
+    ["with a DSN that is not a string", { dsn: 1, environment: null, release: null }],
+    ["with an environment that is not a string", { dsn: sentry.dsn, environment: 1, release: null }],
+    ["with a release that is not a string", { dsn: sentry.dsn, environment: null, release: false }],
+  ])("has no configuration of Sentry when it is %s", async (_name, value) => {
+    stubFetch(async () => Response.json({ demoNotice: true, customerAccounts: true, sentry: value }));
+    expect(await loadSiteSwitches()).toEqual({ demoNotice: true, customerAccounts: true, sentry: null });
   });
 });
 

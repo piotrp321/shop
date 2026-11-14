@@ -1,4 +1,4 @@
-# Kopie zapasowe poza serwerem (restic do Cloudflare R2) i obserwowalność (Grafana Cloud)
+# Kopie zapasowe poza serwerem (restic do Cloudflare R2) i obserwowalność (Grafana Cloud, Sentry)
 
 ## Kontekst
 
@@ -7,7 +7,7 @@ zdjęciami produktów) leżą na wolumenach tego serwera. Backup VPS-a od OVH je
 dostawcy, a jego przywrócenie cofa cały serwer. Potrzebna jest kopia danych sklepu poza serwerem, szyfrowana, tania i
 odtwarzalna na pustym klastrze. Logi i metryki klastra muszą być poza nim: serwer, który padł, nie opowie o sobie. Własny
 Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie pomagają przy jego awarii. Specyfikacja:
-`docs/features/deploy-ops/spec.md` (O1, O2, O3, O4, O5, O6, O7).
+`docs/features/deploy-ops/spec.md` (O1, O2, O3, O4, O5, O6, O7), Sentry: `docs/features/sentry/spec.md`.
 
 ## Decyzja
 
@@ -117,6 +117,32 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   `extraDiscoveryRules`). Wzorce nie znają każdego formatu, więc po wdrożeniu przegląd próbki logów (runbook) jest częścią
   decyzji: znalezisko to nowa reguła albo wyłączenie źródła. Test w `check` uruchamia prawdziwy Alloy (przypięty tagiem i
   digestem) na korpusie próbek logów każdego źródła z podłożonymi sekretami i danymi klientów.
+- **Błędy i trace'y aplikacji: Sentry SaaS (darmowy plan), organizacja w regionie UE (`*.ingest.de.sentry.io`), trzy projekty:
+  `api` (api, worker i Joby), `store` i `admin`.** Uzupełnia logi i metryki z Grafana Cloud: tamte mówią, co robi klaster,
+  Sentry, który kod się wywrócił i gdzie żądanie spędziło czas. Hostowanie własnego Sentry odpada z tych samych powodów co
+  własny Prometheus. SDK (`sentry-symfony`, `@sentry/nextjs`, `@sentry/vue`) włączają się tylko przy niepustym DSN, a ten
+  podaje chart jako zmienną środowiska kontenera (`sentry.dsn.<aplikacja>`), więc jeden obraz działa z Sentry i bez niego,
+  a środowisko bez DSN (profil `ci`, compose) nie wysyła niczego. Wersja zdarzeń to rewizja obrazu (`image.tag`), środowisko
+  to `sentry.environment` (`demo`), próbkowanie trace'ów `sentry.tracesSampleRate` (0,1 w `prod`).
+- **DSN jest wartością jawną** (trafia do przeglądarki), więc leży w `environments/prod/values.yaml` jako zwykła wartość, nie
+  w Sealed Secrets, a schemat chartu sprawdza jego format. Sekretem jest tylko token wysyłki map źródeł (`SENTRY_AUTH_TOKEN`,
+  sekret GitHub Actions, budowanie obrazów).
+- **Filtrowanie po stronie SDK, zanim zdarzenie wyjdzie z procesu.** Sentry jest zewnętrznym procesorem danych, więc
+  nagłówki poza krótką listą, ciasteczka, treść żądań, adres IP, query stringi (w adresach, nazwach transakcji, spanach i
+  breadcrumbs), wartości parametrów SQL, argumenty ramek stosu i konsola nie opuszczają aplikacji, a komunikaty maskują te
+  same formaty co Alloy (e-mail, JWT, `Bearer`, pary klucz=wartość z sekretami, wiersze i klucze PostgreSQL, parametry DBAL).
+  Filtr oparty na wzorcach nie zna każdego formatu, więc po wdrożeniu przegląda się próbkę zdarzeń (runbook), a „Data
+  Scrubber” Sentry po stronie serwera zostaje włączony.
+- **Jeden kanał na źródło, jedno zdarzenie na błąd.** W api zdarzenie zgłasza własny listener po zmapowaniu wyjątku na
+  odpowiedź (tylko status 5xx), konsola i Messenger (tylko ostatnia próba) przez listenery bundla, a jawne logi od `error` przez
+  handler Monologa z wykluczonymi kanałami, które powielają wyjątki. Błędy 4xx nie są zdarzeniami. Błąd przeglądarki sklepu
+  i panelu zgłasza SDK przeglądarki, błąd serwera sklepu `onRequestError`. Ograniczone limity darmowego planu chronią: próbkowanie 0,1,
+  brak zdarzeń z 4xx, ochrona przed skokami i limity zdarzeń w ustawieniach projektów (runbook).
+- **Mapy źródeł sklepu i panelu** idą do Sentry z budowania obrazów produkcyjnych na `main` (job `images` workflowu `deploy.yml`,
+  token jako sekret budowania, flaga wysyłki jako argument budowania, więc część klucza cache), dopasowane przez debug ID
+  i usuwane z obrazu: etapy `prod` nie zawierają żadnego pliku `.map`, więc mapy nie są publiczne. Bez sekretu wysyłka jest
+  pomijana (wpis w podsumowaniu runu), a wysyłka, która się nie uda, kończy budowanie obrazu błędem. Telemetria wtyczek budowania
+  jest wyłączona.
 
 ## Konsekwencje
 
@@ -167,3 +193,10 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
 - RBAC kolektora i operatora jest w manifeście, nie w chartcie: funkcja chartu, która potrzebuje innego zasobu (nowa wersja
   albo włączona opcja), kończy się błędem `forbidden` w logu Alloy albo operatora (wyłapuje go `monitoring-smoke`), a nie
   cichym poszerzeniem uprawnień; brakującą regułę dopisuje się w `extraObjects`.
+- Sentry jest zewnętrznym procesorem danych poza naszą kontrolą; granicą jest filtr SDK, a nie zaufanie do dostawcy. Jawny DSN
+  pozwala każdemu wysyłać zdarzenia do projektu, a api kontynuuje trace z nagłówków `sentry-trace` i `baggage` (tego wymaga panel),
+  więc ruch z internetu może wymusić śledzenie swoich żądań: ogranicza to ochrona przed skokami i limity projektu, nie kod.
+- Zdarzenie błędu w api wysyła się synchronicznie, więc przy niedostępnym Sentry odpowiedź 5xx, log `error` albo obsługa wiadomości
+  w workerze opóźniają się najwyżej o limit transportu (2 s); transakcje wysyła się po odpowiedzi.
+- Brak ruchu wychodzącego do Sentry nie psuje niczego: SDK gubi zdarzenia. Gdy klaster dostanie NetworkPolicy dla ruchu wychodzącego,
+  ruch do `*.ingest.de.sentry.io` trzeba dopuścić.

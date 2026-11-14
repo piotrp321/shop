@@ -84,6 +84,10 @@ The secrets come with envFrom (the .env.local of the compose file).
   value: {{ include "shop.url" (dict "root" . "sub" "api") | quote }}
 - name: PAYMENT_WEBHOOK_BASE_URL
   value: http://api
+{{- /* Sentry of the api, the worker and the jobs: one project, only with a DSN (docs/features/sentry/spec.md, D3). */}}
+{{- with include "shop.sentryEnv" (dict "root" . "app" "api") }}
+{{ . | trim }}
+{{- end }}
 {{- end }}
 
 {{/* Waits until the migrations of this revision are applied (the api and the worker never start on an old schema). */}}

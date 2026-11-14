@@ -2,6 +2,15 @@
 monolog:
     channels:
         - deprecation
+    handlers:
+        # The explicit logs of the application from `error` up are Sentry events (spec: docs/features/sentry/spec.md, P6
+        # and D5), in every environment; without SENTRY_DSN nothing is sent. The channels of the framework repeat an
+        # exception reported by its own channel (request, console, messenger) or are no error of the application.
+        # No handler of breadcrumbs: no log becomes one.
+        sentry:
+            type: service
+            id: app.sentry.monolog_handler
+            channels: ['!request', '!console', '!messenger', '!php', '!deprecation', '!cache']
 
 when@dev:
     monolog:
