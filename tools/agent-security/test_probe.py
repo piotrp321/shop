@@ -25,9 +25,9 @@ CASES_SCRIPT = os.path.join(HERE, 'probe-cases.sh')
 spec = importlib.util.spec_from_file_location('probe', SCRIPT)
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
-spec = importlib.util.spec_from_file_location('system_tmp', os.path.join(HERE, 'system_tmp.py'))
-system_tmp = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(system_tmp)
+spec = importlib.util.spec_from_file_location('sandbox_skip', os.path.join(HERE, 'sandbox_skip.py'))
+sandbox_skip = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(sandbox_skip)
 
 CANARY = 'CANARY-abc123-secret'
 CANARY_DIR = '/home/u/.agent-security-canary-x'
@@ -424,11 +424,13 @@ class SourcedCasesTestCase(unittest.TestCase):
         for name in os.listdir(self.bin):
             os.chmod(os.path.join(self.bin, name), 0o755)
 
+    system_path = None   # a test may fix the system part of PATH (the PATH of the session can start with the overlay)
+
     def run_sourced(self, command, **extra):
         # Without the Claude Code and proxy variables of the session running the tests: each test sets its own.
         base = {k: v for k, v in os.environ.items()
                 if not k.startswith('CLAUDE') and k.lower() not in ('http_proxy', 'https_proxy', 'all_proxy')}
-        env = dict(base, PATH=self.bin + os.pathsep + os.environ['PATH'], PROBE_CASES_LIB='1', HOME=self.cwd,
+        env = dict(base, PATH=self.bin + os.pathsep + (self.system_path or os.environ['PATH']), PROBE_CASES_LIB='1', HOME=self.cwd,
                    PROBE_AO_HOME=os.path.join(self.cwd, 'ao'), **extra)
         return subprocess.run(['sh', '-c', command], capture_output=True, text=True, env=env, cwd=self.cwd).stdout
 
@@ -500,6 +502,8 @@ class MktempCasesTest(SourcedCasesTestCase):
 
     STUB = '#!/bin/sh\nd=${FAKE_MKTEMP_DIR:?}\ncase ${1:-} in -d) exec /usr/bin/mktemp -d "$d/tmp.XXXXXX" ;; esac\n' \
            'exec /usr/bin/mktemp "$d/tmp.XXXXXX"\n'
+
+    system_path = '/usr/bin:/bin'
 
     def setUp(self):
         super().setUp()
@@ -603,6 +607,9 @@ class ClaudeTmpdirCaseTest(SourcedCasesTestCase):
     directories stand in for the sandbox's refusals; python3 (connect, bind) and curl are stubs."""
 
     def setUp(self):
+        # The sandbox of the executor refuses bind (a socket file cannot be made any other way): skipped there, with
+        # the reason, never on a host or in CI (sandbox_skip.py).
+        sandbox_skip.require_unix_sockets(self)
         super().setUp()
         with open(os.path.join(self.bin, 'python3'), 'w') as f:
             f.write(FAKE_PYTHON)
@@ -1003,7 +1010,10 @@ class ProbeRunTest(ProbeRunTestCase):
             os.kill(pid, 0)
         except ProcessLookupError:
             return False
-        state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+        try:
+            state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+        except OSError:
+            return True   # ps is not allowed in the executor's sandbox: a zombie cannot be told from a live process
         return bool(state) and not state.startswith('Z')
 
     def test_a_timeout_kills_descendants_in_their_own_session(self):
@@ -1056,8 +1066,8 @@ class WrapperCasesTest(unittest.TestCase):
 
     def setUp(self):
         # The wrapper makes /private/tmp/agent.XXXXXX, which the executor's sandbox does not allow: skipped there
-        # (with the reason), never on a host or in CI (system_tmp.py).
-        system_tmp.require(self)
+        # (with the reason), never on a host or in CI (sandbox_skip.py).
+        sandbox_skip.require_system_tmp(self)
         self.tmp = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.home = os.path.join(self.tmp, 'home')

@@ -18,14 +18,14 @@ TEMPLATE = os.path.join(HERE, 'executor-settings.json')
 SCRIPT = os.path.join(HERE, 'render_settings.py')
 
 
-def load_system_tmp():
-    spec = importlib.util.spec_from_file_location('system_tmp', os.path.join(HERE, 'system_tmp.py'))
+def load_sandbox_skip():
+    spec = importlib.util.spec_from_file_location('sandbox_skip', os.path.join(HERE, 'sandbox_skip.py'))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-system_tmp = load_system_tmp()
+sandbox_skip = load_sandbox_skip()
 
 
 def load_module():
@@ -312,8 +312,8 @@ class ClaudeTmpdirTest(RenderTestCase):
 
     def run_dir(self, mode=0o700, inner_mode=0o700, inner=True, inner_name=CLAUDE_UID_DIR):
         # Run directories are made in the system temp, which the executor's sandbox does not allow: skipped there
-        # (with the reason), never on a host or in CI (system_tmp.py).
-        system_tmp.require(self)
+        # (with the reason), never on a host or in CI (sandbox_skip.py).
+        sandbox_skip.require_system_tmp(self)
         path = tempfile.mkdtemp(prefix='agent.', dir=TEMP_PARENT)
         self.addCleanup(shutil.rmtree, path, True)
         if inner:

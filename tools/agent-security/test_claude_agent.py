@@ -17,9 +17,9 @@ import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location('system_tmp', os.path.join(HERE, 'system_tmp.py'))
-system_tmp = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(system_tmp)
+spec = importlib.util.spec_from_file_location('sandbox_skip', os.path.join(HERE, 'sandbox_skip.py'))
+sandbox_skip = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(sandbox_skip)
 WRAPPER = os.path.join(HERE, 'claude-agent')
 OVERLAY = os.path.join(HERE, 'bin', 'mktemp')
 TOKEN = 'github_pat_fake_executor_token'
@@ -182,8 +182,8 @@ class WrapperTestCase(unittest.TestCase):
 
     def require_system_tmp(self):
         # The wrapper makes /private/tmp/agent.XXXXXX, which the executor's sandbox does not allow: a test that lets
-        # the wrapper start is skipped there (with the reason), never on a host or in CI (system_tmp.py).
-        system_tmp.require(self)
+        # the wrapper start is skipped there (with the reason), never on a host or in CI (sandbox_skip.py).
+        sandbox_skip.require_system_tmp(self)
 
     def run_wrapper(self, *args, cwd=None, **env):
         return subprocess.run(['sh', WRAPPER, *args], cwd=cwd or self.work, capture_output=True, text=True,
@@ -424,7 +424,10 @@ class TaskTempDirTest(WrapperTestCase):
         except PermissionError:
             return True
         # a zombie of the wrapper's child is not alive work: check the state through ps
-        state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+        try:
+            state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+        except OSError:
+            return True   # ps is not allowed in the executor's sandbox: a zombie cannot be told from a live process
         return bool(state) and not state.startswith('Z')
 
     def test_sigterm_to_the_wrapper(self):
