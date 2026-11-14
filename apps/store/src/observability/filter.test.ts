@@ -147,6 +147,88 @@ describe("filterEvent: the key of a guest cart in the paths (paths 1 and 2)", ()
   });
 });
 
+describe("filterEvent: the commands of Redis (path 4)", () => {
+  // The keys of Redis hold the address of the client (login rate limit) and the ids of sessions and logins: the spans
+  // of Redis keep only the name of the command.
+  type Span = NonNullable<Event["spans"]>[number];
+  const span = (description: string, data: NonNullable<Span["data"]>): Span => ({
+    span_id: "a1",
+    trace_id: "t1",
+    start_timestamp: 1,
+    status: "ok",
+    op: "db.query",
+    description,
+    data,
+  });
+
+  it("removes the arguments from the name and the statement of a span of Redis", () => {
+    const event: Event = {
+      type: "transaction",
+      spans: [
+        span("INCR login-rate:2001:db8:85a3:0::/64", {
+          "db.system.name": "redis",
+          "db.operation.name": "INCR",
+          "db.query.text": "INCR login-rate:2001:db8:85a3:0::/64",
+          "server.address": "redis",
+          "server.port": 6379,
+        }),
+        span("GET session:abc", { "db.system": "redis", "db.statement": "GET session:abc" }),
+        span("redis-SET", {
+          "db.system.name": "redis",
+          "db.operation.name": "SET",
+          "db.query.text": 'SET login:v-login-id {"state":"v-state","codeVerifier":"v-verifier"} PX 600000',
+          "cache.key": ["login:v-login-id"],
+        }),
+      ],
+    };
+
+    const filtered = filterEvent(event);
+
+    expect(filtered.spans?.map(({ description, data }) => ({ description, data }))).toEqual([
+      {
+        description: "INCR",
+        data: { "db.system.name": "redis", "db.operation.name": "INCR", "db.query.text": "INCR", "server.address": "redis", "server.port": 6379 },
+      },
+      { description: "GET", data: { "db.system": "redis", "db.statement": "GET" } },
+      { description: "SET", data: { "db.system.name": "redis", "db.operation.name": "SET", "db.query.text": "SET" } },
+    ]);
+    expectNoneOf(JSON.stringify(filtered), ["2001:db8", "login-rate:", "session:abc", "v-login-id", "v-state", "v-verifier"]);
+  });
+
+  it("removes the arguments from a root span of Redis and the name of its transaction", () => {
+    const event: Event = {
+      type: "transaction",
+      transaction: "GET session:abc",
+      contexts: {
+        trace: {
+          trace_id: "771a43a4192642f0b136d5159a501700",
+          span_id: "9c2a6db8c79068a2",
+          op: "db.query",
+          description: "GET session:abc",
+          data: { "db.system.name": "redis", "db.operation.name": "GET", "db.query.text": "GET session:abc" },
+        },
+      },
+    };
+
+    const filtered = filterEvent(event);
+
+    expect(filtered.transaction).toBe("GET");
+    expect(filtered.contexts?.trace?.description).toBe("GET");
+    expect(filtered.contexts?.trace?.data).toEqual({ "db.system.name": "redis", "db.operation.name": "GET", "db.query.text": "GET" });
+  });
+
+  it("keeps the statement of a span of another database", () => {
+    const event: Event = {
+      type: "transaction",
+      spans: [span("SELECT id FROM cart WHERE id = $1", { "db.system.name": "postgresql", "db.query.text": "SELECT id FROM cart WHERE id = $1" })],
+    };
+    expect(filterEvent(event).spans?.[0]).toMatchObject({
+      description: "SELECT id FROM cart WHERE id = $1",
+      data: { "db.query.text": "SELECT id FROM cart WHERE id = $1" },
+    });
+  });
+});
+
 describe("filterEvent: identity (path 6)", () => {
   it("removes the user, his address and the extra data", () => {
     const event: Event = {

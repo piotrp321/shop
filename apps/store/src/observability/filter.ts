@@ -12,6 +12,8 @@ type TraceContext = NonNullable<NonNullable<Event["contexts"]>["trace"]>;
  *   spans, contexts and breadcrumbs (`fetch`, `xhr`, `navigation`, `http`) and of the addresses of the frames; the
  *   data about queries, headers, cookies, bodies and the client;
  * - the console breadcrumbs (browser and Node) and the arguments of the stack frames (`vars`);
+ * - the arguments of the commands of Redis in the names and statements of its spans (the keys hold the address of the
+ *   client and the ids of sessions);
  * - the identifier of a guest cart (the key of access to it) in a path `/guest-carts/<id>`, in every masked text.
  *
  * The texts (messages, values of exceptions, breadcrumbs, names of spans, tags and the remaining string data) are
@@ -142,6 +144,42 @@ function filterDescription(op: string | undefined, description: string): string 
   return mask(op?.startsWith("http") ? withoutQuery(description) : description);
 }
 
+/** The statements of a span of a database (the current and the older convention of OpenTelemetry). */
+const STATEMENT_DATA = ["db.query.text", "db.statement"];
+
+/** A span of Redis: its statements and its name are a command with keys (the address of a client, ids of sessions). */
+function isRedis(data: Data | undefined): boolean {
+  return data?.["db.system.name"] === "redis" || data?.["db.system"] === "redis";
+}
+
+/** The name of a command of Redis without its arguments: the first word of the text. */
+function commandOf(text: string): string {
+  return text.trim().split(/\s/, 1)[0] ?? "";
+}
+
+type SpanLike = { op?: string; description?: string; data?: Data };
+
+/**
+ * Filters a span or the trace context of a transaction (its root span) in place; a span of Redis keeps only the name of
+ * its command in its name and statements, and loses its other data with keys (`cache.key` and the like).
+ */
+function filterSpan(span: SpanLike): void {
+  if (!isRedis(span.data)) {
+    if (typeof span.description === "string") span.description = filterDescription(span.op, span.description);
+    if (span.data !== undefined) span.data = filterData(span.data);
+    return;
+  }
+  const operation = span.data!["db.operation.name"];
+  const command = typeof operation === "string" ? commandOf(operation) : commandOf(span.description ?? "");
+  if (typeof span.description === "string") span.description = mask(command);
+  const data = filterData(span.data!);
+  for (const name of STATEMENT_DATA) {
+    if (typeof data[name] === "string") data[name] = mask(commandOf(data[name]));
+  }
+  delete data["cache.key"];
+  span.data = data;
+}
+
 function filterFrames(frames: StackFrame[] | undefined): void {
   for (const frame of frames ?? []) {
     delete frame.vars;
@@ -202,8 +240,8 @@ export function filterEvent<T extends Event>(event: T): T {
     }
     if (name === "trace") {
       const trace = { ...(context as TraceContext) };
-      if (typeof trace.description === "string") trace.description = filterDescription(trace.op, trace.description);
-      if (trace.data !== undefined) trace.data = filterData(trace.data);
+      if (isRedis(trace.data) && event.transaction !== undefined) event.transaction = commandOf(event.transaction);
+      filterSpan(trace as SpanLike);
       event.contexts!.trace = trace;
     } else {
       event.contexts![name] = filterData(context, 1);
@@ -223,8 +261,7 @@ export function filterEvent<T extends Event>(event: T): T {
   }
 
   for (const span of event.spans ?? []) {
-    if (span.description !== undefined) span.description = filterDescription(span.op, span.description);
-    if (span.data !== undefined) span.data = filterData(span.data) as typeof span.data;
+    filterSpan(span as SpanLike);
   }
 
   return event;

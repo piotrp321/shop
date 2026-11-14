@@ -674,7 +674,9 @@ Spec: `docs/features/sentry/spec.md`.
   adresu klienta, użytkownika i `extra`. Query i fragment znikają z nazw transakcji, nazw spanów HTTP, adresów
   w danych spanów, kontekstów i breadcrumbs (`fetch`, `xhr`, `navigation`, `http`) i z adresów ramek; dane o query,
   nagłówkach, ciasteczkach, treści i kliencie są usuwane, breadcrumbs `console` (przeglądarka i Node) też, ramki bez
-  `vars`. Teksty (komunikaty, wartości wyjątków, breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same
+  `vars`. Spany Redisa (`db.system.name` albo `db.system` = `redis`) zachowują w nazwie, `db.query.text`
+  i `db.statement` tylko nazwę polecenia (klucze niosą adres klienta limitu logowania i id sesji), bez `cache.key`;
+  root span Redisa daje transakcji tę samą nazwę. Teksty (komunikaty, wartości wyjątków, breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same
   wzorce co Alloy i filtr api (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL,
   klucz=wartość z sekretami, `Failing row contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`,
   adresy IP. Tylko sklep maskuje też identyfikator koszyka gościa w ścieżce `/guest-carts/<id>` (klucz dostępu do
