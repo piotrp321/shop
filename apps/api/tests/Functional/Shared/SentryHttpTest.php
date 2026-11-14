@@ -32,6 +32,7 @@ final class SentryHttpTest extends WebTestCase
     private const string ADDRESS = 'ul. Długa 5, 00-001 Warszawa';
     private const string CLIENT_IP = '203.0.113.45';
     // Constants, because the SDK sends the lines of code around each frame: a literal in a test would be sent as code.
+    private const string CART_ID = 'a76d8b8d-a070-48da-bb73-bd2674c26f09';
     private const string QUERY = 'q=jan.kowalski%40example.pl&discountCode=RABAT-SECRET-CODE&returnTo=%2Faccount&code=v-oidc-code&state=v-oidc-state';
 
     public function testAServerErrorIsOneEventWithTheReleaseTheEnvironmentAndTheCorrelationIdOfTheResponse(): void
@@ -186,6 +187,50 @@ final class SentryHttpTest extends WebTestCase
             self::assertSame('SELECT count(*) FROM ordering_order WHERE lower(email) = lower(?)', $span['description']);
         }
         self::assertSentNothingOf($client, [self::EMAIL, 'jan.kowalski']);
+    }
+
+    public function testTheIdentifierOfAGuestCartIsNotSentInATransaction(): void
+    {
+        $this->enableSentry(['SENTRY_TRACES_SAMPLE_RATE' => '1']);
+        $client = self::createClient();
+        $client->disableReboot();
+
+        $client->request('GET', '/api/v1/guest-carts/'.self::CART_ID.'/summary?x=1');
+
+        $transactions = self::sentry($client->getContainer())->items('transaction');
+        self::assertCount(1, $transactions);
+        // Symfony names a transaction after the route, not the path.
+        self::assertSame('GET cart_guest_summary', $transactions[0]['transaction'] ?? null);
+        self::assertIsArray($transactions[0]['request'] ?? null);
+        self::assertIsString($transactions[0]['request']['url'] ?? null);
+        self::assertStringContainsString('/guest-carts/', $transactions[0]['request']['url']);
+        self::assertSentNothingOf($client, [self::CART_ID]);
+    }
+
+    public function testTheIdentifierOfAGuestCartIsNotSentInAnEvent(): void
+    {
+        $this->enableSentry();
+        $client = self::createClient();
+        $client->disableReboot();
+        $dispatcher = $client->getContainer()->get('event_dispatcher');
+        \assert($dispatcher instanceof EventDispatcherInterface);
+        $dispatcher->addListener(KernelEvents::REQUEST, static function (RequestEvent $event): void {
+            if (str_contains($event->getRequest()->getPathInfo(), '/guest-carts/')) {
+                $event->getRequest()->attributes->set('_controller', static function (): never {
+                    throw new \RuntimeException('internal');
+                });
+            }
+        }, 33);
+
+        $client->request('POST', '/api/v1/guest-carts/'.self::CART_ID.'/items?x=1');
+
+        self::assertResponseStatusCodeSame(500);
+        $events = self::sentry($client->getContainer())->items('event');
+        self::assertCount(1, $events);
+        self::assertIsArray($events[0]['request'] ?? null);
+        self::assertIsString($events[0]['request']['url'] ?? null);
+        self::assertStringContainsString('/guest-carts/', $events[0]['request']['url']);
+        self::assertSentNothingOf($client, [self::CART_ID]);
     }
 
     public function testHealthIsNotTraced(): void

@@ -679,7 +679,7 @@ Spec: `docs/features/sentry/spec.md`.
   root span Redisa daje transakcji tę samą nazwę. Teksty (komunikaty, wartości wyjątków, breadcrumbs, opisy spanów, tagi, wartości kontekstów) maskują te same
   wzorce co Alloy i filtr api (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL,
   klucz=wartość z sekretami, `Failing row contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`,
-  adresy IP. Tylko sklep maskuje też identyfikator koszyka gościa w ścieżce `/guest-carts/<id>` (klucz dostępu do
+  adresy IP. Sklep, tak jak filtr api, maskuje też identyfikator koszyka gościa w ścieżce `/guest-carts/<id>` (klucz dostępu do
   koszyka, jedyny sekret w ścieżkach, które sklep woła i obsługuje): w adresie żądania, nazwie transakcji, opisach
   i danych spanów, breadcrumbs i tekstach. Wzorce działają w czasie liniowym (adres e-mail zaczyna się tylko po znaku,
   którego w nim nie ma).

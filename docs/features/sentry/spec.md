@@ -110,8 +110,8 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
   - breadcrumbs `console` (przeglądarka i Node);
   - w sklepie argumenty poleceń Redisa w nazwie i danych spanu (`db.query.text`, `db.statement`, `cache.key`):
     zostaje nazwa polecenia;
-  - w sklepie identyfikator koszyka gościa ze ścieżki `/guest-carts/<id>` (klucz dostępu do koszyka) w adresach,
-    nazwach transakcji, opisach i danych spanów, breadcrumbs i tekstach;
+  - w api i sklepie identyfikator koszyka gościa ze ścieżki `/guest-carts/<id>` (klucz dostępu do koszyka, nie format
+    Alloy) w adresach, nazwach transakcji, opisach i danych spanów, breadcrumbs i tekstach;
   - w api pola `extra` i `context` poza `correlation_id`.
 
   W komunikatach i wartościach wyjątków, komunikatach zdarzeń, breadcrumbs i opisach spanów filtr maskuje te same formaty co Alloy
