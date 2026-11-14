@@ -18,6 +18,7 @@
         "league/flysystem-bundle": "^3.7",
         "nelmio/api-doc-bundle": "^5.13",
         "nelmio/cors-bundle": "^2.6",
+        "sentry/sentry-symfony": "^5.16",
         "symfony/amqp-messenger": "8.1.*",
         "symfony/console": "8.1.*",
         "symfony/doctrine-messenger": "8.1.*",

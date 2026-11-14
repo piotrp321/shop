@@ -1,0 +1,3 @@
+# Sentry (spec: docs/features/sentry/spec.md). Without SENTRY_DSN the SDK sends nothing.
+sentry:
+    dsn: '%env(default::SENTRY_DSN)%'

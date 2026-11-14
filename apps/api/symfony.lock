@@ -111,6 +111,9 @@
             "bin/phpunit"
         ]
     },
+    "sentry/sentry-symfony": {
+        "version": "5.16.0"
+    },
     "symfony/console": {
         "version": "8.1",
         "recipe": {
