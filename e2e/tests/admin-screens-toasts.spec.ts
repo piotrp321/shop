@@ -1,11 +1,12 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createDraftInPanel, newProduct } from "../support/catalog-admin";
+import { uniqueCodeText } from "../support/discount-codes";
 import { settle, viewports } from "../support/panel-layout";
 import { closePanelContexts, go, newPanelPage, type PanelRole, signInPanelRoles } from "../support/panel-states";
 
 // The toasts of the panel (docs/features/admin-screens/spec.md, „Toasty”): the name of their region (#508) and their place,
 // which never covers the save bar or the top bar (#507). The test of the place runs on every form of the panel that has a
-// save bar: a form is one entry of `forms`, so the next one (the discount code, ADMIN-SCREENS-4) is one more entry.
+// save bar: a form is one entry of `forms`, so the next one is one more entry.
 
 type ToastForm = {
   name: string;
@@ -18,6 +19,8 @@ type ToastForm = {
 
 let product = newProduct("Toasty");
 let productId = "";
+let codeId = "";
+let codeText = "";
 
 const forms: ToastForm[] = [
   {
@@ -30,6 +33,19 @@ const forms: ToastForm[] = [
     },
     edit: async (page, change) => {
       await page.getByTestId("name").fill(`${product.name} ${change}`);
+    },
+  },
+  {
+    name: "the form of a discount code",
+    role: "admin",
+    open: async (page) => {
+      await go(page, `/discount-codes/${codeId}`);
+      await expect(page.getByRole("heading", { level: 1, name: codeText })).toBeVisible();
+      await settle(page);
+    },
+    edit: async (page, change) => {
+      // The limit of uses of a planned code changes freely; 1 to 1 000 000.
+      await page.getByTestId("limit-input").fill(String(100 + change));
     },
   },
 ];
@@ -47,6 +63,15 @@ test.beforeAll(async ({ browser }) => {
   try {
     await go(page, "/");
     productId = await createDraftInPanel(page, product);
+    // The form of a discount code is the one the test saves too: a planned code of its own (it starts far in the future).
+    codeText = uniqueCodeText();
+    await go(page, "/discount-codes/new");
+    await page.getByTestId("code-input").fill(codeText);
+    await page.getByTestId("value-input").fill("10");
+    await page.getByTestId("starts-input").fill("2035-01-01T10:00");
+    await page.getByTestId("save").click();
+    await expect(page).toHaveURL(/\/discount-codes\/[0-9a-f-]{36}$/);
+    codeId = page.url().split("/").pop()!;
   } finally {
     await page.close();
   }

@@ -96,7 +96,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nawigacja unieważnia poprzednie pytanie), a zamknięcie karty ostrzega `beforeunload` poza wylogowaniem (`signingOut`
   w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, lista cen, lista stanów i wybór wariantów promocji; pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
+  lista produktów, lista cen, lista stanów, lista kodów rabatowych i wybór wariantów promocji; pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
@@ -326,22 +326,27 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   się po opuszczeniu formularza, jest ignorowana.
 - `src/discount-codes/` – kody rabatowe (menu „Kody rabatowe”, trasy `/discount-codes`, `/discount-codes/new`,
   `/discount-codes/:id`: jedna ścieżka `discount-codes`, więc pozycja menu zostaje aktywna na formularzu).
-  `useDiscountCodeList` (widok `DiscountCodesView`): filtr statusu (Wszystkie, Zaplanowane, Aktywne, Wygasłe,
-  Wyłączone; także z adresu jak w `usePromotionList`, np. link „Kody rabatowe” z pulpitu; wyszukiwanie zostaje), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
-  jest wysyłany i widok to mówi; wielkość liter normalizuje API) i stronicowanie po kursorach ze stosem kursorów
-  w panelu, jak w `usePromotionList` (zmiana filtra albo wyszukiwania porzuca wiersze i kursory; błąd następnej strony
-  zostawia wyświetloną; 403 bez ponowienia). Przyciski „Poprzednia” i „Następna” nie są wyłączane na czas ładowania
-  (fokus zostaje na naciśniętym; ponowne naciśnięcie prosi o tę samą stronę), a przycisk wyłączony po przejściu
-  (ostatnia albo pierwsza strona) oddaje fokus drugiemu; „Strona N” to `aria-live="polite"`. „Spróbuj ponownie” też nie jest wyłączany na czas
-  ładowania (nieudane ponowienie zostawia fokus na nim; ponowne naciśnięcie pyta jeszcze raz), a po udanym fokus
-  (który spadłby na `body`) trafia na pierwszy kod listy albo, gdy strona nie ma kodów, na włączony przycisk pagera, a gdy nie ma też
-  drugiej strony (filtr lub wyszukiwanie bez wyników), na pole wyszukiwania. Kolumny: kod, rabat (procent albo kwota), minimum, okres (czas polski,
-  „bez końca”), użycia (`activeUses` / limit albo „(bez limitu)”) i status; status, `activeUses` i kwoty pochodzą
-  z API, panel niczego nie liczy (`format.ts`). Przycisk „Dodaj kod” i cała edycja: tylko `admin` i `marketing`
+  `useDiscountCodeList` (widok `DiscountCodesView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Kody
+  rabatowe”, `ListToolbar`, `DataTable`, `ListPager`) na `useListUrlState` (`q`, `status`, `perPage`: 10, 25 albo 50,
+  domyślnie 25, niewysyłane) i `useCursorPager`; stan listy jest w adresie (czytany przy wejściu i przy zmianie z zewnątrz,
+  np. link „Kody rabatowe” z pulpitu z `?status=active`, Wstecz; zapisywany przez `replace`, bez nowego wpisu historii;
+  zła wartość jest pomijana, a adres poprawiany; „Wyczyść filtry” wraca na `/discount-codes`). Filtr statusu to `Select`
+  „Status” (Wszystkie, Zaplanowane, Aktywne, Wygasłe, Wyłączone), wyszukiwanie po początku kodu to reguły tego composable
+  (nie `useNameSearch`): od 1 do 32 znaków (punkty kodowe) po przycięciu białych znaków, separatorów i znaków formatu
+  `/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/gu` jak robi to API, więc sam U+200B, U+00AD albo U+2060 to puste wyszukiwanie bez
+  żądania z `q` (#336); po 300 ms przerwy w pisaniu; tekst dłuższy niż 32 znaki nie jest wysyłany, a podpowiedź (`role="status"`)
+  to mówi; wielkość liter normalizuje API. Fokus po zmianie strony, po błędzie i po 403 robią `ListPager` i `DataTable`
+  (widok nie ma własnej obsługi fokusu; #337). Kolumny: kod (link), rabat (procent albo kwota), minimum i okres (czas polski,
+  „bez końca”; poniżej 1024 px są liniami komórki kodu), użycia (`activeUses` / limit albo „(bez limitu)”), status
+  (`Badge` z tokenami `status-*`) i akcje; status, `activeUses` i kwoty pochodzą z API, panel niczego nie liczy
+  (`format.ts`). Akcja wiersza „Edytuj: <kod>”, przycisk „Dodaj kod” i cała edycja: tylko `admin` i `marketing`
   (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą listę i formularz tylko do
   odczytu, a `/discount-codes/new` bez tej roli przekierowuje na listę (`beforeEnter`, jak `/products/new`).
   `useDiscountCodeForm` (widok `DiscountCodeFormView`): ładuje kod (`GET /discount-codes/{id}`) albo zaczyna pusty
-  formularz. Po każdym sukcesie formularz jest budowany z odpowiedzi API. Pola według reguł edycji: tekst kodu
+  formularz (standard formularza: H1 „Nowy kod rabatowy” albo kod, kolumna boczna z kartą „Status” w DOM przed główną
+  z kartami „Kod i rabat” i „Okres i limit”; rodzaj rabatu to `RadioGroup` Procent/Kwota, przełącznik „Aktywny” jest
+  polem formularza: jego zmiana pokazuje `SaveBar` i trafia do API dopiero z „Zapisz”; `discard()` wraca do kodu z API bez
+  żądania). Po każdym sukcesie formularz jest budowany z odpowiedzi API. Pola według reguł edycji: tekst kodu
   zmienia się tylko przy tworzeniu; kod `planned` zmienia wszystko poza tekstem; po starcie (`active`, `expired` i kod
   `disabled`, którego początek już minął według zegara przeglądarki; zegar tylko wybiera, które pola są dostępne,
   pomyłkę poprawia 409 z komunikatem i odświeżeniem) zmieniają się tylko koniec, `enabled` i limit (`termsLocked`:
@@ -356,11 +361,14 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   komunikat bez utraty formularza; 409 po `type`: `discount-code-taken` przy polu kodu (formularz zostaje), pozostałe
   (wersja `about:blank`, `discount-code-not-editable` i inne) pokazują `detail` z API i przeładowują kod. Po
   nieudanym zapisie fokus trafia na pierwsze pole z błędem, a bez takiego na komunikat formularza; po udanym (także
-  po utworzeniu kodu) na komunikat „Kod rabatowy zapisany.”. Odpowiedź żądania,
+  po utworzeniu kodu) pokazuje się toast „Kod rabatowy zapisany.” i fokus trafia na H1 (chyba że pracownik przeniósł go
+  do pola). Niezapisane zmiany (także samego „Aktywny”) pilnuje `useUnsavedChangesGuard`. Kod, który nie istnieje albo
+  się nie wczytał: H1 „Nie udało się wczytać kodu rabatowego”, `Alert` w tokenach `status-danger` (kontrast, #446)
+  i link do listy. Tryb tylko do odczytu nie ma paska zapisu. Odpowiedź żądania,
   które skończyło się po opuszczeniu formularza, jest ignorowana. Lista zamówień per kod jest poza panelem.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 - `src/components/ui/` – komponenty shadcn-vue na Reka UI (Button, Input, Label, Textarea, Select, Combobox, Switch,
-  Checkbox, Dialog, AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb):
+  Checkbox, RadioGroup, Dialog, AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb):
   nasz kod, tylko na tokenach, z polskimi nazwami dostępnymi („Zamknij”). Nowy komponent shadcn-vue dodaje się CLI
   w kontenerze i poprawia (klasy palety na tokeny, polskie teksty); `components.json` w `apps/admin`.
 - `src/components/` – własne komponenty, gdy `ui/` nie ma odpowiednika. `ConfirmDialog` (na `AlertDialog`): tytuł z nazwą
@@ -381,8 +389,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Z prop
   `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Używa go lista
   produktów, lista cen, lista stanów i formularz produktu.
-  Standard formularza (spec „Standard formularza i okien”; podłączony tylko do formularza produktu, reszta formularzy
-  w ADMIN-SCREENS): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
+  Standard formularza (spec „Standard formularza i okien”; podłączony do formularza produktu i kodu rabatowego, formularz
+  promocji w ADMIN-SCREENS): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
   `FormField` (etykieta nad polem, podpowiedź w slocie `hint` i błędy pod nim z `data-form-error`, slot daje `describedBy`
   i `invalid` do wstawienia na kontrolkę; kontrolka z własną etykietą, jak `CategoryCombobox`, pomija `label`), `SaveBar`
   (przyklejony do dołu obszaru treści: „Niezapisane zmiany” albo prop `newLabel` przy `creating`, „Odrzuć” albo „Anuluj”
@@ -390,7 +398,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen i lista stanów, pozostałe listy przejdą w
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów i lista kodów rabatowych, pozostałe listy przejdą w
   ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
@@ -527,7 +535,7 @@ Spec: `docs/features/sentry/spec.md`.
   na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Ekrany z listy
   `LEGACY_FILES` zostają na komponentach PrimeVue, PrimeIcons i motywie Aura do ADMIN-SCREENS; PrimeVue działa obok
   Tailwinda (style PrimeVue są poza warstwami CSS, więc wygrywają z preflightem).
-- Formularz według standardu (wzorem jest `ProductFormView`; promocja i kod rabatowy w ADMIN-SCREENS): `PageHeader`, dwie
+- Formularz według standardu (wzorem jest `ProductFormView`, tak samo `DiscountCodeFormView`; promocja w ADMIN-SCREENS): `PageHeader`, dwie
   kolumny od 1280 px, karty `FormSection`, pola `FormField` (etykieta nad polem, podpowiedź i błąd połączone przez
   `aria-describedby`, `aria-invalid` przy błędzie), `SaveBar` i `useUnsavedChangesGuard` z `UnsavedChangesDialog` zamiast
   `window.confirm`. Po zapisie toast (`vue-sonner`, region `aria-live`) i fokus na H1 (chyba że pracownik przeniósł go do

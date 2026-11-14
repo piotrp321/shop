@@ -66,7 +66,7 @@ test.beforeAll(async ({ browser }) => {
     orderId = href.split("/").pop()!;
     expect(orderId, "the id of an order").toMatch(UUID);
 
-    // The edit pages of the screens that are not migrated yet: the first row of the lists of promotions and discount codes
+    // The pages of an edited promotion and discount code (promotions are not migrated yet): the first row of their lists
     // (the demo data, or a row an earlier test added).
     await go(page, "/promotions");
     const promotion = page.getByTestId("promotion-link").first();
@@ -503,7 +503,7 @@ test.describe("the focus after a change of page is never on <body>: it is on the
     }
   });
 
-  test("a code created on the legacy form keeps the focus on the message of the save, though the form moves to the route of the code", async () => {
+  test("a code created on the form shows a toast and puts the focus on the H1, though the form moves to the route of the code", async () => {
     const page = await newPanelPage("admin", viewports.desktop);
     try {
       const created = {
@@ -532,10 +532,11 @@ test.describe("the focus after a change of page is never on <body>: it is on the
       await page.getByTestId("starts-input").fill("2030-01-01T10:00");
       await page.getByTestId("save").focus();
       await page.keyboard.press("Enter");
-      await expect(page.getByTestId("success-message")).toBeVisible();
+      await expect(page.getByRole("region", { name: "Powiadomienia", exact: true }).getByText("Kod rabatowy zapisany.")).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`/discount-codes/${created.id}$`));
+      await expect(page.getByTestId("success-message")).toHaveCount(0);
       await page.waitForTimeout(500);
-      await expect(page.getByTestId("success-message"), "the focus stays on the message of the save").toBeFocused();
+      await expect(page.getByRole("heading", { level: 1, name: "FOKUS1" }), "the focus is on the H1 of the form").toBeFocused();
     } finally {
       await page.close();
     }
