@@ -90,7 +90,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/seo/` – mapa strony i `robots.txt`: `xml.ts` (budowanie `sitemapindex` i `urlset` z ucieczką `& < > " '`),
   `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`), `store-url.ts` (`STORE_URL` czytany przy
   żądaniu) i `home-json-ld.ts` (JSON-LD strony głównej).
-- `src/observability/` – Sentry (patrz „Sentry”): `filter.ts` (jedyny filtr zdarzeń, serwer i przeglądarka).
+- `instrumentation.ts` – start SDK Sentry serwera (`register`) i `onRequestError`; `src/observability/` – Sentry (patrz
+  „Sentry”): `config.ts` (odczyt zmiennych, bez SDK), `filter.ts` i `options.ts` (jedyny filtr zdarzeń i opcje danych,
+  serwer i przeglądarka), `server.ts` (SDK serwera).
 - `src/site.ts` – `STORE_NAME`, jedyne miejsce nazwy sklepu: znak słowny w `SiteHeader`, `title` i `description`
   w `app/layout.tsx`, tytuły i opisy w `page-metadata.ts` i `product-metadata.ts` oraz JSON-LD strony głównej. Nie wpisuj
   nazwy w komponentach ani w metadanych.
@@ -632,6 +634,24 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 Spec: `docs/features/sentry/spec.md`.
 
+- Konfiguracja: zmienne serwera `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE`
+  (liczba od 0 do 1 zapisana cyframi, inna wartość albo brak to 0), czytane przy starcie serwera
+  (`src/observability/config.ts`). Bez DSN (brak, pusty, same spacje) SDK nie startuje, a `instrumentation.ts` nie
+  ładuje nawet jego modułu: sklep działa jak bez Sentry. Compose ich nie ustawia (można je dodać w `.env.local`),
+  wartości wdrożenia ustawia chart.
+- Serwer: `register` (tylko runtime `nodejs`) uruchamia `initServerSentry` (`src/observability/server.ts`), a błędy
+  żądań (renderowanie, route handlery, server actions) zgłasza wyłącznie `onRequestError` (`captureRequestError` SDK):
+  jeden błąd to jedno zdarzenie. Obsłużone błędy BFF (odpowiedź 502 i `console.error`) nie są zdarzeniami, a logi
+  konsoli nie trafiają do Sentry także jako breadcrumbs. `withSentryConfig` nie jest używany (mapy źródeł to osobne
+  zadanie), więc SDK nie owija komponentów ani tras.
+- Trace'y serwera: próbkowanie `SENTRY_TRACES_SAMPLE_RATE`; `sentry-trace` i `baggage` dostają tylko wywołania do
+  originów `API_INTERNAL_URL` i `API_CATALOG_URL` (`apiPropagationTargets`: wyrażenia zakotwiczone, bo cel tekstowy SDK
+  pasuje w dowolnym miejscu adresu), nigdy Keycloak ani Redis. Serwer nie kontynuuje trace'ów z przychodzących żądań:
+  nagłówki `sentry-trace`, `baggage`, `traceparent` i `tracestate` znikają z żądania przy `http.server.request.start`
+  (Node.js, przed SDK i Next.js), więc każde żądanie zaczyna nowy trace, a nagłówek z internetu nie wymusza śledzenia.
+- Opcje danych (`src/observability/options.ts`): ta wersja SDK nie ma `sendDefaultPii`; jego odpowiednik
+  `dataCollection` wyłącza użytkownika, ciasteczka, treści, query stringi, zmienne i linie źródła ramek, a z nagłówków
+  zbiera tylko `User-Agent`, `Content-Type`, `Accept`. Filtr i tak usuwa to samo ze wszystkiego, co SDK wysyła.
 - Filtr zdarzeń (`src/observability/filter.ts`, `filterEvent` i `filterBreadcrumb`) to jedna funkcja dla serwera
   i przeglądarki, wołana z `beforeSend`, `beforeSendTransaction` i `beforeBreadcrumb`. Z żądania zostają metoda, adres
   bez query i fragmentu i nagłówki `User-Agent`, `Content-Type`, `Accept`; bez ciasteczek, treści, query stringu,
