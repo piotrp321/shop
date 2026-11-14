@@ -8,7 +8,7 @@ import { defineConfig, loadEnv, type PluginOption } from "vite";
  * with SENTRY_UPLOAD=true only when the secret SENTRY_AUTH_TOKEN exists (the Dockerfile reads it from a build secret).
  * Then the build writes hidden maps (no sourceMappingURL comment in the bundle), the plugin uploads them matched by debug
  * ID and deletes them, and a failed upload stops the build. Without the flag no map is written and the plugin is not
- * loaded, so a build without the secret (a pull request, the smoke test, `make up`) makes no request to Sentry.
+ * added to `plugins`, so a build without the secret (a pull request, the smoke test, `make up`) makes no request to Sentry.
  */
 export function sentrySourceMaps(env: Record<string, string | undefined>): { plugins: PluginOption[]; sourcemap: false | "hidden" } {
   const flag = env.SENTRY_UPLOAD ?? "";
@@ -30,7 +30,8 @@ export function sentrySourceMaps(env: Record<string, string | undefined>): { plu
         authToken: env.SENTRY_AUTH_TOKEN,
         org: env.SENTRY_ORG,
         project: env.SENTRY_PROJECT,
-        // No data about the build goes to Sentry (the plugin sends its own errors and timings by default).
+        // The plugin sends its own errors and timings by default; the telemetry of the Sentry CLI under it is switched off by
+        // SENTRY_CLI_NO_TELEMETRY in the Dockerfile.
         telemetry: false,
         // The release comes from the runtime configuration; maps are matched by debug ID, so no release is created.
         release: { inject: false, create: false, finalize: false, setCommits: false, deploy: false },

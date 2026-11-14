@@ -445,13 +445,13 @@ Spec: `docs/features/sentry/spec.md`.
   (`SentryEventFilter`): e-mail (także `%40`), JWT, `Bearer`, hasło w adresie URL, klucz=wartość z sekretami, `Failing row
   contains (…)`, `Key (…)=(…)`, `DETAIL`/`STATEMENT`, `with params [...]`, adresy IP. Wzorce działają w czasie liniowym.
 - Mapy źródeł (`sentrySourceMaps` w `vite.config.ts`, test `tests/vite-config.test.ts`; spec: P3, D10): wtyczka
-  `@sentry/vite-plugin` (zależność deweloperska) jest ładowana tylko przy `SENTRY_UPLOAD=true` w budowaniu `prod`. Wtedy build
+  `@sentry/vite-plugin` (zależność deweloperska) jest dodawana do `plugins` tylko przy `SENTRY_UPLOAD=true` w budowaniu `prod`. Wtedy build
   zapisuje mapy „hidden” (bez komentarza `sourceMappingURL` w bundlu), wtyczka wysyła je dopasowane przez debug ID (bez
   tworzenia release'u) i usuwa (`deleteSourcemapsAfterUpload`, `filesToDeleteAfterUpload`), a błąd wysyłki przerywa build
-  (`errorHandler` rzuca). Telemetria wtyczki wyłączona (`telemetry: false`). Flaga i `SENTRY_ORG`, `SENTRY_PROJECT` to `ARG` etapu
+  (`errorHandler` rzuca). Telemetria wtyczki wyłączona (`telemetry: false`), telemetria CLI Sentry pod nią przez `ENV SENTRY_CLI_NO_TELEMETRY=1` w etapie `build`. Flaga i `SENTRY_ORG`, `SENTRY_PROJECT` to `ARG` etapu
   `build` (domyślnie `false`, puste), token to sekret budowania `sentry_auth_token` (`RUN --mount=type=secret`, nigdy `ARG`
   ani `ENV`); flaga włączona bez tokenu, organizacji albo projektu kończy build błędem, a nie obrazem bez map. Bez flagi
-  wtyczka nie jest ładowana i nic nie idzie do Sentry. Dockerfile na końcu usuwa każdy `.map` z `dist`. Flagę ustawia tylko
+  wtyczka nie jest dodawana do `plugins` i nic nie idzie do Sentry. Dockerfile na końcu usuwa każdy `.map` z `dist`. Flagę ustawia tylko
   job `images` workflowu `deploy.yml`; dokumentacja: `infra/k8s/CLAUDE.md`.
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w `src/observability/filter.ts`,
   w filtrze sklepu `apps/store/src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy
