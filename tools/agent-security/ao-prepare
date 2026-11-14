@@ -300,6 +300,9 @@ def run_probe(repo, copy, binary, result_path, probe_timeout, cost_limit, outer_
     env = {k: v for k, v in os.environ.items() if not k.startswith('CLAUDE')}
 
     def interrupt(signum, frame):
+        # Ignore further signals before raising: a second one must not interrupt _stop before the SIGKILL.
+        for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            signal.signal(s, signal.SIG_IGN)
         raise Interrupted(signum)
 
     previous = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
