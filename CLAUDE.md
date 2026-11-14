@@ -163,9 +163,8 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   (np. `gh pr merge <nr> --squash --delete-branch`). Jedyny wyjątek to PR do `epic/*` z zadania REPAIR i PR
   `sync/<epik>-main`: merge commit (`--merge`). Gałęzi `epic/*` po merge'u końcowego PR nie usuwamy (ruleset `epic`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check`, testy wszystkich aplikacji i E2E przy każdym PR i każdym
-  pushu na `main` i `epic/**`. Wymagany check `checks` zbiera wynik czterech
-  części (`checks part k8s`, `apps`, `api integration`, `api functional`, każda na własnym runnerze), wymagany
-  check `e2e` wynik trzech części E2E (`e2e shard 1`…`3`, każda na własnym stosie); ostatnia po `make e2e` uruchamia
+  pushu na `main` i `epic/**`. Wymagane checki `checks` i `e2e` zbierają wynik części (`checks part …`,
+  `e2e shard …`), z których każda biegnie na własnym runnerze; ostatnia część E2E po `make e2e` uruchamia
   `make ci-after-e2e` (sprawdzenia na stosie z fragmentów `make/*.mk`, w tym Lighthouse; opis w `e2e/CLAUDE.md`).
   Testy skryptów (CI, skille, hooki AO, rulesety) `.github/scripts/script-tests.sh` znajduje po położeniu, więc nowy skill nie zmienia
   `ci.yml`. Wyjątki dotyczą tylko PR (`.github/scripts/scope.sh`): PR zmieniający wyłącznie

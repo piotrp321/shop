@@ -993,8 +993,8 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 i pushu na `main`, więc job `checks` może być wymaganym checkiem gałęzi `main`. Nowe uruchomienie dla tego samego
 PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
 Job `checks` tylko zbiera wynik czterech części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
-i ma tylko obrazy i usługi, których potrzebuje. W częściach z obrazami: obrazy deweloperskie `api`, `store` i `admin`
-pobrane z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
+i ma tylko obrazy i usługi, których potrzebuje. Część pobiera tylko obrazy deweloperskie, których potrzebuje (`apps`: `api`, `store` i `admin`; części api: `api`),
+z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
 Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
 
 1. `k8s`: `make -C infra/k8s check` (bez obrazów i usług).
