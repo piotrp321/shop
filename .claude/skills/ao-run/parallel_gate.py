@@ -7,7 +7,8 @@ Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
 - claims file <state>/claims.json: {"claims": [{dir, claim, at, expires_at}], "owners": {dir: token}}. Reservations
   (30 minutes, renewed with the same token, ClaimConflict for another token), release, owners, claim_to_owner.
   Writers hold state_lock. A missing file is empty; an unreadable or wrong-shaped one is StateFileError.
-- file classification of the gate (is_allowed, is_claude_md, common_paths) and GENERATED files.
+- file classification of the gate (is_app_code, is_allowed, is_claude_md, common_paths), GENERATED and REGISTRATION
+  files.
 - Docker memory snapshot (docker_snapshot with an injected runner, DockerError) and free_mib.
 - orchestrator_running: probes <ao_home>/orchestrator.lock with a shared non-blocking flock; never creates the file.
 """
@@ -29,6 +30,10 @@ CLAIM_TTL = timedelta(minutes=30)
 
 GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store/src/api/schema.d.ts',
              'apps/admin/src/api/schema.d.ts')
+# Application code files that epics only append entries to; REPAIR merges them like any other shared file.
+REGISTRATION = ('apps/admin/src/layout/AppMenu.vue', 'apps/admin/src/router/index.ts')
+# Directories of application code inside apps/<app>/.
+CODE_DIRS = ('src', 'app')
 
 
 class LockTimeout(Exception):
@@ -166,10 +171,21 @@ def claim_to_owner(state_dir, directory, claim, now):
     return token
 
 
-def is_allowed(path):
-    if is_claude_md(path):
+def is_app_code(path):
+    """Whether a path of the common part holds application code: it lies in apps/<app>/src or apps/<app>/app (by
+    segments), or contains such a directory (`apps`, `apps/<app>`). Generated and registration files, CLAUDE.md and
+    README.md are not code."""
+    if path in GENERATED or path in REGISTRATION or path.split('/')[-1] in ('CLAUDE.md', 'README.md'):
         return False
-    return path in GENERATED or path == 'docs' or path.startswith('docs/') or path == 'README.md'
+    segments = path.split('/')
+    if segments[0] != 'apps':
+        return False
+    return len(segments) <= 2 or segments[2] in CODE_DIRS
+
+
+def is_allowed(path):
+    """Step 5 of the gate: a shared path blocks the candidate only when it is application code."""
+    return not is_app_code(path)
 
 
 def is_claude_md(path):

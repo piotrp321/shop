@@ -41,18 +41,28 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
    Inaczej: kandydat pominięty.
 4. **Zakres**: kandydat i każdy epik w toku mają czytelną linię `Zakres:`. Brak u kandydata: kandydat pominięty;
    brak u epiku w toku: czekanie (nie wiadomo, co zmienia).
-5. **Pliki**: każda ścieżka części wspólnej kandydata z każdym epikiem w toku jest plikiem dopuszczalnym. Inaczej:
-   kandydat pominięty z powodem „wspólne pliki z X: <ścieżki>” i polem `paths` ze ścieżkami blokującymi ze wszystkich
-   epików w toku (nie tylko z pierwszego).
-   - **Dopuszczalne:** pliki generowane `apps/api/openapi.json`, `apps/api/openapi-admin.json`,
-     `apps/store/src/api/schema.d.ts`, `apps/admin/src/api/schema.d.ts` (sync i REPAIR generują je od nowa) oraz
-     dokumentacja `docs/**` i `README.md` w katalogu głównym (sync i REPAIR sprawdzają spójność treści, sekcja
-     „Spójność dokumentów”).
-   - **Wymuszają kolejkę:** wspólne pliki edytowane ręcznie: CI (`.github/**`), każdy `CLAUDE.md`, `make/*.mk` i główny
-     `Makefile`, menu panelu (`apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`), inne `README.md`
-     (np. runbook `infra/k8s/README.md`) oraz każda inna wspólna ścieżka kodu, testów i konfiguracji (porównanie po
-     segmentach: `docs/features/ao-run/spec.md`, „Zakres epiku”). Czy dopuścić `CLAUDE.md`, rozstrzyga użytkownik po
-     dwóch pierwszych parach (sekcja „Ocena `CLAUDE.md`”).
+5. **Pliki**: część wspólna kandydata z każdym epikiem w toku nie zawiera kodu aplikacji. Inaczej: kandydat pominięty
+   z powodem „wspólne pliki z X: <ścieżki>” i polem `paths` ze ścieżkami blokującymi ze wszystkich epików w toku (nie
+   tylko z pierwszego). Wspólny plik sam w sobie nie jest ryzykiem: Git łączy zmiany w różnych miejscach jednego
+   pliku, a konflikt tekstowy i niespójność dokumentów rozwiązują sync i REPAIR (sekcje „Spójność dokumentów”
+   i „Testy po scaleniu”).
+   - **Kod aplikacji (blokuje):** ścieżka w `apps/<aplikacja>/src` albo `apps/<aplikacja>/app` (po segmentach:
+     `docs/features/ao-run/spec.md`, „Zakres epiku”) i ścieżka, która taki katalog zawiera (`apps`,
+     `apps/<aplikacja>`), bo deklaracja szersza niż kod obejmuje kod. Dwa epiki zmieniające ten sam kod aplikacji
+     mogą zmienić to samo zachowanie, a merge bez konfliktu tekstowego i zielone CI tego nie wykluczają. Tej oceny
+     bramka nie umie zrobić wiarygodnie z deklaracji, więc reguła dla kodu zostaje konserwatywna; jej koszt mierzy
+     `code_blocked` w `pairs.py` (sekcja „Metryki par”).
+   - **Wyjątki w kodzie aplikacji (nie blokują):** pliki generowane `apps/store/src/api/schema.d.ts`,
+     `apps/admin/src/api/schema.d.ts` (sync i REPAIR generują je od nowa), pliki rejestracji, do których epiki
+     dopisują pozycje (menu panelu `apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`), i każdy
+     `CLAUDE.md` oraz `README.md`.
+   - **Wszystko inne (nie blokuje):** CI (`.github/**`), `CLAUDE.md`, `README.md` (także runbook
+     `infra/k8s/README.md`), `make/*.mk`, główny `Makefile`, dokumentacja `docs/**`, testy (`apps/*/tests`, `e2e`,
+     `infra/k8s/tests`), konfiguracja aplikacji (`apps/api/config`, `composer.json`, `package.json`, lockfile'y),
+     infrastruktura (`infra/**`), narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`), pliki generowane
+     `apps/api/openapi.json` i `apps/api/openapi-admin.json`.
+   - Rzeczywista zależność epików to krok 3, nie reguła plików. Użytkownik może uruchomić kandydata mimo wspólnego
+     kodu (`--force`, „Uruchomić mimo bramki?”).
 6. **Pamięć Dockera**: `wolna = MemTotal − pamięć kontenerów spoza AO − max(pamięć kontenerów AO, rezerwa × liczba
    epików aktywnych)` jest co najmniej rezerwą jednego stosu. Rezerwa: 6 GiB (`--stack-gib`, pomiar: stos ok. 4,9 GB).
    Kontenery AO to kontenery projektów Compose o nazwie `ao-*` (etykieta `com.docker.compose.project` z `docker ps`,
@@ -66,7 +76,7 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
    równoległego zawiera zużycie drugiego); bez takich pomiarów ze wszystkich. Szacunek czasu: ze wszystkich pomiarów.
    Inaczej: czekanie.
 
-**Wstrzymanie równoległości**: gdy istnieje `parallel-hold.json` (sekcja „Pomiar pierwszych dwóch par”), zaraz po
+**Wstrzymanie równoległości**: gdy istnieje `parallel-hold.json` (sekcja „Metryki par”), zaraz po
 kroku 2 każdy kandydat obok epiku w toku (także czekającego na merge) czeka z powodem `równoległość wstrzymana:
 <powód>`. Krok 1 działa dalej, więc praca szeregowa trwa. Odnowienie rezerwacji założonej przed wstrzymaniem go nie
 sprawdza (odnowienie nie uruchamia kroków bramki), więc taki epik może ruszyć jeszcze w ciągu 30 minut od rezerwacji
@@ -154,9 +164,8 @@ sprzed zmiany drugiego epiku. Dlatego:
   - Q ma `epic_done` (wcześniej zmiany `main` wprowadza AO: REPAIR przy konflikcie końcowego PR);
   - commit merge'u P nie jest przodkiem `origin/epic/<Q>` (`git merge-base --is-ancestor`), więc sync wykonany raz się
     nie powtarza, także po rundzie `DELTA` i ponownym `epic_done`;
-  - faktyczne zmiany obu stron mają wspólny plik dopuszczalny (dokument albo plik generowany):
-    `git diff --name-only <merge-base>..origin/main` i `git diff --name-only origin/main...origin/epic/<Q>`. Wspólny
-    plik niedopuszczalny (spoza deklaracji): sync też, bo to ryzyko konfliktu znaczeniowego.
+  - faktyczne zmiany obu stron mają wspólny plik (dowolny, także spoza deklaracji):
+    `git diff --name-only <merge-base>..origin/main` i `git diff --name-only origin/main...origin/epic/<Q>`.
   Gdy końcowy PR Q ma konflikt, a AO nie działa, ta sama procedura rozwiązuje konflikt. Zgodą na procedurę dla par
   (także przy konflikcie) jest akceptacja tej specyfikacji (`CLAUDE.md`: PR `sync/<epik>-main` merguje skill po zgodzie
   użytkownika na procedurę i zielonym CI). Końcowy PR Q `MERGED` albo `CLOSED` w trakcie syncu: sesja przerywa,
@@ -166,6 +175,20 @@ sprzed zmiany drugiego epiku. Dlatego:
 - **Wykrycie merge'u P** (także z innej sesji): pętla w tle z sekcji 6 skilla, która co 5 minut sprawdza stan
   końcowego PR Q, kończy się też przy zmianie `origin/main` (`git ls-remote origin main`); sesja sprawdza wtedy
   warunki syncu i uruchamia pętlę ponownie.
+
+### Testy po scaleniu
+
+Merge bez konfliktu tekstowego nie dowodzi, że połączony kod działa. Dlatego każde scalenie zmian drugiego epiku
+(REPAIR, sync spójności, tryb poprawki) kończy się testami na połączonym stanie:
+
+- lokalnie, przed wypchnięciem merge commitu (`/delivery`, „Konflikt z gałęzią docelową lub z `main`”): `make check`
+  i testy każdej aplikacji, która ma plik zmieniony po obu stronach od merge-base, nie tylko pliki w konflikcie;
+- w CI: PR REPAIR i `sync/<epik>-main` trafia do `epic/<epik>` dopiero po zielonych wymaganych checkach `checks`
+  i `e2e` (ruleset `epic-merge`), potem CI biegnie jeszcze raz na HEAD gałęzi epiku, a końcowy PR do `main` wymaga
+  tych samych checków.
+
+Czerwony check na połączonym stanie to regresja w metrykach par (sekcja „Metryki par”), także gdy REPAIR ją naprawił.
+Regresja naprawiona automatycznie nie zatrzymuje innych epików; krytyczny problem to dopiero czerwone CI na `main`.
 
 ### Gdzie działa
 
@@ -247,56 +270,90 @@ sprzed zmiany drugiego epiku. Dlatego:
   przedziału go nie oznacza, więc porzucony `start` nie psuje późniejszych szacunków. Linie bez `docker` są
   poprawne.
 
-### Pomiar pierwszych dwóch par
+### Metryki par
 
 Para to dwa epiki, których przedziały w `measurements.jsonl` się nakładają, a późniejszy `start` z tych dwóch ma pole
 `docker` (zapis 19a, także `null`); epik bez `done` ma przedział otwarty (do teraz, `open: true`). Nakładania sprzed
 19a nie są parami, a otwarty przedział, którego `start` nie ma pola `docker` (epik sprzed 19a bez zapisanego `done`),
-jest pomijany w całości.
+jest pomijany w całości. Metryki zbieramy dla każdej pary, nie tylko dla dwóch pierwszych.
 
-- **`pairs.py [--state DIR] [--setup-diag DIR]`** (osobny skrypt w `.claude/skills/ao-run/`, do usunięcia po decyzji
-  o 19b i `CLAUDE.md`; JSON, kod 0; brak par: pusta lista): `pairs` w kolejności startu, dla każdej: oba epiki
-  z czasem w minutach i `open`, część wspólna, rozpiętość (pierwszy `start` → ostatni `done`), suma czasów (wariant
-  szeregowy), oszczędność `1 − rozpiętość/suma` (`null` przy parze otwartej), przyrost każdego okna limitu
-  w rozpiętości (okno odnowione w trakcie: bez przyrostu), `docker` ze `start` drugiego epiku i liczba awarii stosu
-  w rozpiętości (pliki `ao-*-<RRRRMMDD-GGMMSS>-*.log` w `--setup-diag`, domyślnie `~/.local/state/ao-setup`); oraz
-  `claude_md_only`: epiki, które `gate.jsonl` pominął wyłącznie z powodu wspólnych plików `CLAUDE.md` (ID, pierwsze
-  i ostatnie pominięcie, liczba). Kod 2: nieczytelny plik stanu.
-- **Blok pary.** Gdy oba końcowe PR pary są `MERGED` albo `CLOSED`, sesja pokazuje w rozmowie i po zgodzie
-  użytkownika dopisuje do issue epiku zamkniętego później (komentarz z pomiarem z sekcji 7 skilla albo, przy `CLOSED`,
-  osobny komentarz z samym blokiem) blok `Para równoległa`: epiki, czas zegarowy pary i szeregowo, oszczędność;
-  konflikty (zadania REPAIR obu epików z `ao report`, sync spójności i inne PR `sync/<epik>-main`) i niespójności
-  dokumentów naprawione w nich („Spójność dokumentów” z opisów PR); interwencje obu epików; zasoby (`docker` przy
-  starcie drugiego, awarie stosu); koszt (USD z `ao report` obu epików i przyrost okien z `pairs.py`); werdykt
-  „Krytyczny problem: brak” albo lista.
+- **`pairs.py [--state DIR] [--setup-diag DIR]`** (skrypt w `.claude/skills/ao-run/`; JSON, kod 0; brak par: pusta
+  lista): `pairs` w kolejności startu, dla każdej: oba epiki z czasem w minutach i `open`, część wspólna, rozpiętość
+  (pierwszy `start` → ostatni `done`), suma czasów (wariant szeregowy), oszczędność `1 − rozpiętość/suma` (`null` przy
+  parze otwartej), przyrost każdego okna limitu w rozpiętości (okno odnowione w trakcie: bez przyrostu), `docker` ze
+  `start` drugiego epiku, liczba awarii stosu w rozpiętości (pliki `ao-*-<RRRRMMDD-GGMMSS>-*.log` w `--setup-diag`,
+  domyślnie `~/.local/state/ao-setup`) i `record`: ostatni zapis werdyktu tej pary z `pairs.jsonl` (kolejność epików
+  bez znaczenia) albo `null`. Dalej `claude_md_only`: epiki, które `gate.jsonl` pominął wyłącznie z powodu wspólnych
+  plików `CLAUDE.md` (ID, pierwsze i ostatnie pominięcie, liczba; z linii sprzed obecnej reguły plików);
+  `code_blocked`: epiki, które `gate.jsonl` pominął z powodu ścieżki blokującej według obecnej reguły (kod aplikacji;
+  te same pola), czyli koszt konserwatywnej reguły dla kodu; oraz `summary` (niżej). Kod 2: nieczytelny plik stanu.
+- **`pairs.py record <A> <B> [--state DIR]`** (stdin: obiekt JSON werdyktu) dopisuje do `<state>/pairs.jsonl` linię
+  `{at, epics: [A, B], …werdykt}` pod blokadą bramki i wypisuje ją (kod 0). Werdykt ma dokładnie pola:
+  - `shared`: pliki zmienione przez oba epiki (`git diff --name-only <merge>^1 <merge>` dla commitu merge'u końcowego
+    PR każdego epiku, część wspólna list) albo `null`, gdy któryś końcowy PR jest `CLOSED`;
+  - `conflicts`: scalenia z konfliktem tekstowym w epikach pary (zadania REPAIR i PR `sync/<epik>-main`, których
+    opis wymienia plik w konflikcie);
+  - `auto_resolved`: ile z nich REPAIR albo sync rozwiązał bez ręcznej poprawki i bez odpowiedzi człowieka
+    (najwyżej `conflicts`);
+  - `doc_fixes`: niespójności dokumentów naprawione automatycznie (pozycje „poprawione” w liniach „Spójność
+    dokumentów” opisów PR obu epików);
+  - `interventions`: interwencje obu epików (`ao report`);
+  - `regressions`: czerwone checki `checks` albo `e2e` na połączonym stanie (sekcja „Testy po scaleniu”): runy PR
+    REPAIR i `sync/<epik>-main`, HEAD gałęzi epiku po ich merge'u i `main` po merge'u końcowego PR;
+  - `critical`: numery krytycznych problemów (niżej), pusta lista przy braku.
+  Liczby to nieujemne całkowite. Brak lub nadmiar pola, zła wartość, `A` równe `B`, nieczytelny JSON albo zajęta
+  blokada: kod 2 bez zapisu. Ponowny zapis tej samej pary jest poprawką: liczy się ostatni.
+- **`summary`**: `admitted` (liczba par, czyli epików dopuszczonych obok innego), `recorded` (par z zapisem),
+  sumy `conflicts`, `auto_resolved`, `needed_intervention` (`conflicts − auto_resolved`), `doc_fixes`,
+  `interventions`, `regressions`, `critical_pairs` (par z niepustym `critical`) z zapisów par; oraz te same sumy
+  osobno dla par, których `shared` zawiera `CLAUDE.md` (`claude_md`), i dla par, których `shared` zawiera kod
+  aplikacji według reguły plików (`code`; kod spoza deklaracji, bo deklarowany wspólny kod blokuje start), każda
+  z polem `pairs`.
+- **Blok pary.** Gdy oba końcowe PR pary są `MERGED` albo `CLOSED`, sesja zbiera werdykt, pokazuje w rozmowie blok
+  `Para równoległa`: epiki, czas zegarowy pary i szeregowo, oszczędność; konflikty (wystąpiło, rozwiązane
+  automatycznie, wymagały człowieka) i niespójności dokumentów naprawione automatycznie; regresje; interwencje obu
+  epików; wspólne pliki (liczba, w tym `CLAUDE.md` i kod aplikacji); zasoby (`docker` przy starcie drugiego, awarie
+  stosu); koszt (USD z `ao report` obu epików i przyrost okien z `pairs.py`); werdykt „Krytyczny problem: brak” albo
+  lista. Zapis `pairs.py record` nie wymaga zgody (stan lokalny); po zgodzie użytkownika sesja dopisuje blok do issue
+  epiku zamkniętego później (komentarz z pomiarem z sekcji 7 skilla albo, przy `CLOSED`, osobny komentarz z samym
+  blokiem).
 - **Krytyczny problem** (definicja z planu, krok 19):
   1. CI workflowu `ci` na `main` czerwone dla commita merge'u końcowego PR któregoś epiku pary;
   2. konflikt między epikami pary, którego sync i REPAIR nie rozwiązały bez ręcznej poprawki (pozycja „Ręczne
      poprawki” z powodu konfliktu albo niespójności dokumentów wykrytej po merge'u);
   3. AO zatrzymało epik pary (`FAILED`, `epic_blocked`, `queue_held`, epik bez `DONE`) z powodu stosu, pamięci,
      portów albo limitu (`ao status --epic` w `~/.local/state/ao-<epik>`);
-  4. epik pary ma więcej napraw (zadania REPAIR z `ao report` i ręczne poprawki z komentarza pomiaru) albo interwencji
-     (`ao report`) na zadanie (liczba zadań ze `start`) niż każdy z trzech ostatnich epików szeregowych z komentarzem
-     pomiaru, liczonych tak samo.
+  4. epik pary ma więcej ręcznych poprawek (z komentarza pomiaru) albo interwencji (`ao report`) na zadanie (liczba
+     zadań ze `start`) niż każdy z trzech ostatnich epików szeregowych z komentarzem pomiaru, liczonych tak samo.
+     Zadania REPAIR i sync automatyczny się nie liczą: konflikt albo regresja naprawione automatycznie nie są
+     problemem.
+- Krytyczny problem to jedyny powód wstrzymania: push z problemem i `night_queue.py hold --reason "<para
+  i problem>"`, więc epiki dalej ruszają równolegle dopiero po decyzji użytkownika o zmianie bramki (w rozmowie albo
+  w PR do tej specyfikacji); `unhold` sesja uruchamia tylko po wyraźnej decyzji użytkownika w rozmowie. Konflikt,
+  niespójność albo regresja rozwiązane automatycznie trafiają tylko do metryk.
 - Push „Krok 19b może ruszyć: dwie pary bez krytycznego problemu” sesja wysyła po werdykcie drugiej pary, gdy obie
-  pierwsze pary są zamknięte (żaden epik nie ma `open`) i żadna nie ma krytycznego problemu. Krytyczny problem: push
-  z problemem i `night_queue.py hold --reason "<para i problem>"`, więc epiki dalej ruszają równolegle dopiero po
-  decyzji użytkownika o zmianie bramki (w rozmowie albo w PR do tej specyfikacji); `unhold` sesja uruchamia tylko po
-  wyraźnej decyzji użytkownika w rozmowie.
+  pierwsze pary są zamknięte (żaden epik nie ma `open`) i żadna nie ma krytycznego problemu.
 
-### Ocena `CLAUDE.md`
+### Ocena reguły plików
 
-Po werdykcie drugiej pary sesja przedstawia użytkownikowi dane do decyzji, czy dopuścić wspólne `CLAUDE.md`
-w kroku 5: korzyść (`claude_md_only` z `pairs.py`: epiki, które czekały tylko przez `CLAUDE.md`) i ryzyko
-(niespójności dokumentów znalezione w sync i REPAIR obu par oraz ewentualne krytyczne problemy). Decyzja należy do
-użytkownika; zmiana reguły to PR do tej specyfikacji i `parallel_gate.py`.
+Po werdykcie każdej pary sesja pokazuje `summary` i `code_blocked` z `pairs.py`. Dane do decyzji użytkownika:
+
+- **`CLAUDE.md` i inne wspólne pliki poza kodem** (dopuszczone): czy równoległe zmiany powodują problemy. Wiersz
+  `claude_md` pokazuje, ile par zmieniało wspólny `CLAUDE.md` i ile z nich miało niespójności naprawione
+  automatycznie, konflikty wymagające człowieka, regresje albo krytyczny problem; `claude_md_only` pokazuje, ile
+  czekania kosztowała poprzednia reguła.
+- **Kod aplikacji** (blokowany): korzyść ze złagodzenia to `code_blocked` (epiki, które czekały przez wspólny kod),
+  ryzyko to wiersz `code` (pary, które zmieniły wspólny kod spoza deklaracji, i ich problemy).
+
+Decyzja należy do użytkownika; zmiana reguły to PR do tej specyfikacji i `parallel_gate.py`.
 
 ### Ograniczenia
 
 - Zakres to deklaracja. Epik, który zmieni plik spoza niej, może skonfliktować z drugim; naprawia to REPAIR albo
   sync (sekcja „Spójność dokumentów”, warunek z faktycznych zmian).
-- CI końcowego PR drugiego epiku przeszło bez pierwszego. Reguła plików i sync spójności zmniejszają, ale nie
-  wykluczają konfliktu znaczeniowego w kodzie.
+- CI końcowego PR drugiego epiku przeszło bez pierwszego. Reguła dla kodu aplikacji, sync spójności i testy po
+  scaleniu zmniejszają, ale nie wykluczają konfliktu znaczeniowego; konfliktu znaczeniowego w konfiguracji,
+  infrastrukturze albo CI bramka nie blokuje, łapią go dopiero testy po scaleniu.
 - Rezerwacja i blokada działają między sesjami na jednym komputerze. Epik uruchomiony poza `/ao-run` widać dopiero po
   wypchnięciu jego gałęzi `epic/*`.
 - Rezerwa pamięci jest stała (6 GiB na stos); pamięć szczytowa nie jest mierzona. REPAIR i sync epiku po `done` nie
@@ -331,16 +388,15 @@ par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
 ## Pliki
 
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada, zapis atomowy, rezerwacje z tokenem,
-  pomiar pamięci Dockera i klasyfikacja plików (dopuszczalne, blokujące); bez zależności od `night_queue.py`.
+  pomiar pamięci Dockera i klasyfikacja plików (kod aplikacji blokuje, reszta nie); bez zależności od `night_queue.py`.
 - `.claude/skills/ao-run/night_queue.py` i `test_night_queue.py`: komendy `gate`, `release`, `hold` i `unhold`
   (algorytm bramki na tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`,
   szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
-- `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: pomiar par, usuwany po decyzjach z sekcji „Pomiar…”
-  i „Ocena `CLAUDE.md`”.
+- `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: metryki par i zapis werdyktu (`record`).
 - `.claude/skills/ao-run/next_epic.py`: bez zmiany zachowania; wspólny odczyt tablicy zostaje w nim.
 - `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4, 5, 6, 6a, 7, 7a, 8, „Noc” i „Czego nie robisz”.
-- `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów i pliki generowane bez konfliktu w sekcji
-  „Konflikt z gałęzią docelową lub z `main`”.
+- `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów, pliki generowane bez konfliktu i testy
+  aplikacji z plikami zmienionymi po obu stronach w sekcji „Konflikt z gałęzią docelową lub z `main`”.
 - Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: wskazują
   tę specyfikację), plan Agentic Software House (status kroku 19, rola „Praca równoległa”, punkt 3 procesu).
 
@@ -351,9 +407,10 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
 
 - `gate`: brak epików w toku (start szeregowy), dwa epiki aktywne, epik po `done` nie zajmuje miejsca, epik w toku
   bez pomiaru liczony jako aktywny, epik ze zmergowanym końcowym PR i otwartym issue (`merged_open`, nie w toku),
-  zależność, brak `Zakres:` u kandydata i u epiku w toku, część wspólna tylko z plików generowanych i dokumentacji
-  (przechodzi), wspólny `CLAUDE.md`, `.github/workflows/ci.yml`, `make/*.mk`, `Makefile`, `infra/k8s/README.md`
-  i ścieżka kodu (pominięty), `paths` z dwóch epików w toku, plik spoza zakresu w diffie epiku w toku, niższy kandydat
+  zależność, brak `Zakres:` u kandydata i u epiku w toku, część wspólna z CI, `CLAUDE.md`, `Makefile`, `make/*.mk`,
+  runbooka, testów, konfiguracji, infrastruktury, dokumentacji, plików generowanych i rejestracji (przechodzi),
+  wspólny kod aplikacji, także przez deklarację szerszą (`apps`, `apps/<aplikacja>`) i katalog z plikiem rejestracji
+  (pominięty), próby obejścia (ścieżka podobna do kodu po prefiksie znaków, plik generowany jako prefiks), `paths` z dwóch epików w toku, plik spoza zakresu w diffie epiku w toku, niższy kandydat
   przed wyższym, `--dir` (epik spoza tablicy, nieprzygotowany, w toku → `resumed`); pamięć: wystarczająca, za mała,
   rezerwa epiku bez stosu, błąd `docker`, nieczytelne wyjście `docker`; limit: brak pomiaru, stan inny niż `ok`, pełny
   szacunek epiku aktywnego przekracza 80%, okno odnawiane przed końcem, szacunek zużycia bez pomiarów nakładających się;
@@ -386,5 +443,9 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
 - `pairs.py`: brak par, para, trzy epiki w łańcuchu, para otwarta, okno odnowione, awarie stosu w rozpiętości i poza
   nią, brak katalogu diagnostyki, linie sprzed 19a (nakładanie bez `docker` nie jest parą, zamknięty epik sprzed 19a
   z późniejszym `start` 19a jest, otwarty `start` sprzed 19a jest pomijany), `claude_md_only` z `gate.jsonl` (tylko
-  `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką nie), brak `gate.jsonl`, nieczytelny plik → kod 2.
+  `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką nie), `code_blocked` (ścieżka kodu tak, sama ścieżka dopuszczona nie),
+  `record` przy parze (także w odwrotnej kolejności epików, ostatni zapis wygrywa), `summary` z wierszami `claude_md`
+  i `code`, brak `gate.jsonl` i `pairs.jsonl`, nieczytelny plik → kod 2. `record`: poprawny zapis, brak i nadmiar pola,
+  liczba ujemna, ułamkowa albo logiczna, `auto_resolved` większe od `conflicts`, zły numer w `critical`, `shared` nie
+  będące listą ścieżek ani `null`, `A` równe `B`, nieczytelny JSON, zajęta blokada → kod 2 bez zapisu.
 - Testy skryptów `/delivery` w `.github/scripts/script-tests.sh` (jeśli sprawdzają treść sekcji) dalej przechodzą.

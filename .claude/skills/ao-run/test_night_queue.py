@@ -681,18 +681,18 @@ class QueueCliTest(unittest.TestCase):
                        'owners': {}}, f)
 
     def test_in_progress_counts_like_an_epic_already_on_the_list(self):
-        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/b'), epic(3, 'SEARCH', 'apps/a/x')]
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/b'), epic(3, 'SEARCH', 'apps/a/src/x')]
         result = self.propose(epics, branches=['cart'])
         self.assertEqual(['variants'], self.dirs(result))
         self.assertEqual([{'dir': 'cart', 'id': 'CART', 'issue': 1}], result['in_progress'])
-        self.assertEqual([{'issue': 3, 'id': 'SEARCH', 'reason': 'zakres wspólny z CART: apps/a/x'}],
+        self.assertEqual([{'issue': 3, 'id': 'SEARCH', 'reason': 'zakres wspólny z CART: apps/a/src/x'}],
                          result['skipped'])
 
     def test_branch_diff_of_an_epic_in_progress_counts(self):
         epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/b'), epic(3, 'SEARCH', 'apps/c')]
-        result = self.propose(epics, branches=['cart'], diffs={'cart': ['apps/b/Outside.php']})
+        result = self.propose(epics, branches=['cart'], diffs={'cart': ['apps/b/src/Outside.php']})
         self.assertEqual(['search'], self.dirs(result))
-        self.assertEqual('zakres wspólny z CART: apps/b/Outside.php', result['skipped'][0]['reason'])
+        self.assertEqual('zakres wspólny z CART: apps/b/src/Outside.php', result['skipped'][0]['reason'])
 
     def test_merged_final_pr_is_not_in_progress(self):
         epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/a')]
@@ -702,11 +702,11 @@ class QueueCliTest(unittest.TestCase):
 
     def test_valid_claim_is_in_progress_and_no_candidate(self):
         self.claims('variants')
-        epics = [epic(1, 'VARIANTS', 'apps/a'), epic(2, 'CART', 'apps/a/x'), epic(3, 'SEARCH', 'apps/c')]
+        epics = [epic(1, 'VARIANTS', 'apps/a'), epic(2, 'CART', 'apps/a/src/x'), epic(3, 'SEARCH', 'apps/c')]
         result = self.propose(epics)
         self.assertEqual(['search'], self.dirs(result))
         self.assertEqual([{'dir': 'variants', 'id': 'VARIANTS', 'issue': 1}], result['in_progress'])
-        self.assertEqual([{'issue': 2, 'id': 'CART', 'reason': 'zakres wspólny z VARIANTS: apps/a/x'}],
+        self.assertEqual([{'issue': 2, 'id': 'CART', 'reason': 'zakres wspólny z VARIANTS: apps/a/src/x'}],
                          result['skipped'])
 
     def test_dependency_on_an_epic_in_progress(self):
@@ -791,14 +791,20 @@ class QueueCliTest(unittest.TestCase):
                  epic(2, 'VARIANTS', 'apps/api/openapi.json, docs/adr/x.md, README.md, apps/b')]
         self.assertEqual(['cart', 'variants'], self.dirs(self.propose(epics)))
 
-    def test_common_blocking_files_skip(self):
+    def test_common_non_code_files_do_not_skip(self):
         for path in ('CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml', 'make/api.mk', 'Makefile',
-                     'infra/k8s/README.md'):
+                     'infra/k8s/README.md', 'infra/k8s/tests', 'apps/api/config'):
             with self.subTest(path=path):
-                epics = [epic(1, 'CART', '%s, apps/a' % path), epic(2, 'VARIANTS', '%s, apps/b' % path)]
+                epics = [epic(1, 'CART', '%s, apps/a/src' % path), epic(2, 'VARIANTS', '%s, apps/b/src' % path)]
                 result = self.propose(epics)
-                self.assertEqual(['cart'], self.dirs(result))
-                self.assertEqual('zakres wspólny z CART: %s' % path, result['skipped'][0]['reason'])
+                self.assertEqual(['cart', 'variants'], self.dirs(result))
+                self.assertEqual([], result['skipped'])
+
+    def test_common_app_code_skips(self):
+        epics = [epic(1, 'CART', 'apps/api/src/Cart, apps/a'), epic(2, 'VARIANTS', 'apps/api/src, apps/b')]
+        result = self.propose(epics)
+        self.assertEqual(['cart'], self.dirs(result))
+        self.assertEqual('zakres wspólny z CART: apps/api/src/Cart', result['skipped'][0]['reason'])
 
     def test_first_without_scope_is_alone(self):
         epics = [epic(1, 'CART', None), epic(2, 'VARIANTS', 'apps/x')]
@@ -818,7 +824,7 @@ class QueueCliTest(unittest.TestCase):
         self.assertEqual('nieczytelna linia Zakres: /abs', self.propose(epics)['skipped'][0]['reason'])
 
     def test_lower_disjoint_epic_enters_after_skipped_higher(self):
-        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/a/b'), epic(3, 'SEARCH', 'apps/c')]
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/a/src/b'), epic(3, 'SEARCH', 'apps/c')]
         result = self.propose(epics)
         self.assertEqual(['cart', 'search'], self.dirs(result))
         self.assertEqual([2], [s['issue'] for s in result['skipped']])
@@ -1275,12 +1281,12 @@ class NextCliTest(unittest.TestCase):
         self.assertEqual(['b'], [c['dir'] for c in self.claims_json()['claims'] if c['claim'] == result['claim']])
 
     def test_parallel_candidate_waits_and_the_night_goes_on(self):
-        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/a/b'), epic(3, 'C', 'apps/c')]
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/a/src/b'), epic(3, 'C', 'apps/c')]
         self.night(['a', 'b', 'c'])
         self.events(*self.a_running())
         for _ in range(2):
             result = self.result(epics, branches=['a'])
-            self.assertEqual({'epic': None, 'reason': 'wspólne pliki z A: apps/a/b', 'started': ['a'],
+            self.assertEqual({'epic': None, 'reason': 'wspólne pliki z A: apps/a/src/b', 'started': ['a'],
                               'left': ['b', 'c'], 'wait': True, 'claim': None}, result)
         self.assertNotIn('ended_at', self.night_json())
         self.assertFalse(self.has_claims_file())
@@ -1344,8 +1350,8 @@ class NextCliTest(unittest.TestCase):
     def test_gate_evaluations_of_next_are_logged(self):
         self.night(['a', 'b'])
         self.events(*self.a_running())
-        claude_md = [epic(1, 'A', 'CLAUDE.md, apps/a'), epic(2, 'B', 'CLAUDE.md, apps/b')]
-        self.result(claude_md, branches=['a'])
+        shared_code = [epic(1, 'A', 'apps/api/src, apps/a'), epic(2, 'B', 'apps/api/src, apps/b')]
+        self.result(shared_code, branches=['a'])
         self.other_claims('y')
         self.result(self.abc(), branches=['a'])
         self.other_claims()
@@ -1353,8 +1359,8 @@ class NextCliTest(unittest.TestCase):
         passed = self.result(self.abc(), branches=['a'])
         at = NOW.isoformat()
         self.assertEqual([
-            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: CLAUDE.md', 'waiting': None,
-             'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: CLAUDE.md', 'paths': ['CLAUDE.md']}]},
+            {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: apps/api/src', 'waiting': None,
+             'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/api/src', 'paths': ['apps/api/src']}]},
             {'at': at, 'dir_arg': 'b', 'epic': None, 'reason': 'dwa epiki aktywne: A, Y', 'waiting': 'b',
              'skipped': []},
             {'at': (UNTIL - timedelta(minutes=59)).isoformat(), 'dir_arg': 'b', 'epic': None,
@@ -1429,9 +1435,9 @@ class NextCliTest(unittest.TestCase):
     def test_after_done_an_active_epic_of_another_session_needs_the_gate(self):
         self.night(['a', 'b'])
         self.events(*self.old_measurement(), *self.a_done())
-        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'X', 'apps/b/x')]
+        epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'X', 'apps/b/src/x')]
         result = self.result(epics, branches=['a', 'x'])
-        self.assertEqual(('wspólne pliki z X: apps/b/x', True), (result['reason'], result['wait']))
+        self.assertEqual(('wspólne pliki z X: apps/b/src/x', True), (result['reason'], result['wait']))
 
     def test_reservation_failure_prints_nothing(self):
         self.night(['a', 'b'])
@@ -2144,10 +2150,33 @@ class GateCliTest(unittest.TestCase):
                              branches=['a'])
         self.assertEqual('b', result['epic']['dir'])
 
-    def test_common_blocking_file_skips_the_candidate(self):
+    def test_common_non_code_files_pass(self):
         self.events(*self.old_measurement())
-        for path in ['CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml', 'make/demo.mk', 'Makefile',
-                     'infra/k8s/README.md', 'apps/admin/src/layout/AppMenu.vue', 'apps/api/src/Cart']:
+        for path in ['CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/deploy.yml', 'make/demo.mk', 'Makefile',
+                     'infra/k8s/README.md', 'infra/k8s/CLAUDE.md', 'infra/k8s/tests', 'apps/api/tests/Unit/Shared',
+                     'apps/admin/tests', 'e2e/tests', 'apps/api/config', 'apps/api/composer.lock',
+                     'apps/store/package.json', 'infra/k8s/charts/shop', '.claude/skills/ao-run', 'tools/evals',
+                     'apps/admin/src/layout/AppMenu.vue', 'apps/admin/src/router/index.ts',
+                     'apps/api/src/Catalog/README.md']:
+            with self.subTest(path=path):
+                result = self.result([epic(1, 'A', 'apps/a/src, ' + path), epic(2, 'B', path + ', apps/b/src')],
+                                     branches=['a'])
+                self.assertEqual('b', result['epic']['dir'])
+                self.assertEqual([], result['skipped'])
+
+    def test_sentry_and_agent_security_scopes_pass(self):
+        self.events(*self.old_measurement())
+        sentry = ('apps/api/config, apps/api/src/Shared/Infrastructure/Observability, infra/k8s/tests, '
+                  'infra/k8s/CLAUDE.md, infra/k8s/README.md, .github/workflows/deploy.yml, docs/vision.md')
+        security = ('tools/agent-security, .claude/skills/ao-run, .github/workflows/deploy.yml, infra/k8s/Makefile, '
+                    'infra/k8s/scripts, infra/k8s/tests, infra/k8s/README.md, infra/k8s/CLAUDE.md, CLAUDE.md')
+        result = self.result([epic(1, 'A', sentry), epic(2, 'B', security)], branches=['a'])
+        self.assertEqual('b', result['epic']['dir'])
+
+    def test_common_app_code_skips_the_candidate(self):
+        self.events(*self.old_measurement())
+        for path in ['apps/api/src/Cart', 'apps/store/app/page.tsx', 'apps/store/src/api/client.ts',
+                     'apps/admin/src/layout', 'apps/admin/src', 'apps/api']:
             with self.subTest(path=path):
                 result = self.result([epic(1, 'A', 'apps/a, ' + path), epic(2, 'B', path + ', apps/b'),
                                       epic(3, 'C', 'apps/c')], branches=['a'])
@@ -2164,19 +2193,19 @@ class GateCliTest(unittest.TestCase):
     def test_paths_from_all_epics_in_progress(self):
         self.events(*self.old_measurement(), self.start('b', NOW - timedelta(hours=1)),
                     self.done('b', NOW - timedelta(minutes=30)))
-        result = self.result([epic(1, 'A', 'apps/x, Makefile'), epic(2, 'B', 'apps/y'),
-                              epic(3, 'C', 'apps/x, apps/y, Makefile')], branches=['a', 'b'])
+        result = self.result([epic(1, 'A', 'apps/x, apps/z/src, Makefile'), epic(2, 'B', 'apps/y'),
+                              epic(3, 'C', 'apps/x, apps/y, apps/z/src, Makefile')], branches=['a', 'b'])
         self.assertIsNone(result['epic'])
         self.assertIsNone(result['reason'])
-        self.assertEqual([{'issue': 3, 'id': 'C', 'reason': 'wspólne pliki z A: Makefile, apps/x',
-                           'paths': ['Makefile', 'apps/x', 'apps/y']}], result['skipped'])
+        self.assertEqual([{'issue': 3, 'id': 'C', 'reason': 'wspólne pliki z A: apps/x, apps/z/src',
+                           'paths': ['apps/x', 'apps/y', 'apps/z/src']}], result['skipped'])
 
     def test_file_outside_scope_in_the_branch_diff_blocks(self):
         self.events(*self.old_measurement())
-        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/shared')], branches=['a'],
-                             diffs={'a': ['apps/a/x.php', 'apps/shared/Kernel.php']})
-        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'wspólne pliki z A: apps/shared/Kernel.php',
-                           'paths': ['apps/shared/Kernel.php']}], result['skipped'])
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/api/src/Shared')], branches=['a'],
+                             diffs={'a': ['apps/a/x.php', 'apps/api/src/Shared/Kernel.php']})
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'wspólne pliki z A: apps/api/src/Shared/Kernel.php',
+                           'paths': ['apps/api/src/Shared/Kernel.php']}], result['skipped'])
         self.assertEqual([FETCH_EPICS], self.commands(*FETCH_EPICS))
         self.assertEqual([['git', 'diff', '--name-only', 'origin/main...origin/epic/a']], self.commands('git', 'diff'))
         fetch, diff = self.runner.calls.index(FETCH_EPICS), self.runner.calls.index(self.commands('git', 'diff')[0])

@@ -81,8 +81,8 @@ Remote Control skill nie sprawdza.
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada stanu wspólnego, zapis atomowy,
   rezerwacje i właściciele epików, klasyfikacja plików bramki i pomiar pamięci Dockera (bez zależności od
   `night_queue.py`).
-- `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: pomiar pierwszych par epików równoległych; usuwany po decyzjach
-  o kroku 19b i o wspólnym `CLAUDE.md` (spec pracy równoległej, „Pomiar pierwszych dwóch par”).
+- `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: metryki par epików równoległych i zapis werdyktu pary
+  (spec pracy równoległej, „Metryki par”).
 - `.claude/skills/ao-run/claude_pin.py` (Python 3.9+, bez zależności) i `test_claude_pin.py`: binarka Claude Code
   dla `ao run --claude-bin`. AO przypina wersję CLI (`LifecycleConfig.claude_version` w `orchestrator/lifecycle.py`)
   i jego preflight odmawia startu, gdy `claude --version` zgłasza inną. `claude` z PATH aktualizuje się sam, więc
@@ -150,8 +150,8 @@ Remote Control skill nie sprawdza.
    sprawdza pary epiku (`pairs.py`) i dla pary z obydwoma końcowymi PR zamkniętymi pokazuje blok `Para równoległa`
    z werdyktem krytycznego problemu (krytyczny problem: `night_queue.py hold`, które wstrzymuje starty obok epiku
    w toku do `unhold` po decyzji użytkownika), a po zgodzie dopisuje go do issue epiku zamkniętego później; po drugiej
-   parze wysyła push o kroku 19b i przedstawia dane do decyzji o wspólnym `CLAUDE.md` (spec pracy równoległej, „Pomiar
-   pierwszych dwóch par” i „Ocena `CLAUDE.md`”).
+   parze wysyła push o kroku 19b; po każdej parze zapisuje werdykt (`pairs.py record`) i przedstawia dane o regule
+   plików (spec pracy równoległej, „Metryki par” i „Ocena reguły plików”).
 7. **Następny epik.** Po merge'u końcowego PR, na prośbę użytkownika (`/ao-run` bez argumentu), a w dzień także po
    starcie epiku i po jego `epic_done`, sesja uruchamia bramkę bez rezerwacji (`night_queue.py gate`; spec pracy
    równoległej, „Gdzie działa”):
@@ -271,8 +271,8 @@ epik listy rusza równolegle z trwającym, gdy przejdzie bramkę, a inaczej po `
 jego `docs/features/<katalog>`. Ścieżka leży w drugiej, gdy jest jej równa albo leży w niej po segmentach
 (`apps/api/src/Cart` leży w `apps/api/src`, a `apps/api/src/CartX` nie leży w `apps/api/src/Cart`). Dwa epiki mają
 wspólną ścieżkę, gdy ścieżka jednego leży w ścieżce drugiego; częścią wspólną jest wtedy węższa z nich. Którą część
-wspólną dopuszcza lista nocy i bramka, mówi reguła plików bramki (spec pracy równoległej, „Bramka”, krok 5): pliki
-generowane i dokumentacja tak, ręcznie edytowane pliki wspólne i kod nie. Spec bez linii `Zakres:` albo z linią
+wspólną dopuszcza lista nocy i bramka, mówi reguła plików bramki (spec pracy równoległej, „Bramka”, krok 5): blokuje
+tylko wspólny kod aplikacji, a CI, `CLAUDE.md`, `Makefile`, testy, konfiguracja, infrastruktura i dokumentacja nie. Spec bez linii `Zakres:` albo z linią
 nieczytelną (ścieżka absolutna, `..`, znaki `*?[`, pusta pozycja) nie ma zakresu.
 
 ### Szacunek

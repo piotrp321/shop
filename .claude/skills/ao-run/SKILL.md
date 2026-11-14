@@ -377,8 +377,8 @@ zamykaj istniejącego: końcowy PR zostaje ten sam, razem z liniami `Closes`. Do
   comm -12 <(git diff --name-only "$b"..origin/main | sort) <(git diff --name-only origin/main...origin/epic/<epik> | sort)
   ```
 
-  Niepuste wyjście to wspólne pliki faktycznych zmian obu stron (dokumenty i pliki generowane, ale też pliki spoza
-  deklaracji, ryzyko konfliktu znaczeniowego): procedura bez pytania. Puste wyjście albo kod różny od 0 (`<P>`
+  Niepuste wyjście to wspólne pliki faktycznych zmian obu stron (dowolne, także spoza deklaracji: ryzyko konfliktu
+  znaczeniowego): procedura bez pytania. Puste wyjście albo kod różny od 0 (`<P>`
   niezmergowany, merge `<P>` już jest w gałęzi epiku, więc sync wykonany raz się nie powtarza, także po rundzie
   `DELTA`): bez syncu. Błąd `gh` albo `git` opisz w rozmowie.
 
@@ -404,7 +404,8 @@ Bash tej sesji wraca po każdym wywołaniu do jej katalogu roboczego, więc każ
    konfliktu), reszta semantycznie z obu stron, kontrola `git diff origin/main...HEAD` i spójności każdego dokumentu
    zmienionego po obu stronach od merge-base. Nigdy squash ani rebase. Konflikt albo niespójność, których nie da się
    rozstrzygnąć bez decyzji o zachowaniu: zatrzymaj się i zapytaj użytkownika.
-3. `make check` i testy aplikacji, których dotyczyły konflikty (`make -C apps/<app> test`). Czerwone: napraw w tym
+3. `make check` i testy każdej aplikacji z plikiem zmienionym po obu stronach od merge-base, nie tylko z plikami
+   w konflikcie (`make -C apps/<app> test`). Czerwone: napraw w tym
    samym merge'u albo zapytaj użytkownika.
 4. Push i PR do gałęzi epiku:
 
@@ -458,7 +459,7 @@ Ręczne poprawki: 2
 - ręczne ao release po awarii stosu
 ```
 
-**Para równoległa** (krok 19a; definicje: `docs/features/parallel-work/spec.md`, „Pomiar pierwszych dwóch par”). Przy
+**Para równoległa** (krok 19a; definicje: `docs/features/parallel-work/spec.md`, „Metryki par”). Przy
 `MERGED` i przy `CLOSED` sprawdź pary tego epiku (dwie pierwsze linie bloku startowego):
 
 ```bash
@@ -466,26 +467,50 @@ python3 "$SKILL_ROOT/.claude/skills/ao-run/pairs.py"
 ```
 
 Wyjście (dane): `pairs` w kolejności startu, każda z `epics` (`dir`, `start`, `done`, `minutes`, `open`),
-`overlap_minutes`, `span_minutes`, `serial_minutes`, `saving`, `usage`, `docker` i `setup_failures`, oraz
-`claude_md_only`. Kod różny od 0: powiedz o tym i pomiń blok. Dla każdej pary z tym epikiem, w której końcowe PR obu
-epików są `MERGED` albo `CLOSED` (`cd "$SHOP" && gh pr list --head epic/<dir> --base main --state all --json
-number,state,mergeCommit`), zbuduj blok i pokaż go w rozmowie:
+`overlap_minutes`, `span_minutes`, `serial_minutes`, `saving`, `usage`, `docker`, `setup_failures` i `record`, oraz
+`claude_md_only`, `code_blocked` i `summary`. Kod różny od 0: powiedz o tym i pomiń blok. Dla każdej pary z tym
+epikiem, w której końcowe PR obu epików są `MERGED` albo `CLOSED` (`cd "$SHOP" && gh pr list --head epic/<dir> --base
+main --state all --json number,state,mergeCommit`), zbierz werdykt:
+
+- `shared`: przy obu `MERGED` część wspólna list `git diff --name-only <mergeCommit>^1 <mergeCommit>` obu epików
+  (`cd "$SHOP" && git fetch origin main` najpierw); przy `CLOSED` `null`;
+- `conflicts`: zadania REPAIR obu epików (`ao report --epic <dir>` z blokiem startowym każdego) i PR
+  `sync/<epik>-main` obu epików, których opis wymienia plik w konflikcie; `auto_resolved`: ile z nich nie ma pozycji
+  „Ręczne poprawki” ani odpowiedzi człowieka (`ao answer`, pytanie w syncu);
+- `doc_fixes`: pozycje „poprawione” w liniach „Spójność dokumentów” opisów tych PR;
+- `interventions`: interwencje z `ao report` obu epików;
+- `regressions`: runy `ci.yml` z wynikiem `failure` (`gh run list --workflow ci.yml --branch <gałąź> --json
+  conclusion,headSha`) dla gałęzi każdego PR REPAIR i `sync/<epik>-main`, dla `epic/<dir>` na commitach po ich
+  merge'u i dla `main` na commicie merge'u końcowego PR;
+- `critical`: numery krytycznych problemów (niżej), `[]` przy braku.
+
+Zapisz werdykt (stan lokalny, bez pytania; ponowny zapis poprawia poprzedni):
+
+```bash
+echo '{"shared": [...], "conflicts": 1, "auto_resolved": 1, "doc_fixes": 0, "interventions": 1, "regressions": 0, "critical": []}' |
+  python3 "$SKILL_ROOT/.claude/skills/ao-run/pairs.py" record <dir A> <dir B>
+```
+
+Kod różny od 0: powiedz o tym, popraw werdykt i zapisz ponownie. Potem pokaż blok w rozmowie:
 
 ```text
 Para równoległa: CART + VARIANTS
 Czas zegarowy: 300 min, szeregowo 480 min, oszczędność 0.375
-Konflikty: REPAIR 0, sync automatyczny PR #331; spójność dokumentów: docs/vision.md poprawione
+Konflikty: 2, rozwiązane automatycznie 2, wymagały człowieka 0; sync automatyczny PR #331
+Spójność dokumentów: naprawione automatycznie 1 (docs/vision.md)
+Regresje: 0
 Interwencje: CART 1, VARIANTS 0
+Wspólne pliki: 7, w tym CLAUDE.md 2, kod aplikacji 0
 Zasoby: przy starcie drugiego AO 9800 MiB, inne 2100 MiB z 32000 MiB; awarie stosu 0
 Koszt: CART 14.20 USD, VARIANTS 9.80 USD; okna: 5h +40%, tydzień +6%
 Krytyczny problem: brak
 ```
 
-Źródła: czasy z `span_minutes`, `serial_minutes` i `saving`; konflikty to zadania REPAIR obu epików (`ao report
---epic <dir>` z blokiem startowym każdego), sync spójności i inne PR `sync/<epik>-main` oraz niespójności dokumentów
-naprawione w nich (linie „Spójność dokumentów” z ich opisów) i sync przerwany po merge'u albo zamknięciu; interwencje
-z `ao report` obu epików; zasoby z `docker` (pamięć przy starcie drugiego) i `setup_failures`; koszt to USD z `ao
-report` obu epików i `usage` z `pairs.py`. Krytyczny problem, każdy punkt sprawdzasz:
+Źródła: czasy z `span_minutes`, `serial_minutes` i `saving`; konflikty, spójność, regresje, interwencje i wspólne
+pliki z werdyktu (kod aplikacji według reguły plików bramki: `apps/*/src`, `apps/*/app` bez plików generowanych,
+rejestracji, `CLAUDE.md` i `README.md`); sync spójności i sync przerwany po merge'u albo zamknięciu z PR
+`sync/<epik>-main`; zasoby z `docker` (pamięć przy starcie drugiego) i `setup_failures`; koszt to USD z `ao report`
+obu epików i `usage` z `pairs.py`. Krytyczny problem, każdy punkt sprawdzasz:
 
 1. CI workflowu `ci` na `main` czerwone dla commita merge'u końcowego PR któregoś epiku pary: `gh run list --workflow
    ci.yml --branch main --commit <mergeCommit> --json status,conclusion` (run w toku: sprawdź ponownie przed werdyktem);
@@ -493,15 +518,16 @@ report` obu epików i `usage` z `pairs.py`. Krytyczny problem, każdy punkt spra
    komentarza pomiaru z powodu konfliktu albo niespójności dokumentów wykrytej po merge'u);
 3. AO zatrzymało epik pary (`FAILED`, `epic_blocked`, `queue_held`, epik bez `DONE`) z powodu stosu, pamięci, portów
    albo limitu (`ao status --epic <dir>` z blokiem startowym tego epiku);
-4. epik pary ma więcej napraw (zadania REPAIR z `ao report` i ręczne poprawki z komentarza pomiaru) albo interwencji
-   (`ao report`) na zadanie (`tasks` ze zdarzenia `start`) niż każdy z trzech ostatnich epików szeregowych (pomiar bez
-   `overlap`) z komentarzem pomiaru, liczonych tak samo.
+4. epik pary ma więcej ręcznych poprawek (z komentarza pomiaru) albo interwencji (`ao report`) na zadanie (`tasks` ze
+   zdarzenia `start`) niż każdy z trzech ostatnich epików szeregowych (pomiar bez `overlap`) z komentarzem pomiaru,
+   liczonych tak samo. Zadania REPAIR i sync automatyczny się nie liczą.
 
-Werdykt to „Krytyczny problem: brak” albo lista numerów z opisem. Po zgodzie użytkownika dopisz blok do issue epiku
-zamkniętego później w parze: na końcu komentarza z pomiarem (wyżej), oddzielony pustą linią od listy poprawek
-(`retro.py collect` kończy na niej listę), a gdy ten epik jest `CLOSED` albo komentarz już dopisano, osobnym komentarzem
-z samym blokiem. W bloku nie używaj etykiet komentarza pomiaru (`Interwencje człowieka`, `Czekanie na użytkownika`,
-`Ręczne poprawki`). Bez zgody niczego nie komentuj.
+Konflikt, niespójność albo regresja naprawione automatycznie to tylko metryka: nie wstrzymujesz z ich powodu
+równoległości. Werdykt to „Krytyczny problem: brak” albo lista numerów z opisem. Po zgodzie użytkownika dopisz blok do
+issue epiku zamkniętego później w parze: na końcu komentarza z pomiarem (wyżej), oddzielony pustą linią od listy
+poprawek (`retro.py collect` kończy na niej listę), a gdy ten epik jest `CLOSED` albo komentarz już dopisano, osobnym
+komentarzem z samym blokiem. W bloku nie używaj etykiet komentarza pomiaru (`Interwencje człowieka`, `Czekanie na
+użytkownika`, `Ręczne poprawki`). Bez zgody niczego nie komentuj.
 
 Po werdykcie pary z krytycznym problemem wstrzymaj równoległość, a potem wyślij push „Para A+B: krytyczny problem:
 <opis>” (do 200 znaków):
@@ -521,10 +547,11 @@ python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" unhold
 
 Wyjście `{"removed": true|false}`; po nim od razu sprawdź czekającego kandydata (sekcja 8). Po werdykcie drugiej pary
 z `pairs`, gdy obie pierwsze pary są zamknięte (żaden ich epik nie ma `open`) i żadna nie ma krytycznego problemu: push
-„Krok 19b może ruszyć: dwie pary bez krytycznego problemu”. Po werdykcie drugiej pary przedstaw też dane do decyzji, czy
-dopuścić wspólne `CLAUDE.md` w bramce: korzyść (`claude_md_only` z `pairs.py`: epiki, które czekały tylko przez
-`CLAUDE.md`, z liczbą pominięć) i ryzyko (niespójności dokumentów znalezione w sync i REPAIR obu par oraz krytyczne
-problemy). Decyzja należy do użytkownika; zmiana reguły to osobny PR do specyfikacji i `parallel_gate.py`.
+„Krok 19b może ruszyć: dwie pary bez krytycznego problemu”. Po werdykcie każdej pary pokaż też metryki reguły plików
+(spec pracy równoległej, „Ocena reguły plików”), uruchamiając `pairs.py` ponownie po zapisie: `summary` (pary
+dopuszczone, konflikty, rozwiązane automatycznie, wymagające człowieka, regresje, wiersze `claude_md` i `code`)
+i `code_blocked` (epiki, które czekały przez wspólny kod aplikacji, z liczbą pominięć). Decyzja o zmianie reguły należy
+do użytkownika; zmiana reguły to osobny PR do specyfikacji i `parallel_gate.py`.
 
 Potem sekcja 8 (epik z listy nocy: reguła niżej; gdy jeszcze nie pora na sekcję 8, od razu sekcja 7a), a dopiero
 po jej pushu sekcja 7a: pytanie „Zacząć epik?” nie
@@ -632,7 +659,7 @@ Wyjście to jedna linia JSON jak w sekcji 1: `epic` (`dir`, `id`, `issue`, `titl
 - **`epic` null z `reason`:** kandydat czeka (np. `dwa epiki aktywne: …`, pamięć Dockera, limit); to `waiting`.
   Push „Epik <ID z `waiting`> czeka: <reason>” (do 200 znaków), bez pytania, a dalej „Czekający kandydat” (niżej).
 - **`epic` null bez `reason`:** brak kandydata. Push z powodem, krótszy niż 200 znaków: pierwsza pozycja `skipped`
-  bramki z liczbą pozostałych, np. „Brak epiku do startu: CHECKOUT (#91) wspólne pliki z CART: CLAUDE.md (+1 inny)”.
+  bramki z liczbą pozostałych, np. „Brak epiku do startu: CHECKOUT (#91) wspólne pliki z CART: apps/api/src/Cart (+1 inny)”.
   Pusta `skipped`: bramka nie widzi epików nieprzygotowanych, więc weź pierwszą pozycję `skipped` z
   `python3 "$SKILL_ROOT/.claude/skills/ao-run/next_epic.py" --repo "$SHOP"`, np. „Brak przygotowanego epiku: VARIANTS
   (#89) bez spec.md i plan.md na main, następny krok /prepare-epic (+2 inne)”, a gdy i ta jest pusta: „Brak
