@@ -14,8 +14,9 @@
 # Refuses to start (exit 2, the reason on stderr) when a variable, the task, the template or the executor token is
 # missing, when a path goes through a symlink, when arguments would replace the profile, and when
 # .claude/settings.json, .claude/settings.local.json or .mcp.json differ from the merge-base of HEAD with main in the
-# branch, the index, the working tree or as untracked files (P12). The SHA of main comes from `git ls-remote origin`,
-# not from refs/remotes/origin/main, which the executor can move.
+# branch, the index, the working tree or as untracked files (P12: git diff against the merge-base plus a comparison of
+# the raw content with the merge-base blob), and when the index marks one of them assume-unchanged or skip-worktree.
+# The SHA of main comes from `git ls-remote origin`, not from refs/remotes/origin/main, which the executor can move.
 #
 # The executor gets the executor token (Keychain shop-agent-github-token) as GH_TOKEN, git over HTTPS with a credential
 # helper reading GH_TOKEN (GIT_CONFIG_* variables), no SSH_AUTH_SOCK, and TMPDIR, BUILDX_CONFIG, GH_CONFIG_DIR and
@@ -144,9 +145,46 @@ if ! g -C "$top" cat-file -e "$main_sha^{commit}" 2>/dev/null; then
     g -C "$top" cat-file -e "$main_sha^{commit}" 2>/dev/null || die "brak commita main $main_sha po git fetch"
 fi
 base=$(g -C "$top" merge-base HEAD "$main_sha" 2>/dev/null) || die "brak merge-base HEAD z main $main_sha"
+# git diff trusts the stat of the index for the working tree, so an entry marked assume-unchanged or skip-worktree, or
+# a changed file with the size and mtime of its entry (core.trustctime=false in the .git/config the executor writes),
+# hides a change. Such a flag is a refusal by itself, and the content of each file is compared with its blob in the
+# merge-base (raw bytes, --no-filters: no clean filter or end-of-line conversion from a configuration the executor
+# writes). A symlink, a directory or a file on one side only is a difference.
+newline='
+'
+content_changed=
+for f in $PROTECTED_FILES; do
+    tags=$(g -C "$top" ls-files -v -- "$f" 2>/dev/null) || die "git ls-files -v -- $f nie powiódł się"
+    case $tags in
+    *"$newline"*) die "$f ma w indeksie kilka wpisów (konflikt scalania?): odmowa" ;;
+    '' | 'H '*) ;;
+    'S '*) die "$f ma w indeksie flagę skip-worktree, która ukrywa zmiany przed git diff: odmowa (git update-index --no-skip-worktree $f)" ;;
+    [[:lower:]]' '*) die "$f ma w indeksie flagę assume-unchanged, która ukrywa zmiany przed git diff: odmowa (git update-index --no-assume-unchanged --no-skip-worktree $f)" ;;
+    *) die "$f ma w indeksie nieoczekiwany wpis ($tags): odmowa" ;;
+    esac
+    base_entry=$(g -C "$top" ls-tree --format='%(objectmode) %(objecttype) %(objectname)' "$base" -- "$f" 2>/dev/null) ||
+        die "git ls-tree $base -- $f nie powiódł się"
+    case $base_entry in
+    '') want= ;;
+    '100644 blob '* | '100755 blob '*) want=${base_entry##* } ;;
+    *) want="<$base_entry>" ;;
+    esac
+    path=$top/$f
+    if [ -L "$path" ]; then
+        have='<symlink>'
+    elif [ -f "$path" ]; then
+        have=$(g -C "$top" hash-object --no-filters -- "$path" 2>/dev/null) || die "git hash-object --no-filters -- $f nie powiódł się"
+    elif [ -e "$path" ]; then
+        have='<not a regular file>'
+    else
+        have=
+    fi
+    [ "$have" = "$want" ] || content_changed="$content_changed $f"
+done
 # shellcheck disable=SC2086 # the file list is a fixed list of paths without spaces
 changed=$(
     {
+        for f in $content_changed; do printf '%s\n' "$f"; done
         g -C "$top" diff --no-ext-diff --no-textconv --name-only "$base" -- $PROTECTED_FILES || echo '<git diff failed>'
         g -C "$top" diff --cached --no-ext-diff --no-textconv --name-only "$base" -- $PROTECTED_FILES || echo '<git diff --cached failed>'
         g -C "$top" ls-files --others -- $PROTECTED_FILES || echo '<git ls-files failed>'
