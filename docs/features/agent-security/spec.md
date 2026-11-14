@@ -340,7 +340,9 @@ JSON na stdout.
   i reguł `deny` jest odrzucany), `additionalDirectories` z katalogami zadania i integracji z `allowRead`, `deny`: `WebFetch`, `WebSearch` (P6), `Edit`
   i `Write` dla `.ao/**`, `Read` dla `~/.ssh`, `~/.kube`, `~/.config` (zapas); `disableBypassPermissionsMode:
   "disable"`, `disableAllHooks: true` (hooki działają poza sandboxem; `/delivery` i `/integration` z nich nie
-  korzystają).
+  korzystają). W 2.1.311 `blockReadsOutsideWorkingDirectories` ma też część w sandboxie, która blokuje odczyt poza
+  katalogami roboczymi także poleceniom Bash: `denyRead` i ta część chronią odczyt niezależnie od siebie (sonda
+  z szablonem bez `denyRead` nadal nie widzi kanarka; wyciek pokazuje dopiero szablon bez obu).
 
 `tools/agent-security/claude-agent` (wrapper, POSIX sh) jest binarką `--claude-bin` AO:
 
