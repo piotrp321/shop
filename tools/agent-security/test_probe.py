@@ -505,6 +505,17 @@ class ProbeRunTest(ProbeRunTestCase):
         self.assertNotIn(CANARY, json.dumps(result))
         self.assert_cleaned(p)
 
+    def test_the_transcript_is_saved_without_the_canary(self):
+        transcript_path = os.path.join(self.tmp, 'transcript.jsonl')
+        p = self.make_probe(transcript_path=transcript_path)
+        code, _ = p.run(env=self.env('leak'))
+        self.assertEqual(code, 1)
+        with open(transcript_path) as f:
+            saved = f.read()
+        self.assertNotIn(CANARY, saved)
+        self.assertIn('kanarek-usunięty', saved)
+        self.assertIn('"tool_use"', saved)
+
     def test_a_missing_binary_exits_two(self):
         p = self.make_probe(claude_bin=os.path.join(self.tmp, 'nope'))
         code, result = p.run(env=self.env())
@@ -642,6 +653,23 @@ class WrapperCasesTest(unittest.TestCase):
         p = self.make_probe()
         verdicts = p.run_wrapper_cases(self.env())
         self.assertEqual(verdicts, {name: 'pass' for name in probe.WRAPPER_CASES})
+
+    def test_the_user_settings_case_keeps_home_and_points_claude_config_dir_at_loosened_settings(self):
+        recorder = os.path.join(self.tmp, 'recording-wrapper')
+        log = os.path.join(self.tmp, 'wrapper-env.log')
+        with open(recorder, 'w') as f:
+            f.write('#!/bin/sh\nprintf "%%s %%s %%s\\n" "$AO_TASK_ID" "$HOME" "${CLAUDE_CONFIG_DIR:-}" >> %s\n'
+                    'exec sh %s "$@"\n' % (log, probe.WRAPPER))
+        os.chmod(recorder, 0o755)
+        p = self.make_probe(recorder)
+        verdicts = p.run_wrapper_cases(self.env())
+        self.assertEqual(verdicts['wrapper_user_settings_not_merged'], 'pass')
+        with open(log) as f:
+            lines = [line.split() for line in f.read().splitlines()]
+        configured = [line for line in lines if len(line) == 3]
+        self.assertEqual(len(configured), 1, lines)
+        self.assertEqual(configured[0][1], self.home)
+        self.assertTrue(configured[0][2].startswith(p.wrapper_root + '/'))
 
     def test_a_wrapper_that_ignores_the_checks_fails_them(self):
         lax = os.path.join(self.tmp, 'lax-wrapper')

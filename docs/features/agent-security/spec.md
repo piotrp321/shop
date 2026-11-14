@@ -454,9 +454,10 @@ wykonawcy, nie konfigurację.
     a wyciek rozstrzyga skan całego wyjścia;
   - przypadki wrappera (sonda bez modelu uruchamia wrapper z atrapą binarki zapisującą argumenty, na lokalnych
     repozytoriach z `origin`): gałąź z poluzowanym `.claude/settings.json` i `refs/remotes/origin/main` przestawionym
-    na nią (wrapper odmawia), atrapa `HOME` z `~/.claude/settings.json` z `allowRead` kanarka (ostatnie
-    `--setting-sources` to `project`, profil bez kanarka; samej binarki z atrapą `HOME` sprawdzić się nie da, bo
-    Claude Code bez prawdziwego `HOME` nie jest zalogowany), `AO_TASK_ID` integracji (w ustawieniach z `$AO_HOME`
+    na nią (wrapper odmawia), ustawienia użytkownika z `allowRead` kanarka w atrapie `CLAUDE_CONFIG_DIR` (ostatnie
+    `--setting-sources` to `project`, profil bez kanarka; `HOME` zostaje prawdziwy, bo `security` znajduje Keychain
+    z tokenem tylko z nim; zachowania samej binarki z takimi ustawieniami sonda nie sprawdza, bo z atrapą `HOME`
+    Claude Code nie jest zalogowany), `AO_TASK_ID` integracji (w ustawieniach z `$AO_HOME`
     tylko katalog tego zadania i katalog integracji epiku).
   Każda próba obejścia musi się wykonać i zostać odrzucona przez system albo warstwę uprawnień (kod różny od 0, brak
   kanarka, brak zmiany pliku), a każdy przypadek pracy przejść.
@@ -485,7 +486,7 @@ wykonawcy, nie konfigurację.
   i `epic-merge` z tokenem wykonawcy (oczekiwane `never`; brak rulesetu to wynik `fail` z przyczyną, R8);
   przestawiony `refs/remotes/origin/main`
   w worktree z poluzowanym `.claude/settings.json` (wrapper nadal odmawia); ustawienia użytkownika z `allowRead`
-  kanarka (atrapa `HOME`) nie wchodzą do wykonawcy.
+  kanarka (atrapa `CLAUDE_CONFIG_DIR`) nie wchodzą do wykonawcy.
 - Przypadki pracy (muszą przejść): zapis do katalogu zadania sondy (checkpoint), odczyt briefu, zapis raportu do
   katalogu integracji (przypadek wrappera z `AO_TASK_ID` integracji, bez modelu: tylko wygenerowane ustawienia),
   `mktemp` z `TMPDIR` polecenia Bash, `git commit` w worktree, `git push -u` do lokalnego repozytorium atrapy
