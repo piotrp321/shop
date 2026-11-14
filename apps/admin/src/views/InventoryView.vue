@@ -773,6 +773,7 @@ const DIALOG_CLASS = "max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto sm:ma
         </Alert>
         <DataTable
           label="Historia stanu"
+          class="min-w-0"
           :columns="historyColumns"
           :rows="historyRows"
           :row-key="(row: HistoryRow) => row.key"
