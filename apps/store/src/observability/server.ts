@@ -16,6 +16,9 @@ export function initServerSentry(config: SentryConfig, env: Record<string, strin
     release: config.release ?? undefined,
     tracesSampleRate: config.tracesSampleRate,
     tracePropagationTargets: apiPropagationTargets(env),
+    // A transaction per request, sent through `beforeSendTransaction` (the filter). The default of this SDK streams
+    // single spans, which skip `beforeSendTransaction`.
+    traceLifecycle: "static",
     ...filterOptions,
   });
   ignoreIncomingTraces();
