@@ -55,7 +55,10 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
 
 - Rulesety `deploy` i `deploy-push` obejmują obie gałęzie; repo ma mieć jeden deploy key (aktor `DeployKey` obejmuje
   każdy). Ruleset i deploy key zakłada użytkownik po merge'u epiku (runbook).
-- Rollback to revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
+- Wdrożenie nowej wersji startuje tylko na życzenie użytkownika (`gh workflow run deploy.yml --ref main`, zdarzenie
+  `workflow_dispatch` na `main`), nie po merge'u ani pushu do `main`: o tym, co trafia na serwer i kiedy, decyduje
+  człowiek, a merge zostaje czynnością na repozytorium.
+- Rollback to revert na `main` i uruchomienie wdrożenia. Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
   `deploy-images`, po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona `syncPolicy` aplikacji `shop`),
   a potem `shop`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu.
 - Żadna retencja GHCR ani workflow nie usuwa wersji pakietów (test w `make check`).

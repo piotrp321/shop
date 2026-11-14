@@ -152,9 +152,14 @@ deploy_needs_a_missing_job() { replace .github/workflows/deploy.yml 'needs: [ima
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
 deploy_script_unquoted() { replace .github/workflows/deploy.yml '-u "$GITHUB_ACTOR" --password-stdin' '-u $GITHUB_ACTOR --password-stdin'; }
 deploy_without_the_smoke_test() { replace .github/workflows/deploy.yml 'needs: [images, smoke]' 'needs: [images]'; }
-deploy_images_pushed_for_every_event() { replace .github/workflows/deploy.yml "    if: github.event_name == 'push'" "    if: github.event_name != 'schedule'"; }
+deploy_images_pushed_for_every_event() { replace .github/workflows/deploy.yml "    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" "    if: github.event_name != 'schedule'"; }
+deploy_on_every_push() { replace .github/workflows/deploy.yml '  pull_request:' '  push:
+    branches: [main]
+  pull_request:'; }
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their expressions
-runs_for_main_cancelled() { replace .github/workflows/deploy.yml "cancel-in-progress: \${{ github.event_name != 'push' }}" 'cancel-in-progress: true'; }
+deploy_for_a_dispatch_on_any_branch() { replace .github/workflows/deploy.yml "DEPLOY: \${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}" "DEPLOY: \${{ github.event_name == 'workflow_dispatch' }}"; }
+# shellcheck disable=SC2016 # the texts are lines of the workflow, with their expressions
+runs_for_main_cancelled() { replace .github/workflows/deploy.yml "cancel-in-progress: \${{ github.ref != 'refs/heads/main' }}" 'cancel-in-progress: true'; }
 # bash -e {0} is what GitHub runs without `shell:`: no pipefail, so `make smoke | tee log` hides a red smoke test
 deploy_without_pipefail() { replace .github/workflows/deploy.yml '    shell: bash' '    shell: bash -e {0}'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
@@ -162,7 +167,7 @@ deploy_push_not_atomic() { replace .github/scripts/deploy-ref.sh 'git push --ato
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
 deploy_without_the_render_check() { replace .github/workflows/deploy.yml 'run: sh infra/k8s/scripts/verify-images.sh "$RUNNER_TEMP/values-images.yaml" "$GITHUB_SHA"' 'run: "true"'; }
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
-smoke_values_for_every_event() { replace .github/workflows/deploy.yml 'if [ "$GITHUB_EVENT_NAME" = push ]; then' 'if true; then'; }
+smoke_values_for_every_event() { replace .github/workflows/deploy.yml 'if [ "$DEPLOY" = true ]; then' 'if true; then'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 generator_accepts_short_digests() { replace infra/k8s/scripts/images-values.sh '[ "${#2}" -eq 71 ] || fail' 'true || fail'; }
 package_cleanup_added() {
@@ -316,12 +321,14 @@ run_case "create-admin going on without tak" "test_without_the_word_tak_nothing_
 run_case "deploy.yml needing a job that does not exist" "needs job \"smok\"" "actionlint" deploy_needs_a_missing_job
 run_case "unquoted variable in a run script of deploy.yml (shellcheck)" "SC2086" "actionlint" deploy_script_unquoted
 run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smoke_test_and_the_images" "tests" deploy_without_the_smoke_test
-run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main" "tests" deploy_images_pushed_for_every_event
+run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main" "tests" deploy_images_pushed_for_every_event
+run_case "deploy.yml triggered by a push to main" "test_there_is_no_push_trigger" "tests" deploy_on_every_push
+run_case "deployment for a dispatch on any branch" "test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main" "tests" deploy_for_a_dispatch_on_any_branch
 run_case "runs for main cancelled" "test_runs_for_main_are_never_cancelled_and_other_runs_are" "tests" runs_for_main_cancelled
 run_case "deploy.yml steps without pipefail (smoke test piped to tee)" "test_every_run_step_has_pipefail" "tests" deploy_without_pipefail
 run_case "deploy pushing the two branches without --atomic" "test_the_script_pushes_both_branches_in_one_atomic_push" "tests" deploy_push_not_atomic
 run_case "deploy without the check of the render of prod" "test_the_render_of_prod_is_checked_before_anything_is_published" "tests" deploy_without_the_render_check
-run_case "smoke test on the registry images for every event" "test_on_main_the_first_install_uses_the_values_file_and_the_registry" "tests" smoke_values_for_every_event
+run_case "smoke test on the registry images for every event" "test_on_a_deployment_the_first_install_uses_the_values_file_and_the_registry" "tests" smoke_values_for_every_event
 run_case "images values generator accepting a short digest" "test_a_missing_or_malformed_digest_fails_and_writes_nothing" "tests" generator_accepts_short_digests
 run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" "tests" package_cleanup_added
 run_case "Argo CD shop application on another branch than the rest" "test_everything_from_git_tracks_the_same_branch_of_the_same_repository" "tests" argocd_shop_on_another_branch
