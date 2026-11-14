@@ -14,6 +14,11 @@ import AppTopbar from "./AppTopbar.vue";
 import { usePageFocus } from "./usePageFocus";
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+// The toasts stand at the top right, under the topbar (70 px, `h-17.5` of `AppTopbar`) and a gap of 12 px: far from the
+// save bar at the bottom, and never over the topbar. Below 640 px they take the width of the screen with a 16 px margin.
+const TOAST_TOP = "calc(4.375rem + 0.75rem)";
+const TOAST_OFFSET = { top: TOAST_TOP, right: "1.5rem" };
+const TOAST_MOBILE_OFFSET = { top: TOAST_TOP, right: "1rem", left: "1rem" };
 
 const auth = useAuthStore();
 const storeUrl = readUrl("VITE_STORE_URL");
@@ -155,6 +160,11 @@ onBeforeUnmount(() => idle?.stop());
       </footer>
     </div>
 
-    <Toaster :duration="5000" />
+    <Toaster
+      position="top-right"
+      :duration="5000"
+      :offset="TOAST_OFFSET"
+      :mobile-offset="TOAST_MOBILE_OFFSET"
+    />
   </div>
 </template>

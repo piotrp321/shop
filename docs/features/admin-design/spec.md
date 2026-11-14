@@ -256,7 +256,9 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   dzisiejszy błąd wczytania pracownika (`staff-error`); dostęp i tak sprawdza API (403 widoku). `/prices` nie dostaje
   strażnika: API pozwala każdemu pracownikowi czytać ceny, a zmianę ceny ukrywa już widok (tylko `admin`).
 - **Toast**: jeden kontener `vue-sonner` (`Toaster`) w layoucie, komunikaty sukcesu po polsku, region
-  `aria-live="polite"` o nazwie „Powiadomienia”, znikają po 5 s i zostają, dopóki kursor jest nad nimi. Błędy nie idą
+  `aria-live="polite"` o nazwie dokładnie „Powiadomienia” (bez skrótu klawiszowego w nazwie), znikają po 5 s i zostają,
+  dopóki kursor jest nad nimi. Toasty są w prawym górnym rogu, pod topbarem (na wąskim ekranie na szerokość ekranu
+  z marginesem 16 px), więc nie zasłaniają przyklejonego do dołu paska zapisu ani topbaru. Błędy nie idą
   do toastu: zostają przy miejscu, którego dotyczą (`role="alert"`).
 - **Ekrany poza layoutem**: problem z logowaniem (`App.vue`) i powrót z logowania (`AuthCallbackView`) dostają wygląd
   karty na tle aplikacji ze znakiem Worf, komunikatem i przyciskiem „Zaloguj ponownie”. Strona logowania Keycloaka
