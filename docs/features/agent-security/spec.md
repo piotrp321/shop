@@ -104,10 +104,12 @@ Do potwierdzenia w kroku 4 `/prepare-epic`; szkic przyjmuje warianty rekomendowa
   Settings → Environments. Sekret repozytorium `DEPLOY_KEY` użytkownik usuwa po merge'u końcowego PR (runbook).
 - Gdy SENTRY trafi do `main` przed tym epikiem: środowisko GitHub dla `SENTRY_AUTH_TOKEN` (bez zatwierdzenia,
   polityka gałęzi „tylko `main`”) z sekretem środowiska. Po co: AGENT-SECURITY-4 (R5). Źródło: użytkownik (runbook).
-- Rulesety z R8 założone w GitHubie, przed odbiorem epiku (sesja `/ao-run` sprawdza je przed merge'em końcowego PR):
-  po merge'u AGENT-SECURITY-4 do `epic/agent-security` użytkownik zakłada je z plików tej gałęzi komendami z R8. Po co:
-  przypadek sondy R8 i odbiór (kryterium 11); bez rulesetów sonda po merge'u epiku nie przepuści startu AO. Źródło:
-  użytkownik (wymaga uprawnień admina repozytorium).
+- Rulesety z R8 założone w GitHubie przed startem epiku: użytkownik dzieli `main` i `epic` i zakłada `main-merge`
+  i `epic-merge` z parametrami dzisiejszych rulesetów (kolejność komend z R8). AGENT-SECURITY-4 zapisuje je w repo
+  zgodnie ze stanem w GitHubie i dodaje testy; gdy pliki z zadania różnią się od GitHuba, użytkownik aktualizuje
+  rulesety z plików po merge'u zadania do `epic/agent-security`. Po co: przypadek sondy R8 i odbiór (kryterium 11);
+  bez rulesetów sonda po merge'u epiku nie przepuści startu AO. Źródło: użytkownik (wymaga uprawnień admina
+  repozytorium).
 - Wersja Claude Code przypięta przez AO ma ustawienia sandboxa z profilu: istnieje (2.1.311; eksperyment przy
   przygotowaniu: `denyRead`/`allowRead`, `allowWrite`, `allowUnixSockets`, `allowLocalBinding`,
   `enableWeakerNetworkIsolation` przez `--settings`); sonda sprawdza to przy każdym starcie AO.
