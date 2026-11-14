@@ -1,7 +1,7 @@
 # SENTRY: Sentry i trace'y aplikacji
 
 Błędy i wydajność api, workera, sklepu i panelu w Sentry SaaS (darmowy plan), uzupełnienie logów i metryk z Grafana
-Cloud (DEPLOY-OPS). SDK są nieaktywne bez DSN, więc lokalny stos, CI i smoke test działają jak dziś.
+Cloud (DEPLOY-OPS). SDK są nieaktywne bez DSN, więc lokalny stos, CI i smoke test działają bez Sentry.
 
 Issues: #180
 Zakres: `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/config`, `apps/api/docker/php/conf.d/prod.ini`, `apps/api/src/Shared/Infrastructure/Observability`, `apps/api/src/Shared/Infrastructure/Http`, `apps/api/tests/Unit/Shared`, `apps/api/tests/Functional/Shared`, `apps/api/phpunit.dist.xml`, `apps/api/CLAUDE.md`, `apps/store/package.json`, `apps/store/package-lock.json`, `apps/store/next.config.ts`, `apps/store/Dockerfile`, `apps/store/app/api/site`, `apps/store/app/error.tsx`, `apps/store/src/api/client.ts`, `apps/store/src/components/SiteSwitches.tsx`, `apps/store/src/observability`, `apps/store/CLAUDE.md`, `apps/admin/package.json`, `apps/admin/package-lock.json`, `apps/admin/vite.config.ts`, `apps/admin/Dockerfile`, `apps/admin/docker`, `apps/admin/src/main.ts`, `apps/admin/src/config`, `apps/admin/src/env.d.ts`, `apps/admin/src/observability`, `apps/admin/src/stores`, `apps/admin/src/auth`, `apps/admin/src/composables`, `apps/admin/tests`, `apps/admin/CLAUDE.md`, `infra/k8s/charts/shop`, `infra/k8s/environments/ci/values.yaml`, `infra/k8s/environments/prod/values.yaml`, `infra/k8s/tests`, `infra/k8s/smoke/checks.py`, `infra/k8s/CLAUDE.md`, `infra/k8s/README.md`, `.github/workflows/deploy.yml`, `docs/vision.md`, `docs/adr/backups-observability.md`
@@ -36,8 +36,8 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
   Sentry, a budżety Lighthouse się nie zmieniają. Błędy przeglądarki sprzed inicjalizacji SDK są pomijane (przyjęte).
 - **P3. Mapy źródeł.** Wysyłane z budowania obrazów `prod` w jobie `images` workflowu `deploy.yml` (tylko
   `workflow_dispatch` na `main`) tokenem `SENTRY_AUTH_TOKEN` (sekret GitHub Actions, montowany jako sekret budowania), dopasowane przez debug
-  ID; po wysłaniu usuwane z obrazu. Bez sekretu krok wysyłki się pomija i obraz powstaje bez map. Wymaga zależności
-  deweloperskiej `@sentry/vite-plugin` w panelu (sklep ma wtyczkę w `@sentry/nextjs`).
+  ID; po wysłaniu usuwane z obrazu. Bez sekretu krok wysyłki się pomija i obraz powstaje bez map. Panel używa zależności
+  deweloperskiej `@sentry/vite-plugin`, sklep wtyczki z `@sentry/nextjs`.
 - **P4. Próbkowanie trace'ów.** `tracesSampleRate` z wartości chartu, w `prod` 0,1 dla api, sklepu i panelu; żądania
   `/health` i sond nie są śledzone.
 - **P5. Użytkownik w zdarzeniu.** Klient sklepu: brak identyfikacji. Pracownik panelu: tylko `id` (sub z `/me`), bez
@@ -47,8 +47,9 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
   przez correlation ID w logach Grafana Cloud). Logi niższych poziomów nie trafiają do Sentry, także jako
   breadcrumbs. Logi `console.error` sklepu nie są zdarzeniami.
 - **P7. DSN w repozytorium.** DSN to wartość jawna (jest w przeglądarce), więc trafia do
-  `infra/k8s/environments/prod/values.yaml` jako zwykła wartość, nie do Sealed Secrets. Wpisuje ją osobny mały PR po
-  epiku (konto Sentry powstaje poza repo); do tego czasu `prod` działa bez Sentry.
+  `infra/k8s/environments/prod/values.yaml` jako zwykła wartość, nie do Sealed Secrets. W `prod` DSN-y są puste, więc
+  `prod` działa bez Sentry; po założeniu projektów (konto powstaje poza repo) wpisuje je agent osobnym małym PR
+  (runbook, `infra/k8s/README.md`, sekcja 10).
 - **P8. Ruch z internetu a próbkowanie.** Api kontynuuje trace z nagłówków `sentry-trace` i `baggage` (wymaga tego
   panel), więc każdy może wymusić śledzenie swoich żądań do api; ryzyko przyjęte, ogranicza je ochrona przed skokami
   w projekcie Sentry. Serwer sklepu nie kontynuuje trace'ów z przychodzących żądań (przeglądarka sklepu nie śledzi).
@@ -61,29 +62,16 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
 - Zdarzenia Keycloaka, Varnisha, imgproxy, Garage i usług stosu bez naszego kodu.
 - Połączenie correlation ID z trace ID (correlation ID zostaje osobnym identyfikatorem, w zdarzeniu jako tag) i trace
   przez RabbitMQ (wiadomości łączy correlation ID).
-- Przyjmowanie przez api correlation ID z nagłówka żądania (dziś api zawsze nadaje własny).
+- Przyjmowanie przez api correlation ID z nagłówka żądania (api zawsze nadaje własny).
 - Asynchroniczna wysyłka zdarzeń błędów w api (własny transport buforujący).
 - Lokalny Sentry w compose (np. self-hosted) i Sentry w panelu w trybie `vite dev`.
 - Reguły alertów Sentry i powiadomienia poza domyślnymi z konta (użytkownik ustawia je w Sentry).
 - NetworkPolicy dla ruchu wychodzącego (klaster jej nie ma; przy jej dodaniu ruch do Sentry trzeba będzie dopuścić).
 
-## Wymagane przed startem
-
-- **ADMIN-DESIGN na `main`** – rozłączność zakresu (`apps/admin`, compose, `templates/admin.yaml`,
-  `smoke/checks.py`); źródło: `/ao-run` sprawdza linię `Zakres:` epików w toku.
-- **Zależności** `sentry/sentry-symfony` (api), `@sentry/nextjs` (sklep), `@sentry/vue` (panel) – zgoda użytkownika
-  w issue #180; `@sentry/vite-plugin` (panel, deweloperska) – P3. Zgodność wersji sprawdzona w rejestrach
-  (`sentry-symfony` 5.16 dopuszcza Symfony 8, `@sentry/nextjs` 11 dopuszcza Next 16, `@sentry/vue` 11 dopuszcza
-  Vue 3 i Pinię 4); źródło: istnieje (Packagist, npm).
-
-Zadania nie potrzebują konta Sentry ani sekretów: testy używają transportu testowego i fałszywego DSN, a krok wysyłki
-map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SENTRY_AUTH_TOKEN` i zmienne `SENTRY_ORG`,
-`SENTRY_PROJECT_STORE`, `SENTRY_PROJECT_ADMIN` w GitHub to kroki użytkownika po merge'u epiku (runbook).
-
 ## Decyzje
 
 - **D1. Aktywacja tylko z DSN.** Każde SDK inicjalizuje się wyłącznie przy niepustym DSN; pusty albo brak to brak
-  wysyłki, brak trace'ów i zachowanie jak dziś. Format DSN sprawdza schemat chartu (`values.schema.json`, wzorzec
+  wysyłki, brak trace'ów i zachowanie bez Sentry. Format DSN sprawdza schemat chartu (`values.schema.json`, wzorzec
   `https://<klucz>@<host>/<id projektu>`); poza chartem aplikacje przyjmują zachowanie SDK przy złym DSN (sklep
   i panel działają bez wysyłki, api zgłasza błąd konfiguracji).
 - **D2. Konfiguracja przez zmienne środowiska**, wspólne nazwy: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`,
@@ -98,32 +86,38 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
   `tracesSampleRate`, `dsn.api`, `dsn.store`, `dsn.admin`, domyślnie puste), zmienne emitowane tylko przy niepustym
   DSN danej aplikacji (wzorzec `shop.clientIpHeaderEnv`); DSN api trafia do `shop.apiEnv` (api, worker, Joby, init
   kontenery i CronJob odtworzenia).
-- **D4. Filtrowanie (wspólne zasady trzech SDK).** `sendDefaultPii`/`send_default_pii` wyłączone, w api
-  `max_request_body_size: none`. Jedna funkcja filtra na aplikację (z testami), wołana z `before_send`,
-  `before_send_transaction` i `beforeBreadcrumb`, usuwa:
-  - nagłówki żądania poza `User-Agent`, `Content-Type`, `Accept`, ciasteczka, treść żądania, adres IP użytkownika;
+- **D4. Filtrowanie (wspólne zasady trzech SDK).** `send_default_pii: false` w api (z `max_request_body_size: none`).
+  SDK sklepu i panelu w używanej wersji nie ma `sendDefaultPii`: zastępuje je `dataCollection` bez użytkownika,
+  ciasteczek, treści, query stringów, zmiennych ramek i linii źródła, z nagłówkami tylko `User-Agent`, `Content-Type` i
+  `Accept`. Jedna funkcja filtra na aplikację (z testami), wołana z `before_send`, `before_send_transaction` i
+  `beforeBreadcrumb`, usuwa:
+  - nagłówki żądania poza `User-Agent`, `Content-Type`, `Accept`, ciasteczka, treść żądania, adres IP użytkownika
+    i `user` (w panelu zostaje tylko `id`, P5);
   - query string z adresu żądania, nazw transakcji i spanów, danych spanów (`url.full`, `http.query`) i adresów
     breadcrumbs (`fetch`, `xhr`, `navigation`);
   - wartości parametrów zapytań SQL: spany Doctrine niosą tylko SQL z placeholderami (bez parametrów SDK), a literały
     w opisie spanu `db` maskuje ten sam zestaw wzorców co niżej;
   - argumenty ramek stosu (`vars`); w api także `zend.exception_ignore_args=On` w `prod.ini`;
   - breadcrumbs `console` (przeglądarka i Node);
-  - w sklepie argumenty poleceń Redisa w nazwie i danych spanu (`db.query.text`, `db.statement`, `cache.key`):
-    zostaje nazwa polecenia;
+  - w sklepie argumenty poleceń Redisa w nazwie i danych spanu (`db.query.text`, `db.statement`): zostaje nazwa
+    polecenia, a `cache.key` jest usuwany;
   - w api i sklepie identyfikator koszyka gościa ze ścieżki `/guest-carts/<id>` (klucz dostępu do koszyka, nie format
     Alloy) w adresach, nazwach transakcji, opisach i danych spanów, breadcrumbs i tekstach;
-  - w api pola `extra` i `context` poza `correlation_id`.
+  - pola `extra` (w api zostaje tylko `correlation_id`) i wartości kontekstów poza `trace` (api).
 
   W komunikatach i wartościach wyjątków, komunikatach zdarzeń, breadcrumbs i opisach spanów filtr maskuje te same formaty co Alloy
-  (`infra/k8s/argocd/apps/monitoring.yaml`): adresy e-mail, JWT, `Bearer`, hasło w adresie URL, pary klucz=wartość
-  z sekretami, `Failing row contains (…)` i `Key (…)=(…)` PostgreSQL, `with params [...]` DBAL. Testy filtra api
+  (`infra/k8s/argocd/apps/monitoring.yaml`): adresy e-mail, adresy IPv4 i IPv6, JWT, `Bearer`, nagłówki zapisane jako
+  linie (`Authorization`, `Cookie`, `Set-Cookie`), hasło w adresie URL, pary klucz=wartość z sekretami, linie `DETAIL:`
+  i `STATEMENT:`, `Failing row contains (…)` i `Key (…)=(…)` PostgreSQL, `with params [...]` DBAL. Testy filtra api
   używają wierszy z `infra/k8s/tests/log-corpus`.
 - **D5. Jeden kanał na źródło w api.**
-  - HTTP: listener bundla (`register_error_listener`) wyłączony; własny listener `kernel.exception` po
-    `ProblemDetailsSubscriber` zgłasza wyjątek tylko wtedy, gdy ustalona odpowiedź ma status ≥ 500. Status pochodzi
-    z mapowania `ProblemDetailsSubscriber` (jedna funkcja „status dla wyjątku” w `Shared\Infrastructure\Http`), bez
-    drugiej listy wyjątków w konfiguracji Sentry.
-  - Konsola: listener konsoli bundla (nieobsłużony wyjątek komendy).
+  - HTTP: listener bundla (`register_error_listener`) wyłączony; własny listener `kernel.exception`
+    (`ServerErrorReporter`, priorytet -99) tuż przed `ProblemDetailsSubscriber` (-100) zgłasza wyjątek tylko wtedy, gdy
+    odpowiedź, którą ustali `ProblemDetailsSubscriber`, ma status ≥ 500. Status pochodzi z mapowania
+    `ProblemDetailsSubscriber` (jedna funkcja `ExceptionStatus::of` w `Shared\Infrastructure\Http`), bez drugiej listy
+    wyjątków w konfiguracji Sentry. Handler błędów PHP SDK (`register_error_handler`) jest wyłączony.
+  - Konsola: listener konsoli bundla (nieobsłużony wyjątek komendy); `services.yaml` definiuje go jako zgłaszający, bo
+    przy wyłączonym listenerze błędów bundla sam by nie zgłaszał.
   - Messenger: listener Messengera bundla z `capture_soft_fails: false` (tylko ostatnia próba przed `failed`).
   - Jawne logi aplikacji (P6): handler Monologa Sentry od `error`, z wykluczonymi kanałami `request`, `console`,
     `messenger`, `php`, `deprecation` i `cache` (te kanały powielają wyjątki zgłoszone wyżej albo nie są błędami
@@ -132,12 +126,14 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
     przy niedostępnym Sentry odpowiedź 5xx, odpowiedź z logiem `error` i obsługa wiadomości w workerze opóźniają się
     najwyżej o ten limit; transakcje wysyłane są po odpowiedzi (`kernel.terminate`).
 - **D6. Correlation ID.** Api dodaje tag `correlation_id` z bieżącego `CorrelationId` do każdego zdarzenia i transakcji
-  (procesor zdarzeń w `Shared\Infrastructure\Observability`), także w workerze (identyfikator bieżącej wiadomości;
-  tag i zakres nie przechodzą między wiadomościami w jednym `messenger:consume`).
+  (`SentryEventProcessor` w `Shared\Infrastructure\Observability`, wołany z `before_send` i `before_send_transaction`,
+  czyta identyfikator w chwili wysyłki), także w workerze (identyfikator bieżącej wiadomości; tag i zakres nie przechodzą
+  między wiadomościami w jednym `messenger:consume`, `isolate_context_by_message: true`).
 - **D7. Propagacja trace'ów.** Panel: `tracePropagationTargets` tylko adres API; CORS api dopuszcza nagłówki
   `sentry-trace` i `baggage` (`nelmio_cors.yaml`). Serwer sklepu: propagacja tylko do adresów API
   (`API_INTERNAL_URL`, `API_CATALOG_URL`), nigdy do Keycloaka ani Redisa; trace'u z przychodzących żądań nie kontynuuje
-  (P8). Api kontynuuje trace z tych nagłówków (domyślne zachowanie `sentry-symfony`).
+  (P8). Api kontynuuje trace z tych nagłówków (domyślne zachowanie `sentry-symfony`), a w żądaniach wychodzących nie propaguje
+  trace'u (`trace_propagation_targets: []`); spany klienta HTTP zostają.
 - **D8. Sklep.** `instrumentation.ts` (`register` dla runtime `nodejs`, `onRequestError`), filtr z D4 i propagacja z D7.
   Inicjalizacja w przeglądarce w `SiteSwitches` po odczycie `/api/site` przez dynamiczny import modułu
   `src/observability` (P2). `app/error.tsx` zgłasza przez ten sam leniwy moduł tylko błędy bez `digest` (błąd
@@ -150,13 +146,15 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
   bezczynności (`useIdleLogout`). SDK jest w bundlu (CSP `script-src 'self'` bez zmian, bez skryptu z CDN). Nagłówki
   bezpieczeństwa i treść `security-headers.conf` bez zmian.
 - **D10. Mapy źródeł (P3).** Budowanie `prod` sklepu i panelu generuje mapy, wysyła je przy dostępnym sekrecie i usuwa
-  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, w panelu też `filesToDeleteAfterUpload`) i `find ... -delete`
-  na końcu budowania, a bez sekretu nie zostawia ich w etapie `prod`. Sekret trafia wyłącznie do kroków budowania w jobie `images`; job `smoke` (także na
-  PR) buduje bez niego. Flaga wysyłki to argument budowania (`ARG`), który wchodzi do klucza cache, więc warstwa
-  zbudowana bez wysyłki nie jest używana przy wysyłce. Telemetria wtyczek budowania wyłączona (`telemetry: false`), a CLI Sentry, przez które wysyłają mapy, ma własną: wyłącza ją
-  `SENTRY_CLI_NO_TELEMETRY=1` w etapie `build` obu Dockerfile.
-  Organizacja i projekty Sentry dla wysyłki ze zmiennych repozytorium GitHub (`SENTRY_ORG`, `SENTRY_PROJECT_STORE`,
-  `SENTRY_PROJECT_ADMIN`); token nie trafia do warstw obrazu ani logu. Obraz `dev` i budowanie w `ci.yml` bez zmian.
+  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, w panelu też `filesToDeleteAfterUpload`) i `find ...
+  -delete` na końcu budowania, a bez sekretu nie zostawia ich w etapie `prod`. Sekret trafia wyłącznie do kroków
+  budowania w jobie `images`; job `smoke` (także na PR) buduje bez niego. Flaga wysyłki to argument budowania (`ARG`),
+  który wchodzi do klucza cache, więc warstwa zbudowana bez wysyłki nie jest używana przy wysyłce. Obraz, który już jest
+  w rejestrze, nie jest przebudowywany, więc jego mapy nie są wysyłane ponownie. Telemetria wtyczek budowania wyłączona
+  (`telemetry: false`), a CLI Sentry, przez które wysyłają mapy, ma własną: wyłącza ją `SENTRY_CLI_NO_TELEMETRY=1` w
+  etapie `build` obu Dockerfile. Organizacja i projekty Sentry dla wysyłki ze zmiennych repozytorium GitHub
+  (`SENTRY_ORG`, `SENTRY_PROJECT_STORE`, `SENTRY_PROJECT_ADMIN`); token nie trafia do warstw obrazu ani logu. Obraz
+  `dev` i budowanie w `ci.yml` bez zmian.
 - **D11. Compose.** Plik compose się nie zmienia: api, worker i sklep mogą dostać `SENTRY_*` z `.env.local` (już czytają go
   przez `env_file`), panel w compose działa bez Sentry. `init-env.sh` się nie zmienia (DSN nie jest losowym sekretem).
 
@@ -168,7 +166,7 @@ tokeny OIDC i sesje (ciasteczka `store_session`, `store_cart`, `store_order_conf
 Strony: Sentry SaaS (zewnętrzny procesor danych), każdy, kto zna DSN (jest jawny w przeglądarce), każdy, kto wysyła
 żądania do api i sklepu, każdy z dostępem do projektu w Sentry.
 
-**Drogi w zakresie** (każda ze sprawdzeniem dostarczanym przez zadanie):
+**Drogi w zakresie** (każda ma sprawdzenie):
 
 1. Nagłówki i ciasteczka w zdarzeniu → D4. Test filtra w każdej aplikacji: zdarzenie z `Authorization`, `Cookie`,
    `Order-Access-Token` i ciasteczkami wychodzi bez nich. Test funkcjonalny api: błąd 500 z tymi nagłówkami trafia do
@@ -185,8 +183,9 @@ Strony: Sentry SaaS (zewnętrzny procesor danych), każdy, kto zna DSN (jest jaw
    z e-mailem daje ramki bez `vars`; test panelu: konfiguracja SDK z `attachProps: false` i bez integracji Pinii.
 6. Tożsamość w zdarzeniu → P5. Test panelu: po `/me` użytkownik zdarzenia ma tylko `id`, po wylogowaniu (także po
    bezczynności) brak użytkownika; test sklepu i api: brak `user` i brak IP.
-7. Mapy źródeł publicznie w obrazie → D10. Test `deploy.yml` (`infra/k8s/tests/test_deploy_workflow.py`) i sprawdzenie
-   obrazu w smoke teście: brak plików `.map` w etapie `prod` sklepu i panelu.
+7. Mapy źródeł publicznie w obrazie → D10. Test `deploy.yml` (`infra/k8s/tests/test_deploy_workflow.py`) i kontrola
+   `check_no_source_maps` w smoke teście (`infra/k8s/smoke/checks.py`): sklep i panel nie serwują map skryptów strony
+   głównej ani komentarza `sourceMappingURL` w nich; Dockerfile usuwa `.map` z etapu `prod`.
 8. Token wysyłki map w obrazie, logu albo w budowaniu kodu z PR → D10. Test `deploy.yml`: `SENTRY_AUTH_TOKEN` tylko
    jako sekret budowania (`secrets:`) w krokach joba `images`, nigdy w `build-args`, `env` innego kroku ani w jobie
    `smoke`; flaga wysyłki jest argumentem budowania; Dockerfile czyta token z montowania `--mount=type=secret`.
@@ -212,30 +211,25 @@ Strony: Sentry SaaS (zewnętrzny procesor danych), każdy, kto zna DSN (jest jaw
 | `SENTRY_RELEASE` | tak | tak | tak | `image.tag` |
 | `SENTRY_TRACES_SAMPLE_RATE` | tak | tak | tak | `sentry.tracesSampleRate` (0–1, schemat) |
 
-Zmienne inne niż DSN chart emituje tylko dla aplikacji z niepustym DSN. Profil `ci` ma puste DSN (smoke test bez
-kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach podanych w teście.
+Zmienne inne niż DSN chart emituje tylko dla aplikacji z niepustym DSN, a `SENTRY_ENVIRONMENT` także tylko przy niepustym
+`sentry.environment`. Profil `ci` ma puste DSN (smoke test bez
+kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach podanych w teście (`infra/k8s/tests/test_sentry.py`).
+
+Testy aplikacji nie potrzebują konta Sentry: używają transportu testowego i fałszywego DSN. Konto Sentry (P1), DSN-y w `prod`
+(P7), sekret `SENTRY_AUTH_TOKEN` i zmienne `SENTRY_ORG`, `SENTRY_PROJECT_STORE`, `SENTRY_PROJECT_ADMIN` w GitHub to kroki
+użytkownika z runbooka (`infra/k8s/README.md`, sekcja 10).
 
 ## Scenariusze błędów
 
 - Sentry niedostępny albo odrzuca zdarzenia (limit): SDK gubi zdarzenia; w api ścieżki błędu opóźniają się najwyżej
   o limit transportu 2 s (D5), ścieżki bez błędu i przeglądarka bez opóźnienia widocznego dla klienta.
-- Brak DSN: zachowanie jak dziś, żadnego ruchu do zewnętrznych hostów (test E2E `visual-foundation` z asercją
+- Brak DSN: aplikacje działają bez Sentry, żadnego ruchu do zewnętrznych hostów (test E2E `visual-foundation` z asercją
   „tylko `localhost`” zostaje bez zmian).
-- Błąd odczytu `/api/site` w przeglądarce sklepu: SDK się nie inicjalizuje, strona działa (jak dziś przełączniki).
+- Błąd odczytu `/api/site` w przeglądarce sklepu: SDK się nie inicjalizuje, strona działa (przełączniki zostają domyślne).
 - Błąd wysyłki map w jobie `images` (zły token, Sentry niedostępny): budowanie obrazu kończy się błędem i deploy nie
   rusza (obraz bez map przy ustawionym sekrecie byłby cichym brakiem); brak sekretu: wysyłka pominięta z wpisem
-  w podsumowaniu workflowu.
-
-## Zmiany dokumentacji (razem z implementacją)
-
-- `docs/vision.md`: „Obserwowalność” opisuje Sentry (błędy, trace'y, filtrowanie danych), punkt „Sentry (#180)”
-  znika z „Kolejnych kroków”.
-- `docs/adr/backups-observability.md`: sekcja o Sentry (SaaS, region UE, DSN jawny, filtrowanie po stronie SDK,
-  jeden kanał na źródło, mapy źródeł).
-- `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`: konfiguracja Sentry, filtr zdarzeń, zasada
-  „nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry i w Alloy w tym samym PR”.
-- `infra/k8s/CLAUDE.md` i `infra/k8s/README.md`: wartości `sentry.*`, kroki użytkownika (konto, projekty, DSN,
-  token i zmienne GitHub, ochrona przed skokami, przegląd próbki zdarzeń po wdrożeniu).
+  w podsumowaniu workflowu; sekret bez którejś ze zmiennych `SENTRY_ORG`, `SENTRY_PROJECT_STORE`,
+  `SENTRY_PROJECT_ADMIN` kończy job `images` błędem z jej nazwą, przed budowaniem.
 
 ## Kryteria akceptacji
 
@@ -251,7 +245,7 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
    i ciasteczek; `/api/site` zwraca `sentry` tylko przy DSN; bez DSN przeglądarka nie pobiera chunka Sentry;
    przychodzący `sentry-trace` nie wymusza śledzenia.
 4. Panel z DSN w `/config.js`: nieobsłużony wyjątek daje zdarzenie z `user.id` i bez `q`/`code`/`state`; żądanie do
-   api niesie `sentry-trace` i `baggage`, a preflight CORS je dopuszcza; bez kluczy Sentry `config.js` jest jak dziś,
+   api niesie `sentry-trace` i `baggage`, a preflight CORS je dopuszcza; bez kluczy Sentry `config.js` ma tylko cztery adresy,
    a `40-admin-config.sh` nadal odrzuca brak wymaganych adresów.
 5. Chart: render z DSN emituje zmienne tylko do właściwych workloadów (api: api, worker, Joby; sklep; panel), bez DSN
    żadnej `SENTRY_*`; schemat odrzuca `tracesSampleRate` spoza 0–1 i DSN w złym formacie.
@@ -267,5 +261,3 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
   (`messenger:consume`) musi izolować zakres między wiadomościami (D6, kryterium 2).
 - **Filtr oparty na wzorcach** (jak maskowanie logów w Alloy): nowy format danych klienta może przejść; zasada
   w `CLAUDE.md` aplikacji, wspólny korpus z Alloy i przegląd próbki zdarzeń.
-- **Kolejność epików.** ADMIN-DESIGN (w toku) zmienia `apps/admin`, `infra/docker-compose.yml`,
-  `templates/admin.yaml` i `smoke/checks.py`; SENTRY startuje po jego merge'u do `main`.
