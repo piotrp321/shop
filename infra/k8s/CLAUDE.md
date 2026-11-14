@@ -76,7 +76,13 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
   jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
   w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
-  razem z `image.requireDigests` kończą render błędem) oraz testy
+  razem z `image.requireDigests` kończą render błędem; blok `sentry` (`environment`, `tracesSampleRate`, `dsn.api`, `dsn.store`,
+  `dsn.admin`, domyślnie puste, w `prod` `environment: demo` i `tracesSampleRate: 0.1`, DSN-y wpisuje osobny PR po założeniu projektów Sentry,
+  `README.md` sekcja 10): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (`image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` tylko dla
+  aplikacji z niepustym DSN, przez helper `shop.sentryEnv`; DSN api w `shop.apiEnv` (api, worker, Joby, init kontenery, CronJoby
+  `cart-purge-expired` i `restore`), DSN sklepu tylko w sklepie, panelu tylko w panelu; bez DSN żadnej `SENTRY_*` (także w `prod`
+  i `ci`, `tests/test_sentry.py`); schemat odrzuca `tracesSampleRate` spoza 0–1 i DSN innego kształtu niż
+  `https://<klucz>@<host>/<id projektu>`) oraz testy
   skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
   `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
   robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within` tylko po kopii `nightly` (kopia `pre-restore` niczego nie przycina); weryfikacja: snapshot `nightly` tego klastra
