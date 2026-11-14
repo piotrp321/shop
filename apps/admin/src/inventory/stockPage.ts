@@ -1,0 +1,83 @@
+import { getApiClient } from "@/api/client";
+import type { components } from "@/api/schema";
+import type { PageRequest, PageResult } from "@/composables/useCursorPager";
+
+export type StockListItem = components["schemas"]["StockListItemResponse"];
+export type ListedStock = components["schemas"]["ListedStockResponse"];
+
+/** The query of the stock list: a part of the name (null: all), a category (null: all) and the number of products per page. */
+export interface StockQuery {
+  q: string | null;
+  category: string | null;
+  perPage: number;
+}
+
+/**
+ * A row of the stock list: one variant with the product it belongs to. `first` marks the first variant of a product,
+ * the row that the list puts under the row of its product.
+ */
+export interface StockRow {
+  productId: string;
+  name: string;
+  variantId: string;
+  /** The values of the variant, empty for the default variant. */
+  label: string;
+  stock: ListedStock | null;
+  first: boolean;
+}
+
+export const FORBIDDEN_MESSAGE = "Nie masz dostępu do stanów magazynowych.";
+
+function failureMessage(status: number): string {
+  switch (status) {
+    case 403:
+      return FORBIDDEN_MESSAGE;
+    case 404:
+      return "Wybrana kategoria już nie istnieje. Wybierz inną.";
+    case 400:
+      return `Nieprawidłowe parametry wyszukiwania (HTTP ${status}).`;
+    default:
+      return `Nie udało się pobrać stanów magazynowych (HTTP ${status}).`;
+  }
+}
+
+/**
+ * One page of the stock list (`GET /api/v1/admin/stock`): products, each with all its variants, `perPage` counting
+ * products. The page size is always sent: the default of the API is 25, the lists of the panel start at 10. It is the
+ * page source of `useCursorPager` for the stock list.
+ */
+export async function fetchStockPage({ query, after }: PageRequest<StockQuery>): Promise<PageResult<StockListItem>> {
+  const apiQuery: { q?: string; category?: string; after?: string; perPage: number } = { perPage: query.perPage };
+  if (query.q !== null) {
+    apiQuery.q = query.q;
+  }
+  if (query.category !== null) {
+    apiQuery.category = query.category;
+  }
+  if (after) {
+    apiQuery.after = after;
+  }
+  try {
+    const result = await getApiClient().GET("/api/v1/admin/stock", { params: { query: apiQuery } });
+    if (result.data) {
+      return { items: result.data.items, next: result.data.next };
+    }
+    return { error: failureMessage(result.response.status), forbidden: result.response.status === 403 };
+  } catch {
+    return { error: "Nie udało się pobrać stanów magazynowych. Sprawdź połączenie z API." };
+  }
+}
+
+/** The rows of a page: a row per variant, in the order of the products and of their variants. */
+export function stockRows(items: StockListItem[]): StockRow[] {
+  return items.flatMap((item) =>
+    item.variants.map((variant, index) => ({
+      productId: item.productId,
+      name: item.name,
+      variantId: variant.variantId,
+      label: variant.label,
+      stock: variant.stock,
+      first: index === 0,
+    })),
+  );
+}

@@ -2,15 +2,15 @@ import type { components } from "@/api/schema";
 
 type Level = "in_stock" | "low_stock" | "out_of_stock";
 
-/** The label and the tag severity of an availability level given by the API. Presentation only. */
-export function levelLabel(level: Level): { label: string; severity: "success" | "warn" | "danger" } {
+/** The label and the `Badge` variant of an availability level given by the API. Presentation only. */
+export function levelLabel(level: Level): { label: string; variant: "success" | "warning" | "danger" } {
   switch (level) {
     case "in_stock":
-      return { label: "Dostępny", severity: "success" };
+      return { label: "Dostępny", variant: "success" };
     case "low_stock":
-      return { label: "Ostatnie sztuki", severity: "warn" };
+      return { label: "Ostatnie sztuki", variant: "warning" };
     case "out_of_stock":
-      return { label: "Niedostępny", severity: "danger" };
+      return { label: "Niedostępny", variant: "danger" };
   }
 }
 

@@ -78,7 +78,13 @@ async function mountView(roles: StaffMe["roles"] = ["warehouse"]) {
   setActivePinia(pinia);
   useAuthStore().staff = { id: "u1", username: "anna", roles };
   const empty = { template: "<div />" };
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/inventory", name: "inventory", component: empty }] });
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/inventory", name: "inventory", component: empty },
+      { path: "/", name: "dashboard", component: empty },
+    ],
+  });
   await router.push("/inventory");
   const wrapper = mount(InventoryView, { global: { plugins: [pinia, router] }, attachTo: document.body });
   await settle();

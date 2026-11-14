@@ -284,7 +284,7 @@ describe("InventoryView", () => {
 
       expect(stockQueries()).toEqual([{ category: "c-food", perPage: 10 }]);
       expect(wrapper.getComponent(CategoryCombobox).props("modelValue")).toBe("c-food");
-      expect(page().text()).toContain("Jedzenie");
+      expect(page().findAll("input").map((input) => (input.element as HTMLInputElement).value)).toContain("Jedzenie");
     });
 
     it("filters by the category chosen from the tree, writing it to the address without a new entry of the history", async () => {
