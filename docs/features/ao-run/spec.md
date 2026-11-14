@@ -113,7 +113,8 @@ Remote Control skill nie sprawdza.
   (`git` dopuszcza dla niego tylko `https` i `ssh`). Nic nie pochodzi z drzewa roboczego sesji ani z głównego klonu,
   którego `.git` wykonawcy i kontenery mogą zapisać: ani obiekty i refy (`refs/replace`, przestawiony
   `refs/remotes/origin/main`), ani konfiguracja (podłożony `.git/commondir` albo `include`, adres `origin` zmieniony
-  przez Dockera). SHA pochodzi z `git ls-remote <źródło> refs/heads/main`, commit jest pobierany po SHA (`--depth=1`) do prywatnego repozytorium
+  przez Dockera). SHA pochodzi z `git ls-remote <źródło> refs/heads/main` (tylko linia z refem dokładnie
+  `refs/heads/main`), commit jest pobierany po SHA (`--depth=1`) do prywatnego repozytorium
   `$AO_HOME/agent-security-src.git` (przez `--git-dir`) i czytany przez `ls-tree` i `cat-file blob`, każde wywołanie
   `git` bez obiektów zastępczych, graftów, commit-graph, fsmonitora i hooków (jak wrapper). Opcja `--source-url`
   zmienia źródło tylko w testach z lokalnym repozytorium; `/ao-run` jej nie podaje; sonda z tej kopii (przebieg
@@ -457,7 +458,8 @@ ani `ahead`, `propose` podaje je w `skipped`, tytuł i treść nie pojawiają si
 repozytorium tymczasowym jako źródłem (`--source-url`), atrapą sondy zapisaną na jego `main` i atrapą `claude_pin.py`
 (sześć plików z `main` źródła, nie z drzewa roboczego, także przy obiektach `refs/replace` i przestawionym
 `refs/remotes/origin/main` w klonie; bez `--source-url` atrapa `git` widzi `ls-remote` adresu GitHuba z samymi
-`https` i `ssh`, także przy podłożonym `.git/commondir` i obcym adresie `origin` w konfiguracji klonu, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
+`https` i `ssh`, także przy podłożonym `.git/commondir` i obcym adresie `origin` w konfiguracji klonu; gałąź
+`x/refs/heads/main` nie myli odczytu `main`, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
 z kopii, na wrapperze kopii, z przypiętą binarką i bez zmiennych `CLAUDE*`, a zmieniony `probe.py` drzewa roboczego
 nie rusza; starsza kopia zastąpiona w całości; wynik z `AO_CLAUDE_BIN` kopii i zmiennymi, bez wyjścia sondy na stdout; zapis przebiegów; istniejący
 `KUBE_DIR` z rejestru, także jako wiszące dowiązanie i zarejestrowany w trakcie sondy, wpis względny i nieczytelny

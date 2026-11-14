@@ -417,6 +417,12 @@ class AoPrepareTest(unittest.TestCase):
         self.assertEqual(self.GITHUB, self.ls_remote(calls)[-2])
         self.assertNotIn('evil', json.dumps(calls))
 
+    def test_a_branch_ending_in_refs_heads_main_does_not_hide_main(self):
+        git(self.other, 'push', '-q', 'origin', 'HEAD:refs/heads/x/refs/heads/main')
+        code, out, err = self.prepare()
+        self.assertEqual(0, code, err)
+        self.assertEqual(self.main_sha, self.values(out)['MAIN_SHA'])
+
     # ------------------------------------------------------------ other refusals
 
     def test_a_failing_pin_stops_it_with_the_reason(self):

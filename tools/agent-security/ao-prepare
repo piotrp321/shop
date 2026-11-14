@@ -25,12 +25,13 @@ on stdout:
      (git allows only https and ssh for it). Nothing comes from the main clone, whose .git executors and containers
      can write: not its objects or refs (replace objects, a moved refs/remotes/origin/main) and not its
      configuration (a planted .git/commondir or include, a remote URL changed through Docker). The SHA comes from
-     `git ls-remote <source> refs/heads/main`; the commit is
-     fetched by that SHA (--depth=1) into the private bare repository $AO_HOME/agent-security-src.git (outside the
-     executors' reach, used through --git-dir) and read there with `ls-tree` and `cat-file blob`. Every git call runs
-     without replace objects, grafts, commit-graph, fsmonitor and hooks (as the wrapper's). The files go to a new directory in
-     $AO_HOME that replaces $AO_HOME/agent-security whole; a file that is missing or not a regular blob (a symlink)
-     is a refusal. Files keep the executable bit of git and lose every write bit;
+     `git ls-remote <source> refs/heads/main` (only the line whose ref is exactly refs/heads/main, so a branch like
+     x/refs/heads/main changes nothing); the commit is fetched by that SHA (--depth=1) into the private bare
+     repository $AO_HOME/agent-security-src.git (outside the executors' reach, used through --git-dir) and read there
+     with `ls-tree` and `cat-file blob`. Every git call runs without replace objects, grafts, commit-graph, fsmonitor
+     and hooks (as the wrapper's). The files go to a new directory in $AO_HOME that replaces $AO_HOME/agent-security
+     whole; a file that is missing or not a regular blob (a symlink) is a refusal. Files keep the executable bit of
+     git and lose every write bit;
   5. the probe of the copy ($AO_HOME/agent-security/probe.py, default pass) with --claude-bin on the copied wrapper,
      --agent-claude-bin on the pinned binary, --timeout and --cost-limit, run from --repo without CLAUDE* variables.
      A probe exit other than 0, the outer time limit (--outer-timeout, default --probe-timeout + 600 s: SIGTERM to
@@ -214,8 +215,9 @@ def _git(*args, text=True, config=()):
 def source_repo(ao_home, url):
     """(private bare repository with the commit of main in the source, that commit): see step 4."""
     config = GITHUB_PROTOCOLS if url == GITHUB_SOURCE else ()
-    heads = _git('ls-remote', url, 'refs/heads/main', config=config).split()
-    if len(heads) != 2 or heads[1] != 'refs/heads/main' or not SHA.match(heads[0]):
+    lines = [line.split('\t') for line in _git('ls-remote', url, 'refs/heads/main', config=config).splitlines()]
+    heads = [fields[0] for fields in lines if len(fields) == 2 and fields[1] == 'refs/heads/main']
+    if len(heads) != 1 or not SHA.match(heads[0]):
         raise Refused('git ls-remote %s refs/heads/main: brak gałęzi main' % url)
     sha = heads[0]
     source = os.path.join(ao_home, SOURCE_REPO)
