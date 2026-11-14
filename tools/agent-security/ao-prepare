@@ -31,8 +31,9 @@ on stdout:
      koszt <usd> USD` (`koszt brak danych` without a cost). SIGTERM, SIGINT or SIGHUP of ao-prepare stops the probe
      the same way.
 
-Every probe run appends {at, main, code, seconds, cost_usd, reason} to $AO_HOME/probe-runs.jsonl (time and cost for
-the acceptance report) and keeps its result JSON in $AO_HOME/probe-result.json.
+The probe's stdout and stderr go to the stderr of ao-prepare. Every probe run appends {at, main, code, seconds,
+cost_usd, reason} to $AO_HOME/probe-runs.jsonl (time and cost for the acceptance report) and keeps its result JSON
+in $AO_HOME/probe-result.json.
 
 Success: exit 0, the line `ao-prepare: sonda przeszła; czas <s> s, koszt <usd> USD, main <sha>` on stderr and on
 stdout exactly these KEY=VALUE lines (one per line; the value is everything after the first `=`, never a line break):
@@ -260,7 +261,9 @@ def run_probe(repo, copy, binary, result_path, probe_timeout, cost_limit, outer_
         for s in previous:
             signal.signal(s, interrupt)
         try:
-            proc = subprocess.Popen(argv, cwd=repo, env=env, stdin=subprocess.DEVNULL, start_new_session=True)
+            # The probe's own output goes to stderr: stdout of ao-prepare carries only the KEY=VALUE lines.
+            proc = subprocess.Popen(argv, cwd=repo, env=env, stdin=subprocess.DEVNULL, stdout=sys.stderr,
+                                    start_new_session=True)
         except OSError as e:
             raise Refused('sonda bezpieczeństwa nie przeszła (nie uruchomiono %s: %s)'
                           % (argv[2], e.strerror or e))

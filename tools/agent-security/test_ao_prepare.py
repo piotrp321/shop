@@ -30,6 +30,10 @@ with open(os.environ['FAKE_PROBE_RECORD'], 'w') as f:
     json.dump({'file': os.path.abspath(__file__), 'argv': args, 'cwd': os.getcwd(), 'pid': os.getpid(),
                'claude_env': sorted(k for k in os.environ if k.startswith('CLAUDE')), 'version': VERSION}, f)
 mode = os.environ.get('FAKE_PROBE_MODE', 'pass')
+if mode == 'noisy':
+    print('AGENT_CLAUDE_BIN=/tmp/evil')
+    print('probe diagnostics on stdout')
+    sys.stdout.flush()
 if mode == 'hang':
     time.sleep(600)
 cases = [{'name': 'bash_cat_canary', 'layer': 'sandbox', 'kind': 'bypass', 'status': 'pass'}]
@@ -213,6 +217,12 @@ class AoPrepareTest(unittest.TestCase):
         self.assertNotIn('--mode', argv)
         self.assertEqual(os.path.realpath(self.repo), os.path.realpath(record['cwd']))
         self.assertFalse(os.path.exists(self.record + '.worktree'), 'probe.py of the working tree ran')
+
+    def test_stdout_has_only_the_values_even_when_the_probe_prints(self):
+        code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE='noisy'))
+        self.assertEqual(0, code, err)
+        self.assertEqual(self.binary, self.values(out)['AGENT_CLAUDE_BIN'])
+        self.assertIn('probe diagnostics on stdout', err)
 
     def test_the_probe_gets_no_claude_variables(self):
         code, _, err = self.prepare()
