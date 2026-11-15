@@ -1,5 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import { createPinia } from "pinia";
+import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory } from "vue-router";
 import App from "@/App.vue";
@@ -24,10 +24,13 @@ vi.mock("@/api/client", () => ({
 let wrapper: VueWrapper | undefined;
 
 async function open(path: string) {
+  // As in main.ts: pinia is active before the router resolves, so the guards of the routes read /me into the store the layout uses.
+  const pinia = createPinia();
+  setActivePinia(pinia);
   const router = createAppRouter(mocks.userManager, createMemoryHistory());
   await router.push(path);
   await router.isReady();
-  wrapper = mount(App, { global: { plugins: [createPinia(), router] }, attachTo: document.body });
+  wrapper = mount(App, { global: { plugins: [pinia, router] }, attachTo: document.body });
   await flushPromises();
   return { wrapper, router };
 }
@@ -111,6 +114,16 @@ describe("a staff member without a staff role", () => {
 
     expect(document.activeElement).toBe(app.get("main h1").element);
   });
+
+  it.each(["/orders", "/system", "/products/new", "/promotions/new", "/discount-codes/new"])(
+    "puts the focus on the heading of the message on a deep link to the guarded %s, whose guard read /me before the layout mounted",
+    async (path) => {
+      const { wrapper: app } = await open(path);
+
+      expect(app.find("[data-testid=no-staff-role]").exists()).toBe(true);
+      expect(document.activeElement).toBe(app.get("main h1").element);
+    },
+  );
 
   it("keeps the focus where the staff member put it in the topbar", async () => {
     let answer: (value: unknown) => void = () => {};

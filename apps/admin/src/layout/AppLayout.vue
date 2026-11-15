@@ -49,15 +49,18 @@ watch(drawerOpen, (open) => {
 
 // The page the member was on is gone with the message: a focus that was in it (on <body> now) or on <main> moves to the
 // heading of the message; a focus elsewhere, e.g. in the topbar, stays.
-watch(noStaffRole, async (none) => {
-  if (!none) {
-    return;
-  }
+async function focusNoRoleHeading() {
   drawerOpen.value = false;
   await nextTick();
   const active = document.activeElement;
   if (active === null || active === document.body || active === main.value) {
     noRoleHeading.value?.focus();
+  }
+}
+
+watch(noStaffRole, (none) => {
+  if (none) {
+    void focusNoRoleHeading();
   }
 });
 
@@ -105,6 +108,11 @@ function returnFocusToMenuButton(event: Event) {
 
 onMounted(() => {
   startIdleLogout();
+  // The guard of a route (a deep link to /orders, /system, …) may have read /me before the layout was created: the watcher
+  // above then never sees the change, so the heading takes the free focus here.
+  if (noStaffRole.value) {
+    void focusNoRoleHeading();
+  }
   void auth.load();
 });
 
