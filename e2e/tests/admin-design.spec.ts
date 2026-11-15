@@ -66,7 +66,7 @@ test.beforeAll(async ({ browser }) => {
     orderId = href.split("/").pop()!;
     expect(orderId, "the id of an order").toMatch(UUID);
 
-    // The pages of an edited promotion and discount code (promotions are not migrated yet): the first row of their lists
+    // The pages of an edited promotion and discount code: the first row of their lists
     // (the demo data, or a row an earlier test added).
     await go(page, "/promotions");
     const promotion = page.getByTestId("promotion-link").first();
@@ -489,7 +489,7 @@ test.describe("the focus after a change of page is never on <body>: it is on the
     }
   });
 
-  test("a link of the dashboard to a screen that is not migrated yet leaves the focus on its H1", async () => {
+  test("the link „Aktywne promocje” of the dashboard opens the list of the active promotions with the focus on its H1", async () => {
     const page = await newPanelPage("admin", viewports.desktop);
     try {
       await go(page, "/");
@@ -498,6 +498,9 @@ test.describe("the focus after a change of page is never on <body>: it is on the
       await page.locator("main").getByRole("link", { name: "Aktywne promocje" }).focus();
       await page.keyboard.press("Enter");
       await expectFocusOnHeading(page, "Promocje");
+      await expect(page).toHaveURL(/\/promotions\?status=active$/);
+      await expect(page.getByRole("combobox", { name: "Status" })).toHaveText("Aktywne");
+      await expect(page.getByTestId("promotion-row").first()).toBeVisible();
     } finally {
       await page.close();
     }

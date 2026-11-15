@@ -38,6 +38,18 @@ describe("SaveBar", () => {
     expect(button("Odrzuć")).toBeUndefined();
   });
 
+  it("describes „Zapisz” by the element named in `saveDescribedBy`, the reason it is off", () => {
+    render({ saveDisabled: true, saveDescribedBy: "reason" });
+
+    expect(button("Zapisz")?.getAttribute("aria-describedby")).toBe("reason");
+  });
+
+  it("has no description of „Zapisz” by default", () => {
+    render();
+
+    expect(button("Zapisz")?.hasAttribute("aria-describedby")).toBe(false);
+  });
+
   it("emits save, discard and cancel", async () => {
     const bar = render();
     button("Zapisz")?.click();

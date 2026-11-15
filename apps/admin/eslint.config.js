@@ -12,11 +12,8 @@ import tseslint from "typescript-eslint";
 export const LEGACY_FILES = [
   "src/main.ts",
   "src/primevue.ts",
-  "src/promotions/PromotionVariantPicker.vue",
   "src/views/OrderDetailView.vue",
   "src/views/OrdersView.vue",
-  "src/views/PromotionFormView.vue",
-  "src/views/PromotionsView.vue",
 ];
 
 // Every CSS named colour (CSS Color Module Level 4), so that bg-[rebeccapurple] is caught as well as bg-[red].

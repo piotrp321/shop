@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import Column from "primevue/column";
-import DataTable from "primevue/datatable";
-import InputText from "primevue/inputtext";
-import Message from "primevue/message";
-import Skeleton from "primevue/skeleton";
-import { computed, ref } from "vue";
-import { MAX_NAME_SEARCH_LENGTH, useNameSearch } from "@/composables/useNameSearch";
+import { Check, ChevronLeft, ChevronRight, Plus, PlusCircle, Search } from "lucide-vue-next";
+import { computed, nextTick, ref, useId } from "vue";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCursorPager } from "@/composables/useCursorPager";
+import { usePagerFocus } from "@/composables/usePagerFocus";
+import { MAX_NAME_SEARCH_LENGTH, useNameSearch } from "@/composables/useNameSearch";
+import { focusAfterAction } from "@/lib/focus";
 import { formatMoney } from "@/prices/format";
 import { fetchPricePage, type PriceQuery, type PriceRow, priceRows } from "@/prices/pricePage";
 import { CURRENCY } from "./format";
@@ -18,12 +20,13 @@ import type { PromotionVariant } from "./usePromotionForm";
  * catalog price, and the buttons to add one variant or all the variants of a product. A variant without a price is not
  * offered (the API refuses it in a promotion). What is added goes up as `add`; the parent decides what it does with it.
  * The list is the pager over `fetchPricePage` with a query in memory: 25 products per page, no page size to choose and
- * nothing in the address (the address belongs to the form of the promotion).
+ * nothing in the address (the address belongs to the form of the promotion). The buttons are named with the variant
+ * („Dodaj: Hantle regulowane Lumora Para 10 / 10 kg”), and after an add the focus goes back to the search field, because
+ * the button that had it is off by then (#304 F4, F5); `focusSearch` is for the parent, which puts it there on opening.
  */
 const props = defineProps<{ chosen: string[] }>();
 const emit = defineEmits<{ add: [variants: PromotionVariant[]]; close: [] }>();
 
-const MAX_SEARCH_LENGTH = MAX_NAME_SEARCH_LENGTH;
 const PICKER_PAGE_SIZE = 25;
 
 const query = ref<PriceQuery>({ q: null, category: null, perPage: PICKER_PAGE_SIZE });
@@ -31,9 +34,40 @@ const name = useNameSearch({ apply: (term) => (query.value = { ...query.value, q
 const pager = useCursorPager(fetchPricePage, query);
 
 const search = name.search;
-const searchTooShort = name.tooShort;
+const searchHint = name.hint;
 const rows = computed(() => priceRows(pager.items.value));
 const { loading, loaded, error, hasPrevious, hasNext, pageNumber, goNext, goPrevious, retry } = pager;
+
+const hintId = useId();
+const searchField = ref<InstanceType<typeof Input> | null>(null);
+
+const previousButton = ref<InstanceType<typeof Button> | null>(null);
+const nextButton = ref<InstanceType<typeof Button> | null>(null);
+const retryButton = ref<InstanceType<typeof Button> | null>(null);
+const region = ref<HTMLElement | null>(null);
+const { press, onFocusOut } = usePagerFocus({ hasPrevious, hasNext, previous: previousButton, next: nextButton });
+
+function goTo(which: "previous" | "next"): void {
+  press(which);
+  void (which === "next" ? goNext() : goPrevious());
+}
+
+// A retry ends with the focus where it can be, never on the body: on the button while it is still there (the alert stays
+// after another failure), otherwise on the table that came, or on the search when the list is empty.
+async function retryAndRefocus(): Promise<void> {
+  const trigger = (retryButton.value?.$el as HTMLElement | undefined) ?? null;
+  await retry();
+  await nextTick();
+  focusAfterAction(trigger, region.value ?? ((searchField.value?.$el as HTMLElement | undefined) ?? null));
+}
+
+function focusSearch(): void {
+  (searchField.value?.$el as HTMLElement | undefined)?.focus();
+}
+defineExpose({ focusSearch });
+
+// The name of a variant in the names of the buttons: the product, and the label unless it is the default variant.
+const variantName = (row: PriceRow) => (row.label === "" ? row.name : `${row.name} / ${row.label}`);
 
 function toVariant(row: PriceRow): PromotionVariant {
   return {
@@ -48,6 +82,7 @@ function toVariant(row: PriceRow): PromotionVariant {
 
 function addVariant(row: PriceRow): void {
   emit("add", [toVariant(row)]);
+  focusSearch();
 }
 
 /** The variants of a product that "Dodaj cały produkt" would add: those with a price that are not chosen yet. */
@@ -57,182 +92,228 @@ function addableOf(productId: string): PriceRow[] {
 
 function addProduct(productId: string): void {
   emit("add", addableOf(productId).map(toVariant));
+  focusSearch();
 }
 
 function isChosen(row: PriceRow): boolean {
   return props.chosen.includes(row.variantId);
 }
+
+// The text of an error is the colour of the status „danger” (#446): the contrast of the default one is lower on the card.
+const ERROR_ALERT = "border-status-danger text-status-danger *:data-[slot=alert-description]:text-status-danger";
 </script>
 
 <template>
   <section
     data-testid="picker"
-    class="picker"
+    class="flex flex-col gap-3 rounded-lg border border-separator p-4"
     aria-label="Wybór wariantów"
   >
-    <div class="picker-header">
-      <InputText
-        v-model="search"
-        data-testid="picker-search"
-        type="search"
-        :maxlength="MAX_SEARCH_LENGTH"
-        placeholder="Szukaj produktu po nazwie"
-        aria-label="Szukaj produktu po nazwie"
-      />
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="flex w-full max-w-sm min-w-0 flex-col gap-1 sm:w-72">
+        <div class="relative">
+          <Search
+            class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            ref="searchField"
+            v-model="search"
+            data-testid="picker-search"
+            type="search"
+            class="pl-9"
+            :maxlength="MAX_NAME_SEARCH_LENGTH"
+            placeholder="Szukaj produktu po nazwie"
+            aria-label="Szukaj produktu po nazwie"
+            :aria-describedby="hintId"
+          />
+        </div>
+        <p
+          :id="hintId"
+          role="status"
+          data-testid="picker-hint"
+          class="text-xs text-muted-foreground empty:hidden"
+        >
+          {{ searchHint }}
+        </p>
+      </div>
       <Button
+        type="button"
+        variant="outline"
         data-testid="close-picker"
-        label="Zamknij wybór"
-        severity="secondary"
         @click="emit('close')"
-      />
+      >
+        Zamknij wybór
+      </Button>
     </div>
-    <small
-      v-if="searchTooShort"
-      class="hint"
-    >Wpisz co najmniej 2 znaki, aby wyszukać.</small>
 
-    <Message
+    <Alert
       v-if="error"
       data-testid="picker-error"
-      severity="error"
+      variant="destructive"
+      :class="ERROR_ALERT"
     >
-      {{ error }}
-      <Button
-        data-testid="picker-retry"
-        label="Spróbuj ponownie"
-        icon="pi pi-refresh"
-        severity="secondary"
-        size="small"
-        :loading="loading"
-        @click="retry()"
-      />
-    </Message>
+      <AlertDescription class="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span>{{ error }}</span>
+        <Button
+          ref="retryButton"
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="picker-retry"
+          @click="retryAndRefocus()"
+        >
+          Spróbuj ponownie
+        </Button>
+      </AlertDescription>
+    </Alert>
 
-    <DataTable
-      v-if="loaded"
-      :value="rows"
-      :loading="loading"
-      data-key="variantId"
-      :pt="{ bodyRow: { 'data-testid': 'picker-row' } }"
-    >
-      <template #empty>
-        <span data-testid="picker-empty">Brak produktów spełniających kryteria.</span>
-      </template>
-      <Column header="Produkt">
-        <template #body="{ data }">
-          <span v-if="data.first">{{ data.name }}</span>
-        </template>
-      </Column>
-      <Column header="Wariant">
-        <template #body="{ data }">
-          {{ data.label }}
-        </template>
-      </Column>
-      <Column
-        header="Cena katalogowa"
-        class="amount"
+    <template v-if="loaded">
+      <p
+        v-if="rows.length === 0"
+        data-testid="picker-empty"
+        class="py-4 text-center text-sm text-muted-foreground"
       >
-        <template #body="{ data }">
-          {{ data.price ? formatMoney(data.price.gross, CURRENCY) : "Brak ceny" }}
-        </template>
-      </Column>
-      <Column header="Dodaj">
-        <template #body="{ data }">
-          <div class="row-actions">
-            <Button
-              data-testid="add-variant"
-              :label="isChosen(data) ? 'Dodano' : 'Dodaj wariant'"
-              :icon="isChosen(data) ? 'pi pi-check' : 'pi pi-plus'"
-              severity="secondary"
-              size="small"
-              :disabled="isChosen(data) || data.price === null"
-              @click="addVariant(data)"
-            />
-            <Button
-              v-if="data.first"
-              data-testid="add-product"
-              label="Dodaj cały produkt"
-              icon="pi pi-plus-circle"
-              severity="secondary"
-              size="small"
-              :disabled="addableOf(data.productId).length === 0"
-              @click="addProduct(data.productId)"
-            />
-          </div>
-        </template>
-      </Column>
-    </DataTable>
-    <Skeleton
-      v-else-if="loading"
-      height="8rem"
-    />
+        Brak produktów spełniających kryteria.
+      </p>
+      <div
+        v-else
+        ref="region"
+        role="region"
+        aria-label="Warianty do wyboru"
+        tabindex="0"
+        :aria-busy="loading"
+        class="overflow-x-auto"
+      >
+        <table class="w-full caption-bottom text-sm">
+          <TableHeader>
+            <TableRow class="bg-muted hover:bg-muted">
+              <TableHead
+                scope="col"
+                class="px-2.5 text-xs font-bold whitespace-normal text-heading uppercase"
+              >
+                Produkt
+              </TableHead>
+              <TableHead
+                scope="col"
+                class="px-2.5 text-xs font-bold whitespace-normal text-heading uppercase"
+              >
+                Wariant
+              </TableHead>
+              <TableHead
+                scope="col"
+                class="px-2.5 text-right text-xs font-bold whitespace-normal text-heading uppercase"
+              >
+                Cena katalogowa
+              </TableHead>
+              <TableHead
+                scope="col"
+                class="px-2.5 text-xs font-bold whitespace-normal text-heading uppercase"
+              >
+                Dodaj
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="row in rows"
+              :key="row.variantId"
+              data-testid="picker-row"
+            >
+              <TableCell class="px-2.5 py-3 whitespace-normal">
+                <span
+                  v-if="row.first"
+                  class="font-bold text-heading"
+                >{{ row.name }}</span>
+              </TableCell>
+              <TableCell class="px-2.5 py-3 whitespace-normal">
+                {{ row.label === "" ? "Wariant domyślny" : row.label }}
+              </TableCell>
+              <TableCell class="px-2.5 py-3 text-right tabular-nums">
+                {{ row.price ? formatMoney(row.price.gross, CURRENCY) : "Brak ceny" }}
+              </TableCell>
+              <TableCell class="px-2.5 py-3">
+                <div class="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="add-variant"
+                    :aria-label="`${isChosen(row) ? 'Dodano' : 'Dodaj'}: ${variantName(row)}`"
+                    :disabled="isChosen(row) || row.price === null"
+                    @click="addVariant(row)"
+                  >
+                    <Check
+                      v-if="isChosen(row)"
+                      aria-hidden="true"
+                    />
+                    <Plus
+                      v-else
+                      aria-hidden="true"
+                    />
+                    {{ isChosen(row) ? "Dodano" : "Dodaj" }}
+                  </Button>
+                  <Button
+                    v-if="row.first"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="add-product"
+                    :aria-label="`Dodaj cały produkt: ${row.name}`"
+                    :disabled="addableOf(row.productId).length === 0"
+                    @click="addProduct(row.productId)"
+                  >
+                    <PlusCircle aria-hidden="true" />
+                    Dodaj cały produkt
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </table>
+      </div>
+    </template>
+    <div
+      v-else-if="loading && !error"
+      class="flex flex-col gap-2"
+    >
+      <Skeleton
+        v-for="index in 3"
+        :key="index"
+        class="h-12"
+      />
+    </div>
 
     <div
       v-if="loaded"
-      class="pager"
+      class="flex flex-wrap items-center justify-end gap-3"
+      @focusout="onFocusOut"
     >
       <Button
+        ref="previousButton"
+        type="button"
+        variant="outline"
+        size="sm"
         data-testid="picker-previous"
-        label="Poprzednia"
-        icon="pi pi-chevron-left"
-        severity="secondary"
-        size="small"
-        :disabled="!hasPrevious || loading"
-        @click="goPrevious()"
-      />
-      <span class="page-number">Strona {{ pageNumber }}</span>
+        :disabled="!hasPrevious"
+        @click="goTo('previous')"
+      >
+        <ChevronLeft aria-hidden="true" />
+        Poprzednia
+      </Button>
+      <span class="min-w-20 text-center text-sm tabular-nums">Strona {{ pageNumber }}</span>
       <Button
+        ref="nextButton"
+        type="button"
+        variant="outline"
+        size="sm"
         data-testid="picker-next"
-        label="Następna"
-        icon="pi pi-chevron-right"
-        icon-pos="right"
-        severity="secondary"
-        size="small"
-        :disabled="!hasNext || loading"
-        @click="goNext()"
-      />
+        :disabled="!hasNext"
+        @click="goTo('next')"
+      >
+        Następna
+        <ChevronRight aria-hidden="true" />
+      </Button>
     </div>
   </section>
 </template>
-
-<style scoped>
-.picker {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--p-content-border-color);
-  border-radius: var(--p-content-border-radius);
-}
-
-.picker-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.hint,
-.page-number {
-  color: var(--p-text-muted-color);
-}
-
-.amount {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.pager {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 1rem;
-}
-</style>

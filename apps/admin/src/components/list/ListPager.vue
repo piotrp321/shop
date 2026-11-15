@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { computed, ref, toRef } from "vue";
 import { Button } from "@/components/ui/button";
+import { usePagerFocus } from "@/composables/usePagerFocus";
 
 /**
  * The footer of a list (docs/features/admin-design/spec.md, „Standard listy”): „Pokazano X–Y” in a status region and the
@@ -28,39 +29,21 @@ const emit = defineEmits<{ previous: []; next: [] }>();
 
 const previousButton = ref<InstanceType<typeof Button> | null>(null);
 const nextButton = ref<InstanceType<typeof Button> | null>(null);
-// The button the staff member pressed last, while the focus is in the pager.
-let pressed: "previous" | "next" | null = null;
+const { press: remember, onFocusOut } = usePagerFocus({
+  hasPrevious: toRef(props, "hasPrevious"),
+  hasNext: toRef(props, "hasNext"),
+  previous: previousButton,
+  next: nextButton,
+});
 
 function press(which: "previous" | "next") {
-  pressed = which;
+  remember(which);
   if (which === "next") {
     emit("next");
   } else {
     emit("previous");
   }
 }
-
-// The focus moved to another element of the page: the staff member is no longer in the pager. A focus that is lost
-// without a target is not that: it is what a browser may do as the pressed button is disabled.
-function onFocusOut(event: FocusEvent) {
-  const nav = event.currentTarget as HTMLElement;
-  if (event.relatedTarget instanceof Node && !nav.contains(event.relatedTarget)) {
-    pressed = null;
-  }
-}
-
-// Runs after the DOM is patched, when the pressed button is disabled already.
-watch(
-  () => [props.hasPrevious, props.hasNext],
-  () => {
-    if (pressed === "next" && !props.hasNext && props.hasPrevious) {
-      (previousButton.value?.$el as HTMLElement | undefined)?.focus();
-    } else if (pressed === "previous" && !props.hasPrevious && props.hasNext) {
-      (nextButton.value?.$el as HTMLElement | undefined)?.focus();
-    }
-  },
-  { flush: "post" },
-);
 </script>
 
 <template>
