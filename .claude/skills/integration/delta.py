@@ -44,7 +44,8 @@
       ci:checks@<sha> and ci:e2e@<sha>, passed or failed, for green and red), failed_jobs (the red jobs) and waited_s
       (seconds since the first call of the wait file, 0 without a budget).
       Exit code 0 green, 3 red, 1 local, 4 still pending with budget left (call again), 2 for a head that is not a
-      full SHA, a missing or negative budget or wait file, or a wait file that cannot be written.
+      full SHA, a missing or negative budget or wait file, a wait file that cannot be written, or any unexpected
+      error (gh output of an odd shape, a wrong DELTA_CI_* setting), always with a message on stderr.
 
   e2e-parts [--workflow PATH]
       The parts of the local E2E run, taken from the CI workflow (default .github/workflows/ci.yml): prints JSON
@@ -402,6 +403,9 @@ def main(argv):
             return code
     except Failure as e:
         print('delta: %s' % e, file=sys.stderr)
+        return 2
+    except Exception as e:  # odd gh output or settings end with exit code 2 and a message, never a traceback
+        print('delta: unexpected error: %s: %s' % (type(e).__name__, e), file=sys.stderr)
         return 2
     print(json.dumps(out, indent=2))
     return 0

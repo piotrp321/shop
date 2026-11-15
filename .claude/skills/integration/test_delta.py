@@ -672,6 +672,23 @@ class CiTest(unittest.TestCase):
                 self.assertEqual(2, r.returncode, r.stdout + r.stderr)
                 self.assertIn('budget', r.stderr)
 
+    def assertError(self, r):
+        self.assertEqual(2, r.returncode, r.stdout + r.stderr)
+        self.assertIn('delta:', r.stderr)
+        self.assertNotIn('Traceback', r.stderr)
+
+    def test_unexpected_gh_output_is_an_error_not_a_traceback(self):
+        self.runs(self.run_(7))
+        self.write('run-7.json', {'headSha': SHA, 'jobs': 5})
+        self.assertError(self.ci())
+
+    def test_a_wrong_poll_interval_or_call_limit_is_an_error_not_a_traceback(self):
+        self.runs(self.run_(7))
+        self.jobs(7, *self.GREEN)
+        for poll, call in (('x', '0.3'), ('0.02', 'x')):
+            with self.subTest(poll=poll, call=call):
+                self.assertError(self.ci(poll=poll, call=call))
+
     def test_an_unwritable_wait_file_is_an_error(self):
         self.runs(self.run_(7))
         self.jobs(7, *self.GREEN)
