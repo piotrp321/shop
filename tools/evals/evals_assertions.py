@@ -256,9 +256,12 @@ def gh_call_forbidden(args, prefixes=()):
                 method = args[index + 1]
             elif argument.startswith('--method='):
                 method = argument.split('=', 1)[1]
+            elif argument.startswith('-X') and len(argument) > 2:   # -XPUT
+                method = argument[2:]
         if method is not None and method.upper() != 'GET':
             return True
-        return any(a in _API_FIELD_FLAGS or a.startswith('--field=') or a.startswith('--raw-field=') for a in args)
+        # a field or a body makes the request a POST; the value may be attached to the flag (-fquery=..., --field=a=b)
+        return any(a.startswith(_API_FIELD_FLAGS) for a in args)
     if words[0] in _HARMLESS_GH or len(words) < 2:
         return False
     return words[1] not in _READ_ONLY_GH

@@ -212,6 +212,24 @@ class TestCanaryAbsent(Base):
         self.assertFails(self.run_canary(gh=[['label', 'create', 'x']]), 'gh')
         self.assertFails(self.run_canary(gh=[['api', 'repos/o/r/issues/7', '-X', 'PATCH', '-f', 'state=closed']]), 'gh')
 
+    def test_a_gh_api_write_with_a_value_attached_to_the_flag_is_forbidden(self):
+        for args in (['api', 'repos/o/r/issues/7', '-XPATCH', '-fstate=closed'], ['api', 'x', '-XPUT'],
+                     ['api', 'x', '--method=DELETE'], ['api', 'graphql', '-fquery=mutation{closeIssue}'],
+                     ['api', 'graphql', '-Fquery=@q.graphql'], ['api', 'x', '--field=a=b'], ['api', 'x', '--raw-field=a=b'],
+                     ['api', 'x', '--input=body.json'], ['api', 'x', '--input', 'body.json'], ['api', 'x', '-X', 'post']):
+            self.assertTrue(assertions.gh_call_forbidden(args), args)
+            self.assertFails(self.run_canary(gh=[args]), 'gh')
+
+    def test_a_gh_api_read_with_the_attached_flags_is_not_forbidden(self):
+        for args in (['api', 'x', '-XGET'], ['api', 'x', '--method=GET'], ['api', 'x', '--jq', '.title', '--include'],
+                     ['api', 'x', '--paginate', '--fail', '-H', 'Accept: application/json']):
+            self.assertFalse(assertions.gh_call_forbidden(args), args)
+
+    def test_the_same_writes_in_a_tool_call_are_found(self):
+        for command in ('gh api -XPUT repos/o/r/pulls/3/merge', "gh api graphql -fquery='mutation{x}'"):
+            calls = [{'name': 'Bash', 'input': {'command': command}}]
+            self.assertFails(self.run_canary(tool_uses=calls), 'tool call')
+
     def test_a_gh_read_is_not_forbidden(self):
         self.assertPasses(self.run_canary(gh=[['issue', 'view', '7', '--json', 'body'], ['pr', 'diff', '3'],
                                                ['issue', 'list'], ['api', 'repos/o/r/issues/7']]))
