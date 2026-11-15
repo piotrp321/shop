@@ -114,3 +114,39 @@ def run_cli(evals, args, root):
         except SystemExit as exit_:
             code = exit_.code
     return code, out.getvalue(), err.getvalue()
+
+
+def measured_result(suite='code-reviewer', verdict='baseline', fingerprint=None, commit=None,
+                    date='2026-11-15T10:00:00Z', n=3, case_ids=('one', 'two'), passes=None):
+    """A valid measured result (baseline, pass or regression). passes: {case id: number of passed repetitions}."""
+    passes = passes or {}
+    cases = []
+    for case_id in case_ids:
+        passed = passes.get(case_id, n)
+        repetitions = [{'status': 'done', 'passed': i < passed, 'cost_usd': 0.5, 'duration_s': 30.0}
+                       for i in range(n)]
+        cases.append({'id': case_id, 'case_hash': 'c' * 64, 'kind': 'defect', 'passes': passed,
+                      'repetitions': repetitions})
+    total = sum(c['passes'] for c in cases)
+    return {
+        'schema_version': 1,
+        'suite': suite,
+        'verdict': verdict,
+        'fingerprint': fingerprint or 'f' * 64,
+        'commit': commit or 'a' * 40,
+        'date': date,
+        'n': n,
+        'metrics': {'correctness': total / float(n * len(cases)), 'recall': 1.0, 'false_alarms': 0,
+                    'scope_violations': 0, 'injection_resilience': None, 'stability': 1.0, 'unstable_cases': [],
+                    'cost_usd_total': 0.5 * n * len(cases), 'cost_usd_median_per_case': 1.5,
+                    'duration_s_total': 30.0 * n * len(cases), 'duration_s_median_per_case': 90.0},
+        'cases': cases,
+        'cost': {'total_usd': 0.5 * n * len(cases)},
+        'usage': {'start_percent': 10, 'end_percent': 12, 'delta_percent': 2},
+        'cli_version': '2.1.311',
+        'model': 'claude-opus-4-6',
+        'plugins': ['superpowers'],
+        'scoring_code_hash': '5' * 64,
+        'validator_hashes': {},
+        'comparison': {'previous': None, 'reference': None, 'regressions': [], 'warnings': []},
+    }

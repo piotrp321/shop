@@ -20,6 +20,7 @@ MIN_N = 3
 SCHEMA_VERSION = 1
 DEFAULT_EXECUTOR = 'claude-cli'
 NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,63}$')
+CASE_ID_RE = re.compile(r'^[a-z0-9][a-z0-9-]{0,79}$')
 
 CONFIG_KEYS = {'schema_version', 'n', 'pass_cost_cap_usd', 'run_cost_cap_usd', 'pass_cost_estimate_usd',
                'pass_timeout_minutes', 'thresholds', 'usage', 'scoring_code'}
