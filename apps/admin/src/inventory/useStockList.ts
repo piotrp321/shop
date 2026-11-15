@@ -153,7 +153,9 @@ export function useStockList(categories?: CategoryLookup) {
           ...item,
           variants: item.variants.map((variant) => {
             const saved = savedStocks.value.get(variant.variantId);
-            return saved && (variant.stock === null || saved.version > variant.stock.version) ? { ...variant, stock: saved } : variant;
+            // The mark of the level is the API's for the stock it read: a saved stock replaces it, so the mark is dropped
+            // (the panel does not work out the level itself).
+            return saved && (variant.stock === null || saved.version > variant.stock.version) ? { ...variant, stock: saved, matchesLevel: false } : variant;
           }),
         })),
   );

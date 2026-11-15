@@ -583,6 +583,26 @@ describe("useStockList", () => {
       expect(mocks.get).toHaveBeenCalledTimes(1);
     });
 
+    it("drops the level mark of a variant whose saved stock wins, and keeps it on the other variants and on a newer stock of the list", async () => {
+      const marked = (name: string, stock: ListedStock) => item(name, { variants: [{ variantId: `var-${name}`, label: "", stock, matchesLevel: true }] });
+      const list = await start(
+        { "": { items: [marked("A", listed({ available: 0, level: "out_of_stock" })), marked("B", listed({ available: 0, level: "out_of_stock" }))], next: null } },
+        undefined,
+        "/inventory?level=out_of_stock",
+      );
+      mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
+
+      await list.receiveStock("var-A", { quantity: 5, note: null, key: "k" });
+
+      expect(list.rows.value.map((row) => [row.variantId, row.stock?.physical, row.matchesLevel])).toEqual([["var-A", 15, false], ["var-B", 10, true]]);
+      expect(list.items.value[0]!.variants[0]!.matchesLevel).toBe(false);
+
+      serve({ "": { items: [marked("A", listed({ available: 0, level: "out_of_stock", version: 5 })), marked("B", listed({ available: 0, level: "out_of_stock" }))], next: null } });
+      await list.retry();
+      await settle();
+      expect(list.rows.value[0]!.matchesLevel, "a newer stock of the list brings the mark of the API back").toBe(true);
+    });
+
     it("keeps the saved stock while the list is being refreshed, and when the refresh answers with the old one", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
