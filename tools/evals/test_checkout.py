@@ -148,6 +148,17 @@ class DiffCaseTest(CheckoutTestCase):
         self.assertEqual(built['overlay'], built['base'])
         self.assertEqual(patch.decode(), git(root, 'diff', '--binary', built['base'], built['head']))
 
+    def test_a_diff_case_with_a_patch_reviews_the_task_diff_and_the_patch_together(self):
+        self.repo.checkout('task')
+        self.repo.write('src/app.txt', 'app v3 of the task, patched\n')
+        expected = self.repo.commit('the task with the patch')
+        self.repo.checkout('main')
+        patch = git(self.repo.root, 'diff', '--binary', self.task_head, expected).encode()
+        built = self.build({'base_sha': self.old, 'head_sha': self.task_head}, overlay=self.newest, patch=patch)
+        self.assertEqual(built['overlay'], built['base'])
+        self.assertEqual(git(self.repo.root, 'diff', '--binary', self.old, expected),
+                         git(built['checkout'], 'diff', '--binary', built['base'], built['head']))
+
     def test_a_patch_touching_an_overlay_path_is_a_checkout_error(self):
         patch = ('diff --git a/.claude/skills/demo/SKILL.md b/.claude/skills/demo/SKILL.md\n'
                  '--- a/.claude/skills/demo/SKILL.md\n+++ b/.claude/skills/demo/SKILL.md\n'

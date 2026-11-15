@@ -11,13 +11,16 @@ The overlay commit puts the files of `.claude/agents`, `.claude/skills` and ever
 overlay revision (the current HEAD, or the revision of a trial run) on the case commit. A diff case gets the overlay on
 base_sha and on head_sha; the second overlay commit has the first as its parent, so the new base..head is exactly the
 task diff (checked: the raw diff of the two pairs must be equal, otherwise the task diff touches an overlay path).
-An optional patch of the case is one more commit on top. Only the commits reachable from the new head reach the bare
-repository and the checkout: the commit of the overlay revision (and with it today's tree of the repository) never
-does.
+An optional patch of the case is one more commit on top; the base given to the prompt is then the commit before the
+reviewed change: the overlay commit of a commit case (the patch alone) and the overlay commit on base_sha of a diff
+case (the task diff and the patch). Only the commits reachable from the new head reach the bare repository and the
+checkout: the commit of the overlay revision (and with it today's tree of the repository) never does.
 
-Every git command of this module runs on a repository the runner built itself, before the agent starts; after the
-agent the runner never runs git in the checkout (its .git/config is under the agent's control): `tree_changes`
-compares the working tree with the manifest taken at build time in plain Python.
+Every git command of this module runs on a repository the runner built itself, before the agent starts. In the real
+sandbox `<checkout>/.git` is write-protected (render_settings.py without --git-common-dir puts it in denyWrite), so
+the agent cannot change its config or hooks (nor commit or fetch into it). The runner still never runs git in the
+checkout after the agent (the tests run without the sandbox, and a planted config would run code outside it):
+`tree_changes` compares the working tree with the manifest taken at build time in plain Python.
 """
 import hashlib
 import os
@@ -140,7 +143,8 @@ def build(root, pass_dir, case_state, overlay_rev, watched, patch=None):
             touched = _touches_overlay(_changed_paths(scratch, env, head, patched), watched)
             if touched:
                 raise CheckoutError('the patch of the case touches overlay paths: %s' % ', '.join(touched))
-            base, head = head, patched
+            # the reviewed change: the patch alone on a commit case, the task diff and the patch on a diff case
+            base, head = (overlay if diff_case else head), patched
         files = manifest(scratch, env, head)
         _git(pass_dir, 'init', '-q', '--bare', '--initial-branch=' + BRANCH, origin)
         _git(origin, 'config', 'receive.shallowUpdate', 'true')
