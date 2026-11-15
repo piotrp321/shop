@@ -662,12 +662,13 @@ w tej kolejności:
 - Klient HTTP API ma limit 2 s na połączenie i odpowiedź oraz 5 s na całe żądanie, więc zawieszony Keycloak nie
   blokuje żądań.
 - `StaffUser`: `sub`, `preferred_username`, role z `realm_access.roles` przycięte do `admin`, `support`,
-  `warehouse`, `marketing` (w tej kolejności); dostaje `ROLE_STAFF`.
+  `warehouse`, `marketing` (w tej kolejności); `ROLE_STAFF` dostaje tylko z co najmniej jedną z nich.
 - `CustomerUser`: `sub`, `email`, `name` (pusty, gdy go nie ma); dostaje `ROLE_CUSTOMER`. Token bez `email` daje 401.
 - `StaffUser` i `CustomerUser` to osobne klasy, bez wspólnej klasy bazowej. Implementują interfejsy z warstwy
   Application swoich modułów (`AuthenticatedStaffMember`, `AuthenticatedCustomer`), a kontrolery dostają je przez
   `#[CurrentUser]`. Dzięki temu UI nie zależy od Infrastructure.
-- `access_control` domyślnie odmawia: `/api/v1/admin` wymaga `ROLE_STAFF`, reszta `/api/v1` `ROLE_CUSTOMER`, poza
+- `access_control` domyślnie odmawia: `/api/v1/admin` wymaga `ROLE_STAFF` (poza `GET /api/v1/admin/me`, które wymaga
+  tylko uwierzytelnienia), reszta `/api/v1` `ROLE_CUSTOMER`, poza
   jawnie publicznymi `GET` (`products`, `categories`) z `PUBLIC_ACCESS`. Nowy endpoint publiczny trzeba tam dopisać.
 - Przesłanie nieprawidłowego tokena do endpointu publicznego też daje 401. Nagłówek `Authorization` z innym
   schematem niż `Bearer` (albo z wartością spoza składni tokena) jest traktowany jak brak tokena.

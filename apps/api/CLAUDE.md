@@ -523,7 +523,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   reszta API tylko z realmu `shop` (klienci, `Customer`). Sprawdzany jest wystawca tokena. Token konta demo
   na stosie lokalnym do ręcznych żądań: `.claude/skills/integration/kc_login.py` (opis w skillu `/integration`).
 - Nie twórz wspólnej klasy `User` dla klientów i pracowników. To osobne byty.
-- Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`).
+- Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`; jedyna
+  lista: `StaffUser::STAFF_ROLES`). `ROLE_STAFF` ma tylko pracownik z co najmniej jedną z nich (`StaffUser::getRoles()`),
+  a `access_control` wymaga go na każdej trasie `/api/v1/admin` poza `GET`/`HEAD /api/v1/admin/me` (tylko
+  `IS_AUTHENTICATED`, ścieżka dokładnie `/me`), więc konto bez roli dostaje 403 wszędzie poza `/me`. Pilnuje tego
+  `AdminRouteAccessTest`, który bierze trasy panelu z routera, więc nowa trasa bez `ROLE_STAFF` łamie go bez zmiany testu.
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
@@ -730,7 +734,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   powiększania ponad oryginał). Zdjęcie `zoom` ma osobny widok `ZoomImageView` (`alt`, `size`, `variants`, bez
   `aspectRatio`; `SizedImage::zoomView`) i schemat OpenAPI `ZoomImage`; `ImageView` i `ProductImage` zostają dla
   rozmiarów o stałych proporcjach. Nowy rozmiar dopisuje się tylko w `ImageSize`.
-- Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik, `MANAGE_PRODUCTS` `admin`
+- Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik z rolą personelu, `MANAGE_PRODUCTS` `admin`
   i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `after`, `perPage`; zapytanie
   `ListBackofficeProducts` składa stronę z `SearchBackofficeProducts` i podsumowań z `BackofficeProductSource::summaries`),
   `GET /products/{id}` (`ProductEditView` z `version`, czytany z DBAL, także szkic), `POST /products` (szkic),
@@ -742,13 +746,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
   widok edycji odczytany po zapisie, `private, no-store`.
 - Promocje w panelu (`/api/v1/admin/promotions`, Pricing UI, `docs/features/pricing/spec.md`): `GET` lista (`status`,
-  `after`, `perPage`) i szczegóły dla każdego pracownika, `POST`, `PUT /{id}` i `DELETE /{id}?version=` dla `admin`
+  `after`, `perPage`) i szczegóły dla każdego pracownika z rolą personelu, `POST`, `PUT /{id}` i `DELETE /{id}?version=` dla `admin`
   i `marketing` (`PromotionVoter`, `MANAGE_PROMOTIONS`, przed treścią). Treść waliduje DTO (typy ścisłe, czasy RFC 3339
   ze strefą, lista UUID), reguły promocji domena; `PromotionWriteFailures` zamienia `InvalidPromotion` na naruszenie
   przy jego polu, a `InvalidPromotionVariants` na naruszenia `variantIds[<indeks>]`. Odpowiedzi zapisu to `GetPromotion`
   odczytane po zapisie, `private, no-store`.
 - Kody rabatowe w panelu (`/api/v1/admin/discount-codes`, Pricing UI, `docs/features/pricing/spec.md`, „Kody
-  rabatowe”): `GET` lista (`status`, `q`, `after`, `perPage`) i szczegóły dla każdego pracownika, `POST` i `PUT /{id}`
+  rabatowe”): `GET` lista (`status`, `q`, `after`, `perPage`) i szczegóły dla każdego pracownika z rolą personelu, `POST` i `PUT /{id}`
   dla `admin` i `marketing` (`DiscountCodeVoter`, `MANAGE_DISCOUNT_CODES`, przed treścią). Wyjątek od
   `#[MapRequestPayload]`: treść czyta w kontrolerze `DiscountCodeBodyReader` (JSON, typy ścisłe, ta sama walidacja DTO),
   bo `PUT` odpowiada 404 przed 422 treści, a brak klucza ma polski komunikat „To pole jest wymagane.” zamiast

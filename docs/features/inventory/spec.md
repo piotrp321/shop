@@ -253,10 +253,10 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/stock?q&category&after&perPage` | każdy pracownik | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null}]}], next}` (warianty w kolejności pozycji, `perPage` liczy produkty); 400 złe parametry; 404 nieznana kategoria |
+| `GET /api/v1/admin/stock?q&category&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null}]}], next}` (warianty w kolejności pozycji, `perPage` liczy produkty); 400 złe parametry; 404 nieznana kategoria |
 | `POST /api/v1/admin/variants/{variantId}/stock/receipts`, nagłówek `Idempotency-Key`, body `{quantity: int, note: string \| null}` | `admin`, `warehouse` | 201 stan po przyjęciu (`{variantId, physical, reserved, available, level, version, updatedAt}`); 200 powtórzenie z tym samym kluczem i treścią (stan bieżący); 400 brak lub zły klucz; 403; 404 nieznany wariant; 409 klucz użyty z inną treścią; 422 ilość, limit 1 000 000, notatka |
 | `POST /api/v1/admin/variants/{variantId}/stock/corrections`, body `{physical: int, version: int \| null, reason: string, note: string \| null}` | `admin`, `warehouse` | 200 stan (ta sama wartość: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo poniżej zarezerwowanego (różne `detail`); 422 zakres, powód, brak notatki przy `other` |
-| `GET /api/v1/admin/variants/{variantId}/stock-history?after&perPage` | każdy pracownik | `200 {items: [{occurredAt, type, physicalDelta, reservedDelta, physicalAfter, reservedAfter, reason, note, reference, source, actorName}], next}`; 400 zły kursor lub parametr; 404 nieznany wariant |
+| `GET /api/v1/admin/variants/{variantId}/stock-history?after&perPage` | pracownik z rolą personelu | `200 {items: [{occurredAt, type, physicalDelta, reservedDelta, physicalAfter, reservedAfter, reason, note, reference, source, actorName}], next}`; 400 zły kursor lub parametr; 404 nieznany wariant |
 
 - Uprawnienie `MANAGE_STOCK` sprawdza `StockVoter` w `Inventory_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `support` i `marketing` dostają 403.
@@ -337,7 +337,7 @@ z tokenem realmu `shop`: 401):
 4. Rezerwacja jest „wszystko albo nic”, nie wygasa i jest idempotentna po kluczu; ponowienie zwraca aktualny status
    bez zmiany stanów. Zwolnienie i zatwierdzenie są idempotentne, niedozwolone przejścia dają 409.
 5. Każda zmiana stanu tworzy w tej samej transakcji wpis historii ze stanem po operacji, źródłem i aktorem.
-6. Przyjęcia i korekty wykonują tylko `admin` i `warehouse`; stany i historię widzi każdy pracownik.
+6. Przyjęcia i korekty wykonują tylko `admin` i `warehouse`; stany i historię widzi każdy pracownik z rolą personelu.
 7. Sklep pokazuje poziom dostępności (próg „Ostatnie sztuki” 1–5 w API), nigdy liczby sztuk.
 8. Kryteria współbieżności C1–C6 przechodzą na prawdziwym PostgreSQL w CI.
 9. Po `make seed` każdy wariant demo ma rekord stanu.

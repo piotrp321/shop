@@ -242,7 +242,7 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   z `history.state.denied = true`, a pulpit pokazuje komunikat „Nie masz dostępu do tej strony.” (`role="alert"`);
   przeładowanie pulpitu go nie powtarza. Gdy `/me` się nie wczyta, strażnik przepuszcza trasę, a layout pokazuje
   dzisiejszy błąd wczytania pracownika (`staff-error`); dostęp i tak sprawdza API (403 widoku). `/prices` nie dostaje
-  strażnika: API pozwala każdemu pracownikowi czytać ceny, a zmianę ceny ukrywa już widok (tylko `admin`).
+  strażnika: API pozwala czytać ceny każdemu pracownikowi z rolą personelu, a zmianę ceny ukrywa już widok (tylko `admin`).
 - **Toast**: jeden kontener `vue-sonner` (`Toaster`) w layoucie, komunikaty sukcesu po polsku, region
   `aria-live="polite"` o nazwie dokładnie „Powiadomienia” (bez skrótu klawiszowego w nazwie), znikają po 5 s i zostają,
   dopóki kursor jest nad nimi. Toasty są w prawym górnym rogu, pod topbarem (poniżej 640 px na szerokość ekranu
@@ -707,7 +707,7 @@ interfejsu, pomarańczowy przycisk główny Worf z ciemnym tekstem), WCAG 2.2 AA
 - D8. Zawartość pulpitu: kafle katalogu, „Do obsługi” jako linki według ról, „Ostatnie zamówienia”; „Stan systemu” na
   `/system` tylko dla `admin`.
 - D9. Rozmiary strony 10/25/50, domyślnie 25 (Ceny i Stany: 10 produktów); filtry w adresie, pozycja stronicowania nie.
-- D10. Strażniki tras `/orders` i `/system`; `/prices` bez strażnika, bo API daje ceny każdemu pracownikowi.
+- D10. Strażniki tras `/orders` i `/system`; `/prices` bez strażnika, bo API daje ceny każdemu pracownikowi z rolą personelu.
 - D11. Zgłoszenia z opisu epiku są zamykane w całości (także #250, #260, #304, #337 i #393, w opisie „częściowo”);
   każde zamyka dopiero pozytywny wynik jego weryfikacji (sekcja „Zgłoszenia zamykane przez epik”). Ten epik zamyka
   #250, #251 i #346, pozostałe zamyka ADMIN-SCREENS.

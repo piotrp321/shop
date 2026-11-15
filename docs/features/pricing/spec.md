@@ -427,23 +427,24 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/prices?q&category&after&perPage` | każdy pracownik | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; 400 złe parametry; 404 nieznana kategoria |
+| `GET /api/v1/admin/prices?q&category&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; 400 złe parametry; 404 nieznana kategoria |
 | `PUT /api/v1/admin/variants/{variantId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo `price-locked-by-promotion`; 422 kwota poza zakresem lub zły typ |
-| `GET /api/v1/admin/promotions?status&after&perPage` | każdy pracownik | `200 {items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; `status` `planned`, `active`, `ended`; `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
+| `GET /api/v1/admin/promotions?status&after&perPage` | pracownik z rolą personelu | `200 {items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; `status` `planned`, `active`, `ended`; `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
 | `POST /api/v1/admin/promotions`, body `{name, percentOff, startsAt \| null, endsAt, variantIds}` | `admin`, `marketing` | 201 promocja (`Location`); 403; 409 `promotion-overlap`; 422 |
-| `GET /api/v1/admin/promotions/{id}` | każdy pracownik | 200 `{id, name, percentOff, startsAt, endsAt, status, variantCount, version, updatedAt, updatedByName, variants: [{variantId, productId, productName, label, regularGross, promotionalGross}]}`; 404 |
+| `GET /api/v1/admin/promotions/{id}` | pracownik z rolą personelu | 200 `{id, name, percentOff, startsAt, endsAt, status, variantCount, version, updatedAt, updatedByName, variants: [{variantId, productId, productName, label, regularGross, promotionalGross}]}`; 404 |
 | `PUT /api/v1/admin/promotions/{id}`, body `{name, percentOff, startsAt \| null, endsAt, variantIds, version}` | `admin`, `marketing` | 200 promocja; 403; 404; 409 wersja (`about:blank`), `promotion-not-editable`, `promotion-overlap`; 422 |
 | `DELETE /api/v1/admin/promotions/{id}?version=` | `admin`, `marketing` | 204; 400 brak albo zła wersja; 403; 404; 409 wersja, `promotion-not-editable` |
-| `GET /api/v1/admin/discount-codes?status&q&after&perPage` | każdy pracownik | `200 {items: [DiscountCode], next}`; `status` `disabled`, `planned`, `active`, `expired`; `q` początek kodu (przycięty, bez rozróżniania wielkości liter, 1–32 znaki); `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
+| `GET /api/v1/admin/discount-codes?status&q&after&perPage` | pracownik z rolą personelu | `200 {items: [DiscountCode], next}`; `status` `disabled`, `planned`, `active`, `expired`; `q` początek kodu (przycięty, bez rozróżniania wielkości liter, 1–32 znaki); `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
 | `POST /api/v1/admin/discount-codes`, body `{code, kind, value, minimumOrderGross \| null, startsAt, endsAt \| null, usageLimit \| null, enabled}` | `admin`, `marketing` | 201 kod (`Location`); 403; 409 `discount-code-taken`; 422 |
-| `GET /api/v1/admin/discount-codes/{id}` | każdy pracownik | 200 `DiscountCode`; 404 |
+| `GET /api/v1/admin/discount-codes/{id}` | pracownik z rolą personelu | 200 `DiscountCode`; 404 |
 | `PUT /api/v1/admin/discount-codes/{id}`, body `{kind, value, minimumOrderGross, startsAt, endsAt, usageLimit, enabled, version}` | `admin`, `marketing` | 200 kod; 403; 404; 409 wersja (`about:blank`), `discount-code-not-editable`; 422 |
-| `GET /api/v1/admin/variants/{variantId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany wariant |
-| `GET /api/v1/admin/categories` | każdy pracownik | 200 drzewo kategorii (`GetCategoryTree`) |
+| `GET /api/v1/admin/variants/{variantId}/price-history?after&perPage` | pracownik z rolą personelu | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany wariant |
+| `GET /api/v1/admin/categories` | pracownik z rolą personelu | 200 drzewo kategorii (`GetCategoryTree`) |
 
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403. Zmiany promocji: `PromotionVoter`
-  (`MANAGE_PROMOTIONS`: `admin`, `marketing`), sprawdzany przed treścią; odczyt promocji ma każdy pracownik.
+  (`MANAGE_PROMOTIONS`: `admin`, `marketing`), sprawdzany przed treścią; odczyt promocji ma każdy pracownik z rolą personelu
+  (konto bez roli personelu dostaje 403 na każdej trasie panelu poza `/admin/me`).
 - 409 cen, promocji i kodów mają schemat `PricingConflictProblem`: `type` `…/price-locked-by-promotion`,
   `…/promotion-overlap` (z rozszerzeniem `conflictingVariantIds`, posortowanym), `…/promotion-not-editable`,
   `…/discount-code-taken` („Taki kod już istnieje.”), `…/discount-code-not-editable` („Tej zmiany nie można wprowadzić
@@ -536,7 +537,7 @@ z tokenem realmu `shop`: 401):
 ## Kryteria akceptacji
 
 1. Pracownik wpisuje brutto, API wylicza netto i VAT. Kwoty w groszach bez `float`, HALF_UP, VAT = brutto − netto.
-2. Cenę zmienia tylko `admin`, każdy pracownik ją widzi. Limity 0,01–999 999,99 zł.
+2. Cenę zmienia tylko `admin`, każdy pracownik z rolą personelu ją widzi. Limity 0,01–999 999,99 zł.
 3. Każda faktyczna zmiana kwoty lub stawki tworzy w tej samej transakcji jeden wpis historii z pełnym snapshotem,
    źródłem i aktorem. Identyczny komplet nie tworzy wpisu ani nowej wersji.
 4. Zapis z nieaktualną wersją kończy się 409 bez nadpisania.
