@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { type Dirent, readdirSync } from "node:fs";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
@@ -273,5 +274,33 @@ describe("PrimeVue is blocked and the rules apply to every file of src/", () => 
   it("has no list of exempt files", async () => {
     const config = await import("../../eslint.config.js");
     expect(Object.keys(config)).toEqual(["default"]);
+  });
+
+  // The rules of every file of src/ as ESLint resolves them: an `ignores` or a `files` pattern that leaves a file out
+  // (even a single one, written into the block of the rules) makes the rule missing or off for it.
+  const LOOK_RULES = ["no-restricted-imports", "no-restricted-syntax", "better-tailwindcss/no-unknown-classes"];
+  const LOOK_RULES_VUE = ["vue/no-restricted-class", "vue/no-restricted-syntax", "vue/no-restricted-static-attribute", "vue/no-restricted-block"];
+
+  const sourceFiles = (directory: string): string[] =>
+    readdirSync(new URL(`../../${directory}/`, import.meta.url), { withFileTypes: true }).flatMap((entry: Dirent) => {
+      const path = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) return sourceFiles(path);
+      return /\.(ts|vue)$/.test(entry.name) ? [path] : [];
+    });
+
+  it("turns the look rules on as errors for every .ts and .vue file of src/", async () => {
+    const files = sourceFiles("src");
+    expect(files.length, "src/ has files").toBeGreaterThan(100);
+    expect(files).toContain("src/main.ts");
+    const missing: string[] = [];
+    for (const file of files) {
+      const rules = (await eslint.calculateConfigForFile(file))?.rules ?? {};
+      for (const rule of file.endsWith(".vue") ? [...LOOK_RULES, ...LOOK_RULES_VUE] : LOOK_RULES) {
+        const setting = rules[rule];
+        const level = Array.isArray(setting) ? setting[0] : setting;
+        if (level !== 2 && level !== "error") missing.push(`${file}: ${rule}`);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });
