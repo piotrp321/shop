@@ -15,6 +15,7 @@ import json
 import os
 import re
 
+import evals_case as cases
 import evals_history as history
 import evals_registry as registry
 import evals_repo as repo
@@ -256,6 +257,9 @@ def _lint_cases(source, suite, entry, canary, report, decoded_payloads, commit_c
             report.error('%s is not valid JSON: %s' % (path, error))
             continue
         for problem in validate_case(data, case_id, suite, canary):
+            report.error('%s: %s' % (path, problem))
+        case_dir = base + case_id + '/'
+        for problem in cases.validate_runner_fields(data, lambda name: source.read(case_dir + name)):
             report.error('%s: %s' % (path, problem))
         if isinstance(data, dict):
             shas = [data[k] for k in ('commit', 'base_sha', 'head_sha') if isinstance(data.get(k), str)]

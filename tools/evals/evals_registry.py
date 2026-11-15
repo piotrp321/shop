@@ -3,9 +3,9 @@ suite. Python 3.9+, standard library only.
 
 The fingerprint is the SHA-256 over what makes a measurement of a suite valid: the sorted paths and contents of its
 watched files, of the files of its cases and of the part of the configuration that changes a pass (agent, executor, N,
-pass cost cap, pass timeout). Thresholds, the run cap and the cost estimate are not part of it: the verdict can be
-recomputed from the stored metrics. The scoring code and the validators are hashed separately (`code_hashes`): their
-change since a measurement is only a warning.
+pass cost cap, pass timeout, writes_results). Thresholds, the run cap and the cost estimate are not part of it: the
+verdict can be recomputed from the stored metrics. The scoring code and the validators are hashed separately
+(`code_hashes`): their change since a measurement is only a warning.
 """
 import hashlib
 import json
@@ -27,7 +27,7 @@ CONFIG_KEYS = {'schema_version', 'n', 'pass_cost_cap_usd', 'run_cost_cap_usd', '
 THRESHOLD_KEYS = ('correctness_drop_points', 'case_drop_divisor', 'cost_warning_percent', 'time_warning_percent')
 USAGE_KEYS = ('start_max_percent', 'stop_percent')
 SUITE_KEYS = {'agent', 'watched', 'cases', 'validators', 'executor', 'n', 'pass_cost_estimate_usd',
-              'pass_cost_cap_usd', 'pass_timeout_minutes'}
+              'pass_cost_cap_usd', 'pass_timeout_minutes', 'writes_results'}
 REGISTRY_KEYS = {'schema_version', 'canary_actions', 'suites'}
 
 
@@ -147,6 +147,8 @@ def validate_registry(data):
         _path_list(entry.get('validators'), label + ': validators', problems)
         if 'executor' in entry and (not isinstance(entry['executor'], str) or not entry['executor'].strip()):
             problems.append('%s: executor must be a non-empty string' % label)
+        if 'writes_results' in entry and not isinstance(entry['writes_results'], bool):
+            problems.append('%s: writes_results must be true or false' % label)
         if 'n' in entry and (not _integer(entry['n']) or entry['n'] < MIN_N):
             problems.append('%s: n must be an integer of at least %d' % (label, MIN_N))
         for key in ('pass_cost_estimate_usd', 'pass_cost_cap_usd', 'pass_timeout_minutes'):
@@ -186,6 +188,7 @@ def effective(entry, config):
         'pass_timeout_minutes': entry.get('pass_timeout_minutes', config['pass_timeout_minutes']),
         'run_cost_cap_usd': config['run_cost_cap_usd'],
         'executor': entry.get('executor', DEFAULT_EXECUTOR),
+        'writes_results': entry.get('writes_results', False),
     }
 
 
@@ -230,7 +233,8 @@ def fingerprint(source, name, entry, config):
     eff = effective(entry, config)
     run_part = json.dumps({'suite': name, 'agent': entry['agent'], 'executor': eff['executor'], 'n': eff['n'],
                            'pass_cost_cap_usd': eff['pass_cost_cap_usd'],
-                           'pass_timeout_minutes': eff['pass_timeout_minutes']}, sort_keys=True)
+                           'pass_timeout_minutes': eff['pass_timeout_minutes'],
+                           'writes_results': eff['writes_results']}, sort_keys=True)
     paths = sorted(set(entry['watched']) | set(case_files(source, entry)))
     items = [('run-config', run_part.encode('utf-8'))] + [(path, source.read(path)) for path in paths]
     return _digest([('evals-fingerprint-v1', b'')] + items)
