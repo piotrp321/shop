@@ -255,7 +255,8 @@ elif command == 'run view':
 else:
     sys.stderr.write('unexpected: %s\\n' % ' '.join(args))
     sys.exit(1)
-# The n-th call of a key answers with the n-th entry of <key>.seq.json (the last one after the end), else <key>.json.
+# The n-th call of a key answers with the n-th entry of <key>.seq.json (the last one after the end), else <key>.json;
+# the entry "FAIL" makes that call fail like gh does.
 counter = os.path.join(d, key + '.count')
 n = int(open(counter).read()) + 1 if os.path.exists(counter) else 1
 with open(counter, 'w') as f:
@@ -263,7 +264,11 @@ with open(counter, 'w') as f:
 seq = os.path.join(d, key + '.seq.json')
 if os.path.exists(seq):
     answers = json.load(open(seq))
-    sys.stdout.write(json.dumps(answers[min(n, len(answers)) - 1]))
+    answer = answers[min(n, len(answers)) - 1]
+    if answer == 'FAIL':
+        sys.stderr.write('gh: HTTP 502\\n')
+        sys.exit(1)
+    sys.stdout.write(json.dumps(answer))
 else:
     sys.stdout.write(open(os.path.join(d, key + '.json')).read())
 '''
@@ -294,7 +299,7 @@ class CiTest(unittest.TestCase):
         self.write('runs.json', list(runs))
 
     def runs_seq(self, *answers):
-        self.write('runs.seq.json', [list(a) for a in answers])
+        self.write('runs.seq.json', [a if a == 'FAIL' else list(a) for a in answers])
 
     def view(self, jobs, head=SHA):
         return {'headSha': head, 'jobs': [{'name': n, 'status': s, 'conclusion': c} for n, s, c in jobs]}
@@ -303,7 +308,7 @@ class CiTest(unittest.TestCase):
         self.write('run-%d.json' % run_id, self.view(jobs, head))
 
     def jobs_seq(self, run_id, *answers):
-        self.write('run-%d.seq.json' % run_id, [self.view(a) for a in answers])
+        self.write('run-%d.seq.json' % run_id, [a if a == 'FAIL' else self.view(a) for a in answers])
 
     def ci(self, head=SHA, path=None, budget=None, wait_file=None, poll='0.02', call='0.3', extra=()):
         env = dict(os.environ, FAKE_GH=self.tmp.name,
@@ -492,7 +497,7 @@ class CiTest(unittest.TestCase):
     def test_still_running_at_the_end_of_the_call_with_budget_left_asks_to_call_again(self):
         self.runs(self.run_(7, status='in_progress', conclusion=''))
         self.jobs(7, *self.RUNNING)
-        out = self.result(4, budget=600)
+        out = self.result(4, budget=600, call='1')
         self.assertEqual('pending', out['state'])
         self.assertFalse(out['use_ci'])
         self.assertEqual([], out['checks'])
@@ -513,6 +518,59 @@ class CiTest(unittest.TestCase):
         self.assertEqual(['checks'], out['failed_jobs'])
         self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
         self.assertIn('e2e', out['reason'])
+
+    RED_PENDING = (('checks', 'completed', 'failure'), ('e2e', 'in_progress', ''))
+
+    def test_a_failing_gh_after_a_red_job_while_waiting_stays_red(self):
+        self.runs(self.run_(7, status='in_progress', conclusion=''))
+        self.jobs_seq(7, self.RED_PENDING, 'FAIL')
+        out = self.result(3, budget=1.5, call='10')
+        self.assertEqual('red', out['state'])
+        self.assertEqual(7, out['run'])
+        self.assertEqual(['checks'], out['failed_jobs'])
+        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+        self.assertGreaterEqual(self.view_calls(), 3)
+
+    def test_a_failing_gh_while_waiting_is_waited_out_and_green_ci_is_used(self):
+        self.runs_seq('FAIL', 'FAIL', [self.run_(7)])
+        self.jobs(7, *self.GREEN)
+        self.assertGreen(self.result(0, budget=600, call='10'))
+
+    def test_a_failing_gh_with_budget_left_at_the_end_of_the_call_asks_to_call_again(self):
+        open(os.path.join(self.tmp.name, 'fail'), 'w').close()
+        out = self.result(4, budget=600)
+        self.assertEqual('pending', out['state'])
+        self.assertEqual([], out['checks'])
+        self.assertIn('gh', out['reason'])
+
+    def test_a_failing_gh_until_the_end_of_the_budget_means_local_gates(self):
+        open(os.path.join(self.tmp.name, 'fail'), 'w').close()
+        out = self.assertLocal('gh', budget=1, call='10')
+        self.assertIn('budget', out['reason'])
+        self.assertGreaterEqual(self.calls().count('run list'), 2)
+        self.assertGreaterEqual(out['waited_s'], 1)
+
+    def test_a_red_job_seen_in_an_earlier_call_stays_red_when_gh_fails_later(self):
+        self.runs(self.run_(7, status='in_progress', conclusion=''))
+        self.jobs(7, *self.RED_PENDING)
+        self.result(4, budget=2, call='0.2')
+        with open(self.wait_file) as f:
+            self.assertEqual(['checks'], (json.load(f).get('red') or {}).get('failed_jobs'))
+        open(os.path.join(self.tmp.name, 'fail'), 'w').close()
+        out = self.result(3, budget=2, call='10')
+        self.assertEqual('red', out['state'])
+        self.assertEqual(7, out['run'])
+        self.assertEqual(['checks'], out['failed_jobs'])
+        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+
+    def test_a_red_job_seen_in_an_earlier_call_stays_red_when_the_budget_ends(self):
+        self.runs(self.run_(7, status='in_progress', conclusion=''))
+        self.jobs(7, *self.RED_PENDING)
+        self.result(4, budget=2, call='0.2')
+        self.jobs(7, *self.RUNNING)
+        out = self.result(3, budget=2, call='10')
+        self.assertEqual(['checks'], out['failed_jobs'])
+        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
 
     def test_the_wait_file_keeps_the_start_of_the_first_call(self):
         self.runs(self.run_(7, status='in_progress', conclusion=''))
