@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Inventory\Persistence;
 
 use App\Tests\Integration\Inventory\IndependentConnections;
+use App\Tests\Integration\Inventory\StockFixture;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -96,7 +97,7 @@ final class StockLevelIndexMigrationTest extends KernelTestCase
 
     /**
      * What a CREATE INDEX CONCURRENTLY interrupted by an error leaves: an index of the name marked INVALID. Here the
-     * error is a duplicate of a unique build over two committed rows, which are deleted afterwards.
+     * error is a duplicate of a unique build over two committed rows, which are deleted right after it.
      */
     private function leaveAnInvalidIndex(string $name): void
     {
@@ -106,12 +107,13 @@ final class StockLevelIndexMigrationTest extends KernelTestCase
                 'INSERT INTO inventory_stock_item (variant_id, physical, reserved, version, updated_at) VALUES (?, 424242, 0, 1, now())',
                 [$variant],
             );
-            $this->committedVariantIds[] = $variant;
         }
         try {
             $this->connection->executeStatement("CREATE UNIQUE INDEX CONCURRENTLY {$name} ON inventory_stock_item (physical) WHERE physical = 424242");
             self::fail('The unique build over duplicates must fail.');
         } catch (UniqueConstraintViolationException) {
+        } finally {
+            StockFixture::delete($this->connection, $variants, []);
         }
     }
 
