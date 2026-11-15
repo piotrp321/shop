@@ -406,7 +406,7 @@ describe("OrdersView", () => {
 
     expect(queries()).toEqual([{}, { q: "R-100001" }]);
     expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?q=R-100001");
-    expect(wrapper.get("[data-testid=search-hint]").text()).toContain("zatwierdź Enterem");
+    expect(wrapper.get("[data-testid=search-hint]").text()).toBe("Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.");
   });
 
   it("puts the search of the address in the field and asks with it (the link „Inne zamówienia klienta”)", async () => {

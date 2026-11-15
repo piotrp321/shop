@@ -8,8 +8,14 @@ import { type OrderStatus, STATUS_OPTIONS } from "./format";
 
 export type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
 
-/** The API accepts a search of 1 to 254 characters once trimmed. */
+/** The API takes a search of 3 to 254 characters once trimmed (an order number, a complete email or a fragment of 3 to 100). */
+export const MIN_SEARCH_LENGTH = 3;
 export const MAX_SEARCH_LENGTH = 254;
+
+export const SEARCH_HINT = "Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.";
+export const SEARCH_TOO_SHORT_HINT = "Wpisz co najmniej 3 znaki, aby wyszukać.";
+export const RANGE_ERROR = "Data „Do” nie może być wcześniejsza niż data „Od”.";
+export const RANGE_REFUND_MESSAGE = "Zwroty do wykonania nie łączą się z zakresem dat.";
 
 export const FORBIDDEN_MESSAGE = "Nie masz dostępu do zamówień.";
 export const EMPTY_MESSAGE = "Nie ma jeszcze zamówień.";
@@ -32,6 +38,7 @@ const ORDER_SORTS: readonly SortOption<OrderSort>[] = [
 
 export const REFUND_SORT_MESSAGE = "Zwroty do wykonania są w kolejności terminu zwrotu.";
 export const TOTAL_SORT_MESSAGE = "Kwoty nie da się sortować przy wyszukiwaniu.";
+export const TOTAL_RANGE_SORT_MESSAGE = "Kwoty nie da się sortować przy zakresie dat.";
 
 const byTotal = (sort: OrderSort) => sort === "-total" || sort === "total";
 
@@ -39,16 +46,34 @@ interface OrderQuery {
   status?: OrderStatus;
   refund?: "pending";
   q?: string;
+  placedFrom?: string;
+  placedTo?: string;
   sort?: OrderSort;
   after?: string;
   perPage?: number;
 }
 
-/** The trimmed term when the API takes it as a search (1 to 254 characters), otherwise null. `trim()` knows the no-break space and U+2028. */
+function characters(text: string): number {
+  return [...text].length;
+}
+
+/** The trimmed term when the API takes it as a search (3 to 254 characters), otherwise null. `trim()` knows the no-break space and U+2028. */
 function validTerm(text: string): string | null {
   const term = text.trim();
-  const length = [...term].length;
-  return length >= 1 && length <= MAX_SEARCH_LENGTH ? term : null;
+  const length = characters(term);
+  return length >= MIN_SEARCH_LENGTH && length <= MAX_SEARCH_LENGTH ? term : null;
+}
+
+/** The day as `YYYY-MM-DD` when it is a date of 2000 to 2999 (the API takes no other), otherwise null. */
+function validDay(text: string): string | null {
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(text);
+  if (match === null) {
+    return null;
+  }
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const real = date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  return real && year >= 2000 && year <= 2999 ? text : null;
 }
 
 function failureMessage(status: number): string {
@@ -63,10 +88,12 @@ function failureMessage(status: number): string {
 }
 
 /**
- * The order list with a status filter, the switch for the refunds to do, a search (an exact order number or email,
- * applied when the staff member submits it with Enter), an order (`sort`: by placement or by the amount, either way; not a
+ * The order list with a status filter, the switch for the refunds to do, a search (an order number, a complete email or
+ * a fragment of the number, the email or the name, from 3 characters, applied when the staff member submits it with
+ * Enter), a range of days of the placement (`placedFrom`, `placedTo`: applied as soon as a day is chosen; an end before
+ * the start is not applied and says why; not with the refunds to do, which the API refuses), an order (`sort`: by placement or by the amount, either way; not a
  * filter) and a page size (10, 25 or 50). The search, the filters, the order and the
- * page size live in the address (`useListUrlState`: `q`, `status`, `refund=pending`, `sort`, `perPage`; read on entering and
+ * page size live in the address (`useListUrlState`: `q`, `status`, `refund=pending`, `placedFrom`, `placedTo`, `sort`, `perPage`; read on entering and
  * on a change from outside, such as the menu item „Zwroty do wykonania” on the open list, the link „Inne zamówienia
  * klienta” or Back, written with `replace` when changed; only the applied search goes there, not what is being typed)
  * and the paging is `useCursorPager` (cursor stack, late answers, retry, what a failure leaves on the screen). What stays
@@ -80,6 +107,8 @@ export function useOrderList() {
       parse: (raw) => STATUS_OPTIONS.find((option) => option.value === raw)?.value ?? null,
       fallback: null,
     } satisfies ListParam<OrderStatus, null>,
+    placedFrom: { parse: validDay, fallback: null } satisfies ListParam<string, null>,
+    placedTo: { parse: validDay, fallback: null } satisfies ListParam<string, null>,
     refund: {
       parse: (raw) => (raw === "pending" ? true : null),
       format: () => "pending",
@@ -92,25 +121,32 @@ export function useOrderList() {
     } satisfies ListParam<number, number>,
   });
 
+  /** True while a search or a range of days is applied: the amount cannot be sorted then, the API refuses it (no index serves both). */
+  const hasRange = (query: { placedFrom: string | null; placedTo: string | null }) => query.placedFrom !== null || query.placedTo !== null;
+  const refusesTotal = (query: { q: string | null; placedFrom: string | null; placedTo: string | null }) => query.q !== null || hasRange(query);
+
   /**
    * The order the list is in: none for the refunds to do (their own, by due date), the newest first for an amount while a
-   * search is applied (the API refuses it, no index serves both), the sort of the address otherwise.
+   * search or a range of days is applied, the sort of the address otherwise.
    */
   const sort = computed<OrderSort | null>(() => {
-    const { refund, q, sort: chosen } = url.query.value;
+    const { refund, sort: chosen } = url.query.value;
     if (refund) {
       return null;
     }
-    return q !== null && byTotal(chosen) ? DEFAULT_ORDER_SORT : chosen;
+    return refusesTotal(url.query.value) && byTotal(chosen) ? DEFAULT_ORDER_SORT : chosen;
   });
 
-  /** Every order, each with the reason it cannot be chosen now (the refunds to do take none, the amount no search). */
+  /** Every order, each with the reason it cannot be chosen now (the refunds to do take none, the amount no search and no days). */
   const sortOptions = computed<SortOption<OrderSort>[]>(() =>
     ORDER_SORTS.map((option) => {
       if (url.query.value.refund) {
         return { ...option, disabledReason: REFUND_SORT_MESSAGE };
       }
-      return url.query.value.q !== null && byTotal(option.value) ? { ...option, disabledReason: TOTAL_SORT_MESSAGE } : option;
+      if (!byTotal(option.value) || !refusesTotal(url.query.value)) {
+        return option;
+      }
+      return { ...option, disabledReason: url.query.value.q !== null ? TOTAL_SORT_MESSAGE : TOTAL_RANGE_SORT_MESSAGE };
     }),
   );
 
@@ -125,8 +161,14 @@ export function useOrderList() {
     if (query.q !== null) {
       apiQuery.q = query.q;
     }
-    // The refunds to do take no sort and the amount no search, whatever the address says: the API refuses both.
-    const effective = query.refund ? null : query.q !== null && byTotal(query.sort) ? DEFAULT_ORDER_SORT : query.sort;
+    // The refunds to do take no sort and no days, the amount no search and no days, whatever the address says: the API refuses them.
+    if (!query.refund && query.placedFrom !== null) {
+      apiQuery.placedFrom = query.placedFrom;
+    }
+    if (!query.refund && query.placedTo !== null) {
+      apiQuery.placedTo = query.placedTo;
+    }
+    const effective = query.refund ? null : refusesTotal(query) && byTotal(query.sort) ? DEFAULT_ORDER_SORT : query.sort;
     if (effective !== null && effective !== DEFAULT_ORDER_SORT) {
       apiQuery.sort = effective;
     }
@@ -152,14 +194,33 @@ export function useOrderList() {
   // What the staff member typed; it reaches the list only through `submitSearch`, or from the address.
   const search = ref(url.address.value.q ?? "");
 
-  // The address changed from outside: it is the new truth, also for what is in the field.
+  // The days in the fields: what was chosen, also an end before the start that is not applied (and says why).
+  const placedFromField = ref(url.query.value.placedFrom ?? "");
+  const placedToField = ref(url.query.value.placedTo ?? "");
+
+  // The address changed from outside: it is the new truth, also for what is in the fields.
   watch(url.address, (address) => {
     search.value = address.q ?? "";
+    placedFromField.value = url.query.value.placedFrom ?? "";
+    placedToField.value = url.query.value.placedTo ?? "";
   });
+
+  /** Says what the field takes; while the text is 1 or 2 characters long it says that the search needs 3. */
+  const searchHint = computed(() => {
+    const length = characters(search.value.trim());
+    return length > 0 && length < MIN_SEARCH_LENGTH ? SEARCH_TOO_SHORT_HINT : SEARCH_HINT;
+  });
+
+  const rangeError = computed(() => {
+    const [from, to] = [validDay(placedFromField.value), validDay(placedToField.value)];
+    return from !== null && to !== null && from > to ? RANGE_ERROR : null;
+  });
+  const rangeDisabled = computed(() => url.query.value.refund);
+  const rangeDisabledReason = computed(() => (url.query.value.refund ? RANGE_REFUND_MESSAGE : null));
 
   const status = computed(() => url.query.value.status);
   const refundPending = computed(() => url.query.value.refund);
-  const filtered = computed(() => url.query.value.q !== null || url.query.value.status !== null || url.query.value.refund);
+  const filtered = computed(() => url.query.value.q !== null || url.query.value.status !== null || url.query.value.refund || hasRange(url.query.value));
 
   function selectStatus(selected: OrderStatus | null): void {
     url.set({ status: selected });
@@ -167,6 +228,27 @@ export function useOrderList() {
 
   function setRefundPending(enabled: boolean): void {
     url.set({ refund: enabled });
+  }
+
+  /** Applies the days in the fields, unless the end is before the start; the amount cannot be sorted with days, so it returns to the newest first. */
+  function applyRange(): void {
+    const [from, to] = [validDay(placedFromField.value), validDay(placedToField.value)];
+    if (rangeError.value !== null) {
+      return;
+    }
+    url.set(byTotal(url.query.value.sort) && (from !== null || to !== null) ? { placedFrom: from, placedTo: to, sort: DEFAULT_ORDER_SORT } : { placedFrom: from, placedTo: to });
+  }
+
+  /** A day chosen in „Od” (`YYYY-MM-DD`, or "" when it is cleared). */
+  function setPlacedFrom(day: string): void {
+    placedFromField.value = day;
+    applyRange();
+  }
+
+  /** A day chosen in „Do” (`YYYY-MM-DD`, or "" when it is cleared). */
+  function setPlacedTo(day: string): void {
+    placedToField.value = day;
+    applyRange();
   }
 
   function setSort(selected: string): void {
@@ -177,9 +259,15 @@ export function useOrderList() {
     url.set({ perPage: size });
   }
 
-  /** Searches for what is typed (Enter): the trimmed term, or all orders when it is blank; the same term loads the list again. */
+  /**
+   * Searches for what is typed (Enter): the trimmed term, or all orders when it is blank; the same term loads the list
+   * again. A term of 1 or 2 characters is no search: nothing changes and the hint says why.
+   */
   function submitSearch(): void {
     const term = validTerm(search.value);
+    if (term === null && search.value.trim() !== "") {
+      return;
+    }
     if (term === url.query.value.q) {
       void pager.refresh();
       return;
@@ -191,11 +279,21 @@ export function useOrderList() {
   /** Drops the search, the filters, the order and the page size: the address is `/orders` again. */
   function clearFilters(): void {
     search.value = "";
+    placedFromField.value = "";
+    placedToField.value = "";
     url.clear();
   }
 
   return {
     search,
+    searchHint,
+    placedFromField,
+    placedToField,
+    placedFrom: computed(() => url.query.value.placedFrom),
+    placedTo: computed(() => url.query.value.placedTo),
+    rangeError,
+    rangeDisabled,
+    rangeDisabledReason,
     query: url.query,
     status,
     refundPending,
@@ -214,6 +312,8 @@ export function useOrderList() {
     total: pager.total,
     selectStatus,
     setRefundPending,
+    setPlacedFrom,
+    setPlacedTo,
     setSort,
     setPerPage,
     submitSearch,

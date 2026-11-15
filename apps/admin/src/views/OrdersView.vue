@@ -9,6 +9,7 @@ import ListToolbar from "@/components/list/ListToolbar.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -23,10 +24,13 @@ const { search, query, sort, filtered, items, loading, loaded, error, forbidden,
 // One layout at a time: a table from 640 px, cards below it (the rows and their test ids are never in the DOM twice).
 const tableLayout = useMediaQuery("(min-width: 640px)");
 
-const SEARCH_HINT = "Dokładny numer (np. R-100001) albo dokładny e-mail, zatwierdź Enterem.";
 const ALL_STATUSES = "all";
 
 const statusFilterId = useId();
+const rangeIds = { from: useId(), to: useId(), error: useId(), hint: useId() };
+// What describes a date field: the reason the range is off, and (on „Do”, which the message names) the error of the range.
+const fromDescription = computed(() => (list.rangeDisabledReason.value === null ? undefined : rangeIds.hint));
+const toDescription = computed(() => [list.rangeDisabledReason.value === null ? null : rangeIds.hint, list.rangeError.value === null ? null : rangeIds.error].filter((id) => id !== null).join(" ") || undefined);
 const statusFilterLabel = computed(() => STATUS_OPTIONS.find((option) => option.value === query.value.status)?.label ?? "Wszystkie");
 
 function selectStatus(value: unknown): void {
@@ -82,7 +86,7 @@ async function clearFilters() {
         search-label="Szukaj po numerze zamówienia lub e-mailu"
         search-placeholder="Numer zamówienia lub e-mail"
         :search-max="MAX_SEARCH_LENGTH"
-        :search-hint="SEARCH_HINT"
+        :search-hint="list.searchHint.value"
         :filtered="filtered"
         :per-page="query.perPage"
         :sort-options="list.sortOptions.value"
@@ -123,6 +127,63 @@ async function clearFilters() {
               </SelectContent>
             </Select>
           </div>
+          <fieldset class="flex min-w-0 flex-col gap-1.5">
+            <legend class="mb-1.5 text-sm leading-none font-medium">
+              Data zamówienia
+            </legend>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div class="flex items-center gap-2">
+                <Label :for="rangeIds.from">
+                  Od
+                </Label>
+                <Input
+                  :id="rangeIds.from"
+                  type="date"
+                  data-testid="placed-from"
+                  class="w-40"
+                  :model-value="list.placedFromField.value"
+                  :max="list.placedToField.value || undefined"
+                  :disabled="list.rangeDisabled.value"
+                  :aria-describedby="fromDescription"
+                  @update:model-value="list.setPlacedFrom(String($event ?? ''))"
+                />
+              </div>
+              <div class="flex items-center gap-2">
+                <Label :for="rangeIds.to">
+                  Do
+                </Label>
+                <Input
+                  :id="rangeIds.to"
+                  type="date"
+                  data-testid="placed-to"
+                  class="w-40"
+                  :model-value="list.placedToField.value"
+                  :min="list.placedFromField.value || undefined"
+                  :disabled="list.rangeDisabled.value"
+                  :aria-invalid="list.rangeError.value === null ? undefined : 'true'"
+                  :aria-describedby="toDescription"
+                  @update:model-value="list.setPlacedTo(String($event ?? ''))"
+                />
+              </div>
+            </div>
+            <p
+              :id="rangeIds.hint"
+              role="status"
+              data-testid="range-hint"
+              class="max-w-72 text-xs text-muted-foreground empty:hidden"
+            >
+              {{ list.rangeDisabledReason.value }}
+            </p>
+            <p
+              v-if="list.rangeError.value !== null"
+              :id="rangeIds.error"
+              role="alert"
+              data-testid="range-error"
+              class="max-w-72 text-xs text-destructive"
+            >
+              {{ list.rangeError.value }}
+            </p>
+          </fieldset>
           <div class="flex items-center gap-2 self-end pb-2">
             <Switch
               id="refund-pending"
