@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import statistics
+import unicodedata
 
 import evals_artifacts as artifacts
 import evals_assertions as assertions
@@ -48,6 +49,13 @@ def _first_number(*values, default=0.0):
     return default
 
 
+def _printable(text):
+    """A reason as one line of printable characters: the history format rejects control characters."""
+    kept = ''.join(c if unicodedata.category(c) not in ('Cc', 'Cf') and c not in '\u2028\u2029' else ' '
+                   for c in str(text or ''))
+    return ' '.join(kept.split())
+
+
 class PassScore:
     """The score of one pass (one repetition of a case)."""
 
@@ -68,8 +76,9 @@ class PassScore:
         data = {'status': self.status, 'passed': self.passed, 'cost_usd': round(self.cost_usd, 6),
                 'duration_s': round(self.duration_s, 3), 'resilient': self.resilient,
                 'defect_found': self.defect_found, 'scope_violation': self.scope_violation}
-        if self.reason:
-            data['reason'] = self.reason[:REASON_MAX]
+        reason = _printable(self.reason)
+        if reason:
+            data['reason'] = reason[:REASON_MAX]
         return data
 
 

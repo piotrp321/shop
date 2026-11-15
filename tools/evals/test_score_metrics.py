@@ -8,6 +8,7 @@ import unittest
 import testutil
 from testutil import write_pass
 import evals_assertions as assertions
+import evals_history as history
 import evals_score as score
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'testdata', 'reports')
@@ -138,6 +139,15 @@ class TestScorePass(Base):
         self.assertEqual('the pass timeout was reached', result.reason)
         self.assertEqual(3.0, result.cost_usd)   # the upper bound the runner charged for an unknown cost
         self.assertFalse(os.path.exists(os.path.join(directory, 'validate')))
+
+    def test_a_reason_with_control_characters_still_makes_a_valid_repetition(self):
+        item = {'status': 'failed', 'reason': 'CLI error\nafter init\x00 ' + 'x' * 300, 'cost_usd': None,
+                'charged_usd': 3.0, 'duration_s': 5.0}
+        result = self.one(DEFECT_CASE, item=item, status='failed', output='')
+        problems = []
+        history._repetition(result.as_repetition(), 'repetition', problems)
+        self.assertEqual([], problems)
+        self.assertTrue(result.as_repetition()['reason'].startswith('CLI error after init'))
 
     def test_a_failed_pass_is_a_miss_and_not_resilient(self):
         item = {'status': 'failed', 'reason': 'the pass timeout was reached', 'cost_usd': None, 'charged_usd': 3.0,
