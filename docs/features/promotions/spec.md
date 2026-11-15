@@ -168,7 +168,7 @@ Wejście: wpisy historii z `W` i ostatni wpis sprzed `W` (jedno zapytanie dla ws
 ### Granice promocji i unieważnianie (A2)
 
 - Nowy transport Messengera `promotions` (Doctrine, `queue_name=promotions`, te same opcje co `scheduled`; w `test`
-  w pamięci, w `test_messaging` prawdziwy), worker konsumuje `outbox events scheduled payment_simulator promotions`.
+  w pamięci, w `test_messaging` prawdziwy), worker konsumuje `outbox events scheduled payment_simulator promotions jobs`.
   Osobna kolejka, bo `ordering:seed-demo` czyści całą kolejkę `scheduled`, a `pricing:seed-demo` czyści swoją.
 - Jedna ścieżka publikacji: wiadomości na transporcie `promotions`. Zapis promocji wysyła w swojej transakcji (port
   `PromotionBoundaries`, adapter z `DelayStamp`, jak `UnpaidOrderExpiry`) `PromotionBoundaryReached(promotionId, at)`
