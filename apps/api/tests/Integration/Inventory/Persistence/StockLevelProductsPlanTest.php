@@ -79,6 +79,29 @@ final class StockLevelProductsPlanTest extends KernelTestCase
         }
     }
 
+    public function testTheVariantsOfEveryLevelAreCountedThroughItsPartialIndexUpToTheLimit(): void
+    {
+        foreach ([AvailabilityLevel::OutOfStock, AvailabilityLevel::LowStock] as $level) {
+            $index = $this->indexOf($level);
+            $expected = $this->connection->fetchOne(
+                (AvailabilityLevel::OutOfStock === $level ? 'SELECT count(*) FROM inventory_stock_item WHERE physical - reserved = 0 AND product_id IS NOT NULL'
+                    : 'SELECT count(*) FROM inventory_stock_item WHERE physical - reserved BETWEEN 1 AND 5 AND product_id IS NOT NULL'),
+            );
+
+            $all = $this->levels->countVariants($level, 10_000);
+            $allPlan = $this->recording->planOfTheLastQuery($this->connection, false);
+            $capped = $this->levels->countVariants($level, 20);
+            $cappedPlan = $this->recording->planOfTheLastQuery($this->connection, false);
+
+            self::assertSame([$expected, false], [$all->value, $all->capped], $level->value);
+            self::assertSame([20, true], [$capped->value, $capped->capped], $level->value);
+            foreach (['all' => $allPlan, 'capped' => $cappedPlan] as $label => $plan) {
+                self::assertStringContainsString($index, $plan, $level->value.' '.$label."\n".$plan);
+                self::assertDoesNotMatchRegularExpression('/Seq Scan on inventory_stock_item/', $plan, $level->value.' '.$label."\n".$plan);
+            }
+        }
+    }
+
     /**
      * @return list<ProductId> every product of the level, paged by 40
      */

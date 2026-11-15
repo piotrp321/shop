@@ -65,6 +65,14 @@ final readonly class DbalStockLevelProducts implements StockLevelProducts
         return BoundedCount::ofRowsRead($rows, $limit);
     }
 
+    public function countVariants(AvailabilityLevel $level, int $limit): BoundedCount
+    {
+        $rows = $this->connection->fetchOne(BoundedCounter::sql('inventory_stock_item', [self::condition($level)], $limit));
+        \assert(\is_int($rows));
+
+        return BoundedCount::ofRowsRead($rows, $limit);
+    }
+
     /**
      * A constant fragment of the code: the bound of the low level is the constant of AvailabilityLevel.
      */

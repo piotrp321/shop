@@ -18,6 +18,10 @@ final class InMemoryStockLevelProducts implements StockLevelProducts
     /** @var list<array{string, ?string, int}> level, the product the page starts after and the limit of every page() call */
     public array $pageRequests = [];
     public int $counts = 0;
+    /** @var list<array{string, int}> level and limit of every countVariants() call */
+    public array $variantCounts = [];
+    /** @var array<string, int> level => records at the level */
+    private array $variants = [];
     /** @var array<string, list<string>> level => product ids in ascending order */
     private array $products = [];
 
@@ -28,6 +32,13 @@ final class InMemoryStockLevelProducts implements StockLevelProducts
     {
         sort($productIds);
         $this->products[$level->value] = $productIds;
+
+        return $this;
+    }
+
+    public function withVariants(AvailabilityLevel $level, int $records): self
+    {
+        $this->variants[$level->value] = $records;
 
         return $this;
     }
@@ -48,5 +59,12 @@ final class InMemoryStockLevelProducts implements StockLevelProducts
         ++$this->counts;
 
         return new BoundedCount(\count($this->products[$level->value] ?? []), false);
+    }
+
+    public function countVariants(AvailabilityLevel $level, int $limit): BoundedCount
+    {
+        $this->variantCounts[] = [$level->value, $limit];
+
+        return BoundedCount::ofRowsRead(min($this->variants[$level->value] ?? 0, $limit + 1), $limit);
     }
 }

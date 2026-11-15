@@ -31,4 +31,14 @@ interface StockLevelProducts
      * @throws \InvalidArgumentException the in-stock level, which is no filter
      */
     public function count(AvailabilityLevel $level): BoundedCount;
+
+    /**
+     * How many stock records (variants) are at the level, counted up to $limit (at most $limit + 1 are read), never
+     * the whole table: the queue of the dashboard, which counts variants where the stock list shows their products.
+     *
+     * @param int $limit 1 or more
+     *
+     * @throws \InvalidArgumentException the in-stock level, which is no filter
+     */
+    public function countVariants(AvailabilityLevel $level, int $limit): BoundedCount;
 }
