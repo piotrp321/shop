@@ -16,7 +16,7 @@ ADMIN_DSN = "https://cccccccccccccccccccccccccccccccc@o1.ingest.de.sentry.io/3"
 # The marker of the environment of the api (shop.apiEnv): every container that has it is a container of the api image.
 API_MARKER = "SHOP_DB_HOST"
 # Containers that must get the DSN of the api, among others (the ones with the marker, which the test finds itself).
-API_WORKLOADS = {"api", "worker", "migrate", "initialize", "purge-caches", "restore", "cart-purge-expired"}
+API_WORKLOADS = {"api", "worker", "migrate", "initialize", "purge-caches", "backfill", "restore", "cart-purge-expired"}
 
 
 def containers_of(case):

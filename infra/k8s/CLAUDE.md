@@ -72,6 +72,16 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a)
   nie są jego decyzją ani czynnością.
 
+## Joby wersji
+
+- Job `backfill` (fala 3, jak `purge-caches`) uruchamia `bin/console app:backfill` po rolloucie `api` i `worker`
+  (initContainery `shop.waitRollout`, ServiceAccount `shop-wait`): migracje zmieniają tylko schemat, a dane wypełniają
+  kroki `app:backfill` (`apps/api/CLAUDE.md`), każdy raz, bo ukończone zapisuje w `app_backfill`; kolejne wersje
+  pomijają ukończone kroki, a ponowienie Joba (`backoffLimit`, `rerun`) zaczyna od nieukończonego. Ma własny limit czasu
+  `jobs.backfillActiveDeadlineSeconds` (domyślnie 21 600 s; pozostałe Joby `jobs.activeDeadlineSeconds`), bo przy
+  docelowej skali przechodzi cały katalog i zamówienia. Lokalnie (compose) kroki uruchamia koniec `bin/seed-demo`
+  (`app:backfill --force`); `restore` go nie ponawia. Test: `tests/test_jobs.py`, `tests/test_waves.py`.
+
 ## Co sprawdza `check`
 
 - `make -C infra/k8s check` (woła go też główny `make check`): `helm lint`, render chartu dla `prod`, `ci` i `load` (nakładka z zasobami podów jak `prod` i nagłówkiem adresu klienta;

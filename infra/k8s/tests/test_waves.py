@@ -6,7 +6,7 @@ EXPECTED_WAVES = {
     "postgres": -1, "elasticsearch": -1, "rabbitmq": -1, "redis": -1, "garage": -1, "keycloak": -1, "mailpit": -1,
     "garage-init": 0, "migrate": 0, "keycloak-config": 0,
     "api": 1, "worker": 1, "store": 1, "admin": 1, "imgproxy": 1, "varnish": 1,
-    "initialize": 2, "purge-caches": 3,
+    "initialize": 2, "purge-caches": 3, "backfill": 3,
 }
 
 # What each workload waits for in an initContainer (the table of the waves in the specification).
@@ -20,6 +20,7 @@ EXPECTED_WAITS = {
     "imgproxy": {"garage-init"},
     "initialize": {"api", "worker", "varnish", "store"},
     "purge-caches": {"api", "varnish", "store"},
+    "backfill": {"api", "worker"},
 }
 
 

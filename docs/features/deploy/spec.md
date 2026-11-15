@@ -193,9 +193,10 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   | 1 | Deploymenty api, worker, store, admin, imgproxy, varnish; Ingress; CronJob | api i worker: `doctrine:migrations:up-to-date` (api i worker także RabbitMQ); store: Redis; imgproxy: Garage z bucketami |
   | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker |
   | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | zakończony rollout Deploymentów api, varnish, store |
+  | 3 | Job `backfill` (`app:backfill`: dane, dla których migracje dodały tylko schemat; `apps/api/CLAUDE.md`) | zakończony rollout Deploymentów api, worker |
 
   Nieudana migracja: nowe `api` i `worker` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
-- `initialize` i `purge-caches` czekają na rollout (`kubectl rollout status`) w initContainerach z obrazem `kubectl`,
+- `initialize`, `purge-caches` i `backfill` czekają na rollout (`kubectl rollout status`) w initContainerach z obrazem `kubectl`,
   a nie na odpowiedź Service, którą mógłby jeszcze dać stary pod. Te Joby działają na ServiceAccount `shop-wait`
   (Role: tylko `get`, `list`, `watch` na `deployments`), a token API Kubernetes (wolumen `projected`) montują tylko te
   initContainery. Pozostałe pody i kontenery nie montują tokenu (`automountServiceAccountToken: false`). Deploymenty

@@ -9,7 +9,7 @@ RENDER = pathlib.Path(os.environ.get("RENDER_DIR", "/cache/render"))
 REPO = pathlib.Path(os.environ.get("REPO_DIR", "/repo"))
 WAVE = "argocd.argoproj.io/sync-wave"
 WORKLOADS = ("Deployment", "StatefulSet", "Job", "CronJob")
-JOBS = ("garage-init", "migrate", "keycloak-config", "initialize", "purge-caches")
+JOBS = ("garage-init", "migrate", "keycloak-config", "initialize", "purge-caches", "backfill")
 # The revision and the digests of the images built by us that scripts/render.sh passes to the prod cases (ci: no digests).
 REVISION = "0123456789abcdef0123456789abcdef01234567"
 DIGESTS = {app: "sha256:" + letter * 64 for app, letter in (("api", "a"), ("store", "b"), ("admin", "c"), ("elasticsearch", "d"))}
