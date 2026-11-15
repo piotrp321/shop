@@ -76,6 +76,25 @@ a przy ręcznym przeglądzie nie znalazłem błędu w głównej logice.
   7 specyfikacji; testy współbieżności używają osobnych procesów i połączeń. Uwaga: diff usuwa i zmienia istniejące
   testy, więc przypadek sprawdza też, że reviewer odróżnia uzasadnioną zmianę testów od osłabienia (kontrola 1).
 
+Waga uwag `Minor` z oryginalnych review według obecnego `.claude/agents/code-reviewer.md` (punkt 7: wagę wyznacza wpływ,
+`IMPORTANT` to błędne działanie w realnym scenariuszu, regresja, naruszenie reguły specyfikacji, 500, komunikat nie po
+polsku, dostępność i przypadki z punktu 4; punkt 3 każe szukać współbieżności, ale nie podnosi jej wag):
+
+- `order-management-1-notification-markers`, Minor 2 („`release` nie sprawdza, kto trzyma zajęcie”): nie `IMPORTANT`.
+  Specyfikacja ORDER-MANAGEMENT-1 wprost opisuje `release` jako ustawienie `claimed_until` na null (kod jest zgodny z literą)
+  i przyjmuje dostarczanie „co najmniej raz”: po wygaśnięciu lease drugi e-mail jest dozwolony, a limit czasu SMTP krótszy niż
+  lease (kryterium 7, sprawdzone w diffie testem) czyni przekroczenie lease mało prawdopodobnym. Skutek to w najgorszym razie
+  zdublowany e-mail transakcyjny, bez utraty danych, bez luki i bez złamania reguły specyfikacji; scenariusz wymaga
+  nietypowego przekroczenia lease przez A, potem przejęcia przez B i dopiero błędu A. To pasuje do `SUGGESTION` (propozycja
+  tokenu właściciela `claimed_until = :until`), jak oceniło oryginalne review. Przypadek graniczny: ścisły reviewer mógłby
+  powołać się na A4 („lease chroni przed równoległym wysłaniem”); pomiar bazowy pokaże, czy tak robi, i wtedy przypadek
+  trzeba zamienić na inny albo zawęzić asercję. Pozostałe uwagi tego review (Minor 1: wspólny limit ponowień, Minor 3:
+  opis w dokumentacji, Minor 4: okno czasowe testu, sugestia 6) też nie mają wpływu na użytkownika ani dane.
+- `catalog-admin-3-reprice-after-tax-class-change`, M1 („okno wyścigu przy tworzeniu pierwszej ceny”): nie `IMPORTANT`.
+  Dotyczy kodu sprzed zadania (`SetVariantPriceHandler`), review samo pisze, że to nie błąd tego diffu; okno jest wąskie,
+  brutto jest poprawne, a rozbicie VAT naprawia `pricing:reconcile-tax`; K6 tego przypadku nie obiecuje. M2 (nieaktualne
+  zdania dokumentacji) i M3 (`new` w konstruktorze) to jakość bez wpływu na działanie, czyli `SUGGESTION`.
+
 Ograniczenie: to nie jest dowód braku błędu, tylko brak znanego błędu po ręcznym przeglądzie; zgłoszenie `bug`
 dotyczące tych plików zmienia przypadek na `defect` albo go usuwa.
 
