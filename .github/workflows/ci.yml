@@ -10,6 +10,10 @@
 # `make -C infra/k8s check` (in the `k8s` part). Skipped steps let the other jobs pass within seconds. Anything else,
 # and every push, runs it all. A full run uses 1 + 4 + 3 runners for its work (`scope`, the `checks-part` and
 # `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
+# The `evals` job (tools/evals, no model and no network) runs for every change, documentation only included, because a
+# change of an agent definition is documentation for `scope.sh`: `make evals-lint evals-check` (a stale or regressed
+# suite with a measurement that the change touches is an error for pull requests to main and for pushes to main, a warning
+# for epic/* branches; arguments: .github/scripts/evals-args.sh). It is required only in the ruleset of main.
 name: CI
 
 on:
@@ -66,6 +70,36 @@ jobs:
             scope="$(sh .github/scripts/scope.sh "$BASE_SHA" "$HEAD_SHA")"
           fi
           echo "scope=$scope" | tee -a "$GITHUB_OUTPUT"
+
+  # The freshness of the evals of the agents (tools/evals/README.md): `evals-lint` (formats, the scan of the case data and
+  # of the history) and `evals-check` (fingerprint of each suite against its current result). Runs for every change and
+  # needs no other job, so its status always exists; the complete history is fetched because the lint checks that the
+  # commits of the cases are reachable from main or epic/* and the check compares the head with the merge base.
+  evals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Choose the arguments of the check
+        id: args
+        env:
+          EVENT: ${{ github.event_name }}
+          TARGET: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          args="$(sh .github/scripts/evals-args.sh "$EVENT" "$TARGET" "$BASE_SHA" "$HEAD_SHA")"
+          echo "args=$args" | tee -a "$GITHUB_OUTPUT"
+
+      - name: make evals-lint evals-check
+        env:
+          EVALS_CHECK_ARGS: ${{ steps.args.outputs.args }}
+        run: make evals-lint evals-check EVALS_CHECK_ARGS="$EVALS_CHECK_ARGS"
 
   # The checks and the app tests in parts (matrix.include), each on its own runner with only the images and services it
   # needs, so the parts run side by side:
