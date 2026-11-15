@@ -269,7 +269,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `OrderRepository::get` i zwraca ten sam `BackofficeOrderView` co komendy pracownika (`overdue` z zegara; nieznane
     i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort, placedFrom, placedTo)` czyta przez
     port `BackofficeOrderReader` (adapter DBAL `DbalBackofficeOrderReader`, liczba sztuk z sumy linii): `q` po
-    przycięciu (także o spacje Unicode) znaczy (`OrderSearchTerm`): dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$`;
+    przycięciu (także o spacje Unicode) znaczy (`OrderSearchTerm`): dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$` (cały `q` ma najwyżej 254 znaki, dłuższy to 400);
     dokładny pełny adres e-mail (`lower(email) = lower(:email)`, do 254 znaków), gdy ma lokalną część, `@` i domenę
     z kropką z ostatnim członem co najmniej 2 znaki (więc „jan@gm” nim nie jest); inny tekst 3–100 znaków to fragment
     numeru, e-maila albo imienia i nazwiska; krótszy, dłuższy albo ze znakiem sterującym (w tym U+001F) to 400 przy
@@ -941,9 +941,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   skanu. Wynik zapytania niesie `BoundedCount` (`Shared\Domain`); odpowiedź mapuje `BoundedCountResponse` (`Shared\UI\Http`, schemat OpenAPI
   `BoundedCountResponse`, `ofNullable`), a `Catalog_UI` ma w Deptracu `Shared_UI` właśnie po ten schemat. „Wiersz” licznika
   to wiersz strony: na Cenach i Stanach produkt (strona liczy produkty, nie warianty), więc licznik tych list to licznik
-  `SearchBackofficeProducts` przekazany przez `DirectoryPage`. Lista z filtrem, który nic nie może znaleźć (zamówienia
-  z `q`, które nie jest numerem ani e-mailem; kody z prefiksem ze znakiem, którego żaden kod nie może mieć,
-  `ListDiscountCodesHandler::prefix`), daje na pierwszej stronie `{value: 0, capped: false}` bez odczytu; poprawny
+  `SearchBackofficeProducts` przekazany przez `DirectoryPage`. Lista z filtrem, który nic nie może znaleźć (kody
+  z prefiksem ze znakiem, którego żaden kod nie może mieć, `ListDiscountCodesHandler::prefix`), daje na pierwszej stronie `{value: 0, capped: false}` bez odczytu; poprawny
   prefiks bez trafień jest liczony w bazie jak każdy inny. Test: `BoundedCounterTest` (plan `EXPLAIN ANALYZE` na
   prawdziwej tabeli: węzeł `Limit` i skan zatrzymany po limit + 1 wierszach), liczniki czytników, testy handlerów
   (licznik wołany tylko na pierwszej stronie z następną) i testy funkcjonalne każdej listy.

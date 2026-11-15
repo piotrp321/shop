@@ -52,7 +52,7 @@ final readonly class OrderSearchTerm
         if (1 === preg_match(self::NUMBER, $term)) {
             return new self('R-'.substr($term, 2), null, null);
         }
-        if ($length <= ListBackofficeOrders::MAX_QUERY_LENGTH && 1 === preg_match(self::EMAIL, $term)) {
+        if (1 === preg_match(self::EMAIL, $term)) {
             return new self(null, $term, null);
         }
         if ($length >= self::MIN_FRAGMENT_LENGTH && $length <= self::MAX_FRAGMENT_LENGTH) {

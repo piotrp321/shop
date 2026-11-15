@@ -35,7 +35,7 @@ final class RecordingConnection extends Connection
     /**
      * The plan of the last recorded query, one line per row, planned with sequential scans and explicit sorts made as
      * unattractive as the planner allows: what is left shows whether an index delivers the order. With
-     * $asThePlannerChooses false the settings stay as they are, so the plan is the one the planner picks on its own
+     * $steerAwayFromScans false the settings stay as they are, so the plan is the one the planner picks on its own
      * statistics.
      */
     public function planOfTheLastQuery(Connection $database, bool $steerAwayFromScans = true): string

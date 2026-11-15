@@ -169,6 +169,44 @@ describe("useOrderList: the search by fragment and the range of days", () => {
       expect(list.placedFrom.value).toBeNull();
     });
 
+    it.each(["0002-11-05", "0020-11-05", "0202-11-05", "1999-12-31", "3000-01-01"])(
+      "keeps the day that is applied while a year is being typed (%s passes in Chrome on the way to 2026): nothing is asked, the field shows what is typed",
+      async (typed) => {
+        const { list, router } = await startAt("/orders?placedFrom=2026-11-01");
+
+        list.setPlacedFrom(typed);
+        await flushPromises();
+
+        expect(queries()).toEqual([{ placedFrom: "2026-11-01" }]);
+        expect(router.currentRoute.value.fullPath).toBe("/orders?placedFrom=2026-11-01");
+        expect(list.placedFromField.value).toBe(typed);
+        expect(list.placedFrom.value).toBe("2026-11-01");
+
+        list.setPlacedFrom("2026-11-05");
+        await flushPromises();
+        expect(queries()).toEqual([{ placedFrom: "2026-11-01" }, { placedFrom: "2026-11-05" }]);
+      },
+    );
+
+    it("applies the other day while a year is being typed in this one, with the day that is applied here", async () => {
+      const { list } = await startAt("/orders?placedFrom=2026-11-01");
+
+      list.setPlacedFrom("0002-11-05");
+      list.setPlacedTo("2026-11-30");
+      await flushPromises();
+
+      expect(queries().at(-1)).toEqual({ placedFrom: "2026-11-01", placedTo: "2026-11-30" });
+    });
+
+    it("still clears a day when its field is emptied", async () => {
+      const { list } = await startAt("/orders?placedFrom=2026-11-01");
+
+      list.setPlacedFrom("");
+      await flushPromises();
+
+      expect(queries().at(-1)).toEqual({});
+    });
+
     it("does not apply an end before the start, and says why; fixing it applies it", async () => {
       const { list, router } = await startAt("/orders?placedFrom=2026-11-10");
 

@@ -230,9 +230,17 @@ export function useOrderList() {
     url.set({ refund: enabled });
   }
 
+  /**
+   * The day a field stands for: none when it is empty, the day when it is one, and what is applied now while it holds
+   * something that is no day the API takes. Chrome passes through such values while a year is typed (0002, 0020, 0202,
+   * then 2026), and each of them must neither clear the day nor ask for a list.
+   */
+  const dayOf = (field: string, applied: string | null) => (field === "" ? null : (validDay(field) ?? applied));
+
   /** Applies the days in the fields, unless the end is before the start; the amount cannot be sorted with days, so it returns to the newest first. */
   function applyRange(): void {
-    const [from, to] = [validDay(placedFromField.value), validDay(placedToField.value)];
+    const from = dayOf(placedFromField.value, url.query.value.placedFrom);
+    const to = dayOf(placedToField.value, url.query.value.placedTo);
     if (rangeError.value !== null) {
       return;
     }
