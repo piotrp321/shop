@@ -649,6 +649,17 @@ class CiTest(unittest.TestCase):
         self.assertEqual(30, delta.POLL_S)
         self.assertEqual(540, delta.CALL_S)
 
+    def test_the_worst_call_ends_within_the_600_s_of_one_bash_call(self):
+        # The last poll of a call starts at its end at the latest and makes two gh calls; the rest is Python start-up
+        # and the wait file.
+        sys.path.insert(0, os.path.dirname(SCRIPT))
+        try:
+            import delta
+        finally:
+            sys.path.pop(0)
+        margin_s = 15
+        self.assertLess(delta.CALL_S + 2 * delta.GH_TIMEOUT_S + margin_s, 600)
+
     # Wrong arguments.
 
     def test_the_head_must_be_a_full_sha(self):
