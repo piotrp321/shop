@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Catalog\Application\Query;
 
 use App\Catalog\Domain\Category\Category;
+use App\Catalog\Domain\Category\CategoryTree;
 
 /**
- * The category tree as nodes with slug and path, siblings ordered by name (Polish collation), then by id.
+ * The category tree as nodes with slug and path, siblings in the order of {@see CategoryTree}: position, then name
+ * (Polish collation), then id. With every position 0 (until a staff member orders a level) the order is by name.
  */
 final readonly class CategoryTreeBuilder
 {
@@ -18,46 +20,34 @@ final readonly class CategoryTreeBuilder
      */
     public static function build(array $categories): array
     {
-        $roots = [];
-        $childrenByParent = [];
-        foreach ($categories as $category) {
-            $parentId = $category->parentId();
-            if (null === $parentId) {
-                $roots[] = $category;
-            } else {
-                $childrenByParent[$parentId->toString()][] = $category;
-            }
-        }
-
-        return self::nodes($roots, $childrenByParent, new \Collator('pl_PL'), '');
+        return self::map(
+            CategoryTree::of($categories),
+            static fn (Category $category, string $path, array $children): CategoryNode => new CategoryNode(
+                $category->id()->toString(),
+                $category->name()->value(),
+                $category->slug()->value(),
+                $path,
+                $children,
+            ),
+        );
     }
 
     /**
-     * @param list<Category>                $siblings
-     * @param array<string, list<Category>> $childrenByParent
-     * @param string                        $parentPath       the path of the parent of the siblings, empty for the roots
+     * @template T
      *
-     * @return list<CategoryNode>
+     * @param \Closure(Category, string, list<T>): T $node the node of a category from its path and its child nodes
+     *
+     * @return list<T>
      */
-    private static function nodes(array $siblings, array $childrenByParent, \Collator $collator, string $parentPath): array
+    private static function map(CategoryTree $tree, \Closure $node, ?Category $parent = null, string $parentPath = ''): array
     {
-        usort($siblings, static fn (Category $a, Category $b): int => $collator->compare($a->name()->value(), $b->name()->value())
-            ?: strcmp($a->id()->toString(), $b->id()->toString()));
-
         return array_map(
-            static function (Category $category) use ($childrenByParent, $collator, $parentPath): CategoryNode {
-                $slug = $category->slug()->value();
-                $path = '' === $parentPath ? $slug : $parentPath.'/'.$slug;
+            static function (Category $category) use ($tree, $node, $parentPath): mixed {
+                $path = '' === $parentPath ? $category->slug()->value() : $parentPath.'/'.$category->slug()->value();
 
-                return new CategoryNode(
-                    $category->id()->toString(),
-                    $category->name()->value(),
-                    $slug,
-                    $path,
-                    self::nodes($childrenByParent[$category->id()->toString()] ?? [], $childrenByParent, $collator, $path),
-                );
+                return $node($category, $path, self::map($tree, $node, $category, $path));
             },
-            $siblings,
+            $tree->children($parent?->id()),
         );
     }
 }
