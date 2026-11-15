@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 from testutil import HERE, TempRepo, measured_result, run_cli
 
@@ -20,6 +21,12 @@ class CliTestCase(unittest.TestCase):
     def setUp(self):
         self.repo = TempRepo()
         self.addCleanup(self.repo.cleanup)
+        # the form of the output depends on GITHUB_ACTIONS (annotations in CI); the tests do not, in-process and in
+        # the processes they start (os.environ is copied to them)
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop('GITHUB_ACTIONS', None)
 
     def run_evals(self, *args):
         return run_cli(evals, args, self.repo.root)
@@ -39,6 +46,37 @@ class CliTestCase(unittest.TestCase):
 
     def history_names(self, suite='code-reviewer'):
         return history.list_names(repo.DiskSource(self.repo.root), suite)
+
+
+class OutputFormTest(CliTestCase):
+    def broken_config(self):
+        cfg = self.repo.read_json('tools/evals/config.json')
+        cfg['n'] = 2
+        self.repo.write_json('tools/evals/config.json', cfg)
+        self.repo.commit('base')
+
+    def test_without_github_actions_the_findings_have_plain_prefixes(self):
+        self.broken_config()
+        code, out, _ = self.run_evals('lint')
+        self.assertEqual(1, code, out)
+        self.assertIn('ERROR   config.json: n must be', out)
+        self.assertNotIn('::error::', out)
+
+    def test_in_github_actions_the_errors_are_annotations(self):
+        self.broken_config()
+        os.environ['GITHUB_ACTIONS'] = 'true'
+        code, out, _ = self.run_evals('lint')
+        self.assertEqual(1, code, out)
+        self.assertIn('::error::config.json: n must be', out)
+        self.assertNotIn('ERROR', out)
+
+    def test_in_github_actions_the_warnings_are_annotations(self):
+        self.repo.commit('base')
+        os.environ['GITHUB_ACTIONS'] = 'true'
+        code, out, _ = self.run_evals('check')
+        self.assertEqual(0, code, out)
+        self.assertIn('::warning::suite code-reviewer has no measurement', out)
+        self.assertNotIn('WARNING', out)
 
 
 class LintCommandTest(CliTestCase):
