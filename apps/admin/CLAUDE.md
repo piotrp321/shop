@@ -304,6 +304,18 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   (`errorsExactly` zwraca ścieżkę bez zagnieżdżonych). Zmiana kształtu (dodanie, przestawienie, usunięcie) kasuje te
   komunikaty, bo ich ścieżki liczą pozycje. Bez roli do zmiany produktów edytor nie ma kontrolek edycji, a pola są
   wyłączone.
+  `ProductPriceStock.vue` (karta „Ceny i stany”, `FormSection` pod „Warianty” tylko dla zapisanego produktu: `/products/new` nie ma jej, pojawia
+  się po pierwszym zapisie, bo widok ma wtedy `view`): `useProductPriceStock` czyta `GET /prices?productId=` i `GET /stock?productId=` razem i
+  łączy po `variantId` (wiersz na wariant zapisany w API: etykieta, brutto, netto i VAT jak na liście cen, fizycznie, zarezerwowane, dostępne,
+  poziom; warianty niezapisane w edytorze nie mają wierszy, a `hasUnsavedVariants` pokazuje notkę „Zapisz produkt, żeby ustawić cenę i stan.”).
+  Karta czyta dane od nowa po zapisie produktu (`reloadKey` to `version` widoku), po 409 okna i przez „Spróbuj ponownie”; błąd odczytu zostawia
+  wiersze już pokazane, a 403 jest bez ponowienia. Cena i stan z odpowiedzi na zapis są nakładką nad odczytanymi wierszami (jak na listach,
+  z porównaniem wersji). Akcje (`RowActions`) według ról z `/me`: „Zmień cenę” tylko `admin`, „Przyjęcie” i „Korekta” `admin` i `warehouse`,
+  „Historia ceny” i „Historia stanu” każdy; okna to te same `PriceDialogs` i `StockDialogs` co na listach (wersje, `Idempotency-Key`,
+  409, fokus, toasty), a fokus bez przycisku wraca na nagłówek karty. Zapis w oknie nie dotyka `dirty` ani pól formularza produktu.
+  Wariant bez ceny (`price: null`) ma `Badge` „Bez ceny”, a karta `Alert` `warning` (wariant `warning` komponentu `Alert`, tokeny
+  `status-warning`) „Warianty bez ceny są w sklepie niedostępne.”. Toast po utworzeniu produktu to „Produkt zapisany. Ustaw cenę, inaczej
+  produkt będzie w sklepie niedostępny.” (`CREATED_MESSAGE` w `useProductForm`), po kolejnych zapisach „Produkt zapisany.”.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList` (standard
   listy): na `useListUrlState` (`q`, `status`, `refund` (`pending`: zwroty do wykonania, `overdue`: tylko po terminie; inna wartość jest pomijana), `placedFrom`, `placedTo` (dni `YYYY-MM-DD`), `sort`: `-placedAt` (domyślny), `placedAt`, `-total`, `total`, niewysyłany, gdy domyślny, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
