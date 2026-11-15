@@ -151,13 +151,16 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
   `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
   `tool_result` o tym samym identyfikatorze; polecenia w tle (`run_in_background`) liczone tylko jako liczba; do tego:
-  - `repeat_runs` (dolna granica): liczba i czas uruchomień polecenia z kategorii `test`, `e2e` albo `check`, którego
+  - `repeat_runs` (heurystyka, dolna granica): liczba i czas uruchomień polecenia z kategorii `test`, `e2e` albo `check`, którego
     klucz jest taki sam jak wcześniejszego uruchomienia w tej samej próbie, bez zmiany kodu pomiędzy nimi. Klucz to
     kategoria i fragment polecenia dopasowany wzorcem kategorii z `config.json` (np. `make -C apps/api test` z jego
     argumentami, do najbliższego operatora powłoki `|`, `;`, `&&`, `>`), więc doklejone `| tail`, przekierowanie do
     pliku albo `; echo $?` nie zmieniają klucza. Zmiana kodu to dowolny `Edit`, `Write` albo `NotebookEdit` w próbie
     (każdej roli) albo polecenie kategorii `other`; kategorie `read`, `ci_watch`, `stack` i kategorie testów zmiany
-    kodu nie oznaczają. Treść polecenia służy tylko do porównania i nie trafia do rekordu;
+    kodu nie oznaczają. Uruchomienie liczy się tylko, gdy brak zmiany kodu jest pewny: gdy między uruchomieniami
+    trwało polecenie w tle, wywołanie narzędzia bez `tool_result` albo subagent bez końca w transkrypcie, uruchomienie
+    nie wchodzi do `repeat_runs`. Raport nazywa je „możliwe powtórzenia testów”, nie zbędną pracą. Treść polecenia
+    służy tylko do porównania i nie trafia do rekordu;
   - `api_retry`: liczba zdarzeń `system/api_retry` i suma `retry_delay_ms` (tylko w rekordzie i raporcie, nie jako
     wąskie gardło: w historii to pojedyncze sekundy);
   - `permission_denials`: liczba zdarzeń `system/permission_denied` według nazwy narzędzia (obejmuje subagentów
@@ -235,7 +238,7 @@ uszeregowane malejąco; pozycja wchodzi, gdy nadwyżka jest co najmniej 0,5 h (p
   × liczba zadań planu;
 - każde zadanie: `work` zadania − mediana `work` zadań tego `kind` w historii;
 - każda kategoria `in_attempts`: jak kategorie `breakdown`, na zadanie planu; pozycja pokazuje obok, ile z nadwyżki
-  to `repeat_runs` tej kategorii („w tym powtórzenia: X h”), bez osobnej pozycji dla powtórzeń;
+  to `repeat_runs` tej kategorii („w tym możliwe powtórzenia: X h”), bez osobnej pozycji dla powtórzeń;
 - `gate_wait` i `review`: jak kategorie `breakdown`, na zadanie planu. Przejście bramki bez czekania daje 0, brak
   wpisów epiku w `gate.jsonl` daje `null` z pozycją w `gaps` (kandydat pominięty). `review` jest znany dopiero po
   merge'u, więc wchodzi do bloku po merge'u, `trend` i `/retro`, nie do raportu odbioru.
@@ -478,7 +481,9 @@ użytkownika.
 2. Próba z kilkoma wynikami `result` (fixture CATALOG-ADMIN-INTEGRATION-2) ma wartość z ostatniego, równą
    `attempts.cost_usd`; wiadomości o tym samym `message.id` liczą się raz; model bez wiadomości trafia do roli `other`.
 3. Tokeny według sekcji „Dokładność”: wyjście orkiestratora próby równa się sumie `usage.output_tokens` wszystkich
-   wyników (fixture z kilkoma wynikami), suma wyjścia ról na modelu równa się `modelUsage.outputTokens` tego modelu,
+   wyników (testy na prawdziwych fixture'ach prób z subagentami i z kilkoma wynikami `result`, w tym próbie z oboma
+   naraz; żaden token nie jest liczony dwa razy: suma ról każdego rodzaju tokenów na modelu nie przekracza
+   `modelUsage`), suma wyjścia ról na modelu równa się `modelUsage.outputTokens` tego modelu,
    a wejście i cache ról sumują się do `modelUsage` w próbie bez rozbieżności (nadwyżka `modelUsage` trafia do
    `other`, niedobór daje role szacowane);
    wyjście typu subagenta i wartość roli dzielącej model z inną rolą mają `estimated: true`, a rola jedyna na modelu
@@ -495,7 +500,8 @@ użytkownika.
    `repeat_runs` liczy polecenie testów o tym samym kluczu (także z innym doklejonym `| tail` albo przekierowaniem)
    bez zmiany kodu pomiędzy, a nie liczy go po `Edit`, `Write`, `NotebookEdit` albo poleceniu `other` ani dla innego
    celu tej samej kategorii; `api_retry` i `permission_denials` (ze zdarzeń `system/permission_denied`, także
-   subagentów) z fixture'ów; rekord nie zawiera treści polecenia.
+   subagentów) z fixture'ów; uruchomienie z poleceniem w tle, wywołaniem bez wyniku albo niezakończonym subagentem
+   pomiędzy nie wchodzi do `repeat_runs`; rekord nie zawiera treści polecenia.
 9. `bottlenecks`: najwyżej 3 pozycje malejąco po nadwyżce, nadwyżka poniżej 0,5 h nie wchodzi, każdy rodzaj kandydata
     (kategoria, zadanie, `in_attempts` z udziałem powtórzeń, `gate_wait`, `review`) ma test; pozycja ma koszt czasowy
     (godziny i udział w `to_done`, dla `gate_wait` w `gate_wait` + `to_done`, dla `review` w `to_merge`); `gate_wait`
