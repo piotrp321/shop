@@ -127,8 +127,10 @@ def check(root, diff=None, enforce=False):
             _warn_code_changes(source, name, entry, cfg, previous, report)
 
     for suite, file_name in added:
-        problem('the pull request adds the regression result %s of suite %s: run /evals %s or accept it with a newer '
-                'accepted file' % (file_name, suite, suite), True)
+        problem('the pull request adds the regression result %s of suite %s: a newer measurement does not clear it, only '
+                'a decision of the user does (evals.py accept %s --reason ... or evals.py waive %s --reason ...; the '
+                'evals skill writes it on the command of the user in the conversation)'
+                % (file_name, suite, suite, suite), True)
     return report
 
 

@@ -136,7 +136,9 @@ rejestru, zły JSON, błąd `--diff`, brak gita tam, gdzie jest potrzebny). `--r
   przebiegu). Błąd (kod 1) tylko z `--enforce`, dla zestawu z pomiarem (niepusta historia), gdy diff go zmienia
   (albo bez `--diff`: każdy) i jego aktualny wynik ma inny odcisk (`suite X is stale: run /evals X`) albo werdykt
   `regression`; także gdy diff dodaje plik historii z werdyktem `regression`, chyba że nowszy plik `accepted` albo
-  `waived` tego zestawu wskazuje go jako `run_file`. Wszystko inne (zestaw bez pomiaru, zestaw niezmieniony w PR, brak
+  `waived` tego zestawu wskazuje go jako `run_file`. Nowszy pomiar (`pass`) dodanej regresji nie pokrywa: odblokowuje
+  ją wyłącznie decyzja użytkownika (`accept` albo `waive` z powodem; `/evals` zapisuje ją na polecenie użytkownika
+  w rozmowie), więc komunikat nie podpowiada nowego pomiaru. Wszystko inne (zestaw bez pomiaru, zestaw niezmieniony w PR, brak
   `--enforce`) to ostrzeżenie. Zmiana skrótu kodu oceny albo walidatora od ostatniego pomiaru to ostrzeżenie
   z zaleceniem nowego pomiaru.
 - **`report`**: historia zestawu jako tabela (werdykt, odcisk, metryki, koszt; najnowszy plik oznaczony, wraz z informacją,

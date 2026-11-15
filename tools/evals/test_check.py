@@ -290,6 +290,23 @@ class DiffTest(CheckTestCase):
         report = self.run_check(diff=(base, head), enforce=True)
         self.assertTrue(any('regression result' in e and 'code-reviewer' in e for e in report.errors), report.errors)
 
+    def test_a_newer_pass_does_not_clear_an_added_regression_and_the_message_names_the_decision(self):
+        self.measure_all()
+
+        def change():
+            self.repo.append('.claude/agents/code-reviewer.md', ' tweak')
+            self.measure('code-reviewer', 'regression', date='2026-01-02T00:00:00Z', commit='b' * 40)
+            self.measure('code-reviewer', 'pass', date='2026-01-03T00:00:00Z', commit='c' * 40)
+        base, head = self.pr(change)
+        report = self.run_check(diff=(base, head), enforce=True)
+        self.assertEqual(1, len(report.errors), report.errors)
+        message = report.errors[0]
+        self.assertIn('adds the regression result', message)
+        self.assertIn('accept', message)
+        self.assertIn('waive', message)
+        self.assertIn('user', message)
+        self.assertNotIn('/evals', message)   # a new measurement does not clear it
+
     def test_a_pr_adding_a_regression_and_a_newer_accepted_result_passes(self):
         self.measure_all()
 
