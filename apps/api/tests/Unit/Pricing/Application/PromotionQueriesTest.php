@@ -107,6 +107,22 @@ final class PromotionQueriesTest extends TestCase
         self::assertEquals([[null, $this->clock->now]], $this->reader->counts, 'one count, at the moment of the page');
     }
 
+    public function testTheFirstPageWithoutANextOneIsTheWholeResultAndIsNotCounted(): void
+    {
+        $this->reader->total = new BoundedCount(99, true);
+        $this->reader->promotions = [
+            $this->listed('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5f21', '2026-11-20T00:00:00Z', '2026-11-30T00:00:00Z'),
+            $this->listed('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5f22', '2026-11-01T00:00:00Z', '2026-11-15T00:00:00Z'),
+        ];
+        $handler = new ListPromotionsHandler($this->reader, $this->clock);
+
+        $list = $handler(new ListPromotions(null, null, 2));
+
+        self::assertNull($list->next);
+        self::assertEquals(new BoundedCount(2, false), $list->total, 'the rows of the page are the exact count');
+        self::assertSame([], $this->reader->counts);
+    }
+
     public function testACursorNobodyHandedOutIsRefused(): void
     {
         $this->expectException(InvalidPromotionCursor::class);

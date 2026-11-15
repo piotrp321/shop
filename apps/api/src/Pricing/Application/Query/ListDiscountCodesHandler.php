@@ -29,7 +29,8 @@ final readonly class ListDiscountCodesHandler
      * The status filter and the status of each item are taken at one moment. The prefix is compared like a code:
      * trimmed and in upper case; one with a character no code has gives an empty page without a read. One code more
      * than the page is read: its presence is what tells there is a next page. The first page (no cursor) also
-     * carries the bounded total of the filters.
+     * carries the bounded total of the filters: the number of its rows when there is no next page (nothing to
+     * count), otherwise the reader counts.
      *
      * @throws InvalidDiscountCodeCursor
      */
@@ -43,11 +44,13 @@ final readonly class ListDiscountCodesHandler
         $now = $this->clock->now();
 
         $codes = $this->codes->page($query->status, $prefix, $now, $after, $query->perPage + 1);
-        $total = null === $after ? $this->codes->count($query->status, $prefix, $now) : null;
         $next = null;
         if (\count($codes) > $query->perPage) {
             $codes = \array_slice($codes, 0, $query->perPage);
             $next = DiscountCodeCursor::after($codes[$query->perPage - 1])->encode();
+            $total = null === $after ? $this->codes->count($query->status, $prefix, $now) : null;
+        } else {
+            $total = null === $after ? new BoundedCount(\count($codes), false) : null;
         }
 
         return new DiscountCodeList(array_map(static fn (ListedDiscountCode $code): DiscountCodeView => new DiscountCodeView(

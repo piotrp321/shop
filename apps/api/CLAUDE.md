@@ -860,16 +860,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
   strony `total: null`. Liczy `BoundedCounter` (`Shared\Infrastructure\Persistence`): `SELECT count(*) FROM (SELECT 1 FROM
   <tabela> WHERE <warunki strony bez kursora i bez ORDER BY> LIMIT 10001) t`, więc zapytanie czyta najwyżej 10 001 wierszy
-  po tym samym warunku i indeksie co strona (`DEFAULT_LIMIT` 10 000; `capped` mówi, że wierszy jest więcej niż `value`).
+  po tym samym warunku co strona, bez kursora i sortu (`DEFAULT_LIMIT` 10 000; `capped` mówi, że wierszy jest więcej niż `value`).
   Nowa lista dopisuje metodę `count(...)` do portu odczytu, składa warunki jednym helperem dla strony i licznika (jak
-  `filter()` w `DbalBackofficeProductSource`), woła licznik tylko przy `after === null` i oddaje `BoundedCount`
-  (`Shared\Domain`) w wyniku zapytania; odpowiedź mapuje `BoundedCountResponse` (`Shared\UI\Http`, schemat OpenAPI
+  `filter()` w `DbalBackofficeProductSource`), woła licznik tylko na pierwszej stronie (`after === null`), która ma
+  następną: strona bez następnej zawiera cały wynik, więc jej `total` to `BoundedCount(count(items), false)` bez drugiego
+  skanu. Wynik zapytania niesie `BoundedCount` (`Shared\Domain`); odpowiedź mapuje `BoundedCountResponse` (`Shared\UI\Http`, schemat OpenAPI
   `BoundedCountResponse`, `ofNullable`), a `Catalog_UI` ma w Deptracu `Shared_UI` właśnie po ten schemat. „Wiersz” licznika
   to wiersz strony: na Cenach i Stanach produkt (strona liczy produkty, nie warianty), więc licznik tych list to licznik
   `SearchBackofficeProducts` przekazany przez `DirectoryPage`. Lista z filtrem, który nic nie może znaleźć (zamówienia
-  z `q`, które nie jest numerem ani e-mailem; kody z prefiksem, którego nie ma żaden kod), daje na pierwszej stronie
-  `{value: 0, capped: false}` bez odczytu. Test: `BoundedCounterTest` (plan `EXPLAIN ANALYZE`: żaden węzeł nie podaje
-  dalej więcej niż limit + 1 wierszy), liczniki czytników i testy funkcjonalne każdej listy.
+  z `q`, które nie jest numerem ani e-mailem; kody z prefiksem ze znakiem, którego żaden kod nie może mieć,
+  `ListDiscountCodesHandler::prefix`), daje na pierwszej stronie `{value: 0, capped: false}` bez odczytu; poprawny
+  prefiks bez trafień jest liczony w bazie jak każdy inny. Test: `BoundedCounterTest` (plan `EXPLAIN ANALYZE` na
+  prawdziwej tabeli: węzeł `Limit` i skan zatrzymany po limit + 1 wierszach), liczniki czytników, testy handlerów
+  (licznik wołany tylko na pierwszej stronie z następną) i testy funkcjonalne każdej listy.
 - Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
   (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.
   Indeks GIN obsługuje frazy od 3 znaków; fraza 2-znakowa (minimum w API) nie ma trigramów, więc idzie skanem indeksu

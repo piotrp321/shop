@@ -139,6 +139,21 @@ final class DiscountCodeQueriesTest extends TestCase
         self::assertEquals([[DiscountCodeStatus::Active, 'WIT', new \DateTimeImmutable(self::NOW)]], $this->reader->counts);
     }
 
+    public function testTheFirstPageWithoutANextOneIsTheWholeResultAndIsNotCounted(): void
+    {
+        $this->reader->total = new BoundedCount(99, true);
+        $this->reader->codes = [
+            $this->listed(self::A, 'WITAJ10', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+            $this->listed(self::B, 'WITAJ20', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+        ];
+
+        $list = $this->list(new ListDiscountCodes(null, 'WIT', null, 2));
+
+        self::assertNull($list->next);
+        self::assertEquals(new BoundedCount(2, false), $list->total, 'the rows of the page are the exact count');
+        self::assertSame([], $this->reader->counts);
+    }
+
     public function testAPrefixNoCodeCanHaveOnALaterPageHasNoTotal(): void
     {
         $this->reader->codes = [

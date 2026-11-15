@@ -26,8 +26,8 @@ final readonly class ListBackofficeOrdersHandler
     /**
      * The search term, trimmed, is an exact number when it looks like one, otherwise an exact email when it has an @;
      * anything else finds nothing, without a read. One order more than the page is read: its presence is what tells
-     * there is a next page. The first page (no cursor) also carries the bounded total of the filter; the table is
-     * never counted whole.
+     * there is a next page. The first page (no cursor) also carries the bounded total of the filter: the number of
+     * its rows when there is no next page (nothing to count), otherwise the reader counts, never the table whole.
      *
      * @throws InvalidBackofficeOrderCursor
      */
@@ -51,11 +51,13 @@ final readonly class ListBackofficeOrdersHandler
 
         $filter = new BackofficeOrderFilter($query->status, $query->pendingRefunds, $number, $email);
         $orders = $this->orders->page($filter, $after, $query->perPage + 1);
-        $total = null === $after ? $this->orders->count($filter) : null;
         $next = null;
         if (\count($orders) > $query->perPage) {
             $orders = \array_slice($orders, 0, $query->perPage);
             $next = BackofficeOrderCursor::after($orders[$query->perPage - 1], $query->pendingRefunds)->encode();
+            $total = null === $after ? $this->orders->count($filter) : null;
+        } else {
+            $total = null === $after ? new BoundedCount(\count($orders), false) : null;
         }
         $now = $this->clock->now();
 

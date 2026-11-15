@@ -103,15 +103,36 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         self::assertSame([], $this->reader->counts, 'nothing can match, so nothing is counted');
     }
 
-    public function testTheFirstPageCountsTheOrdersOfTheSameFilterWithoutTheCursor(): void
+    public function testTheFirstPageWithANextOneCountsTheOrdersOfTheSameFilterWithoutTheCursor(): void
     {
-        $this->reader->orders = [self::listed(1)];
+        $this->reader->orders = [self::listed(1), self::listed(2)];
         $this->reader->total = new BoundedCount(10_000, true);
 
-        $list = $this->list(new ListBackofficeOrders(OrderStatus::Paid, true, ' r-100001 ', null, 25));
+        $list = $this->list(new ListBackofficeOrders(OrderStatus::Paid, false, ' r-100001 ', null, 1));
 
+        self::assertNotNull($list->nextCursor);
         self::assertEquals(new BoundedCount(10_000, true), $list->total);
-        self::assertEquals([new BackofficeOrderFilter(OrderStatus::Paid, true, 'R-100001', null)], $this->reader->counts);
+        self::assertEquals([new BackofficeOrderFilter(OrderStatus::Paid, false, 'R-100001', null)], $this->reader->counts);
+    }
+
+    public function testTheFirstPageWithoutANextOneIsTheWholeResultAndIsNotCounted(): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2)];
+        $this->reader->total = new BoundedCount(99, true);
+
+        $list = $this->list(new ListBackofficeOrders(null, false, null, null, 2));
+
+        self::assertNull($list->nextCursor);
+        self::assertEquals(new BoundedCount(2, false), $list->total, 'the rows of the page are the exact count');
+        self::assertSame([], $this->reader->counts);
+    }
+
+    public function testTheFirstPageWithNoOrderIsAnExactZeroWithoutACount(): void
+    {
+        $list = $this->list(new ListBackofficeOrders(null, false, null, null, 25));
+
+        self::assertEquals(new BoundedCount(0, false), $list->total);
+        self::assertSame([], $this->reader->counts);
     }
 
     public function testALaterPageDoesNotCountAndHasNoTotal(): void
