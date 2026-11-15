@@ -2187,7 +2187,7 @@
                     "Pricing"
                 ],
                 "summary": "Discount code list",
-                "description": "A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the total is not counted.",
+                "description": "A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching codes, counted up to 10 000.",
                 "operationId": "listDiscountCodes",
                 "parameters": [
                     {
@@ -2995,7 +2995,7 @@
                     "Pricing"
                 ],
                 "summary": "Promotion list",
-                "description": "A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the total is not counted.",
+                "description": "A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the first page (without `after`) also has the `total` of the matching promotions, counted up to 10 000.",
                 "operationId": "listPromotions",
                 "parameters": [
                     {
@@ -5983,7 +5983,8 @@
                 "description": "A page of the discount codes, newest first.",
                 "required": [
                     "items",
-                    "next"
+                    "next",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -5996,6 +5997,15 @@
                         "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
                         "type": "string",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many codes match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -6415,7 +6425,8 @@
                 "description": "A page of the promotions, newest start first.",
                 "required": [
                     "items",
-                    "next"
+                    "next",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -6428,6 +6439,15 @@
                         "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
                         "type": "string",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many promotions match the filter, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"

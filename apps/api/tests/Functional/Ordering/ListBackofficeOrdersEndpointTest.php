@@ -159,7 +159,6 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         self::assertSame(['value' => 0, 'capped' => false], $this->list('status=delivered', $admin)['total']);
         self::assertSame(['value' => 0, 'capped' => false], $this->list('q=R-999999', $admin)['total']);
         self::assertMatchesSchema('BackofficeOrderList', $all);
-        self::assertIsArray($all['total']);
         self::assertMatchesSchema('BoundedCountResponse', $all['total']);
     }
 

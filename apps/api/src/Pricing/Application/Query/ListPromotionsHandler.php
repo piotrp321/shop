@@ -22,7 +22,8 @@ final readonly class ListPromotionsHandler
 
     /**
      * The status filter and the status of each item are taken at one moment. One promotion more than the page is
-     * read: its presence is the only thing that tells there is a next page, so the whole list is never counted.
+     * read: its presence is what tells there is a next page. The first page (no cursor) also carries the bounded
+     * total of the status filter; the table is never counted whole.
      *
      * @throws InvalidPromotionCursor
      */
@@ -32,6 +33,7 @@ final readonly class ListPromotionsHandler
         $now = $this->clock->now();
 
         $promotions = $this->promotions->page($query->status, $now, $after, $query->perPage + 1);
+        $total = null === $after ? $this->promotions->count($query->status, $now) : null;
         $next = null;
         if (\count($promotions) > $query->perPage) {
             $promotions = \array_slice($promotions, 0, $query->perPage);
@@ -47,6 +49,6 @@ final readonly class ListPromotionsHandler
             PromotionStatus::of(PromotionPeriod::of($promotion->startsAt, $promotion->endsAt), $now),
             $promotion->variantCount,
             $promotion->version,
-        ), $promotions), $next);
+        ), $promotions), $next, $total);
     }
 }

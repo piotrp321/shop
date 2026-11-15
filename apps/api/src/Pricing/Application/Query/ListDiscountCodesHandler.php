@@ -10,6 +10,7 @@ use App\Pricing\Application\Port\ListedDiscountCode;
 use App\Pricing\Domain\DiscountCode\DiscountCodeStatus;
 use App\Pricing\Domain\DiscountCode\DiscountCodeValue;
 use App\Pricing\Domain\DiscountCode\ValidityPeriod;
+use App\Shared\Domain\BoundedCount;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -27,7 +28,8 @@ final readonly class ListDiscountCodesHandler
     /**
      * The status filter and the status of each item are taken at one moment. The prefix is compared like a code:
      * trimmed and in upper case; one with a character no code has gives an empty page without a read. One code more
-     * than the page is read: its presence is the only thing that tells there is a next page.
+     * than the page is read: its presence is what tells there is a next page. The first page (no cursor) also
+     * carries the bounded total of the filters.
      *
      * @throws InvalidDiscountCodeCursor
      */
@@ -36,11 +38,12 @@ final readonly class ListDiscountCodesHandler
         $after = null === $query->after ? null : DiscountCodeCursor::decode($query->after);
         $prefix = null === $query->q ? null : self::prefix($query->q);
         if (false === $prefix) {
-            return new DiscountCodeList([], null);
+            return new DiscountCodeList([], null, null === $after ? new BoundedCount(0, false) : null);
         }
         $now = $this->clock->now();
 
         $codes = $this->codes->page($query->status, $prefix, $now, $after, $query->perPage + 1);
+        $total = null === $after ? $this->codes->count($query->status, $prefix, $now) : null;
         $next = null;
         if (\count($codes) > $query->perPage) {
             $codes = \array_slice($codes, 0, $query->perPage);
@@ -60,7 +63,7 @@ final readonly class ListDiscountCodesHandler
             $code->enabled,
             DiscountCodeStatus::of($code->enabled, ValidityPeriod::of($code->startsAt, $code->endsAt), $now),
             $code->version,
-        ), $codes), $next);
+        ), $codes), $next, $total);
     }
 
     /**

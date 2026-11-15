@@ -73,7 +73,7 @@ export interface paths {
         };
         /**
          * Product list
-         * @description A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listBackofficeProducts"];
         put?: never;
@@ -201,7 +201,7 @@ export interface paths {
         };
         /**
          * Stock list
-         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listStock"];
         put?: never;
@@ -301,7 +301,7 @@ export interface paths {
         };
         /**
          * Order list
-         * @description A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.
+         * @description A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
          */
         get: operations["listOrders"];
         put?: never;
@@ -361,7 +361,7 @@ export interface paths {
         };
         /**
          * Price list
-         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listPrices"];
         put?: never;
@@ -401,7 +401,7 @@ export interface paths {
         };
         /**
          * Discount code list
-         * @description A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the total is not counted.
+         * @description A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching codes, counted up to 10 000.
          */
         get: operations["listDiscountCodes"];
         put?: never;
@@ -497,7 +497,7 @@ export interface paths {
         };
         /**
          * Promotion list
-         * @description A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the total is not counted.
+         * @description A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the first page (without `after`) also has the `total` of the matching promotions, counted up to 10 000.
          */
         get: operations["listPromotions"];
         put?: never;
@@ -542,6 +542,8 @@ export interface components {
              * @example eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
              */
             nextCursor: string | null;
+            /** @description How many orders match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description An order in the list. Amounts in grosze. */
         BackofficeOrderListItem: {
@@ -1381,6 +1383,16 @@ export interface components {
              */
             updatedAt: string;
         };
+        /** @description How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count, 10 000), otherwise `value` is exact. */
+        BoundedCountResponse: {
+            /** @example 1234 */
+            value: number;
+            /**
+             * @description True when there are more matching rows than `value`.
+             * @example false
+             */
+            capped: boolean;
+        };
         /** @description A page of the product list of the panel. */
         ProductListResponse: {
             items: components["schemas"]["ProductListItemResponse"][];
@@ -1389,6 +1401,8 @@ export interface components {
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+            /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description An image of a product in the edit view. */
         ProductEditImageResponse: {
@@ -1564,6 +1578,8 @@ export interface components {
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+            /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description The stock of a product variant after a receipt or a correction, in whole units; all computed by the API. */
         StockStateResponse: {
@@ -1756,6 +1772,8 @@ export interface components {
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+            /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description A discount code. Times in UTC (RFC 3339), whole seconds; the code is valid in [startsAt, endsAt). */
         DiscountCodeResponse: {
@@ -1820,6 +1838,8 @@ export interface components {
             items: components["schemas"]["DiscountCodeResponse"][];
             /** @description Opaque cursor of the next page (send it as `after`), null on the last page. */
             next: string | null;
+            /** @description How many codes match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description A new discount code. */
         CreateDiscountCodeRequest: {
@@ -2074,6 +2094,8 @@ export interface components {
             items: components["schemas"]["PromotionListItemResponse"][];
             /** @description Opaque cursor of the next page (send it as `after`), null on the last page. */
             next: string | null;
+            /** @description How many promotions match the filter, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
     };
     responses: never;
