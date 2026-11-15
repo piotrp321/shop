@@ -96,7 +96,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
   `usePagerFocus({ hasPrevious, hasNext, previous, next })`: fokus pagera z dwoma przyciskami (`ListPager`, wybór wariantów
   promocji): zostaje na naciśniętym przycisku, a gdy kolejna strona go wyłącza, przechodzi na drugi, chyba że pracownik sam
-  przeniósł fokus poza pager; `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
+  przeniósł fokus poza pager (fokus przechodzi tylko z `body` albo z wnętrza pagera i najwyżej raz na naciśnięcie, więc późniejsza odpowiedź, np. wyszukiwania, nie zabiera go z pola); `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
   lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień i wybór wariantów promocji).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
