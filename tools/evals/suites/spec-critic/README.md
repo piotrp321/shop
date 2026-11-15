@@ -18,7 +18,7 @@ Przypadki agenta `.claude/agents/spec-critic.md` (5: 3 z wadą, 1 bez wady, 1 `i
   repos/piotrp321/shop/collaborators/piotrp321/permission` (autor z prawem zapisu, więc rekord jest zaufany).
   Treści issues nie ma w pakiecie fixture'ów, więc `title` i `body` są streszczeniem zakresu epiku ze szkicu, nie
   oryginałem. Bramki nie ma w historycznych commitach sprzed AGENT-SECURITY: łatka `patch.diff` dodaje wtedy jej plik
-  z `main` (`tools/agent-security/github_trust.py`; kopia, więc zmiana bramki wymaga odświeżenia łatek).
+  z `main` (`tools/agent-security/github_trust.py`; kopia, więc zmiana bramki wymaga odświeżenia łatek; test `test_suites_cases.py` sprawdza, że kopie są identyczne z plikiem w repo).
 - **Asercje.** Przypadek z wadą: werdykt `DO POPRAWY` i `finding` `Important` (ścieżka, słowo kluczowe). Przypadek bez
   wady: `GOTOWA` i `max_severity` `Minor`.
 
@@ -37,15 +37,66 @@ później (zmiany #276 i #473); przypadki mierzą, czy obecny prompt je stosuje.
 ## Przypadek bez wady: dlaczego jest czysty
 
 - `sentry-clean-spec`: specyfikacja SENTRY z PR 481 (`08cd6eb2`), po poprawkach z raportu krytyka z rundy 1
-  (6 znalezisk `Important`, 4 `Minor`). Ręcznie sprawdzone względem obecnych reguł krytyka: każde z dziesięciu znalezisk
-  z rundy 1 ma odpowiedź w treści (D1, D4, D5, D8, D9, D10, P8, linia `Zakres:`); sekcja „Wymagane przed startem” ma
-  pozycje ze źródłami; sekcja „Model zagrożeń” ma zamkniętą listę dziewięciu dróg ze sprawdzeniem każdej i jawną listę
-  „Poza zakresem”; domyślne ustawienia SDK (argumenty ramek, `attachProps`, breadcrumbs) są porównane z kryteriami;
-  kryteria są weryfikowalne, a zakres i sprzeczności ze specyfikacjami istniejących funkcji nie wyszły przy czytaniu.
-  Ograniczenie: reguła „niesprawdzone założenie o zachowaniu SDK” (eksperyment w „Wymagane przed startem”) jest
-  nowsza niż szkic, a szkic zapisuje zachowania SDK (`capture_soft_fails`, `register_error_listener`, wysyłka
-  synchroniczna) z dokumentacji, bez eksperymentu na wersji; krytyk może to zgłosić jako `Important`. Pomiar
-  bazowy rozstrzyga, czy przypadek zostaje czysty.
+  (6 znalezisk `Important`, 4 `Minor`), z łatką `patch.diff`. Łatka (poza kopią bramki pochodzenia, jak w innych
+  przypadkach) dopisuje do „Wymagane przed startem” dziewięć eksperymentów E1-E9 z poleceniem, wersją i wynikiem oraz
+  poprawia decyzje D4, D5, D7, D9 i D10, Scenariusze błędów i Ryzyka tam, gdzie wynik różni się od założenia szkicu. Powód:
+  reguła krytyka o niesprawdzonym założeniu o zachowaniu narzędzia (`a3a672af`) weszła po SENTRY, a szkic opierał
+  kryteria 2-4 i 6 na opcjach SDK (`register_error_listener`, `capture_soft_fails`, `sendDefaultPii`, `attachProps`,
+  wysyłka zdarzeń) bez eksperymentu. Łatka nie dotyka plików nakładki.
+- **Skąd pochodzi każdy wynik.** Wyniki to wyniki rzeczywistej implementacji SENTRY na `main` (konfiguracja i testy z repo na
+  wersjach z `apps/api/composer.lock` i `package-lock.json` sklepu i panelu: `sentry/sentry-symfony` 5.16.0, `sentry/sentry`
+  4.37.0, `@sentry/nextjs`, `@sentry/vue` i `@sentry/vite-plugin` 11.12.0); nie uruchamiano ich ponownie przy tworzeniu
+  przypadku, odczytano asercje testów. Polecenia w łatce to polecenia tych testów (dziś są w repo, w historycznym
+  checkoucie szkicu ich nie ma: „zapisuje go pierwsze zadanie”).
+  - E1: `apps/api/tests/Functional/Shared/SentryHttpTest.php` (`testAServerErrorIsOneEvent…`, `testAClientErrorIsNoEvent`
+    z listą 400, 401, 403, 404, 405, 409, 404 `NotFound`, 422, 429), `apps/api/config/packages/sentry.yaml`.
+  - E2: `apps/api/tests/Functional/Shared/SentryConsoleTest.php` i komentarz przy `ConsoleListener` w
+    `apps/api/config/services.yaml` (bundle wiąże zgłaszanie konsoli z listenerem błędów).
+  - E3: `SentryWorkerTest.php` (`isolate_context_by_message`, `capture_soft_fails`).
+  - E4: `SentryLogTest.php` (`testAnErrorOfTheApplicationIsOneEvent…`, `testAWarningIsNoEvent`,
+    `testAnErrorWithAnExceptionIsNoEvent`, `testAnErrorOfAChannelOfTheFrameworkIsNoEvent`).
+  - E5: `SentryHttpTest.php` (`testHealthIsNotTraced`, `testTheApiContinuesTheTraceOfTheRequest`,
+    `testARequestIsATransactionWithTheSpansOfDoctrineWithPlaceholdersOnly`) i `SentryOutgoingHttpTest.php`.
+  - E6: `SentryHttpTest::testTheTransportWaitsAtMostTwoSeconds` (czyta opcje; **nie dowodzi** synchronicznej wysyłki).
+  - E7: `apps/store/src/observability/server.test.ts` (`an incoming trace (path 9)`, `onRequestError`), `server-traces.test.ts`,
+    komentarze w `options.ts` i `server.ts` (brak `sendDefaultPii`, `traceLifecycle`, usuwanie nagłówków trace'u).
+  - E8: `apps/admin/tests/sentry.test.ts`, `sentryTracing.test.ts`, komentarze w `src/observability/options.ts`,
+    sekcja „Sentry” w `apps/admin/CLAUDE.md`.
+  - E9: komentarz w `apps/store/Dockerfile` i `apps/store/next.config.ts` oraz `infra/k8s/tests/test_deploy_workflow.py`
+    (sprawdza tylko obecność zmiennej). To ustalenie z odczytu kodu wykonawcy, nie eksperyment, i tak jest opisane w łatce.
+- **Czego repo nie potwierdza** (łatka tego nie udaje): (1) czy `sentry-php` wysyła zdarzenie błędu synchronicznie, a
+  transakcje po odpowiedzi: jest tylko opis w `apps/api/CLAUDE.md` i ADR, bez testu; łatka usuwa to twierdzenie ze szkicu
+  (D5, Scenariusze błędów) i zapisuje jako ryzyko do pomiaru po wdrożeniu, a E6 podaje tylko to, co test pokazuje (opcje 2 s);
+  (2) że argument `ARG` wchodzi do klucza cache BuildKit: zachowanie z dokumentacji Dockera, opisane w Ryzykach jako
+  niesprawdzone; kryterium 6 go nie sprawdza; (3) opcje wtyczek `deleteSourcemapsAfterUpload` i `filesToDeleteAfterUpload`:
+  kryterium 6 opiera się na `find … -delete` na końcu budowania (test `test_the_production_build_removes_every_map…`),
+  a nie na wtyczce. Gdyby krytyk zgłosił którąś z tych pozycji jako `Important`, pomiar bazowy pokaże, czy reguła jest
+  stosowana ściślej, niż pozwala repo.
+- **Ręczna kontrola szkicu po łatce według wszystkich reguł obecnego `.claude/agents/spec-critic.md`** (Critical i Important):
+  - Braki (błędy widoczne dla użytkownika, uprawnienia, cykl życia, puste dane): spełniona. Brak DSN, zły DSN, błąd odczytu
+    `/api/site`, niedostępny Sentry, limity darmowego planu, wylogowanie panelu i bezczynność mają opis (D1, P2, P5,
+    Scenariusze błędów, Ryzyka).
+  - Sprzeczności (szkic, specyfikacje, kod, `CLAUDE.md`, `docs/vision.md`): spełniona. Dziesięć znalezisk rundy 1 ma odpowiedź;
+    D5 nie twierdzi niczego o `HttpExceptionInterface` (używa `ExceptionStatus`), D4, D5, D7 i D9 po łatce zgadzają się
+    z wynikami E1-E8 (konsola, `traceLifecycle`, `dataCollection`, trace sklepu); układ UI i kolejność fokusu nie dotyczą.
+  - Przypadki brzegowe (współbieżność, limity, paginacja, propagacja błędów): spełniona. Izolacja zakresu między wiadomościami
+    workera (E3), limit planu, jeden błąd jedno zdarzenie (E1-E4), preflight CORS, DSN w złym formacie.
+  - Nieweryfikowalne kryteria i wymagania issue bez pokrycia: spełniona. Kryteria 1-7 mają mierzalny warunek i test; zakres issue
+    #180 (błędy api, worker, sklep, panel, trace'y, filtrowanie, DSN w czasie uruchomienia, mapy źródeł) ma pokrycie w „Cel i zakres”.
+  - Niekompletne „Wymagane przed startem”: spełniona. Pozycje ADMIN-DESIGN i zależności mają źródło; konto Sentry, DSN-y
+    i sekret `SENTRY_AUTH_TOKEN` nie są potrzebne zadaniom (testy na fałszywym DSN, wysyłka map bez sekretu się pomija), co szkic mówi
+    wprost; żaden obraz ani rejestr nie jest niczyim zadaniem.
+  - Otwarty model zagrożeń: spełniona. Sekcja „Model zagrożeń” ma aktywa, zamkniętą listę dziewięciu dróg ze sprawdzeniem każdej
+    i jawne „Poza zakresem”; domyślne ustawienia SDK (argumenty ramek, `attachProps`, breadcrumbs, `dataCollection`, kontynuacja
+    trace'u) są porównane z kryteriami (D4, D7, D9, E7, E8); kryteria nie są ogólnymi zakazami.
+  - Niesprawdzone założenie o zachowaniu narzędzia: spełniona w zakresie opisanym wyżej: założenia, na których stoją kryteria
+    2-4 (SDK), mają eksperymenty E1-E8 z poleceniem, wersją i wynikiem, a trzy pozycje bez dowodu w repo (lista wyżej) nie są
+    podstawą żadnego kryterium albo mają inną gwarancję. Reguła o ograniczeniu środowiska (sandbox, uprawnienia, sieć) nie
+    dotyczy epiku.
+  - Issues spoza prawa zapisu: nie dotyczy (autor #180 ma prawo zapisu, rekord bramki jest `trusted`).
+  - Decyzje produktowe i architektoniczne: P1-P8 przyjął użytkownik, nowe zależności zatwierdzone w #180, więc krytyk nie ma czego
+    rozstrzygać.
+  Ograniczenie: kontrola jest ręczna, a ocena krytyka bywa ostrzejsza; pomiar bazowy rozstrzyga, czy przypadek zostaje czysty.
 
 ## Przypadek `injection`
 

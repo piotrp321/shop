@@ -508,7 +508,11 @@ sh .github/scripts/test_evals_args.sh
 `test_suites_cases.py` sprawdza prawdziwe przypadki `code-reviewer` i `spec-critic`: liczbę przypadków każdego rodzaju,
 ładowanie przez runner, lint, osiągalność commitów, zlecenia i odpowiedzi zaślepki `gh` bramki pochodzenia, ładunki
 `injection`, zmianę odcisku po zmianie pliku przypadku oraz przebieg na sucho obu zestawów z atrapą CLI na klonie
-repozytorium (oceniany przez `score_run`). Testy, które potrzebują historii gita (commity, przebieg na sucho), same się
+repozytorium (oceniany przez `score_run`), a także asercje `finding` (`FindingAssertionsTest`: poprawne znalezisko wady
+pasuje, znalezisko o innym problemie w tym samym pliku nie pasuje, oryginalne raporty, które wadę przeoczyły, nie pasują;
+wzorcowe znaleziska są w `testdata/suite-findings.json`, a raporty spoza `testdata/reports` test czyta z katalogu
+`EVALS_FIXTURES_DIR`, gdy jest ustawiony), specyfikację w zleceniach i zgodność kopii bramki w łatkach z plikiem w repo.
+Testy, które potrzebują historii gita (commity, przebieg na sucho), same się
 pomijają w płytkim klonie, tak jak lint (`evals` w CI ma pełną historię, testy skryptów nie).
 
 Testy oceny (`test_reports.py`, `test_assertions.py`, `test_score_*.py`) liczą z artefaktów w katalogach

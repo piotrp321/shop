@@ -353,3 +353,144 @@ index 0000000..73727c6
 +
 +if __name__ == '__main__':
 +    sys.exit(main())
+diff --git a/docs/features/sentry/spec.md b/docs/features/sentry/spec.md
+index 440e2d5..c17de9c 100644
+--- a/docs/features/sentry/spec.md
++++ b/docs/features/sentry/spec.md
+@@ -76,6 +76,50 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
+   (`sentry-symfony` 5.16 dopuszcza Symfony 8, `@sentry/nextjs` 11 dopuszcza Next 16, `@sentry/vue` 11 dopuszcza
+   Vue 3 i Pinię 4); źródło: istnieje (Packagist, npm).
+ 
++- **Eksperymenty na wersjach z lockfile'ów** (`sentry/sentry-symfony` 5.16.0 z `sentry/sentry` 4.37.0, `@sentry/nextjs` 11.12.0,
++  `@sentry/vue` 11.12.0, `@sentry/vite-plugin` 11.12.0). Każdy to test z prawdziwym SDK, fałszywym DSN i transportem
++  zapisującym koperty, bez ruchu do Sentry; zapisuje go pierwsze zadanie danej aplikacji jako punkt wyjścia kryteriów.
++  Wyniki zmieniły decyzje D4–D9 poniżej.
++  - **E1. Jedno zdarzenie na błąd HTTP (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryHttpTest'`
++    z `register_error_listener: false` i własnym listenerem `kernel.exception`. Wynik: wyjątek z odpowiedzią 500 daje
++    dokładnie jedno zdarzenie z `release`, `environment` i tagiem `correlation_id` równym `X-Correlation-ID`; 400, 401, 403,
++    404, 405, 429, 409 `Conflict`, 404 `NotFound`, 422 `InvalidInput` i 422 treści żądania nie dają żadnego.
++  - **E2. Konsola (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryConsoleTest'`. Wynik:
++    przy wyłączonym `register_error_listener` listener konsoli bundla nie zgłasza nieobsłużonego wyjątku komendy (bundle wiąże
++    zgłaszanie z listenerem błędów); ten sam listener zdefiniowany w `services.yaml` jako zgłaszający (`ConsoleListener` z drugim
++    argumentem `true`, te same zdarzenia) daje jedno zdarzenie z tagami `correlation_id` i `console.command`.
++  - **E3. Worker (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryWorkerTest'` z `capture_soft_fails:
++    false` i `isolate_context_by_message: true`. Wynik: z trzech wiadomości, z których dwie padają w ostatniej próbie, a jedna
++    zostanie ponowiona, powstają dwa zdarzenia, każde z `correlation_id` swojej wiadomości; tag ustawiony przy pierwszej wiadomości
++    nie trafia do zdarzenia drugiej.
++  - **E4. Logi aplikacji (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryLogTest'` z handlerem
++    `LogToSentryIssueHandler` od `error`, `fillExtraContext: false`. Wynik: log `error` daje jedno zdarzenie bez kontekstu poza
++    `correlation_id`; `warning` nie daje żadnego; `error` z wyjątkiem w kontekście nie daje żadnego; `error` w kanałach
++    `request`, `console`, `messenger`, `php`, `deprecation` i `cache` nie daje żadnego.
++  - **E5. Trace'y (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter "SentryHttpTest|SentryOutgoingHttpTest"'`.
++    Wynik: `ignore_transactions: ['GET health', 'HEAD health']` pomija `/health`, inne żądanie daje jedną transakcję; span
++    Doctrine ma SQL z placeholderem bez wartości parametru; żądanie z `sentry-trace` (decyzja 1) przy próbkowaniu 0 jest śledzone
++    i zachowuje `trace_id` i `parent_span_id` wywołującego; z `trace_propagation_targets: []` wywołania wychodzące api (Keycloak,
++    Varnish, sklep, płatności) nie niosą `sentry-trace` ani `baggage` także z DSN i próbkowaniem 1, a span `http.client` zostaje.
++  - **E6. Opcje transportu (api).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter testTheTransportWaitsAtMostTwoSeconds'`.
++    Wynik: SDK czyta `http_connect_timeout` i `http_timeout` jako 2.0 s, `send_default_pii` jako false i `max_request_body_size`
++    jako `none`. Nie sprawdzono, czy wysyłka zdarzenia błędu blokuje odpowiedź: żadne kryterium na tym nie stoi (D5, Ryzyka).
++  - **E7. Sklep (AK3).** Polecenie: `docker compose exec store npx vitest run src/observability/server.test.ts
++    src/observability/server-traces.test.ts`. Wynik: `@sentry/nextjs` 11.12.0 nie ma `sendDefaultPii` (zastępuje je
++    `dataCollection`); domyślne strumieniowanie spanów omija `beforeSendTransaction`, więc potrzebne jest `traceLifecycle:
++    "static"`; SDK domyślnie kontynuuje trace z `sentry-trace`, `baggage` i `traceparent` przychodzącego żądania, a usunięcie tych
++    nagłówków przy `http.server.request.start` (`diagnostics_channel`) daje nowy trace z własnym próbkowaniem; `onRequestError`
++    daje jedno zdarzenie błędu renderowania bez query stringu, ciasteczek, użytkownika i adresu IP; `console.error` obsłużonego
++    błędu nie jest zdarzeniem ani breadcrumbem.
++  - **E8. Panel (AK4).** Polecenie: `docker compose exec admin npx vitest run tests/sentry.test.ts tests/sentryTracing.test.ts`.
++    Wynik: `@sentry/vue` 11.12.0 przyjmuje `attachProps: false` i nie ma `sendDefaultPii` (zastępuje je `dataCollection`);
++    opcje dodają tylko integrację `BrowserTracing` (bez Pinii, Replay i Feedback); domyślne strumieniowanie spanów omija
++    `beforeSendTransaction` (potrzebne `traceLifecycle: "static"`); cel tekstowy `tracePropagationTargets` pasuje w dowolnym
++    miejscu adresu, więc cel to wyrażenie zakotwiczone na adresie API: `sentry-trace` i `baggage` dostaje tylko API.
++  - **E9. Telemetria budowania (AK6).** Ustalone odczytem kodu wtyczek, bez eksperymentu na sieci: `telemetry: false` wtyczki nie
++    wyłącza telemetrii Sentry CLI, przez które wtyczki wysyłają mapy; wyłącza ją `SENTRY_CLI_NO_TELEMETRY=1` w etapie `build`.
++    Kryterium 6 sprawdza obecność zmiennej w Dockerfile, nie zachowanie sieci.
++
+ Zadania nie potrzebują konta Sentry ani sekretów: testy używają transportu testowego i fałszywego DSN, a krok wysyłki
+ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SENTRY_AUTH_TOKEN` i zmienne `SENTRY_ORG`,
+ `SENTRY_PROJECT_STORE`, `SENTRY_PROJECT_ADMIN` w GitHub to kroki użytkownika po merge'u epiku (runbook).
+@@ -98,8 +142,9 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
+   `tracesSampleRate`, `dsn.api`, `dsn.store`, `dsn.admin`, domyślnie puste), zmienne emitowane tylko przy niepustym
+   DSN danej aplikacji (wzorzec `shop.clientIpHeaderEnv`); DSN api trafia do `shop.apiEnv` (api, worker, Joby, init
+   kontenery i CronJob odtworzenia).
+-- **D4. Filtrowanie (wspólne zasady trzech SDK).** `sendDefaultPii`/`send_default_pii` wyłączone, w api
+-  `max_request_body_size: none`. Jedna funkcja filtra na aplikację (z testami), wołana z `before_send`,
++- **D4. Filtrowanie (wspólne zasady trzech SDK).** W api `send_default_pii: false` i `max_request_body_size: none`. SDK
++  sklepu i panelu w używanej wersji nie ma `sendDefaultPii` (E7, E8): zastępuje je `dataCollection` bez użytkownika, ciasteczek,
++  treści, query stringów, zmiennych ramek i linii źródła, z nagłówkami tylko `User-Agent`, `Content-Type` i `Accept`. Jedna funkcja filtra na aplikację (z testami), wołana z `before_send`,
+   `before_send_transaction` i `beforeBreadcrumb`, usuwa:
+   - nagłówki żądania poza `User-Agent`, `Content-Type`, `Accept`, ciasteczka, treść żądania, adres IP użytkownika;
+   - query string z adresu żądania, nazw transakcji i spanów, danych spanów (`url.full`, `http.query`) i adresów
+@@ -119,21 +164,24 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
+     `ProblemDetailsSubscriber` zgłasza wyjątek tylko wtedy, gdy ustalona odpowiedź ma status ≥ 500. Status pochodzi
+     z mapowania `ProblemDetailsSubscriber` (jedna funkcja „status dla wyjątku” w `Shared\Infrastructure\Http`), bez
+     drugiej listy wyjątków w konfiguracji Sentry.
+-  - Konsola: listener konsoli bundla (nieobsłużony wyjątek komendy).
+-  - Messenger: listener Messengera bundla z `capture_soft_fails: false` (tylko ostatnia próba przed `failed`).
++  - Konsola: listener konsoli bundla (nieobsłużony wyjątek komendy), zdefiniowany w `services.yaml` jako zgłaszający, bo przy
++    wyłączonym listenerze błędów bundla sam by nie zgłaszał (E2).
++  - Messenger: listener Messengera bundla z `capture_soft_fails: false` (tylko ostatnia próba przed `failed`) i
++    `isolate_context_by_message: true` (E3).
+   - Jawne logi aplikacji (P6): handler Monologa Sentry od `error`, z wykluczonymi kanałami `request`, `console`,
+     `messenger`, `php`, `deprecation` i `cache` (te kanały powielają wyjątki zgłoszone wyżej albo nie są błędami
+     aplikacji) i bez rekordów z `context.exception`; bez handlera breadcrumbs.
+-  - Transport z limitem czasu połączenia i odpowiedzi po 2 s. Zdarzenie błędu `sentry-php` wysyła synchronicznie, więc
+-    przy niedostępnym Sentry odpowiedź 5xx, odpowiedź z logiem `error` i obsługa wiadomości w workerze opóźniają się
+-    najwyżej o ten limit; transakcje wysyłane są po odpowiedzi (`kernel.terminate`).
++  - Transport z limitem czasu połączenia i odpowiedzi po 2 s (`http_connect_timeout`, `http_timeout`, E6). Czy wysyłka
++    zdarzenia błędu opóźnia odpowiedź, zmierzy się po wdrożeniu (Ryzyka); kryteria na tym nie stoją.
+ - **D6. Correlation ID.** Api dodaje tag `correlation_id` z bieżącego `CorrelationId` do każdego zdarzenia i transakcji
+   (procesor zdarzeń w `Shared\Infrastructure\Observability`), także w workerze (identyfikator bieżącej wiadomości;
+-  tag i zakres nie przechodzą między wiadomościami w jednym `messenger:consume`).
++  tag i zakres nie przechodzą między wiadomościami w jednym `messenger:consume`: `isolate_context_by_message: true`, E3).
+ - **D7. Propagacja trace'ów.** Panel: `tracePropagationTargets` tylko adres API; CORS api dopuszcza nagłówki
+   `sentry-trace` i `baggage` (`nelmio_cors.yaml`). Serwer sklepu: propagacja tylko do adresów API
+   (`API_INTERNAL_URL`, `API_CATALOG_URL`), nigdy do Keycloaka ani Redisa; trace'u z przychodzących żądań nie kontynuuje
+-  (P8). Api kontynuuje trace z tych nagłówków (domyślne zachowanie `sentry-symfony`).
++  (P8): SDK kontynuuje go domyślnie, więc nagłówki `sentry-trace`, `baggage`, `traceparent` i `tracestate` są usuwane z żądania
++  przy `http.server.request.start` (E7). Api kontynuuje trace z tych nagłówków (domyślne zachowanie `sentry-symfony`, E5),
++  a w żądaniach wychodzących go nie propaguje (`trace_propagation_targets: []`); spany klienta HTTP zostają.
+ - **D8. Sklep.** `instrumentation.ts` (`register` dla runtime `nodejs`, `onRequestError`), filtr z D4 i propagacja z D7.
+   Inicjalizacja w przeglądarce w `SiteSwitches` po odczycie `/api/site` przez dynamiczny import modułu
+   `src/observability` (P2). `app/error.tsx` zgłasza przez ten sam leniwy moduł tylko błędy bez `digest` (błąd
+@@ -141,13 +189,14 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
+   nie zmienia. Obsłużone błędy BFF (odpowiedź 502 i `console.error`) nie są zdarzeniami. `next.config.ts` nie dodaje
+   `script-src` ani `connect-src` (CSP bez zmian).
+ - **D9. Panel.** `@sentry/vue` w `main.ts` przed `mount`, z integracją routera (`browserTracingIntegration`),
+-  `attachProps: false`, bez integracji Pinii, z filtrem z D4 (także `q` wyszukiwania zamówień i `code`/`state`
++  `attachProps: false`, `traceLifecycle: "static"` (E8), bez integracji Pinii, z filtrem z D4 (także `q` wyszukiwania zamówień i `code`/`state`
+   z `/auth/callback`). `setUser({id})` po wczytaniu `/me` (P5), `setUser(null)` przy każdym wylogowaniu, także po
+   bezczynności (`useIdleLogout`). SDK jest w bundlu (CSP `script-src 'self'` bez zmian, bez skryptu z CDN). Nagłówki
+   bezpieczeństwa i treść `security-headers.conf` bez zmian.
+ - **D10. Mapy źródeł (P3).** Budowanie `prod` sklepu i panelu generuje mapy, wysyła je przy dostępnym sekrecie i usuwa
+-  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, `filesToDeleteAfterUpload`), a bez sekretu nie
+-  zostawia ich w etapie `prod`. Sekret trafia wyłącznie do kroków budowania w jobie `images`; job `smoke` (także na
++  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, `filesToDeleteAfterUpload`) oraz `find ... -name '*.map'
++  -delete` na końcu kroku budowania; to ostatnie gwarantuje kryterium 6, bo nie zależy od zachowania wtyczki. Bez sekretu
++  budowanie nie zostawia map w etapie `prod`. Sekret trafia wyłącznie do kroków budowania w jobie `images`; job `smoke` (także na
+   PR) buduje bez niego. Flaga wysyłki to argument budowania (`ARG`), który wchodzi do klucza cache, więc warstwa
+   zbudowana bez wysyłki nie jest używana przy wysyłce. Telemetria wtyczek budowania wyłączona (`telemetry: false`).
+   Organizacja i projekty Sentry dla wysyłki ze zmiennych repozytorium GitHub (`SENTRY_ORG`, `SENTRY_PROJECT_STORE`,
+@@ -212,8 +261,8 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
+ 
+ ## Scenariusze błędów
+ 
+-- Sentry niedostępny albo odrzuca zdarzenia (limit): SDK gubi zdarzenia; w api ścieżki błędu opóźniają się najwyżej
+-  o limit transportu 2 s (D5), ścieżki bez błędu i przeglądarka bez opóźnienia widocznego dla klienta.
++- Sentry niedostępny albo odrzuca zdarzenia (limit): SDK gubi zdarzenia; limit połączenia i odpowiedzi transportu api to 2 s
++  (D5), ścieżki bez błędu i przeglądarka bez opóźnienia widocznego dla klienta.
+ - Brak DSN: zachowanie jak dziś, żadnego ruchu do zewnętrznych hostów (test E2E `visual-foundation` z asercją
+   „tylko `localhost`” zostaje bez zmian).
+ - Błąd odczytu `/api/site` w przeglądarce sklepu: SDK się nie inicjalizuje, strona działa (jak dziś przełączniki).
+@@ -258,8 +307,11 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
+ 
+ - **Darmowy plan Sentry** (limity zdarzeń i spanów miesięcznie): próbkowanie 0,1, brak zdarzeń z 4xx i jeden kanał
+   na źródło; przekroczenie gubi zdarzenia do końca miesiąca. Pomiar po wdrożeniu.
+-- **Narzut SDK.** Trace'y kosztują czas żądania api; zdarzenia błędów wysyłane synchronicznie (D5). Worker
++- **Narzut SDK.** Trace'y kosztują czas żądania api; zdarzenia błędów mogą być wysyłane synchronicznie (niesprawdzone, mierzy się po wdrożeniu; limit 2 s z D5). Worker
+   (`messenger:consume`) musi izolować zakres między wiadomościami (D6, kryterium 2).
++- **Cache BuildKit i flaga wysyłki.** Argument deklarowany tuż przed krokiem budowania wchodzi do klucza cache tego kroku
++  (dokumentacja Dockera, bez eksperymentu w repo): warstwa zbudowana bez wysyłki nie jest używana przy wysyłce. Kryterium 6
++  sprawdza konfigurację workflowu i Dockerfile, nie zachowanie cache; pierwszy deploy z sekretem potwierdza wysyłkę.
+ - **Filtr oparty na wzorcach** (jak maskowanie logów w Alloy): nowy format danych klienta może przejść; zasada
+   w `CLAUDE.md` aplikacji, wspólny korpus z Alloy i przegląd próbki zdarzeń.
+ - **Kolejność epików.** ADMIN-DESIGN (w toku) zmienia `apps/admin`, `infra/docker-compose.yml`,

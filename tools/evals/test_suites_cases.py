@@ -322,6 +322,32 @@ class PromptsOfTheCasesTest(unittest.TestCase):
             self.assertRegex(prompt, r'docs/features/[a-z-]+/spec\.md', case_id)
             self.assertRegex(prompt, r'Issues: #\d+', case_id)
 
+    def test_the_copy_of_the_provenance_gate_in_every_patch_is_the_file_of_the_repository(self):
+        # a historic checkout has no gate, so the patch brings a copy; a change of the gate must refresh the patches
+        with open(os.path.join(ROOT, 'tools/agent-security/github_trust.py'), encoding='utf-8') as handle:
+            current = handle.read()
+        copies = 0
+        for case_id in case_dirs('spec-critic'):
+            patch = load_case('spec-critic', case_id).patch_template()
+            if patch is None or 'b/tools/agent-security/github_trust.py' not in patch:
+                continue
+            block = patch.split('diff --git a/tools/agent-security/github_trust.py', 1)[1]
+            block = block.split('\ndiff --git ', 1)[0]
+            body = block.split('\n@@', 1)[1].split('\n', 1)[1]
+            lines = [line[1:] for line in body.split('\n') if line.startswith('+')]
+            self.assertEqual(current, '\n'.join(lines) + '\n', case_id)
+            copies += 1
+        self.assertGreaterEqual(copies, 4)
+
+    def test_the_clean_spec_critic_case_records_the_experiments_of_the_assumptions_about_the_sdk(self):
+        patch = load_case('spec-critic', 'sentry-clean-spec').patch_template()
+        self.assertNotIn('.claude/', patch)
+        added = '\n'.join(line[1:] for line in patch.split('\n') if line.startswith('+') and not line.startswith('+++'))
+        for number in range(1, 10):
+            self.assertRegex(added, r'\*\*E%d\. ' % number)
+        for needed in ('Polecenie:', 'Wynik:', '5.16.0', '11.12.0', 'capture_soft_fails', 'register_error_listener'):
+            self.assertIn(needed, added)
+
     def test_the_spec_critic_reads_the_issue_through_the_provenance_gate_stub(self):
         for case_id in case_dirs('spec-critic'):
             loaded = load_case('spec-critic', case_id)

@@ -1,7 +1,7 @@
 {
   "id": "sentry-clean-spec",
   "kind": "clean",
-  "source": "issue #180, epic SENTRY; the spec of docs(sentry) PR 481 after the fixes of the critic report of round 1",
+  "source": "issue #180, epic SENTRY; the spec of docs(sentry) PR 481 after the fixes of the critic report of round 1; the patch adds the experiments E1-E9 of the implementation on main to \"Wymagane przed startem\"",
   "commit": "08cd6eb26975d7c06017ff6c6a1173b1a287ba91",
   "prompt_file": "prompt.md",
   "gh": [
