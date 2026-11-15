@@ -200,29 +200,34 @@ JSON i AO powtarza rundę. Dlatego:
         job niezakończony po budżecie). Job `checks` zbiera więcej niż `make test`, a `e2e` więcej niż `make e2e`
         (części `checks part …` i `e2e shard …`, np. `make -C infra/k8s check`, `make ci-after-e2e`), więc bramka ma
         `passed`, gdy jej wpis ma `passed` (`ci:checks` → `make test`, `ci:e2e` → `make e2e`), a inaczej `skipped`,
-        nigdy `failed`; wynik nie jest `PASSED`. Co dalej, mówi pole `failure_kind` skryptu (`failed_parts` to części
-        i wymagane joby bez `success`, każda z `conclusion` i nazwami kroków zakończonych porażką `failed_steps`):
-        - **`tests`** (któraś część skończyła się porażką kroku): przyczynę bierzesz z logu osobnym wywołaniem Bash
+        nigdy `failed`; wynik nie jest `PASSED`. Co dalej, mówi pole `failure_kind` skryptu (`failed_parts` to job
+        `scope`, części i wymagane joby bez `success`, każdy z `conclusion` i nazwami kroków zakończonych porażką
+        `failed_steps`; części, które padły tylko w kroku „Require the scope job”, skrypt pomija, bo stoi za nimi job
+        `scope`):
+        - **`tests`** (job `scope` albo któraś część skończyły się `failure` z porażką kroku): przyczynę bierzesz
+          z logu osobnym wywołaniem Bash
           `timeout 570 gh run view <run> --log-failed > <katalog pliku <report_path>>/ci-failed-<sha7>.log 2>&1`
           (`<run>` z pola `run` skryptu, `<sha7>` to pierwsze 7 znaków HEAD), potem `tail` i `grep` tego logu (nazwy
-          padających testów, komunikaty asercji, ścieżki plików). Dodaj jedno znalezisko `Important` na każdą część
-          z `failed_parts` z `conclusion: failure`; wymagane joby `checks` i `e2e` z tej listy tylko zbierają wynik
-          części i nie dostają osobnego znaleziska, a części z `timed_out`, `startup_failure` albo `cancelled`
-          wymieniasz w `evidence` i raporcie:
-          - `title`: nazwa części i jej kroku z `failed_steps` (np. `checks part apps: api unit tests`,
-            `e2e shard 3: make ci-after-e2e`; sama nazwa części, gdy `failed_steps` jest puste), a gdy log podaje
-            padający test, także jego nazwa; bez SHA i numeru runu (krok 7) i nigdy „make test nie przechodzi” ani
-            „make e2e nie przechodzi”;
+          padających testów, komunikaty asercji, ścieżki plików). Dodaj jedno znalezisko `Important` na każdy wpis
+          `failed_parts` joba `scope` albo części z `conclusion: failure` i niepustym `failed_steps` (job `scope` to
+          jedno znalezisko za wszystkie części, które go wymagają); wymagane joby `checks` i `e2e` z tej listy tylko
+          zbierają wynik i nie dostają osobnego znaleziska, a job `scope` i części z `timed_out`, `startup_failure`,
+          `cancelled` albo `failure` bez kroku w `failed_steps` wymieniasz w `evidence` i raporcie:
+          - `title`: nazwa joba albo części i jej kroku z `failed_steps` (np. `checks part apps: api unit tests`,
+            `e2e shard 3: make ci-after-e2e`, `scope: Scope script tests`), a gdy log podaje padający test, także
+            jego nazwa; bez SHA i numeru runu (krok 7) i nigdy „make test nie przechodzi” ani „make e2e nie
+            przechodzi”;
           - `evidence`: numer runu, SHA, część, krok, `reason` i koniec logu tej części;
           - `files`: pliki testu i kodu wskazane w logu (ścieżki z repo).
           Gdy log nie wskazuje żadnego pliku albo `gh` nie dał logu (kod różny od 0, pusty plik), `files` to pliki
           diffu epiku najbliższe padającej części według tego, co wiadomo (np. dla `checks part api functional`
           zmienione pliki API, dla `e2e shard …` zmienione testy E2E i ekrany), a `detail` ma zdanie, że plików nie
           dało się ustalić z logu CI. Nazwy testu, kroku ani pliku, których nie ma w logu, nie wymyślasz.
-        - **`ci`** (CI jest czerwone tylko przez części albo joby z `timed_out`, `startup_failure` albo `cancelled`, bez
-          porażki kroku): to awaria CI, nie kodu. Zwracasz bloker `technical` (pytanie, co zrobić z runem CI; w
-          `evidence` numer runu, SHA, części z `failed_parts` z ich `conclusion` i `reason`), bez znaleziska z CI;
-          status `BLOCKED`. Log CI nie jest potrzebny; pozostałą pracę rundy kończysz jak zawsze.
+        - **`ci`** (CI jest czerwone tylko przez joby z `timed_out`, `startup_failure`, `cancelled` albo `failure` bez
+          porażki kroku, np. gdy runner zgubił połączenie): to awaria CI, nie kodu. Zwracasz bloker `technical`
+          (pytanie, co zrobić z runem CI; w `evidence` numer runu, SHA, joby i części z `failed_parts` z ich
+          `conclusion` i `reason`), bez znaleziska z CI; status `BLOCKED`. Log CI nie jest potrzebny; pozostałą pracę
+          rundy kończysz jak zawsze.
       - **1** (bramki lokalne: run zakończony z jobem `cancelled`, `skipped`, `neutral` albo bez joba, inny SHA, błąd
         `gh` do końca budżetu, CI nadal w toku po budżecie): uruchamiasz lokalnie `make test` (cztery wywołania
         z sekcji „Pierwszy plan i ostatni blok”), potem `make e2e` w częściach (niżej), a `reason` trafia do raportu.

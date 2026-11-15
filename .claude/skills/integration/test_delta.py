@@ -1,6 +1,7 @@
 """Tests of delta.py: python3 -m unittest discover -s .claude/skills/integration -p 'test_*.py'"""
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -415,8 +416,16 @@ class CiTest(unittest.TestCase):
 
     # What made CI red: the parts of the required jobs and their failed steps.
 
+    # The steps of ci.yml: the aggregates `checks` and `e2e`, and the first step of every part.
     REQUIRE_CHECKS = ('Require the scope job and every part of the checks', 'failure')
-    REQUIRE_E2E = ('Require the scope job and every shard', 'failure')
+    REQUIRE_E2E = ('Require the scope job and every part of the end-to-end tests', 'failure')
+    REQUIRE_SCOPE = ('Require the scope job', 'failure')
+
+    def test_the_fixture_step_names_are_the_ones_of_the_ci_workflow(self):
+        with open(WORKFLOW, encoding='utf-8') as f:
+            names = re.findall(r'^\s*- name: (.+?)\s*$', f.read(), re.MULTILINE)
+        for step in (self.REQUIRE_CHECKS, self.REQUIRE_E2E, self.REQUIRE_SCOPE):
+            self.assertIn(step[0], names)
 
     def test_a_failed_step_of_a_checks_part_is_a_test_failure_named_by_part_and_step(self):
         self.runs(self.run_(7, conclusion='failure'))
@@ -478,6 +487,52 @@ class CiTest(unittest.TestCase):
         out = self.result(3)
         self.assertEqual('ci', out['failure_kind'])
         self.assertEqual([{'job': 'checks', 'conclusion': 'timed_out', 'failed_steps': []}], out['failed_parts'])
+
+    def test_a_failed_part_without_a_failed_step_is_a_ci_failure(self):
+        # A runner that lost its connection ends the part in failure with no step in failure.
+        self.runs(self.run_(7, conclusion='failure'))
+        self.jobs(7, ('scope', 'completed', 'success'),
+                  ('checks part api functional', 'completed', 'failure', [('api tests', 'cancelled')]),
+                  ('checks', 'completed', 'failure', [self.REQUIRE_CHECKS]),
+                  ('e2e', 'completed', 'success'))
+        out = self.result(3)
+        self.assertEqual('ci', out['failure_kind'])
+        self.assertEqual({'job': 'checks part api functional', 'conclusion': 'failure', 'failed_steps': []},
+                         out['failed_parts'][0])
+
+    # The scope job: every part and both required jobs need it and fail in their first step without it.
+
+    def test_a_failed_step_of_the_scope_job_is_one_test_failure_without_the_parts_that_only_required_it(self):
+        self.runs(self.run_(7, conclusion='failure'))
+        self.jobs(7, ('scope', 'completed', 'failure', [('Scope script tests', 'failure')]),
+                  ('checks part k8s', 'completed', 'failure', [self.REQUIRE_SCOPE, ('make -C infra/k8s check', 'skipped')]),
+                  ('checks part apps', 'completed', 'failure', [self.REQUIRE_SCOPE]),
+                  ('checks', 'completed', 'failure', [self.REQUIRE_CHECKS]),
+                  ('e2e shard 1', 'completed', 'failure', [self.REQUIRE_SCOPE]),
+                  ('e2e', 'completed', 'failure', [self.REQUIRE_E2E]))
+        out = self.result(3)
+        self.assertEqual('tests', out['failure_kind'])
+        self.assertEqual([{'job': 'scope', 'conclusion': 'failure', 'failed_steps': ['Scope script tests']},
+                          {'job': 'checks', 'conclusion': 'failure', 'failed_steps': [self.REQUIRE_CHECKS[0]]},
+                          {'job': 'e2e', 'conclusion': 'failure', 'failed_steps': [self.REQUIRE_E2E[0]]}],
+                         out['failed_parts'])
+        self.assertEqual(['failed', 'failed'], self.statuses(out))
+
+    def test_a_scope_job_that_did_not_finish_its_steps_is_a_ci_failure(self):
+        for conclusion, steps in (('timed_out', [('Scope script tests', 'cancelled')]), ('startup_failure', []),
+                                  ('cancelled', [('Scope script tests', 'cancelled')]),
+                                  ('failure', [('Scope script tests', 'cancelled')])):
+            with self.subTest(conclusion=conclusion):
+                self.runs(self.run_(7, conclusion='failure'))
+                self.jobs(7, ('scope', 'completed', conclusion, steps),
+                          ('checks part apps', 'completed', 'failure', [self.REQUIRE_SCOPE]),
+                          ('checks', 'completed', 'failure', [self.REQUIRE_CHECKS]),
+                          ('e2e shard 1', 'completed', 'failure', [self.REQUIRE_SCOPE]),
+                          ('e2e', 'completed', 'failure', [self.REQUIRE_E2E]))
+                out = self.result(3)
+                self.assertEqual('ci', out['failure_kind'])
+                self.assertEqual(['scope', 'checks', 'e2e'], [p['job'] for p in out['failed_parts']])
+                self.assertEqual({'job': 'scope', 'conclusion': conclusion, 'failed_steps': []}, out['failed_parts'][0])
 
     def test_without_a_budget_a_red_job_next_to_an_unfinished_one_leaves_that_one_unknown(self):
         self.runs(self.run_(7, status='in_progress', conclusion=''))

@@ -34,10 +34,12 @@
       The entries ci:checks@<sha> and ci:e2e@<sha> state the result of each required job, not of a gate: passed
       (success), failed (failure, timed_out, startup_failure) or skipped (unknown: cancelled, missing or unfinished).
       The required jobs aggregate more than `make test` and `make e2e`, so red CI also lists what made it red:
-      failed_parts are the parts (`checks part <name>`, `e2e shard <i>`) and required jobs that finished without
-      success, each {job, conclusion, failed_steps} with the names of its steps that ended in failure, and
-      failure_kind is `tests` when a part ended in failure (a step failed) and `ci` when CI is red only through
-      parts or jobs that timed out, did not start or were cancelled (a failure of CI, not of the code).
+      failed_parts are the job `scope`, the parts (`checks part <name>`, `e2e shard <i>`) and the required jobs that
+      finished without success, each {job, conclusion, failed_steps} with the names of its steps that ended in
+      failure; a part that failed only in its step `Require the scope job` is left out (the job `scope` stands for
+      it). failure_kind is `tests` when the job `scope` or a part ended in failure with a failed step and `ci` when CI
+      is red only through jobs that timed out, did not start, were cancelled or failed without a failed step (a
+      failure of CI, not of the code).
       Without --budget it looks once. With --budget and --wait-file it polls every 30 s while the state is pending or
       gh fails (a failing gh is waited out like pending CI, its message in reason), for at most min(the budget left,
       500 s) per call; the wait file keeps the time of the first call for this head, so the budget spans repeated
@@ -73,6 +75,10 @@ GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store
 CI_JOBS = ('checks', 'e2e')
 # The parts that the required jobs aggregate (`checks part <name>`, `e2e shard <i>` in ci.yml).
 CI_PARTS = ('checks part ', 'e2e shard ')
+# The job that every part and required job needs, and the first step of a part, which fails when that job did not
+# succeed.
+CI_SCOPE = 'scope'
+REQUIRE_SCOPE = 'Require the scope job'
 CI_WORKFLOW = 'ci.yml'
 SHA = re.compile(r'^[0-9a-f]{40}$')
 TIMEOUT_S = 60
@@ -198,18 +204,23 @@ def red_statuses(passed, failed):
 
 
 def failed_parts(jobs):
-    """The parts and required jobs that finished without success, each with the names of its failed steps."""
-    return [{'job': j['name'], 'conclusion': j.get('conclusion') or '-',
-             'failed_steps': [s['name'] for s in j.get('steps') or []
-                              if isinstance(s, dict) and s.get('conclusion') == 'failure' and isinstance(s.get('name'), str)]}
-            for j in jobs if isinstance(j.get('name'), str) and (j['name'] in CI_JOBS or j['name'].startswith(CI_PARTS))
-            and j.get('status') == 'completed' and j.get('conclusion') != 'success']
+    """The scope job, the parts and the required jobs that finished without success, each with the names of its
+    failed steps. A part that failed only in its step that requires the scope job is left out: the scope job is the
+    one entry for it."""
+    parts = [{'job': j['name'], 'conclusion': j.get('conclusion') or '-',
+              'failed_steps': [s['name'] for s in j.get('steps') or []
+                               if isinstance(s, dict) and s.get('conclusion') == 'failure' and isinstance(s.get('name'), str)]}
+             for j in jobs if isinstance(j.get('name'), str)
+             and (j['name'] in CI_JOBS + (CI_SCOPE,) or j['name'].startswith(CI_PARTS))
+             and j.get('status') == 'completed' and j.get('conclusion') != 'success']
+    return [p for p in parts if not (p['job'].startswith(CI_PARTS) and p['failed_steps'] == [REQUIRE_SCOPE])]
 
 
 def failure_kind(parts):
-    """`tests` when a part failed in a step, `ci` when CI is red only through parts or jobs that timed out, did not
-    start or were cancelled (a failure of CI itself, not of the code)."""
-    return 'tests' if any(p['job'].startswith(CI_PARTS) and p['conclusion'] == 'failure' for p in parts) else 'ci'
+    """`tests` when the scope job or a part ended in failure with a failed step, `ci` when CI is red only through jobs
+    that timed out, did not start, were cancelled or failed without a failed step (a failure of CI, not of the code)."""
+    return 'tests' if any((p['job'] == CI_SCOPE or p['job'].startswith(CI_PARTS)) and p['conclusion'] == 'failure'
+                          and p['failed_steps'] for p in parts) else 'ci'
 
 
 def ci_state(head):
