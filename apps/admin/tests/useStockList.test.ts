@@ -666,12 +666,20 @@ describe("useStockList: receipts and corrections", () => {
       expect(mocks.get).toHaveBeenCalledTimes(2);
     });
 
-    it("on a 409 shows the detail when the reload fails", async () => {
+    it("on a 409 says to reload, in Polish, when the row cannot be reread (the API detail may be English)", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
-      respond(409, { status: 409, detail: "Detail of the API." });
+      respond(409, { type: "about:blank", status: 409, detail: "The stock was modified concurrently. Reload it and try again." });
       serve({}, 500);
 
-      expect(await list.correctStock("var-A", correction)).toEqual({ status: "failed", message: "Detail of the API." });
+      expect(await list.correctStock("var-A", correction)).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
+    });
+
+    it("on a 409 says to reload, in Polish, when the row is no longer on the reread page", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(409, { type: "about:blank", status: 409, detail: "The stock was modified concurrently. Reload it and try again." });
+      serve({ "": { items: [item("B")], next: null } });
+
+      expect(await list.correctStock("var-A", correction)).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
     });
 
     it("on a 409 without a detail still says the correction was rejected", async () => {

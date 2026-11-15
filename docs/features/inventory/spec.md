@@ -300,8 +300,9 @@ z tokenem realmu `shop`: 401):
     nowy klucz.
   - Korekta: stan policzony (liczba całkowita), powód z listy (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka
     (wymagana przy „Inne”), wersja z wiersza; przycisk „Zapisz korektę”; toast „Stan skorygowany: <produkt> / <wariant>”.
-  - 409 wersji: „Stan został w międzyczasie zmieniony – odśwież” i odświeżenie bieżącej strony; 409 poniżej zarezerwowanego
-    i 409 klucza: `detail` z API (409 klucza też odświeża bieżącą stronę); 422: komunikat naruszenia przy polu.
+  - 409 korekty: panel odświeża bieżącą stronę; inna wersja wiersza (409 wersji) albo wiersza nie da się odczytać (odświeżenie
+    nieudane, wiersza nie ma na stronie): „Stan został w międzyczasie zmieniony – odśwież”; ta sama wersja (409 poniżej
+    zarezerwowanego): `detail` z API. 409 klucza przyjęcia: `detail` z API (409 klucza też odświeża bieżącą stronę); 422: komunikat naruszenia przy polu.
 - „Historia” (okno `Dialog`, dla każdego pracownika): wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie,
   Korekta, Rezerwacja, Zwolnienie, Zatwierdzenie), powodów i źródeł (Pracownik, Dane demo, System). Tabela ma 11 kolumn
   w przewijanym regionie dostępnym z klawiatury; poniżej 1024 px zostają Data, Rodzaj, Zmiana fizycznego i Stan fizyczny
