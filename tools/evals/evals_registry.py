@@ -3,9 +3,9 @@ suite. Python 3.9+, standard library only.
 
 The fingerprint is the SHA-256 over what makes a measurement of a suite valid: the sorted paths and contents of its
 watched files, of the files of its cases and of the part of the configuration that changes a pass (agent, executor, N,
-pass cost cap, pass timeout, writes_results). Thresholds, the run cap and the cost estimate are not part of it: the verdict can be
-recomputed from the stored metrics. The scoring code and the validators are hashed separately (`code_hashes`): their
-change since a measurement is only a warning.
+pass cost cap, pass timeout, writes_results). Thresholds, the run cap and the cost estimate are not part of it: the
+verdict can be recomputed from the stored metrics. The scoring code and the validators are hashed separately
+(`code_hashes`): their change since a measurement is only a warning.
 """
 import hashlib
 import json

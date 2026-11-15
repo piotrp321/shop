@@ -21,10 +21,10 @@ accept   the current result is a regression: writes an `accepted` history file w
 waive    writes a `waived` history file with the current fingerprint and the reason (the user decides).
 estimate the cost and time forecast of a run of each suite (or of a trial run of one case) and the total; a forecast
          above the cap exits 1.
-run      runs the cases of a suite N times with the CLI of the suite's executor in the sandbox (a trial run: one case, the overlay
-         of --overlay-rev, never a history file); --resume continues a run stopped by limit_stop or infra_error.
-         Prints the run id and its status; scoring and the history file are not part of it. Exit 0 for a finished
-         run, 1 for a refusal or a stopped run.
+run      runs the cases of a suite N times with the CLI of the suite's executor in the sandbox (a trial run: one
+         case, the overlay of --overlay-rev, never a history file); --resume continues a run stopped by limit_stop
+         or infra_error. Prints the run id and its status; scoring and the history file are not part of it. Exit 0
+         for a finished run, 1 for a refusal or a stopped run.
 
 Exit status: 0 ok, 1 findings (lint errors, check errors, a refused decision), 2 cannot run (usage, no registry,
 malformed JSON, a bad --diff, no git where it is needed).
