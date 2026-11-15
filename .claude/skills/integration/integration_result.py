@@ -4,9 +4,10 @@
   validate FILE [--head SHA] [--epic ID] [--mode FULL|DELTA]
       Reads the last ```json block of FILE (the final message of the skill; a file holding bare JSON works too),
       checks it against the contract and prints it as JSON. With --head, --epic and --mode the values must equal
-      those of the prompt. The block must be the last thing in the message. A DELTA round that takes `make test`
-      and `make e2e` from green CI of its head names that source with the entries ci:checks@<head_sha> and
-      ci:e2e@<head_sha> (delta.py ci): both, passed, for head_sha, next to `make test` and `make e2e` passed.
+      those of the prompt. The block must be the last thing in the message. A round (FULL or DELTA) that takes
+      `make test` and `make e2e` from the finished push CI of its head names that source with the entries
+      ci:checks@<head_sha> and ci:e2e@<head_sha> (delta.py ci): both, for head_sha, passed or failed, and
+      `make test` has the status of ci:checks@, `make e2e` that of ci:e2e@. PASSED never carries a failed entry.
 
 Exit code 2: unreadable input, no or broken JSON block, or an invalid result (every problem on stderr).
 """
@@ -23,9 +24,11 @@ CHECK_STATUSES = ('passed', 'failed', 'skipped')
 BLOCKER_TYPES = ('business', 'architecture', 'cost', 'technical')
 # Quality gates every round runs; PASSED needs all of them green.
 REQUIRED_CHECKS = ('make check', 'make test', 'make e2e')
-# A DELTA round may take `make test` and `make e2e` from the green required CI checks of its head (delta.py ci):
-# the entries `ci:checks@<head_sha>` and `ci:e2e@<head_sha>` name that source, always together and passed.
+# A round (FULL or DELTA) may take `make test` and `make e2e` from the finished required CI jobs of its head
+# (delta.py ci, green or red): the entries `ci:checks@<head_sha>` and `ci:e2e@<head_sha>` name that source, always
+# together, passed or failed, and each gate has the status of its job.
 CI_GATES = {'checks': 'make test', 'e2e': 'make e2e'}
+CI_STATUSES = ('passed', 'failed')
 CI_ENTRY = re.compile(r'ci:(checks|e2e)@([0-9a-f]{40})')
 KEYS = ('schema_version', 'epic_id', 'status', 'mode', 'head_sha', 'findings', 'checks', 'blockers', 'report_file')
 FINDING_KEYS = ('id', 'severity', 'title', 'detail', 'evidence', 'files', 'task_id')
@@ -162,10 +165,10 @@ def check_blockers(problems, blockers):
 
 
 def check_ci_gates(problems, value):
-    """The `ci:` entries: the green required CI checks of the reviewed head in place of the local test gates."""
+    """The `ci:` entries: the finished required CI jobs of the reviewed head in place of the local test gates."""
     checks = {c['name']: c.get('status') for c in value['checks']
               if isinstance(c, dict) and isinstance(c.get('name'), str)}
-    found = set()
+    found = {}
     for name, state in checks.items():
         if not name.startswith('ci:'):
             continue
@@ -173,20 +176,18 @@ def check_ci_gates(problems, value):
         if not match:
             problems.append('checks: %r is not a CI gate; use ci:checks@<head_sha> or ci:e2e@<head_sha>' % name)
             continue
-        found.add(match.group(1))
+        found[match.group(1)] = state
         if match.group(2) != value.get('head_sha'):
             problems.append('checks: %r is not for head_sha; CI counts only for the reviewed head' % name)
-        if state != 'passed':
-            problems.append('checks: %r must be passed; CI that is not green means the local gates' % name)
+        if state not in CI_STATUSES:
+            problems.append('checks: %r must be passed or failed; CI that did not finish means the local gates' % name)
     if not found:
         return
-    if value.get('mode') != 'DELTA':
-        problems.append('checks: CI gates are allowed in DELTA rounds only; FULL runs every gate locally')
-    for job in sorted(set(CI_GATES) - found):
+    for job in sorted(set(CI_GATES) - set(found)):
         problems.append('checks: ci:%s@<head_sha> is missing; CI replaces the local gates only with both jobs' % job)
-    for job in sorted(found):
-        if checks.get(CI_GATES[job]) != 'passed':
-            problems.append('checks: %r must be passed, it is taken from ci:%s@' % (CI_GATES[job], job))
+    for job, state in sorted(found.items()):
+        if state in CI_STATUSES and checks.get(CI_GATES[job]) != state:
+            problems.append('checks: %r must be %s like ci:%s@, the CI job it is taken from' % (CI_GATES[job], state, job))
 
 
 def check_status(problems, value):

@@ -180,30 +180,62 @@ class IntegrationResultTest(unittest.TestCase):
         two[1]['title'] = two[0]['title'].upper()
         self.assertInvalid(result(status='FINDINGS', findings=two), 'fingerprint')
 
-    def ci_checks(self, sha=SHA, status='passed'):
-        return copy.deepcopy(GATES) + [{'name': 'ci:checks@' + sha, 'status': status},
-                                       {'name': 'ci:e2e@' + sha, 'status': status}]
+    def ci_checks(self, sha=SHA, status='passed', e2e=None):
+        """The three gates and both CI entries; `make test` and `make e2e` take the status of their CI job."""
+        e2e = e2e or status
+        checks = copy.deepcopy(GATES)
+        checks[1]['status'], checks[2]['status'] = status, e2e
+        return checks + [{'name': 'ci:checks@' + sha, 'status': status}, {'name': 'ci:e2e@' + sha, 'status': e2e}]
 
-    def test_a_delta_round_may_take_the_test_gates_from_green_ci_of_its_head(self):
-        r = self.validate(result(mode='DELTA', checks=self.ci_checks()), '--mode', 'DELTA', '--head', SHA)
-        self.assertEqual(0, r.returncode, r.stderr)
+    def test_a_round_may_take_the_test_gates_from_green_ci_of_its_head(self):
+        for mode in ('DELTA', 'FULL'):
+            with self.subTest(mode=mode):
+                r = self.validate(result(mode=mode, checks=self.ci_checks()), '--mode', mode, '--head', SHA)
+                self.assertEqual(0, r.returncode, r.stderr)
+
+    def test_a_round_may_take_failed_test_gates_from_red_ci_of_its_head(self):
+        for mode in ('DELTA', 'FULL'):
+            for status, e2e in (('failed', 'passed'), ('passed', 'failed'), ('failed', 'failed')):
+                with self.subTest(mode=mode, checks=status, e2e=e2e):
+                    value = result(mode=mode, status='FINDINGS', findings=[finding()],
+                                   checks=self.ci_checks(status=status, e2e=e2e))
+                    r = self.validate(value)
+                    self.assertEqual(0, r.returncode, r.stderr)
+
+    def test_passed_cannot_carry_red_ci(self):
+        checks = self.ci_checks(e2e='failed')
+        self.assertInvalid(result(checks=checks), 'PASSED')
+        checks[2]['status'] = 'passed'
+        self.assertInvalid(result(checks=checks), 'ci:e2e@')
 
     def test_ci_gates_must_name_the_reviewed_head(self):
         self.assertInvalid(result(mode='DELTA', checks=self.ci_checks(sha='b' * 40)), 'head_sha')
+        self.assertInvalid(result(checks=self.ci_checks(sha='b' * 40)), 'head_sha')
 
-    def test_ci_gates_are_for_delta_rounds_only(self):
-        self.assertInvalid(result(checks=self.ci_checks()), 'DELTA')
-
-    def test_ci_gates_come_in_pairs_and_only_green(self):
-        self.assertInvalid(result(mode='DELTA', checks=self.ci_checks()[:-1]), 'ci:e2e@')
-        self.assertInvalid(result(mode='DELTA', checks=self.ci_checks(status='failed')), 'passed')
-        self.assertInvalid(result(mode='DELTA', status='BLOCKED', blockers=[blocker()],
-                                  checks=self.ci_checks(status='skipped')), 'passed')
+    def test_ci_gates_come_in_pairs_and_only_passed_or_failed(self):
+        for mode in ('DELTA', 'FULL'):
+            with self.subTest(mode=mode):
+                self.assertInvalid(result(mode=mode, checks=self.ci_checks()[:-1]), 'ci:e2e@')
+                self.assertInvalid(result(mode=mode, checks=self.ci_checks()[:3] + self.ci_checks()[4:]), 'ci:checks@')
+                checks = [{'name': n, 'status': 'skipped'} for n in ('make check', 'make test', 'make e2e')]
+                checks += [{'name': 'ci:checks@' + SHA, 'status': 'skipped'}, {'name': 'ci:e2e@' + SHA, 'status': 'skipped'}]
+                self.assertInvalid(result(mode=mode, status='BLOCKED', blockers=[blocker()], checks=checks),
+                                   'passed or failed')
 
     def test_ci_gates_must_match_the_local_gates_they_replace(self):
         checks = self.ci_checks()
         checks[2]['status'] = 'skipped'
         self.assertInvalid(result(mode='DELTA', status='FINDINGS', findings=[finding()], checks=checks), 'make e2e')
+        for mode in ('DELTA', 'FULL'):
+            with self.subTest(mode=mode):
+                checks = self.ci_checks(status='failed')
+                checks[1]['status'] = 'passed'
+                self.assertInvalid(result(mode=mode, status='FINDINGS', findings=[finding()], checks=checks),
+                                   'make test')
+                checks = self.ci_checks()
+                checks[2]['status'] = 'failed'
+                self.assertInvalid(result(mode=mode, status='FINDINGS', findings=[finding()], checks=checks),
+                                   'make e2e')
 
     def test_rejects_unknown_ci_entries(self):
         for name in ('ci:test@' + SHA, 'ci:checks@' + SHA[:7], 'ci:checks', 'ci:checks@' + SHA.upper(),
