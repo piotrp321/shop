@@ -32,7 +32,11 @@ case "$1" in
         [ -n "${STUB_READY:-}" ] || exit 0
         case "$*" in
           *"get crd"*) ;;
-          *"get jobs"*succeeded*) printf '1\n1\n1\n1\n1\n' ;;
+          *"get jobs"*succeeded*)
+            # The version jobs as "name=succeeded" (a running job has no value); a jsonpath without the name gets the values only.
+            for job in ${STUB_JOBS:-a=1 b=1 c=1 d=1 e=1 f=1}; do
+              case "$*" in *metadata.name*) printf '%s\n' "$job" ;; *) printf '%s\n' "${job#*=}" ;; esac
+            done ;;
           *"get deployments"*) printf '1 1 1 1 1 1\n' ;;
           *"get statefulsets"*) printf '1 1\n' ;;
           *"get service traefik"*) printf '30080' ;;
@@ -150,6 +154,26 @@ class LoadScript(unittest.TestCase):
         # The cluster is deleted last of all (after the failure), and no k6 ran.
         self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
         self.assertEqual([], [call for call in self.calls() if "grafana/k6" in call])
+
+    def test_a_running_version_job_is_not_ready_even_when_the_others_have_succeeded(self):
+        """A job that still runs has no succeeded: its empty line must not be skipped, or the six jobs look like five."""
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", STUB_READY="1",
+                               STUB_JOBS="a=1 b=1 c=1 d=1 e=1 f=")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("not ready", result.stderr)
+        self.assertNotIn("stocks", result.stderr)
+
+    def test_fewer_than_six_version_jobs_are_not_ready(self):
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", STUB_READY="1",
+                               STUB_JOBS="a=1 b=1 c=1 d=1 e=1")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("not ready", result.stderr)
+        self.assertNotIn("stocks", result.stderr)
+
+    def test_six_succeeded_version_jobs_are_ready(self):
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", STUB_READY="1", STUB_UPDATE_STATUS="1")
+        self.assertIn("all jobs complete", result.stdout)
+        self.assertNotIn("not ready", result.stderr)
 
     def assert_ends_with_2_after_the_stocks_failed(self, result):
         self.assertEqual(2, result.returncode, result.stderr)
