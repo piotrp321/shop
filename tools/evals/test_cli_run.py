@@ -64,9 +64,12 @@ class EstimateCommandTest(RunnerTestCase):
         self.assertIn('within the cap of 9.00 USD', out)
 
     def test_an_unknown_suite_or_case_is_a_usage_error(self):
-        self.assertEqual(2, self.estimate('nope')[0])
-        self.assertEqual(2, self.estimate('code-reviewer', '--case', 'nope')[0])
-        self.assertEqual(2, self.estimate('--case', 'one')[0])
+        for args, message in ((['nope'], "unknown suite 'nope'"),
+                              (['code-reviewer', '--case', 'nope'], "the suite code-reviewer has no case 'nope'"),
+                              (['--case', 'one'], '--case needs a suite')):
+            code, _, err = self.estimate(*args)
+            self.assertEqual(2, code, args)
+            self.assertIn('evals.py estimate: ' + message, err)
 
 
 class RunCommandTest(RunnerTestCase):
@@ -184,7 +187,19 @@ class RunCommandTest(RunnerTestCase):
         self.assertInterrupted(signal.SIGHUP)
 
     def test_wrong_combinations_are_usage_errors(self):
-        self.assertEqual(2, self.run_cmd()[0])
-        self.assertEqual(2, self.run_cmd('code-reviewer', '--overlay-rev', 'HEAD')[0])
-        self.assertEqual(2, self.run_cmd('code-reviewer', '--resume', 'x')[0])
+        for args, message in (([], 'a suite or --resume <id> is needed'),
+                              (['code-reviewer', '--overlay-rev', 'HEAD'], '--overlay-rev is for a trial run'),
+                              (['code-reviewer', '--resume', 'x'], '--resume takes only the run id')):
+            code, _, err = self.run_cmd(*args)
+            self.assertEqual(2, code, args)
+            self.assertIn('evals.py run: ' + message, err)
+        self.assertEqual(0, self.invocations())
+
+    def test_an_unknown_suite_or_case_is_refused_with_its_name(self):
+        code, _, err = self.run_cmd('nope', binary=self.fake(ok()))
+        self.assertEqual(1, code)
+        self.assertIn("unknown suite 'nope'", err)
+        code, _, err = self.run_cmd('code-reviewer', '--case', 'nope', binary=self.fake(ok()))
+        self.assertEqual(1, code)
+        self.assertIn("the suite code-reviewer has no case 'nope'", err)
         self.assertEqual(0, self.invocations())
