@@ -17,7 +17,7 @@ Poza zakresem: wiele magazynów, lokalizacje, kompletacja. Nie powstają endpoin
 | Context | Odpowiada za |
 |---|---|
 | Inventory | stany, przyjęcia, korekty, rezerwacje i historia wariantu, poziom dostępności |
-| Catalog | warianty produktów, zapytania dla Inventory: `GetVariant`, `ListVariantIdentities`, `ListProductVariants`, `SearchBackofficeProducts`; port `VariantStockFacts` (blokada usunięcia wariantu ze stanem) |
+| Catalog | warianty produktów, zapytania dla Inventory: `GetVariant`, `ListVariantIdentities`, `ListProductVariants`, `SearchBackofficeProducts`; port `VariantStockFacts` (blokada usunięcia wariantu ze stanem); integracyjne zdarzenia `ProductCreated` i `ProductChanged` (rekordy stanów wariantów) |
 | Ordering | rezerwacja stanów zamówienia przez `ReserveStock` w transakcji `PlaceOrder` |
 | Sklep, panel | wyświetlanie wartości z API; żadnego liczenia dostępności ani poziomów |
 
@@ -29,6 +29,8 @@ Poza zakresem: wiele magazynów, lokalizacje, kompletacja. Nie powstają endpoin
 - `QueryBusVariantStockFacts` (`Inventory_Infrastructure`) to adapter portu Catalog `VariantStockFacts`: Inventory
   `GetStockLevels` na `query.bus`, odczyt bez blokady; wariant ze stanem fizycznym > 0 albo zarezerwowanym > 0 jest
   „w użyciu”, a jego usunięcie w panelu Catalog odrzuca (`VariantInUse`). Wariant bez rekordu stanu nie jest w użyciu.
+- `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, transport `events`) subskrybuje integracyjne
+  `ProductCreated` i `ProductChanged` Catalog (sekcja „Rekord stanu każdego wariantu”).
 - Catalog i Pricing nie zależą od Inventory w żadnej warstwie. Inventory nie zależy od Pricing ani od Ordering.
 - `Ordering_Infrastructure → Inventory_Application`: adapter portu `StockReservations` Ordering
   (`CommandBusStockReservations`) wysyła `ReserveStock` przez `command.bus`; Ordering zna tylko warstwę Application
@@ -69,8 +71,49 @@ Niezmiennik: `0 ≤ reserved ≤ physical ≤ 1 000 000`.
 - `correct` z wartością równą bieżącemu `physical` zwraca `false`: bez wpisu historii i bez zmiany wersji.
 - Każda faktyczna zmiana dopisuje jeden `StockMovement` ze stanem po operacji i podnosi `version` przy zapisie.
 - Wariant bez rekordu stanu ma `physical = reserved = 0`. Rekord powstaje przy pierwszym przyjęciu, przy korekcie
-  zmieniającej stan (korekta do 0 nie zapisuje rekordu) albo jako pusty rekord danych demo (wersja 0, bez wpisu
-  historii).
+  zmieniającej stan (korekta do 0 nie zapisuje rekordu), jako pusty rekord danych demo (wersja 0, bez wpisu
+  historii) albo jako pusty rekord wariantu po zdarzeniu Catalog (niżej). Do czasu obsłużenia zdarzenia wariant może
+  nie mieć rekordu.
+
+### Rekord stanu każdego wariantu
+
+Każdy wariant Catalog ma rekord `inventory_stock_item` z `product_id` (decyzja A9 w
+`docs/features/admin-features/spec.md`), więc listy i liczniki poziomów stanu liczą się w Inventory bez złączeń
+z tabelami Catalog.
+
+- `SyncStockRecordsOnProductChange` (integracyjne `ProductCreated` i `ProductChanged`) woła
+  `StockRecordSync::ofProducts([productId])`, czyli komendę `SyncStockRecords(productIds)` (`command.bus`, jedna
+  transakcja na partię do 100 produktów, port `StockRecords`, adapter `DbalStockRecords`). W tej transakcji handler
+  najpierw bierze blokadę każdego produktu (`pg_advisory_xact_lock` z kluczem z id produktu, rosnąco po kluczu, więc
+  partie o wspólnych produktach się nie zakleszczają), potem czyta warianty z portu `ProductDirectory::variantsOf`
+  (Catalog `ListProductVariants` ze szkicami) i zapisuje:
+  - `INSERT … ON CONFLICT (variant_id) DO UPDATE SET product_id = excluded.product_id WHERE
+    inventory_stock_item.product_id IS NULL`: pusty rekord (0/0, wersja 0, bez wpisu historii) dla wariantu bez
+    rekordu, `product_id` w rekordzie założonym wcześniej przez przyjęcie albo korektę (`lockOrCreate` nie zna
+    produktu). Stan, wersja i `updated_at` istniejącego rekordu się nie zmieniają. Wiersze idą rosnąco po
+    `variant_id`, jak blokady `lockMany`;
+  - `DELETE` rekordów produktu (`product_id`) o wariantach, których produkt już nie ma, tylko z `physical = 0 AND
+    reserved = 0` (rekord ze stanem, który pojawił się równolegle z usunięciem wariantu, zostaje; historia zostaje
+    zawsze). Warunek `physical - reserved = 0` pozwala użyć indeksu częściowego braków.
+  Powtórzone zdarzenie nic nie zmienia; produkt nieznany Catalogowi to wiadomość obsłużona bez zmian; zdarzenie bez
+  poprawnego UUID produktu idzie do `failed`. Synchronizacje jednego produktu (zdarzenia w kilku workerach, backfill)
+  idą po kolei, a każda czyta warianty pod blokadą, więc późniejsza widzi to, co Catalog zatwierdził przed końcem
+  wcześniejszej: starszy odczyt nigdy nie nadpisuje nowszego (nie usuwa pustego rekordu nowego wariantu ani nie
+  zakłada rekordu usuniętemu). Edycja zatwierdzona po odczycie publikuje własne `ProductChanged`, którego
+  synchronizacja czyta warianty od nowa, więc rekordy kończą tak, jak warianty w Catalog.
+- Rekord bez `product_id` (przyjęcie przed zdarzeniem albo dane sprzed kolumny) nie należy do list ani liczników
+  poziomów. Rekord wariantu usuniętego przed wprowadzeniem kolumny zostaje bez `product_id`.
+- `inventory:stock-records:sync` (krok `app:backfill` o nazwie `inventory:stock-records:sync`, `apps/api/CLAUDE.md`)
+  przechodzi wszystkie produkty Catalog (szkice też) stronami po 100 z `ProductDirectory::page` (Catalog
+  `SearchBackofficeProducts`, kursor po `(name, id)`) i każdą stronę synchronizuje jak zdarzenie (`ofCatalog`), w osobnej
+  transakcji. Idempotentna: drugi przebieg zapisuje 0 rekordów. Produkt przemianowany w trakcie może zostać pominięty
+  albo odwiedzony dwa razy; jego `ProductChanged` i tak go synchronizuje. Wypisuje liczbę produktów, zapisanych
+  rekordów i usuniętych pustych rekordów (`-v`: postęp po każdej stronie). Kod wyjścia: 0 – gotowe, 1 – przerwane
+  błędem (zapisane wcześniej partie zostają).
+- Indeksy częściowe po produkcie na wyrażeniu `physical - reserved`: `inventory_stock_item_out_of_stock_idx
+  (product_id) WHERE physical - reserved = 0` i `inventory_stock_item_low_stock_idx (product_id) WHERE physical -
+  reserved BETWEEN 1 AND 5` (5 to `AvailabilityLevel::LOW_STOCK_THRESHOLD`; `InventorySchemaTest` nie przechodzi,
+  gdy stała zmieni się bez migracji indeksu). Migracja buduje je `CONCURRENTLY` (zasada w `apps/api/CLAUDE.md`).
 
 ### Agregat `Reservation`
 
@@ -154,8 +197,9 @@ wiersz, a stan nie zmienia się dwa razy.
 
 ## Persystencja i transakcje
 
-- `inventory_stock_item`: `variant_id uuid` (PK), `physical int`, `reserved int`, `version int`, `updated_at`;
-  `CHECK (reserved >= 0 AND physical >= reserved AND physical <= 1000000)`.
+- `inventory_stock_item`: `variant_id uuid` (PK), `product_id uuid` (null do czasu synchronizacji), `physical int`,
+  `reserved int`, `version int`, `updated_at`; `CHECK (reserved >= 0 AND physical >= reserved AND physical <= 1000000)`;
+  indeksy częściowe poziomów po `product_id` (sekcja „Rekord stanu każdego wariantu”).
 - `inventory_reservation`: `reservation_key varchar(100)` (PK), `status`, `created_at`, `updated_at`.
 - `inventory_reservation_line`: `reservation_key`, `variant_id`, `quantity`; PK `(reservation_key, variant_id)`;
   klucz obcy `reservation_key` → `inventory_reservation` (`inventory_reservation_line_reservation_fk`, bez
@@ -180,7 +224,8 @@ wiersz, a stan nie zmienia się dwa razy.
 - Stan, rezerwacja i wpisy historii zapisują się w jednej transakcji `command.bus` (`doctrine_transaction`).
   Nie ma zmiany stanu bez wpisu ani wpisu bez zmiany.
 - Repozytoria nie mają operacji zmiany ani usuwania wpisów historii. Tabele Inventory czyści wyłącznie
-  `inventory:seed-demo` (`DbalInventoryReset`), jednym `TRUNCATE` wszystkich czterech tabel.
+  `inventory:seed-demo` (`DbalInventoryReset`), jednym `TRUNCATE` wszystkich czterech tabel. Poza nim usuwane są tylko
+  puste rekordy stanów wariantów, których produkt już nie ma (`SyncStockRecords`), nigdy wpisy historii.
 
 ## Warstwa aplikacji
 
@@ -191,8 +236,9 @@ Komendy (`command.bus`):
   w panelu): `VariantNotFound` (404, „Wariant produktu nie istnieje.”). Wariant szkicu jest znany (`GetVariant` widzi
   szkice).
 - `CorrectStock(variantId, countedPhysical, expectedVersion|null, reason, note, actorId, actorName)` → `StockView`.
-  Nieznany wariant: 404. Wariant bez rekordu wymaga `expectedVersion = null`; rekord istnieje, a wersja jest inna
-  (także `null`): 409.
+  Nieznany wariant: 404. Wariant bez rekordu wymaga `expectedVersion = null`; `null` przyjmuje też pusty rekord
+  (0/0, wersja 0) zapisany w międzyczasie (np. przez synchronizację rekordów po zdarzeniu produktu), bo jest
+  równoważny brakowi stanu. Rekord istnieje, a wersja jest inna (także `null` przy wersji powyżej 0): 409.
 - `CreateEmptyStock(variantId)`: pusty rekord (0/0) w wersji 0 bez wpisu historii; idempotentna (istniejący rekord
   zostaje bez zmian). Nieznany wariant: `VariantNotFound` (404). Używa jej tylko seed.
 - Port dla Ordering:
@@ -235,6 +281,8 @@ Dane demo: `inventory:seed-demo`
   stan > 0, a niektóre inne produkty mają warianty o stanie 0 i > 0 (używa ich E2E; komentarze w pliku nazywają produkty).
 - Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<variantId>`. Stan 0: pusty rekord przez
   `CreateEmptyStock`, bez przyjęcia i wpisu historii.
+- Na końcu `StockRecordSync::ofCatalog` (jak `inventory:stock-records:sync`) wpisuje `product_id` każdemu rekordowi,
+  więc po seedzie każdy wariant demo ma rekord z produktem.
 - Wariant demo bez dopasowanego wzorca kończy seed błędem bez zmian w danych.
 - `make seed` uruchamia go po `pricing:seed-demo` i `ordering:seed-demo` (ten usuwa zamówienia, więc po seedzie nie
   ma zamówienia bez rezerwacji ani rezerwacji zamówienia bez zamówienia). W `prod` wymaga `--force-reset`.
@@ -340,7 +388,8 @@ z tokenem realmu `shop`: 401):
 6. Przyjęcia i korekty wykonują tylko `admin` i `warehouse`; stany i historię widzi każdy pracownik z rolą personelu.
 7. Sklep pokazuje poziom dostępności (próg „Ostatnie sztuki” 1–5 w API), nigdy liczby sztuk.
 8. Kryteria współbieżności C1–C6 przechodzą na prawdziwym PostgreSQL w CI.
-9. Po `make seed` każdy wariant demo ma rekord stanu.
+9. Po `make seed` każdy wariant demo ma rekord stanu z `product_id`; po zdarzeniu Catalog i po
+   `inventory:stock-records:sync` każdy wariant produktu ma rekord z `product_id`.
 10. Catalog i Pricing nie zależą od Inventory; Deptrac odrzuca zależności spoza reguł Inventory.
 11. Przechodzą `make -C apps/api check`, `make -C apps/api test`, `check` i `test` sklepu i panelu oraz `make e2e`.
 

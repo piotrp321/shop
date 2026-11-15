@@ -202,6 +202,34 @@ spec:
     {{- include "shop.kubeApiAccessVolume" . | nindent 4 }}
 {{- end }}
 
+{{- /*
+After the rollout of the new version (api and worker), the data the migrations added the schema for: app:backfill runs
+the steps that have not completed yet (apps/api/CLAUDE.md). The migrations change the schema only.
+*/ -}}
+{{- define "shop.job.backfill" -}}
+{{ include "shop.job.metadata" . }}
+spec:
+  restartPolicy: Never
+  enableServiceLinks: false
+  automountServiceAccountToken: false
+  serviceAccountName: shop-wait
+  initContainers:
+    {{- include "shop.waitRollout" (dict "root" .root "name" "api") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "worker") | nindent 4 }}
+  containers:
+    - name: backfill
+      image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
+      imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+      command: ["bin/console", "app:backfill"]
+      env:
+        {{- include "shop.apiEnv" .root | nindent 8 }}
+      {{- include "shop.envFromSecret" .root | nindent 6 }}
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+  volumes:
+    {{- include "shop.kubeApiAccessVolume" . | nindent 4 }}
+{{- end }}
+
 {{ include "shop.job" (dict "root" . "name" "garage-init" "wave" "0" "template" (include "shop.job.garageInit" (dict "root" . "name" "garage-init"))) }}
 ---
 {{ include "shop.job" (dict "root" . "name" "migrate" "wave" "0" "template" (include "shop.job.migrate" (dict "root" . "name" "migrate"))) }}
@@ -213,6 +241,8 @@ spec:
 {{- end }}
 ---
 {{ include "shop.job" (dict "root" . "name" "purge-caches" "wave" "3" "template" (include "shop.job.purgeCaches" (dict "root" . "name" "purge-caches"))) }}
+---
+{{ include "shop.job" (dict "root" . "name" "backfill" "wave" "3" "activeDeadlineSeconds" .Values.jobs.backfillActiveDeadlineSeconds "template" (include "shop.job.backfill" (dict "root" . "name" "backfill"))) }}
 ---
 {{- /* Expired carts, hourly. A run that is still going on is not started again. */}}
 apiVersion: batch/v1

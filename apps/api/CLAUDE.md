@@ -48,12 +48,28 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie komendy `*:seed-demo`
+  seed błędem bez zmian w danych), a na końcu wpisuje każdemu rekordowi jego produkt (jak `inventory:stock-records:sync`),
+  więc po seedzie nie ma zamówień ani ich rezerwacji, a każdy wariant demo ma rekord stanu z `product_id`. Wszystkie komendy `*:seed-demo`
   (jest ich sześć) w `prod` wymagają `--force-reset`, więc `bin/seed-demo` dodaje go do nich tylko przy `APP_ENV=prod`.
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
-  przebudowuje indeks wyszukiwania z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen
-  i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają). Błąd dowolnego kroku przerywa skrypt
+  przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
+  i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
+  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
+- `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
+  `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
+  (`Shared\Infrastructure\Backfill\BackfillStep`: `name()`, `run(report)`; implementacja w warstwie Infrastructure
+  modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
+  zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
+  `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300). Krok, który się nie powiedzie, nie jest
+  zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
+  ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
+  uruchomione). Test: `BackfillCommandTest`
+- `inventory:stock-records:sync` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; krok
+  `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
+  partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
+  (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -91,7 +107,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   mapowane atrybutami, z relacjami między rekordami. Repozytoria mapują agregat ↔ rekord, a agregat odtwarzają
   przez `reconstitute()`, które nie zapisuje zdarzeń.
 - Wyjątek: Inventory. Stan, rezerwacje i historię zapisuje i czyta przez DBAL na połączeniu Doctrine, w transakcji
-  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją). Rekordy Doctrine
+  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją), także rekordy
+  stanów wariantów z produktem (`DbalStockRecords`: `INSERT … ON CONFLICT … DO UPDATE … WHERE product_id IS NULL`
+  i `DELETE` pustych rekordów usuniętych wariantów, bez agregatu i bez zdarzeń; `docs/features/inventory/spec.md`,
+  „Rekord stanu każdego wariantu”). Rekordy Doctrine
   Inventory są tylko definicją schematu dla `doctrine:schema` i migracji, repozytoria ich nie używają. Powody:
   rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
   wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
@@ -474,14 +493,22 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   przy przeliczeniu po zmianie klasy podatkowej produktu. `PromotionPricesChanged` `{productId, source, occurredAt}`
   (Pricing, źródło `promotion` albo `seed`) publikują handlery wiadomości granic promocji (niżej), nie zapis promocji.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
-  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Jedyne dziś:
-  `Catalog\Application\Event\ProductChanged` `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product`
-  zapisuje wewnętrzne `Catalog\Domain\Product\ProductChanged` przy każdej edycji, publikacji i wycofaniu, a handler
-  komendy tłumaczy je na kontrakt (`ProductChanged::translate`) przed publikacją przez outbox. Seed tworzy produkty
-  bez `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana
-  pól kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (reindeksacja),
-  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, unieważnienie sklepu) i `RepriceOnTaxClassChange`
-  (`Pricing_Infrastructure`, przeliczenie cen po zmianie klasy podatkowej).
+  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Dziś dwa, oba Catalog:
+  `Catalog\Application\Event\ProductCreated` `{productId, occurredAt}` i `Catalog\Application\Event\ProductChanged`
+  `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product` zapisuje wewnętrzne
+  `Catalog\Domain\Product\ProductCreated` przy utworzeniu i `Catalog\Domain\Product\ProductChanged` przy każdej
+  edycji, publikacji i wycofaniu, a handler komendy tłumaczy je na kontrakty (`IntegrationEvents::translate`) przed
+  publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Wyjątek zgodności wersji (do
+  usunięcia w kolejnej wersji): w tej wersji `CreateProduct` publikuje oba `ProductCreated`, domenowe (poprzednia
+  wersja indeksuje produkt tylko z niego) i integracyjne, a `IndexProduct` obsługuje też domenowe z outboxa poprzedniej
+  wersji, więc nowy produkt jest indeksowany dwa razy (reindeksacja to dopuszcza). Inventory subskrybuje tylko
+  integracyjne (Deptrac); rekordy produktów utworzonych w oknie wymiany uzupełnia Job `backfill`. Seed tworzy produkty bez
+  `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana pól
+  kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
+  `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, oba, rekord stanu z produktem dla każdego wariantu),
+  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu)
+  i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
+  podatkowej).
 - Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
   i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` (port `ProductDirectory::taxClassOf`,
   adapter `QueryBusProductDirectory`), nigdy ze zdarzenia, więc zmiany A → B → A w dowolnej kolejności i powtórzone
@@ -683,8 +710,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
   z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały” (także spóźniony zapis
   opublikowanego stanu po nowszym zapisie szkicu). Zapisuje każdy produkt, szkic jako dokument `draft`; przebudowa
-  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (`ProductCreated` i integracyjne
-  `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
+  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (integracyjne `ProductCreated`
+  i `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
   (`Pricing_Infrastructure`, `VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`,
   `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
   obsłużona bez zapisu; `ReindexProductOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`) tak
@@ -860,6 +887,16 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `PromotionPricesChanged` (źródło `promotion`) na produkt w outboxie, w jednej transakcji. Handler komendy promocji
   nie czyta Catalog w tym celu ani nie publikuje zdarzeń. Przestój workera opóźnia tylko indeks i cache sklepu.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
+- Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
+  danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (sekcja „Komendy”). Indeks na
+  dużej tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) powstaje w osobnej migracji
+  nietransakcyjnej (`isTransactional(): false`, bo `CONCURRENTLY` nie działa w transakcji; `all_or_nothing` jest
+  wyłączone): `up()` sprawdza w `pg_index.indisvalid`, czy indeks o tej nazwie jest `INVALID` (zostawia go nieudane albo
+  przerwane `CREATE INDEX CONCURRENTLY`), i tylko wtedy dodaje `DROP INDEX CONCURRENTLY IF EXISTS`, potem zawsze
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
+  zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
+  `StockLevelIndexMigrationTest` (połączenie poza transakcją DAMA, indeks `INVALID` zostawiony przez nieudaną
+  unikalną budowę `CONCURRENTLY`).
 - Liczniki wyników list panelu są ograniczone (spec ADMIN-FEATURES, „Liczniki wyników”): pierwsza strona (bez `after`)
   listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
   strony `total: null`. Liczy `BoundedCounter` (`Shared\Infrastructure\Persistence`): `SELECT count(*) FROM (SELECT 1 FROM

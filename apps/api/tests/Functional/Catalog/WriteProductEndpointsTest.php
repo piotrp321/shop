@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Catalog;
 
 use App\Catalog\Application\Event\ProductChanged;
-use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Image\FlysystemProductImageStorage;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;

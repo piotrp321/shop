@@ -411,7 +411,8 @@
       "type": "object",
       "required": [
         "backoffLimit",
-        "activeDeadlineSeconds"
+        "activeDeadlineSeconds",
+        "backfillActiveDeadlineSeconds"
       ],
       "properties": {
         "backoffLimit": {
@@ -421,6 +422,11 @@
         "activeDeadlineSeconds": {
           "type": "integer",
           "minimum": 60
+        },
+        "backfillActiveDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The deadline of the job backfill (app:backfill), which runs longer than the other jobs of a version."
         }
       }
     },

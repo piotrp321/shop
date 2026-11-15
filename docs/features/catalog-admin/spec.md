@@ -79,6 +79,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - `Product::create(..., status)`: panel tworzy `Draft`, loader danych demo `Published` (z `firstPublishedAt`).
   `create` nie sprawdza reguły K2 (dane demo mają produkty bez zdjęć). Zapisuje `ProductCreated` (nie
   `ProductChanged`); `IndexProduct` obsługuje je, więc nowy szkic trafia do indeksu od utworzenia (dokument `draft`).
+  `CreateProduct` publikuje w tej wersji oba `ProductCreated`: domenowe dla poprzedniej wersji workera w trakcie
+  wymiany podów i integracyjne (zgodność wersji, `apps/api/CLAUDE.md`).
 - `edit(name, slug, shortDescription, categories, taxClass, images, variants)`: zastępuje dane produktu. Zmiana
   sluga produktu z `firstPublishedAt ≠ null` → `SlugLocked` (`Conflict`). Opublikowany produkt, który miał zdjęcia,
   a nowa lista jest pusta → `ProductNotPublishable` (`Conflict`); opublikowany produkt bez zdjęć zapisuje się bez
@@ -154,8 +156,9 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   `ProductSearchSource` zwraca status, a `ProductIndexing::reindex` zapisuje dokument każdego produktu, także szkicu
   (ze statusem `draft`), z wersją `external_gte` jak w SEARCH. Dokumentów się nie usuwa, więc wersja szkicu chroni
   przed spóźnionym zapisem starszego stanu bez limitu czasu (bez zależności od `index.gc_deletes`). `catalog:reindex`
-  indeksuje wszystkie produkty. `IndexProduct` obsługuje oba zdarzenia: `ProductCreated` i integracyjne
-  `ProductChanged`; oba prowadzą do `ProductIndexing::reindex`. Każde zapytanie sklepu (`ProductSearch`: wyniki, `total`, fasety, `availableCount`,
+  indeksuje wszystkie produkty. `IndexProduct` obsługuje oba integracyjne zdarzenia Catalog: `ProductCreated`
+  i `ProductChanged`, a w tej wersji także domenowe `ProductCreated` z outboxa poprzedniej wersji; wszystkie prowadzą
+  do `ProductIndexing::reindex`. Każde zapytanie sklepu (`ProductSearch`: wyniki, `total`, fasety, `availableCount`,
   `price`) ma filtr `term status: published` w `query`, więc działa też w agregacjach.
 - Statystyki katalogu (dashboard): indeks ma dokument każdego produktu, także szkicu, więc zgodność
   indeksu (`inSync`: liczba dokumentów = liczba produktów) zostaje poprawna, a liczba produktów obejmuje szkice.
