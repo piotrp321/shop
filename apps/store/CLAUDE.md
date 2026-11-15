@@ -142,9 +142,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   cache list jest Varnish: odczyty listy i ofert (`loadCatalog`) mają `cache: "no-store"` (bez `next.revalidate`
   i tagów), więc nie trafiają do data cache Next.
 - `/c/[...path]`: kategoria wskazana ścieżką slugów w drzewie (`path` i `slug` z `GET /api/v1/categories`,
-  `resolveCategoryPath`); brak w drzewie albo `unknown-category` z listy → `notFound()`. Kolejność odczytów: drzewo
-  (jeden odczyt na żądanie, `React.cache`, wspólny dla layoutu, `generateMetadata` i strony), potem lista z id
-  kategorii z drzewa, potem oferty. Błąd drzewa na tej stronie to wyjątek, czyli `app/error.tsx`.
+  `resolveCategoryPath`); brak w drzewie → odczyt przekierowania (308 albo `notFound()`, punkt niżej),
+  `unknown-category` z listy → `notFound()`. Kolejność odczytów: drzewo (jeden odczyt na żądanie, `React.cache`,
+  wspólny dla layoutu, `generateMetadata` i strony), potem dla ścieżki z drzewa lista z id kategorii, potem oferty,
+  a dla ścieżki spoza drzewa odczyt przekierowania (bez listy i ofert). Błąd drzewa na tej stronie to wyjątek, czyli
+  `app/error.tsx`.
 - Kolejność kategorii w drzewie (a więc w menu, stopce i kafelkach działów) daje API: pozycja rodzeństwa ustawiona
   w panelu, potem nazwa `pl_PL`, potem id. Sklep jej nie zmienia ani nie sortuje.
 - Stary adres kategorii (po zmianie sluga albo przeniesieniu): ścieżka spoza drzewa pyta o przekierowanie
