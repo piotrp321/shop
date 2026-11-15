@@ -183,7 +183,8 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   `detail` z API i odświeża bieżącą stronę (`refresh`), bo pierwsze przyjęcie z tym kluczem mogło się zapisać mimo
   zgubionej odpowiedzi. Oba 409 korekty mają `type: about:blank`, więc panel nie czyta `detail`: na 409 odświeża bieżącą
   stronę i jeśli wersja wiersza różni się od wysłanej, pokazuje „Stan został w międzyczasie zmieniony – odśwież”, w przeciwnym
-  razie `detail` z API (poniżej zarezerwowanego). Odpowiedź na zapis z innego otwarcia okna jest pomijana.
+  razie `detail` z API (poniżej zarezerwowanego); gdy wiersza nie da się odczytać (odświeżenie nieudane albo wiersza nie ma już na
+  stronie), powód nie jest znany, więc też „odśwież”, nigdy `detail`. Odpowiedź na zapis z innego otwarcia okna jest pomijana.
   `useStockHistory` (okno „Historia stanu”, `history-dialog`, dostępne dla każdego pracownika, szerokość
   `min(56rem, 100vw - 2rem)`): pierwsza strona historii stanów wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź
   po zamknięciu okna albo otwarciu innego wariantu jest ignorowana, błąd kolejnej strony zostawia wczytane wpisy i pozwala

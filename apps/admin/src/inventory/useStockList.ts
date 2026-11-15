@@ -211,10 +211,12 @@ export function useStockList(categories?: CategoryLookup) {
 
   /**
    * A correction based on the `version` the row shows (null: no stock record). The API answers both of its 409s with
-   * `type: about:blank` and tells them apart only by `detail`, so the panel does not read the text. On a 409 it
-   * reloads the page shown: when the row then has another version than the one sent, the stock changed meanwhile
-   * (a version conflict, the row is now current); when the version is the same, or the reload failed, the correction
-   * was refused for another reason (below the reserved units) and the `detail` of the API is shown.
+   * `type: about:blank` and tells them apart only by `detail` (one in English), so the panel does not read the text. On a
+   * 409 it reloads the page shown and decides by the row: when the row then has another version than the one sent, the
+   * stock changed meanwhile (a version conflict, the row is now current); when the version is the same, the correction
+   * was refused because it is below the reserved units and the `detail` of the API (in Polish) is shown. When the row
+   * cannot be reread (the reload failed or the row is no longer on the page) the reason is not known, so it is the same
+   * Polish „reload” conflict, never the `detail`.
    */
   async function correctStock(
     variantId: string,
@@ -238,7 +240,8 @@ export function useStockList(categories?: CategoryLookup) {
       if (result.response.status === 409) {
         await pager.refresh();
         const row = rows.value.find((candidate) => candidate.variantId === variantId);
-        if (row && (row.stock?.version ?? null) !== input.version) {
+        // A failed reload keeps the old page, so its row would look unchanged: the error of the pager says it failed.
+        if (pager.error.value !== null || !row || (row.stock?.version ?? null) !== input.version) {
           return { status: "conflict", message: CONFLICT_MESSAGE };
         }
       }
