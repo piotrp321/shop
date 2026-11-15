@@ -97,7 +97,7 @@ function failureMessage(status: number): string {
  * Enter), a range of days of the placement (`placedFrom`, `placedTo`: applied as soon as a day is chosen; an end before
  * the start is not applied and says why; not with the refunds to do, which the API refuses), an order (`sort`: by placement or by the amount, either way; not a
  * filter) and a page size (10, 25 or 50). The search, the filters, the order and the
- * page size live in the address (`useListUrlState`: `q`, `status`, `refund=pending`, `placedFrom`, `placedTo`, `sort`, `perPage`; read on entering and
+ * page size live in the address (`useListUrlState`: `q`, `status`, `refund` (`pending` or `overdue`), `placedFrom`, `placedTo`, `sort`, `perPage`; read on entering and
  * on a change from outside, such as the menu item „Zwroty do wykonania” on the open list, the link „Inne zamówienia
  * klienta” or Back, written with `replace` when changed; only the applied search goes there, not what is being typed)
  * and the paging is `useCursorPager` (cursor stack, late answers, retry, what a failure leaves on the screen). What stays

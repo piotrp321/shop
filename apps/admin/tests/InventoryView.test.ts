@@ -388,8 +388,8 @@ describe("InventoryView", () => {
       const hint = page().get("[data-testid=level-hint]");
       expect(hint.text()).toBe(description);
       expect(hint.attributes("role")).toBe("status");
-      expect(page().get("[data-testid=search-hint]").text()).toBe(description);
-      expect(search.attributes("aria-describedby")).toBe(page().get("[data-testid=search-hint]").attributes("id"));
+      expect(page().get("[data-testid=search-hint]").text(), "the description is read once, from the one region").toBe("");
+      expect(search.attributes("aria-describedby")?.split(" ")).toContain(hint.attributes("id"));
       expect(category.attributes("aria-describedby")?.split(" ")).toContain(hint.attributes("id"));
       expect(page().get("[data-testid=level-filter]").text()).toBe("Bez stanu");
     });

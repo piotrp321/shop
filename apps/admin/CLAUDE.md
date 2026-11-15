@@ -165,7 +165,8 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wariant w kolejności produktów i ich wariantów. Stan z odpowiedzi na przyjęcie i korektę jest nakładką `savedStocks` nad
   `items` pagera (nie zapisuje do nich i nie jest czyszczona): wiersz pokazuje go, dopóki wersja stanu z listy nie jest
   nowsza albo stan z listy jest `null`, więc ani trwające żądanie, ani spóźniona odpowiedź listy nie przywracają starego
-  stanu. Filtr poziomu wyklucza wyszukiwanie, kategorię i sortowanie (API odmawia ich łącznie z `level`): `selectLevel` czyści `q`,
+  stanu. Zapisany stan zdejmuje `matchesLevel` wariantu (znacznik poziomu dotyczył stanu odczytanego przez API, a panel nie
+  liczy poziomu sam). Filtr poziomu wyklucza wyszukiwanie, kategorię i sortowanie (API odmawia ich łącznie z `level`): `selectLevel` czyści `q`,
   `category` i `sort` w adresie i pole wyszukiwania, a `query` listy ma przy poziomie tylko `level` i `perPage` (adres z `level`
   i `q` albo `category` daje jedno żądanie z samym poziomem). Wiersz ma `matchesLevel` z API (wariant na poziomie filtra).
   403 listy: „Nie masz dostępu do stanów magazynowych.” bez ponowienia, 404: kategoria nie istnieje.
@@ -176,7 +177,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   jest za duża.”; zakres wartości sprawdza API). `InventoryView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie
   produktu”, `CategoryCombobox` „Kategoria”, `Select` „Poziom” (`level-filter`: Wszystkie, Bez stanu, Niski stan; wybór poziomu wyłącza
   i czyści wyszukiwanie (`ListToolbar` `searchDisabled`) i kategorię, a opis „Filtr poziomu nie łączy się z wyszukiwaniem ani
-  kategorią.” (`level-hint`, `role="status"`) jest w podpowiedzi pola wyszukiwania i w `aria-describedby` kategorii; „Sortuj” pokazuje
+  kategorią.” (`level-hint`, `role="status"`) jest jedynym regionem live z tym tekstem, a pole wyszukiwania (`ListToolbar` `searchDescribedBy`) i kategoria wskazują go przez `aria-describedby`; „Sortuj” pokazuje
   „Wg produktu” z opcjami wyłączonymi z opisem „Filtr poziomu ma własną kolejność.”), `Select` „Sortuj”, rozmiar strony; wariant
   na poziomie filtra ma w komórce Poziom `data-matches-level="true"`, obrys i ukryty dla czytnika tekst „pasuje do filtra”),
   `DataTable` z wierszami grup (`product-row` z `<th
@@ -498,7 +499,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   komunikat, tabelę (w trybie `cards` listę kart, `tabindex="-1"`) albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
   błąd sąsiedniej strony nad nią. Tabela przewija się w swoim regionie (`role="region"` z nazwą z prop `label`,
   `tabindex="0"`) z cieniem przy krawędzi, za którą jest dalsza treść; strona nie przewija się w poziomie. `ListToolbar`:
-  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
+  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, opcjonalnie `searchDescribedBy` (id innego tekstu, który też opisuje pole), zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
   `actions`, „Wyczyść filtry” przy `filtered`, kolejność (`Select` „Sortuj”, gdy lista ma `sortOptions`: `SortOption`
   z `src/composables/listSort.ts` to `value` (klucz API), `label` i `disabledReason`; opcja z powodem jest wyłączona, a powody
   są też w tekście `role="status"` pod polem, połączonym z nim przez `aria-describedby`; `sort` równe `null` pokazuje

@@ -22,8 +22,10 @@ const props = withDefaults(
     searchPlaceholder?: string;
     searchMax?: number;
     searchHint?: string | null;
-    /** The search is off (another filter excludes it): the field is disabled and `searchHint` says why. */
+    /** The search is off (another filter excludes it): the field is disabled; `searchHint` or `searchDescribedBy` says why. */
     searchDisabled?: boolean;
+    /** The id of another text that describes the field (a status elsewhere on the page, so it is not announced twice). */
+    searchDescribedBy?: string;
     /** True while a filter or the search is set: „Wyczyść filtry” shows. */
     filtered: boolean;
     perPage: number;
@@ -41,6 +43,7 @@ const props = withDefaults(
     searchMax: undefined,
     searchHint: null,
     searchDisabled: false,
+    searchDescribedBy: undefined,
     perPageOptions: () => [10, 25, 50],
     sortOptions: undefined,
     sort: null,
@@ -54,6 +57,7 @@ const ids = { hint: useId(), perPage: useId(), sort: useId(), sortHint: useId() 
 const sortLabel = computed(() => props.sortOptions?.find((option) => option.value === props.sort)?.label ?? props.sortPlaceholder ?? "");
 // What the disabled options say, once each: a visible text (the options themselves are dimmed as disabled).
 const sortHint = computed(() => [...new Set(props.sortOptions?.map((option) => option.disabledReason).filter((reason) => reason !== undefined))].join(" "));
+const searchDescription = computed(() => (props.searchDescribedBy === undefined ? ids.hint : `${ids.hint} ${props.searchDescribedBy}`));
 const searchField = ref<InstanceType<typeof Input> | null>(null);
 
 defineExpose({
@@ -82,7 +86,7 @@ defineExpose({
           :disabled="searchDisabled"
           :placeholder="searchPlaceholder"
           :aria-label="searchLabel"
-          :aria-describedby="ids.hint"
+          :aria-describedby="searchDescription"
           @update:model-value="$emit('update:search', String($event ?? ''))"
           @keydown.enter.prevent="$emit('submit')"
         />

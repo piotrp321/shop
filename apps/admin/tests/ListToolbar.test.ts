@@ -44,6 +44,13 @@ describe("ListToolbar", () => {
     expect(toolbar.get("[data-testid=search-hint]").text()).toBe("Filtr poziomu nie łączy się z wyszukiwaniem.");
   });
 
+  it("adds the id of another text to the description of the search field", () => {
+    const toolbar = mountToolbar({ searchDescribedBy: "other-text" });
+
+    const hintId = toolbar.get("[data-testid=search-hint]").attributes("id");
+    expect(toolbar.get("[data-testid=search]").attributes("aria-describedby")).toBe(`${hintId} other-text`);
+  });
+
   it("has an enabled search field by default", () => {
     expect(mountToolbar().get<HTMLInputElement>("[data-testid=search]").element.disabled).toBe(false);
   });
