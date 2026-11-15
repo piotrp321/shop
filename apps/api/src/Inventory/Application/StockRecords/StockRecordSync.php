@@ -5,19 +5,15 @@ declare(strict_types=1);
 namespace App\Inventory\Application\StockRecords;
 
 use App\Inventory\Application\Command\SyncStockRecords;
-use App\Inventory\Application\Port\DirectoryVariant;
 use App\Inventory\Application\Port\ProductDirectory;
 use App\Inventory\Domain\Stock\ProductId;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 
 /**
- * Gives every variant of the products a stock record with its product (decision A9 of ADMIN-FEATURES): the variants
- * come from Catalog through the ProductDirectory port, the records are written by SyncStockRecords on the
- * `command.bus` (injected by the parameter name), one transaction per batch of products. Idempotent.
- *
- * The variants are read before the transaction. An edit committed between the read and the write publishes its own
- * ProductChanged, whose sync reads the variants again, so the records end as Catalog has them.
+ * Gives every variant of the products a stock record with its product (decision A9 of ADMIN-FEATURES): SyncStockRecords
+ * on the `command.bus` (injected by the parameter name) reads the variants from Catalog through the ProductDirectory
+ * port under the locks of the products and writes the records, one transaction per batch of products. Idempotent.
  */
 final readonly class StockRecordSync
 {
@@ -35,14 +31,9 @@ final readonly class StockRecordSync
      */
     public function ofProducts(array $productIds): StockRecordsSynced
     {
-        $variants = $this->directory->variantsOf($productIds);
-        if ([] === $variants) {
-            return new StockRecordsSynced(0, 0, 0);
-        }
-
         $result = $this->commandBus->dispatch(new SyncStockRecords(array_map(
-            static fn (array $list): array => array_map(static fn (DirectoryVariant $variant): string => $variant->id->toString(), $list),
-            $variants,
+            static fn (ProductId $id): string => $id->toString(),
+            $productIds,
         )))->last(HandledStamp::class)?->getResult();
         \assert($result instanceof StockRecordsSynced);
 

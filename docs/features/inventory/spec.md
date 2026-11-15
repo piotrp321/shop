@@ -82,9 +82,11 @@ Każdy wariant Catalog ma rekord `inventory_stock_item` z `product_id` (decyzja 
 z tabelami Catalog.
 
 - `SyncStockRecordsOnProductChange` (integracyjne `ProductCreated` i `ProductChanged`) woła
-  `StockRecordSync::ofProducts([productId])`: warianty produktu z portu `ProductDirectory::variantsOf` (Catalog
-  `ListProductVariants` ze szkicami), potem komenda `SyncStockRecords(variantsByProduct)` (`command.bus`, jedna
-  transakcja na partię do 100 produktów, port `StockRecords`, adapter `DbalStockRecords`):
+  `StockRecordSync::ofProducts([productId])`, czyli komendę `SyncStockRecords(productIds)` (`command.bus`, jedna
+  transakcja na partię do 100 produktów, port `StockRecords`, adapter `DbalStockRecords`). W tej transakcji handler
+  najpierw bierze blokadę każdego produktu (`pg_advisory_xact_lock` z kluczem z id produktu, rosnąco po kluczu, więc
+  partie o wspólnych produktach się nie zakleszczają), potem czyta warianty z portu `ProductDirectory::variantsOf`
+  (Catalog `ListProductVariants` ze szkicami) i zapisuje:
   - `INSERT … ON CONFLICT (variant_id) DO UPDATE SET product_id = excluded.product_id WHERE
     inventory_stock_item.product_id IS NULL`: pusty rekord (0/0, wersja 0, bez wpisu historii) dla wariantu bez
     rekordu, `product_id` w rekordzie założonym wcześniej przez przyjęcie albo korektę (`lockOrCreate` nie zna
@@ -94,8 +96,11 @@ z tabelami Catalog.
     reserved = 0` (rekord ze stanem, który pojawił się równolegle z usunięciem wariantu, zostaje; historia zostaje
     zawsze). Warunek `physical - reserved = 0` pozwala użyć indeksu częściowego braków.
   Powtórzone zdarzenie nic nie zmienia; produkt nieznany Catalogowi to wiadomość obsłużona bez zmian; zdarzenie bez
-  poprawnego UUID produktu idzie do `failed`. Warianty są czytane przed transakcją: edycja zatwierdzona między odczytem
-  a zapisem publikuje własne `ProductChanged`, które czyta warianty od nowa.
+  poprawnego UUID produktu idzie do `failed`. Synchronizacje jednego produktu (zdarzenia w kilku workerach, backfill)
+  idą po kolei, a każda czyta warianty pod blokadą, więc późniejsza widzi to, co Catalog zatwierdził przed końcem
+  wcześniejszej: starszy odczyt nigdy nie nadpisuje nowszego (nie usuwa pustego rekordu nowego wariantu ani nie
+  zakłada rekordu usuniętemu). Edycja zatwierdzona po odczycie publikuje własne `ProductChanged`, którego
+  synchronizacja czyta warianty od nowa, więc rekordy kończą tak, jak warianty w Catalog.
 - Rekord bez `product_id` (przyjęcie przed zdarzeniem albo dane sprzed kolumny) nie należy do list ani liczników
   poziomów. Rekord wariantu usuniętego przed wprowadzeniem kolumny zostaje bez `product_id`.
 - `inventory:stock-records:sync` (krok `app:backfill` o nazwie `inventory:stock-records:sync`, `apps/api/CLAUDE.md`)

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Inventory\Application\Port;
 
+use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\VariantId;
 
 /**
@@ -12,6 +13,16 @@ use App\Inventory\Domain\Stock\VariantId;
  */
 interface StockRecords
 {
+    /**
+     * Takes the lock of every product, held until the transaction ends, so the syncs of one product run one after
+     * another. Products of every call are locked in one global order, so syncs of overlapping batches cannot deadlock.
+     *
+     * @param list<ProductId> $productIds
+     *
+     * @throws \LogicException outside a transaction, where the lock would guard nothing
+     */
+    public function lockProducts(array $productIds): void;
+
     /**
      * Creates an empty record (physical = reserved = 0, version 0) with its product for every variant without one, and
      * writes the product into a record that has none (created earlier by a receipt or a correction). A record that

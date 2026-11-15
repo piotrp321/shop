@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Inventory\Infrastructure\Persistence\Doctrine;
 
 use App\Inventory\Application\Port\StockRecords;
+use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\VariantId;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Types;
@@ -15,8 +16,38 @@ use Doctrine\DBAL\Types\Types;
  */
 final readonly class DbalStockRecords implements StockRecords
 {
+    /**
+     * The first key of the two-key advisory locks of the products (pg_advisory_xact_lock(int, int)), chosen for them;
+     * the second is a hash of the product id. Two products with the same hash only wait for each other.
+     */
+    public const int LOCK_NAMESPACE = 0x5354; // "ST"
+
     public function __construct(private Connection $connection)
     {
+    }
+
+    /**
+     * Transaction-level advisory locks, in ascending order of their keys (the global order, also when two products
+     * share a key), with one statement: unnest WITH ORDINALITY returns the keys in that order.
+     */
+    public function lockProducts(array $productIds): void
+    {
+        // Outside a transaction the lock would end with its own statement and guard nothing.
+        if (!$this->connection->isTransactionActive()) {
+            throw new \LogicException('The locks of the products need the transaction of the sync.');
+        }
+        $keys = array_values(array_unique(array_map(self::lockKey(...), $productIds)));
+        sort($keys);
+        if ([] === $keys) {
+            return;
+        }
+
+        $this->connection->executeStatement(
+            'SELECT pg_advisory_xact_lock(CAST(:namespace AS int), k.key)
+             FROM unnest(CAST(:keys AS int[])) WITH ORDINALITY AS k(key, position)
+             ORDER BY k.position',
+            ['namespace' => self::LOCK_NAMESPACE, 'keys' => '{'.implode(',', $keys).'}'],
+        );
     }
 
     /**
@@ -45,7 +76,9 @@ final readonly class DbalStockRecords implements StockRecords
 
     /**
      * `physical - reserved = 0` is the predicate of the out-of-stock index by product, so the records of the products
-     * are found through it; physical = reserved = 0 is the condition.
+     * are found through it; physical = reserved = 0 is the condition. Its row locks do not follow the order of
+     * lockMany(): a reservation of the removed variant at the same moment may deadlock with it, which PostgreSQL
+     * detects by failing one of the two transactions (the event is retried, the backfill run again).
      */
     public function removeEmptyOfRemovedVariants(array $variantsByProduct): int
     {
@@ -60,6 +93,16 @@ final readonly class DbalStockRecords implements StockRecords
                AND s.variant_id <> ALL(CAST(:variants AS uuid[]))',
             ['products' => self::array(array_map(strval(...), array_keys($variantsByProduct))), 'variants' => self::array($variants)],
         );
+    }
+
+    /**
+     * The CRC-32 of the id as a signed 32-bit integer (the int of PostgreSQL).
+     */
+    private static function lockKey(ProductId $productId): int
+    {
+        $hash = crc32($productId->toString());
+
+        return $hash > 0x7FFFFFFF ? $hash - 0x100000000 : $hash;
     }
 
     /**

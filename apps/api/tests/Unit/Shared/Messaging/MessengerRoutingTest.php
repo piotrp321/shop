@@ -11,7 +11,8 @@ use App\Catalog\Domain\Product\ProductCreated as ProductCreatedInCatalog;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
-use App\Inventory\Infrastructure\Catalog\QueryBusProductDirectory;
+use App\Inventory\Application\StockRecords\StockRecordsSynced;
+use App\Inventory\Application\StockRecords\StockRecordSync;
 use App\Shared\Domain\Event\DomainEventPublisher;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use App\Tests\Support\InMemory\RecordingProductIndexer;
@@ -20,6 +21,9 @@ use App\Tests\Unit\Inventory\InMemoryProductDirectory;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
@@ -40,8 +44,13 @@ final class MessengerRoutingTest extends KernelTestCase
         $container = self::getContainer();
         $container->set(ElasticsearchProductIndexer::class, $this->indexer);
         $container->set(QueryBusProductOfferFacts::class, new InMemoryProductOfferFacts());
-        // Inventory subscribes to ProductCreated too; a product unknown to its directory leaves the stock untouched.
-        $container->set(QueryBusProductDirectory::class, new InMemoryProductDirectory());
+        // Inventory subscribes to ProductCreated too; its sync of the stock records answers without the database.
+        $container->set(StockRecordSync::class, new StockRecordSync(new InMemoryProductDirectory(), new class implements MessageBusInterface {
+            public function dispatch(object $message, array $stamps = []): Envelope
+            {
+                return Envelope::wrap($message, $stamps)->with(new HandledStamp(new StockRecordsSynced(0, 0, 0), 'handler'));
+            }
+        }));
         $container->set(DbalProductSearchSource::class, new InMemoryProductSearchSource([
             new ProductSearchSnapshot(self::PRODUCT_ID, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::CATEGORY_ID, [], [[self::CATEGORY_ID]], null, [], [], [], ProductStatus::Published),
         ]));
