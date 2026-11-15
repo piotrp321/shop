@@ -200,6 +200,24 @@ final class ReindexCategoryBatchHandlerTest extends TestCase
         self::assertSame([], $this->batches->sent);
     }
 
+    public function testAPermanentFailureOfTheSubtreeQueryGoesToFailedWithoutRetries(): void
+    {
+        $failure = new SearchIndexError('The index does not exist.');
+        $this->subtrees->failure = $failure;
+
+        try {
+            $this->handle(0);
+            self::fail('The permanent failure was swallowed.');
+        } catch (UnrecoverableMessageHandlingException $e) {
+            self::assertSame($failure, $e->getPrevious());
+        }
+
+        self::assertSame([], $this->indexer->indexed);
+        self::assertEquals(new CategoryReindexRun(self::RUN, self::CATEGORY, null, 0, false), $this->runs->runs[self::RUN]);
+        self::assertSame([], $this->batches->sent);
+        self::assertSame(0, $this->cache->invalidations);
+    }
+
     public function testAFailedInvalidationAtTheEndIsThrownSoTheFinishIsRolledBackAndRetried(): void
     {
         $this->runs->runs[self::RUN] = new CategoryReindexRun(self::RUN, self::CATEGORY, self::SUBTREE[4], 3, false);

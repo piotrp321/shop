@@ -784,7 +784,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   do kupienia” i cena „od” są tylko w Cart, a ceny są skuteczne (w aktywnej promocji promocyjne, Pricing
   `GetCurrentPrices`). Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
   Inventory.
-- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, poza `command.bus`): znacznik
+- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, zwykle poza `command.bus`, a w partii łańcucha
+  reindeksacji kategorii w jego transakcji; tylko czyta bazę, a w READ COMMITTED każdy odczyt ma świeży snapshot): znacznik
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
   z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały” (także spóźniony zapis
   opublikowanego stanu po nowszym zapisie szkicu). Zapisuje każdy produkt, szkic jako dokument `draft`; przebudowa

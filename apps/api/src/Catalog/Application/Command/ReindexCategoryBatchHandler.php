@@ -31,7 +31,8 @@ use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
  *   with the change, before the documents were rewritten). A failed invalidation throws, so the finish is rolled back
  *   and the retry of the batch tries both again.
  *
- * A failure is retried by the transport `jobs`, then the message goes to `failed` with the error in the log; the run
+ * A failure is retried by the transport `jobs`, then the message goes to `failed` with the error in the log; a permanent
+ * failure of the index (SearchIndexError), from the query of the subtree or from a write, goes to `failed` at once. The run
  * stays unfinished and `catalog:reindex` repairs the index.
  */
 #[AsMessageHandler(bus: 'command.bus')]
@@ -62,21 +63,21 @@ final readonly class ReindexCategoryBatchHandler
             return;
         }
 
-        $productIds = $this->subtree->after(CategoryId::fromString($run->categoryId), $run->cursor, $this->batchSize);
-        if ([] === $productIds) {
-            $this->runs->finish($run->id, $this->clock->now());
-            $this->storefront->invalidateCatalog();
-
-            return;
-        }
-
         try {
+            $productIds = $this->subtree->after(CategoryId::fromString($run->categoryId), $run->cursor, $this->batchSize);
             foreach ($productIds as $productId) {
                 // Stale and ProductNotFound end like Indexed: the index holds a newer read, or the product is gone.
                 $this->indexing->reindex($productId);
             }
         } catch (SearchIndexError $e) {
             throw new UnrecoverableMessageHandlingException($e->getMessage(), previous: $e);
+        }
+
+        if ([] === $productIds) {
+            $this->runs->finish($run->id, $this->clock->now());
+            $this->storefront->invalidateCatalog();
+
+            return;
         }
 
         $this->runs->advance($run->id, $productIds[\count($productIds) - 1], $run->nextBatch + 1);
