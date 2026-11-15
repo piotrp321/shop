@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Backoffice;
 
 use App\Catalog\Application\Port\ProductIndexer;
+use App\Catalog\Application\Port\ProductTableStatistics;
 use App\Catalog\Application\Search\IndexOutcome;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchUnavailable;
-use App\Catalog\Domain\Product\Product;
-use App\Catalog\Domain\Product\ProductId;
-use App\Catalog\Domain\Product\ProductRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\Catalog\Infrastructure\Persistence\Doctrine\PostgresProductTableStatistics;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
@@ -46,10 +45,10 @@ final class DashboardEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $client->getResponse()->headers->get('Content-Type'));
-        self::assertSame(
-            ['catalog' => ['productCount' => 3, 'categoryCount' => 2, 'productsWithoutImages' => 2], 'system' => null],
-            $this->json($client->getResponse()),
-        );
+        $body = $this->json($client->getResponse());
+        self::assertSame(['productCount' => ['value' => 3, 'estimated' => true], 'categoryCount' => 2], $body['catalog']);
+        self::assertSame(['catalog', 'queues', 'system'], array_keys($body));
+        self::assertNull($body['system']);
     }
 
     public function testAdminGetsTheSystemSectionWithAllServicesInTheFixedOrder(): void
@@ -62,7 +61,7 @@ final class DashboardEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         $body = $this->json($client->getResponse());
-        self::assertSame(['productCount' => 3, 'categoryCount' => 2, 'productsWithoutImages' => 2], $body['catalog']);
+        self::assertSame(['productCount' => ['value' => 3, 'estimated' => true], 'categoryCount' => 2], $body['catalog']);
         $system = $body['system'];
         self::assertIsArray($system);
         self::assertSame(['services', 'outbox', 'queues', 'searchIndex'], array_keys($system));
@@ -208,23 +207,8 @@ final class DashboardEndpointTest extends WebTestCase
     public function testLostDatabaseConnectionIsAServiceUnavailableProblem(string $role): void
     {
         $client = static::createClient();
-        self::getContainer()->set(DoctrineProductRepository::class, new class implements ProductRepository {
-            public function save(Product $product, ?int $expectedVersion, ?string $actorId, \DateTimeImmutable $at): void
-            {
-                throw new \LogicException('Not used.');
-            }
-
-            public function get(ProductId $id): Product
-            {
-                throw new \LogicException('Not used.');
-            }
-
-            public function all(): iterable
-            {
-                throw new \LogicException('Not used.');
-            }
-
-            public function count(): int
+        self::getContainer()->set(PostgresProductTableStatistics::class, new class implements ProductTableStatistics {
+            public function estimatedProductCount(): ?int
             {
                 $driverFailure = new class('SQLSTATE[08006] connection to server at "postgres" failed') extends \Exception implements DriverException {
                     public function getSQLState(): string
@@ -236,7 +220,7 @@ final class DashboardEndpointTest extends WebTestCase
                 throw new ConnectionException($driverFailure, null);
             }
 
-            public function countWithoutImages(): int
+            public function refresh(): void
             {
                 throw new \LogicException('Not used.');
             }
@@ -279,9 +263,35 @@ final class DashboardEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         $body = $this->json($client->getResponse());
-        self::assertSame(['productCount' => 3, 'categoryCount' => 2, 'productsWithoutImages' => 2], $body['catalog']);
+        self::assertSame(['productCount' => ['value' => 3, 'estimated' => true], 'categoryCount' => 2], $body['catalog']);
         self::assertIsArray($body['system']);
         self::assertSame(['indexedProducts' => null, 'catalogProducts' => 3, 'inSync' => false], $body['system']['searchIndex']);
+    }
+
+    public function testWithoutAnEstimateOfTheProductsTheCountIsNullAndTheIndexIsNeitherInSyncNorOutOfIt(): void
+    {
+        $client = static::createClient();
+        $this->seedCatalog();
+        $this->useIndexedDocuments(3);
+        self::getContainer()->set(PostgresProductTableStatistics::class, new class implements ProductTableStatistics {
+            public function estimatedProductCount(): ?int
+            {
+                return null;
+            }
+
+            public function refresh(): void
+            {
+                throw new \LogicException('Not used.');
+            }
+        });
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        $body = $this->json($client->getResponse());
+        self::assertSame(['productCount' => null, 'categoryCount' => 2], $body['catalog']);
+        self::assertIsArray($body['system']);
+        self::assertSame(['indexedProducts' => 3, 'catalogProducts' => null, 'inSync' => null], $body['system']['searchIndex']);
     }
 
     public function testResponseMatchesTheDashboardSchemaOfTheExportedSpecification(): void
@@ -331,6 +341,8 @@ final class DashboardEndpointTest extends WebTestCase
         $products->save(ProductFactory::createOne(['mainCategory' => $shoes, 'imageAlts' => ['Front']]), null, null, new \DateTimeImmutable());
         $products->save(ProductFactory::createOne(['mainCategory' => $shoes]), null, null, new \DateTimeImmutable());
         $products->save(ProductFactory::createOne(['mainCategory' => $sport]), null, null, new \DateTimeImmutable());
+        // The number of products on the dashboard is the estimate of the statistics, which a mass change refreshes.
+        $entityManager->getConnection()->executeStatement('ANALYZE catalog_product');
     }
 
     private function get(KernelBrowser $client, string $token): void

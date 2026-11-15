@@ -4,29 +4,38 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Query;
 
+use App\Catalog\Application\Port\BackofficeProductSource;
 use App\Catalog\Application\Port\ProductIndexer;
+use App\Catalog\Application\Port\ProductTableStatistics;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Domain\Category\CategoryRepository;
-use App\Catalog\Domain\Product\ProductRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
 final readonly class GetCatalogStatisticsHandler
 {
+    /** The dashboard counts up to this many; more is shown as "1000+". */
+    public const int LIMIT = 1000;
+
     public function __construct(
-        private ProductRepository $products,
+        private BackofficeProductSource $products,
         private CategoryRepository $categories,
         private ProductIndexer $indexer,
+        private ProductTableStatistics $statistics,
     ) {
     }
 
+    /**
+     * The number of products is the estimate of the database, never a count of the table; the products without images
+     * are counted with the filter of the list they link to, on its partial index.
+     */
     public function __invoke(GetCatalogStatistics $query): CatalogStatisticsView
     {
         return new CatalogStatisticsView(
-            $this->products->count(),
+            $this->statistics->estimatedProductCount(),
             $this->categories->count(),
-            $this->products->countWithoutImages(),
+            $query->withoutImages ? $this->products->count(null, null, null, true, self::LIMIT) : null,
             $this->indexedProducts(),
         );
     }

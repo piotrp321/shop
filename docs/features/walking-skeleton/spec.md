@@ -619,7 +619,9 @@ i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTr
 
 ```json
 {
-  "catalog": { "productCount": 412, "categoryCount": 36, "productsWithoutImages": 8 },
+  "catalog": { "productCount": { "value": 412, "estimated": true }, "categoryCount": 36 },
+  "queues": { "paidToShip": { "value": 3, "capped": false }, "awaitingPayment": null, "pendingRefunds": null, "overdueRefunds": null,
+              "outOfStockVariants": null, "lowStockVariants": null, "productsWithoutImages": { "value": 8, "capped": false } },
   "system": {
     "services": [{ "name": "postgres", "status": "up", "latencyMs": 3 }],
     "outbox": { "pending": 0 },
@@ -628,6 +630,10 @@ i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTr
   }
 }
 ```
+
+- `catalog.productCount` to szacunek bazy (`pg_class.reltuples`), `null` przed pierwszymi statystykami; `queues` to liczniki ograniczone
+  do 1000, każdy `null` dla roli bez dostępu do kolejki; `searchIndex.inSync` to zgodność w granicach 1% szacunku (`null` bez
+  szacunku). Szczegóły: `docs/features/admin-features/spec.md`, sekcja 1.
 
 - `system` jest `null`, gdy `DashboardVoter` odmówi atrybutu `VIEW_SYSTEM_STATUS` (wymaga roli `admin`).
 - `services` zawsze w tej kolejności: `postgres`, `redis`, `elasticsearch`, `rabbitmq`, `keycloak`, `garage`,

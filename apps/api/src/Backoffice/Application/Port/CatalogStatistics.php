@@ -8,6 +8,8 @@ interface CatalogStatistics
 {
     /**
      * Fails with the exception of the database when it is unreachable: without the catalogue there is no dashboard.
+     *
+     * @param bool $withoutImages whether the products without images are counted too
      */
-    public function counts(): CatalogCounts;
+    public function counts(bool $withoutImages): CatalogCounts;
 }

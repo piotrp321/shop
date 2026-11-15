@@ -146,7 +146,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             static fn ($id): string => $id->toString(),
             $this->products->get($product->id())->categories()->additional(),
         ));
-        self::assertSame(1, $this->products->count());
+        self::assertSame(1, $this->entityManager->getConnection()->fetchOne('SELECT count(*) FROM catalog_product'));
     }
 
     public function testGetOfUnknownIdThrowsProductNotFound(): void
@@ -156,15 +156,13 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $this->products->get(ProductId::fromString('99999999-9999-4999-8999-999999999999'));
     }
 
-    public function testCountsAllProductsAndProductsWithoutImages(): void
+    public function testAllReturnsEveryProductSaved(): void
     {
         [$main] = $this->savedCategories(1);
         $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'imageAlts' => ['front']]), null, null, new \DateTimeImmutable());
         $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
         $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
 
-        self::assertSame(3, $this->products->count());
-        self::assertSame(2, $this->products->countWithoutImages());
         self::assertCount(3, [...$this->products->all()]);
     }
 

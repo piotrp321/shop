@@ -21,6 +21,9 @@ final class InMemoryBackofficeOrderReader implements BackofficeOrderReader
 
     /** @var list<BackofficeOrderFilter> */
     public array $counts = [];
+
+    /** @var list<int> the limit of every count() call */
+    public array $countLimits = [];
     public BoundedCount $total;
 
     /**
@@ -38,9 +41,10 @@ final class InMemoryBackofficeOrderReader implements BackofficeOrderReader
         return \array_slice($this->orders, 0, $limit);
     }
 
-    public function count(BackofficeOrderFilter $filter): BoundedCount
+    public function count(BackofficeOrderFilter $filter, int $limit = 10_000): BoundedCount
     {
         $this->counts[] = $filter;
+        $this->countLimits[] = $limit;
 
         return $this->total;
     }

@@ -7,11 +7,15 @@ namespace App\Tests\Integration\Backoffice;
 use App\Backoffice\Application\Port\CatalogCounts;
 use App\Backoffice\Application\Port\CatalogStatistics;
 use App\Backoffice\Application\Port\MessagingStatistics;
+use App\Backoffice\Application\Port\OrderQueueCounts;
+use App\Backoffice\Application\Port\StockQueueCounts;
 use App\Backoffice\Application\Port\SystemHealth;
 use App\Backoffice\Application\Query\GetDashboard;
 use App\Backoffice\Application\Query\GetDashboardHandler;
+use App\Backoffice\Application\Query\QueueAccess;
 use App\Backoffice\Infrastructure\MessagingStatisticsAdapter;
 use App\Backoffice\Infrastructure\ProbingSystemHealth;
+use App\Shared\Domain\BoundedCount;
 use App\Shared\Infrastructure\Health\Probe\ElasticsearchProbe;
 use App\Shared\Infrastructure\Health\Probe\GarageProbe;
 use App\Shared\Infrastructure\Health\Probe\ImgproxyProbe;
@@ -21,6 +25,8 @@ use App\Shared\Infrastructure\Health\Probe\PostgresProbe;
 use App\Shared\Infrastructure\Health\Probe\RabbitMqProbe;
 use App\Shared\Infrastructure\Health\Probe\RedisProbe;
 use App\Shared\Infrastructure\Health\ServiceProbe;
+use App\Tests\Unit\Backoffice\Application\RecordingOrderQueues;
+use App\Tests\Unit\Backoffice\Application\RecordingStockQueues;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpClient\HttpClient;
@@ -65,10 +71,12 @@ final class DashboardTimingTest extends KernelTestCase
                 new MailpitProbe($client, $this->hangingUrl()),
             ]),
             new MessagingStatisticsAdapter($connection, $client, $this->hangingUrl(), 'user', 'secret', 'test'),
+            new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)),
+            new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))),
         );
 
         $started = microtime(true);
-        $dashboard = $handler(new GetDashboard(true));
+        $dashboard = $handler(new GetDashboard(true, QueueAccess::none()));
         $elapsed = microtime(true) - $started;
 
         self::assertNotNull($dashboard->system);
@@ -134,16 +142,16 @@ final class DashboardTimingTest extends KernelTestCase
         self::assertInstanceOf(SystemHealth::class, $health);
         self::assertInstanceOf(MessagingStatistics::class, $messaging);
         $slowCatalog = new class implements CatalogStatistics {
-            public function counts(): CatalogCounts
+            public function counts(bool $withoutImages): CatalogCounts
             {
                 usleep(1_800_000); // an Elasticsearch count that waits for its 2 s limit
 
-                return new CatalogCounts(1, 1, 0, null);
+                return new CatalogCounts(1, 1, null, null);
             }
         };
 
         $started = microtime(true);
-        $dashboard = (new GetDashboardHandler($slowCatalog, $health, $messaging))(new GetDashboard(true));
+        $dashboard = (new GetDashboardHandler($slowCatalog, $health, $messaging, new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)), new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false)))))(new GetDashboard(true, QueueAccess::none()));
         $elapsed = microtime(true) - $started;
 
         self::assertNotNull($dashboard->system);
@@ -154,9 +162,9 @@ final class DashboardTimingTest extends KernelTestCase
     private function instantCatalog(): CatalogStatistics
     {
         return new class implements CatalogStatistics {
-            public function counts(): CatalogCounts
+            public function counts(bool $withoutImages): CatalogCounts
             {
-                return new CatalogCounts(1, 1, 0, 1);
+                return new CatalogCounts(1, 1, null, 1);
             }
         };
     }

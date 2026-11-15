@@ -74,9 +74,16 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   Drugi argument `alongside` jest wołany przy każdym odświeżeniu (pulpit odświeża nim zamówienia). `FreshnessBar`:
   „Dane z <czas polski przez `formatDateTime`>” (`muted-foreground`, `aria-live="polite"`), „Odśwież” i komunikat błędu
   (`role="alert"`); używają go oba ekrany. Pulpit: `KpiTile` (`title`, `icon`, `tone` z par `kpi-*`, `value`, opcjonalnie
-  `footer` i `to`: z `to` tytuł jest linkiem rozciągniętym na kafel), `CatalogTiles` („Produkty” z linkiem do `/products`
-  i stopką „Bez zdjęć”, „Kategorie” i „Bez zdjęć” bez linku, bo API nie ma dla nich ekranów), `TodoCard` („Do obsługi”:
-  linki bez liczb, wiersze z `todo.ts` według ról z `/me`: każda rola ma co najmniej jeden, rola z kilku widzi każdy
+  `footer`, `to`: z `to` tytuł jest linkiem rozciągniętym na kafel, `estimated`: „ok.” (`abbr` z `title="około"`) przed wartością
+  szacunkową, `description`: wyjaśnienie wartości, której nie ma, połączone z wartością przez `aria-describedby`),
+  `CatalogTiles` („Produkty”: `catalog.productCount` to szacunek bazy z „ok.” (od miliona „ok. 10 mln”), a `null` to „—”
+  z opisem „Liczba produktów będzie dostępna po aktualizacji statystyk bazy.”, link do `/products` i stopka „Bez zdjęć”
+  tylko przy kolejce `queues.productsWithoutImages`; „Kategorie” z linkiem do `/categories`; „Bez zdjęć” z linkiem do
+  `/products?images=none`, tylko gdy rola ma tę kolejkę, a jej brak zmienia siatkę na dwie kolumny), `TodoCard` („Do obsługi”:
+  wiersze z `todo.ts` według ról z `/me` i według `queues` z API: wiersz z kolejką `null` jest ukryty, pozostałe pokazują
+  jej liczbę (`todo-count`, `formatCount`: „1000+” przy `capped`, „0” zostaje), do wczytania pulpitu (i po błędzie jego
+  pobrania) wiersze ról są bez liczb; każdy wiersz prowadzi do przefiltrowanej listy, m.in. `/orders?refund=overdue`,
+  `/inventory?level=low_stock`, `/products?images=none`; każda rola ma co najmniej jeden, rola z kilku widzi każdy
   raz; do czasu wczytania `/me` karty nie ma) i `RecentOrders` (`useRecentOrders`: `GET /orders?perPage=5` tylko dla
   ról z `canViewOrders`, ładowane z odświeżeniem pulpitu i gdy `/me` pokaże dostęp; błąd, w tym 403 bez „Spróbuj
   ponownie”, zostaje w karcie z fokusem na jej nagłówku po ponowieniu, a nieudane odświeżenie zostawia pokazane
@@ -84,7 +91,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   Wysłane `success`, Dostarczone i Opłacone `info`, Czeka na płatność `warning`, Anulowane `danger`, Zwrócone `neutral`). Pulpit nie pokazuje stanu systemu. „Stan systemu” (`SystemStatus`): usługi z polską etykietą (`labels.ts`:
   `serviceLabel`, nieznana nazwa zostaje jak z API) i stanem „Działa” / „Nie działa” z opóźnieniem, „Zdarzenia czekające
   na wysłanie”, tabela kolejek w regionie `role="region"` z nazwą i `tabindex="0"` (przewijana w poziomie) i porównanie
-  indeksu wyszukiwania z katalogiem; `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
+  indeksu wyszukiwania z szacunkiem liczby produktów (`inSync: null` bez szacunku to „Nie można porównać: brak statystyk bazy.”, `data-testid="not-comparable"`); `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
   danych o stanie systemu”. Pliki bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).

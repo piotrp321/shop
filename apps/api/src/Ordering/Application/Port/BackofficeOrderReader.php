@@ -25,8 +25,10 @@ interface BackofficeOrderReader
     public function page(BackofficeOrderFilter $filter, ?BackofficeOrderCursor $after, int $limit): array;
 
     /**
-     * How many orders match the filter, whatever the cursor of a page: counted up to 10 000 (at most 10 001 rows are
-     * read), never the whole table.
+     * How many orders match the filter, whatever the cursor of a page: counted up to $limit (10 000 for a list, at most
+     * $limit + 1 rows are read), never the whole table.
+     *
+     * @param int $limit 1 or more
      */
-    public function count(BackofficeOrderFilter $filter): BoundedCount;
+    public function count(BackofficeOrderFilter $filter, int $limit = 10_000): BoundedCount;
 }

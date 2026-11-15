@@ -77,11 +77,11 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         }, $this->connection->executeQuery($sql, $parameters, $types)->fetchAllAssociative());
     }
 
-    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false): BoundedCount
+    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false, int $limit = BoundedCounter::DEFAULT_LIMIT): BoundedCount
     {
         [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
 
-        return $this->counter->count('catalog_product p', $conditions, $parameters);
+        return $this->counter->count('catalog_product p', $conditions, $parameters, limit: $limit);
     }
 
     public function summaries(array $ids): array

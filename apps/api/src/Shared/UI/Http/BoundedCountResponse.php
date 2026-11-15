@@ -12,7 +12,7 @@ use OpenApi\Attributes as OA;
  * match, counted up to a limit so that the cost does not grow with the table.
  */
 #[OA\Schema(
-    description: 'How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count, 10 000), otherwise `value` is exact.',
+    description: 'How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact.',
     required: ['value', 'capped'],
 )]
 final readonly class BoundedCountResponse

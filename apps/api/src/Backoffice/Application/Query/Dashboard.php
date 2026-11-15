@@ -8,6 +8,7 @@ final readonly class Dashboard
 {
     public function __construct(
         public CatalogSection $catalog,
+        public QueuesSection $queues,
         public ?SystemSection $system,
     ) {
     }

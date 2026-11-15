@@ -2,7 +2,7 @@ import { flushPromises, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StaffMe } from "@/stores/auth";
 import DashboardView from "@/views/DashboardView.vue";
-import { callsTo, dashboard, describeFreshness, mocks, mountScreen, ORDERS, order, serve, system } from "./dashboardSupport";
+import { callsTo, count, dashboard, describeFreshness, mocks, mountScreen, ORDERS, order, queues, serve, system } from "./dashboardSupport";
 
 vi.mock("@/api/client", async () => {
   const { mocks: shared } = await import("./dashboardMocks");
@@ -21,9 +21,20 @@ function todo(wrapper: VueWrapper) {
 const PAID = ["Opłacone do wysłania", "/orders?status=paid"];
 const NEW = ["Czekają na płatność", "/orders?status=new"];
 const REFUNDS = ["Zwroty do wykonania", "/orders?refund=pending"];
-const INVENTORY = ["Stany magazynowe", "/inventory"];
+const OVERDUE = ["Zwroty po terminie", "/orders?refund=overdue"];
+const INVENTORY = ["Stany magazynowe", "/inventory?level=out_of_stock"];
+const LOW = ["Niski stan", "/inventory?level=low_stock"];
+const IMAGES = ["Produkty bez zdjęć", "/products?images=none"];
 const PROMOTIONS = ["Aktywne promocje", "/promotions?status=active"];
 const CODES = ["Kody rabatowe", "/discount-codes?status=active"];
+
+/** The queues the API gives a role (the voters of the modules that own them): 1, 2, 3, ... in the order of the rows, null for the rest. */
+const QUEUES_OF: Record<Role, ReturnType<typeof queues>> = {
+  admin: queues({ paidToShip: count(1), awaitingPayment: count(2), pendingRefunds: count(3), overdueRefunds: count(4), outOfStockVariants: count(5), lowStockVariants: count(6), productsWithoutImages: count(7) }),
+  support: queues({ paidToShip: count(1), awaitingPayment: count(2), pendingRefunds: count(3), overdueRefunds: count(4) }),
+  warehouse: queues({ paidToShip: count(1), outOfStockVariants: count(5), lowStockVariants: count(6) }),
+  marketing: queues({ productsWithoutImages: count(7) }),
+};
 
 describe("DashboardView", () => {
   let wrapper: VueWrapper | undefined;
@@ -79,56 +90,96 @@ describe("DashboardView", () => {
   });
 
   describe("tiles of the catalog", () => {
-    it("shows the numbers from the API", async () => {
-      serve(dashboard());
+    it("shows the numbers from the API, the number of products marked as an estimate", async () => {
+      serve(dashboard({ queues: QUEUES_OF.admin }));
       wrapper = await mountDashboard();
 
       expect(callsTo("/api/v1/admin/dashboard")).toHaveLength(1);
       expect(wrapper.get("[data-testid=product-count]").text()).toBe("412");
+      expect(wrapper.get("[data-testid=kpi-estimated]").text()).toBe("ok.");
       expect(wrapper.get("[data-testid=category-count]").text()).toBe("36");
-      expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("0");
+      expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("7");
     });
 
     it("formats a number of the API for Polish readers", async () => {
-      serve(dashboard({ catalog: { productCount: 12345, categoryCount: 36, productsWithoutImages: 0 } }));
+      serve(dashboard({ catalog: { productCount: { value: 12345, estimated: true }, categoryCount: 36 } }));
       wrapper = await mountDashboard();
 
       expect(wrapper.get("[data-testid=product-count]").text().replace(/\s/g, " ")).toBe("12 345");
     });
 
-    it("links the tile „Produkty” to the products, and the tiles „Kategorie” and „Bez zdjęć” to nothing", async () => {
-      serve(dashboard());
+    it("shortens millions of products to „ok. 10 mln”", async () => {
+      serve(dashboard({ catalog: { productCount: { value: 10_000_000, estimated: true }, categoryCount: 36 } }));
+      wrapper = await mountDashboard();
+
+      expect(wrapper.get("[data-testid=product-count]").text().replace(/\s/g, " ")).toBe("10 mln");
+      expect(wrapper.get("[data-testid=kpi-estimated]").text()).toBe("ok.");
+    });
+
+    it("shows „—” with the explanation, and no estimate marker, without an estimate of the number of products", async () => {
+      serve(dashboard({ catalog: { productCount: null, categoryCount: 36 } }));
+      wrapper = await mountDashboard();
+
+      const tile = wrapper.findAll("[data-testid=kpi-tile]")[0];
+      expect(tile?.get("[data-testid=product-count]").text()).toBe("—");
+      expect(tile?.find("[data-testid=kpi-estimated]").exists()).toBe(false);
+      const description = tile?.get("[data-testid=kpi-description]");
+      expect(description?.text()).toBe("Liczba produktów będzie dostępna po aktualizacji statystyk bazy.");
+      expect(tile?.get("[data-testid=kpi-value]").attributes("aria-describedby")).toBe(description?.attributes("id"));
+      expect(wrapper.get("[data-testid=category-count]").text()).toBe("36");
+    });
+
+    it("links the tiles to their lists: „Produkty” to the products, „Kategorie” to the categories, „Bez zdjęć” to the products without images", async () => {
+      serve(dashboard({ queues: QUEUES_OF.admin }));
       wrapper = await mountDashboard();
 
       const tiles = wrapper.findAll("[data-testid=kpi-tile]");
       expect(tiles.map((tile) => tile.get("[data-testid=kpi-title]").text())).toEqual(["Produkty", "Kategorie", "Bez zdjęć"]);
       expect(tiles[0]?.findAll("a").map((link) => link.attributes("href"))).toEqual(["/products"]);
-      expect(tiles[1]?.find("a").exists()).toBe(false);
-      expect(tiles[2]?.find("a").exists()).toBe(false);
+      expect(tiles[1]?.findAll("a").map((link) => link.attributes("href"))).toEqual(["/categories"]);
+      expect(tiles[2]?.findAll("a").map((link) => link.attributes("href"))).toEqual(["/products?images=none"]);
     });
 
     it("shows the products without images in the footer of „Produkty”", async () => {
-      serve(dashboard({ catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 8 } }));
-      wrapper = await mountDashboard();
+      serve(dashboard({ queues: queues({ productsWithoutImages: count(8) }) }));
+      wrapper = await mountDashboard(["marketing"]);
 
       const footer = wrapper.findAll("[data-testid=kpi-tile]")[0]?.get("[data-testid=kpi-footer]");
       expect(footer?.text()).toContain("Bez zdjęć");
       expect(footer?.text()).toContain("8");
     });
 
+    it("shows „1000+” when the queue of the products without images is capped", async () => {
+      serve(dashboard({ queues: queues({ productsWithoutImages: count(1000, true) }) }));
+      wrapper = await mountDashboard(["marketing"]);
+
+      expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("1000+");
+      expect(wrapper.findAll("[data-testid=kpi-tile]")[0]?.get("[data-testid=kpi-footer]").text()).toContain("1000+");
+    });
+
     it("asks to add the images when some products have none", async () => {
-      serve(dashboard({ catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 8 } }));
-      wrapper = await mountDashboard();
+      serve(dashboard({ queues: queues({ productsWithoutImages: count(8) }) }));
+      wrapper = await mountDashboard(["marketing"]);
 
       expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("8");
       expect(wrapper.get("[data-testid=images-warning]").text()).toBe("Uzupełnij zdjęcia w formularzu produktu");
     });
 
-    it("shows no such request when every product has an image", async () => {
-      serve(dashboard());
-      wrapper = await mountDashboard();
+    it("shows no such request when every product has an image, and the zero stays", async () => {
+      serve(dashboard({ queues: queues({ productsWithoutImages: count(0) }) }));
+      wrapper = await mountDashboard(["marketing"]);
 
       expect(wrapper.find("[data-testid=images-warning]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=products-without-images]").text()).toBe("0");
+    });
+
+    it("has no tile „Bez zdjęć” and no footer of „Produkty” for a role without that queue", async () => {
+      serve(dashboard({ queues: QUEUES_OF.support }));
+      wrapper = await mountDashboard(["support"]);
+
+      expect(wrapper.findAll("[data-testid=kpi-tile]").map((tile) => tile.get("[data-testid=kpi-title]").text())).toEqual(["Produkty", "Kategorie"]);
+      expect(wrapper.find("[data-testid=products-without-images]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=kpi-footer]").exists()).toBe(false);
     });
 
     it("does not show the system status, which has its own screen, even to an administrator", async () => {
@@ -142,12 +193,12 @@ describe("DashboardView", () => {
 
   describe("„Do obsługi” by role", () => {
     it.each([
-      ["admin", [PAID, NEW, REFUNDS, INVENTORY, PROMOTIONS, CODES]],
-      ["support", [PAID, NEW, REFUNDS]],
-      ["warehouse", [PAID, INVENTORY]],
-      ["marketing", [PROMOTIONS, CODES]],
+      ["admin", [PAID, NEW, REFUNDS, OVERDUE, INVENTORY, LOW, IMAGES, PROMOTIONS, CODES]],
+      ["support", [PAID, NEW, REFUNDS, OVERDUE]],
+      ["warehouse", [PAID, INVENTORY, LOW]],
+      ["marketing", [IMAGES, PROMOTIONS, CODES]],
     ] as [Role, string[][]][])("shows %s the rows of their role, in order", async (role, rows) => {
-      serve(dashboard({ system: null }));
+      serve(dashboard({ queues: QUEUES_OF[role], system: null }));
       wrapper = await mountDashboard([role]);
 
       expect(todo(wrapper)).toEqual(rows);
@@ -155,25 +206,57 @@ describe("DashboardView", () => {
     });
 
     it("shows a member with several roles the rows of all of them once, in order", async () => {
-      serve(dashboard({ system: null }));
+      serve(dashboard({ queues: queues({ paidToShip: count(1), outOfStockVariants: count(5), lowStockVariants: count(6), productsWithoutImages: count(7) }), system: null }));
       wrapper = await mountDashboard(["warehouse", "marketing"]);
 
-      expect(todo(wrapper)).toEqual([PAID, INVENTORY, PROMOTIONS, CODES]);
+      expect(todo(wrapper)).toEqual([PAID, INVENTORY, LOW, IMAGES, PROMOTIONS, CODES]);
     });
 
-    it("has a label, a description and an arrow in every row, and no counts", async () => {
-      serve(dashboard({ system: null }));
+    it("shows the count of the queue in its row, and none in the rows without a queue", async () => {
+      serve(dashboard({ queues: QUEUES_OF.admin, system: null }));
+      wrapper = await mountDashboard(["admin"]);
+
+      const counts = wrapper.findAll("[data-testid=todo-item]").map((item) => item.find("[data-testid=todo-count]").exists() && item.get("[data-testid=todo-count]").text());
+      expect(counts).toEqual(["1", "2", "3", "4", "5", "6", "7", false, false]);
+    });
+
+    it("shows „1000+” for a capped queue and keeps a row with 0", async () => {
+      serve(dashboard({ queues: queues({ paidToShip: count(1000, true), awaitingPayment: count(0) }), system: null }));
+      wrapper = await mountDashboard(["support"]);
+
+      const items = wrapper.findAll("[data-testid=todo-item]");
+      expect(items[0]?.get("[data-testid=todo-count]").text()).toBe("1000+");
+      expect(items[1]?.get("[data-testid=todo-label]").text()).toBe("Czekają na płatność");
+      expect(items[1]?.get("[data-testid=todo-count]").text()).toBe("0");
+    });
+
+    it("hides the row of a queue the API gave null, whatever the role says", async () => {
+      serve(dashboard({ queues: queues({ paidToShip: count(2) }), system: null }));
+      wrapper = await mountDashboard(["support"]);
+
+      expect(todo(wrapper)).toEqual([PAID]);
+    });
+
+    it("shows the rows of the role without counts while the dashboard loads and when it failed", async () => {
+      mocks.get.mockImplementation(async () => new Promise(() => {}));
+      wrapper = await mountDashboard(["support"]);
+
+      expect(todo(wrapper)).toEqual([PAID, NEW, REFUNDS, OVERDUE]);
+      expect(wrapper.find("[data-testid=todo-count]").exists()).toBe(false);
+    });
+
+    it("has a label, a description and an arrow in every row", async () => {
+      serve(dashboard({ queues: QUEUES_OF.admin, system: null }));
       wrapper = await mountDashboard(["admin"]);
 
       for (const item of wrapper.findAll("[data-testid=todo-item]")) {
         expect(item.find("[data-testid=todo-description]").text().length).toBeGreaterThan(0);
         expect(item.findAll("svg[aria-hidden=true]").length).toBeGreaterThanOrEqual(2);
       }
-      expect(wrapper.get("[data-testid=todo]").text()).not.toMatch(/\d/);
     });
 
     it("has a heading „Do obsługi” for the card", async () => {
-      serve(dashboard());
+      serve(dashboard({ queues: QUEUES_OF.support }));
       wrapper = await mountDashboard(["support"]);
 
       expect(wrapper.findAll("h2").map((heading) => heading.text())).toContain("Do obsługi");
@@ -299,7 +382,7 @@ describe("DashboardView", () => {
             }
             return response;
           }
-          return { data: dashboard(), response: { status: 200 }, rest };
+          return { data: dashboard({ queues: QUEUES_OF.admin }), response: { status: 200 }, rest };
         });
       }
 
@@ -314,7 +397,7 @@ describe("DashboardView", () => {
         expect(card.get("[data-testid=orders-retry]").text()).toBe("Spróbuj ponownie");
         expect(wrapper.find("[data-testid=dashboard-error]").exists()).toBe(false);
         expect(wrapper.get("[data-testid=product-count]").text()).toBe("412");
-        expect(todo(wrapper)).toHaveLength(6);
+        expect(todo(wrapper)).toHaveLength(9);
       });
 
       it("explains a request that did not reach the API", async () => {
@@ -450,7 +533,7 @@ describe("DashboardView", () => {
 
 describeFreshness("DashboardView", {
   mount: () => mountDashboard(["admin"]),
-  withNumber: (value) => dashboard({ catalog: { productCount: value, categoryCount: 1, productsWithoutImages: 0 } }),
+  withNumber: (value) => dashboard({ catalog: { productCount: { value, estimated: true }, categoryCount: 1 } }),
   readNumber: (view) => view.get("[data-testid=product-count]").text(),
-  shown: "Produkty",
+  shown: "Kategorie",
 });

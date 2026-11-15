@@ -34,8 +34,4 @@ interface ProductRepository
      * @return iterable<Product>
      */
     public function all(): iterable;
-
-    public function count(): int;
-
-    public function countWithoutImages(): int;
 }

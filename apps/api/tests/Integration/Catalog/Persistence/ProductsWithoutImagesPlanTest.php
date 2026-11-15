@@ -86,6 +86,20 @@ final class ProductsWithoutImagesPlanTest extends KernelTestCase
         self::assertSame(86, $this->source->count(null, null, ProductStatus::Published, true)->value);
     }
 
+    public function testTheQueueOfTheDashboardCountsThroughThePartialIndexUpToItsLimit(): void
+    {
+        $index = $this->partialIndex();
+
+        $capped = $this->source->count(null, null, null, true, 50);
+        $plan = $this->recording->planOfTheLastQuery($this->connection, false);
+        $all = $this->source->count(null, null, null, true, 1000);
+
+        self::assertSame([50, true], [$capped->value, $capped->capped]);
+        self::assertSame([100, false], [$all->value, $all->capped]);
+        self::assertStringContainsString($index, $plan, $plan);
+        self::assertDoesNotMatchRegularExpression('/Seq Scan on catalog_product(?![_a-z])/', $plan, $plan);
+    }
+
     /**
      * The name of the partial index of the temporary copy.
      */

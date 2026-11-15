@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Dashboard
-         * @description Catalogue numbers for every staff member. The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.
+         * @description Catalogue numbers and the queues of work for every staff member: each queue only for the roles that handle it (`queues` fields are null for the others), counted up to 1000. The number of products is an estimate of the database (null before its first statistics). The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.
          */
         get: operations["getDashboard"];
         put?: never;
@@ -1258,17 +1258,50 @@ export interface components {
              */
             version: number;
         };
+        /** @description The number of products as the statistics of the database estimate it; the products are never counted for the dashboard. */
+        DashboardProductCountResponse: {
+            /** @example 10000000 */
+            value: number;
+            /**
+             * @description Always true: the number is an estimate.
+             * @default true
+             * @example true
+             */
+            estimated: boolean;
+        };
         /** @description Catalogue numbers, from the database. */
         DashboardCatalogResponse: {
-            /** @example 412 */
-            productCount: number;
+            /** @description The estimated number of products. Null while the database has no statistics of the products yet (they are refreshed after a mass change and by the autovacuum). */
+            productCount: components["schemas"]["DashboardProductCountResponse"] | null;
             /** @example 36 */
             categoryCount: number;
+        };
+        /** @description How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact. */
+        BoundedCountResponse: {
+            /** @example 1234 */
+            value: number;
             /**
-             * @description Products with no image.
-             * @example 8
+             * @description True when there are more matching rows than `value`.
+             * @example false
              */
-            productsWithoutImages: number;
+            capped: boolean;
+        };
+        /** @description The work waiting for the staff member. Every queue is counted up to 1000 (`capped`: more than that) by the module that owns it, and is null when the staff member has no access to the queue: the roles are listed with each field. */
+        DashboardQueuesResponse: {
+            /** @description Paid orders waiting for shipping (`/orders?status=paid`). Administrators, support, warehouse. */
+            paidToShip: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Orders not paid yet (`/orders?status=new`). Administrators and support. */
+            awaitingPayment: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Refunds to do (`/orders?refund=pending`). Administrators and support. */
+            pendingRefunds: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Refunds past their due date (`/orders?refund=overdue`). Administrators and support. */
+            overdueRefunds: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Variants with nothing available (`/inventory?level=out_of_stock`). Administrators and warehouse. */
+            outOfStockVariants: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Variants with 1 to 5 available (`/inventory?level=low_stock`). Administrators and warehouse. */
+            lowStockVariants: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Products with no image (`/products?images=none`). Administrators and marketing. */
+            productsWithoutImages: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description The state of one service of the stack. */
         DashboardServiceResponse: {
@@ -1316,15 +1349,15 @@ export interface components {
              */
             indexedProducts: number | null;
             /**
-             * @description Products in the database.
+             * @description The estimated number of products in the database. Null while the database has no statistics of the products yet.
              * @example 412
              */
-            catalogProducts: number;
+            catalogProducts: number | null;
             /**
-             * @description Whether both numbers are equal. False when the index cannot be counted.
+             * @description Whether the index is within 1% of the estimated number of products. False when the index cannot be counted, null without an estimate to compare with.
              * @example true
              */
-            inSync: boolean;
+            inSync: boolean | null;
         };
         /** @description The state of the system, for administrators. */
         DashboardSystemResponse: {
@@ -1338,6 +1371,7 @@ export interface components {
         /** @description What the admin dashboard shows. */
         DashboardResponse: {
             catalog: components["schemas"]["DashboardCatalogResponse"];
+            queues: components["schemas"]["DashboardQueuesResponse"];
             /** @description Null unless the staff member is an administrator. */
             system: components["schemas"]["DashboardSystemResponse"] | null;
         };
@@ -1422,16 +1456,6 @@ export interface components {
              * @example 2026-11-01T12:30:00+00:00
              */
             updatedAt: string;
-        };
-        /** @description How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count, 10 000), otherwise `value` is exact. */
-        BoundedCountResponse: {
-            /** @example 1234 */
-            value: number;
-            /**
-             * @description True when there are more matching rows than `value`.
-             * @example false
-             */
-            capped: boolean;
         };
         /** @description A page of the product list of the panel. */
         ProductListResponse: {
