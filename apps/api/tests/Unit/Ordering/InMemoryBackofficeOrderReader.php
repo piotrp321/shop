@@ -8,6 +8,7 @@ use App\Ordering\Application\Port\BackofficeOrderFilter;
 use App\Ordering\Application\Port\BackofficeOrderReader;
 use App\Ordering\Application\Port\ListedOrder;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
+use App\Shared\Domain\BoundedCount;
 
 /**
  * Answers every page with the given orders (cut to the limit) and records what it was asked for; the filtering and
@@ -18,11 +19,16 @@ final class InMemoryBackofficeOrderReader implements BackofficeOrderReader
     /** @var list<array{BackofficeOrderFilter, ?BackofficeOrderCursor, int}> */
     public array $pages = [];
 
+    /** @var list<BackofficeOrderFilter> */
+    public array $counts = [];
+    public BoundedCount $total;
+
     /**
      * @param list<ListedOrder> $orders
      */
     public function __construct(public array $orders = [])
     {
+        $this->total = new BoundedCount(\count($orders), false);
     }
 
     public function page(BackofficeOrderFilter $filter, ?BackofficeOrderCursor $after, int $limit): array
@@ -30,5 +36,12 @@ final class InMemoryBackofficeOrderReader implements BackofficeOrderReader
         $this->pages[] = [$filter, $after, $limit];
 
         return \array_slice($this->orders, 0, $limit);
+    }
+
+    public function count(BackofficeOrderFilter $filter): BoundedCount
+    {
+        $this->counts[] = $filter;
+
+        return $this->total;
     }
 }

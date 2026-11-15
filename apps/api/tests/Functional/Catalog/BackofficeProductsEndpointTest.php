@@ -170,7 +170,7 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         self::assertSame(['value' => 1, 'capped' => false], $byCategory['total']);
         self::assertSame(['value' => 0, 'capped' => false], $none['total']);
         $this->assertKeysMatchSchema($all, 'ProductListResponse');
-        $this->assertKeysMatchSchema($all['total'], 'BoundedCount');
+        $this->assertKeysMatchSchema($all['total'], 'BoundedCountResponse');
     }
 
     public function testTheListSearchesByNameAndFiltersByCategory(): void

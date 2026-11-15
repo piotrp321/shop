@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Pricing\UI\Http;
 
 use App\Pricing\Application\Query\PriceList;
-use App\Shared\Domain\BoundedCount;
+use App\Shared\UI\Http\BoundedCountResponse;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
@@ -23,14 +23,14 @@ final readonly class PriceListResponse
         #[OA\Property(
             description: 'How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.',
             nullable: true,
-            allOf: [new OA\Schema(ref: '#/components/schemas/BoundedCount')],
+            allOf: [new OA\Schema(ref: new Model(type: BoundedCountResponse::class))],
         )]
-        public ?BoundedCount $total,
+        public ?BoundedCountResponse $total,
     ) {
     }
 
     public static function of(PriceList $list): self
     {
-        return new self(array_map(PriceListItemResponse::of(...), $list->items), $list->next, $list->total);
+        return new self(array_map(PriceListItemResponse::of(...), $list->items), $list->next, BoundedCountResponse::ofNullable($list->total));
     }
 }

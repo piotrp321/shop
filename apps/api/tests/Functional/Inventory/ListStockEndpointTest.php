@@ -178,7 +178,7 @@ final class ListStockEndpointTest extends WebTestCase
         self::assertSame(['value' => 3, 'capped' => false], $byBoth['total']);
         self::assertSame(['value' => 0, 'capped' => false], $none['total']);
         $this->assertKeysMatchSchema($all, 'StockListResponse');
-        $this->assertKeysMatchSchema($all['total'], 'BoundedCount');
+        $this->assertKeysMatchSchema($all['total'], 'BoundedCountResponse');
     }
 
     public function testResponseIsPrivateAndNotStored(): void

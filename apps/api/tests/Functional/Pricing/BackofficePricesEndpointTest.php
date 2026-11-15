@@ -212,7 +212,7 @@ final class BackofficePricesEndpointTest extends WebTestCase
         self::assertSame(['value' => 4, 'capped' => false], $byBoth['total']);
         self::assertSame(['value' => 0, 'capped' => false], $none['total']);
         $this->assertKeysMatchSchema($all, 'PriceListResponse');
-        $this->assertKeysMatchSchema($all['total'], 'BoundedCount');
+        $this->assertKeysMatchSchema($all['total'], 'BoundedCountResponse');
     }
 
     public function testPatternCharactersOfTheSearchAreLiteral(): void

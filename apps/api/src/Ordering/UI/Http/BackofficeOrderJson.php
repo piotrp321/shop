@@ -9,6 +9,7 @@ use App\Ordering\Application\Query\BackofficeOrderListItem;
 use App\Ordering\Application\View\BackofficeOrderView;
 use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Application\View\StatusChangeView;
+use App\Shared\UI\Http\BoundedCountResponse;
 
 /**
  * The bodies of the order endpoints of the panel, in the schemas of nelmio_api_doc.yaml (area `admin`):
@@ -111,6 +112,7 @@ final class BackofficeOrderJson
                 ],
             ], $list->items),
             'nextCursor' => $list->nextCursor,
+            'total' => BoundedCountResponse::ofNullable($list->total),
         ];
     }
 

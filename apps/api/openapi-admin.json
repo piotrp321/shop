@@ -1560,7 +1560,7 @@
                     "Ordering"
                 ],
                 "summary": "Order list",
-                "description": "A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.",
+                "description": "A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.",
                 "operationId": "listOrders",
                 "parameters": [
                     {
@@ -3241,31 +3241,12 @@
                 },
                 "type": "object"
             },
-            "BoundedCount": {
-                "description": "How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count, 10 000), otherwise `value` is exact.",
-                "required": [
-                    "value",
-                    "capped"
-                ],
-                "properties": {
-                    "value": {
-                        "type": "integer",
-                        "example": 1234,
-                        "minimum": 0
-                    },
-                    "capped": {
-                        "description": "True when there are more matching rows than `value`.",
-                        "type": "boolean",
-                        "example": false
-                    }
-                },
-                "type": "object"
-            },
             "BackofficeOrderList": {
                 "description": "A page of the order list.",
                 "required": [
                     "items",
-                    "nextCursor"
+                    "nextCursor",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -3279,6 +3260,15 @@
                         "type": "string",
                         "example": "eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many orders match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -5148,6 +5138,26 @@
                 },
                 "type": "object"
             },
+            "BoundedCountResponse": {
+                "description": "How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count, 10 000), otherwise `value` is exact.",
+                "required": [
+                    "value",
+                    "capped"
+                ],
+                "properties": {
+                    "value": {
+                        "type": "integer",
+                        "example": 1234,
+                        "minimum": 0
+                    },
+                    "capped": {
+                        "description": "True when there are more matching rows than `value`.",
+                        "type": "boolean",
+                        "example": false
+                    }
+                },
+                "type": "object"
+            },
             "ProductListResponse": {
                 "description": "A page of the product list of the panel.",
                 "required": [
@@ -5173,7 +5183,7 @@
                         "nullable": true,
                         "allOf": [
                             {
-                                "$ref": "#/components/schemas/BoundedCount"
+                                "$ref": "#/components/schemas/BoundedCountResponse"
                             }
                         ]
                     }
@@ -5542,7 +5552,7 @@
                         "nullable": true,
                         "allOf": [
                             {
-                                "$ref": "#/components/schemas/BoundedCount"
+                                "$ref": "#/components/schemas/BoundedCountResponse"
                             }
                         ]
                     }
@@ -5872,7 +5882,7 @@
                         "nullable": true,
                         "allOf": [
                             {
-                                "$ref": "#/components/schemas/BoundedCount"
+                                "$ref": "#/components/schemas/BoundedCountResponse"
                             }
                         ]
                     }
