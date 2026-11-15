@@ -1,12 +1,10 @@
 import { mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
-import PrimeVue from "primevue/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory } from "vue-router";
 import App from "@/App.vue";
 import { clearLoginProblem, reportLoginProblem } from "@/auth/loginProblem";
 import { SIGNIN_ATTEMPT_KEY } from "@/auth/signinAttempt";
-import { primeVueOptions } from "@/primevue";
 import { createAppRouter } from "@/router";
 
 const userManager = vi.hoisted(() => ({
@@ -36,7 +34,7 @@ describe("App", () => {
     reportLoginProblem("Nie udało się potwierdzić sesji.");
     sessionStorage.setItem(SIGNIN_ATTEMPT_KEY, "1");
 
-    const wrapper = mount(App, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] } });
+    const wrapper = mount(App, { global: { plugins: [createPinia(), router] } });
 
     expect(wrapper.get("[data-testid=login-problem]").attributes("role")).toBe("alert");
     expect(wrapper.get("[data-testid=login-problem]").text()).toContain("Nie udało się potwierdzić sesji.");
@@ -50,13 +48,13 @@ describe("App", () => {
     wrapper.unmount();
   });
 
-  it("mounts with PrimeVue, Pinia and the router and renders the layout around the dashboard", async () => {
+  it("mounts with Pinia and the router and renders the layout around the dashboard", async () => {
     userManager.getUser.mockResolvedValue({ expired: false });
     const router = createAppRouter(userManager, createMemoryHistory());
     await router.push("/");
     await router.isReady();
 
-    const wrapper = mount(App, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] } });
+    const wrapper = mount(App, { global: { plugins: [createPinia(), router] } });
 
     expect(wrapper.find("nav").text()).toContain("Pulpit");
     expect(wrapper.find("header [data-testid=account]").exists()).toBe(true);

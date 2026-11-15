@@ -4,7 +4,7 @@ import type { components } from "@/api/schema";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
 
-/** A category of the tree; the shape of a PrimeVue `TreeNode`, so the views still on PrimeVue pass it to `TreeSelect`. */
+/** A category of the tree: its id as `key`, its name as `label` and its subcategories. */
 export interface CategoryTreeNode {
   key: string;
   label: string;

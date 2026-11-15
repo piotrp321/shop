@@ -1,12 +1,10 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
-import PrimeVue from "primevue/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onMounted, ref } from "vue";
 import { createMemoryHistory, createRouter, RouterView } from "vue-router";
 import { clearLoginProblem } from "@/auth/loginProblem";
 import AppLayout from "@/layout/AppLayout.vue";
-import { primeVueOptions } from "@/primevue";
 
 const mocks = vi.hoisted(() => ({ signoutRedirect: vi.fn(), get: vi.fn() }));
 
@@ -85,7 +83,7 @@ describe("AppLayout: the focus after a change of page", () => {
   async function mountShell(path = "/") {
     router = createRouter({ history: createMemoryHistory(), routes });
     await router.push(path);
-    wrapper = mount(RouterView, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] }, attachTo: document.body });
+    wrapper = mount(RouterView, { global: { plugins: [createPinia(), router] }, attachTo: document.body });
     await flushPromises();
   }
 

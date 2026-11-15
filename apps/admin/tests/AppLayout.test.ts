@@ -1,12 +1,10 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
-import PrimeVue from "primevue/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "vue-sonner";
 import { createMemoryHistory, createRouter, RouterView } from "vue-router";
 import { clearLoginProblem } from "@/auth/loginProblem";
 import AppLayout from "@/layout/AppLayout.vue";
-import { primeVueOptions } from "@/primevue";
 
 const mocks = vi.hoisted(() => ({ signoutRedirect: vi.fn(), get: vi.fn() }));
 
@@ -38,7 +36,7 @@ async function mountLayout(path = "/", attach = false) {
   });
   await router.push(path);
   const wrapper = mount(RouterView, {
-    global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] },
+    global: { plugins: [createPinia(), router] },
     attachTo: attach ? document.body : undefined,
   });
   return Object.assign(wrapper, { router });

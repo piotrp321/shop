@@ -1,7 +1,6 @@
 import * as Sentry from "@sentry/vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import PrimeVue from "primevue/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineComponent } from "vue";
 import { createMemoryHistory, createRouter, RouterView } from "vue-router";
@@ -9,7 +8,6 @@ import AppLayout from "@/layout/AppLayout.vue";
 import { createApiClient } from "@/api/client";
 import { initSentry, setSentryUser } from "@/observability";
 import { buildSentryOptions } from "@/observability/options";
-import { primeVueOptions } from "@/primevue";
 import { useAuthStore } from "@/stores/auth";
 
 /**
@@ -363,7 +361,7 @@ describe("the user of the events (P5)", () => {
     expect(initSentry(app, router, { transport })).toBe(true);
     vi.useFakeTimers();
     await router.push("/");
-    const wrapper = mount(RouterView, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] } });
+    const wrapper = mount(RouterView, { global: { plugins: [createPinia(), router] } });
     await flushPromises();
     expect(Sentry.getIsolationScope().getUser()).toEqual({ id: SUB });
 

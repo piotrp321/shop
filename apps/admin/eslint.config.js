@@ -3,17 +3,6 @@ import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import pluginVue from "eslint-plugin-vue";
 import tseslint from "typescript-eslint";
 
-/**
- * Files not yet moved off PrimeVue (docs/features/admin-design/spec.md, „Tokeny i typografia”): the colour, style and
- * import rules below do not apply to them. Explicit paths only, no patterns or directories. Every migration removes its
- * files from the list and no new file joins it: tests/lint/color-rules.test.ts checks that every entry exists and
- * imports PrimeVue. ADMIN-SCREENS removes the list together with PrimeVue.
- */
-export const LEGACY_FILES = [
-  "src/main.ts",
-  "src/primevue.ts",
-];
-
 // Every CSS named colour (CSS Color Module Level 4), so that bg-[rebeccapurple] is caught as well as bg-[red].
 const NAMED_COLORS = [
   "aliceblue", "antiquewhite", "aqua", "aquamarine", "azure", "beige", "bisque", "black", "blanchedalmond", "blue",
@@ -101,7 +90,6 @@ export default defineConfig([
     // The look comes only from the tokens (src/styles/tokens.css) through Tailwind classes and the components of
     // src/components/ui: no colour written out, no palette class, no style attribute or <style> block, no PrimeVue.
     files: ["src/**/*.{ts,vue}"],
-    ignores: LEGACY_FILES,
     plugins: { "better-tailwindcss": betterTailwindcss },
     settings: {
       "better-tailwindcss": { entryPoint: "src/styles/tokens.css" },
@@ -149,7 +137,7 @@ export default defineConfig([
           patterns: [
             {
               group: ["primevue", "primevue/*", "@primeuix/*", "primeicons", "primeicons/*"],
-              message: "PrimeVue is being removed: use the components of src/components/ui (shadcn-vue) and Lucide icons.",
+              message: "PrimeVue is not used: use the components of src/components/ui (shadcn-vue) and Lucide icons.",
             },
           ],
         },
