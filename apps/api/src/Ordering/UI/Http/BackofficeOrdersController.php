@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ordering\UI\Http;
 
 use App\Ordering\Application\Query\BackofficeOrderList;
+use App\Ordering\Application\Query\BackofficeOrderSort;
 use App\Ordering\Application\Query\InvalidBackofficeOrderCursor;
 use App\Ordering\Application\Query\ListBackofficeOrders;
 use App\Ordering\Domain\OrderStatus;
@@ -40,17 +41,18 @@ final class BackofficeOrdersController
     #[OA\Get(
         operationId: 'listOrders',
         summary: 'Order list',
-        description: 'A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the '
-            .'nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine '
-            .'with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); '
-            .'anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the first page (without `after`) also '
+        description: 'A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the '
+            .'nearest due date first (then by id), which takes no `sort`. The status filter and the search combine '
+            .'with it; sorting by the amount takes no search. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); '
+            .'anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also '
             .'has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.',
         tags: ['Ordering'],
         parameters: [
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only the orders in this status.', schema: new OA\Schema(ref: '#/components/schemas/BackofficeOrderStatus')),
             new OA\Parameter(name: 'refund', in: 'query', required: false, description: '`pending`: only the orders with a refund to do, nearest due date first.', schema: new OA\Schema(type: 'string', enum: ['pending'])),
             new OA\Parameter(name: 'q', in: 'query', required: false, description: 'An order number or an email, exact, any letter case; 1 to 254 characters once trimmed.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: ListBackofficeOrders::MAX_QUERY_LENGTH)),
-            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `nextCursor` of the previous page.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeOrderListQuery::MAX_CURSOR_LENGTH)),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q`.', schema: new OA\Schema(type: 'string', enum: BackofficeOrderListQuery::SORTS, default: '-placedAt')),
+            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `nextCursor` of the previous page of the same sort.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeOrderListQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: ListBackofficeOrders::MAX_PER_PAGE, default: ListBackofficeOrders::DEFAULT_PER_PAGE)),
         ],
         responses: [
@@ -68,7 +70,7 @@ final class BackofficeOrdersController
 
         try {
             /** @var BackofficeOrderList $list */
-            $list = $this->handle(new ListBackofficeOrders($status, null !== $query->refund, $query->q, $query->after, $query->perPage));
+            $list = $this->handle(new ListBackofficeOrders($status, null !== $query->refund, $query->q, $query->after, $query->perPage, null === $query->sort ? null : BackofficeOrderSort::from($query->sort)));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued (for this sort) is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

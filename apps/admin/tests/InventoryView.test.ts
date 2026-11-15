@@ -355,13 +355,45 @@ describe("InventoryView", () => {
       expect(document.activeElement).toBe(page().get("[data-testid=search]").element);
     });
 
+    it("has a Select „Sortuj” by the name or the last change, which sets the address and asks once from the first page", async () => {
+      serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } } });
+      wrapper = await mountView();
+      const trigger = page().get<HTMLButtonElement>("[data-testid=sort]");
+      expect(trigger.element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(trigger.text()).toBe("Nazwa A–Z");
+      await page().get("[data-testid=next-page]").trigger("click");
+      await settle();
+
+      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "-updatedAt");
+      await settle();
+
+      expect(stockQueries().at(-1)).toEqual({ perPage: 10, sort: "-updatedAt" });
+      expect(stockQueries().filter((query) => query.sort === "-updatedAt")).toHaveLength(1);
+      expect(page().get("[data-testid=page-number]").text()).toBe("Strona 1");
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/inventory?sort=-updatedAt");
+      expect(page().get("[data-testid=sort]").text()).toBe("Ostatnio zmienione");
+      expect(page().findAll("th[aria-sort]"), "the name is in the row of the group, not in a column").toHaveLength(0);
+    });
+
+    it("applies a sort that the address brings from outside with one request, over the rows of the groups", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/inventory?sort=-name");
+      await settle();
+
+      expect(stockQueries()).toEqual([{ perPage: 10, sort: "-name" }]);
+      expect(page().get("[data-testid=sort]").text()).toBe("Nazwa Z–A");
+    });
+
     it("goes back to the first page when the page size changes, and asks for the size always", async () => {
       serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } } });
       wrapper = await mountView();
       await page().get("[data-testid=next-page]").trigger("click");
       await settle();
 
-      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "25");
+      wrapper.findAllComponents(Select)[1]!.vm.$emit("update:modelValue", "25");
       await settle();
 
       expect(stockQueries().at(-1)).toEqual({ perPage: 25 });

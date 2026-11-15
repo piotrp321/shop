@@ -108,7 +108,67 @@ describe("ProductsView", () => {
   });
 
   const statusSelect = () => wrapper!.findAllComponents(Select)[0]!;
-  const perPageSelect = () => wrapper!.findAllComponents(Select)[1]!;
+  const sortSelect = () => wrapper!.findAllComponents(Select)[1]!;
+  const perPageSelect = () => wrapper!.findAllComponents(Select)[2]!;
+
+  describe("the sort", () => {
+    const sortTrigger = () => wrapper!.get<HTMLButtonElement>("[data-testid=sort]");
+    const head = (title: string) => wrapper!.findAll("th").find((th) => th.text() === title)!;
+    const one = { "": { items: [item("Buty")], next: null } };
+
+    it("has a Select „Sortuj” with a visible label that shows the name A–Z and offers every order of the API", async () => {
+      serve(one);
+      wrapper = await mountView();
+
+      expect(sortTrigger().element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(sortTrigger().text()).toBe("Nazwa A–Z");
+      sortTrigger().element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await settle();
+      expect([...document.body.querySelectorAll("[role=option]")].map((option) => option.textContent?.trim()).slice(-4)).toEqual([
+        "Nazwa A–Z",
+        "Nazwa Z–A",
+        "Ostatnio zmienione",
+        "Najdawniej zmienione",
+      ]);
+    });
+
+    it("sets the sort in the address with one request from the first page, and marks the sorted column with aria-sort", async () => {
+      serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      wrapper = await mountView();
+      expect(head("Produkt").attributes("aria-sort")).toBe("ascending");
+      await wrapper.get("[data-testid=next-page]").trigger("click");
+      await settle();
+
+      sortSelect().vm.$emit("update:modelValue", "-updatedAt");
+      await settle();
+
+      expect(productQueries().at(-1)).toEqual({ sort: "-updatedAt" });
+      expect(productQueries().filter((query) => query.sort === "-updatedAt")).toHaveLength(1);
+      expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 1");
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/products?sort=-updatedAt");
+      expect(sortTrigger().text()).toBe("Ostatnio zmienione");
+      expect(head("Ostatnia zmiana").attributes("aria-sort")).toBe("descending");
+      expect(head("Produkt").attributes("aria-sort")).toBeUndefined();
+
+      sortSelect().vm.$emit("update:modelValue", "-name");
+      await settle();
+      expect(head("Produkt").attributes("aria-sort")).toBe("descending");
+      expect(head("Ostatnia zmiana").attributes("aria-sort")).toBeUndefined();
+    });
+
+    it("applies a sort that the address brings from outside with one request", async () => {
+      serve(one);
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/products?sort=updatedAt");
+      await settle();
+
+      expect(productQueries()).toEqual([{ sort: "updatedAt" }]);
+      expect(sortTrigger().text()).toBe("Najdawniej zmienione");
+      expect(head("Ostatnia zmiana").attributes("aria-sort")).toBe("ascending");
+    });
+  });
 
   describe("the rows", () => {
     it("shows a row per product with the thumbnail, the linked name, the slug, the main category, the variant count, the status and the last change", async () => {

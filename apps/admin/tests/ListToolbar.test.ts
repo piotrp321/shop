@@ -96,6 +96,68 @@ describe("ListToolbar", () => {
     expect(toolbar.emitted("update:perPage")).toEqual([[10]]);
   });
 
+  describe("the sort", () => {
+    const options = [
+      { value: "name", label: "Nazwa A–Z" },
+      { value: "-updatedAt", label: "Ostatnio zmienione" },
+    ];
+    const sortTrigger = () => document.body.querySelector<HTMLButtonElement>("[data-testid=sort]");
+    const open = async () => {
+      sortTrigger()!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await flushPromises();
+    };
+
+    it("has no sort for a list that cannot be sorted", () => {
+      mountToolbar();
+
+      expect(sortTrigger()).toBeNull();
+      expect(document.body.querySelector("[data-testid=sort-hint]")).toBeNull();
+    });
+
+    it("offers the orders of the list with a label, shows the one in use and reports the choice", async () => {
+      const toolbar = mountToolbar({ sortOptions: options, sort: "-updatedAt" });
+
+      expect(sortTrigger()!.getAttribute("role")).toBe("combobox");
+      expect(sortTrigger()!.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(sortTrigger()!.textContent).toContain("Ostatnio zmienione");
+      await open();
+      expect([...document.body.querySelectorAll("[role=option]")].map((option) => option.textContent?.trim())).toEqual(["Nazwa A–Z", "Ostatnio zmienione"]);
+
+      toolbar.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "name");
+      await flushPromises();
+      expect(toolbar.emitted("update:sort")).toEqual([["name"]]);
+    });
+
+    it("shows the placeholder while the list is in an order of its own", () => {
+      mountToolbar({ sortOptions: options, sort: null, sortPlaceholder: "Termin zwrotu" });
+
+      expect(sortTrigger()!.textContent).toContain("Termin zwrotu");
+    });
+
+    it("disables an option the filters do not allow, with its reason on it and in a status text that describes the field", async () => {
+      mountToolbar({
+        sortOptions: [options[0], { value: "total", label: "Najniższa kwota", disabledReason: "Kwoty nie da się sortować przy wyszukiwaniu." }],
+        sort: "name",
+      });
+
+      const hint = document.body.querySelector("[data-testid=sort-hint]")!;
+      expect(hint.getAttribute("role")).toBe("status");
+      expect(hint.textContent?.trim()).toBe("Kwoty nie da się sortować przy wyszukiwaniu.");
+      expect(sortTrigger()!.getAttribute("aria-describedby")).toBe(hint.id);
+      await open();
+      const [allowed, refused] = [...document.body.querySelectorAll<HTMLElement>("[role=option]")];
+      expect(allowed!.getAttribute("aria-disabled")).not.toBe("true");
+      expect(refused!.getAttribute("aria-disabled")).toBe("true");
+      expect(refused!.textContent).toContain("Kwoty nie da się sortować przy wyszukiwaniu.");
+    });
+
+    it("keeps the status text empty when every option can be chosen", () => {
+      mountToolbar({ sortOptions: options, sort: "name" });
+
+      expect(document.body.querySelector("[data-testid=sort-hint]")!.textContent?.trim()).toBe("");
+    });
+  });
+
   it("moves the focus to the search field on request", async () => {
     const toolbar = mountToolbar();
 

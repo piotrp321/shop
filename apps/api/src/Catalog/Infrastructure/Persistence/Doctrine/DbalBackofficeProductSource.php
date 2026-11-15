@@ -7,6 +7,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 use App\Catalog\Application\Port\BackofficeProductSource;
 use App\Catalog\Application\Query\BackofficeProduct;
 use App\Catalog\Application\Query\ProductCursor;
+use App\Catalog\Application\Query\ProductSort;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Shared\Domain\BoundedCount;
@@ -19,11 +20,15 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     // The conditions are constant fragments joined by AND; input only ever reaches the statement as parameters.
     // The name term (ILIKE '%…%') is served by the trigram index from 3 characters on; pg_trgm extracts no trigram from
     // a 2-character term, so those run as a scan of the (name, id) index with the term as a filter. The order and the
-    // keyset cursor are served by the (name, id) index. The cursor is a row comparison, which keeps it an index condition. A category matches when the product's
-    // main category or one of its additional categories is in the subtree: the path of every category starts with
-    // the path of its ancestors (materialized path), so the subtree is a prefix match on the path.
+    // keyset cursor are served by the (name, id) index, or by (updated_at, id) for the sort by the last change: both
+    // directions of a sort read the same index, forwards or backwards, because the direction of the id follows the
+    // one of the sorted column. The cursor is a row comparison in that direction, which keeps it an index condition.
+    // A category matches when the product's main category or one of its additional categories is in the subtree: the
+    // path of every category starts with the path of its ancestors (materialized path), so the subtree is a prefix
+    // match on the path.
     private const string TERM = 'p.name ILIKE :pattern';
-    private const string CURSOR = '(p.name, p.id) > (:after_name, CAST(:after_id AS uuid))';
+    private const string AFTER_NAME = '(p.name, p.id) %s (:after_value, CAST(:after_id AS uuid))';
+    private const string AFTER_UPDATED_AT = '(p.updated_at, p.id) %s (CAST(:after_value AS timestamptz), CAST(:after_id AS uuid))';
     private const string CATEGORY = <<<'SQL'
         (
             p.primary_category_id IN (SELECT c.id FROM catalog_category c WHERE c.path LIKE :prefix)
@@ -38,7 +43,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     {
     }
 
-    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, int $limit): array
+    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit): array
     {
         if ($limit < 1) {
             throw new \InvalidArgumentException('The page limit must be at least 1.');
@@ -47,20 +52,25 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         [$conditions, $parameters] = self::filter($term, $category, $status);
         $parameters['limit'] = $limit;
         $types = ['limit' => ParameterType::INTEGER];
+        $direction = $sort->isDescending() ? 'DESC' : 'ASC';
+        $column = $sort->byUpdatedAt() ? 'p.updated_at' : 'p.name';
         if (null !== $after) {
-            $conditions[] = self::CURSOR;
-            $parameters['after_name'] = $after->name;
+            if ($after->sort !== $sort) {
+                throw new \InvalidArgumentException('The cursor is of another sort.');
+            }
+            $conditions[] = \sprintf($sort->byUpdatedAt() ? self::AFTER_UPDATED_AT : self::AFTER_NAME, $sort->isDescending() ? '<' : '>');
+            $parameters['after_value'] = $after->value instanceof \DateTimeImmutable ? $after->value->format('Y-m-d H:i:s.uP') : $after->value;
             $parameters['after_id'] = $after->id;
         }
 
-        $sql = 'SELECT p.id, p.name, p.tax_class FROM catalog_product p'
+        $sql = 'SELECT p.id, p.name, p.tax_class, p.updated_at FROM catalog_product p'
             .([] === $conditions ? '' : ' WHERE '.implode(' AND ', $conditions))
-            .' ORDER BY p.name, p.id LIMIT :limit';
+            ." ORDER BY {$column} {$direction}, p.id {$direction} LIMIT :limit";
 
         return array_map(static function (array $row): BackofficeProduct {
-            \assert(\is_string($row['id']) && \is_string($row['name']) && \is_string($row['tax_class']));
+            \assert(\is_string($row['id']) && \is_string($row['name']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
 
-            return new BackofficeProduct($row['id'], $row['name'], $row['tax_class']);
+            return new BackofficeProduct($row['id'], $row['name'], $row['tax_class'], new \DateTimeImmutable($row['updated_at']));
         }, $this->connection->executeQuery($sql, $parameters, $types)->fetchAllAssociative());
     }
 

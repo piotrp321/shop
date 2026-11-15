@@ -6,7 +6,7 @@ i okna potwierdzenia. Opisuje fundament, powłokę, standardy oraz pulpit, „St
 rabatowe i zamówienia na tych standardach opisuje `docs/features/admin-screens/spec.md`. Standardy z tej specyfikacji
 obowiązują w całym panelu. Panel pokazuje
 wyłącznie dane, które API już zwraca (API i wygenerowany klient się nie zmieniły). Funkcje wymagające API
-(KPI sprzedaży, liczniki, sortowanie, kategorie, klienci, akcje masowe, wyszukiwarka globalna) są w ADMIN-FEATURES (#461).
+(KPI sprzedaży, liczniki, kategorie, klienci, akcje masowe, wyszukiwarka globalna) są w ADMIN-FEATURES (#461).
 
 Issues: #460, #250, #251, #346
 Zakres: `apps/admin`, `infra/docker-compose.yml`, `infra/k8s/charts/shop/templates/admin.yaml`, `infra/k8s/smoke/checks.py`, `infra/k8s/tests/test_workloads.py`, `e2e/support/catalog-admin.ts`, `e2e/support/panel-orders.ts`, `e2e/support/staff-login.ts`, `e2e/support/price-change.ts`, `e2e/support/promotions.ts`, `e2e/support/discount-codes.ts`, `e2e/tests/staff-dashboard.spec.ts`, `e2e/tests/stock-receipt.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `e2e/tests/order-management.spec.ts`, `e2e/tests/price-change.spec.ts`, `e2e/tests/promotions.spec.ts`, `e2e/tests/discount-codes.spec.ts`, `CLAUDE.md`, `README.md`, `docs/vision.md`, `docs/features/walking-skeleton/spec.md`, `docs/features/dashboard-data-freshness/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/order-management/spec.md`, `docs/features/agent-tester-ux/spec.md`, `.claude/agents/ux-reviewer.md`
@@ -60,8 +60,8 @@ Układ ekranu przy szerokości od 1024 px:
 
 Decyzja właściciela (2026-11-12): panel używa Tailwind CSS 4 i komponentów shadcn-vue
 (kod komponentów w repo, na prymitywach Reka UI) i ikon Lucide. TanStack Table (`@tanstack/vue-table`) nie ma
-w panelu i wejdzie w ADMIN-FEATURES razem z pierwszym sortowaniem i zaznaczaniem (D13): listy są stronicowane w API,
-a ukrywanie kolumn według priorytetu to klasy CSS, więc model tabeli nic nie daje. Uzasadnienie: ten sam
+w panelu (D13): listy są stronicowane i sortowane w API (kolejność wybiera `Select` „Sortuj”), a ukrywanie kolumn
+według priorytetu to klasy CSS, więc model tabeli nic nie daje. Uzasadnienie: ten sam
 rodzaj komponentów i tokenów co sklep (`apps/store`: Tailwind 4 i shadcn/ui), pełna kontrola nad wyglądem
 i dostępnością oraz brak ryzyka licencyjnego pakietów dawnej biblioteki (opis i powody: ADR
 `docs/adr/admin-ui-library.md`).
@@ -286,16 +286,18 @@ do adresu trafia dopiero zastosowana fraza.
 
 - **Pasek narzędzi**: wyszukiwarka (gdzie API ją ma, z dzisiejszymi regułami długości i opóźnienia), filtry listy
   (Select albo Combobox z etykietą widoczną albo dostępną), przycisk „Wyczyść filtry” widoczny, gdy jakikolwiek filtr
-  albo wyszukiwanie jest ustawione, wybór liczby wierszy i przycisk główny listy (np. „Dodaj produkt”) po prawej.
-- **Stan w adresie URL**: wyszukiwanie (`q`), filtry (np. `category`, `status`, `refund`) i rozmiar strony (`perPage`)
-  są w query stringu (`router.replace`, bez nowego wpisu historii przy każdym znaku); wartość domyślna (`perPage` 25) nie
+  albo wyszukiwanie jest ustawione (kolejność nie jest filtrem), `Select` „Sortuj” (listy produktów, cen, stanów
+  i zamówień), wybór liczby wierszy i przycisk główny listy (np. „Dodaj produkt”) po prawej. Opcja kolejności
+  niedozwolona przy bieżących filtrach jest wyłączona z opisem powodu przy opcji i w tekście statusu pod polem.
+- **Stan w adresie URL**: wyszukiwanie (`q`), filtry (np. `category`, `status`, `refund`), kolejność (`sort`, klucz
+  API) i rozmiar strony (`perPage`) są w query stringu (`router.replace`, bez nowego wpisu historii przy każdym znaku); wartość domyślna (`perPage` 25) nie
   trafia do adresu, a do żądania API tylko wtedy, gdy to nie 25 (domyślne API). Pozycja w stronicowaniu (kursor)
   nie trafia do adresu: przeładowanie wraca na pierwszą stronę, bo stos kursorów jest tylko w pamięci.
   - `useListUrlState` obserwuje `route.query`: zmiana z zewnątrz przy zamontowanym widoku (pozycja menu
     „Zwroty do wykonania” na `/orders`, wyszukiwarka topbaru na `/products`, link „Do obsługi”, Wstecz i Dalej
     przeglądarki) ustawia filtry, porzuca kursory i zaczyna od pierwszej strony; własny zapis listy przez
     `router.replace` nie wysyła drugiego żądania.
-  - Walidacja parametrów przed pierwszym żądaniem: nieznana wartość `status`, `refund` albo `perPage` jest pomijana
+  - Walidacja parametrów przed pierwszym żądaniem: nieznana wartość `status`, `refund`, `sort` albo `perPage` jest pomijana
     (lista jak bez niej, adres poprawiony); `category` jest sprawdzana w drzewie `useCategoryTree` (nieistniejąca
     pominięta, bo API dałoby 404; przy błędzie drzewa parametr też jest pominięty); `q` przechodzi reguły listy (np.
     produkty 2–100 znaków): tekst za krótki albo za długi jest pokazany w polu z dzisiejszą podpowiedzią, ale nie
@@ -339,8 +341,9 @@ do adresu trafia dopiero zastosowana fraza.
 - **Akcje wiersza**: kwadratowe przyciski z ikoną, nazwą dostępną zawierającą nazwę obiektu („Edytuj: Buty trailowe
   Norvane Grań 300”; zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”) i podpowiedzią (tooltip) z tą samą
   nazwą po najechaniu i fokusie. Akcja, której rola nigdy nie wykona, jest ukryta (widok jej nie podaje).
-- **Bez zaznaczania i sortowania**: API nie ma akcji masowych ani sortowania, więc `DataTable` w tym epiku ich nie
-  ma; dodaje je ADMIN-FEATURES razem z pierwszym użyciem. Nagłówki są zwykłym tekstem bez ikon sortowania.
+- **Sortowanie bez przycisków w nagłówkach, bez zaznaczania**: kolejność wybiera `Select` „Sortuj” w pasku listy
+  (sortuje API), a nagłówki są zwykłym tekstem bez ikon sortowania; kolumna, po której lista jest posortowana, ma
+  `aria-sort` na `<th>` (`ListColumn.sort`). Zaznaczania nie ma: API nie ma akcji masowych.
 - **Szerokość**: tabela mieści się w karcie; kolumny mają priorytety, a kolumny niższego priorytetu są ukryte jako
   kolumny poniżej ustalonej szerokości (opis per ekran niżej). Ukrycie kolumny nie ukrywa informacji: jej wartość
   pojawia się wtedy z etykietą jako dodatkowa linia w komórce głównej wiersza (np. „Kategoria: Namioty” i „Ostatnia
@@ -705,7 +708,7 @@ interfejsu, pomarańczowy przycisk główny Worf z ciemnym tekstem), WCAG 2.2 AA
   funkcji w API nie są pokazywane w tym epiku: powiadomienia, liczniki w menu,
   KPI i wykres sprzedaży, „Najczęściej kupowane”, kolumny SKU, Stan, Cena i Zamówienia na liście produktów,
   przełącznik siatka/lista, filtr zakresu cen, menu „Nowy”, pełny ekran, ustawienia, szybkie akcje, pozycje Klienci,
-  Kategorie, Raporty i Dziennik zmian; zaznaczanie i sortowanie list.
+  Kategorie, Raporty i Dziennik zmian; zaznaczanie list.
 - D4. Lista produktów nie ma rzędu kafli KPI; kafle są tylko na pulpicie.
 - D5. Pole wyszukiwania w topbarze szuka produktów (przejście do listy z frazą 2–100 znaków; krótsza nie nawiguje
   i pokazuje podpowiedź).
@@ -722,14 +725,14 @@ interfejsu, pomarańczowy przycisk główny Worf z ciemnym tekstem), WCAG 2.2 AA
 - D12. Weryfikacja UX według sekcji „Weryfikacja UX i odbiór”: agent `ux-reviewer` przy 1280, 768 i 375 px (także
   wizualnie i przejściem klawiaturą), zrzuty ekranu każdego ekranu do przeglądu, ręczne sprawdzenie klawiaturą przez
   właściciela przy odbiorze.
-- D13. TanStack Table nie jest w panelu: `DataTable` stoi na komponencie `Table` shadcn-vue, a TanStack Table dojdzie
-  w ADMIN-FEATURES z sortowaniem i zaznaczaniem.
+- D13. TanStack Table nie jest w panelu: `DataTable` stoi na komponencie `Table` shadcn-vue, a sortowanie to `Select`
+  „Sortuj” z kluczami API, bez modelu tabeli.
 - D14. Podział na dwie części (2026-11-12): ten dokument (fundament, powłoka, pulpit, „Stan systemu”, produkty,
   standardy) i ekrany cen, stanów, promocji, kodów i zamówień (`docs/features/admin-screens/spec.md`).
 
 ## Poza zakresem
 
-Każda zmiana API i klienta TS (sortowanie, liczniki wyników, KPI sprzedaży, kolejki z liczbami, filtr „bez zdjęć”,
+Każda zmiana API i klienta TS (liczniki wyników, KPI sprzedaży, kolejki z liczbami, filtr „bez zdjęć”,
 filtr poziomu stanu, klienci, kategorie, akcje masowe, eksport, wyszukiwarka globalna Ctrl+K, dziennik zmian,
 wyszukiwanie częściowe zamówień): ADMIN-FEATURES (#461). Tryb ciemny. Zwijanie sidebaru na desktopie do ikon. Wygląd
 strony logowania Keycloaka. Ostrzeżenie przed wylogowaniem po bezczynności. Cena i stan w formularzu produktu

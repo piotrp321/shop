@@ -262,7 +262,7 @@ final class CustomerOrderHistoryEndpointTest extends WebTestCase
     {
         $moment = new \DateTimeImmutable('2026-11-05 10:00:00+00:00');
 
-        return BackofficeOrderCursor::after(new \App\Ordering\Application\Port\ListedOrder('0192f0c4-7c1a-7c4e-9a6e-000000000001', 'R-100001', $moment, 'returned', 'jan@example.com', 'Jan', 1_000, 'PLN', 1, 1_000, $moment, null), true)->encode();
+        return BackofficeOrderCursor::after(new \App\Ordering\Application\Port\ListedOrder('0192f0c4-7c1a-7c4e-9a6e-000000000001', 'R-100001', $moment, 'returned', 'jan@example.com', 'Jan', 1_000, 'PLN', 1, 1_000, $moment, null), \App\Ordering\Application\Query\BackofficeOrderSort::RefundDueDate)->encode();
     }
 
     /**

@@ -267,15 +267,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `canCompleteRefund` = zwrot do wykonania i `COMPLETE_REFUND`.
   - Zapytania panelu (`query.bus`, bez blokad): `GetBackofficeOrder(orderId)` czyta zamówienie przez
     `OrderRepository::get` i zwraca ten sam `BackofficeOrderView` co komendy pracownika (`overdue` z zegara; nieznane
-    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage)` czyta przez
+    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort)` czyta przez
     port `BackofficeOrderReader` (adapter DBAL `DbalBackofficeOrderReader`, liczba sztuk z sumy linii): `q` po
     przycięciu to dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$`, inaczej dokładny e-mail (`lower(email) =
-    lower(:email)`), gdy ma `@`, inaczej pusta lista bez odczytu; sort `placed_at DESC, id DESC`, a przy
-    `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC` (łączy się ze `status` i `q`).
-    Kursor keyset `BackofficeOrderCursor` (base64url JSON sortu, chwili w UTC z mikrosekundami i id); zły kursor
-    i kursor drugiego sortu to 400 przy `after`. Parametry: `q` 1–254 znaki po przycięciu bez NUL, `perPage` 1–100
-    (domyślnie 25), inaczej 400. Indeksy listy (migracja): `(placed_at DESC, id DESC)`,
-    `(status, placed_at DESC, id DESC)`, `(lower(email))` (wyrażenie, mapowanie go nie zna, więc narzędzia schematu
+    lower(:email)`), gdy ma `@`, inaczej pusta lista bez odczytu; sort z `sort` (domyślnie `placed_at DESC, id DESC`,
+    patrz „Sortowanie list panelu”), a przy `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC`
+    (łączy się ze `status` i `q`). Kursor keyset `BackofficeOrderCursor` (base64url JSON klucza sortu, chwili w UTC
+    z mikrosekundami albo kwoty i id); zły kursor i kursor innego sortu to 400 przy `after`. Parametry: `q` 1–254 znaki po przycięciu bez NUL, `perPage` 1–100
+    (domyślnie 25), inaczej 400. Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
+    `(status, placed_at DESC, id DESC)`, `(total_gross, id)`, `(status, total_gross, id)`, `(lower(email))` (wyrażenie, mapowanie go nie zna, więc narzędzia schematu
     go pomijają) i częściowy `(refund_due_at, id) WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL`
     (warunek w mapowaniu tak, jak zwraca go PostgreSQL); `OrderingSchemaTest` pilnuje zgodności mapowania z migracją.
   - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
@@ -897,6 +897,23 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
   `StockLevelIndexMigrationTest` (połączenie poza transakcją DAMA, indeks `INVALID` zostawiony przez nieudaną
   unikalną budowę `CONCURRENTLY`).
+- Sortowanie list panelu (spec ADMIN-FEATURES, „Sortowanie”; produkty, ceny, stany i zamówienia): parametr `sort`
+  z zamkniętą listą kluczy (`-` to malejąco), którą pilnuje `Choice` w DTO zapytania (klucz spoza listy to 400 przy `sort`).
+  Produkty, ceny i stany stronicują produkty Catalog po `name` (domyślny), `-name`, `-updatedAt` albo `updatedAt`
+  (`ProductSort`); Pricing i Inventory przekazują klucz tekstem przez `ProductDirectory::page(..., $sort)` do
+  `SearchBackofficeProducts`, a Catalog go waliduje. Zamówienia: `-placedAt` (domyślny), `placedAt`, `-total`, `total`
+  (`BackofficeOrderSort`; `RefundDueDate` to sort filtra `refund=pending`, nie klucz API). Kursor keyset niesie klucz
+  sortu (`{"s": klucz, "v": wartość, "i": id}`), więc kursor innego sortu (także `name` użyty jako `-name`) to 400 przy
+  `after`. Id rozstrzyga remisy w kierunku sortu, więc oba kierunki sortu czytają ten sam indeks, wprzód albo wstecz:
+  `(name, id)`, `(updated_at, id)` i częściowe warianty szkiców, `(placed_at DESC, id DESC)`, `(total_gross, id)`
+  i ich wersje z `status`. Połączenia, których żaden indeks nie obsługuje, to 400 z naruszeniem pola `sort`
+  (callback `BackofficeOrderListQuery`; handler dodatkowo rzuca `InvalidBackofficeOrderList`): `sort` z `refund=pending`
+  i kwota (`-total`, `total`) z `q`. Nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis
+  `#[ORM\Index]` w rekordzie (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection`
+  (`tests/Support`; wyłączone `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`). Liczniki nie
+  zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`,
+  `ListBackofficeOrdersEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
+  budowa przerwana na timeoucie blokady).
 - Liczniki wyników list panelu są ograniczone (spec ADMIN-FEATURES, „Liczniki wyników”): pierwsza strona (bez `after`)
   listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
   strony `total: null`. Liczy `BoundedCounter` (`Shared\Infrastructure\Persistence`): `SELECT count(*) FROM (SELECT 1 FROM
@@ -915,7 +932,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   prawdziwej tabeli: węzeł `Limit` i skan zatrzymany po limit + 1 wierszach), liczniki czytników, testy handlerów
   (licznik wołany tylko na pierwszej stronie z następną) i testy funkcjonalne każdej listy.
 - Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
-  (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.
+  (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)` (albo `(updated_at, id)`, zob. „Sortowanie list panelu”).
   Indeks GIN obsługuje frazy od 3 znaków; fraza 2-znakowa (minimum w API) nie ma trigramów, więc idzie skanem indeksu
   `(name, id)` z filtrem `ILIKE`.
   Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.

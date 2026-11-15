@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Ordering\Application;
 use App\Ordering\Application\Port\CustomerListedOrder;
 use App\Ordering\Application\Port\ListedOrder;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
+use App\Ordering\Application\Query\BackofficeOrderSort;
 use App\Ordering\Application\Query\CustomerOrderList;
 use App\Ordering\Application\Query\InvalidBackofficeOrderCursor;
 use App\Ordering\Application\Query\ListCustomerOrders;
@@ -57,9 +58,9 @@ final class ListCustomerOrdersHandlerTest extends TestCase
 
         self::assertSame([self::id(3), self::id(2)], array_map(static fn ($item): string => $item->orderId, $list->items));
         self::assertNotNull($list->nextCursor);
-        $cursor = BackofficeOrderCursor::decode($list->nextCursor, false);
+        $cursor = BackofficeOrderCursor::decode($list->nextCursor, BackofficeOrderSort::PlacedDescending);
         self::assertSame(self::id(2), $cursor->id);
-        self::assertEquals(new \DateTimeImmutable('2026-11-05 12:00:02+00:00'), $cursor->at);
+        self::assertEquals(new \DateTimeImmutable('2026-11-05 12:00:02+00:00'), $cursor->value);
     }
 
     public function testAPageOfExactlyTheSizeIsTheLastOne(): void
@@ -89,7 +90,7 @@ final class ListCustomerOrdersHandlerTest extends TestCase
     {
         yield 'not base64url' => ['garbage!'];
         yield 'another shape' => ['aGVsbG8'];
-        yield 'a cursor of the pending refunds of the panel' => [BackofficeOrderCursor::after(self::listedForRefund(), true)->encode()];
+        yield 'a cursor of the pending refunds of the panel' => [BackofficeOrderCursor::after(self::listedForRefund(), BackofficeOrderSort::RefundDueDate)->encode()];
     }
 
     #[DataProvider('badCursors')]

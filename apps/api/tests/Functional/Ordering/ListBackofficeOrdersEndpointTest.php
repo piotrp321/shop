@@ -254,6 +254,172 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         self::assertSame(['after'], $this->violationPaths(400, $this->list('after='.$byRefund, self::staff(['admin']))));
     }
 
+    private const array SORTS = ['-placedAt', 'placedAt', '-total', 'total'];
+
+    /**
+     * Seven orders with ties in the moment of placement and in the amount (1 000 a unit), so the id has to decide.
+     *
+     * @return list<array{id: string, placedAt: string, total: int, status: string}>
+     */
+    private function seedForSorting(): array
+    {
+        $rows = [];
+        $specs = [
+            [3, '2026-11-05 10:00:00', 'paid'], [1, '2026-11-05 11:00:00', 'new'], [3, '2026-11-05 11:00:00', 'paid'], [2, '2026-11-05 12:00:00', 'shipped'],
+            [3, '2026-11-05 10:00:00', 'new'], [1, '2026-11-05 13:00:00', 'paid'], [5, '2026-11-05 11:00:00', 'paid'],
+        ];
+        foreach ($specs as $n => [$units, $placedAt, $status]) {
+            /** @var 'new'|'paid'|'shipped' $status */
+            $rows[] = ['id' => $this->order($status, $placedAt, 'R-'.(100_001 + $n), quantities: [$units]), 'placedAt' => $placedAt, 'total' => $units * 1_000, 'status' => $status];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array{id: string, placedAt: string, total: int, status: string}> $rows
+     *
+     * @return list<string>
+     */
+    private static function expectedIds(array $rows, string $key): array
+    {
+        $column = str_ends_with($key, 'total') ? 'total' : 'placedAt';
+        usort($rows, static fn (array $a, array $b): int => [$a[$column], $a['id']] <=> [$b[$column], $b['id']]);
+        if (str_starts_with($key, '-')) {
+            $rows = array_reverse($rows);
+        }
+
+        return array_column($rows, 'id');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function sortKeys(): iterable
+    {
+        foreach (self::SORTS as $key) {
+            yield $key => [$key];
+        }
+    }
+
+    #[DataProvider('sortKeys')]
+    public function testEveryKeySortsInItsDirectionWithAStableKeysetAcrossTies(string $key): void
+    {
+        $rows = $this->seedForSorting();
+
+        $seen = [];
+        $query = 'sort='.rawurlencode($key).'&perPage=3';
+        for ($page = 0; $page < 5; ++$page) {
+            $list = $this->list($query, self::staff(['admin']));
+            self::assertResponseStatusCodeSame(200);
+            $seen = [...$seen, ...$this->ids($list)];
+            if (null === $list['nextCursor']) {
+                break;
+            }
+            self::assertIsString($list['nextCursor']);
+            $query = 'sort='.rawurlencode($key).'&perPage=3&after='.$list['nextCursor'];
+        }
+
+        self::assertSame(self::expectedIds($rows, $key), $seen);
+    }
+
+    #[DataProvider('sortKeys')]
+    public function testASortCombinesWithTheStatusFilterAndKeepsTheTotalOfTheFirstPage(string $key): void
+    {
+        $rows = $this->seedForSorting();
+        $paid = array_values(array_filter($rows, static fn (array $row): bool => 'paid' === $row['status']));
+
+        $list = $this->list('status=paid&perPage=2&sort='.rawurlencode($key), self::staff(['admin']));
+
+        self::assertSame(\array_slice(self::expectedIds($paid, $key), 0, 2), $this->ids($list));
+        self::assertSame(['value' => 4, 'capped' => false], $list['total']);
+    }
+
+    public function testWithoutASortTheNewestComeFirst(): void
+    {
+        $this->seedForSorting();
+
+        self::assertSame($this->ids($this->list('sort=-placedAt&perPage=100', self::staff(['admin']))), $this->ids($this->list('perPage=100', self::staff(['admin']))));
+    }
+
+    public function testACursorOfAnotherSortIsA400AtAfter(): void
+    {
+        $this->order('returned', '2026-11-05 10:00:00', 'R-100001', refundDueAt: '+1 day');
+        $this->order('returned', '2026-11-05 11:00:00', 'R-100002', refundDueAt: '+2 days');
+        $cursors = [];
+        foreach (self::SORTS as $key) {
+            $cursors[$key] = $this->list('perPage=1&sort='.$key, self::staff(['admin']))['nextCursor'];
+        }
+        $cursors['refund'] = $this->list('refund=pending&perPage=1', self::staff(['admin']))['nextCursor'];
+
+        foreach ($cursors as $issued => $cursor) {
+            self::assertIsString($cursor);
+            $usedWith = ['' => 'perPage=1', ...array_combine(self::SORTS, array_map(static fn (string $key): string => 'sort='.$key, self::SORTS)), 'refund' => 'refund=pending'];
+            foreach ($usedWith as $used => $query) {
+                if ($used === $issued || ('' === $used && '-placedAt' === $issued)) {
+                    continue;
+                }
+                self::assertSame(['after'], $this->violationPaths(400, $this->list($query.'&after='.$cursor, self::staff(['admin']))), $issued.' used as '.('' === $used ? 'the default' : $used));
+            }
+        }
+    }
+
+    #[DataProvider('sortKeys')]
+    public function testThePendingRefundsHaveTheirOwnSortAndRejectAKey(string $key): void
+    {
+        self::assertSame(['sort'], $this->violationPaths(400, $this->list('refund=pending&sort='.rawurlencode($key), self::staff(['admin']))));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function amountSorts(): iterable
+    {
+        yield 'the highest amount first' => ['-total'];
+        yield 'the lowest amount first' => ['total'];
+    }
+
+    #[DataProvider('amountSorts')]
+    public function testAnAmountSortRejectsTheSearchWhichNoIndexServesWithIt(string $key): void
+    {
+        $this->seedForSorting();
+
+        foreach (['R-100001', 'jan%40example.com'] as $q) {
+            self::assertSame(['sort'], $this->violationPaths(400, $this->list('sort='.$key.'&q='.$q, self::staff(['admin']))), $q);
+        }
+        self::assertSame(['sort'], $this->violationPaths(400, $this->list('refund=pending&sort='.$key.'&q=R-100001', self::staff(['admin']))));
+    }
+
+    public function testThePlacementSortsKeepTheSearch(): void
+    {
+        $this->seedForSorting();
+
+        foreach (['-placedAt', 'placedAt'] as $key) {
+            self::assertCount(7, $this->ids($this->list('sort='.$key.'&q=jan%40example.com', self::staff(['admin']))));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badSortKeys(): iterable
+    {
+        yield 'unknown' => ['sort=amount'];
+        yield 'empty' => ['sort='];
+        yield 'another letter case' => ['sort=Total'];
+        yield 'the key of the refunds' => ['sort=refund'];
+        yield 'a key of the products' => ['sort=-name'];
+        yield 'two directions' => ['sort=--total'];
+        yield 'with a space' => ['sort=-%20total'];
+        yield 'an array' => ['sort[]=total'];
+    }
+
+    #[DataProvider('badSortKeys')]
+    public function testAKeyOutsideTheClosedListIsA400AtSort(string $query): void
+    {
+        self::assertSame(['sort'], $this->violationPaths(400, $this->list($query, self::staff(['admin']))));
+    }
+
     /**
      * @return iterable<string, array{list<string>}>
      */

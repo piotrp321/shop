@@ -13,8 +13,9 @@ use App\Shared\Domain\BoundedCount;
 interface BackofficeOrderReader
 {
     /**
-     * The orders that match the filter, strictly after the cursor: newest first (placed_at, then id, descending), or,
-     * for the pending refunds, the nearest due date first (refund_due_at, then id, ascending).
+     * The orders that match the filter, strictly after the cursor, in the order of the filter: by placement or by the
+     * amount (placed_at or total_gross, then id, in the direction of the sort), or, for the pending refunds, the
+     * nearest due date first (refund_due_at, then id, ascending).
      *
      * @param BackofficeOrderCursor|null $after of the same sort as the filter
      * @param int                        $limit 1 or more

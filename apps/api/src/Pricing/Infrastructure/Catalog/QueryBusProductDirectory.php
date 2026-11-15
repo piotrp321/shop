@@ -41,10 +41,10 @@ final class QueryBusProductDirectory implements ProductDirectory
         $this->messageBus = $queryBus;
     }
 
-    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage
+    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage, ?string $sort = null): DirectoryPage
     {
         try {
-            $page = $this->handle(new SearchBackofficeProducts($term, $categoryId, $after, $perPage));
+            $page = $this->handle(new SearchBackofficeProducts($term, $categoryId, $after, $perPage, null, $sort));
         } catch (HandlerFailedException $failure) {
             // The bus wraps what the handler threw.
             $wrapped = $failure->getWrappedExceptions();

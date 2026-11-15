@@ -7,17 +7,20 @@ namespace App\Tests\Integration\Ordering\Persistence;
 use App\Ordering\Application\Port\BackofficeOrderFilter;
 use App\Ordering\Application\Port\ListedOrder;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
+use App\Ordering\Application\Query\BackofficeOrderSort;
 use App\Ordering\Domain\OrderStatus;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DbalBackofficeOrderReader;
 use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use App\Tests\Integration\Ordering\BackofficeOrderFixture;
+use App\Tests\Support\RecordingConnection;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * DbalBackofficeOrderReader on shop_test (rolled back after each test, with no other order in the transaction): the
- * filters, the two sorts with their keyset cursors, and what a listed order carries.
+ * filters, the sorts with their keyset cursors, and what a listed order carries.
  */
 final class DbalBackofficeOrderReaderTest extends KernelTestCase
 {
@@ -109,6 +112,114 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
         self::assertSame([$tieHigh], $this->ids($this->reader->page(new BackofficeOrderFilter(OrderStatus::Cancelled, true, 'R-100003', null), null, 10)), 'and with the number');
     }
 
+    /**
+     * @return iterable<string, array{BackofficeOrderSort}>
+     */
+    public static function sorts(): iterable
+    {
+        foreach ([BackofficeOrderSort::PlacedDescending, BackofficeOrderSort::PlacedAscending, BackofficeOrderSort::TotalDescending, BackofficeOrderSort::TotalAscending] as $sort) {
+            yield $sort->value => [$sort];
+        }
+    }
+
+    /**
+     * Seven orders; the totals (1 000 a unit) and the moments of placement both have ties, so the id has to decide.
+     *
+     * @return list<array{id: string, placedAt: string, total: int, status: string}>
+     */
+    private function seed(): array
+    {
+        $rows = [];
+        $specs = [
+            [3, '2026-11-05 10:00:00', 'paid'], [1, '2026-11-05 11:00:00', 'new'], [3, '2026-11-05 11:00:00', 'paid'], [2, '2026-11-05 12:00:00', 'shipped'],
+            [3, '2026-11-05 10:00:00', 'new'], [1, '2026-11-05 13:00:00', 'paid'], [5, '2026-11-05 11:00:00', 'paid'],
+        ];
+        foreach ($specs as $n => [$units, $placedAt, $status]) {
+            /** @var 'new'|'paid'|'shipped' $status */
+            $rows[] = ['id' => $this->order($status, $placedAt, 'R-'.(100_001 + $n), quantities: [$units]), 'placedAt' => $placedAt, 'total' => $units * 1_000, 'status' => $status];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array{id: string, placedAt: string, total: int, status: string}> $rows
+     *
+     * @return list<string> the ids in the order of the sort, the id breaking the ties in the direction of the sort
+     */
+    private static function expected(array $rows, BackofficeOrderSort $sort): array
+    {
+        $column = $sort->byTotal() ? 'total' : 'placedAt';
+        usort($rows, static fn (array $a, array $b): int => [$a[$column], $a['id']] <=> [$b[$column], $b['id']]);
+        if ($sort->isDescending()) {
+            $rows = array_reverse($rows);
+        }
+
+        return array_column($rows, 'id');
+    }
+
+    #[DataProvider('sorts')]
+    public function testEverySortOrdersByItsColumnWithTheIdBreakingTheTies(BackofficeOrderSort $sort): void
+    {
+        $rows = $this->seed();
+        $filter = new BackofficeOrderFilter(null, false, null, null, $sort);
+
+        self::assertSame(self::expected($rows, $sort), $this->ids($this->reader->page($filter, null, 10)));
+        self::assertSame(self::expected($rows, $sort), $this->pageThrough($filter, 3), 'the keyset visits every order once across the ties');
+    }
+
+    #[DataProvider('sorts')]
+    public function testTheStatusFilterKeepsTheSortAndItsKeyset(BackofficeOrderSort $sort): void
+    {
+        $rows = $this->seed();
+        $paid = array_values(array_filter($rows, static fn (array $row): bool => 'paid' === $row['status']));
+        $filter = new BackofficeOrderFilter(OrderStatus::Paid, false, null, null, $sort);
+
+        self::assertSame(self::expected($paid, $sort), $this->pageThrough($filter, 2));
+    }
+
+    public function testACursorOfAnotherSortIsRefusedByTheReader(): void
+    {
+        $this->seed();
+        $page = $this->reader->page(new BackofficeOrderFilter(null, false, null, null, BackofficeOrderSort::TotalDescending), null, 2);
+        $cursor = BackofficeOrderCursor::decode(BackofficeOrderCursor::after($page[1], BackofficeOrderSort::TotalDescending)->encode(), BackofficeOrderSort::TotalDescending);
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->reader->page(new BackofficeOrderFilter(null, false, null, null, BackofficeOrderSort::TotalAscending), $cursor, 2);
+    }
+
+    /**
+     * @return iterable<string, array{BackofficeOrderSort, ?OrderStatus, string}>
+     */
+    public static function indexedFirstPages(): iterable
+    {
+        yield 'newest first' => [BackofficeOrderSort::PlacedDescending, null, 'ordering_order_placed_at_id_idx'];
+        yield 'oldest first' => [BackofficeOrderSort::PlacedAscending, null, 'ordering_order_placed_at_id_idx'];
+        yield 'highest amount first' => [BackofficeOrderSort::TotalDescending, null, 'ordering_order_total_gross_id_idx'];
+        yield 'lowest amount first' => [BackofficeOrderSort::TotalAscending, null, 'ordering_order_total_gross_id_idx'];
+        yield 'newest first of a status' => [BackofficeOrderSort::PlacedDescending, OrderStatus::Paid, 'ordering_order_status_placed_at_id_idx'];
+        yield 'oldest first of a status' => [BackofficeOrderSort::PlacedAscending, OrderStatus::Paid, 'ordering_order_status_placed_at_id_idx'];
+        yield 'highest amount first of a status' => [BackofficeOrderSort::TotalDescending, OrderStatus::Paid, 'ordering_order_status_total_gross_id_idx'];
+        yield 'lowest amount first of a status' => [BackofficeOrderSort::TotalAscending, OrderStatus::Paid, 'ordering_order_status_total_gross_id_idx'];
+        yield 'the pending refunds' => [BackofficeOrderSort::RefundDueDate, null, 'ordering_order_pending_refund_idx'];
+    }
+
+    #[DataProvider('indexedFirstPages')]
+    public function testTheFirstPageOfEverySortIsServedByItsIndexWithoutASort(BackofficeOrderSort $sort, ?OrderStatus $status, string $index): void
+    {
+        $this->seed();
+        $recording = RecordingConnection::like($this->connection);
+        $reader = new DbalBackofficeOrderReader($recording, new BoundedCounter($recording));
+
+        $reader->page(new BackofficeOrderFilter($status, BackofficeOrderSort::RefundDueDate === $sort, null, null, $sort), null, 26);
+        $plan = $recording->planOfTheLastQuery($this->connection);
+
+        self::assertStringContainsString($index, $plan);
+        self::assertStringNotContainsString('Sort', $plan);
+        self::assertStringNotContainsString('Seq Scan', $plan);
+    }
+
     public function testPagingNewestFirstVisitsEveryOrderOnce(): void
     {
         $expected = [];
@@ -180,7 +291,7 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
             if (\count($page) < $limit) {
                 return $seen;
             }
-            $after = BackofficeOrderCursor::decode(BackofficeOrderCursor::after($page[$limit - 1], $filter->pendingRefunds)->encode(), $filter->pendingRefunds);
+            $after = BackofficeOrderCursor::decode(BackofficeOrderCursor::after($page[$limit - 1], $filter->sort)->encode(), $filter->sort);
         }
         self::fail('The paging does not end.');
     }

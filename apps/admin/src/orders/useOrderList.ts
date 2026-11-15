@@ -1,7 +1,8 @@
 import { computed, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
-import type { components } from "@/api/schema";
+import type { components, operations } from "@/api/schema";
 import { type PageRequest, type PageResult, useCursorPager } from "@/composables/useCursorPager";
+import { type SortOption, sortParam } from "@/composables/listSort";
 import { type ListParam, useListUrlState } from "@/composables/useListUrlState";
 import { type OrderStatus, STATUS_OPTIONS } from "./format";
 
@@ -17,10 +18,28 @@ export const EMPTY_MESSAGE = "Nie ma jeszcze zamówień.";
 export const PER_PAGE_OPTIONS = [10, 25, 50];
 export const DEFAULT_PER_PAGE = 25;
 
+/** The keys of `sort` of the API; the newest first is its default, so it is not sent. */
+export type OrderSort = NonNullable<NonNullable<operations["listOrders"]["parameters"]["query"]>["sort"]>;
+
+export const DEFAULT_ORDER_SORT: OrderSort = "-placedAt";
+
+const ORDER_SORTS: readonly SortOption<OrderSort>[] = [
+  { value: "-placedAt", label: "Najnowsze" },
+  { value: "placedAt", label: "Najstarsze" },
+  { value: "-total", label: "Najwyższa kwota" },
+  { value: "total", label: "Najniższa kwota" },
+];
+
+export const REFUND_SORT_MESSAGE = "Zwroty do wykonania są w kolejności terminu zwrotu.";
+export const TOTAL_SORT_MESSAGE = "Kwoty nie da się sortować przy wyszukiwaniu.";
+
+const byTotal = (sort: OrderSort) => sort === "-total" || sort === "total";
+
 interface OrderQuery {
   status?: OrderStatus;
   refund?: "pending";
   q?: string;
+  sort?: OrderSort;
   after?: string;
   perPage?: number;
 }
@@ -45,8 +64,9 @@ function failureMessage(status: number): string {
 
 /**
  * The order list with a status filter, the switch for the refunds to do, a search (an exact order number or email,
- * applied when the staff member submits it with Enter) and a page size (10, 25 or 50). The search, the filters and the
- * page size live in the address (`useListUrlState`: `q`, `status`, `refund=pending`, `perPage`; read on entering and
+ * applied when the staff member submits it with Enter), an order (`sort`: by placement or by the amount, either way; not a
+ * filter) and a page size (10, 25 or 50). The search, the filters, the order and the
+ * page size live in the address (`useListUrlState`: `q`, `status`, `refund=pending`, `sort`, `perPage`; read on entering and
  * on a change from outside, such as the menu item „Zwroty do wykonania” on the open list, the link „Inne zamówienia
  * klienta” or Back, written with `replace` when changed; only the applied search goes there, not what is being typed)
  * and the paging is `useCursorPager` (cursor stack, late answers, retry, what a failure leaves on the screen). What stays
@@ -65,11 +85,34 @@ export function useOrderList() {
       format: () => "pending",
       fallback: false,
     } as ListParam<boolean, boolean>,
+    sort: sortParam(ORDER_SORTS, DEFAULT_ORDER_SORT),
     perPage: {
       parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
       fallback: DEFAULT_PER_PAGE,
     } satisfies ListParam<number, number>,
   });
+
+  /**
+   * The order the list is in: none for the refunds to do (their own, by due date), the newest first for an amount while a
+   * search is applied (the API refuses it, no index serves both), the sort of the address otherwise.
+   */
+  const sort = computed<OrderSort | null>(() => {
+    const { refund, q, sort: chosen } = url.query.value;
+    if (refund) {
+      return null;
+    }
+    return q !== null && byTotal(chosen) ? DEFAULT_ORDER_SORT : chosen;
+  });
+
+  /** Every order, each with the reason it cannot be chosen now (the refunds to do take none, the amount no search). */
+  const sortOptions = computed<SortOption<OrderSort>[]>(() =>
+    ORDER_SORTS.map((option) => {
+      if (url.query.value.refund) {
+        return { ...option, disabledReason: REFUND_SORT_MESSAGE };
+      }
+      return url.query.value.q !== null && byTotal(option.value) ? { ...option, disabledReason: TOTAL_SORT_MESSAGE } : option;
+    }),
+  );
 
   async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<OrderListItem>> {
     const apiQuery: OrderQuery = {};
@@ -81,6 +124,11 @@ export function useOrderList() {
     }
     if (query.q !== null) {
       apiQuery.q = query.q;
+    }
+    // The refunds to do take no sort and the amount no search, whatever the address says: the API refuses both.
+    const effective = query.refund ? null : query.q !== null && byTotal(query.sort) ? DEFAULT_ORDER_SORT : query.sort;
+    if (effective !== null && effective !== DEFAULT_ORDER_SORT) {
+      apiQuery.sort = effective;
     }
     if (query.perPage !== DEFAULT_PER_PAGE) {
       apiQuery.perPage = query.perPage;
@@ -121,6 +169,10 @@ export function useOrderList() {
     url.set({ refund: enabled });
   }
 
+  function setSort(selected: string): void {
+    url.set({ sort: ORDER_SORTS.find((option) => option.value === selected)?.value ?? DEFAULT_ORDER_SORT });
+  }
+
   function setPerPage(size: number): void {
     url.set({ perPage: size });
   }
@@ -132,10 +184,11 @@ export function useOrderList() {
       void pager.refresh();
       return;
     }
-    url.set({ q: term });
+    // The amount cannot be sorted with a search: a search applied over it returns to the newest first.
+    url.set(term !== null && byTotal(url.query.value.sort) ? { q: term, sort: DEFAULT_ORDER_SORT } : { q: term });
   }
 
-  /** Drops the search, the filters and the page size: the address is `/orders` again. */
+  /** Drops the search, the filters, the order and the page size: the address is `/orders` again. */
   function clearFilters(): void {
     search.value = "";
     url.clear();
@@ -146,6 +199,8 @@ export function useOrderList() {
     query: url.query,
     status,
     refundPending,
+    sort,
+    sortOptions,
     filtered,
     items: pager.items,
     loading: pager.loading,
@@ -159,6 +214,7 @@ export function useOrderList() {
     total: pager.total,
     selectStatus,
     setRefundPending,
+    setSort,
     setPerPage,
     submitSearch,
     clearFilters,

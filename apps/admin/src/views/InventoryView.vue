@@ -410,7 +410,10 @@ const DIALOG_CLASS = "max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto sm:ma
         :search-hint="searchHint"
         :filtered="filtered"
         :per-page="query.perPage"
+        :sort-options="list.sortOptions"
+        :sort="query.sort"
         @update:per-page="list.setPerPage"
+        @update:sort="list.setSort"
         @clear="clearFilters"
       >
         <template #filters>

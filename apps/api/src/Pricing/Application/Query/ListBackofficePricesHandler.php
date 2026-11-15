@@ -36,7 +36,7 @@ final readonly class ListBackofficePricesHandler
      */
     public function __invoke(ListBackofficePrices $query): PriceList
     {
-        $page = $this->products->page($query->term, $query->categoryId, $query->after, $query->perPage);
+        $page = $this->products->page($query->term, $query->categoryId, $query->after, $query->perPage, $query->sort);
         if ([] === $page->items) {
             return new PriceList([], $page->next, $page->total);
         }

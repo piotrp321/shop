@@ -13,7 +13,8 @@ w `make seed`, slug kategorii i reguła „nazwa osi bez `:`”. Opiera się te�
 
 ## Cel i zakres
 
-- Panel: lista produktów (wyszukiwanie po nazwie, filtr kategorii i statusu, stronicowanie), formularz nowego
+- Panel: lista produktów (wyszukiwanie po nazwie, filtr kategorii i statusu, sortowanie po nazwie albo dacie ostatniej
+  zmiany, stronicowanie), formularz nowego
   produktu i edycji: nazwa, slug, krótki opis, kategoria główna i dodatkowe, klasa podatkowa, zdjęcia (upload,
   tekst alternatywny, kolejność, usunięcie), osie i warianty (dodanie, zmiana wartości, usunięcie).
 - Produkt ma status: szkic albo opublikowany. Sklep widzi wyłącznie produkty opublikowane. Nowy produkt z panelu
@@ -204,7 +205,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /products?q&category&status&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), kursor keyset; 400 złe parametry; 404 nieznana kategoria |
+| `GET /products?q&category&status&sort&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (indeksy `(name, id)` i `(updated_at, id)` z częściowymi wariantami szkiców; oba kierunki czytają ten sam indeks), kursor keyset z kluczem sortu (kursor innego sortu to 400 przy `after`); 400 złe parametry; 404 nieznana kategoria |
 | `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values}], updatedAt}`; 404 |
 | `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria); 503 Garage niedostępny |
 | `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 Garage niedostępny |
@@ -253,8 +254,10 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   `marketing` przekierowuje na listę.
 - Lista (`useProductList` na `useListUrlState` i `useCursorPager`, standard listy z `docs/features/admin-design/spec.md`):
   wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii (`CategoryCombobox` na `useCategoryTree`), filtr statusu
-  (Select: Wszystkie, Szkice, Opublikowane), rozmiar strony 10/25/50, stan listy w adresie (`q`, `category`, `status`,
-  `perPage`), stronicowanie kursorem ze stosem kursorów i „Pokazano X–Y”. Kolumny: produkt (miniatura albo placeholder,
+  (Select: Wszystkie, Szkice, Opublikowane), `Select` „Sortuj” („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio zmienione”,
+  „Najdawniej zmienione”; nagłówek „Produkt” albo „Ostatnia zmiana” ma `aria-sort`), rozmiar strony 10/25/50, stan listy
+  w adresie (`q`, `category`, `status`, `sort` (domyślny `name` nie jest zapisywany ani wysyłany), `perPage`),
+  stronicowanie kursorem ze stosem kursorów i „Pokazano X–Y”. Kolumny: produkt (miniatura albo placeholder,
   nazwa jako link do edycji, slug), kategoria główna, liczba wariantów, status (etykieta: „Szkic”, „Opublikowany”),
   ostatnia zmiana, akcje („Edytuj”, „Podgląd w sklepie” dla opublikowanego). Przycisk „Dodaj produkt” tylko dla
   `admin` i `marketing` (role z `/me`).

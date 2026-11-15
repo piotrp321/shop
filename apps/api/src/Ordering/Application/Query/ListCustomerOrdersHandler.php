@@ -26,7 +26,7 @@ final readonly class ListCustomerOrdersHandler
      */
     public function __invoke(ListCustomerOrders $query): CustomerOrderList
     {
-        $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, false);
+        $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, BackofficeOrderSort::PlacedDescending);
 
         $orders = $this->orders->page($query->customerId, $after, $query->perPage + 1);
         $next = null;

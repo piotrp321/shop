@@ -150,7 +150,7 @@ final readonly class JournalingVariantDirectory implements ProductDirectory
     {
     }
 
-    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage
+    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage, ?string $sort = null): DirectoryPage
     {
         throw new \LogicException('Not used by the handler.');
     }
