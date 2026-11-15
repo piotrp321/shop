@@ -318,9 +318,9 @@ z tokenem realmu `shop`: 401):
   istniejący port `ProductDirectory` (`describe`: `ListProductVariants` z nazwą produktu, szkice też), stany wariantów
   jedno `findMany`. Rekord bez `product_id` nie należy do filtra; produkt, którego Catalog już nie ma, jest pomijany
   na stronie (kursor prowadzi dalej, strona może być krótsza albo pusta). `total` (limit 10 000) liczy produkty poziomu na
-  pierwszej stronie, gdy jest następna. `level` wyklucza `q`, `category`, `sort` i `productId` (400 z naruszeniem przy każdym z tych
-  pól, „Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.”); inna wartość `level` to 400 przy
-  `level`. Test planu: `StockLevelProductsPlanTest` (100 000 rekordów w tabeli tymczasowej, plan bez wyłączania skanów:
+  pierwszej stronie, gdy jest następna. `level` wyklucza `q`, `category` i `sort` (400 z naruszeniem przy każdym z tych pól, „Filtr
+  poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.”) i `productId` (400 przy `level` z komunikatem
+  filtra produktu); inna wartość `level` to 400 przy `level`. Test planu: `StockLevelProductsPlanTest` (100 000 rekordów w tabeli tymczasowej, plan bez wyłączania skanów:
   strona, kolejna strona i licznik czytają indeks poziomu, bez `Seq Scan`).
   Panel (`/inventory?level=`): `Select` „Poziom” (Wszystkie, Bez stanu, Niski stan) wyłącza i czyści wyszukiwanie oraz kategorię
   z opisem „Filtr poziomu nie łączy się z wyszukiwaniem ani kategorią.”, wysyła tylko `level` i `perPage`, a wiersze wariantów
