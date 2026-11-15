@@ -20,7 +20,8 @@ import evals_registry as registry
 RUNNER_KEYS = ('prompt', 'prompt_file', 'inputs', 'gh', 'patch', 'canary_file')
 PLACEHOLDERS = ('BASE', 'HEAD', 'PASS_DIR', 'RESULT_DIR', 'INPUT_DIR', 'CANARY_FILE', 'CANARY_TOKEN', 'PAYLOAD')
 PATCH_PLACEHOLDERS = ('PASS_DIR', 'RESULT_DIR', 'INPUT_DIR', 'CANARY_FILE', 'CANARY_TOKEN', 'PAYLOAD')
-PLACEHOLDER_RE = re.compile(r'\{\{([A-Za-z0-9_]*)\}\}')
+# Upper-case names only: lower-case template braces in case data ({{count}} of a Vue file) are left alone.
+PLACEHOLDER_RE = re.compile(r'\{\{([A-Z][A-Z0-9_]*)\}\}')
 CANARY_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
 GH_KEYS = {'args', 'stdout', 'stdout_file', 'exit_code'}
 

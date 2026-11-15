@@ -174,6 +174,7 @@ class InvocationTest(RunnerTestCase):
         self.assertEqual('infra_error', self.status(run)['status'])
         self.assertIn('github', self.status(run)['reason'])
         self.assertEqual(['infra_error', 'pending', 'pending'], [p['status'] for p in run['passes']])
+        self.assertEqual(0, run['cost_usd_total'])   # stopped at init, before any model call
 
     def test_the_plugins_of_init_are_recorded(self):
         run = self.start(ok())

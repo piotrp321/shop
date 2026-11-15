@@ -477,8 +477,10 @@ def _run_pass(context, run, state_root, item):
     _artefacts(directory, outcome, item, run, extra, output=outcome.get('output', ''), tree=tree, canary=canary)
     if outcome.get('cost_usd') is not None:
         charged = float(outcome['cost_usd'])
-    elif getattr(stream, 'init', None) is not None:
-        charged = float(run['pass_cost_cap_usd'])   # an unknown cost after init: the pass cap is the upper bound
+    elif outcome['status'] != 'infra_error' and getattr(stream, 'init', None) is not None:
+        # an unknown cost after init (a timeout, a stop on the usage limit, a stream without a result): the pass cap
+        # is the upper bound; an infra_error stops at init, before any model call
+        charged = float(run['pass_cost_cap_usd'])
     else:
         charged = 0.0
     return dict(outcome, charged_usd=charged)
@@ -501,11 +503,12 @@ def _spawn(command, cwd, env, runner_dir, stream, timeout_s):
     """Runs the executor; its events go to runner/stream.jsonl and its tool calls to runner/tool_use.jsonl (a
     directory the sandbox write-protects). Returns (exit code, timed out, stderr tail, start error)."""
     stderr_path = os.path.join(runner_dir, 'stderr.txt')
+    stderr_file = open(stderr_path, 'wb')
     try:
-        stderr_file = open(stderr_path, 'wb')
         process = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=stderr_file, start_new_session=True)
     except OSError as error:
+        stderr_file.close()
         return None, False, '', str(error)
     lines = queue.Queue()
 
@@ -517,20 +520,33 @@ def _spawn(command, cwd, env, runner_dir, stream, timeout_s):
     thread.start()
     deadline = time.monotonic() + timeout_s
     timed_out = False
+    try:
+        timed_out = _read(process, lines, deadline, runner_dir, stream)
+    finally:
+        _kill(process)   # also on an exception or an interrupt of the runner: no executor outlives its pass
+    thread.join(timeout=KILL_GRACE_S)
+    process.stdout.close()
+    stderr_file.close()
+    with open(stderr_path, 'rb') as handle:
+        handle.seek(max(0, os.path.getsize(stderr_path) - STDERR_LIMIT))
+        stderr = handle.read().decode('utf-8', 'replace')
+    return process.returncode, timed_out, stderr, None
+
+
+def _read(process, lines, deadline, runner_dir, stream):
+    """Reads the events until the end of the stream, a stop signal or the deadline; True when the deadline came."""
     with open(os.path.join(runner_dir, 'stream.jsonl'), 'wb') as events, \
             open(os.path.join(runner_dir, 'tool_use.jsonl'), 'w', encoding='utf-8') as tool_uses:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                timed_out = True
-                break
+                return True
             try:
                 raw = lines.get(timeout=remaining)
             except queue.Empty:
-                timed_out = True
-                break
+                return True
             if raw is None:
-                break
+                return False
             events.write(raw)
             events.flush()
             signal_ = stream.feed(raw.decode('utf-8', 'replace'))
@@ -538,13 +554,4 @@ def _spawn(command, cwd, env, runner_dir, stream, timeout_s):
                 tool_uses.write(json.dumps(call, ensure_ascii=False) + '\n')
                 tool_uses.flush()
             if signal_:
-                break
-    _kill(process)
-    thread.join(timeout=KILL_GRACE_S)
-    process.stdout.close()
-    stderr_file.close()
-    with open(stderr_path, 'rb') as handle:
-        handle.seek(max(0, os.path.getsize(stderr_path) - STDERR_LIMIT))
-        stderr = handle.read().decode('utf-8', 'replace')
-    code = process.returncode
-    return code, timed_out, stderr, None
+                return False
