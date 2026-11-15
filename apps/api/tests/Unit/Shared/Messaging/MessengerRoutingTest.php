@@ -10,10 +10,12 @@ use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
+use App\Inventory\Infrastructure\Catalog\QueryBusProductDirectory;
 use App\Shared\Domain\Event\DomainEventPublisher;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use App\Tests\Support\InMemory\RecordingProductIndexer;
 use App\Tests\Unit\Catalog\Search\InMemoryProductSearchSource;
+use App\Tests\Unit\Inventory\InMemoryProductDirectory;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -37,6 +39,8 @@ final class MessengerRoutingTest extends KernelTestCase
         $container = self::getContainer();
         $container->set(ElasticsearchProductIndexer::class, $this->indexer);
         $container->set(QueryBusProductOfferFacts::class, new InMemoryProductOfferFacts());
+        // Inventory subscribes to ProductCreated too; a product unknown to its directory leaves the stock untouched.
+        $container->set(QueryBusProductDirectory::class, new InMemoryProductDirectory());
         $container->set(DbalProductSearchSource::class, new InMemoryProductSearchSource([
             new ProductSearchSnapshot(self::PRODUCT_ID, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::CATEGORY_ID, [], [[self::CATEGORY_ID]], null, [], [], [], ProductStatus::Published),
         ]));

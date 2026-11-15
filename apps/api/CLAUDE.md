@@ -48,12 +48,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie komendy `*:seed-demo`
+  seed błędem bez zmian w danych), a na końcu wpisuje każdemu rekordowi jego produkt (jak `inventory:stock-records:sync`),
+  więc po seedzie nie ma zamówień ani ich rezerwacji, a każdy wariant demo ma rekord stanu z `product_id`. Wszystkie komendy `*:seed-demo`
   (jest ich sześć) w `prod` wymagają `--force-reset`, więc `bin/seed-demo` dodaje go do nich tylko przy `APP_ENV=prod`.
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
   przebudowuje indeks wyszukiwania z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen
   i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
+- `inventory:stock-records:sync` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; krok
+  `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
+  partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
+  (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -91,7 +96,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   mapowane atrybutami, z relacjami między rekordami. Repozytoria mapują agregat ↔ rekord, a agregat odtwarzają
   przez `reconstitute()`, które nie zapisuje zdarzeń.
 - Wyjątek: Inventory. Stan, rezerwacje i historię zapisuje i czyta przez DBAL na połączeniu Doctrine, w transakcji
-  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją). Rekordy Doctrine
+  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją), także rekordy
+  stanów wariantów z produktem (`DbalStockRecords`: `INSERT … ON CONFLICT … DO UPDATE … WHERE product_id IS NULL`
+  i `DELETE` pustych rekordów usuniętych wariantów, bez agregatu i bez zdarzeń; `docs/features/inventory/spec.md`,
+  „Rekord stanu każdego wariantu”). Rekordy Doctrine
   Inventory są tylko definicją schematu dla `doctrine:schema` i migracji, repozytoria ich nie używają. Powody:
   rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
   wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
@@ -482,6 +490,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Seed tworzy produkty bez
   `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana pól
   kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
+  `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, oba, rekord stanu z produktem dla każdego wariantu),
   `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu)
   i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
   podatkowej).
