@@ -157,7 +157,9 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wspólne z formularzem produktu; kod spoza listy albo błąd żądania daje sam kod, bez komunikatu), bez akcji), pod nim
   `price-row` z kolumnami Wariant („Wariant domyślny” dla pustej etykiety), Brutto (pogrubione), Netto i VAT (ukryte poniżej
   1024 px jako linie komórki Wariant), Stawka (z `Badge` nieaktualnej stawki) i Akcje (`RowActions` z przyciskami ikon „Zmień
-  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`:
+  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`
+  w `PriceDialogs.vue` (wspólne z kartą „Ceny i stany” formularza produktu: widok daje `rows`, `changePrice` i `fallbackFocus`, a otwiera je
+  przez `openChange` i `openHistory`; żądanie zmiany ceny to `requestPriceChange` z `priceChange.ts`, z haczykami `save` i `refresh` widoku):
   „Zmień cenę” (`change-dialog`, szerokość `min(28rem, 100vw - 2rem)`, fokus w `gross-input` także po otwarciu Enterem,
   „Zapisz cenę” w wariancie `interface`, błędy 422 i `locked` przy polu z fokusem w polu, 403, 404, sieć i `conflict` w
   `Alert` z fokusem; po zapisie okno się zamyka, toast „Cena zapisana: <produkt> / <wariant>” i fokus wraca na „Zmień
@@ -200,14 +202,16 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   (`Badge`) i Akcje (`RowActions`: przyciski ikon „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/me`;
   API sprawdza niezależnie), „Historia” dla każdego pracownika; nazwa „Przyjęcie: <produkt> / <wariant>”). Wariant bez rekordu
   (`stock: null`) pokazuje „—” w liczbach i w komórce poziomu, bez `Badge`; panel nie przypisuje mu poziomu.
-  Okna to `Dialog`: „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
+  Okna to `Dialog` w `StockDialogs.vue` (wspólne z kartą „Ceny i stany” formularza produktu: widok daje `rows`, `receiveStock`, `correctStock`
+  i `fallbackFocus`, a otwiera je przez `openReceipt`, `openCorrection` i `openHistory`; żądania to `requestReceipt` i `requestCorrection`
+  z `stockChange.ts`, z haczykami widoku): „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
   nazwa produktu z wariantem w opisie, pola `Input` z `inputmode="numeric"` („Przyjęta ilość (szt.)”, „Stan policzony
   (szt.)”), powód korekty jako `Select` „Powód” (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka (przy powodzie
   „Inne” wymagana), „Przyjmij” i „Zapisz korektę” w wariancie `interface`. Fokus trafia w pierwsze pole po otwarciu (także
   Enterem), a po zapisie na przycisk, który okno otworzył (`RowActions` podaje go w `select`; gdy zniknął, na H1);
   po błędzie fokus trafia w pole, które API wskazuje (422: `violations[].propertyPath`), a bez pola na komunikat (`Alert`).
   Po zapisie okno się zamyka i pojawia się toast „Przyjęto N szt.: <produkt> / <wariant>” albo „Stan skorygowany: <produkt> /
-  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` w `useStockList`: klucz
+  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` (`useStockList` i karta): klucz
   `Idempotency-Key` (UUID z `crypto.randomUUID()`) powstaje przy otwarciu okna przyjęcia i jest wysyłany ponownie
   przy ponowieniu zapisu; nowe okno to nowy klucz. Korekta wysyła `version` wiersza (null bez rekordu). 422 bez `violations`
   (np. ponad 1 000 000), 403, 404 i sieć pokazują komunikat w oknie. 409 przyjęcia (klucz użyty z inną treścią) pokazuje
