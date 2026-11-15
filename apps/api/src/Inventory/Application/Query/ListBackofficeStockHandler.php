@@ -35,7 +35,7 @@ final readonly class ListBackofficeStockHandler
     {
         $page = $this->products->page($query->term, $query->categoryId, $query->after, $query->perPage);
         if ([] === $page->items) {
-            return new StockList([], $page->next);
+            return new StockList([], $page->next, $page->total);
         }
 
         $variants = $this->products->variantsOf(array_map(static fn (DirectoryProduct $product) => $product->id, $page->items));
@@ -56,6 +56,7 @@ final readonly class ListBackofficeStockHandler
         return new StockList(
             array_map(static fn (DirectoryProduct $product): StockListItem => self::item($product, $variants[$product->id->toString()] ?? [], $stored), $page->items),
             $page->next,
+            $page->total,
         );
     }
 

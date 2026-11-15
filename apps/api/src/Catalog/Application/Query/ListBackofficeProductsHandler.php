@@ -53,6 +53,6 @@ final readonly class ListBackofficeProductsHandler
             );
         }
 
-        return new BackofficeProductList($items, $page->next);
+        return new BackofficeProductList($items, $page->next, $page->total);
     }
 }

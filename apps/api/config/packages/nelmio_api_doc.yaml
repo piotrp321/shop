@@ -949,7 +949,7 @@ nelmio_api_doc:
                         BackofficeOrderList:
                             type: object
                             description: A page of the order list.
-                            required: [items, nextCursor]
+                            required: [items, nextCursor, total]
                             properties:
                                 items:
                                     type: array
@@ -960,6 +960,11 @@ nelmio_api_doc:
                                     nullable: true
                                     description: Opaque cursor of the next page (send it as `after` with the same filters), null on the last page.
                                     example: eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
+                                total:
+                                    nullable: true
+                                    description: How many orders match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.
+                                    allOf:
+                                        - $ref: '#/components/schemas/BoundedCountResponse'
                         BackofficeOrderListItem:
                             type: object
                             description: An order in the list. Amounts in grosze.

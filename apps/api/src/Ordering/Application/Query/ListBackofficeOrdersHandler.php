@@ -8,6 +8,7 @@ use App\Ordering\Application\Port\BackofficeOrderFilter;
 use App\Ordering\Application\Port\BackofficeOrderReader;
 use App\Ordering\Application\Port\Clock;
 use App\Ordering\Application\Port\ListedOrder;
+use App\Shared\Domain\BoundedCount;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -24,8 +25,9 @@ final readonly class ListBackofficeOrdersHandler
 
     /**
      * The search term, trimmed, is an exact number when it looks like one, otherwise an exact email when it has an @;
-     * anything else finds nothing, without a read. One order more than the page is read: its presence is the only
-     * thing that tells there is a next page, so the whole result is never counted.
+     * anything else finds nothing, without a read. One order more than the page is read: its presence is what tells
+     * there is a next page. The first page (no cursor) also carries the bounded total of the filter: the number of
+     * its rows when there is no next page (nothing to count), otherwise the reader counts, never the table whole.
      *
      * @throws InvalidBackofficeOrderCursor
      */
@@ -43,19 +45,23 @@ final readonly class ListBackofficeOrdersHandler
                 // The database driver cuts a parameter at a NUL, which would silently search for something else.
                 $email = $term;
             } else {
-                return new BackofficeOrderList([], null);
+                return new BackofficeOrderList([], null, null === $after ? new BoundedCount(0, false) : null);
             }
         }
 
-        $orders = $this->orders->page(new BackofficeOrderFilter($query->status, $query->pendingRefunds, $number, $email), $after, $query->perPage + 1);
+        $filter = new BackofficeOrderFilter($query->status, $query->pendingRefunds, $number, $email);
+        $orders = $this->orders->page($filter, $after, $query->perPage + 1);
         $next = null;
         if (\count($orders) > $query->perPage) {
             $orders = \array_slice($orders, 0, $query->perPage);
             $next = BackofficeOrderCursor::after($orders[$query->perPage - 1], $query->pendingRefunds)->encode();
+            $total = null === $after ? $this->orders->count($filter) : null;
+        } else {
+            $total = null === $after ? new BoundedCount(\count($orders), false) : null;
         }
         $now = $this->clock->now();
 
-        return new BackofficeOrderList(array_map(static fn (ListedOrder $order): BackofficeOrderListItem => self::item($order, $now), $orders), $next);
+        return new BackofficeOrderList(array_map(static fn (ListedOrder $order): BackofficeOrderListItem => self::item($order, $now), $orders), $next, $total);
     }
 
     private static function item(ListedOrder $order, \DateTimeImmutable $now): BackofficeOrderListItem

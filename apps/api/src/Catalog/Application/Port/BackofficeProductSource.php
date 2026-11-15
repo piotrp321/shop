@@ -8,6 +8,7 @@ use App\Catalog\Application\Query\BackofficeProduct;
 use App\Catalog\Application\Query\ProductCursor;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Product\ProductStatus;
+use App\Shared\Domain\BoundedCount;
 
 /**
  * Products of the catalog for the price list of the panel, read from the database.
@@ -27,6 +28,16 @@ interface BackofficeProductSource
      * @return list<BackofficeProduct>
      */
     public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, int $limit): array;
+
+    /**
+     * How many products match the filters of {@see page()}, whatever the cursor: counted up to 10 000 (at most 10 001
+     * rows are read), never the whole table.
+     *
+     * @param string|null        $term     as in page()
+     * @param CategoryPath|null  $category as in page()
+     * @param ProductStatus|null $status   as in page()
+     */
+    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status): BoundedCount;
 
     /**
      * What the panel's product list shows besides the name, of the given products.

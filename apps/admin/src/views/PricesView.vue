@@ -28,7 +28,7 @@ import { useAuthStore } from "@/stores/auth";
 
 const categories = useCategoryTree();
 const list = usePriceList({ nodes: categories.nodes, loaded: categories.loaded });
-const { search, searchHint, query, filtered, items, rows, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, changePrice } = list;
+const { search, searchHint, query, filtered, items, rows, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total, changePrice } = list;
 const history = usePriceHistory();
 
 // The Polish names of the tax classes for the row of a product; without them (a failed request) the row shows the code.
@@ -372,6 +372,7 @@ const DIALOG_CLASS = "max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto sm:ma
           :has-next="hasNext"
           :page-number="pageNumber"
           :range="range"
+          :total="total"
           @previous="list.goPrevious"
           @next="list.goNext"
         />

@@ -192,6 +192,7 @@ export function usePriceList(categories?: CategoryLookup) {
     hasNext: pager.hasNext,
     pageNumber: pager.pageNumber,
     range: pager.range,
+    total: pager.total,
     selectCategory,
     setPerPage,
     clearFilters,

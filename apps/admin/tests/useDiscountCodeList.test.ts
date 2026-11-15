@@ -4,8 +4,9 @@ import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { SEARCH_DEBOUNCE_MS, useDiscountCodeList } from "@/discount-codes/useDiscountCodeList";
+import type { WithOptionalTotal } from "./listPage";
 
-type CodeList = components["schemas"]["DiscountCodeListResponse"];
+type CodeList = WithOptionalTotal<components["schemas"]["DiscountCodeListResponse"]>;
 type Code = components["schemas"]["DiscountCodeResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -109,6 +110,18 @@ describe("useDiscountCodeList", () => {
     expect(list.hasPrevious.value).toBe(false);
     expect(list.pageNumber.value).toBe(1);
     expect(list.range.value).toEqual({ from: 1, to: 2 });
+  });
+
+  it("gives the total of the first page and keeps it on the next pages", async () => {
+    const list = await mounted({
+      "": { ...page(["A"], "c1"), total: { value: 2, capped: false } },
+      c1: { ...page(["B"]), total: null },
+    });
+    expect(list.total.value).toEqual({ value: 2, capped: false });
+
+    await list.goNext();
+
+    expect(list.total.value).toEqual({ value: 2, capped: false });
   });
 
   it("pages forward and back with the cursors of the API", async () => {

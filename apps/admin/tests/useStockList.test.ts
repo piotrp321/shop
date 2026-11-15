@@ -5,8 +5,9 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { SEARCH_DEBOUNCE_MS, useStockList } from "@/inventory/useStockList";
+import type { WithOptionalTotal } from "./listPage";
 
-type StockList = components["schemas"]["StockListResponse"];
+type StockList = WithOptionalTotal<components["schemas"]["StockListResponse"]>;
 type StockListItem = components["schemas"]["StockListItemResponse"];
 type ListedStock = components["schemas"]["ListedStockResponse"];
 type StockState = components["schemas"]["StockStateResponse"];
@@ -134,6 +135,18 @@ describe("useStockList", () => {
     expect(list.rows.value).toHaveLength(20);
     expect(list.range.value).toEqual({ from: 11, to: 20 });
     expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
+  });
+
+  it("gives the total of products of the first page and keeps it on the next pages", async () => {
+    const list = await start({
+      "": { items: [item("Bidon")], next: "c1", total: { value: 42, capped: false } },
+      c1: { items: [item("Kajak")], next: null, total: null },
+    });
+    expect(list.total.value).toEqual({ value: 42, capped: false });
+
+    await list.goNext();
+    await settle();
+    expect(list.total.value).toEqual({ value: 42, capped: false });
   });
 
   it("pages forward and back with the cursors of the API, keeping the cursor stack", async () => {

@@ -43,8 +43,8 @@ final class BackofficeOrdersController
         description: 'A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the '
             .'nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine '
             .'with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); '
-            .'anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not '
-            .'counted. Administrators, support and the warehouse only.',
+            .'anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the first page (without `after`) also '
+            .'has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.',
         tags: ['Ordering'],
         parameters: [
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only the orders in this status.', schema: new OA\Schema(ref: '#/components/schemas/BackofficeOrderStatus')),

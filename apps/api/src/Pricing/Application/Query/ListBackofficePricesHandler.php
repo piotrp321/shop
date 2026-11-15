@@ -38,7 +38,7 @@ final readonly class ListBackofficePricesHandler
     {
         $page = $this->products->page($query->term, $query->categoryId, $query->after, $query->perPage);
         if ([] === $page->items) {
-            return new PriceList([], $page->next);
+            return new PriceList([], $page->next, $page->total);
         }
 
         $variants = $this->products->variantsOf(array_map(static fn (DirectoryProduct $product) => $product->id, $page->items));
@@ -59,6 +59,7 @@ final readonly class ListBackofficePricesHandler
         return new PriceList(
             array_map(fn (DirectoryProduct $product): PriceListItem => $this->item($product, $variants[$product->id->toString()] ?? [], $stored), $page->items),
             $page->next,
+            $page->total,
         );
     }
 

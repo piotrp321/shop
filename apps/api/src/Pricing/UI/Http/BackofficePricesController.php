@@ -38,7 +38,7 @@ final class BackofficePricesController
         summary: 'Price list',
         description: 'A page of products sorted by name, then by id, each with its variants in presentation order and the price '
             .'of each variant (null when it has none). Every staff member may read it. The page size counts products, each '
-            .'with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. '
+            .'with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. '
             .'The category filter includes the subcategories and the products that have the category as an additional one; '
             .'an unknown category gives 404. The search term is a literal part of the name, case-insensitive.',
         tags: ['Pricing'],

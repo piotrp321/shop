@@ -99,11 +99,14 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   przeniósł fokus poza pager (fokus przechodzi tylko z `body` albo z wnętrza pagera i najwyżej raz na naciśnięcie, więc późniejsza odpowiedź, np. wyszukiwania, nie zabiera go z pola); `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
   lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień i wybór wariantów promocji).
-  `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
+  `fetchPage({ query, after })` zwraca `{ items, next, total? }` (`total` to `BoundedCountResponse` z pierwszej strony, na kolejnych
+  null) albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
   `items`, `loading`, `loaded`, `error`, `forbidden`, `hasPrevious`, `hasNext`, `pageNumber`, `range` (numery pierwszego
-  i ostatniego wiersza strony dla „Pokazano X–Y”, z rozmiaru strony, na której wiersze zostały pobrane), `goNext`,
+  i ostatniego wiersza strony dla „Pokazano X–Y”, z rozmiaru strony, na której wiersze zostały pobrane), `total` (licznik
+  pierwszej strony, trzymany na kolejnych do zmiany zapytania; nowe zapytanie kasuje go od razu, także gdy jego odpowiedź jest
+  błędem; powrót na pierwszą stronę bierze go z nowej odpowiedzi), `goNext`,
   `goPrevious`, `retry` (powtarza nieudane żądanie) i `refresh` (bieżąca strona po zapisie). Trzy przypadki błędu:
   nieudana zmiana zapytania (także pierwsze wczytanie) usuwa wiersze i kursory (`loaded` false, zostaje `error`), bo
   należą do poprzedniego zapytania (#251 F10); nieudana sąsiednia strona albo odświeżenie zostawia wyświetloną stronę.
@@ -473,7 +476,11 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   `tabindex="0"`) z cieniem przy krawędzi, za którą jest dalsza treść; strona nie przewija się w poziomie. `ListToolbar`:
   wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
   `actions`, „Wyczyść filtry” przy `filtered`, rozmiar strony (Select 10, 25, 50, etykieta „Wierszy na stronie”),
-  `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”), przyciski
+  `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”; prop `total` z `useCursorPager`
+  dopisuje „z 1 234” albo „z ponad 10 000” przy `capped`; bez `total` jest tylko zakres; wszystkie liczby stopki, także
+  zakres („Pokazano 10 001–10 025 z ponad 10 000”), mają tysiące oddzielone twardą spacją,
+  `Intl.NumberFormat('pl-PL', { useGrouping: 'always' })`, bo sama reguła polska zostawia cztery cyfry razem; widoki
+  list przekazują `total` z composable listy), przyciski
   „Poprzednia strona” i „Następna strona” z numerem strony; fokus zostaje na naciśniętym przycisku, a gdy kolejna strona go
   wyłącza (ostatnia, pierwsza), przechodzi na drugi, chyba że pracownik sam przeniósł fokus poza pager. `ListEmpty`: „Brak
   wyników dla wybranych filtrów.” z „Wyczyść filtry” (`empty-clear-filters`) przy filtrach, bez filtrów tekst listy

@@ -9,8 +9,9 @@ import { Select } from "@/components/ui/select";
 import { useAuthStore, type StaffMe } from "@/stores/auth";
 import { SEARCH_DEBOUNCE_MS } from "@/prices/usePriceList";
 import PricesView from "@/views/PricesView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type PriceList = components["schemas"]["PriceListResponse"];
+type PriceList = WithOptionalTotal<components["schemas"]["PriceListResponse"]>;
 type PriceListItem = components["schemas"]["PriceListItemResponse"];
 type PriceListVariant = components["schemas"]["PriceListVariantResponse"];
 type ListedPrice = components["schemas"]["ListedPriceResponse"];
@@ -671,6 +672,17 @@ describe("PricesView", () => {
       await settle();
 
       expect(page().get("[data-testid=range]").text()).toBe("Pokazano produkty 11–20");
+    });
+
+    it("says „z N” with the number of products of the filters, not of their variants", async () => {
+      serve({ pages: { "": { ...productsPage("A", "c1"), total: { value: 1234, capped: false } }, c1: productsPage("B", null) } });
+      wrapper = await mountView();
+      expect(page().get("[data-testid=range]").text()).toBe("Pokazano produkty 1–10 z 1\u00a0234");
+
+      await page().get("[data-testid=next-page]").trigger("click");
+      await settle();
+
+      expect(page().get("[data-testid=range]").text()).toBe("Pokazano produkty 11–20 z 1\u00a0234");
     });
   });
 

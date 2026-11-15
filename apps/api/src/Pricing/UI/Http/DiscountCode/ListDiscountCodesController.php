@@ -41,7 +41,7 @@ final class ListDiscountCodesController
         summary: 'Discount code list',
         description: 'A page of the discount codes, newest first (then by id), with the status at the time of the server and the '
             .'number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same '
-            .'filters; the total is not counted.',
+            .'filters; the first page (without `after`) also has the `total` of the matching codes, counted up to 10 000.',
         tags: ['Pricing'],
         parameters: [
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only the codes in this status now.', schema: new OA\Schema(type: 'string', enum: DiscountCodeListQuery::STATUSES)),

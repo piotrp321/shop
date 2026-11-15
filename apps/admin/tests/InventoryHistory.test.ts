@@ -5,8 +5,9 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import InventoryView from "@/views/InventoryView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type StockList = components["schemas"]["StockListResponse"];
+type StockList = WithOptionalTotal<components["schemas"]["StockListResponse"]>;
 type StockListItem = components["schemas"]["StockListItemResponse"];
 type ListedStock = components["schemas"]["ListedStockResponse"];
 type HistoryEntry = components["schemas"]["StockHistoryItemResponse"];

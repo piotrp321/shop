@@ -12,6 +12,7 @@ use App\Ordering\Application\Query\InvalidBackofficeOrderCursor;
 use App\Ordering\Application\Query\ListBackofficeOrders;
 use App\Ordering\Application\Query\ListBackofficeOrdersHandler;
 use App\Ordering\Domain\OrderStatus;
+use App\Shared\Domain\BoundedCount;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
 use App\Tests\Unit\Ordering\InMemoryBackofficeOrderReader;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -97,8 +98,66 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
 
         $list = $this->list(new ListBackofficeOrders(null, false, $q, null, 25));
 
-        self::assertEquals(new BackofficeOrderList([], null), $list);
+        self::assertEquals(new BackofficeOrderList([], null, new BoundedCount(0, false)), $list);
         self::assertSame([], $this->reader->pages);
+        self::assertSame([], $this->reader->counts, 'nothing can match, so nothing is counted');
+    }
+
+    public function testTheFirstPageWithANextOneCountsTheOrdersOfTheSameFilterWithoutTheCursor(): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2)];
+        $this->reader->total = new BoundedCount(10_000, true);
+
+        $list = $this->list(new ListBackofficeOrders(OrderStatus::Paid, false, ' r-100001 ', null, 1));
+
+        self::assertNotNull($list->nextCursor);
+        self::assertEquals(new BoundedCount(10_000, true), $list->total);
+        self::assertEquals([new BackofficeOrderFilter(OrderStatus::Paid, false, 'R-100001', null)], $this->reader->counts);
+    }
+
+    public function testTheFirstPageWithoutANextOneIsTheWholeResultAndIsNotCounted(): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2)];
+        $this->reader->total = new BoundedCount(99, true);
+
+        $list = $this->list(new ListBackofficeOrders(null, false, null, null, 2));
+
+        self::assertNull($list->nextCursor);
+        self::assertEquals(new BoundedCount(2, false), $list->total, 'the rows of the page are the exact count');
+        self::assertSame([], $this->reader->counts);
+    }
+
+    public function testTheFirstPageWithNoOrderIsAnExactZeroWithoutACount(): void
+    {
+        $list = $this->list(new ListBackofficeOrders(null, false, null, null, 25));
+
+        self::assertEquals(new BoundedCount(0, false), $list->total);
+        self::assertSame([], $this->reader->counts);
+    }
+
+    public function testALaterPageDoesNotCountAndHasNoTotal(): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2), self::listed(3)];
+        $first = $this->list(new ListBackofficeOrders(null, false, null, null, 2));
+        self::assertNotNull($first->nextCursor);
+
+        $later = $this->list(new ListBackofficeOrders(null, false, null, $first->nextCursor, 2));
+
+        self::assertNull($later->total);
+        self::assertCount(1, $this->reader->counts, 'only the first page counted');
+    }
+
+    public function testAnotherSearchOnALaterPageIsAnEmptyListWithoutATotal(): void
+    {
+        $first = $this->list(new ListBackofficeOrders(null, false, null, null, 1));
+        $this->reader->orders = [self::listed(1), self::listed(2)];
+        $cursor = $this->list(new ListBackofficeOrders(null, false, null, null, 1))->nextCursor;
+        self::assertNotNull($cursor);
+        self::assertSame(0, $first->total?->value);
+
+        $list = $this->list(new ListBackofficeOrders(null, false, 'Kowalski', $cursor, 25));
+
+        self::assertEquals(new BackofficeOrderList([], null, null), $list);
     }
 
     public function testAFullPageHasTheCursorOfItsLastOrderForTheNext(): void

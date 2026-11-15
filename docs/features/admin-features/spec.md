@@ -241,8 +241,8 @@ Parametr `sort=<klucz>` z zamkniętą listą na endpoint; każdy klucz ma indeks
 ### Liczniki wyników (decyzje A3, P7)
 
 - Listy produktów, cen, stanów, zamówień, klientów, promocji i kodów zwracają przy pierwszej stronie (bez `after`)
-  `total: BoundedCount` z limitem 10 000; kolejne strony `total: null`, a panel trzyma licznik pierwszej strony do
-  zmiany zapytania.
+  `total: BoundedCountResponse` (`{value, capped}`, schemat OpenAPI) z limitem 10 000; kolejne strony `total: null`,
+  a panel trzyma licznik pierwszej strony do zmiany zapytania.
 - Koszt: zliczenie najwyżej 10 001 wierszy po tym samym warunku i indeksie co strona.
 - `ListPager`: „Pokazano 1–25 z 1 234” albo „z ponad 10 000”; bez numerów dalszych stron.
 

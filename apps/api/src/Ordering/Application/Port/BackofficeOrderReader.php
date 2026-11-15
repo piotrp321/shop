@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ordering\Application\Port;
 
 use App\Ordering\Application\Query\BackofficeOrderCursor;
+use App\Shared\Domain\BoundedCount;
 
 /**
  * Reads the orders for the list of the panel, without locks. Read-only.
@@ -21,4 +22,10 @@ interface BackofficeOrderReader
      * @return list<ListedOrder> at most $limit
      */
     public function page(BackofficeOrderFilter $filter, ?BackofficeOrderCursor $after, int $limit): array;
+
+    /**
+     * How many orders match the filter, whatever the cursor of a page: counted up to 10 000 (at most 10 001 rows are
+     * read), never the whole table.
+     */
+    public function count(BackofficeOrderFilter $filter): BoundedCount;
 }

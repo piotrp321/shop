@@ -9,6 +9,7 @@ use App\Ordering\Application\Port\ListedOrder;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
 use App\Ordering\Domain\OrderStatus;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DbalBackofficeOrderReader;
+use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use App\Tests\Integration\Ordering\BackofficeOrderFixture;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -28,7 +29,7 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $this->connection = $entityManager->getConnection();
-        $this->reader = new DbalBackofficeOrderReader($this->connection);
+        $this->reader = new DbalBackofficeOrderReader($this->connection, new BoundedCounter($this->connection));
         BackofficeOrderFixture::noOrders($this->connection);
     }
 
@@ -133,6 +134,30 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
 
         self::assertSame($this->ids($this->reader->page(self::pendingRefunds(), null, 10)), $seen);
         self::assertEqualsCanonicalizing($expected, $seen);
+    }
+
+    public function testCountsTheOrdersOfTheSameFilterAsThePageHas(): void
+    {
+        $this->order('paid', '2026-11-05 10:00:00', 'R-100001', email: 'jan.kowalski@example.com');
+        $this->order('returned', '2026-11-05 11:00:00', 'R-100002', email: 'Jan.Kowalski@Example.com', refundDueAt: '2026-11-19 11:00:00+00:00');
+        $this->order('returned', '2026-11-05 12:00:00', 'R-100003', refundDueAt: '2026-11-19 12:00:00+00:00', refundCompletedAt: '2026-11-10 08:30:00+00:00');
+        $this->order('shipped', '2026-11-05 13:00:00', 'R-100004');
+
+        $filters = [
+            'no filter' => [self::all(), 4],
+            'a status' => [new BackofficeOrderFilter(OrderStatus::Returned, false, null, null), 2],
+            'the pending refunds' => [new BackofficeOrderFilter(null, true, null, null), 1],
+            'the pending refunds of a status' => [new BackofficeOrderFilter(OrderStatus::Paid, true, null, null), 0],
+            'a number' => [new BackofficeOrderFilter(null, false, 'R-100004', null), 1],
+            'an email in any letter case' => [new BackofficeOrderFilter(null, false, null, 'JAN.KOWALSKI@example.com'), 2],
+            'an email and a status' => [new BackofficeOrderFilter(OrderStatus::Paid, false, null, 'jan.kowalski@example.com'), 1],
+        ];
+        foreach ($filters as $name => [$filter, $expected]) {
+            $count = $this->reader->count($filter);
+
+            self::assertSame([$expected, false], [$count->value, $count->capped], $name);
+            self::assertCount($expected, $this->reader->page($filter, null, 10), $name.': the count is what the pages hold');
+        }
     }
 
     public function testALimitBelowOneIsRefused(): void
