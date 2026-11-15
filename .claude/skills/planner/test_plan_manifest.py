@@ -363,6 +363,14 @@ class PlanManifestTest(unittest.TestCase):
                 self.pair(first, second)
                 self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
 
+    def test_tracked_claude_md_is_found_whatever_the_pathspec_settings_of_git(self):
+        self.track('infra/k8s/CLAUDE.md')
+        self.pair(['infra/k8s/'], ['infra/k8s/'])
+        r = subprocess.run([sys.executable, SCRIPT, 'validate', self.plan], capture_output=True, text=True,
+                           cwd=self.repo, env=dict(os.environ, GIT_LITERAL_PATHSPECS='1'))
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('shared paths infra/k8s/CLAUDE.md', r.stderr)
+
     def test_common_directory_without_a_tracked_claude_md_is_allowed(self):
         self.track('infra/k8s/CLAUDE.md', 'e2e/CLAUDE.md')
         os.makedirs(os.path.join(self.repo, 'infra', 'scripts'))

@@ -40,7 +40,8 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
    - `paths`: pliki i katalogi (z `/` na końcu), które zadanie zmieni, łącznie z testami i dokumentacją. Plik, który
      zadanie na pewno zmieni (np. `spec.md` epiku, każdy `CLAUDE.md`), wpisz jako plik; katalog tylko dla plików
      nieznanych z góry. Przy niepewności wpisz szerszy katalog: za wąska lista może puścić naraz zadania, które
-     zmieniają to samo.
+     zmieniają to samo. Zadanie, które zakłada nowy katalog w katalogu głównym repo, nie ma `paths` (walidator
+     wymaga istniejącego pierwszego segmentu) i idzie szeregowo.
 4. Kontrola przed przedstawieniem: każde kryterium akceptacji i każde zadanie dokumentacji ze specyfikacji jest
    w dokładnie jednym zadaniu (albo jawnie rozdzielone między kilka); żadne zadanie nie wnosi zakresu spoza
    specyfikacji.

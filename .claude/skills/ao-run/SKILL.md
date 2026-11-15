@@ -619,9 +619,8 @@ python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" unhold
 ```
 
 Wyjście `{"removed": true|false}`; po nim od razu sprawdź czekającego kandydata (sekcja 8). Po werdykcie każdej pary
-pokaż też metryki reguły plików (spec pracy równoległej, „Ocena reguły plików”), uruchamiając `pairs.py` ponownie
-po zapisie: `summary` (pary
-dopuszczone, konflikty, rozwiązane automatycznie, wymagające człowieka, regresje, wiersze `claude_md` i `code`)
+pokaż metryki reguły plików (spec pracy równoległej, „Ocena reguły plików”), uruchamiając `pairs.py` ponownie
+po zapisie: `summary` (pary dopuszczone, konflikty, rozwiązane automatycznie, wymagające człowieka, regresje, wiersze `claude_md` i `code`)
 i `code_blocked` (epiki, które czekały przez wspólny kod aplikacji, z liczbą pominięć). Decyzja o zmianie reguły należy
 do użytkownika; zmiana reguły to osobny PR do specyfikacji i `parallel_gate.py`.
 

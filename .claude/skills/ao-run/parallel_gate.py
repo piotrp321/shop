@@ -217,18 +217,22 @@ def task_conflicts(a, b, claude_md=()):
     a file, and every file of `claude_md` (the tracked CLAUDE.md files of the repository) inside a common path. Two
     directories outside application code may overlap (the exceptions of step 5) when they hold no tracked CLAUDE.md.
     A common path counts as a directory only when every path of both tasks that contains it is declared as a
-    directory."""
-    declared = [{}, {}]
+    directory. Paths are compared without case (casefold, as the file system of the host does); a found path keeps
+    the spelling it was declared or tracked with."""
+    declared, spelling = [{}, {}], {}
     for d, paths in zip(declared, (a, b)):
         for p in paths:
-            d[p.rstrip('/')] = d.get(p.rstrip('/'), True) and p.endswith('/')
+            key = p.rstrip('/').casefold()
+            spelling.setdefault(key, p.rstrip('/'))
+            d[key] = d.get(key, True) and p.endswith('/')
 
     def directory(path):
         return all(is_dir for d in declared for p, is_dir in d.items() if _inside(path, p))
 
     common = common_paths(*declared)
-    found = {path for path in common if is_app_code(path) or is_claude_md(path) or not directory(path)}
-    found.update(f for f in claude_md for path in common if _inside(f, path))
+    found = {spelling[path] for path in common
+             if is_app_code(path) or path.split('/')[-1] == 'claude.md' or not directory(path)}
+    found.update(f for f in claude_md for path in common if _inside(f.casefold(), path))
     return sorted(found)
 
 

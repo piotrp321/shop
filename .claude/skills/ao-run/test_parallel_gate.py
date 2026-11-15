@@ -302,6 +302,15 @@ class ClassificationTest(unittest.TestCase):
         # Without the list of tracked files only the declared paths count.
         self.assertEqual([], pg.task_conflicts(['infra/k8s/'], ['infra/k8s/']))
 
+    def test_task_conflicts_ignore_the_case_of_paths(self):
+        # The file system of the host (APFS) does not tell the case apart: two spellings are one path.
+        self.assertEqual(['apps/API/src'], pg.task_conflicts(['apps/API/src/'], ['apps/api/src/']))
+        self.assertEqual(['apps/api/src/Cart'], pg.task_conflicts(['apps/api/src/Cart/'], ['apps/api/src/cart/']))
+        self.assertEqual(['docs/Vision.md'], pg.task_conflicts(['docs/Vision.md'], ['docs/vision.md']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'],
+                         pg.task_conflicts(['INFRA/k8s/'], ['infra/k8s/'], claude_md=('infra/k8s/CLAUDE.md',)))
+        self.assertEqual(['infra/k8s/claude.md'], pg.task_conflicts(['infra/k8s/claude.md'], ['infra/k8s/CLAUDE.md']))
+
 
 class MaxParallelTest(unittest.TestCase):
     SKILL = os.path.join(HERE, 'SKILL.md')

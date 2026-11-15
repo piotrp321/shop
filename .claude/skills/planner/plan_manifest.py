@@ -348,8 +348,9 @@ def _tracked_claude_md(root):
     """The tracked CLAUDE.md files of the repository (paths relative to its root), or a ClaudeMdUnknown when git
     cannot list them."""
     try:
-        r = subprocess.run(['git', '-C', root, 'ls-files', '-z', '--', '*CLAUDE.md'], capture_output=True,
-                           text=True, timeout=60)
+        # Every tracked file, filtered here: a pathspec would depend on the pathspec settings of git (e.g.
+        # GIT_LITERAL_PATHSPECS lists none and exits 0).
+        r = subprocess.run(['git', '-C', root, 'ls-files', '-z'], capture_output=True, text=True, timeout=60)
     except (OSError, UnicodeDecodeError, subprocess.TimeoutExpired) as e:
         error = str(e)
     else:
