@@ -343,7 +343,7 @@ def _lint_result(source, suite, name, names, report):
 def _scan(root, report):
     """The leak scan reads every file, hidden ones included; a hidden file in a case directory is an error of its own
     (listings and fingerprints skip dotfiles, so it would be part of the case without being part of the fingerprint)."""
-    for rel_dir in (registry.SUITES_DIR, registry.HISTORY_DIR):
+    for rel_dir in (registry.SUITES_DIR, registry.HISTORY_DIR, registry.TESTDATA_DIR):
         for path in _symlinks(root, rel_dir):
             report.error('%s: a symbolic link is not allowed (it is not followed, so it is not part of the case data '
                          'or the fingerprint)' % path)

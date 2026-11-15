@@ -11,6 +11,7 @@ Usage:
   evals.py [--root DIR] estimate [<suite>] [--case ID] [--json]
   evals.py [--root DIR] run <suite> [--case ID [--overlay-rev REV]] [--state-root DIR] [--claude-bin PATH]
   evals.py [--root DIR] run --resume <id> [--state-root DIR] [--claude-bin PATH]
+  evals.py [--root DIR] score <id> [--write] [--json] [--state-root DIR] [--usage-start P --usage-end P]
 
 lint     formats of the registry, the config, the cases and the history files; the scan for leaks; the injection
          payloads; the commits of the cases (skipped in a shallow clone).
@@ -26,10 +27,13 @@ run      runs the cases of a suite N times with the CLI of the suite's executor 
          infra_error or an interrupt (SIGTERM, SIGHUP, SIGINT: the executor is killed, the run stays resumable).
          Prints the run id and its status; scoring and the history file are not part of it. Exit 0 for a finished
          run, 1 for a refusal or a stopped run.
+score    scores a finished run from the artefacts of its passes: the metrics, the comparison with the previous and the
+         reference result and the verdict. With --write the result is written as a history file (a trial run, a run
+         that did not finish, a changed suite or a moved HEAD are refused); without it nothing is written. Exit 0
+         when scored, 1 for a refusal, 2 for a bad argument.
 
 Exit status: 0 ok, 1 findings (lint errors, check errors, a refused decision), 2 cannot run (usage, no registry,
 malformed JSON, a bad --diff, no git where it is needed).
-The scoring (another task of the epic) adds its commands to COMMANDS.
 """
 import argparse
 import json
@@ -47,6 +51,7 @@ import evals_lint as linting  # noqa: E402
 import evals_registry as registry  # noqa: E402
 import evals_repo as repo  # noqa: E402
 import evals_runner as runner  # noqa: E402
+import evals_score as scoring  # noqa: E402
 
 DEFAULT_ROOT = os.path.dirname(os.path.dirname(HERE))
 USAGE_ERROR = 2
@@ -262,6 +267,63 @@ def cmd_run(args):
     return 0 if run['status'] == 'done' else 1
 
 
+def _percent(value):
+    return '-' if value is None else '%.0f%%' % (value * 100)
+
+
+def _print_score(scored, args):
+    run, metrics = scored.run, scored.metrics
+    what = '%s/%s (trial run)' % (run['suite'], run['case']) if scored.result is None else run['suite']
+    print('run %s: %s, %d case(s) x N=%d' % (run['id'], what, len(scored.cases), run['n']))
+    if scored.result is not None:
+        print('  verdict: %s' % scored.result['verdict'])
+    print('  correctness %s, recall %s, false alarms %d, scope violations %d, injection resilience %s, stability %s' % (
+        _percent(metrics['correctness']), _percent(metrics['recall']), metrics['false_alarms'],
+        metrics['scope_violations'], _percent(metrics['injection_resilience']), _percent(metrics['stability'])))
+    print('  unstable cases: %s' % (', '.join(metrics['unstable_cases']) or '-'))
+    print('  cost %.2f USD (median per case %.2f), time %.1f min (median per case %.1f)' % (
+        metrics['cost_usd_total'], metrics['cost_usd_median_per_case'], metrics['duration_s_total'] / 60.0,
+        metrics['duration_s_median_per_case'] / 60.0))
+    if scored.result is not None:
+        comparison = scored.result['comparison']
+        for label in ('previous', 'reference'):
+            side = comparison[label]
+            if side is None:
+                print('  %s: none' % label)
+                continue
+            delta = side['correctness_delta']
+            print('  %s %s: %d common case(s), correctness %s; new cases: %s; changed cases: %s' % (
+                label, side['file'], side['common_cases'], 'n/a' if delta is None else '%+.1f points' % delta,
+                ', '.join(side['new_cases']) or '-', ', '.join(side['modified_cases']) or '-'))
+            for case in side['changed_cases']:
+                print('    %s: %d -> %d passes' % (case['id'], case['before'], case['after']))
+        for item in comparison['regressions']:
+            print('  REGRESSION %s%s: %s' % (item['rule'], ' (%s)' % item['case'] if item.get('case') else '',
+                                              item['detail']))
+        for item in comparison['warnings']:
+            print('  warning: %s' % item)
+    for note in scored.notes:
+        print('  note: %s' % note)
+    print('  wrote %s' % scored.path if scored.path else '  nothing written (use --write)')
+
+
+def cmd_score(args):
+    if (args.usage_start is None) != (args.usage_end is None):
+        raise Usage('--usage-start and --usage-end go together')
+    usage = None if args.usage_start is None else (args.usage_start, args.usage_end)
+    try:
+        scored = scoring.score_run(args.root, args.state_root, args.run, write=args.write, usage=usage)
+    except scoring.ScoreError as error:
+        print('evals.py score: refused: %s' % error, file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps({'result': scored.result, 'metrics': scored.metrics, 'path': scored.path,
+                          'notes': scored.notes}, indent=2, ensure_ascii=False))
+    else:
+        _print_score(scored, args)
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='evals.py', description='Evals of the agents (tools/evals/README.md).')
     parser.add_argument('--root', default=DEFAULT_ROOT, help='the repository (default: the one of this script)')
@@ -290,11 +352,19 @@ def build_parser():
     run.add_argument('--state-root', default=runner.DEFAULT_STATE_ROOT,
                      help='the directory of the runs (default: %(default)s)')
     run.add_argument('--claude-bin', help='the CLI binary instead of the one pinned by AO (claude_pin.py)')
+    score = commands.add_parser('score', help='score a finished run from its artefacts')
+    score.add_argument('run', help='the id of the run (the directory below --state-root)')
+    score.add_argument('--write', action='store_true', help='write the result as a history file')
+    score.add_argument('--json', action='store_true', help='JSON output')
+    score.add_argument('--state-root', default=runner.DEFAULT_STATE_ROOT,
+                       help='the directory of the runs (default: %(default)s)')
+    score.add_argument('--usage-start', type=float, metavar='PERCENT', help='the usage of the window at the start')
+    score.add_argument('--usage-end', type=float, metavar='PERCENT', help='the usage of the window at the end')
     return parser
 
 
 COMMANDS = {'lint': cmd_lint, 'check': cmd_check, 'report': cmd_report, 'accept': cmd_accept, 'waive': cmd_waive,
-            'estimate': cmd_estimate, 'run': cmd_run}
+            'estimate': cmd_estimate, 'run': cmd_run, 'score': cmd_score}
 
 
 def main(argv=None):
