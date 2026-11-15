@@ -84,7 +84,9 @@ final class StockLevelIndexMigrationTest extends KernelTestCase
     #[After]
     protected function restoreTheIndexes(): void
     {
-        $connection = DriverManager::getConnection($this->connection->getParams());
+        /** @var array{driver: 'pdo_pgsql', host: string, dbname: string, user: string, password: string} $params */
+        $params = $this->connection->getParams();
+        $connection = DriverManager::getConnection($params);
         try {
             $this->runMigration($connection);
         } finally {
