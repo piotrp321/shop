@@ -10,6 +10,7 @@ import evals_history as history
 import evals_lint as lint
 import evals_registry as registry
 import evals_repo as repo
+import evals_runner as runner
 import evals_score as score
 from test_runner import RunnerTestCase, init, ok, result
 from testutil import run_cli
@@ -262,6 +263,26 @@ class TestRefusals(ScoreRunCase):
         with self.assertRaises(score.ScoreError) as raised:
             self.score(run, write=True)
         self.assertIn('HEAD', str(raised.exception))
+
+
+class TestRunnerRefusesInvalidAssertions(ScoreRunCase):
+    def test_the_runner_refuses_a_case_with_an_invalid_assertion_before_the_first_pass(self):
+        # an invalid pattern would only show when the run is scored, after the cost of the whole run
+        self.add_case('one', kind='clean', assertions=[{'type': 'finding', 'keyword': '(', 'severity': 'Minor'}])
+        self.repo.commit('an invalid assertion')
+        with self.assertRaises(runner.RunError) as raised:
+            self.start(ok())
+        self.assertIn('assertion', str(raised.exception))
+        self.assertIn('regular expression', str(raised.exception))
+        self.assertEqual(0, self.invocations())
+
+    def test_a_missing_field_of_an_assertion_is_refused_too(self):
+        self.add_case('one', kind='clean', assertions=[{'type': 'verdict'}])
+        self.repo.commit('a verdict without the expected one')
+        with self.assertRaises(runner.RunError) as raised:
+            self.start(ok())
+        self.assertIn("'expect' is missing", str(raised.exception))
+        self.assertEqual(0, self.invocations())
 
 
 class TestCli(ScoreRunCase):

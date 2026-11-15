@@ -14,6 +14,7 @@ import json
 import os
 import re
 
+import evals_assertions as assertions
 import evals_lint as lint
 import evals_registry as registry
 
@@ -171,6 +172,9 @@ class Case:
             raise CaseError('%s/case.json is not valid JSON: %s' % (case_id, error))
         problems = lint.validate_case(self.data, case_id, suite, canary_actions) + \
             validate_runner_fields(self.data, self.read, strict=True)
+        # the lint only names the assertion types; a run costs money, so the parameters are checked before it starts
+        for item in self.data.get('assertions') or []:
+            problems.extend('assertion %s' % problem for problem in assertions.problems(item))
         if problems:
             raise CaseError('the case %s of %s is not valid: %s' % (case_id, suite, '; '.join(problems)))
         self.kind = self.data['kind']
