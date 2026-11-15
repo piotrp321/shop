@@ -144,8 +144,8 @@ class Summary(Base):
         labels = json.loads((self.out / "labels.json").read_text())
         r = labels["runs"]
         r["d-1"]["gold_detected"] = True
-        r["d-1"]["findings"][0].update(judge="YES", label=label)
-        r["d-1"]["findings"][1].update(judge="NO", label="trafne")
+        r["d-1"]["findings"][0].update(judge="YES", label=label, by="owner")
+        r["d-1"]["findings"][1].update(judge="NO", label="trafne", by="owner")
         r["c-1"]["findings"][0]["label"] = "falszywe"
         (self.out / "labels.json").write_text(json.dumps(labels))
 
@@ -159,6 +159,33 @@ class Summary(Base):
         self.assertIn("1 total, over 3 ok runs", text)
         self.assertIn("agree 2, disagree 0", text)
         self.assertIn("c-3: infra_error boom", text)
+
+    def test_partial_and_unknown_are_counted_apart(self):
+        make_run(self.out, "d-1", "d", "defect", ["IMPORTANT", "IMPORTANT"])
+        make_run(self.out, "d-2", "d", "defect", ["IMPORTANT"])
+        grade.main(["table", "--out", str(self.out)])
+        labels = json.loads((self.out / "labels.json").read_text())
+        labels["runs"]["d-1"]["gold_detected"] = "partial"
+        labels["runs"]["d-1"]["findings"][0].update(label="czesciowe", by="owner")
+        labels["runs"]["d-1"]["findings"][1].update(label="nieznane")
+        labels["runs"]["d-2"]["gold_detected"] = False
+        (self.out / "labels.json").write_text(json.dumps(labels))
+        grade.main(["summary", "--out", str(self.out)])
+        text = (self.out / "summary.md").read_text()
+        self.assertIn("gold_detected true / defect runs ok: 0 / 2 (partial: 1)", text)
+        self.assertIn("- d: częściowo, nie", text)
+        self.assertIn("false alarms (IMPORTANT+BLOCKER falszywe): 0 total", text)
+        self.assertIn("IMPORTANT+BLOCKER findings: 3, labelled by the owner: 1", text)
+
+    def test_invalid_gold_detected(self):
+        make_run(self.out, "d-1", "d", "defect", ["IMPORTANT"])
+        grade.main(["table", "--out", str(self.out)])
+        labels = json.loads((self.out / "labels.json").read_text())
+        labels["runs"]["d-1"]["gold_detected"] = "maybe"
+        (self.out / "labels.json").write_text(json.dumps(labels))
+        with self.assertRaises(SystemExit) as ctx:
+            grade.main(["summary", "--out", str(self.out)])
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_invalid_label(self):
         self.fixture("bogus")

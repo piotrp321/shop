@@ -16,8 +16,9 @@ To pilot: nie ma tu progów, werdyktów regresji, joba CI ani testów bezpiecze�
 3. `grade.py judge` pyta model, czy znalezisko opisuje wadę wzorcową z `gold.md` (TAK/NIE/NIE WIEM). To podpowiedź,
    nie wynik.
 4. `grade.py table` tworzy `labels.md` (do przeglądu) i `labels.json`. Etykiety wpisuje się do `labels.json`:
-   `wada` (wada wzorcowa), `trafne` (inny prawdziwy problem), `falszywe`, `drobne`; `gold_detected` na przebieg
-   z wadą. Ponowne `table` zachowuje wpisane etykiety. Każdą ocenę da się zmienić ręcznie w tym pliku.
+   `wada` (wada wzorcowa), `czesciowe` (tylko jej część), `trafne` (inny prawdziwy problem), `falszywe`, `drobne`,
+   `nieznane` (nie da się rozstrzygnąć z danych przypadku; nie liczy się ani jako trafienie, ani jako fałszywy alarm);
+   `gold_detected` na przebieg z wadą (`true`, `false`, `"partial"`); `by: "owner"` przy etykiecie właściciela. Ponowne `table` zachowuje wpisane etykiety. Każdą ocenę da się zmienić ręcznie w tym pliku.
 5. `grade.py summary` liczy tabelę z etykiet i kosztów. Dopóki `approved_by_owner` jest `false`, wynik jest
    propozycją.
 
@@ -32,7 +33,7 @@ To pilot: nie ma tu progów, werdyktów regresji, joba CI ani testów bezpiecze�
 | `cart-fixes-3` | wada | zgłoszenie #113 |
 | `search-4` | wada | zgłoszenie #197 |
 | `order-management-2` | wada | zgłoszenie #256 |
-| `catalog-admin-3` | czysty | zadanie CATALOG-ADMIN-3, PR 220 |
+| `catalog-admin-3` | czysty warunkowo (`known.md`: udokumentowany wyścig pierwszej ceny ze zmianą klasy podatkowej) | zadanie CATALOG-ADMIN-3, PR 220 |
 | `order-management-1` | czysty | zadanie ORDER-MANAGEMENT-1, PR 231 |
 
 „Czysty” znaczy tylko, że nie znamy wady: pierwsze review dało `PASS` i po merge'u nie było zgłoszeń do plików diffu.

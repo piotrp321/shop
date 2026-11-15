@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 CASES = Path(__file__).resolve().parent / "cases"
-LABELS = ("wada", "trafne", "falszywe", "drobne")
+# wada: the gold defect; czesciowe: only a part of it; trafne: another real problem; falszywe: false alarm;
+# drobne: minor; nieznane: cannot be decided from the case (counted apart, never as a hit or a false alarm).
+LABELS = ("wada", "czesciowe", "trafne", "falszywe", "drobne", "nieznane")
+GOLD = {True: "tak", False: "nie", "partial": "częściowo", None: "brak etykiety"}
 HIGH = ("IMPORTANT", "BLOCKER")
 
 EXTRACT_PROMPT = r'''Poniżej jest raport code reviewera. Przepisz go do struktury, niczego nie oceniając i niczego nie dodając.
@@ -153,6 +156,9 @@ def load_labels(out):
             if f["label"] is not None and f["label"] not in LABELS:
                 print(f"invalid label {f['label']!r} in {run_id} finding {f['n']}", file=sys.stderr)
                 raise SystemExit(2)
+        if run["gold_detected"] not in GOLD:
+            print(f"invalid gold_detected {run['gold_detected']!r} in {run_id}", file=sys.stderr)
+            raise SystemExit(2)
     return labels
 
 
@@ -203,25 +209,30 @@ def count_labels(findings):
 def cmd_summary(args):
     labels = load_labels(args.out)
     L = ["# Summary", "", "Labels approved by owner: " + ("tak" if labels["approved_by_owner"] else "NIE (wstepne)"), "",
-         "| run | kind | status | verdict | gold_detected | wada | trafne | falszywe | drobne | bez etykiety | cost_usd | wall_s |",
-         "|---|---|---|---|---|---|---|---|---|---|---|---|"]
-    d_ok = d_hit = c_ok = c_zero = c_open = alarms = agree = disagree = unknown = 0
-    bad = []
+         "| run | kind | status | verdict | gold_detected | " + " | ".join(LABELS) + " | bez etykiety | cost_usd | wall_s |",
+         "|" + "---|" * (8 + len(LABELS))]
+    d_ok = d_hit = d_part = c_ok = c_zero = c_open = alarms = agree = disagree = unknown = by_owner = high = 0
+    bad, per_case = [], {}
     for d, meta in run_dirs(args.out):
         e = labels["runs"].get(meta["run"], {"verdict": None, "gold_detected": None, "findings": []})
         c = count_labels(e["findings"])
-        gold = "—" if meta["kind"] == "clean" else {True: "tak", False: "nie", None: "brak etykiety"}[e["gold_detected"]]
+        gold = "—" if meta["kind"] == "clean" else GOLD[e["gold_detected"]]
         L.append("| " + " | ".join(str(x) for x in (meta["run"], meta["kind"], meta["status"], e["verdict"], gold,
                  *c.values(), meta.get("cost_usd"), meta.get("wall_s"))) + " |")
         if meta["status"] != "ok":
             bad.append(f"- {meta['run']}: {meta['status']} {meta.get('error')}")
             continue
         alarms += c["falszywe"]
+        marked = [f for f in e["findings"] if f["severity"] in HIGH]
+        high += len(marked)
+        by_owner += sum(1 for f in marked if f.get("by") == "owner")
         if meta["kind"] == "defect":
             d_ok += 1
             d_hit += e["gold_detected"] is True
+            d_part += e["gold_detected"] == "partial"
+            per_case.setdefault(meta["case"], []).append(GOLD[e["gold_detected"]])
             for f in e["findings"]:
-                if f["judge"] is not None and f["label"] is not None:
+                if f["judge"] is not None and f["label"] is not None and f.get("by") == "owner":
                     if f["judge"] == "UNKNOWN":
                         unknown += 1
                     elif (f["judge"] == "YES") == (f["label"] == "wada"):
@@ -238,7 +249,9 @@ def cmd_summary(args):
     for row in ledger_rows(args.out):
         spent[row["kind"]] = spent.get(row["kind"], 0) + float(row.get("cost_usd") or 0)
     ok_runs = d_ok + c_ok
-    L += ["", f"- defect runs with gold_detected true / defect runs ok: {d_hit} / {d_ok}",
+    L += ["", f"- defect runs with gold_detected true / defect runs ok: {d_hit} / {d_ok} (partial: {d_part})"]
+    L += [f"  - {case}: " + ", ".join(v) for case, v in sorted(per_case.items())]
+    L += [f"- IMPORTANT+BLOCKER findings: {high}, labelled by the owner: {by_owner}",
           f"- clean runs with zero falszywe among IMPORTANT+BLOCKER / clean runs ok: {c_zero} / {c_ok}",
           f"- clean runs nierozstrzygnięte (unlabelled IMPORTANT+BLOCKER): {c_open}",
           f"- false alarms (IMPORTANT+BLOCKER falszywe): {alarms} total, over {ok_runs} ok runs",
