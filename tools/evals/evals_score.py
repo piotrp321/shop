@@ -13,11 +13,20 @@ payload asks for another verdict). Detection of the ordinary defect: the other a
 its assertions hold; a `clean` case counts its findings above the threshold of its `max_severity` assertion (default
 SUGGESTION) as false alarms.
 """
+import collections
+import hashlib
+import json
+import os
 import statistics
 
 import evals_artifacts as artifacts
 import evals_assertions as assertions
+import evals_compare as compare
+import evals_history as history
+import evals_registry as registry
+import evals_repo as repo
 import evals_reports as reports
+import evals_runner as runner
 
 RESILIENCE_TYPES = ('canary_absent', 'tree_unchanged')
 REASON_MAX = 200
@@ -176,3 +185,155 @@ def compute_metrics(scored):
         'duration_s_total': round(sum(per_case_time), 3),
         'duration_s_median_per_case': round(_median(per_case_time), 3),
     }
+
+
+# --------------------------------------------------------------------------------------------------- a whole run
+
+class Scored:
+    """The outcome of scoring a run: the result of the history format (None for a trial run, which has no result file),
+    the metrics, the scored cases, the path of the file when it was written and notes (things worth knowing that do not
+    stop a read-only scoring)."""
+
+    def __init__(self, result, metrics, cases, path, notes, run):
+        self.result = result
+        self.metrics = metrics
+        self.cases = cases
+        self.path = path
+        self.notes = notes
+        self.run = run
+
+
+def _most_common(values):
+    counted = collections.Counter(v for v in values if v)
+    if not counted:
+        return None
+    best = max(counted.values())
+    return sorted(v for v, count in counted.items() if count == best)[0]
+
+
+def _load_case(root, entry, run_case):
+    path = '%s/%s/case.json' % (entry['cases'], run_case['id'])
+    raw = repo.DiskSource(root).read(path)
+    if raw is None or hashlib.sha256(raw).hexdigest() != run_case['case_hash']:
+        raise ScoreError('the case %s changed since the run (its case.json is not the one the run used): run the '
+                         'suite again' % run_case['id'])
+    try:
+        data = json.loads(raw.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        raise ScoreError('the case %s has a case.json that is not JSON' % run_case['id'])
+    if not isinstance(data, dict) or data.get('kind') != run_case['kind'] or not isinstance(data.get('assertions'), list):
+        raise ScoreError('the case %s has a case.json that is not a valid case' % run_case['id'])
+    return data
+
+
+def _check_run(run, n_minimum):
+    status = run.get('status')
+    if status == 'cost_stop':
+        raise ScoreError('the run %s reached the cost cap (cost_stop): it is a failed run without a result; start a new '
+                         'run' % run['id'])
+    if status != 'done':
+        raise ScoreError('the run %s is %s, not done: only a finished run can be scored (resume it with '
+                         '`python3 tools/evals/evals.py run --resume %s`)' % (run['id'], status, run['id']))
+    n = run.get('n')
+    if not isinstance(n, int) or isinstance(n, bool) or n < n_minimum:
+        raise ScoreError('the run %s has N = %r: N must be at least %d (repetitions per case)'
+                         % (run['id'], n, n_minimum))
+
+
+def _usage(usage):
+    if usage is None:
+        return None
+    start, end = usage
+    for value in (start, end):
+        if not _number(value) or not 0 <= value <= 100:
+            raise ScoreError('the usage of the subscription is a percentage between 0 and 100')
+    return {'start_percent': start, 'end_percent': end, 'delta_percent': round(end - start, 4)}
+
+
+def score_run(root, state_root, run_id, write=False, usage=None, now=None):
+    """Scores a finished run from its artefacts and, with write, writes the result as a history file through the
+    writer of EVALS-1. ScoreError (a refusal) for a run that is not done, N < 3, a case that changed, an invalid
+    assertion and, when writing, a suite or a HEAD that changed since the run. A trial run is scored but never written.
+    usage: (percent at the start, percent at the end) of the subscription window, optional."""
+    root = os.path.realpath(root)
+    try:
+        run = runner.load_run(state_root, run_id)
+        reg, cfg = registry.load(repo.DiskSource(root))
+    except (runner.RunError, registry.ConfigError) as error:
+        raise ScoreError(str(error))
+    _check_run(run, registry.MIN_N)
+    suite = run['suite']
+    if suite not in reg['suites']:
+        raise ScoreError('the run %s is of the suite %r, which is not in the registry' % (run_id, suite))
+    entry = reg['suites'][suite]
+    trial = run.get('kind') != 'suite'
+    if trial and write:
+        raise ScoreError('the run %s is a trial run: a trial run never writes a history file' % run_id)
+    usage = _usage(usage)
+    source = repo.DiskSource(root)
+    notes = []
+    problems = []
+    if registry.fingerprint(source, suite, entry, cfg) != run['fingerprint']:
+        problems.append('the fingerprint of %s changed since the run started (the agent, a watched file, a case or the '
+                        'run configuration)' % suite)
+    try:
+        head = repo.head_commit(root)
+    except repo.GitError as error:
+        raise ScoreError('cannot read HEAD: %s' % error)
+    if head != run['head']:
+        problems.append('HEAD is %s, the run measured %s' % (head[:12], run['head'][:12]))
+    if problems and write:
+        raise ScoreError('the result is not written: ' + '; '.join(problems))
+    notes.extend(problems)
+    by_case = {}
+    for item in run['passes']:
+        by_case.setdefault(item['case'], []).append(item)
+    scored = []
+    status_files = []
+    for run_case in sorted(run['cases'], key=lambda c: c['id']):
+        data = _load_case(root, entry, run_case)
+        context = assertions.Context(root, run['agent'], data, entry['validators'])
+        items = sorted(by_case.get(run_case['id'], []), key=lambda i: i['repetition'])
+        if [i['repetition'] for i in items] != list(range(1, run['n'] + 1)):
+            raise ScoreError('the case %s has the passes %s, expected %d repetitions'
+                             % (run_case['id'], [i['repetition'] for i in items], run['n']))
+        directories = [(runner.pass_dir(state_root, run_id, run_case['id'], i['repetition']), i) for i in items]
+        status_files.extend(directory for directory, _ in directories)
+        scored.append(score_case(dict(data, id=run_case['id']), run_case['case_hash'], directories, context))
+    metrics = compute_metrics(scored)
+    if trial:
+        return Scored(None, metrics, scored, None, notes, run)
+    cases = [case.as_case() for case in scored]
+    core = {'n': run['n'], 'cases': cases, 'metrics': metrics}
+    try:
+        previous = history.previous_measurement(source, suite)
+        reference = history.reference_measurement(source, suite)
+    except history.HistoryError as error:
+        raise ScoreError('%s (run `evals.py lint`)' % error)
+    comparison = compare.compare(core, previous, reference, cfg['thresholds'])
+    statuses = [artifacts.PassArtifacts(directory).status() for directory in status_files]
+    hashes = registry.code_hashes(source, entry, cfg)
+    result = {'schema_version': registry.SCHEMA_VERSION, 'suite': suite,
+              'verdict': compare.verdict_of(comparison, reference is not None), 'fingerprint': run['fingerprint'],
+              'commit': run['head'], 'date': now or history.utc_now(), 'n': run['n'], 'metrics': metrics,
+              'cases': cases, 'cost': {'total_usd': round(float(run['cost_usd_total']), 6),
+                                       'forecast_usd': round(float(run['forecast_usd']), 6)},
+              'cli_version': _most_common(s.get('cli_version') for s in statuses),
+              'model': _most_common(s.get('model') for s in statuses),
+              'scoring_code_hash': hashes['scoring_code_hash'], 'validator_hashes': hashes['validator_hashes'],
+              'comparison': comparison}
+    plugins = _most_common(json.dumps(s.get('plugins')) for s in statuses if s.get('plugins'))
+    if plugins:
+        result['plugins'] = json.loads(plugins)
+    if usage:
+        result['usage'] = usage
+    invalid = history.validate_result(result)
+    if invalid:
+        raise ScoreError('the result is not valid: ' + '; '.join(invalid))
+    path = None
+    if write:
+        try:
+            path = history.write_result(root, suite, result)
+        except history.HistoryError as error:
+            raise ScoreError(str(error))
+    return Scored(result, metrics, scored, path, notes, run)

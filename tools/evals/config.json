@@ -15,5 +15,11 @@
     "start_max_percent": 80,
     "stop_percent": 90
   },
-  "scoring_code": []
+  "scoring_code": [
+    "tools/evals/evals_reports.py",
+    "tools/evals/evals_artifacts.py",
+    "tools/evals/evals_assertions.py",
+    "tools/evals/evals_score.py",
+    "tools/evals/evals_compare.py"
+  ]
 }
