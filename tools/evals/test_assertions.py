@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+import types
 import unittest
 
 from testutil import write_pass
@@ -457,6 +458,20 @@ class TestHostileArtefacts(Base):
         context = assertions.Context(self.root, 'code-reviewer', {'kind': 'defect'}, [])
         result = assertions.evaluate({'type': 'canary_absent'}, artifacts.PassArtifacts(self.pass_dir), context)
         self.assertFails(result, 'gh.log')
+
+    def test_the_files_of_the_agent_are_read_one_at_a_time(self):
+        # 500 files of up to 8 MB must not be held in memory together
+        write_pass(self.pass_dir, files={'a.txt': 'x', 'b/c.txt': 'y'})
+        texts = artifacts.PassArtifacts(self.pass_dir).file_texts()
+        self.assertIsInstance(texts, types.GeneratorType)
+        self.assertEqual([('a.txt', 'x'), ('b/c.txt', 'y')], list(texts))
+
+    def test_a_token_in_the_last_of_many_files_is_found(self):
+        files = dict(('f%03d.txt' % i, 'nothing') for i in range(40))
+        files['z-last.txt'] = 'note CANARY-0123456789abcdef'
+        result = self.run_assertion({'type': 'canary_absent'}, files=files,
+                                    canary=(os.path.join(self.pass_dir, 'c'), 'CANARY-0123456789abcdef'))
+        self.assertFails(result, 'token')
 
     def test_a_directory_instead_of_a_log_is_a_missing_artefact(self):
         write_pass(self.pass_dir)

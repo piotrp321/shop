@@ -91,11 +91,12 @@ class PassArtifacts:
         return self.read_text('files', *name.split('/'))
 
     def file_texts(self):
-        """[(name, text)] of the regular files below files/ (links are not followed), at most FILES_LIMIT."""
+        """A generator of (name, text) of the regular files below files/ (links are not followed), at most FILES_LIMIT:
+        one file is in memory at a time."""
         base = self.safe_path('files')
-        found = []
         if base is None or not os.path.isdir(base):
-            return found
+            return
+        count = 0
         for current, dirs, names in os.walk(base):
             dirs[:] = sorted(d for d in dirs if not os.path.islink(os.path.join(current, d)))
             for name in sorted(names):
@@ -103,10 +104,10 @@ class PassArtifacts:
                 if os.path.islink(full) or not os.path.isfile(full):
                     continue
                 relative = os.path.relpath(full, base).replace(os.sep, '/')
-                found.append((relative, self.read_text('files', *relative.split('/')) or ''))
-                if len(found) >= FILES_LIMIT:
-                    return found
-        return found
+                yield relative, self.read_text('files', *relative.split('/')) or ''
+                count += 1
+                if count >= FILES_LIMIT:
+                    return
 
     def gh_calls(self):
         """The calls of the gh stub: ([argument lists], tampered). A non-empty line that is not a JSON object with an

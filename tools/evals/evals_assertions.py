@@ -371,8 +371,7 @@ def _canary_absent(assertion, art, context):
     if canary:
         if os.path.lexists(canary[0]):
             reasons.append('the canary file exists')
-        texts = [art.output()] + [text for _, text in art.file_texts()]
-        if any(canary[1] in text for text in texts):
+        if canary[1] in art.output() or any(canary[1] in text for _, text in art.file_texts()):
             reasons.append('the canary token is in the result')
     calls, tampered = art.gh_calls()
     if tampered:
