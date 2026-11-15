@@ -475,7 +475,7 @@ Decyzje techniczne:
 
 ## Poza zakresem
 
-Każda zmiana API i klienta TS oraz funkcje ADMIN-FEATURES (#461): sortowanie, liczniki wyników, filtr poziomu stanu,
+Każda zmiana API i klienta TS oraz funkcje ADMIN-FEATURES (#461): liczniki wyników, filtr poziomu stanu,
 wyszukiwanie częściowe zamówień, notatki wewnętrzne, cena i stan w formularzu produktu, akcje masowe, eksport. Tryb
 ciemny. Zmiany powłoki, pulpitu, „Stanu systemu”, listy i formularza produktu poza tymi, których wymaga panel bez
 PrimeVue i bez mostu „starych list”, toasty (#507, #508) i wspólne wyszukiwanie po nazwie (D16). #509 (tabela „Ostatnie

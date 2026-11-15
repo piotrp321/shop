@@ -360,7 +360,9 @@ Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
 - `SearchBackofficeProducts(q?, categoryId?, after?, perPage)`: zapytanie do PostgreSQL (DBAL), wynik
   `{id, name, taxClass}`. Nazwa przez `ILIKE` z indeksem trigramowym (`pg_trgm`, GIN na `catalog_product.name`),
   `q` od 2 do 100 znaków. Kategoria z podkategoriami po ścieżce zmaterializowanej, jako kategoria główna lub dodatkowa.
-  Sortowanie `(name, id)`, kursor keyset, bez liczenia wszystkich wyników.
+  Sortowanie `(name, id)` albo, z kluczem `sort`, `(name, id)` malejąco albo `(updated_at, id)` w obu kierunkach (klucze
+  `name`, `-name`, `-updatedAt`, `updatedAt`), kursor keyset z kluczem sortu (kursor innego sortu to błąd kursora), bez
+  liczenia wszystkich wyników.
 
 ## Reconcile
 
@@ -427,7 +429,7 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/prices?q&category&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; 400 złe parametry; 404 nieznana kategoria |
+| `GET /api/v1/admin/prices?q&category&sort&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); 400 złe parametry (także klucz spoza listy i kursor innego sortu); 404 nieznana kategoria |
 | `PUT /api/v1/admin/variants/{variantId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo `price-locked-by-promotion`; 422 kwota poza zakresem lub zły typ |
 | `GET /api/v1/admin/promotions?status&after&perPage` | pracownik z rolą personelu | `200 {items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; `status` `planned`, `active`, `ended`; `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
 | `POST /api/v1/admin/promotions`, body `{name, percentOff, startsAt \| null, endsAt, variantIds}` | `admin`, `marketing` | 201 promocja (`Location`); 403; 409 `promotion-overlap`; 422 |
@@ -493,8 +495,11 @@ z tokenem realmu `shop`: 401):
 - Pozycja menu „Ceny” i trasa `/prices`. Promocje mają własną pozycję „Promocje” (`docs/features/promotions/spec.md`).
 - Lista (H1 „Ceny”, okruszki „Pulpit › Katalog › Ceny”, standard listy panelu: `docs/features/admin-design/spec.md`):
   wyszukiwanie po nazwie produktu (od 2 do 100 znaków, z opóźnieniem), filtr kategorii `CategoryCombobox` (z
-  podkategoriami), rozmiar strony 10, 25 albo 50 produktów (domyślnie 10; do API idzie zawsze) i „Wyczyść filtry”.
-  Wyszukiwanie, kategoria i rozmiar strony są w adresie (`q`, `category`, `perPage`; 10 nie jest zapisywane). Stronicowanie
+  podkategoriami), `Select` „Sortuj” produktów („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio zmienione”, „Najdawniej
+  zmienione”; nazwa jest w wierszu grupy, więc nagłówki kolumn nie mają `aria-sort`), rozmiar strony 10, 25 albo 50
+  produktów (domyślnie 10; do API idzie zawsze) i „Wyczyść filtry”.
+  Wyszukiwanie, kategoria, kolejność i rozmiar strony są w adresie (`q`, `category`, `sort`, `perPage`; domyślne `name`
+  i 10 nie są zapisywane, a `sort` do API idzie tylko, gdy to nie `name`). Stronicowanie
   „następna/poprzednia” po kursorach, strona to produkty, a „Pokazano produkty X–Y” liczy produkty niezależnie od liczby
   wariantów. Lista jest pogrupowana po produkcie: wiersz produktu (nazwa pogrubiona i polska nazwa klasy podatkowej z
   `GET /api/v1/admin/tax-classes`, a dla kodu spoza listy albo przy błędzie tego żądania sam kod) bez akcji, a pod nim wiersz
