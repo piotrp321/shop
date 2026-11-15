@@ -1,6 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import AppMenu from "@/layout/AppMenu.vue";
@@ -334,27 +334,21 @@ describe("AppMenu: choosing an item", () => {
     expect(router.currentRoute.value.fullPath).toBe("/orders?refund=pending");
   });
 
-  it("navigates again to the current location, so a list that changed its filters locally takes them from the address", async () => {
-    const { wrapper: menu, router } = await mountMenu("/orders?refund=pending", ["admin"]);
-    const before = router.currentRoute.value;
+  it.each([["/orders?refund=pending"], ["/orders"], ["/promotions"]])(
+    "does not navigate again to the current location %s, only the parent is told",
+    async (address) => {
+      const { wrapper: menu, router } = await mountMenu(address, ["admin"]);
+      const before = router.currentRoute.value;
+      const push = vi.spyOn(router, "push");
 
-    await menu.get("a[href='/orders?refund=pending']").trigger("click");
-    await flushPromises();
+      await menu.get(`a[href='${address}']`).trigger("click");
+      await flushPromises();
 
-    expect(router.currentRoute.value, "a duplicate navigation would keep the same route object").not.toBe(before);
-    expect(router.currentRoute.value.fullPath).toBe("/orders?refund=pending");
-    expect(menu.emitted("navigate")).toHaveLength(1);
-  });
-
-  it("navigates again also on /orders without a query", async () => {
-    const { wrapper: menu, router } = await mountMenu("/orders", ["admin"]);
-    const before = router.currentRoute.value;
-
-    await menu.get("a[href='/orders']").trigger("click");
-    await flushPromises();
-
-    expect(router.currentRoute.value).not.toBe(before);
-  });
+      expect(router.currentRoute.value, "a forced navigation would give a new route object").toBe(before);
+      expect(push).not.toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+      expect(menu.emitted("navigate")).toHaveLength(1);
+    },
+  );
 
   it.each([
     ["Ctrl", { ctrlKey: true }],

@@ -1,8 +1,7 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
+import { type Dirent, readdirSync } from "node:fs";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
-import { LEGACY_FILES } from "../../eslint.config.js";
 
 const eslint = new ESLint();
 
@@ -220,40 +219,88 @@ describe("styles only through classes", () => {
   );
 });
 
-describe("PrimeVue only in the files of LEGACY_FILES", () => {
+describe("PrimeVue is blocked and the rules apply to every file of src/", () => {
   it.each([["primevue/button"], ["primevue"], ["@primeuix/themes/aura"], ["primeicons/primeicons.css"]])(
-    "rejects an import of %s outside LEGACY_FILES",
+    "rejects an import of %s with no-restricted-imports, once",
     async (source) => {
       const errors = await lint(`import "${source}";\n`, TS);
       expect(ruleIds(errors)).toEqual(["no-restricted-imports"]);
     },
   );
 
-  it("does not apply the colour rules to a file of LEGACY_FILES", async () => {
-    const legacy = LEGACY_FILES.find((file) => file.endsWith(".ts"));
-    expect(legacy).toBeDefined();
-    const code = `import "primevue/config";\nexport const classes = "${arbitrary("bg", "#fff")}";\n`;
-    expect(await lint(code, legacy!)).toEqual([]);
+  it.each([["primevue/button"], ["@primeuix/themes/aura"], ["primeicons/primeicons.css"]])(
+    "rejects an import of %s in src/main.ts, a re-export and a type import",
+    async (source) => {
+      expect(ruleIds(await lint(`import "${source}";\n`, "src/main.ts"))).toEqual(["no-restricted-imports"]);
+      expect(ruleIds(await lint(`export * from "${source}";\n`, TS))).toEqual(["no-restricted-imports"]);
+      expect(ruleIds(await lint(`import type { X } from "${source}";\nexport type Y = X;\n`, TS))).toEqual([
+        "no-restricted-imports",
+      ]);
+    },
+  );
+
+  it("rejects an import of primevue in a script of a .vue file", async () => {
+    const code = template(`<div />`, 'import Button from "primevue/button";\nvoid Button;');
+    expect(ruleIds(await lint(code, VUE))).toEqual(["no-restricted-imports"]);
   });
 
-  it("applies the colour rules to a file next to one of LEGACY_FILES", async () => {
-    const legacy = LEGACY_FILES.find((file) => file.endsWith(".ts"))!;
-    const sibling = legacy.replace(/[^/]+$/, "notLegacy.ts");
-    const code = `export const classes = "${arbitrary("bg", "#fff")}";\n`;
-    expect(ruleIds(await lint(code, sibling))).toEqual(["no-restricted-syntax"]);
+  it.each([
+    ["src/main.ts", `export const classes = "${arbitrary("bg", "#fff")}";\n`, "no-restricted-syntax"],
+    ["src/primevue.ts", `export const classes = "${arbitrary("bg", "#fff")}";\n`, "no-restricted-syntax"],
+    ["src/layout/anything.ts", `export const classes = "${arbitrary("bg", "#fff")}";\n`, "no-restricted-syntax"],
+    ["src/main.ts", `${withCn}\nexport const c = cn("bg-red-500");\n`, "better-tailwindcss/no-unknown-classes"],
+  ])("rejects a colour or an unknown class in %s", async (file, code, ruleId) => {
+    const errors = await lint(code, file);
+    expect(ruleIds(errors)).toEqual([ruleId]);
+    expect(errors).toHaveLength(1);
   });
 
-  it("lists explicit files only", () => {
-    expect(LEGACY_FILES.length).toBeGreaterThan(0);
-    for (const file of LEGACY_FILES) {
-      expect(file).toMatch(/^src\/[\w/-]+\.(vue|ts)$/);
+  it.each([["src/App.vue"], ["src/layout/AppLayout.vue"], ["src/products/ProductFormView.vue"]])(
+    "rejects a <style> block in %s",
+    async (file) => {
+      const code = `${template(`<div class="p-2" />`)}\n<style scoped>\n.x {\n  margin: 0;\n}\n</style>\n`;
+      const errors = await lint(code, file);
+      expect(ruleIds(errors)).toEqual(["vue/no-restricted-block"]);
+      expect(errors).toHaveLength(1);
+    },
+  );
+
+  it("rejects bg-[#fff] in a template of a .vue file of src/ once", async () => {
+    const errors = await lint(template(`<div class="${arbitrary("bg", "#fff")}" />`), "src/App.vue");
+    expect(ruleIds(errors)).toEqual(["vue/no-restricted-class"]);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("has no list of exempt files", async () => {
+    const config = await import("../../eslint.config.js");
+    expect(Object.keys(config)).toEqual(["default"]);
+  });
+
+  // The rules of every file of src/ as ESLint resolves them: an `ignores` or a `files` pattern that leaves a file out
+  // (even a single one, written into the block of the rules) makes the rule missing or off for it.
+  const LOOK_RULES = ["no-restricted-imports", "no-restricted-syntax", "better-tailwindcss/no-unknown-classes"];
+  const LOOK_RULES_VUE = ["vue/no-restricted-class", "vue/no-restricted-syntax", "vue/no-restricted-static-attribute", "vue/no-restricted-block"];
+
+  const sourceFiles = (directory: string): string[] =>
+    readdirSync(new URL(`../../${directory}/`, import.meta.url), { withFileTypes: true }).flatMap((entry: Dirent) => {
+      const path = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) return sourceFiles(path);
+      return /\.(ts|vue)$/.test(entry.name) ? [path] : [];
+    });
+
+  it("turns the look rules on as errors for every .ts and .vue file of src/", async () => {
+    const files = sourceFiles("src");
+    expect(files.length, "src/ has files").toBeGreaterThan(100);
+    expect(files).toContain("src/main.ts");
+    const missing: string[] = [];
+    for (const file of files) {
+      const rules = (await eslint.calculateConfigForFile(file))?.rules ?? {};
+      for (const rule of file.endsWith(".vue") ? [...LOOK_RULES, ...LOOK_RULES_VUE] : LOOK_RULES) {
+        const setting = rules[rule];
+        const level = Array.isArray(setting) ? setting[0] : setting;
+        if (level !== 2 && level !== "error") missing.push(`${file}: ${rule}`);
+      }
     }
-  });
-
-  it("every file of the list exists and imports primevue", () => {
-    for (const file of LEGACY_FILES) {
-      const source = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");
-      expect(source, file).toMatch(/from\s+["'](primevue|@primeuix\/themes)(\/[\w/.-]+)?["']/);
-    }
+    expect(missing).toEqual([]);
   });
 });
