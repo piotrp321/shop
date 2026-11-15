@@ -30,15 +30,15 @@ brevo:
 # nothing but Cloudflare reaches the origin (ipAllowList below).
 clientIpHeader: CF-Connecting-IP
 
-# Sentry (docs/features/sentry/spec.md, P4 and P7): the environment and one trace in ten. The DSNs are public values, not secrets: they are
-# empty until the Sentry projects exist (infra/k8s/README.md), and then they are written here; an application with an empty DSN has Sentry off.
+# Sentry (docs/features/sentry/spec.md, P4 and P7): the environment and one trace in ten. The DSNs are public values, not secrets: one per
+# project of the Sentry organization `worf` (EU region, infra/k8s/README.md section 10); an application with an empty DSN has Sentry off.
 sentry:
   environment: demo
   tracesSampleRate: 0.1
   dsn:
-    api: ""
-    store: ""
-    admin: ""
+    api: https://9456d06b82ba3a47b64727357ae7931f@o4512424218329088.ingest.de.sentry.io/4512424271413328
+    store: https://dde664ef9af8b65a0dbb626186f27183@o4512424218329088.ingest.de.sentry.io/4512424273444944
+    admin: https://4e7feefd85036218103d9fb8f246026e@o4512424218329088.ingest.de.sentry.io/4512424275542096
 
 # The origin takes HTTP(S) only from Cloudflare (https://www.cloudflare.com/ips/, to be refreshed when they change).
 ipAllowList:

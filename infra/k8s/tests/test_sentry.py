@@ -45,8 +45,8 @@ def holders(case, variable):
 
 class SentryEnvTest(unittest.TestCase):
     def test_no_dsn_no_variable_at_all(self):
-        """The profiles as they are (prod and ci have no DSN) and a render with an environment and a rate but without a DSN."""
-        for case in ("prod", "ci", "load", "ci-sentry-nodsn"):
+        """The profiles without a DSN (ci and load) and a render with an environment and a rate but without a DSN."""
+        for case in ("ci", "load", "ci-sentry-nodsn"):
             self.assertEqual({}, sentry_of(case), case)
 
     def test_the_dsn_of_the_api_reaches_every_container_with_the_environment_of_the_api_and_nothing_else(self):
@@ -116,6 +116,19 @@ class SentryEnvTest(unittest.TestCase):
         self.assertEqual({"demo"}, set(holders("prod-sentry", "SENTRY_ENVIRONMENT").values()))
         self.assertEqual({"0.1"}, set(holders("prod-sentry", "SENTRY_TRACES_SAMPLE_RATE").values()))
         self.assertEqual({API_DSN, STORE_DSN, ADMIN_DSN}, set(holders("prod-sentry", "SENTRY_DSN").values()))
+
+    def test_prod_as_it_is_sends_each_application_to_its_own_project_in_the_eu_region(self):
+        """P1 and P7: environments/prod/values.yaml has the three DSNs of the Sentry projects, each in its own application."""
+        by_dsn = {}
+        for key, dsn in holders("prod", "SENTRY_DSN").items():
+            by_dsn.setdefault(dsn, set()).add(key.split("/")[0])
+        self.assertEqual(3, len(by_dsn), sorted(by_dsn))
+        for dsn in by_dsn:
+            self.assertRegex(dsn, r"^https://[0-9a-f]{32}@o[0-9]+\.ingest\.de\.sentry\.io/[0-9]+$")
+        apps = sorted(by_dsn.values(), key=len)
+        self.assertEqual([{"admin"}, {"store"}], sorted(apps[:2], key=sorted))
+        self.assertTrue(API_WORKLOADS <= apps[2])
+        self.assertFalse({"store", "admin"} & apps[2])
 
     def test_the_default_rate_is_zero_a_string(self):
         self.assertEqual({"0"}, set(holders("ci-sentry-default-rate", "SENTRY_TRACES_SAMPLE_RATE").values()))
