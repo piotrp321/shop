@@ -309,6 +309,28 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         self::assertStringNotContainsString('garbage', (string) $this->response()->getContent());
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badRefundFilters(): iterable
+    {
+        yield 'a value that is no filter' => ['refund=done'];
+        yield 'capitals' => ['refund=PENDING'];
+        yield 'an array' => ['refund[]=pending'];
+    }
+
+    #[DataProvider('badRefundFilters')]
+    public function testTheViolationOfTheRefundFilterIsInPolishAlsoForAnArray(string $query): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame(['refund'], $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('Filtr zwrotów może mieć tylko wartość pending albo overdue.', $violation['title']);
+    }
+
     public function testACursorOfTheOtherSortIsA400(): void
     {
         $this->order('returned', '-2 days', 'R-100001', refundDueAt: '+1 day');

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Inventory\UI\Http;
 
 use App\Inventory\Application\Query\ListBackofficeStock;
+use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -19,6 +20,7 @@ final readonly class BackofficeStockQuery
     public const array SORTS = ['name', '-name', '-updatedAt', 'updatedAt'];
     /** The levels the list is filtered by (the values of AvailabilityLevel but the one of an ample stock). */
     public const array LEVELS = ['out_of_stock', 'low_stock'];
+    public const string BAD_LEVEL = 'Poziom stanu musi być jednym z: out_of_stock, low_stock.';
     public const string LEVEL_EXCLUDES = 'Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.';
 
     public function __construct(
@@ -35,9 +37,21 @@ final readonly class BackofficeStockQuery
         public ?string $after = null,
         #[Assert\Range(min: 1, max: ListBackofficeStock::MAX_PER_PAGE)]
         public int $perPage = ListBackofficeStock::DEFAULT_PER_PAGE,
-        #[Assert\Choice(choices: self::LEVELS, message: 'Poziom stanu musi być jednym z: out_of_stock, low_stock.')]
-        public ?string $level = null,
+        // A string checked by validateLevel: a value of another kind (`level[]=…`) gets the same Polish message.
+        #[OA\Property(type: 'string', enum: self::LEVELS, nullable: true)]
+        public mixed $level = null,
     ) {
+    }
+
+    /**
+     * The level is one of LEVELS.
+     */
+    #[Assert\Callback]
+    public function validateLevel(ExecutionContextInterface $context): void
+    {
+        if (null !== $this->level && !\in_array($this->level, self::LEVELS, true)) {
+            $context->buildViolation(self::BAD_LEVEL)->atPath('level')->addViolation();
+        }
     }
 
     /**

@@ -25,11 +25,10 @@ final readonly class ListBackofficeOrdersHandler
      * for a fragment (see OrderSearchTerm); anything else is refused. One order more than the page is read: its
      * presence is what tells there is a next page. The first page (no cursor) also carries the bounded total of the
      * filter: the number of its rows when there is no next page (nothing to count), otherwise the reader counts,
-     * never the table whole.
+     * never the table whole. The overdue refunds are the pending ones due before the moment of the read, in the same
+     * order and with the same cursor.
      *
      * @throws InvalidBackofficeOrderCursor
-     *                                      The overdue refunds are the pending ones due before the moment of the read, in the same order and with the same
-     *                                      cursor
      * @throws InvalidBackofficeOrderList   a sort with the pending refunds, the amount with a search or a range of days,
      *                                      the pending refunds with a range of days, a search term or a day that is
      *                                      refused, a range that ends before it starts

@@ -328,6 +328,29 @@ final class ListStockEndpointTest extends WebTestCase
         self::assertContains($path, $this->violationPaths(400));
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badLevels(): iterable
+    {
+        yield 'a level of an ample stock' => ['level=in_stock'];
+        yield 'capitals' => ['level=OUT_OF_STOCK'];
+        yield 'an array' => ['level[]=out_of_stock'];
+    }
+
+    #[DataProvider('badLevels')]
+    public function testTheViolationOfABadLevelIsInPolishAlsoForAnArray(string $query): void
+    {
+        $this->get($query);
+
+        $problem = $this->assertProblem(400);
+        self::assertSame(['level'], $this->violationPaths(400));
+        self::assertIsArray($problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('Poziom stanu musi być jednym z: out_of_stock, low_stock.', $violation['title']);
+    }
+
     public function testTheViolationOfALevelWithASearchIsInPolish(): void
     {
         $this->get('level=out_of_stock&q=bidon&category=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60&sort=name');

@@ -6,7 +6,9 @@ namespace App\Catalog\UI\Http;
 
 use App\Catalog\Application\Query\ListBackofficeProducts;
 use App\Catalog\Application\Query\SearchBackofficeProducts;
+use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Query string of GET /api/v1/admin/products. The violation messages never contain the submitted value.
@@ -17,6 +19,7 @@ final readonly class BackofficeProductsQuery
     public const int MAX_CURSOR_LENGTH = 2048;
     /** The values of ProductSort. */
     public const array SORTS = ['name', '-name', '-updatedAt', 'updatedAt'];
+    public const string BAD_IMAGES = 'Filtr zdjęć może mieć tylko wartość none.';
 
     public function __construct(
         #[Assert\Length(min: SearchBackofficeProducts::MIN_TERM_LENGTH, max: SearchBackofficeProducts::MAX_TERM_LENGTH)]
@@ -34,8 +37,20 @@ final readonly class BackofficeProductsQuery
         public ?string $after = null,
         #[Assert\Range(min: 1, max: SearchBackofficeProducts::MAX_PER_PAGE)]
         public int $perPage = ListBackofficeProducts::DEFAULT_PER_PAGE,
-        #[Assert\Choice(choices: ['none'], message: 'Filtr zdjęć może mieć tylko wartość none.')]
-        public ?string $images = null,
+        // A string checked by validateImages: a value of another kind (`images[]=…`) gets the same Polish message.
+        #[OA\Property(type: 'string', enum: ['none'], nullable: true)]
+        public mixed $images = null,
     ) {
+    }
+
+    /**
+     * The images filter is `none`.
+     */
+    #[Assert\Callback]
+    public function validateImages(ExecutionContextInterface $context): void
+    {
+        if (null !== $this->images && 'none' !== $this->images) {
+            $context->buildViolation(self::BAD_IMAGES)->atPath('images')->addViolation();
+        }
     }
 }

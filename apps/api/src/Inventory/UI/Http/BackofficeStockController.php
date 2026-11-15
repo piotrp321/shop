@@ -81,9 +81,12 @@ final class BackofficeStockController
     )]
     public function __invoke(#[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] BackofficeStockQuery $query = new BackofficeStockQuery()): JsonResponse
     {
+        // The validation has accepted only a text here.
+        $level = \is_string($query->level) ? $query->level : null;
+
         try {
             /** @var StockList $list */
-            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort, $query->level));
+            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort, $level));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

@@ -249,6 +249,11 @@ final class BackofficeProductsEndpointTest extends WebTestCase
 
         $problem = $this->assertProblem(400);
         self::assertIsArray($problem['violations'] ?? null);
+        self::assertCount(1, $problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('images', $violation['propertyPath']);
+        self::assertSame('Filtr zdjęć może mieć tylko wartość none.', $violation['title']);
     }
 
     public function testTheListSearchesByNameAndFiltersByCategory(): void
