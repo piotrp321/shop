@@ -9,6 +9,8 @@ Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
   Writers hold state_lock. A missing file is empty; an unreadable or wrong-shaped one is StateFileError.
 - file classification of the gate (is_app_code, is_allowed, is_claude_md, common_paths), GENERATED and REGISTRATION
   files, and the rule for tasks of one wave running at once (task_conflicts, used by planner/plan_manifest.py).
+- MAX_PARALLEL: the `--max-parallel` that /ao-run passes to AO (SKILL.md, section 4); the gate reserves that many
+  stacks for every active epic.
 - Docker memory snapshot (docker_snapshot with an injected runner, DockerError) and free_mib.
 - orchestrator_running: probes <ao_home>/orchestrator.lock with a shared non-blocking flock; never creates the file.
 """
@@ -27,6 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import next_epic  # noqa: E402
 
 CLAIM_TTL = timedelta(minutes=30)
+# Task attempts AO runs at once in one epic (`ao run --max-parallel`): the stacks one active epic may hold.
+MAX_PARALLEL = 2
 
 GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store/src/api/schema.d.ts',
              'apps/admin/src/api/schema.d.ts')

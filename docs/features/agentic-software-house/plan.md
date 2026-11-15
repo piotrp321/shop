@@ -21,8 +21,8 @@ Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
 Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 69, zamkniętych 49.
-Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17 i 18; 19b po
-dwóch parach epików 19a; 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
+Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17, 18 i 19b
+(w toku); 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -44,7 +44,7 @@ dwóch parach epików 19a; 11 (warunek „po epiku SENTRY” spełniony); na ko�
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | do zrobienia |
 | 18 | Pomiar, koszty i optymalizacja | do zrobienia |
-| 19 | Praca równoległa | 19a: zrobione, pomiar dwóch pierwszych par epików do zrobienia; 19b: po dwóch parach epików 19a |
+| 19 | Praca równoległa | 19a: zrobione, pomiar dwóch pierwszych par epików do zrobienia; 19b: w toku (AO `--max-parallel`, piotrp321/agentic-orchestrator#50; w `shop` pola `paths` i `parallel_with` manifestu, `--max-parallel 2` w `/ao-run`, rezerwa pamięci bramki na dwa stosy na epik) |
 | 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
 | 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
 | 22 | Porównanie Claude Code i OpenAI Codex | do zrobienia |

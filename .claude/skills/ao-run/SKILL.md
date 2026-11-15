@@ -211,11 +211,14 @@ AGENT_AO_HOME="$(printf '%s\n' "$prep" | sed -n 's/^AGENT_AO_HOME=//p')" &&
 [ -n "$AO_CLAUDE_BIN" ] && [ -n "$AGENT_CLAUDE_BIN" ] && [ -n "$AGENT_AO_HOME" ] &&
 caffeinate -dims env $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/-u \1/p') \
   AGENT_CLAUDE_BIN="$AGENT_CLAUDE_BIN" AGENT_AO_HOME="$AGENT_AO_HOME" PYTHONPATH="$AO_DIR" \
-  python3 -m orchestrator --home "$AO_HOME" run --until-idle --claude-bin "$AO_CLAUDE_BIN" \
+  python3 -m orchestrator --home "$AO_HOME" run --until-idle --claude-bin "$AO_CLAUDE_BIN" --max-parallel 2 \
   --max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3 \
   --notify-cmd "python3 $SKILL_ROOT/.claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl" \
   >> "$AO_HOME/run.log" 2>&1
 ```
+
+`--max-parallel 2` (zadania fali naraz, spec parallel-work, „19b”) wymaga AO z opcją `--max-parallel` w `AO_DIR`;
+ta sama wartość to `MAX_PARALLEL` bramki w `parallel_gate.py`, która rezerwuje tyle stosów na epik.
 
 Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję. `ao-prepare` dopisuje do `run.log` jedną linię
 zaczynającą się od `ao-prepare:`: przy sukcesie `sonda przeszła; czas …, koszt …`, przy odmowie jej przyczynę (sonda

@@ -3,6 +3,7 @@ import fcntl
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -279,6 +280,30 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual([], tc(['docs/a.md'], ['docs/b.md']))
         self.assertEqual(['CLAUDE.md', 'apps/api/src/Cart', 'docs/x.md'],
                          tc(['docs/', 'CLAUDE.md', 'apps/api/src/Cart/'], ['apps/api/', 'docs/x.md', 'CLAUDE.md']))
+
+
+class MaxParallelTest(unittest.TestCase):
+    SKILL = os.path.join(HERE, 'SKILL.md')
+
+    def commands(self):
+        """Every shell command of SKILL.md that starts the orchestrator's `run`, continuation lines joined."""
+        with open(self.SKILL, encoding='utf-8') as f:
+            text = f.read().replace('\\\n', ' ')
+        return [line for line in text.splitlines() if re.search(r'-m orchestrator\b.*\srun(\s|$)', line)]
+
+    def test_max_parallel_is_two(self):
+        self.assertEqual(2, pg.MAX_PARALLEL)
+
+    def test_every_run_of_the_skill_passes_the_gate_value(self):
+        commands = self.commands()
+        self.assertTrue(commands)
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIn('--max-parallel %d ' % pg.MAX_PARALLEL, command + ' ')
+        with open(self.SKILL, encoding='utf-8') as f:
+            values = re.findall(r'--max-parallel\s+([^\s`]+)', f.read())
+        self.assertTrue(values)
+        self.assertEqual({str(pg.MAX_PARALLEL)}, set(values))
 
 
 STATS_OUT = '\n'.join([

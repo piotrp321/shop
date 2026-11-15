@@ -143,7 +143,8 @@ Remote Control skill nie sprawdza.
    `caffeinate -dims` z `ao run --until-idle`, `--claude-bin` równym `AO_CLAUDE_BIN` (wrapper `claude-agent` z kopii
    w `$AO_HOME/agent-security/`), zmiennymi `AGENT_CLAUDE_BIN` i `AGENT_AO_HOME` z wyniku `ao-prepare` i
    `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami jak przy CART:
-   `--max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3`.
+   `--max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3` oraz
+   `--max-parallel 2` (zadania fali naraz: `docs/features/parallel-work/spec.md`, „19b”).
    Zmienne `CLAUDE*` usuwa ze środowiska AO (jak wrapper z README AO). Tak startuje każde `ao run`: pierwsze,
    ponowne po blokerze, po `ao resume` i `ao epic resume`, w nowej sesji i w nocy; sesja nigdy nie pomija
    `ao-prepare` ani nie używa jego wyniku z wcześniejszego przebiegu (sonda przy każdym starcie, P8 spec

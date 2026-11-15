@@ -4,7 +4,7 @@ Krok 19 planu [Agentic Software House](../agentic-software-house/plan.md), kompo
 [ADR](../../adr/agentic-software-house.md). Równoległość jest domyślna: kolejny przygotowany epik rusza naraz
 z trwającym, gdy przejdzie bramkę ryzyka; wykonanie szeregowe zostaje rozwiązaniem awaryjnym, gdy bramka wykryje
 realne ryzyko. 19a działa w `shop` (skille `/ao-run` i `/delivery`, bez zmian w AO). 19b to zmiana w AO
-(piotrp321/agentic-orchestrator#50); tu jest tylko jej kontrakt i warunek startu.
+(piotrp321/agentic-orchestrator#50) z kontraktem i częścią w `shop` opisanymi w sekcji „19b”.
 
 Miara główna: czas zegarowy epiku. Pilnujemy przy tym jakości, liczby napraw, interwencji człowieka i zużycia limitów.
 
@@ -63,8 +63,10 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
      `apps/api/openapi.json` i `apps/api/openapi-admin.json`.
    - Rzeczywista zależność epików to krok 3, nie reguła plików. Użytkownik może uruchomić kandydata mimo wspólnego
      kodu (`--force`, „Uruchomić mimo bramki?”).
-6. **Pamięć Dockera**: `wolna = MemTotal − pamięć kontenerów spoza AO − max(pamięć kontenerów AO, rezerwa × liczba
-   epików aktywnych)` jest co najmniej rezerwą jednego stosu. Rezerwa: 6 GiB (`--stack-gib`, pomiar: stos ok. 4,9 GB).
+6. **Pamięć Dockera**: `wolna = MemTotal − pamięć kontenerów spoza AO − max(pamięć kontenerów AO, rezerwa epiku ×
+   liczba epików aktywnych)` jest co najmniej rezerwą epiku. Rezerwa epiku to `max-parallel` stosów (AO prowadzi do
+   tylu prób zadań epiku naraz, sekcja „19b”; stała `MAX_PARALLEL = 2` w `parallel_gate.py`, ta sama wartość, którą
+   `/ao-run` przekazuje AO), czyli 2 × 6 GiB. Rezerwa stosu: 6 GiB (`--stack-gib`, pomiar: stos ok. 4,9 GB).
    Kontenery AO to kontenery projektów Compose o nazwie `ao-*` (etykieta `com.docker.compose.project` z `docker ps`,
    pamięć z `docker stats --no-stream`, `MemTotal` z `docker info`). Rezerwa na epik aktywny działa także wtedy, gdy
    ten epik jest akurat między zadaniami i nie ma stosu. Błąd albo nieczytelne wyjście `docker`: czekanie z powodem.
@@ -257,8 +259,8 @@ Regresja naprawiona automatycznie nie zatrzymuje innych epików; krytyczny probl
       aktywny: po sprawdzeniach szeregowych (szacunek czasu do `until`, stan limitów `ok`, okna do 80%, jak w spec
       `/ao-run`, „Kolejny epik”);
     - (c) w pozostałych przypadkach, także gdy epik innej sesji jest aktywny: gdy przechodzi bramkę (kroki 2–7
-      i wstrzymanie równoległości, rezerwa 6 GiB) i teraz + szacunek czasu nie przekracza `until` (inaczej powód
-      `X nie zdąży do HH:MM`).
+      i wstrzymanie równoległości, rezerwa 2 × 6 GiB na epik) i teraz + szacunek czasu nie przekracza `until`
+      (inaczej powód `X nie zdąży do HH:MM`).
     Odmowa w (c) (czekanie albo pominięcie w bramce, `nie zdąży`) przy czymkolwiek aktywnym to `epic: null`
     i `wait: true` z powodem: noc trwa, `next` niczego nie zapisuje. Bez aktywnego epiku ta sama odmowa kończy noc.
     Gdy wszystkie epiki listy ruszyły, a któryś jeszcze trwa, `next` czeka z powodem `wszystkie epiki listy ruszyły,
@@ -382,7 +384,8 @@ Decyzja należy do użytkownika; zmiana reguły to PR do tej specyfikacji i `par
   były na `main`. Drugi epik przechodzi sync spójności w parze, więc połączony stan sprawdza CI PR syncu.
 - Rezerwacja i blokada działają między sesjami na jednym komputerze. Epik uruchomiony poza `/ao-run` widać dopiero po
   wypchnięciu jego gałęzi `epic/*`.
-- Rezerwa pamięci jest stała (6 GiB na stos); pamięć szczytowa nie jest mierzona. REPAIR i sync epiku po `done` nie
+- Rezerwa pamięci jest stała (6 GiB na stos, `max-parallel` stosów na epik, także gdy epik nie ma zadań do
+  prowadzenia naraz); pamięć szczytowa nie jest mierzona. REPAIR i sync epiku po `done` nie
   mają rezerwy pamięci ani limitu: widać je tylko w bieżącym pomiarze `docker`.
 - AO wybiera blok portów tylko spośród stosów własnego `AO_HOME`; dwa procesy AO mogą rzadko trafić w ten sam blok
   przed startem stosu. `.ao/setup` sprawdza porty i kończy się błędem, który AO ponawia; powtarzające się awarie
@@ -391,25 +394,43 @@ Decyzja należy do użytkownika; zmiana reguły to PR do tej specyfikacji i `par
 
 ## 19b: zadania fali naraz (kontrakt AO)
 
-Implementacja to osobna praca w repozytorium AO (piotrp321/agentic-orchestrator#50). Kontrakt:
+AO prowadzi naraz zadania jednej fali, które plan dopuścił do pracy równoległej. Implementacja w AO to osobna praca
+w repozytorium AO (piotrp321/agentic-orchestrator#50); w `shop` są pola manifestu, reguła ich dopuszczenia, start AO
+z `/ao-run` i rezerwa pamięci bramki 19a.
 
-- `ao run --max-parallel N` (domyślnie 1, bez zmiany dzisiejszego zachowania). Przy N > 1 AO uruchamia naraz do N
-  prób zadań jednej fali z zielonymi zależnościami i rozłącznym `scope` w manifeście, każdą we własnym worktree
-  i stosie (własny `AO_PORT_BASE`; blok portów sprawdzany względem stosów wszystkich prób tego procesu).
+- **Manifest planu** (`/planner`, `plan_manifest.py`) ma dwa opcjonalne pola zadania:
+  - `paths`: niepusta lista ścieżek względem katalogu głównego repo, które zadanie zmieni: plik albo katalog
+    zakończony `/` (bez ścieżek absolutnych, segmentów `.` i `..` i powtórzeń). Przy niepewności `/planner` wpisuje
+    szerszy katalog, a `CLAUDE.md`, który zadanie zmienia, wpisuje jako plik.
+  - `parallel_with`: ID zadań, z którymi zadanie może trwać naraz. `/planner` wpisuje tu wynik `plan_manifest.py
+    parallel`: wszystkie pary dopuszczone przez regułę niżej.
+  Zadanie bez `parallel_with` (także cały manifest bez tych pól, np. sprzed 19b) idzie szeregowo; `schema_version`
+  zostaje 1.
+- **Reguła pary** (`plan_manifest.py validate` odrzuca manifest, który ją łamie): relacja jest symetryczna (każde
+  zadanie pary wymienia drugie), oba zadania mają `paths`, żadne nie zależy od drugiego bezpośrednio ani przez
+  `depends_on` innych zadań, a część wspólna ich `paths` (jak w „Pojęciach” 19a) nie zawiera kodu aplikacji
+  (`parallel_gate.is_app_code`, jak w kroku 5 bramki), `CLAUDE.md` ani pliku. Ścieżka części wspólnej jest katalogiem
+  tylko wtedy, gdy obie strony deklarują ją i każdą ścieżkę, która ją zawiera, jako katalog. Wyjątki kroku 5 zostają
+  dla katalogów: dwa nakładające się katalogi poza kodem aplikacji (CI, testy, konfiguracja, infrastruktura,
+  dokumentacja) nie blokują. Brak danych albo niepewność oznacza pracę szeregową. Regułę ma jedno miejsce:
+  `parallel_gate.task_conflicts`.
+- `ao run --max-parallel N` (domyślnie 1, bez zmiany zachowania). Przy N > 1 AO uruchamia drugą próbę tylko dla
+  zadania typu `plan`, którego zależności są zielone, gdy kandydat i każde trwające zadanie mają się nawzajem na
+  listach `parallel_with`. AO sprawdza w `parallel_with` tylko typ i znane ID; reguły plików nie powtarza. Każda próba
+  ma własny worktree i stos (własny `AO_PORT_BASE`; blok portów sprawdzany względem stosów wszystkich prób tego
+  procesu).
 - Merge'e do `epic/<epik>` po kolei; PR zadania w konflikcie z gałęzią epiku po merge'u innego rozwiązuje istniejąca
   ścieżka `/delivery` („Konflikt z gałęzią docelową lub z `main`”). Integracja (`/integration`) po wszystkich
-  zadaniach, jak dziś.
-- Przed każdą kolejną próbą AO sprawdza tylko, czy wolna pamięć Dockera mieści jeden stos (rezerwa jak w kroku 6
-  bramki), i cooldown limitu, jak dziś dla jednej próby. Rezerwacje innych epików zna tylko bramka 19a.
+  zadaniach, jak dla zadań szeregowych.
+- AO nie sprawdza pamięci Dockera przed kolejną próbą. Pamięć na `max-parallel` stosów rezerwuje bramka 19a: krok 6
+  liczy tyle stosów na każdy epik aktywny i wymaga tylu wolnych dla kandydata. Cooldown limitu AO stosuje jak dla
+  jednej próby.
 - Awaria jednej próby (`FAILED`, `BLOCKED`, awaria stosu) nie zatrzymuje drugiej.
-- Po wydaniu AO z tą opcją `/ao-run` przekazuje `--max-parallel 2` (osobny, mały PR w `shop`), a bramka 19a rezerwuje
-  `max-parallel` stosów na każdy epik aktywny i wymaga tylu wolnych dla kandydata.
+- `/ao-run` przekazuje `--max-parallel 2` w każdym starcie AO (sekcja 4 skilla); wymaga to AO z tą opcją w `AO_DIR`.
+  Wartość równa się `MAX_PARALLEL` w `parallel_gate.py`, co sprawdza test.
 - Pomiar pierwszych dwóch epików z `--max-parallel 2`: czas zegarowy epiku wobec sumy czasów prób (`ao report`)
   i wobec epików szeregowych o podobnej liczbie zadań; konflikty zadań, interwencje, awarie stosu i koszt jak w bloku
   pary.
-
-Warunek startu: dwie pierwsze pary epików 19a zamknięte i bez krytycznego problemu (sekcja „Metryki
-par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
 
 ## Pliki
 
@@ -420,7 +441,10 @@ par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
   szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
 - `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: metryki par i zapis werdyktu (`record`).
 - `.claude/skills/ao-run/next_epic.py`: bez zmiany zachowania; wspólny odczyt tablicy zostaje w nim.
-- `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4, 5, 6, 6a, 7, 7a, 8, „Noc” i „Czego nie robisz”.
+- `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4 (także `--max-parallel 2`), 5, 6, 6a, 7, 7a, 8, „Noc”
+  i „Czego nie robisz”.
+- `.claude/skills/planner/plan_manifest.py`, `test_plan_manifest.py` i `SKILL.md`: pola `paths` i `parallel_with`,
+  reguła pary (z `parallel_gate.task_conflicts`) i komenda `parallel`.
 - `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów, pliki generowane bez konfliktu, kontrola migracji
   i testy stanu zintegrowanego w sekcji „Konflikt z gałęzią docelową lub z `main`”.
 - Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: wskazują
@@ -475,3 +499,15 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   para spoza raportu, `record` nie jako pierwszy argument, liczba ujemna, ułamkowa albo logiczna, `auto_resolved` większe od `conflicts`, zły numer w `critical`, `shared` nie
   będące listą ścieżek ani `null`, `A` równe `B`, nieczytelny JSON, zajęta blokada → kod 2 bez zapisu.
 - Testy skryptów `/delivery` w `.github/scripts/script-tests.sh` (jeśli sprawdzają treść sekcji) dalej przechodzą.
+- Rezerwa `max-parallel`: wolna pamięć na jeden stos, ale nie na dwa → czekanie; na dwa → przejście; rezerwa
+  epiku aktywnego bez stosu i zmierzona pamięć AO powyżej rezerwy; `MAX_PARALLEL` równe 2 i każde polecenie startu
+  AO w `SKILL.md` `/ao-run` z `--max-parallel` o tej wartości; `task_conflicts` (kod aplikacji, także przez szerszy
+  katalog, `CLAUDE.md`, ten sam plik, plik w katalogu drugiej strony, pliki generowane i rejestracji, nakładające się
+  katalogi poza kodem dozwolone).
+- `python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'`: manifest bez nowych pól poprawny; zły
+  typ `paths` i `parallel_with`, ścieżka absolutna, `..`, `.`, pusty segment, znak sterujący, powtórzenie; nieznane ID,
+  samo siebie, powtórzenie w `parallel_with`; brak symetrii; para bez `paths` po jednej stronie; para z zależnością
+  bezpośrednią i przechodnią; wspólny kod aplikacji, ten sam plik dokumentacji, wspólny `CLAUDE.md` (odrzucone),
+  nakładające się katalogi dokumentacji, testów, CI i infrastruktury (dozwolone); `parallel`: lista maksymalna
+  i symetryczna, zadanie bez `paths` z `[]`, wynik wpisany do planu przechodzi `validate`, obecne `parallel_with` bez
+  wpływu, odmowa przy innym błędzie manifestu, brak pliku i zły JSON (kod 2).
