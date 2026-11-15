@@ -8,6 +8,9 @@ Usage:
   evals.py [--root DIR] report [--suite NAME]
   evals.py [--root DIR] accept <suite> --reason TEXT
   evals.py [--root DIR] waive <suite> --reason TEXT
+  evals.py [--root DIR] estimate [<suite>] [--case ID] [--json]
+  evals.py [--root DIR] run <suite> [--case ID [--overlay-rev REV]] [--state-root DIR] [--claude-bin PATH]
+  evals.py [--root DIR] run --resume <id> [--state-root DIR] [--claude-bin PATH]
 
 lint     formats of the registry, the config, the cases and the history files; the scan for leaks; the injection
          payloads; the commits of the cases (skipped in a shallow clone).
@@ -16,12 +19,19 @@ check    the fingerprint of every suite against its current result. Errors only 
 report   the history of the suites as a table.
 accept   the current result is a regression: writes an `accepted` history file with the reason (the user decides).
 waive    writes a `waived` history file with the current fingerprint and the reason (the user decides).
+estimate the cost and time forecast of a run of each suite (or of a trial run of one case) and the total; a forecast
+         above the cap exits 1.
+run      runs the cases of a suite N times with the CLI of the suite's executor in the sandbox (a trial run: one case, the overlay
+         of --overlay-rev, never a history file); --resume continues a run stopped by limit_stop or infra_error.
+         Prints the run id and its status; scoring and the history file are not part of it. Exit 0 for a finished
+         run, 1 for a refusal or a stopped run.
 
 Exit status: 0 ok, 1 findings (lint errors, check errors, a refused decision), 2 cannot run (usage, no registry,
 malformed JSON, a bad --diff, no git where it is needed).
-The runner and the scoring (other tasks of the epic) add their commands to COMMANDS.
+The scoring (another task of the epic) adds its commands to COMMANDS.
 """
 import argparse
+import json
 import os
 import sys
 
@@ -34,6 +44,7 @@ import evals_history as history  # noqa: E402
 import evals_lint as linting  # noqa: E402
 import evals_registry as registry  # noqa: E402
 import evals_repo as repo  # noqa: E402
+import evals_runner as runner  # noqa: E402
 
 DEFAULT_ROOT = os.path.dirname(os.path.dirname(HERE))
 USAGE_ERROR = 2
@@ -175,6 +186,68 @@ def cmd_waive(args):
     return _decide(args, 'waived')
 
 
+def _duration(seconds):
+    return '%.1f h' % (seconds / 3600.0) if seconds >= 3600 else '%.1f min' % (seconds / 60.0)
+
+
+def cmd_estimate(args):
+    if args.case and not args.suite:
+        raise Usage('--case needs a suite')
+    reg, _ = _load(args.root)
+    names = [args.suite] if args.suite else sorted(reg['suites'])
+    for name in names:
+        _suite(reg, name)
+    try:
+        plans = [runner.forecast(args.root, name, args.case) for name in names]
+    except runner.RunError as error:
+        raise Usage(str(error))
+    total = {'passes': sum(p['passes'] for p in plans), 'cost_usd': sum(p['cost_usd'] for p in plans),
+             'duration_s': sum(p['duration_s'] for p in plans)}
+    if args.json:
+        print(json.dumps({'suites': plans, 'total': total}, indent=2))
+    else:
+        for plan in plans:
+            what = 'trial run of %s/%s' % (plan['suite'], plan['case']) if plan['case'] else 'suite %s' % plan['suite']
+            print('%s: %d passes (%d case(s) x %d), cost %.2f USD (%.2f USD per pass: %s), time %s (%s per pass: '
+                  '%s), %s the cap of %.2f USD' % (
+                      what, plan['passes'], plan['cases'], plan['n'], plan['cost_usd'], plan['pass_cost_usd'],
+                      plan['cost_source'], _duration(plan['duration_s']), _duration(plan['pass_duration_s']),
+                      plan['duration_source'], 'within' if plan['within_cap'] else 'ABOVE', plan['cap_usd']))
+        if len(plans) > 1:
+            print('total: %d passes, cost %.2f USD, time %s' % (total['passes'], total['cost_usd'],
+                                                                 _duration(total['duration_s'])))
+    return 0 if all(p['within_cap'] for p in plans) else 1
+
+
+def cmd_run(args):
+    if args.resume and (args.suite or args.case or args.overlay_rev):
+        raise Usage('--resume takes only the run id')
+    if not args.resume and not args.suite:
+        raise Usage('a suite or --resume <id> is needed')
+    if args.overlay_rev and not args.case:
+        raise Usage('--overlay-rev is for a trial run of one case (--case)')
+    options = runner.Options(args.root, args.state_root, claude_bin=args.claude_bin)
+    try:
+        if args.resume:
+            run = runner.resume(options, args.resume)
+        else:
+            run = runner.start(options, args.suite, case=args.case, overlay_rev=args.overlay_rev)
+    except runner.RunError as error:
+        print('evals.py run: refused: %s' % error, file=sys.stderr)
+        return 1
+    counts = {}
+    for item in run['passes']:
+        counts[item['status']] = counts.get(item['status'], 0) + 1
+    print('run %s: %s%s' % (run['id'], run['status'], (' (%s)' % run['reason']) if run['reason'] else ''))
+    print('  %s %s, %d passes (%s), cost %.2f USD of the cap of %.2f USD, state in %s' % (
+        run['kind'], run['suite'] + ('/' + run['case'] if run['case'] else ''), len(run['passes']),
+        ', '.join('%s %d' % item for item in sorted(counts.items())), run['cost_usd_total'], run['cap_usd'],
+        os.path.join(os.path.realpath(args.state_root), run['id'])))
+    if run['status'] in ('limit_stop', 'infra_error'):
+        print('  resume: python3 tools/evals/evals.py run --resume %s' % run['id'])
+    return 0 if run['status'] == 'done' else 1
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='evals.py', description='Evals of the agents (tools/evals/README.md).')
     parser.add_argument('--root', default=DEFAULT_ROOT, help='the repository (default: the one of this script)')
@@ -191,10 +264,23 @@ def build_parser():
         decision = commands.add_parser(name, help=help_)
         decision.add_argument('suite')
         decision.add_argument('--reason', required=True, help='why')
+    estimate = commands.add_parser('estimate', help='the cost and time forecast of a run')
+    estimate.add_argument('suite', nargs='?', help='one suite (default: all and the total)')
+    estimate.add_argument('--case', help='a trial run of one case of the suite')
+    estimate.add_argument('--json', action='store_true', help='JSON output')
+    run = commands.add_parser('run', help='run the cases of a suite with the agent (a real model)')
+    run.add_argument('suite', nargs='?')
+    run.add_argument('--case', help='a trial run of one case (never a history file)')
+    run.add_argument('--overlay-rev', help='the revision of the agents, skills and watched files of a trial run')
+    run.add_argument('--resume', metavar='ID', help='resume a run stopped by limit_stop or infra_error')
+    run.add_argument('--state-root', default=runner.DEFAULT_STATE_ROOT,
+                     help='the directory of the runs (default: %(default)s)')
+    run.add_argument('--claude-bin', help='the CLI binary instead of the one pinned by AO (claude_pin.py)')
     return parser
 
 
-COMMANDS = {'lint': cmd_lint, 'check': cmd_check, 'report': cmd_report, 'accept': cmd_accept, 'waive': cmd_waive}
+COMMANDS = {'lint': cmd_lint, 'check': cmd_check, 'report': cmd_report, 'accept': cmd_accept, 'waive': cmd_waive,
+            'estimate': cmd_estimate, 'run': cmd_run}
 
 
 def main(argv=None):
