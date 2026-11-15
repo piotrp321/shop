@@ -220,6 +220,135 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
         self::assertStringNotContainsString('Seq Scan', $plan);
     }
 
+    /**
+     * @return iterable<string, array{string, string}> the fragment, the number of the one order it finds
+     */
+    public static function fragments(): iterable
+    {
+        yield 'the end of a number' => ['00456', 'R-100456'];
+        yield 'a number with its prefix, in lower case' => ['r-100456', 'R-100456'];
+        yield 'a part of an email' => ['nowak@exam', 'R-100123'];
+        yield 'an email in capitals' => ['ANNA.NOWAK@EXAMPLE.COM', 'R-100123'];
+        yield 'a fragment with an @' => ['jan@gm', 'R-100456'];
+        yield 'a surname' => ['wiśniew', 'R-100789'];
+        yield 'a surname in capitals, with Polish letters' => ['ŻÓŁĆ', 'R-100456'];
+        yield 'a name and a surname' => ['Łukasz Żółć', 'R-100456'];
+        yield 'a percent sign, literally' => ['50%', 'R-100901'];
+        yield 'an underscore, literally' => ['a_b', 'R-100902'];
+        yield 'a backslash, literally' => ['c\\d', 'R-100903'];
+        yield 'a quote, literally' => ["o'br", 'R-100904'];
+    }
+
+    #[DataProvider('fragments')]
+    public function testAFragmentFindsTheOrderByNumberEmailOrNameRegardlessOfLetterCase(string $fragment, string $number): void
+    {
+        $this->seedForFragments();
+
+        $found = $this->reader->page(self::fragment($fragment), null, 10);
+
+        self::assertSame([$number], array_map(static fn (ListedOrder $order): string => $order->number, $found));
+        self::assertSame(1, $this->reader->count(self::fragment($fragment))->value);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function patternCharacters(): iterable
+    {
+        yield 'only percent signs' => ['%%%'];
+        yield 'only underscores' => ['___'];
+        yield 'a percent sign between letters that matches nothing literally' => ['a%z'];
+        yield 'an underscore for any character' => ['a_c'];
+        yield 'a backslash before a percent sign' => ['\\%x'];
+    }
+
+    #[DataProvider('patternCharacters')]
+    public function testPercentUnderscoreAndBackslashAreNoPattern(string $fragment): void
+    {
+        $this->seedForFragments();
+        $this->order('paid', '2026-11-06 10:00:00', 'R-100905', email: 'abc@example.com', fullName: 'Aaa Czzz');
+
+        self::assertSame([], $this->reader->page(self::fragment($fragment), null, 10));
+        self::assertSame(0, $this->reader->count(self::fragment($fragment))->value);
+    }
+
+    public function testAFragmentJoiningTheEndOfOneFieldToTheStartOfTheNextFindsNothing(): void
+    {
+        $this->order('paid', '2026-11-05 10:00:00', 'R-100123', email: 'anna.nowak@example.com', fullName: 'Anna Nowak');
+
+        foreach (['R-100123anna', 'R-100123 anna', 'R-100123@anna', 'example.comAnna', 'example.com Anna', 'ak@example.comAnna'] as $joined) {
+            self::assertSame([], $this->reader->page(self::fragment($joined), null, 10), $joined);
+        }
+        self::assertCount(1, $this->reader->page(self::fragment('anna.nowak@example.com'), null, 10));
+        self::assertCount(1, $this->reader->page(self::fragment('Anna Nowak'), null, 10));
+    }
+
+    public function testAFragmentCombinesWithTheStatusTheDateSortAndTheRange(): void
+    {
+        $oldest = $this->order('paid', '2026-11-03 10:00:00', 'R-100001', fullName: 'Jan Kowalski');
+        $middle = $this->order('paid', '2026-11-04 10:00:00', 'R-100002', fullName: 'Jan Kowalski');
+        $this->order('shipped', '2026-11-04 11:00:00', 'R-100003', fullName: 'Jan Kowalski');
+        $this->order('paid', '2026-11-04 12:00:00', 'R-100004', fullName: 'Anna Nowak');
+        $newest = $this->order('paid', '2026-11-05 10:00:00', 'R-100005', fullName: 'Jan Kowalski');
+        $paid = static fn (BackofficeOrderSort $sort, ?string $from = null, ?string $before = null): BackofficeOrderFilter => new BackofficeOrderFilter(
+            OrderStatus::Paid, false, null, null, $sort, 'kowalski', null === $from ? null : new \DateTimeImmutable($from), null === $before ? null : new \DateTimeImmutable($before),
+        );
+
+        self::assertSame([$newest, $middle, $oldest], $this->ids($this->reader->page($paid(BackofficeOrderSort::PlacedDescending), null, 10)));
+        self::assertSame([$oldest, $middle, $newest], $this->ids($this->reader->page($paid(BackofficeOrderSort::PlacedAscending), null, 10)));
+        self::assertSame([$middle], $this->ids($this->reader->page($paid(BackofficeOrderSort::PlacedDescending, '2026-11-04 00:00:00+00:00', '2026-11-05 00:00:00+00:00'), null, 10)));
+        self::assertSame(1, $this->reader->count($paid(BackofficeOrderSort::PlacedDescending, '2026-11-04 00:00:00+00:00', '2026-11-05 00:00:00+00:00'))->value);
+    }
+
+    public function testTheRangeOfDaysIncludesTheFirstInstantAndExcludesTheInstantBefore(): void
+    {
+        $before = $this->order('paid', '2026-03-28 22:59:59', 'R-100001');
+        $first = $this->order('paid', '2026-03-28 23:00:00', 'R-100002');
+        $last = $this->order('paid', '2026-03-29 21:59:59', 'R-100003');
+        $after = $this->order('paid', '2026-03-29 22:00:00', 'R-100004');
+        $from = new \DateTimeImmutable('2026-03-28 23:00:00+00:00');
+        $until = new \DateTimeImmutable('2026-03-29 22:00:00+00:00');
+
+        self::assertSame([$last, $first], $this->ids($this->reader->page(new BackofficeOrderFilter(null, false, null, null, null, null, $from, $until), null, 10)));
+        self::assertSame([$after, $last, $first], $this->ids($this->reader->page(new BackofficeOrderFilter(null, false, null, null, null, null, $from), null, 10)));
+        self::assertSame([$last, $first, $before], $this->ids($this->reader->page(new BackofficeOrderFilter(null, false, null, null, null, null, null, $until), null, 10)));
+        self::assertSame(2, $this->reader->count(new BackofficeOrderFilter(null, false, null, null, null, null, $from, $until))->value);
+    }
+
+    public function testAFragmentAndARangePageThroughWithTheCursor(): void
+    {
+        $expected = [];
+        foreach ([10, 11, 11, 12, 13] as $n => $hour) {
+            $expected[] = $this->order('paid', \sprintf('2026-11-05 %02d:00:00', $hour), 'R-'.(100_001 + $n), fullName: 'Jan Kowalski');
+        }
+        $this->order('paid', '2026-11-06 10:00:00', 'R-100099', fullName: 'Jan Kowalski');
+        $filter = new BackofficeOrderFilter(null, false, null, null, null, 'kowal', new \DateTimeImmutable('2026-11-05 00:00:00+00:00'), new \DateTimeImmutable('2026-11-06 00:00:00+00:00'));
+
+        $seen = $this->pageThrough($filter, 2);
+
+        self::assertEqualsCanonicalizing($expected, $seen);
+        self::assertCount(5, array_unique($seen));
+    }
+
+    /**
+     * Four orders whose number, email and name each hold a fragment the others do not.
+     */
+    private function seedForFragments(): void
+    {
+        $this->order('paid', '2026-11-05 10:00:00', 'R-100123', email: 'anna.nowak@example.com', fullName: 'Anna Nowak');
+        $this->order('paid', '2026-11-05 11:00:00', 'R-100456', email: 'Jan@Gmail.com', fullName: 'Łukasz Żółć');
+        $this->order('paid', '2026-11-05 12:00:00', 'R-100789', email: 'zofia@wp.pl', fullName: 'Zofia Wiśniewska');
+        $this->order('paid', '2026-11-05 13:00:00', 'R-100901', email: 'rabat@example.com', fullName: 'Rabat 50% Kowalczyk');
+        $this->order('paid', '2026-11-05 14:00:00', 'R-100902', email: 'x@example.com', fullName: 'Ola a_b');
+        $this->order('paid', '2026-11-05 15:00:00', 'R-100903', email: 'y@example.com', fullName: 'Ola c\\d');
+        $this->order('paid', '2026-11-05 16:00:00', 'R-100904', email: 'z@example.com', fullName: "Ola O'Brien");
+    }
+
+    private static function fragment(string $fragment): BackofficeOrderFilter
+    {
+        return new BackofficeOrderFilter(null, false, null, null, null, $fragment);
+    }
+
     public function testPagingNewestFirstVisitsEveryOrderOnce(): void
     {
         $expected = [];
@@ -300,9 +429,9 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
      * @param 'new'|'paid'|'shipped'|'delivered'|'cancelled'|'cancelled_by_staff'|'returned' $status
      * @param list<int>                                                                      $quantities
      */
-    private function order(string $status, string $placedAt, string $number, string $email = 'jan@example.com', array $quantities = [1], ?string $refundDueAt = null, ?string $refundCompletedAt = null, ?string $orderId = null): string
+    private function order(string $status, string $placedAt, string $number, string $email = 'jan@example.com', array $quantities = [1], ?string $refundDueAt = null, ?string $refundCompletedAt = null, ?string $orderId = null, string $fullName = 'Jan Kowalski'): string
     {
-        return BackofficeOrderFixture::order($this->connection, $status, $placedAt.'+00:00', $number, $email, $quantities, $refundDueAt, $refundCompletedAt, $orderId);
+        return BackofficeOrderFixture::order($this->connection, $status, $placedAt.'+00:00', $number, $email, $quantities, $refundDueAt, $refundCompletedAt, $orderId, null, $fullName);
     }
 
     /**

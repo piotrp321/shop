@@ -14,9 +14,6 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 #[AsMessageHandler(bus: 'query.bus')]
 final readonly class ListBackofficeOrdersHandler
 {
-    /** An order number as staff type it: R- and digits, in any letter case (P9). */
-    private const string NUMBER = '/^[Rr]-[0-9]+$/D';
-
     public function __construct(
         private BackofficeOrderReader $orders,
         private Clock $clock,
@@ -24,34 +21,28 @@ final readonly class ListBackofficeOrdersHandler
     }
 
     /**
-     * The search term, trimmed, is an exact number when it looks like one, otherwise an exact email when it has an @;
-     * anything else finds nothing, without a read. One order more than the page is read: its presence is what tells
-     * there is a next page. The first page (no cursor) also carries the bounded total of the filter: the number of
-     * its rows when there is no next page (nothing to count), otherwise the reader counts, never the table whole.
+     * The search term is an exact number, a fragment of the number, the email and the name, or an exact email too long
+     * for a fragment (see OrderSearchTerm); anything else is refused. One order more than the page is read: its
+     * presence is what tells there is a next page. The first page (no cursor) also carries the bounded total of the
+     * filter: the number of its rows when there is no next page (nothing to count), otherwise the reader counts,
+     * never the table whole.
      *
      * @throws InvalidBackofficeOrderCursor
-     * @throws InvalidBackofficeOrderList   a sort with the pending refunds, the amount with a search
+     * @throws InvalidBackofficeOrderList   a sort with the pending refunds, the amount with a search or a range of days,
+     *                                      the pending refunds with a range of days, a search term or a day that is
+     *                                      refused, a range that ends before it starts
      */
     public function __invoke(ListBackofficeOrders $query): BackofficeOrderList
     {
         $sort = self::sortOf($query);
         $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, $sort);
-
-        $number = null;
-        $email = null;
-        if (null !== $query->q) {
-            $term = trim($query->q);
-            if (1 === preg_match(self::NUMBER, $term)) {
-                $number = 'R-'.substr($term, 2);
-            } elseif (str_contains($term, '@') && !str_contains($term, "\0")) {
-                // The database driver cuts a parameter at a NUL, which would silently search for something else.
-                $email = $term;
-            } else {
-                return new BackofficeOrderList([], null, null === $after ? new BoundedCount(0, false) : null);
-            }
+        $term = null === $query->q ? null : OrderSearchTerm::parse($query->q);
+        $range = OrderPlacedRange::fromDays($query->placedFrom, $query->placedTo);
+        if ($query->pendingRefunds && !$range->isEmpty()) {
+            throw InvalidBackofficeOrderList::pendingRefundsWithDateRange();
         }
 
-        $filter = new BackofficeOrderFilter($query->status, $query->pendingRefunds, $number, $email, $sort);
+        $filter = new BackofficeOrderFilter($query->status, $query->pendingRefunds, $term?->number, $term?->email, $sort, $term?->fragment, $range->from, $range->before);
         $orders = $this->orders->page($filter, $after, $query->perPage + 1);
         $next = null;
         if (\count($orders) > $query->perPage) {
@@ -78,9 +69,14 @@ final readonly class ListBackofficeOrdersHandler
             throw InvalidBackofficeOrderList::dueDateAsASort();
         }
         $sort = $query->sort ?? BackofficeOrderSort::PlacedDescending;
-        // No index serves the amount together with the search: the list would read every order of the search first.
-        if ($sort->byTotal() && null !== $query->q) {
-            throw InvalidBackofficeOrderList::totalWithSearch();
+        // No index serves the amount together with the search or the range of days: the list would read every order of them first.
+        if ($sort->byTotal()) {
+            if (null !== $query->q) {
+                throw InvalidBackofficeOrderList::totalWithSearch();
+            }
+            if (null !== $query->placedFrom || null !== $query->placedTo) {
+                throw InvalidBackofficeOrderList::totalWithDateRange();
+            }
         }
 
         return $sort;

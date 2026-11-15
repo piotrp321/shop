@@ -21,8 +21,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * ListBackofficeOrders, the order list of the panel: what the search term means (an exact number, an exact email or
- * nothing), the filters passed to the reader, the keyset paging with one order more than the page, the cursor of the
+ * ListBackofficeOrders, the order list of the panel: what the search term means (an exact number, a fragment, an exact
+ * email too long for a fragment, or a refusal), the range of days, the filters passed to the reader, the keyset paging with one order more than the page, the cursor of the
  * sort in use, and the overdue refunds against the clock.
  */
 final class ListBackofficeOrdersHandlerTest extends TestCase
@@ -57,52 +57,59 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{string, ?string, ?string}>
+     * @return iterable<string, array{string, ?string, ?string, ?string}> the term, the number, the email, the fragment of the filter
      */
     public static function searches(): iterable
     {
-        yield 'a number' => ['R-100001', 'R-100001', null];
-        yield 'a number in lower case' => ['r-100001', 'R-100001', null];
-        yield 'a number with spaces around' => ['  R-100001 ', 'R-100001', null];
-        yield 'an email' => ['jan@example.com', null, 'jan@example.com'];
-        yield 'an email in another letter case, as typed' => ['Jan.Kowalski@Example.COM', null, 'Jan.Kowalski@Example.COM'];
-        yield 'an email with spaces around' => [' jan@example.com  ', null, 'jan@example.com'];
-        yield 'a number-like text with an @' => ['R-1@example.com', null, 'R-1@example.com'];
+        $email = str_repeat('a', 60).'@'.str_repeat('b', 60).'.example.com';
+
+        yield 'a number' => ['R-100001', 'R-100001', null, null];
+        yield 'a number in lower case' => ['r-100001', 'R-100001', null, null];
+        yield 'a number with spaces around' => ['  R-100001 ', 'R-100001', null, null];
+        yield 'a surname' => ['Kowalski', null, null, 'Kowalski'];
+        yield 'digits of a number' => ['100001', null, null, '100001'];
+        yield 'a fragment of an email' => ['jan@gm', null, null, 'jan@gm'];
+        yield 'a whole email, which is a fragment too' => ['jan@example.com', null, null, 'jan@example.com'];
+        yield 'an email with spaces around' => [' jan@example.com  ', null, null, 'jan@example.com'];
+        yield 'a number-like text with an @' => ['R-1@example.com', null, null, 'R-1@example.com'];
+        yield 'an email too long for a fragment' => [$email, null, $email, null];
     }
 
     #[DataProvider('searches')]
-    public function testASearchIsAnExactNumberOrAnExactEmail(string $q, ?string $number, ?string $email): void
+    public function testASearchIsAnExactNumberAFragmentOrALongEmail(string $q, ?string $number, ?string $email, ?string $fragment): void
     {
         $this->list(new ListBackofficeOrders(null, false, $q, null, 10));
 
-        self::assertEquals([[new BackofficeOrderFilter(null, false, $number, $email), null, 11]], $this->reader->pages);
+        self::assertEquals([[new BackofficeOrderFilter(null, false, $number, $email, fragment: $fragment), null, 11]], $this->reader->pages);
     }
 
     /**
      * @return iterable<string, array{string}>
      */
-    public static function otherSearches(): iterable
+    public static function refusedSearches(): iterable
     {
-        yield 'a name' => ['Kowalski'];
-        yield 'digits of a number' => ['100001'];
+        yield 'two characters' => ['ab'];
         yield 'the prefix of a number' => ['R-'];
-        yield 'a number with letters' => ['R-10a001'];
-        yield 'a number with another prefix' => ['X-100001'];
-        yield 'a number with a space inside' => ['R- 100001'];
         yield 'nothing but spaces' => ['   '];
-        yield 'an @ with a NUL' => ["jan\0@example.com"];
+        yield 'over a hundred characters without an @' => [str_repeat('a', 101)];
+        yield 'a number with a space inside, over a hundred' => ['R- '.str_repeat('1', 100)];
+        yield 'a NUL' => ["jan\0@example.com"];
+        yield 'the separator of the index' => ["jan\u{001F}kowalski"];
+        yield 'a line break' => ["jan\nkowalski"];
     }
 
-    #[DataProvider('otherSearches')]
-    public function testAnotherSearchIsAnEmptyListWithoutReading(string $q): void
+    #[DataProvider('refusedSearches')]
+    public function testAnotherSearchIsRefusedWithoutReading(string $q): void
     {
         $this->reader->orders = [self::listed(1)];
 
-        $list = $this->list(new ListBackofficeOrders(null, false, $q, null, 25));
-
-        self::assertEquals(new BackofficeOrderList([], null, new BoundedCount(0, false)), $list);
-        self::assertSame([], $this->reader->pages);
-        self::assertSame([], $this->reader->counts, 'nothing can match, so nothing is counted');
+        try {
+            $this->list(new ListBackofficeOrders(null, false, $q, null, 25));
+            self::fail('The search must be refused.');
+        } catch (InvalidBackofficeOrderList) {
+            self::assertSame([], $this->reader->pages);
+            self::assertSame([], $this->reader->counts);
+        }
     }
 
     public function testTheFirstPageWithANextOneCountsTheOrdersOfTheSameFilterWithoutTheCursor(): void
@@ -147,19 +154,6 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
 
         self::assertNull($later->total);
         self::assertCount(1, $this->reader->counts, 'only the first page counted');
-    }
-
-    public function testAnotherSearchOnALaterPageIsAnEmptyListWithoutATotal(): void
-    {
-        $first = $this->list(new ListBackofficeOrders(null, false, null, null, 1));
-        $this->reader->orders = [self::listed(1), self::listed(2)];
-        $cursor = $this->list(new ListBackofficeOrders(null, false, null, null, 1))->nextCursor;
-        self::assertNotNull($cursor);
-        self::assertSame(0, $first->total?->value);
-
-        $list = $this->list(new ListBackofficeOrders(null, false, 'Kowalski', $cursor, 25));
-
-        self::assertEquals(new BackofficeOrderList([], null, null), $list);
     }
 
     public function testAFullPageHasTheCursorOfItsLastOrderForTheNext(): void
@@ -291,6 +285,13 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         yield 'the amount with a search' => [new ListBackofficeOrders(null, false, 'R-100001', null, 25, BackofficeOrderSort::TotalDescending)];
         yield 'the ascending amount with a search' => [new ListBackofficeOrders(OrderStatus::Paid, false, 'jan@example.com', null, 25, BackofficeOrderSort::TotalAscending)];
         yield 'the due date of the refunds as a sort' => [new ListBackofficeOrders(null, false, null, null, 25, BackofficeOrderSort::RefundDueDate)];
+        yield 'the amount with the start of a range' => [new ListBackofficeOrders(null, false, null, null, 25, BackofficeOrderSort::TotalDescending, '2026-11-01')];
+        yield 'the ascending amount with the end of a range' => [new ListBackofficeOrders(null, false, null, null, 25, BackofficeOrderSort::TotalAscending, null, '2026-11-30')];
+        yield 'the pending refunds with the start of a range' => [new ListBackofficeOrders(null, true, null, null, 25, null, '2026-11-01')];
+        yield 'the pending refunds with the end of a range' => [new ListBackofficeOrders(OrderStatus::Returned, true, null, null, 25, null, null, '2026-11-30')];
+        yield 'an inverted range' => [new ListBackofficeOrders(null, false, null, null, 25, null, '2026-11-30', '2026-11-01')];
+        yield 'a day that is no date' => [new ListBackofficeOrders(null, false, null, null, 25, null, '2026-02-30')];
+        yield 'an end that is no date' => [new ListBackofficeOrders(null, false, null, null, 25, null, null, 'tomorrow')];
     }
 
     #[DataProvider('refusedCombinations')]
@@ -310,6 +311,38 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         $this->list(new ListBackofficeOrders(null, false, 'R-100001', null, 25, BackofficeOrderSort::PlacedAscending));
 
         self::assertSame(BackofficeOrderSort::PlacedAscending, $this->reader->pages[0][0]->sort);
+    }
+
+    public function testTheRangeOfDaysGoesToTheReaderAsInstantsOfUtcAndCombinesWithTheStatusTheSearchAndTheDateSort(): void
+    {
+        $this->list(new ListBackofficeOrders(OrderStatus::Paid, false, 'Kowalski', null, 25, BackofficeOrderSort::PlacedAscending, '2026-03-29', '2026-03-29'));
+
+        $filter = $this->reader->pages[0][0];
+        self::assertSame(BackofficeOrderSort::PlacedAscending, $filter->sort);
+        self::assertSame('Kowalski', $filter->fragment);
+        self::assertSame(OrderStatus::Paid, $filter->status);
+        self::assertSame('2026-03-28T23:00:00+00:00', $filter->placedFrom?->format(\DATE_ATOM));
+        self::assertSame('2026-03-29T22:00:00+00:00', $filter->placedBefore?->format(\DATE_ATOM), 'the day of the change has 23 hours');
+    }
+
+    public function testOneEndOfTheRangeIsEnough(): void
+    {
+        $this->list(new ListBackofficeOrders(null, false, null, null, 25, null, null, '2026-11-30'));
+        $this->list(new ListBackofficeOrders(null, false, null, null, 25, null, '2026-11-01'));
+
+        [[$untilFilter], [$sinceFilter]] = $this->reader->pages;
+        self::assertSame([null, '2026-11-30T23:00:00+00:00'], [$untilFilter->placedFrom, $untilFilter->placedBefore?->format(\DATE_ATOM)]);
+        self::assertSame(['2026-10-31T23:00:00+00:00', null], [$sinceFilter->placedFrom?->format(\DATE_ATOM), $sinceFilter->placedBefore]);
+    }
+
+    public function testTheCountOfTheFirstPageHasTheRangeToo(): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2)];
+
+        $this->list(new ListBackofficeOrders(null, false, null, null, 1, null, '2026-11-01', '2026-11-30'));
+
+        self::assertEquals($this->reader->pages[0][0], $this->reader->counts[0]);
+        self::assertNotNull($this->reader->counts[0]->placedFrom);
     }
 
     /**

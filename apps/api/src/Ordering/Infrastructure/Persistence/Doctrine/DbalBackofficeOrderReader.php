@@ -16,7 +16,7 @@ use Doctrine\DBAL\ParameterType;
 /**
  * Reads straight on the connection, one statement per page, without locks; nothing here writes. The conditions are
  * constant fragments joined by AND; input only ever reaches the statement as parameters. Indexes (migrations
- * Version20261107150000 and Version20261115130100): (placed_at DESC, id DESC) and (status, placed_at DESC, id DESC)
+ * Version20261107150000, Version20261115130100 and Version20261115140000): (placed_at DESC, id DESC) and (status, placed_at DESC, id DESC)
  * serve the sort by placement with and without the status, (total_gross, id) and (status, total_gross, id) the sort by
  * the amount; both directions of a sort read the same index, forwards or backwards, because the id follows the
  * direction of the sorted column. The partial (refund_due_at, id) of the pending refunds serves their sort; the number
@@ -34,6 +34,10 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
     private const string PENDING_REFUND = 'o.refund_amount IS NOT NULL AND o.refund_completed_at IS NULL';
     private const string NUMBER = 'o.number = :number';
     private const string EMAIL = 'lower(o.email) = lower(:email)';
+    /** The expression of the index ordering_order_search_trgm_idx, which the planner recognises as it is; U+001F separates the fields. */
+    private const string FRAGMENT = "lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower(:fragment) || '%'";
+    private const string PLACED_FROM = 'o.placed_at >= :placed_from';
+    private const string PLACED_BEFORE = 'o.placed_at < :placed_before';
     /** The sorted column of every sort, by the key of the sort, and the type of the position its cursor holds. */
     private const array SORT_COLUMNS = [
         '-placedAt' => ['o.placed_at', 'timestamptz'],
@@ -104,6 +108,19 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
         if (null !== $filter->email) {
             $conditions[] = self::EMAIL;
             $parameters['email'] = $filter->email;
+        }
+        if (null !== $filter->fragment) {
+            $conditions[] = self::FRAGMENT;
+            // The escape character of LIKE is the backslash: the characters of the pattern mean themselves.
+            $parameters['fragment'] = strtr($filter->fragment, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']);
+        }
+        if (null !== $filter->placedFrom) {
+            $conditions[] = self::PLACED_FROM;
+            $parameters['placed_from'] = $filter->placedFrom->format('Y-m-d H:i:s.uP');
+        }
+        if (null !== $filter->placedBefore) {
+            $conditions[] = self::PLACED_BEFORE;
+            $parameters['placed_before'] = $filter->placedBefore->format('Y-m-d H:i:s.uP');
         }
 
         return [$conditions, $parameters];
