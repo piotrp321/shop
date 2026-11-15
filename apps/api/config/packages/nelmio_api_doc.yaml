@@ -1,5 +1,9 @@
 # Two OpenAPI documents, exported by `make -C apps/api openapi`. No Swagger UI or JSON routes are exposed.
 nelmio_api_doc:
+    models:
+        names:
+            # The tree of the panel keeps the schema name of the tree it extends, so the panel's types stay the same.
+            - { alias: CategoryNode, type: App\Catalog\UI\Http\Category\BackofficeCategoryNodeResponse, areas: [admin] }
     areas:
         default:
             path_patterns:
@@ -1370,6 +1374,41 @@ nelmio_api_doc:
                                     items:
                                         type: string
                                         format: uuid
+                        CategoryConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text
+                                for people and may change): the category changed since the `version` sent, a sibling has the
+                                slug, the tree would have more than 4 levels, the new parent is the category or one of its
+                                descendants, or the category has subcategories or products (counted in `subcategoryCount` and
+                                `productCount`). Nothing is changed.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-modified'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-slug-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-too-deep'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-cycle'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-not-empty'
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the staff member.
+                                subcategoryCount:
+                                    description: Only with `category-not-empty`. The direct subcategories.
+                                    allOf:
+                                        - $ref: '#/components/schemas/BoundedCountResponse'
+                                productCount:
+                                    description: Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000.
+                                    allOf:
+                                        - $ref: '#/components/schemas/BoundedCountResponse'
                         ProductConflictProblem:
                             type: object
                             description: >-

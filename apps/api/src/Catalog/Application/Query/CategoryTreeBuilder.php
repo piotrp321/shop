@@ -6,6 +6,7 @@ namespace App\Catalog\Application\Query;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryTree;
+use App\Shared\Domain\BoundedCount;
 
 /**
  * The category tree as nodes with slug and path, siblings in the order of {@see CategoryTree}: position, then name
@@ -27,6 +28,31 @@ final readonly class CategoryTreeBuilder
                 $category->name()->value(),
                 $category->slug()->value(),
                 $path,
+                $children,
+            ),
+        );
+    }
+
+    /**
+     * The tree of the panel: the nodes of the store with the version of every category and, when counted, its direct
+     * products.
+     *
+     * @param list<Category>                   $categories    every category, in any order
+     * @param array<string, BoundedCount>|null $productCounts category id => its products (none: 0), null when not counted
+     *
+     * @return list<BackofficeCategoryNode> the roots
+     */
+    public static function buildBackoffice(array $categories, ?array $productCounts): array
+    {
+        return self::map(
+            CategoryTree::of($categories),
+            static fn (Category $category, string $path, array $children): BackofficeCategoryNode => new BackofficeCategoryNode(
+                $category->id()->toString(),
+                $category->name()->value(),
+                $category->slug()->value(),
+                $path,
+                $category->version(),
+                null === $productCounts ? null : $productCounts[$category->id()->toString()] ?? new BoundedCount(0, false),
                 $children,
             ),
         );

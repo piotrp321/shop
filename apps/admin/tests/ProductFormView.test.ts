@@ -21,8 +21,8 @@ const UPLOAD = "/api/v1/admin/product-images";
 const PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
 
 const tree: CategoryNode[] = [
-  { id: "c-main", name: "Obuwie", slug: "obuwie", path: "obuwie", children: [] },
-  { id: "c-extra", name: "Sport", slug: "sport", path: "sport", children: [] },
+  { id: "c-main", name: "Obuwie", slug: "obuwie", path: "obuwie", version: 1, productCount: null, children: [] },
+  { id: "c-extra", name: "Sport", slug: "sport", path: "sport", version: 1, productCount: null, children: [] },
 ];
 const preview = { alt: "Zdjęcie", size: "thumbnail", aspectRatio: "1:1", variants: { webp: [{ width: 96, url: "https://img.test/a.webp" }] } };
 

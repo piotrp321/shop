@@ -69,8 +69,8 @@ const TAX_CLASS_LIST = [
 ];
 
 const tree: CategoryNode[] = [
-  { id: "c-sport", name: "Sport", slug: "sport", path: "sport", children: [{ id: "c-run", name: "Bieganie", slug: "bieganie", path: "sport/bieganie", children: [] }] },
-  { id: "c-food", name: "Jedzenie", slug: "jedzenie", path: "jedzenie", children: [] },
+  { id: "c-sport", name: "Sport", slug: "sport", path: "sport", version: 1, productCount: null, children: [{ id: "c-run", name: "Bieganie", slug: "bieganie", path: "sport/bieganie", version: 1, productCount: null, children: [] }] },
+  { id: "c-food", name: "Jedzenie", slug: "jedzenie", path: "jedzenie", version: 1, productCount: null, children: [] },
 ];
 
 interface Backend {
