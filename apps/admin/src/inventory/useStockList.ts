@@ -2,6 +2,7 @@ import { computed, shallowRef, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useCursorPager } from "@/composables/useCursorPager";
+import { DEFAULT_PRODUCT_SORT, PRODUCT_SORT_OPTIONS, sortParam } from "@/composables/listSort";
 import { type ListParam, useListUrlState } from "@/composables/useListUrlState";
 import { MAX_NAME_SEARCH_LENGTH, NAME_SEARCH_DEBOUNCE_MS, useNameSearch, validNameTerm } from "@/composables/useNameSearch";
 import type { CategoryLookup } from "@/products/useProductList";
@@ -73,7 +74,7 @@ export const EMPTY_MESSAGE = "Nie ma jeszcze produktów z wariantami.";
 
 /**
  * The stock list: a search by name, a category filter and a page size (10, 25 or 50 products). The state lives in the
- * address (`useListUrlState`: `q`, `category`, `perPage`) and the paging is `useCursorPager` over products, each with
+ * address (`useListUrlState`: `q`, `category`, `sort`: by name or by the last change, either way, and `perPage`) and the paging is `useCursorPager` over products, each with
  * all its variants, so „Pokazano produkty X–Y” counts products; `rows` has a row per variant (`stockRows`), in the order
  * of the products and of their variants. The request is `fetchStockPage`, the search by name `useNameSearch`.
  * `categories` is the tree of the filter, as in `useProductList`: a category of the address that it does not have is skipped.
@@ -104,6 +105,7 @@ export function useStockList(categories?: CategoryLookup) {
       fallback: null,
       confirm: categories ? (id) => (categories.loaded.value ? known.value.has(id) : undefined) : undefined,
     } satisfies ListParam<string, null>,
+    sort: sortParam(PRODUCT_SORT_OPTIONS, DEFAULT_PRODUCT_SORT),
     perPage: {
       parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
       fallback: DEFAULT_PER_PAGE,
@@ -138,11 +140,15 @@ export function useStockList(categories?: CategoryLookup) {
     url.set({ category: id });
   }
 
+  function setSort(sort: string): void {
+    url.set({ sort: PRODUCT_SORT_OPTIONS.find((option) => option.value === sort)?.value ?? DEFAULT_PRODUCT_SORT });
+  }
+
   function setPerPage(size: number): void {
     url.set({ perPage: size });
   }
 
-  /** Drops the search, the category and the page size: the address is `/inventory` again. */
+  /** Drops the search, the category, the order and the page size: the address is `/inventory` again. */
   function clearFilters(): void {
     name.reset();
     url.clear();
@@ -269,6 +275,8 @@ export function useStockList(categories?: CategoryLookup) {
     range: pager.range,
     total: pager.total,
     selectCategory,
+    sortOptions: PRODUCT_SORT_OPTIONS,
+    setSort,
     setPerPage,
     clearFilters,
     goNext: pager.goNext,

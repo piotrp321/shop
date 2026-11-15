@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ariaSortOf } from "@/composables/listSort";
 import { useCategoryTree } from "@/composables/useCategoryTree";
 import { readUrl } from "@/config";
 import { formatDateTime } from "@/prices/format";
@@ -42,14 +43,15 @@ const statusFilters = [
 const statusFilterLabel = computed(() => statusFilters.find((option) => option.value === (query.value.status ?? "all"))?.label);
 const statusFilterId = useId();
 
-const columns: ListColumn<ProductListItem>[] = [
-  { key: "product", header: "Produkt", main: true },
+// The header of the column the list is sorted by says so with aria-sort.
+const columns = computed<ListColumn<ProductListItem>[]>(() => [
+  { key: "product", header: "Produkt", main: true, sort: ariaSortOf(query.value.sort, "name") },
   { key: "category", header: "Kategoria", hideBelow: "lg", text: (product) => product.mainCategory.name },
   { key: "variants", header: "Warianty", align: "right" },
   { key: "status", header: "Status" },
-  { key: "updated", header: "Ostatnia zmiana", hideBelow: "md", text: (product) => formatDateTime(product.updatedAt) },
+  { key: "updated", header: "Ostatnia zmiana", hideBelow: "md", text: (product) => formatDateTime(product.updatedAt), sort: ariaSortOf(query.value.sort, "updatedAt") },
   { key: "actions", header: "Akcje", align: "right" },
-];
+]);
 
 // „Edytuj” only for a role that can change products: the name of the product still opens the form, read-only.
 function actionsOf(product: ProductListItem): RowAction[] {
@@ -93,7 +95,10 @@ async function clearFilters() {
         :search-hint="searchHint"
         :filtered="filtered"
         :per-page="query.perPage"
+        :sort-options="list.sortOptions"
+        :sort="query.sort"
         @update:per-page="list.setPerPage"
+        @update:sort="list.setSort"
         @clear="clearFilters"
       >
         <template #filters>

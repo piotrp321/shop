@@ -141,7 +141,7 @@ describe("usePriceList", () => {
 
       expect(queries()).toEqual([{ q: "hantle", perPage: 25 }]);
       expect(list.search.value).toBe("hantle");
-      expect(list.query.value).toEqual({ q: "hantle", category: null, perPage: 25 });
+      expect(list.query.value).toEqual({ q: "hantle", category: null, perPage: 25, sort: "name" });
       expect(list.filtered.value).toBe(true);
     });
 
@@ -203,6 +203,99 @@ describe("usePriceList", () => {
       expect(list.search.value).toBe("");
       expect(queries().slice(calls)).toEqual([{ perPage: 10 }]);
       expect(list.filtered.value).toBe(false);
+    });
+  });
+
+  describe("the sort", () => {
+    const one = { "": { items: [item("A")], next: null } };
+
+    it("lists by name without a sort, and does not send the default", async () => {
+      const list = await start(one);
+
+      expect(queries()).toEqual([{ perPage: 10,  }]);
+      expect(list.query.value.sort).toBe("name");
+      expect(list.sortOptions.map((option) => [option.value, option.label])).toEqual([
+        ["name", "Nazwa A–Z"],
+        ["-name", "Nazwa Z–A"],
+        ["-updatedAt", "Ostatnio zmienione"],
+        ["updatedAt", "Najdawniej zmienione"],
+      ]);
+    });
+
+    it.each(["-name", "-updatedAt", "updatedAt"])("reads the sort %s of the address with one request", async (sort) => {
+      const list = await start(one, undefined, "/prices?sort=" + sort);
+
+      expect(queries()).toEqual([{ perPage: 10, sort }]);
+      expect(list.query.value.sort).toBe(sort);
+    });
+
+    it("writes the chosen sort to the address without a new entry, asks once from the first page and drops the default", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      await list.goNext();
+      expect(list.pageNumber.value).toBe(2);
+      const push = vi.spyOn(router!, "push");
+
+      list.setSort("-updatedAt");
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({ sort: "-updatedAt" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, sort: "-updatedAt" });
+      expect(list.pageNumber.value).toBe(1);
+      expect(queries().filter((query) => query.sort === "-updatedAt")).toHaveLength(1);
+
+      list.setSort("name");
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries().at(-1)).toEqual({ perPage: 10,  });
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it("applies a change of the address from outside with one request", async () => {
+      await start(one);
+      mocks.get.mockClear();
+
+      await router!.push({ path: "/prices", query: { sort: "updatedAt" } });
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 10, sort: "updatedAt" }]);
+    });
+
+    it.each(["/prices?sort=price", "/prices?sort=", "/prices?sort=--name", "/prices?sort=Name", "/prices?sort=-placedAt"])(
+      "skips the invalid sort of %s and corrects the address",
+      async (address) => {
+        const list = await start(one, undefined, address);
+
+        expect(queries()).toEqual([{ perPage: 10,  }]);
+        expect(list.query.value.sort).toBe("name");
+        expect(router!.currentRoute.value.fullPath).toBe("/prices");
+      },
+    );
+
+    it("does not take a parameter of another name (sort[]) as the sort", async () => {
+      const list = await start(one, undefined, "/prices?sort[]=-name");
+
+      expect(queries()).toEqual([{ perPage: 10 }]);
+      expect(list.query.value.sort).toBe("name");
+    });
+
+    it("is no filter: „Wyczyść filtry” does not show for it, but clearing drops it", async () => {
+      const list = await start(one, undefined, "/prices?sort=-name");
+      expect(list.filtered.value).toBe(false);
+
+      list.clearFilters();
+      await settle();
+
+      expect(list.query.value.sort).toBe("name");
+      expect(router!.currentRoute.value.query).toEqual({});
+    });
+
+    it("keeps the sort when a filter changes", async () => {
+      const list = await start(one, undefined, "/prices?sort=-name");
+
+      list.setPerPage(50);
+      await settle();
+
+      expect(queries().at(-1)).toEqual({ perPage: 50, sort: "-name" });
     });
   });
 

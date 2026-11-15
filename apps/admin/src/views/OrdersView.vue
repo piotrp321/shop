@@ -12,12 +12,13 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ariaSortOf } from "@/composables/listSort";
 import { type OrderStatus, STATUS_OPTIONS, statusLabel } from "@/orders/format";
 import { EMPTY_MESSAGE, MAX_SEARCH_LENGTH, type OrderListItem, useOrderList } from "@/orders/useOrderList";
 import { formatDateTime, formatMoney } from "@/prices/format";
 
 const list = useOrderList();
-const { search, query, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total } = list;
+const { search, query, sort, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total } = list;
 
 // One layout at a time: a table from 640 px, cards below it (the rows and their test ids are never in the DOM twice).
 const tableLayout = useMediaQuery("(min-width: 640px)");
@@ -43,10 +44,10 @@ const refundDueOf = (order: OrderListItem) => (order.refund ? formatDateTime(ord
 
 const columns = computed<ListColumn<OrderListItem>[]>(() => [
   { key: "number", header: "Numer", main: true },
-  { key: "placedAt", header: "Data", hideBelow: "lg", text: dateOf },
+  { key: "placedAt", header: "Data", hideBelow: "lg", text: dateOf, sort: ariaSortOf(sort.value, "placedAt") },
   { key: "customer", header: "Klient" },
   { key: "items", header: "Pozycje", hideBelow: "lg", align: "right", text: (order) => String(order.itemCount) },
-  { key: "total", header: "Kwota", align: "right" },
+  { key: "total", header: "Kwota", align: "right", sort: ariaSortOf(sort.value, "total") },
   { key: "status", header: "Status" },
   ...(refundPending.value
     ? [
@@ -83,7 +84,11 @@ async function clearFilters() {
         :search-hint="SEARCH_HINT"
         :filtered="filtered"
         :per-page="query.perPage"
+        :sort-options="list.sortOptions.value"
+        :sort="sort"
+        sort-placeholder="Termin zwrotu"
         @update:per-page="list.setPerPage"
+        @update:sort="list.setSort"
         @submit="list.submitSearch"
         @clear="clearFilters"
       >

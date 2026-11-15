@@ -409,6 +409,158 @@ describe("useOrderList", () => {
     expect(queries().at(-1)).toEqual({ q: "R-1" });
   });
 
+  describe("the sort", () => {
+    const one = { "": page(["R-1"], "c1"), c1: page(["R-0"]) };
+
+    async function startAt(path: string) {
+      serve(one);
+      const mounted = await mountList(path);
+      wrapper = mounted.wrapper;
+      await settle();
+      return mounted;
+    }
+
+    it("lists the newest first without a sort, and does not send the default", async () => {
+      const { list } = await startAt("/orders");
+
+      expect(queries()).toEqual([{}]);
+      expect(list.sort.value).toBe("-placedAt");
+      expect(list.sortOptions.value.map((option) => [option.value, option.label, option.disabledReason])).toEqual([
+        ["-placedAt", "Najnowsze", undefined],
+        ["placedAt", "Najstarsze", undefined],
+        ["-total", "Najwyższa kwota", undefined],
+        ["total", "Najniższa kwota", undefined],
+      ]);
+    });
+
+    it.each(["placedAt", "-total", "total"])("reads the sort %s of the address with one request", async (sort) => {
+      const { list } = await startAt(`/orders?sort=${sort}`);
+
+      expect(queries()).toEqual([{ sort }]);
+      expect(list.sort.value).toBe(sort);
+    });
+
+    it("writes the chosen sort to the address without a new entry, asks once from the first page and drops the default", async () => {
+      const { list, router } = await startAt("/orders?status=paid");
+      await list.goNext();
+      expect(list.pageNumber.value).toBe(2);
+      const push = vi.spyOn(router, "push");
+
+      list.setSort("-total");
+      await settle();
+
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=paid&sort=-total");
+      expect(queries().at(-1)).toEqual({ status: "paid", sort: "-total" });
+      expect(queries().filter((query) => query.sort === "-total")).toHaveLength(1);
+      expect(list.pageNumber.value).toBe(1);
+
+      list.setSort("-placedAt");
+      await settle();
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=paid");
+      expect(queries().at(-1)).toEqual({ status: "paid" });
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it("applies a change of the address from outside with one request", async () => {
+      const { router } = await startAt("/orders");
+      mocks.get.mockClear();
+
+      await router.push({ path: "/orders", query: { sort: "total" } });
+      await settle();
+
+      expect(queries()).toEqual([{ sort: "total" }]);
+    });
+
+    it.each(["/orders?sort=price", "/orders?sort=", "/orders?sort=--total", "/orders?sort=Total", "/orders?sort=refund", "/orders?sort=-name"])(
+      "skips the invalid sort of %s and corrects the address",
+      async (path) => {
+        const { list, router } = await startAt(path);
+
+        expect(queries()).toEqual([{}]);
+        expect(list.sort.value).toBe("-placedAt");
+        expect(router.currentRoute.value.fullPath).toBe("/orders");
+      },
+    );
+
+    it("does not take a parameter of another name (sort[]) as the sort", async () => {
+      const { list } = await startAt("/orders?sort[]=total");
+
+      expect(queries()).toEqual([{}]);
+      expect(list.sort.value).toBe("-placedAt");
+    });
+
+    it("is no filter, and clearing the filters drops it", async () => {
+      const { list, router } = await startAt("/orders?sort=total");
+      expect(list.filtered.value).toBe(false);
+
+      list.clearFilters();
+      await settle();
+
+      expect(list.sort.value).toBe("-placedAt");
+      expect(router.currentRoute.value.fullPath).toBe("/orders");
+    });
+
+    it("disables every sort for the refunds to do, which have an order of their own, says why, and sends none", async () => {
+      const { list } = await startAt("/orders?refund=pending&sort=-total");
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+      expect(list.sort.value).toBeNull();
+      expect(list.sortOptions.value).toHaveLength(4);
+      for (const option of list.sortOptions.value) {
+        expect(option.disabledReason, option.value).toBe("Zwroty do wykonania są w kolejności terminu zwrotu.");
+      }
+
+      list.setRefundPending(false);
+      await settle();
+      expect(queries().at(-1)).toEqual({ sort: "-total" });
+      expect(list.sort.value).toBe("-total");
+      expect(list.sortOptions.value.every((option) => option.disabledReason === undefined)).toBe(true);
+    });
+
+    it("disables the amount while a search is applied, says why, and falls back to the newest first", async () => {
+      const { list } = await startAt("/orders?q=R-100001&sort=-total");
+
+      expect(queries()).toEqual([{ q: "R-100001" }]);
+      expect(list.sort.value).toBe("-placedAt");
+      expect(list.sortOptions.value.map((option) => option.disabledReason)).toEqual([
+        undefined,
+        undefined,
+        "Kwoty nie da się sortować przy wyszukiwaniu.",
+        "Kwoty nie da się sortować przy wyszukiwaniu.",
+      ]);
+
+      list.setSort("placedAt");
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "R-100001", sort: "placedAt" });
+    });
+
+    it("keeps the sort by placement when a search is applied, and drops the one by the amount", async () => {
+      const { list, router } = await startAt("/orders?sort=placedAt");
+      list.search.value = "anna@example.com";
+      list.submitSearch();
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "anna@example.com", sort: "placedAt" });
+
+      list.clearFilters();
+      list.setSort("total");
+      await settle();
+      list.search.value = "anna@example.com";
+      list.submitSearch();
+      await settle();
+
+      expect(queries().at(-1)).toEqual({ q: "anna@example.com" });
+      expect(router.currentRoute.value.fullPath).toBe("/orders?q=anna@example.com");
+      expect(list.sort.value).toBe("-placedAt");
+    });
+
+    it("lets the amount back when the search is cleared, and a typed search that is not applied does not disable it", async () => {
+      const { list } = await startAt("/orders");
+      list.search.value = "anna";
+      await settle();
+      expect(list.sortOptions.value.every((option) => option.disabledReason === undefined)).toBe(true);
+    });
+  });
+
   describe("the state in the address", () => {
     /** Starts the list at `path` and keeps the router, to change the address of the open list. */
     async function startAt(path: string) {

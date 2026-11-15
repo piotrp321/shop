@@ -1,15 +1,20 @@
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import type { ProductSort } from "@/composables/listSort";
 import type { PageRequest, PageResult } from "@/composables/useCursorPager";
 
 export type StockListItem = components["schemas"]["StockListItemResponse"];
 export type ListedStock = components["schemas"]["ListedStockResponse"];
 
-/** The query of the stock list: a part of the name (null: all), a category (null: all) and the number of products per page. */
+/**
+ * The query of the stock list: a part of the name (null: all), a category (null: all), the number of products per page
+ * and the order (the default, by name, when it is missing).
+ */
 export interface StockQuery {
   q: string | null;
   category: string | null;
   perPage: number;
+  sort?: ProductSort;
 }
 
 /**
@@ -47,12 +52,15 @@ function failureMessage(status: number): string {
  * page source of `useCursorPager` for the stock list.
  */
 export async function fetchStockPage({ query, after }: PageRequest<StockQuery>): Promise<PageResult<StockListItem>> {
-  const apiQuery: { q?: string; category?: string; after?: string; perPage: number } = { perPage: query.perPage };
+  const apiQuery: { q?: string; category?: string; sort?: ProductSort; after?: string; perPage: number } = { perPage: query.perPage };
   if (query.q !== null) {
     apiQuery.q = query.q;
   }
   if (query.category !== null) {
     apiQuery.category = query.category;
+  }
+  if (query.sort !== undefined && query.sort !== "name") {
+    apiQuery.sort = query.sort;
   }
   if (after) {
     apiQuery.after = after;

@@ -639,12 +639,45 @@ describe("PricesView", () => {
       await page().get("[data-testid=next-page]").trigger("click");
       await settle();
 
-      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "25");
+      wrapper.findAllComponents(Select)[1]!.vm.$emit("update:modelValue", "25");
       await settle();
 
       expect(priceCalls().at(-1)).toEqual({ perPage: 25 });
       expect(page().get("[data-testid=page-number]").text()).toBe("Strona 1");
       expect(wrapper.router.currentRoute.value.query).toEqual({ perPage: "25" });
+    });
+
+
+    it("has a Select „Sortuj” by the name or the last change, which sets the address and asks once from the first page", async () => {
+      serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } } });
+      wrapper = await mountView();
+      const trigger = page().get<HTMLButtonElement>("[data-testid=sort]");
+      expect(trigger.element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(trigger.text()).toBe("Nazwa A–Z");
+      await page().get("[data-testid=next-page]").trigger("click");
+      await settle();
+
+      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "-updatedAt");
+      await settle();
+
+      expect(priceCalls().at(-1)).toEqual({ perPage: 10, sort: "-updatedAt" });
+      expect(priceCalls().filter((query) => query.sort === "-updatedAt")).toHaveLength(1);
+      expect(page().get("[data-testid=page-number]").text()).toBe("Strona 1");
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/prices?sort=-updatedAt");
+      expect(page().get("[data-testid=sort]").text()).toBe("Ostatnio zmienione");
+      expect(page().findAll("th[aria-sort]"), "the name is in the row of the group, not in a column").toHaveLength(0);
+    });
+
+    it("applies a sort that the address brings from outside with one request, over the rows of the groups", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/prices?sort=-name");
+      await settle();
+
+      expect(priceCalls()).toEqual([{ perPage: 10, sort: "-name" }]);
+      expect(page().get("[data-testid=sort]").text()).toBe("Nazwa Z–A");
     });
 
     it("says in the empty state that nothing matches the filters, with the way to clear them", async () => {

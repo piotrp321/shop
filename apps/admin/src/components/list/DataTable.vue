@@ -12,6 +12,8 @@ export interface ListColumn<Row> {
   align?: "right";
   /** The column of the main cell (the first one when none says so): it carries the lines of the hidden columns. */
   main?: boolean;
+  /** The direction the list is sorted by this column in; the header says so with `aria-sort`. A column the list is not sorted by has none. */
+  sort?: "ascending" | "descending";
 }
 </script>
 
@@ -211,6 +213,7 @@ onMounted(measure);
                   v-for="column in columns"
                   :key="column.key"
                   scope="col"
+                  :aria-sort="column.sort"
                   :class="
                     cn(
                       'px-2.5 text-xs font-bold whitespace-normal text-heading uppercase',

@@ -1,15 +1,20 @@
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import type { ProductSort } from "@/composables/listSort";
 import type { PageRequest, PageResult } from "@/composables/useCursorPager";
 
 export type PriceListItem = components["schemas"]["PriceListItemResponse"];
 export type ListedPrice = components["schemas"]["ListedPriceResponse"];
 
-/** The query of the price list: a part of the name (null: all), a category (null: all) and the number of products per page. */
+/**
+ * The query of the price list: a part of the name (null: all), a category (null: all), the number of products per page
+ * and the order (the default, by name, when it is missing).
+ */
 export interface PriceQuery {
   q: string | null;
   category: string | null;
   perPage: number;
+  sort?: ProductSort;
 }
 
 /**
@@ -48,12 +53,15 @@ function failureMessage(status: number): string {
  * page source of `useCursorPager` for the price list and for the choice of variants of a promotion.
  */
 export async function fetchPricePage({ query, after }: PageRequest<PriceQuery>): Promise<PageResult<PriceListItem>> {
-  const apiQuery: { q?: string; category?: string; after?: string; perPage: number } = { perPage: query.perPage };
+  const apiQuery: { q?: string; category?: string; sort?: ProductSort; after?: string; perPage: number } = { perPage: query.perPage };
   if (query.q !== null) {
     apiQuery.q = query.q;
   }
   if (query.category !== null) {
     apiQuery.category = query.category;
+  }
+  if (query.sort !== undefined && query.sort !== "name") {
+    apiQuery.sort = query.sort;
   }
   if (after) {
     apiQuery.after = after;

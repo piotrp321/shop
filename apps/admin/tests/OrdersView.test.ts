@@ -102,7 +102,8 @@ describe("OrdersView", () => {
   });
 
   const statusSelect = () => wrapper!.findAllComponents(Select)[0]!;
-  const perPageSelect = () => wrapper!.findAllComponents(Select)[1]!;
+  const sortSelect = () => wrapper!.findAllComponents(Select)[1]!;
+  const perPageSelect = () => wrapper!.findAllComponents(Select)[2]!;
   const pager = (testid: string) => wrapper!.get(`[data-testid=${testid}]`);
 
   it("has the H1 „Zamówienia” and the crumbs „Pulpit › Zamówienia”", async () => {
@@ -176,8 +177,134 @@ describe("OrdersView", () => {
     expect(rows[1]!.find("[data-testid=refund-overdue]").exists()).toBe(false);
   });
 
+  describe("the sort", () => {
+    const sortTrigger = () => wrapper!.get<HTMLButtonElement>("[data-testid=sort]");
+    const head = (title: string) => wrapper!.findAll("th").find((th) => th.text() === title)!;
+
+    it("has a Select „Sortuj” with a visible label that shows the newest first and offers every order of the API", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+
+      expect(sortTrigger().element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(sortTrigger().text()).toBe("Najnowsze");
+      sortTrigger().element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await flushPromises();
+      expect([...document.body.querySelectorAll("[role=option]")].map((option) => option.textContent?.trim()).slice(-4)).toEqual([
+        "Najnowsze",
+        "Najstarsze",
+        "Najwyższa kwota",
+        "Najniższa kwota",
+      ]);
+    });
+
+    it("sets the sort in the address with one request from the first page, and marks the sorted column with aria-sort", async () => {
+      serve({ "": { items: [order("R-100002")], nextCursor: "c1" }, c1: { items: [order("R-100001")], nextCursor: null } });
+      wrapper = await mountView();
+      expect(head("Data").attributes("aria-sort")).toBe("descending");
+      await pager("next-page").trigger("click");
+      await flushPromises();
+      expect(pager("page-number").text()).toBe("Strona 2");
+
+      sortSelect().vm.$emit("update:modelValue", "-total");
+      await flushPromises();
+
+      expect(queries().at(-1)).toEqual({ sort: "-total" });
+      expect(queries().filter((query) => query.sort === "-total")).toHaveLength(1);
+      expect(pager("page-number").text()).toBe("Strona 1");
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?sort=-total");
+      expect(sortTrigger().text()).toBe("Najwyższa kwota");
+      expect(head("Kwota").attributes("aria-sort")).toBe("descending");
+      expect(head("Data").attributes("aria-sort")).toBeUndefined();
+
+      sortSelect().vm.$emit("update:modelValue", "placedAt");
+      await flushPromises();
+      expect(head("Data").attributes("aria-sort")).toBe("ascending");
+      expect(head("Kwota").attributes("aria-sort")).toBeUndefined();
+    });
+
+    it("applies a sort that the address brings from outside with one request", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/orders?sort=total");
+      await flushPromises();
+
+      expect(queries()).toEqual([{ sort: "total" }]);
+      expect(sortTrigger().text()).toBe("Najniższa kwota");
+      expect(head("Kwota").attributes("aria-sort")).toBe("ascending");
+    });
+
+    it("disables every sort for the refunds to do, says why, and shows the order of the due date", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView("/orders?refund=pending");
+
+      expect(sortTrigger().text()).toBe("Termin zwrotu");
+      expect(wrapper.get("[data-testid=sort-hint]").text()).toBe("Zwroty do wykonania są w kolejności terminu zwrotu.");
+      sortTrigger().element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await flushPromises();
+      const options = [...document.body.querySelectorAll<HTMLElement>("[role=option]")].slice(-4);
+      expect(options.map((option) => option.getAttribute("aria-disabled"))).toEqual(["true", "true", "true", "true"]);
+      expect(wrapper.findAll("th[aria-sort]")).toHaveLength(0);
+    });
+
+    it("disables the amount while a search is applied and says why", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView("/orders?q=R-100001");
+
+      expect(wrapper.get("[data-testid=sort-hint]").text()).toBe("Kwoty nie da się sortować przy wyszukiwaniu.");
+      sortTrigger().element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await flushPromises();
+      const options = [...document.body.querySelectorAll<HTMLElement>("[role=option]")].slice(-4);
+      expect(options.map((option) => option.getAttribute("aria-disabled") === "true")).toEqual([false, false, true, true]);
+    });
+
+    it("returns to the first page with the newest first when the filters are cleared", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView("/orders?sort=total&status=paid");
+
+      await wrapper.get("[data-testid=clear-filters]").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders");
+      expect(queries().at(-1)).toEqual({});
+      expect(sortTrigger().text()).toBe("Najnowsze");
+    });
+  });
+
   describe("below 640 px", () => {
     beforeEach(() => screen(false));
+
+    it("offers the same sort as the table, which sets the address and asks once", async () => {
+      serve({ items: [order("R-100002"), order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+
+      const trigger = wrapper.get<HTMLButtonElement>("[data-testid=sort]");
+      expect(trigger.element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(trigger.text()).toBe("Najnowsze");
+      expect(wrapper.find("table").exists()).toBe(false);
+
+      wrapper.findAllComponents(Select)[1]!.vm.$emit("update:modelValue", "total");
+      await flushPromises();
+
+      expect(queries().at(-1)).toEqual({ sort: "total" });
+      expect(queries().filter((query) => query.sort === "total")).toHaveLength(1);
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?sort=total");
+      expect(wrapper.get("[data-testid=sort]").text()).toBe("Najniższa kwota");
+      expect(wrapper.findAll("[data-testid=order-row]")).toHaveLength(2);
+    });
+
+    it("applies a sort of the address from outside with one request", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/orders?sort=-total");
+      await flushPromises();
+
+      expect(queries()).toEqual([{ sort: "-total" }]);
+      expect(wrapper.get("[data-testid=sort]").text()).toBe("Najwyższa kwota");
+    });
 
     it("lists the orders as cards of a list named „Zamówienia”, with no table, and one row per order", async () => {
       serve({ items: [order("R-100002", { status: "new" }), order("R-100001", { status: "shipped" })], nextCursor: null });
