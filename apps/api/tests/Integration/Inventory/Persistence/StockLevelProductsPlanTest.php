@@ -84,8 +84,8 @@ final class StockLevelProductsPlanTest extends KernelTestCase
         foreach ([AvailabilityLevel::OutOfStock, AvailabilityLevel::LowStock] as $level) {
             $index = $this->indexOf($level);
             $expected = $this->connection->fetchOne(
-                (AvailabilityLevel::OutOfStock === $level ? 'SELECT count(*) FROM inventory_stock_item WHERE physical - reserved = 0 AND product_id IS NOT NULL'
-                    : 'SELECT count(*) FROM inventory_stock_item WHERE physical - reserved BETWEEN 1 AND 5 AND product_id IS NOT NULL'),
+                AvailabilityLevel::OutOfStock === $level ? 'SELECT count(*) FROM inventory_stock_item WHERE physical - reserved = 0 AND product_id IS NOT NULL'
+                    : 'SELECT count(*) FROM inventory_stock_item WHERE physical - reserved BETWEEN 1 AND 5 AND product_id IS NOT NULL',
             );
 
             $all = $this->levels->countVariants($level, 10_000);

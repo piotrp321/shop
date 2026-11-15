@@ -28,6 +28,8 @@ final class InMemoryBackofficeProductSource implements BackofficeProductSource
     public array $withoutImagesOfPages = [];
     /** @var list<bool> the same for each count */
     public array $withoutImagesOfCounts = [];
+    /** @var list<int> the limit of each count */
+    public array $countLimits = [];
     public BoundedCount $total;
 
     /**
@@ -47,8 +49,9 @@ final class InMemoryBackofficeProductSource implements BackofficeProductSource
         return \array_slice($this->products, 0, $limit);
     }
 
-    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false): BoundedCount
+    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false, int $limit = 10_000): BoundedCount
     {
+        $this->countLimits[] = $limit;
         $this->withoutImagesOfCounts[] = $withoutImages;
         $this->counts[] = [$term, $category, $status];
 

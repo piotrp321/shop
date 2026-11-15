@@ -34,15 +34,16 @@ interface BackofficeProductSource
     public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit, bool $withoutImages = false): array;
 
     /**
-     * How many products match the filters of {@see page()}, whatever the cursor: counted up to 10 000 (at most 10 001
-     * rows are read), never the whole table.
+     * How many products match the filters of {@see page()}, whatever the cursor: counted up to $limit (10 000 for a list,
+     * at most $limit + 1 rows are read), never the whole table.
      *
      * @param string|null        $term          as in page()
      * @param CategoryPath|null  $category      as in page()
      * @param ProductStatus|null $status        as in page()
      * @param bool               $withoutImages as in page()
+     * @param int                $limit         1 or more
      */
-    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false): BoundedCount;
+    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false, int $limit = 10_000): BoundedCount;
 
     /**
      * What the panel's product list shows besides the name, of the given products.

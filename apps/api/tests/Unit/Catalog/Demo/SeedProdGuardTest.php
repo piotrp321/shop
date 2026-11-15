@@ -19,6 +19,7 @@ final class SeedProdGuardTest extends SeedCommandTestCase
         self::assertStringContainsString('--force-reset', $tester->getDisplay());
         self::assertSame(0, $this->reset->resets);
         self::assertSame([], $this->bus->dispatched);
+        self::assertSame(0, $this->statistics->refreshes);
     }
 
     public function testProdWithForceResetResetsAndSeeds(): void
@@ -30,6 +31,14 @@ final class SeedProdGuardTest extends SeedCommandTestCase
         self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
         self::assertSame(1, $this->reset->resets);
         self::assertNotSame([], $this->bus->dispatched);
+    }
+
+    public function testTheStatisticsOfTheProductsAreRefreshedOnceAfterTheLoad(): void
+    {
+        $tester = $this->tester(new FixedCountProductIndexer([10]));
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
+        self::assertSame(1, $this->statistics->refreshes);
     }
 
     public function testNonProdResetsWithoutTheFlag(): void

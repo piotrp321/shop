@@ -109,9 +109,14 @@ final class BackfillCommandTest extends KernelTestCase
         $tester = new CommandTester(new FrameworkApplication(self::$kernel)->find('app:backfill'));
 
         self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
-        self::assertSame('inventory:stock-records:sync', $this->recorded()[0] ?? null);
+        $first = $tester->getDisplay();
+        // The stock records come first, the statistics of the products after them; every one is recorded.
+        self::assertSame(0, strpos($first, 'inventory:stock-records:sync: running'), $first);
+        self::assertLessThan(strpos($first, 'catalog:analyze-products: running'), strpos($first, 'inventory:stock-records:sync: completed'));
+        self::assertEqualsCanonicalizing(['inventory:stock-records:sync', 'catalog:analyze-products'], $this->recorded());
         self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
         self::assertStringContainsString('inventory:stock-records:sync: skipped', $tester->getDisplay());
+        self::assertStringContainsString('catalog:analyze-products: skipped', $tester->getDisplay());
     }
 
     public function testMigratedSchemaMatchesTheMapping(): void
