@@ -38,6 +38,8 @@ use Doctrine\ORM\Mapping as ORM;
 // the mapping cannot express.
 #[ORM\Index(name: 'ordering_order_total_gross_id_idx', columns: ['total_gross', 'id'])]
 #[ORM\Index(name: 'ordering_order_status_total_gross_id_idx', columns: ['status', 'total_gross', 'id'])]
+// The rebuild of the hourly sales: the paid orders by the moment of their payment, created CONCURRENTLY by the migration.
+#[ORM\Index(name: 'ordering_order_paid_at_idx', columns: ['paid_at'], options: ['where' => '(paid_at IS NOT NULL)'])]
 class OrderRecord
 {
     public const string NUMBER_CONSTRAINT = 'ordering_order_number_key';

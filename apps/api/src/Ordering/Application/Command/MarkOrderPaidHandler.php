@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ordering\Application\Command;
 
 use App\Ordering\Application\Port\Clock;
+use App\Ordering\Application\Port\SalesHours;
 use App\Ordering\Domain\InvalidOrder;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderModifiedConcurrently;
@@ -17,7 +18,8 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 /**
  * Pays the order if the domain lets the payment pay it, in the transaction of command.bus (nested in the webhook of
- * Payment): the order with its OrderPaid in the outbox. The result of the domain becomes a result of the application
+ * Payment): the order with its OrderPaid in the outbox and its addition to the sales of the hour (only a payment that
+ * pays the order adds, so every order counts once and a rolled-back webhook takes the addition back). The result of the domain becomes a result of the application
  * and a version conflict OrderChangedConcurrently, so the caller needs nothing of the Ordering domain.
  */
 #[AsMessageHandler(bus: 'command.bus')]
@@ -27,6 +29,7 @@ final readonly class MarkOrderPaidHandler
         private OrderRepository $orders,
         private DomainEventPublisher $events,
         private Clock $clock,
+        private SalesHours $sales,
     ) {
     }
 
@@ -50,6 +53,9 @@ final readonly class MarkOrderPaidHandler
             } catch (OrderModifiedConcurrently $conflict) {
                 throw new OrderChangedConcurrently($conflict);
             }
+            $paidAt = $order->paidAt();
+            \assert(null !== $paidAt);
+            $this->sales->add($order->id(), $paidAt, $order->totals()->gross()->amount());
             $this->events->publish(...$order->releaseEvents());
         }
 

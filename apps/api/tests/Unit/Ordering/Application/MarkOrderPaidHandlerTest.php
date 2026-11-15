@@ -15,6 +15,7 @@ use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderPaid;
 use App\Ordering\Domain\OrderStatus;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
+use App\Tests\Unit\Ordering\InMemorySalesHours;
 use App\Tests\Unit\Ordering\Journal;
 use App\Tests\Unit\Ordering\JournalingEventPublisher;
 use App\Tests\Unit\Ordering\OrderExamples;
@@ -35,9 +36,11 @@ final class MarkOrderPaidHandlerTest extends TestCase
     private VersionedOrders $orders;
     private JournalingEventPublisher $events;
     private FixedOrderingClock $clock;
+    private InMemorySalesHours $sales;
 
     protected function setUp(): void
     {
+        $this->sales = new InMemorySalesHours();
         $this->orders = new VersionedOrders();
         $this->orders->add(OrderExamples::placed());
         $this->events = new JournalingEventPublisher(new Journal());
@@ -55,6 +58,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
         self::assertEquals($this->clock->now, $order->paidAt());
         self::assertEquals([new OrderPaid(OrderExamples::ORDER, $this->clock->now)], $this->events->published);
         self::assertSame([OrderExamples::ORDER], $this->orders->saved);
+        self::assertEquals([['orderId' => OrderExamples::ORDER, 'paidAt' => $this->clock->now, 'gross' => OrderExamples::TOTAL]], $this->sales->added, 'the paid order is added to the sales of its hour once');
     }
 
     /**
@@ -66,6 +70,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
             $test->handle(self::command());
             $test->events->published = [];
             $test->orders->saved = [];
+            $test->sales->added = [];
         };
 
         yield 'the same payment again' => [$paid, self::command(), MarkOrderPaidResult::AlreadyPaid];
@@ -88,6 +93,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
         self::assertSame($expected, $this->handle($command));
         self::assertSame([], $this->orders->saved);
         self::assertSame([], $this->events->published);
+        self::assertSame([], $this->sales->added, 'only a payment that pays the order adds to the sales');
     }
 
     public function testAnUnknownOrderOrAnIdThatIsNoUuidIsOrderToPayNotFound(): void
@@ -115,9 +121,11 @@ final class MarkOrderPaidHandlerTest extends TestCase
         }
         self::assertSame(OrderStatus::New, $this->order()->status());
         self::assertSame([], $this->events->published);
+        self::assertSame([], $this->sales->added, 'a payment that lost the race adds nothing');
 
-        // Retried (Payment's webhook is delivered again), it pays the order.
+        // Retried (Payment's webhook is delivered again), it pays the order and adds it.
         self::assertSame(MarkOrderPaidResult::Paid, $this->handle(self::command()));
+        self::assertSame([OrderExamples::ORDER], $this->addedOrders());
     }
 
     public function testAnAmountOtherThanTheTotalIsALogicErrorThatChangesNothing(): void
@@ -129,12 +137,13 @@ final class MarkOrderPaidHandlerTest extends TestCase
         } finally {
             self::assertSame([], $this->orders->saved);
             self::assertSame([], $this->events->published);
+            self::assertSame([], $this->sales->added);
         }
     }
 
     private function handle(MarkOrderPaid $command): MarkOrderPaidResult
     {
-        return new MarkOrderPaidHandler($this->orders, $this->events, $this->clock)($command);
+        return new MarkOrderPaidHandler($this->orders, $this->events, $this->clock, $this->sales)($command);
     }
 
     private static function command(
@@ -144,6 +153,14 @@ final class MarkOrderPaidHandlerTest extends TestCase
         string $executedAt = '2026-11-05 12:20:00+00:00',
     ): MarkOrderPaid {
         return new MarkOrderPaid($orderId, $paymentId, $amount, 'PLN', new \DateTimeImmutable($executedAt));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function addedOrders(): array
+    {
+        return array_column($this->sales->added, 'orderId');
     }
 
     private function order(): Order

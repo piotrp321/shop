@@ -43,7 +43,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `outbox`, `scheduled`, `promotions`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie, historię statusów i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  linie, historię statusów, powiadomienia i sprzedaż godzinową (`ordering_sales_hour`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
@@ -154,6 +154,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `DiscountCodeRejected(rejection)` (Pricing Application). `ReleaseDiscountCodeUsage(orderId)` (`command.bus`,
   zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
   wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
+- Wyjątek: sprzedaż godzinowa Ordering (spec ADMIN-FEATURES, „Sprzedaż”, decyzja A2). Tabela `ordering_sales_hour`
+  (PK `(hour_start, shard)`: początek godziny w UTC i jeden z 16 kubełków identyfikatora zamówienia; `order_count`,
+  `gross` w groszach) jest zapisywana i czytana przez DBAL (`DbalSalesHours`, port `SalesHours`), a rekord
+  `SalesHourRecord` tylko definiuje schemat. `MarkOrderPaid` po zapisie opłaconego zamówienia (tylko wynik `Paid`;
+  `AlreadyPaid`, inna płatność, płatność po terminie i anulowane zamówienie nic nie dopisują) robi w swojej transakcji
+  jeden `INSERT … ON CONFLICT (hour_start, shard) DO UPDATE SET order_count = order_count + 1, gross = gross + …`, więc
+  wycofany webhook wycofuje też licznik, a równoległe płatności jednej godziny czekają najwyżej na wiersz swojego
+  kubełka. Godzinę (`date_bin` od `paid_at`) i kubełek (dolne 4 bity ostatniego bajtu UUID) liczą wyłącznie wyrażenia
+  SQL `SalesSql`, wspólne dla zapisu przyrostowego i przebudowy, więc obie drogi trafiają w ten sam wiersz.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
