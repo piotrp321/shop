@@ -25,7 +25,7 @@ function item(name: string, overrides: { stock?: ListedStock | null; variants?: 
   return {
     productId: `id-${name}`,
     name,
-    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" } : overrides.stock }],
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" } : overrides.stock, matchesLevel: false }],
   };
 }
 
@@ -202,7 +202,7 @@ describe("InventoryView: stock history", () => {
 
   it("opens the history of the variant of the row, named after its product and label", async () => {
     serve({ "": { items: [entry()], next: null } }, [
-      item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null }, { variantId: "v-orange", label: "pomarańczowy", stock: null }] }),
+      item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null, matchesLevel: false }, { variantId: "v-orange", label: "pomarańczowy", stock: null, matchesLevel: false }] }),
     ]);
     wrapper = await mountView();
 

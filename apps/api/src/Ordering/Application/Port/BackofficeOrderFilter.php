@@ -18,16 +18,19 @@ final readonly class BackofficeOrderFilter
     public BackofficeOrderSort $sort;
 
     /**
-     * @param bool                     $pendingRefunds only the orders with a refund to do, sorted by its due date
-     * @param string|null              $number         `R-` and digits, as stored
-     * @param string|null              $email          as typed, compared in lower case
-     * @param BackofficeOrderSort|null $sort           null for newest first, or for the due date with the pending refunds
-     * @param string|null              $fragment       3 to 100 characters, as typed
-     * @param \DateTimeImmutable|null  $placedFrom     the first instant of the orders placed, inclusive
-     * @param \DateTimeImmutable|null  $placedBefore   the instant the orders must be placed before, exclusive
+     * @param bool                     $pendingRefunds  only the orders with a refund to do, sorted by its due date
+     * @param string|null              $number          `R-` and digits, as stored
+     * @param string|null              $email           as typed, compared in lower case
+     * @param BackofficeOrderSort|null $sort            null for newest first, or for the due date with the pending refunds
+     * @param string|null              $fragment        3 to 100 characters, as typed
+     * @param \DateTimeImmutable|null  $placedFrom      the first instant of the orders placed, inclusive
+     * @param \DateTimeImmutable|null  $placedBefore    the instant the orders must be placed before, exclusive
+     * @param \DateTimeImmutable|null  $refundDueBefore the instant the refunds must be due before, exclusive: only the pending
+     *                                                  refunds past their due date at that moment (the overdue ones)
      *
      * @throws \LogicException a sort other than the due date with the pending refunds, or the due date without them; the
-     *                         sort by the amount, or the pending refunds, with a search by fragment or a range of days
+     *                         sort by the amount, or the pending refunds, with a search by fragment or a range of days; a due
+     *                         moment without the pending refunds
      */
     public function __construct(
         public ?OrderStatus $status,
@@ -38,9 +41,13 @@ final readonly class BackofficeOrderFilter
         public ?string $fragment = null,
         public ?\DateTimeImmutable $placedFrom = null,
         public ?\DateTimeImmutable $placedBefore = null,
+        public ?\DateTimeImmutable $refundDueBefore = null,
     ) {
         if ($pendingRefunds ? (null !== $sort && BackofficeOrderSort::RefundDueDate !== $sort) : BackofficeOrderSort::RefundDueDate === $sort) {
             throw new \LogicException('The due date is the sort of the pending refunds, and only of them.');
+        }
+        if (null !== $refundDueBefore && !$pendingRefunds) {
+            throw new \LogicException('Only the pending refunds can be overdue.');
         }
         $sorted = $pendingRefunds ? BackofficeOrderSort::RefundDueDate : ($sort ?? BackofficeOrderSort::PlacedDescending);
         if ((null !== $placedFrom || null !== $placedBefore) && ($pendingRefunds || $sorted->byTotal())) {

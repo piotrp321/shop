@@ -194,6 +194,7 @@ describe("AppMenu: the current item", () => {
     ["/orders?status=paid", "Lista zamówień"],
     ["/orders/0192f0c4", "Lista zamówień"],
     ["/orders?refund=pending", "Zwroty do wykonania"],
+    ["/orders?refund=overdue", "Zwroty do wykonania"],
     ["/system", "Stan systemu"],
   ])("marks only %s as current: %s", async (path, label) => {
     const { wrapper: menu } = await mountMenu(path, ["admin"]);
@@ -207,6 +208,12 @@ describe("AppMenu: the current item", () => {
       expect(current(menu).filter((item) => item.startsWith("Pulpit"))).toEqual([]);
       menu.unmount();
     }
+  });
+
+  it("marks the list of the orders for warehouse, who has no item for the refunds, on /orders?refund=overdue", async () => {
+    const { wrapper: menu } = await mountMenu("/orders?refund=overdue", ["warehouse"]);
+
+    expect(current(menu)).toEqual(["Lista zamówień|page"]);
   });
 
   it("marks the list of the orders for warehouse, who has no item for the refunds, on /orders?refund=pending", async () => {

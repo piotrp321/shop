@@ -81,7 +81,7 @@ final readonly class DbalVariantSource implements VariantSource
         }
 
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT p.id AS product_id, p.variant_axes, p.tax_class, p.status = :published AS published, v.id AS variant_id, v.option_values
+            'SELECT p.id AS product_id, p.name, p.variant_axes, p.tax_class, p.status = :published AS published, v.id AS variant_id, v.option_values
              FROM catalog_product p
              JOIN catalog_product_variant v ON v.product_id = p.id
              WHERE p.id = ANY(CAST(:ids AS uuid[]))
@@ -95,9 +95,10 @@ final readonly class DbalVariantSource implements VariantSource
         $products = [];
         foreach ($rows as $row) {
             \assert(\is_string($row['product_id']) && \is_string($row['variant_id']));
-            \assert(\is_string($row['tax_class']) && \is_bool($row['published']));
+            \assert(\is_string($row['tax_class']) && \is_bool($row['published']) && \is_string($row['name']));
             $products[$row['product_id']] ??= [
                 'productId' => $row['product_id'],
+                'name' => $row['name'],
                 'axes' => self::values($row['variant_axes']),
                 'taxClass' => $row['tax_class'],
                 'published' => $row['published'],

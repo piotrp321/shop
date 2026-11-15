@@ -43,6 +43,13 @@ const statusFilters = [
 const statusFilterLabel = computed(() => statusFilters.find((option) => option.value === (query.value.status ?? "all"))?.label);
 const statusFilterId = useId();
 
+const imagesFilters = [
+  { value: "all", label: "Wszystkie" },
+  { value: "none", label: "Bez zdjęć" },
+];
+const imagesFilterLabel = computed(() => imagesFilters.find((option) => option.value === (query.value.images ?? "all"))?.label);
+const imagesFilterId = useId();
+
 // The header of the column the list is sorted by says so with aria-sort.
 const columns = computed<ListColumn<ProductListItem>[]>(() => [
   { key: "product", header: "Produkt", main: true, sort: ariaSortOf(query.value.sort, "name") },
@@ -131,6 +138,32 @@ async function clearFilters() {
               <SelectContent>
                 <SelectItem
                   v-for="option in statusFilters"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <Label :for="imagesFilterId">
+              Zdjęcia
+            </Label>
+            <Select
+              :model-value="query.images ?? 'all'"
+              @update:model-value="list.selectImages($event === 'none' ? 'none' : null)"
+            >
+              <SelectTrigger
+                :id="imagesFilterId"
+                data-testid="images-filter"
+                class="w-44"
+              >
+                <SelectValue>{{ imagesFilterLabel }}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="option in imagesFilters"
                   :key="option.value"
                   :value="option.value"
                 >

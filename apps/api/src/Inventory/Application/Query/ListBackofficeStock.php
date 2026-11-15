@@ -6,7 +6,8 @@ namespace App\Inventory\Application\Query;
 
 /**
  * One page of the stock list of the panel: products with their variants and the stock of each, sorted by name (by
- * default) or by the moment of the last change, then by id. The page size counts products.
+ * default) or by the moment of the last change, then by id, or those at a stock level by their ids. The page size counts
+ * products.
  */
 final readonly class ListBackofficeStock
 {
@@ -19,6 +20,8 @@ final readonly class ListBackofficeStock
      * @param string|null $after      the `next` of the previous page
      * @param int         $perPage    1 to 100
      * @param string|null $sort       `name`, `-name`, `-updatedAt` or `updatedAt`; null for `name`
+     * @param string|null $level      `out_of_stock` or `low_stock`: only the products with a variant at the level, by
+     *                                their ids; excludes the term, the category and the sort. The cursor is of the level.
      */
     public function __construct(
         public ?string $term,
@@ -26,6 +29,7 @@ final readonly class ListBackofficeStock
         public ?string $after,
         public int $perPage,
         public ?string $sort = null,
+        public ?string $level = null,
     ) {
     }
 }

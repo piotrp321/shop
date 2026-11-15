@@ -167,4 +167,9 @@ final readonly class JournalingVariantDirectory implements ProductDirectory
 
         return $found;
     }
+
+    public function describe(array $productIds): array
+    {
+        throw new \LogicException('Not used by the sync.');
+    }
 }

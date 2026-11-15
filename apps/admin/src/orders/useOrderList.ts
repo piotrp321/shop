@@ -44,7 +44,7 @@ const byTotal = (sort: OrderSort) => sort === "-total" || sort === "total";
 
 interface OrderQuery {
   status?: OrderStatus;
-  refund?: "pending";
+  refund?: "pending" | "overdue";
   q?: string;
   placedFrom?: string;
   placedTo?: string;
@@ -97,7 +97,7 @@ function failureMessage(status: number): string {
  * Enter), a range of days of the placement (`placedFrom`, `placedTo`: applied as soon as a day is chosen; an end before
  * the start is not applied and says why; not with the refunds to do, which the API refuses), an order (`sort`: by placement or by the amount, either way; not a
  * filter) and a page size (10, 25 or 50). The search, the filters, the order and the
- * page size live in the address (`useListUrlState`: `q`, `status`, `refund=pending`, `placedFrom`, `placedTo`, `sort`, `perPage`; read on entering and
+ * page size live in the address (`useListUrlState`: `q`, `status`, `refund` (`pending` or `overdue`), `placedFrom`, `placedTo`, `sort`, `perPage`; read on entering and
  * on a change from outside, such as the menu item „Zwroty do wykonania” on the open list, the link „Inne zamówienia
  * klienta” or Back, written with `replace` when changed; only the applied search goes there, not what is being typed)
  * and the paging is `useCursorPager` (cursor stack, late answers, retry, what a failure leaves on the screen). What stays
@@ -113,11 +113,11 @@ export function useOrderList() {
     } satisfies ListParam<OrderStatus, null>,
     placedFrom: { parse: validDay, fallback: null } satisfies ListParam<string, null>,
     placedTo: { parse: validDay, fallback: null } satisfies ListParam<string, null>,
+    // The refunds to do (`pending`) or only those past their due date (`overdue`, a subset with the same order); none by default.
     refund: {
-      parse: (raw) => (raw === "pending" ? true : null),
-      format: () => "pending",
-      fallback: false,
-    } as ListParam<boolean, boolean>,
+      parse: (raw) => (raw === "pending" || raw === "overdue" ? raw : null),
+      fallback: null,
+    } satisfies ListParam<"pending" | "overdue", null>,
     sort: sortParam(ORDER_SORTS, DEFAULT_ORDER_SORT),
     perPage: {
       parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
@@ -160,7 +160,7 @@ export function useOrderList() {
       apiQuery.status = query.status;
     }
     if (query.refund) {
-      apiQuery.refund = "pending";
+      apiQuery.refund = query.refund;
     }
     if (query.q !== null) {
       apiQuery.q = query.q;
@@ -235,19 +235,30 @@ export function useOrderList() {
     toMin: fromDay.value ?? FIRST_DAY,
     toMax: LAST_DAY,
   }));
-  const rangeDisabled = computed(() => url.query.value.refund);
-  const rangeDisabledReason = computed(() => (url.query.value.refund ? RANGE_REFUND_MESSAGE : null));
+  const rangeDisabled = computed(() => url.query.value.refund !== null);
+  const rangeDisabledReason = computed(() => (url.query.value.refund !== null ? RANGE_REFUND_MESSAGE : null));
 
   const status = computed(() => url.query.value.status);
-  const refundPending = computed(() => url.query.value.refund);
-  const filtered = computed(() => url.query.value.q !== null || url.query.value.status !== null || url.query.value.refund || hasRange(url.query.value));
+  const refundPending = computed(() => url.query.value.refund !== null);
+  const refundOverdue = computed(() => url.query.value.refund === "overdue");
+  const filtered = computed(() => url.query.value.q !== null || url.query.value.status !== null || url.query.value.refund !== null || hasRange(url.query.value));
 
   function selectStatus(selected: OrderStatus | null): void {
     url.set({ status: selected });
   }
 
+  /** The switch „Zwroty do wykonania”: on shows the refunds to do, off drops them and the overdue ones with them. */
   function setRefundPending(enabled: boolean): void {
-    url.set({ refund: enabled });
+    if (enabled !== refundPending.value) {
+      url.set({ refund: enabled ? "pending" : null });
+    }
+  }
+
+  /** The switch „Tylko po terminie”: the refunds to do that are past their due date; it turns the refunds to do on. */
+  function setRefundOverdue(enabled: boolean): void {
+    if (enabled !== refundOverdue.value && (enabled || refundPending.value)) {
+      url.set({ refund: enabled ? "overdue" : "pending" });
+    }
   }
 
   /** Applies the days in the fields, unless the end is before the start; the amount cannot be sorted with days, so it returns to the newest first. */
@@ -318,6 +329,7 @@ export function useOrderList() {
     query: url.query,
     status,
     refundPending,
+    refundOverdue,
     sort,
     sortOptions,
     filtered,
@@ -333,6 +345,7 @@ export function useOrderList() {
     total: pager.total,
     selectStatus,
     setRefundPending,
+    setRefundOverdue,
     setPlacedFrom,
     setPlacedTo,
     setSort,

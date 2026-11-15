@@ -27,7 +27,7 @@ function item(name: string, overrides: { stock?: ListedStock | null; variants?: 
   return {
     productId: `id-${name}`,
     name,
-    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? listed() : overrides.stock }],
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? listed() : overrides.stock, matchesLevel: false }],
   };
 }
 
@@ -95,7 +95,7 @@ describe("useStockList", () => {
     const list = await start({
       "": {
         items: [
-          item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null }, { variantId: "v-orange", label: "pomarańczowy", stock: null }] }),
+          item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null, matchesLevel: false }, { variantId: "v-orange", label: "pomarańczowy", stock: null, matchesLevel: false }] }),
           item("Bidon"),
         ],
         next: null,
@@ -122,7 +122,7 @@ describe("useStockList", () => {
   it("numbers the products of a page, not its variants, for „Pokazano produkty X–Y”", async () => {
     const page = (prefix: string, next: string | null): StockList => ({
       items: Array.from({ length: 10 }, (_, index) =>
-        item(`${prefix}${index}`, { variants: [{ variantId: `${prefix}${index}-a`, label: "a", stock: null }, { variantId: `${prefix}${index}-b`, label: "b", stock: null }] }),
+        item(`${prefix}${index}`, { variants: [{ variantId: `${prefix}${index}-a`, label: "a", stock: null, matchesLevel: false }, { variantId: `${prefix}${index}-b`, label: "b", stock: null, matchesLevel: false }] }),
       ),
       next,
     });
@@ -176,7 +176,7 @@ describe("useStockList", () => {
 
       expect(queries()).toEqual([{ q: "bidon", category: "c-run", perPage: 25 }]);
       expect(list.search.value).toBe("bidon");
-      expect(list.query.value).toEqual({ q: "bidon", category: "c-run", perPage: 25, sort: "name" });
+      expect(list.query.value).toEqual({ q: "bidon", category: "c-run", level: null, perPage: 25, sort: "name" });
       expect(list.filtered.value).toBe(true);
     });
 
@@ -284,6 +284,113 @@ describe("useStockList", () => {
     });
   });
 
+  describe("the filter of the level", () => {
+    const one = { "": { items: [item("A")], next: null } };
+
+    it("asks for the products at the level, without the search, the category and the sort, and writes the level to the address", async () => {
+      const list = await start(one, undefined, "/inventory?q=buty&category=c-run&sort=-name&perPage=25");
+      mocks.get.mockClear();
+
+      list.selectLevel("out_of_stock");
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 25, level: "out_of_stock" }]);
+      expect(router!.currentRoute.value.query).toEqual({ perPage: "25", level: "out_of_stock" });
+      expect(list.search.value).toBe("");
+      expect(list.query.value.q).toBeNull();
+      expect(list.query.value.category).toBeNull();
+      expect(list.filtered.value).toBe(true);
+      expect(list.sortDisabled.value).toBe(true);
+    });
+
+    it("goes back to the whole list when the level is dropped, with the other filters empty", async () => {
+      const list = await start(one, undefined, "/inventory?level=low_stock");
+
+      list.selectLevel(null);
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 10, level: "low_stock" }, { perPage: 10 }]);
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(list.filtered.value).toBe(false);
+      expect(list.sortDisabled.value).toBe(false);
+    });
+
+    it("reads the level of the address with one request and ignores what the level excludes", async () => {
+      const list = await start(one, undefined, "/inventory?level=low_stock&q=buty&category=c-run&sort=-updatedAt");
+
+      expect(queries()).toEqual([{ perPage: 10, level: "low_stock" }]);
+      expect(list.level.value).toBe("low_stock");
+      expect(list.search.value).toBe("");
+    });
+
+    it.each(["/inventory?level=in_stock", "/inventory?level=", "/inventory?level=LOW_STOCK", "/inventory?level=out_of_stock&level=low_stock"])(
+      "skips a level that is none of the two (%s)",
+      async (address) => {
+        const list = await start(one, undefined, address);
+
+        expect(queries()).toEqual([{ perPage: 10 }]);
+        expect(list.level.value).toBeNull();
+        expect(router!.currentRoute.value.query).toEqual({});
+      },
+    );
+
+    it("applies a change of the level in the address from outside, from the first page and with one request", async () => {
+      await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      mocks.get.mockClear();
+
+      await router!.push({ path: "/inventory", query: { level: "out_of_stock" } });
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 10, level: "out_of_stock" }]);
+    });
+
+    it("clears the level with the other filters", async () => {
+      const list = await start(one, undefined, "/inventory?level=out_of_stock&perPage=50");
+      mocks.get.mockClear();
+
+      list.clearFilters();
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries()).toEqual([{ perPage: 10 }]);
+    });
+
+    it("drops the sort of the address when a level is chosen: the level has an order of its own and writes none", async () => {
+      const list = await start(one, undefined, "/inventory?sort=-name");
+
+      list.selectLevel("low_stock");
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({ level: "low_stock" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, level: "low_stock" });
+    });
+
+    it("marks the variants at the level in the rows and not the others", async () => {
+      const list = await start({
+        "": {
+          items: [
+            item("Kajak", {
+              variants: [
+                { variantId: "v-green", label: "zielony", stock: listed({ available: 0, level: "out_of_stock" }), matchesLevel: true },
+                { variantId: "v-orange", label: "pomarańczowy", stock: listed(), matchesLevel: false },
+              ],
+            }),
+          ],
+          next: null,
+        },
+      }, undefined, "/inventory?level=out_of_stock");
+
+      expect(list.rows.value.map((row) => [row.variantId, row.matchesLevel])).toEqual([["v-green", true], ["v-orange", false]]);
+    });
+
+    it("sends no level without one: the rows of a list without the filter match nothing", async () => {
+      const list = await start(one);
+
+      expect(queries()).toEqual([{ perPage: 10 }]);
+      expect(list.rows.value.map((row) => row.matchesLevel)).toEqual([false]);
+    });
+  });
+
   describe("the sort", () => {
     const one = { "": { items: [item("A")], next: null } };
 
@@ -292,7 +399,7 @@ describe("useStockList", () => {
 
       expect(queries()).toEqual([{ perPage: 10,  }]);
       expect(list.query.value.sort).toBe("name");
-      expect(list.sortOptions.map((option) => [option.value, option.label])).toEqual([
+      expect(list.sortOptions.value.map((option) => [option.value, option.label])).toEqual([
         ["name", "Nazwa A–Z"],
         ["-name", "Nazwa Z–A"],
         ["-updatedAt", "Ostatnio zmienione"],
@@ -474,6 +581,26 @@ describe("useStockList", () => {
       expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
       expect(list.items.value[0]!.variants[0]!.stock).toMatchObject({ physical: 15, version: 4 });
       expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops the level mark of a variant whose saved stock wins, and keeps it on the other variants and on a newer stock of the list", async () => {
+      const marked = (name: string, stock: ListedStock) => item(name, { variants: [{ variantId: `var-${name}`, label: "", stock, matchesLevel: true }] });
+      const list = await start(
+        { "": { items: [marked("A", listed({ available: 0, level: "out_of_stock" })), marked("B", listed({ available: 0, level: "out_of_stock" }))], next: null } },
+        undefined,
+        "/inventory?level=out_of_stock",
+      );
+      mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
+
+      await list.receiveStock("var-A", { quantity: 5, note: null, key: "k" });
+
+      expect(list.rows.value.map((row) => [row.variantId, row.stock?.physical, row.matchesLevel])).toEqual([["var-A", 15, false], ["var-B", 10, true]]);
+      expect(list.items.value[0]!.variants[0]!.matchesLevel).toBe(false);
+
+      serve({ "": { items: [marked("A", listed({ available: 0, level: "out_of_stock", version: 5 })), marked("B", listed({ available: 0, level: "out_of_stock" }))], next: null } });
+      await list.retry();
+      await settle();
+      expect(list.rows.value[0]!.matchesLevel, "a newer stock of the list brings the mark of the API back").toBe(true);
     });
 
     it("keeps the saved stock while the list is being refreshed, and when the refresh answers with the old one", async () => {

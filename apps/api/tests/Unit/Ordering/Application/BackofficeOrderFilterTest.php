@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Ordering\Application;
 
 use App\Ordering\Application\Port\BackofficeOrderFilter;
 use App\Ordering\Application\Query\BackofficeOrderSort;
+use App\Ordering\Domain\OrderStatus;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -24,6 +25,7 @@ final class BackofficeOrderFilterTest extends TestCase
         yield 'a range with the amount' => [static fn (): BackofficeOrderFilter => new BackofficeOrderFilter(null, false, null, null, BackofficeOrderSort::TotalDescending, null, $day)];
         yield 'an end with the amount' => [static fn (): BackofficeOrderFilter => new BackofficeOrderFilter(null, false, null, null, BackofficeOrderSort::TotalAscending, null, null, $day)];
         yield 'a range with the pending refunds' => [static fn (): BackofficeOrderFilter => new BackofficeOrderFilter(null, true, null, null, null, null, $day)];
+        yield 'a due moment without the pending refunds' => [static fn (): BackofficeOrderFilter => new BackofficeOrderFilter(null, false, null, null, null, null, null, null, $day)];
         yield 'a fragment with the amount' => [static fn (): BackofficeOrderFilter => new BackofficeOrderFilter(null, false, null, null, BackofficeOrderSort::TotalDescending, 'jan')];
     }
 
@@ -36,6 +38,17 @@ final class BackofficeOrderFilterTest extends TestCase
         $this->expectException(\LogicException::class);
 
         $build();
+    }
+
+    public function testTheOverdueRefundsAreThePendingOnesDueBeforeAMomentWithTheSortOfTheirDueDate(): void
+    {
+        $now = new \DateTimeImmutable('2026-11-20 09:00:00+00:00');
+
+        $overdue = new BackofficeOrderFilter(OrderStatus::Returned, true, null, null, null, 'jan', null, null, $now);
+
+        self::assertSame($now, $overdue->refundDueBefore);
+        self::assertSame(BackofficeOrderSort::RefundDueDate, $overdue->sort);
+        self::assertNull(new BackofficeOrderFilter(null, true, null, null)->refundDueBefore);
     }
 
     public function testTheRangeAndTheFragmentGoWithTheSortsByPlacementAndWithThePendingRefundsSearch(): void

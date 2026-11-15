@@ -27,6 +27,9 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     // path of every category starts with the path of its ancestors (materialized path), so the subtree is a prefix
     // match on the path.
     private const string TERM = 'p.name ILIKE :pattern';
+    // The exact predicate of the partial index catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb, which keeps
+    // the few products without images cheap to find, count and page among millions.
+    private const string WITHOUT_IMAGES = "p.images = '[]'::jsonb";
     private const string AFTER_NAME = '(p.name, p.id) %s (:after_value, CAST(:after_id AS uuid))';
     private const string AFTER_UPDATED_AT = '(p.updated_at, p.id) %s (CAST(:after_value AS timestamptz), CAST(:after_id AS uuid))';
     private const string CATEGORY = <<<'SQL'
@@ -43,13 +46,13 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     {
     }
 
-    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit): array
+    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit, bool $withoutImages = false): array
     {
         if ($limit < 1) {
             throw new \InvalidArgumentException('The page limit must be at least 1.');
         }
 
-        [$conditions, $parameters] = self::filter($term, $category, $status);
+        [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
         $parameters['limit'] = $limit;
         $types = ['limit' => ParameterType::INTEGER];
         $direction = $sort->isDescending() ? 'DESC' : 'ASC';
@@ -74,9 +77,9 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         }, $this->connection->executeQuery($sql, $parameters, $types)->fetchAllAssociative());
     }
 
-    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status): BoundedCount
+    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false): BoundedCount
     {
-        [$conditions, $parameters] = self::filter($term, $category, $status);
+        [$conditions, $parameters] = self::filter($term, $category, $status, $withoutImages);
 
         return $this->counter->count('catalog_product p', $conditions, $parameters);
     }
@@ -125,7 +128,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
      *
      * @return array{list<string>, array<string, mixed>} the conditions and the values they bind
      */
-    private static function filter(?string $term, ?CategoryPath $category, ?ProductStatus $status): array
+    private static function filter(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages): array
     {
         $conditions = [];
         $parameters = [];
@@ -142,6 +145,9 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
             // then can the planner prove the predicate of the partial index (name, id) WHERE status = 'draft' that
             // keeps the list of the few drafts cheap (a bound parameter could not use it in a generic plan).
             $conditions[] = "p.status = '".$status->value."'";
+        }
+        if ($withoutImages) {
+            $conditions[] = self::WITHOUT_IMAGES;
         }
 
         return [$conditions, $parameters];

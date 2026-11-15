@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Inventory;
 
 use App\Inventory\Application\Port\CategoryNotFound;
+use App\Inventory\Application\Port\DescribedProduct;
 use App\Inventory\Application\Port\DirectoryPage;
 use App\Inventory\Application\Port\DirectoryProduct;
 use App\Inventory\Application\Port\DirectoryVariant;
@@ -71,6 +72,21 @@ final class InMemoryProductDirectory implements ProductDirectory
         foreach ($productIds as $id) {
             if (isset($this->variants[$id->toString()])) {
                 $found[$id->toString()] = $this->variants[$id->toString()];
+            }
+        }
+
+        return $found;
+    }
+
+    public function describe(array $productIds): array
+    {
+        $this->variantRequests[] = array_map(static fn (ProductId $id): string => $id->toString(), $productIds);
+        $found = [];
+        foreach ($productIds as $id) {
+            foreach ($this->products as $product) {
+                if ($product->id->toString() === $id->toString()) {
+                    $found[$id->toString()] = new DescribedProduct($product, $this->variants[$id->toString()] ?? []);
+                }
             }
         }
 

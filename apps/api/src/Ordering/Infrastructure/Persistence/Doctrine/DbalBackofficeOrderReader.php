@@ -19,7 +19,7 @@ use Doctrine\DBAL\ParameterType;
  * Version20261107150000, Version20261115130100 and Version20261115140000): (placed_at DESC, id DESC) and (status, placed_at DESC, id DESC)
  * serve the sort by placement with and without the status, (total_gross, id) and (status, total_gross, id) the sort by
  * the amount; both directions of a sort read the same index, forwards or backwards, because the id follows the
- * direction of the sorted column. The partial (refund_due_at, id) of the pending refunds serves their sort; the number
+ * direction of the sorted column. The partial (refund_due_at, id) of the pending refunds serves their sort, and the overdue ones (due before a moment) as a range of it; the number
  * has its unique index and the email the index on lower(email), which the condition repeats as it is. The cursor is a
  * row comparison of the columns of the sort in its direction, so it stays an index condition. The units of an order are
  * summed from its lines (index on order_id), only for the orders of the page.
@@ -32,6 +32,7 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
 
     private const string STATUS = 'o.status = :status';
     private const string PENDING_REFUND = 'o.refund_amount IS NOT NULL AND o.refund_completed_at IS NULL';
+    private const string REFUND_DUE_BEFORE = 'o.refund_due_at < :refund_due_before';
     private const string NUMBER = 'o.number = :number';
     private const string EMAIL = 'lower(o.email) = lower(:email)';
     /** The expression of the index ordering_order_search_trgm_idx, which the planner recognises as it is; U+001F separates the fields. */
@@ -100,6 +101,11 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
         }
         if ($filter->pendingRefunds) {
             $conditions[] = self::PENDING_REFUND;
+        }
+        if (null !== $filter->refundDueBefore) {
+            // refund_due_at leads the partial index of the pending refunds, so this is a range of that index.
+            $conditions[] = self::REFUND_DUE_BEFORE;
+            $parameters['refund_due_before'] = $filter->refundDueBefore->format('Y-m-d H:i:s.uP');
         }
         if (null !== $filter->number) {
             $conditions[] = self::NUMBER;

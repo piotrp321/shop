@@ -38,7 +38,7 @@ function selectStatus(value: unknown): void {
   list.selectStatus(option === undefined ? null : (option.value as OrderStatus));
 }
 
-const refundPending = computed(() => query.value.refund);
+const refundPending = computed(() => query.value.refund !== null);
 const title = computed(() => (refundPending.value ? "Zwroty do wykonania" : "Zamówienia"));
 const crumbs = computed(() => (refundPending.value ? [{ label: "Zamówienia", to: { name: "orders" } }, { label: "Zwroty do wykonania" }] : [{ label: "Zamówienia" }]));
 
@@ -195,6 +195,20 @@ async function clearFilters() {
             />
             <Label for="refund-pending">
               Zwroty do wykonania
+            </Label>
+          </div>
+          <div
+            v-if="refundPending"
+            class="flex items-center gap-2 self-end pb-2"
+          >
+            <Switch
+              id="refund-overdue-only"
+              data-testid="refund-overdue-only"
+              :model-value="list.refundOverdue.value"
+              @update:model-value="list.setRefundOverdue($event === true)"
+            />
+            <Label for="refund-overdue-only">
+              Tylko po terminie
             </Label>
           </div>
         </template>

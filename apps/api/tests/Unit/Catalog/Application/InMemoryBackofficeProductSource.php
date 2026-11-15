@@ -24,6 +24,10 @@ final class InMemoryBackofficeProductSource implements BackofficeProductSource
     public array $sorts = [];
     /** @var list<array{?string, ?CategoryPath, ?ProductStatus}> */
     public array $counts = [];
+    /** @var list<bool> whether each page read was limited to the products without images */
+    public array $withoutImagesOfPages = [];
+    /** @var list<bool> the same for each count */
+    public array $withoutImagesOfCounts = [];
     public BoundedCount $total;
 
     /**
@@ -34,16 +38,18 @@ final class InMemoryBackofficeProductSource implements BackofficeProductSource
         $this->total = new BoundedCount(\count($products), false);
     }
 
-    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit): array
+    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit, bool $withoutImages = false): array
     {
+        $this->withoutImagesOfPages[] = $withoutImages;
         $this->pages[] = [$term, $category, $status, $after, $limit];
         $this->sorts[] = $sort;
 
         return \array_slice($this->products, 0, $limit);
     }
 
-    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status): BoundedCount
+    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status, bool $withoutImages = false): BoundedCount
     {
+        $this->withoutImagesOfCounts[] = $withoutImages;
         $this->counts[] = [$term, $category, $status];
 
         return $this->total;

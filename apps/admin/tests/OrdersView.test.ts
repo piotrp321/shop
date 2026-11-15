@@ -472,6 +472,50 @@ describe("OrdersView", () => {
     expect(wrapper.get("h1").text()).toBe("Zamówienia");
   });
 
+  it("has the switch „Tylko po terminie” only while the refunds to do are on, labelled, and it asks for the overdue ones", async () => {
+    serve({ items: [order("R-100001")], nextCursor: null });
+    wrapper = await mountView();
+    expect(wrapper.find("[data-testid=refund-overdue-only]").exists()).toBe(false);
+
+    await wrapper.get("[data-testid=refund-pending]").trigger("click");
+    await flushPromises();
+
+    const toggle = wrapper.get<HTMLButtonElement>("[data-testid=refund-overdue-only]");
+    expect(toggle.attributes("role")).toBe("switch");
+    expect(toggle.attributes("aria-checked")).toBe("false");
+    expect(document.querySelector(`label[for=${toggle.attributes("id")}]`)?.textContent?.trim()).toBe("Tylko po terminie");
+
+    await toggle.trigger("click");
+    await flushPromises();
+
+    expect(queries().at(-1)).toEqual({ refund: "overdue" });
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?refund=overdue");
+    expect(wrapper.get("[data-testid=refund-overdue-only]").attributes("aria-checked")).toBe("true");
+    expect(wrapper.get("[data-testid=refund-pending]").attributes("aria-checked")).toBe("true");
+    expect(wrapper.get("h1").text()).toBe("Zwroty do wykonania");
+
+    await wrapper.get("[data-testid=refund-overdue-only]").trigger("click");
+    await flushPromises();
+    expect(queries().at(-1)).toEqual({ refund: "pending" });
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?refund=pending");
+  });
+
+  it("opens the overdue refunds from the address (the link of the dashboard), with „Tylko po terminie” on, and drops it with the refunds to do", async () => {
+    serve({ items: [order("R-100001")], nextCursor: null });
+    wrapper = await mountView("/orders?refund=overdue");
+
+    expect(queries()).toEqual([{ refund: "overdue" }]);
+    expect(wrapper.get("h1").text()).toBe("Zwroty do wykonania");
+    expect(wrapper.get("[data-testid=refund-overdue-only]").attributes("aria-checked")).toBe("true");
+
+    await wrapper.get("[data-testid=refund-pending]").trigger("click");
+    await flushPromises();
+
+    expect(queries().at(-1)).toEqual({});
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders");
+    expect(wrapper.find("[data-testid=refund-overdue-only]").exists()).toBe(false);
+  });
+
   it("switches the open list to the refunds when the address changes (the menu item „Zwroty do wykonania”), without a reload", async () => {
     serve({ items: [order("R-100001")], nextCursor: null });
     wrapper = await mountView();

@@ -32,6 +32,7 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
     private const string CATALOG = 'Version20261115130000IndexCatalogProductUpdatedAt';
     private const string ORDERS = 'Version20261115130100IndexOrderTotals';
     private const string ORDER_SEARCH = 'Version20261115140000IndexOrderSearch';
+    private const string PRODUCT_IMAGES = 'Version20261115150000IndexCatalogProductWithoutImages';
 
     private Connection $connection;
     private string $migrationClass = '';
@@ -64,6 +65,12 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
             'ordering_order',
             ['ordering_order_search_trgm_idx' => "USING gin (lower(number || E'\\x1f' || email || E'\\x1f' || full_name) gin_trgm_ops)"],
             ['ordering_order_search_trgm_idx' => "USING gin (lower((((((number)::text || '\x1f'::text) || (email)::text) || '\x1f'::text) || (full_name)::text)) gin_trgm_ops)"],
+        ];
+        yield 'the product index of the products without images' => [
+            self::PRODUCT_IMAGES,
+            'catalog_product',
+            ['catalog_product_without_images_idx' => "(id) WHERE images = '[]'::jsonb"],
+            ['catalog_product_without_images_idx' => "USING btree (id) WHERE (images = '[]'::jsonb)"],
         ];
     }
 

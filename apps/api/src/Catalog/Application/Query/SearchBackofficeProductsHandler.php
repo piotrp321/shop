@@ -66,14 +66,14 @@ final readonly class SearchBackofficeProductsHandler
         }
         $after = null === $query->after ? null : ProductCursor::decode($query->after, $sort);
 
-        $products = $this->source->page($query->term, $path, $status, $after, $sort, $query->perPage + 1);
+        $products = $this->source->page($query->term, $path, $status, $after, $sort, $query->perPage + 1, $query->withoutImages);
         // The total of the filters comes with the first page only; the panel keeps it for the next pages.
         if (\count($products) <= $query->perPage) {
             return new BackofficeProductPage($products, null, null === $after ? new BoundedCount(\count($products), false) : null);
         }
 
         $items = \array_slice($products, 0, $query->perPage);
-        $total = null === $after ? $this->source->count($query->term, $path, $status) : null;
+        $total = null === $after ? $this->source->count($query->term, $path, $status, $query->withoutImages) : null;
 
         return new BackofficeProductPage($items, ProductCursor::after($items[$query->perPage - 1], $sort)->encode(), $total);
     }

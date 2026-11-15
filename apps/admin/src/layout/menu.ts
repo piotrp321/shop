@@ -47,7 +47,7 @@ const named =
   (route: CurrentRoute) =>
     typeof route.name === "string" && names.includes(route.name);
 
-const refundsToDo = (route: CurrentRoute) => route.name === "orders" && route.query.refund === "pending";
+const refundsToDo = (route: CurrentRoute) => route.name === "orders" && (route.query.refund === "pending" || route.query.refund === "overdue");
 
 /** The menu of the panel (docs/features/admin-design/spec.md, „Powłoka”). */
 export const MENU: MenuSection[] = [

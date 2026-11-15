@@ -267,7 +267,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `canCompleteRefund` = zwrot do wykonania i `COMPLETE_REFUND`.
   - Zapytania panelu (`query.bus`, bez blokad): `GetBackofficeOrder(orderId)` czyta zamówienie przez
     `OrderRepository::get` i zwraca ten sam `BackofficeOrderView` co komendy pracownika (`overdue` z zegara; nieznane
-    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort, placedFrom, placedTo)` czyta przez
+    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort, placedFrom, placedTo, overdueRefunds)` czyta przez
     port `BackofficeOrderReader` (adapter DBAL `DbalBackofficeOrderReader`, liczba sztuk z sumy linii): `q` po
     przycięciu (także o spacje Unicode) znaczy (`OrderSearchTerm`): dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$` (cały `q` ma najwyżej 254 znaki, dłuższy to 400);
     dokładny pełny adres e-mail (`lower(email) = lower(:email)`, do 254 znaków), gdy ma lokalną część, `@` i domenę
@@ -283,10 +283,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     ze `status`, `q` i sortem po dacie (indeksy `placed_at`), a z `sort=total|-total` (400 przy `sort`) i `refund=pending`
     (400 przy polach dat) nie. Sort z `sort` (domyślnie `placed_at DESC, id DESC`,
     patrz „Sortowanie list panelu”), a przy `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC`
-    (łączy się ze `status` i `q`). Kursor keyset `BackofficeOrderCursor` (base64url JSON klucza sortu, chwili w UTC
+    (łączy się ze `status` i `q`); `refund=overdue` to podzbiór `pending` z `refund_due_at` < chwila odczytu
+    (`BackofficeOrderFilter::$refundDueBefore`, zakres tego samego częściowego indeksu), z tym samym sortem i kursorem. Kursor keyset `BackofficeOrderCursor` (base64url JSON klucza sortu, chwili w UTC
     z mikrosekundami albo kwoty i id); zły kursor i kursor innego sortu to 400 przy `after`. Parametry: `perPage` 1–100
-    (domyślnie 25), inaczej 400. `q`, `placedFrom` i `placedTo` są w DTO typu `mixed` i sprawdzane w callbackach, żeby
-    błąd typu (`q[]=…`) miał ten sam polski komunikat, co zły tekst. Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
+    (domyślnie 25), inaczej 400. `refund`, `q`, `placedFrom` i `placedTo` są w DTO typu `mixed` i sprawdzane w callbackach, żeby
+    błąd typu (`q[]=…`) miał ten sam polski komunikat, co zły tekst (tak samo `level` listy stanów i `images` listy produktów). Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
     `(status, placed_at DESC, id DESC)`, `(total_gross, id)`, `(status, total_gross, id)`, `(lower(email))`, GIN trigram
     wyszukiwania (wyrażenia, mapowanie ich nie zna, więc narzędzia schematu je pomijają) i częściowy `(refund_due_at, id)
     WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL` (warunek w mapowaniu tak, jak zwraca go PostgreSQL);
@@ -494,7 +495,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `CartNotOrderable`. Szkice widzą `GetVariant`, `ListVariantIdentities`, `SearchBackofficeProducts`
   i `ListProductVariants(productIds, includeDrafts: true)` (listy cen i stanów panelu, adaptery
   `QueryBusProductDirectory` w `Pricing_Infrastructure` i `Inventory_Infrastructure`). `ProductVariantList` ma klasę
-  podatkową produktu (`taxClass`).
+  podatkową produktu (`taxClass`) i jego nazwę (`productName`: lista stanów z filtrem poziomu nazywa strony produktów przez
+  `ProductDirectory::describe`).
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
@@ -778,7 +780,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `aspectRatio`; `SizedImage::zoomView`) i schemat OpenAPI `ZoomImage`; `ImageView` i `ProductImage` zostają dla
   rozmiarów o stałych proporcjach. Nowy rozmiar dopisuje się tylko w `ImageSize`.
 - Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik z rolą personelu, `MANAGE_PRODUCTS` `admin`
-  i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `after`, `perPage`; zapytanie
+  i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `images=none`, `sort`, `after`, `perPage`; zapytanie
   `ListBackofficeProducts` składa stronę z `SearchBackofficeProducts` i podsumowań z `BackofficeProductSource::summaries`),
   `GET /products/{id}` (`ProductEditView` z `version`, czytany z DBAL, także szkic), `POST /products` (szkic),
   `PUT /products/{id}`, `POST /products/{id}/publish` i `/unpublish` (wszystkie z `version`), `GET /tax-classes`

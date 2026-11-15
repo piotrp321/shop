@@ -201,7 +201,7 @@ export interface paths {
         };
         /**
          * Stock list
-         * @description A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive. With `level` the page is of the products at that stock level and the first page has the `total` of them.
          */
         get: operations["listStock"];
         put?: never;
@@ -301,7 +301,7 @@ export interface paths {
         };
         /**
          * Order list
-         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), which takes no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
+         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `refund=overdue` only those past their due date (a subset of the pending ones in the same order, so the cursor of one leads the other); both take no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
          */
         get: operations["listOrders"];
         put?: never;
@@ -998,6 +998,11 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            images: "none" | null;
         };
         /** @description The version of the product the action is based on. */
         PublicationRequest: {
@@ -1022,6 +1027,11 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            level: "out_of_stock" | "low_stock" | null;
         };
         /** @description The counted physical stock of a product variant, based on the version of the stock the staff member saw. */
         CorrectStockRequest: {
@@ -1076,7 +1086,7 @@ export interface components {
              * @default null
              * @enum {string|null}
              */
-            refund: "pending" | null;
+            refund: "pending" | "overdue" | null;
             /** @default null */
             q: string | null;
             /**
@@ -1590,6 +1600,8 @@ export interface components {
             label: string;
             /** @description The stored stock, null when the variant has no stock record (nothing on the shelf, nothing reserved). */
             stock: components["schemas"]["ListedStockResponse"] | null;
+            /** @description The stock of the variant is at the level the list is filtered by (`level`); false when the list is not filtered by one. */
+            matchesLevel: boolean;
         };
         /** @description A product with its variants and their stock. */
         StockListItemResponse: {
@@ -2261,6 +2273,8 @@ export interface operations {
                 status?: "draft" | "published";
                 /** @description The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
                 sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description `none`: only the products without images; combines with `q`, `category` and `status`. */
+                images?: "none";
                 /** @description The `next` cursor of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
@@ -2866,7 +2880,9 @@ export interface operations {
                 category?: string;
                 /** @description The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
                 sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
-                /** @description The `next` cursor of the previous page of the same sort. */
+                /** @description Only the products with at least one variant at the level: `out_of_stock` (nothing available) or `low_stock` (1 to 5 available), in ascending order of the product ids, each with all its variants; the variants at the level have `matchesLevel`. Not with `q`, `category` or `sort` (a 400). */
+                level?: "out_of_stock" | "low_stock";
+                /** @description The `next` cursor of the previous page of the same sort (of the same level with `level`). */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
@@ -3262,8 +3278,8 @@ export interface operations {
             query?: {
                 /** @description Only the orders in this status. */
                 status?: components["schemas"]["BackofficeOrderStatus"];
-                /** @description `pending`: only the orders with a refund to do, nearest due date first. */
-                refund?: "pending";
+                /** @description `pending`: only the orders with a refund to do, nearest due date first; `overdue`: only those past their due date (a subset of `pending`, with the same order and cursor). Neither takes `sort`, `placedFrom` or `placedTo`. */
+                refund?: "pending" | "overdue";
                 /** @description An order number or a complete email address (exact, any letter case; the email up to 254 characters), otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` literal); without control characters, trimmed. Not with `sort` by the amount. */
                 q?: string;
                 /** @description The first day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included. Not with `refund=pending` or `sort` by the amount. */
