@@ -28,21 +28,25 @@ final readonly class ListBackofficeOrdersHandler
      * never the table whole.
      *
      * @throws InvalidBackofficeOrderCursor
+     *                                      The overdue refunds are the pending ones due before the moment of the read, in the same order and with the same
+     *                                      cursor
      * @throws InvalidBackofficeOrderList   a sort with the pending refunds, the amount with a search or a range of days,
      *                                      the pending refunds with a range of days, a search term or a day that is
      *                                      refused, a range that ends before it starts
      */
     public function __invoke(ListBackofficeOrders $query): BackofficeOrderList
     {
-        $sort = self::sortOf($query);
+        $now = $this->clock->now();
+        $pendingRefunds = $query->pendingRefunds || $query->overdueRefunds;
+        $sort = self::sortOf($query, $pendingRefunds);
         $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, $sort);
         $term = null === $query->q ? null : OrderSearchTerm::parse($query->q);
         $range = OrderPlacedRange::fromDays($query->placedFrom, $query->placedTo);
-        if ($query->pendingRefunds && !$range->isEmpty()) {
+        if ($pendingRefunds && !$range->isEmpty()) {
             throw InvalidBackofficeOrderList::pendingRefundsWithDateRange();
         }
 
-        $filter = new BackofficeOrderFilter($query->status, $query->pendingRefunds, $term?->number, $term?->email, $sort, $term?->fragment, $range->from, $range->before);
+        $filter = new BackofficeOrderFilter($query->status, $pendingRefunds, $term?->number, $term?->email, $sort, $term?->fragment, $range->from, $range->before, $query->overdueRefunds ? $now : null);
         $orders = $this->orders->page($filter, $after, $query->perPage + 1);
         $next = null;
         if (\count($orders) > $query->perPage) {
@@ -52,7 +56,6 @@ final readonly class ListBackofficeOrdersHandler
         } else {
             $total = null === $after ? new BoundedCount(\count($orders), false) : null;
         }
-        $now = $this->clock->now();
 
         return new BackofficeOrderList(array_map(static fn (ListedOrder $order): BackofficeOrderListItem => self::item($order, $now), $orders), $next, $total);
     }
@@ -60,9 +63,9 @@ final readonly class ListBackofficeOrdersHandler
     /**
      * @throws InvalidBackofficeOrderList
      */
-    private static function sortOf(ListBackofficeOrders $query): BackofficeOrderSort
+    private static function sortOf(ListBackofficeOrders $query, bool $pendingRefunds): BackofficeOrderSort
     {
-        if ($query->pendingRefunds) {
+        if ($pendingRefunds) {
             return null === $query->sort ? BackofficeOrderSort::RefundDueDate : throw InvalidBackofficeOrderList::sortWithPendingRefunds();
         }
         if (BackofficeOrderSort::RefundDueDate === $query->sort) {

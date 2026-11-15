@@ -40,13 +40,15 @@ final class BackofficeStockController
             .'of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, '
             .'each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. '
             .'The category filter includes the subcategories and the products that have the category as an additional one; '
-            .'an unknown category gives 404. The search term is a literal part of the name, case-insensitive.',
+            .'an unknown category gives 404. The search term is a literal part of the name, case-insensitive. '
+            .'With `level` the page is of the products at that stock level and the first page has the `total` of them.',
         tags: ['Inventory'],
         parameters: [
             new OA\Parameter(name: 'q', in: 'query', required: false, description: 'A part of the product name, 2 to 100 characters.', schema: new OA\Schema(type: 'string', minLength: 2, maxLength: 100)),
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Category id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.', schema: new OA\Schema(type: 'string', enum: BackofficeStockQuery::SORTS, default: 'name')),
-            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page of the same sort.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeStockQuery::MAX_CURSOR_LENGTH)),
+            new OA\Parameter(name: 'level', in: 'query', required: false, description: 'Only the products with at least one variant at the level: `out_of_stock` (nothing available) or `low_stock` (1 to 5 available), in ascending order of the product ids, each with all its variants; the variants at the level have `matchesLevel`. Not with `q`, `category` or `sort` (a 400).', schema: new OA\Schema(type: 'string', enum: BackofficeStockQuery::LEVELS)),
+            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page of the same sort (of the same level with `level`).', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeStockQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: ListBackofficeStock::MAX_PER_PAGE, default: ListBackofficeStock::DEFAULT_PER_PAGE)),
         ],
         responses: [
@@ -81,7 +83,7 @@ final class BackofficeStockController
     {
         try {
             /** @var StockList $list */
-            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort));
+            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort, $query->level));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

@@ -301,11 +301,27 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/stock?q&category&sort&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null}]}], next}` (warianty w kolejności pozycji, `perPage` liczy produkty); `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); 400 złe parametry (także klucz spoza listy i kursor innego sortu); 404 nieznana kategoria |
+| `GET /api/v1/admin/stock?q&category&sort&level&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null, matchesLevel}]}], next, total}` (warianty w kolejności pozycji, `perPage` liczy produkty); `level` (`out_of_stock` albo `low_stock`, opis niżej); `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); 400 złe parametry (także klucz spoza listy i kursor innego sortu); 404 nieznana kategoria |
 | `POST /api/v1/admin/variants/{variantId}/stock/receipts`, nagłówek `Idempotency-Key`, body `{quantity: int, note: string \| null}` | `admin`, `warehouse` | 201 stan po przyjęciu (`{variantId, physical, reserved, available, level, version, updatedAt}`); 200 powtórzenie z tym samym kluczem i treścią (stan bieżący); 400 brak lub zły klucz; 403; 404 nieznany wariant; 409 klucz użyty z inną treścią; 422 ilość, limit 1 000 000, notatka |
 | `POST /api/v1/admin/variants/{variantId}/stock/corrections`, body `{physical: int, version: int \| null, reason: string, note: string \| null}` | `admin`, `warehouse` | 200 stan (ta sama wartość: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo poniżej zarezerwowanego (różne `detail`); 422 zakres, powód, brak notatki przy `other` |
 | `GET /api/v1/admin/variants/{variantId}/stock-history?after&perPage` | pracownik z rolą personelu | `200 {items: [{occurredAt, type, physicalDelta, reservedDelta, physicalAfter, reservedAfter, reason, note, reference, source, actorName}], next}`; 400 zły kursor lub parametr; 404 nieznany wariant |
 
+- Filtr poziomu `level=out_of_stock|low_stock` (kolejki pulpitu, `docs/features/admin-features/spec.md`): odpowiada
+  produktami z co najmniej jednym wariantem na tym poziomie, każdy z wszystkimi swoimi wariantami; pasujące warianty
+  (stan zapisany i `level` równy filtrowi) mają `matchesLevel: true`, pozostałe i wszystkie wiersze listy bez `level`
+  `false`. Stronicuje Inventory, nie Catalog: port `StockLevelProducts` (adapter `DbalStockLevelProducts`) czyta
+  identyfikatory produktów z rekordów stanów rosnąco (`GROUP BY product_id ORDER BY product_id LIMIT`) z częściowych
+  indeksów poziomów (warunek `physical - reserved = 0` albo `BETWEEN 1 AND` stała `AvailabilityLevel::LOW_STOCK_THRESHOLD`
+  jako literał, bez parametru, żeby planista mógł dowieść predykatu) z własnym kursorem keyset
+  (`StockLevelCursor`: base64url JSON `{l: poziom, p: identyfikator produktu}`; kursor innego poziomu i kursor listy po
+  nazwie to 400 przy `after`, jak kursor innego sortu). Nazwy produktów i etykiety wariantów strony podaje Catalog przez
+  istniejący port `ProductDirectory` (`describe`: `ListProductVariants` z nazwą produktu, szkice też), stany wariantów
+  jedno `findMany`. Rekord bez `product_id` nie należy do filtra; produkt, którego Catalog już nie ma, jest pomijany
+  na stronie (kursor prowadzi dalej, strona może być krótsza albo pusta). `total` (limit 10 000) liczy produkty poziomu na
+  pierwszej stronie, gdy jest następna. `level` wyklucza `q`, `category` i `sort` (400 z naruszeniem przy każdym z tych
+  pól, „Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.”); inna wartość `level` to 400 przy
+  `level`. Test planu: `StockLevelProductsPlanTest` (100 000 rekordów w tabeli tymczasowej, plan bez wyłączania skanów:
+  strona, kolejna strona i licznik czytają indeks poziomu, bez `Seq Scan`).
 - Uprawnienie `MANAGE_STOCK` sprawdza `StockVoter` w `Inventory_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `support` i `marketing` dostają 403.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.

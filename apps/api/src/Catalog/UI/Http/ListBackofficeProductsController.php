@@ -48,6 +48,7 @@ final class ListBackofficeProductsController
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Category id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only drafts or only published products.', schema: new OA\Schema(type: 'string', enum: ['draft', 'published'])),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.', schema: new OA\Schema(type: 'string', enum: BackofficeProductsQuery::SORTS, default: 'name')),
+            new OA\Parameter(name: 'images', in: 'query', required: false, description: '`none`: only the products without images; combines with `q`, `category` and `status`.', schema: new OA\Schema(type: 'string', enum: ['none'])),
             new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page of the same sort.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeProductsQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: 100, default: ListBackofficeProducts::DEFAULT_PER_PAGE)),
         ],
@@ -84,7 +85,7 @@ final class ListBackofficeProductsController
     {
         try {
             /** @var BackofficeProductList $list */
-            $list = $this->handle(new ListBackofficeProducts($query->q, $query->category, $query->status, $query->after, $query->perPage, $query->sort));
+            $list = $this->handle(new ListBackofficeProducts($query->q, $query->category, $query->status, $query->after, $query->perPage, $query->sort, 'none' === $query->images));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

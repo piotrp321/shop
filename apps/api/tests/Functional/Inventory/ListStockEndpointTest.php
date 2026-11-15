@@ -57,7 +57,7 @@ final class ListStockEndpointTest extends WebTestCase
         self::assertIsArray($variants);
         self::assertIsArray($variants[1]);
         self::assertSame(
-            [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'label' => 'zielony', 'stock' => null], ['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'label' => 'pomarańczowy']],
+            [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'label' => 'zielony', 'stock' => null, 'matchesLevel' => false], ['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'label' => 'pomarańczowy', 'matchesLevel' => false]],
             [$variants[0], array_diff_key($variants[1], ['stock' => 1])],
         );
         $stock = $variants[1]['stock'];
@@ -66,7 +66,7 @@ final class ListStockEndpointTest extends WebTestCase
         self::assertUtcTimestamp($stock);
         self::assertNotSame($gel->id()->toString(), $gelVariant);
         self::assertSame(
-            ['productId' => $gel->id()->toString(), 'name' => 'Żel malinowy', 'variants' => [['variantId' => $gelVariant, 'label' => '', 'stock' => null]]],
+            ['productId' => $gel->id()->toString(), 'name' => 'Żel malinowy', 'variants' => [['variantId' => $gelVariant, 'label' => '', 'stock' => null, 'matchesLevel' => false]]],
             $items[1],
         );
         $this->assertKeysMatchSchema($body, 'StockListResponse');
@@ -179,6 +179,220 @@ final class ListStockEndpointTest extends WebTestCase
         self::assertSame(['value' => 0, 'capped' => false], $none['total']);
         $this->assertKeysMatchSchema($all, 'StockListResponse');
         $this->assertKeysMatchSchema($all['total'], 'BoundedCountResponse');
+    }
+
+    public function testALevelListsExactlyTheProductsWithAVariantAtThatLevelWithAllTheirVariants(): void
+    {
+        $kayak = $this->saveProduct('Kajak', variants: [
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['zielony']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['czerwony']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b03', 'values' => ['żółty']],
+        ], axes: ['Kolor']);
+        $bottle = $this->saveProduct('Bidon');
+        $tent = $this->saveProduct('Namiot');
+        $gel = $this->saveProduct('Żel');
+        $orphan = $this->saveProduct('Bez produktu w rekordzie');
+        $unrecorded = $this->saveProduct('Bez rekordu');
+        $this->record($kayak, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 3, 3);
+        $this->record($kayak, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 10, 0);
+        $this->record($bottle, $this->variantOf($bottle), 8, 4);
+        $this->record($tent, $this->variantOf($tent), 6, 0);
+        $this->record($gel, $this->variantOf($gel), 0, 0);
+        $this->record(null, $this->variantOf($orphan), 0, 0);
+        self::assertNotSame($unrecorded->id()->toString(), $this->variantOf($unrecorded));
+
+        $out = $this->get('level=out_of_stock');
+        $low = $this->get('level=low_stock');
+        self::assertResponseStatusCodeSame(200);
+        $expected = [$kayak->id()->toString(), $gel->id()->toString()];
+        sort($expected);
+        self::assertSame($expected, array_column($this->items($out), 'productId'));
+        self::assertSame([$bottle->id()->toString()], array_column($this->items($low), 'productId'));
+        self::assertNull($out['next']);
+        self::assertSame(['value' => 2, 'capped' => false], $out['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $low['total']);
+        $items = $this->items($out);
+        $kayakItem = $items[(int) array_search($kayak->id()->toString(), $expected, true)];
+        self::assertSame('Kajak', $kayakItem['name']);
+        self::assertIsArray($kayakItem['variants']);
+        $variants = $kayakItem['variants'];
+        self::assertSame(
+            [['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'zielony', true], ['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'czerwony', false], ['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b03', 'żółty', false]],
+            array_map(static fn (mixed $variant): array => \is_array($variant) ? [$variant['variantId'], $variant['label'], $variant['matchesLevel']] : [], $variants),
+        );
+        self::assertIsArray($variants[2]);
+        self::assertNull($variants[2]['stock']);
+        self::assertIsArray($variants[0]);
+        $this->assertKeysMatchSchema($variants[0], 'StockListVariantResponse');
+    }
+
+    /**
+     * @return iterable<string, array{int, int, ?string}> physical, reserved, the level the one variant is listed at
+     */
+    public static function boundaries(): iterable
+    {
+        yield 'nothing available' => [5, 5, 'out_of_stock'];
+        yield 'one available' => [1, 0, 'low_stock'];
+        yield 'five available' => [9, 4, 'low_stock'];
+        yield 'six available' => [6, 0, null];
+        yield 'reserved beyond a low stock' => [7, 3, 'low_stock'];
+    }
+
+    #[DataProvider('boundaries')]
+    public function testTheBoundariesOfTheLevelsAreTheAvailableQuantityNotThePhysicalOne(int $physical, int $reserved, ?string $level): void
+    {
+        $product = $this->saveProduct('Bidon');
+        $this->record($product, $this->variantOf($product), $physical, $reserved);
+
+        foreach (['out_of_stock', 'low_stock'] as $candidate) {
+            $items = $this->items($this->get('level='.$candidate));
+
+            self::assertSame($candidate === $level ? [$product->id()->toString()] : [], array_column($items, 'productId'), $candidate);
+        }
+    }
+
+    public function testALevelPagesByProductIdWithItsOwnCursor(): void
+    {
+        $ids = [];
+        foreach (range(1, 5) as $n) {
+            $product = $this->saveProduct('Produkt '.(6 - $n));
+            $this->record($product, $this->variantOf($product), 0, 0);
+            $ids[] = $product->id()->toString();
+        }
+        $other = $this->saveProduct('Niski');
+        $this->record($other, $this->variantOf($other), 3, 0);
+        sort($ids);
+
+        $first = $this->get('level=out_of_stock&perPage=2');
+        $second = $this->get('level=out_of_stock&perPage=2&after='.$this->next($first));
+        $third = $this->get('level=out_of_stock&perPage=2&after='.$this->next($second));
+
+        self::assertSame(\array_slice($ids, 0, 2), array_column($this->items($first), 'productId'));
+        self::assertSame(\array_slice($ids, 2, 2), array_column($this->items($second), 'productId'));
+        self::assertSame(\array_slice($ids, 4), array_column($this->items($third), 'productId'));
+        self::assertNull($third['next']);
+        self::assertSame(['value' => 5, 'capped' => false], $first['total']);
+        self::assertNull($second['total']);
+        self::assertNull($third['total']);
+    }
+
+    public function testALevelListsNoProductWithoutAFindInCatalogAndKeepsPaging(): void
+    {
+        $gone = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99';
+        $this->connection->executeStatement(
+            'INSERT INTO inventory_stock_item (variant_id, product_id, physical, reserved, version, updated_at) VALUES (?, ?, 0, 0, 0, now())',
+            ['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b99', $gone],
+        );
+
+        $body = $this->get('level=out_of_stock');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], $this->items($body));
+    }
+
+    public function testALevelSeesTheStockChangesAtOnce(): void
+    {
+        $product = $this->saveProduct('Bidon');
+        $variant = $this->variantOf($product);
+        $this->record($product, $variant, 4, 0);
+        self::assertSame([$product->id()->toString()], array_column($this->items($this->get('level=low_stock')), 'productId'));
+
+        $this->connection->executeStatement('UPDATE inventory_stock_item SET physical = 40 WHERE variant_id = ?', [$variant]);
+
+        self::assertSame([], $this->items($this->get('level=low_stock')));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the query, the field of the violation
+     */
+    public static function levelWithExcludedParameters(): iterable
+    {
+        yield 'a search' => ['level=out_of_stock&q=bidon', 'q'];
+        yield 'an empty search' => ['level=low_stock&q=', 'q'];
+        yield 'a category' => ['level=low_stock&category=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', 'category'];
+        yield 'a sort by name' => ['level=out_of_stock&sort=name', 'sort'];
+        yield 'a sort by the last change' => ['level=out_of_stock&sort=-updatedAt', 'sort'];
+        yield 'an unknown level' => ['level=in_stock', 'level'];
+        yield 'an empty level' => ['level=', 'level'];
+        yield 'a level in capitals' => ['level=OUT_OF_STOCK', 'level'];
+    }
+
+    #[DataProvider('levelWithExcludedParameters')]
+    public function testALevelRejectsTheParametersItExcludesAndAnUnknownLevel(string $query, string $path): void
+    {
+        $this->saveProduct('Bidon');
+
+        $this->get($query);
+
+        $this->assertProblem(400);
+        self::assertContains($path, $this->violationPaths(400));
+    }
+
+    public function testTheViolationOfALevelWithASearchIsInPolish(): void
+    {
+        $this->get('level=out_of_stock&q=bidon&category=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60&sort=name');
+
+        $problem = $this->assertProblem(400);
+        self::assertIsArray($problem['violations']);
+        $titles = array_map(static fn (mixed $violation): mixed => \is_array($violation) ? ($violation['title'] ?? null) : null, $problem['violations']);
+        self::assertCount(3, $titles);
+        foreach ($titles as $title) {
+            self::assertSame('Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.', $title);
+        }
+    }
+
+    public function testACursorOfAnotherLevelOrOfTheNameListIsRejected(): void
+    {
+        foreach (['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61'] as $n => $unused) {
+            $product = $this->saveProduct('Produkt '.$n);
+            $this->record($product, $this->variantOf($product), 0, 0);
+        }
+        $byName = $this->get('perPage=1');
+        $out = $this->get('level=out_of_stock&perPage=1');
+        $low = $this->get('level=low_stock&perPage=1');
+        self::assertIsString($out['next']);
+        self::assertNull($low['next']);
+
+        $this->get('level=low_stock&after='.$out['next']);
+        self::assertContains('after', $this->violationPaths(400));
+
+        $this->get('level=out_of_stock&after='.$this->next($byName));
+        self::assertContains('after', $this->violationPaths(400));
+
+        $this->get('after='.$out['next']);
+        self::assertContains('after', $this->violationPaths(400));
+    }
+
+    public function testAVariantAtTheLevelMatchesOnlyWhenAListedLevelIsAsked(): void
+    {
+        $product = $this->saveProduct('Bidon');
+        $this->record($product, $this->variantOf($product), 0, 0);
+
+        $plain = $this->items($this->get(''));
+        $filtered = $this->items($this->get('level=out_of_stock'));
+
+        self::assertIsArray($plain[0]['variants']);
+        self::assertIsArray($filtered[0]['variants']);
+        self::assertIsArray($plain[0]['variants'][0]);
+        self::assertIsArray($filtered[0]['variants'][0]);
+        self::assertFalse($plain[0]['variants'][0]['matchesLevel']);
+        self::assertTrue($filtered[0]['variants'][0]['matchesLevel']);
+    }
+
+    private function variantOf(Product $product): string
+    {
+        return $product->variants()->toList()[0]->id()->toString();
+    }
+
+    /**
+     * A stock record of the variant with its product (null as a record written before its product was known).
+     */
+    private function record(?Product $product, string $variantId, int $physical, int $reserved): void
+    {
+        $this->connection->executeStatement(
+            'INSERT INTO inventory_stock_item (variant_id, product_id, physical, reserved, version, updated_at) VALUES (?, ?, ?, ?, 1, now())',
+            [$variantId, $product?->id()->toString(), $physical, $reserved],
+        );
     }
 
     public function testResponseIsPrivateAndNotStored(): void

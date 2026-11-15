@@ -13,8 +13,9 @@ final readonly class ListBackofficeProducts
     public const int DEFAULT_PER_PAGE = 25;
 
     /**
-     * @param string|null $status `draft` or `published`; null for both
-     * @param string|null $sort   a value of {@see ProductSort}; null for `name`
+     * @param string|null $status        `draft` or `published`; null for both
+     * @param string|null $sort          a value of {@see ProductSort}; null for `name`
+     * @param bool        $withoutImages only the products that have no image
      */
     public function __construct(
         public ?string $term,
@@ -23,6 +24,7 @@ final readonly class ListBackofficeProducts
         public ?string $after,
         public int $perPage = self::DEFAULT_PER_PAGE,
         public ?string $sort = null,
+        public bool $withoutImages = false,
     ) {
     }
 }

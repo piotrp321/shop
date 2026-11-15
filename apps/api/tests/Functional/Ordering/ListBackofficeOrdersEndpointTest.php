@@ -133,6 +133,74 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         self::assertSame([$returnedSooner], $this->ids($this->list('refund=pending&status=returned&q=r-100004', self::staff(['support']))));
     }
 
+    public function testTheOverdueRefundsAreTheSubsetOfThePendingOnesPastTheirDueDateInTheSameOrder(): void
+    {
+        $this->order('paid', '-10 days', 'R-100001');
+        $returnedLater = $this->order('returned', '-9 days', 'R-100002', refundDueAt: '+5 days');
+        $cancelledOverdue = $this->order('cancelled_by_staff', '-8 days', 'R-100003', refundDueAt: '-1 day');
+        $returnedOverdue = $this->order('returned', '-7 days', 'R-100004', refundDueAt: '-3 days');
+        $this->order('returned', '-6 days', 'R-100005', refundDueAt: '-2 days', refundCompletedAt: '-3 days');
+        $support = self::staff(['support']);
+
+        $overdue = $this->list('refund=overdue', $support);
+        $pending = $this->list('refund=pending', $support);
+
+        self::assertSame([$returnedOverdue, $cancelledOverdue], $this->ids($overdue));
+        self::assertSame([$returnedOverdue, $cancelledOverdue, $returnedLater], $this->ids($pending));
+        self::assertSame(['value' => 2, 'capped' => false], $overdue['total']);
+        self::assertIsArray($overdue['items']);
+        self::assertSame([true, true], array_map(static fn (mixed $item): mixed => \is_array($item) && \is_array($item['refund']) ? $item['refund']['overdue'] : null, $overdue['items']));
+        self::assertSame([$returnedOverdue], $this->ids($this->list('refund=overdue&status=returned', $support)));
+        self::assertSame([$cancelledOverdue], $this->ids($this->list('refund=overdue&q=r-100003', $support)));
+        self::assertSame([], $this->ids($this->list('refund=overdue&status=paid', $support)));
+        self::assertMatchesSchema('BackofficeOrderList', $overdue);
+    }
+
+    public function testTheOverdueRefundsPageWithTheCursorOfThePendingOnes(): void
+    {
+        $first = $this->order('returned', '-9 days', 'R-100001', refundDueAt: '-3 days');
+        $second = $this->order('returned', '-8 days', 'R-100002', refundDueAt: '-2 days');
+        $third = $this->order('returned', '-7 days', 'R-100003', refundDueAt: '-1 day');
+        $this->order('returned', '-6 days', 'R-100004', refundDueAt: '+1 day');
+        $admin = self::staff(['admin']);
+
+        $pending = $this->list('refund=pending&perPage=2', $admin);
+        $overdue = $this->list('refund=overdue&perPage=2', $admin);
+        $overdueLater = $this->list('refund=overdue&perPage=2&after='.self::cursor($overdue), $admin);
+        $pendingCursorUsed = $this->list('refund=overdue&perPage=2&after='.self::cursor($pending), $admin);
+
+        self::assertSame([$first, $second], $this->ids($overdue));
+        self::assertSame(['value' => 3, 'capped' => false], $overdue['total']);
+        self::assertSame([$third], $this->ids($overdueLater));
+        self::assertNull($overdueLater['total']);
+        self::assertSame($this->ids($overdueLater), $this->ids($pendingCursorUsed), 'the cursor of a pending page leads on');
+        self::assertSame(['after'], $this->violationPaths(400, $this->list('refund=overdue&after='.self::cursor($this->list('perPage=1', $admin)), $admin)));
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>}>
+     */
+    public static function overdueWithExcluded(): iterable
+    {
+        yield 'a sort' => ['refund=overdue&sort=-placedAt', ['sort']];
+        yield 'the amount' => ['refund=overdue&sort=total', ['sort']];
+        yield 'a sort and a range' => ['refund=overdue&sort=placedAt&placedFrom=2026-11-01', ['placedFrom', 'sort']];
+        yield 'an unknown filter' => ['refund=late', ['refund']];
+        yield 'capitals' => ['refund=OVERDUE', ['refund']];
+    }
+
+    /**
+     * @param list<string> $paths
+     */
+    #[DataProvider('overdueWithExcluded')]
+    public function testTheOverdueRefundsHaveTheirOwnSortAndRejectWhatTheyDoNotCombineWith(string $query, array $paths): void
+    {
+        $actual = $this->violationPaths(400, $this->list($query, self::staff(['admin'])));
+        sort($actual);
+
+        self::assertSame($paths, $actual);
+    }
+
     public function testTheFirstPageHoldsTheTotalOfTheMatchingOrdersAndLaterPagesNone(): void
     {
         $this->order('returned', '-9 days', 'R-100001', refundDueAt: '+5 days');
@@ -216,6 +284,7 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         yield 'empty status' => ['status=', 'status'];
         yield 'status as an array' => ['status[]=paid', 'status'];
         yield 'unknown refund filter' => ['refund=done', 'refund'];
+        yield 'the refund filter as an array' => ['refund[]=overdue', 'refund'];
         yield 'empty refund filter' => ['refund=', 'refund'];
         yield 'empty term' => ['q=', 'q'];
         yield 'nothing but spaces' => ['q=%20%20%20', 'q'];

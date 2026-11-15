@@ -78,6 +78,26 @@ final class SearchBackofficeProductsTest extends KernelTestCase
         self::assertNull($page->next);
     }
 
+    public function testTheFilterOfTheProductsWithoutImagesKeepsExactlyThemAndCombinesWithTheOtherFilters(): void
+    {
+        $category = $this->category();
+        $other = $this->category();
+        $this->product($category, 'Bidon z fotką', images: ['Z boku']);
+        $this->product($category, 'Bidon bez zdjęć');
+        $this->product($other, 'Bidon obcy bez zdjęć');
+        $this->product($category, 'Plecak bez zdjęć');
+        $this->product($category, 'Plecak z dwiema', images: ['A', 'B']);
+
+        self::assertSame(['Bidon bez zdjęć', 'Bidon obcy bez zdjęć', 'Plecak bez zdjęć'], $this->names($this->ask(new SearchBackofficeProducts(null, null, null, 25, null, null, true))));
+        self::assertSame(['Bidon bez zdjęć', 'Bidon obcy bez zdjęć'], $this->names($this->ask(new SearchBackofficeProducts('bidon', null, null, 25, null, null, true))));
+        self::assertSame(['Bidon obcy bez zdjęć'], $this->names($this->ask(new SearchBackofficeProducts(null, $other->id()->toString(), null, 25, null, null, true))));
+        self::assertSame(['Bidon bez zdjęć', 'Plecak bez zdjęć'], $this->names($this->ask(new SearchBackofficeProducts(null, $category->id()->toString(), null, 25, 'published', null, true))));
+        self::assertSame([], $this->names($this->ask(new SearchBackofficeProducts(null, null, null, 25, 'draft', null, true))));
+        self::assertCount(5, $this->search()->items);
+        $page = $this->ask(new SearchBackofficeProducts(null, null, null, 2, null, null, true));
+        self::assertSame([3, false], [$page->total?->value, $page->total?->capped]);
+    }
+
     public function testSearchesTheNameAsACaseInsensitiveSubstring(): void
     {
         $category = $this->category();
@@ -427,8 +447,9 @@ final class SearchBackofficeProductsTest extends KernelTestCase
 
     /**
      * @param list<Category> $additional
+     * @param list<string>   $images     the alternative texts of the images, none for a product without images
      */
-    private function product(Category $main, string $name, string $taxClass = 'standard', ?string $id = null, array $additional = []): Product
+    private function product(Category $main, string $name, string $taxClass = 'standard', ?string $id = null, array $additional = [], array $images = []): Product
     {
         $product = ProductFactory::createOne(array_filter([
             'id' => $id,
@@ -436,6 +457,7 @@ final class SearchBackofficeProductsTest extends KernelTestCase
             'mainCategory' => $main,
             'additionalCategories' => $additional,
             'taxClass' => TaxClassCode::from($taxClass),
+            'imageAlts' => $images,
         ], static fn (mixed $value): bool => null !== $value));
         $this->products->save($product, null, null, new \DateTimeImmutable());
 

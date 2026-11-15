@@ -26,6 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
 // migration, which the mapping cannot express.
 #[ORM\Index(name: 'catalog_product_updated_at_id_idx', columns: ['updated_at', 'id'])]
 #[ORM\Index(name: 'catalog_product_draft_updated_at_id_idx', columns: ['updated_at', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
+#[ORM\Index(name: 'catalog_product_without_images_idx', columns: ['id'], options: ['where' => "(images = '[]'::jsonb)"])]
 class ProductRecord
 {
     public const string SLUG_CONSTRAINT = 'catalog_product_slug_key';

@@ -31,7 +31,7 @@ final readonly class BackofficeOrderListQuery
     public function __construct(
         #[Assert\Choice(choices: self::STATUSES, message: 'The status is not one of the statuses of an order.')]
         public ?string $status = null,
-        #[Assert\Choice(choices: ['pending'], message: 'The refund filter can only be `pending`.')]
+        #[Assert\Choice(choices: ['pending', 'overdue'], message: 'The refund filter can only be `pending` or `overdue`.')]
         public ?string $refund = null,
         // A string checked by validateSearch: an order number, or 3 to 100 characters without a control character (a NUL
         // among them: the driver would cut the term there and search for something else).

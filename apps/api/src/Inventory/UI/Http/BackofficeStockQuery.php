@@ -6,6 +6,7 @@ namespace App\Inventory\UI\Http;
 
 use App\Inventory\Application\Query\ListBackofficeStock;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Query string of GET /api/v1/admin/stock. The violation messages never contain the submitted value.
@@ -16,6 +17,9 @@ final readonly class BackofficeStockQuery
     public const int MAX_CURSOR_LENGTH = 2048;
     /** The values of ProductSort of Catalog, which the list pages through. */
     public const array SORTS = ['name', '-name', '-updatedAt', 'updatedAt'];
+    /** The levels the list is filtered by (the values of AvailabilityLevel but the one of an ample stock). */
+    public const array LEVELS = ['out_of_stock', 'low_stock'];
+    public const string LEVEL_EXCLUDES = 'Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.';
 
     public function __construct(
         #[Assert\Length(min: 2, max: 100)]
@@ -31,6 +35,25 @@ final readonly class BackofficeStockQuery
         public ?string $after = null,
         #[Assert\Range(min: 1, max: ListBackofficeStock::MAX_PER_PAGE)]
         public int $perPage = ListBackofficeStock::DEFAULT_PER_PAGE,
+        #[Assert\Choice(choices: self::LEVELS, message: 'Poziom stanu musi być jednym z: out_of_stock, low_stock.')]
+        public ?string $level = null,
     ) {
+    }
+
+    /**
+     * The level is paged by the stock records alone: a search, a category and a sort have no index to go with it. The
+     * violation is on each of the fields to drop.
+     */
+    #[Assert\Callback]
+    public function validateLevelWithFilters(ExecutionContextInterface $context): void
+    {
+        if (null === $this->level) {
+            return;
+        }
+        foreach (['q' => $this->q, 'category' => $this->category, 'sort' => $this->sort] as $path => $value) {
+            if (null !== $value) {
+                $context->buildViolation(self::LEVEL_EXCLUDES)->atPath($path)->addViolation();
+            }
+        }
     }
 }

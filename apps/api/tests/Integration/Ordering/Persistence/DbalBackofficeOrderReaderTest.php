@@ -112,6 +112,51 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
         self::assertSame([$tieHigh], $this->ids($this->reader->page(new BackofficeOrderFilter(OrderStatus::Cancelled, true, 'R-100003', null), null, 10)), 'and with the number');
     }
 
+    public function testTheOverdueRefundsAreTheStrictlyPastDueOnesOfThePendingAndKeepTheirOrderAndCursor(): void
+    {
+        $now = new \DateTimeImmutable('2026-11-20 09:00:00+00:00');
+        $this->order('paid', '2026-11-01 10:00:00', 'R-100001');
+        $pastLater = $this->order('returned', '2026-11-01 10:00:00', 'R-100002', refundDueAt: '2026-11-19 10:00:00+00:00');
+        $pastTieHigh = $this->order('cancelled_by_staff', '2026-11-02 10:00:00', 'R-100003', refundDueAt: '2026-11-15 10:00:00+00:00', orderId: '0192f0c4-7c1a-7c4e-9a6e-000000000002');
+        $pastTieLow = $this->order('returned', '2026-11-03 10:00:00', 'R-100004', refundDueAt: '2026-11-15 10:00:00+00:00', orderId: '0192f0c4-7c1a-7c4e-9a6e-000000000001');
+        $this->order('returned', '2026-11-04 10:00:00', 'R-100005', refundDueAt: '2026-11-20 09:00:00+00:00');
+        $this->order('returned', '2026-11-04 10:00:00', 'R-100006', refundDueAt: '2026-11-25 10:00:00+00:00');
+        $this->order('returned', '2026-11-04 10:00:00', 'R-100007', refundDueAt: '2026-11-10 10:00:00+00:00', refundCompletedAt: '2026-11-11 10:00:00+00:00');
+        $overdue = new BackofficeOrderFilter(null, true, null, null, null, null, null, null, $now);
+
+        $all = $this->reader->page($overdue, null, 10);
+
+        self::assertSame([$pastTieLow, $pastTieHigh, $pastLater], $this->ids($all), 'due before the moment, not at it, not completed, the due date first then the id');
+        self::assertCount(5, $this->reader->page(self::pendingRefunds(), null, 10), 'the pending refunds are a superset');
+        self::assertSame([$pastTieLow, $pastLater], $this->ids($this->reader->page(new BackofficeOrderFilter(OrderStatus::Returned, true, null, null, null, null, null, null, $now), null, 10)), 'with the status');
+        self::assertSame([$pastTieHigh], $this->ids($this->reader->page(new BackofficeOrderFilter(null, true, 'R-100003', null, null, null, null, null, $now), null, 10)), 'with the number');
+        self::assertSame([$pastTieLow], $this->ids($this->reader->page(new BackofficeOrderFilter(null, true, null, null, null, 'R-100004', null, null, $now), null, 10)), 'with a fragment');
+        self::assertSame([3, false], [$this->reader->count($overdue)->value, $this->reader->count($overdue)->capped]);
+        $seen = $this->pageThrough($overdue, 1);
+        self::assertSame($this->ids($all), $seen, 'one at a time, each once');
+        $pendingCursor = BackofficeOrderCursor::after($all[0], BackofficeOrderSort::RefundDueDate);
+        self::assertSame([$pastTieHigh, $pastLater], $this->ids($this->reader->page($overdue, $pendingCursor, 10)), 'the cursor of a pending page leads on');
+    }
+
+    public function testTheOverdueRefundsAreReadThroughThePartialIndexOfThePendingOnesWithoutASort(): void
+    {
+        $this->seed();
+        $recording = RecordingConnection::like($this->connection);
+        $reader = new DbalBackofficeOrderReader($recording, new BoundedCounter($recording));
+        $filter = new BackofficeOrderFilter(null, true, null, null, null, null, null, null, new \DateTimeImmutable('2026-11-20 09:00:00+00:00'));
+
+        $reader->page($filter, null, 26);
+        $page = $recording->planOfTheLastQuery($this->connection);
+        $reader->count($filter);
+        $count = $recording->planOfTheLastQuery($this->connection);
+
+        foreach ([$page, $count] as $plan) {
+            self::assertStringContainsString('ordering_order_pending_refund_idx', $plan);
+            self::assertStringNotContainsString('Seq Scan', $plan);
+        }
+        self::assertStringNotContainsString('Sort', $page);
+    }
+
     /**
      * @return iterable<string, array{BackofficeOrderSort}>
      */

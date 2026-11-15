@@ -34,6 +34,8 @@ final readonly class BackofficeProductsQuery
         public ?string $after = null,
         #[Assert\Range(min: 1, max: SearchBackofficeProducts::MAX_PER_PAGE)]
         public int $perPage = ListBackofficeProducts::DEFAULT_PER_PAGE,
+        #[Assert\Choice(choices: ['none'], message: 'Filtr zdjęć może mieć tylko wartość none.')]
+        public ?string $images = null,
     ) {
     }
 }

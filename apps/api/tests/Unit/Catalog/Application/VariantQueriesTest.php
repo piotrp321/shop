@@ -116,6 +116,7 @@ final class VariantQueriesTest extends TestCase
         $products = $handler(new ListProductVariants([self::CAP, self::ABSENT, self::BOOTS, strtoupper(self::CAP)]));
 
         self::assertSame([self::CAP, self::BOOTS], array_map(static fn ($p): string => $p->productId, $products));
+        self::assertSame(['Czapka', 'Buty Puls'], array_map(static fn ($p): string => $p->productName, $products));
         self::assertSame([], $products[0]->variantAxes);
         self::assertSame([['', self::CAP_DEFAULT]], array_map(static fn ($v): array => [$v->label, $v->variantId], $products[0]->variants));
         self::assertSame(['Kolor', 'Rozmiar'], $products[1]->variantAxes);

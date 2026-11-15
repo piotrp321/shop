@@ -37,4 +37,14 @@ interface ProductDirectory
      *                                               does not exist in Catalog is absent
      */
     public function variantsOf(array $productIds): array;
+
+    /**
+     * The names and the variants of the products, read with one query; the products of a stock level page, whose ids
+     * Inventory knows already.
+     *
+     * @param list<ProductId> $productIds 1 to 100
+     *
+     * @return array<string, DescribedProduct> by product id; a product that does not exist in Catalog is absent
+     */
+    public function describe(array $productIds): array;
 }

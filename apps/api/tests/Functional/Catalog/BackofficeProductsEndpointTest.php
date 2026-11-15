@@ -185,6 +185,72 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($all['total'], 'BoundedCountResponse');
     }
 
+    public function testImagesNoneListsExactlyTheProductsWithoutImagesAndCombinesWithSearchCategoryAndStatus(): void
+    {
+        $other = CategoryFactory::createOne();
+        new \App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository($this->entityManager)->save($other);
+        $this->createProduct(['name' => 'Bidon z fotką', 'slug' => '']);
+        $this->publish($this->createProduct(['name' => 'Bidon opublikowany', 'slug' => '']));
+        $this->createProduct(['name' => 'Bidon bez zdjęć', 'slug' => '', 'images' => []]);
+        $this->createProduct(['name' => 'Bidon obcy bez zdjęć', 'slug' => '', 'images' => [], 'mainCategoryId' => $other->id()->toString()]);
+        $this->createProduct(['name' => 'Plecak bez zdjęć', 'slug' => '', 'images' => []]);
+
+        $none = $this->api('GET', '/api/v1/admin/products?images=none');
+        $withName = $this->api('GET', '/api/v1/admin/products?images=none&q=bidon');
+        $withCategory = $this->api('GET', '/api/v1/admin/products?images=none&category='.$other->id()->toString());
+        $withStatus = $this->api('GET', '/api/v1/admin/products?images=none&status=published');
+        $withDraft = $this->api('GET', '/api/v1/admin/products?images=none&status=draft&q=plecak');
+        $all = $this->api('GET', '/api/v1/admin/products');
+
+        self::assertSame(['Bidon bez zdjęć', 'Bidon obcy bez zdjęć', 'Plecak bez zdjęć'], array_column(self::list($none['items']), 'name'));
+        self::assertSame([null, null, null], array_column(self::list($none['items']), 'image'));
+        self::assertSame(['value' => 3, 'capped' => false], $none['total']);
+        self::assertSame(['Bidon bez zdjęć', 'Bidon obcy bez zdjęć'], array_column(self::list($withName['items']), 'name'));
+        self::assertSame(['Bidon obcy bez zdjęć'], array_column(self::list($withCategory['items']), 'name'));
+        self::assertSame([], self::list($withStatus['items']));
+        self::assertSame(['Plecak bez zdjęć'], array_column(self::list($withDraft['items']), 'name'));
+        self::assertCount(5, self::list($all['items']));
+    }
+
+    public function testImagesNonePagesWithItsFilterAndKeepsTheSort(): void
+    {
+        foreach (['C', 'A', 'B'] as $letter) {
+            $this->createProduct(['name' => 'Bez zdjęć '.$letter, 'slug' => '', 'images' => []]);
+        }
+        $this->createProduct(['name' => 'Ze zdjęciem', 'slug' => '']);
+
+        $first = $this->api('GET', '/api/v1/admin/products?images=none&perPage=2');
+        $second = $this->api('GET', '/api/v1/admin/products?images=none&perPage=2&after='.self::string($first['next']));
+        $descending = $this->api('GET', '/api/v1/admin/products?images=none&sort=-name');
+
+        self::assertSame(['Bez zdjęć A', 'Bez zdjęć B'], array_column(self::list($first['items']), 'name'));
+        self::assertSame(['value' => 3, 'capped' => false], $first['total']);
+        self::assertSame(['Bez zdjęć C'], array_column(self::list($second['items']), 'name'));
+        self::assertNull($second['total']);
+        self::assertSame(['Bez zdjęć C', 'Bez zdjęć B', 'Bez zdjęć A'], array_column(self::list($descending['items']), 'name'));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badImagesFilters(): iterable
+    {
+        yield 'a value that is no filter' => ['images=any'];
+        yield 'with images' => ['images=some'];
+        yield 'capitals' => ['images=NONE'];
+        yield 'empty' => ['images='];
+        yield 'an array' => ['images[]=none'];
+    }
+
+    #[DataProvider('badImagesFilters')]
+    public function testAnImagesFilterOtherThanNoneIsRejected(string $query): void
+    {
+        $this->api('GET', '/api/v1/admin/products?'.$query);
+
+        $problem = $this->assertProblem(400);
+        self::assertIsArray($problem['violations'] ?? null);
+    }
+
     public function testTheListSearchesByNameAndFiltersByCategory(): void
     {
         $other = CategoryFactory::createOne();

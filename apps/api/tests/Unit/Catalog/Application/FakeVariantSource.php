@@ -80,6 +80,7 @@ final class FakeVariantSource implements VariantSource
             if (\in_array($product['id'], $wanted, true)) {
                 $rows[] = [
                     'productId' => $product['id'],
+                    'name' => $product['name'],
                     'axes' => $product['axes'],
                     'taxClass' => $product['taxClass'],
                     'published' => self::published($product),

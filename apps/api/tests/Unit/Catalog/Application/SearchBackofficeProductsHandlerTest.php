@@ -89,6 +89,15 @@ final class SearchBackofficeProductsHandlerTest extends TestCase
         self::assertSame($countsOfTheFirstPage, $this->source->counts, 'only the first page counted');
     }
 
+    public function testTheFilterOfTheProductsWithoutImagesGoesToThePageAndToTheCount(): void
+    {
+        ($this->handler)(new SearchBackofficeProducts(null, null, null, 2, null, null, true));
+        ($this->handler)(new SearchBackofficeProducts(null, null, null, 2));
+
+        self::assertSame([true, false], $this->source->withoutImagesOfPages);
+        self::assertSame([true, false], $this->source->withoutImagesOfCounts);
+    }
+
     public function testThePageIsAskedInTheNameOrderWhenNoSortIsGiven(): void
     {
         ($this->handler)(new SearchBackofficeProducts(null, null, null, 2));

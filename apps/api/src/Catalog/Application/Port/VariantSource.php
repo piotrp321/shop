@@ -34,7 +34,7 @@ interface VariantSource
      *
      * @param list<ProductId> $ids
      *
-     * @return list<array{productId: string, axes: list<string>, taxClass: string, published: bool, variants: list<array{id: string, values: list<string>}>}>
+     * @return list<array{productId: string, name: string, axes: list<string>, taxClass: string, published: bool, variants: list<array{id: string, values: list<string>}>}>
      */
     public function ofProducts(array $ids): array;
 

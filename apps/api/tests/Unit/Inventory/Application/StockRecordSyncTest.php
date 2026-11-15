@@ -97,6 +97,11 @@ final class PagedDirectory implements ProductDirectory
 
         return [];
     }
+
+    public function describe(array $productIds): array
+    {
+        throw new \LogicException('Not used by the sync.');
+    }
 }
 
 /**

@@ -189,6 +189,45 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         self::assertEquals([new \DateTimeImmutable('2026-11-19 09:00:00+00:00'), self::id(1)], [$cursor->value, $cursor->id], 'the due date and id of the last order of the page');
     }
 
+    public function testTheOverdueRefundsAreThePendingOnesDueBeforeTheMomentOfTheRead(): void
+    {
+        $this->reader->orders = [self::listed(1, refund: [26_600, '2026-11-19 09:00:00+00:00', null])];
+
+        $list = $this->list(new ListBackofficeOrders(OrderStatus::Returned, true, 'R-100001', null, 25, null, null, null, true));
+        $this->list(new ListBackofficeOrders(null, true, null, null, 25));
+
+        $overdue = $this->reader->pages[0][0];
+        self::assertEquals(new \DateTimeImmutable(self::NOW), $overdue->refundDueBefore);
+        self::assertSame([BackofficeOrderSort::RefundDueDate, true, OrderStatus::Returned, 'R-100001'], [$overdue->sort, $overdue->pendingRefunds, $overdue->status, $overdue->number]);
+        self::assertNull($this->reader->pages[1][0]->refundDueBefore, 'the pending refunds are not limited by the due date');
+        self::assertTrue($list->items[0]->refund?->overdue);
+    }
+
+    public function testACursorOfThePendingRefundsLeadsTheOverdueOnesOnAndTheOtherWayRound(): void
+    {
+        $this->reader->orders = [self::listed(1, refund: [26_600, '2026-11-19 09:00:00+00:00', null]), self::listed(2, refund: [26_600, '2026-11-19 10:00:00+00:00', null])];
+        $pending = $this->list(new ListBackofficeOrders(null, true, null, null, 1))->nextCursor;
+        $overdue = $this->list(new ListBackofficeOrders(null, true, null, null, 1, null, null, null, true))->nextCursor;
+        self::assertNotNull($pending);
+        self::assertNotNull($overdue);
+
+        $this->list(new ListBackofficeOrders(null, true, null, $pending, 1, null, null, null, true));
+        $this->list(new ListBackofficeOrders(null, true, null, $overdue, 1));
+
+        self::assertSame($pending, $overdue, 'the same cursor');
+        self::assertCount(4, $this->reader->pages);
+    }
+
+    public function testACursorOfThePlacementSortIsRefusedByTheOverdueRefunds(): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2)];
+        $byDate = $this->list(new ListBackofficeOrders(null, false, null, null, 1))->nextCursor;
+        self::assertNotNull($byDate);
+        $this->expectException(InvalidBackofficeOrderCursor::class);
+
+        $this->list(new ListBackofficeOrders(null, true, null, $byDate, 1, null, null, null, true));
+    }
+
     public function testACursorOfTheOtherSortIsRefused(): void
     {
         $this->reader->orders = [self::listed(1, refund: [26_600, '2026-11-19 09:00:00+00:00', null]), self::listed(2)];
@@ -291,6 +330,9 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         yield 'the ascending amount with the end of a range' => [new ListBackofficeOrders(null, false, null, null, 25, BackofficeOrderSort::TotalAscending, null, '2026-11-30')];
         yield 'the pending refunds with the start of a range' => [new ListBackofficeOrders(null, true, null, null, 25, null, '2026-11-01')];
         yield 'the pending refunds with the end of a range' => [new ListBackofficeOrders(OrderStatus::Returned, true, null, null, 25, null, null, '2026-11-30')];
+        yield 'a sort with the overdue refunds' => [new ListBackofficeOrders(null, true, null, null, 25, BackofficeOrderSort::PlacedAscending, null, null, true)];
+        yield 'the overdue refunds with the start of a range' => [new ListBackofficeOrders(null, true, null, null, 25, null, '2026-11-01', null, true)];
+        yield 'the overdue refunds with the end of a range' => [new ListBackofficeOrders(OrderStatus::Returned, true, null, null, 25, null, null, '2026-11-30', true)];
         yield 'an inverted range' => [new ListBackofficeOrders(null, false, null, null, 25, null, '2026-11-30', '2026-11-01')];
         yield 'a day that is no date' => [new ListBackofficeOrders(null, false, null, null, 25, null, '2026-02-30')];
         yield 'an end that is no date' => [new ListBackofficeOrders(null, false, null, null, 25, null, null, 'tomorrow')];

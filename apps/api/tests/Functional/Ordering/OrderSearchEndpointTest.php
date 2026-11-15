@@ -337,6 +337,9 @@ final class OrderSearchEndpointTest extends WebTestCase
         yield 'the ascending amount with the end of a range' => ['sort=total&placedTo=2026-11-01', ['sort']];
         yield 'the pending refunds with the start of a range' => ['refund=pending&placedFrom=2026-11-01', ['placedFrom']];
         yield 'the pending refunds with both ends' => ['refund=pending&placedFrom=2026-11-01&placedTo=2026-11-02', ['placedFrom', 'placedTo']];
+        yield 'the overdue refunds with the start of a range' => ['refund=overdue&placedFrom=2026-11-01', ['placedFrom']];
+        yield 'the overdue refunds with both ends' => ['refund=overdue&placedFrom=2026-11-01&placedTo=2026-11-02', ['placedFrom', 'placedTo']];
+        yield 'the overdue refunds with the end of a range' => ['refund=overdue&placedTo=2026-11-02', ['placedTo']];
         yield 'the amount with a search' => ['sort=-total&q=kowalski', ['sort']];
         yield 'the amount with a bad term and a range' => ['sort=total&q=ab&placedFrom=2026-11-01', ['q', 'sort']];
     }

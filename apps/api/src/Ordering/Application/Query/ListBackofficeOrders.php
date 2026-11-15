@@ -28,6 +28,8 @@ final readonly class ListBackofficeOrders
      *                                                 order; the amount takes no search term and no range of days
      * @param string|null              $placedFrom     `YYYY-MM-DD`, the first day of the range; not with the pending refunds
      * @param string|null              $placedTo       `YYYY-MM-DD`, the last day of the range
+     * @param bool                     $overdueRefunds only the pending refunds past their due date at the moment of the read (a
+     *                                                 subset of the pending ones with the same order and cursor); implies $pendingRefunds
      */
     public function __construct(
         public ?OrderStatus $status,
@@ -38,6 +40,7 @@ final readonly class ListBackofficeOrders
         public ?BackofficeOrderSort $sort = null,
         public ?string $placedFrom = null,
         public ?string $placedTo = null,
+        public bool $overdueRefunds = false,
     ) {
     }
 }

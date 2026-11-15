@@ -171,8 +171,12 @@ Decyzje użytkownika:
   - bez `refund`: sort z `sort` (zamknięta lista kluczy, `-` to malejąco): `-placedAt` (domyślny: `placed_at DESC,
     id DESC`), `placedAt`, `-total` i `total` (`total_gross`, potem `id` w tym samym kierunku); `refund=pending`: tylko
     zwroty do wykonania, własny sort `refund_due_at ASC, id ASC`, bez `sort` (łączy się ze `status` i `q`);
+    `refund=overdue`: podzbiór `refund=pending` ze zwrotami po terminie (`refund_due_at` < chwila odczytu, ścisło), ten
+    sam sort i ten sam kursor (kursor strony `pending` prowadzi dalej `overdue` i odwrotnie), te same łączenia i
+    odrzucenia; czyta ten sam częściowy indeks `(refund_due_at, id)` jako zakres, licznik `total` jak przy `pending`;
   - połączenia, których nie obsługuje żaden indeks, to 400 z naruszeniem pola `sort`: `sort` z `refund=pending`
-    i kwota (`-total`, `total`) z `q` albo zakresem dni; `refund=pending` z zakresem dni to 400 przy polach dat; klucz
+    albo `refund=overdue` i kwota (`-total`, `total`) z `q` albo zakresem dni; `refund=pending` i `refund=overdue`
+    z zakresem dni to 400 przy polach dat; `refund` inny niż `pending` i `overdue` to 400 przy `refund`; klucz
     spoza listy to 400 przy `sort`;
   - kursor keyset (base64url JSON `{s: klucz sortu, v: chwila albo kwota, i: id}`), `perPage` 1–100 (domyślnie 25), zły
     kursor albo kursor innego sortu 400 przy `after`;
