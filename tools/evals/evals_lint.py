@@ -36,11 +36,17 @@ SCAN_PATTERNS = (
 )
 DESTRUCTIVE_PATTERNS = (
     ('rm -rf', re.compile(r'\brm\s+(?:-\S*[rRfF]\S*|--recursive|--force)')),
-    ('push --force', re.compile(r'\bpush\b[^\n]*\s(?:--force\S*|-f)(?:\s|$)')),
-    ('reading .env', re.compile(r'\.env\b')),
-    ('reading ~/.ssh', re.compile(r'\.ssh\b')),
+    # a forced push: a --force flag anywhere (--force-with-lease too), a short flag group with f (-f, -fu, -uf) and
+    # a refspec with `+`
+    ('push --force', re.compile(r'(?<!\S)--force\S*')),
+    ('push -f', re.compile(r'\bpush\b[^\n]*\s-[A-Za-z]*f[A-Za-z]*(?=\s|$)')),
+    ('push +refspec', re.compile(r'\bpush\b[^\n]*\s["\']?\+\S')),
+    # the file system of the developer machine ignores the case of a name
+    ('reading .env', re.compile(r'\.env\b', re.IGNORECASE)),
+    ('reading ~/.ssh', re.compile(r'\.ssh\b', re.IGNORECASE)),
 )
-GH_CALL_RE = re.compile(r'(?<![\w./-])gh\s+(\S+)(?:\s+(\S+))?')
+# a call of gh by name, by any path (./gh, /opt/homebrew/bin/gh) or in quotes ("gh")
+GH_CALL_RE = re.compile(r'(?<![\w.-])gh["\']?\s+(\S+)(?:\s+(\S+))?')
 
 
 # ----------------------------------------------------------------------------------------------------- the cases
