@@ -6,8 +6,7 @@ namespace App\Shared\Domain;
 
 /**
  * How many rows a list matches, counted up to a limit so that the cost does not grow with the table: `value` is
- * exact unless `capped`, when there are more than `value` rows. Its public properties are the JSON of the contract
- * (the schema BoundedCount of the admin API).
+ * exact unless `capped`, when there are more than `value` rows. The API answers it as BoundedCountResponse.
  */
 final readonly class BoundedCount
 {

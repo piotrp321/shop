@@ -8,8 +8,8 @@ use App\Shared\Domain\BoundedCount;
 use OpenApi\Attributes as OA;
 
 /**
- * The `total` of the first page of the lists of the panel, as the schema BoundedCount: the rows the filters match,
- * counted up to a limit so that the cost does not grow with the table.
+ * The `total` of the first page of the lists of the panel, as the schema BoundedCountResponse: the rows the filters
+ * match, counted up to a limit so that the cost does not grow with the table.
  */
 #[OA\Schema(
     description: 'How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count, 10 000), otherwise `value` is exact.',
