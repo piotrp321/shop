@@ -325,17 +325,54 @@ def _scan_decoded(decoded_payloads, report):
             report.error('%s: the decoded payload has a %s (the repository is public)' % (where, label))
 
 
+def _normalize(text):
+    """Case and white space do not matter when a payload is searched for: casefolded, runs of white space (Unicode
+    ones, line breaks) collapsed into one space."""
+    return ' '.join(text.casefold().split())
+
+
 def _plain_candidates(text):
     candidates = []
-    stripped = text.strip()
-    if stripped:
-        candidates.append(stripped)
-    for line in stripped.splitlines():
-        line = line.strip()
-        if len(line) >= MIN_PLAIN_LINE:
-            candidates.append(line)
-    candidates.extend(json.dumps(c, ensure_ascii=False)[1:-1] for c in list(candidates))
+    full = _normalize(text)
+    if full:
+        candidates.append(full)
+    for line in text.splitlines():
+        if len(line.strip()) >= MIN_PLAIN_LINE:
+            candidates.append(_normalize(line))
+    candidates.extend(_normalize(json.dumps(c, ensure_ascii=False)[1:-1]) for c in list(candidates))
+    candidates.extend(_normalize(json.dumps(c)[1:-1]) for c in list(candidates))
     return candidates
+
+
+def _json_strings(data):
+    """The decoded string values of a parsed JSON document, except `payload_b64` (the encoded payload itself)."""
+    if isinstance(data, str):
+        yield data
+    elif isinstance(data, dict):
+        for key, value in data.items():
+            if key != 'payload_b64':
+                yield from _json_strings(value)
+    elif isinstance(data, list):
+        for value in data:
+            yield from _json_strings(value)
+
+
+def _haystacks(path, content):
+    """The normalized texts of a file in which a payload may be hiding: the file itself and, for a JSON file, its
+    decoded string values (json.dumps writes Polish letters as \\uXXXX). The encoded payloads are cut out, so a case
+    never finds its own payload."""
+    if path.endswith('.json'):
+        try:
+            document = json.loads(content)
+        except ValueError:
+            document = None
+        if document is not None:
+            raw = content
+            for _, value in find_payloads(document):
+                if isinstance(value, str) and value:
+                    raw = raw.replace(value, '')
+            return [_normalize(raw)] + [_normalize(value) for value in _json_strings(document)]
+    return [_normalize(content)]
 
 
 def _plain_payloads(root, decoded_payloads, report):
@@ -347,8 +384,9 @@ def _plain_payloads(root, decoded_payloads, report):
     for path in _walk_all(root, registry.EVALS_DIR):
         with open(os.path.join(root, path), 'rb') as handle:
             content = _decode(handle.read())
+        haystacks = _haystacks(path, content)
         for where, candidate in candidates:
-            if candidate in content:
+            if any(candidate in haystack for haystack in haystacks):
                 report.error('%s contains the decoded payload of %s in plain text' % (path, where.split(' ')[0]))
                 break
 
