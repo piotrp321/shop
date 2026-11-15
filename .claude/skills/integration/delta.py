@@ -173,12 +173,18 @@ def gh(*args):
         raise Failure('gh %s printed no JSON' % ' '.join(args[:2]))
 
 
+def red_statuses(passed):
+    """The statuses of the entries ci:<job>@<sha> of red CI: next to a red job, a required job that did not succeed
+    (cancelled, missing, unfinished) is failed as well."""
+    return {name: 'passed' if name in passed else 'failed' for name in CI_JOBS}
+
+
 def ci_state(head):
     """One look at the latest push run of the CI workflow for head: green, red, local or pending (see the docstring).
     A red job decides only when every required job has finished; `unfinished` names the jobs still running then."""
-    def out(state, reason, run=None, statuses=None, failed=(), unfinished=()):
+    def out(state, reason, run=None, statuses=None, failed=(), unfinished=(), passed=()):
         return {'state': state, 'reason': reason, 'sha': head, 'run': run, 'statuses': statuses,
-                'failed_jobs': list(failed), 'unfinished': list(unfinished)}
+                'failed_jobs': list(failed), 'unfinished': list(unfinished), 'passed': list(passed)}
     try:
         runs = gh('run', 'list', '--commit', head, '--event', 'push', '--workflow', CI_WORKFLOW, '--limit', '20',
                   '--json', 'databaseId,headSha,status,conclusion,event,createdAt')
@@ -197,7 +203,7 @@ def ci_state(head):
         return out('local', 'run %d is not for head %s' % (number, head), number)
     run_done = run.get('status') == 'completed'
     jobs = {j.get('name'): j for j in view.get('jobs') or [] if isinstance(j, dict)}
-    states, failed, unfinished, other, missing = {}, [], [], [], []
+    states, passed, failed, unfinished, other, missing = {}, [], [], [], [], []
     for name in CI_JOBS:
         job = jobs.get(name)
         if job is None:
@@ -209,7 +215,7 @@ def ci_state(head):
         if status != 'completed':
             unfinished.append(name)
         elif conclusion == 'success':
-            continue
+            passed.append(name)
         elif conclusion in RED:
             failed.append(name)
         else:
@@ -217,12 +223,10 @@ def ci_state(head):
     described = ', '.join('%s %s' % (name, states[name]) for name in CI_JOBS)
     if unfinished and not run_done:
         return out('pending', 'run %d is still running: %s' % (number, described), number, failed=failed,
-                   unfinished=unfinished)
+                   unfinished=unfinished, passed=passed)
     if failed:
-        # Next to a red job, a required job that did not succeed (cancelled, missing, unfinished) is failed as well.
-        statuses = {name: 'passed' if states[name] == 'completed/success' else 'failed' for name in CI_JOBS}
         return out('red', 'red job(s) %s in push run %d: %s' % (', '.join(failed), number, described), number,
-                   statuses, failed)
+                   red_statuses(passed), failed, passed=passed)
     if missing:
         return out('local', 'run %d has no job %s' % (number, ', '.join(missing)), number)
     if other or unfinished:
@@ -277,8 +281,7 @@ def ci(head, budget=None, wait_file=None, clock=time.time, sleep=time.sleep):
             code = 3
             state.update(state='red', reason='%s; job(s) %s did not finish in time' % (
                 state['reason'], ', '.join(state['unfinished'])),
-                statuses={name: 'failed' if name in state['failed_jobs'] + state['unfinished'] else 'passed'
-                          for name in CI_JOBS})
+                statuses=red_statuses(state['passed']))
         else:
             code = 1
             state.update(state='local', reason='%s: %s' % (
