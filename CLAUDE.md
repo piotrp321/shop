@@ -180,10 +180,14 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   `make ci-after-e2e` (sprawdzenia na stosie z fragmentów `make/*.mk`, w tym Lighthouse; opis w `e2e/CLAUDE.md`).
   Testy skryptów (CI, skille, hooki AO, rulesety) `.github/scripts/script-tests.sh` znajduje po położeniu, więc nowy skill nie zmienia
   `ci.yml`. Wyjątki dotyczą tylko PR (`.github/scripts/scope.sh`): PR zmieniający wyłącznie
-  dokumentację niczego nie uruchamia, a PR zmieniający wyłącznie narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`,
+  dokumentację niczego nie uruchamia (poza jobem `evals`, który działa przy każdym zakresie, także samej dokumentacji),
+  a PR zmieniający wyłącznie narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`,
   ewentualnie z dokumentacją) uruchamia tylko testy skryptów, a PR zmieniający wyłącznie wdrożenie Kubernetes
   (`infra/k8s/**`, ewentualnie z dokumentacją) uruchamia tylko `make -C infra/k8s check`. Testy na usługach stosu trafiają do CI w tym samym PR
   co kod, razem z uruchomieniem usług, których potrzebują.
+- PR zmieniający plik obserwowany zestawu evali ma aktualny wynik (`/evals`, `tools/evals`): job `evals` w CI sprawdza
+  odcisk zestawów agentów z rejestru, bez modelu; opis, rejestr i wyjątki (`accept`, `waive` tylko na polecenie
+  użytkownika w rozmowie): `tools/evals/README.md`.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko
   przypadek podstawowy.
 - Chart `infra/k8s/charts/shop` odzwierciedla compose. Zmiana usług, obrazów i ich wersji, zmiennych środowiska,
