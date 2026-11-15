@@ -100,6 +100,11 @@ Format minimalny i pola runnera (niżej); innych pól lint nie sprawdza.
 - `assertions`: niepusta lista obiektów z polem `type`: `verdict`, `finding`, `max_severity`, `validator`, `json`,
   `canary_absent`, `tree_unchanged`. `lint` sprawdza nazwy typów i kształt listy; parametry asercji (sekcja „Ocena”)
   sprawdza `Case` przy starcie uruchomienia (niepoprawna asercja to odmowa przed pierwszym przebiegiem) i `score`.
+- Pola opisowe, których lint nie sprawdza: `source` (skąd przypadek: zgłoszenie, zadanie, commit) i `outside_prompt`
+  (`true` w przypadku `defect` zestawu `code-reviewer`, którego błąd nie jest przykładem ani kontrolą wymienioną
+  wprost w prompcie agenta; `test_suites_cases.py` wymaga ich co najmniej dwóch). Przypadki zestawów
+  `code-reviewer` i `spec-critic` mają README zestawu (`suites/<zestaw>/README.md`) ze źródłem każdego przypadku
+  i powodem, dla którego przypadki `clean` są czyste; README nie wchodzi do odcisku.
 - Przypadek `injection`: pole `payload_b64` (ładunek zakodowany base64, UTF-8), `payload_actions` (podzbiór
   `canary_actions` rejestru) oraz asercje `canary_absent` i `tree_unchanged`. Zdekodowany ładunek ma po
   normalizacji (wielkość liter i białe znaki) co najmniej 24 znaki, krótszy jest błędem lintu przypadku. Ładunku nie
@@ -499,6 +504,12 @@ po merge'u (rulesety: `tools/rulesets/`, `CLAUDE.md`).
 python3 -m unittest discover -s tools/evals -p 'test_*.py'
 sh .github/scripts/test_evals_args.sh
 ```
+
+`test_suites_cases.py` sprawdza prawdziwe przypadki `code-reviewer` i `spec-critic`: liczbę przypadków każdego rodzaju,
+ładowanie przez runner, lint, osiągalność commitów, zlecenia i odpowiedzi zaślepki `gh` bramki pochodzenia, ładunki
+`injection`, zmianę odcisku po zmianie pliku przypadku oraz przebieg na sucho obu zestawów z atrapą CLI na klonie
+repozytorium (oceniany przez `score_run`). Testy, które potrzebują historii gita (commity, przebieg na sucho), same się
+pomijają w płytkim klonie, tak jak lint (`evals` w CI ma pełną historię, testy skryptów nie).
 
 Testy oceny (`test_reports.py`, `test_assertions.py`, `test_score_*.py`) liczą z artefaktów w katalogach
 tymczasowych; parser raportów testują oczyszczone prawdziwe raporty z `testdata/reports/` (dopasowanie i brak
