@@ -230,16 +230,17 @@ describe("PrimeVue only in the files of LEGACY_FILES", () => {
   );
 
   it("does not apply the colour rules to a file of LEGACY_FILES", async () => {
-    const legacy = LEGACY_FILES.find((file) => file.endsWith(".vue"));
+    const legacy = LEGACY_FILES.find((file) => file.endsWith(".ts"));
     expect(legacy).toBeDefined();
-    const code = `<script setup lang="ts">\nimport Button from "primevue/button";\n</script>\n\n<template>\n  <Button class="${arbitrary("bg", "#fff")} bg-red-500" style="color: red" />\n</template>\n\n<style scoped>\n.x {\n  color: red;\n}\n</style>\n`;
+    const code = `import "primevue/config";\nexport const classes = "${arbitrary("bg", "#fff")}";\n`;
     expect(await lint(code, legacy!)).toEqual([]);
   });
 
   it("applies the colour rules to a file next to one of LEGACY_FILES", async () => {
-    const legacy = LEGACY_FILES.find((file) => file.endsWith(".vue"))!;
-    const sibling = legacy.replace(/[^/]+$/, "NotLegacy.vue");
-    expect(ruleIds(await lint(template(`<div class="bg-red-500" />`), sibling))).toEqual(["better-tailwindcss/no-unknown-classes"]);
+    const legacy = LEGACY_FILES.find((file) => file.endsWith(".ts"))!;
+    const sibling = legacy.replace(/[^/]+$/, "notLegacy.ts");
+    const code = `export const classes = "${arbitrary("bg", "#fff")}";\n`;
+    expect(ruleIds(await lint(code, sibling))).toEqual(["no-restricted-syntax"]);
   });
 
   it("lists explicit files only", () => {

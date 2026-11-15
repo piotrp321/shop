@@ -1,7 +1,10 @@
 import { expect, type Browser, type Locator, type Page } from "@playwright/test";
-import { staff } from "./accounts";
+import { customers, staff } from "./accounts";
+import { placeAndPayOrder } from "./orders";
 import { openMenuItem } from "./panel-menu";
+import { logInAs } from "./shop";
 import { loginStaff } from "./staff-login";
+import { urls } from "./urls";
 
 /**
  * A panel session of a staff member in a browser context of its own: the customer of the test stays logged in to the
@@ -56,4 +59,45 @@ export async function confirmWithNote(page: Page, note: string): Promise<void> {
   await dialog.getByTestId("change-submit").click();
   await expect(dialog, "the change was rejected (validation, permission, conflict or API error)").toBeHidden();
   await expect(page.getByTestId("conflict")).toHaveCount(0);
+}
+
+/** Goes back from the detail of an order to the list with the crumbs (there is no „Wróć do listy”). */
+export async function backToOrders(page: Page): Promise<void> {
+  await page.getByRole("navigation", { name: "Okruszki" }).getByRole("link", { name: "Zamówienia", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Zamówienia" })).toBeVisible();
+}
+
+/** A customer (Jan) orders one unit of `product` in the store and pays at the simulator, in a browser context of its own; returns the number. */
+export async function placeOrderAsJan(browser: Browser, product: string): Promise<string> {
+  const context = await browser.newContext({ locale: "pl-PL", baseURL: urls.store });
+  context.setDefaultTimeout(10_000);
+  context.setDefaultNavigationTimeout(20_000);
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    await logInAs(page, customers.jan);
+    return (await placeAndPayOrder(page, product, "Szybki przelew (demo)")).number;
+  } finally {
+    await context.close();
+  }
+}
+
+/** The demo product that has the most units (apps/api/fixtures/stock.yaml); a cancelled order gives its unit back. */
+export const ORDERED_PRODUCT = "Buty trailowe Norvane Hala 500";
+
+/** Opens the list of orders at `address` (a path of the panel) and tells whether it has a row; the list shows rows or the empty state once loaded. */
+export async function listHasRows(page: Page, address: string): Promise<boolean> {
+  await page.goto(`${urls.admin}${address}`);
+  await expect(page.getByTestId("order-row").or(page.getByTestId("empty")).first()).toBeVisible();
+  return (await page.getByTestId("order-row").count()) > 0;
+}
+
+/**
+ * Makes sure the stack has a paid order: the seed has no orders, and the orders other spec files leave are not there when
+ * the file runs in a shard of its own, so a test that needs one orders it as Jan when the list of the paid orders is empty.
+ */
+export async function ensurePaidOrder(browser: Browser, page: Page): Promise<void> {
+  if (!(await listHasRows(page, "/orders?status=paid"))) {
+    await placeOrderAsJan(browser, ORDERED_PRODUCT);
+  }
 }

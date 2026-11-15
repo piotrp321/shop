@@ -186,7 +186,7 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
   i godzina), Klient (imię i nazwisko, pod spodem e-mail obcięty z pełną wartością w podpowiedzi i w nazwie dostępnej),
   Pozycje (`itemCount`), Kwota (do prawej), Status (`Badge`); przy zwrotach dodatkowo Kwota zwrotu i Termin (z
   etykietą „Po terminie”). Poniżej 1024 px Pozycje i Data jako linie komórki Numer; poniżej 640 px tabela zamienia się
-  w listę kart (numer jako link, status, klient, kwota, data; przy zwrotach kwota i termin zwrotu), bez przewijania
+  w listę kart (numer jako link, status, klient, kwota, liczba pozycji, data; w widoku „Zwroty do wykonania” także kwota i termin zwrotu, jak kolumny tabeli), bez przewijania
   w poziomie. Widok renderuje dokładnie jeden układ według `useMediaQuery("(min-width: 640px)")` (`@vueuse/core`, jak
   `AppLayout`), więc `order-row` i jego identyfikatory (`number`, `status`, `total`, …) są na wierszu tabeli albo na
   karcie, nigdy w obu; karty to lista `<ul>` z nazwą „Zamówienia”. Puste stany: „Nie ma jeszcze zamówień.” i wspólne „Brak wyników dla wybranych

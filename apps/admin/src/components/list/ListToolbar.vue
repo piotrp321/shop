@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 /**
  * The toolbar of a list (docs/features/admin-design/spec.md, „Standard listy”): the search (when the API has one, with a
- * hint under it for a text that is too short), the filters of the list (slot `filters`), „Wyczyść filtry” while a filter
+ * hint under it for a text that is too short; `submit` is Enter in it, for a list that searches on Enter), the filters of the list (slot `filters`), „Wyczyść filtry” while a filter
  * or the search is set, the number of rows per page (10, 25 or 50) and the main action of the list on the right (slot
  * `actions`).
  */
@@ -28,7 +28,7 @@ withDefaults(
   { search: undefined, searchLabel: "Szukaj", searchPlaceholder: undefined, searchMax: undefined, searchHint: null, perPageOptions: () => [10, 25, 50] },
 );
 
-defineEmits<{ "update:search": [value: string]; "update:perPage": [value: number]; clear: [] }>();
+defineEmits<{ "update:search": [value: string]; "update:perPage": [value: number]; clear: []; submit: [] }>();
 
 const ids = { hint: useId(), perPage: useId() };
 const searchField = ref<InstanceType<typeof Input> | null>(null);
@@ -60,6 +60,7 @@ defineExpose({
           :aria-label="searchLabel"
           :aria-describedby="ids.hint"
           @update:model-value="$emit('update:search', String($event ?? ''))"
+          @keydown.enter.prevent="$emit('submit')"
         />
       </div>
       <p
