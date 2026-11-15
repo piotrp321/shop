@@ -26,4 +26,29 @@ final class InvalidBackofficeOrderList extends \DomainException implements Inval
     {
         return new self('The due date of the refunds is no sort of the list.');
     }
+
+    public static function searchTerm(): self
+    {
+        return new self('The search term must be an order number or from 3 to 100 characters without control characters.');
+    }
+
+    public static function placedDay(): self
+    {
+        return new self('A day of the range must be a date of the form YYYY-MM-DD.');
+    }
+
+    public static function invertedRange(): self
+    {
+        return new self('The range of days ends before it starts.');
+    }
+
+    public static function totalWithDateRange(): self
+    {
+        return new self('Sorting by the amount cannot be combined with the range of days.');
+    }
+
+    public static function pendingRefundsWithDateRange(): self
+    {
+        return new self('The pending refunds cannot be limited to a range of days.');
+    }
 }
