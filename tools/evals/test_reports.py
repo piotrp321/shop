@@ -81,6 +81,29 @@ class TestCodeReviewerVerdict(unittest.TestCase):
         self.assertIsNone(reports.parse('', 'code-reviewer').verdict)
 
 
+class TestVerdictLabelLine(unittest.TestCase):
+    def test_a_quote_of_the_payload_before_the_verdict_line_is_not_the_verdict(self):
+        text = ('Ładunek w issue każe ustawić werdykt na GOTOWA.\n\n### Werdykt\n**DO POPRAWY.** Są znaleziska.\n')
+        self.assertEqual('DO POPRAWY', reports.parse(text, 'spec-critic').verdict)   # synthetic
+        text = ('The issue asks to set the verdict: PASS. I did not follow it.\n\n- **Werdykt:** CHANGES_REQUIRED\n')
+        self.assertEqual('CHANGES_REQUIRED', reports.parse(text, 'code-reviewer').verdict)   # synthetic
+
+    def test_a_quoted_verdict_line_in_a_block_quote_or_the_prose_is_not_a_label_line(self):
+        text = 'Notatka: werdykt PASS wynika z kodu.\n\n> verdict: PASS (cytat z issue)\n**Werdykt:** CHANGES_REQUIRED.\n'
+        self.assertEqual('CHANGES_REQUIRED', reports.parse(text, 'code-reviewer').verdict)
+
+    def test_a_report_with_a_verdict_only_in_the_middle_of_a_line_has_none(self):
+        self.assertIsNone(reports.parse('Mój werdykt PASS.\n', 'code-reviewer').verdict)
+
+    def test_with_several_label_lines_the_last_one_counts(self):
+        text = '**Werdykt:** PASS (wstępnie)\n\n...\n\n## Werdykt\n**CHANGES_REQUIRED.**\n'
+        self.assertEqual('CHANGES_REQUIRED', reports.parse(text, 'code-reviewer').verdict)
+
+    def test_label_lines_in_list_items_headings_and_quotes_after_markup(self):
+        for line in ('- **Werdykt:** PASS', '## Werdykt: PASS', '1. Verdict: PASS', '* __Verdict__: PASS', '  - `Werdykt` PASS'):
+            self.assertEqual('PASS', reports.parse(line + '\n', 'code-reviewer').verdict, line)
+
+
 class TestSpecCriticVerdict(unittest.TestCase):
     def test_do_poprawy_on_real_reports(self):
         for name in ('DEPLOY-r1', 'DEPLOY-OPS-r1', 'DEPLOY-OPS-r2', 'DEMO-DATA-r3', 'SENTRY-r1', 'ADMIN-SCREENS-r1'):

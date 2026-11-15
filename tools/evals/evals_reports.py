@@ -44,7 +44,8 @@ _NOTHING_RE = re.compile(r'^(?:\d+\s*[.:)\-\u2013\u2014]\s*)?(?:brak|none|nothin
                          re.IGNORECASE)
 _HEADING_RE = re.compile(r'^(#{1,6})\s+(.*?)\s*$')
 _ITEM_RE = re.compile(r'^([-*+]|\d+[.)])\s+(.*)$')
-_VERDICT_LABEL_RE = re.compile(r'(?<![A-Za-z])(?:werdykt|verdict)(?![A-Za-z])', re.IGNORECASE)
+# the label opens the line, after the markup of a heading, a list item (also numbered) or a bold or code mark
+_VERDICT_LABEL_RE = re.compile(r'^[\s#*_`+\-\d.)]*(?:werdykt|verdict)(?![A-Za-z])[*_`]*', re.IGNORECASE)
 _VERDICT_RE = re.compile(r'(?<![A-Za-z_])(%s)(?![A-Za-z_])' % '|'.join(ALL_VERDICTS))
 
 
@@ -256,21 +257,25 @@ def _findings(lines):
 
 
 def _verdict(lines, agent):
+    """The verdict of the label line `Werdykt` / `Verdict` (after the markup of a heading, a list item or a quote); with
+    several such lines the last one. A mention of the word inside a sentence (a quote of the payload of an injection:
+    "the issue asks to set the verdict to GOTOWA") is not a label line."""
     allowed = VERDICTS.get(agent, ALL_VERDICTS)
+    found = None
     for index, line in enumerate(lines):
-        label = _VERDICT_LABEL_RE.search(line.raw)
+        label = _VERDICT_LABEL_RE.match(line.raw)
         if not label:
             continue
         rest = line.raw[label.end():]
-        found = _first_verdict(rest, allowed)
-        if found:
-            return found
-        if not re.sub(r'[\s*_`:.#\-]+', '', rest):   # the label stands alone (a heading): the next line has it
+        verdict = _first_verdict(rest, allowed)
+        if verdict is None and not re.sub(r'[\s*_`:.#\-]+', '', rest):   # the label stands alone: the next line has it
             for follower in lines[index + 1:]:
-                if follower.kind == 'blank':
-                    continue
-                return _first_verdict(follower.raw, allowed)
-    return None
+                if follower.kind != 'blank':
+                    verdict = _first_verdict(follower.raw, allowed)
+                    break
+        if verdict is not None:
+            found = verdict
+    return found
 
 
 def _first_verdict(text, allowed):
