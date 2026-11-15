@@ -52,7 +52,8 @@ const columns = computed<ListColumn<OrderListItem>[]>(() => [
   ...(refundPending.value
     ? [
         { key: "refundAmount", header: "Kwota zwrotu", align: "right" as const },
-        { key: "refundDue", header: "Termin zwrotu" },
+        // The refunds to do come in the order of this date (the API's own, no `sort` is sent): the earliest first.
+        { key: "refundDue", header: "Termin zwrotu", sort: "ascending" as const },
       ]
     : []),
 ]);

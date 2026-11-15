@@ -245,7 +245,10 @@ describe("OrdersView", () => {
       await flushPromises();
       const options = [...document.body.querySelectorAll<HTMLElement>("[role=option]")].slice(-4);
       expect(options.map((option) => option.getAttribute("aria-disabled"))).toEqual(["true", "true", "true", "true"]);
-      expect(wrapper.findAll("th[aria-sort]")).toHaveLength(0);
+      // The order of the due date is the one sort of the list, so its header says so and no other does.
+      const sorted = wrapper.findAll("th[aria-sort]");
+      expect(sorted.map((th) => th.text())).toEqual(["Termin zwrotu"]);
+      expect(sorted[0]!.attributes("aria-sort")).toBe("ascending");
     });
 
     it("disables the amount while a search is applied and says why", async () => {

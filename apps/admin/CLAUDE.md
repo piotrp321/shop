@@ -312,7 +312,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią o Enterze, `Select` „Status”, `Switch` „Zwroty do wykonania”
   z `id` i `data-testid` `refund-pending` i `label for`, `Select` „Sortuj” (nad tabelą i nad kartami; przy zwrotach do
   wykonania z napisem „Termin zwrotu”), rozmiar strony), `DataTable` (nagłówki „Data” i „Kwota” mają `aria-sort` według
-  kolejności), `ListPager` i `ListEmpty` („Nie ma
+  kolejności, a przy zwrotach do wykonania „Termin zwrotu” `ascending`), `ListPager` i `ListEmpty` („Nie ma
   jeszcze zamówień.”, „Brak wyników dla wybranych filtrów.”). Widok renderuje jeden układ według
   `useMediaQuery("(min-width: 640px)")` (`@vueuse/core`, jak `AppLayout`): od 640 px tabela (Numer: link bez łamania, #261, z datą
   i liczbą pozycji jako liniami komórki poniżej 1024 px; Data, Klient: imię i nazwisko, pod nim e-mail obcięty z pełną wartością
