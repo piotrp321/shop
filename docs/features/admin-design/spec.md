@@ -378,6 +378,8 @@ do adresu trafia dopiero zastosowana fraza.
 - **Okna z polami** (zmiana ceny, przyjęcie, korekta, zmiana statusu zamówienia, wykonanie zwrotu): fokus po otwarciu
   w pierwszym polu (#273), przycisk zamykania „Zamknij”, szerokość `min(28rem, 100vw - 2rem)`, więc okno mieści się
   na ekranie 375 px (#393); po błędzie 403 albo innym komunikacie fokus trafia na komunikat, nie na `body` (#260 F8).
+  Przycisk skutku okna zmiany statusu zamówienia jest czerwony przy anulowaniu i zwrocie (przyjęciu zwrotu), a przy
+  pozostałych przejściach i wykonaniu zwrotu pieniędzy niebieski (`interface`).
   Okna historii (ceny, stanu) mają szerokość do `min(56rem, 100vw - 2rem)` i tabelę z priorytetami kolumn.
 - Daty i godziny w polach zostają natywnymi `datetime-local` w `Europe/Warsaw` (`src/promotions/time.ts`), bez
   zmian zachowania.
