@@ -8,7 +8,7 @@ use App\Backoffice\Application\Query\Dashboard;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'What the admin dashboard shows.', required: ['catalog', 'queues', 'system'])]
+#[OA\Schema(description: 'What the admin dashboard shows.', required: ['catalog', 'queues', 'sales', 'system'])]
 final readonly class DashboardResponse
 {
     public function __construct(
@@ -16,6 +16,12 @@ final readonly class DashboardResponse
         public DashboardCatalogResponse $catalog,
         #[OA\Property(ref: new Model(type: DashboardQueuesResponse::class))]
         public DashboardQueuesResponse $queues,
+        #[OA\Property(
+            description: 'Null unless the staff member is an administrator.',
+            nullable: true,
+            allOf: [new OA\Schema(ref: new Model(type: DashboardSalesResponse::class))],
+        )]
+        public ?DashboardSalesResponse $sales,
         #[OA\Property(
             description: 'Null unless the staff member is an administrator.',
             nullable: true,
@@ -30,6 +36,7 @@ final readonly class DashboardResponse
         return new self(
             DashboardCatalogResponse::of($dashboard->catalog),
             DashboardQueuesResponse::of($dashboard->queues),
+            DashboardSalesResponse::ofNullable($dashboard->sales),
             null === $dashboard->system ? null : DashboardSystemResponse::of($dashboard->system),
         );
     }

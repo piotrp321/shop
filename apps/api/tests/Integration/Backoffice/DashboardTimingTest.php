@@ -26,6 +26,7 @@ use App\Shared\Infrastructure\Health\Probe\RabbitMqProbe;
 use App\Shared\Infrastructure\Health\Probe\RedisProbe;
 use App\Shared\Infrastructure\Health\ServiceProbe;
 use App\Tests\Unit\Backoffice\Application\RecordingOrderQueues;
+use App\Tests\Unit\Backoffice\Application\RecordingSalesSummary;
 use App\Tests\Unit\Backoffice\Application\RecordingStockQueues;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -73,6 +74,7 @@ final class DashboardTimingTest extends KernelTestCase
             new MessagingStatisticsAdapter($connection, $client, $this->hangingUrl(), 'user', 'secret', 'test'),
             new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)),
             new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))),
+            new RecordingSalesSummary(),
         );
 
         $started = microtime(true);
@@ -151,7 +153,7 @@ final class DashboardTimingTest extends KernelTestCase
         };
 
         $started = microtime(true);
-        $dashboard = (new GetDashboardHandler($slowCatalog, $health, $messaging, new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)), new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false)))))(new GetDashboard(true, QueueAccess::none()));
+        $dashboard = (new GetDashboardHandler($slowCatalog, $health, $messaging, new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)), new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))), new RecordingSalesSummary()))(new GetDashboard(true, QueueAccess::none()));
         $elapsed = microtime(true) - $started;
 
         self::assertNotNull($dashboard->system);

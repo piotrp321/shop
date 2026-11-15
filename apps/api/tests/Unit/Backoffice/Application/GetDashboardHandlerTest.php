@@ -9,6 +9,7 @@ use App\Backoffice\Application\Port\CatalogStatistics;
 use App\Backoffice\Application\Port\MessagingStatistics;
 use App\Backoffice\Application\Port\OrderQueueCounts;
 use App\Backoffice\Application\Port\OrderQueues;
+use App\Backoffice\Application\Port\SalesSummary;
 use App\Backoffice\Application\Port\StockQueueCounts;
 use App\Backoffice\Application\Port\StockQueues;
 use App\Backoffice\Application\Port\SystemHealth;
@@ -199,7 +200,31 @@ final class GetDashboardHandlerTest extends TestCase
         self::assertSame([] === array_filter($askedOfOrders) ? [] : [$askedOfOrders], $orders->asked);
     }
 
-    private function handler(CatalogCounts|CatalogStatistics $statistics, SystemHealth $health, MessagingStatistics $messaging, ?OrderQueues $orders = null, ?StockQueues $stock = null): GetDashboardHandler
+    public function testTheSalesAreNotAskedForWithoutAccessAndAreNull(): void
+    {
+        $sales = new RecordingSalesSummary();
+
+        foreach ([true, false] as $includeSystem) {
+            $dashboard = $this->handler(new CatalogCounts(1, 1, null, 1), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []), sales: $sales)(new GetDashboard($includeSystem, QueueAccess::none()));
+
+            self::assertNull($dashboard->sales);
+        }
+        self::assertSame(0, $sales->calls);
+    }
+
+    public function testTheSalesComeFromTheirOwnerWithAccess(): void
+    {
+        $sales = new RecordingSalesSummary();
+
+        foreach ([true, false] as $includeSystem) {
+            $dashboard = $this->handler(new CatalogCounts(1, 1, null, 1), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []), sales: $sales)(new GetDashboard($includeSystem, QueueAccess::none(), includeSales: true));
+
+            self::assertSame($sales->summary(), $dashboard->sales);
+        }
+        self::assertSame(4, $sales->calls, 'once per dashboard, and once per check of the test');
+    }
+
+    private function handler(CatalogCounts|CatalogStatistics $statistics, SystemHealth $health, MessagingStatistics $messaging, ?OrderQueues $orders = null, ?StockQueues $stock = null, ?SalesSummary $sales = null): GetDashboardHandler
     {
         return new GetDashboardHandler(
             $statistics instanceof CatalogStatistics ? $statistics : new RecordingCatalogStatistics($statistics),
@@ -207,6 +232,7 @@ final class GetDashboardHandlerTest extends TestCase
             $messaging,
             $orders ?? new RecordingOrderQueues(new OrderQueueCounts(null, null, null, null)),
             $stock ?? new RecordingStockQueues(new StockQueueCounts(new BoundedCount(0, false), new BoundedCount(0, false))),
+            $sales ?? new RecordingSalesSummary(),
         );
     }
 }

@@ -33,6 +33,7 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
     private const string ORDERS = 'Version20261115130100IndexOrderTotals';
     private const string ORDER_SEARCH = 'Version20261115140000IndexOrderSearch';
     private const string PRODUCT_IMAGES = 'Version20261115150000IndexCatalogProductWithoutImages';
+    private const string ORDER_PAYMENTS = 'Version20261115160100IndexOrderPaidAt';
 
     private Connection $connection;
     private string $migrationClass = '';
@@ -71,6 +72,12 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
             'catalog_product',
             ['catalog_product_without_images_idx' => "(id) WHERE images = '[]'::jsonb"],
             ['catalog_product_without_images_idx' => "USING btree (id) WHERE (images = '[]'::jsonb)"],
+        ];
+        yield 'the order index of the payments' => [
+            self::ORDER_PAYMENTS,
+            'ordering_order',
+            ['ordering_order_paid_at_idx' => '(paid_at) WHERE paid_at IS NOT NULL'],
+            ['ordering_order_paid_at_idx' => 'USING btree (paid_at) WHERE (paid_at IS NOT NULL)'],
         ];
     }
 

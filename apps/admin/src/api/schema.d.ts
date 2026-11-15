@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Dashboard
-         * @description Catalogue numbers and the queues of work for every staff member: each queue only for the roles that handle it (`queues` fields are null for the others), counted up to 1000. The number of products is an estimate of the database (null before its first statistics). The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.
+         * @description Catalogue numbers and the queues of work for every staff member: each queue only for the roles that handle it (`queues` fields are null for the others), counted up to 1000. The number of products is an estimate of the database (null before its first statistics). The sales of today, the last 7 and the last 30 days of completed hours only for administrators (`sales` is null for other roles). The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.
          */
         get: operations["getDashboard"];
         put?: never;
@@ -1303,6 +1303,46 @@ export interface components {
             /** @description Products with no image (`/products?images=none`). Administrators and marketing. */
             productsWithoutImages: components["schemas"]["BoundedCountResponse"] | null;
         };
+        /** @description The sales of one period. Amounts in grosze. Every field is null for a period without a completed hour (today between 0:00 and 1:00). */
+        DashboardSalesPeriodResponse: {
+            /**
+             * @description The gross revenue in grosze.
+             * @example 1234500
+             */
+            revenue: number | null;
+            /**
+             * @description The number of orders paid in the period.
+             * @example 42
+             */
+            orderCount: number | null;
+            /**
+             * @description Revenue per order in grosze, rounded half up; null without orders.
+             * @example 29393
+             */
+            averageOrderValue: number | null;
+            /**
+             * @description The change of the revenue against the period before in basis points (1250 is +12.5%), rounded half away from zero; null when the period before had no revenue.
+             * @example 1250
+             */
+            changeBasisPoints: number | null;
+        };
+        /** @description The sales of completed hours, summed from an hourly pre-aggregation by Ordering: revenue is the gross total (after discounts) of the orders paid in the period by the moment of their payment; a later cancellation or refund does not lower it. `today` runs from midnight of the Polish clock to `dataUntil` and is compared with yesterday from midnight to the same hour of the clock (on the days the clock changes the two may differ by an hour of real time); between 0:00 and 1:00 every field of `today` is null. `last7Days` and `last30Days` are the last 168 and 720 hours, compared with as many hours before them. */
+        DashboardSalesResponse: {
+            /**
+             * Format: date-time
+             * @description The end of every period: the start of the current hour (UTC). The current hour is not counted.
+             * @example 2026-11-15T13:00:00+00:00
+             */
+            dataUntil: string;
+            /**
+             * @description The currency of the amounts.
+             * @example PLN
+             */
+            currency: string;
+            today: components["schemas"]["DashboardSalesPeriodResponse"];
+            last7Days: components["schemas"]["DashboardSalesPeriodResponse"];
+            last30Days: components["schemas"]["DashboardSalesPeriodResponse"];
+        };
         /** @description The state of one service of the stack. */
         DashboardServiceResponse: {
             /** @example postgres */
@@ -1372,6 +1412,8 @@ export interface components {
         DashboardResponse: {
             catalog: components["schemas"]["DashboardCatalogResponse"];
             queues: components["schemas"]["DashboardQueuesResponse"];
+            /** @description Null unless the staff member is an administrator. */
+            sales: components["schemas"]["DashboardSalesResponse"] | null;
             /** @description Null unless the staff member is an administrator. */
             system: components["schemas"]["DashboardSystemResponse"] | null;
         };

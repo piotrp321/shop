@@ -43,7 +43,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `outbox`, `scheduled`, `promotions`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie, historię statusów i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  linie, historię statusów, powiadomienia i sprzedaż godzinową (`ordering_sales_hour`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
@@ -54,7 +54,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
   przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
   i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
-  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa). Błąd dowolnego kroku przerywa skrypt
+  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego krok `ordering:read-models:rebuild:sales`
+  to przebudowa sprzedaży po `ordering:seed-demo`, bez osobnego wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
@@ -62,7 +63,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
   zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
   `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
-  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300) i `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów). Krok, który się nie powiedzie, nie jest
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) i `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
   zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
   ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
   uruchomione). Test: `BackfillCommandTest`
@@ -70,6 +71,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
   partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
   (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
+- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; część
+  sprzedaży to krok `app:backfill`, więc woła ją też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
+  odczytu Ordering z zamówień: sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
+  pierwszej godziny z opłaconym zamówieniem albo wierszem sprzedaży (`nextHour`: po indeksie częściowym
+  `ordering_order (paid_at) WHERE paid_at IS NOT NULL` i kluczu tabeli; godziny bez jednego i drugiego pomija), każda
+  w osobnej transakcji (opis protokołu przy wyjątku DBAL sprzedaży w „Architekturze”). Idempotentna: drugi przebieg
+  zostawia te same wiersze, a wynik to dokładnie tabela zapisu przyrostowego (wiersz godziny i kubełka z zamówieniami,
+  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Kod wyjścia: 0 –
+  gotowe, 1 – przerwane błędem (przebudowane godziny zostają; ponowne uruchomienie zaczyna od początku)
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -154,6 +164,22 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `DiscountCodeRejected(rejection)` (Pricing Application). `ReleaseDiscountCodeUsage(orderId)` (`command.bus`,
   zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
   wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
+- Wyjątek: sprzedaż godzinowa Ordering (spec ADMIN-FEATURES, „Sprzedaż”, decyzja A2). Tabela `ordering_sales_hour`
+  (PK `(hour_start, shard)`: początek godziny w UTC i jeden z 16 kubełków identyfikatora zamówienia; `order_count`,
+  `gross` w groszach) jest zapisywana i czytana przez DBAL (`DbalSalesHours`, port `SalesHours`), a rekord
+  `SalesHourRecord` tylko definiuje schemat. `MarkOrderPaid` po zapisie opłaconego zamówienia (tylko wynik `Paid`;
+  `AlreadyPaid`, inna płatność, płatność po terminie i anulowane zamówienie nic nie dopisują) robi w swojej transakcji
+  jeden `INSERT … ON CONFLICT (hour_start, shard) DO UPDATE SET order_count = order_count + 1, gross = gross + …`, więc
+  wycofany webhook wycofuje też licznik, a równoległe płatności jednej godziny czekają najwyżej na wiersz swojego
+  kubełka. Godzinę (`date_bin` od `paid_at`) i kubełek (dolne 4 bity ostatniego bajtu UUID) liczą wyłącznie wyrażenia
+  SQL `SalesSql`, wspólne dla zapisu przyrostowego i przebudowy, więc obie drogi trafiają w ten sam wiersz.
+  Przebudowa godziny (`SalesHoursRebuild::rebuild`, `READ COMMITTED`) w jednej transakcji: `INSERT` 16 wierszy godziny
+  `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` tych wierszy, dopiero potem liczenie zamówień opłaconych w godzinie
+  (`UPDATE` z agregacją po kubełku) i `DELETE` wierszy z zerem. Płatność godziny dopisuje się do jednego z tych
+  wierszy przed swoim commitem, więc albo zatwierdziła się przed blokadą (liczenie ją widzi, a zapis nadpisuje jej
+  dopisanie), albo czeka na commit przebudowy i dopisuje się do nowego wiersza; żadne zamówienie nie ginie ani nie
+  liczy się dwa razy (test `SalesRebuildConcurrencyTest`, dwa procesy). Odczyt (`GetSalesSummary`) sumuje najwyżej
+  2 × 720 godzin po kluczu tabeli, nigdy zamówień.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
@@ -934,7 +960,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   budowa przerwana na timeoucie blokady).
 - Pulpit (`GET /admin/dashboard`, decyzja A1 spec ADMIN-FEATURES): `GetDashboard` (Backoffice) składa sekcje przez porty Backoffice
   z adapterami na `query.bus` do zapytań modułów właścicieli: `CatalogStatistics` → `GetCatalogStatistics` (Catalog),
-  `OrderQueues` → `GetOrderQueues` (Ordering), `StockQueues` → `GetStockQueues` (Inventory); Deptrac pozwala
+  `OrderQueues` → `GetOrderQueues` (Ordering), `StockQueues` → `GetStockQueues` (Inventory), `SalesSummary` →
+  `GetSalesSummary` (Ordering); Deptrac pozwala
   `Backoffice_Infrastructure` na `Ordering_Application` i `Inventory_Application` (tylko zapytania i widoki), a
   `Backoffice_UI` na `Shared_UI` (schemat `BoundedCountResponse`). Uprawnienie kolejki sprawdza voter modułu, który ją
   posiada: kontroler pyta `isGranted` (`VIEW_ORDERS`, `VIEW_PENDING_PAYMENTS` (admin i support, `OrderVoter`),
@@ -947,6 +974,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   kolejka liczy warianty, a lista stanów pokazuje ich produkty), więc zapytania idą po indeksach list
   (`OrderQueuesPlanTest`, `StockLevelProductsPlanTest`, `ProductsWithoutImagesPlanTest`: plan bez `Seq Scan`). Kolejka
   zwrotów płatności z części 2 dopisze się tym samym wzorcem (port, zapytanie w module, pole `null` według votera).
+  Sprzedaż (`sales`) tylko dla `admin` (`VIEW_SALES` w `OrderVoter`; kontroler przekazuje wynik jako `includeSales`, bez
+  niego port nie jest pytany, a pole jest `null`): `GetSalesSummary` sumuje `ordering_sales_hour` (wyjątek DBAL wyżej) dla
+  okresów `SalesPeriods` z zakończonych godzin do początku bieżącej (`dataUntil`, UTC): „Dziś” od północy zegara
+  `Europe/Warsaw` z porównaniem z wczoraj do tej samej godziny zegara (między 0:00 a 1:00 wszystkie pola `null`),
+  7 i 30 dni jako 168 i 720 godzin z porównaniem z tyloma godzinami wcześniej (zegar z portu `Clock` Ordering).
+  Miary w groszach (`revenue`, `orderCount`, `averageOrderValue` zaokrąglona do grosza, `null` bez zamówień) i
+  `changeBasisPoints` (`null` bez przychodu w okresie porównawczym), zaokrąglenia połówek od zera (`PeriodSales`). Testy:
+  `SalesPeriodsTest` (granica doby, pierwsza godzina, oba dni zmiany czasu), `GetSalesSummaryHandlerTest`,
+  `DashboardSalesEndpointTest` (role, wartości przy stałym zegarze, schemat).
   Liczba produktów (`catalog.productCount`) nigdy nie jest `count(*)`: `ProductTableStatistics::estimatedProductCount`
   czyta `pg_class.reltuples` (jeden wiersz katalogu bazy), odpowiedź to `{value, estimated: true}`, a `null` przed
   pierwszą analizą tabeli (`reltuples` < 0); odświeża ją `ANALYZE catalog_product` na końcu `catalog:seed-demo`

@@ -47,7 +47,8 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertStringContainsString('application/json', (string) $client->getResponse()->headers->get('Content-Type'));
         $body = $this->json($client->getResponse());
         self::assertSame(['productCount' => ['value' => 3, 'estimated' => true], 'categoryCount' => 2], $body['catalog']);
-        self::assertSame(['catalog', 'queues', 'system'], array_keys($body));
+        self::assertSame(['catalog', 'queues', 'sales', 'system'], array_keys($body));
+        self::assertNull($body['sales']);
         self::assertNull($body['system']);
     }
 
