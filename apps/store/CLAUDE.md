@@ -122,7 +122,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `ProductTile` pokazuje etykietę według `level` z API („Dostępny”, „Ostatnie sztuki”, „Niedostępny”), bez liczenia na
   froncie (API nie zwraca liczby sztuk); liczba wariantów, ich kolejność i etykiety pochodzą tylko z oferty.
 - Sklep woła API tylko z serwera, pod jednym z dwóch adresów w sieci compose:
-  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, oferty) i `loadCategoryTree` (drzewo kategorii) oraz `loadProduct` (szczegóły i oferta
+  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, oferty) i `loadCategoryTree` (drzewo kategorii), `loadCategoryRedirect` (przekierowanie starego adresu kategorii) oraz `loadProduct` (szczegóły i oferta
     strony produktu) idą przez Varnish,
     który trzyma je według `Cache-Control` API; brak zmiennej to błąd, bez obejścia na adres bezpośredni;
   - `API_INTERNAL_URL` (`http://api`): koszyk, kasa, scalanie koszyka i logowanie (`/api/v1/me`) idą do API
@@ -145,6 +145,15 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `resolveCategoryPath`); brak w drzewie albo `unknown-category` z listy → `notFound()`. Kolejność odczytów: drzewo
   (jeden odczyt na żądanie, `React.cache`, wspólny dla layoutu, `generateMetadata` i strony), potem lista z id
   kategorii z drzewa, potem oferty. Błąd drzewa na tej stronie to wyjątek, czyli `app/error.tsx`.
+- Kolejność kategorii w drzewie (a więc w menu, stopce i kafelkach działów) daje API: pozycja rodzeństwa ustawiona
+  w panelu, potem nazwa `pl_PL`, potem id. Sklep jej nie zmienia ani nie sortuje.
+- Stary adres kategorii (po zmianie sluga albo przeniesieniu): ścieżka spoza drzewa pyta o przekierowanie
+  (`loadCategoryRedirect` w `src/catalog/category-redirect.ts`, `GET /api/v1/categories/redirect?path=<ścieżka>` przez
+  `API_CATALOG_URL` z tagiem `catalog`, jeden odczyt na żądanie przez `React.cache`) i odpowiada `permanentRedirect`
+  (308) na `/c/<bieżąca ścieżka>` z wszystkimi parametrami zapytania (także powtarzanymi, w tej samej kolejności;
+  `categoryRedirectHref`). 404 albo 400 przekierowania (adres, który nie jest ścieżką kategorii) to `notFound()`, inny
+  błąd to wyjątek (`app/error.tsx`), jak błąd drzewa. Ścieżka z drzewa nie pyta o przekierowanie, także gdy lista
+  zwraca `unknown-category` (404). `generateMetadata` zwraca wtedy `{}` (jak na `/` przy `?category=`).
 - `/`: lista wszystkich produktów, bez breadcrumbów; w stanie domyślnym z hero i kafelkami działów nad listą (patrz „Strona główna `/`”). `/?category=<id>` czyta drzewo i listę razem; kategoria z drzewa →
   `permanentRedirect` (308) na `/c/<ścieżka>` z pozostałymi parametrami (bez `category`); nieznana → 404, niepoprawna
   (`400` API) → „Nieprawidłowy filtr”.
