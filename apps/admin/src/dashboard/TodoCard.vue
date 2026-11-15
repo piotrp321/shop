@@ -2,9 +2,9 @@
 import { ArrowRight } from "lucide-vue-next";
 import { RouterLink } from "vue-router";
 import { Card } from "@/components/ui/card";
-import type { TodoItem } from "./todo";
+import type { TodoRow } from "./todo";
 
-defineProps<{ items: TodoItem[] }>();
+defineProps<{ items: TodoRow[] }>();
 
 const CIRCLES = {
   blue: "bg-kpi-blue-soft text-kpi-blue",
@@ -51,6 +51,11 @@ const CIRCLES = {
               class="block text-sm text-muted-foreground"
             >{{ item.description }}</span>
           </span>
+          <span
+            v-if="item.count !== null"
+            data-testid="todo-count"
+            class="shrink-0 text-lg font-bold text-heading tabular-nums"
+          >{{ item.count }}</span>
           <ArrowRight
             class="size-5 shrink-0 text-muted-foreground group-hover:text-foreground"
             aria-hidden="true"

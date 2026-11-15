@@ -76,4 +76,25 @@ describe("KpiTile", () => {
     await tile.setProps({ footer: { label: "Uzupełnij zdjęcia w formularzu produktu" } });
     expect(tile.get("[data-testid=kpi-footer]").text()).toBe("Uzupełnij zdjęcia w formularzu produktu");
   });
+
+  it("marks an estimated value with „ok.” read as an estimate, and an exact one with nothing", async () => {
+    const tile = await mountTile({ estimated: true });
+
+    expect(tile.get("[data-testid=kpi-estimated]").text()).toBe("ok.");
+    expect(tile.get("[data-testid=kpi-estimated]").attributes("title")).toBe("około");
+    expect(tile.get("[data-testid=kpi-value]").text()).toBe("ok. 412");
+    await tile.setProps({ estimated: false });
+    expect(tile.find("[data-testid=kpi-estimated]").exists()).toBe(false);
+  });
+
+  it("explains a value that is not there: the description under the value, tied to it", async () => {
+    const tile = await mountTile({ value: "—", description: "Liczba produktów będzie dostępna po aktualizacji statystyk bazy." });
+
+    const description = tile.get("[data-testid=kpi-description]");
+    expect(description.text()).toBe("Liczba produktów będzie dostępna po aktualizacji statystyk bazy.");
+    expect(tile.get("[data-testid=kpi-value]").attributes("aria-describedby")).toBe(description.attributes("id"));
+    await tile.setProps({ description: undefined });
+    expect(tile.find("[data-testid=kpi-description]").exists()).toBe(false);
+    expect(tile.get("[data-testid=kpi-value]").attributes("aria-describedby")).toBeUndefined();
+  });
 });

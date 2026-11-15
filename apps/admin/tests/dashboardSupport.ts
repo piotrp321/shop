@@ -28,9 +28,31 @@ export function system(overrides: Partial<System> = {}): System {
   };
 }
 
+export type Queues = Dashboard["queues"];
+export type Count = NonNullable<Queues["paidToShip"]>;
+
+export function count(value: number, capped = false): Count {
+  return { value, capped };
+}
+
+/** The queues of a role that sees none; a test gives the ones its role sees. */
+export function queues(overrides: Partial<Queues> = {}): Queues {
+  return {
+    paidToShip: null,
+    awaitingPayment: null,
+    pendingRefunds: null,
+    overdueRefunds: null,
+    outOfStockVariants: null,
+    lowStockVariants: null,
+    productsWithoutImages: null,
+    ...overrides,
+  };
+}
+
 export function dashboard(overrides: Partial<Dashboard> = {}): Dashboard {
   return {
-    catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 0 },
+    catalog: { productCount: { value: 412, estimated: true }, categoryCount: 36 },
+    queues: queues(),
     system: system(),
     ...overrides,
   };

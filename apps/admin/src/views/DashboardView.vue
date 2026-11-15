@@ -17,11 +17,11 @@ const accessDenied = useAccessDenied();
 
 // The roles come from /me, which the layout loads; the card and the rows only hide what the API would refuse anyway.
 const auth = useAuthStore();
-const rows = computed(() => todoFor(auth.staff));
 const ordersAllowed = computed(() => canViewOrders(auth.staff));
 
 const orders = useRecentOrders(ordersAllowed);
 const { data, error, loading, updatedAt, refresh } = useDashboard(30000, () => void orders.reload());
+const rows = computed(() => todoFor(auth.staff, data.value?.queues ?? null));
 </script>
 
 <template>
@@ -47,6 +47,7 @@ const { data, error, loading, updatedAt, refresh } = useDashboard(30000, () => v
     <CatalogTiles
       v-if="data"
       :catalog="data.catalog"
+      :queues="data.queues"
     />
     <div
       v-else-if="loading"
