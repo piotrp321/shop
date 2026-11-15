@@ -1,0 +1,42 @@
+{
+  "id": "deploy-missing-prerequisite",
+  "kind": "defect",
+  "source": "issue #175, epic DEPLOY; the spec of docs(deploy) PR 182, which stopped the epic at DEPLOY-3: the Elasticsearch image with analysis-stempel was nobody's deliverable",
+  "commit": "2ac82ddb729af9c950c98f711f85b1c191695faf",
+  "prompt_file": "prompt.md",
+  "gh": [
+    {
+      "args": [
+        "issue",
+        "view",
+        "175",
+        "--repo",
+        "piotrp321/shop",
+        "--json",
+        "number,author,url,title,body,labels,state,updatedAt"
+      ],
+      "stdout_file": "issue.json"
+    },
+    {
+      "args": [
+        "api",
+        "--include",
+        "repos/piotrp321/shop/collaborators/piotrp321/permission"
+      ],
+      "stdout": "HTTP/2.0 200 OK\ncontent-type: application/json\n\n{\"permission\":\"admin\",\"role_name\":\"admin\"}\n"
+    }
+  ],
+  "patch": "patch.diff",
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "DO POPRAWY"
+    },
+    {
+      "type": "finding",
+      "severity": "Important",
+      "path": "elasticsearch|spec\\.md|Dockerfile",
+      "keyword": "stempel|Elasticsearch.{0,120}(obraz|image|GHCR|rejestr|publik)|(obraz|image|GHCR).{0,120}Elasticsearch"
+    }
+  ]
+}

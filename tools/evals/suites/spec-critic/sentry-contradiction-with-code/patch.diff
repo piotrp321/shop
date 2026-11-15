@@ -1,0 +1,20 @@
+diff --git a/docs/features/sentry/spec.md b/docs/features/sentry/spec.md
+index f2dc766..542c739 100644
+--- a/docs/features/sentry/spec.md
++++ b/docs/features/sentry/spec.md
+@@ -111,11 +111,10 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
+   i `STATEMENT:`, `Failing row contains (…)` i `Key (…)=(…)` PostgreSQL, `with params [...]` DBAL. Testy filtra api
+   używają wierszy z `infra/k8s/tests/log-corpus`.
+ - **D5. Jeden kanał na źródło w api.**
+-  - HTTP: listener bundla (`register_error_listener`) wyłączony; własny listener `kernel.exception`
+-    (`ServerErrorReporter`, priorytet -99) tuż przed `ProblemDetailsSubscriber` (-100) zgłasza wyjątek tylko wtedy, gdy
+-    odpowiedź, którą ustali `ProblemDetailsSubscriber`, ma status ≥ 500. Status pochodzi z mapowania
+-    `ProblemDetailsSubscriber` (jedna funkcja `ExceptionStatus::of` w `Shared\Infrastructure\Http`), bez drugiej listy
+-    wyjątków w konfiguracji Sentry. Handler błędów PHP SDK (`register_error_handler`) jest wyłączony.
++  - HTTP: listener bundla (`register_error_listener`) zostaje włączony. Wyjątki domeny `NotFound`, `Conflict`
++    i `InvalidInput` implementują `HttpExceptionInterface`, więc bundle zgłasza tylko wyjątki ze statusem
++    ≥ 500, a własny listener nie jest potrzebny. Handler błędów PHP SDK (`register_error_handler`) jest
++    wyłączony.
+   - Konsola: listener konsoli bundla (nieobsłużony wyjątek komendy); `services.yaml` definiuje go jako zgłaszający, bo
+     przy wyłączonym listenerze błędów bundla sam by nie zgłaszał.
+   - Messenger: listener Messengera bundla z `capture_soft_fails: false` (tylko ostatnia próba przed `failed`).

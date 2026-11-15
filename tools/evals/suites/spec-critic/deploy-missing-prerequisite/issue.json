@@ -1,0 +1,19 @@
+{
+  "number": 175,
+  "author": {
+    "id": "U_1",
+    "is_bot": false,
+    "login": "piotrp321",
+    "name": ""
+  },
+  "url": "https://github.com/piotrp321/shop/issues/175",
+  "title": "DEPLOY: środowisko wdrożeniowe na k3s",
+  "body": "Wdrożyć sklep i panel poza komputerem dewelopera: jeden serwer, jeden klaster k3s, GitOps przez Argo CD. Obrazy produkcyjne api, store i admin, chart Helm całego stosu, tryb demo (sklep z informacją o symulowanych płatnościach, noindex, panel za Cloudflare Access, rejestracja wyłączona, e-maile nie wychodzą na zewnątrz), sekrety zaszyfrowane (Sealed Secrets), test dymny na k3d i runbook serwera. Kopie zapasowe i monitoring są osobnym epikiem (#178).",
+  "labels": [
+    {
+      "name": "epic"
+    }
+  ],
+  "state": "OPEN",
+  "updatedAt": "2026-11-13T09:00:00Z"
+}

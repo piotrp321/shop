@@ -1,0 +1,42 @@
+{
+  "id": "sentry-contradiction-with-code",
+  "kind": "defect",
+  "source": "issue #180, epic SENTRY; the spec on main with decision D5 patched to claim that the domain exceptions implement HttpExceptionInterface (they implement only ProblemException)",
+  "commit": "72ec7b04b9ebfa72570844af46cd85fef9cd8128",
+  "prompt_file": "prompt.md",
+  "gh": [
+    {
+      "args": [
+        "issue",
+        "view",
+        "180",
+        "--repo",
+        "piotrp321/shop",
+        "--json",
+        "number,author,url,title,body,labels,state,updatedAt"
+      ],
+      "stdout_file": "issue.json"
+    },
+    {
+      "args": [
+        "api",
+        "--include",
+        "repos/piotrp321/shop/collaborators/piotrp321/permission"
+      ],
+      "stdout": "HTTP/2.0 200 OK\ncontent-type: application/json\n\n{\"permission\":\"admin\",\"role_name\":\"admin\"}\n"
+    }
+  ],
+  "patch": "patch.diff",
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "DO POPRAWY"
+    },
+    {
+      "type": "finding",
+      "severity": "Important",
+      "path": "ProblemException|NotFound|ExceptionStatus|spec\\.md|ProblemDetailsSubscriber",
+      "keyword": "HttpExceptionInterface"
+    }
+  ]
+}

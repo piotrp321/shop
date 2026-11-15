@@ -1,0 +1,19 @@
+{
+  "number": 180,
+  "author": {
+    "id": "U_1",
+    "is_bot": false,
+    "login": "piotrp321",
+    "name": ""
+  },
+  "url": "https://github.com/piotrp321/shop/issues/180",
+  "title": "SENTRY: Sentry i trace'y aplikacji",
+  "body": "Błędy i wydajność api, workera, sklepu i panelu w Sentry (darmowy plan), jako uzupełnienie logów i metryk z Grafana Cloud. SDK nieaktywne bez DSN, bez danych osobowych klientów w zdarzeniach, jedno zdarzenie na błąd, mapy źródeł przy budowaniu obrazów.",
+  "labels": [
+    {
+      "name": "epic"
+    }
+  ],
+  "state": "OPEN",
+  "updatedAt": "2026-11-13T09:00:00Z"
+}

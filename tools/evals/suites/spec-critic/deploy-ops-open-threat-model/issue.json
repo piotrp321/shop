@@ -1,0 +1,19 @@
+{
+  "number": 178,
+  "author": {
+    "id": "U_1",
+    "is_bot": false,
+    "login": "piotrp321",
+    "name": ""
+  },
+  "url": "https://github.com/piotrp321/shop/issues/178",
+  "title": "DEPLOY-OPS: kopie zapasowe i monitoring środowiska",
+  "body": "Codzienne, szyfrowane kopie danych sklepu poza serwerem, automatyczna weryfikacja kopii, odtworzenie sprawdzone na pustym klastrze oraz logi, metryki i alerty w Grafana Cloud, bez danych klientów i sekretów w logach.",
+  "labels": [
+    {
+      "name": "epic"
+    }
+  ],
+  "state": "OPEN",
+  "updatedAt": "2026-11-13T09:00:00Z"
+}
