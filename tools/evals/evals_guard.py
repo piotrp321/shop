@@ -157,7 +157,50 @@ def prepare(pass_dir, gh_responses):
     return layout
 
 
-def environment(layout, base=None):
+def check_private_dir(path):
+    """GuardError unless path is a real directory (no symlink in it) of the current user with mode 0700."""
+    try:
+        info = os.lstat(path)
+    except OSError as error:
+        raise GuardError('%s: no directory (%s)' % (path, error.strerror))
+    if not stat.S_ISDIR(info.st_mode) or os.path.realpath(path) != path:
+        raise GuardError('%s is not a real directory (a symlink or a file)' % path)
+    if info.st_uid != os.getuid():
+        raise GuardError('%s belongs to another user (uid %d)' % (path, info.st_uid))
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        raise GuardError('%s has the mode %03o instead of 700' % (path, stat.S_IMODE(info.st_mode)))
+
+
+def make_claude_tmpdir(parent):
+    """A fresh private temporary directory of Claude Code for one pass (CLAUDE_CODE_TMPDIR, as the AO wrapper
+    claude-agent does): agent.<random> directly in parent (the system temp, so that <dir>/claude-<uid> fits the 44 bytes
+    of an AF_UNIX socket path), mode 0700, holding only an empty claude-<uid> (0700). render_settings.py opens only
+    claude-<uid> to the sandbox; the session socket in <dir>/cc-socks stays out of the agent's reach."""
+    import tempfile
+    try:
+        path = tempfile.mkdtemp(prefix='agent.', dir=os.path.realpath(parent))
+    except OSError as error:
+        raise GuardError('the temporary directory of Claude Code cannot be made in %s: %s' % (parent, error))
+    try:
+        check_private_dir(path)
+        inner = os.path.join(path, 'claude-%d' % os.getuid())
+        os.mkdir(inner, 0o700)
+        os.chmod(inner, 0o700)
+        check_private_dir(inner)
+    except (OSError, GuardError) as error:
+        remove_claude_tmpdir(path)
+        raise GuardError('the temporary directory of Claude Code %s is not private: %s' % (path, error))
+    return path
+
+
+def remove_claude_tmpdir(path):
+    """Removes a directory of make_claude_tmpdir; a path that became a symlink is left alone."""
+    if path and os.path.isdir(path) and not os.path.islink(path) and os.path.realpath(path) == path:
+        import shutil
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def environment(layout, base=None, claude_tmpdir=None):
     """The environment of the executor of a pass, built from the allowlist PASSTHROUGH and the guards."""
     base = os.environ if base is None else base
     env = {key: base[key] for key in PASSTHROUGH if key in base}
@@ -174,6 +217,8 @@ def environment(layout, base=None):
         'GIT_TRACE2_EVENT': layout['trace'],
         'DOCKER_HOST': 'unix://' + layout['docker_socket'],
     })
+    if claude_tmpdir:
+        env['CLAUDE_CODE_TMPDIR'] = claude_tmpdir
     leaked = sorted(key for key in env if key in FORBIDDEN)
     if leaked:
         raise GuardError('the executor environment would have %s' % ', '.join(leaked))
@@ -245,7 +290,7 @@ def validate_profile(settings):
     return problems
 
 
-def render_settings(workdir, state_dir, deny_writes, script=None):
+def render_settings(workdir, state_dir, deny_writes, script=None, claude_tmpdir=None):
     """The sandbox settings of one pass from the AGENT-SECURITY profile (render_settings.py, run with this Python).
     Every path is the runner's own and resolved with realpath. SandboxError when the script is missing, fails or
     gives settings that are not a valid profile for a real pass."""
@@ -254,6 +299,8 @@ def render_settings(workdir, state_dir, deny_writes, script=None):
         raise SandboxError('the AGENT-SECURITY profile is missing: %s does not exist' % script)
     args = [sys.executable, '-I', script, '--workdir', os.path.realpath(workdir),
             '--state-dir', os.path.realpath(state_dir)]
+    if claude_tmpdir:
+        args += ['--claude-tmpdir', os.path.realpath(claude_tmpdir)]
     for path in deny_writes:
         args += ['--deny-write', os.path.realpath(path)]
     args += ['--no-network', '--no-docker']

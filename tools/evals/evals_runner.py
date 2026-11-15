@@ -53,8 +53,11 @@ class Options:
     render_script and pin_script replace the scripts of AGENT-SECURITY and AO (tests only; the settings rendered by any
     script are always checked); env is the environment the executor's allowlist is taken from."""
 
-    def __init__(self, root, state_root=None, claude_bin=None, render_script=None, pin_script=None, env=None):
+    def __init__(self, root, state_root=None, claude_bin=None, render_script=None, pin_script=None, env=None,
+                 claude_tmp_parent=None):
         self.root = os.path.realpath(root)
+        # the parent of the private Claude Code directory of a pass: the system temp (tests: a writable directory)
+        self.claude_tmp_parent = claude_tmp_parent or os.path.realpath('/tmp')
         self.state_root = state_root or DEFAULT_STATE_ROOT
         self.claude_bin = claude_bin
         self.render_script = render_script
@@ -413,7 +416,16 @@ def _artefacts(directory, outcome, item, run, extra=None, output='', tree=(), ca
         os.makedirs(files)
 
 
-def _run_pass(context, run, state_root, item):
+def _run_pass(context, run, state_root, item, reserve=None):
+    """One pass; the private Claude Code directory is removed afterwards, also on an error or an interrupt."""
+    holder = {}
+    try:
+        return _pass(context, run, state_root, item, holder, reserve or (lambda: None))
+    finally:
+        guard.remove_claude_tmpdir(holder.get('claude_tmpdir'))
+
+
+def _pass(context, run, state_root, item, holder, reserve):
     case = context.cases[item['case']]
     directory = pass_dir(state_root, run['id'], item['case'], item['repetition'])
     _fresh_dir(directory)
@@ -447,10 +459,12 @@ def _run_pass(context, run, state_root, item):
         _write_json(os.path.join(layout['runner'], 'manifest.json'), built['manifest'])
         guard.replace_file(os.path.join(layout['runner'], 'prompt.txt'), prompt)
         deny = [layout['runner']] + [os.path.join(directory, name) for name in RUNNER_ARTEFACTS]
-        settings = guard.render_settings(built['checkout'], directory, deny, script=context.options.render_script)
+        claude_tmpdir = holder['claude_tmpdir'] = guard.make_claude_tmpdir(context.options.claude_tmp_parent)
+        settings = guard.render_settings(built['checkout'], directory, deny, script=context.options.render_script,
+                                         claude_tmpdir=claude_tmpdir)
         settings_path = os.path.join(layout['runner'], 'settings.json')
         guard.replace_file(settings_path, json.dumps(settings, indent=2) + '\n')
-        env = guard.environment(layout, context.options.env)
+        env = guard.environment(layout, context.options.env, claude_tmpdir=claude_tmpdir)
     except (checkout.CheckoutError, cases.CaseError, guard.SandboxError, guard.GuardError, OSError) as error:
         outcome = {'status': 'infra_error', 'reason': 'the pass could not be prepared: %s' % error,
                    'duration_s': round(time.monotonic() - started, 3)}

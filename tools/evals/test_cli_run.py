@@ -1,6 +1,8 @@
 """Tests of the commands `evals.py estimate` and `evals.py run` (spec: Limity) with the fake CLI."""
+import functools
 import json
 import os
+from unittest import mock
 
 from testutil import measured_result, run_cli
 from test_runner import RunnerTestCase, init, ok
@@ -69,13 +71,19 @@ class RunCommandTest(RunnerTestCase):
         argv = ['run'] + list(args) + ['--state-root', self.state_root]
         if binary:
             argv += ['--claude-bin', binary]
-        return run_cli(evals, argv, self.repo.root)
+        # no command line option for these (tests only): the test parent of the Claude Code directories and the
+        # render_settings.py shim accepting it
+        options = functools.partial(evals.runner.Options, render_script=self.render_shim,
+                                    claude_tmp_parent=self.claude_parent)
+        with mock.patch.object(evals.runner, 'Options', options):
+            return run_cli(evals, argv, self.repo.root)
 
     def test_a_finished_run_prints_its_id_and_status(self):
         code, out, err = self.run_cmd('code-reviewer', binary=self.fake(ok()))
         self.assertEqual(0, code, err)
         run_id = out.split('run ')[1].split(':')[0]
-        self.assertEqual('done', json.load(open(os.path.join(self.state_root, run_id, 'run.json')))['status'])
+        with open(os.path.join(self.state_root, run_id, 'run.json')) as handle:
+            self.assertEqual('done', json.load(handle)['status'])
         self.assertIn('done', out)
         self.assertIn('3 passes', out)
 

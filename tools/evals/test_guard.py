@@ -137,6 +137,47 @@ class PushTest(GuardTestCase):
         self.assertEqual(1, len(self.log('ssh.log')))
 
 
+class ClaudeTmpdirTest(GuardTestCase):
+    def test_a_private_directory_with_claude_uid_per_call(self):
+        first = guard.make_claude_tmpdir(self.state)
+        second = guard.make_claude_tmpdir(self.state)
+        self.assertNotEqual(first, second)
+        for path in (first, second):
+            self.assertEqual(self.state, os.path.dirname(path))
+            self.assertTrue(os.path.basename(path).startswith('agent.'))
+            self.assertEqual(0o700, os.stat(path).st_mode & 0o777)
+            inner = os.path.join(path, 'claude-%d' % os.getuid())
+            self.assertEqual(['claude-%d' % os.getuid()], os.listdir(path))
+            self.assertEqual(0o700, os.stat(inner).st_mode & 0o777)
+        guard.remove_claude_tmpdir(first)
+        self.assertFalse(os.path.exists(first))
+        self.assertTrue(os.path.exists(second))
+
+    def test_a_missing_parent_is_a_guard_error(self):
+        with self.assertRaises(guard.GuardError):
+            guard.make_claude_tmpdir(os.path.join(self.state, 'missing'))
+
+    def test_a_directory_with_another_mode_or_a_symlink_is_refused(self):
+        loose = os.path.join(self.state, 'loose')
+        os.mkdir(loose, 0o755)
+        os.chmod(loose, 0o755)
+        with self.assertRaises(guard.GuardError):
+            guard.check_private_dir(loose)
+        link = os.path.join(self.state, 'link')
+        private = os.path.join(self.state, 'private')
+        os.mkdir(private, 0o700)
+        os.symlink(private, link)
+        with self.assertRaises(guard.GuardError):
+            guard.check_private_dir(link)
+        guard.check_private_dir(private)
+
+    def test_the_environment_has_claude_code_tmpdir(self):
+        tmpdir = guard.make_claude_tmpdir(self.state)
+        env = guard.environment(self.layout(), dict(os.environ), claude_tmpdir=tmpdir)
+        self.assertEqual(tmpdir, env['CLAUDE_CODE_TMPDIR'])
+        self.assertEqual(os.path.join(self.pass_dir, 'tmp'), env['TMPDIR'])
+
+
 class GhStubTest(GuardTestCase):
     RESPONSES = [{'args': ['issue', 'view', '7', '--json', 'title,body'], 'stdout': '{"title": "t", "body": "b"}\n'}]
 
@@ -243,6 +284,17 @@ class SandboxSettingsTest(GuardTestCase):
             argv = json.load(handle)
         self.assertEqual(['--workdir', self.checkout, '--state-dir', self.pass_dir,
                           '--deny-write', os.path.join(self.pass_dir, 'runner'), '--no-network', '--no-docker'], argv)
+
+    def test_the_claude_tmpdir_is_passed_after_realpath(self):
+        record = os.path.join(self.scripts, 'argv.json')
+        tmpdir = guard.make_claude_tmpdir(self.state)
+        link = os.path.join(self.scripts, 'link-to-tmp')
+        os.symlink(tmpdir, link)
+        guard.render_settings(self.checkout, self.pass_dir, [], script=self.fake_render(self.valid(), record=record),
+                              claude_tmpdir=link)
+        with open(record) as handle:
+            argv = json.load(handle)
+        self.assertEqual(tmpdir, argv[argv.index('--claude-tmpdir') + 1])
 
     def test_the_real_profile_gives_only_the_paths_of_this_pass_and_no_network(self):
         settings = self.render(guard.RENDER_SCRIPT)
