@@ -324,4 +324,61 @@ describe("DataTable", () => {
       expect(wrapper.findAll("tbody tr")).toHaveLength(2);
     });
   });
+  describe("as cards", () => {
+    function mountCards(props: Record<string, unknown> = {}) {
+      wrapper = mount(DataTable<Row>, {
+        props: {
+          label: "Zamówienia",
+          columns,
+          rows,
+          rowKey: (row: Row) => row.id,
+          rowTestid: "product-row",
+          cards: true,
+          loading: false,
+          loaded: true,
+          error: null,
+          forbidden: false,
+          retry: async () => {},
+          ...props,
+        },
+        slots: {
+          card: ({ row }: { row: Row }) => h("strong", { "data-testid": "card-name" }, row.name),
+          empty: () => h("p", { "data-testid": "empty-slot" }, "Pusto"),
+        },
+        attachTo: document.body,
+      });
+      return wrapper;
+    }
+
+    it("lists the rows as a named list of cards instead of a table, one row test id per row", () => {
+      const cards = mountCards();
+
+      expect(cards.find("table").exists()).toBe(false);
+      const list = cards.get("ul");
+      expect(list.attributes("aria-label")).toBe("Zamówienia");
+      const items = cards.findAll("[data-testid=product-row]");
+      expect(items).toHaveLength(2);
+      expect(items.every((item) => item.element.tagName === "LI")).toBe(true);
+      expect(items[1]!.get("[data-testid=card-name]").text()).toBe("Plecak");
+    });
+
+    it("marks the list busy while it loads again", () => {
+      const cards = mountCards({ loading: true });
+
+      expect(cards.get("ul").attributes("aria-busy")).toBe("true");
+    });
+
+    it("shows the error with a retry, the empty state and the skeleton as the table does", async () => {
+      const retry = vi.fn(async () => {});
+      const failed = mountCards({ loaded: false, error: "Nie udało się.", retry });
+      expect(failed.get("[role=alert]").text()).toContain("Nie udało się.");
+      await failed.get("[data-testid=retry]").trigger("click");
+      expect(retry).toHaveBeenCalledOnce();
+      failed.unmount();
+
+      expect(mountCards({ rows: [] }).find("[data-testid=empty-slot]").exists()).toBe(true);
+      wrapper?.unmount();
+      expect(mountCards({ loaded: false, loading: true }).find("[data-testid=list-loading]").exists()).toBe(true);
+    });
+  });
 });

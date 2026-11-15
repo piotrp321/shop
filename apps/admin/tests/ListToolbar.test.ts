@@ -103,4 +103,12 @@ describe("ListToolbar", () => {
 
     expect(document.activeElement).toBe(toolbar.get("[data-testid=search]").element);
   });
+
+  it("reports Enter in the search field as a submit, for a list that searches on Enter", async () => {
+    const toolbar = mountToolbar();
+
+    await toolbar.get("[data-testid=search]").trigger("keydown.enter");
+
+    expect(toolbar.emitted("submit")).toHaveLength(1);
+  });
 });

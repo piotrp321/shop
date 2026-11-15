@@ -5,20 +5,21 @@ export type OrderTransition = components["schemas"]["BackofficeOrderTransition"]
 type StatusChange = components["schemas"]["BackofficeOrderStatusChange"];
 type CancellationReason = components["schemas"]["BackofficeOrder"]["cancellationReason"];
 
-export type TagSeverity = "secondary" | "info" | "success" | "warn" | "danger" | "contrast";
+/** The variants of `Badge` that are the status colours of the panel. */
+export type StatusVariant = "info" | "success" | "neutral" | "warning" | "danger";
 
-const statusLabels: Record<OrderStatus, { label: string; severity: TagSeverity }> = {
-  new: { label: "Czeka na płatność", severity: "warn" },
-  paid: { label: "Opłacone", severity: "info" },
-  shipped: { label: "Wysłane", severity: "info" },
-  delivered: { label: "Dostarczone", severity: "success" },
-  cancelled: { label: "Anulowane", severity: "secondary" },
-  returned: { label: "Zwrócone", severity: "danger" },
+const statusLabels: Record<OrderStatus, { label: string; variant: StatusVariant }> = {
+  new: { label: "Czeka na płatność", variant: "warning" },
+  paid: { label: "Opłacone", variant: "info" },
+  shipped: { label: "Wysłane", variant: "success" },
+  delivered: { label: "Dostarczone", variant: "info" },
+  cancelled: { label: "Anulowane", variant: "danger" },
+  returned: { label: "Zwrócone", variant: "neutral" },
 };
 
-/** The label and the colour of a status of an order; a status the panel does not know is shown as the API sent it. */
-export function statusLabel(status: OrderStatus): { label: string; severity: TagSeverity } {
-  return statusLabels[status] ?? { label: status, severity: "secondary" };
+/** The label and the `Badge` variant of a status of an order; a status the panel does not know is shown as the API sent it. */
+export function statusLabel(status: OrderStatus): { label: string; variant: StatusVariant } {
+  return statusLabels[status] ?? { label: status, variant: "neutral" };
 }
 
 /** The statuses of the filter of the order list, in the order of the lifecycle. */

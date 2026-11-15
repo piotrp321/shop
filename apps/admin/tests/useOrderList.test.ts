@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
-import { useOrderList } from "@/orders/useOrderList";
+import { EMPTY_MESSAGE, useOrderList } from "@/orders/useOrderList";
 
 type OrderList = components["schemas"]["BackofficeOrderList"];
 type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
@@ -145,7 +145,8 @@ describe("useOrderList", () => {
     list.selectStatus("cancelled");
     await settle();
     list.search.value = "anna.nowak@example.com";
-    await list.submitSearch();
+    list.submitSearch();
+    await settle();
     list.setRefundPending(true);
     await settle();
 
@@ -159,11 +160,13 @@ describe("useOrderList", () => {
     await settle();
     expect(mocks.get).toHaveBeenCalledTimes(1);
 
-    await list.submitSearch();
+    list.submitSearch();
+    await settle();
     expect(queries().at(-1)).toEqual({ q: "r-100001" });
 
     list.search.value = "   ";
-    await list.submitSearch();
+    list.submitSearch();
+    await settle();
     expect(queries().at(-1)).toEqual({});
   });
 
@@ -226,14 +229,15 @@ describe("useOrderList", () => {
       "a search",
       (list: ReturnType<typeof useOrderList>) => {
         list.search.value = "R-999999";
-        return list.submitSearch();
+        list.submitSearch();
       },
     ],
   ])("shows no rows of the old filters when the request for %s fails", async (_name, apply) => {
     const list = await start({ "": page(["R-3", "R-2"]) });
     serve({}, 500);
 
-    await apply(list);
+    apply(list);
+    await settle();
 
     expect(list.error.value).toBe("Nie udało się pobrać zamówień (HTTP 500).");
     expect(list.items.value).toEqual([]);
@@ -246,11 +250,12 @@ describe("useOrderList", () => {
     expect(list.loaded.value).toBe(true);
   });
 
-  it("says there are no orders when the list is empty without a filter or a search", async () => {
+  it("is not filtered, and the empty list says there are no orders yet, without a filter or a search", async () => {
     const list = await start({ "": page([]) });
 
     expect(list.items.value).toEqual([]);
-    expect(list.emptyText.value).toBe("Brak zamówień.");
+    expect(list.filtered.value).toBe(false);
+    expect(EMPTY_MESSAGE).toBe("Nie ma jeszcze zamówień.");
   });
 
   it.each([
@@ -260,26 +265,20 @@ describe("useOrderList", () => {
       "a search",
       (list: ReturnType<typeof useOrderList>) => {
         list.search.value = "R-999999";
-        void list.submitSearch();
+        list.submitSearch();
       },
     ],
-  ])("says no orders were found when the list is empty with %s", async (_name, apply) => {
+  ])("is filtered with %s, and not any more once the filters are cleared", async (_name, apply) => {
     const list = await start({ "": page([]) });
 
     apply(list);
     await settle();
+    expect(list.filtered.value).toBe(true);
 
-    expect(list.emptyText.value).toBe("Nie znaleziono zamówień.");
-  });
-
-  it("goes back to the text for no orders once the filters are cleared", async () => {
-    const list = await start({ "": page([]) });
-    list.selectStatus("new");
+    list.clearFilters();
     await settle();
-    list.selectStatus(null);
-    await settle();
-
-    expect(list.emptyText.value).toBe("Brak zamówień.");
+    expect(list.filtered.value).toBe(false);
+    expect(list.search.value).toBe("");
   });
 
   it("shows an error with a retry of the same page and keeps the page that is shown", async () => {
@@ -325,7 +324,8 @@ describe("useOrderList", () => {
     serve({}, 400);
 
     list.search.value = "x";
-    await list.submitSearch();
+    list.submitSearch();
+    await settle();
 
     expect(list.error.value).toBe("Nieprawidłowe parametry wyszukiwania (HTTP 400).");
   });
@@ -349,7 +349,54 @@ describe("useOrderList", () => {
 
     expect(mounted.list.items.value.map((item) => item.number)).toEqual(["R-new"]);
   });
-  describe("filters from the address", () => {
+
+  it("sends the page size only when it is not the default of 25, and starts from the first page for a new one", async () => {
+    const list = await start({ "": page(["R-3"], "c1"), c1: page(["R-2"]) });
+    await list.goNext();
+
+    list.setPerPage(10);
+    await settle();
+    expect(queries().at(-1)).toEqual({ perPage: 10 });
+    expect(list.pageNumber.value).toBe(1);
+
+    list.setPerPage(25);
+    await settle();
+    expect(queries().at(-1)).toEqual({});
+  });
+
+  it("numbers the rows on the screen for the pager", async () => {
+    const list = await start({ "": page(["R-3", "R-2"], "c1"), c1: page(["R-1"]) });
+    expect(list.range.value).toEqual({ from: 1, to: 2 });
+
+    await list.goNext();
+
+    expect(list.range.value).toEqual({ from: 26, to: 26 });
+  });
+
+  it("searches again for the same term, so that Enter reloads the list", async () => {
+    const list = await start({ "": page(["R-1"]) });
+    list.search.value = "R-1";
+    list.submitSearch();
+    await settle();
+    mocks.get.mockClear();
+
+    list.submitSearch();
+    await settle();
+
+    expect(queries()).toEqual([{ q: "R-1" }]);
+  });
+
+  it("trims the white space around a search, a no-break space and U+2028 too", async () => {
+    const list = await start({ "": page(["R-1"]) });
+
+    list.search.value = "\u00a0R-1\u2028";
+    list.submitSearch();
+    await settle();
+
+    expect(queries().at(-1)).toEqual({ q: "R-1" });
+  });
+
+  describe("the state in the address", () => {
     /** Starts the list at `path` and keeps the router, to change the address of the open list. */
     async function startAt(path: string) {
       serve({ "": page(["R-1"]) });
@@ -358,6 +405,16 @@ describe("useOrderList", () => {
       await settle();
       return mounted;
     }
+
+    it("reads the status, the refund switch, the search and the page size of the address with one request", async () => {
+      const { list } = await startAt("/orders?status=cancelled&refund=pending&q=anna%40example.com&perPage=10");
+
+      expect(queries()).toEqual([{ status: "cancelled", refund: "pending", q: "anna@example.com", perPage: 10 }]);
+      expect(list.status.value).toBe("cancelled");
+      expect(list.refundPending.value).toBe(true);
+      expect(list.search.value).toBe("anna@example.com");
+      expect(list.filtered.value).toBe(true);
+    });
 
     it("reads the status from the address with one request", async () => {
       const { list } = await startAt("/orders?status=paid");
@@ -374,22 +431,30 @@ describe("useOrderList", () => {
       expect(list.refundPending.value).toBe(true);
     });
 
-    it("reads both filters of the address", async () => {
-      await startAt("/orders?status=cancelled&refund=pending");
+    it.each([
+      "/orders?status=nope",
+      "/orders?status=",
+      "/orders?refund=done",
+      "/orders?refund=",
+      "/orders?status=paid&status=new",
+      "/orders?perPage=7",
+      `/orders?q=${"a".repeat(255)}`,
+      "/orders?q=%20%20",
+    ])("skips an invalid value of %s, lists all orders and corrects the address", async (path) => {
+      const { list, router } = await startAt(path);
 
-      expect(queries()).toEqual([{ status: "cancelled", refund: "pending" }]);
+      expect(queries()).toEqual([{}]);
+      expect(list.status.value).toBeNull();
+      expect(list.refundPending.value).toBe(false);
+      expect(router.currentRoute.value.fullPath).toBe("/orders");
     });
 
-    it.each(["/orders?status=nope", "/orders?status=", "/orders?refund=done", "/orders?refund=", "/orders?status=paid&status=new", "/orders?status[]=paid"])(
-      "skips an unknown value of %s and lists all orders",
-      async (path) => {
-        const { list } = await startAt(path);
+    it("does not take a parameter of another name (status[]) as the status", async () => {
+      const { list } = await startAt("/orders?status[]=paid");
 
-        expect(queries()).toEqual([{}]);
-        expect(list.status.value).toBeNull();
-        expect(list.refundPending.value).toBe(false);
-      },
-    );
+      expect(queries()).toEqual([{}]);
+      expect(list.status.value).toBeNull();
+    });
 
     it("keeps the known value when the other one is unknown", async () => {
       await startAt("/orders?status=nope&refund=pending");
@@ -397,13 +462,38 @@ describe("useOrderList", () => {
       expect(queries()).toEqual([{ refund: "pending" }]);
     });
 
+    it("writes the filters, the search and the page size to the address without a new entry of the history", async () => {
+      const { list, router } = await startAt("/orders");
+      const push = vi.spyOn(router, "push");
+
+      list.selectStatus("paid");
+      list.setRefundPending(true);
+      list.setPerPage(50);
+      list.search.value = "anna@example.com";
+      list.submitSearch();
+      await settle();
+
+      expect(router.currentRoute.value.fullPath).toBe("/orders?q=anna@example.com&status=paid&refund=pending&perPage=50");
+      expect(push, "a change replaces the entry of the history").not.toHaveBeenCalled();
+    });
+
+    it("drops everything with clearFilters: the address is /orders again", async () => {
+      const { list, router } = await startAt("/orders?status=paid&refund=pending&q=R-1&perPage=10");
+
+      list.clearFilters();
+      await settle();
+
+      expect(router.currentRoute.value.fullPath).toBe("/orders");
+      expect(queries().at(-1)).toEqual({});
+      expect(list.search.value).toBe("");
+    });
+
     it("switches the open list to the refunds to do when the address changes, from the first page and without a reload", async () => {
       serve({ "": page(["R-3"], "c1"), c1: page(["R-2"]) });
       const mounted = await mountList("/orders");
       wrapper = mounted.wrapper;
       await settle();
-      mounted.list.goNext();
-      await settle();
+      await mounted.list.goNext();
       expect(mounted.list.pageNumber.value).toBe(2);
       mocks.get.mockClear();
       serve({ "": page(["R-9"]) });
@@ -417,33 +507,6 @@ describe("useOrderList", () => {
       expect(mounted.list.items.value.map((item) => item.number)).toEqual(["R-9"]);
     });
 
-    it("takes the filters from the address again when the same location is navigated to after a change made in the list", async () => {
-      const { list, router } = await startAt("/orders?refund=pending");
-      list.setRefundPending(false);
-      await settle();
-      expect(router.currentRoute.value.fullPath, "the list does not write its filters to the address").toBe("/orders?refund=pending");
-      mocks.get.mockClear();
-      serve({ "": page(["R-9"]) });
-
-      await router.push({ path: "/orders", query: { refund: "pending" }, force: true, replace: true });
-      await settle();
-
-      expect(queries()).toEqual([{ refund: "pending" }]);
-      expect(list.refundPending.value).toBe(true);
-    });
-
-    it("applies the address of the list also when it is written with a trailing slash", async () => {
-      const { list, router } = await startAt("/orders");
-      mocks.get.mockClear();
-      serve({ "": page(["R-9"]) });
-
-      await router.push("/orders/?refund=pending");
-      await settle();
-
-      expect(queries()).toEqual([{ refund: "pending" }]);
-      expect(list.refundPending.value).toBe(true);
-    });
-
     it("returns to all orders when the address loses the filter", async () => {
       const { list, router } = await startAt("/orders?refund=pending");
       mocks.get.mockClear();
@@ -455,20 +518,21 @@ describe("useOrderList", () => {
       expect(list.refundPending.value).toBe(false);
     });
 
-    it("sets the status of a changed address and drops the status chosen in the list", async () => {
+    it("sets the status of a changed address and puts a new search of the address in the field", async () => {
       const { list, router } = await startAt("/orders");
       list.selectStatus("shipped");
       await settle();
       mocks.get.mockClear();
 
-      await router.push({ path: "/orders", query: { status: "paid" } });
+      await router.push({ path: "/orders", query: { status: "paid", q: "anna@example.com" } });
       await settle();
 
-      expect(queries()).toEqual([{ status: "paid" }]);
+      expect(queries()).toEqual([{ status: "paid", q: "anna@example.com" }]);
       expect(list.status.value).toBe("paid");
+      expect(list.search.value).toBe("anna@example.com");
     });
 
-    it("does not ask again when the address changes without a known filter changing", async () => {
+    it("does not ask again when the address changes without a known parameter changing", async () => {
       const { router } = await startAt("/orders?status=paid");
       mocks.get.mockClear();
 
@@ -476,28 +540,6 @@ describe("useOrderList", () => {
       await settle();
 
       expect(mocks.get).not.toHaveBeenCalled();
-    });
-
-    it("keeps the search when the address changes", async () => {
-      const { list, router } = await startAt("/orders");
-      list.search.value = "anna.nowak@example.com";
-      await list.submitSearch();
-      mocks.get.mockClear();
-
-      await router.push({ path: "/orders", query: { refund: "pending" } });
-      await settle();
-
-      expect(queries()).toEqual([{ q: "anna.nowak@example.com", refund: "pending" }]);
-    });
-
-    it("does not write the filters it is given back to the address", async () => {
-      const { list, router } = await startAt("/orders");
-
-      list.selectStatus("paid");
-      list.setRefundPending(true);
-      await settle();
-
-      expect(router.currentRoute.value.fullPath).toBe("/orders");
     });
 
     it("does not ask for the list when the staff member leaves the page", async () => {

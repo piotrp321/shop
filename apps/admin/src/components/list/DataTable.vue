@@ -33,6 +33,10 @@ import { focusAfterAction } from "@/lib/focus";
  * of a neighbouring page stands over the page that is shown. A retry ends with the focus where it can be: on
  * the button while it is still there, otherwise on the alert, the table or the empty state, never on the body (#337).
  *
+ * `cards` shows the rows as a list of cards (`<ul>` named by `label`, a `<li>` per row with `rowTestid`, the content is the
+ * slot `card`) instead of the table, for a narrow screen: the view picks one layout, never both. The states around it
+ * (skeleton, error, empty) are the same.
+ *
  * A table wider than its card scrolls in its own region (`role="region"` named by the list, `tabindex="0"`), with a
  * shadow at the edge that has more behind it (WCAG 1.4.10); the page itself never scrolls sideways.
  */
@@ -51,6 +55,8 @@ const props = withDefaults(
      */
     groupKey?: (row: Row) => string;
     groupTestid?: string;
+    /** Shows the rows as cards (slot `card`) instead of a table. */
+    cards?: boolean;
     /** The `data-testid` of the error message; a list that keeps the identifier of its old view passes it. */
     errorTestid?: string;
     loading: boolean;
@@ -59,7 +65,7 @@ const props = withDefaults(
     forbidden: boolean;
     retry: () => Promise<void>;
   }>(),
-  { rowTestid: "row", groupKey: undefined, groupTestid: "group-row", errorTestid: "list-error" },
+  { rowTestid: "row", groupKey: undefined, groupTestid: "group-row", cards: false, errorTestid: "list-error" },
 );
 
 interface Section {
@@ -161,6 +167,24 @@ onMounted(measure);
       >
         <slot name="empty" />
       </div>
+      <ul
+        v-else-if="cards"
+        :aria-label="label"
+        :aria-busy="loading"
+        class="flex flex-col divide-y divide-separator"
+      >
+        <li
+          v-for="row in rows"
+          :key="rowKey(row)"
+          :data-testid="rowTestid"
+          class="px-4 py-3"
+        >
+          <slot
+            name="card"
+            :row="row"
+          />
+        </li>
+      </ul>
       <div
         v-else
         class="relative"
