@@ -6,6 +6,7 @@ namespace App\Pricing\UI\Http;
 
 use App\Pricing\Application\Query\ListBackofficePrices;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Query string of GET /api/v1/admin/prices. The violation messages never contain the submitted value.
@@ -16,6 +17,8 @@ final readonly class BackofficePricesQuery
     public const int MAX_CURSOR_LENGTH = 2048;
     /** The values of ProductSort of Catalog, which the list pages through. */
     public const array SORTS = ['name', '-name', '-updatedAt', 'updatedAt'];
+
+    public const string PRODUCT_EXCLUDES = 'Filtr produktu nie łączy się z wyszukiwaniem, kategorią, sortowaniem ani kursorem.';
 
     public function __construct(
         #[Assert\Length(min: 2, max: 100)]
@@ -31,6 +34,25 @@ final readonly class BackofficePricesQuery
         public ?string $after = null,
         #[Assert\Range(min: 1, max: ListBackofficePrices::MAX_PER_PAGE)]
         public int $perPage = ListBackofficePrices::DEFAULT_PER_PAGE,
+        #[Assert\NotBlank(allowNull: true)]
+        #[Assert\Uuid]
+        public ?string $productId = null,
     ) {
+    }
+
+    /**
+     * One product is not searched, filtered, sorted or paged: the violation is on each of the fields to drop.
+     */
+    #[Assert\Callback]
+    public function validateProductWithFilters(ExecutionContextInterface $context): void
+    {
+        if (null === $this->productId) {
+            return;
+        }
+        foreach (['q' => $this->q, 'category' => $this->category, 'sort' => $this->sort, 'after' => $this->after] as $path => $value) {
+            if (null !== $value) {
+                $context->buildViolation(self::PRODUCT_EXCLUDES)->atPath($path)->addViolation();
+            }
+        }
     }
 }

@@ -215,6 +215,107 @@ final class BackofficePricesEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($all['total'], 'BoundedCountResponse');
     }
 
+    public function testAProductIdListsThatProductWithAllItsVariantsAndNoOtherAndNoNextPage(): void
+    {
+        $kayak = $this->saveProduct('Kajak', TaxClassCode::Standard, variants: [
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['zielony']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['pomarańczowy']],
+        ], axes: ['Kolor']);
+        $this->saveProduct('Bidon', TaxClassCode::Standard);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'gross' => 12300, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
+
+        $body = $this->get('productId='.$kayak->id()->toString());
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertNull($body['next']);
+        self::assertSame(['value' => 1, 'capped' => false], $body['total']);
+        $items = $this->items($body);
+        self::assertSame([$kayak->id()->toString()], array_column($items, 'productId'));
+        self::assertIsArray($items[0]['variants']);
+        self::assertSame(['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01'], array_column($items[0]['variants'], 'variantId'));
+        self::assertSame(['Kajak', 'standard', 2300], [$items[0]['name'], $items[0]['taxClass'], $items[0]['applicableVatRate']]);
+        [$unpriced, $priced] = $items[0]['variants'];
+        self::assertIsArray($unpriced);
+        self::assertIsArray($priced);
+        self::assertNull($unpriced['price']);
+        self::assertIsArray($priced['price']);
+        self::assertSame(12300, $priced['price']['gross']);
+        $this->assertKeysMatchSchema($body, 'PriceListResponse');
+    }
+
+    public function testAProductIdListsADraft(): void
+    {
+        $draft = $this->saveProduct('Szkic kajaka', TaxClassCode::Standard, status: ProductStatus::Draft);
+
+        $items = $this->items($this->get('productId='.$draft->id()->toString()));
+
+        self::assertSame([$draft->id()->toString()], array_column($items, 'productId'));
+        self::assertIsArray($items[0]['variants']);
+        self::assertCount(1, $items[0]['variants']);
+    }
+
+    public function testAnUnknownProductIdGivesAnEmptyList(): void
+    {
+        $this->saveProduct('Bidon', TaxClassCode::Standard);
+
+        $body = $this->get('productId=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $body);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the query, the field of the violation
+     */
+    public static function productIdWithExcludedParameters(): iterable
+    {
+        yield 'a search' => ['q=kajak', 'q'];
+        yield 'an empty search' => ['q=', 'q'];
+        yield 'a category' => ['category=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', 'category'];
+        yield 'a sort by name' => ['sort=name', 'sort'];
+        yield 'a sort by the last change' => ['sort=-updatedAt', 'sort'];
+        yield 'a cursor' => ['after=aGVsbG8', 'after'];
+    }
+
+    #[DataProvider('productIdWithExcludedParameters')]
+    public function testAProductIdRejectsTheParametersItExcludes(string $excluded, string $path): void
+    {
+        $this->get('productId=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99&'.$excluded);
+
+        self::assertResponseStatusCodeSame(400);
+        $problem = $this->json();
+        self::assertIsArray($problem['violations']);
+        $paths = array_map(static fn (mixed $violation): mixed => \is_array($violation) ? ($violation['propertyPath'] ?? null) : null, $problem['violations']);
+        self::assertContains($path, $paths);
+        $titles = [];
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            if ($path === ($violation['propertyPath'] ?? null)) {
+                $titles[] = $violation['title'] ?? null;
+            }
+        }
+        self::assertContains('Filtr produktu nie łączy się z wyszukiwaniem, kategorią, sortowaniem ani kursorem.', $titles);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badProductIds(): iterable
+    {
+        yield 'not a uuid' => ['productId=kajak'];
+        yield 'empty' => ['productId='];
+        yield 'an array' => ['productId[]=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99'];
+    }
+
+    #[DataProvider('badProductIds')]
+    public function testABadProductIdIsRejectedWithProblemDetails(string $query): void
+    {
+        $this->get($query);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertStringStartsWith('application/problem+json', (string) $this->client->getResponse()->headers->get('Content-Type'));
+    }
+
     public function testPatternCharactersOfTheSearchAreLiteral(): void
     {
         $this->saveProduct('Nazwa 100%', TaxClassCode::Standard);

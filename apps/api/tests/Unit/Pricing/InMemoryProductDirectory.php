@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Pricing;
 
 use App\Pricing\Application\Port\CategoryNotFound;
+use App\Pricing\Application\Port\DescribedProduct;
 use App\Pricing\Application\Port\DirectoryPage;
 use App\Pricing\Application\Port\DirectoryProduct;
 use App\Pricing\Application\Port\DirectoryVariant;
@@ -26,6 +27,8 @@ final class InMemoryProductDirectory implements ProductDirectory
     public array $sorts = [];
     /** @var list<list<string>> the product ids of every variantsOf() call */
     public array $variantRequests = [];
+    /** @var list<string> the product id of every describe() call */
+    public array $describeRequests = [];
     public bool $categoryExists = true;
     public bool $cursorValid = true;
     /** @var list<string> the product id of every taxClassOf() call */
@@ -106,6 +109,18 @@ final class InMemoryProductDirectory implements ProductDirectory
         }
 
         return $found;
+    }
+
+    public function describe(ProductId $productId): ?DescribedProduct
+    {
+        $this->describeRequests[] = $productId->toString();
+        foreach ($this->products as $product) {
+            if ($product->id->toString() === $productId->toString()) {
+                return new DescribedProduct($product, $this->variants[$productId->toString()] ?? []);
+            }
+        }
+
+        return null;
     }
 
     public function taxClassOf(ProductId $productId): ?ProductTaxClass

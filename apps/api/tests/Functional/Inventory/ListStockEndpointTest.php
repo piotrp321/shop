@@ -181,6 +181,106 @@ final class ListStockEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($all['total'], 'BoundedCountResponse');
     }
 
+    public function testAProductIdListsThatProductWithAllItsVariantsAndNoOtherAndNoNextPage(): void
+    {
+        $kayak = $this->saveProduct('Kajak', variants: [
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['zielony']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['pomarańczowy']],
+        ], axes: ['Kolor']);
+        $this->saveProduct('Bidon');
+        StockFixture::stock($this->connection, 10, 4, 3, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01');
+
+        $body = $this->get('productId='.$kayak->id()->toString());
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertNull($body['next']);
+        self::assertSame(['value' => 1, 'capped' => false], $body['total']);
+        $items = $this->items($body);
+        self::assertSame([$kayak->id()->toString()], array_column($items, 'productId'));
+        self::assertSame(['Kajak'], array_column($items, 'name'));
+        self::assertIsArray($items[0]['variants']);
+        self::assertSame(['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01'], array_column($items[0]['variants'], 'variantId'));
+        [$unstocked, $stocked] = $items[0]['variants'];
+        self::assertIsArray($unstocked);
+        self::assertIsArray($stocked);
+        self::assertNull($unstocked['stock']);
+        self::assertIsArray($stocked['stock']);
+        self::assertSame(6, $stocked['stock']['available']);
+        self::assertFalse($stocked['matchesLevel']);
+        $this->assertKeysMatchSchema($body, 'StockListResponse');
+    }
+
+    public function testAProductIdListsADraft(): void
+    {
+        $draft = $this->saveProduct('Szkic kajaka', status: ProductStatus::Draft);
+
+        $items = $this->items($this->get('productId='.$draft->id()->toString()));
+
+        self::assertSame([$draft->id()->toString()], array_column($items, 'productId'));
+        self::assertIsArray($items[0]['variants']);
+        self::assertCount(1, $items[0]['variants']);
+    }
+
+    public function testAnUnknownProductIdGivesAnEmptyList(): void
+    {
+        $this->saveProduct('Bidon');
+
+        $body = $this->get('productId=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $body);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the query, the field of the violation
+     */
+    public static function productIdWithExcludedParameters(): iterable
+    {
+        yield 'a search' => ['q=kajak', 'q'];
+        yield 'an empty search' => ['q=', 'q'];
+        yield 'a category' => ['category=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', 'category'];
+        yield 'a level' => ['level=out_of_stock', 'level'];
+        yield 'a sort by name' => ['sort=name', 'sort'];
+        yield 'a sort by the last change' => ['sort=-updatedAt', 'sort'];
+        yield 'a cursor' => ['after=aGVsbG8', 'after'];
+    }
+
+    #[DataProvider('productIdWithExcludedParameters')]
+    public function testAProductIdRejectsTheParametersItExcludes(string $excluded, string $path): void
+    {
+        $this->get('productId=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99&'.$excluded);
+
+        $problem = $this->assertProblem(400);
+        self::assertContains($path, $this->violationPaths(400));
+        self::assertIsArray($problem['violations']);
+        $titles = [];
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            if ($path === $violation['propertyPath']) {
+                $titles[] = $violation['title'];
+            }
+        }
+        self::assertContains('Filtr produktu nie łączy się z wyszukiwaniem, kategorią, poziomem, sortowaniem ani kursorem.', $titles);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badProductIds(): iterable
+    {
+        yield 'not a uuid' => ['productId=kajak'];
+        yield 'empty' => ['productId='];
+        yield 'an array' => ['productId[]=0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a99'];
+    }
+
+    #[DataProvider('badProductIds')]
+    public function testABadProductIdIsRejectedWithProblemDetails(string $query): void
+    {
+        $this->get($query);
+
+        $this->assertProblem(400);
+    }
+
     public function testALevelListsExactlyTheProductsWithAVariantAtThatLevelWithAllTheirVariants(): void
     {
         $kayak = $this->saveProduct('Kajak', variants: [

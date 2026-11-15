@@ -22,6 +22,8 @@ final readonly class ListBackofficeStock
      * @param string|null $sort       `name`, `-name`, `-updatedAt` or `updatedAt`; null for `name`
      * @param string|null $level      `out_of_stock` or `low_stock`: only the products with a variant at the level, by
      *                                their ids; excludes the term, the category and the sort. The cursor is of the level.
+     * @param string|null $productId  a product id (UUID): only that product (a draft too) with all its variants; excludes
+     *                                the term, the category, the level, the sort and the cursor
      */
     public function __construct(
         public ?string $term,
@@ -30,6 +32,7 @@ final readonly class ListBackofficeStock
         public int $perPage,
         public ?string $sort = null,
         public ?string $level = null,
+        public ?string $productId = null,
     ) {
     }
 }

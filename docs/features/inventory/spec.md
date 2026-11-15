@@ -301,7 +301,7 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/stock?q&category&sort&level&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null, matchesLevel}]}], next, total}` (warianty w kolejności pozycji, `perPage` liczy produkty); `level` (`out_of_stock` albo `low_stock`, opis niżej); `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); 400 złe parametry (także klucz spoza listy i kursor innego sortu); 404 nieznana kategoria |
+| `GET /api/v1/admin/stock?q&category&sort&level&productId&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null, matchesLevel}]}], next, total}` (warianty w kolejności pozycji, `perPage` liczy produkty); `level` (`out_of_stock` albo `low_stock`, opis niżej); `productId` (opis niżej); `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); 400 złe parametry (także klucz spoza listy i kursor innego sortu); 404 nieznana kategoria |
 | `POST /api/v1/admin/variants/{variantId}/stock/receipts`, nagłówek `Idempotency-Key`, body `{quantity: int, note: string \| null}` | `admin`, `warehouse` | 201 stan po przyjęciu (`{variantId, physical, reserved, available, level, version, updatedAt}`); 200 powtórzenie z tym samym kluczem i treścią (stan bieżący); 400 brak lub zły klucz; 403; 404 nieznany wariant; 409 klucz użyty z inną treścią; 422 ilość, limit 1 000 000, notatka |
 | `POST /api/v1/admin/variants/{variantId}/stock/corrections`, body `{physical: int, version: int \| null, reason: string, note: string \| null}` | `admin`, `warehouse` | 200 stan (ta sama wartość: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo poniżej zarezerwowanego (różne `detail`); 422 zakres, powód, brak notatki przy `other` |
 | `GET /api/v1/admin/variants/{variantId}/stock-history?after&perPage` | pracownik z rolą personelu | `200 {items: [{occurredAt, type, physicalDelta, reservedDelta, physicalAfter, reservedAfter, reason, note, reference, source, actorName}], next}`; 400 zły kursor lub parametr; 404 nieznany wariant |
@@ -318,13 +318,20 @@ z tokenem realmu `shop`: 401):
   istniejący port `ProductDirectory` (`describe`: `ListProductVariants` z nazwą produktu, szkice też), stany wariantów
   jedno `findMany`. Rekord bez `product_id` nie należy do filtra; produkt, którego Catalog już nie ma, jest pomijany
   na stronie (kursor prowadzi dalej, strona może być krótsza albo pusta). `total` (limit 10 000) liczy produkty poziomu na
-  pierwszej stronie, gdy jest następna. `level` wyklucza `q`, `category` i `sort` (400 z naruszeniem przy każdym z tych
-  pól, „Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.”); inna wartość `level` to 400 przy
-  `level`. Test planu: `StockLevelProductsPlanTest` (100 000 rekordów w tabeli tymczasowej, plan bez wyłączania skanów:
+  pierwszej stronie, gdy jest następna. `level` wyklucza `q`, `category` i `sort` (400 z naruszeniem przy każdym z tych pól, „Filtr
+  poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.”) i `productId` (400 przy `level` z komunikatem
+  filtra produktu); inna wartość `level` to 400 przy `level`. Test planu: `StockLevelProductsPlanTest` (100 000 rekordów w tabeli tymczasowej, plan bez wyłączania skanów:
   strona, kolejna strona i licznik czytają indeks poziomu, bez `Seq Scan`).
   Panel (`/inventory?level=`): `Select` „Poziom” (Wszystkie, Bez stanu, Niski stan) wyłącza i czyści wyszukiwanie oraz kategorię
   z opisem „Filtr poziomu nie łączy się z wyszukiwaniem ani kategorią.”, wysyła tylko `level` i `perPage`, a wiersze wariantów
   na poziomie filtra oznacza z `matchesLevel`.
+- Filtr `productId=<uuid>` (karta „Ceny i stany” w formularzu produktu, `docs/features/admin-features/spec.md`):
+  odpowiada jednym produktem (także szkicem) ze wszystkimi wariantami i ich stanami (`matchesLevel: false`), przez
+  `ProductDirectory::describe` (Catalog `ListProductVariants` z `includeDrafts`), bez stronicowania: `next: null`, a
+  `total` pierwszej strony to `{value: 1, capped: false}`. Nieznany produkt to pusta lista z `total` 0. `productId`
+  wyklucza `q`, `category`, `level`, `sort` i `after` (400 z naruszeniem przy każdym z tych pól, „Filtr produktu nie
+  łączy się z wyszukiwaniem, kategorią, poziomem, sortowaniem ani kursorem.”); `productId`, który nie jest UUID-em, to
+  400 przy `productId`.
 - Uprawnienie `MANAGE_STOCK` sprawdza `StockVoter` w `Inventory_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `support` i `marketing` dostają 403.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.

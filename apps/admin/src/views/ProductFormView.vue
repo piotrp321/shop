@@ -20,6 +20,7 @@ import { useCategoryTree } from "@/composables/useCategoryTree";
 import { useUnsavedChangesGuard } from "@/composables/useUnsavedChangesGuard";
 import { canManageProducts } from "@/products/permissions";
 import ProductImages from "@/products/ProductImages.vue";
+import ProductPriceStock from "@/products/ProductPriceStock.vue";
 import ProductVariants from "@/products/ProductVariants.vue";
 import { type ActionResult, useProductForm } from "@/products/useProductForm";
 import { useAuthStore } from "@/stores/auth";
@@ -466,6 +467,13 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
             @add-variant="addVariant"
             @remove-variant="removeVariant"
             @set-value="setValue"
+          />
+
+          <ProductPriceStock
+            v-if="view"
+            :product-id="view.id"
+            :reload-key="view.version"
+            :has-unsaved-variants="data.variants.some((variant) => variant.variantId === null)"
           />
         </div>
       </div>

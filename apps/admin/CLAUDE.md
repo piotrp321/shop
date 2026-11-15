@@ -157,7 +157,9 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wspólne z formularzem produktu; kod spoza listy albo błąd żądania daje sam kod, bez komunikatu), bez akcji), pod nim
   `price-row` z kolumnami Wariant („Wariant domyślny” dla pustej etykiety), Brutto (pogrubione), Netto i VAT (ukryte poniżej
   1024 px jako linie komórki Wariant), Stawka (z `Badge` nieaktualnej stawki) i Akcje (`RowActions` z przyciskami ikon „Zmień
-  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`:
+  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`
+  w `PriceDialogs.vue` (wspólne z kartą „Ceny i stany” formularza produktu: widok daje `rows`, `changePrice` i `fallbackFocus`, a otwiera je
+  przez `openChange` i `openHistory`; żądanie zmiany ceny to `requestPriceChange` z `priceChange.ts`, z haczykami `save` i `refresh` widoku):
   „Zmień cenę” (`change-dialog`, szerokość `min(28rem, 100vw - 2rem)`, fokus w `gross-input` także po otwarciu Enterem,
   „Zapisz cenę” w wariancie `interface`, błędy 422 i `locked` przy polu z fokusem w polu, 403, 404, sieć i `conflict` w
   `Alert` z fokusem; po zapisie okno się zamyka, toast „Cena zapisana: <produkt> / <wariant>” i fokus wraca na „Zmień
@@ -200,14 +202,16 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   (`Badge`) i Akcje (`RowActions`: przyciski ikon „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/me`;
   API sprawdza niezależnie), „Historia” dla każdego pracownika; nazwa „Przyjęcie: <produkt> / <wariant>”). Wariant bez rekordu
   (`stock: null`) pokazuje „—” w liczbach i w komórce poziomu, bez `Badge`; panel nie przypisuje mu poziomu.
-  Okna to `Dialog`: „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
+  Okna to `Dialog` w `StockDialogs.vue` (wspólne z kartą „Ceny i stany” formularza produktu: widok daje `rows`, `receiveStock`, `correctStock`
+  i `fallbackFocus`, a otwiera je przez `openReceipt`, `openCorrection` i `openHistory`; żądania to `requestReceipt` i `requestCorrection`
+  z `stockChange.ts`, z haczykami widoku): „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
   nazwa produktu z wariantem w opisie, pola `Input` z `inputmode="numeric"` („Przyjęta ilość (szt.)”, „Stan policzony
   (szt.)”), powód korekty jako `Select` „Powód” (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka (przy powodzie
   „Inne” wymagana), „Przyjmij” i „Zapisz korektę” w wariancie `interface`. Fokus trafia w pierwsze pole po otwarciu (także
   Enterem), a po zapisie na przycisk, który okno otworzył (`RowActions` podaje go w `select`; gdy zniknął, na H1);
   po błędzie fokus trafia w pole, które API wskazuje (422: `violations[].propertyPath`), a bez pola na komunikat (`Alert`).
   Po zapisie okno się zamyka i pojawia się toast „Przyjęto N szt.: <produkt> / <wariant>” albo „Stan skorygowany: <produkt> /
-  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` w `useStockList`: klucz
+  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` (`useStockList` i karta): klucz
   `Idempotency-Key` (UUID z `crypto.randomUUID()`) powstaje przy otwarciu okna przyjęcia i jest wysyłany ponownie
   przy ponowieniu zapisu; nowe okno to nowy klucz. Korekta wysyła `version` wiersza (null bez rekordu). 422 bez `violations`
   (np. ponad 1 000 000), 403, 404 i sieć pokazują komunikat w oknie. 409 przyjęcia (klucz użyty z inną treścią) pokazuje
@@ -300,6 +304,18 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   (`errorsExactly` zwraca ścieżkę bez zagnieżdżonych). Zmiana kształtu (dodanie, przestawienie, usunięcie) kasuje te
   komunikaty, bo ich ścieżki liczą pozycje. Bez roli do zmiany produktów edytor nie ma kontrolek edycji, a pola są
   wyłączone.
+  `ProductPriceStock.vue` (karta „Ceny i stany”, `FormSection` pod „Warianty” tylko dla zapisanego produktu: `/products/new` nie ma jej, pojawia
+  się po pierwszym zapisie, bo widok ma wtedy `view`): `useProductPriceStock` czyta `GET /prices?productId=` i `GET /stock?productId=` razem i
+  łączy po `variantId` (wiersz na wariant zapisany w API: etykieta, brutto, netto i VAT jak na liście cen, fizycznie, zarezerwowane, dostępne,
+  poziom; warianty niezapisane w edytorze nie mają wierszy, a `hasUnsavedVariants` pokazuje notkę „Zapisz produkt, żeby ustawić cenę i stan.”).
+  Karta czyta dane od nowa po zapisie produktu (`reloadKey` to `version` widoku), po 409 okna i przez „Spróbuj ponownie”; błąd odczytu zostawia
+  wiersze już pokazane, a 403 jest bez ponowienia. Cena i stan z odpowiedzi na zapis są nakładką nad odczytanymi wierszami (jak na listach,
+  z porównaniem wersji). Akcje (`RowActions`) według ról z `/me`: „Zmień cenę” tylko `admin`, „Przyjęcie” i „Korekta” `admin` i `warehouse`,
+  „Historia ceny” i „Historia stanu” każdy; okna to te same `PriceDialogs` i `StockDialogs` co na listach (wersje, `Idempotency-Key`,
+  409, fokus, toasty), a fokus bez przycisku wraca na nagłówek karty. Zapis w oknie nie dotyka `dirty` ani pól formularza produktu.
+  Wariant bez ceny (`price: null`) ma `Badge` „Bez ceny”, a karta `Alert` `warning` (wariant `warning` komponentu `Alert`, tokeny
+  `status-warning`) „Warianty bez ceny są w sklepie niedostępne.”. Toast po utworzeniu produktu to „Produkt zapisany. Ustaw cenę, inaczej
+  produkt będzie w sklepie niedostępny.” (`CREATED_MESSAGE` w `useProductForm`), po kolejnych zapisach „Produkt zapisany.”.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList` (standard
   listy): na `useListUrlState` (`q`, `status`, `refund` (`pending`: zwroty do wykonania, `overdue`: tylko po terminie; inna wartość jest pomijana), `placedFrom`, `placedTo` (dni `YYYY-MM-DD`), `sort`: `-placedAt` (domyślny), `placedAt`, `-total`, `total`, niewysyłany, gdy domyślny, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;

@@ -48,6 +48,7 @@ final class BackofficeStockController
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Category id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.', schema: new OA\Schema(type: 'string', enum: BackofficeStockQuery::SORTS, default: 'name')),
             new OA\Parameter(name: 'level', in: 'query', required: false, description: 'Only the products with at least one variant at the level: `out_of_stock` (nothing available) or `low_stock` (1 to 5 available), in ascending order of the product ids, each with all its variants; the variants at the level have `matchesLevel`. Not with `q`, `category` or `sort` (a 400).', schema: new OA\Schema(type: 'string', enum: BackofficeStockQuery::LEVELS)),
+            new OA\Parameter(name: 'productId', in: 'query', required: false, description: 'Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `level`, `sort` or `after` (a 400).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page of the same sort (of the same level with `level`).', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeStockQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: ListBackofficeStock::MAX_PER_PAGE, default: ListBackofficeStock::DEFAULT_PER_PAGE)),
         ],
@@ -86,7 +87,7 @@ final class BackofficeStockController
 
         try {
             /** @var StockList $list */
-            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort, $level));
+            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort, $level, $query->productId));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

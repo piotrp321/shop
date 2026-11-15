@@ -17,6 +17,11 @@ final class InvalidStockList extends \DomainException implements InvalidInput
         return new self('The level must be out_of_stock or low_stock.');
     }
 
+    public static function productWithFilters(): self
+    {
+        return new self('The product cannot be combined with a search, a category, a level, a sort or a cursor.');
+    }
+
     public static function levelWithFilters(): self
     {
         return new self('The level cannot be combined with a search, a category or a sort.');

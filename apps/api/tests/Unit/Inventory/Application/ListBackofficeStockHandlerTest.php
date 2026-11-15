@@ -311,6 +311,22 @@ final class ListBackofficeStockHandlerTest extends TestCase
         }
     }
 
+    public function testAnUnknownProductIdGivesAnEmptyListWithAZeroTotal(): void
+    {
+        $list = $this->handler(new InMemoryProductDirectory())(new ListBackofficeStock(null, null, null, 25, null, null, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60'));
+
+        self::assertSame([], $list->items);
+        self::assertNull($list->next);
+        self::assertSame(0, $list->total?->value);
+    }
+
+    public function testAProductIdWithAFilterIsRefused(): void
+    {
+        $this->expectException(InvalidStockList::class);
+
+        $this->handler(new InMemoryProductDirectory())(new ListBackofficeStock(null, null, null, 25, null, 'low_stock', '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60'));
+    }
+
     private function handler(InMemoryProductDirectory $directory, ?InMemoryStockLevelProducts $levels = null): ListBackofficeStockHandler
     {
         return new ListBackofficeStockHandler($directory, $this->stock, $levels ?? new InMemoryStockLevelProducts());
