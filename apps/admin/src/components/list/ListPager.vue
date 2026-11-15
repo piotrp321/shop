@@ -27,7 +27,8 @@ const props = withDefaults(
   { noun: "", total: null },
 );
 
-// Always grouped (the Polish rule leaves four digits together), with a no-break space so that a number never splits.
+// Every number of the footer (the range and the total) is always grouped (the Polish rule leaves four digits together),
+// with a no-break space so that a number never splits.
 const number = new Intl.NumberFormat("pl-PL", { useGrouping: "always" });
 
 const totalText = computed(() => {
@@ -38,7 +39,7 @@ const totalText = computed(() => {
 });
 
 const rangeText = computed(() =>
-  props.range === null ? "" : `Pokazano ${props.noun ? `${props.noun} ` : ""}${props.range.from}–${props.range.to}${totalText.value}`,
+  props.range === null ? "" : `Pokazano ${props.noun ? `${props.noun} ` : ""}${number.format(props.range.from)}–${number.format(props.range.to)}${totalText.value}`,
 );
 
 const emit = defineEmits<{ previous: []; next: [] }>();

@@ -477,8 +477,9 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
   `actions`, „Wyczyść filtry” przy `filtered`, rozmiar strony (Select 10, 25, 50, etykieta „Wierszy na stronie”),
   `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”; prop `total` z `useCursorPager`
-  dopisuje „z 1 234” z tysiącami oddzielonymi twardą spacją, `Intl.NumberFormat('pl-PL', { useGrouping: 'always' })`, bo
-  sama reguła polska zostawia cztery cyfry razem, albo „z ponad 10 000” przy `capped`; bez `total` jest tylko zakres; widoki
+  dopisuje „z 1 234” albo „z ponad 10 000” przy `capped`; bez `total` jest tylko zakres; wszystkie liczby stopki, także
+  zakres („Pokazano 10 001–10 025 z ponad 10 000”), mają tysiące oddzielone twardą spacją,
+  `Intl.NumberFormat('pl-PL', { useGrouping: 'always' })`, bo sama reguła polska zostawia cztery cyfry razem; widoki
   list przekazują `total` z composable listy), przyciski
   „Poprzednia strona” i „Następna strona” z numerem strony; fokus zostaje na naciśniętym przycisku, a gdy kolejna strona go
   wyłącza (ostatnia, pierwsza), przechodzi na drugi, chyba że pracownik sam przeniósł fokus poza pager. `ListEmpty`: „Brak

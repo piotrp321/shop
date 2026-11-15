@@ -310,7 +310,7 @@ do adresu trafia dopiero zastosowana fraza.
   rozmiaru i liczby elementów odpowiedzi; na Cenach i Stanach liczy produkty: „Pokazano produkty X–Y z N”) i pager
   z przyciskami „Poprzednia strona” / „Następna strona” (ikony ze strzałkami, nazwy dostępne) oraz numerem bieżącej
   strony. Pierwsza strona listy niesie `total` z API (liczony do 10 000, spec ADMIN-FEATURES: „Liczniki wyników”),
-  więc stopka mówi „Pokazano 1–25 z 1 234” (tysiące oddzielone twardą spacją) albo „z ponad 10 000”, gdy liczenie
+  więc stopka mówi „Pokazano 1–25 z 1 234” (tysiące oddzielone twardą spacją, także w zakresie: „10 001–10 025”) albo „z ponad 10 000”, gdy liczenie
   doszło do limitu; kolejne strony pokazują licznik pierwszej do zmiany zapytania, a bez licznika (brak w odpowiedzi,
   nieudane zapytanie) stopka jest bez „z N”. Nie ma numerów dalszych stron. Fokus po zmianie strony zostaje na
   naciśniętym przycisku, a gdy ten zostaje wyłączony, przechodzi na drugi przycisk pagera (standard obejmuje wszystkie

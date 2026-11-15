@@ -67,6 +67,18 @@ describe("ListPager", () => {
     expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25 z ponad 10\u00a0000");
   });
 
+  it("groups the thousands of the range like those of the total: „Pokazano 10 001–10 025 z ponad 10 000”", () => {
+    mountPager({ hasPrevious: true, pageNumber: 401, range: { from: 10_001, to: 10_025 }, total: { value: 10_000, capped: true } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 10\u00a0001–10\u00a0025 z ponad 10\u00a0000");
+  });
+
+  it("groups the thousands of the range when there is no total", () => {
+    mountPager({ hasPrevious: true, pageNumber: 41, range: { from: 1_001, to: 1_025 } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1\u00a0001–1\u00a0025");
+  });
+
   it("shows the total after the noun of the numbers", () => {
     mountPager({ noun: "produkty", total: { value: 1234, capped: false } });
 
