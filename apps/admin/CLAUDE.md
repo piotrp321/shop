@@ -32,7 +32,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/layout/` – powłoka panelu (spec „Powłoka”). `AppLayout`: link „Przejdź do treści” (pierwszy w kolejności Tab,
   przenosi fokus na `<main tabindex="-1">`), sidebar 260 px od 1024 px (`hidden lg:flex`), poniżej tej szerokości szuflada
   (`Sheet` z lewej: pułapka fokusu, `Escape` i wybór pozycji zamykają, fokus wraca na „Menu” przez `close-auto-focus`,
-  powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`), stopka
+  powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`; gdy `/me` zwróci pustą listę ról, czyli konto bez roli
+  personelu, któremu API odpowiada tylko na `/me`, `<main>` na każdej trasie zamiast widoku pokazuje H1 „Brak dostępu do
+  panelu” i `Alert` `no-staff-role` (`role="alert"`) „Twoje konto nie ma roli w panelu. Skontaktuj się z administratorem.”,
+  bez menu w sidebarze, bez szuflady i przycisku „Menu”, a topbar z „Wyloguj” i stopka zostają; wolny fokus trafia na ten
+  H1; do wczytania `/me` i przy jego błędzie panel wygląda jak dotąd), stopka
   („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"` o nazwie
   dokładnie „Powiadomienia”, bez skrótu klawiszowego vue-sonner, który doklejałby się do nazwy; 5 s; `position="top-right"` z odsunięciem
   pod topbar, `TOAST_TOP` w `AppLayout`, więc toast nie zasłania paska zapisu ani topbaru; poniżej 640 px na szerokość ekranu

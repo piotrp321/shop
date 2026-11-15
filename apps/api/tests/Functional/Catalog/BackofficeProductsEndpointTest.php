@@ -56,7 +56,6 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         yield 'marketing' => [['marketing']];
         yield 'support' => [['support']];
         yield 'warehouse' => [['warehouse']];
-        yield 'no staff role' => [[]];
     }
 
     /**
@@ -74,6 +73,19 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $this->api('GET', '/api/v1/admin/tax-classes', token: $token);
         self::assertResponseStatusCodeSame(200);
+    }
+
+    public function testAMemberWithoutAStaffRoleReadsNothing(): void
+    {
+        $view = $this->createProduct();
+        $token = TestTokenFactory::staff([]);
+
+        $this->api('GET', '/api/v1/admin/products', token: $token);
+        self::assertResponseStatusCodeSame(403);
+        $this->api('GET', '/api/v1/admin/products/'.self::string($view['id']), token: $token);
+        self::assertResponseStatusCodeSame(403);
+        $this->api('GET', '/api/v1/admin/tax-classes', token: $token);
+        self::assertResponseStatusCodeSame(403);
     }
 
     public function testTheListHoldsTheSummaryOfEachProduct(): void

@@ -45,7 +45,7 @@ Poza zakresem:
 |---|---|
 | K1 | Status produktu: `draft` (szkic) albo `published` (opublikowany). Nowy produkt z panelu jest szkicem. Publikacja i wycofanie (powrót do szkicu) to osobne akcje. Produktów się nie usuwa. Istniejące produkty i dane demo są opublikowane. |
 | K2 | Publikacja szkicu wymaga co najmniej jednego zdjęcia. Cena i stan nie są wymagane: opublikowany produkt bez ceny albo stanu jest w sklepie „Niedostępny” (E3 VARIANTS). Zapis opublikowanego produktu, który miał zdjęcia, nie może usunąć ostatniego. Opublikowany produkt bez zdjęć (dane demo `imagelessEvery: 50`, `PhotoPlaceholder` w sklepie) jest edytowalny bez dodawania zdjęcia. |
-| K3 | Uprawnienia: tworzenie, edycja, upload zdjęć, publikacja i wycofanie: role `admin` i `marketing`. Lista i podgląd produktu: każdy pracownik. |
+| K3 | Uprawnienia: tworzenie, edycja, upload zdjęć, publikacja i wycofanie: role `admin` i `marketing`. Lista i podgląd produktu: każdy pracownik z rolą personelu (`admin`, `support`, `warehouse`, `marketing`). |
 | K4 | Slug: na tworzeniu opcjonalny (pusty: API wylicza go z nazwy); zmienny, dopóki produkt nie był nigdy opublikowany; od pierwszej publikacji stały (także po wycofaniu). Bez przekierowań 301. |
 | K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany klucza porównania (`VariantValues::comparisonKey()`: wielkość liter i spacje na brzegach, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany klucza porównania); nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
 | K6 | Zmiana klasy podatkowej przelicza ceny wariantów produktu: to samo brutto, nowa stawka i netto, nowy wpis historii cen (Omnibus) ze źródłem systemowym `tax_reconciliation`, bez pracownika (pracownika zmiany klasy wskazuje `updated_by` produktu). |
@@ -196,7 +196,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 ## API panelu
 
 Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `backoffice`, voter `ProductVoter`
-(K3: `VIEW_PRODUCTS` każdy pracownik, `MANAGE_PRODUCTS` `admin` i `marketing`).
+(K3: `VIEW_PRODUCTS` każdy pracownik z rolą personelu, `MANAGE_PRODUCTS` `admin` i `marketing`). Konto `backoffice`
+bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie panelu poza `GET /api/v1/admin/me`.
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|

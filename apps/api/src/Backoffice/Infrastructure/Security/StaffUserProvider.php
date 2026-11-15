@@ -17,9 +17,6 @@ use Symfony\Component\Security\Core\User\UserInterface;
  */
 final class StaffUserProvider implements AttributesBasedUserProviderInterface
 {
-    /** Staff roles in the order they are reported. */
-    public const array STAFF_ROLES = ['admin', 'support', 'warehouse', 'marketing'];
-
     /**
      * @param array<array-key, mixed> $attributes
      */
@@ -55,6 +52,6 @@ final class StaffUserProvider implements AttributesBasedUserProviderInterface
             return [];
         }
 
-        return array_values(array_filter(self::STAFF_ROLES, static fn (string $role): bool => \in_array($role, $roles, true)));
+        return array_values(array_filter(StaffUser::STAFF_ROLES, static fn (string $role): bool => \in_array($role, $roles, true)));
     }
 }
