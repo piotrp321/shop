@@ -52,9 +52,20 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   więc po seedzie nie ma zamówień ani ich rezerwacji, a każdy wariant demo ma rekord stanu z `product_id`. Wszystkie komendy `*:seed-demo`
   (jest ich sześć) w `prod` wymagają `--force-reset`, więc `bin/seed-demo` dodaje go do nich tylko przy `APP_ENV=prod`.
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
-  przebudowuje indeks wyszukiwania z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen
-  i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają). Błąd dowolnego kroku przerywa skrypt
+  przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
+  i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
+  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
+- `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
+  `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
+  (`Shared\Infrastructure\Backfill\BackfillStep`: `name()`, `run(report)`; implementacja w warstwie Infrastructure
+  modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
+  zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
+  `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300). Krok, który się nie powiedzie, nie jest
+  zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
+  ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
+  uruchomione). Test: `BackfillCommandTest`
 - `inventory:stock-records:sync` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; krok
   `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
   partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
@@ -873,7 +884,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   nie czyta Catalog w tym celu ani nie publikuje zdarzeń. Przestój workera opóźnia tylko indeks i cache sklepu.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
 - Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
-  danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (niżej). Indeks na
+  danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (sekcja „Komendy”). Indeks na
   dużej tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) powstaje w osobnej migracji
   nietransakcyjnej (`isTransactional(): false`, bo `CONCURRENTLY` nie działa w transakcji; `all_or_nothing` jest
   wyłączone): `up()` sprawdza w `pg_index.indisvalid`, czy indeks o tej nazwie jest `INVALID` (zostawia go nieudane albo

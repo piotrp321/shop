@@ -31,13 +31,8 @@ final readonly class SyncStockRecordsCommand
             }
         });
 
-        $io->success(self::summary($synced));
+        $io->success($synced->summary());
 
         return Command::SUCCESS;
-    }
-
-    public static function summary(StockRecordsSynced $synced): string
-    {
-        return \sprintf('products: %d, records written: %d, empty records removed: %d', $synced->products, $synced->written, $synced->removed);
     }
 }

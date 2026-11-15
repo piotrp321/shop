@@ -21,6 +21,14 @@ final readonly class StockRecordsSynced
     ) {
     }
 
+    /**
+     * One line for the output of the commands.
+     */
+    public function summary(): string
+    {
+        return \sprintf('products: %d, records written: %d, empty records removed: %d', $this->products, $this->written, $this->removed);
+    }
+
     public function plus(self $other): self
     {
         return new self($this->products + $other->products, $this->written + $other->written, $this->removed + $other->removed);
