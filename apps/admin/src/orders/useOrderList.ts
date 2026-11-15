@@ -64,6 +64,10 @@ function validTerm(text: string): string | null {
   return length >= MIN_SEARCH_LENGTH && length <= MAX_SEARCH_LENGTH ? term : null;
 }
 
+/** The first and the last day the API takes. */
+const FIRST_DAY = "2000-01-01";
+const LAST_DAY = "2999-12-31";
+
 /** The day as `YYYY-MM-DD` when it is a date of 2000 to 2999 (the API takes no other), otherwise null. */
 function validDay(text: string): string | null {
   const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(text);
@@ -211,10 +215,26 @@ export function useOrderList() {
     return length > 0 && length < MIN_SEARCH_LENGTH ? SEARCH_TOO_SHORT_HINT : SEARCH_HINT;
   });
 
-  const rangeError = computed(() => {
-    const [from, to] = [validDay(placedFromField.value), validDay(placedToField.value)];
-    return from !== null && to !== null && from > to ? RANGE_ERROR : null;
-  });
+  /**
+   * The day a field stands for: none when it is empty, the day when it is one, and what is applied now while it holds
+   * something that is no day the API takes. Chrome passes through such values while a year is typed (0002, 0020, 0202,
+   * then 2026), and each of them must neither clear the day nor ask for a list.
+   */
+  const dayOf = (field: string, applied: string | null) => (field === "" ? null : (validDay(field) ?? applied));
+
+  /** The days the fields stand for: what would be applied, and what the range is checked and the fields are bounded by. */
+  const fromDay = computed(() => dayOf(placedFromField.value, url.query.value.placedFrom));
+  const toDay = computed(() => dayOf(placedToField.value, url.query.value.placedTo));
+
+  const rangeError = computed(() => (fromDay.value !== null && toDay.value !== null && fromDay.value > toDay.value ? RANGE_ERROR : null));
+
+  /** `min` and `max` of the fields: the years the API takes, and the other end of the range. */
+  const dayBounds = computed(() => ({
+    fromMin: FIRST_DAY,
+    fromMax: toDay.value ?? LAST_DAY,
+    toMin: fromDay.value ?? FIRST_DAY,
+    toMax: LAST_DAY,
+  }));
   const rangeDisabled = computed(() => url.query.value.refund);
   const rangeDisabledReason = computed(() => (url.query.value.refund ? RANGE_REFUND_MESSAGE : null));
 
@@ -230,17 +250,9 @@ export function useOrderList() {
     url.set({ refund: enabled });
   }
 
-  /**
-   * The day a field stands for: none when it is empty, the day when it is one, and what is applied now while it holds
-   * something that is no day the API takes. Chrome passes through such values while a year is typed (0002, 0020, 0202,
-   * then 2026), and each of them must neither clear the day nor ask for a list.
-   */
-  const dayOf = (field: string, applied: string | null) => (field === "" ? null : (validDay(field) ?? applied));
-
   /** Applies the days in the fields, unless the end is before the start; the amount cannot be sorted with days, so it returns to the newest first. */
   function applyRange(): void {
-    const from = dayOf(placedFromField.value, url.query.value.placedFrom);
-    const to = dayOf(placedToField.value, url.query.value.placedTo);
+    const [from, to] = [fromDay.value, toDay.value];
     if (rangeError.value !== null) {
       return;
     }
@@ -300,6 +312,7 @@ export function useOrderList() {
     placedFrom: computed(() => url.query.value.placedFrom),
     placedTo: computed(() => url.query.value.placedTo),
     rangeError,
+    dayBounds,
     rangeDisabled,
     rangeDisabledReason,
     query: url.query,

@@ -290,7 +290,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   a `searchHint` mówi, że trzeba 3), ten sam tekst ładuje listę ponownie. Zakres dni: `placedFromField` i `placedToField`
   to to, co wybrano, `setPlacedFrom` i `setPlacedTo` stosują zakres od razu przez `url.set`; pusty dzień go czyści, a wartość,
   która nie jest dniem 2000–2999 (Chrome przepuszcza `0002`, `0020`, `0202` przy wpisywaniu roku), nie zmienia zastosowanego
-  dnia ani nie wywołuje żądania; koniec przed początkiem nie jest stosowany (`rangeError`); przy zwrotach do wykonania
+  dnia ani nie wywołuje żądania; koniec przed początkiem nie jest stosowany (`rangeError`, liczony z dni, które zostałyby wysłane, także gdy jedno pole ma niepełny rok); `dayBounds` daje `min` i `max` pól: lata 2000–2999 i drugi koniec zakresu; przy zwrotach do wykonania
   dni nie są wysyłane (`rangeDisabled`, `rangeDisabledReason`).
   `status`, `refundPending` i `filtered` wynikają z zapytania (kolejność nie jest filtrem), „Wyczyść filtry” (`clearFilters`)
   wraca na `/orders`. Kolejność (`sort`, `sortOptions`, `setSort`): `sort` to kolejność w użyciu, `null` przy zwrotach do

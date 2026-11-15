@@ -159,7 +159,7 @@ Decyzje użytkownika:
 - `CompleteRefund(orderId, expectedVersion, note, staffId, staffUsername)` (`command.bus`): blokada, wersja,
   `completeRefund`, zapis → `BackofficeOrderView`.
 - `ListBackofficeOrders(status?, refund?, q?, after?, perPage, sort?, placedFrom?, placedTo?)` (`query.bus`, DBAL, bez blokad):
-  - `q` (przycięte, także o spacje Unicode): numer, gdy pasuje do `^[Rr]-[0-9]+$`; pełny adres e-mail (lokalna część, `@`,
+  - `q` (przycięte, także o spacje Unicode, najwyżej 254 znaki, dłuższe to 400): numer, gdy pasuje do `^[Rr]-[0-9]+$`; pełny adres e-mail (lokalna część, `@`,
     domena z kropką i ostatnim członem co najmniej 2 znaki, do 254 znaków); porównanie obu dokładne bez względu na
     wielkość liter (P9); inny tekst 3–100 znaków (także „jan@gm”) to fragment numeru, e-maila albo imienia i nazwiska
     bez względu na wielkość liter, `%` i `_` znaczą siebie (jeden indeks GIN trigram na `lower(number || U+001F || email ||

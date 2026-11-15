@@ -198,6 +198,39 @@ describe("useOrderList: the search by fragment and the range of days", () => {
       expect(queries().at(-1)).toEqual({ placedFrom: "2026-11-01", placedTo: "2026-11-30" });
     });
 
+    it("does not apply an end before the applied start while a year is being typed in the start", async () => {
+      const { list } = await startAt("/orders?placedFrom=2026-11-01");
+
+      list.setPlacedFrom("0202-11-05");
+      list.setPlacedTo("2026-10-15");
+      await flushPromises();
+
+      expect(queries()).toEqual([{ placedFrom: "2026-11-01" }]);
+      expect(list.rangeError.value).toBe("Data „Do” nie może być wcześniejsza niż data „Od”.");
+    });
+
+    it("does not apply a start after the applied end while a year is being typed in the end", async () => {
+      const { list } = await startAt("/orders?placedTo=2026-10-15");
+
+      list.setPlacedTo("0202-10-15");
+      list.setPlacedFrom("2026-11-01");
+      await flushPromises();
+
+      expect(queries()).toEqual([{ placedTo: "2026-10-15" }]);
+      expect(list.rangeError.value).toBe("Data „Do” nie może być wcześniejsza niż data „Od”.");
+    });
+
+    it("takes the bounds of the fields from the days they stand for, within the years the API takes", async () => {
+      const { list } = await startAt("/orders?placedFrom=2026-11-01");
+      expect(list.dayBounds.value).toEqual({ fromMin: "2000-01-01", fromMax: "2999-12-31", toMin: "2026-11-01", toMax: "2999-12-31" });
+
+      list.setPlacedTo("0202-10-15");
+      expect(list.dayBounds.value.fromMax).toBe("2999-12-31");
+      list.setPlacedTo("2026-12-24");
+      await flushPromises();
+      expect(list.dayBounds.value.fromMax).toBe("2026-12-24");
+    });
+
     it("still clears a day when its field is emptied", async () => {
       const { list } = await startAt("/orders?placedFrom=2026-11-01");
 

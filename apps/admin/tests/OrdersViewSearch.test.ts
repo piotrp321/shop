@@ -166,6 +166,21 @@ describe("OrdersView: the search by fragment and the range of days", () => {
       expect(from().attributes("max")).toBe("2026-11-12");
     });
 
+    it("tells an end before the applied start also while a year is being typed in the start, and bounds the fields to the years the API takes", async () => {
+      wrapper = await mountView("/orders?placedFrom=2026-11-01");
+      expect(from().attributes("min")).toBe("2000-01-01");
+      expect(to().attributes("max")).toBe("2999-12-31");
+
+      await from().setValue("0202-11-05");
+      await to().setValue("2026-10-15");
+      await flushPromises();
+
+      expect(queries()).toEqual([{ placedFrom: "2026-11-01" }]);
+      expect(wrapper.get("[data-testid=range-error]").text()).toBe("Data „Do” nie może być wcześniejsza niż data „Od”.");
+      expect(to().attributes("aria-invalid")).toBe("true");
+      expect(to().attributes("min")).toBe("2026-11-01");
+    });
+
     it("disables the fields for the refunds to do and says why, and enables them again", async () => {
       wrapper = await mountView("/orders?refund=pending&placedFrom=2026-11-01");
 
