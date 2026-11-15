@@ -8,9 +8,12 @@ zegarowy epiku przy tej samej jakości. Plan usuwamy po pomiarze na dwóch epika
 
 1. **`/integration`: testy z CI pusha i fallback e2e w częściach** (PR w `shop`).
    - `delta.py ci` czeka na run pusha dla dokładnie HEAD: budżet 10 min w `DELTA`, 20 min w `FULL`, liczony od
-     pierwszego wywołania w kroku bramek; jedno wywołanie najwyżej 540 s. Zielone joby `checks` i `e2e` zastępują
-     lokalne `make test` i `make e2e` w obu trybach. Czerwony wymagany job to czerwona bramka bez lokalnego obejścia
-     i bez reruna. Brak runu, run w toku po budżecie, anulowanie albo błąd `gh`: lokalny fallback.
+     pierwszego wywołania w kroku bramek; jedno wywołanie najwyżej 500 s. Zielone joby `checks` i `e2e` zastępują
+     lokalne `make test` i `make e2e` w obu trybach. Czerwony wymagany job (agregat dodatkowych kontroli, nie sama
+     bramka) daje bramce `skipped` i wynik inny niż `PASSED`, bez lokalnego obejścia i bez reruna: porażka kroku
+     części to znalezisko, a sam `timed_out`, `startup_failure` albo `cancelled` to bloker awarii CI. Job
+     niezakończony ma wynik nieznany (`skipped`), nie porażkę. Brak runu, run w toku po budżecie, anulowanie albo
+     błąd `gh`: lokalny fallback.
    - Fallback e2e w częściach jak w CI (liczba części i wagi z `ci.yml`), `make seed` przed każdą, każda poniżej
      `timeout 570`; ponawiana raz tylko część, która padła.
    - `make check` zostaje lokalnie. Walidator `integration_result.py` przyjmuje wpisy `ci:` w obu trybach i czerwone CI.
