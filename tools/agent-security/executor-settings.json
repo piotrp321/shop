@@ -1,0 +1,50 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "enableWeakerNetworkIsolation": true,
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "api.github.com",
+        "*.actions.githubusercontent.com"
+      ],
+      "strictAllowlist": true,
+      "allowUnixSockets": [
+        "~/.docker/run/docker.sock",
+        "/var/run/docker.sock"
+      ],
+      "allowLocalBinding": true
+    },
+    "filesystem": {
+      "denyRead": [
+        "~",
+        "/Volumes",
+        "/private/tmp",
+        "/tmp"
+      ],
+      "allowRead": [
+        "~/.docker",
+        "~/.gitconfig",
+        "~/.config/git"
+      ],
+      "allowWrite": [],
+      "denyWrite": []
+    }
+  },
+  "permissions": {
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Edit(.ao/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.kube/**)",
+      "Read(~/.config/**)"
+    ],
+    "blockReadsOutsideWorkingDirectories": true,
+    "disableBypassPermissionsMode": "disable",
+    "additionalDirectories": []
+  },
+  "disableAllHooks": true
+}

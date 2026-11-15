@@ -35,7 +35,7 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
   przeglądarki ładuje się dopiero po odczycie DSN z `/api/site` (osobny chunk), więc bez DSN strona nie pobiera kodu
   Sentry, a budżety Lighthouse się nie zmieniają. Błędy przeglądarki sprzed inicjalizacji SDK są pomijane (przyjęte).
 - **P3. Mapy źródeł.** Wysyłane z budowania obrazów `prod` w jobie `images` workflowu `deploy.yml` (tylko
-  `workflow_dispatch` na `main`) tokenem `SENTRY_AUTH_TOKEN` (sekret GitHub Actions, montowany jako sekret budowania), dopasowane przez debug
+  `workflow_dispatch` na `main`) tokenem `SENTRY_AUTH_TOKEN` (sekret środowiska GitHub `sentry` bez zatwierdzenia i tylko dla `main`, w którym działa job `images`; montowany jako sekret budowania), dopasowane przez debug
   ID; po wysłaniu usuwane z obrazu. Bez sekretu krok wysyłki się pomija i obraz powstaje bez map. Panel używa zależności
   deweloperskiej `@sentry/vite-plugin`, sklep wtyczki z `@sentry/nextjs`.
 - **P4. Próbkowanie trace'ów.** `tracesSampleRate` z wartości chartu, w `prod` 0,1 dla api, sklepu i panelu; żądania
@@ -216,7 +216,7 @@ Zmienne inne niż DSN chart emituje tylko dla aplikacji z niepustym DSN, a `SENT
 kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach podanych w teście (`infra/k8s/tests/test_sentry.py`).
 
 Testy aplikacji nie potrzebują konta Sentry: używają transportu testowego i fałszywego DSN. Konto Sentry (P1), DSN-y w `prod`
-(P7), sekret `SENTRY_AUTH_TOKEN` i zmienne `SENTRY_ORG`, `SENTRY_PROJECT_STORE`, `SENTRY_PROJECT_ADMIN` w GitHub to kroki
+(P7), sekret środowiska `sentry` `SENTRY_AUTH_TOKEN` i zmienne `SENTRY_ORG`, `SENTRY_PROJECT_STORE`, `SENTRY_PROJECT_ADMIN` w GitHub to kroki
 użytkownika z runbooka (`infra/k8s/README.md`, sekcja 10).
 
 ## Scenariusze błędów

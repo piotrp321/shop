@@ -126,7 +126,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   to `sentry.environment` (`demo`), próbkowanie trace'ów `sentry.tracesSampleRate` (0,1 w `prod`).
 - **DSN jest wartością jawną** (trafia do przeglądarki), więc leży w `environments/prod/values.yaml` jako zwykła wartość, nie
   w Sealed Secrets, a schemat chartu sprawdza jego format. Sekretem jest tylko token wysyłki map źródeł (`SENTRY_AUTH_TOKEN`,
-  sekret GitHub Actions, budowanie obrazów).
+  sekret środowiska GitHub `sentry`: tylko `main`, bez zatwierdzenia; budowanie obrazów).
 - **Filtrowanie po stronie SDK, zanim zdarzenie wyjdzie z procesu.** Sentry jest zewnętrznym procesorem danych, więc
   nagłówki poza krótką listą, ciasteczka, treść żądań, adres IP, query stringi (w adresach, nazwach transakcji, spanach i
   breadcrumbs), wartości parametrów SQL, argumenty ramek stosu i konsola nie opuszczają aplikacji, a komunikaty maskują te

@@ -70,7 +70,7 @@ class ServerScripts(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_script(self, name, *args, stdin="", **env):
+    def run_script(self, name, *args, stdin="", cwd=None, **env):
         variables = {
             "PATH": f"{self.bin}:{os.environ['PATH']}",
             "HOME": self.tmp.name,
@@ -80,7 +80,7 @@ class ServerScripts(unittest.TestCase):
             "STUB_DIR": str(self.stub),
             **env,
         }
-        return subprocess.run(["sh", str(SCRIPTS / name), *args], env=variables, input=stdin, capture_output=True, text=True)
+        return subprocess.run(["sh", str(SCRIPTS / name), *args], env=variables, input=stdin, capture_output=True, text=True, cwd=cwd)
 
     def calls(self):
         return self.log.read_text().splitlines()
@@ -223,6 +223,75 @@ class Kubeconfig(ServerScripts):
         (self.stub / "kubeconfig").write_text("<html>\n")
         self.assertEqual(1, self.run_script("kubeconfig.sh", "deploy@203.0.113.7", KUBE_DIR=str(self.kube)).returncode)
         self.assertFalse((self.kube / "config").exists())
+
+
+class KubeDirRegistry(ServerScripts):
+    """kubeconfig.sh writes the absolute KUBE_DIR to ~/.local/state/shop-ops/kube-dirs, one path per line: the registry that
+    ao-prepare reads before it starts AO and that refuses while a registered directory still exists (the kubeconfig of
+    production must be gone, runbook). It is outside the reach of the executors."""
+
+    HOST = "deploy@203.0.113.7"
+
+    def registry(self):
+        return pathlib.Path(self.tmp.name) / ".local/state/shop-ops/kube-dirs"
+
+    def test_the_absolute_directory_is_recorded_in_a_private_file(self):
+        result = self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.kube))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(f"{self.kube}\n", self.registry().read_text())
+        self.assertEqual(0o600, stat.S_IMODE(self.registry().stat().st_mode))
+        self.assertEqual(0o700, stat.S_IMODE(self.registry().parent.stat().st_mode))
+
+    def test_a_relative_directory_is_recorded_as_an_absolute_path_without_a_trailing_slash(self):
+        base = pathlib.Path(self.tmp.name) / "work"
+        base.mkdir()
+        result = self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR="kube-rel/", cwd=base)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(f"{base}/kube-rel\n", self.registry().read_text())
+        self.assertTrue((base / "kube-rel/config").exists())
+
+    def test_a_directory_is_recorded_once_and_the_other_lines_stay(self):
+        self.registry().parent.mkdir(parents=True)
+        self.registry().write_text("/tmp/older-kube\n")
+        for _ in range(2):
+            self.assertEqual(0, self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.kube)).returncode)
+        self.assertEqual(0, self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=f"{self.kube}/").returncode)
+        other = pathlib.Path(self.tmp.name) / "kube2"
+        self.assertEqual(0, self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(other)).returncode)
+        self.assertEqual(["/tmp/older-kube", str(self.kube), str(other)], self.registry().read_text().splitlines())
+
+    def test_nothing_is_recorded_when_the_script_refuses_or_the_server_gives_no_kubeconfig(self):
+        self.assertEqual(2, self.run_script("kubeconfig.sh", "myhost", KUBE_DIR=str(self.kube)).returncode)
+        self.assertEqual(2, self.run_script("kubeconfig.sh", self.HOST).returncode)
+        self.assertEqual(2, self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.root / "kube")).returncode)
+        self.assertEqual(1, self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.kube), STUB_KUBECONFIG_FAIL="1").returncode)
+        (self.stub / "kubeconfig").write_text("<html>\n")
+        self.assertEqual(1, self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.kube)).returncode)
+        self.assertFalse(self.registry().exists())
+        self.assertFalse(self.kube.exists())
+
+    def test_a_directory_with_a_line_break_is_refused_because_the_file_has_one_path_per_line(self):
+        result = self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=f"{self.kube}\n/etc")
+        self.assertEqual(2, result.returncode)
+        self.assertIn("line break", result.stderr)
+        self.assertEqual([], self.calls())
+        self.assertFalse(self.registry().exists())
+
+    def test_a_registry_that_cannot_be_written_stops_before_the_credentials_are_written(self):
+        # fail closed: a kubeconfig that ao-prepare would not know about is never created
+        (self.registry().parent.parent).mkdir(parents=True)
+        self.registry().parent.write_text("a file where the directory should be")
+        result = self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.kube))
+        self.assertEqual(1, result.returncode)
+        self.assertIn("kubeconfig: could not record", result.stderr)
+        self.assertFalse(self.kube.exists())
+        self.assertNotIn("ADMINCREDENTIAL", result.stdout + result.stderr)
+
+    def test_without_a_home_directory_nothing_is_written(self):
+        result = self.run_script("kubeconfig.sh", self.HOST, KUBE_DIR=str(self.kube), HOME="")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("HOME", result.stderr)
+        self.assertFalse(self.kube.exists())
 
 
 class Status(ServerScripts):

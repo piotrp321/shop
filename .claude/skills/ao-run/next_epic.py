@@ -12,10 +12,14 @@ Prints one JSON line and exits 0:
    "in_progress": [{"dir", "id", "issue"}], "skipped": [{"issue", "id", "reason"}]}
 
 When a `git` or `gh` command fails, or its output is not the JSON expected, the message goes to stderr, nothing to
-stdout, and the exit code is 1.
+stdout, and the exit code is 1. The same holds for the origin gate: the open epic issues are read through
+tools/agent-security/github_trust.py, and a permission lookup it cannot judge fails closed (exit 1).
 
 Rules, over the board items from the top:
   - only open issues of piotrp321/shop labelled `epic` and not `needs-info` count (others are dropped silently);
+  - an issue whose author has no write access (github_trust: read, triage, 404, bot, ghost) is never an epic of the
+    queue: wherever it is on the board it is `skipped` as {issue, id: null, reason, author, url}, without its title
+    or body (nor the title the board shows) and without an ID derived from them;
   - ID = title prefix before the first ":", directory = ID in lower case; a title without a valid prefix is skipped;
   - `origin/epic/<dir>` exists: the epic is in progress;
   - otherwise it is prepared when origin/main has docs/features/<dir>/spec.md and plan.md with a manifest
@@ -25,22 +29,33 @@ Rules, over the board items from the top:
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'tools', 'agent-security'))
+import github_trust  # noqa: E402  (the origin gate: issues of authors without write access come without content)
+
 OWNER = 'piotrp321'
 REPOSITORY = 'piotrp321/shop'
 ID_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
+ISSUE_LIMIT = 200
+UNTRUSTED_REASON = ('autor bez prawa zapisu do repozytorium: issue pominięte bez czytania tytułu i treści, '
+                    'przepisz je we własne issue')
 
 
 class CommandError(Exception):
-    def __init__(self, args, detail):
+    """A failed command; `stdout` keeps its output, so the gate reads the HTTP status of `gh api --include`."""
+
+    def __init__(self, args, detail, stdout=''):
         super().__init__('%s: %s' % (' '.join(args), detail))
+        self.stdout = stdout
 
 
 def make_runner(cwd, timeout=None):
-    """A command runner with cwd; `timeout` (seconds, None: none) kills a command that runs longer (CommandError)."""
+    """A command runner with cwd; `timeout` (seconds, None: none) kills a command that runs longer (CommandError).
+    A failure keeps the command's stdout in CommandError.stdout (github_trust tells a 404 apart by it)."""
     def run(args):
         try:
             result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
@@ -49,7 +64,7 @@ def make_runner(cwd, timeout=None):
         except OSError as e:
             raise CommandError(args, e.strerror or str(e))
         if result.returncode != 0:
-            raise CommandError(args, result.stderr.strip() or 'exit code %d' % result.returncode)
+            raise CommandError(args, result.stderr.strip() or 'exit code %d' % result.returncode, result.stdout)
         return result.stdout
     return run
 
@@ -68,22 +83,36 @@ def _epic_id(title):
     return prefix if colon and ID_PATTERN.match(prefix) else None
 
 
-def board_epics(run, check_all=True):
+def skipped_entry(entry):
+    """The `skipped` record of a board entry: {issue, id, reason}, plus author and url for an untrusted issue."""
+    record = {'issue': entry['number'], 'id': entry['id'], 'reason': entry['reason']}
+    if entry['state'] == 'untrusted':
+        record.update(author=entry['author'], url=entry['url'])
+    return record
+
+
+def board_epics(run, check_all=True, gate=None):
     """Fetches origin/main and returns the open epic issues of the board in board order with their state.
 
-    Each entry: {number, title, body, id, dir, state, reason}; state is `invalid` (title without ID prefix),
-    `in_progress` (origin/epic/<dir> exists), `prepared`, `unprepared` (reason set) or `unchecked` (only when
-    check_all is false: after the first prepared epic the plan files are not read).
+    Each entry: {number, title, body, id, dir, state, reason, author, url}; state is `untrusted` (the author has no
+    write access: title, body, id and dir are None, so nothing of its text is ever used), `invalid` (title without ID
+    prefix), `in_progress` (origin/epic/<dir> exists), `prepared`, `unprepared` (reason set) or `unchecked` (only
+    when check_all is false: after the first prepared epic the plan files are not read).
+
+    gate: the github_trust.Gate that reads the open epic issues (default: one on `run`, whose failures must keep the
+    command's stdout, as make_runner does). A failure of the gate is a CommandError: fail closed, as for gh.
     """
+    gate = gate or github_trust.Gate(run, repo=REPOSITORY)
     run(['git', 'fetch', 'origin', 'main'])
     board_args = ['gh', 'project', 'item-list', '1', '--owner', OWNER, '--format', 'json', '--limit', '200']
     items = _json(run, board_args)
-    open_args = ['gh', 'issue', 'list', '--repo', REPOSITORY, '--label', 'epic', '--state', 'open',
-                 '--json', 'number,title,body', '--limit', '200']
-    open_issues = _json(run, open_args)
+    try:
+        open_issues = gate.issues(state='open', labels=('epic',), limit=ISSUE_LIMIT, fields=('title', 'body'))
+    except github_trust.GateError as e:
+        raise CommandError(['github_trust', 'issues', '--label', 'epic'], str(e))
     try:
         board = items['items']
-        bodies = {int(i['number']): i.get('body') or '' for i in open_issues}
+        issues = {i['number']: i for i in open_issues}
     except (KeyError, TypeError, ValueError, AttributeError):
         raise CommandError(board_args, 'unexpected JSON shape')
 
@@ -102,12 +131,20 @@ def board_epics(run, check_all=True):
         number = content.get('number')
         if (content.get('type') != 'Issue' or content.get('repository') != REPOSITORY
                 or 'epic' not in (entry.get('labels') or []) or 'needs-info' in entry['labels']
-                or number not in bodies):
+                or number not in issues):
+            continue
+        issue = issues[number]
+        if not issue['trusted']:
+            # Neither the issue's text nor the title the board shows for it: only number, author and link.
+            entries.append({'number': number, 'title': None, 'body': None, 'id': None, 'dir': None,
+                            'state': 'untrusted', 'reason': UNTRUSTED_REASON, 'author': issue['author'],
+                            'url': issue['url']})
             continue
         title = content.get('title') or ''
         epic_id = _epic_id(title)
-        result = {'number': number, 'title': title, 'body': bodies[number], 'id': epic_id,
-                  'dir': epic_id.lower() if epic_id else None, 'state': None, 'reason': None}
+        result = {'number': number, 'title': title, 'body': issue.get('body') or '', 'id': epic_id,
+                  'dir': epic_id.lower() if epic_id else None, 'state': None, 'reason': None,
+                  'author': issue['author'], 'url': issue['url']}
         entries.append(result)
         if epic_id is None:
             result.update(state='invalid', reason='tytuł bez prefiksu ID')
@@ -141,8 +178,8 @@ def board_epics(run, check_all=True):
 def select(run):
     epic, in_progress, skipped = None, [], []
     for e in board_epics(run, check_all=False):
-        if e['state'] == 'invalid':
-            skipped.append({'issue': e['number'], 'id': None, 'reason': e['reason']})
+        if e['state'] in ('invalid', 'untrusted'):
+            skipped.append(skipped_entry(e))
         elif e['state'] == 'in_progress':
             in_progress.append({'dir': e['dir'], 'id': e['id'], 'issue': e['number']})
         elif e['state'] == 'unprepared' and epic is None:
