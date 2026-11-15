@@ -74,7 +74,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Evale agentów i workflowów, benchmark i kryteria regresji | `make evals` | krok 17 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
-| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w Grafana Cloud | krok 18 |
+| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w lokalnym stosie na Macu | krok 18 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues, dyżur i hypercare | agent dyżurny: Sentry i Grafana Cloud przez MCP, tylko odczyt | krok 11 |
 
@@ -349,7 +349,8 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
      bez uruchamiania modelu;
    - każde uruchomienie ma limit kosztu i zużycia limitu subskrypcji ustalony w specyfikacji.
 18. **Pomiar, koszty i optymalizacja.**
-   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w Grafana Cloud.
+   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
+     z retencją ustawianą lokalnie, dłuższą niż 14 dni darmowego planu Grafana Cloud.
    - Pomiar każdego epiku: czas zegarowy (miara główna), czas rzeczywistej pracy, oczekiwania i blokad; koszt
      i tokeny na agenta, model i zadanie; ponowienia, naprawy i konflikty; czas testów, selftestów i integracji;
      interwencje człowieka; regresje i błędy po merge'u.
