@@ -97,4 +97,21 @@ describe("KpiTile", () => {
     expect(tile.find("[data-testid=kpi-description]").exists()).toBe(false);
     expect(tile.get("[data-testid=kpi-value]").attributes("aria-describedby")).toBeUndefined();
   });
+
+  it("shows a trend under the value in the colour of its tone, and none without one", async () => {
+    const tile = await mountTile({ trend: { label: "+12,5% vs wczoraj", tone: "success" } });
+
+    const trend = tile.get("[data-testid=kpi-trend]");
+    expect(trend.text()).toBe("+12,5% vs wczoraj");
+    expect(trend.classes()).toContain("text-status-success");
+
+    await tile.setProps({ trend: { label: "-3% vs wczoraj", tone: "danger" } });
+    expect(tile.get("[data-testid=kpi-trend]").classes()).toContain("text-status-danger");
+
+    await tile.setProps({ trend: { label: "brak danych do porównania", tone: "neutral" } });
+    expect(tile.get("[data-testid=kpi-trend]").classes()).toContain("text-muted-foreground");
+
+    await tile.setProps({ trend: undefined });
+    expect(tile.find("[data-testid=kpi-trend]").exists()).toBe(false);
+  });
 });

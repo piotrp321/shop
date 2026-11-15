@@ -191,6 +191,32 @@ describe("DashboardView", () => {
     });
   });
 
+  describe("sales", () => {
+    const SALES = {
+      dataUntil: "2026-11-15T13:00:00+00:00",
+      currency: "PLN",
+      today: { revenue: 10_000, orderCount: 1, averageOrderValue: 10_000, changeBasisPoints: null },
+      last7Days: { revenue: 10_000, orderCount: 1, averageOrderValue: 10_000, changeBasisPoints: null },
+      last30Days: { revenue: 10_000, orderCount: 1, averageOrderValue: 10_000, changeBasisPoints: null },
+    };
+
+    it("shows the three sales tiles when the API gives the sales", async () => {
+      serve(dashboard({ sales: SALES }));
+      wrapper = await mountDashboard(["admin"]);
+
+      expect(wrapper.find("section[aria-label=Sprzedaż]").exists()).toBe(true);
+      expect(wrapper.findAll("[data-testid=kpi-title]").map((title) => title.text())).toEqual(["Produkty", "Kategorie", "Sprzedaż dziś", "Sprzedaż 7 dni", "Sprzedaż 30 dni"]);
+    });
+
+    it("shows no sales tile when the API gives none, whatever the role says", async () => {
+      serve(dashboard({ sales: null }));
+      wrapper = await mountDashboard(["admin"]);
+
+      expect(wrapper.find("section[aria-label=Sprzedaż]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=sales-until]").exists()).toBe(false);
+    });
+  });
+
   describe("„Do obsługi” by role", () => {
     it.each([
       ["admin", [PAID, NEW, REFUNDS, OVERDUE, INVENTORY, LOW, IMAGES, PROMOTIONS, CODES]],

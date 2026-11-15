@@ -75,11 +75,18 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   „Dane z <czas polski przez `formatDateTime`>” (`muted-foreground`, `aria-live="polite"`), „Odśwież” i komunikat błędu
   (`role="alert"`); używają go oba ekrany. Pulpit: `KpiTile` (`title`, `icon`, `tone` z par `kpi-*`, `value`, opcjonalnie
   `footer`, `to`: z `to` tytuł jest linkiem rozciągniętym na kafel, `estimated`: „ok.” (`abbr` z `title="około"`) przed wartością
-  szacunkową, `description`: wyjaśnienie wartości, której nie ma, połączone z wartością przez `aria-describedby`),
+  szacunkową, `description`: wyjaśnienie wartości, której nie ma, połączone z wartością przez `aria-describedby`, `trend`: linia pod
+  wartością z tonem `success` / `danger` / `neutral` w kolorach `status-*` i `muted-foreground`),
   `CatalogTiles` („Produkty”: `catalog.productCount` to szacunek bazy z „ok.” (od miliona „ok. 10 mln”), a `null` to „—”
   z opisem „Liczba produktów będzie dostępna po aktualizacji statystyk bazy.”, link do `/products` i stopka „Bez zdjęć”
   tylko przy kolejce `queues.productsWithoutImages`; „Kategorie” z linkiem do `/categories`; „Bez zdjęć” z linkiem do
-  `/products?images=none`, tylko gdy rola ma tę kolejkę, a jej brak zmienia siatkę na dwie kolumny), `TodoCard` („Do obsługi”:
+  `/products?images=none`, tylko gdy rola ma tę kolejkę, a jej brak zmienia siatkę na dwie kolumny), `SalesTiles`
+  (sekcja „Sprzedaż”, tylko przy `sales` różnym od `null`, czyli dla `admin`: kafle „Sprzedaż dziś”, „Sprzedaż 7 dni”,
+  „Sprzedaż 30 dni” z przychodem `formatMoney`, stopką „Zamówienia: N” i „śr. <kwota>” (bez średniej „śr. —”) i trendem
+  ze zmiany z API w punktach bazowych: „+12,5% vs wczoraj”, „vs poprzednie 7 dni”, „vs poprzednie 30 dni”, ton `success`
+  przy wzroście, `danger` przy spadku, bez okresu porównawczego „brak danych do porównania”; „Dziś” z opisem „Od północy
+  do pełnej godziny, wg godzin zegara.”, a z miarami `null` (między 0:00 a 1:00) „—” z opisem „Pierwsze dane po 1:00”,
+  bez stopki i trendu; pod kaflami „Dane do <godzina>” z `dataUntil` w czasie polskim; panel niczego nie liczy), `TodoCard` („Do obsługi”:
   wiersze z `todo.ts` według ról z `/me` i według `queues` z API: wiersz z kolejką `null` jest ukryty, pozostałe pokazują
   jej liczbę (`todo-count`, `formatCount`: „1000+” przy `capped`, „0” zostaje), do wczytania pulpitu (i po błędzie jego
   pobrania) wiersze ról są bez liczb; każdy wiersz prowadzi do przefiltrowanej listy, m.in. `/orders?refund=overdue`,

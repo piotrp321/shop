@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import CatalogTiles from "@/dashboard/CatalogTiles.vue";
 import FreshnessBar from "@/dashboard/FreshnessBar.vue";
 import RecentOrders from "@/dashboard/RecentOrders.vue";
+import SalesTiles from "@/dashboard/SalesTiles.vue";
 import TodoCard from "@/dashboard/TodoCard.vue";
 import { todoFor } from "@/dashboard/todo";
 import { useDashboard } from "@/dashboard/useDashboard";
@@ -58,6 +59,11 @@ const rows = computed(() => todoFor(auth.staff, data.value?.queues ?? null));
       <Skeleton class="h-40" />
       <Skeleton class="h-40" />
     </div>
+
+    <SalesTiles
+      v-if="data?.sales"
+      :sales="data.sales"
+    />
 
     <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
       <TodoCard
