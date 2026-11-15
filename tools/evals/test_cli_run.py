@@ -2,6 +2,9 @@
 import functools
 import json
 import os
+import signal
+import threading
+import time
 from unittest import mock
 
 from testutil import measured_result, run_cli
@@ -126,6 +129,59 @@ class RunCommandTest(RunnerTestCase):
         self.assertEqual(0, code, err)
         self.assertIn('trial', out)
         self.assertFalse(os.path.exists(os.path.join(self.repo.root, 'tools/evals/history')))
+
+    def interrupt_when(self, path, sig):
+        def send():
+            deadline = time.monotonic() + 60
+            while not os.path.exists(path) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            time.sleep(0.2)
+            os.kill(os.getpid(), sig)
+        thread = threading.Thread(target=send, daemon=True)
+        thread.start()
+        return thread
+
+    def assertInterrupted(self, sig):
+        # a no-op handler of the test: without the handler of `evals.py run` the signal must not kill the tests
+        previous = signal.signal(sig, lambda *_: None)
+        self.addCleanup(signal.signal, sig, previous)
+        pid_file = os.path.join(self.tmp, 'fake.pid')
+        binary = self.fake(ok(cost=0.5), [init(), {'bash': 'echo $PPID > %s' % pid_file}, {'sleep': 15}])
+        thread = self.interrupt_when(pid_file, sig)
+        started = time.monotonic()
+        code, out, _ = self.run_cmd('code-reviewer', binary=binary)
+        thread.join()
+        self.assertEqual(1, code)
+        self.assertLess(time.monotonic() - started, 12)
+        self.assertIn('interrupted', out)
+        run_id = out.split('run ')[1].split(':')[0]
+        self.assertIn('evals.py run --resume %s' % run_id, out)
+        with open(os.path.join(self.state_root, run_id, 'run.json')) as handle:
+            run = json.load(handle)
+        self.assertEqual('interrupted', run['status'])
+        self.assertEqual(['done', 'running', 'pending'], [p['status'] for p in run['passes']])
+        self.assertEqual(3, run['passes'][1]['charged_usd'])   # the pass cap, the upper bound of an unknown cost
+        self.assertAlmostEqual(3.5, run['cost_usd_total'])
+        with open(pid_file) as handle:
+            pid = int(handle.read())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)                                   # the process group of the executor was killed
+        self.assertEqual([], os.listdir(self.claude_parent))  # its Claude Code directory removed
+        self.fake(ok(cost=0.5))
+        code, out, err = self.run_cmd('--resume', run_id, binary=binary)
+        self.assertEqual(0, code, err)
+        with open(os.path.join(self.state_root, run_id, 'run.json')) as handle:
+            run = json.load(handle)
+        self.assertEqual(2, self.invocations())               # only the interrupted pass and the next one
+        self.assertEqual([1, 2, 1], [p['attempts'] for p in run['passes']])
+        self.assertAlmostEqual(3.5, run['passes'][1]['charged_usd'])
+        self.assertAlmostEqual(4.5, run['cost_usd_total'])
+
+    def test_sigterm_kills_the_executor_and_leaves_a_resumable_run_charged_with_the_pass_cap(self):
+        self.assertInterrupted(signal.SIGTERM)
+
+    def test_sighup_is_handled_the_same_way(self):
+        self.assertInterrupted(signal.SIGHUP)
 
     def test_wrong_combinations_are_usage_errors(self):
         self.assertEqual(2, self.run_cmd()[0])

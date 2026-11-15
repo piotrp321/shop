@@ -37,7 +37,7 @@ CLAUDE_PIN = os.path.join(os.path.dirname(os.path.dirname(HERE)), '.claude', 'sk
 DEFAULT_STATE_ROOT = os.path.join(os.path.expanduser('~'), '.local', 'state', 'shop-evals')
 SCHEMA_VERSION = 1
 FINISHED = ('done', 'failed')
-RESUMABLE = ('limit_stop', 'infra_error', 'running')
+RESUMABLE = ('limit_stop', 'infra_error', 'interrupted', 'running')
 RUNNER_ARTEFACTS = ('status.json', 'output.txt', 'tree.txt', 'canary.txt')
 PIN_TIMEOUT_S = 120
 KILL_GRACE_S = 5
@@ -46,6 +46,16 @@ STDERR_LIMIT = 1 << 20
 
 class RunError(Exception):
     """The run cannot start or be resumed (a refusal: nothing was run)."""
+
+
+class Interrupted(BaseException):
+    """The runner was interrupted (SIGTERM, SIGHUP, SIGINT): raised from a signal handler so the executor's process
+    group is killed on the way out; `run` is the state left behind (status interrupted, resumable)."""
+
+    def __init__(self, reason, run=None):
+        BaseException.__init__(self, reason)
+        self.reason = reason
+        self.run = run
 
 
 class Options:
@@ -350,6 +360,15 @@ def _execute(context, run, state_root, run_dir):
         _write_json(run_file, run)
 
     save('running')
+    try:
+        return _passes(context, run, state_root, save)
+    except (Interrupted, KeyboardInterrupt) as error:
+        reason = error.reason if isinstance(error, Interrupted) else 'SIGINT'
+        save('interrupted', 'interrupted by %s' % reason)
+        raise Interrupted(reason, run)
+
+
+def _passes(context, run, state_root, save):
     binary, problem = context.resolve_binary()
     if binary is None:
         save('infra_error', problem)
@@ -369,11 +388,23 @@ def _execute(context, run, state_root, run_dir):
             return run
         item['attempts'] += 1
         save()
-        outcome = _run_pass(context, run, state_root, item)
+        reserved = []
+
+        def reserve(item=item, reserved=reserved):
+            # just before the executor starts: the pass cap is charged, so a runner killed during the pass leaves
+            # the upper bound of its cost in run.json (a resumed run counts it and runs the pass again)
+            cap = float(run['pass_cost_cap_usd'])
+            reserved.append(cap)
+            item['status'] = 'running'
+            item['charged_usd'] = round(item['charged_usd'] + cap, 6)
+            run['cost_usd_total'] = round(run['cost_usd_total'] + cap, 6)
+            save()
+        outcome = _run_pass(context, run, state_root, item, reserve)
         item.update(status=outcome['status'], reason=outcome['reason'], cost_usd=outcome['cost_usd'],
                     duration_s=outcome['duration_s'])
-        item['charged_usd'] += outcome['charged_usd']
-        run['cost_usd_total'] = round(run['cost_usd_total'] + outcome['charged_usd'], 6)
+        delta = outcome['charged_usd'] - sum(reserved)   # the reservation corrected to the cost of the pass
+        item['charged_usd'] = round(item['charged_usd'] + delta, 6)
+        run['cost_usd_total'] = round(run['cost_usd_total'] + delta, 6)
         if outcome['status'] not in FINISHED:
             save(outcome['status'], 'pass %s/%s: %s' % (item['case'], item['repetition'], outcome['reason']))
             return run
@@ -474,6 +505,7 @@ def _pass(context, run, state_root, item, holder, reserve):
     command = context.executor.command(context.binary, prompt, context.entry['agent'], run['pass_cost_cap_usd'],
                                        settings_path, add_dirs)
     stream = context.executor.stream(context.stop_percent)
+    reserve()
     code, timed_out, stderr, error = _spawn(command, built['checkout'], env, layout['runner'], stream,
                                             run['pass_timeout_minutes'] * 60.0)
     if error:

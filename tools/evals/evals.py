@@ -22,9 +22,10 @@ waive    writes a `waived` history file with the current fingerprint and the rea
 estimate the cost and time forecast of a run of each suite (or of a trial run of one case) and the total; a forecast
          above the cap exits 1.
 run      runs the cases of a suite N times with the CLI of the suite's executor in the sandbox (a trial run: one
-         case, the overlay of --overlay-rev, never a history file); --resume continues a run stopped by limit_stop
-         or infra_error. Prints the run id and its status; scoring and the history file are not part of it. Exit 0
-         for a finished run, 1 for a refusal or a stopped run.
+         case, the overlay of --overlay-rev, never a history file); --resume continues a run stopped by limit_stop,
+         infra_error or an interrupt (SIGTERM, SIGHUP, SIGINT: the executor is killed, the run stays resumable).
+         Prints the run id and its status; scoring and the history file are not part of it. Exit 0 for a finished
+         run, 1 for a refusal or a stopped run.
 
 Exit status: 0 ok, 1 findings (lint errors, check errors, a refused decision), 2 cannot run (usage, no registry,
 malformed JSON, a bad --diff, no git where it is needed).
@@ -33,6 +34,7 @@ The scoring (another task of the epic) adds its commands to COMMANDS.
 import argparse
 import json
 import os
+import signal
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -227,6 +229,10 @@ def cmd_run(args):
     if args.overlay_rev and not args.case:
         raise Usage('--overlay-rev is for a trial run of one case (--case)')
     options = runner.Options(args.root, args.state_root, claude_bin=args.claude_bin)
+
+    def interrupt(number, _frame):
+        raise runner.Interrupted(signal.Signals(number).name)
+    previous = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGTERM, signal.SIGHUP)}
     try:
         if args.resume:
             run = runner.resume(options, args.resume)
@@ -235,6 +241,14 @@ def cmd_run(args):
     except runner.RunError as error:
         print('evals.py run: refused: %s' % error, file=sys.stderr)
         return 1
+    except runner.Interrupted as error:
+        if error.run is None:
+            print('evals.py run: interrupted by %s before the first pass' % error.reason, file=sys.stderr)
+            return 1
+        run = error.run
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
     counts = {}
     for item in run['passes']:
         counts[item['status']] = counts.get(item['status'], 0) + 1
@@ -243,7 +257,7 @@ def cmd_run(args):
         run['kind'], run['suite'] + ('/' + run['case'] if run['case'] else ''), len(run['passes']),
         ', '.join('%s %d' % item for item in sorted(counts.items())), run['cost_usd_total'], run['cap_usd'],
         os.path.join(os.path.realpath(args.state_root), run['id'])))
-    if run['status'] in ('limit_stop', 'infra_error'):
+    if run['status'] in ('limit_stop', 'infra_error', 'interrupted'):
         print('  resume: python3 tools/evals/evals.py run --resume %s' % run['id'])
     return 0 if run['status'] == 'done' else 1
 
