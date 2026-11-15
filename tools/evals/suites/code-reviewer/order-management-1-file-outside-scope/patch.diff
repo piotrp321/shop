@@ -1,0 +1,13 @@
+diff --git a/apps/api/src/Cart/Domain/Cart.php b/apps/api/src/Cart/Domain/Cart.php
+index fe9fad2..731f1c7 100644
+--- a/apps/api/src/Cart/Domain/Cart.php
++++ b/apps/api/src/Cart/Domain/Cart.php
+@@ -15,7 +15,7 @@ namespace App\Cart\Domain;
+  */
+ final class Cart
+ {
+-    public const int MAX_LINES = 50;
++    public const int MAX_LINES = 100;
+     public const int MAX_QUANTITY = 99;
+     public const int GUEST_LIFETIME_DAYS = 30;
+     public const int CUSTOMER_LIFETIME_DAYS = 180;

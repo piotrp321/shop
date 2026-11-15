@@ -1,0 +1,21 @@
+{
+  "id": "catalog-admin-3-reprice-after-tax-class-change",
+  "kind": "clean",
+  "source": "task CATALOG-ADMIN-3, PR 220, squash commit on epic/catalog-admin",
+  "base_sha": "74b693a5c2fc6386f4100576815f3c0a66c57902",
+  "head_sha": "35007f10fdc83d45d2156fcdc153c4dc576ca77d",
+  "prompt_file": "prompt.md",
+  "inputs": [
+    "tdd-evidence.jsonl"
+  ],
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "PASS"
+    },
+    {
+      "type": "max_severity",
+      "severity": "SUGGESTION"
+    }
+  ]
+}

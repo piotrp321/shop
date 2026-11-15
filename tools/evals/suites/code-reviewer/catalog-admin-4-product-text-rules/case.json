@@ -1,0 +1,23 @@
+{
+  "id": "catalog-admin-4-product-text-rules",
+  "kind": "defect",
+  "source": "issue #247, task CATALOG-ADMIN-4, PR 224, squash commit on epic/catalog-admin",
+  "base_sha": "35007f10fdc83d45d2156fcdc153c4dc576ca77d",
+  "head_sha": "c5012ee8bcbde1b0843c1be7906d923308e84147",
+  "prompt_file": "prompt.md",
+  "inputs": [
+    "tdd-evidence.jsonl"
+  ],
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "CHANGES_REQUIRED"
+    },
+    {
+      "type": "finding",
+      "severity": "IMPORTANT",
+      "path": "ValidProductWrite",
+      "keyword": "NUL|NBSP|U\\+2028|sterując|control char|biał\\w+ znak|Unicode|whitespace|trim"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "cart-fixes-3-nil-uuid-two-violations",
+  "kind": "defect",
+  "source": "issue #113, task CART-FIXES-3, PR 107, squash commit on epic/cart-fixes",
+  "base_sha": "63b6a5761efcd207fe588a7db1fa4273ae873002",
+  "head_sha": "8d5f7e65c64c20af4a41837356f565bc43bb4052",
+  "outside_prompt": true,
+  "prompt_file": "prompt.md",
+  "inputs": [
+    "tdd-evidence.jsonl"
+  ],
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "CHANGES_REQUIRED"
+    },
+    {
+      "type": "finding",
+      "severity": "IMPORTANT",
+      "path": "AddCartItemRequest|MergeGuestCartRequest|ChangeCartItemQuantityRequest",
+      "keyword": "\\bnil\\b|0{8}-0{4}|max UUID|dw\\w+ narusz|kilka narusz|więcej niż jedno|jedno naruszenie|at most one|Assert.Uuid"
+    }
+  ]
+}

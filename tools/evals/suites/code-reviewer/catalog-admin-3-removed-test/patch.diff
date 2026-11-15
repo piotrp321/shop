@@ -1,0 +1,52 @@
+diff --git a/apps/api/tests/Unit/Pricing/Application/ReconcileTaxTest.php b/apps/api/tests/Unit/Pricing/Application/ReconcileTaxTest.php
+index 3be34d6..2d1d421 100644
+--- a/apps/api/tests/Unit/Pricing/Application/ReconcileTaxTest.php
++++ b/apps/api/tests/Unit/Pricing/Application/ReconcileTaxTest.php
+@@ -204,47 +204,6 @@ final class ReconcileTaxTest extends TestCase
+         self::assertSame(2, $this->storedPrice(self::SECOND)->version());
+     }
+ 
+-    /**
+-     * A short batch is the last one; a full one is followed by another read. Every price is checked against its
+-     * own variant, while both the prices and the catalog are read in batches; the catalog only as far as the prices
+-     * need it.
+-     *
+-     * @param list<int> $expectedPages
+-     * @param list<int> $expectedCatalogPages
+-     */
+-    #[DataProvider('priceCounts')]
+-    public function testReadsThePricesAndTheCatalogInBatches(int $count, array $expectedPages, array $expectedCatalogPages): void
+-    {
+-        $gels = [];
+-        for ($i = 1; $i <= $count; ++$i) {
+-            $id = \sprintf('00000000-0000-4000-8000-%012d', $i);
+-            // Every third variant belongs to a gel in Catalog, the prices are all `standard`.
+-            $this->storePrice($id, 1000 + $i, 'standard', 2300);
+-            if (0 === $i % 3) {
+-                $gels[] = $id;
+-            }
+-        }
+-        $catalog = new InMemoryVariantsForPricing(array_fill_keys(array_keys($this->allIds($count)), 'slug/standard'), array_fill_keys($gels, 'energy_gel'));
+-        $reconcile = new ReconcileTax($this->repository, $catalog, $this->rates, $this->session);
+-
+-        $run = $reconcile(false);
+-        $found = array_map(static fn (TaxDiscrepancy $discrepancy): string => $discrepancy->variantId->toString(), iterator_to_array($run, false));
+-
+-        self::assertSame($count, $run->getReturn());
+-        self::assertSame($gels, $found);
+-        self::assertSame($expectedPages, $this->prices->pageLimits);
+-        self::assertSame($expectedCatalogPages, $catalog->pageLimits);
+-        self::assertSame(\count($expectedPages), $this->session->resets);
+-    }
+-
+-    /** @return iterable<string, array{int, list<int>, list<int>}> */
+-    public static function priceCounts(): iterable
+-    {
+-        yield 'no prices' => [0, [500], []];
+-        yield 'two and a half batches' => [1201, [500, 500, 500], [500, 500, 500]];
+-        yield 'exactly two batches' => [1000, [500, 500, 500], [500, 500]];
+-    }
+-
+     /**
+      * @param array<string, list<string>> $catalog tax class code => variant ids; the variants of the stored prices
+      *                                             not listed are absent from Catalog

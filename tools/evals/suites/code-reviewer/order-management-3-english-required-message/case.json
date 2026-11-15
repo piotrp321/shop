@@ -1,0 +1,23 @@
+{
+  "id": "order-management-3-english-required-message",
+  "kind": "defect",
+  "source": "issue #257, task ORDER-MANAGEMENT-3, PR 234, squash commit on epic/order-management",
+  "base_sha": "405a368bb8fc4310af7f5e65794364737be09e17",
+  "head_sha": "fa2aa498f9c48a3a47937b0b86e33e9dc68f99dd",
+  "prompt_file": "prompt.md",
+  "inputs": [
+    "tdd-evidence.jsonl"
+  ],
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "CHANGES_REQUIRED"
+    },
+    {
+      "type": "finding",
+      "severity": "IMPORTANT",
+      "path": "ChangeOrderStatus|CompleteRefund|BackofficeOrder",
+      "keyword": "angiel|English|[Pp]olsk|This value|MissingConstructor|REQUIRE_ALL"
+    }
+  ]
+}

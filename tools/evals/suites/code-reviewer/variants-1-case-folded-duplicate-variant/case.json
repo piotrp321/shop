@@ -1,0 +1,23 @@
+{
+  "id": "variants-1-case-folded-duplicate-variant",
+  "kind": "defect",
+  "source": "issue #248, task VARIANTS-1, PR 115, squash commit on epic/variants",
+  "base_sha": "bcbd1d7d32768e4f554cdad30ca6977410a6953f",
+  "head_sha": "29baf8c1421eea6060fb158e568483f2a127a31d",
+  "prompt_file": "prompt.md",
+  "inputs": [
+    "tdd-evidence.jsonl"
+  ],
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "CHANGES_REQUIRED"
+    },
+    {
+      "type": "finding",
+      "severity": "IMPORTANT",
+      "path": "VariantValues|ProductVariantRecord|DoctrineProductRepository|DuplicateVariantValues",
+      "keyword": "lower|wielko|locale|kolacj|collat|case|mb_|comparisonKey|500"
+    }
+  ]
+}

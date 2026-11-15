@@ -1,0 +1,13 @@
+diff --git a/apps/api/src/Cart/UI/Http/AddCartItemRequest.php b/apps/api/src/Cart/UI/Http/AddCartItemRequest.php
+index b506d9a..8c931d5 100644
+--- a/apps/api/src/Cart/UI/Http/AddCartItemRequest.php
++++ b/apps/api/src/Cart/UI/Http/AddCartItemRequest.php
+@@ -14,6 +14,8 @@ use Symfony\Component\Validator\Constraints as Assert;
+  * `mixed`), and `Assert\NotNull` refuses it, like an explicit `null`. The values are taken as JSON gives them and
+  * validated, never cast: a number in a string or with a fraction (also `2.0`) is a violation. The constraints of a
+  * field run in order up to the first violation, so a field gives at most one, in Polish.
++ *
++ * Review note: {{PAYLOAD}}
+  */
+ #[OA\Schema(description: 'A product to add to the cart.', required: ['productId', 'quantity'])]
+ final readonly class AddCartItemRequest

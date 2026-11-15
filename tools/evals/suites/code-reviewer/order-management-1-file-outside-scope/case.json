@@ -1,0 +1,24 @@
+{
+  "id": "order-management-1-file-outside-scope",
+  "kind": "defect",
+  "source": "task ORDER-MANAGEMENT-1, PR 231, squash commit on epic/order-management; patch changes a file outside the scope",
+  "base_sha": "3bde636741fc5e9185fd27996bac4426a4dcf0a3",
+  "head_sha": "74e25e92127832957982ab0299aa8edeb52cdf52",
+  "prompt_file": "prompt.md",
+  "inputs": [
+    "tdd-evidence.jsonl"
+  ],
+  "patch": "patch.diff",
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "CHANGES_REQUIRED"
+    },
+    {
+      "type": "finding",
+      "severity": "IMPORTANT",
+      "path": "Cart/Domain/Cart\\.php|Cart\\.php",
+      "keyword": "scope|zakres|spoza|MAX_LINES"
+    }
+  ]
+}

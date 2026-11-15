@@ -1,0 +1,21 @@
+{
+  "id": "order-management-1-notification-markers",
+  "kind": "clean",
+  "source": "task ORDER-MANAGEMENT-1, PR 231, squash commit on epic/order-management",
+  "base_sha": "3bde636741fc5e9185fd27996bac4426a4dcf0a3",
+  "head_sha": "74e25e92127832957982ab0299aa8edeb52cdf52",
+  "prompt_file": "prompt.md",
+  "inputs": [
+    "tdd-evidence.jsonl"
+  ],
+  "assertions": [
+    {
+      "type": "verdict",
+      "expect": "PASS"
+    },
+    {
+      "type": "max_severity",
+      "severity": "SUGGESTION"
+    }
+  ]
+}
