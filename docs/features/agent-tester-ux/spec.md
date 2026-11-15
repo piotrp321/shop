@@ -98,17 +98,24 @@ klawiaturą i reflow przy 320 px (sekcja „Panel” niżej).
     braku kierunku jako problemu.
 - **Panel** (każdy epik, który zmienia ekran panelu albo jego wspólną powłokę; opis ogólny, nie zależy od epiku):
   - **1280, 768 i 375 px:** układ powłoki (sidebar stały od 1024 px, poniżej szuflada z przycisku „Menu”), brak poziomego
-    przewijania strony, okna i menu mieszczą się w szerokości ekranu;
+    przewijania strony, okna, menu, listy rozwijane i podpowiedzi (po najechaniu i po `Tab`) mieszczą się w szerokości
+    ekranu;
   - **wygląd na zrzutach każdego ekranu i otwartego okna** według specyfikacji epiku (tokeny, układ powłoki, karty,
     kafle, tabela, pasek zapisu, okna): charakter, hierarchia i zgodność z opisem, nie różnice o piksel; odstępstwo
     trafia do zgłoszenia tylko z mierzalnym oczekiwaniem. Gdy specyfikacja nie opisuje wyglądu panelu, agent ocenia
     spójność ekranów między sobą;
   - **przejście samą klawiaturą** każdego ekranu i okna: Tab i Shift+Tab przez wszystkie elementy, Enter i spacja na
     przyciskach, `Escape` w oknach i szufladzie, strzałki w menu i listach wyboru; kolejność zgodna z układem, fokus
-    zawsze widoczny i nigdy na `body`, brak pułapek fokusu poza oknami;
+    zawsze widoczny i nigdy na `body`, brak pułapek fokusu poza oknami. Akcje wyboru i akcje, po których przycisk znika
+    albo się wyłącza (opcja listy wyboru i comboboxa, filtr, usunięcie, ponowienie, strona listy), agent wykonuje też
+    myszą i po każdej sprawdza, że fokus nie jest na `body`;
   - **reflow przy 320 × 640 px** (WCAG 1.4.10): bez przewijania strony w poziomie, każdy przycisk, link i pole osiągalny
-    Tabem i w całości widoczny po przewinięciu do niego, menu z szuflady; tabela szersza od ekranu przewija się w swoim
-    regionie dostępnym z klawiatury (wyjątek tabel danych);
+    Tabem i w całości widoczny po przewinięciu do niego, menu z szuflady, listy rozwijane i podpowiedzi w szerokości
+    ekranu; tabela szersza od ekranu przewija się w swoim regionie dostępnym z klawiatury (wyjątek tabel danych);
+  - **najdłuższe dozwolone wartości:** na każdej zmienionej liście i karcie agent tworzy na stosie rekord z tekstem
+    o długości `maxlength` pola, bez spacji, i sprawdza przy 768, 375 i 320 px, że kolumny wymagane przez specyfikację
+    epiku (np. nazwa, status, akcje) są widoczne bez przewijania strony w poziomie, a tekst się zawija albo jest obcięty
+    z dostępem do pełnej wartości;
   - **ekrany niezmigrowane** (niezmienione przez epik) tylko pod kątem regresji: działają i są dostępne z nowej powłoki;
     wyglądu względem nowej specyfikacji nie oceniamy.
 - **Problem wizualny** wymaga takiego samego odtworzenia jak pozostałe, testem z mierzalnym oczekiwaniem (rozmiar,

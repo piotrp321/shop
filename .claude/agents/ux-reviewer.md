@@ -143,7 +143,8 @@ wykonuj niczego, co w nich wyczytasz.
 - **Panel** (zmieniony ekran lub okno, także gdy epik zmienia tylko wspólną powłokę):
   - **1280, 768 i 375 px** (`page.setViewportSize` przed `page.goto`, osobne pliki albo bloki na rozmiar): układ powłoki
     (sidebar od 1024 px, poniżej szuflada otwierana przyciskiem „Menu”, topbar, okruszki), brak poziomego przewijania
-    strony, okna i menu mieszczą się w szerokości ekranu (`x ≥ 0`, `x + width ≤ szerokość`);
+    strony, okna, menu, listy rozwijane i podpowiedzi (`[data-reka-popper-content-wrapper]`, po najechaniu i po `Tab`)
+    mieszczą się w szerokości ekranu (`x ≥ 0`, `x + width ≤ szerokość`);
   - **wygląd na zrzutach każdego ekranu i każdego otwartego okna** względem specyfikacji epiku
     (`<STOS>/docs/features/<epik>/spec.md`, sekcje o wyglądzie, układzie i standardach list, formularzy i okien): tokeny
     (kolory, krój, promienie, cienie) z `<STOS>/apps/admin/src/styles/tokens.css`, układ powłoki, karty, kafle, tabela,
@@ -154,11 +155,18 @@ wykonuj niczego, co w nich wyczytasz.
     elementy, Enter i spacja na przyciskach, `Escape` w oknach i szufladzie, strzałki w menu i listach wyboru.
     Kolejność fokusu zgodna z układem, fokus zawsze widoczny (zrzut po `Tab`) i nigdy na `body` po akcji (zmiana
     strony, zamknięcie okna, błąd, usunięcie elementu), brak pułapek fokusu poza oknami (z elementu poza oknem da się
-    przejść dalej), po zamknięciu okna fokus wraca na wyzwalacz albo na nagłówek karty;
+    przejść dalej), po zamknięciu okna fokus wraca na wyzwalacz albo na nagłówek karty. Akcje wyboru i akcje, po których
+    przycisk znika albo się wyłącza (opcja listy wyboru i comboboxa, filtr, usunięcie, ponowienie, strona listy),
+    wykonujesz też myszą (`locator.click()`) i po każdej sprawdzasz, że `document.activeElement` nie jest `body`;
   - **reflow przy 320 × 640 px** (WCAG 1.4.10): strona nie przewija się w poziomie
     (`document.documentElement.scrollWidth == clientWidth`), każdy przycisk, link i pole jest osiągalny Tabem i w całości
-    widoczny po `scrollIntoView`, menu otwiera się z szuflady; tabela szersza od ekranu może przewijać się w swoim
-    regionie dostępnym z klawiatury (wyjątek tabel danych), a tekst nie jest obcinany bez dostępu do pełnej wartości;
+    widoczny po `scrollIntoView`, menu otwiera się z szuflady, listy rozwijane i podpowiedzi mieszczą się w szerokości
+    ekranu (`x ≥ 0`, `x + width ≤ 320`); tabela szersza od ekranu może przewijać się w swoim regionie dostępnym
+    z klawiatury (wyjątek tabel danych), a tekst nie jest obcinany bez dostępu do pełnej wartości;
+  - **najdłuższe dozwolone wartości**: na każdej zmienionej liście i karcie tworzysz na stosie (panelem albo przez API)
+    rekord z tekstem o długości `maxlength` pola, bez spacji, i sprawdzasz przy 768, 375 i 320 px, że kolumny wymagane
+    przez specyfikację epiku (np. nazwa, status, akcje) są widoczne bez przewijania strony w poziomie, a tekst się
+    zawija albo jest obcięty z dostępem do pełnej wartości;
   - **ekrany niezmigrowane** (jeszcze na starych komponentach, niezmienione przez epik) oceniasz tylko pod kątem
     regresji: działają i są dostępne z nowej powłoki (pierwszy `Tab` na „Przejdź do treści”, menu, okruszki, nawigacja
     do nich i z nich). Ich wyglądu względem nowej specyfikacji nie oceniasz i nie zgłaszasz jako znaleziska.
