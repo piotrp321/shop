@@ -211,11 +211,13 @@ def common_paths(a, b):
     return sorted(found)
 
 
-def task_conflicts(a, b):
-    """Paths that keep two tasks of one wave from running at once (step 19b): the common part of their manifest
-    `paths` (a file, or a directory with a trailing /) that is application code (is_app_code), a CLAUDE.md or a file.
-    Two directories outside application code may overlap (the exceptions of step 5). A common path counts as a
-    directory only when every path of both tasks that contains it is declared as a directory."""
+def task_conflicts(a, b, claude_md=()):
+    """Paths that keep two tasks of one wave from running at once (step 19b), sorted: the common part of their
+    manifest `paths` (a file, or a directory with a trailing /) that is application code (is_app_code), a CLAUDE.md or
+    a file, and every file of `claude_md` (the tracked CLAUDE.md files of the repository) inside a common path. Two
+    directories outside application code may overlap (the exceptions of step 5) when they hold no tracked CLAUDE.md.
+    A common path counts as a directory only when every path of both tasks that contains it is declared as a
+    directory."""
     declared = [{}, {}]
     for d, paths in zip(declared, (a, b)):
         for p in paths:
@@ -224,8 +226,10 @@ def task_conflicts(a, b):
     def directory(path):
         return all(is_dir for d in declared for p, is_dir in d.items() if _inside(path, p))
 
-    return [path for path in common_paths(*declared)
-            if is_app_code(path) or is_claude_md(path) or not directory(path)]
+    common = common_paths(*declared)
+    found = {path for path in common if is_app_code(path) or is_claude_md(path) or not directory(path)}
+    found.update(f for f in claude_md for path in common if _inside(f, path))
+    return sorted(found)
 
 
 _UNITS = {'B': 1, 'KIB': 1024, 'MIB': 1024 ** 2, 'GIB': 1024 ** 3, 'TIB': 1024 ** 4,

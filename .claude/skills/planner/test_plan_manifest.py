@@ -331,6 +331,56 @@ class PlanManifestTest(unittest.TestCase):
         self.pair(['apps/api/tests/', 'docs/'], ['apps/api/CLAUDE.md', 'apps/admin/src/x.ts'])
         self.assertEqual(self.validate().returncode, 0)
 
+    def track(self, *paths):
+        for path in paths:
+            os.makedirs(os.path.dirname(os.path.join(self.repo, path)), exist_ok=True)
+            self.write(path, '# Rules\n')
+        subprocess.run(['git', '-C', self.repo, 'add', '--', *paths], check=True)
+
+    def test_parallel_pair_sharing_a_directory_with_a_tracked_claude_md_is_refused(self):
+        self.track('infra/k8s/CLAUDE.md', 'e2e/CLAUDE.md')
+        for first, second, shared in ((['infra/k8s/'], ['infra/k8s/'], 'infra/k8s/CLAUDE.md'),
+                                      (['infra/'], ['infra/k8s/'], 'infra/k8s/CLAUDE.md'),
+                                      (['infra/k8s/'], ['infra/'], 'infra/k8s/CLAUDE.md'),
+                                      (['e2e/', 'docs/'], ['e2e/'], 'e2e/CLAUDE.md')):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
+
+    def test_common_directory_without_a_tracked_claude_md_is_allowed(self):
+        self.track('infra/k8s/CLAUDE.md', 'e2e/CLAUDE.md')
+        os.makedirs(os.path.join(self.repo, 'infra', 'scripts'))
+        self.write('infra/scripts/CLAUDE.md', 'untracked\n')
+        for first, second in ((['infra/k8s/charts/'], ['infra/k8s/charts/']), (['e2e/'], ['e2e/tests/']),
+                              (['docs/'], ['docs/']), (['infra/scripts/'], ['infra/scripts/'])):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                r = self.validate()
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_parallel_skips_a_common_directory_with_a_tracked_claude_md(self):
+        self.track('infra/k8s/CLAUDE.md')
+        self.write_plan(self.manifest([task('CART-1', paths=['infra/k8s/']), task('CART-2', paths=['infra/']),
+                                       task('CART-3', paths=['docs/', 'infra/k8s/charts/'])]))
+        r = self.parallel()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual({'CART-1': ['CART-3'], 'CART-2': ['CART-3'], 'CART-3': ['CART-1', 'CART-2']},
+                         json.loads(r.stdout))
+
+    def test_git_error_listing_claude_md_runs_every_pair_alone(self):
+        self.track('docs/features/cart/spec.md')
+        with open(os.path.join(self.repo, '.git', 'index'), 'w') as f:
+            f.write('broken')
+        self.pair(['docs/a.md'], ['docs/b.md'])
+        self.assertInvalid('CART-1 and CART-2 cannot run in parallel: tracked CLAUDE.md files are unknown '
+                           '(git ls-files failed: ')
+        r = self.parallel()
+        self.assertEqual((2, ''), (r.returncode, r.stdout))
+        self.assertIn('tracked CLAUDE.md files are unknown (git ls-files failed: ', r.stderr)
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/a.md']), task('CART-2', paths=['docs/b.md'])]))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_parallel_pair_lists_every_blocking_path(self):
         self.pair(['apps/api/src/Cart/', 'CLAUDE.md', 'docs/'], ['apps/api/src/Cart/Cart.php', 'CLAUDE.md', 'docs/'])
         self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths CLAUDE.md, '

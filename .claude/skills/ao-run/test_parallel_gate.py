@@ -281,6 +281,27 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual(['CLAUDE.md', 'apps/api/src/Cart', 'docs/x.md'],
                          tc(['docs/', 'CLAUDE.md', 'apps/api/src/Cart/'], ['apps/api/', 'docs/x.md', 'CLAUDE.md']))
 
+    def test_task_conflicts_with_a_tracked_claude_md_in_a_common_directory(self):
+        tracked = ('CLAUDE.md', 'apps/api/CLAUDE.md', 'e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md')
+
+        def tc(a, b):
+            return pg.task_conflicts(a, b, claude_md=tracked)
+
+        # A common directory that contains a tracked CLAUDE.md blocks the pair with that file, in both directions.
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/k8s/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/'], ['infra/k8s/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/']))
+        self.assertEqual(['e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md'], tc(['infra/', 'e2e/'], ['e2e/', 'infra/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/CLAUDE.md'], ['infra/']))
+        self.assertEqual(['apps/api', 'apps/api/CLAUDE.md'], tc(['apps/api/'], ['apps/api/']))
+        # A common directory without a tracked CLAUDE.md stays allowed.
+        self.assertEqual([], tc(['infra/k8s/charts/'], ['infra/k8s/charts/']))
+        self.assertEqual([], tc(['e2e/'], ['e2e/tests/']))
+        self.assertEqual([], tc(['docs/'], ['docs/']))
+        self.assertEqual([], tc(['apps/api/tests/'], ['apps/api/']))
+        # Without the list of tracked files only the declared paths count.
+        self.assertEqual([], pg.task_conflicts(['infra/k8s/'], ['infra/k8s/']))
+
 
 class MaxParallelTest(unittest.TestCase):
     SKILL = os.path.join(HERE, 'SKILL.md')

@@ -10,15 +10,16 @@
   parallel PLAN
       Checks PLAN like validate, without its `parallel_with` lists, and prints a JSON object {task id: [task ids]} in
       plan order: for every task the maximal `parallel_with`, i.e. every other task it may run at once with. A task
-      without `paths` gets [].
+      without `paths` gets []. Exit code 2 also when git cannot list the tracked CLAUDE.md files.
 
 Optional task keys (step 19b, docs/features/parallel-work/spec.md): `paths`, a non-empty list of paths relative to
 the repository root that the task changes (a file, or a directory ending with /; no absolute path, no `.` or `..`
 segment, no control character or Unicode separator other than the space, no duplicate), and `parallel_with`, the
 ids of tasks that may run at once with it. A listed pair must be symmetric, both tasks must have `paths`, neither may
 depend on the other (also through depends_on of another task) and their `paths` must not share a path that
-parallel_gate.task_conflicts refuses (application code, a CLAUDE.md or a file; two directories outside application
-code may overlap). Without `parallel_with` the task runs alone.
+parallel_gate.task_conflicts refuses (application code, a CLAUDE.md or a file, or a directory holding a CLAUDE.md
+tracked by git, `git ls-files`; other directories outside application code may overlap). When git cannot list the
+tracked CLAUDE.md files, every listed pair is refused. Without `parallel_with` the task runs alone.
 
 Exit code 2: unreadable plan, missing or broken block, or an invalid manifest (every problem on stderr).
 """
@@ -48,6 +49,10 @@ class PlanError(Exception):
     pass
 
 
+class ClaudeMdUnknown(PlanError):
+    """git could not list the tracked CLAUDE.md files: no pair of tasks may run at once."""
+
+
 def extract_block(text):
     """The text of the only ```json block; a block is closed by a line holding only ```."""
     blocks, current = [], None
@@ -67,8 +72,9 @@ def extract_block(text):
     return blocks[0]
 
 
-def check(manifest, root, plan_dir):
-    """Problems of the manifest, empty when it is valid."""
+def check(manifest, root, plan_dir, claude_md=()):
+    """Problems of the manifest, empty when it is valid. `claude_md` is the tuple of tracked CLAUDE.md files of the
+    repository, or a ClaudeMdUnknown when git could not list them (then every parallel pair is refused)."""
     if not isinstance(manifest, dict):
         return ['the manifest must be a JSON object']
     problems = _keys('manifest', manifest, MANIFEST_KEYS)
@@ -95,18 +101,18 @@ def check(manifest, root, plan_dir):
     if not problems:
         problems.extend(_dependency_problems(tasks))
     if not problems:
-        problems.extend(_parallel_problems(tasks))
+        problems.extend(_parallel_problems(tasks, claude_md))
     return problems
 
 
-def parallel_lists(tasks):
+def parallel_lists(tasks, claude_md):
     """The maximal `parallel_with` of every task: the other tasks it may run at once with, in plan order. Expects a
-    valid, acyclic manifest."""
+    valid, acyclic manifest and the tuple of tracked CLAUDE.md files."""
     ancestors = _ancestors(tasks)
     lists = {t['id']: [] for t in tasks}
     for i, a in enumerate(tasks):
         for b in tasks[i + 1:]:
-            if not _pair_problem(a, b, ancestors):
+            if not _pair_problem(a, b, ancestors, claude_md):
                 lists[a['id']].append(b['id'])
                 lists[b['id']].append(a['id'])
     return lists
@@ -272,7 +278,7 @@ def _ancestors(tasks):
     return found
 
 
-def _pair_problem(a, b, ancestors):
+def _pair_problem(a, b, ancestors, claude_md):
     """Why tasks a and b may not run at once (a before b in the plan), None when they may."""
     if 'paths' not in a or 'paths' not in b:
         return '%s and %s are parallel without paths in both' % (a['id'], b['id'])
@@ -280,13 +286,15 @@ def _pair_problem(a, b, ancestors):
         if first['id'] in ancestors[second['id']]:
             return '%s and %s cannot run in parallel: %s depends on %s' % (a['id'], b['id'], second['id'],
                                                                            first['id'])
-    shared = parallel_gate.task_conflicts(a['paths'], b['paths'])
+    if isinstance(claude_md, ClaudeMdUnknown):
+        return '%s and %s cannot run in parallel: %s' % (a['id'], b['id'], claude_md)
+    shared = parallel_gate.task_conflicts(a['paths'], b['paths'], claude_md=claude_md)
     if shared:
         return '%s and %s cannot run in parallel: shared paths %s' % (a['id'], b['id'], ', '.join(shared))
     return None
 
 
-def _parallel_problems(tasks):
+def _parallel_problems(tasks, claude_md):
     problems = []
     by_id = {t['id']: t for t in tasks}
     order = [t['id'] for t in tasks]
@@ -301,7 +309,7 @@ def _parallel_problems(tasks):
                 problems.append('%s is parallel with %s, but %s does not list %s' % (t['id'], other, other, t['id']))
             pairs.add(tuple(sorted((t['id'], other), key=order.index)))
     for first, second in sorted(pairs, key=lambda p: (order.index(p[0]), order.index(p[1]))):
-        problem = _pair_problem(by_id[first], by_id[second], ancestors)
+        problem = _pair_problem(by_id[first], by_id[second], ancestors, claude_md)
         if problem:
             problems.append(problem)
     return problems
@@ -316,6 +324,21 @@ def _repo_root(path):
     if r.returncode != 0:
         raise PlanError('%s is not inside a git repository' % path)
     return r.stdout.strip()
+
+
+def _tracked_claude_md(root):
+    """The tracked CLAUDE.md files of the repository (paths relative to its root), or a ClaudeMdUnknown when git
+    cannot list them."""
+    try:
+        r = subprocess.run(['git', '-C', root, 'ls-files', '-z', '--', '*CLAUDE.md'], capture_output=True,
+                           text=True, timeout=60)
+    except (OSError, UnicodeDecodeError, subprocess.TimeoutExpired) as e:
+        error = str(e)
+    else:
+        if r.returncode == 0:
+            return tuple(p for p in r.stdout.split('\0') if p and parallel_gate.is_claude_md(p))
+        error = r.stderr.strip() or 'exit code %d' % r.returncode
+    return ClaudeMdUnknown('tracked CLAUDE.md files are unknown (git ls-files failed: %s)' % error)
 
 
 def validate(path, ignore_parallel_with=False):
@@ -335,10 +358,20 @@ def validate(path, ignore_parallel_with=False):
     if ignore_parallel_with and isinstance(manifest, dict) and isinstance(manifest.get('tasks'), list):
         manifest['tasks'] = [{k: v for k, v in t.items() if k != 'parallel_with'} if isinstance(t, dict) else t
                              for t in manifest['tasks']]
-    problems = check(manifest, root, plan_dir)
+    problems = check(manifest, root, plan_dir, _tracked_claude_md(root))
     if problems:
         raise PlanError('\n'.join(problems))
     return dict(manifest, waves=waves(manifest['tasks']))
+
+
+def parallel(path):
+    """The maximal `parallel_with` of every task of the plan at `path`, its current lists ignored. PlanError when the
+    plan is invalid or the tracked CLAUDE.md files are unknown."""
+    manifest = validate(path, ignore_parallel_with=True)
+    claude_md = _tracked_claude_md(_repo_root(os.path.abspath(path)))
+    if isinstance(claude_md, ClaudeMdUnknown):
+        raise claude_md
+    return parallel_lists(manifest['tasks'], claude_md)
 
 
 def main(argv=None):
@@ -349,7 +382,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == 'parallel':
-            result = parallel_lists(validate(args.plan, ignore_parallel_with=True)['tasks'])
+            result = parallel(args.plan)
         else:
             result = validate(args.plan)
     except PlanError as e:

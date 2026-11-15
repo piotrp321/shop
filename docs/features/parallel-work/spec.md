@@ -412,8 +412,10 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
   (`parallel_gate.is_app_code`, jak w kroku 5 bramki), `CLAUDE.md` ani pliku. Ścieżka części wspólnej jest katalogiem
   tylko wtedy, gdy obie strony deklarują ją i każdą ścieżkę, która ją zawiera, jako katalog. Wyjątki kroku 5 zostają
   dla katalogów: dwa nakładające się katalogi poza kodem aplikacji (CI, testy, konfiguracja, infrastruktura,
-  dokumentacja) nie blokują. Brak danych albo niepewność oznacza pracę szeregową. Regułę ma jedno miejsce:
-  `parallel_gate.task_conflicts`.
+  dokumentacja) nie blokują, chyba że wspólny katalog zawiera `CLAUDE.md` śledzony w repo (`git ls-files`, np.
+  `infra/k8s/` albo `e2e/`); wtedy ten plik blokuje parę. Gdy git nie poda listy śledzonych `CLAUDE.md`, `validate`
+  odrzuca każdą parę z `parallel_with`, a `parallel` kończy się kodem 2. Brak danych albo niepewność oznacza pracę
+  szeregową. Regułę ma jedno miejsce: `parallel_gate.task_conflicts`.
 - `ao run --max-parallel N` (domyślnie 1, bez zmiany zachowania). Przy N > 1 AO uruchamia drugą próbę tylko dla
   zadania typu `plan`, którego zależności są zielone, gdy kandydat i każde trwające zadanie mają się nawzajem na
   listach `parallel_with`. AO sprawdza w `parallel_with` tylko typ i znane ID; reguły plików nie powtarza. Każda próba
@@ -503,11 +505,14 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   epiku aktywnego bez stosu i zmierzona pamięć AO powyżej rezerwy; `MAX_PARALLEL` równe 2 i każde polecenie startu
   AO w `SKILL.md` `/ao-run` z `--max-parallel` o tej wartości; `task_conflicts` (kod aplikacji, także przez szerszy
   katalog, `CLAUDE.md`, ten sam plik, plik w katalogu drugiej strony, pliki generowane i rejestracji, nakładające się
-  katalogi poza kodem dozwolone).
+  katalogi poza kodem dozwolone, wspólny katalog ze śledzonym `CLAUDE.md` w obu kierunkach odrzucony, bez niego
+  dozwolony).
 - `python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'`: manifest bez nowych pól poprawny; zły
   typ `paths` i `parallel_with`, ścieżka absolutna, `..`, `.`, pusty segment, znak sterujący, powtórzenie; nieznane ID,
   samo siebie, powtórzenie w `parallel_with`; brak symetrii; para bez `paths` po jednej stronie; para z zależnością
-  bezpośrednią i przechodnią; wspólny kod aplikacji, ten sam plik dokumentacji, wspólny `CLAUDE.md` (odrzucone),
-  nakładające się katalogi dokumentacji, testów, CI i infrastruktury (dozwolone); `parallel`: lista maksymalna
+  bezpośrednią i przechodnią; wspólny kod aplikacji, ten sam plik dokumentacji, wspólny `CLAUDE.md`, wspólny katalog
+  ze śledzonym `CLAUDE.md` (odrzucone), nakładające się katalogi dokumentacji, testów, CI i infrastruktury, także
+  z nieśledzonym `CLAUDE.md` (dozwolone); błąd `git ls-files` (każda para odrzucona, `parallel` z kodem 2, manifest
+  bez par poprawny); `parallel`: lista maksymalna
   i symetryczna, zadanie bez `paths` z `[]`, wynik wpisany do planu przechodzi `validate`, obecne `parallel_with` bez
   wpływu, odmowa przy innym błędzie manifestu, brak pliku i zły JSON (kod 2).
