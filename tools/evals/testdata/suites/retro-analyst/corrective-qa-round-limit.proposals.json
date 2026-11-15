@@ -1,0 +1,35 @@
+{
+ "schema": 1,
+ "epic": "admin-design",
+ "commit": "f78d1aff5a268f6eed3f09d60c80fda5abacc080",
+ "items": [
+  {
+   "n": 1,
+   "kind": "issue",
+   "key": "qa-round-limit-after-repair",
+   "repo": "ao",
+   "title": "Runda DELTA po samym scaleniu z main zużywa limit rund",
+   "existing_issue": 45,
+   "body": null,
+   "evidence": [
+    "visual-design/wait/visual-design@1794276256"
+   ],
+   "classes": {
+    "visual-design/wait/visual-design@1794276256": {
+     "class": "corrective",
+     "corrective_reason": "epik zablokował się na max_qa_rounds po REPAIR-1 (merge origin/main) po PASSED rundy 4; potrzebne było ao epic resume --add-qa-rounds 1"
+    }
+   },
+   "cause": "AO liczy rundę DELTA po REPAIR (samo scalenie z main) do limitu rund; to zachowanie kodu AO, nie instrukcji, a otwarte AO #45 opisuje ten sam problem.",
+   "why_prevents": "Komentarz z danymi VISUAL-DESIGN przy #45 daje właścicielowi AO drugi przypadek.",
+   "verify": "W kolejnych epikach brak blokady `max_qa_rounds` po REPAIR bez zmian w kodzie.",
+   "duplicate_check": [
+    44,
+    45,
+    46
+   ]
+  }
+ ],
+ "observations": [],
+ "overflow": []
+}

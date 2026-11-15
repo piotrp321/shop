@@ -1,0 +1,176 @@
+{
+ "schema": 1,
+ "collected_at": "2026-11-12T08:07:48.613935+01:00",
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "issues": [
+  {
+   "number": 134,
+   "title": "Sklep: nazwa dostępna linków paginacji nie zawiera widocznego tekstu",
+   "body": "### Środowisko\nStos lokalny (świeży, `/sweep`), commit d1845e8 (kod sklepu jak `main` po CART-FIXES), Chromium desktop 1280 × 720, gość.\n\n### Kroki odtworzenia\n1. Otwórz stronę główną sklepu `/` (lista z paginacją).\n2. Uruchom axe (WCAG 2.1 A i AA).\n\n### Oczekiwane zachowanie albo wygląd\nNazwa dostępna linków paginacji zawiera ich widoczny tekst (WCAG 2.5.3 „Label in Name”), np. „Następna strona” przy widocznym „Następna”.\n\n### Obecne zachowanie albo wygląd\nLink ma `aria-label=\"Przejdź do następnej strony\"` przy widocznym tekście „Następna”, więc nazwa nie zawiera widocznego tekstu. To samo dotyczy „Poprzednia”, gdy jest na stronie. Osoba sterująca głosem („kliknij Następna”) nie trafi w link.\n\n### Kryterium akceptacji\nTest Playwright na stronie głównej (desktop):\n```ts\nconst violations = await checkA11y(page, \"home\");\nexpect(violations.filter((v) => v.id === \"label-content-name-mismatch\")).toEqual([]);\n```\n\n### Niewiadome\nNa telefonie tekst linku jest ukryty (`hidden sm:block`) i reguła nie zgłasza naruszenia.\n\n### Dowód\naxe `label-content-name-mismatch` dla `.rounded-lg`: `<a data-slot=\"pagination-link\" aria-label=\"Przejdź do następnej...\" href=\"/?page=2\">`. Plik: `apps/store/src/components/ui/pagination.tsx`.\nZrzuty i trace lokalnie: `<home>/.local/state/shop-sweep/2026-11-04-d1845e8/tester/evidence/2/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-04-d1845e8, commit d1845e80ea079b4c965f0c1e30ebb2ca3785fdd5, agent tester (ux-reviewer: ta sama obserwacja jako hipoteza), odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T12:13:05Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 293,
+   "title": "Checkout pokazuje „Zaloguj się” przy wyłączonych kontach klientów",
+   "body": "## Problem\n\n`apps/store/src/checkout/CheckoutPage.tsx` pokazuje akapit „Masz konto? Zaloguj się” przy `session === null`, także gdy przełącznik `customerAccounts` jest `false`. Spec DEPLOY (sekcja „Keycloak i konta”) mówi, że `customerAccounts: false` ukrywa link „Zaloguj się” w sklepie. `AccountMenu` już to respektuje, checkout nie.\n\n## Oczekiwane\n\nPrzy `customerAccounts: false` checkout nie pokazuje linku logowania.\n\n## Naprawa\n\n`useSiteSwitches()` w `CheckoutPage`, ukrycie akapitu przy `!customerAccounts`, test komponentu (TDD).\n\nŹródło: integracja DEPLOY, znalezisko F5 (Minor), PR #287.",
+   "labels": [
+    "bug"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-08T14:57:33Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 294,
+   "title": "kubeconfig.sh zapisuje kubeconfig w repo przy KUBE_DIR z „..”",
+   "body": "## Problem\n\n`infra/k8s/scripts/kubeconfig.sh` sprawdza, czy `KUBE_DIR` leży poza repo, porównaniem `case \"$absolute/\" in \"$TOOLS_REPO\"/*` bez normalizacji ścieżki. `KUBE_DIR=/tmp/../<repo>/kube` przechodzi i kubeconfig z poświadczeniami klastra trafia do drzewa repo (publicznego).\n\n## Naprawa\n\n`mkdir -p \"$KUBE_DIR\"`, `absolute=$(cd \"$KUBE_DIR\" && pwd -P)` przed porównaniem. Przypadek w `test_server_scripts.py`:\n\n```sh\nKUBE_DIR=\"/tmp/../$REPO/leak\" sh scripts/kubeconfig.sh root@203.0.113.7   # oczekiwane: exit 2, brak pliku w repo\n```\n\nŹródło: integracja DEPLOY, znalezisko F3 (Minor), PR #287.",
+   "labels": [
+    "bug"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-08T14:57:35Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 387,
+   "title": "Niestabilny test PromotionsEndpointTest: oczekiwany czas liczony po żądaniu",
+   "body": "## Problem\n\n`apps/api/tests/Functional/Pricing/PromotionsEndpointTest.php:73` (`testAdminAndMarketingPlanAPromotion`) porównuje `startsAt` promocji z `$this->at('+1 day')`, liczonym po żądaniu. Kiedy żądanie i asercja wypadają w różnych sekundach, test pada, np. 11:28:51 i 11:28:50. Tak padł pierwszy przebieg `checks` w PR #385 (HARDENING-3). Ponowienie jobu przeszło.\n\n## Oczekiwane\n\nTest nie zależy od tego, ile trwa żądanie: zegar w tym teście jest zamrożony albo oczekiwany czas jest wyliczony z tej samej chwili co dane żądania. Ten sam wzorzec (`$this->at(...)` po żądaniu) dotyczy też `endsAt` w linii 74.\n\nZgłoszenie od agenta `/delivery` (HARDENING-3), porządki bez zmiany zachowania.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T13:25:30Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 166,
+   "title": "Jedno źródło nazw tagów cache w sklepie",
+   "body": "Znalezisko F2 (Minor) z integracji epiku PRODUCT-PAGE (#93, runda 1).\n\nSpecyfikacja (`docs/features/product-page/spec.md`, „Tagi i nagłówki cache”) wymaga jednego źródła nazw tagów, żeby nagłówek i purge nie mogły się rozjechać. API to spełnia (`CacheTags`), a sklep składa i waliduje nazwy w kilku niezależnych miejscach:\n\n- `apps/store/src/catalog/load-product.ts`: `` `product-${details.id.toLowerCase()}` ``,\n- `apps/store/app/api/revalidate/route.ts`: regex `TAG`,\n- `apps/store/src/catalog/load-catalog.ts`: druga, prawie identyczna funkcja `catalogClient`.\n\nDziś nazwy są zgodne. Rozjazd wykryje dopiero E2E na buildzie produkcyjnym.\n\n**Propozycja:** moduł `src/catalog/cache-tags.ts` (`CATALOG_TAG`, `productTag(id)`, `isCacheTag`) i jeden `catalogClient(tags?)`. Bez zmiany zachowania.",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-06T17:12:45Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 131,
+   "title": "Specyfikacje koszyka opisują klucz productId zamiast variantId",
+   "body": "## Opis\n\nPo epiku VARIANTS koszyk jest kluczowany `variantId`, ale dwie specyfikacje nadal opisują stan sprzed zmiany. `docs/features/cart-fixes/spec.md` nie był na liście „Dokumentacja do aktualizacji” specyfikacji VARIANTS, więc żadne zadanie go nie objęło.\n\n## Miejsca\n\n- `docs/features/cart-fixes/spec.md`:\n  - linie 119–121 i 129: „brak `productId` … Identyfikator produktu jest wymagany.”;\n  - linia 160: `ProductData::offerFor($productId)`;\n  - linia 181: „`productId` spoza UUID w ścieżce” BFF.\n  - Stan obecny: `variantId`, komunikaty „Identyfikator wariantu…”, ścieżka BFF `/api/cart/items/[variantId]`.\n- `docs/features/cart/spec.md`, linia 204: „jak `DoctrineProductPriceRepository::findMany`”, a klasa nazywa się `DoctrineVariantPriceRepository`.\n\n## Kryterium akceptacji\n\nObie specyfikacje opisują stan obecny: `variantId`, komunikaty wariantu i istniejące nazwy klas. Jeśli `cart-fixes/spec.md` jest w całości wchłonięty przez `cart/spec.md`, zamiast poprawiać można go usunąć (zgodnie z zasadą „dokumentacja opisuje wyłącznie stan obecny”). `grep -rn \"productId\" docs/features/cart*/spec.md` nie zwraca miejsc opisujących klucz linii koszyka.\n\n## Źródło\n\nRaport `/integration` epiku VARIANTS, runda 1, znaleziska F2 i F3 (waga Minor), HEAD `15c7875` gałęzi `epic/variants`, PR #129. Zgłoszenie od agenta, przyjęte przez właściciela.\n",
+   "labels": [
+    "documentation",
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T10:19:40Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 135,
+   "title": "Panel: kontrast etykiety „Zapisz” w oknie zmiany ceny 2,53:1",
+   "body": "### Środowisko\nStos lokalny (świeży, `/sweep`), commit d1845e8 (kod panelu jak `main` po CART-FIXES), Chromium desktop 1280 × 720, konto demo `admin` (rola admin).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu.\n2. Otwórz „Ceny”.\n3. Kliknij „Zmień cenę” przy pierwszym produkcie.\n4. Uruchom axe (WCAG 2.1 A i AA) w otwartym oknie.\n\n### Oczekiwane zachowanie albo wygląd\nEtykieta przycisku „Zapisz” (główne działanie okna) ma kontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\nBiały tekst na tle #10b981 ma kontrast 2,53:1. Dodatkowo numer strony „Strona N” w paginacji listy cen: #64748b na #f1f5f9, 4,34:1.\n\n### Kryterium akceptacji\nTest Playwright w panelu (desktop), po otwarciu okna „Zmień cenę”:\n```ts\nconst violations = await checkA11y(page, \"prices-dialog\");\nexpect(violations.filter((v) => v.id === \"color-contrast\")).toEqual([]);\n```\n\n### Niewiadome\nTen sam wzorzec przycisku jest prawdopodobnie w „Zapisz korektę” w Stanach magazynowych (nieweryfikowane). Kolor pochodzi z motywu PrimeVue Aura (`apps/admin/src/primevue.ts`), więc poprawka może objąć cały panel.\n\n### Dowód\naxe `color-contrast` w obu powtórzeniach: przycisk „Zapisz” 2,53:1 (biały na #10b981), paginacja 4,34:1 (#64748b na #f1f5f9). Pliki: `apps/admin/src/views/PricesView.vue`, `apps/admin/src/primevue.ts`.\nZrzuty i trace lokalnie: `<home>/.local/state/shop-sweep/2026-11-04-d1845e8/ux/evidence/3/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-04-d1845e8, commit d1845e80ea079b4c965f0c1e30ebb2ca3785fdd5, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T12:13:06Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 273,
+   "title": "Panel: okno „Zmień cenę” otwarte klawiaturą ustawia fokus na przycisku zamknięcia, nie w polu ceny",
+   "body": "### Środowisko\nStos lokalny, commit 743fed6ec537f8ff80e226bf7d5fdb62b25086f7, Chromium desktop 1280 × 720, konto `admin` (rola admin). Ekran: panel `/prices`, okno „Zmień cenę” otwarte `Enter`. Pliki kodu: `apps/admin/src/views/PricesView.vue` (`<Dialog>` bez ustawienia fokusu na `gross-input`).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu, otwórz „Ceny”, wpisz w szukaj „Hantle regulowane Lumora Para 10”.\n2. Ustaw fokus na „Zmień cenę” w jedynym wierszu i naciśnij `Enter`.\n3. Odczytaj `document.activeElement`.\n\n### Oczekiwane zachowanie albo wygląd\nFokus jest w polu „Nowa cena brutto (zł)”.\n\n### Obecne zachowanie albo wygląd\nFokus jest na przycisku zamknięcia okna (`BUTTON`, nazwa „Close”). Do pola trzeba dojść `Tab`, a czytnik ekranu zaczyna od „Close”.\n\n### Kryterium akceptacji\n```ts\nawait page.getByTestId(\"price-row\").getByRole(\"button\", { name: \"Zmień cenę\" }).focus();\nawait page.keyboard.press(\"Enter\");\nawait expect(page.getByTestId(\"change-dialog\")).toBeVisible();\nawait expect(page.getByTestId(\"gross-input\")).toBeFocused();\n```\n\n### Niewiadome\nBrak.\n\n### Dowód\n`E2E_ARGS=\"repro-2 --project desktop --repeat-each 2\"`: oba powtórzenia `Expected: focused, Received: inactive`, log `ACTIVE BUTTON Close`. Wpływ niski: pętla `Tab` w oknie działa, `Escape` zwraca fokus na „Zmień cenę”. Angielska nazwa „Close” to #251 F12.\nSkrypt i wyniki lokalnie: `<home>/.local/state/shop-sweep/2026-11-07-743fed6/ux/evidence/2/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-07-743fed6, commit 743fed6ec537f8ff80e226bf7d5fdb62b25086f7, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-08T07:54:47Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 272,
+   "title": "Panel cen po nieudanym wyszukiwaniu dalej pokazuje wiersze poprzedniego zapytania obok błędu",
+   "body": "### Środowisko\nStos lokalny, commit 743fed6ec537f8ff80e226bf7d5fdb62b25086f7, Chromium desktop 1280 × 720, konto `admin` (rola admin). Ekran: panel `/prices`, po błędzie `GET /api/v1/admin/prices?q=...`. Pliki kodu: `apps/admin/src/prices/usePriceList.ts` (gałęzie błędu nie czyszczą `items`), `apps/admin/src/views/PricesView.vue`. Pokrewne: #251 F10 (ten sam wzorzec w liście produktów, inne pliki).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu i otwórz „Ceny”, poczekaj na listę.\n2. Spraw, by kolejne żądania `/api/v1/admin/prices` kończyły się 500 (w teście `page.route`).\n3. Wpisz „hantle” w „Szukaj po nazwie produktu”.\n\n### Wynik oczekiwany\nLista pokazuje błąd z „Spróbuj ponownie” i nie pokazuje wierszy innego zapytania.\n\n### Wynik faktyczny\nNad tabelą jest „Nie udało się pobrać cen (HTTP 500).”, a pod nim nadal 261 wierszy poprzedniego zapytania z aktywnymi „Zmień cenę” i „Historia”, mimo że w polu szukania stoi „hantle”.\n\n### Kryterium akceptacji\n```ts\nawait page.route(/\\/api\\/v1\\/admin\\/prices/, (route) => route.fulfill({ status: 500, body: \"{}\", contentType: \"application/json\" }));\nawait page.getByRole(\"searchbox\", { name: \"Szukaj po nazwie produktu\" }).fill(\"hantle\");\nawait expect(page.getByRole(\"main\").getByRole(\"alert\")).toContainText(\"Nie udało się pobrać cen\");\nawait expect(page.getByTestId(\"price-row\")).toHaveCount(0);\n```\n\n### Niewiadome\nCzy wiersze czyścić, czy wyszarzyć z komunikatem „nieaktualne” (decyzja produktowa). Niesprawdzone, czy zmiana ceny na przestarzałej liście przechodzi przez blokadę wersji w API.\n\n### Dowód\n`E2E_ARGS=\"repro-4 --project desktop --repeat-each 2\"`: oba powtórzenia `Expected: 0, Received: 261` (`getByTestId('price-row')`). Wpływ: mylące, bez utraty danych.\nSkrypt i wyniki lokalnie: `<home>/.local/state/shop-sweep/2026-11-07-743fed6/ux/evidence/1/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-07-743fed6, commit 743fed6ec537f8ff80e226bf7d5fdb62b25086f7, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-08T07:54:45Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  }
+ ],
+ "epics": [
+  {
+   "id": "DEPLOY-OPS",
+   "number": 178,
+   "title": "DEPLOY-OPS: kopie zapasowe i monitoring środowiska",
+   "dir": "deploy-ops",
+   "state": "in_progress",
+   "issues": [
+    175
+   ],
+   "scope": [
+    "infra/k8s",
+    "docs/adr",
+    "CLAUDE.md",
+    "docs/vision.md",
+    "docs/features/deploy/spec.md",
+    "docs/features/hardening/spec.md"
+   ]
+  }
+ ],
+ "taken_ids": [
+  "agent-tester-ux",
+  "agentic-software-house",
+  "ao-run",
+  "cart",
+  "cart-fixes",
+  "catalog-admin",
+  "catalog-page-metadata",
+  "catalog-unknown-category",
+  "checkout",
+  "dashboard-data-freshness",
+  "deploy",
+  "deploy-ops",
+  "discount-codes",
+  "groom",
+  "hardening",
+  "inventory",
+  "lighthouse",
+  "order-management",
+  "payment",
+  "prepare-epic",
+  "pricing",
+  "product-page",
+  "promotions",
+  "quality-fixes",
+  "retro",
+  "search",
+  "seo",
+  "variants",
+  "visual-design",
+  "walking-skeleton"
+ ],
+ "rejected": []
+}

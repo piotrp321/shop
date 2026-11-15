@@ -1,0 +1,59 @@
+{
+ "id": "obsolete-pagination-label",
+ "kind": "substantive",
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "prompt": "<run_dir>: {{RESULT_DIR}} (katalog przebiegu: tu zapisz proposals.json; input.json tego przebiegu jest w {{INPUT_DIR}}/input.json).\n<worktree>: {{PASS_DIR}}/checkout (checkout origin/main do czytania).\n",
+ "inputs": [
+  "input.json"
+ ],
+ "assertions": [
+  {
+   "type": "validator",
+   "script": ".claude/skills/groom/groom.py",
+   "args": [
+    "validate",
+    "{{RUN_DIR}}",
+    "--state",
+    "{{STATE_DIR}}"
+   ]
+  },
+  {
+   "type": "json",
+   "select": "items",
+   "match": {
+    "kind": "obsolete",
+    "issues": [
+     134
+    ],
+    "close_reason": "completed"
+   }
+  },
+  {
+   "type": "json",
+   "select": "items",
+   "expect": "absent",
+   "match": {
+    "kind": "obsolete",
+    "issues": {
+     "in": [
+      [
+       293
+      ],
+      [
+       294
+      ],
+      [
+       387
+      ],
+      [
+       166
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "type": "tree_unchanged"
+  }
+ ]
+}

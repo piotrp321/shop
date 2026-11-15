@@ -1,0 +1,505 @@
+{
+ "schema": 1,
+ "collected_at": "2026-11-09T14:26:36.223772+01:00",
+ "commit": "fc208156d133423056a6d1e727685d9678465da5",
+ "issues": [
+  {
+   "number": 346,
+   "title": "Panel: tekst „Dane z …” na pulpicie ma kontrast 4,34:1",
+   "body": "### Środowisko\nStos lokalny z `origin/main`, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, Chromium desktop 1280 × 720, konto `admin`.\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu.\n2. Na pulpicie (`/`) odczytaj kolory elementu „Dane z <godzina>”.\n\n### Oczekiwane zachowanie albo wygląd\nKontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\n#64748b na #f1f5f9, 16 px: 4,34:1 (`.updated-at` w `apps/admin/src/views/DashboardView.vue`, kolory motywu `apps/admin/src/primevue.ts`).\n\n### Kryterium akceptacji\n```ts\n// ratio from the computed colors of .updated-at\nexpect(ratio).toBeGreaterThanOrEqual(4.5);\n// and axe on the dashboard reports no color-contrast violation on .updated-at\n```\n\n### Niewiadome\nTo inne miejsce wzorca z #135 („Strona N”) i #260 (`.hint`); najlepiej poprawić w motywie raz.\n\n### Dowód\n`--repeat-each 2`, oba powtórzenia: `Received: 4.3439`, axe `color-contrast (serious): .updated-at`.\n\nSkrypt i zrzut lokalnie: `<home>/.local/state/shop-sweep/2026-11-09-015c52b/ux/evidence/4/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-09-015c52b, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T11:53:02Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 344,
+   "title": "Sklep: najechany główny przycisk ma biały tekst o kontraście 3,24:1",
+   "body": "### Środowisko\nStos lokalny z `origin/main`, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, Chromium desktop 1280 × 720, gość.\n\n### Kroki odtworzenia\n1. Otwórz `/p/buty-trailowe-norvane-hala-500`, wybierz pierwszy kolor i rozmiar, kliknij „Do koszyka”.\n2. Wejdź w „Koszyk”.\n3. Najedź myszą na „Przejdź do kasy”, poczekaj 600 ms na koniec przejścia i odczytaj kolory.\n\n### Oczekiwane zachowanie albo wygląd\nTekst przycisku ma w każdym stanie, także po najechaniu, kontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\nPo najechaniu tło rgb(73,135,233), tekst rgb(237,246,255): kontrast 3,24:1. W spoczynku 4,60:1. Przyczyna: wariant `default` w `apps/store/src/components/ui/button.tsx` (`hover:bg-primary/80`). Dotyczy każdego przycisku tego wariantu (Zamawiam…, Zapłać, Przejdź do kasy, Do koszyka).\n\n### Kryterium akceptacji\n```ts\nawait button.hover();\nawait page.waitForTimeout(600);\n// colors from getComputedStyle composited on the white canvas\nexpect(ratio(rgb.fg, rgb.bg)).toBeGreaterThanOrEqual(4.5);\n```\n\n### Niewiadome\nNa mobile (`hover: none`) stan najechania się nie włącza (4,60:1).\n\n### Dowód\n`--repeat-each 2`, oba powtórzenia: `Received: 3.2448`, `CHK rgb {\"fg\":[237,246,255],\"bg\":[73,135,233]}`.\n\nSkrypt i zrzut lokalnie: `<home>/.local/state/shop-sweep/2026-11-09-015c52b/ux/evidence/1/` (`repro-1.spec.ts`, `hover.png`).\n\n### Źródło\nPrzebieg `/sweep` 2026-11-09-015c52b, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T11:52:59Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 341,
+   "title": "Panel: strona kodu, który nie istnieje albo się nie wczytał, ma nagłówek „Nowy kod rabatowy”",
+   "body": "### Środowisko\nStos lokalny z `origin/main`, commit d26545324df740c30fbc92cee26c0eed4dc1744c, Chromium desktop 1280 × 720, konto `admin` w panelu.\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu.\n2. Otwórz `/discount-codes/01a1c004-5371-702d-b5c2-000000000000` (nieistniejący kod).\n\n### Oczekiwane zachowanie albo wygląd\nNagłówek nie zapowiada tworzenia nowego kodu na adresie istniejącego kodu (np. „Kod rabatowy”), także przy błędzie wczytania.\n\n### Obecne zachowanie albo wygląd\nH1 „Nowy kod rabatowy” nad komunikatem „Ten kod rabatowy nie istnieje.”. To samo nad komunikatem 500 „Nie udało się pobrać kodu rabatowego (HTTP 500).”. Źródło: `apps/admin/src/views/DiscountCodeFormView.vue`, `<h1>{{ view ? view.code : \"Nowy kod rabatowy\" }}</h1>`.\n\n### Kryterium akceptacji\n```ts\nawait page.goto(`${urls.admin}/discount-codes/01a1c004-5371-702d-b5c2-000000000000`);\nawait expect(page.getByTestId(\"load-error\")).toHaveText(\"Ten kod rabatowy nie istnieje.\");\nawait expect(page.getByRole(\"heading\", { level: 1 })).not.toHaveText(\"Nowy kod rabatowy\");\n```\n\n### Niewiadome\nTen sam wzorzec nagłówka (`view ? … : \"Nowa …\"`) jest w `PromotionFormView.vue` i `ProductFormView.vue`; tam nie sprawdzano.\n\n### Dowód\nW obu powtórzeniach log `h1: Nowy kod rabatowy`, asercja `not.toHaveText` pada. Stan 500 sprawdzony przez `page.route` w jednym przebiegu.\n\nZrzuty lokalnie: `<home>/.local/state/shop-sweep/2026-11-09-d265453/ux/evidence/2/` (`desktop-code-404.png`, `03-code-404.png`, `repro-2.spec.ts`).\n\n### Źródło\nPrzebieg `/sweep` 2026-11-09-d265453, commit d26545324df740c30fbc92cee26c0eed4dc1744c, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T11:26:12Z",
+   "weight": "Minor",
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 340,
+   "title": "Kasa: po odrzuceniu kodu przy złożeniu ukryty region statusu nadal mówi „Zastosowano kod X.”",
+   "body": "### Środowisko\nStos lokalny z `origin/main`, commit d26545324df740c30fbc92cee26c0eed4dc1744c, Chromium desktop 1280 × 720 i mobile 375 × 812, gość (bez konta). Kod demo `MINUS50` (50 zł od 300 zł) albo kod procentowy wyłączony w panelu przez konto `marketing`.\n\n### Kroki odtworzenia\nWariant A (koszyk poniżej minimum):\n1. Dodaj do koszyka 5 sztuk „Bidon termiczny Dravik Kropla 500” (349,50 zł), przejdź do kasy, wypełnij formularz, wybierz „Szybki przelew (demo)”.\n2. Wpisz `MINUS50`, kliknij „Zastosuj” (region statusu: „Zastosowano kod MINUS50.”).\n3. W drugiej karcie ustaw w koszyku ilość 1 (69,90 zł, poniżej minimum).\n4. W pierwszej karcie kliknij „Zamawiam z obowiązkiem zapłaty”.\n5. Odczytaj `[data-testid=checkout-code-status]` (`role=\"status\"`, `sr-only`).\n\nWariant B (kod wyłączony): zastosuj kod procentowy, wyłącz go w panelu (`PUT` z `enabled: false`), kliknij „Zamawiam z obowiązkiem zapłaty”.\n\n### Oczekiwane zachowanie albo wygląd\nPo odrzuceniu kodu przy złożeniu (komunikat przy polu, kod zdjęty, podsumowanie bez rabatu) region `role=\"status\"` nie twierdzi, że kod jest zastosowany: jest pusty albo informuje, że kod zdjęto.\n\n### Obecne zachowanie albo wygląd\nWidoczny ekran jest poprawny: komunikat przy polu („Ten kod działa przy zamówieniu od 300,00 zł.” albo „Ten kod jest nieprawidłowy albo nieaktywny.”), fokus w polu, brak linii rabatu, nowa suma. Region `checkout-code-status` zachowuje jednak tekst „Zastosowano kod X.”. W `apps/store/src/checkout/CheckoutPage.tsx` gałąź `discount_code_rejected` w `showFailure` zdejmuje kod bez aktualizacji `codeStatus` (`setCodeStatus` jest wołane tylko w `applyCode` i `removeCode`). Czytnik ekranu w trybie przeglądania czyta nieprawdziwe zdanie obok pola z błędem.\n\n### Kryterium akceptacji\n```ts\nawait page.getByRole(\"button\", { name: \"Zamawiam z obowiązkiem zapłaty\" }).click();\nawait expect(page.getByRole(\"main\").getByRole(\"alert\").filter({ hasText: \"Ten kod działa przy zamówieniu od 300,00 zł.\" })).toBeVisible();\nawait expect(page.getByTestId(\"checkout-discount\")).toHaveCount(0);\n// The code is off the order, so the live region must not keep saying it is applied.\nawait expect(page.getByTestId(\"checkout-code-status\")).not.toContainText(\"Zastosowano\");\n```\nTo samo dla wariantu B z komunikatem „Ten kod jest nieprawidłowy albo nieaktywny.”.\n\n### Niewiadome\nNie sprawdzono osobno, czy region zachowuje stary tekst po `order-total-changed` z odrzuconym kodem.\n\n### Dowód\nTester, `--repeat-each 2`, oba powtórzenia:\n```\nLocator: getByTestId('checkout-code-status')\nExpected substring: not \"Zastosowano\"\nReceived string: \"Zastosowano kod MINUS50.\"\n<div role=\"status\" class=\"sr-only\" data-testid=\"checkout-code-status\">Zastosowano kod MINUS50.</div>\n```\nUX (wariant B), oba powtórzenia: `Received string: \"Zastosowano kod E2E-MW962VF7-WKZS.\"` i `\"Zastosowano kod E2E-MW963HD9-JYJJ.\"`. Konsola: tylko oczekiwane 409.\n\nZrzuty i trace lokalnie: `<home>/.local/state/shop-sweep/2026-11-09-d265453/tester/evidence/1/`, `<home>/.local/state/shop-sweep/2026-11-09-d265453/ux/evidence/1/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-09-d265453, commit d26545324df740c30fbc92cee26c0eed4dc1744c, agent tester i ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T11:26:10Z",
+   "weight": "Minor",
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 339,
+   "title": "E2E: niestabilny checkout-customer.spec.ts, brak komunikatu „Płatność przyjęta” w 30 s",
+   "body": "### Środowisko\nCI, job `e2e` runu dla pusha do `epic/discount-codes` na 0360513 (https://github.com/piotrp321/shop/actions/runs/42592990137). Ten sam commit w runie `pull_request` przeszedł, ponowienie joba też przeszło.\n\n### Kroki odtworzenia\nNieznane deterministycznie. Wystąpiło raz: `tests/checkout-customer.spec.ts:11` („Jan orders his cart … card payment is rejected, he chooses again and pays …”).\n\n### Oczekiwane zachowanie albo wygląd\nPo drugiej, udanej płatności strona potwierdzenia pokazuje „Płatność przyjęta. Potwierdzenie wysłaliśmy na adres …” w ciągu 30 s.\n\n### Obecne zachowanie albo wygląd\n`checkout-customer.spec.ts:53`: `expect(locator).toBeVisible()` z timeoutem 30000 ms, element nie znaleziony. 64 pozostałe testy przeszły.\n\n### Kryterium akceptacji\nUstalona przyczyna (czas obsługi płatności przez workera, odświeżanie strony potwierdzenia, kolejność zdarzeń) i test stabilny przy `--repeat-each 20` na buildzie produkcyjnym.\n\n### Niewiadome\nCzy to wolny worker w CI, czy wyścig w odświeżaniu stanu płatności po odrzuceniu i ponownym wyborze.\n\n### Źródło\nPrzebieg AO epiku DISCOUNT-CODES (#225), po PR synchronizacji #330.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T10:22:28Z",
+   "weight": null,
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 257,
+   "title": "API panelu zamówień: angielski komunikat 422 przy brakującym kluczu treści",
+   "body": "### Kroki odtworzenia\n`POST /api/v1/admin/orders/{id}/status` albo `/refund/complete` z body `{}` albo bez klucza `note`.\n\n### Wynik oczekiwany\n422 z polskim `violations[].title`, jak obiecuje OpenAPI.\n\n### Wynik faktyczny\n422 z `violations[].title = \"This value should be of type mixed.\"` (deserializacja z `REQUIRE_ALL_PROPERTIES`). Panel zawsze wysyła komplet kluczy, więc dotyczy innych klientów API.\n\n### Kryterium akceptacji\nTest funkcjonalny: brakujący klucz daje 422 z polskim komunikatem przy właściwym `propertyPath`.\n\n### Dowód\n`apps/api/src/Ordering/UI/Http/ChangeOrderStatusRequest.php`, `apps/api/src/Ordering/UI/Http/CompleteRefundRequest.php`.\n\n### Źródło\nŹródło: integracja epiku ORDER-MANAGEMENT przez AO (`/integration`, raport `<home>/.local/state/ao-order-management/epics/order-management/integration/round-1.md`), końcowy PR #255. Znalezisko Minor bez naprawy w epiku. (F2)",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T19:58:19Z",
+   "weight": null,
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 256,
+   "title": "Zamówienia: notatka pracownika przepuszcza unicode'owe białe znaki i separatory linii",
+   "body": "### Środowisko\nStos AO epiku ORDER-MANAGEMENT, kod jak `main` po #255.\n\n### Kroki odtworzenia\n1. `POST /api/v1/admin/orders/{id}/status` z `transition: cancel` i notatką \"\\u00a0\" (sam NBSP) albo z U+2028 w środku.\n\n### Wynik oczekiwany\n422 jak dla pustej notatki i dla `\\n` (spec P7: notatka wymagana, jedna linia).\n\n### Wynik faktyczny\n200; historia zamówienia ma notatkę `\"\\xa0\"`. `\\n`, `\\t` i NUL dają poprawnie 422.\n\n### Kryterium akceptacji\nTesty 422 dla notatki z samym NBSP i z U+2028/U+2029/U+0085, w domenie i w walidacji żądań (`ChangeOrderStatusRequest`, `CompleteRefundRequest`).\n\n### Dowód\n`StaffNote::optional()` używa `trim()` (tylko ASCII), a `ControlCharacters::PATTERN` nie ma `/u`. Pliki: `apps/api/src/Ordering/Domain/StaffNote.php`, `apps/api/src/Ordering/UI/Http/ChangeOrderStatusRequest.php`, `apps/api/src/Ordering/UI/Http/CompleteRefundRequest.php`. Sugestia: przycinanie i test pustki z `/u` (`[\\s\\p{Z}]`), zakaz `\\x{85}\\x{2028}\\x{2029}`.\n\n### Źródło\nŹródło: integracja epiku ORDER-MANAGEMENT przez AO (`/integration`, raport `<home>/.local/state/ao-order-management/epics/order-management/integration/round-1.md`), końcowy PR #255. Znalezisko Minor bez naprawy w epiku. (F1)",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T19:58:18Z",
+   "weight": null,
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 252,
+   "title": "Dokumentacja po CATALOG-ADMIN: make seed i wyliczenia w CLAUDE.md API",
+   "body": "- **F17:** `docs/features/catalog-admin/spec.md` twierdzi, że `make seed` kończy się reindeksacją katalogu. Kod tego nie robi (kod jest poprawny, opis nie).\n- **F18:** wyliczenia w `apps/api/CLAUDE.md` po scaleniu z `main` (PR #241, rozwiązanie konfliktu) są rozproszone i pomijają elementy epiku. Scalić w jedną spójną listę.\n\nŹródło: integracja epiku CATALOG-ADMIN (AO), raporty rund 1–3, końcowy PR #239.",
+   "labels": [
+    "documentation",
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T19:26:11Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 248,
+   "title": "API katalogu: duplikat wariantu różniący się wielkością liter daje 500 zamiast 422",
+   "body": "**F3:** dwa warianty, których wartości różnią się tylko składaniem wielkości liter w PostgreSQL, przechodzą walidację domeny, a zapis kończy się naruszeniem unikalności w bazie i 500.\n\nPliki: `apps/api/src/Catalog/Domain/Product/VariantValues.php`, `apps/api/src/Catalog/Infrastructure/Persistence/Doctrine/DoctrineProductRepository.php`.\n\nOczekiwane: 422 z naruszeniem pola, porównanie w domenie spójne z porównaniem w bazie.\n\nŹródło: integracja epiku CATALOG-ADMIN (AO), raporty rund 1–3, końcowy PR #239.",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T19:26:05Z",
+   "weight": null,
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 247,
+   "title": "API katalogu: znaki sterujące i same białe znaki Unicode w tekstach produktu",
+   "body": "Walidator zapisu produktu przepuszcza teksty, które powinien odrzucić z 422:\n\n- **F2:** NUL i inne znaki sterujące w nazwie, opisie, osi albo wartości wariantu dają 500 albo ucięte dane.\n- **F4:** nazwa, oś albo wartość złożona z samych białych znaków Unicode (np. NBSP) przechodzi walidację.\n- **F5 (porządek przy okazji):** walidator kopiuje limity domeny jako literały zamiast brać je z domeny.\n\nPlik: `apps/api/src/Catalog/UI/Http/Validation/ValidProductWriteValidator.php`.\n\nOczekiwane: 422 z naruszeniem pola dla F2 i F4, limity w jednym miejscu.\n\nŹródło: integracja epiku CATALOG-ADMIN (AO), raporty rund 1–3, końcowy PR #239.",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T19:26:04Z",
+   "weight": null,
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 213,
+   "title": "API płatności: pusty sekret webhooka nie jest odrzucany",
+   "body": "Niepotwierdzone ryzyko z `/integration` epiku PAYMENT (#91). Na stosie sekrety są niepuste, więc dziś to tylko ryzyko konfiguracji.\n\n- Adaptery dostawców przy `parseWebhook` przyjmują podpis policzony pustym kluczem, gdy zmienna sekretu webhooka jest pusta.\n- Oczekiwane: kontener API nie startuje z pustym sekretem (walidacja konfiguracji) albo adapter odrzuca webhook przy pustym kluczu.\n- Test: konfiguracja z pustym sekretem kończy się błędem; webhook podpisany pustym kluczem → 400.",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T08:38:59Z",
+   "weight": null,
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 204,
+   "title": "Deptrac: komentarze warstw nie opisują zależności reindeksacji i ProductOfferFacts",
+   "body": "## Problem\nKomentarze warstw w `apps/api/deptrac.yaml` nie opisują zależności dodanych w SEARCH: handlerów reindeksacji (`ProductIndexing`) i adaptera `ProductOfferFacts`.\n\n## Oczekiwane\nPo zdaniu w trzech komentarzach warstw, wyjaśniającym, dlaczego te zależności są dozwolone. Bez zmiany reguł.\n\n## Dowód\nArchitekt integracji, rundy 1 i 2 (F4).\n\n### Źródło\nIntegracja epiku SEARCH przez AO (`/integration`, raporty `<home>/.local/state/ao-search/epics/search/integration/round-1.md` i `round-2.md`), końcowy PR #195 (merge `9717967`). Znaleziska Minor bez naprawy w epiku.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T07:43:05Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 197,
+   "title": "API katalogu: UUID kategorii wielkimi literami daje pustą listę produktów",
+   "body": "### Środowisko\nStos AO epiku SEARCH, sklep `next dev`, kod jak `main` po #195 (`9717967`).\n\n### Kroki odtworzenia\n1. Weź UUID istniejącej kategorii z danymi (np. `492f4a2e-…`).\n2. `GET /api/v1/products?category=<UUID wielkimi literami>`.\n\n### Wynik oczekiwany\nTen sam wynik co dla UUID małymi literami (UUID nie rozróżnia wielkości liter) albo jawny błąd walidacji.\n\n### Wynik faktyczny\n`total` 0. Ten sam UUID małymi literami daje 12 produktów.\n\n### Kryterium akceptacji\nTest API: lista dla kategorii z UUID wielkimi literami zwraca te same produkty co dla małych liter.\n\n### Niewiadome\nCzy ten sam problem dotyczy innych parametrów z UUID.\n\n### Dowód\nQA integracji, rundy 1 i 2. Plik: `apps/api/src/Catalog/Application/Query/ListProductsHandler.php`. Sugestia: znormalizować id kategorii przed kryteriami ES i `find()`.\n\n### Źródło\nIntegracja epiku SEARCH przez AO (`/integration`, raporty `<home>/.local/state/ao-search/epics/search/integration/round-1.md` i `round-2.md`), końcowy PR #195 (merge `9717967`). Znaleziska Minor bez naprawy w epiku.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T07:42:55Z",
+   "weight": null,
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 167,
+   "title": "Nieaktualne komentarze CacheTags i StorefrontCache w API",
+   "body": "Znalezisko F3 (Minor) z integracji epiku PRODUCT-PAGE (#93, runda 1).\n\n- `apps/api/src/Shared/Infrastructure/Http/Cache/CacheTags.php`: komentarz mówi „later also the ISR pages”, a strony ISR już używają tych tagów.\n- `apps/api/src/Shared/Infrastructure/Http/Cache/StorefrontCache.php`: docblock `invalidateProduct` mówi, że rewalidacja w sklepie obejmuje „the product page and every list response”. Listy czyści purge Varnisha, a rewalidacja dotyczy tylko stron produktu.\n\nDo zrobienia: poprawić oba komentarze tak, żeby opisywały stan obecny (`CLAUDE.md`, „Dokumentacja”). Bez zmiany zachowania.",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-06T17:12:47Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 166,
+   "title": "Jedno źródło nazw tagów cache w sklepie",
+   "body": "Znalezisko F2 (Minor) z integracji epiku PRODUCT-PAGE (#93, runda 1).\n\nSpecyfikacja (`docs/features/product-page/spec.md`, „Tagi i nagłówki cache”) wymaga jednego źródła nazw tagów, żeby nagłówek i purge nie mogły się rozjechać. API to spełnia (`CacheTags`), a sklep składa i waliduje nazwy w kilku niezależnych miejscach:\n\n- `apps/store/src/catalog/load-product.ts`: `` `product-${details.id.toLowerCase()}` ``,\n- `apps/store/app/api/revalidate/route.ts`: regex `TAG`,\n- `apps/store/src/catalog/load-catalog.ts`: druga, prawie identyczna funkcja `catalogClient`.\n\nDziś nazwy są zgodne. Rozjazd wykryje dopiero E2E na buildzie produkcyjnym.\n\n**Propozycja:** moduł `src/catalog/cache-tags.ts` (`CATALOG_TAG`, `productTag(id)`, `isCacheTag`) i jeden `catalogClient(tags?)`. Bez zmiany zachowania.",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-06T17:12:45Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 165,
+   "title": "Strona nieznanego produktu to domyślna angielska strona 404 Next.js",
+   "body": "Znalezisko F1 (Minor) z integracji epiku PRODUCT-PAGE (#93, runda 1).\n\n### Środowisko\nSklep (`apps/store`), `main` po merge'u #163, `STORE_MODE=dev`.\n\n### Kroki odtworzenia\n1. Otwórz `/p/nie-ma-takiego-produktu`.\n\n### Oczekiwane zachowanie albo wygląd\nPolska strona 404 w `<main>` z linkiem „Wszystkie produkty”. Odpowiedź 404 z `noindex` zostaje.\n\n### Obecne zachowanie albo wygląd\nOdpowiedź 404 z `noindex` (zgodnie ze specyfikacją), ale treść to domyślne „This page could not be found” Next.js, bez elementu `<main>` i bez linku do listy. Agent UX odtworzył to 2/2.\n\n### Wskazówka\n`apps/store/app/p/[slug]/page.tsx` woła `notFound()`, a `apps/store/app/not-found.tsx` nie istnieje.",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-06T17:12:44Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 135,
+   "title": "Panel: kontrast etykiety „Zapisz” w oknie zmiany ceny 2,53:1",
+   "body": "### Środowisko\nStos lokalny (świeży, `/sweep`), commit d1845e8 (kod panelu jak `main` po CART-FIXES), Chromium desktop 1280 × 720, konto demo `admin` (rola admin).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu.\n2. Otwórz „Ceny”.\n3. Kliknij „Zmień cenę” przy pierwszym produkcie.\n4. Uruchom axe (WCAG 2.1 A i AA) w otwartym oknie.\n\n### Oczekiwane zachowanie albo wygląd\nEtykieta przycisku „Zapisz” (główne działanie okna) ma kontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\nBiały tekst na tle #10b981 ma kontrast 2,53:1. Dodatkowo numer strony „Strona N” w paginacji listy cen: #64748b na #f1f5f9, 4,34:1.\n\n### Kryterium akceptacji\nTest Playwright w panelu (desktop), po otwarciu okna „Zmień cenę”:\n```ts\nconst violations = await checkA11y(page, \"prices-dialog\");\nexpect(violations.filter((v) => v.id === \"color-contrast\")).toEqual([]);\n```\n\n### Niewiadome\nTen sam wzorzec przycisku jest prawdopodobnie w „Zapisz korektę” w Stanach magazynowych (nieweryfikowane). Kolor pochodzi z motywu PrimeVue Aura (`apps/admin/src/primevue.ts`), więc poprawka może objąć cały panel.\n\n### Dowód\naxe `color-contrast` w obu powtórzeniach: przycisk „Zapisz” 2,53:1 (biały na #10b981), paginacja 4,34:1 (#64748b na #f1f5f9). Pliki: `apps/admin/src/views/PricesView.vue`, `apps/admin/src/primevue.ts`.\nZrzuty i trace lokalnie: `<home>/.local/state/shop-sweep/2026-11-04-d1845e8/ux/evidence/3/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-04-d1845e8, commit d1845e80ea079b4c965f0c1e30ebb2ca3785fdd5, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T12:13:06Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 134,
+   "title": "Sklep: nazwa dostępna linków paginacji nie zawiera widocznego tekstu",
+   "body": "### Środowisko\nStos lokalny (świeży, `/sweep`), commit d1845e8 (kod sklepu jak `main` po CART-FIXES), Chromium desktop 1280 × 720, gość.\n\n### Kroki odtworzenia\n1. Otwórz stronę główną sklepu `/` (lista z paginacją).\n2. Uruchom axe (WCAG 2.1 A i AA).\n\n### Oczekiwane zachowanie albo wygląd\nNazwa dostępna linków paginacji zawiera ich widoczny tekst (WCAG 2.5.3 „Label in Name”), np. „Następna strona” przy widocznym „Następna”.\n\n### Obecne zachowanie albo wygląd\nLink ma `aria-label=\"Przejdź do następnej strony\"` przy widocznym tekście „Następna”, więc nazwa nie zawiera widocznego tekstu. To samo dotyczy „Poprzednia”, gdy jest na stronie. Osoba sterująca głosem („kliknij Następna”) nie trafi w link.\n\n### Kryterium akceptacji\nTest Playwright na stronie głównej (desktop):\n```ts\nconst violations = await checkA11y(page, \"home\");\nexpect(violations.filter((v) => v.id === \"label-content-name-mismatch\")).toEqual([]);\n```\n\n### Niewiadome\nNa telefonie tekst linku jest ukryty (`hidden sm:block`) i reguła nie zgłasza naruszenia.\n\n### Dowód\naxe `label-content-name-mismatch` dla `.rounded-lg`: `<a data-slot=\"pagination-link\" aria-label=\"Przejdź do następnej...\" href=\"/?page=2\">`. Plik: `apps/store/src/components/ui/pagination.tsx`.\nZrzuty i trace lokalnie: `<home>/.local/state/shop-sweep/2026-11-04-d1845e8/tester/evidence/2/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-04-d1845e8, commit d1845e80ea079b4c965f0c1e30ebb2ca3785fdd5, agent tester (ux-reviewer: ta sama obserwacja jako hipoteza), odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T12:13:05Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 133,
+   "title": "Sklep: link kategorii zagnieżdżony w summary drzewa kategorii (axe nested-interactive)",
+   "body": "### Środowisko\nStos lokalny (świeży, `/sweep`), commit d1845e8 (kod sklepu jak `main` po CART-FIXES), Chromium desktop 1280 × 720 i mobile 375 × 812, gość.\n\n### Kroki odtworzenia\n1. Otwórz stronę główną sklepu `/`.\n2. Uruchom axe (WCAG 2.1 A i AA) na nawigacji „Kategorie”.\n\n### Oczekiwane zachowanie albo wygląd\nBrak naruszenia `nested-interactive`: element `summary` drzewa kategorii nie zawiera linku, a link kategorii i rozwijanie podkategorii są osobnymi, rozróżnialnymi elementami.\n\n### Obecne zachowanie albo wygląd\n7 elementów `details > summary` zawiera link kategorii (`<span class=\"flex-1\">{link}</span>` w `summary`). Czytnik ekranu dostaje zagnieżdżony element interaktywny.\n\n### Kryterium akceptacji\nTest Playwright na stronie głównej (desktop i mobile):\n```ts\nconst violations = await checkA11y(page, \"home\");\nexpect(violations.filter((v) => v.id === \"nested-interactive\")).toEqual([]);\n```\n\n### Niewiadome\nWpływ nie sprawdzony prawdziwym czytnikiem ekranu; `ariaSnapshot` pokazuje `group > link`, więc nazwa linku jest dostępna.\n\n### Dowód\naxe `nested-interactive` (impact: serious) dla `li:nth-child(2) > details > summary` … `li:nth-child(8) > details > summary`: „Element has focusable descendants”. Plik: `apps/store/src/catalog/CategoryTree.tsx`.\nZrzuty i trace lokalnie: `<home>/.local/state/shop-sweep/2026-11-04-d1845e8/tester/evidence/1/`, `<home>/.local/state/shop-sweep/2026-11-04-d1845e8/ux/evidence/2/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-04-d1845e8, commit d1845e80ea079b4c965f0c1e30ebb2ca3785fdd5, agenci tester i ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T12:13:03Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 130,
+   "title": "Katalog: repozytorium podmienia warianty istniejącego produktu poza zakresem",
+   "body": "## Opis\n\n`DoctrineProductRepository::save()` dla istniejącego produktu z inną listą wariantów usuwa stare wiersze `catalog_product_variant` i wstawia nowe (gałąź `$variantsChanged` w `write()` i `storedVariants()`: `$record->variants->clear(); flush; addVariants(...)`). Nic tego nie wywołuje: jedyne wywołanie `save()` jest w `CreateProductHandler`, który wcześniej odrzuca istniejące `id`, a domena nie ma operacji zmiany wariantów.\n\nSpecyfikacja VARIANTS wyłącza „usuwanie wariantu i zmianę osi istniejącego produktu” i zostawia tę decyzję epikowi CATALOG-ADMIN (#95). Między contextami nie ma FK, więc takie usunięcie osierociłoby ceny, stany i linie koszyka kluczowane `variantId`.\n\n## Miejsce\n\n- `apps/api/src/Catalog/Infrastructure/Persistence/Doctrine/DoctrineProductRepository.php`, gałąź `$variantsChanged` w `write()` i `storedVariants()`.\n- Test `DoctrineProductRepositoryTest::testSavingTheSameProductAgainKeepsItsVariantsAndSavingDifferentOnesReplacesThem`.\n\n## Kryterium akceptacji\n\nZapis istniejącego produktu z inną listą wariantów rzuca `\\LogicException` (warianty w bazie zostają bez zmian). Gałąź „replace” jest usunięta, a test sprawdza wyjątek zamiast podmiany. Ponowny zapis z tą samą listą wariantów działa jak dotąd.\n\n## Niewiadome\n\nObecnie bez wpływu na działanie (nic nie wywołuje tej ścieżki). Ryzyko pojawi się, gdy ktoś użyje `save()` do edycji produktu przed CATALOG-ADMIN.\n\n## Źródło\n\nRaport `/integration` epiku VARIANTS, runda 1, znalezisko F1 (waga Minor), HEAD `15c7875` gałęzi `epic/variants`, PR #129. Zgłosili to niezależnie architekt i QA. Zgłoszenie od agenta, przyjęte przez właściciela.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T10:19:39Z",
+   "weight": "Minor",
+   "assigned_epic": "QUALITY-FIXES"
+  },
+  {
+   "number": 114,
+   "title": "API koszyka: brak testu dla pustego identyfikatora w żądaniach koszyka",
+   "body": "## Opis\n\n`docs/features/cart/spec.md` opisuje, że pusty napis `\"\"` w `productId` albo `guestCartId` nie jest naruszeniem walidacji: dodanie zwraca 404, scalenie zwraca 200 `nothing_to_merge`. Testów na to brakuje w `apps/api/tests/Functional/Cart`. Komentarz `// Validated by the payload mapping: a UUID string` w `GuestCartController.php` i `CustomerCartController.php` nie jest prawdziwy dla `\"\"`.\n\n## Środowisko\n\nAPI na pełnym stosie lokalnym (Docker), `main` po merge'u #112.\n\n## Kroki odtworzenia\n\n1. Załóż koszyk gościa.\n2. Wyślij `POST /api/v1/guest-carts/{id}/items` z treścią `{\"productId\":\"\",\"quantity\":1}`.\n\n## Wynik oczekiwany\n\nZachowanie opisane w spec utrwalone testem, komentarze w kontrolerach zgodne z kodem.\n\n## Wynik faktyczny\n\n404 „Produkt nie jest już dostępny.”, zgodnie ze spec, ale bez testu. Komentarz w kontrolerach mówi, że wartość jest już UUID.\n\n## Kryterium akceptacji\n\nTesty funkcjonalne dla `\"\"` w `productId` (dodanie → 404) i `guestCartId` (scalenie → 200 `nothing_to_merge`) w `CartRequestViolationCases`, poprawione komentarze w obu kontrolerach.\n\n## Niewiadome\n\nDecyzja właściciela: zostawić obecne kody odpowiedzi (tak było przed epikiem, #82 kazał ich nie zmieniać) czy traktować `\"\"` jako naruszenie 422 „musi być UUID”, jak sugeruje tabela w #82. Druga opcja zmienia zachowanie i spec.\n\n## Źródło\n\nRaport `/integration` epiku CART-FIXES, runda 1, znalezisko F2 (waga Minor), przegląd HEAD `2260b25` gałęzi `epic/cart-fixes`, PR #112. Zgłoszenie od agenta, przyjęte przez właściciela.",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-04T18:50:56Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 113,
+   "title": "API koszyka: nil i max UUID dają dwa naruszenia jednego pola",
+   "body": "## Opis\n\nW `apps/api/src/Cart/UI/Http/AddCartItemRequest.php` i `apps/api/src/Cart/UI/Http/MergeGuestCartRequest.php` UUID złożony z samych zer (nil) albo samych `f` (max) daje dwa identyczne naruszenia pola. `Assert\\Sequentially` zatrzymuje się na pierwszym ograniczeniu, które zgłosiło naruszenie, ale samo `Assert\\Uuid` dodaje dwa wpisy. To narusza zasadę z #82: „Jedno pole daje najwyżej jeden komunikat”.\n\n## Środowisko\n\nAPI na pełnym stosie lokalnym (Docker), endpointy koszyka gościa, `main` po merge'u #112.\n\n## Kroki odtworzenia\n\n1. Załóż koszyk gościa.\n2. Wyślij `POST /api/v1/guest-carts/{id}/items` z treścią `{\"productId\":\"00000000-0000-0000-0000-000000000000\",\"quantity\":1}`.\n3. Powtórz z `\"productId\":\"ffffffff-ffff-ffff-ffff-ffffffffffff\"`.\n\n## Wynik oczekiwany\n\n422 z jednym naruszeniem `productId`: „Identyfikator produktu musi być UUID.”\n\n## Wynik faktyczny\n\n422 z dwoma identycznymi naruszeniami `productId`: „Identyfikator produktu musi być UUID.” Dla `\"abc\"` jest jedno, poprawnie. QA dostał to samo dla wielkich liter. `guestCartId` w `MergeGuestCartRequest` ma tę samą konstrukcję (niesprawdzone na stosie, wymaga tokenu klienta).\n\n## Kryterium akceptacji\n\nNil i max UUID dają jedno naruszenie pola. Test funkcjonalny w `apps/api/tests/Functional/Cart/CartRequestViolationCases.php` z nil i max UUID dla `productId` i `guestCartId`.\n\n## Niewiadome\n\nWpływ jest mały: sklep wysyła tylko prawdziwe identyfikatory, a komunikat, kod i `propertyPath` są poprawne.\n\n## Źródło\n\nRaport `/integration` epiku CART-FIXES, runda 1, znalezisko F1 (waga Minor), przegląd HEAD `2260b25` gałęzi `epic/cart-fixes`, PR #112. Zgłoszenie od agenta, przyjęte przez właściciela.",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-04T18:50:55Z",
+   "weight": "Minor",
+   "assigned_epic": "QUALITY-FIXES"
+  }
+ ],
+ "epics": [
+  {
+   "id": "VISUAL-DESIGN",
+   "number": 97,
+   "title": "VISUAL-DESIGN: projekt wizualny sklepu",
+   "dir": "visual-design",
+   "state": "in_progress",
+   "issues": [],
+   "scope": [
+    "apps/store/src/styles",
+    "apps/store/src/components",
+    "apps/store/src/catalog",
+    "apps/store/src/cart",
+    "apps/store/src/checkout",
+    "apps/store/src/account",
+    "apps/store/src/home",
+    "apps/store/src/api/schema.d.ts",
+    "apps/store/app",
+    "apps/store/scripts",
+    "apps/store/tests",
+    "apps/store/CLAUDE.md",
+    "apps/api/src/Catalog",
+    "apps/api/config/packages/nelmio_api_doc.yaml",
+    "apps/api/tests/Unit/Catalog",
+    "apps/api/tests/Functional/Catalog",
+    "apps/api/tests/Integration/Catalog",
+    "apps/api/tests/Integration/Ordering",
+    "apps/api/openapi.json",
+    "apps/api/phpunit.dist.xml",
+    "apps/api/CLAUDE.md",
+    "infra/docker-compose.yml",
+    "CLAUDE.md",
+    "README.md",
+    "docs/vision.md",
+    "docs/features/agent-tester-ux/spec.md",
+    "docs/features/agentic-software-house/plan.md",
+    "docs/features/product-page/spec.md",
+    "docs/features/search/spec.md",
+    "docs/features/walking-skeleton/spec.md",
+    "docs/features/catalog-page-metadata/spec.md",
+    "docs/features/checkout/spec.md",
+    ".claude/agents/ux-reviewer.md",
+    "e2e/tests",
+    "e2e/support"
+   ]
+  },
+  {
+   "id": "HARDENING",
+   "number": 267,
+   "title": "HARDENING: bezpieczeństwo i wydajność przed publicznym demo",
+   "dir": "hardening",
+   "state": "prepared",
+   "issues": [
+    116,
+    181
+   ],
+   "scope": [
+    "apps/api/src/Shared",
+    "apps/api/src/Ordering/UI",
+    "apps/api/src/Payment/UI",
+    "apps/api/src/PaymentSimulator",
+    "apps/api/tests/Functional/Shared",
+    "apps/api/tests/Functional/Ordering",
+    "apps/api/tests/Functional/Payment",
+    "apps/api/tests/Functional/PaymentSimulator",
+    "apps/api/tests/Unit/Shared",
+    "apps/api/tests/Integration/Shared",
+    "apps/api/config",
+    "apps/api/composer.json",
+    "apps/api/composer.lock",
+    "apps/api/symfony.lock",
+    "apps/api/phpunit.dist.xml",
+    "apps/api/openapi.json",
+    "apps/store/src/api/schema.d.ts",
+    "apps/store/src/checkout",
+    "apps/store/src/auth",
+    "apps/store/app/auth/login",
+    "apps/store/next.config.ts",
+    "apps/admin/docker",
+    "infra/varnish",
+    "infra/docker-compose.yml",
+    "infra/k8s/charts/shop",
+    "infra/k8s/environments",
+    "infra/k8s/scripts",
+    "infra/k8s/tests",
+    "infra/k8s/Makefile",
+    "load",
+    "Makefile",
+    ".github/workflows/ci.yml",
+    "CLAUDE.md",
+    "apps/api/CLAUDE.md",
+    "apps/store/CLAUDE.md",
+    "docs/vision.md",
+    "docs/features/checkout/spec.md",
+    "docs/features/payment/spec.md",
+    "docs/features/deploy/spec.md",
+    "infra/k8s/README.md",
+    "docs/reports"
+   ]
+  },
+  {
+   "id": "DEPLOY-OPS",
+   "number": 178,
+   "title": "DEPLOY-OPS: kopie zapasowe i monitoring środowiska",
+   "dir": "deploy-ops",
+   "state": "unprepared",
+   "issues": [
+    175
+   ],
+   "scope": null
+  },
+  {
+   "id": "QUALITY-FIXES",
+   "number": 342,
+   "title": "QUALITY-FIXES: poprawki zgłoszeń agentów po epikach MVP",
+   "dir": "quality-fixes",
+   "state": "prepared",
+   "issues": [
+    113,
+    130,
+    197,
+    213,
+    247,
+    248,
+    256,
+    257,
+    339,
+    340,
+    341
+   ],
+   "scope": [
+    "apps/api/src/Cart/UI/Http",
+    "apps/api/tests/Functional/Cart",
+    "apps/api/src/Catalog/Application/Query",
+    "apps/api/src/Catalog/Domain/Product",
+    "apps/api/src/Catalog/UI/Http/Validation",
+    "apps/api/src/Catalog/Infrastructure/Persistence",
+    "apps/api/tests/Functional/Catalog",
+    "apps/api/tests/Unit/Catalog",
+    "apps/api/tests/Integration/Catalog",
+    "apps/api/src/Payment",
+    "apps/api/tests/Unit/Payment",
+    "apps/api/tests/Functional/Payment",
+    "apps/api/src/Ordering/Domain",
+    "apps/api/src/Ordering/UI/Http",
+    "apps/api/tests/Functional/Ordering",
+    "apps/api/tests/Unit/Ordering",
+    "apps/api/src/Inventory/UI/Http",
+    "apps/api/tests/Functional/Inventory",
+    "apps/api/src/Pricing/UI/Http",
+    "apps/api/tests/Functional/Pricing",
+    "apps/api/src/Shared/UI/Http",
+    "apps/api/tests/Unit/Shared",
+    "apps/api/CLAUDE.md",
+    "apps/store/src/checkout",
+    "apps/admin/src/views",
+    "apps/admin/tests",
+    "e2e/tests/checkout-customer.spec.ts",
+    "e2e/tests/discount-codes.spec.ts",
+    "e2e/support",
+    "docs/features/catalog-admin/spec.md",
+    "docs/features/variants/spec.md",
+    "docs/features/walking-skeleton/spec.md",
+    "docs/features/order-management/spec.md",
+    "docs/features/checkout/spec.md",
+    "docs/features/payment/spec.md"
+   ]
+  },
+  {
+   "id": "LIGHTHOUSE",
+   "number": 289,
+   "title": "LIGHTHOUSE: pomiar Core Web Vitals w CI",
+   "dir": "lighthouse",
+   "state": "unlisted",
+   "issues": [
+    266
+   ],
+   "scope": null
+  }
+ ],
+ "taken_ids": [
+  "agent-tester-ux",
+  "agentic-software-house",
+  "ao-run",
+  "cart",
+  "cart-fixes",
+  "catalog-admin",
+  "catalog-page-metadata",
+  "catalog-unknown-category",
+  "checkout",
+  "dashboard-data-freshness",
+  "deploy",
+  "deploy-ops",
+  "discount-codes",
+  "hardening",
+  "inventory",
+  "lighthouse",
+  "order-management",
+  "payment",
+  "prepare-epic",
+  "pricing",
+  "product-page",
+  "promotions",
+  "quality-fixes",
+  "search",
+  "seo",
+  "variants",
+  "visual-design",
+  "walking-skeleton"
+ ],
+ "rejected": []
+}

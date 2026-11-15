@@ -1,0 +1,68 @@
+{
+ "id": "fix-epic-candidates",
+ "kind": "substantive",
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "prompt": "<run_dir>: {{RESULT_DIR}} (katalog przebiegu: tu zapisz proposals.json; input.json tego przebiegu jest w {{INPUT_DIR}}/input.json).\n<worktree>: {{PASS_DIR}}/checkout (checkout origin/main do czytania).\n",
+ "inputs": [
+  "input.json"
+ ],
+ "assertions": [
+  {
+   "type": "validator",
+   "script": ".claude/skills/groom/groom.py",
+   "args": [
+    "validate",
+    "{{RUN_DIR}}",
+    "--state",
+    "{{STATE_DIR}}"
+   ]
+  },
+  {
+   "type": "json",
+   "select": "fix_epic",
+   "match": {
+    "id": {
+     "regex": "^[A-Z0-9]+(-[A-Z0-9]+)*-FIXES$"
+    },
+    "title": {
+     "regex": "-FIXES: .+"
+    }
+   }
+  },
+  {
+   "type": "json",
+   "select": "items",
+   "expect": "absent",
+   "match": {
+    "issues": {
+     "in": [
+      [
+       421
+      ],
+      [
+       392
+      ],
+      [
+       391
+      ],
+      [
+       390
+      ],
+      [
+       343
+      ]
+     ]
+    },
+    "kind": {
+     "in": [
+      "obsolete",
+      "duplicate"
+     ]
+    }
+   }
+  },
+  {
+   "type": "tree_unchanged"
+  }
+ ]
+}

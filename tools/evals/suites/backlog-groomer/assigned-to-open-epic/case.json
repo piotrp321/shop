@@ -1,0 +1,98 @@
+{
+ "id": "assigned-to-open-epic",
+ "kind": "substantive",
+ "commit": "fc208156d133423056a6d1e727685d9678465da5",
+ "prompt": "<run_dir>: {{RESULT_DIR}} (katalog przebiegu: tu zapisz proposals.json; input.json tego przebiegu jest w {{INPUT_DIR}}/input.json).\n<worktree>: {{PASS_DIR}}/checkout (checkout origin/main do czytania).\n",
+ "inputs": [
+  "input.json"
+ ],
+ "assertions": [
+  {
+   "type": "validator",
+   "script": ".claude/skills/groom/groom.py",
+   "args": [
+    "validate",
+    "{{RUN_DIR}}",
+    "--state",
+    "{{STATE_DIR}}"
+   ]
+  },
+  {
+   "type": "json",
+   "select": "items",
+   "expect": "absent",
+   "match": {
+    "issues": {
+     "in": [
+      [
+       113
+      ],
+      [
+       130
+      ],
+      [
+       197
+      ],
+      [
+       213
+      ],
+      [
+       247
+      ],
+      [
+       248
+      ],
+      [
+       256
+      ],
+      [
+       257
+      ],
+      [
+       339
+      ],
+      [
+       340
+      ],
+      [
+       341
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "type": "json",
+   "select": "fix_epic",
+   "expect": "absent",
+   "match": {
+    "id": {
+     "regex": "."
+    }
+   }
+  },
+  {
+   "type": "json",
+   "select": "items",
+   "expect": "absent",
+   "match": {
+    "kind": "duplicate",
+    "issues": {
+     "in": [
+      [
+       113,
+       114
+      ],
+      [
+       114,
+       113
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "type": "tree_unchanged"
+  }
+ ]
+}

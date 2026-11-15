@@ -1,0 +1,151 @@
+{
+ "schema": 1,
+ "collected_at": "2026-11-12T08:07:48.613935+01:00",
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "issues": [
+  {
+   "number": 447,
+   "title": "Kody rabatowe: sprawdzanie kodu w koszyku bez limitu żądań, da się zgadywać kody",
+   "body": "## Problem\n\n`GET /api/v1/guest-carts/{id}?discountCode=…` zwraca `applied` dla istniejącego kodu i `rejected/invalid` dla nieistniejącego, bez limitu żądań. Kody da się zgadywać z jednego adresu.\n\n## Oczekiwane\n\nLimit sprawdzeń kodu na adres klienta (dla zalogowanego także na `sub`), albo jednolita odpowiedź dla kodu istniejącego i nieistniejącego.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-12T06:40:12Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 446,
+   "title": "Panel: komunikat błędu formularza obiektu, który nie istnieje, ma kontrast 4,4:1",
+   "body": "### Środowisko\nStos lokalny, commit 1c1cd05, Chromium desktop 1280 × 720, konto `admin` (admin).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu jako `admin`.\n2. Otwórz `/discount-codes/11111111-1111-4111-8111-111111111111`.\n3. Uruchom axe na stronie z komunikatem „Ten kod rabatowy nie istnieje.”.\n\n### Oczekiwane zachowanie albo wygląd\nTekst komunikatu ma kontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\n`#dc2626` na `#fdf2f2`, 14 px: 4,4:1. axe: `color-contrast (serious): .p-message-text`.\n\n### Kryterium akceptacji\n```ts\nconst violations = await checkA11y(page, \"form-404-message\");\nconst contrast = violations.filter((v) => v.id === \"color-contrast\").flatMap((v) => v.nodes.map((n) => n.any[0]?.message));\nexpect(contrast, \"axe color-contrast\").toEqual([]);\n```\n\n### Niewiadome\nTo kolejny wzorzec kolorów motywu z #135, #250, #260, #346; poprawka najlepiej w motywie (`primevue.ts`) raz.\n\n### Dowód\n`E2E_ARGS=\"repro-3 --project desktop --repeat-each 2\"`: oba powtórzenia „Element has insufficient color contrast of 4.4 (foreground color: #dc2626, background color: #fdf2f2, font size: 10.5pt (14px))”. Wpływ: komunikat jest czytelny (czerwony tekst na jasnym tle), ale poniżej progu AA.\n\nZrzuty i skrypty lokalnie: <home>/.local/state/shop-sweep/2026-11-11-1c1cd05-quality-fixes/ux/evidence/2/ (repro-3.spec.ts, form-404-message.png, test-failed-1.png, trace.zip)\n\n### Źródło\nPrzebieg `/sweep` 2026-11-11-1c1cd05-quality-fixes, commit 1c1cd055546a8050e5e5fb7130e12f88cd000f2a, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-11T13:30:59Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 407,
+   "title": "Kody rabatowe: brak limitu na sprawdzaniu kodów (SR-18)",
+   "body": "## Problem\n\n`GET /api/v1/guest-carts/{id}?discountCode=…` i `/me/cart` odróżniają kod istniejący od nieistniejącego i nie mają limitu. 400 prób zajęło 10,6 s (~38/s): istniejący kod daje `applied`, nieistniejący `rejected/invalid`.\n\n## Oczekiwane\n\nLimit na adres (dla klienta także na `sub`), ewentualnie jednolita odpowiedź. Pozycja „rate limiting sprawdzania kodów” jest już w `docs/features/discount-codes/spec.md:30`.\n\nWaga Medium (SR-18). Źródło: przegląd bezpieczeństwa HARDENING-7, `docs/reports/security-review-2026-11-10.md`, punkt 11.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T19:17:24Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 406,
+   "title": "Koszyk gościa: brak limitu na zakładaniu i zapisach koszyków (SR-17)",
+   "body": "## Problem\n\n`POST /api/v1/guest-carts` i zapisy linii koszyka gościa nie mają limitu. Z jednego hosta da się założyć 500 koszyków w 12 s (~42/s), każdy pusty koszyk to ~145 B. Liczby ani rozmiaru nic nie ogranicza (do 50 linii × 99 szt.), a TTL to 30 dni. Na trasach koszyka nie ma `RateLimit::ROUTE_DEFAULT`.\n\n## Oczekiwane\n\nLimiter na adres klienta, jak `order_placement`, na zakładaniu i zapisach koszyków gościa. Krótszy albo ograniczony TTL pustych koszyków. Sklep (BFF) już przekazuje adres w `CF-Connecting-IP`.\n\nWaga Medium (SR-17), nie blokuje publicznego demo. Źródło: przegląd bezpieczeństwa HARDENING-7, `docs/reports/security-review-2026-11-10.md`, punkt 11.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T19:17:23Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 346,
+   "title": "Panel: tekst „Dane z …” na pulpicie ma kontrast 4,34:1",
+   "body": "### Środowisko\nStos lokalny z `origin/main`, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, Chromium desktop 1280 × 720, konto `admin`.\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu.\n2. Na pulpicie (`/`) odczytaj kolory elementu „Dane z <godzina>”.\n\n### Oczekiwane zachowanie albo wygląd\nKontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\n#64748b na #f1f5f9, 16 px: 4,34:1 (`.updated-at` w `apps/admin/src/views/DashboardView.vue`, kolory motywu `apps/admin/src/primevue.ts`).\n\n### Kryterium akceptacji\n```ts\n// ratio from the computed colors of .updated-at\nexpect(ratio).toBeGreaterThanOrEqual(4.5);\n// and axe on the dashboard reports no color-contrast violation on .updated-at\n```\n\n### Niewiadome\nTo inne miejsce wzorca z #135 („Strona N”) i #260 (`.hint`); najlepiej poprawić w motywie raz.\n\n### Dowód\n`--repeat-each 2`, oba powtórzenia: `Received: 4.3439`, axe `color-contrast (serious): .updated-at`.\n\nSkrypt i zrzut lokalnie: `<home>/.local/state/shop-sweep/2026-11-09-015c52b/ux/evidence/4/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-09-015c52b, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T11:53:02Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 345,
+   "title": "Kasa: pusty formularz wysłany bez wybranego sposobu płatności pokazuje tylko błąd płatności",
+   "body": "### Środowisko\nStos lokalny z `origin/main`, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, Chromium desktop 1280 × 720 (zrzut mobile 375 × 812 dołączony lokalnie), gość z jedną pozycją w koszyku.\n\n### Kroki odtworzenia\n1. Dodaj produkt do koszyka i otwórz `/checkout`.\n2. Nie wypełniaj niczego, kliknij „Zamawiam z obowiązkiem zapłaty”.\n\n### Oczekiwane zachowanie albo wygląd\nEkran wskazuje wszystkie brakujące pola naraz (e-mail, imię, telefon, adres, kod, miasto i płatność) albo przynajmniej pierwsze brakujące pole.\n\n### Obecne zachowanie albo wygląd\nWidać tylko „Wybierz sposób płatności.” pod radiami, fokus na pierwszym radiu, żadne puste pole nie ma `aria-invalid` ani komunikatu. Komunikaty pól pojawiają się dopiero po wybraniu płatności i drugim kliknięciu. W `apps/store/src/checkout/CheckoutPage.tsx` `submit` wraca przy `provider === null` przed wysłaniem do API, a błędy pól przychodzą dopiero z odpowiedzi 422. Osoba z czytnikiem ekranu albo na telefonie (radia pod ekranem) nie dowiaduje się, że formularz jest w większości pusty.\n\n### Kryterium akceptacji\n```ts\nawait page.getByRole(\"button\", { name: \"Zamawiam z obowiązkiem zapłaty\" }).click();\nawait expect(page.getByText(\"Wybierz sposób płatności.\")).toBeVisible();\nexpect(await page.getByRole(\"main\").locator(\"input[aria-invalid=true]\").count()).toBeGreaterThan(0);\n```\n\n### Niewiadome\nNie porównano ze specyfikacją checkoutu, czy kolejność walidacji (najpierw płatność) jest zamierzona.\n\n### Dowód\n`--repeat-each 2`, oba powtórzenia: `Expected: > 0, Received: 0`, `CHK invalid fields 0 alerts []`.\n\nSkrypt i zrzuty lokalnie: `<home>/.local/state/shop-sweep/2026-11-09-015c52b/ux/evidence/2/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-09-015c52b, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T11:53:00Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 135,
+   "title": "Panel: kontrast etykiety „Zapisz” w oknie zmiany ceny 2,53:1",
+   "body": "### Środowisko\nStos lokalny (świeży, `/sweep`), commit d1845e8 (kod panelu jak `main` po CART-FIXES), Chromium desktop 1280 × 720, konto demo `admin` (rola admin).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu.\n2. Otwórz „Ceny”.\n3. Kliknij „Zmień cenę” przy pierwszym produkcie.\n4. Uruchom axe (WCAG 2.1 A i AA) w otwartym oknie.\n\n### Oczekiwane zachowanie albo wygląd\nEtykieta przycisku „Zapisz” (główne działanie okna) ma kontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\nBiały tekst na tle #10b981 ma kontrast 2,53:1. Dodatkowo numer strony „Strona N” w paginacji listy cen: #64748b na #f1f5f9, 4,34:1.\n\n### Kryterium akceptacji\nTest Playwright w panelu (desktop), po otwarciu okna „Zmień cenę”:\n```ts\nconst violations = await checkA11y(page, \"prices-dialog\");\nexpect(violations.filter((v) => v.id === \"color-contrast\")).toEqual([]);\n```\n\n### Niewiadome\nTen sam wzorzec przycisku jest prawdopodobnie w „Zapisz korektę” w Stanach magazynowych (nieweryfikowane). Kolor pochodzi z motywu PrimeVue Aura (`apps/admin/src/primevue.ts`), więc poprawka może objąć cały panel.\n\n### Dowód\naxe `color-contrast` w obu powtórzeniach: przycisk „Zapisz” 2,53:1 (biały na #10b981), paginacja 4,34:1 (#64748b na #f1f5f9). Pliki: `apps/admin/src/views/PricesView.vue`, `apps/admin/src/primevue.ts`.\nZrzuty i trace lokalnie: `<home>/.local/state/shop-sweep/2026-11-04-d1845e8/ux/evidence/3/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-04-d1845e8, commit d1845e80ea079b4c965f0c1e30ebb2ca3785fdd5, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-05T12:13:06Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  }
+ ],
+ "epics": [
+  {
+   "id": "DEPLOY-OPS",
+   "number": 178,
+   "title": "DEPLOY-OPS: kopie zapasowe i monitoring środowiska",
+   "dir": "deploy-ops",
+   "state": "in_progress",
+   "issues": [
+    175
+   ],
+   "scope": [
+    "infra/k8s",
+    "docs/adr",
+    "CLAUDE.md",
+    "docs/vision.md",
+    "docs/features/deploy/spec.md",
+    "docs/features/hardening/spec.md"
+   ]
+  }
+ ],
+ "taken_ids": [
+  "agent-tester-ux",
+  "agentic-software-house",
+  "ao-run",
+  "cart",
+  "cart-fixes",
+  "catalog-admin",
+  "catalog-page-metadata",
+  "catalog-unknown-category",
+  "checkout",
+  "dashboard-data-freshness",
+  "deploy",
+  "deploy-ops",
+  "discount-codes",
+  "groom",
+  "hardening",
+  "inventory",
+  "lighthouse",
+  "order-management",
+  "payment",
+  "prepare-epic",
+  "pricing",
+  "product-page",
+  "promotions",
+  "quality-fixes",
+  "retro",
+  "search",
+  "seo",
+  "variants",
+  "visual-design",
+  "walking-skeleton"
+ ],
+ "rejected": []
+}

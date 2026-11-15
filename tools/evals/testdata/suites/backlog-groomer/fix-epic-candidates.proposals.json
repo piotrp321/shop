@@ -1,0 +1,23 @@
+{
+ "schema": 1,
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "items": [],
+ "fix_epic": {
+  "id": "PRICING-FIXES",
+  "title": "PRICING-FIXES: poprawki promocji po epiku PROMOTIONS",
+  "issues": [
+   305,
+   306,
+   387
+  ],
+  "scope": [
+   "apps/api/src/Pricing",
+   "apps/api/tests/Functional/Pricing"
+  ],
+  "body": "## Punkt „Zakresu MVP”\n\nPromocje i ceny (poprawki po epiku PROMOTIONS).\n\n## Zakres\n\nKrótka specyfikacja, jedno zadanie na issue.\n\n- `apps/api/src/Pricing`: #305 przycinanie nazwy promocji nie może obcinać znaków tagów flagi, #306 wybór granic promocji przenieść z adaptera do Domain albo Application.\n- `apps/api/tests/Functional/Pricing`: #387 test PromotionsEndpointTest nie zależy od czasu trwania żądania.\n\n## Poza zakresem\n\nZmiany kontraktu API i nowe funkcje promocji.\n\n## Zależności\n\nBrak.\n\n## Uwagi do przygotowania\n\nWzór: issue #342.\n"
+ },
+ "overflow": [],
+ "hypotheses": [
+  "#421, #390, #391, #392 i #343 mają wagę Important, więc nie wchodzą do epiku poprawek."
+ ]
+}

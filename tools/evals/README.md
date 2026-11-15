@@ -26,6 +26,7 @@ i bez sieci; skrypty uruchamia się na hoście jak testy skryptów (`python3`).
 | `evals_score.py` | ocena przebiegu i przypadku, metryki, ocena całego uruchomienia (`score_run`) |
 | `evals_compare.py` | porównanie z poprzednim wynikiem i wynikiem odniesienia, werdykty |
 | `testdata/reports/` | oczyszczone prawdziwe raporty agentów, na których testowany jest parser |
+| `testdata/suites/<zestaw>/<przypadek>.proposals.json` | zapisane wyniki agentów `backlog-groomer` i `retro-analyst`, które atrapa CLI wpisuje w próbnym przebiegu (`test_suite_cases.py`) |
 | `evals_registry.py` | rejestr, konfiguracja, odcisk, skróty kodu oceny i walidatorów |
 | `evals_history.py` | format pliku historii, czytanie i zapis (jedyna droga zapisu wyniku) |
 | `evals_lint.py`, `evals_check.py` | logika komend `lint` i `check` |
@@ -504,6 +505,9 @@ Testy oceny (`test_reports.py`, `test_assertions.py`, `test_score_*.py`) liczą 
 tymczasowych; parser raportów testują oczyszczone prawdziwe raporty z `testdata/reports/` (dopasowanie i brak
 dopasowania, w tym znalezisko ze ścieżką i słowem kluczowym w różnych punktach listy). `test_score_run.py` ocenia
 uruchomienia prawdziwego runnera z atrapą CLI.
+`test_suite_cases.py` ładuje przypadki `backlog-groomer` i `retro-analyst` z repozytorium, dekoduje ładunki `injection`
+i ocenia próbny przebieg z zapisanym `proposals.json`, z prawdziwymi walidatorami `groom.py validate` i
+`retro.py validate`; wynik naruszający regułę przypadku musi go oblać.
 Testy runnera używają atrapy CLI (`fake_cli.py`, scenariusz zdarzeń w JSON), prawdziwego `render_settings.py`
 i repozytoriów tymczasowych; nie uruchamiają modelu ani sandboxu.
 CI uruchamia je przez `.github/scripts/script-tests.sh` (wykrywa je po położeniu). Dane testowe powstają w katalogach

@@ -1,0 +1,11 @@
+{
+ "schema": 1,
+ "commit": "fc208156d133423056a6d1e727685d9678465da5",
+ "items": [],
+ "fix_epic": null,
+ "overflow": [],
+ "hypotheses": [
+  "#113, #130, #197, #213, #247, #248, #256, #257, #339, #340 i #341 są przypisane do otwartego epiku QUALITY-FIXES: bez pozycji i bez miejsca w epiku poprawek.",
+  "#114 (brak testu dla pustego identyfikatora w koszyku) jest pokrewne #113 z QUALITY-FIXES, ale ma inne kryterium akceptacji, więc nie jest duplikatem."
+ ]
+}

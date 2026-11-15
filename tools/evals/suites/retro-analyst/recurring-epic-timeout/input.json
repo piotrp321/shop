@@ -1,0 +1,411 @@
+{
+ "schema": 1,
+ "epic": "admin-design",
+ "generated_at": 1794645932,
+ "commit": "f78d1aff5a268f6eed3f09d60c80fda5abacc080",
+ "epics": [
+  {
+   "id": "lighthouse",
+   "final_pr": 384,
+   "pr_state": "MERGED",
+   "merged_at": 1794316999.0,
+   "created_at": 1794301924.147106,
+   "issue": 289
+  },
+  {
+   "id": "hardening",
+   "final_pr": 402,
+   "pr_state": "MERGED",
+   "merged_at": 1794338027.0,
+   "created_at": 1794299516.634395,
+   "issue": 267
+  },
+  {
+   "id": "deploy-ops",
+   "final_pr": 476,
+   "pr_state": "MERGED",
+   "merged_at": 1794521075.0,
+   "created_at": 1794404776.229525,
+   "issue": 178
+  },
+  {
+   "id": "admin-design",
+   "final_pr": 503,
+   "pr_state": "MERGED",
+   "merged_at": 1794609501.0,
+   "created_at": 1794562711.4197161,
+   "issue": 460
+  }
+ ],
+ "incidents": [
+  {
+   "id": "deploy-ops/wait/deploy-ops@1794468410",
+   "epic": "deploy-ops",
+   "kind": "wait",
+   "key": "deploy-ops@1794468410",
+   "at": 1794468410,
+   "data": {
+    "event": "epic_blocked",
+    "task_id": null,
+    "reason": "epic_timeout: active for 63632 s, started 63632 s ago (host pauses 0 s, usage-limit cooldown 0 s), the limit is 57600 s",
+    "blockers": [],
+    "reasons": [],
+    "start": 1794468410,
+    "end": 1794468454,
+    "open": false,
+    "action": "epic-resume",
+    "also_actions": [],
+    "absorbed": [],
+    "failed_attempts": [],
+    "human_action": true,
+    "can_be_corrective": true
+   },
+   "facts": [
+    {
+     "source": "events.jsonl",
+     "at": 1794468410,
+     "text": "epik zablokowany (powód: epic_timeout: active for 63632 s, started 63632 s ago (host pauses 0 s, usage-limit cooldown 0 s), the limit is 57600 s)"
+    },
+    {
+     "source": "events.jsonl",
+     "at": 1794468454,
+     "text": "human_action epic-resume"
+    }
+   ]
+  },
+  {
+   "id": "deploy-ops/wait/deploy-ops@1794507361",
+   "epic": "deploy-ops",
+   "kind": "wait",
+   "key": "deploy-ops@1794507361",
+   "at": 1794507361,
+   "data": {
+    "event": "epic_blocked",
+    "task_id": null,
+    "reason": "epic_timeout: active for 102147 s, started 102562 s ago (host pauses 415 s, usage-limit cooldown 0 s), the limit is 100800 s",
+    "blockers": [],
+    "reasons": [],
+    "start": 1794507361,
+    "end": 1794507951,
+    "open": false,
+    "action": "epic-resume",
+    "also_actions": [],
+    "absorbed": [],
+    "failed_attempts": [],
+    "human_action": true,
+    "can_be_corrective": true
+   },
+   "facts": [
+    {
+     "source": "events.jsonl",
+     "at": 1794507361,
+     "text": "epik zablokowany (powód: epic_timeout: active for 102147 s, started 102562 s ago (host pauses 415 s, usage-limit cooldown 0 s), the limit is 100800 s)"
+    },
+    {
+     "source": "events.jsonl",
+     "at": 1794507951,
+     "text": "human_action epic-resume"
+    }
+   ]
+  },
+  {
+   "id": "deploy-ops/wait/deploy-ops@1794520508",
+   "epic": "deploy-ops",
+   "kind": "wait",
+   "key": "deploy-ops@1794520508",
+   "at": 1794520508,
+   "data": {
+    "event": "epic_blocked",
+    "task_id": null,
+    "reason": "epic_ci_timeout: the CI of the epic branch is still awaited; epic_timeout: active for 115315 s, started 115730 s ago (host pauses 415 s, usage-limit cooldown 0 s), the limit is 115200 s",
+    "blockers": [],
+    "reasons": [],
+    "start": 1794520508,
+    "end": 1794520558,
+    "open": false,
+    "action": "epic-resume",
+    "also_actions": [],
+    "absorbed": [],
+    "failed_attempts": [],
+    "human_action": true,
+    "can_be_corrective": true
+   },
+   "facts": [
+    {
+     "source": "events.jsonl",
+     "at": 1794520508,
+     "text": "epik zablokowany (powód: epic_ci_timeout: the CI of the epic branch is still awaited; epic_timeout: active for 115315 s, started 115730 s ago (host pauses 415 s, usage-limit cooldown 0 s), the limit is 115200 s)"
+    },
+    {
+     "source": "events.jsonl",
+     "at": 1794520558,
+     "text": "human_action epic-resume"
+    }
+   ]
+  },
+  {
+   "id": "admin-design/wait/admin-design@1794623555",
+   "epic": "admin-design",
+   "kind": "wait",
+   "key": "admin-design@1794623555",
+   "at": 1794623555,
+   "data": {
+    "event": "epic_blocked",
+    "task_id": null,
+    "reason": "epic_timeout: active for 60843 s, started 60843 s ago (host pauses 0 s, usage-limit cooldown 0 s), the limit is 57600 s",
+    "blockers": [],
+    "reasons": [],
+    "start": 1794623555,
+    "end": 1794643009,
+    "open": false,
+    "action": "epic-resume",
+    "also_actions": [],
+    "absorbed": [],
+    "failed_attempts": [],
+    "human_action": true,
+    "can_be_corrective": true
+   },
+   "facts": [
+    {
+     "source": "events.jsonl",
+     "at": 1794623555,
+     "text": "epik zablokowany (powód: epic_timeout: active for 60843 s, started 60843 s ago (host pauses 0 s, usage-limit cooldown 0 s), the limit is 57600 s)"
+    },
+    {
+     "source": "events.jsonl",
+     "at": 1794643009,
+     "text": "human_action epic-resume"
+    }
+   ]
+  },
+  {
+   "id": "admin-design/wait/admin-design@1794643028",
+   "epic": "admin-design",
+   "kind": "wait",
+   "key": "admin-design@1794643028",
+   "at": 1794643028,
+   "data": {
+    "event": "epic_blocked",
+    "task_id": null,
+    "reason": "epic_timeout: active for 80315 s, started 80315 s ago (host pauses 0 s, usage-limit cooldown 0 s), the limit is 57600 s",
+    "blockers": [],
+    "reasons": [],
+    "start": 1794643028,
+    "end": 1794643042,
+    "open": false,
+    "action": "epic-resume",
+    "also_actions": [],
+    "absorbed": [],
+    "failed_attempts": [],
+    "human_action": true,
+    "can_be_corrective": true
+   },
+   "facts": [
+    {
+     "source": "events.jsonl",
+     "at": 1794643028,
+     "text": "epik zablokowany (powód: epic_timeout: active for 80315 s, started 80315 s ago (host pauses 0 s, usage-limit cooldown 0 s), the limit is 57600 s)"
+    },
+    {
+     "source": "events.jsonl",
+     "at": 1794643042,
+     "text": "human_action epic-resume"
+    }
+   ]
+  },
+  {
+   "id": "hardening/escaped/1",
+   "epic": "hardening",
+   "kind": "escaped",
+   "key": "1",
+   "at": null,
+   "data": {
+    "title": "Limit złożenia zamówienia może zostać przekroczony o setki żądań, nie o liczbę żądań w locie (D1)",
+    "severity": "Important",
+    "triage": "założone #421"
+   },
+   "facts": [
+    {
+     "source": "sweep report",
+     "text": "1. Limit złożenia zamówienia może zostać przekroczony o setki żądań, nie o liczbę żądań w locie (D1) (waga Important, triage: założone #421)"
+    }
+   ]
+  },
+  {
+   "id": "hardening/escaped/2",
+   "epic": "hardening",
+   "kind": "escaped",
+   "key": "2",
+   "at": null,
+   "data": {
+    "title": "Link w pustym stanie wyszukiwania ma inny styl niż linki w pustych stanach koszyka i kasy",
+    "severity": "Minor",
+    "triage": "założone #422"
+   },
+   "facts": [
+    {
+     "source": "sweep report",
+     "text": "2. Link w pustym stanie wyszukiwania ma inny styl niż linki w pustych stanach koszyka i kasy (waga Minor, triage: założone #422)"
+    }
+   ]
+  },
+  {
+   "id": "lighthouse/escaped/4",
+   "epic": "lighthouse",
+   "kind": "escaped",
+   "key": "4",
+   "at": null,
+   "data": {
+    "title": "Okno „Zmień cenę” w panelu ma stałą szerokość 28 rem i wychodzi poza ekran telefonu (375 px)",
+    "severity": "Minor",
+    "triage": "założone #393"
+   },
+   "facts": [
+    {
+     "source": "sweep report",
+     "text": "4. Okno „Zmień cenę” w panelu ma stałą szerokość 28 rem i wychodzi poza ekran telefonu (375 px) (waga Minor, triage: założone #393)"
+    }
+   ]
+  }
+ ],
+ "facts": [
+  {
+   "id": "hardening/mismatch/manual_fix",
+   "text": "niezgodna liczba: komentarz z pomiarem podaje 0 ręcznych poprawek, a wymienia więcej numerów PR niż poprawek"
+  }
+ ],
+ "status": [
+  {
+   "id": "status/in-progress",
+   "epics": [
+    {
+     "id": "SENTRY",
+     "issue": 180,
+     "title": "SENTRY: Sentry i trace'y aplikacji",
+     "state": "prepared"
+    },
+    {
+     "id": "DEMO-DATA",
+     "issue": 482,
+     "title": "DEMO-DATA: generator danych w skali docelowej i pomiar wydajności",
+     "state": "in_progress"
+    },
+    {
+     "id": "AGENT-SECURITY",
+     "issue": 494,
+     "title": "AGENT-SECURITY: techniczne zabezpieczenia agentów (krok 16)",
+     "state": "prepared"
+    },
+    {
+     "id": "EVALS",
+     "issue": 495,
+     "title": "EVALS: evale agentów i workflowów (krok 17)",
+     "state": "prepared"
+    }
+   ],
+   "blocked": []
+  },
+  {
+   "id": "status/last-epic",
+   "epic": "admin-design",
+   "pr": 503,
+   "merged_at": 1794609501.0,
+   "issue": 460,
+   "interventions": 1,
+   "waits": 1,
+   "wait_min": 20,
+   "manual_fixes": 2,
+   "measurement": true
+  },
+  {
+   "id": "status/agent-issues",
+   "open": 77,
+   "closed": 36
+  },
+  {
+   "id": "status/pending-retro",
+   "epics": [
+    "admin-design"
+   ]
+  }
+ ],
+ "registers": {
+  "observations": [
+   {
+    "key": "escaped-sweep-misc",
+    "title": "Pojedyncze propozycje /sweep po LIGHTHOUSE i HARDENING (okno „Zmień cenę” w panelu szersze niż telefon, limit zamówień D1, styl linku w pustym stanie), założone jako #393, #421, #422; bez wspólnej przyczyny",
+    "incidents": [
+     "lighthouse/escaped/4",
+     "hardening/escaped/1",
+     "hardening/escaped/2"
+    ],
+    "epic": "visual-design",
+    "at": 1794390501
+   },
+   {
+    "key": "escaped-sweep-misc",
+    "title": "Okno „Zmień cenę” w panelu szersze niż ekran telefonu (#393, Minor), pojedyncza propozycja /sweep po LIGHTHOUSE w ekranie spoza epiku; bez wspólnej przyczyny",
+    "incidents": [
+     "lighthouse/escaped/4"
+    ],
+    "epic": "lighthouse",
+    "at": 1794390672
+   },
+   {
+    "key": "escaped-sweep-misc",
+    "title": "Propozycje /sweep po HARDENING: limit złożenia zamówienia przekraczany o setki żądań przy ruchu równoległym (#421, Important, utrata przyrostów licznika w HARDENING-1) i styl linku w pustym stanie wyszukiwania (#422, Minor). Pojedyncze, bez wspólnej przyczyny i bez nawrotu ucieczki błędu współbieżności z poprzednich epików; obserwować",
+    "incidents": [
+     "hardening/escaped/1",
+     "hardening/escaped/2"
+    ],
+    "epic": "hardening",
+    "at": 1794390872
+   },
+   {
+    "key": "epic-timeout-human-wait",
+    "title": "Trzy blokady epic_timeout wymagające ao epic resume. Pierwsza (63632 s > 57600 s) wynikła wyłącznie z 6,7 h nocnego czekania na odpowiedź do DEPLOY-OPS-4 liczonego do limitu (AO #38); dwie kolejne przy limitach przedłużonych do 100800 s i 115200 s (trzecia razem z epic_ci_timeout po REPAIR-2). Otwarte AO #38 ma już komentarz z danymi DEPLOY-OPS (dwie pierwsze blokady, rozkład 28,5 h: 21,3 h pracy wykonawców, ~7 h czekania), a AO #50 opisuje sekwencyjne próby jako drugą przyczynę długości epiku; nowy komentarz niczego by nie dodał, a AO jest zamrożony. Stały --epic-timeout 57600 w .claude/skills/ao-run/SKILL.md (sekcja 4) był za krótki także bez czekania (21,3 h pracy), ale to pierwszy taki epik w danych; obserwować",
+    "incidents": [
+     "deploy-ops/wait/deploy-ops@1794468410",
+     "deploy-ops/wait/deploy-ops@1794507361",
+     "deploy-ops/wait/deploy-ops@1794520508"
+    ],
+    "epic": "deploy-ops",
+    "at": 1794521476
+   }
+  ],
+  "rejected": [],
+  "applied": [],
+  "carried": []
+ },
+ "open_retro_pr": null,
+ "open_issues": {
+  "ao": [
+   {
+    "body": "## Problem\n\nPrzy epiku DEPLOY (shop #175) zadanie DEPLOY-6 było `BLOCKED` przez noc w oczekiwaniu na odpowiedź użytkownika. `run --until-idle` się zakończył, ale licznik `active` epiku dalej rósł. Po `ao answer` i ponownym `run` epik od razu przeszedł w `BLOCKED` z `epic_timeout` (68868 s > 57600 s), choć AO pracował znacznie krócej. Trzeba było `ao epic resume deploy --extend-timeout 36000`.\n\n## Oczekiwane\n\nCzas, w którym epik stoi wyłącznie na decyzji człowieka (blocker z pytaniem, `queue_held`, `idle` bez możliwych ruchów), nie liczy się do `epic_timeout`, podobnie jak `host pauses` i `usage-limit cooldown`.",
+    "labels": [],
+    "number": 38,
+    "title": "epic_timeout liczy czas czekania na odpowiedź człowieka",
+    "author": "piotrp321",
+    "url": "https://github.com/piotrp321/agentic-orchestrator/issues/38",
+    "trusted": true
+   },
+   {
+    "body": "Źródło: przebieg epiku PROMOTIONS w sklepie (piotrp321/shop#96, 2026-11-07/08).\n\nKolejka była wstrzymana (`queue_held`) przez noc, około 10 h czekania na człowieka. Ten czas wszedł do „active” i zjadł większość 16-godzinnego `--epic-timeout`, więc trzeba było podnieść limity w nowym `run`. `ao report` liczy to jako „inne 11h 54m”.\n\n**Oczekiwane:** czas wstrzymanej kolejki i czekania na odpowiedź człowieka nie wlicza się do `epic_timeout` (podobnie jak przerwy hosta i cooldown), albo przynajmniej jest osobno widoczny.\n",
+    "labels": [
+     {
+      "id": "LA_kwDOVeLoYM8AAAADAWSqyQ",
+      "name": "enhancement",
+      "description": "New feature or request",
+      "color": "a2eeef"
+     }
+    ],
+    "number": 44,
+    "title": "Postój z wstrzymaną kolejką liczy się do epic_timeout",
+    "author": "piotrp321",
+    "url": "https://github.com/piotrp321/agentic-orchestrator/issues/44",
+    "trusted": true
+   }
+  ],
+  "shop": []
+ }
+}

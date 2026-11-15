@@ -1,0 +1,224 @@
+{
+ "schema": 1,
+ "epic": "admin-design",
+ "generated_at": 1794645932,
+ "commit": "f78d1aff5a268f6eed3f09d60c80fda5abacc080",
+ "epics": [
+  {
+   "id": "lighthouse",
+   "final_pr": 384,
+   "pr_state": "MERGED",
+   "merged_at": 1794316999.0,
+   "created_at": 1794301924.147106,
+   "issue": 289
+  },
+  {
+   "id": "deploy-ops",
+   "final_pr": 476,
+   "pr_state": "MERGED",
+   "merged_at": 1794521075.0,
+   "created_at": 1794404776.229525,
+   "issue": 178
+  },
+  {
+   "id": "admin-design",
+   "final_pr": 503,
+   "pr_state": "MERGED",
+   "merged_at": 1794609501.0,
+   "created_at": 1794562711.4197161,
+   "issue": 460
+  }
+ ],
+ "incidents": [
+  {
+   "id": "deploy-ops/failed_attempt/DEPLOY-OPS-4#5",
+   "epic": "deploy-ops",
+   "kind": "failed_attempt",
+   "key": "DEPLOY-OPS-4#5",
+   "at": 1794495901,
+   "data": {
+    "task_id": "DEPLOY-OPS-4",
+    "number": 5,
+    "outcome": "invalid_output",
+    "exit_code": 0,
+    "can_be_corrective": false
+   },
+   "facts": [
+    {
+     "source": "orchestrator.db",
+     "at": 1794495901,
+     "text": "próba DEPLOY-OPS-4#5 zakończona outcome invalid_output, exit_code 0"
+    }
+   ]
+  },
+  {
+   "id": "deploy-ops/finding/c0a430d2e99e",
+   "epic": "deploy-ops",
+   "kind": "finding",
+   "key": "c0a430d2e99e",
+   "at": null,
+   "data": {
+    "severity": "Important",
+    "title": "Dokumentacja opisuje alerty i weryfikację kopii jako przyszłą pracę DEPLOY-OPS",
+    "files": [
+     "docs/adr/k3s-argo-cd.md",
+     "docs/features/deploy/spec.md",
+     "docs/vision.md"
+    ],
+    "task": null,
+    "rounds": [
+     1
+    ],
+    "finding_ids": [
+     "F4"
+    ],
+    "can_be_corrective": false
+   },
+   "facts": [
+    {
+     "source": "report.md",
+     "text": "runda 1: F4 [Important] Dokumentacja opisuje alerty i weryfikację kopii jako przyszłą pracę DEPLOY-OPS (docs/adr/k3s-argo-cd.md, docs/features/deploy/spec.md, docs/vision.md)"
+    }
+   ]
+  },
+  {
+   "id": "lighthouse/escaped/4",
+   "epic": "lighthouse",
+   "kind": "escaped",
+   "key": "4",
+   "at": null,
+   "data": {
+    "title": "Okno „Zmień cenę” w panelu ma stałą szerokość 28 rem i wychodzi poza ekran telefonu (375 px)",
+    "severity": "Minor",
+    "triage": "założone #393"
+   },
+   "facts": [
+    {
+     "source": "sweep report",
+     "text": "4. Okno „Zmień cenę” w panelu ma stałą szerokość 28 rem i wychodzi poza ekran telefonu (375 px) (waga Minor, triage: założone #393)"
+    }
+   ]
+  }
+ ],
+ "facts": [],
+ "status": [
+  {
+   "id": "status/in-progress",
+   "epics": [
+    {
+     "id": "SENTRY",
+     "issue": 180,
+     "title": "SENTRY: Sentry i trace'y aplikacji",
+     "state": "prepared"
+    },
+    {
+     "id": "DEMO-DATA",
+     "issue": 482,
+     "title": "DEMO-DATA: generator danych w skali docelowej i pomiar wydajności",
+     "state": "in_progress"
+    },
+    {
+     "id": "AGENT-SECURITY",
+     "issue": 494,
+     "title": "AGENT-SECURITY: techniczne zabezpieczenia agentów (krok 16)",
+     "state": "prepared"
+    },
+    {
+     "id": "EVALS",
+     "issue": 495,
+     "title": "EVALS: evale agentów i workflowów (krok 17)",
+     "state": "prepared"
+    }
+   ],
+   "blocked": []
+  },
+  {
+   "id": "status/last-epic",
+   "epic": "admin-design",
+   "pr": 503,
+   "merged_at": 1794609501.0,
+   "issue": 460,
+   "interventions": 1,
+   "waits": 1,
+   "wait_min": 20,
+   "manual_fixes": 2,
+   "measurement": true
+  },
+  {
+   "id": "status/agent-issues",
+   "open": 77,
+   "closed": 36
+  },
+  {
+   "id": "status/pending-retro",
+   "epics": [
+    "admin-design"
+   ]
+  }
+ ],
+ "registers": {
+  "observations": [
+   {
+    "key": "escaped-sweep-misc",
+    "title": "Okno „Zmień cenę” w panelu szersze niż ekran telefonu (#393, Minor), pojedyncza propozycja /sweep po LIGHTHOUSE w ekranie spoza epiku; bez wspólnej przyczyny",
+    "incidents": [
+     "lighthouse/escaped/4"
+    ],
+    "epic": "lighthouse",
+    "at": 1794390672
+   },
+   {
+    "key": "delivery-tdd-status-recorded",
+    "title": "DEPLOY-OPS-4#5: /delivery zwrócił READY_FOR_INTEGRATION z tdd.status 'recorded' (RED odtworzone po fakcie i testy infrastruktury bez RED, niesprawdzone na kodzie bazowym); kontrakt AO odrzucił wynik po 4658 s i $9.52. Reguła jest w .claude/skills/delivery/SKILL.md (kroki 5 i 6: RED odtworzony po fakcie → sprawdzenie na kodzie bazowym i lost_verified_on_base); pominięcie przez model, jeden incydent; obserwować",
+    "incidents": [
+     "deploy-ops/failed_attempt/DEPLOY-OPS-4#5"
+    ],
+    "epic": "deploy-ops",
+    "at": 1794521476
+   },
+   {
+    "key": "epic-doc-tasks-missed",
+    "title": "F4 (Important): docs/vision.md, docs/features/deploy/spec.md i docs/adr/k3s-argo-cd.md nadal opisywały alerty i weryfikację kopii jako przyszłą pracę, choć spec miała je w „Zadaniach dokumentacji” i kryterium 8; złapane w integracji i naprawione w #474. Jeden incydent, instrukcja istnieje",
+    "incidents": [
+     "deploy-ops/finding/c0a430d2e99e"
+    ],
+    "epic": "deploy-ops",
+    "at": 1794521476
+   }
+  ],
+  "rejected": [],
+  "applied": [],
+  "carried": []
+ },
+ "open_retro_pr": null,
+ "open_issues": {
+  "ao": [
+   {
+    "body": "## Problem\n\nPrzy epiku DEPLOY (shop #175) zadanie DEPLOY-6 było `BLOCKED` przez noc w oczekiwaniu na odpowiedź użytkownika. `run --until-idle` się zakończył, ale licznik `active` epiku dalej rósł. Po `ao answer` i ponownym `run` epik od razu przeszedł w `BLOCKED` z `epic_timeout` (68868 s > 57600 s), choć AO pracował znacznie krócej. Trzeba było `ao epic resume deploy --extend-timeout 36000`.\n\n## Oczekiwane\n\nCzas, w którym epik stoi wyłącznie na decyzji człowieka (blocker z pytaniem, `queue_held`, `idle` bez możliwych ruchów), nie liczy się do `epic_timeout`, podobnie jak `host pauses` i `usage-limit cooldown`.",
+    "labels": [],
+    "number": 38,
+    "title": "epic_timeout liczy czas czekania na odpowiedź człowieka",
+    "author": "piotrp321",
+    "url": "https://github.com/piotrp321/agentic-orchestrator/issues/38",
+    "trusted": true
+   },
+   {
+    "body": "Źródło: przebieg epiku PROMOTIONS w sklepie (piotrp321/shop#96, 2026-11-07/08).\n\nKolejka była wstrzymana (`queue_held`) przez noc, około 10 h czekania na człowieka. Ten czas wszedł do „active” i zjadł większość 16-godzinnego `--epic-timeout`, więc trzeba było podnieść limity w nowym `run`. `ao report` liczy to jako „inne 11h 54m”.\n\n**Oczekiwane:** czas wstrzymanej kolejki i czekania na odpowiedź człowieka nie wlicza się do `epic_timeout` (podobnie jak przerwy hosta i cooldown), albo przynajmniej jest osobno widoczny.\n",
+    "labels": [
+     {
+      "id": "LA_kwDOVeLoYM8AAAADAWSqyQ",
+      "name": "enhancement",
+      "description": "New feature or request",
+      "color": "a2eeef"
+     }
+    ],
+    "number": 44,
+    "title": "Postój z wstrzymaną kolejką liczy się do epic_timeout",
+    "author": "piotrp321",
+    "url": "https://github.com/piotrp321/agentic-orchestrator/issues/44",
+    "trusted": true
+   }
+  ],
+  "shop": []
+ }
+}

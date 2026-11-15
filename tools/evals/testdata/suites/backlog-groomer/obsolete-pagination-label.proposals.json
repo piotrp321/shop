@@ -1,0 +1,24 @@
+{
+ "schema": 1,
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "items": [
+  {
+   "n": 1,
+   "kind": "obsolete",
+   "issues": [
+    134
+   ],
+   "close_reason": "completed",
+   "reason": "Kryterium akceptacji jest spełnione: nazwa dostępna linków paginacji zaczyna się od widocznego tekstu.",
+   "evidence": [
+    "apps/store/src/components/ui/pagination.tsx:92 — aria-label={`${text} – przejdź do następnej strony`}, czyli nazwa zawiera widoczne „Następna”",
+    "apps/store/src/components/ui/pagination.tsx:73 — to samo dla „Poprzednia”, komentarz w linii 72 powołuje się na WCAG 2.5.3"
+   ]
+  }
+ ],
+ "fix_epic": null,
+ "overflow": [],
+ "hypotheses": [
+  "#293 i #294: kod z opisu zgłoszeń nadal jest taki, jak w nich (CheckoutPage.tsx bez customerAccounts, kubeconfig.sh bez pwd -P przed porównaniem), więc nie są nieaktualne."
+ ]
+}

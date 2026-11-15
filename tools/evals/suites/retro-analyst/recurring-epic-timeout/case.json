@@ -1,0 +1,40 @@
+{
+ "id": "recurring-epic-timeout",
+ "kind": "substantive",
+ "commit": "f78d1aff5a268f6eed3f09d60c80fda5abacc080",
+ "prompt": "Epik: admin-design\ninput.json: {{INPUT_DIR}}/input.json\nWorktree (origin/main, tylko do czytania): {{PASS_DIR}}/checkout\nrun_dir: {{RESULT_DIR}}   (tu zapisz proposals.json)\n",
+ "inputs": [
+  "input.json"
+ ],
+ "assertions": [
+  {
+   "type": "validator",
+   "script": ".claude/skills/retro/retro.py",
+   "args": [
+    "validate",
+    "{{RUN_DIR}}",
+    "--repo",
+    "{{PASS_DIR}}/checkout",
+    "--ao-home",
+    "{{STATE_DIR}}",
+    "--retro-home",
+    "{{RETRO_HOME}}",
+    "--sweep-home",
+    "{{SWEEP_HOME}}"
+   ]
+  },
+  {
+   "type": "json",
+   "select": "items",
+   "match": {
+    "kind": "fix",
+    "cause": {
+     "regex": "57600|epic-timeout"
+    }
+   }
+  },
+  {
+   "type": "tree_unchanged"
+  }
+ ]
+}

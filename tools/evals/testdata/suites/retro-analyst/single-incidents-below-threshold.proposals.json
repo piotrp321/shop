@@ -1,0 +1,30 @@
+{
+ "schema": 1,
+ "epic": "admin-design",
+ "commit": "f78d1aff5a268f6eed3f09d60c80fda5abacc080",
+ "items": [],
+ "observations": [
+  {
+   "key": "delivery-tdd-status-recorded",
+   "title": "DEPLOY-OPS-4#5: wynik /delivery odrzucony przez kontrakt AO; jeden incydent, bez nawrotu",
+   "incidents": [
+    "deploy-ops/failed_attempt/DEPLOY-OPS-4#5"
+   ]
+  },
+  {
+   "key": "epic-doc-tasks-missed",
+   "title": "F4: dokumenty opisywały alerty i kopie jako przyszłą pracę; jedno znalezisko integracji",
+   "incidents": [
+    "deploy-ops/finding/c0a430d2e99e"
+   ]
+  },
+  {
+   "key": "escaped-sweep-misc",
+   "title": "Okno „Zmień cenę” szersze niż telefon (#393): pojedyncza propozycja /sweep",
+   "incidents": [
+    "lighthouse/escaped/4"
+   ]
+  }
+ ],
+ "overflow": []
+}

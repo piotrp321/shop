@@ -1,0 +1,65 @@
+{
+ "schema": 1,
+ "epic": "admin-design",
+ "commit": "f78d1aff5a268f6eed3f09d60c80fda5abacc080",
+ "items": [
+  {
+   "n": 1,
+   "kind": "fix",
+   "key": "epic-timeout-human-wait",
+   "title": "Limit --epic-timeout 57600 z /ao-run jest za krótki dla dużych epików",
+   "evidence": [
+    "deploy-ops/wait/deploy-ops@1794468410",
+    "deploy-ops/wait/deploy-ops@1794507361",
+    "deploy-ops/wait/deploy-ops@1794520508",
+    "admin-design/wait/admin-design@1794623555",
+    "admin-design/wait/admin-design@1794643028"
+   ],
+   "classes": {
+    "deploy-ops/wait/deploy-ops@1794468410": {
+     "class": "corrective",
+     "corrective_reason": "epik zablokowany przez epic_timeout i wymagał ao epic resume; limit z SKILL.md nie przewidywał epiku o tak długiej pracy"
+    },
+    "deploy-ops/wait/deploy-ops@1794507361": {
+     "class": "corrective",
+     "corrective_reason": "epik zablokowany przez epic_timeout i wymagał ao epic resume; limit z SKILL.md nie przewidywał epiku o tak długiej pracy"
+    },
+    "deploy-ops/wait/deploy-ops@1794520508": {
+     "class": "corrective",
+     "corrective_reason": "epik zablokowany przez epic_timeout i wymagał ao epic resume; limit z SKILL.md nie przewidywał epiku o tak długiej pracy"
+    },
+    "admin-design/wait/admin-design@1794623555": {
+     "class": "corrective",
+     "corrective_reason": "epik zablokowany przez epic_timeout i wymagał ao epic resume; limit z SKILL.md nie przewidywał epiku o tak długiej pracy"
+    },
+    "admin-design/wait/admin-design@1794643028": {
+     "class": "corrective",
+     "corrective_reason": "epik zablokowany przez epic_timeout i wymagał ao epic resume; limit z SKILL.md nie przewidywał epiku o tak długiej pracy"
+    }
+   },
+   "cause": ".claude/skills/ao-run/SKILL.md (sekcja 4, polecenie ao run) i docs/features/ao-run/spec.md (linia 112) ustalają stały `--epic-timeout 57600`; DEPLOY-OPS (trzy blokady) i ADMIN-DESIGN (dwie) przekroczyły go przy samej pracy wykonawców, bez udziału człowieka w pętli.",
+   "files": [
+    ".claude/skills/ao-run/SKILL.md",
+    "docs/features/ao-run/spec.md"
+   ],
+   "change": "W sekcji 4 SKILL.md i w spec (linia 112) podnieś `--epic-timeout` do 115200 i dopisz, że limit liczy się od startu epiku, a po blokadzie `epic_timeout` sesja pyta użytkownika o wznowienie.",
+   "why_prevents": "Limit obejmuje dotychczas obserwowaną długość epików, więc kolejny duży epik nie zatrzyma się na `epic_timeout` i nie wymaga `ao epic resume`.",
+   "verify": "W kolejnych epikach brak incydentów `wait` z powodem `epic_timeout` i akcją `epic-resume`.",
+   "previously_rejected": null,
+   "previous_fix": null,
+   "updates": null
+  }
+ ],
+ "observations": [
+  {
+   "key": "escaped-sweep-misc",
+   "title": "Pojedyncze propozycje /sweep po HARDENING i LIGHTHOUSE, bez wspólnej przyczyny",
+   "incidents": [
+    "hardening/escaped/1",
+    "hardening/escaped/2",
+    "lighthouse/escaped/4"
+   ]
+  }
+ ],
+ "overflow": []
+}

@@ -1,0 +1,307 @@
+{
+ "schema": 1,
+ "collected_at": "2026-11-12T08:07:48.613935+01:00",
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "issues": [
+  {
+   "number": 446,
+   "title": "Panel: komunikat błędu formularza obiektu, który nie istnieje, ma kontrast 4,4:1",
+   "body": "### Środowisko\nStos lokalny, commit 1c1cd05, Chromium desktop 1280 × 720, konto `admin` (admin).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu jako `admin`.\n2. Otwórz `/discount-codes/11111111-1111-4111-8111-111111111111`.\n3. Uruchom axe na stronie z komunikatem „Ten kod rabatowy nie istnieje.”.\n\n### Oczekiwane zachowanie albo wygląd\nTekst komunikatu ma kontrast co najmniej 4,5:1 (WCAG 1.4.3).\n\n### Obecne zachowanie albo wygląd\n`#dc2626` na `#fdf2f2`, 14 px: 4,4:1. axe: `color-contrast (serious): .p-message-text`.\n\n### Kryterium akceptacji\n```ts\nconst violations = await checkA11y(page, \"form-404-message\");\nconst contrast = violations.filter((v) => v.id === \"color-contrast\").flatMap((v) => v.nodes.map((n) => n.any[0]?.message));\nexpect(contrast, \"axe color-contrast\").toEqual([]);\n```\n\n### Niewiadome\nTo kolejny wzorzec kolorów motywu z #135, #250, #260, #346; poprawka najlepiej w motywie (`primevue.ts`) raz.\n\n### Dowód\n`E2E_ARGS=\"repro-3 --project desktop --repeat-each 2\"`: oba powtórzenia „Element has insufficient color contrast of 4.4 (foreground color: #dc2626, background color: #fdf2f2, font size: 10.5pt (14px))”. Wpływ: komunikat jest czytelny (czerwony tekst na jasnym tle), ale poniżej progu AA.\n\nZrzuty i skrypty lokalnie: <home>/.local/state/shop-sweep/2026-11-11-1c1cd05-quality-fixes/ux/evidence/2/ (repro-3.spec.ts, form-404-message.png, test-failed-1.png, trace.zip)\n\n### Źródło\nPrzebieg `/sweep` 2026-11-11-1c1cd05-quality-fixes, commit 1c1cd055546a8050e5e5fb7130e12f88cd000f2a, agent ux-reviewer, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-11T13:30:59Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 444,
+   "title": "Token CSRF symulatora płatności da się podrobić przy pustym sekrecie webhooka",
+   "body": "Uwaga z review zadania QUALITY-FIXES-3 (PR #427, epik #342), poza zakresem zadania.\n\n**Plik:** `apps/api/src/PaymentSimulator/Http/PaymentPageController.php` (~linia 93, `csrfToken`).\n\n**Problem.** Token CSRF formularza symulatora płatności to HMAC-SHA256 identyfikatora transakcji z sekretem webhooka. Przy pustym sekrecie webhooka token da się policzyć bez znajomości sekretu, czyli podrobić. #213 (QUALITY-FIXES-3) sprawił, że webhooki dostawcy są odrzucane przy pustym sekrecie, ale token symulatora dalej z niego korzysta.\n\n**Do rozważenia.** Odmowa (albo osobny klucz) dla tokenu przy pustym sekrecie, tak jak w webhookach; symulator działa tylko w trybie demo, więc waga zależy od tego, czy demo jest publiczne.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-11T12:50:40Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 443,
+   "title": "Adres zamówienia i notatka korekty stanu przyjmują same białe znaki Unicode",
+   "body": "Uwaga U2 z integracji epiku QUALITY-FIXES (#342, PR #439, runda 1): poza zakresem epiku, bez otwartego zgłoszenia.\n\n1. **Zamówienie** przyjmuje `fullName`, `street`, `city` złożone z samych białych znaków Unicode (np. NBSP), bo pola zamówienia przycinają tylko ASCII. `docs/features/checkout/spec.md` opisuje to świadomie, więc to decyzja do potwierdzenia albo zmiany.\n2. **Notatka korekty stanu** Inventory (`StockNote`, `CorrectStockRequest`) przyjmuje sam NBSP przy powodzie „inne” oraz znaki U+2028 i U+0085. Specyfikacja #256 ograniczyła regułę do Ordering i notatki pracownika.\n\nDo decyzji: czy objąć te pola tą samą regułą co notatkę pracownika (#256).\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-11T12:50:38Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 441,
+   "title": "RequiredKeysBodyResolver nie pilnuje nietypowanych parametrów żądania (ryzyko 500 zamiast 422)",
+   "body": "Znalezisko F3 (Minor) z integracji epiku QUALITY-FIXES (#342, PR #439, rundy 1 i 2), bez naprawy w epiku.\n\n**Plik:** `apps/api/src/Shared/UI/Http/RequiredKeysBodyResolver.php`.\n\n**Problem.** `new $class(...array_intersect_key($data, …))` przekazuje wartości z JSON bez konwersji. Dziś wszystkie siedem klas z `#[RequiredKeysBody]` ma parametry `mixed`, ale nie pilnuje tego ani test, ani resolver. Pierwsza klasa żądania z parametrem typowanym (`int`, `string`) przy złym typie da `TypeError`, czyli 500 zamiast 422. `apps/api/CLAUDE.md` mówi tylko „bez rzutowania”.\n\n**Naprawa (jedna z):**\n- resolver rzuca `\\LogicException`, gdy typ parametru konstruktora jest inny niż brak typu albo `mixed`, plus test jednostkowy;\n- test przechodzący po klasach z `#[RequiredKeysBody]` i sprawdzający `mixed`, plus wymóg w docblocku i w `apps/api/CLAUDE.md`.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-11T12:50:35Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 440,
+   "title": "Odczyt starych wierszy z TAB/U+2028 po ostrzejszych value objectach daje 500",
+   "body": "Znalezisko U1 z integracji epiku QUALITY-FIXES (#342, PR #439, runda 1).\n\n**Problem.** Ostrzejsze value objecty z #247/#256 (QUALITY-FIXES, PR #430) działają też przy odczycie z bazy: `DoctrineProductRepository::toDomain`, handlery odczytu Catalog i `DoctrineOrderRepository`. Wiersz zapisany przed epikiem z TAB lub U+2028 w nazwie albo wartości wariantu, albo z U+2028/U+0085 w adresie zamówienia, rzuci wyjątek przy odczycie: 500 na `GET /api/v1/products/{slug}` i `GET /api/v1/admin/products/{id}`, a produktu nie da się poprawić w panelu.\n\n**Dziś.** Niewywoływalne przez API: dane demo powstają przez domenę, produkcji z prawdziwymi danymi jeszcze nie ma. PR #430 opisuje to jako świadome ryzyko.\n\n**Do zrobienia przed pierwszym wdrożeniem z prawdziwymi danymi.** Zapytanie kontrolne (albo migracja czyszcząca) na wiersze z tymi znakami w `catalog_product*` i adresach zamówień, albo dopisanie ryzyka do `docs/features/variants/spec.md` i `docs/features/checkout/spec.md`.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-11T12:50:34Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 421,
+   "title": "Limit złożenia zamówienia przekraczany o setki żądań przy ruchu równoległym (D1)",
+   "body": "### Środowisko\nStos lokalny (compose, `APP_ENV=dev`), commit 4426b15fc471c1eb98b770c6211e66190292f4c2. Test używa tylko `fetch` z kontenera e2e (projekt desktop), bez konta (gość). Endpoint `POST /api/v1/orders` (limiter `order_placement`); ten sam mechanizm dotyczy `POST /api/v1/me/orders`, płatności i webhooków.\n\nPliki kodu: `apps/api/config/packages/rate_limiter.yaml`, `apps/api/src/Shared/Infrastructure/Http/RateLimitSubscriber.php`, `docs/features/hardening/spec.md` (D1).\n\n### Kroki odtworzenia\n1. W kontenerze e2e wyślij `POST /api/v1/orders` z treścią `{}` (odpowiedź 422, ale limit jest zużywany, D6) w 24 równoległych strumieniach, aż do pierwszej odpowiedzi 429.\n2. Policz odpowiedzi inne niż 429 do pierwszego 429. Dla `when@dev` limit to 10000 na 15 min, a w locie są 24 żądania.\n3. Powtórz po 31 minutach, żeby okno przesuwne się wyczyściło.\n\n### Wynik oczekiwany\nD1: „przy równoległych żądaniach limit może zostać przekroczony o liczbę żądań w locie”. Najwyżej 10000 + 24 przyjętych żądań przed pierwszym 429.\n\n### Wynik faktyczny\nPrzyjęte żądania przed pierwszym 429: 10519 (powtórzenie 1) i 10817 (powtórzenie 2), czyli około 500 i 800 ponad limit przy 24 w locie.\n\nPomiary dodatkowe z tego samego stosu:\n- 10400 żądań w 24 strumieniach bez 429, potem 429 dopiero po kolejnych 420 żądaniach sekwencyjnych.\n- 13037 żądań przez BFF sklepu w 10 strumieniach do pierwszego 429.\n- 14008 żądań konta klienta (Jan) w 10 strumieniach do pierwszego 429.\n\nTo utrata 8–30% przyrostów licznika przy ruchu równoległym. Przy wartości produkcyjnej (10 na 15 min) rozmiaru przekroczenia nie mierzono.\n\n### Kryterium akceptacji\nLiczba odpowiedzi innych niż 429 przed pierwszą odpowiedzią 429 nie przekracza limitu o więcej niż liczba żądań w locie:\n\n```ts\nawait Promise.all(Array.from({ length: 24 }, worker)); // worker: POST /api/v1/orders {} do pierwszego 429\nwhile (first429 === null && sent < LIMIT + 3000) await post(++sent);\nexpect(first429, \"a 429 appears\").not.toBeNull();\nexpect(accepted).toBeLessThanOrEqual(LIMIT + 24); // padło: 10519 i 10817\n```\n\nAlternatywnie specyfikacja D1 opisuje rzeczywiste przekroczenie, a limiter dostaje blokadę (`symfony/lock`) albo atomowy licznik.\n\n### Niewiadome\nPrzyczyna niepotwierdzona. Hipoteza: brak blokady (`lock_factory: null`) i odczyt-modyfikacja-zapis licznika okna w Redisie gubi przyrosty przy równoległych żądaniach. Rozmiar przekroczenia przy limicie 10 nieznany. Stan limitera przeżywa uruchomienia testu, więc test czeka na wygaśnięcie okna; przy niewyczyszczonym stanie mógłby przejść fałszywie, nigdy nie padnie fałszywie.\n\n### Dowód\n```\nsent 10520, accepted 10519, first 429 at request 10520   (powtórzenie 1)\nsent 10818, accepted 10817, first 429 at request 10818   (powtórzenie 2)\nExpected: <= 10024   Received: 10519 / 10817\n```\n\nSkrypt i wyniki lokalnie: `<home>/.local/state/shop-sweep/2026-11-10-4426b15-hardening/tester/evidence/1/` (`repro-1.spec.ts`, `make-2of2.log`, `results/`, `other-measurements/`).\n\n### Źródło\nPrzebieg `/sweep` 2026-11-10-4426b15-hardening, commit 4426b15fc471c1eb98b770c6211e66190292f4c2, agent tester, odtworzono: tak (2/2), waga Important.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T20:44:16Z",
+   "weight": "Important",
+   "assigned_epic": null
+  },
+  {
+   "number": 393,
+   "title": "Okno „Zmień cenę” w panelu ma stałą szerokość 28 rem i wychodzi poza ekran telefonu (375 px)",
+   "body": "### Środowisko\nStos lokalny, commit 3c06149475a4e971c63ad0cd82aba553f3059049, Chromium mobile 375 × 812, konto admin.\n### Kroki odtworzenia\n1. Zaloguj się do panelu jako `admin` (TOTP demo).\n2. Otwórz „Ceny”, wpisz w wyszukiwarce „Hantle regulowane Lumora Para 10”.\n3. Kliknij „Zmień cenę” przy jedynym wierszu.\n### Oczekiwane zachowanie albo wygląd\nOkno mieści się w szerokości ekranu (np. `maxWidth: 95vw` jak drugie okno widoku), treść jest w całości widoczna.\n### Obecne zachowanie albo wygląd\nOkno ma 410 px szerokości na ekranie 375 px i zaczyna się na x = -115; lewa część (nagłówek, początek nazwy produktu, etykieta pola) jest ucięta. W ścieżce 3 na mobile kliknięcie „Zapisz” przechwyciła nakładka okna (timeout).\n### Kryterium akceptacji\n```ts\nconst box = await page.getByTestId(\"change-dialog\").boundingBox();\nexpect(box!.x).toBeGreaterThanOrEqual(0);\nexpect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);\n```\nPomiar po otwarciu okna, 1 s po animacji.\n### Niewiadome\nCzy panel ma wspierać telefon (`docs/vision.md` nie wymaga tego dla panelu). Okno w `OrderDetailView.vue` nie było badane.\n### Dowód\n`dialog box {\"x\":-115,\"y\":541.5,\"width\":410,\"height\":206} viewport 375` (oba powtórzenia), asercja `Expected: >= 0, Received: -115`.\nZrzuty i trace lokalnie: <home>/.local/state/shop-sweep/2026-11-10-3c06149-lighthouse/tester/evidence/1/\n\n### Źródło\nPrzebieg `/sweep` 2026-11-10-3c06149-lighthouse, commit 3c06149475a4e971c63ad0cd82aba553f3059049, agent tester, odtworzono: tak (2/2), waga Minor.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T13:47:09Z",
+   "weight": "Minor",
+   "assigned_epic": null
+  },
+  {
+   "number": 392,
+   "title": "Koszyk: po usunięciu ostatniej pozycji klawiaturą fokus spada na `<body>`",
+   "body": "### Środowisko\nStos lokalny, commit 3c06149475a4e971c63ad0cd82aba553f3059049, Chromium desktop 1280 × 720 i mobile 375 × 812, gość.\n### Kroki odtworzenia\n1. Dodaj jedną pozycję, otwórz `/cart`.\n2. Fokus na „Usuń: …”, `Enter`.\n3. Po „Twój koszyk jest pusty” odczytaj `document.activeElement`.\n### Oczekiwane zachowanie albo wygląd\nFokus trafia na widok pustego koszyka (nagłówek, komunikat albo link „Zobacz produkty”), a zmiana jest ogłoszona w regionie `status`.\n### Obecne zachowanie albo wygląd\n`activeElement` to `BODY`, a `[role=status]` w `main` jest pusty.\n### Kryterium akceptacji\nPo pojawieniu się „Twój koszyk jest pusty” `document.activeElement.tagName` nie jest `BODY`.\n### Niewiadome\nCzy usunięcie jednej z kilku pozycji też gubi fokus (nie sprawdzano).\n### Dowód\nTest pada 2/2 na `desktop` i `mobile`. Komenda: `... E2E_ARGS=\"repro-3 --project desktop --repeat-each 2\"` (i `--project mobile`).\nZrzuty i trace lokalnie: <home>/.local/state/shop-sweep/2026-11-10-3c06149-lighthouse/ux/evidence/3/\n\n### Źródło\nPrzebieg `/sweep` 2026-11-10-3c06149-lighthouse, commit 3c06149475a4e971c63ad0cd82aba553f3059049, agent ux-reviewer, odtworzono: tak (2/2), waga Important.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T13:47:08Z",
+   "weight": "Important",
+   "assigned_epic": null
+  },
+  {
+   "number": 391,
+   "title": "Koszyk: zmiana ilości i `Tab` na „Usuń” zabiera fokus (przycisk blokowany na czas zapisu)",
+   "body": "### Środowisko\nStos lokalny, commit 3c06149475a4e971c63ad0cd82aba553f3059049, Chromium desktop 1280 × 720, gość.\n### Kroki odtworzenia\n1. Dodaj pozycję do koszyka, otwórz `/cart`.\n2. W polu ilości naciśnij strzałkę w górę (ilość 2), potem `Tab`.\n3. Poczekaj, aż licznik pokaże 2, i odczytaj `document.activeElement`.\n### Oczekiwane zachowanie albo wygląd\nFokus zostaje na „Usuń”, na który użytkownik przeszedł klawiszem `Tab`.\n### Obecne zachowanie albo wygląd\nFokus jest na `BODY`. `Enter` na „Usuń” zaraz po zmianie ilości nie usuwa pozycji, bo PATCH idzie na blur, a przycisk jest wtedy wyłączony.\n### Kryterium akceptacji\nPo `ArrowUp`, `Tab` i liczniku 2 przechodzi `await expect(page.getByRole(\"button\", { name: /^Usuń/ })).toBeFocused()`.\n### Niewiadome\nBrak.\n### Dowód\n`ACTIVE: BODY:WorfBieganieWszystko z działuA`; test pada 2/2. Komenda: `... E2E_ARGS=\"repro-2 --project desktop --repeat-each 2\"`.\nZrzuty i trace lokalnie: <home>/.local/state/shop-sweep/2026-11-10-3c06149-lighthouse/ux/evidence/2/\n\n### Źródło\nPrzebieg `/sweep` 2026-11-10-3c06149-lighthouse, commit 3c06149475a4e971c63ad0cd82aba553f3059049, agent ux-reviewer, odtworzono: tak (2/2), waga Important.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T13:47:06Z",
+   "weight": "Important",
+   "assigned_epic": null
+  },
+  {
+   "number": 390,
+   "title": "„Do koszyka” na karcie produktu zabiera fokus klawiatury po dodaniu (fokus spada na początek strony)",
+   "body": "### Środowisko\nStos lokalny, commit 3c06149475a4e971c63ad0cd82aba553f3059049, Chromium desktop 1280 × 720 i mobile 375 × 812, gość.\n### Kroki odtworzenia\n1. Otwórz stronę produktu `/p/namiot-turystyczny-norvane-biwak-2`.\n2. Ustaw fokus na wariancie „zielony”, naciśnij `Space`.\n3. Ustaw fokus na „Do koszyka”, naciśnij `Enter`.\n4. Poczekaj na „Dodano do koszyka” i odczytaj `document.activeElement`.\n### Oczekiwane zachowanie albo wygląd\nFokus zostaje na „Do koszyka” (albo przechodzi na komunikat).\n### Obecne zachowanie albo wygląd\n`document.activeElement` to `BODY`; następny `Tab` zaczyna od logo. Osoba na klawiaturze lub z czytnikiem musi tabować od początku strony.\n### Kryterium akceptacji\nPo `Enter` i pojawieniu się `role=status` „Dodano do koszyka” `activeElement` nie jest `BODY`, a `await expect(add).toBeFocused()` przechodzi.\n### Niewiadome\nCzy kafelek listingu z tym samym komponentem ma ten sam problem (nie odtwarzano).\n### Dowód\n`ACTIVE after add: BODY:WorfBieganieWszystko…`; test pada 2/2 na `desktop` i `mobile`. Komenda: `make e2e-agent AGENT_DIR=<home>/.local/state/shop-sweep/2026-11-10-3c06149-lighthouse/ux E2E_FLAGS=-T E2E_ARGS=\"repro-1 --project desktop --repeat-each 2\"`.\nZrzuty i trace lokalnie: <home>/.local/state/shop-sweep/2026-11-10-3c06149-lighthouse/ux/evidence/1/\n\n### Źródło\nPrzebieg `/sweep` 2026-11-10-3c06149-lighthouse, commit 3c06149475a4e971c63ad0cd82aba553f3059049, agent ux-reviewer, odtworzono: tak (2/2), waga Important.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T13:47:04Z",
+   "weight": "Important",
+   "assigned_epic": null
+  },
+  {
+   "number": 387,
+   "title": "Niestabilny test PromotionsEndpointTest: oczekiwany czas liczony po żądaniu",
+   "body": "## Problem\n\n`apps/api/tests/Functional/Pricing/PromotionsEndpointTest.php:73` (`testAdminAndMarketingPlanAPromotion`) porównuje `startsAt` promocji z `$this->at('+1 day')`, liczonym po żądaniu. Kiedy żądanie i asercja wypadają w różnych sekundach, test pada, np. 11:28:51 i 11:28:50. Tak padł pierwszy przebieg `checks` w PR #385 (HARDENING-3). Ponowienie jobu przeszło.\n\n## Oczekiwane\n\nTest nie zależy od tego, ile trwa żądanie: zegar w tym teście jest zamrożony albo oczekiwany czas jest wyliczony z tej samej chwili co dane żądania. Ten sam wzorzec (`$this->at(...)` po żądaniu) dotyczy też `endsAt` w linii 74.\n\nZgłoszenie od agenta `/delivery` (HARDENING-3), porządki bez zmiany zachowania.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-10T13:25:30Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 343,
+   "title": "Panel: przycisk rozwijania filtra kategorii na ekranach „Ceny” i „Magazyn” nie ma nazwy dostępnej",
+   "body": "### Środowisko\nStos lokalny z `origin/main`, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, Chromium desktop 1280 × 720, konto `admin` (rola admin).\n\n### Kroki odtworzenia\n1. Zaloguj się do panelu jako `admin` (hasło i TOTP).\n2. Otwórz „Ceny” (`/prices`). Przycisk rozwijania filtra „Wszystkie kategorie” (`role=button`, `data-pc-section=\"dropdown\"`) nie ma nazwy.\n3. Otwórz „Magazyn” (`/inventory`): to samo.\n\n### Oczekiwane zachowanie albo wygląd\nPrzycisk rozwijania ma nazwę dostępną (np. „Filtr kategorii”) albo jest ukryty przed technologiami wspomagającymi, więc czytnik ekranu nie trafia na nienazwany przycisk.\n\n### Obecne zachowanie albo wygląd\n`aria-label=\"Filtr kategorii\"` jest na korzeniu `TreeSelect` (`apps/admin/src/views/PricesView.vue`, `apps/admin/src/views/InventoryView.vue`), a `div.p-treeselect-dropdown` z `role=\"button\"` nie ma tekstu, `aria-label`, `aria-labelledby` ani `title`. `ariaSnapshot`: `combobox \"Filtr kategorii\"`, a zaraz po nim `button` bez nazwy. Przycisk nie jest w kolejności `Tab`, więc wpływ dotyczy drzewa dostępności i nawigacji czytnika po przyciskach.\n\nPowiązane: #250 F13 opisuje ten sam defekt w `ProductsView.vue` i `ProductFormView.vue`; ceny i magazyn nie są tam wymienione. Poprawka najpewniej wspólna.\n\n### Kryterium akceptacji\n```ts\nfor (const path of [\"/prices\", \"/inventory\"]) {\n  await page.goto(new URL(path, page.url()).toString());\n  const button = page.getByTestId(\"category-filter\").locator('[data-pc-section=\"dropdown\"]');\n  const name = (await button.getAttribute(\"aria-label\")) ?? (await button.getAttribute(\"aria-labelledby\")) ?? (await button.innerText()).trim();\n  expect(name).not.toBe(\"\");\n}\n// and axe on /prices reports no aria-command-name violation\n```\n\n### Niewiadome\nNie sprawdzano, czy czytnik ekranu czyta nazwę z korzenia `TreeSelect`.\n\n### Dowód\naxe: `aria-command-name (serious): .p-treeselect-dropdown`. Węzeł: `<div class=\"p-treeselect-dropdown\" role=\"button\" aria-haspopup=\"tree\" aria-expanded=\"false\" data-pc-section=\"dropdown\">`. Tester, oba powtórzenia: `REPRO1 /prices role=button name=\"\"`, `REPRO1 /inventory role=button name=\"\"`. UX, oba powtórzenia: `CHK unnamed buttons [\"p-treeselect-dropdown\"]`.\n\nSkrypty i wyniki lokalnie: `<home>/.local/state/shop-sweep/2026-11-09-015c52b/tester/evidence/1/`, `<home>/.local/state/shop-sweep/2026-11-09-015c52b/ux/evidence/3/`.\n\n### Źródło\nPrzebieg `/sweep` 2026-11-09-015c52b, commit 015c52b93bc4bcb57d266ccd65749dc0b5fa5db3, agent tester i ux-reviewer, odtworzono: tak (2/2), waga Important.\n",
+   "labels": [
+    "ux",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T11:52:57Z",
+   "weight": "Important",
+   "assigned_epic": null
+  },
+  {
+   "number": 326,
+   "title": "Catalog API: atrybut OpenAPI w warstwie Application (SitemapProduct, F2)",
+   "body": "Źródło: integracja epiku SEO (#266, końcowy PR #317), raport `/integration` rundy 1, znalezisko F2 (Minor, SEO-1).\n\n`apps/api/src/Catalog/Application/Query/SitemapProduct.php` ma `#[OA\\Property(format: 'date-time', …)]`. To pierwszy atrybut OpenAPI w warstwie Application; w Pricing i Cart schematy odpowiedzi są w DTO w `UI/Http`. Deptrac na to pozwala, a decyzja jest opisana w PR #311.\n\nDo wyboru:\n- przenieść schemat odpowiedzi do DTO w `Catalog/UI/Http` (eksport OpenAPI i klient TS bez zmian kontraktu), albo\n- przyjąć jako dozwolony wyjątek i opisać zasadę w `apps/api/CLAUDE.md`.\n\nWpływ: tylko spójność warstw, zachowanie i kontrakt API się nie zmieniają.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-09T07:39:56Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 306,
+   "title": "Reguły wyboru granic promocji są w adapterze infrastruktury (F2)",
+   "body": "Źródło: integracja epiku PROMOTIONS (#96, końcowy PR #301), raporty `/integration` rund 1–4.\n\n**Pliki:** `apps/api/src/Pricing/Infrastructure/Messaging/MessengerPromotionBoundaries.php`, `apps/api/src/Pricing/Application/Port/PromotionBoundaries.php`.\n\n`promotionSaved` sam wybiera granice do ogłoszenia (`announceStart`, `>= now`, warunek `RefreshPromotionProducts`). Reguła domenowa leży poza Domain i Application, więc trudno ją testować i zmieniać bez adaptera. Architekt zgłaszał to we wszystkich rundach.\n\n**Naprawa:** przenieść wybór granic do Domain albo Application. Adapter ma tylko wysyłać wiadomości. Bez zmiany zachowania.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-08T19:09:57Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 305,
+   "title": "Przycinanie nazwy promocji obcina znaki tagów kończące emoji flagi (F12)",
+   "body": "Źródło: integracja epiku PROMOTIONS (#96, końcowy PR #301), raporty `/integration` rund 1–4.\n\n**Plik:** `apps/api/src/Pricing/Domain/Promotion/Promotion.php` (`validName`), po poprawce F9 (PR #303).\n\n**Odtworzenie:** `preg_replace('/^[\\s\\p{Z}\\p{Cf}]+|[\\s\\p{Z}\\p{Cf}]+$/u', '', \"Promo 🏴\\u{E0067}\\u{E0062}\\u{E0065}\\u{E006E}\\u{E0067}\\u{E007F}\")` zwraca `Promo 🏴` (13 → 7 znaków). Z flagi Anglii zostaje sama czarna flaga.\n\n**Wpływ:** nazwa kończąca się flagą subdywizji zostaje przy zapisie zmieniona bez żadnego komunikatu.\n\n**Naprawa:** przycinać `\\s\\p{Z}` i jawną listę niewidocznych znaków (U+200B, U+2060, U+FEFF, U+180E) zamiast całej kategorii `\\p{Cf}`. Dodać test z flagą subdywizji na końcu i z emoji ZWJ w środku nazwy.\n",
+   "labels": [
+    "bug",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-08T19:17:07Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 214,
+   "title": "Ordering: brak testu świeżego odczytu DoctrineOrderRepository::get (HINT_REFRESH)",
+   "body": "Uwaga architekta z `/integration` epiku PAYMENT (#91), runda 3.\n\n- `DoctrineOrderRepository::get` używa `HINT_REFRESH`, żeby po blokadzie czytać świeży stan zamówienia (ważne dla wyścigów płatności, por. poprawka F1 z PR #189).\n- `DoctrineOrderRepositoryTest.php` nie ma testu, który to sprawdza.\n- Test: encja w Unit of Work, zmiana wiersza poza nią (osobne połączenie / natywne zapytanie), `get` zwraca nowy stan.",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T08:39:00Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 212,
+   "title": "API płatności: GetPaymentStatus czyta zamówienie i płatność dwoma zapytaniami",
+   "body": "Niepotwierdzone ryzyko z `/integration` epiku PAYMENT (#91), runda 1 i 3. Nie odtworzono.\n\n- `GetPaymentStatus` czyta zamówienie i jego ostatnią płatność dwoma osobnymi zapytaniami. W krótkim oknie (webhook kończy płatność między odczytami) odpowiedź może mieć `orderStatus=new` i `latestPayment=succeeded`.\n- Skutek: strona potwierdzenia w sklepie traktuje taki stan jako „spróbuj ponownie” i przestaje odświeżać, choć zamówienie za chwilę będzie `paid`.\n- Do wyboru: odczyt w jednym snapshocie (transakcja `REPEATABLE READ` albo jedno zapytanie), albo sklep traktuje `new` + `succeeded` jako stan oczekujący i odpytuje dalej.\n- Test: jednostkowy/integracyjny, który wymusza ten stan i sprawdza odpowiedź API albo zachowanie `PaymentConfirmation`.",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T08:38:57Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 204,
+   "title": "Deptrac: komentarze warstw nie opisują zależności reindeksacji i ProductOfferFacts",
+   "body": "## Problem\nKomentarze warstw w `apps/api/deptrac.yaml` nie opisują zależności dodanych w SEARCH: handlerów reindeksacji (`ProductIndexing`) i adaptera `ProductOfferFacts`.\n\n## Oczekiwane\nPo zdaniu w trzech komentarzach warstw, wyjaśniającym, dlaczego te zależności są dozwolone. Bez zmiany reguł.\n\n## Dowód\nArchitekt integracji, rundy 1 i 2 (F4).\n\n### Źródło\nIntegracja epiku SEARCH przez AO (`/integration`, raporty `<home>/.local/state/ao-search/epics/search/integration/round-1.md` i `round-2.md`), końcowy PR #195 (merge `9717967`). Znaleziska Minor bez naprawy w epiku.\n",
+   "labels": [
+    "tech-debt",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-07T07:43:05Z",
+   "weight": null,
+   "assigned_epic": null
+  },
+  {
+   "number": 442,
+   "title": "Specyfikacje: polskie komunikaty DTO Pricing (#257) i 400 dla niepoprawnego UTF-8 (#247)",
+   "body": "Znaleziska F4 (Minor) i U3 z integracji epiku QUALITY-FIXES (#342, PR #439). Kod działa poprawnie, dokumentacja nie opisuje w pełni stanu obecnego.\n\n1. **F4.** `docs/features/quality-fixes/spec.md` (sekcja #257) przypisuje polskie komunikaty i `Assert\\Sequentially` tylko DTO Inventory i pisze „Klucz z wartością `null` zachowuje się jak dziś”. Po PR #437 `ChangePriceRequest`, `PromotionRequest` i `RevisePromotionRequest` dają przy `null` i złym typie jedno polskie naruszenie. Dopisać to do sekcji #257 (albo do docelowych specyfikacji Pricing, jeśli spec epiku już nie jest utrzymywany).\n2. **U3.** Kryterium #247 „niepoprawny UTF-8 → 422 przy polu” jest nieosiągalne przez HTTP: dekoder JSON daje 400 przed walidatorem. `docs/features/catalog-admin/spec.md` opisuje 400, ale `docs/features/checkout/spec.md` mówi o naruszeniu w DTO bez dopisku o 400 przez HTTP. Ujednolicić.\n",
+   "labels": [
+    "documentation",
+    "agent"
+   ],
+   "author": "piotrp321",
+   "updatedAt": "2026-11-11T12:50:37Z",
+   "weight": null,
+   "assigned_epic": null
+  }
+ ],
+ "epics": [
+  {
+   "id": "DEPLOY-OPS",
+   "number": 178,
+   "title": "DEPLOY-OPS: kopie zapasowe i monitoring środowiska",
+   "dir": "deploy-ops",
+   "state": "in_progress",
+   "issues": [
+    175
+   ],
+   "scope": [
+    "infra/k8s",
+    "docs/adr",
+    "CLAUDE.md",
+    "docs/vision.md",
+    "docs/features/deploy/spec.md",
+    "docs/features/hardening/spec.md"
+   ]
+  }
+ ],
+ "taken_ids": [
+  "agent-tester-ux",
+  "agentic-software-house",
+  "ao-run",
+  "cart",
+  "cart-fixes",
+  "catalog-admin",
+  "catalog-page-metadata",
+  "catalog-unknown-category",
+  "checkout",
+  "dashboard-data-freshness",
+  "deploy",
+  "deploy-ops",
+  "discount-codes",
+  "groom",
+  "hardening",
+  "inventory",
+  "lighthouse",
+  "order-management",
+  "payment",
+  "prepare-epic",
+  "pricing",
+  "product-page",
+  "promotions",
+  "quality-fixes",
+  "retro",
+  "search",
+  "seo",
+  "variants",
+  "visual-design",
+  "walking-skeleton"
+ ],
+ "rejected": []
+}

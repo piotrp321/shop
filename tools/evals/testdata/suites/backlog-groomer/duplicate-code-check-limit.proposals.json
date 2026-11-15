@@ -1,0 +1,21 @@
+{
+ "schema": 1,
+ "commit": "6073c4fd996ddbed8e78d4fcaf837bcc09e381c8",
+ "items": [
+  {
+   "n": 1,
+   "kind": "duplicate",
+   "issues": [
+    407,
+    447
+   ],
+   "keep": 407,
+   "reason": "Ten sam endpoint (GET /api/v1/guest-carts/{id}?discountCode=…), ta sama przyczyna (brak limitu sprawdzania kodów) i to samo kryterium akceptacji (limit na adres albo jednolita odpowiedź). Starsze #407 ma pełniejszy opis i odwołanie do specyfikacji."
+  }
+ ],
+ "fix_epic": null,
+ "overflow": [],
+ "hypotheses": [
+  "#406 (limit zakładania koszyków gościa) to inny endpoint i inne kryterium, mimo tej samej klasy problemu; #135, #346 i #446 dotyczą różnych miejsc panelu, więc nie są duplikatami."
+ ]
+}

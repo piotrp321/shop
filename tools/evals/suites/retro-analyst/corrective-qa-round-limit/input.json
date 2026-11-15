@@ -1,0 +1,252 @@
+{
+ "schema": 1,
+ "epic": "admin-design",
+ "generated_at": 1794645932,
+ "commit": "f78d1aff5a268f6eed3f09d60c80fda5abacc080",
+ "epics": [
+  {
+   "id": "visual-design",
+   "final_pr": 366,
+   "pr_state": "MERGED",
+   "merged_at": 1794298677.0,
+   "created_at": 1794223198.570775,
+   "issue": 97
+  },
+  {
+   "id": "lighthouse",
+   "final_pr": 384,
+   "pr_state": "MERGED",
+   "merged_at": 1794316999.0,
+   "created_at": 1794301924.147106,
+   "issue": 289
+  },
+  {
+   "id": "deploy-ops",
+   "final_pr": 476,
+   "pr_state": "MERGED",
+   "merged_at": 1794521075.0,
+   "created_at": 1794404776.229525,
+   "issue": 178
+  },
+  {
+   "id": "admin-design",
+   "final_pr": 503,
+   "pr_state": "MERGED",
+   "merged_at": 1794609501.0,
+   "created_at": 1794562711.4197161,
+   "issue": 460
+  }
+ ],
+ "incidents": [
+  {
+   "id": "visual-design/wait/visual-design@1794276256",
+   "epic": "visual-design",
+   "kind": "wait",
+   "key": "visual-design@1794276256",
+   "at": 1794276256,
+   "data": {
+    "event": "epic_blocked",
+    "task_id": null,
+    "reason": "max_qa_rounds: rundy: 4",
+    "blockers": [],
+    "reasons": [],
+    "start": 1794276256,
+    "end": 1794276271,
+    "open": false,
+    "action": "epic-resume",
+    "also_actions": [],
+    "absorbed": [],
+    "failed_attempts": [],
+    "human_action": true,
+    "can_be_corrective": true
+   },
+   "facts": [
+    {
+     "source": "events.jsonl",
+     "at": 1794276256,
+     "text": "epik zablokowany (powód: max_qa_rounds: rundy: 4)"
+    },
+    {
+     "source": "events.jsonl",
+     "at": 1794276271,
+     "text": "human_action epic-resume"
+    },
+    {
+     "source": "night-decisions.log",
+     "at": 1794276271,
+     "text": "epic resume --add-qa-rounds 1: decyzja Claude w imieniu właściciela (zgoda nocna); REPAIR-1 (PR #367, merge origin/main) po PASSED rundy 4"
+    }
+   ]
+  },
+  {
+   "id": "deploy-ops/failed_attempt/DEPLOY-OPS-4#5",
+   "epic": "deploy-ops",
+   "kind": "failed_attempt",
+   "key": "DEPLOY-OPS-4#5",
+   "at": 1794495901,
+   "data": {
+    "task_id": "DEPLOY-OPS-4",
+    "number": 5,
+    "outcome": "invalid_output",
+    "exit_code": 0,
+    "can_be_corrective": false
+   },
+   "facts": [
+    {
+     "source": "orchestrator.db",
+     "at": 1794495901,
+     "text": "próba DEPLOY-OPS-4#5 zakończona outcome invalid_output, exit_code 0"
+    }
+   ]
+  },
+  {
+   "id": "lighthouse/escaped/4",
+   "epic": "lighthouse",
+   "kind": "escaped",
+   "key": "4",
+   "at": null,
+   "data": {
+    "title": "Okno „Zmień cenę” w panelu ma stałą szerokość 28 rem i wychodzi poza ekran telefonu (375 px)",
+    "severity": "Minor",
+    "triage": "założone #393"
+   },
+   "facts": [
+    {
+     "source": "sweep report",
+     "text": "4. Okno „Zmień cenę” w panelu ma stałą szerokość 28 rem i wychodzi poza ekran telefonu (375 px) (waga Minor, triage: założone #393)"
+    }
+   ]
+  }
+ ],
+ "facts": [
+  {
+   "id": "visual-design/missing/sweep",
+   "text": "brak raportu /sweep z nazwą epiku"
+  }
+ ],
+ "status": [
+  {
+   "id": "status/in-progress",
+   "epics": [
+    {
+     "id": "SENTRY",
+     "issue": 180,
+     "title": "SENTRY: Sentry i trace'y aplikacji",
+     "state": "prepared"
+    },
+    {
+     "id": "DEMO-DATA",
+     "issue": 482,
+     "title": "DEMO-DATA: generator danych w skali docelowej i pomiar wydajności",
+     "state": "in_progress"
+    },
+    {
+     "id": "AGENT-SECURITY",
+     "issue": 494,
+     "title": "AGENT-SECURITY: techniczne zabezpieczenia agentów (krok 16)",
+     "state": "prepared"
+    },
+    {
+     "id": "EVALS",
+     "issue": 495,
+     "title": "EVALS: evale agentów i workflowów (krok 17)",
+     "state": "prepared"
+    }
+   ],
+   "blocked": []
+  },
+  {
+   "id": "status/last-epic",
+   "epic": "admin-design",
+   "pr": 503,
+   "merged_at": 1794609501.0,
+   "issue": 460,
+   "interventions": 1,
+   "waits": 1,
+   "wait_min": 20,
+   "manual_fixes": 2,
+   "measurement": true
+  },
+  {
+   "id": "status/agent-issues",
+   "open": 77,
+   "closed": 36
+  },
+  {
+   "id": "status/pending-retro",
+   "epics": [
+    "admin-design"
+   ]
+  }
+ ],
+ "registers": {
+  "observations": [
+   {
+    "key": "qa-round-limit-after-repair",
+    "title": "Runda DELTA po samym scaleniu z main (REPAIR) zużywa limit rund i blokuje epik po PASSED",
+    "incidents": [
+     "visual-design/wait/visual-design@1794276256"
+    ],
+    "epic": "retro",
+    "at": 1794390106
+   }
+  ],
+  "rejected": [],
+  "applied": [],
+  "carried": []
+ },
+ "open_retro_pr": null,
+ "open_issues": {
+  "ao": [
+   {
+    "body": "Źródło: przebieg epiku PROMOTIONS w sklepie (piotrp321/shop#96, 2026-11-07/08).\n\nKolejka była wstrzymana (`queue_held`) przez noc, około 10 h czekania na człowieka. Ten czas wszedł do „active” i zjadł większość 16-godzinnego `--epic-timeout`, więc trzeba było podnieść limity w nowym `run`. `ao report` liczy to jako „inne 11h 54m”.\n\n**Oczekiwane:** czas wstrzymanej kolejki i czekania na odpowiedź człowieka nie wlicza się do `epic_timeout` (podobnie jak przerwy hosta i cooldown), albo przynajmniej jest osobno widoczny.\n",
+    "labels": [
+     {
+      "id": "LA_kwDOVeLoYM8AAAADAWSqyQ",
+      "name": "enhancement",
+      "description": "New feature or request",
+      "color": "a2eeef"
+     }
+    ],
+    "number": 44,
+    "title": "Postój z wstrzymaną kolejką liczy się do epic_timeout",
+    "author": "piotrp321",
+    "url": "https://github.com/piotrp321/agentic-orchestrator/issues/44",
+    "trusted": true
+   },
+   {
+    "body": "Źródło: przebieg epiku PROMOTIONS w sklepie (piotrp321/shop#96, 2026-11-07/08).\n\nPo `PROMOTIONS-REPAIR-2` (konflikt z `main`, zmienił tylko scalenie) runda 3 `DELTA` zgłosiła F9 i F10 (Important) w kodzie PROMOTIONS-1, którego scalenie nie dotknęło. Wyczerpało to `max_qa_rounds` i epik dostał `BLOCKED`. Potrzebne było `epic resume --add-qa-rounds 1`.\n\n**Oczekiwane:** runda po naprawie konfliktu sprawdza tylko diff scalenia. Znaleziska spoza diffu idą do raportu bez blokady albo nie zużywają limitu rund.\n",
+    "labels": [
+     {
+      "id": "LA_kwDOVeLoYM8AAAADAWSqyQ",
+      "name": "enhancement",
+      "description": "New feature or request",
+      "color": "a2eeef"
+     }
+    ],
+    "number": 45,
+    "title": "Runda DELTA po samym scaleniu z main zgłasza znaleziska w starym kodzie i blokuje epik",
+    "author": "piotrp321",
+    "url": "https://github.com/piotrp321/agentic-orchestrator/issues/45",
+    "trusted": true
+   },
+   {
+    "body": "Shop epic DISCOUNT-CODES (piotrp321/shop#225), run 2026-11-08/09.\n\n**What happened:** round 3 of `/integration` PASSED. `DISCOUNT-CODES-FINALIZE` (piotrp321/shop#328) removed the plan, aligned the epic spec and also fixed one sentence in `docs/features/pricing/spec.md` (listed in the epic's `Zakres:`). Because FINALIZE changed a file other than the epic's plan and spec, AO required a DELTA round; the limit of 3 rounds was used up, so the epic went `BLOCKED` (`max_qa_rounds`) and needed `ao epic resume --add-qa-rounds 1` (human intervention, waited overnight). Round 4 DELTA then PASSED with Minor findings only.\n\n**Problem:** a docs-only FINALIZE after a PASSED round costs a human intervention whenever the round limit is exactly reached. Per the integration.py contract this is expected behaviour, but the outcome is a block on a change that is documentation only.\n\n**Options to consider:**\n- Do not count a DELTA round triggered only by FINALIZE against `max_qa_rounds` (or allow one extra round for it).\n- Treat a FINALIZE limited to `docs/**` files within the epic scope like a plan/spec-only FINALIZE (CI only).\n\nAcceptance: a FINALIZE that changes only documentation after a PASSED round does not block the epic on `max_qa_rounds`; test in the integration tests.\n",
+    "labels": [
+     {
+      "id": "LA_kwDOVeLoYM8AAAADAWSqyQ",
+      "name": "enhancement",
+      "description": "New feature or request",
+      "color": "a2eeef"
+     }
+    ],
+    "number": 46,
+    "title": "Docs-only FINALIZE after a PASSED round blocks the epic on max_qa_rounds",
+    "author": "piotrp321",
+    "url": "https://github.com/piotrp321/agentic-orchestrator/issues/46",
+    "trusted": true
+   }
+  ],
+  "shop": []
+ }
+}
