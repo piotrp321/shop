@@ -1,0 +1,7 @@
+{
+  "id": "search-4",
+  "kind": "defect",
+  "source": "issue #197, task SEARCH-4, PR 184, squash commit on epic/search",
+  "base_sha": "cae6e9e3295bfeddc9ab90f6eb5c1b18e7bdf980",
+  "head_sha": "352fc19917dd5630f303b4f2827aea9a1b26d812"
+}
