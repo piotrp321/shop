@@ -53,9 +53,12 @@ JSON i AO powtarza rundę. Dlatego:
   cztery wywołania: `make -C apps/api test`, `make -C apps/store test`, `make -C apps/admin test` (każde
   z `RUN="docker compose exec -T"`) i `make varnish-test`. To te same kroki, które wykonuje `make test`.
   W wyniku występują razem jako jeden wpis `make test`: `passed`, gdy wszystkie przeszły, inaczej `failed`. `make seed` też jest osobnym wywołaniem.
-- Kod 124 oznacza przekroczenie limitu czasu, nie błąd kodu. `make e2e` powtarzasz raz według kroku 4. Drugi kod
-  124 albo kod 124 innej bramki to awaria środowiska z kroku 4: bramka ma `skipped`, a bloker `technical` dostaje
-  komendę i koniec logu.
+  Lokalne `make e2e` to wywołania jego części (krok 4), każda z `make seed` przed nią. Wyjątek od `timeout 570`:
+  `delta.py ci` z budżetem (krok 4) uruchamiasz bez niego, z samym `timeout: 600000`, bo skrypt sam kończy wywołanie
+  po najwyżej 540 s.
+- Kod 124 oznacza przekroczenie limitu czasu, nie błąd kodu. Część `make e2e` powtarzasz raz według kroku 4. Drugi
+  kod 124 tej części albo kod 124 innej bramki to awaria środowiska z kroku 4: bramka ma `skipped`, a bloker
+  `technical` dostaje komendę i koniec logu.
 - Wynik wypisujesz dopiero po powiadomieniach wszystkich agentów i po ostatniej bramce, gdy nic nie działa w tle.
   Blok ```` ```json ```` jest ostatnim blokiem ostatniej wiadomości i nic po nim nie piszesz.
 - Gdy po wypisaniu wyniku przyjdzie jakakolwiek wiadomość (pobudka, powiadomienie o zadaniu, wiadomość agenta,
@@ -80,12 +83,7 @@ JSON i AO powtarza rundę. Dlatego:
    te zmiany wywołuje lub którego kontrakty zmieniają (grep użyć, testy, OpenAPI, klienty). Bez wiarygodnego
    poprzedniego HEAD pracuj jak w `FULL`, napisz to w raporcie i zaznacz, że poprzednich znalezisk nie dało się
    porównać (lista do sprawdzenia pochodzi z tego samego poprzedniego raportu). Bramki uruchamiasz zawsze w całości
-   (w `DELTA` testy mogą pochodzić z CI, niżej).
-   **Testy z CI (tylko `DELTA`).** Uruchom `python3 .claude/skills/integration/delta.py ci --head <HEAD>`. AO
-   zaczyna rundę na HEAD z zielonym CI, więc zwykle zwraca kod 0. Skrypt bierze ostatni run workflow CI z pusha
-   dokładnie dla HEAD. Runy PR się nie liczą, bo pomijają pracę przy zmianach dokumentacji i narzędzi. Wynik
-   obowiązuje w kroku 3a i 4. Kod 0 oznacza, że wymagane joby `checks` i `e2e` mają `success`. Kod 1 oznacza
-   bramki lokalne: inny SHA, brak runu, run w toku, czerwony lub brakujący job albo błąd `gh`.
+   (w obu trybach testy mogą pochodzić z CI; źródło testów ustala krok 4).
    W `DELTA` z wiarygodnym poprzednim HEAD rozpoznaj rodzaj zmiany:
    `python3 .claude/skills/integration/delta.py sync --previous <poprzedni> --head <HEAD> --main origin/main`.
    `kind: sync` oznacza, że każdy commit z `<poprzedni>..HEAD`, którego nie ma na `origin/main`, jest merge'em
@@ -163,8 +161,9 @@ JSON i AO powtarza rundę. Dlatego:
      znalezisko `Important` z `files` = ten plik. Dotyczy to także rozwiązania, które wzięło jedną stronę w całości.
      Pozostałe pliki Git połączył sam, a skrypt potwierdził, że merge ich nie zmienił.
    - **Pliki generowane** mają być wygenerowane od nowa z połączonych źródeł. Dotyczy to plików z `generated`, a także
-     sytuacji, gdy `conflicts` dotyka kontrolerów, DTO albo konfiguracji OpenAPI. Gdy `delta.py ci` z kroku 2 zwrócił
-     0, sprawdził to krok „Contract freshness” części `checks part apps`. W przeciwnym razie:
+     sytuacji, gdy `conflicts` dotyka kontrolerów, DTO albo konfiguracji OpenAPI. Uruchom w tym miejscu
+     `python3 .claude/skills/integration/delta.py ci --head <HEAD>` (bez budżetu, jedno sprawdzenie). Kod 0 oznacza,
+     że sprawdził to krok „Contract freshness” części `checks part apps`. Przy innym kodzie:
      1. Uruchom `make -C apps/api openapi RUN="docker compose exec -T"` i
         `make api-client RUN="docker compose exec -T"`.
      2. Uruchom
@@ -177,23 +176,45 @@ JSON i AO powtarza rundę. Dlatego:
      znikają.
    Potem bramki (krok 4), weryfikacja (krok 5) i lista odbioru (krok 6) jak zawsze.
 4. **Bramki.** Po zakończeniu agentów (także agenta UX, jeśli był uruchamiany) albo przeglądu z kroku 3a, sekwencyjnie,
-   na pierwszym planie (sekcja „Pierwszy plan i ostatni blok”).
-   Gdy `delta.py ci` z kroku 2 zwrócił 0, nie uruchamiasz lokalnie `make test`, `make seed` ani `make e2e`.
-   W `checks` wyniku `make test` i `make e2e` mają wtedy `passed`, a obok dodajesz oba wpisy z pola `checks`
-   skryptu (`ci:checks@<HEAD>`, `ci:e2e@<HEAD>`). W raporcie podajesz źródło: CI, SHA, numer runu. Przy awarii
-   środowiska te cztery wpisy zostają bez zmian, a `skipped` dostaje tylko `make check`. Kod 1: bramki lokalne, a `reason` trafia do raportu. `make check`
-   uruchamiasz zawsze lokalnie, a w `FULL` wszystkie bramki.
-   Bramki lokalne:
-   `make check RUN="docker compose exec -T"`, `make test` (cztery wywołania z sekcji „Pierwszy plan i ostatni blok”), potem
-   `make seed RUN="docker compose exec -T"` i `make e2e E2E_FLAGS=-T` (sesja nie ma terminala, więc bez `-T` komendy padają).
+   na pierwszym planie (sekcja „Pierwszy plan i ostatni blok”), w obu trybach w tej kolejności:
+   1. `make check RUN="docker compose exec -T"`, zawsze lokalnie.
+   2. **Testy z CI.**
+      `python3 .claude/skills/integration/delta.py ci --head <HEAD> --budget <600 w DELTA, 1200 w FULL> --wait-file <katalog pliku <report_path>>/ci-wait-<HEAD>.json`.
+      Każde wywołanie to osobne wywołanie Bash na pierwszym planie z parametrem `timeout: 600000`. Kod 4 oznacza, że
+      CI jeszcze trwa, a budżet się nie skończył: wywołuj tę samą komendę, dopóki kod to 4. Plik czekania pamięta
+      początek pierwszego wywołania, więc budżet (10 min czekania w `DELTA`, 20 min w `FULL`) obejmuje wszystkie
+      wywołania. Skrypt bierze ostatni run workflow CI z pusha dokładnie dla HEAD. Runy PR się nie liczą, bo pomijają
+      pracę przy zmianach dokumentacji i narzędzi.
+   3. Dalej według kodu wyjścia:
+      - **0** (wymagane joby `checks` i `e2e` mają `success`): nie uruchamiasz lokalnie `make test`, `make seed` ani
+        `make e2e`. `make test` i `make e2e` mają `passed`, a obok dodajesz oba wpisy z pola `checks` skryptu
+        (`ci:checks@<HEAD>`, `ci:e2e@<HEAD>`).
+      - **3** (czerwone CI: job zakończony `failure`, `timed_out` albo `startup_failure`): bramka czerwonego joba ma
+        `failed` (`checks` → `make test`, `e2e` → `make e2e`), druga bramka status swojego wpisu `ci:`; oba wpisy
+        `ci:` z pola `checks` skryptu dodajesz bez zmian. Dodaj znalezisko `Important` z `evidence` = numer runu, SHA
+        i czerwone joby (`failed_jobs`, `reason`). Tych bramek nie uruchamiasz lokalnie i nie ponawiasz runu CI:
+        czerwonego CI nie zastępuje lokalny wynik.
+      - **1** (bramki lokalne: run zakończony z jobem `cancelled`, `skipped`, `neutral` albo bez joba, inny SHA, błąd
+        `gh`, CI nadal w toku po budżecie): uruchamiasz lokalnie `make test` (cztery wywołania z sekcji „Pierwszy plan
+        i ostatni blok”), potem `make e2e` w częściach (niżej), a `reason` trafia do raportu.
+
+   Przy awarii środowiska wpisy `make test`, `make e2e` i oba `ci:` z kodu 0 albo 3 zostają bez zmian, a `skipped`
+   dostaje tylko `make check`.
+   **Lokalne `make e2e` w częściach.** `python3 .claude/skills/integration/delta.py e2e-parts` podaje `parts`
+   i `weights` (podział zestawu z `.github/workflows/ci.yml`). Dla i = 1..`parts` uruchom
+   `make seed RUN="docker compose exec -T"`, potem
+   `make e2e E2E_FLAGS=-T E2E_SHARD=<i>/<parts> E2E_SHARD_WEIGHTS=<weights>` (sesja nie ma terminala, więc bez `-T`
+   komendy padają), każde osobnym wywołaniem w `timeout 570` z logiem w katalogu raportu. Część, która padła,
+   powtórz raz, z `make seed` przed nią: gdy przejdzie, uznajesz ją za przechodzącą i dodajesz znalezisko `Minor`
+   („niestabilny test e2e”, z nazwą testu). Kod 124 części też powtarzasz raz; drugi kod 124 to awaria środowiska.
+   `make e2e` ma `passed` tylko wtedy, gdy przeszły wszystkie części; w raporcie podajesz wynik każdej.
    Zapisy QA i agenta UX trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
    testowych (baza `shop_test`, indeks `test_products`, vhost `test`, Redis DB 1), więc jedyną bramką zależną od
-   danych dev jest `make e2e`; `make seed` (reset katalogu, cen, stanów i rezerwacji) stoi bezpośrednio przed nią
-   i nie przesuwaj go. Wszystkie uruchamiasz nawet po czerwonej wcześniejszej bramce. W wyniku nazwy bramek to
-   `make check`, `make test`, `make e2e`. Zapisz kod wyjścia i koniec wyjścia każdej. Czerwona bramka to znalezisko
+   danych dev jest `make e2e`; `make seed` (reset katalogu, cen, stanów i rezerwacji) stoi bezpośrednio przed każdą
+   jego częścią i nie przesuwaj go. Wszystkie bramki i części uruchamiasz nawet po czerwonej wcześniejszej. W wyniku
+   nazwy bramek to `make check`, `make test`, `make e2e`. Zapisz kod wyjścia i koniec wyjścia każdej. Czerwona bramka to znalezisko
    (domyślnie `Important`, z `evidence` = komenda i końcówka wyjścia; `Critical` przy utracie danych lub luce
-   bezpieczeństwa). `make e2e`, które padło, powtórz raz: gdy przejdzie, zapisz `passed` i znalezisko `Minor`
-   („niestabilny test e2e”, z nazwą testu). Awaria środowiska (stos nie odpowiada, brak Dockera, brak miejsca) to
+   bezpieczeństwa). Awaria środowiska (stos nie odpowiada, brak Dockera, brak miejsca) to
    nie błąd kodu: pozostałe bramki oznacz `skipped` i zwróć bloker `technical`.
 5. **Weryfikacja.** Zgłoszenia agentów (także agenta UX) są hipotezami. Każde `Critical` i `Important` sprawdź w kodzie lub
    odtwórz komendą, zanim trafi do wyniku; niepotwierdzone, niepewne i stylistyczne wpisz do raportu jako uwagi
@@ -266,7 +287,8 @@ JSON i AO powtarza rundę. Dlatego:
    nie dodawaj jej do Git). Pierwsze linie: `Epik:`, `Gałąź:`, `Przegląd HEAD: <sha>`, `Tryb:`, `Zakres:` (w DELTA
    z poprzednim HEAD, a po syncu z dopiskiem „DELTA po syncu”, merge'ami i plikami `conflicts` z `delta.py sync`). Dalej: werdykt, sekcja
    `## Lista odbioru` (pozycje z kroku 6, wynik QA na stosie w jednym zdaniu, liczba znalezisk `Minor`), znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
-   (komenda, kod wyjścia, koniec wyjścia; dla testów z CI: run, SHA i joby z `delta.py ci`), werdykt i uwagi architekta, wyniki UX (sekcja `## Wyniki UX`: ekrany i stany z obejrzanymi zrzutami, znaleziska, w `DELTA` poprzednie
+   (komenda, kod wyjścia, koniec wyjścia; dla testów z CI: run, SHA, joby i czas czekania `waited_s` z `delta.py ci`;
+   dla bramek lokalnych powód `reason` i wynik każdej części `make e2e`), werdykt i uwagi architekta, wyniki UX (sekcja `## Wyniki UX`: ekrany i stany z obejrzanymi zrzutami, znaleziska, w `DELTA` poprzednie
    znaleziska „naprawione”/„nadal”, uwagi, ścieżka `AGENT_DIR` ze zrzutami, albo powód pominięcia), sekcja `## Weryfikacja zgłoszeń epiku`, gdy
    specyfikacja epiku ma sekcję „Zgłoszenia zamykane przez epik”: tabela (zgłoszenie, test, wynik), wiersz na zgłoszenie z jego
    kolumny „Weryfikacja”; test to plik i nazwa z numerem zgłoszenia (`grep -rn "#<nr>" apps e2e/tests`; brak testu to wynik
@@ -327,7 +349,8 @@ bramki; dodatkowe wpisy (np. `architecture-review`, `qa-adversarial` ze statusem
 Wpis `ux-review` ma status `passed` (po weryfikacji z kroku 5 brak znaleziska UX `Important`), `failed` (jest takie
 znalezisko) albo `skipped` (diff nie dotyka frontów, `make e2e-agent` nie działa albo agent nie zwrócił raportu;
 uwaga w raporcie).
-Testy z CI (krok 4, tylko `DELTA`) to wpisy `ci:checks@<head_sha>` i `ci:e2e@<head_sha>`, zawsze oba, ze statusem
-`passed`, obok `make test` i `make e2e` ze statusem `passed`. Walidator odrzuca inny SHA, tryb `FULL`, jeden wpis bez
-drugiego i każdą inną nazwę zaczynającą się od `ci:`.
+Testy z CI (krok 4, w `FULL` i `DELTA`) to wpisy `ci:checks@<head_sha>` i `ci:e2e@<head_sha>`, zawsze oba, ze
+statusem `passed` albo `failed`. `ci:checks` odpowiada `make test`, a `ci:e2e` odpowiada `make e2e`: bramka ma status
+swojego wpisu `ci:`. Walidator odrzuca inny SHA, jeden wpis bez drugiego, inny status wpisu, bramkę o innym statusie niż
+jej wpis, `PASSED` z wpisem `failed` i każdą inną nazwę zaczynającą się od `ci:`.
 Pola poza kontraktem są niedozwolone. Pisz zwięźle po polsku.
