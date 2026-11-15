@@ -154,8 +154,8 @@ class AssertionsOfTheCasesTest(unittest.TestCase):
 
 
 TESTDATA = os.path.join(HERE, 'testdata')
-# The original review or critic reports (stored sanitised copies; the rest of the fixtures package can be given in
-# EVALS_FIXTURES_DIR, then the reports that are not stored are checked too) that missed the defect of a case: no
+# The original review or critic reports (stored sanitised copies in testdata/reports and testdata/suite-reports; the
+# fixtures package given in EVALS_FIXTURES_DIR is read after them) that missed the defect of a case: no
 # finding assertion of the case may match them (spec: Asercje, a wzorzec, który pasuje do oryginału, nie mierzy wady).
 ORIGINAL_REPORTS = {
     'catalog-admin-4-product-text-rules': [('code-reviewer', 'CATALOG-ADMIN-4-1')],
