@@ -188,7 +188,7 @@ def lint(root):
     for name, entry in sorted(reg['suites'].items()):
         _lint_cases(source, name, entry, canary, report, decoded_payloads, commit_checks)
     _lint_history(source, reg, report)
-    _scan(source, report)
+    _scan(root, report)
     _scan_decoded(decoded_payloads, report)
     _plain_payloads(root, decoded_payloads, report)
     _lint_commits(root, commit_checks, report)
@@ -299,11 +299,18 @@ def _lint_result(source, suite, name, names, report):
                          % (path, run_file, referenced.get('verdict')))
 
 
-def _scan(source, report):
+def _scan(root, report):
+    """The leak scan reads every file, hidden ones included; a hidden file in a case directory is an error of its own
+    (listings and fingerprints skip dotfiles, so it would be part of the case without being part of the fingerprint)."""
     for rel_dir in (registry.SUITES_DIR, registry.HISTORY_DIR):
-        for path in source.list_files(rel_dir):
-            for label, line in scan_text(_decode(source.read(path))):
+        for path in _walk_all(root, rel_dir):
+            with open(os.path.join(root, path), 'rb') as handle:
+                content = _decode(handle.read())
+            for label, line in scan_text(content):
                 report.error('%s:%d: %s (the repository is public)' % (path, line, label))
+            inside = path[len(rel_dir) + 1:].split('/')
+            if rel_dir == registry.SUITES_DIR and len(inside) > 2 and any(part.startswith('.') for part in inside):
+                report.error('%s: a hidden file in a case directory is not part of the fingerprint' % path)
 
 
 def _scan_decoded(decoded_payloads, report):

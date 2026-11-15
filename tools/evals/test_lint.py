@@ -232,6 +232,14 @@ class ScanTest(LintTestCase):
         self.put('Zażółć gęślą jaźń: opis zgłoszenia o komunikacie błędu.')
         self.assertClean()
 
+    def test_a_hidden_file_in_a_case_directory_is_an_error_and_is_scanned(self):
+        # a dotfile is not part of the fingerprint, so a case may not carry one (it would change nothing visible)
+        self.repo.write_case('code-reviewer', 'hidden')
+        self.repo.write('tools/evals/suites/code-reviewer/hidden/.note', 'path %s' % HOME_PATH)
+        report = self.lint()
+        self.assertTrue(any('.note' in e and 'hidden' in e for e in report.errors), report.errors)
+        self.assertTrue(any('.note:1' in e for e in report.errors), report.errors)
+
     def test_files_outside_suites_and_history_are_not_scanned_for_the_patterns(self):
         self.repo.write('tools/evals/notes.txt', 'path %s' % HOME_PATH)
         self.assertClean()
