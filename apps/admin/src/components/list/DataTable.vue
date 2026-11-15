@@ -108,12 +108,13 @@ const retryButton = ref<InstanceType<typeof Button> | null>(null);
 const region = ref<HTMLElement | null>(null);
 const table = ref<HTMLElement | null>(null);
 const emptyRegion = ref<HTMLElement | null>(null);
+const cardList = ref<HTMLElement | null>(null);
 
 async function retryAndRefocus() {
   const trigger = (retryButton.value?.$el as HTMLElement | undefined) ?? null;
   await props.retry();
   await nextTick();
-  focusAfterAction(trigger, alertElement.value ?? region.value ?? emptyRegion.value);
+  focusAfterAction(trigger, alertElement.value ?? region.value ?? cardList.value ?? emptyRegion.value);
 }
 
 // Which edges of the scrolling region have more behind them.
@@ -169,9 +170,11 @@ onMounted(measure);
       </div>
       <ul
         v-else-if="cards"
+        ref="cardList"
         :aria-label="label"
         :aria-busy="loading"
-        class="flex flex-col divide-y divide-separator"
+        tabindex="-1"
+        class="flex flex-col divide-y divide-separator focus:outline-none"
       >
         <li
           v-for="row in rows"

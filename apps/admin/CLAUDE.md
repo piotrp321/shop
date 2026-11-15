@@ -470,7 +470,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `useCursorPager` jest wtedy prawdziwe) i po nieudanym zapytaniu, gdy filtr zmienia się znowu (nowe zapytanie czyści
   stary błąd i zakres „Pokazano X–Y”; ponowienie zostawia błąd do odpowiedzi), `aria-busy` na tabeli przy kolejnych, komunikat błędu (`role="alert"`,
   `tabindex="-1"`, „Spróbuj ponownie” poza 403: po ponowieniu fokus zostaje na przycisku, a gdy znika, trafia na
-  komunikat, tabelę albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
+  komunikat, tabelę (w trybie `cards` listę kart, `tabindex="-1"`) albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
   błąd sąsiedniej strony nad nią. Tabela przewija się w swoim regionie (`role="region"` z nazwą z prop `label`,
   `tabindex="0"`) z cieniem przy krawędzi, za którą jest dalsza treść; strona nie przewija się w poziomie. `ListToolbar`:
   wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i

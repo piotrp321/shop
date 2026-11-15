@@ -507,6 +507,18 @@ describe("useOrderList", () => {
       expect(mounted.list.items.value.map((item) => item.number)).toEqual(["R-9"]);
     });
 
+    it("applies the address of the list also when it is written with a trailing slash", async () => {
+      const { list, router } = await startAt("/orders");
+      mocks.get.mockClear();
+      serve({ "": page(["R-9"]) });
+
+      await router.push("/orders/?refund=pending");
+      await settle();
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+      expect(list.refundPending.value).toBe(true);
+    });
+
     it("returns to all orders when the address loses the filter", async () => {
       const { list, router } = await startAt("/orders?refund=pending");
       mocks.get.mockClear();

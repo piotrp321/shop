@@ -368,6 +368,22 @@ describe("DataTable", () => {
       expect(cards.get("ul").attributes("aria-busy")).toBe("true");
     });
 
+    it("moves the focus to the list of cards when the retry succeeds and the alert goes, never to the body", async () => {
+      const cards = mountCards({ loaded: false, rows: [], error: "Błąd." });
+      await cards.setProps({
+        retry: async () => {
+          await cards.setProps({ error: null, loaded: true, rows });
+        },
+      });
+      cards.get<HTMLButtonElement>("[data-testid=retry]").element.focus();
+
+      await cards.get("[data-testid=retry]").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(cards.get("ul").element);
+    });
+
     it("shows the error with a retry, the empty state and the skeleton as the table does", async () => {
       const retry = vi.fn(async () => {});
       const failed = mountCards({ loaded: false, error: "Nie udało się.", retry });
