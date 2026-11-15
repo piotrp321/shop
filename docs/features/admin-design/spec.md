@@ -243,6 +243,11 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   przeładowanie pulpitu go nie powtarza. Gdy `/me` się nie wczyta, strażnik przepuszcza trasę, a layout pokazuje
   dzisiejszy błąd wczytania pracownika (`staff-error`); dostęp i tak sprawdza API (403 widoku). `/prices` nie dostaje
   strażnika: API pozwala czytać ceny każdemu pracownikowi z rolą personelu, a zmianę ceny ukrywa już widok (tylko `admin`).
+- **Konto bez roli personelu** (`/me` z pustą listą ról; API odpowiada mu tylko na `/me`): na każdej trasie, także po
+  wejściu z linku, `<main>` zamiast widoku pokazuje H1 „Brak dostępu do panelu” i komunikat „Twoje konto nie ma roli
+  w panelu. Skontaktuj się z administratorem.” (`role="alert"`). Menu w sidebarze, szuflada i przycisk „Menu” znikają;
+  topbar z kontem i „Wyloguj” oraz stopka zostają. Wolny fokus (na `body` albo `<main>`) trafia na ten H1, fokus
+  w topbarze zostaje. Do wczytania `/me` i przy jego błędzie panel wygląda jak dla pracownika z rolą.
 - **Toast**: jeden kontener `vue-sonner` (`Toaster`) w layoucie, komunikaty sukcesu po polsku, region
   `aria-live="polite"` o nazwie dokładnie „Powiadomienia” (bez skrótu klawiszowego w nazwie), znikają po 5 s i zostają,
   dopóki kursor jest nad nimi. Toasty są w prawym górnym rogu, pod topbarem (poniżej 640 px na szerokość ekranu
