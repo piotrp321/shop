@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Shared\Messaging;
 
 use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
+use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
-use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Application;
 
 use App\Catalog\Application\Event\ProductChanged;
+use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Application\EventHandler\IndexProduct;
 use App\Catalog\Application\Search\IndexOutcome;
 use App\Catalog\Application\Search\OfferFactsUnavailable;
@@ -16,7 +17,6 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Application\Search\VariantFacts;
-use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;

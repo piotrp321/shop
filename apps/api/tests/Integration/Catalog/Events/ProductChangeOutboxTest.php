@@ -10,7 +10,7 @@ use App\Catalog\Application\Command\EditProduct;
 use App\Catalog\Application\Command\PublishProduct;
 use App\Catalog\Application\Command\UnpublishProduct;
 use App\Catalog\Application\Event\ProductChanged;
-use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\VariantInUse;
 use App\Tests\Integration\Inventory\StockFixture;

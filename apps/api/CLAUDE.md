@@ -474,14 +474,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   przy przeliczeniu po zmianie klasy podatkowej produktu. `PromotionPricesChanged` `{productId, source, occurredAt}`
   (Pricing, źródło `promotion` albo `seed`) publikują handlery wiadomości granic promocji (niżej), nie zapis promocji.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
-  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Jedyne dziś:
-  `Catalog\Application\Event\ProductChanged` `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product`
-  zapisuje wewnętrzne `Catalog\Domain\Product\ProductChanged` przy każdej edycji, publikacji i wycofaniu, a handler
-  komendy tłumaczy je na kontrakt (`ProductChanged::translate`) przed publikacją przez outbox. Seed tworzy produkty
-  bez `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana
-  pól kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (reindeksacja),
-  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, unieważnienie sklepu) i `RepriceOnTaxClassChange`
-  (`Pricing_Infrastructure`, przeliczenie cen po zmianie klasy podatkowej).
+  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Dziś dwa, oba Catalog:
+  `Catalog\Application\Event\ProductCreated` `{productId, occurredAt}` i `Catalog\Application\Event\ProductChanged`
+  `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product` zapisuje wewnętrzne
+  `Catalog\Domain\Product\ProductCreated` przy utworzeniu i `Catalog\Domain\Product\ProductChanged` przy każdej
+  edycji, publikacji i wycofaniu, a handler komendy tłumaczy je na kontrakty (`IntegrationEvents::translate`) przed
+  publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Seed tworzy produkty bez
+  `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana pól
+  kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
+  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu)
+  i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
+  podatkowej).
 - Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
   i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` (port `ProductDirectory::taxClassOf`,
   adapter `QueryBusProductDirectory`), nigdy ze zdarzenia, więc zmiany A → B → A w dowolnej kolejności i powtórzone
@@ -683,8 +686,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
   z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały” (także spóźniony zapis
   opublikowanego stanu po nowszym zapisie szkicu). Zapisuje każdy produkt, szkic jako dokument `draft`; przebudowa
-  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (`ProductCreated` i integracyjne
-  `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
+  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (integracyjne `ProductCreated`
+  i `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
   (`Pricing_Infrastructure`, `VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`,
   `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
   obsłużona bez zapisu; `ReindexProductOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`) tak

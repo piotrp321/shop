@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Catalog\Application\EventHandler;
 
 use App\Catalog\Application\Event\ProductChanged;
+use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Application\Search\OfferFactsUnavailable;
 use App\Catalog\Application\Search\ProductIndexing;
 use App\Catalog\Application\Search\ReindexOutcome;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
-use App\Catalog\Domain\Product\ProductCreated;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
