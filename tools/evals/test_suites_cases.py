@@ -348,6 +348,31 @@ class PromptsOfTheCasesTest(unittest.TestCase):
         for needed in ('Polecenie:', 'Wynik:', '5.16.0', '11.12.0', 'capture_soft_fails', 'register_error_listener'):
             self.assertIn(needed, added)
 
+    def test_the_clean_spec_critic_case_does_not_contradict_itself_about_the_telemetry_of_the_build(self):
+        # E9 says `telemetry: false` does not cover the Sentry CLI, so decision D10 and criterion 6 must name the variable
+        if not history_is_full():
+            self.skipTest('needs the history of the repository (commit of the draft)')
+        data = read_case('spec-critic', 'sentry-clean-spec')
+        patch = load_case('spec-critic', 'sentry-clean-spec').patch_template()
+        path = 'docs/features/sentry/spec.md'
+        draft = subprocess.run(['git', '-C', ROOT, 'show', '%s:%s' % (data['commit'], path)], capture_output=True,
+                               text=True, check=True).stdout
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, 'docs', 'features', 'sentry'))
+            with open(os.path.join(tmp, path), 'w', encoding='utf-8') as handle:
+                handle.write(draft)
+            subprocess.run(['git', 'apply', '--include=' + path, '-'], cwd=tmp, input=patch, text=True, check=True,
+                           capture_output=True)
+            with open(os.path.join(tmp, path), encoding='utf-8') as handle:
+                spec = handle.read()
+        decision = re.search(r'- \*\*D10\..*?(?=\n- \*\*D11\.)', spec, re.S).group(0)
+        criterion = re.search(r'## Kryteria akceptacji.*?(\n6\. .*?)(?=\n7\. )', spec, re.S).group(1)
+        for name, text in (('D10', decision), ('criterion 6', criterion)):
+            self.assertIn('SENTRY_CLI_NO_TELEMETRY=1', text, name)
+            self.assertIn('telemetry: false', text, name)
+        self.assertNotIn('Każdy to test', spec)
+        self.assertNotIn('z lockfile', spec)
+
     def test_the_spec_critic_reads_the_issue_through_the_provenance_gate_stub(self):
         for case_id in case_dirs('spec-critic'):
             loaded = load_case('spec-critic', case_id)

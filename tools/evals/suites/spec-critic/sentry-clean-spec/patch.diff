@@ -354,25 +354,28 @@ index 0000000..73727c6
 +if __name__ == '__main__':
 +    sys.exit(main())
 diff --git a/docs/features/sentry/spec.md b/docs/features/sentry/spec.md
-index 440e2d5..c17de9c 100644
+index 440e2d5..c9d5f1e 100644
 --- a/docs/features/sentry/spec.md
 +++ b/docs/features/sentry/spec.md
-@@ -76,6 +76,50 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
+@@ -76,6 +76,56 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
    (`sentry-symfony` 5.16 dopuszcza Symfony 8, `@sentry/nextjs` 11 dopuszcza Next 16, `@sentry/vue` 11 dopuszcza
    Vue 3 i Pinię 4); źródło: istnieje (Packagist, npm).
  
-+- **Eksperymenty na wersjach z lockfile'ów** (`sentry/sentry-symfony` 5.16.0 z `sentry/sentry` 4.37.0, `@sentry/nextjs` 11.12.0,
-+  `@sentry/vue` 11.12.0, `@sentry/vite-plugin` 11.12.0). Każdy to test z prawdziwym SDK, fałszywym DSN i transportem
-+  zapisującym koperty, bez ruchu do Sentry; zapisuje go pierwsze zadanie danej aplikacji jako punkt wyjścia kryteriów.
-+  Wyniki zmieniły decyzje D4–D9 poniżej.
++- **Eksperymenty na wersjach, które dodaje epik** (`sentry/sentry-symfony` 5.16.0 z `sentry/sentry` 4.37.0, `@sentry/nextjs` 11.12.0,
++  `@sentry/vue` 11.12.0, `@sentry/vite-plugin` 11.12.0; żadnego z tych pakietów nie ma jeszcze w lockfile'ach). E1–E8 to
++  testy z prawdziwym SDK, fałszywym DSN i transportem zapisującym koperty, bez ruchu do Sentry; zapisuje je pierwsze
++  zadanie danej aplikacji jako punkt wyjścia kryteriów. E9 to odczyt kodu, nie test (opis przy E9). Wyniki zmieniły
++  decyzje D4–D10 poniżej.
 +  - **E1. Jedno zdarzenie na błąd HTTP (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryHttpTest'`
 +    z `register_error_listener: false` i własnym listenerem `kernel.exception`. Wynik: wyjątek z odpowiedzią 500 daje
 +    dokładnie jedno zdarzenie z `release`, `environment` i tagiem `correlation_id` równym `X-Correlation-ID`; 400, 401, 403,
 +    404, 405, 429, 409 `Conflict`, 404 `NotFound`, 422 `InvalidInput` i 422 treści żądania nie dają żadnego.
-+  - **E2. Konsola (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryConsoleTest'`. Wynik:
-+    przy wyłączonym `register_error_listener` listener konsoli bundla nie zgłasza nieobsłużonego wyjątku komendy (bundle wiąże
-+    zgłaszanie z listenerem błędów); ten sam listener zdefiniowany w `services.yaml` jako zgłaszający (`ConsoleListener` z drugim
-+    argumentem `true`, te same zdarzenia) daje jedno zdarzenie z tagami `correlation_id` i `console.command`.
++  - **E2. Konsola (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryConsoleTest'`. Wynik
++    testu: przy wyłączonym `register_error_listener` listener konsoli zdefiniowany w `services.yaml` jako zgłaszający
++    (`ConsoleListener` z drugim argumentem `true`, te same zdarzenia co w bundlu) daje dokładnie jedno zdarzenie z tagami
++    `correlation_id` i `console.command`. Że listener konsoli bundla przy wyłączonym `register_error_listener` sam by nie
++    zgłaszał (bundle wiąże zgłaszanie konsoli z listenerem błędów), wynika z odczytu kodu bundla, nie z testu negatywnego;
++    kryterium 2 stoi na teście jednego zdarzenia.
 +  - **E3. Worker (api, AK2).** Polecenie: `make -C apps/api test PHPUNIT_ARGS='--filter SentryWorkerTest'` z `capture_soft_fails:
 +    false` i `isolate_context_by_message: true`. Wynik: z trzech wiadomości, z których dwie padają w ostatniej próbie, a jedna
 +    zostanie ponowiona, powstają dwa zdarzenia, każde z `correlation_id` swojej wiadomości; tag ustawiony przy pierwszej wiadomości
@@ -401,14 +404,17 @@ index 440e2d5..c17de9c 100644
 +    opcje dodają tylko integrację `BrowserTracing` (bez Pinii, Replay i Feedback); domyślne strumieniowanie spanów omija
 +    `beforeSendTransaction` (potrzebne `traceLifecycle: "static"`); cel tekstowy `tracePropagationTargets` pasuje w dowolnym
 +    miejscu adresu, więc cel to wyrażenie zakotwiczone na adresie API: `sentry-trace` i `baggage` dostaje tylko API.
-+  - **E9. Telemetria budowania (AK6).** Ustalone odczytem kodu wtyczek, bez eksperymentu na sieci: `telemetry: false` wtyczki nie
-+    wyłącza telemetrii Sentry CLI, przez które wtyczki wysyłają mapy; wyłącza ją `SENTRY_CLI_NO_TELEMETRY=1` w etapie `build`.
-+    Kryterium 6 sprawdza obecność zmiennej w Dockerfile, nie zachowanie sieci.
++  - **E9. Telemetria budowania (AK6).** Bez polecenia i bez eksperymentu na sieci: ustalenie z odczytu kodu wtyczek
++    (zastrzeżenie: zachowanie Sentry CLI nie jest sprawdzone testem). `telemetry: false` wtyczki obejmuje telemetrię samej
++    wtyczki, ale nie telemetrię Sentry CLI, przez które wtyczki wysyłają mapy; tę wyłącza `SENTRY_CLI_NO_TELEMETRY=1`
++    w etapie `build`. Test infrastruktury sprawdza tylko obecność: `telemetry: false` w konfiguracjach wtyczek i `ENV
++    SENTRY_CLI_NO_TELEMETRY=1` w etapie `build` obu Dockerfile (i jej brak w pozostałych etapach), nie zachowanie sieci
++    (Ryzyka).
 +
  Zadania nie potrzebują konta Sentry ani sekretów: testy używają transportu testowego i fałszywego DSN, a krok wysyłki
  map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SENTRY_AUTH_TOKEN` i zmienne `SENTRY_ORG`,
  `SENTRY_PROJECT_STORE`, `SENTRY_PROJECT_ADMIN` w GitHub to kroki użytkownika po merge'u epiku (runbook).
-@@ -98,8 +142,9 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
+@@ -98,8 +148,9 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
    `tracesSampleRate`, `dsn.api`, `dsn.store`, `dsn.admin`, domyślnie puste), zmienne emitowane tylko przy niepustym
    DSN danej aplikacji (wzorzec `shop.clientIpHeaderEnv`); DSN api trafia do `shop.apiEnv` (api, worker, Joby, init
    kontenery i CronJob odtworzenia).
@@ -420,7 +426,7 @@ index 440e2d5..c17de9c 100644
    `before_send_transaction` i `beforeBreadcrumb`, usuwa:
    - nagłówki żądania poza `User-Agent`, `Content-Type`, `Accept`, ciasteczka, treść żądania, adres IP użytkownika;
    - query string z adresu żądania, nazw transakcji i spanów, danych spanów (`url.full`, `http.query`) i adresów
-@@ -119,21 +164,24 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
+@@ -119,21 +170,24 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
      `ProblemDetailsSubscriber` zgłasza wyjątek tylko wtedy, gdy ustalona odpowiedź ma status ≥ 500. Status pochodzi
      z mapowania `ProblemDetailsSubscriber` (jedna funkcja „status dla wyjątku” w `Shared\Infrastructure\Http`), bez
      drugiej listy wyjątków w konfiguracji Sentry.
@@ -452,7 +458,7 @@ index 440e2d5..c17de9c 100644
  - **D8. Sklep.** `instrumentation.ts` (`register` dla runtime `nodejs`, `onRequestError`), filtr z D4 i propagacja z D7.
    Inicjalizacja w przeglądarce w `SiteSwitches` po odczycie `/api/site` przez dynamiczny import modułu
    `src/observability` (P2). `app/error.tsx` zgłasza przez ten sam leniwy moduł tylko błędy bez `digest` (błąd
-@@ -141,13 +189,14 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
+@@ -141,15 +195,18 @@ map bez sekretu się pomija. Konto Sentry (P1), DSN-y w `prod` (P7), sekret `SEN
    nie zmienia. Obsłużone błędy BFF (odpowiedź 502 i `console.error`) nie są zdarzeniami. `next.config.ts` nie dodaje
    `script-src` ani `connect-src` (CSP bez zmian).
  - **D9. Panel.** `@sentry/vue` w `main.ts` przed `mount`, z integracją routera (`browserTracingIntegration`),
@@ -464,33 +470,52 @@ index 440e2d5..c17de9c 100644
  - **D10. Mapy źródeł (P3).** Budowanie `prod` sklepu i panelu generuje mapy, wysyła je przy dostępnym sekrecie i usuwa
 -  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, `filesToDeleteAfterUpload`), a bez sekretu nie
 -  zostawia ich w etapie `prod`. Sekret trafia wyłącznie do kroków budowania w jobie `images`; job `smoke` (także na
+-  PR) buduje bez niego. Flaga wysyłki to argument budowania (`ARG`), który wchodzi do klucza cache, więc warstwa
+-  zbudowana bez wysyłki nie jest używana przy wysyłce. Telemetria wtyczek budowania wyłączona (`telemetry: false`).
 +  pliki `.map` opcjami wtyczek (`deleteSourcemapsAfterUpload`, `filesToDeleteAfterUpload`) oraz `find ... -name '*.map'
 +  -delete` na końcu kroku budowania; to ostatnie gwarantuje kryterium 6, bo nie zależy od zachowania wtyczki. Bez sekretu
 +  budowanie nie zostawia map w etapie `prod`. Sekret trafia wyłącznie do kroków budowania w jobie `images`; job `smoke` (także na
-   PR) buduje bez niego. Flaga wysyłki to argument budowania (`ARG`), który wchodzi do klucza cache, więc warstwa
-   zbudowana bez wysyłki nie jest używana przy wysyłce. Telemetria wtyczek budowania wyłączona (`telemetry: false`).
++  PR) buduje bez niego. Flaga wysyłki to argument budowania (`ARG`), który według dokumentacji Dockera wchodzi do klucza
++  cache, więc warstwa zbudowana bez wysyłki nie byłaby używana przy wysyłce (niesprawdzone, Ryzyka). Telemetria budowania
++  wyłączona dwiema rzeczami (E9): `telemetry: false` w opcjach wtyczek (telemetria wtyczki) i `SENTRY_CLI_NO_TELEMETRY=1`
++  w etapie `build` (telemetria Sentry CLI, przez które wtyczki wysyłają mapy).
    Organizacja i projekty Sentry dla wysyłki ze zmiennych repozytorium GitHub (`SENTRY_ORG`, `SENTRY_PROJECT_STORE`,
-@@ -212,8 +261,8 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
+   `SENTRY_PROJECT_ADMIN`); token nie trafia do warstw obrazu ani logu. Obraz `dev` i budowanie w `ci.yml` bez zmian.
+ - **D11. Compose.** Plik compose się nie zmienia: api, worker i sklep mogą dostać `SENTRY_*` z `.env.local` (już czytają go
+@@ -212,8 +269,8 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
  
  ## Scenariusze błędów
  
 -- Sentry niedostępny albo odrzuca zdarzenia (limit): SDK gubi zdarzenia; w api ścieżki błędu opóźniają się najwyżej
 -  o limit transportu 2 s (D5), ścieżki bez błędu i przeglądarka bez opóźnienia widocznego dla klienta.
 +- Sentry niedostępny albo odrzuca zdarzenia (limit): SDK gubi zdarzenia; limit połączenia i odpowiedzi transportu api to 2 s
-+  (D5), ścieżki bez błędu i przeglądarka bez opóźnienia widocznego dla klienta.
++  (D5); wpływ na czas odpowiedzi api (zdarzenia błędów i transakcje) mierzy się po wdrożeniu (Ryzyka), kryteria na tym nie stoją.
  - Brak DSN: zachowanie jak dziś, żadnego ruchu do zewnętrznych hostów (test E2E `visual-foundation` z asercją
    „tylko `localhost`” zostaje bez zmian).
  - Błąd odczytu `/api/site` w przeglądarce sklepu: SDK się nie inicjalizuje, strona działa (jak dziś przełączniki).
-@@ -258,8 +307,11 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
+@@ -251,15 +308,23 @@ kont zewnętrznych); emisję sprawdzają testy renderu chartu na wartościach po
+ 5. Chart: render z DSN emituje zmienne tylko do właściwych workloadów (api: api, worker, Joby; sklep; panel), bez DSN
+    żadnej `SENTRY_*`; schemat odrzuca `tracesSampleRate` spoza 0–1 i DSN w złym formacie.
+ 6. `deploy.yml`: token tylko jako sekret budowania w jobie `images`; flaga wysyłki w argumentach budowania; etapy
+-   `prod` sklepu i panelu bez `.map`; bez sekretu workflow przechodzi; telemetria wtyczek wyłączona.
++   `prod` sklepu i panelu bez `.map`; bez sekretu workflow przechodzi; konfiguracje wtyczek mają `telemetry: false`, a etap
++   `build` obu Dockerfile ma `ENV SENTRY_CLI_NO_TELEMETRY=1` (sprawdzana jest obecność, nie zachowanie sieci; E9).
+ 7. Filtry zdarzeń mają testy każdej drogi z modelu zagrożeń.
+ 
+ ## Ryzyka
  
  - **Darmowy plan Sentry** (limity zdarzeń i spanów miesięcznie): próbkowanie 0,1, brak zdarzeń z 4xx i jeden kanał
    na źródło; przekroczenie gubi zdarzenia do końca miesiąca. Pomiar po wdrożeniu.
 -- **Narzut SDK.** Trace'y kosztują czas żądania api; zdarzenia błędów wysyłane synchronicznie (D5). Worker
-+- **Narzut SDK.** Trace'y kosztują czas żądania api; zdarzenia błędów mogą być wysyłane synchronicznie (niesprawdzone, mierzy się po wdrożeniu; limit 2 s z D5). Worker
++- **Narzut SDK.** Trace'y kosztują czas żądania api; zdarzenia błędów i transakcje mogą opóźniać odpowiedź (kolejność wysyłki niesprawdzona, mierzy się po wdrożeniu; limit 2 s z D5). Worker
    (`messenger:consume`) musi izolować zakres między wiadomościami (D6, kryterium 2).
 +- **Cache BuildKit i flaga wysyłki.** Argument deklarowany tuż przed krokiem budowania wchodzi do klucza cache tego kroku
 +  (dokumentacja Dockera, bez eksperymentu w repo): warstwa zbudowana bez wysyłki nie jest używana przy wysyłce. Kryterium 6
 +  sprawdza konfigurację workflowu i Dockerfile, nie zachowanie cache; pierwszy deploy z sekretem potwierdza wysyłkę.
++- **Telemetria Sentry CLI przy budowaniu.** Wtyczki wysyłają mapy przez Sentry CLI, które ma własną telemetrię; `telemetry:
++  false` jej nie obejmuje, a `SENTRY_CLI_NO_TELEMETRY=1` w etapie `build` ma ją wyłączać (odczyt kodu wtyczek, bez
++  eksperymentu; E9). Kryterium 6 sprawdza obecność zmiennej, nie zachowanie sieci; skutek błędu to dane użycia narzędzia
++  wysłane z budowania, nie dane klientów (budowanie ich nie ma).
  - **Filtr oparty na wzorcach** (jak maskowanie logów w Alloy): nowy format danych klienta może przejść; zasada
    w `CLAUDE.md` aplikacji, wspólny korpus z Alloy i przegląd próbki zdarzeń.
  - **Kolejność epików.** ADMIN-DESIGN (w toku) zmienia `apps/admin`, `infra/docker-compose.yml`,
