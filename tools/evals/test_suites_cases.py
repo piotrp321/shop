@@ -8,6 +8,7 @@ The tests that need the commits of the repository (reachability, the dry run) sk
 import base64
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -291,6 +292,27 @@ class PromptsOfTheCasesTest(unittest.TestCase):
             self.assertIn('{{INPUT_DIR}}/' + evidence[0], prompt, case_id)
             for line in loaded.text(evidence[0]).splitlines():
                 self.assertEqual('dict', type(json.loads(line)).__name__)
+
+    def test_the_specification_of_a_prompt_is_the_one_of_the_manifest_of_the_task_and_exists_in_its_checkout(self):
+        if not history_is_full():
+            self.skipTest('shallow clone or no git')
+        for suite, sha_key in (('code-reviewer', 'base_sha'), ('spec-critic', 'commit')):
+            for case_id in case_dirs(suite):
+                data = read_case(suite, case_id)
+                text = load_case(suite, case_id).prompt_template()
+                if suite == 'code-reviewer':
+                    task = re.search(r'Review taska ([A-Z]+(?:-[A-Z]+)*-\d+)', text).group(1)
+                    spec = re.search(r'Specyfikacja: `([^`]+)`', text).group(1)
+                    epic = task.rsplit('-', 1)[0].lower()
+                    status, plan = repo.git(ROOT, 'show', '%s:docs/features/%s/plan.md' % (data[sha_key], epic),
+                                            check=False)
+                    self.assertEqual(0, status, (case_id, 'plan.md of the epic at the base commit'))
+                    manifest = re.search(r'"spec":\s*"([^"]+)"', plan.decode('utf-8'))
+                    self.assertEqual(manifest.group(1), spec, case_id)
+                else:
+                    spec = re.search(r'`(docs/features/[a-z-]+/spec\.md)`', text).group(1)
+                self.assertEqual(0, repo.git(ROOT, 'cat-file', '-e', '%s:%s' % (data[sha_key], spec),
+                                             check=False)[0], (case_id, spec))
 
     def test_the_spec_critic_prompts_reproduce_step_2_of_prepare_epic(self):
         for case_id in case_dirs('spec-critic'):

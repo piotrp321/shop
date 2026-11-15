@@ -3,7 +3,7 @@ Review taska CART-FIXES-3 (Polish validation messages of the cart requests (#82)
 - base_sha: {{BASE}}
 - head_sha: {{HEAD}}
 - Tryb: FULL
-- Specyfikacja: `docs/features/cart/spec.md` (w checkoucie; przeczytaj też `CLAUDE.md` i `apps/api/CLAUDE.md`).
+- Specyfikacja: `docs/features/cart-fixes/spec.md` (w checkoucie; przeczytaj też `CLAUDE.md` i `apps/api/CLAUDE.md`).
 - Kryteria akceptacji:
   1. Functional tests for guest and customer cover every case of the message table in spec section „#82” for each of the three requests, checking violations[*].title and propertyPath; no message is in English
   2. One field gives at most one violation
