@@ -24,6 +24,9 @@ class PlanManifestTest(unittest.TestCase):
         subprocess.run(['git', '-C', self.repo, 'init', '-q'], check=True)
         os.makedirs(os.path.join(self.repo, 'docs', 'features', 'cart'))
         self.write('docs/features/cart/spec.md', '# Cart\n')
+        for top in ('apps', 'infra', 'e2e', '.github'):
+            os.makedirs(os.path.join(self.repo, top))
+        self.write('CLAUDE.md', '# Rules\n')
         self.plan = os.path.join(self.repo, 'docs', 'features', 'cart', 'plan.md')
 
     def tearDown(self):
@@ -239,10 +242,23 @@ class PlanManifestTest(unittest.TestCase):
     def test_paths_must_be_a_non_empty_list_of_relative_repository_paths(self):
         for paths in ('apps/api/', [], [3], [''], ['   '], ['/etc/hosts'], ['../x'], ['docs/../x'], ['docs/..'],
                       ['a//b'], ['./a'], ['a/./b'], ['a\\b'], ['/'], ['a\nb'], ['a\x00b'], ['docs/a\u2028b.md'],
-                      ['\u00a0'], ['docs/\u00a0/']):
+                      ['\u00a0'], ['docs/\u00a0/'], ['docs/*.md'], ['docs/*'], ['docs/?.md'], ['docs/[ab].md'],
+                      ['docs/a]'], ['docs/{a,b}.md'], ['docs/a}'], ['~'], ['~/docs/'], ['~docs/']):
             with self.subTest(paths=paths):
                 self.write_plan(self.manifest([task('CART-1', paths=paths)]))
                 self.assertInvalid('tasks[0] (CART-1): paths must be a non-empty list of relative paths')
+
+    def test_paths_must_start_in_an_existing_entry_of_the_repository_root(self):
+        for path in ('Apps/api/src/', 'Docs/', 'DOCS/features/', 'missing/x.md', 'claude.md', '.git/config',
+                     '.git/'):
+            with self.subTest(path=path):
+                self.write_plan(self.manifest([task('CART-1', paths=['docs/', path])]))
+                self.assertInvalid('tasks[0] (CART-1): paths %s: %s does not exist in the repository root'
+                                   % (path, path.split('/')[0]))
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/new/', 'apps/api/src/New.php', 'CLAUDE.md',
+                                                             '.github/', 'e2e/x.spec.ts'])]))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_paths_with_polish_letters_are_valid(self):
         self.write_plan(self.manifest([task('CART-1', paths=['docs/features/cart/zażółć.md'])]))

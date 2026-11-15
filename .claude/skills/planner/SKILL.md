@@ -116,7 +116,8 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
   i `parallel_with` są wymagane, innych pól nie ma.
 - `depends_on` wskazuje istniejące zadania, bez cykli i bez zależności od siebie.
 - `paths` (opcjonalne): niepusta lista ścieżek względem katalogu głównego repo, plik albo katalog zakończony `/`,
-  bez ścieżek absolutnych, bez segmentów `.` i `..`, bez powtórzeń.
+  bez ścieżek absolutnych, bez segmentów `.` i `..`, bez znaków globa (`*?[]{}`), bez `~` na początku, bez
+  powtórzeń; pierwszy segment istnieje w katalogu głównym repo (z tą samą wielkością liter, bez `.git`).
 - `parallel_with` (opcjonalne): ID zadań, które AO może prowadzić naraz z tym (`ao run --max-parallel`, spec
   `docs/features/parallel-work/spec.md`, „19b”). Para jest symetryczna (każde z dwóch zadań wymienia drugie), oba
   zadania mają `paths`, żadne nie zależy od drugiego (także przez `depends_on` innych zadań), a ich `paths` nie

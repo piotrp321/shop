@@ -14,10 +14,11 @@
 
 Optional task keys (step 19b, docs/features/parallel-work/spec.md): `paths`, a non-empty list of paths relative to
 the repository root that the task changes (a file, or a directory ending with /; no absolute path, no `.` or `..`
-segment, no control character or Unicode separator other than the space, no duplicate), and `parallel_with`, the
-ids of tasks that may run at once with it. A listed pair must be symmetric, both tasks must have `paths`, neither may
-depend on the other (also through depends_on of another task) and their `paths` must not share a path that
-parallel_gate.task_conflicts refuses (application code, a CLAUDE.md or a file, or a directory holding a CLAUDE.md
+segment, no control character or Unicode separator other than the space, no glob character `*?[]{}`, no leading `~`,
+a first segment that exists in the repository root, compared case-sensitively, other than .git; no duplicate), and
+`parallel_with`, the ids of tasks that may run at once with it. A listed pair must be symmetric, both tasks must
+have `paths`, neither may depend on the other (also through depends_on of another task) and their `paths` must not
+share a path that parallel_gate.task_conflicts refuses (application code, a CLAUDE.md or a file, or a directory holding a CLAUDE.md
 tracked by git, `git ls-files`; other directories outside application code may overlap). When git cannot list the
 tracked CLAUDE.md files, every listed pair is refused. Without `parallel_with` the task runs alone.
 
@@ -43,6 +44,8 @@ TASK_KEYS = ('id', 'title', 'scope', 'acceptance_criteria', 'risk', 'depends_on'
 OPTIONAL_TASK_KEYS = ('paths', 'parallel_with')
 OPENING = re.compile(r'^```json[ \t]*$')
 FENCE = re.compile(r'^```[ \t]*$')
+# Glob metacharacters: a manifest path names a file or a directory, never a pattern.
+GLOB = '*?[]{}'
 
 
 class PlanError(Exception):
@@ -92,12 +95,12 @@ def check(manifest, root, plan_dir, claude_md=()):
         return problems
     if not isinstance(tasks, list) or not tasks:
         return problems + ['tasks must be a non-empty list']
-    ids = []
+    ids, top = [], _root_entries(root)
     for i, item in enumerate(tasks):
         if not isinstance(item, dict):
             problems.append('tasks[%d] must be a JSON object' % i)
             continue
-        problems.extend(_task_problems(i, item, epic, ids))
+        problems.extend(_task_problems(i, item, epic, ids, top))
     if not problems:
         problems.extend(_dependency_problems(tasks))
     if not problems:
@@ -166,7 +169,7 @@ def _spec_problems(spec, root, plan_dir):
     return []
 
 
-def _task_problems(i, item, epic, ids):
+def _task_problems(i, item, epic, ids, top):
     task_id = item.get('id')
     where = 'tasks[%d] (%s)' % (i, task_id) if isinstance(task_id, str) else 'tasks[%d]' % i
     problems = _keys(where, item, TASK_KEYS, OPTIONAL_TASK_KEYS)
@@ -193,7 +196,7 @@ def _task_problems(i, item, epic, ids):
     if 'depends_on' in item and not (isinstance(depends_on, list) and all(isinstance(d, str) for d in depends_on)):
         problems.append('%s: depends_on must be a list of task ids' % where)
     if 'paths' in item:
-        problems.extend(_paths_problems(where, item['paths']))
+        problems.extend(_paths_problems(where, item['paths'], top))
     parallel_with = item.get('parallel_with')
     if 'parallel_with' in item:
         if not (isinstance(parallel_with, list) and all(isinstance(p, str) for p in parallel_with)):
@@ -215,16 +218,30 @@ def _is_relative_path(path):
     if not path.isprintable():
         # Control characters and Unicode separators other than the ASCII space (NUL, U+2028, NBSP).
         return False
+    if path.startswith('~') or any(c in GLOB for c in path):
+        # A path, not a pattern: the gate compares paths literally.
+        return False
     segments = (path[:-1] if path.endswith('/') else path).split('/')
     return all(s not in ('', '.', '..') for s in segments)
 
 
-def _paths_problems(where, paths):
+def _root_entries(root):
+    """Names in the repository root (case-sensitive, also on a case-insensitive file system), without .git."""
+    try:
+        return set(os.listdir(root)) - {'.git'}
+    except OSError:
+        return set()
+
+
+def _paths_problems(where, paths, top):
     if not (isinstance(paths, list) and paths and all(_is_relative_path(p) for p in paths)):
         return ['%s: paths must be a non-empty list of relative paths (a file, or a directory ending with /)' % where]
     problems, seen = [], set()
     for p in paths:
         name = p.rstrip('/')
+        first = name.split('/')[0]
+        if first not in top:
+            problems.append('%s: paths %s: %s does not exist in the repository root' % (where, p, first))
         if name in seen:
             problems.append('%s: paths lists %s twice' % (where, name))
         seen.add(name)

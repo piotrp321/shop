@@ -400,8 +400,10 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
 
 - **Manifest planu** (`/planner`, `plan_manifest.py`) ma dwa opcjonalne pola zadania:
   - `paths`: niepusta lista ścieżek względem katalogu głównego repo, które zadanie zmieni: plik albo katalog
-    zakończony `/` (bez ścieżek absolutnych, segmentów `.` i `..` i powtórzeń). Przy niepewności `/planner` wpisuje
-    szerszy katalog, a `CLAUDE.md`, który zadanie zmienia, wpisuje jako plik.
+    zakończony `/` (bez ścieżek absolutnych, segmentów `.` i `..`, znaków globa `*?[]{}`, `~` na początku
+    i powtórzeń; pierwszy segment istnieje w katalogu głównym repo, z tą samą wielkością liter, bez `.git`). Plik,
+    który zadanie na pewno zmieni (np. `spec.md` epiku, `CLAUDE.md`), `/planner` wpisuje jako plik; katalog tylko dla
+    plików nieznanych z góry, a przy niepewności szerszy katalog.
   - `parallel_with`: ID zadań, z którymi zadanie może trwać naraz. `/planner` wpisuje tu wynik `plan_manifest.py
     parallel`: wszystkie pary dopuszczone przez regułę niżej.
   Zadanie bez `parallel_with` (także cały manifest bez tych pól, np. sprzed 19b) idzie szeregowo; `schema_version`
@@ -508,7 +510,8 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   katalogi poza kodem dozwolone, wspólny katalog ze śledzonym `CLAUDE.md` w obu kierunkach odrzucony, bez niego
   dozwolony).
 - `python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'`: manifest bez nowych pól poprawny; zły
-  typ `paths` i `parallel_with`, ścieżka absolutna, `..`, `.`, pusty segment, znak sterujący, powtórzenie; nieznane ID,
+  typ `paths` i `parallel_with`, ścieżka absolutna, `..`, `.`, pusty segment, znak sterujący, znak globa, `~` na
+  początku, pierwszy segment spoza katalogu głównego (także inna wielkość liter i `.git`), powtórzenie; nieznane ID,
   samo siebie, powtórzenie w `parallel_with`; brak symetrii; para bez `paths` po jednej stronie; para z zależnością
   bezpośrednią i przechodnią; wspólny kod aplikacji, ten sam plik dokumentacji, wspólny `CLAUDE.md`, wspólny katalog
   ze śledzonym `CLAUDE.md` (odrzucone), nakładające się katalogi dokumentacji, testów, CI i infrastruktury, także
