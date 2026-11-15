@@ -26,6 +26,7 @@ use App\Pricing\Domain\DiscountCode\MinimumOrder;
 use App\Pricing\Domain\DiscountCode\OrderId;
 use App\Pricing\Domain\DiscountCode\UsageLimit;
 use App\Pricing\Domain\DiscountCode\ValidityPeriod;
+use App\Shared\Domain\BoundedCount;
 use App\Tests\Unit\Pricing\FixedPricingClock;
 use App\Tests\Unit\Pricing\InMemoryDiscountCodeReader;
 use App\Tests\Unit\Pricing\InMemoryDiscountCodeRepository;
@@ -116,7 +117,55 @@ final class DiscountCodeQueriesTest extends TestCase
 
         self::assertSame([], $list->items);
         self::assertNull($list->next);
+        self::assertEquals(new BoundedCount(0, false), $list->total, 'the first page of nothing counts zero');
         self::assertSame([], $this->reader->pages);
+        self::assertSame([], $this->reader->counts);
+    }
+
+    public function testOnlyTheFirstPageCountsTheCodesOfTheStatusAndThePrefix(): void
+    {
+        $this->reader->total = new BoundedCount(42, false);
+        $this->reader->codes = [
+            $this->listed(self::A, 'WITAJ10', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+            $this->listed(self::B, 'WITAJ20', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+        ];
+
+        $first = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, ' wit ', null, 1));
+        self::assertNotNull($first->next);
+        $second = $this->list(new ListDiscountCodes(DiscountCodeStatus::Active, ' wit ', $first->next, 1));
+
+        self::assertEquals(new BoundedCount(42, false), $first->total);
+        self::assertNull($second->total);
+        self::assertEquals([[DiscountCodeStatus::Active, 'WIT', new \DateTimeImmutable(self::NOW)]], $this->reader->counts);
+    }
+
+    public function testTheFirstPageWithoutANextOneIsTheWholeResultAndIsNotCounted(): void
+    {
+        $this->reader->total = new BoundedCount(99, true);
+        $this->reader->codes = [
+            $this->listed(self::A, 'WITAJ10', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+            $this->listed(self::B, 'WITAJ20', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+        ];
+
+        $list = $this->list(new ListDiscountCodes(null, 'WIT', null, 2));
+
+        self::assertNull($list->next);
+        self::assertEquals(new BoundedCount(2, false), $list->total, 'the rows of the page are the exact count');
+        self::assertSame([], $this->reader->counts);
+    }
+
+    public function testAPrefixNoCodeCanHaveOnALaterPageHasNoTotal(): void
+    {
+        $this->reader->codes = [
+            $this->listed(self::A, 'WITAJ10', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+            $this->listed(self::B, 'WITAJ20', '2026-11-02T00:00:00Z', '2026-11-01T00:00:00Z', null, true, 0),
+        ];
+        $cursor = $this->list(new ListDiscountCodes(null, null, null, 1))->next;
+        self::assertNotNull($cursor);
+
+        $list = $this->list(new ListDiscountCodes(null, '10%', $cursor, 25));
+
+        self::assertNull($list->total);
     }
 
     public function testACursorNobodyIssuedIsRefused(): void

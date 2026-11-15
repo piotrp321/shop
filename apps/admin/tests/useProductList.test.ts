@@ -5,8 +5,9 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { SEARCH_DEBOUNCE_MS, useProductList } from "@/products/useProductList";
+import type { WithOptionalTotal } from "./listPage";
 
-type ProductList = components["schemas"]["ProductListResponse"];
+type ProductList = WithOptionalTotal<components["schemas"]["ProductListResponse"]>;
 type ProductListItem = components["schemas"]["ProductListItemResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -448,5 +449,22 @@ describe("useProductList", () => {
 
     await list.goNext();
     expect(list.range.value).toEqual({ from: 26, to: 50 });
+  });
+
+  it("gives the total of the first page for „z N”, keeps it on the next pages and takes the one of a new query", async () => {
+    const pages: Record<string, ProductList> = {
+      "": { items: [item("A")], next: "c1", total: { value: 1234, capped: false } },
+      c1: { items: [item("B")], next: null, total: null },
+    };
+    const list = await start(pages);
+    expect(list.total.value).toEqual({ value: 1234, capped: false });
+
+    await list.goNext();
+    expect(list.total.value).toEqual({ value: 1234, capped: false });
+
+    pages[""] = { items: [item("Szkic", { status: "draft" })], next: null, total: { value: 5, capped: false } };
+    list.selectStatus("draft");
+    await settle();
+    expect(list.total.value).toEqual({ value: 5, capped: false });
   });
 });

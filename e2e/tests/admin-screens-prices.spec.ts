@@ -243,17 +243,17 @@ test.describe("the list", () => {
     }
   });
 
-  test("counts products in „Pokazano produkty X–Y”: the second page of 10 is 11–20, whatever the number of variants", async () => {
+  test("counts products in „Pokazano produkty X–Y”: the second page of 10 is 11–20 and the total of products follows „z”, whatever the number of variants", async () => {
     test.setTimeout(60_000);
     const page = await newPanelPage("admin", viewports.desktop);
     try {
       await openPrices(page);
-      await expect(page.getByTestId("range")).toHaveText("Pokazano produkty 1–10");
+      await expect(page.getByTestId("range")).toHaveText(/^Pokazano produkty 1–10 z (ponad )?\d[\d\s]*$/);
       await expect(page.getByTestId("product-row")).toHaveCount(10);
 
       await page.getByRole("button", { name: "Następna strona" }).click();
 
-      await expect(page.getByTestId("range")).toHaveText("Pokazano produkty 11–20");
+      await expect(page.getByTestId("range")).toHaveText(/^Pokazano produkty 11–20 z (ponad )?\d[\d\s]*$/);
       await expect(page.getByTestId("product-row")).toHaveCount(10);
     } finally {
       await page.close();

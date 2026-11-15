@@ -62,6 +62,7 @@ final class QueryBusProductDirectory implements ProductDirectory
                 $page->items,
             ),
             $page->next,
+            $page->total,
         );
     }
 

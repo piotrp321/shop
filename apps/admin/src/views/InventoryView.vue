@@ -29,7 +29,7 @@ import { useAuthStore } from "@/stores/auth";
 
 const categories = useCategoryTree();
 const list = useStockList({ nodes: categories.nodes, loaded: categories.loaded });
-const { search, searchHint, query, filtered, items, rows, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, receiveStock, correctStock } = list;
+const { search, searchHint, query, filtered, items, rows, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total, receiveStock, correctStock } = list;
 const history = useStockHistory();
 
 // Only hides the actions: the API checks the permission on every change. The roles come from /api/v1/admin/me.
@@ -521,6 +521,7 @@ const DIALOG_CLASS = "max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto sm:ma
           :has-next="hasNext"
           :page-number="pageNumber"
           :range="range"
+          :total="total"
           @previous="list.goPrevious"
           @next="list.goNext"
         />

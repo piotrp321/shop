@@ -61,7 +61,7 @@ export async function fetchPricePage({ query, after }: PageRequest<PriceQuery>):
   try {
     const result = await getApiClient().GET("/api/v1/admin/prices", { params: { query: apiQuery } });
     if (result.data) {
-      return { items: result.data.items, next: result.data.next };
+      return { items: result.data.items, next: result.data.next, total: result.data.total };
     }
     return { error: failureMessage(result.response.status), forbidden: result.response.status === 403 };
   } catch {

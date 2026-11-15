@@ -193,6 +193,8 @@ deptrac:
       - Catalog_Domain
       - Shared_Domain
       - Shared_Infrastructure
+      # The `total` of the panel's lists is the schema BoundedCountResponse (Shared_UI), as in the other panel modules.
+      - Shared_UI
       - Vendor
       # The controllers of product writes take the actor from AuthenticatedStaffMember, the security contract of
       # Backoffice. Catalog_Domain and Catalog_Application stay free of Backoffice.

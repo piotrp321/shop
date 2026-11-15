@@ -4,8 +4,9 @@ import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { EMPTY_MESSAGE, usePromotionList } from "@/promotions/usePromotionList";
+import type { WithOptionalTotal } from "./listPage";
 
-type PromotionList = components["schemas"]["PromotionListResponse"];
+type PromotionList = WithOptionalTotal<components["schemas"]["PromotionListResponse"]>;
 type PromotionListItem = components["schemas"]["PromotionListItemResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -97,6 +98,18 @@ describe("usePromotionList", () => {
     expect(list.hasPrevious.value).toBe(false);
     expect(list.pageNumber.value).toBe(1);
     expect(list.range.value).toEqual({ from: 1, to: 2 });
+  });
+
+  it("gives the total of the first page and keeps it on the next pages", async () => {
+    const list = await mounted({
+      "": { ...page(["A"], "c1"), total: { value: 2, capped: false } },
+      c1: { ...page(["B"]), total: null },
+    });
+    expect(list.total.value).toEqual({ value: 2, capped: false });
+
+    await list.goNext();
+
+    expect(list.total.value).toEqual({ value: 2, capped: false });
   });
 
   it("pages forward and back with the cursors of the API", async () => {

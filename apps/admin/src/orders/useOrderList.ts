@@ -91,7 +91,7 @@ export function useOrderList() {
     try {
       const result = await getApiClient().GET("/api/v1/admin/orders", { params: { query: apiQuery } });
       if (result.data) {
-        return { items: result.data.items, next: result.data.nextCursor };
+        return { items: result.data.items, next: result.data.nextCursor, total: result.data.total };
       }
       return { error: failureMessage(result.response.status), forbidden: result.response.status === 403 };
     } catch {
@@ -156,6 +156,7 @@ export function useOrderList() {
     hasNext: pager.hasNext,
     pageNumber: pager.pageNumber,
     range: pager.range,
+    total: pager.total,
     selectStatus,
     setRefundPending,
     setPerPage,

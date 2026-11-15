@@ -103,7 +103,7 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         $list = $this->list('q='.$q, self::staff(['admin']));
 
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['items' => [], 'nextCursor' => null], $list);
+        self::assertSame(['items' => [], 'nextCursor' => null, 'total' => ['value' => 0, 'capped' => false]], $list);
     }
 
     public function testTheStatusFilterCombinesWithTheSearch(): void
@@ -132,6 +132,44 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         self::assertSame([true, false, false], array_map(static fn (mixed $item): mixed => \is_array($item) && \is_array($item['refund']) ? $item['refund']['overdue'] : null, $all['items']));
         self::assertSame([$returnedSooner, $returnedLater], $this->ids($this->list('refund=pending&status=returned', self::staff(['support']))));
         self::assertSame([$returnedSooner], $this->ids($this->list('refund=pending&status=returned&q=r-100004', self::staff(['support']))));
+    }
+
+    public function testTheFirstPageHoldsTheTotalOfTheMatchingOrdersAndLaterPagesNone(): void
+    {
+        $this->order('returned', '-9 days', 'R-100001', refundDueAt: '+5 days');
+        $this->order('returned', '-8 days', 'R-100002', refundDueAt: '-1 day');
+        $this->order('returned', '-7 days', 'R-100003', refundDueAt: '-2 days', refundCompletedAt: '-3 days');
+        $this->order('shipped', '-6 days', 'R-100004', email: 'anna@example.com');
+        $this->order('paid', '-5 days', 'R-100005');
+        $admin = self::staff(['admin']);
+
+        $all = $this->list('perPage=2', $admin);
+        $later = $this->list('perPage=2&after='.self::cursor($all), $admin);
+        $pending = $this->list('refund=pending&perPage=1', $admin);
+        $pendingLater = $this->list('refund=pending&perPage=1&after='.self::cursor($pending), $admin);
+
+        self::assertSame(['value' => 5, 'capped' => false], $all['total']);
+        self::assertNull($later['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $pending['total']);
+        self::assertNull($pendingLater['total']);
+        self::assertSame(['value' => 3, 'capped' => false], $this->list('status=returned', $admin)['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $this->list('refund=pending&status=returned', $admin)['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->list('q=R-100004', $admin)['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->list('q='.rawurlencode('ANNA@example.com'), $admin)['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $this->list('status=delivered', $admin)['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $this->list('q=R-999999', $admin)['total']);
+        self::assertMatchesSchema('BackofficeOrderList', $all);
+        self::assertMatchesSchema('BoundedCountResponse', $all['total']);
+    }
+
+    /**
+     * @param array<mixed> $list
+     */
+    private static function cursor(array $list): string
+    {
+        self::assertIsString($list['nextCursor']);
+
+        return $list['nextCursor'];
     }
 
     /**

@@ -444,6 +444,123 @@ describe("useCursorPager", () => {
     });
   });
 
+  describe("the total of the first page (decisions A3, P7)", () => {
+    const total = (value: number, capped = false) => ({ value, capped });
+
+    it("starts without a total and has the one of the first page once it came", async () => {
+      const { pager } = await start(serve({ "": { items: rows("A"), next: null, total: total(1) } }));
+
+      expect(pager.total.value).toEqual({ value: 1, capped: false });
+    });
+
+    it("keeps the total of the first page on the next pages, which have none", async () => {
+      const fetchPage = serve({
+        "": { items: rows("A"), next: "c1", total: total(1234) },
+        c1: { items: rows("B"), next: "c2", total: null },
+        c2: { items: rows("C"), next: null },
+      });
+      const { pager } = await start(fetchPage);
+
+      await pager.goNext();
+      expect(pager.total.value).toEqual({ value: 1234, capped: false });
+      await pager.goNext();
+      expect(pager.total.value).toEqual({ value: 1234, capped: false });
+      await pager.goPrevious();
+      expect(pager.total.value).toEqual({ value: 1234, capped: false });
+    });
+
+    it("takes the total again when it goes back to the first page", async () => {
+      const pages: Record<string, PageResult<Row>> = {
+        "": { items: rows("A"), next: "c1", total: total(10) },
+        c1: { items: rows("B"), next: null, total: null },
+      };
+      const { pager } = await start(serve(pages));
+      await pager.goNext();
+
+      pages[""] = { items: rows("A"), next: "c1", total: total(11) };
+      await pager.goPrevious();
+
+      expect(pager.total.value).toEqual({ value: 11, capped: false });
+    });
+
+    it("keeps a capped total as it is", async () => {
+      const { pager } = await start(serve({ "": { items: rows("A"), next: null, total: total(10_000, true) } }));
+
+      expect(pager.total.value).toEqual({ value: 10_000, capped: true });
+    });
+
+    it("drops the total as soon as the query changes and takes the one of the new query", async () => {
+      let finish!: (value: PageResult<Row>) => void;
+      const fetchPage = vi
+        .fn<(request: PageRequest<Query>) => Promise<PageResult<Row>>>()
+        .mockImplementationOnce(async () => ({ items: rows("A"), next: "c1", total: total(50) }))
+        .mockImplementationOnce(() => new Promise<PageResult<Row>>((resolve) => (finish = resolve)));
+      const { pager, query } = await start(fetchPage);
+      expect(pager.total.value).toEqual({ value: 50, capped: false });
+
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+      expect(pager.total.value).toBeNull();
+
+      finish({ items: rows("X"), next: null, total: total(1) });
+      await flushPromises();
+      expect(pager.total.value).toEqual({ value: 1, capped: false });
+    });
+
+    it("drops the total also when the answer to the new query is a failure", async () => {
+      const pages: Record<string, PageResult<Row>> = { "": { items: rows("A"), next: null, total: total(50) } };
+      const { pager, query } = await start(serve(pages));
+
+      pages[""] = { error: "Nie udało się." };
+      query.value = { q: "x", perPage: 25 };
+      await flushPromises();
+
+      expect(pager.error.value).toBe("Nie udało się.");
+      expect(pager.total.value).toBeNull();
+
+      pages[""] = { items: rows("Nowy"), next: null, total: total(7) };
+      await pager.retry();
+      expect(pager.total.value).toEqual({ value: 7, capped: false });
+    });
+
+    it("drops the total when the page size changes, which is a new query", async () => {
+      const fetchPage = serve({ "": { items: rows("A"), next: null, total: total(3) } });
+      const { pager, query } = await start(fetchPage);
+
+      query.value = { q: "", perPage: 50 };
+      await flushPromises();
+
+      expect(fetchPage).toHaveBeenCalledTimes(2);
+      expect(pager.total.value).toEqual({ value: 3, capped: false });
+    });
+
+    it("keeps the total when a change of the page fails", async () => {
+      const { pager } = await start(serve({ "": { items: rows("A"), next: "c1", total: total(40) }, c1: { error: "Nie udało się." } }));
+
+      await pager.goNext();
+
+      expect(pager.error.value).toBe("Nie udało się.");
+      expect(pager.total.value).toEqual({ value: 40, capped: false });
+    });
+
+    it("keeps the total when a later page is loaded again", async () => {
+      const { pager } = await start(
+        serve({ "": { items: rows("A"), next: "c1", total: total(40) }, c1: { items: rows("B"), next: null, total: null } }),
+      );
+      await pager.goNext();
+
+      await pager.refresh();
+
+      expect(pager.total.value).toEqual({ value: 40, capped: false });
+    });
+
+    it("has no total when the first page does not carry one", async () => {
+      const { pager } = await start(serve({ "": { items: rows("A"), next: null } }));
+
+      expect(pager.total.value).toBeNull();
+    });
+  });
+
   it("ignores a response that arrives after the pager is gone", async () => {
     let finish!: (value: PageResult<Row>) => void;
     const fetchPage = vi.fn(() => new Promise<PageResult<Row>>((resolve) => (finish = resolve)));

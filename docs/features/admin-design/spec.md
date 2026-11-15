@@ -269,7 +269,7 @@ zamówienia): `DataTable` (na komponencie
   filtrów (`selectCategory`, `selectStatus` i podobne zapisują do adresu), więc wejście z adresu wysyła jedno żądanie.
 - `useCursorPager(fetchPage, query)`: jedyna implementacja stronicowania po kursorach standardu (stos kursorów, `latest`
   dla spóźnionych odpowiedzi, `retry`, `goNext`, `goPrevious`, powrót na pierwszą stronę przy zmianie zapytania),
-  z `perPage`, czyszczeniem wierszy po błędzie i zakresem „Pokazano X–Y”. Używają jej composables wszystkich sześciu list
+  z `perPage`, czyszczeniem wierszy po błędzie, zakresem „Pokazano X–Y” i licznikiem `total` pierwszej strony (do zmiany zapytania). Używają jej composables wszystkich sześciu list
   i wybór wariantów promocji. Każde zachowanie standardu jest testowane raz.
 - `useNameSearch({ initial, apply })`: jedno miejsce reguł wyszukiwania po nazwie: fraza po przycięciu ma od 2 do 100
   znaków (punkty kodowe), po 300 ms przerwy w pisaniu trafia do `apply` (pusta, także same spacje, to `null`: brak filtra),
@@ -312,9 +312,12 @@ do adresu trafia dopiero zastosowana fraza.
   a każdy ma wiersz na wariant. Zmiana rozmiaru wraca na pierwszą stronę. Wybór wariantów w formularzu promocji (`PromotionVariantPicker`) składa listę z `fetchPricePage` i `priceRows` przez
   `useCursorPager` (bez `usePriceList`): 25 produktów na stronę, bez wyboru rozmiaru i bez stanu w adresie.
 - **Stopka**: „Pokazano X–Y” (`role="status"`, numer pierwszego i ostatniego wiersza strony liczony z numeru strony,
-  rozmiaru i liczby elementów odpowiedzi; na Cenach i Stanach liczy produkty: „Pokazano produkty X–Y”) i pager
+  rozmiaru i liczby elementów odpowiedzi; na Cenach i Stanach liczy produkty: „Pokazano produkty X–Y z N”) i pager
   z przyciskami „Poprzednia strona” / „Następna strona” (ikony ze strzałkami, nazwy dostępne) oraz numerem bieżącej
-  strony. API nie liczy sumy, więc bez „z N” i bez numerów dalszych stron. Fokus po zmianie strony zostaje na
+  strony. Pierwsza strona listy niesie `total` z API (liczony do 10 000, spec ADMIN-FEATURES: „Liczniki wyników”),
+  więc stopka mówi „Pokazano 1–25 z 1 234” (tysiące oddzielone twardą spacją, także w zakresie: „10 001–10 025”) albo „z ponad 10 000”, gdy liczenie
+  doszło do limitu; kolejne strony pokazują licznik pierwszej do zmiany zapytania, a bez licznika (brak w odpowiedzi,
+  nieudane zapytanie) stopka jest bez „z N”. Nie ma numerów dalszych stron. Fokus po zmianie strony zostaje na
   naciśniętym przycisku, a gdy ten zostaje wyłączony, przechodzi na drugi przycisk pagera (standard obejmuje wszystkie
   listy, #260 F7), chyba że pracownik sam przeniósł fokus poza pager.
 - **Puste stany** rozdzielone: bez danych w ogóle (tekst listy, z przyciskiem głównym listy, gdy rola może tworzyć)

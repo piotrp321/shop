@@ -17,7 +17,7 @@ import { EMPTY_MESSAGE, MAX_SEARCH_LENGTH, type OrderListItem, useOrderList } fr
 import { formatDateTime, formatMoney } from "@/prices/format";
 
 const list = useOrderList();
-const { search, query, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range } = list;
+const { search, query, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total } = list;
 
 // One layout at a time: a table from 640 px, cards below it (the rows and their test ids are never in the DOM twice).
 const tableLayout = useMediaQuery("(min-width: 640px)");
@@ -287,6 +287,7 @@ async function clearFilters() {
           :has-next="hasNext"
           :page-number="pageNumber"
           :range="range"
+          :total="total"
           @previous="list.goPrevious"
           @next="list.goNext"
         />

@@ -8,6 +8,8 @@ use App\Ordering\Application\Port\BackofficeOrderFilter;
 use App\Ordering\Application\Port\BackofficeOrderReader;
 use App\Ordering\Application\Port\ListedOrder;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
+use App\Shared\Domain\BoundedCount;
+use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
@@ -33,7 +35,7 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
     private const string AFTER_PLACEMENT = '(o.placed_at, o.id) < (CAST(:after_at AS timestamptz), CAST(:after_id AS uuid))';
     private const string AFTER_REFUND_DUE_DATE = '(o.refund_due_at, o.id) > (CAST(:after_at AS timestamptz), CAST(:after_id AS uuid))';
 
-    public function __construct(private Connection $connection)
+    public function __construct(private Connection $connection, private BoundedCounter $counter)
     {
     }
 
@@ -46,9 +48,39 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
             throw new \InvalidArgumentException('The cursor is of the other sort.');
         }
 
-        $conditions = [];
-        $parameters = ['limit' => $limit];
+        [$conditions, $parameters] = self::conditions($filter);
+        $parameters['limit'] = $limit;
         $types = ['limit' => ParameterType::INTEGER];
+        if (null !== $after) {
+            $conditions[] = $filter->pendingRefunds ? self::AFTER_REFUND_DUE_DATE : self::AFTER_PLACEMENT;
+            $parameters['after_at'] = $after->at->format('Y-m-d H:i:s.uP');
+            $parameters['after_id'] = $after->id;
+        }
+
+        $sql = 'SELECT '.self::COLUMNS.' FROM ordering_order o'
+            .([] === $conditions ? '' : ' WHERE '.implode(' AND ', $conditions))
+            .($filter->pendingRefunds ? ' ORDER BY o.refund_due_at ASC, o.id ASC' : ' ORDER BY o.placed_at DESC, o.id DESC')
+            .' LIMIT :limit';
+
+        return array_map($this->fromRow(...), $this->connection->fetchAllAssociative($sql, $parameters, $types));
+    }
+
+    public function count(BackofficeOrderFilter $filter): BoundedCount
+    {
+        [$conditions, $parameters] = self::conditions($filter);
+
+        return $this->counter->count('ordering_order o', $conditions, $parameters);
+    }
+
+    /**
+     * The conditions of the filter, the same for a page and for the count, without the cursor.
+     *
+     * @return array{list<string>, array<string, mixed>} the conditions and the values they bind
+     */
+    private static function conditions(BackofficeOrderFilter $filter): array
+    {
+        $conditions = [];
+        $parameters = [];
         if (null !== $filter->status) {
             $conditions[] = self::STATUS;
             $parameters['status'] = $filter->status->value;
@@ -64,18 +96,8 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
             $conditions[] = self::EMAIL;
             $parameters['email'] = $filter->email;
         }
-        if (null !== $after) {
-            $conditions[] = $filter->pendingRefunds ? self::AFTER_REFUND_DUE_DATE : self::AFTER_PLACEMENT;
-            $parameters['after_at'] = $after->at->format('Y-m-d H:i:s.uP');
-            $parameters['after_id'] = $after->id;
-        }
 
-        $sql = 'SELECT '.self::COLUMNS.' FROM ordering_order o'
-            .([] === $conditions ? '' : ' WHERE '.implode(' AND ', $conditions))
-            .($filter->pendingRefunds ? ' ORDER BY o.refund_due_at ASC, o.id ASC' : ' ORDER BY o.placed_at DESC, o.id DESC')
-            .' LIMIT :limit';
-
-        return array_map($this->fromRow(...), $this->connection->fetchAllAssociative($sql, $parameters, $types));
+        return [$conditions, $parameters];
     }
 
     /**

@@ -6,10 +6,11 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import { mocks } from "./dashboardMocks";
+import type { WithOptionalTotal } from "./listPage";
 
 export type Dashboard = components["schemas"]["DashboardResponse"];
 export type System = NonNullable<Dashboard["system"]>;
-export type OrderList = components["schemas"]["BackofficeOrderList"];
+export type OrderList = WithOptionalTotal<components["schemas"]["BackofficeOrderList"]>;
 export type OrderItem = components["schemas"]["BackofficeOrderListItem"];
 
 export const DASHBOARD = "/api/v1/admin/dashboard";
