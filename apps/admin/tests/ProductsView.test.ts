@@ -21,7 +21,7 @@ vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
 const PRODUCTS = "/api/v1/admin/products";
 const CATEGORIES = "/api/v1/admin/categories";
 
-const tree: CategoryNode[] = [{ id: "c-sport", name: "Sport", slug: "sport", path: "sport", children: [] }];
+const tree: CategoryNode[] = [{ id: "c-sport", name: "Sport", slug: "sport", path: "sport", version: 1, productCount: null, children: [] }];
 
 function item(name: string, overrides: Partial<ProductListItem> = {}): ProductListItem {
   return {

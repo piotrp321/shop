@@ -53,11 +53,59 @@ export interface paths {
         };
         /**
          * Category tree
-         * @description The whole category tree, for every staff member. Siblings at every level are sorted by name (Polish collation).
+         * @description The whole category tree, for every staff member. Siblings at every level are in the order of the store: the order set by the staff, then by name (Polish collation).
          */
         get: operations["getBackofficeCategoryTree"];
         put?: never;
+        /**
+         * Create a category
+         * @description Creates a category at the end of the children of its parent (of the roots for `parentId` null). Administrators and marketing only. The tree has at most 4 levels. An address that redirected to another category becomes the address of the new one.
+         */
+        post: operations["createCategory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the name and the slug of a category
+         * @description Based on the `version` seen. Administrators and marketing only. A new slug changes the address of the category and of its descendants in the store; their old addresses redirect to the current ones (`GET /api/v1/categories/redirect`).
+         */
+        put: operations["reviseCategory"];
         post?: never;
+        /**
+         * Delete an empty category
+         * @description Deletes a category without subcategories and without products (main or additional, drafts too), based on the `version` seen. Administrators and marketing only. Its old addresses stop redirecting.
+         */
+        delete: operations["deleteCategory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/categories/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a category or change its place among its siblings
+         * @description Moves the category with its subcategories under a parent (null: among the roots) at a position among the children of that parent, based on the `version` seen; the current parent changes only the order. Administrators and marketing only. The children of the parent are numbered in their current order first, so the others keep their relative order. A new parent changes the addresses of the subtree; the old ones redirect to the current ones.
+         */
+        post: operations["moveCategory"];
         delete?: never;
         options?: never;
         head?: never;
@@ -516,6 +564,41 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact. */
+        BoundedCountResponse: {
+            /** @example 1234 */
+            value: number;
+            /**
+             * @description True when there are more matching rows than `value`.
+             * @example false
+             */
+            capped: boolean;
+        };
+        /** @description A category with its descendants, siblings in the order of the store. */
+        CategoryNode: {
+            /** Format: uuid */
+            id: string;
+            /** @example Namioty */
+            name: string;
+            /**
+             * @description Unique among the siblings.
+             * @example namioty
+             */
+            slug: string;
+            /**
+             * @description The slugs from the root to the node joined with `/`.
+             * @example turystyka/biwak/namioty
+             */
+            path: string;
+            /**
+             * @description Send it with a change of the category.
+             * @example 1
+             */
+            version: number;
+            /** @description The products directly in the category (main or additional, drafts too), up to 1000; null unless asked for with `withCounts=true`. */
+            productCount: components["schemas"]["BoundedCountResponse"] | null;
+            children: components["schemas"]["CategoryNode"][];
+        };
         /** @description Problem details (RFC 9457), `application/problem+json`. */
         Problem: {
             /** @example about:blank */
@@ -834,6 +917,21 @@ export interface components {
             /** @description Only with `promotion-overlap`. The variants of the request that are in another promotion of an overlapping period, ordered by id. */
             conflictingVariantIds?: string[];
         };
+        /** @description A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the category changed since the `version` sent, a sibling has the slug, the tree would have more than 4 levels, the new parent is the category or one of its descendants, or the category has subcategories or products (counted in `subcategoryCount` and `productCount`). Nothing is changed. */
+        CategoryConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/category-modified" | "tag:piotrp321.github.io,2026:shop/problems/category-slug-taken" | "tag:piotrp321.github.io,2026:shop/problems/category-too-deep" | "tag:piotrp321.github.io,2026:shop/problems/category-cycle" | "tag:piotrp321.github.io,2026:shop/problems/category-not-empty";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
+            /** @description Only with `category-not-empty`. The direct subcategories. */
+            subcategoryCount?: components["schemas"]["BoundedCountResponse"];
+            /** @description Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000. */
+            productCount?: components["schemas"]["BoundedCountResponse"];
+        };
         /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations. */
         ProductConflictProblem: {
             /** @enum {string} */
@@ -844,6 +942,60 @@ export interface components {
             status: 409;
             /** @description Polish text for the staff member. */
             detail: string;
+        };
+        /** @description A new category, placed at the end of its siblings. */
+        CreateCategoryRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @example Namioty
+             */
+            name: string;
+            /**
+             * @description The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.
+             * @example namioty
+             */
+            slug: string;
+            /**
+             * Format: uuid
+             * @description The parent category; null for a root.
+             */
+            parentId: string | null;
+        };
+        /** @description Where the category (with its subcategories) goes: under a parent (null: among the roots), at a position among its children. */
+        MoveCategoryRequest: {
+            /**
+             * Format: uuid
+             * @description The new parent, the current one for a new order; null for a root.
+             */
+            parentId: string | null;
+            /**
+             * @description The place among the children of the parent, without the category itself: 0 is the first; a position past the last child is the end.
+             * @example 0
+             */
+            position: number;
+            /**
+             * @description The `version` of the category the move is based on.
+             * @example 1
+             */
+            version: number;
+        };
+        /** @description The name and the slug of a category. A new slug changes the address of the category and its descendants; the old addresses redirect to the new ones. */
+        ReviseCategoryRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @example Namioty
+             */
+            name: string;
+            /**
+             * @description The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.
+             * @example namioty
+             */
+            slug: string;
+            /**
+             * @description The `version` of the category the change is based on.
+             * @example 1
+             */
+            version: number;
         };
         /** @description The data of a new product. The product is a draft. */
         CreateProductRequest: {
@@ -1280,16 +1432,6 @@ export interface components {
             /** @example 36 */
             categoryCount: number;
         };
-        /** @description How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact. */
-        BoundedCountResponse: {
-            /** @example 1234 */
-            value: number;
-            /**
-             * @description True when there are more matching rows than `value`.
-             * @example false
-             */
-            capped: boolean;
-        };
         /** @description The work waiting for the staff member. Every queue is counted up to 1000 (`capped`: more than that) by the module that owns it, and is null when the staff member has no access to the queue: the roles are listed with each field. */
         DashboardQueuesResponse: {
             /** @description Paid orders waiting for shipping (`/orders?status=paid`). Administrators, support, warehouse. */
@@ -1438,12 +1580,29 @@ export interface components {
              */
             roles: ("admin" | "support" | "warehouse" | "marketing")[];
         };
-        CategoryNode: {
+        /** @description A category as the change saved it. */
+        BackofficeCategoryResponse: {
+            /** Format: uuid */
             id: string;
+            /** @example Namioty */
             name: string;
+            /** @example namioty */
             slug: string;
+            /**
+             * @description The address in the store: the slugs from the root joined with `/`.
+             * @example turystyka/biwak/namioty
+             */
             path: string;
-            children: components["schemas"]["CategoryNode"][];
+            /**
+             * Format: uuid
+             * @description Null for a root.
+             */
+            parentId: string | null;
+            /**
+             * @description Send it with the next change of the category.
+             * @example 2
+             */
+            version: number;
         };
         /** @description A category of a product. */
         ProductCategoryResponse: {
@@ -2296,14 +2455,17 @@ export interface operations {
     };
     getBackofficeCategoryTree: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description With `true` every node has the number of its direct products (`productCount`, up to 1000); without it `productCount` is null and nothing is counted. */
+                withCounts?: "true";
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array. */
+            /** @description Root categories with their descendants. Every node has its `slug` (unique among its siblings), `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`) and `version`. An empty catalogue gives an empty array. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2312,8 +2474,380 @@ export interface operations {
                     "application/json": components["schemas"]["CategoryNode"][];
                 };
             };
+            /** @description `withCounts` has another value than `true` (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description The created category. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCategoryResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A sibling has the slug (`category-slug-taken`) or the parent is on the fourth level (`category-too-deep`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reviseCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Category id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description The category as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCategoryResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such category, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The category changed since the given version (`category-modified`) or a sibling has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteCategory: {
+        parameters: {
+            query: {
+                /** @description The `version` of the category the deletion is based on. */
+                version: number;
+            };
+            header?: never;
+            path: {
+                /** @description Category id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is missing or not a positive integer (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such category, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The category changed since the given version (`category-modified`) or has subcategories or products (`category-not-empty`, with `subcategoryCount` and `productCount`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    moveCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Category id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description The category as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCategoryResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such category, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The category changed since the given version (`category-modified`), the parent is the category or one of its descendants (`category-cycle`), the subtree would end below the fourth level (`category-too-deep`) or a child of the parent has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

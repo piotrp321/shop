@@ -38,7 +38,7 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
     {
         parent::setUp();
         OriginalImages::exist(self::getContainer(), self::IMAGE);
-        $this->commandBus()->dispatch(new CreateCategory(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
+        $this->commandBus()->dispatch(CreateCategory::bySeed(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
         $this->commandBus()->dispatch(new CreateProduct(
             self::PRODUCT_ID,
             'Buty biegowe',

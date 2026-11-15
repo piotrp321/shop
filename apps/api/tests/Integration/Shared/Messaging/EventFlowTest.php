@@ -193,7 +193,7 @@ final class EventFlowTest extends MessagingKernelTestCase
     {
         $bus = self::getContainer()->get('command.bus');
         self::assertInstanceOf(MessageBusInterface::class, $bus);
-        $bus->dispatch(new CreateCategory(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
+        $bus->dispatch(CreateCategory::bySeed(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
         $bus->dispatch(new CreateProduct(
             self::PRODUCT_ID,
             'Buty biegowe',

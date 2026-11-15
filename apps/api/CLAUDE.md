@@ -151,6 +151,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   promocją „od teraz” jest przed jej startem (`startOfNow`: `now` ucięte do sekundy + 1 s), a cena wariantu w promocji
   aktywnej w chwili zapisu to 409 `PriceLockedByPromotion` przed sprawdzeniem wersji. `ReconcileTax` i przeliczenie
   po zmianie klasy (`reprice`, brutto bez zmian) blokady nie biorą.
+- Wyjątek: drzewo kategorii (Catalog, spec ADMIN-FEATURES, 4 „Reguły”, decyzje P9, P10). Kategorie zapisują się przez
+  rekordy Doctrine według ogólnej zasady. `CreateCategory`, `ReviseCategory`, `MoveCategory` (także nowa kolejność: ten
+  sam rodzic) i `DeleteCategory` (`command.bus`) zaczynają od blokady doradczej transakcji (`PostgresCategoryTreeLock`:
+  `pg_advisory_xact_lock` na stałym kluczu Catalog, poza transakcją adapter odmawia), dopiero potem czytają całe drzewo
+  (`CategoryRepository::all` z odświeżeniem rekordów z identity map), więc dwa przeniesienia nie tworzą cyklu, a głębokość,
+  slugi i pustość są sprawdzane na zatwierdzonych danych (`CategoryMoveConcurrencyTest`, dwa procesy). Reguły ma
+  `CategoryTree` (Domain): kolejność rodzeństwa to `position`, potem nazwa w `pl_PL` (`Collator`), potem `id` (ta sama
+  w `CategoryTreeBuilder` sklepu i panelu, więc przy wszystkich pozycjach 0 kolejność jest alfabetyczna); umieszczenie
+  kategorii (nowej na końcu rodzeństwa, przeniesionej, przestawionej) najpierw numeruje rodzeństwo docelowe 0, 1, 2…
+  w bieżącej kolejności; najwyżej 4 poziomy (`category-too-deep`, przeniesienie liczy głębokość całego poddrzewa), bez
+  cyklu (`category-cycle`), usuwa tylko kategorię bez podkategorii i produktów (`category-not-empty`). `version`
+  (zwykła kolumna, bez `#[ORM\Version]`) rośnie przy każdej zmianie samej kategorii (nazwa, slug, rodzic, miejsce),
+  nie przy przenumerowaniu rodzeństwa. Jedyny zapis DBAL: przeniesienie zmienia zmaterializowaną `path` kategorii
+  i poddrzewa jednym `UPDATE catalog_category … WHERE path LIKE :old || '%'` (indeks `text_pattern_ops`; ścieżka ma tylko
+  cyfry szesnastkowe, myślniki i ukośniki, więc `LIKE` nie wymaga ucieczki), a rekordy poddrzewa obecne w identity map
+  są potem odświeżane, żeby `flush` nie zapisał starych ścieżek. `DeleteCategory` blokuje wiersz kategorii
+  (`SELECT … FOR UPDATE`) przed liczeniem produktów: zapis produktu (`ProductInput`, `CategoryRepository::lockForAssignment`) bierze
+  w swojej transakcji `FOR KEY SHARE` na wierszu każdej swojej kategorii (głównej i dodatkowych) przed zapisem, więc
+  produkt zapisany w tym czasie jest policzony (409 `category-not-empty`) albo czeka na usunięcie i kończy się 422
+  „Kategoria nie istnieje.” (`UnknownCategory`), nigdy 500 z klucza obcego (`CategoryAssignmentLockTest`). Seed (`CreateCategory::bySeed`, `DemoCatalogLoader`) zostawia pozycję
+  0 bez przenumerowania i bez zdarzenia. Przekierowania (`catalog_category_redirect`, `old_path` PK, `category_id` FK
+  `ON DELETE CASCADE`, rekord `CategoryRedirectRecord`) zapisuje ta sama transakcja: zmiana sluga i przeniesienie na
+  innego rodzica zapisują stare ścieżki slugów kategorii i potomków, a każda ścieżka, którą istniejąca kategoria ma po
+  zmianie (także utworzeniu), przestaje być przekierowaniem. `catalog:seed-demo` czyści je razem z kategoriami.
 - Wyjątek: użycie kodu rabatowego (Pricing, decyzje A3, D7 w `docs/features/discount-codes/spec.md`).
   `RedeemDiscountCode(codeId, orderId, subtotalGross)` (`command.bus`, wyłącznie zagnieżdżona w `PlaceOrder`) zapisuje
   użycie przez rekord Doctrine (`DiscountCodeUsageRecord`), a nie przez DBAL jak Inventory: handler złożenia nigdy nie
@@ -537,9 +561,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   przy przeliczeniu po zmianie klasy podatkowej produktu. `PromotionPricesChanged` `{productId, source, occurredAt}`
   (Pricing, źródło `promotion` albo `seed`) publikują handlery wiadomości granic promocji (niżej), nie zapis promocji.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
-  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Dziś dwa, oba Catalog:
-  `Catalog\Application\Event\ProductCreated` `{productId, occurredAt}` i `Catalog\Application\Event\ProductChanged`
-  `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product` zapisuje wewnętrzne
+  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Dziś trzy, wszystkie Catalog:
+  `Catalog\Application\Event\ProductCreated` `{productId, occurredAt}`, `Catalog\Application\Event\ProductChanged`
+  `{productId, slug, occurredAt}` (`slug` po zmianie) i `Catalog\Application\Event\CategoryTreeChanged`
+  `{categoryId, kind, occurredAt}` (`kind`: `created`, `revised`, `moved`, `reordered`, `deleted`; publikują go wprost
+  komendy drzewa kategorii przez outbox, seed nie). Agregat `Product` zapisuje wewnętrzne
   `Catalog\Domain\Product\ProductCreated` przy utworzeniu i `Catalog\Domain\Product\ProductChanged` przy każdej
   edycji, publikacji i wycofaniu, a handler komendy tłumaczy je na kontrakty (`IntegrationEvents::translate`) przed
   publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Wyjątek zgodności wersji (do
@@ -550,7 +576,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana pól
   kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
   `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, oba, rekord stanu z produktem dla każdego wariantu),
-  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu)
+  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu),
+  `InvalidateStorefrontOnCategoryTreeChange` (`Catalog_Infrastructure`, `CategoryTreeChanged`, unieważnienie tagu `catalog`)
   i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
   podatkowej).
 - Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
@@ -628,7 +655,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Sześć 409 produktu (`slug-taken`, `slug-locked`, `product-modified`, `product-not-publishable`, `variant-locked`,
-  `variant-in-use`) ma typy w tym formacie i schemat `ProductConflictProblem` w `openapi-admin.json`.
+  `variant-in-use`) ma typy w tym formacie i schemat `ProductConflictProblem` w `openapi-admin.json`. Pięć 409 kategorii
+  (`category-modified`, `category-slug-taken`, `category-too-deep`, `category-cycle`, `category-not-empty`) ma schemat
+  `CategoryConflictProblem`; `CategoryNotEmpty` to `ExtendedProblem` z `subcategoryCount` i `productCount`
+  (`{value, capped}`, liczone do 1000).
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
   `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
   treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
@@ -677,7 +707,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Infrastruktura
 
 - Varnish (`infra/varnish/default.vcl`) stoi tylko przed publicznymi odczytami `GET` katalogu: `/api/v1/products`,
-  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/product-offers` i dokładna ścieżka `/api/v1/sitemap/product-chunks`
+  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/categories/redirect`, `/api/v1/product-offers` i dokładna ścieżka `/api/v1/sitemap/product-chunks`
   (bez query stringu; porcje map `/api/v1/sitemap/products` przechodzą bez cache). Czyta przez niego wyłącznie serwer sklepu
   (`API_CATALOG_URL`); inne ścieżki, żądania z `Authorization` albo `Cookie` i metody inne niż `GET`/`HEAD` Varnish
   przepuszcza do API bez cache. TTL bierze tylko z `Cache-Control` odpowiedzi; bez nagłówka, z `private` albo
@@ -687,8 +717,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Nazwy buduje wyłącznie `CacheTags` (`Shared\Infrastructure\Http\Cache`: stała `CATALOG`, `product(id)`, inny napis
   niż UUID to wyjątek, `productSlug(slug)`, slug spoza formatu `Slug` produktu to wyjątek), a nagłówek
   `xkey: <tag> <tag>` (spacje) ustawia w kontrolerze `CacheTagger::tag()`. Varnish usuwa `xkey` przed wysłaniem
-  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony) i drzewo kategorii
-  (`catalog`) z `Cache-Control: public, max-age=60`; oferty (`catalog` i `product-<id>` każdego żądanego id) z `public,
+  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony), drzewo kategorii
+  (`catalog`) i przekierowanie starego adresu kategorii (`catalog`, 200 i 404) z `Cache-Control: public, max-age=60`; oferty (`catalog` i `product-<id>` każdego żądanego id) z `public,
   max-age=60, s-maxage=3600`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
   max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (szkic, nieznany slug,
   slug niezgodny z formatem `Slug`) z `public, max-age=60` i tagami `catalog` `product-slug-<slug>` (slug niezgodny
@@ -730,7 +760,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `InvalidateStorefrontOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`): `invalidateProduct`
   produktu ze zdarzenia, bez pytania Catalog; źródło `seed` to wiadomość obsłużona bez unieważnienia. `InvalidateStorefrontOnProductChange`
   (`Catalog_Infrastructure`, integracyjne `ProductChanged`): `invalidateTags([product-<id>, product-slug-<slug>])` bez
-  odczytu bazy (id albo slug w złym formacie to `failed`). Błąd `StorefrontCache` idzie dalej (ponowienia transportu
+  odczytu bazy (id albo slug w złym formacie to `failed`). `InvalidateStorefrontOnCategoryTreeChange` (`Catalog_Infrastructure`,
+  integracyjne `CategoryTreeChanged`): `invalidateTags([catalog])` raz na zdarzenie, bez odczytu bazy (zmiana drzewa jest
+  rzadka, więc całe menu, okruszki, listingi i przekierowania zamiast tagów kategorii). Błąd `StorefrontCache` idzie dalej (ponowienia transportu
   `events`, potem `failed`). Bez zdarzenia (np. koniec okresu stawki VAT) odpowiedź
   żyje do `s-maxage`.
 - Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
@@ -816,6 +848,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wskazują miejsce w ciele (`ImageNotFound`, `UnknownVariant`, `UnknownCategory`, `SlugRequired`), `ProductWriteFailures`
   zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
   widok edycji odczytany po zapisie, `private, no-store`.
+- Kategorie w panelu (`/api/v1/admin/categories`, Catalog UI `Category\*`, spec ADMIN-FEATURES, 4): `GET` drzewo dla każdego
+  pracownika z rolą personelu (`version` każdego węzła; z `withCounts=true` `productCount`: bezpośrednie produkty,
+  główna albo dodatkowa kategoria, także szkice, `BoundedCount` do 1000, jedno ograniczone zliczenie na kategorię
+  `DbalCategoryProductCounts`; bez parametru `null` i nic nie jest liczone; inna wartość to 400), `POST` (na końcu
+  rodzeństwa), `PUT /{id}` (nazwa, slug, `version`), `POST /{id}/move` (`parentId`, `position`, `version`) i
+  `DELETE /{id}?version=` dla `admin` i `marketing` (`CategoryVoter`, `MANAGE_CATEGORIES`, przed treścią). Treść czyta
+  `#[RequiredKeysBody]` (wszystkie klucze wymagane, `parentId` `null` dla korzenia); nazwa i slug przez value objecty
+  domeny z polskimi komunikatami (`CategoryBodyRules`), nieznany rodzic to 422 przy `parentId`, nieznana kategoria i id
+  spoza UUID to 404. Odpowiedzi zapisu to `BackofficeCategoryResponse` (`GetBackofficeCategory` po zapisie); każda
+  odpowiedź pod tą ścieżką `private, no-store` (`CategoryResponseCacheSubscriber`). Schemat węzła drzewa panelu ma nazwę
+  `CategoryNode` (alias w `nelmio_api_doc.yaml`). Publiczne `GET /api/v1/categories/redirect?path=` (`PUBLIC_ACCESS`,
+  `CategoryRedirectController`): `path` to 1–4 slugi w formacie `CategorySlug` rozdzielone `/` (`CategorySlugPath`, inaczej
+  400 przy `path`), odpowiedź `{path}` bieżącej ścieżki kategorii, do której prowadzi stary adres, albo 404 „Nie ma
+  przekierowania dla tego adresu.” (także bieżący adres kategorii i adres usuniętej); 200 i 404 `public, max-age=60`
+  z tagiem `catalog`, 400 przez `PublicReadErrorCacheSubscriber`.
 - Promocje w panelu (`/api/v1/admin/promotions`, Pricing UI, `docs/features/pricing/spec.md`): `GET` lista (`status`,
   `after`, `perPage`) i szczegóły dla każdego pracownika z rolą personelu, `POST`, `PUT /{id}` i `DELETE /{id}?version=` dla `admin`
   i `marketing` (`PromotionVoter`, `MANAGE_PROMOTIONS`, przed treścią). Treść waliduje DTO (typy ścisłe, czasy RFC 3339

@@ -106,11 +106,25 @@
                     "Catalog"
                 ],
                 "summary": "Category tree",
-                "description": "The whole category tree, for every staff member. Siblings at every level are sorted by name (Polish collation).",
+                "description": "The whole category tree, for every staff member. Siblings at every level are in the order of the store: the order set by the staff, then by name (Polish collation).",
                 "operationId": "getBackofficeCategoryTree",
+                "parameters": [
+                    {
+                        "name": "withCounts",
+                        "in": "query",
+                        "description": "With `true` every node has the number of its direct products (`productCount`, up to 1000); without it `productCount` is null and nothing is counted.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "true"
+                            ]
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array.",
+                        "description": "Root categories with their descendants. Every node has its `slug` (unique among its siblings), `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`) and `version`. An empty catalogue gives an empty array.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -122,8 +136,481 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "`withCounts` has another value than `true` (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
                     "401": {
                         "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Create a category",
+                "description": "Creates a category at the end of the children of its parent (of the roots for `parentId` null). Administrators and marketing only. The tree has at most 4 levels. An address that redirected to another category becomes the address of the new one.",
+                "operationId": "createCategory",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCategoryRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The created category.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCategoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A sibling has the slug (`category-slug-taken`) or the parent is on the fourth level (`category-too-deep`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/categories/{id}": {
+            "put": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Change the name and the slug of a category",
+                "description": "Based on the `version` seen. Administrators and marketing only. A new slug changes the address of the category and of its descendants in the store; their old addresses redirect to the current ones (`GET /api/v1/categories/redirect`).",
+                "operationId": "reviseCategory",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Category id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReviseCategoryRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The category as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCategoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such category, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The category changed since the given version (`category-modified`) or a sibling has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Delete an empty category",
+                "description": "Deletes a category without subcategories and without products (main or additional, drafts too), based on the `version` seen. Administrators and marketing only. Its old addresses stop redirecting.",
+                "operationId": "deleteCategory",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Category id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "version",
+                        "in": "query",
+                        "description": "The `version` of the category the deletion is based on.",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted."
+                    },
+                    "400": {
+                        "description": "The version is missing or not a positive integer (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such category, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The category changed since the given version (`category-modified`) or has subcategories or products (`category-not-empty`, with `subcategoryCount` and `productCount`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/categories/{id}/move": {
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Move a category or change its place among its siblings",
+                "description": "Moves the category with its subcategories under a parent (null: among the roots) at a position among the children of that parent, based on the `version` seen; the current parent changes only the order. Administrators and marketing only. The children of the parent are numbered in their current order first, so the others keep their relative order. A new parent changes the addresses of the subtree; the old ones redirect to the current ones.",
+                "operationId": "moveCategory",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Category id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MoveCategoryRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The category as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCategoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such category, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The category changed since the given version (`category-modified`), the parent is the category or one of its descendants (`category-cycle`), the subtree would end below the fourth level (`category-too-deep`) or a child of the parent has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -3325,6 +3812,79 @@
     },
     "components": {
         "schemas": {
+            "BoundedCountResponse": {
+                "description": "How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact.",
+                "required": [
+                    "value",
+                    "capped"
+                ],
+                "properties": {
+                    "value": {
+                        "type": "integer",
+                        "example": 1234,
+                        "minimum": 0
+                    },
+                    "capped": {
+                        "description": "True when there are more matching rows than `value`.",
+                        "type": "boolean",
+                        "example": false
+                    }
+                },
+                "type": "object"
+            },
+            "CategoryNode": {
+                "description": "A category with its descendants, siblings in the order of the store.",
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "path",
+                    "version",
+                    "productCount",
+                    "children"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Namioty"
+                    },
+                    "slug": {
+                        "description": "Unique among the siblings.",
+                        "type": "string",
+                        "example": "namioty"
+                    },
+                    "path": {
+                        "description": "The slugs from the root to the node joined with `/`.",
+                        "type": "string",
+                        "example": "turystyka/biwak/namioty"
+                    },
+                    "version": {
+                        "description": "Send it with a change of the category.",
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "productCount": {
+                        "description": "The products directly in the category (main or additional, drafts too), up to 1000; null unless asked for with `withCounts=true`.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "children": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryNode"
+                        }
+                    }
+                },
+                "type": "object"
+            },
             "Problem": {
                 "description": "Problem details (RFC 9457), `application/problem+json`.",
                 "required": [
@@ -4060,6 +4620,58 @@
                 },
                 "type": "object"
             },
+            "CategoryConflictProblem": {
+                "description": "A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the category changed since the `version` sent, a sibling has the slug, the tree would have more than 4 levels, the new parent is the category or one of its descendants, or the category has subcategories or products (counted in `subcategoryCount` and `productCount`). Nothing is changed.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/category-modified",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-slug-taken",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-too-deep",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-cycle",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-not-empty"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the staff member.",
+                        "type": "string"
+                    },
+                    "subcategoryCount": {
+                        "description": "Only with `category-not-empty`. The direct subcategories.",
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "productCount": {
+                        "description": "Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000.",
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
             "ProductConflictProblem": {
                 "description": "A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations.",
                 "required": [
@@ -4093,6 +4705,97 @@
                     "detail": {
                         "description": "Polish text for the staff member.",
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "CreateCategoryRequest": {
+                "description": "A new category, placed at the end of its siblings.",
+                "required": [
+                    "name",
+                    "slug",
+                    "parentId"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed of whitespace, without control characters.",
+                        "type": "string",
+                        "example": "Namioty",
+                        "maxLength": 100
+                    },
+                    "slug": {
+                        "description": "The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.",
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                        "example": "namioty",
+                        "maxLength": 60
+                    },
+                    "parentId": {
+                        "description": "The parent category; null for a root.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "MoveCategoryRequest": {
+                "description": "Where the category (with its subcategories) goes: under a parent (null: among the roots), at a position among its children.",
+                "required": [
+                    "parentId",
+                    "position",
+                    "version"
+                ],
+                "properties": {
+                    "parentId": {
+                        "description": "The new parent, the current one for a new order; null for a root.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "position": {
+                        "description": "The place among the children of the parent, without the category itself: 0 is the first; a position past the last child is the end.",
+                        "type": "integer",
+                        "example": 0,
+                        "minimum": 0
+                    },
+                    "version": {
+                        "description": "The `version` of the category the move is based on.",
+                        "type": "integer",
+                        "example": 1,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    }
+                },
+                "type": "object"
+            },
+            "ReviseCategoryRequest": {
+                "description": "The name and the slug of a category. A new slug changes the address of the category and its descendants; the old addresses redirect to the new ones.",
+                "required": [
+                    "name",
+                    "slug",
+                    "version"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed of whitespace, without control characters.",
+                        "type": "string",
+                        "example": "Namioty",
+                        "maxLength": 100
+                    },
+                    "slug": {
+                        "description": "The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.",
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                        "example": "namioty",
+                        "maxLength": 60
+                    },
+                    "version": {
+                        "description": "The `version` of the category the change is based on.",
+                        "type": "integer",
+                        "example": 1,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
                     }
                 },
                 "type": "object"
@@ -5025,26 +5728,6 @@
                 },
                 "type": "object"
             },
-            "BoundedCountResponse": {
-                "description": "How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact.",
-                "required": [
-                    "value",
-                    "capped"
-                ],
-                "properties": {
-                    "value": {
-                        "type": "integer",
-                        "example": 1234,
-                        "minimum": 0
-                    },
-                    "capped": {
-                        "description": "True when there are more matching rows than `value`.",
-                        "type": "boolean",
-                        "example": false
-                    }
-                },
-                "type": "object"
-            },
             "DashboardQueuesResponse": {
                 "description": "The work waiting for the staff member. Every queue is counted up to 1000 (`capped`: more than that) by the module that owns it, and is null when the staff member has no access to the queue: the roles are listed with each field.",
                 "required": [
@@ -5397,32 +6080,44 @@
                 },
                 "type": "object"
             },
-            "CategoryNode": {
+            "BackofficeCategoryResponse": {
+                "description": "A category as the change saved it.",
                 "required": [
                     "id",
                     "name",
                     "slug",
                     "path",
-                    "children"
+                    "parentId",
+                    "version"
                 ],
                 "properties": {
                     "id": {
-                        "type": "string"
+                        "type": "string",
+                        "format": "uuid"
                     },
                     "name": {
-                        "type": "string"
+                        "type": "string",
+                        "example": "Namioty"
                     },
                     "slug": {
-                        "type": "string"
+                        "type": "string",
+                        "example": "namioty"
                     },
                     "path": {
-                        "type": "string"
+                        "description": "The address in the store: the slugs from the root joined with `/`.",
+                        "type": "string",
+                        "example": "turystyka/biwak/namioty"
                     },
-                    "children": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/CategoryNode"
-                        }
+                    "parentId": {
+                        "description": "Null for a root.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "version": {
+                        "description": "Send it with the next change of the category.",
+                        "type": "integer",
+                        "example": 2
                     }
                 },
                 "type": "object"

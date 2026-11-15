@@ -31,7 +31,7 @@ final class StockRecordsFlowTest extends MessagingKernelTestCase
         parent::setUp();
         // The edit is invalidated in the store too; nothing to send in this test.
         self::getContainer()->set(HttpStorefrontCache::class, new SpyStorefrontCache());
-        $this->commandBus()->dispatch(new CreateCategory(self::CATEGORY_ID, 'Kajaki', 'kajaki', null));
+        $this->commandBus()->dispatch(CreateCategory::bySeed(self::CATEGORY_ID, 'Kajaki', 'kajaki', null));
     }
 
     public function testACreatedAndThenEditedProductHasARecordWithTheProductForEveryVariant(): void
