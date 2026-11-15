@@ -10,8 +10,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * What the search term of the order list means: an exact number, a fragment of 3 to 100 characters (also with an @,
- * also a whole email, which contains itself) or, only when too long for a fragment, an exact email.
+ * What the search term of the order list means: an exact number, an exact email when it is a complete address (a
+ * domain with a dot and a last label of 2 characters or more), else a fragment of 3 to 100 characters (also with an @).
  */
 final class OrderSearchTermTest extends TestCase
 {
@@ -45,7 +45,12 @@ final class OrderSearchTermTest extends TestCase
         yield 'the digits of a number with its prefix and a letter' => ['R-1000a', 'R-1000a'];
         yield 'a number with letters' => ['R-10a001', 'R-10a001'];
         yield 'a fragment of an email with an @' => ['jan@gm', 'jan@gm'];
-        yield 'a whole email' => ['Jan.Kowalski@Example.COM', 'Jan.Kowalski@Example.COM'];
+        yield 'an email with a domain without a dot' => ['jan@gmail', 'jan@gmail'];
+        yield 'an email with a last label of one character' => ['jan@gmail.c', 'jan@gmail.c'];
+        yield 'an email without the local part' => ['@gmail.com', '@gmail.com'];
+        yield 'an email with two @' => ['jan@@gmail.com', 'jan@@gmail.com'];
+        yield 'an email with a space inside' => ['jan kowalski@gmail.com', 'jan kowalski@gmail.com'];
+        yield 'an email with an empty label' => ['jan@gmail..com', 'jan@gmail..com'];
         yield 'a name with a space inside' => ['Jan Kowalski', 'Jan Kowalski'];
         yield 'spaces around dropped' => ['  jan  ', 'jan'];
         yield 'no-break spaces around dropped' => ["\u{00A0}jan\u{00A0}", 'jan'];
@@ -53,6 +58,27 @@ final class OrderSearchTermTest extends TestCase
         yield 'a percent and an underscore stay as typed' => ['a%_b', 'a%_b'];
         yield 'a backslash stays as typed' => ['a\\b', 'a\\b'];
         yield 'a hundred characters' => [str_repeat('ż', 100), str_repeat('ż', 100)];
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function emails(): iterable
+    {
+        yield 'an email' => ['jan@example.com', 'jan@example.com'];
+        yield 'in another letter case, as typed' => ['Jan.Kowalski@Example.COM', 'Jan.Kowalski@Example.COM'];
+        yield 'with spaces around' => [' jan@example.com  ', 'jan@example.com'];
+        yield 'with a subdomain' => ['jan+sklep@mail.example.co.uk', 'jan+sklep@mail.example.co.uk'];
+        yield 'a number-like local part' => ['R-1@example.com', 'R-1@example.com'];
+        yield 'the shortest' => ['a@b.cc', 'a@b.cc'];
+    }
+
+    #[DataProvider('emails')]
+    public function testACompleteEmailAddressIsAnExactEmailNotAFragment(string $q, string $email): void
+    {
+        $term = OrderSearchTerm::parse($q);
+
+        self::assertSame([null, $email, null], [$term->number, $term->email, $term->fragment]);
     }
 
     #[DataProvider('fragments')]
@@ -73,7 +99,7 @@ final class OrderSearchTermTest extends TestCase
     }
 
     #[DataProvider('longEmails')]
-    public function testAnEmailTooLongForAFragmentIsAnExactEmail(string $email): void
+    public function testAnEmailTooLongForAFragmentIsAnExactEmailToo(string $email): void
     {
         $term = OrderSearchTerm::parse(' '.$email.' ');
 
@@ -95,6 +121,7 @@ final class OrderSearchTermTest extends TestCase
         yield 'a prefix of a number' => ['R-'];
         yield 'over a hundred characters, no @' => [str_repeat('a', 101)];
         yield 'over a hundred characters, no email' => [str_repeat('a ', 60).'z'];
+        yield 'over a hundred characters, an @ but no complete address' => [str_repeat('a', 100).'@'.str_repeat('b', 10)];
         yield 'over 254 characters, even an email' => [str_repeat('a', 250).'@b.com'];
         yield 'a NUL' => ["jan\0kowalski"];
         yield 'the separator of the index' => ["jan\u{001F}kowalski"];

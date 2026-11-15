@@ -8,9 +8,10 @@ use App\Ordering\Domain\ControlCharacters;
 
 /**
  * What the search term of the order list asks for, once trimmed (also of the Unicode spaces): an exact order number
- * (`R-` and digits, any letter case), else a fragment of 3 to 100 characters searched in the number, the email and the
- * name (a whole email is one too: it contains itself, so it finds what an exact search finds, and more), else, for an
- * email too long for a fragment, an exact email. Anything else, or any text with a control character, is refused.
+ * (`R-` and digits, any letter case), else an exact email when the text is a complete address (a domain with a dot and
+ * a last label of 2 characters or more, so „jan@gm” is not one), else a fragment of 3 to 100 characters searched in the
+ * number, the email and the name. Anything else, or any text with a control character, is refused. A complete address
+ * stays exact, so the link „Inne zamówienia klienta” never lists the orders of „joanna@x.pl” for „anna@x.pl”.
  */
 final readonly class OrderSearchTerm
 {
@@ -18,6 +19,8 @@ final readonly class OrderSearchTerm
     public const int MAX_FRAGMENT_LENGTH = 100;
     /** An order number as staff type it: R- and digits, in any letter case (P9). */
     private const string NUMBER = '/^[Rr]-[0-9]+$/D';
+    /** A complete email address as far as the search can tell: a local part, an @, labels of a domain with a dot, the last of 2 characters or more. */
+    private const string EMAIL = '/^[^@\s]+@(?:[^@\s.]+\.)+[^@\s.]{2,}$/Du';
 
     private function __construct(
         /** `R-` and digits, as stored. */
@@ -46,11 +49,11 @@ final readonly class OrderSearchTerm
             return new self('R-'.substr($term, 2), null, null);
         }
         $length = mb_strlen($term);
+        if ($length <= ListBackofficeOrders::MAX_QUERY_LENGTH && 1 === preg_match(self::EMAIL, $term)) {
+            return new self(null, $term, null);
+        }
         if ($length >= self::MIN_FRAGMENT_LENGTH && $length <= self::MAX_FRAGMENT_LENGTH) {
             return new self(null, null, $term);
-        }
-        if ($length > self::MAX_FRAGMENT_LENGTH && $length <= ListBackofficeOrders::MAX_QUERY_LENGTH && str_contains($term, '@')) {
-            return new self(null, $term, null);
         }
 
         throw InvalidBackofficeOrderList::searchTerm();

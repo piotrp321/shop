@@ -1592,7 +1592,7 @@
                     "Ordering"
                 ],
                 "summary": "Order list",
-                "description": "A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), which takes no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; a whole email is a fragment too), or an email longer than that, exactly; anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.",
+                "description": "A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), which takes no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.",
                 "operationId": "listOrders",
                 "parameters": [
                     {
@@ -1619,7 +1619,7 @@
                     {
                         "name": "q",
                         "in": "query",
-                        "description": "An order number (exact, any letter case), or a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` literal), or an email of up to 254 characters (exact); without control characters, trimmed. Not with `sort` by the amount.",
+                        "description": "An order number or a complete email address (exact, any letter case; the email up to 254 characters), otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` literal); without control characters, trimmed. Not with `sort` by the amount.",
                         "required": false,
                         "schema": {
                             "type": "string",

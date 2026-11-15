@@ -36,7 +36,7 @@ final class OrderSearchEndpointTest extends WebTestCase
         yield 'the digits of a number with a dash' => ['-1004', 'R-100456'];
         yield 'a part of an email' => ['nowak@exam', 'R-100123'];
         yield 'a fragment of an email with an @' => ['jan@gm', 'R-100456'];
-        yield 'a whole email in another letter case, exactly as before' => ['ANNA.NOWAK@EXAMPLE.COM', 'R-100123'];
+        yield 'a complete email in another letter case, exactly as before' => ['ANNA.NOWAK@EXAMPLE.COM', 'R-100123'];
         yield 'a surname' => ['wiśniew', 'R-100789'];
         yield 'a surname in capitals, with Polish letters' => ['ŻÓŁĆ', 'R-100456'];
         yield 'spaces around the fragment' => ['  Zofia  ', 'R-100789'];
@@ -108,6 +108,17 @@ final class OrderSearchEndpointTest extends WebTestCase
         self::assertCount(2, $byEmail);
         self::assertContains($wanted, $byEmail);
         self::assertNotContains($this->idOf('R-100003'), $byEmail, 'kowalski@example.com holds no part of that email');
+    }
+
+    public function testACompleteEmailStaysExactSoTheOrdersOfAnotherCustomerAreNotListed(): void
+    {
+        $wanted = $this->order('R-100001', '-3 days', 'anna@example.com', 'Anna Nowak');
+        $this->order('R-100002', '-2 days', 'joanna@example.com', 'Joanna Nowak');
+        $this->order('R-100003', '-1 day', 'anna@example.com.pl', 'Anna Nowak');
+
+        self::assertSame([$wanted], $this->ids($this->list('q='.rawurlencode('Anna@Example.com'))));
+        self::assertSame(['R-100003', 'R-100002', 'R-100001'], $this->numbers($this->list('q='.rawurlencode('anna@example'))), 'without a top-level domain it is a fragment');
+        self::assertSame(['R-100003', 'R-100002', 'R-100001'], $this->numbers($this->list('q='.rawurlencode('nna@ex'))));
     }
 
     public function testAnEmailTooLongForAFragmentIsStillFoundExactly(): void
@@ -190,7 +201,8 @@ final class OrderSearchEndpointTest extends WebTestCase
         }
         $checked = 0;
         foreach (array_unique($fragments) as $fragment) {
-            if (mb_strlen($fragment) < 3 || mb_strlen($fragment) > 100 || trim($fragment) !== $fragment || 1 === preg_match('/^[Rr]-[0-9]+$/D', $fragment)) {
+            // Not a fragment: an exact number, or a complete email, which is searched exactly.
+            if (mb_strlen($fragment) < 3 || mb_strlen($fragment) > 100 || trim($fragment) !== $fragment || 1 === preg_match('/^[Rr]-[0-9]+$/D', $fragment) || 1 === preg_match('/^[^@\s]+@(?:[^@\s.]+\.)+[^@\s.]{2,}$/Du', $fragment)) {
                 continue;
             }
             $expected = [];

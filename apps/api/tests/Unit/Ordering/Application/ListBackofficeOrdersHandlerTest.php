@@ -69,14 +69,16 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         yield 'a surname' => ['Kowalski', null, null, 'Kowalski'];
         yield 'digits of a number' => ['100001', null, null, '100001'];
         yield 'a fragment of an email' => ['jan@gm', null, null, 'jan@gm'];
-        yield 'a whole email, which is a fragment too' => ['jan@example.com', null, null, 'jan@example.com'];
-        yield 'an email with spaces around' => [' jan@example.com  ', null, null, 'jan@example.com'];
-        yield 'a number-like text with an @' => ['R-1@example.com', null, null, 'R-1@example.com'];
+        yield 'a complete email, exact' => ['jan@example.com', null, 'jan@example.com', null];
+        yield 'an email in another letter case, as typed' => ['Jan.Kowalski@Example.COM', null, 'Jan.Kowalski@Example.COM', null];
+        yield 'an email with spaces around' => [' jan@example.com  ', null, 'jan@example.com', null];
+        yield 'a number-like text with an @' => ['R-1@example.com', null, 'R-1@example.com', null];
+        yield 'an email without a top-level domain, a fragment' => ['jan@example', null, null, 'jan@example'];
         yield 'an email too long for a fragment' => [$email, null, $email, null];
     }
 
     #[DataProvider('searches')]
-    public function testASearchIsAnExactNumberAFragmentOrALongEmail(string $q, ?string $number, ?string $email, ?string $fragment): void
+    public function testASearchIsAnExactNumberAnExactEmailOrAFragment(string $q, ?string $number, ?string $email, ?string $fragment): void
     {
         $this->list(new ListBackofficeOrders(null, false, $q, null, 10));
 
