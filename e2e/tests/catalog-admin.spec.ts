@@ -228,7 +228,7 @@ async function panelCategoryByPath(request: APIRequestContext, headers: Record<s
 }
 
 test("an old category address follows the renamed category: 308 to the new address with the query, an unknown address is 404", async ({ page, request }) => {
-  test.setTimeout(6 * EVENT_WAIT_MS + 60_000);
+  test.setTimeout(8 * EVENT_WAIT_MS + 60_000);
   const bearer = waitForBearerToken(page);
   await loginStaff(page, staff.marketing);
   const headers = { Authorization: `Bearer ${await bearer}` };
@@ -257,6 +257,13 @@ test("an old category address follows the renamed category: 308 to the new addre
   try {
     expect(await locationOf(`/c/${parent.path}/${oldSlug}-nigdy`), "an address that was never a category is a 404, not a redirect").toMatchObject({ status: 404 });
 
+    // Wait until the store has the new category in its tree. A 308 after the change of the slug proves a fresh tree only
+    // if the tree before it had the old slug: on a tree from before the creation the old address is outside it, the
+    // redirect (read after the change) leads to the new one, and the new one is outside that stale tree as well.
+    await expect
+      .poll(async () => (await locationOf(`/c/${oldPath}`)).status, { message: `the new category /c/${oldPath} was not in the tree of the store within 20 s`, timeout: EVENT_WAIT_MS, intervals: [500] })
+      .toBe(200);
+
     const revised = await request.put(`${urls.api}/api/v1/admin/categories/${category.id}`, {
       headers,
       data: { name: `E2E kategoria ${suffix}`, slug: newSlug, version: category.version },
@@ -265,6 +272,7 @@ test("an old category address follows the renamed category: 308 to the new addre
     category = (await revised.json()) as { id: string; version: number };
 
     // The change reaches the store through the outbox, the purge of Varnish and the revalidation of the tag `catalog`.
+    // Until then the tree still has the old slug (200); the 308 means that the store reads the tree after the change.
     await expect
       .poll(() => locationOf(`/c/${oldPath}${query}`), { message: `the old address did not redirect to /c/${newPath} with the query within 20 s`, timeout: EVENT_WAIT_MS, intervals: [500] })
       .toEqual({ status: 308, location: `/c/${newPath}${query}` });
@@ -282,7 +290,10 @@ test("an old category address follows the renamed category: 308 to the new addre
     await expect
       .poll(() => locationOf(`/c/${oldPath}${query}`), { message: "the old address of the deleted category was not a 404 within 20 s", timeout: EVENT_WAIT_MS, intervals: [500] })
       .toMatchObject({ status: 404 });
-    expect((await locationOf(`/c/${newPath}`)).status).toBe(404);
+    // The new address is a 404 once the store has the tree without the category (until then the tree still lists it).
+    await expect
+      .poll(async () => (await locationOf(`/c/${newPath}`)).status, { message: `the address /c/${newPath} of the deleted category was not a 404 within 20 s`, timeout: EVENT_WAIT_MS, intervals: [500] })
+      .toBe(404);
   } finally {
     if (!deleted) {
       await request.delete(`${urls.api}/api/v1/admin/categories/${category.id}?version=${category.version}`, { headers });
