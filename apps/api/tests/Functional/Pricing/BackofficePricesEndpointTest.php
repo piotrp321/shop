@@ -147,7 +147,7 @@ final class BackofficePricesEndpointTest extends WebTestCase
 
     public function testEmptyCatalogGivesAnEmptyList(): void
     {
-        self::assertSame(['items' => [], 'next' => null], $this->get(''));
+        self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $this->get(''));
         self::assertResponseStatusCodeSame(200);
     }
 
@@ -182,6 +182,37 @@ final class BackofficePricesEndpointTest extends WebTestCase
         self::assertSame(['Bidon 1', 'Bidon 2'], array_column($this->items($first), 'name'));
         self::assertSame(['Bidon 3'], array_column($this->items($second), 'name'));
         self::assertNull($second['next']);
+    }
+
+    /**
+     * The total counts what the page counts: products, not their variants.
+     */
+    public function testTheFirstPageHoldsTheTotalOfTheMatchingProductsAndLaterPagesNone(): void
+    {
+        $other = $this->saveCategory();
+        foreach (['Bidon 1', 'Bidon 2', 'Bidon 3'] as $n => $name) {
+            $this->saveProduct($name, TaxClassCode::Standard, axes: ['Rozmiar'], variants: array_map(
+                static fn (int $size): array => ['id' => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', 100 * $n + $size), 'values' => [(string) $size]],
+                [40, 41],
+            ));
+        }
+        $this->saveProduct('Bidon szkic', TaxClassCode::Standard, status: ProductStatus::Draft);
+        $this->saveProduct('Bidon obcy', TaxClassCode::Standard, $other);
+        $this->saveProduct('Plecak', TaxClassCode::Standard);
+
+        $all = $this->get('perPage=2');
+        $later = $this->get('perPage=2&after='.$this->next($all));
+        $byName = $this->get('q=bidon&perPage=2');
+        $byBoth = $this->get('q=bidon&category='.$this->category->id()->toString());
+        $none = $this->get('q=nic-takiego');
+
+        self::assertSame(['value' => 6, 'capped' => false], $all['total']);
+        self::assertNull($later['total']);
+        self::assertSame(['value' => 5, 'capped' => false], $byName['total']);
+        self::assertSame(['value' => 4, 'capped' => false], $byBoth['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $none['total']);
+        $this->assertKeysMatchSchema($all, 'PriceListResponse');
+        $this->assertKeysMatchSchema($all['total'], 'BoundedCount');
     }
 
     public function testPatternCharactersOfTheSearchAreLiteral(): void

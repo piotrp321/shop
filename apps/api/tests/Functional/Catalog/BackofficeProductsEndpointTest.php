@@ -121,7 +121,7 @@ final class BackofficeProductsEndpointTest extends WebTestCase
 
     public function testAnEmptyCatalogGivesAnEmptyList(): void
     {
-        self::assertSame(['items' => [], 'next' => null], $this->api('GET', '/api/v1/admin/products'));
+        self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $this->api('GET', '/api/v1/admin/products'));
     }
 
     public function testTheListFiltersByStatusWithKeysetPaging(): void
@@ -143,6 +143,34 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         self::assertSame(['Opublikowany A', 'Opublikowany B'], array_column(self::list($published['items']), 'name'));
         self::assertSame(['published', 'published'], array_column(self::list($published['items']), 'status'));
         self::assertCount(5, self::list($this->api('GET', '/api/v1/admin/products')['items']));
+    }
+
+    public function testTheFirstPageHoldsTheTotalOfTheMatchingProductsAndLaterPagesNone(): void
+    {
+        $other = CategoryFactory::createOne();
+        new \App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository($this->entityManager)->save($other);
+        foreach (['Bidon A', 'Bidon B', 'Bidon C'] as $name) {
+            $this->createProduct(['name' => $name, 'slug' => '']);
+        }
+        $this->publish($this->createProduct(['name' => 'Bidon D', 'slug' => '']));
+        $this->createProduct(['name' => 'Bidon obcy', 'slug' => '', 'mainCategoryId' => $other->id()->toString()]);
+        $this->createProduct(['name' => 'Plecak', 'slug' => '']);
+
+        $all = $this->api('GET', '/api/v1/admin/products?perPage=2');
+        $later = $this->api('GET', '/api/v1/admin/products?perPage=2&after='.self::string($all['next']));
+        $drafts = $this->api('GET', '/api/v1/admin/products?status=draft&perPage=2');
+        $byName = $this->api('GET', '/api/v1/admin/products?q=bidon&perPage=2');
+        $byCategory = $this->api('GET', '/api/v1/admin/products?category='.$other->id()->toString());
+        $none = $this->api('GET', '/api/v1/admin/products?q=nic-takiego');
+
+        self::assertSame(['value' => 6, 'capped' => false], $all['total']);
+        self::assertNull($later['total']);
+        self::assertSame(['value' => 5, 'capped' => false], $drafts['total']);
+        self::assertSame(['value' => 5, 'capped' => false], $byName['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $byCategory['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $none['total']);
+        $this->assertKeysMatchSchema($all, 'ProductListResponse');
+        $this->assertKeysMatchSchema($all['total'], 'BoundedCount');
     }
 
     public function testTheListSearchesByNameAndFiltersByCategory(): void

@@ -21,8 +21,8 @@ final readonly class SearchBackofficeProductsHandler
     }
 
     /**
-     * Reads one more product than the page holds: its presence is the only thing that tells there is a next page, so
-     * the whole result is never counted.
+     * Reads one more product than the page holds: its presence is what tells there is a next page. The first page
+     * (no cursor) also carries the bounded total of the filters; the table is never counted whole.
      *
      * @throws InvalidBackofficeProductSearch
      * @throws InvalidProductCursor
@@ -61,12 +61,14 @@ final readonly class SearchBackofficeProductsHandler
         $after = null === $query->after ? null : ProductCursor::decode($query->after);
 
         $products = $this->source->page($query->term, $path, $status, $after, $query->perPage + 1);
+        // The total of the filters is counted once, with the first page; the panel keeps it for the next pages.
+        $total = null === $after ? $this->source->count($query->term, $path, $status) : null;
         if (\count($products) <= $query->perPage) {
-            return new BackofficeProductPage($products, null);
+            return new BackofficeProductPage($products, null, $total);
         }
 
         $items = \array_slice($products, 0, $query->perPage);
 
-        return new BackofficeProductPage($items, ProductCursor::after($items[$query->perPage - 1])->encode());
+        return new BackofficeProductPage($items, ProductCursor::after($items[$query->perPage - 1])->encode(), $total);
     }
 }

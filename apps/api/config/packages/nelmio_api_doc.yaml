@@ -943,6 +943,23 @@ nelmio_api_doc:
                     schemas:
                         # The same document as in the default area.
                         Problem: *problem
+                        # The `total` of the first page of every list of the panel (App\Shared\Domain\BoundedCount): the
+                        # rows the filters match, counted up to a limit of 10 000 so that the cost does not grow with the table.
+                        BoundedCount:
+                            type: object
+                            description: >-
+                                How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the
+                                limit of the count, 10 000), otherwise `value` is exact.
+                            required: [value, capped]
+                            properties:
+                                value:
+                                    type: integer
+                                    minimum: 0
+                                    example: 1234
+                                capped:
+                                    type: boolean
+                                    description: True when there are more matching rows than `value`.
+                                    example: false
                         # Response schemas of the orders of the panel (Ordering\Application\Query\BackofficeOrderList and
                         # View\BackofficeOrderView, formatted by Ordering\UI\Http\BackofficeOrderJson), checked against real
                         # responses by the functional tests of the order endpoints of the panel.

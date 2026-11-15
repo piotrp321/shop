@@ -27,11 +27,6 @@ final class BoundedCounterTest extends KernelTestCase
         $this->counter = new BoundedCounter($connection);
     }
 
-    public function testTheDefaultLimitIsTenThousand(): void
-    {
-        self::assertSame(10_000, BoundedCounter::DEFAULT_LIMIT);
-    }
-
     public function testCountsExactlyUnderTheLimit(): void
     {
         $count = $this->counter->count(self::FROM, ['s.n % 2 = 0'], [], [], 40);
@@ -80,6 +75,8 @@ final class BoundedCounterTest extends KernelTestCase
         self::assertIsString($plan);
         $decoded = json_decode($plan, true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($decoded);
+        self::assertIsArray($decoded[0]);
+        self::assertIsArray($decoded[0]['Plan']);
         $rowsRead = self::rowsOfScans($decoded[0]['Plan']);
 
         self::assertNotSame([], $rowsRead, 'The plan has a scan of the source.');
@@ -98,7 +95,7 @@ final class BoundedCounterTest extends KernelTestCase
     /**
      * Rows each scan node of the plan handed up, one entry per node without children.
      *
-     * @param array<string, mixed> $node
+     * @param array<mixed> $node
      *
      * @return list<int>
      */

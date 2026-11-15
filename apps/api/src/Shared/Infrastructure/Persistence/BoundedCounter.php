@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Shared\Infrastructure\Persistence;
 
 use App\Shared\Domain\BoundedCount;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Types\Type;
 
 /**
  * Counts the rows of a list at most up to a limit: `SELECT count(*) FROM (SELECT 1 FROM … WHERE … LIMIT limit + 1) t`.
@@ -25,10 +28,10 @@ final readonly class BoundedCounter
     }
 
     /**
-     * @param string                                              $from       the FROM clause without the keyword, e.g. `catalog_product p`
-     * @param list<string>                                        $conditions each one a condition of the page, ANDed
-     * @param array<string, mixed>                                $parameters the values the conditions bind
-     * @param array<string, \Doctrine\DBAL\ParameterType|string|int> $types
+     * @param string                                                                  $from       the FROM clause without the keyword, e.g. `catalog_product p`
+     * @param list<string>                                                            $conditions each one a condition of the page, ANDed
+     * @param array<string, mixed>                                                    $parameters the values the conditions bind
+     * @param array<int<0, max>|string, ArrayParameterType|ParameterType|Type|string> $types      as of Connection::fetchOne()
      */
     public function count(string $from, array $conditions, array $parameters = [], array $types = [], int $limit = self::DEFAULT_LIMIT): BoundedCount
     {

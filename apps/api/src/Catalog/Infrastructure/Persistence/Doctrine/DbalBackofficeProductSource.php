@@ -9,6 +9,8 @@ use App\Catalog\Application\Query\BackofficeProduct;
 use App\Catalog\Application\Query\ProductCursor;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Product\ProductStatus;
+use App\Shared\Domain\BoundedCount;
+use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
@@ -32,7 +34,7 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         )
         SQL;
 
-    public function __construct(private Connection $connection)
+    public function __construct(private Connection $connection, private BoundedCounter $counter)
     {
     }
 
@@ -42,23 +44,9 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
             throw new \InvalidArgumentException('The page limit must be at least 1.');
         }
 
-        $conditions = [];
-        $parameters = ['limit' => $limit];
+        [$conditions, $parameters] = self::filter($term, $category, $status);
+        $parameters['limit'] = $limit;
         $types = ['limit' => ParameterType::INTEGER];
-        if (null !== $term) {
-            $conditions[] = self::TERM;
-            $parameters['pattern'] = '%'.self::escapeLike($term).'%';
-        }
-        if (null !== $category) {
-            $conditions[] = self::CATEGORY;
-            $parameters['prefix'] = self::escapeLike($category->toString()).'%';
-        }
-        if (null !== $status) {
-            // The status is a value of the domain enum, never input, and goes into the statement as a literal: only
-            // then can the planner prove the predicate of the partial index (name, id) WHERE status = 'draft' that
-            // keeps the list of the few drafts cheap (a bound parameter could not use it in a generic plan).
-            $conditions[] = "p.status = '".$status->value."'";
-        }
         if (null !== $after) {
             $conditions[] = self::CURSOR;
             $parameters['after_name'] = $after->name;
@@ -74,6 +62,13 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
 
             return new BackofficeProduct($row['id'], $row['name'], $row['tax_class']);
         }, $this->connection->executeQuery($sql, $parameters, $types)->fetchAllAssociative());
+    }
+
+    public function count(?string $term, ?CategoryPath $category, ?ProductStatus $status): BoundedCount
+    {
+        [$conditions, $parameters] = self::filter($term, $category, $status);
+
+        return $this->counter->count('catalog_product p', $conditions, $parameters);
     }
 
     public function summaries(array $ids): array
@@ -113,6 +108,33 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
         }
 
         return $summaries;
+    }
+
+    /**
+     * The conditions of the filters, the same for a page and for the count, without the cursor.
+     *
+     * @return array{list<string>, array<string, mixed>} the conditions and the values they bind
+     */
+    private static function filter(?string $term, ?CategoryPath $category, ?ProductStatus $status): array
+    {
+        $conditions = [];
+        $parameters = [];
+        if (null !== $term) {
+            $conditions[] = self::TERM;
+            $parameters['pattern'] = '%'.self::escapeLike($term).'%';
+        }
+        if (null !== $category) {
+            $conditions[] = self::CATEGORY;
+            $parameters['prefix'] = self::escapeLike($category->toString()).'%';
+        }
+        if (null !== $status) {
+            // The status is a value of the domain enum, never input, and goes into the statement as a literal: only
+            // then can the planner prove the predicate of the partial index (name, id) WHERE status = 'draft' that
+            // keeps the list of the few drafts cheap (a bound parameter could not use it in a generic plan).
+            $conditions[] = "p.status = '".$status->value."'";
+        }
+
+        return [$conditions, $parameters];
     }
 
     /**

@@ -40,7 +40,7 @@ final class ListBackofficeProductsController
     #[OA\Get(
         operationId: 'listBackofficeProducts',
         summary: 'Product list',
-        description: 'A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. '
+        description: 'A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. '
             .'The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.',
         tags: ['Catalog'],
         parameters: [

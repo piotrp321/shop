@@ -113,7 +113,7 @@ final class ListStockEndpointTest extends WebTestCase
 
     public function testEmptyCatalogGivesAnEmptyList(): void
     {
-        self::assertSame(['items' => [], 'next' => null], $this->get(''));
+        self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $this->get(''));
         self::assertResponseStatusCodeSame(200);
     }
 
@@ -148,6 +148,37 @@ final class ListStockEndpointTest extends WebTestCase
         self::assertSame(['Bidon 1', 'Bidon 2'], array_column($this->items($first), 'name'));
         self::assertSame(['Bidon 3'], array_column($this->items($second), 'name'));
         self::assertNull($second['next']);
+    }
+
+    /**
+     * The total counts what the page counts: products, not their variants.
+     */
+    public function testTheFirstPageHoldsTheTotalOfTheMatchingProductsAndLaterPagesNone(): void
+    {
+        $other = $this->saveCategory();
+        foreach (['Bidon 1', 'Bidon 2'] as $name) {
+            $this->saveProduct($name, variants: [
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-'.\sprintf('%012d', crc32($name.'a')), 'values' => ['40']],
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-'.\sprintf('%012d', crc32($name.'b')), 'values' => ['41']],
+            ], axes: ['Rozmiar']);
+        }
+        $this->saveProduct('Bidon szkic', status: ProductStatus::Draft);
+        $this->saveProduct('Bidon obcy', $other);
+        $this->saveProduct('Plecak');
+
+        $all = $this->get('perPage=2');
+        $later = $this->get('perPage=2&after='.$this->next($all));
+        $byName = $this->get('q=bidon&perPage=2');
+        $byBoth = $this->get('q=bidon&category='.$this->category->id()->toString());
+        $none = $this->get('q=nic-takiego');
+
+        self::assertSame(['value' => 5, 'capped' => false], $all['total']);
+        self::assertNull($later['total']);
+        self::assertSame(['value' => 4, 'capped' => false], $byName['total']);
+        self::assertSame(['value' => 3, 'capped' => false], $byBoth['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $none['total']);
+        $this->assertKeysMatchSchema($all, 'StockListResponse');
+        $this->assertKeysMatchSchema($all['total'], 'BoundedCount');
     }
 
     public function testResponseIsPrivateAndNotStored(): void
