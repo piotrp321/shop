@@ -34,7 +34,7 @@ const routes = [
       { path: "prices", name: "prices", component: page("Ceny") },
       { path: "inventory", name: "inventory", component: page("Stany") },
       { path: "discount-codes", name: "discount-codes", component: page("Kody") },
-      // A screen that is not migrated yet: its H1 has no tabindex.
+      // A screen whose H1 has no tabindex of its own.
       { path: "orders", name: "orders", component: { template: "<div><h1>Zamówienia</h1></div>" } },
       // The H1 shows only after the data has loaded.
       {
@@ -208,7 +208,7 @@ describe("AppLayout: the focus after a change of page", () => {
     expect(active()).toBe(field);
   });
 
-  it("focuses the H1 of a screen that is not migrated yet, which has no tabindex of its own", async () => {
+  it("focuses the H1 of a screen that has no tabindex of its own", async () => {
     await mountShell("/");
     document.querySelector<HTMLElement>("#to-products")!.focus();
 
