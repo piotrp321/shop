@@ -1,7 +1,6 @@
 # CLAUDE.md – apps/admin
 
-Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), ikony Lucide;
-PrimeVue 4 (preset Aura) i PrimeIcons tylko na ekranach jeszcze niezmigrowanych (`LEGACY_FILES`, do ADMIN-SCREENS).
+Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), ikony Lucide.
 Panel administracyjny dla pracowników. Zasady wspólne dla całego repo są w głównym `CLAUDE.md`,
 opis domeny w `docs/vision.md`.
 
@@ -41,7 +40,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   anulowana i pierwsze wczytanie niczego nie ruszają) wolny fokus (na `body`, np. po zniknięciu klikniętego linku, albo na `<main>`)
   trafia na H1 nowej strony; do czasu pojawienia się H1 (widok ładuje dane) na `<main>`. Fokus, który ma istniejący element
   (przeniesiony przez widok, np. formularz po zapisie przed `router.replace` na trasę utworzonego rekordu tą samą instancją,
-  pole, w którym jest pracownik, topbar, menu), zostaje. H1 ekranu niezmigrowanego dostaje `tabindex="-1"`. Pozycja wybrana w szufladzie,
+  pole, w którym jest pracownik, topbar, menu), zostaje. H1 bez własnego `tabindex` (pulpit) dostaje od powłoki `tabindex="-1"`. Pozycja wybrana w szufladzie,
   która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
   Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
@@ -49,9 +48,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   „Listy zamówień”, „Pulpit” tylko na `/`). `AppMenu` i `AppMenuItem` renderują ją: grupa to przycisk z `aria-expanded`
   i `aria-controls`, grupa bieżącej pozycji otwiera się przy wejściu i przy każdej zmianie trasy (zamyka ją tylko
   przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Region grupy ma `id`
-z `useId()` instancji menu (sidebar i szuflada są razem w DOM). Klik w pozycję o celu równym bieżącej lokalizacji
-nawiguje ponownie (`force`, `replace`), bo stare listy nie zapisują swoich filtrów do adresu i router odrzuciłby push
-jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarce i nie zamyka szuflady. Pozycja
+z `useId()` instancji menu (sidebar i szuflada są razem w DOM). Wybór pozycji to zwykła nawigacja routera: listy
+zapisują filtry do adresu, więc pozycja o celu równym bieżącej lokalizacji nic nie zmienia (duplikat) i tylko zamyka
+szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarce i nie zamyka szuflady. Pozycja
   „Stan systemu” (`/system`, sekcja System) jest tylko dla `admin`. `AppTopbar`: przycisk „Menu” (`lg:hidden`), wyszukiwarka produktów
   (`role="search"`; fraza po przycięciu 2–100 punktów kodowych idzie do `/products?q=`, znaki sterujące i separatory
   wierszy liczą się jak spacje, pusta nic nie robi, za krótka i za długa pokazują „Wpisz od 2 do 100 znaków.” w stałym
@@ -82,7 +81,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `serviceLabel`, nieznana nazwa zostaje jak z API) i stanem „Działa” / „Nie działa” z opóźnieniem, „Zdarzenia czekające
   na wysłanie”, tabela kolejek w regionie `role="region"` z nazwą i `tabindex="0"` (przewijana w poziomie) i porównanie
   indeksu wyszukiwania z katalogiem; `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
-  danych o stanie systemu”. Pliki bez PrimeVue i bez bloku `<style>`.
+  danych o stanie systemu”. Pliki bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
   `useNameSearch({ initial, apply })`: jedyne miejsce reguł wyszukiwania po nazwie listy produktów, listy cen, listy stanów i wyboru wariantów promocji (od 2 do 100 znaków w punktach kodowych po
@@ -247,7 +246,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `thumbnail.ts` buduje `src` i `srcset` z podpisanych adresów API. `ProductImages.vue`: po usunięciu zdjęcia fokus
   przechodzi na przycisk usuwania zdjęcia, które zajęło jego miejsce, a bez następnego na „Dodaj zdjęcia”; po ukryciu
   wyniku wysyłania na następny wynik albo „Dodaj zdjęcia” (nigdy `body`, #250 F8); błąd wysyłania pliku ma
-  `role="alert"` (#250 F14). Obie sekcje to `FormSection` na tokenach, bez PrimeVue. `ProductVariants.vue` to edytor wariantów
+  `role="alert"` (#250 F14). Obie sekcje to `FormSection` na tokenach. `ProductVariants.vue` to edytor wariantów
   (karta „Warianty”): osie (0–2: dodanie, zmiana nazwy, przestawienie strzałkami razem z wartościami w wierszach,
   usunięcie) i tabela wierszy (pole wartości na oś, dodanie i usunięcie wiersza, 1–100 wierszy). Operacje na
   kształcie robi `useProductForm` (`addAxis`, `setAxis`, `removeAxis`, `moveAxis`, `addVariant`, `removeVariant`,
@@ -269,7 +268,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   komunikaty, bo ich ścieżki liczą pozycje. Bez roli do zmiany produktów edytor nie ma kontrolek edycji, a pola są
   wyłączone.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
-  jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach; oba bez PrimeVue). `useOrderList` (standard
+  jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList` (standard
   listy): na `useListUrlState` (`q`, `status`, `refund=pending`, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
   odczyt przy wejściu i przy zmianie z zewnątrz, np. pozycja menu „Zwroty do wykonania” na otwartej liście albo link „Inne
   zamówienia klienta” z `?q=<e-mail>`, zapis przez `replace` bez nowego wpisu historii, nieznana wartość jest pomijana,
@@ -377,8 +376,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `promotion-overlap` oznacza warianty z `conflictingVariantIds` („Koliduje z inną promocją”) i zostawia formularz,
   pozostałe (wersja `about:blank` z własnym komunikatem, `promotion-not-editable` i inne z `detail`) pokazują komunikat
   i przeładowują promocję z API. 404 promocji: H1 „Nie udało się wczytać promocji”, „Ta promocja nie istnieje.”
-  w `Alert` z tokenem `status-danger` (kontrast, #446) i link do listy. `PromotionVariantPicker.vue` (shadcn-vue, bez
-  PrimeVue): wybór wariantów przez `useCursorPager(fetchPricePage, …)` z zapytaniem w pamięci (25 produktów na
+  w `Alert` z tokenem `status-danger` (kontrast, #446) i link do listy. `PromotionVariantPicker.vue` (shadcn-vue): wybór wariantów przez `useCursorPager(fetchPricePage, …)` z zapytaniem w pamięci (25 produktów na
   stronę, bez rozmiaru i stanu w adresie), `priceRows` i `useNameSearch` (wyszukiwanie od 2 znaków, podpowiedź w regionie
   `status`, stronicowanie „Poprzednia”/„Następna” z fokusem `usePagerFocus` jak w `ListPager`, bez wyłączania przycisków na czas żądania;
   „Spróbuj ponownie” zostawia fokus na sobie, a gdy komunikat znika, daje go tabeli albo polu wyszukiwania), „Dodaj” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane;
@@ -388,7 +386,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   usunięciu wybranego wariantu na przycisk usuwania następnego wiersza, a bez następnego na pole wyszukiwania otwartego
   wyboru albo na przycisk „Dodaj warianty”, po zamknięciu wyboru na ten przycisk. Lista wybranych (tabela w przewijanym
   regionie) ma „Usuń”; wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
-  się po opuszczeniu formularza, jest ignorowana. Pliki bez PrimeVue i bez bloku `<style>`.
+  się po opuszczeniu formularza, jest ignorowana. Pliki bez bloku `<style>`.
 - `src/discount-codes/` – kody rabatowe (menu „Kody rabatowe”, trasy `/discount-codes`, `/discount-codes/new`,
   `/discount-codes/:id`: jedna ścieżka `discount-codes`, więc pozycja menu zostaje aktywna na formularzu).
   `useDiscountCodeList` (widok `DiscountCodesView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Kody
@@ -431,7 +429,6 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   się nie wczytał: H1 „Nie udało się wczytać kodu rabatowego”, `Alert` w tokenach `status-danger` (kontrast, #446)
   i link do listy. Tryb tylko do odczytu nie ma paska zapisu. Odpowiedź żądania,
   które skończyło się po opuszczeniu formularza, jest ignorowana. Lista zamówień per kod jest poza panelem.
-- `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 - `src/components/ui/` – komponenty shadcn-vue na Reka UI (Button, Input, Label, Textarea, Select, Combobox, Switch,
   Checkbox, RadioGroup, Dialog, AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb):
   nasz kod, tylko na tokenach, z polskimi nazwami dostępnymi („Zamknij”). Nowy komponent shadcn-vue dodaje się CLI
@@ -443,7 +440,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
   zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna; slot `status` stoi tuż za H1, np. `Badge` statusu zamówienia) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
-  `aria-current` każdy link do bieżącej trasy); używają go ekrany po migracji. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
+  `aria-current` każdy link do bieżącej trasy); używają go wszystkie ekrany poza pulpitem. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
   `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
   w prop `label` (z `hideLabel` tylko dla czytników), opcje w kolejności drzewa z pełną ścieżką jako nazwą dostępną
   („Turystyka › Biwak › Namioty”) i wcięciem według poziomu, filtrowanie po nazwie i ścieżce bez względu na wielkość
@@ -519,7 +516,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   Wszystkie z `always` (także 404): `X-Content-Type-Options: nosniff`, `Referrer-Policy:
   strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Permissions-Policy: camera=(), microphone=(),
   geolocation=()` i `Content-Security-Policy: script-src 'self'; frame-ancestors 'none'; object-src 'none';
-  base-uri 'self'`. `style-src` nie jest ograniczony (PrimeVue i komponenty Reka UI ustawiają style inline). `index.html` nie może mieć
+  base-uri 'self'`. `style-src` nie jest ograniczony (komponenty Reka UI ustawiają style inline przy pozycjonowaniu okien i list). `index.html` nie może mieć
   skryptów inline ani zewnętrznych: skrypt spoza własnego origin (poza `/config.js` i bundlem) zablokuje CSP.
   Nowa lokalizacja w `nginx.conf` musi dołączać ten plik. Obraz deweloperski (Vite) nagłówków nie ma; nagłówki
   i załadowanie panelu bez naruszeń CSP sprawdza test dymny chartu (`make -C infra/k8s smoke`, obraz produkcyjny).
@@ -594,10 +591,9 @@ Spec: `docs/features/sentry/spec.md`.
 
 ## Wygląd
 
-- Nowe i zmigrowane ekrany: najpierw komponent shadcn-vue z `src/components/ui/`, potem własny w `src/components/`,
-  na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Ekrany z listy
-  `LEGACY_FILES` zostają na komponentach PrimeVue, PrimeIcons i motywie Aura do ADMIN-SCREENS; PrimeVue działa obok
-  Tailwinda (style PrimeVue są poza warstwami CSS, więc wygrywają z preflightem).
+- Ekrany i komponenty: najpierw komponent shadcn-vue z `src/components/ui/`, potem własny w `src/components/`,
+  na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Wszystko w `src/`
+  podlega regułom niżej, bez listy wyjątków.
 - Formularz według standardu (wzorem jest `ProductFormView`, tak samo `DiscountCodeFormView` i `PromotionFormView`): `PageHeader`, dwie
   kolumny od 1280 px, karty `FormSection`, pola `FormField` (etykieta nad polem, podpowiedź i błąd połączone przez
   `aria-describedby`, `aria-invalid` przy błędzie), `SaveBar` i `useUnsavedChangesGuard` z `UnsavedChangesDialog` zamiast
@@ -613,7 +609,7 @@ Spec: `docs/features/sentry/spec.md`.
 - Tokeny wyglądu są wyłącznie w `src/styles/tokens.css` (`--color-*: initial`: domyślnej palety Tailwinda nie ma).
   Nowy kolor to nowy token w tym pliku i para w `tests/tokens.test.ts` (kontrast WCAG 2.x: tekst ≥ 4,5:1, obramowania
   pól, fokus i ikony KPI ≥ 3:1).
-- Reguła koloru (`eslint.config.js`, pliki `src/**/*.{ts,vue}`): kolor „na sztywno” poza `tokens.css` jest błędem.
+- Reguły wyglądu (`eslint.config.js`, każdy plik `src/**/*.{ts,vue}`, w tym `src/main.ts`): kolor „na sztywno” poza `tokens.css` jest błędem.
   `no-restricted-syntax` łapie wartości arbitralne z kolorem (`bg-[#fff]`, `text-[rgb(…)]`, `bg-[oklch(…)]`,
   `color-mix`, kolory nazwane, także we właściwościach arbitralnych `[color:red]` i jako człon wartości złożonej:
   `shadow-[0_0_0_2px_red]`, `bg-[linear-gradient(red,blue)]`; nazwa tokenu jak `var(--kpi-blue)` nie jest kolorem)
@@ -623,11 +619,8 @@ Spec: `docs/features/sentry/spec.md`.
   bez spreadu; szablonowy napis, konkatenacja, zmienna, wywołanie i warunek są błędem, a kolory w nim są dozwolone tylko
   jako `var(--token)` (właściwość koloru z wartością wyliczaną też jest błędem), `vue/no-restricted-static-attribute` statyczny `style`, `vue/no-restricted-block` bloki
   `<style>`, a `better-tailwindcss/no-unknown-classes` (punkt wejścia `tokens.css`) klasy spoza tokenów, np.
-  `bg-red-500`. `no-restricted-imports` blokuje import PrimeVue i PrimeIcons. Kolor złożony w `<script>` poza
+  `bg-red-500`. `no-restricted-imports` blokuje import pakietów dawnej biblioteki panelu (lista w `docs/adr/admin-ui-library.md`). Kolor złożony w `<script>` poza
   łańcuchem klas (np. wartość zbudowana z kawałków) nie jest analizowany.
-- `LEGACY_FILES` w `eslint.config.js`: jawne ścieżki plików jeszcze na PrimeVue (bez wzorców i katalogów); tylko
-  reguły z punktu wyżej ich nie obejmują. Migracja ekranu usuwa jego pliki z listy, nowy plik na nią nie trafia (test
-  reguł sprawdza, że każdy wpis istnieje i importuje PrimeVue). Lista znika z PrimeVue w ADMIN-SCREENS.
 - Krój Nunito z plików panelu, stos zapasowy `system-ui, sans-serif`. Cyfry Nunito są tabelaryczne bez cechy `tnum`
   (podzbiory Google Fonts jej nie mają, ale każda cyfra 0–9 ma tę samą szerokość 600 jednostek przy wagach 400–800,
   więc „111” i „888” są równej szerokości), dlatego kolumny liczbowe używają Nunito z `tabular-nums`, bez stosu
@@ -641,7 +634,9 @@ Spec: `docs/features/sentry/spec.md`.
 - Logika w composables i store'ach (np. `useIdleLogout`, obsługa 401, guard routera) ma testy.
 - Test reguły ESLint sprawdza identyfikator reguły i liczbę błędów, nie tylko to, że coś zostało zgłoszone.
 - `tests/lint/color-rules.test.ts` sprawdza regułę koloru (identyfikator i liczba błędów dla każdej ścieżki i prób
-  obejścia, brak błędu dla klas z tokenów) i listę `LEGACY_FILES`; typy listy dla testu są w `eslint.config.d.ts`.
+  obejścia, brak błędu dla klas z tokenów), blokadę importu pakietów dawnej biblioteki (także w `src/main.ts`)
+  i to, że reguły obejmują każdy plik `src/` (kolor w `src/main.ts`, `<style>` w dowolnym `.vue`); typy konfiguracji dla testu są
+  w `eslint.config.d.ts`. Import dynamiczny `import()` blokuje dopiero brak pakietów (`vue-tsc`), nie ta reguła.
 - Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
   i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list
   rozwijanych trafia do `document.body`, więc testy montują z `attachTo: document.body` i czyszczą je po teście.
