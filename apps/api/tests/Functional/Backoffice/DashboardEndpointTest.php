@@ -127,8 +127,6 @@ final class DashboardEndpointTest extends WebTestCase
     {
         yield 'warehouse' => [['warehouse']];
         yield 'marketing' => [['marketing']];
-        yield 'no staff role' => [['offline_access']];
-        yield 'no roles' => [[]];
     }
 
     /**
@@ -143,6 +141,28 @@ final class DashboardEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertNull($this->json($client->getResponse())['system']);
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function rolesWithoutAStaffRole(): iterable
+    {
+        yield 'no staff role' => [['offline_access']];
+        yield 'no roles' => [[]];
+    }
+
+    /**
+     * @param list<string> $roles
+     */
+    #[DataProvider('rolesWithoutAStaffRole')]
+    public function testAMemberWithoutAStaffRoleIsForbidden(array $roles): void
+    {
+        $client = static::createClient();
+
+        $this->get($client, TestTokenFactory::staff($roles));
+
+        self::assertResponseStatusCodeSame(403);
     }
 
     public function testResponseIsNeverCached(): void
