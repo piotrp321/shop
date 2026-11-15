@@ -8,8 +8,9 @@ import { Select } from "@/components/ui/select";
 import { SEARCH_DEBOUNCE_MS } from "@/products/useProductList";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import ProductsView from "@/views/ProductsView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type ProductList = components["schemas"]["ProductListResponse"];
+type ProductList = WithOptionalTotal<components["schemas"]["ProductListResponse"]>;
 type ProductListItem = components["schemas"]["ProductListItemResponse"];
 type CategoryNode = components["schemas"]["CategoryNode"];
 
@@ -395,6 +396,22 @@ describe("ProductsView", () => {
   });
 
   describe("the footer", () => {
+    it("says „z N” with the total of the first page on every page and „z ponad 10 000” when the count is capped", async () => {
+      serve({ "": { ...fullPage("A", "c1"), total: { value: 1234, capped: false } }, c1: fullPage("B", null) });
+      wrapper = await mountView();
+      expect(wrapper.get("[data-testid=range]").text()).toBe("Pokazano 1–25 z 1\u00a0234");
+
+      await wrapper.get("[data-testid=next-page]").trigger("click");
+      await settle();
+      expect(wrapper.get("[data-testid=range]").text()).toBe("Pokazano 26–50 z 1\u00a0234");
+      wrapper.unmount();
+
+      serve({ "": { ...fullPage("A", null), total: { value: 10_000, capped: true } } });
+      wrapper = await mountView();
+      expect(wrapper.get("[data-testid=range]").text()).toBe("Pokazano 1–25 z ponad 10\u00a0000");
+    });
+
+
     it("pages with the cursor stack and numbers the rows: „Pokazano 26–50” on the second page of 25", async () => {
       serve({ "": fullPage("A", "c1"), c1: fullPage("B", null) });
       wrapper = await mountView();

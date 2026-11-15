@@ -2,12 +2,14 @@
 import { ChevronLeft, ChevronRight } from "lucide-vue-next";
 import { computed, ref, toRef } from "vue";
 import { Button } from "@/components/ui/button";
+import type { ListTotal } from "@/composables/useCursorPager";
 import { usePagerFocus } from "@/composables/usePagerFocus";
 
 /**
  * The footer of a list (docs/features/admin-design/spec.md, „Standard listy”): „Pokazano X–Y” in a status region and the
- * buttons „Poprzednia strona” and „Następna strona” with the number of the page. The API has no total, so there is no
- * „z N” and no numbers of further pages. The focus stays on the pressed button, and when that button is disabled by the
+ * buttons „Poprzednia strona” and „Następna strona” with the number of the page. The total of the first page of the
+ * list (the API counts at most up to its limit) gives „Pokazano 1–25 z 1 234”, or „z ponad 10 000” when the count stopped
+ * at the limit; without it there is no „z N”. There are no numbers of further pages. The focus stays on the pressed button, and when that button is disabled by the
  * page that came (the last or the first one) it moves to the other one, never to the body.
  */
 const props = withDefaults(
@@ -17,13 +19,27 @@ const props = withDefaults(
     pageNumber: number;
     /** The numbers of the first and the last row of the page, from `useCursorPager`; null when there are no rows. */
     range: { from: number; to: number } | null;
+    /** The total of the list from `useCursorPager`; null or omitted when it is not known. */
+    total?: ListTotal | null;
     /** What the numbers count when it is not the rows of the list: „produkty” gives „Pokazano produkty 1–25”. */
     noun?: string;
   }>(),
-  { noun: "" },
+  { noun: "", total: null },
 );
 
-const rangeText = computed(() => (props.range === null ? "" : `Pokazano ${props.noun ? `${props.noun} ` : ""}${props.range.from}–${props.range.to}`));
+// Always grouped (the Polish rule leaves four digits together), with a no-break space so that a number never splits.
+const number = new Intl.NumberFormat("pl-PL", { useGrouping: "always" });
+
+const totalText = computed(() => {
+  if (props.total === null) {
+    return "";
+  }
+  return props.total.capped ? ` z ponad ${number.format(props.total.value)}` : ` z ${number.format(props.total.value)}`;
+});
+
+const rangeText = computed(() =>
+  props.range === null ? "" : `Pokazano ${props.noun ? `${props.noun} ` : ""}${props.range.from}–${props.range.to}${totalText.value}`,
+);
 
 const emit = defineEmits<{ previous: []; next: [] }>();
 

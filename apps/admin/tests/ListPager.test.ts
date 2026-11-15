@@ -43,6 +43,51 @@ describe("ListPager", () => {
     expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano produkty 1–25");
   });
 
+  it("adds the total of the list: „Pokazano 1–25 z 1 234”, with the thousands separated as in Polish", () => {
+    mountPager({ total: { value: 1234, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25 z 1\u00a0234");
+  });
+
+  it("separates the thousands of a bigger total", () => {
+    mountPager({ range: { from: 26, to: 50 }, total: { value: 1_234_567, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 26–50 z 1\u00a0234\u00a0567");
+  });
+
+  it("writes a small total as it is", () => {
+    mountPager({ range: { from: 1, to: 7 }, total: { value: 7, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–7 z 7");
+  });
+
+  it("says „z ponad 10 000” when the count stopped at its limit", () => {
+    mountPager({ total: { value: 10_000, capped: true } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25 z ponad 10\u00a0000");
+  });
+
+  it("shows the total after the noun of the numbers", () => {
+    mountPager({ noun: "produkty", total: { value: 1234, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano produkty 1–25 z 1\u00a0234");
+  });
+
+  it("has no „z N” when the total is not known", () => {
+    mountPager({ total: null });
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25");
+
+    wrapper?.unmount();
+    mountPager();
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25");
+  });
+
+  it("keeps the status region, empty, when there are no rows, even with a total", () => {
+    mountPager({ range: null, total: { value: 0, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("");
+  });
+
   it("keeps the status region, empty, when there are no rows to number", () => {
     mountPager({ range: null });
 

@@ -5,8 +5,9 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { CONFLICT_MESSAGE, SEARCH_DEBOUNCE_MS, usePriceList } from "@/prices/usePriceList";
+import type { WithOptionalTotal } from "./listPage";
 
-type PriceList = components["schemas"]["PriceListResponse"];
+type PriceList = WithOptionalTotal<components["schemas"]["PriceListResponse"]>;
 type PriceListItem = components["schemas"]["PriceListItemResponse"];
 type PriceListVariant = components["schemas"]["PriceListVariantResponse"];
 type ListedPrice = components["schemas"]["ListedPriceResponse"];
@@ -120,6 +121,18 @@ describe("usePriceList", () => {
     expect(list.rows.value).toHaveLength(20);
     expect(list.range.value).toEqual({ from: 11, to: 20 });
     expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
+  });
+
+  it("gives the total of products of the first page and keeps it on the next pages", async () => {
+    const list = await start({
+      "": { items: [item("Buty", [variant("v-40", "40")])], next: "c1", total: { value: 10_000, capped: true } },
+      c1: { items: [item("Hantle")], next: null, total: null },
+    });
+    expect(list.total.value).toEqual({ value: 10_000, capped: true });
+
+    await list.goNext();
+    await settle();
+    expect(list.total.value).toEqual({ value: 10_000, capped: true });
   });
 
   describe("the state of the list is in the address", () => {

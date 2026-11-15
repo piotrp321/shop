@@ -68,7 +68,7 @@ export function usePromotionList() {
     try {
       const result = await getApiClient().GET("/api/v1/admin/promotions", { params: { query: apiQuery } });
       if (result.data) {
-        return { items: result.data.items, next: result.data.next };
+        return { items: result.data.items, next: result.data.next, total: result.data.total };
       }
       return { error: failureMessage(result.response.status), forbidden: result.response.status === 403 };
     } catch {
@@ -105,6 +105,7 @@ export function usePromotionList() {
     hasNext: pager.hasNext,
     pageNumber: pager.pageNumber,
     range: pager.range,
+    total: pager.total,
     selectStatus,
     setPerPage,
     clearFilters,

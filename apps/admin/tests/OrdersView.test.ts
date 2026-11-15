@@ -4,8 +4,9 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { Select } from "@/components/ui/select";
 import OrdersView from "@/views/OrdersView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type OrderList = components["schemas"]["BackofficeOrderList"];
+type OrderList = WithOptionalTotal<components["schemas"]["BackofficeOrderList"]>;
 type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -375,6 +376,17 @@ describe("OrdersView", () => {
     expect(queries()).toEqual([{ status: "paid", perPage: 10 }]);
     expect(wrapper.get("[data-testid=status-filter]").text()).toBe("Opłacone");
     expect(wrapper.get("[data-testid=per-page]").text()).toBe("10");
+  });
+
+  it("says „z N” with the total of the first page on the next page too", async () => {
+    serve({ "": { items: [order("R-2")], nextCursor: "c1", total: { value: 12, capped: false } }, c1: { items: [order("R-1")], nextCursor: null, total: null } });
+    wrapper = await mountView();
+    expect(pager("range").text()).toBe("Pokazano 1–1 z 12");
+
+    await pager("next-page").trigger("click");
+    await flushPromises();
+
+    expect(pager("range").text()).toBe("Pokazano 26–26 z 12");
   });
 
   it("pages with the cursors of the API and says which orders are shown", async () => {

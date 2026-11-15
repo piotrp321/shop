@@ -20,7 +20,7 @@ import { EMPTY_MESSAGE, type PromotionListItem, type PromotionStatus, usePromoti
 import { useAuthStore } from "@/stores/auth";
 
 const list = usePromotionList();
-const { query, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range } = list;
+const { query, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total } = list;
 
 // Only hides the action: the API checks the permission. The roles come from /api/v1/admin/me.
 const auth = useAuthStore();
@@ -206,6 +206,7 @@ async function clearFilters() {
           :has-next="hasNext"
           :page-number="pageNumber"
           :range="range"
+          :total="total"
           @previous="list.goPrevious"
           @next="list.goNext"
         />

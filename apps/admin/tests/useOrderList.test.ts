@@ -4,8 +4,9 @@ import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { EMPTY_MESSAGE, useOrderList } from "@/orders/useOrderList";
+import type { WithOptionalTotal } from "./listPage";
 
-type OrderList = components["schemas"]["BackofficeOrderList"];
+type OrderList = WithOptionalTotal<components["schemas"]["BackofficeOrderList"]>;
 type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -371,6 +372,18 @@ describe("useOrderList", () => {
     await list.goNext();
 
     expect(list.range.value).toEqual({ from: 26, to: 26 });
+  });
+
+  it("gives the total of the first page and keeps it on the next pages", async () => {
+    const list = await start({
+      "": { ...page(["R-3", "R-2"], "c1"), total: { value: 3, capped: false } },
+      c1: { ...page(["R-1"]), total: null },
+    });
+    expect(list.total.value).toEqual({ value: 3, capped: false });
+
+    await list.goNext();
+
+    expect(list.total.value).toEqual({ value: 3, capped: false });
   });
 
   it("searches again for the same term, so that Enter reloads the list", async () => {
