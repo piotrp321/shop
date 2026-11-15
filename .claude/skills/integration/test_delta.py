@@ -302,7 +302,14 @@ class CiTest(unittest.TestCase):
         self.write('runs.seq.json', [a if a == 'FAIL' else list(a) for a in answers])
 
     def view(self, jobs, head=SHA):
-        return {'headSha': head, 'jobs': [{'name': n, 'status': s, 'conclusion': c} for n, s, c in jobs]}
+        return {'headSha': head, 'jobs': [self.job(*j) for j in jobs]}
+
+    @staticmethod
+    def job(name, status, conclusion, steps=()):
+        """A job as `gh run view --json jobs` prints it; steps are (name, conclusion) pairs."""
+        return {'name': name, 'status': status, 'conclusion': conclusion,
+                'steps': [{'name': s, 'status': 'completed', 'conclusion': c, 'number': i + 1}
+                          for i, (s, c) in enumerate(steps)]}
 
     def jobs(self, run_id, *jobs, head=SHA):
         self.write('run-%d.json' % run_id, self.view(jobs, head))
@@ -346,14 +353,21 @@ class CiTest(unittest.TestCase):
         self.assertEqual([{'name': 'ci:checks@' + SHA, 'status': 'passed'}, {'name': 'ci:e2e@' + SHA, 'status': 'passed'}],
                          out['checks'])
         self.assertEqual([], out['failed_jobs'])
+        self.assertEqual([], out['failed_parts'])
+        self.assertIsNone(out['failure_kind'])
 
     def assertLocal(self, fragment, **kwargs):
         out = self.result(1, **kwargs)
         self.assertEqual('local', out['state'])
         self.assertFalse(out['use_ci'])
         self.assertEqual([], out['checks'])
+        self.assertEqual([], out['failed_parts'])
+        self.assertIsNone(out['failure_kind'])
         self.assertIn(fragment, out['reason'])
         return out
+
+    def statuses(self, out):
+        return [c['status'] for c in out['checks']]
 
     # One check, without a budget.
 
@@ -391,13 +405,88 @@ class CiTest(unittest.TestCase):
                 self.assertEqual(['checks', 'e2e'], out['failed_jobs'])
                 self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
 
-    def test_a_red_job_next_to_a_cancelled_one_is_still_red(self):
+    def test_a_red_job_next_to_a_cancelled_one_is_still_red_and_the_cancelled_one_is_unknown(self):
         self.runs(self.run_(7, conclusion='failure'))
         self.jobs(7, ('checks', 'completed', 'failure'), ('e2e', 'completed', 'cancelled'))
         out = self.result(3)
         self.assertEqual(['checks'], out['failed_jobs'])
-        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+        self.assertEqual(['failed', 'skipped'], self.statuses(out))
         self.assertIn('cancelled', out['reason'])
+
+    # What made CI red: the parts of the required jobs and their failed steps.
+
+    REQUIRE_CHECKS = ('Require the scope job and every part of the checks', 'failure')
+    REQUIRE_E2E = ('Require the scope job and every shard', 'failure')
+
+    def test_a_failed_step_of_a_checks_part_is_a_test_failure_named_by_part_and_step(self):
+        self.runs(self.run_(7, conclusion='failure'))
+        self.jobs(7, ('scope', 'completed', 'success'),
+                  ('checks part k8s', 'completed', 'success', [('make -C infra/k8s check', 'success')]),
+                  ('checks part apps', 'completed', 'failure',
+                   [('Install dependencies', 'success'), ('api unit tests', 'failure'), ('VCL tests', 'skipped')]),
+                  ('checks', 'completed', 'failure', [self.REQUIRE_CHECKS]),
+                  ('e2e shard 1', 'completed', 'success', [('make e2e', 'success')]),
+                  ('e2e', 'completed', 'success'))
+        out = self.result(3)
+        self.assertEqual('tests', out['failure_kind'])
+        self.assertEqual([{'job': 'checks part apps', 'conclusion': 'failure', 'failed_steps': ['api unit tests']},
+                          {'job': 'checks', 'conclusion': 'failure', 'failed_steps': [self.REQUIRE_CHECKS[0]]}],
+                         out['failed_parts'])
+        self.assertEqual([{'name': 'ci:checks@' + SHA, 'status': 'failed'}, {'name': 'ci:e2e@' + SHA, 'status': 'passed'}],
+                         out['checks'])
+
+    def test_a_failure_only_in_the_checks_after_e2e_is_a_test_failure_of_that_step(self):
+        # The required job e2e is more than `make e2e`: its last shard also runs `make ci-after-e2e`.
+        self.runs(self.run_(7, conclusion='failure'))
+        self.jobs(7, ('checks', 'completed', 'success'),
+                  ('e2e shard 1', 'completed', 'success', [('make e2e', 'success')]),
+                  ('e2e shard 3', 'completed', 'failure', [('make e2e', 'success'), ('make ci-after-e2e', 'failure')]),
+                  ('e2e', 'completed', 'failure', [self.REQUIRE_E2E]))
+        out = self.result(3)
+        self.assertEqual('tests', out['failure_kind'])
+        self.assertEqual({'job': 'e2e shard 3', 'conclusion': 'failure', 'failed_steps': ['make ci-after-e2e']},
+                         out['failed_parts'][0])
+        self.assertEqual(['passed', 'failed'], self.statuses(out))
+
+    def test_parts_that_only_timed_out_failed_to_start_or_were_cancelled_are_a_ci_failure(self):
+        for conclusion in ('timed_out', 'startup_failure', 'cancelled'):
+            with self.subTest(conclusion=conclusion):
+                self.runs(self.run_(7, conclusion='failure'))
+                self.jobs(7, ('checks part api functional', 'completed', conclusion, [('api tests', 'cancelled')]),
+                          ('checks', 'completed', 'failure', [self.REQUIRE_CHECKS]),
+                          ('e2e', 'completed', 'success'))
+                out = self.result(3)
+                self.assertEqual('ci', out['failure_kind'])
+                self.assertEqual({'job': 'checks part api functional', 'conclusion': conclusion, 'failed_steps': []},
+                                 out['failed_parts'][0])
+                self.assertEqual(['failed', 'passed'], self.statuses(out))
+
+    def test_a_failed_step_in_any_part_makes_it_a_test_failure_next_to_a_timed_out_part(self):
+        self.runs(self.run_(7, conclusion='failure'))
+        self.jobs(7, ('checks part api functional', 'completed', 'timed_out', [('api tests', 'cancelled')]),
+                  ('checks', 'completed', 'failure', [self.REQUIRE_CHECKS]),
+                  ('e2e shard 2', 'completed', 'failure', [('make e2e', 'failure')]),
+                  ('e2e', 'completed', 'failure', [self.REQUIRE_E2E]))
+        out = self.result(3)
+        self.assertEqual('tests', out['failure_kind'])
+        self.assertEqual(['checks part api functional', 'checks', 'e2e shard 2', 'e2e'],
+                         [p['job'] for p in out['failed_parts']])
+
+    def test_a_red_aggregate_without_a_red_part_is_a_ci_failure(self):
+        self.runs(self.run_(7, conclusion='failure'))
+        self.jobs(7, ('checks', 'completed', 'timed_out'), ('e2e', 'completed', 'success'))
+        out = self.result(3)
+        self.assertEqual('ci', out['failure_kind'])
+        self.assertEqual([{'job': 'checks', 'conclusion': 'timed_out', 'failed_steps': []}], out['failed_parts'])
+
+    def test_without_a_budget_a_red_job_next_to_an_unfinished_one_leaves_that_one_unknown(self):
+        self.runs(self.run_(7, status='in_progress', conclusion=''))
+        self.jobs(7, ('checks part apps', 'completed', 'failure', [('api unit tests', 'failure')]),
+                  ('checks', 'completed', 'failure', [self.REQUIRE_CHECKS]), ('e2e', 'in_progress', ''))
+        out = self.result(3)
+        self.assertEqual('red', out['state'])
+        self.assertEqual(['failed', 'skipped'], self.statuses(out))
+        self.assertEqual('tests', out['failure_kind'])
 
     def test_a_cancelled_skipped_or_neutral_job_of_a_finished_run_means_local_gates(self):
         for conclusion in ('cancelled', 'skipped', 'neutral'):
@@ -416,7 +505,7 @@ class CiTest(unittest.TestCase):
         self.jobs(7, ('e2e', 'completed', 'failure'))
         out = self.result(3)
         self.assertEqual(['e2e'], out['failed_jobs'])
-        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+        self.assertEqual(['skipped', 'failed'], self.statuses(out))
 
     def test_a_pull_request_run_does_not_count_even_if_gh_returns_it(self):
         run = self.run_(7)
@@ -516,10 +605,12 @@ class CiTest(unittest.TestCase):
         self.jobs(7, ('checks', 'completed', 'failure'), ('e2e', 'in_progress', ''))
         out = self.result(3, budget=0.2)
         self.assertEqual(['checks'], out['failed_jobs'])
-        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+        self.assertEqual(['failed', 'skipped'], self.statuses(out))
         self.assertIn('e2e', out['reason'])
 
-    RED_PENDING = (('checks', 'completed', 'failure'), ('e2e', 'in_progress', ''))
+    RED_PENDING = (('checks part apps', 'completed', 'failure', [('api unit tests', 'failure')]),
+                   ('checks', 'completed', 'failure'), ('e2e', 'in_progress', ''))
+    RED_PART = {'job': 'checks part apps', 'conclusion': 'failure', 'failed_steps': ['api unit tests']}
 
     def test_a_failing_gh_after_a_red_job_while_waiting_stays_red(self):
         self.runs(self.run_(7, status='in_progress', conclusion=''))
@@ -528,7 +619,9 @@ class CiTest(unittest.TestCase):
         self.assertEqual('red', out['state'])
         self.assertEqual(7, out['run'])
         self.assertEqual(['checks'], out['failed_jobs'])
-        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+        self.assertEqual(['failed', 'skipped'], self.statuses(out))
+        self.assertEqual('tests', out['failure_kind'])
+        self.assertEqual(self.RED_PART, out['failed_parts'][0])
         self.assertGreaterEqual(self.view_calls(), 3)
 
     def test_a_failing_gh_while_waiting_is_waited_out_and_green_ci_is_used(self):
@@ -561,7 +654,9 @@ class CiTest(unittest.TestCase):
         self.assertEqual('red', out['state'])
         self.assertEqual(7, out['run'])
         self.assertEqual(['checks'], out['failed_jobs'])
-        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+        self.assertEqual(['failed', 'skipped'], self.statuses(out))
+        self.assertEqual('tests', out['failure_kind'])
+        self.assertEqual(self.RED_PART, out['failed_parts'][0])
 
     def test_a_red_job_seen_in_an_earlier_call_stays_red_when_the_budget_ends(self):
         self.runs(self.run_(7, status='in_progress', conclusion=''))
@@ -570,7 +665,18 @@ class CiTest(unittest.TestCase):
         self.jobs(7, *self.RUNNING)
         out = self.result(3, budget=2, call='10')
         self.assertEqual(['checks'], out['failed_jobs'])
-        self.assertEqual(['failed', 'failed'], [c['status'] for c in out['checks']])
+        self.assertEqual(['failed', 'skipped'], self.statuses(out))
+        self.assertEqual('tests', out['failure_kind'])
+
+    def test_broken_failed_parts_in_the_wait_file_keep_red_ci_as_a_ci_failure(self):
+        self.write('ci-wait.json', {'head': SHA, 'started': time.time(), 'red': {
+            'run': 7, 'failed_jobs': ['checks'], 'passed': [], 'reason': 'red', 'failed_parts': [{'job': 5}]}})
+        self.runs(self.run_(7, status='in_progress', conclusion=''))
+        self.jobs(7, *self.RUNNING)
+        out = self.result(3, budget=0.2)
+        self.assertEqual(['failed', 'skipped'], self.statuses(out))
+        self.assertEqual([], out['failed_parts'])
+        self.assertEqual('ci', out['failure_kind'])
 
     def test_the_wait_file_keeps_the_start_of_the_first_call(self):
         self.runs(self.run_(7, status='in_progress', conclusion=''))
@@ -612,7 +718,7 @@ class CiTest(unittest.TestCase):
     def test_a_start_outside_the_window_of_one_wait_starts_a_new_wait(self):
         # The window is now - budget - CALL_S <= started <= now; a file of an earlier AO round on the same head is older.
         texts = {'zero': '0', 'minus infinity': '-Infinity', 'infinity': 'Infinity', 'nan': 'NaN',
-                 'future': repr(time.time() + 100), 'an earlier round': repr(time.time() - 600 - 540 - 100)}
+                 'future': repr(time.time() + 100), 'an earlier round': repr(time.time() - 600 - 500 - 100)}
         for case, started in texts.items():
             with self.subTest(case=case):
                 with open(self.wait_file, 'w') as f:
@@ -628,7 +734,7 @@ class CiTest(unittest.TestCase):
                 self.assertGreater(kept['started'], time.time() - 60)
 
     def test_a_start_within_the_window_of_one_wait_is_kept(self):
-        self.write('ci-wait.json', {'head': SHA, 'started': time.time() - 600 - 540 + 30})
+        self.write('ci-wait.json', {'head': SHA, 'started': time.time() - 600 - 500 + 30})
         self.runs(self.run_(7, status='in_progress', conclusion=''))
         self.jobs(7, *self.RUNNING)
         self.assertLocal('still running after the budget', budget=600)
@@ -647,17 +753,17 @@ class CiTest(unittest.TestCase):
         finally:
             sys.path.pop(0)
         self.assertEqual(30, delta.POLL_S)
-        self.assertEqual(540, delta.CALL_S)
+        self.assertEqual(500, delta.CALL_S)
 
     def test_the_worst_call_ends_within_the_600_s_of_one_bash_call(self):
         # The last poll of a call starts at its end at the latest and makes two gh calls; the rest is Python start-up
-        # and the wait file.
+        # and the wait file, with room for a slow machine.
         sys.path.insert(0, os.path.dirname(SCRIPT))
         try:
             import delta
         finally:
             sys.path.pop(0)
-        margin_s = 15
+        margin_s = 40
         self.assertLess(delta.CALL_S + 2 * delta.GH_TIMEOUT_S + margin_s, 600)
 
     # Wrong arguments.

@@ -57,7 +57,7 @@ JSON i AO powtarza rundę. Dlatego:
   W wyniku występują razem jako jeden wpis `make test`: `passed`, gdy wszystkie przeszły, inaczej `failed`. `make seed` też jest osobnym wywołaniem.
   Lokalne `make e2e` to wywołania jego części (krok 4), każda z `make seed` przed nią. Wyjątek od `timeout 570`:
   `delta.py ci` z budżetem (krok 4) uruchamiasz bez niego, z samym `timeout: 600000`, bo skrypt sam kończy wywołanie
-  po najwyżej 540 s.
+  po najwyżej 500 s.
 - Kod 124 oznacza przekroczenie limitu czasu, nie błąd kodu. Część `make e2e` powtarzasz raz według kroku 4. Drugi
   kod 124 tej części albo kod 124 innej bramki to awaria środowiska z kroku 4: bramka ma `skipped`, a bloker
   `technical` dostaje komendę i koniec logu.
@@ -193,28 +193,45 @@ JSON i AO powtarza rundę. Dlatego:
       - **0** (wymagane joby `checks` i `e2e` mają `success`): nie uruchamiasz lokalnie `make test`, `make seed` ani
         `make e2e`. `make test` i `make e2e` mają `passed`, a obok dodajesz oba wpisy z pola `checks` skryptu
         (`ci:checks@<HEAD>`, `ci:e2e@<HEAD>`).
-      - **3** (czerwone CI: job zakończony `failure`, `timed_out` albo `startup_failure`): bramka czerwonego joba ma
-        `failed` (`checks` → `make test`, `e2e` → `make e2e`), druga bramka status swojego wpisu `ci:`; oba wpisy
-        `ci:` z pola `checks` skryptu dodajesz bez zmian. Tych bramek nie uruchamiasz lokalnie i nie ponawiasz runu CI:
-        czerwonego CI nie zastępuje lokalny wynik. Przyczynę bierzesz z logu padających jobów: osobnym wywołaniem
-        Bash `timeout 570 gh run view <run> --log-failed > <katalog pliku <report_path>>/ci-failed-<sha7>.log 2>&1`
-        (`<run>` z pola `run` skryptu, `<sha7>` to pierwsze 7 znaków HEAD), potem `tail` i `grep` tego logu (nazwy
-        padających testów, komunikaty asercji, ścieżki plików). Dodaj jedno znalezisko `Important` na padający job
-        (krok 7: `title` bez SHA i numeru runu, np. nazwa padającego testu albo kroku):
-        - `title`: problem z logu (padający test albo krok joba);
-        - `evidence`: numer runu, SHA, `failed_jobs`, `reason` i koniec logu z nazwą padającego testu;
-        - `files`: pliki testu i kodu wskazane w logu (ścieżki z repo).
-        Gdy log nie wskazuje żadnego pliku albo `gh` nie dał logu (kod różny od 0, pusty plik), `files` to pliki diffu
-        epiku najbliższe padającemu jobowi według tego, co wiadomo (np. dla `checks` zmienione pliki aplikacji, której
-        część padła, dla `e2e` zmienione testy E2E i ekrany), a `detail` ma zdanie, że plików nie dało się ustalić
-        z logu CI. Nazwy testu, kroku ani pliku, których nie ma w logu, nie wymyślasz.
+      - **3** (czerwone CI: wymagany job zakończony `failure`, `timed_out` albo `startup_failure`): czerwonego CI nie
+        zastępuje lokalny wynik, więc `make test`, `make seed` i `make e2e` nie uruchamiasz lokalnie i nie ponawiasz
+        runu CI. Oba wpisy `ci:` z pola `checks` skryptu dodajesz bez zmian. Opisują wynik wymaganego joba, nie
+        bramki: `passed`, `failed` (job zakończony porażką) albo `skipped` (wynik nieznany: job anulowany, brak joba,
+        job niezakończony po budżecie). Job `checks` zbiera więcej niż `make test`, a `e2e` więcej niż `make e2e`
+        (części `checks part …` i `e2e shard …`, np. `make -C infra/k8s check`, `make ci-after-e2e`), więc bramka ma
+        `passed`, gdy jej wpis ma `passed` (`ci:checks` → `make test`, `ci:e2e` → `make e2e`), a inaczej `skipped`,
+        nigdy `failed`; wynik nie jest `PASSED`. Co dalej, mówi pole `failure_kind` skryptu (`failed_parts` to części
+        i wymagane joby bez `success`, każda z `conclusion` i nazwami kroków zakończonych porażką `failed_steps`):
+        - **`tests`** (któraś część skończyła się porażką kroku): przyczynę bierzesz z logu osobnym wywołaniem Bash
+          `timeout 570 gh run view <run> --log-failed > <katalog pliku <report_path>>/ci-failed-<sha7>.log 2>&1`
+          (`<run>` z pola `run` skryptu, `<sha7>` to pierwsze 7 znaków HEAD), potem `tail` i `grep` tego logu (nazwy
+          padających testów, komunikaty asercji, ścieżki plików). Dodaj jedno znalezisko `Important` na każdą część
+          z `failed_parts` z `conclusion: failure`; wymagane joby `checks` i `e2e` z tej listy tylko zbierają wynik
+          części i nie dostają osobnego znaleziska, a części z `timed_out`, `startup_failure` albo `cancelled`
+          wymieniasz w `evidence` i raporcie:
+          - `title`: nazwa części i jej kroku z `failed_steps` (np. `checks part apps: api unit tests`,
+            `e2e shard 3: make ci-after-e2e`; sama nazwa części, gdy `failed_steps` jest puste), a gdy log podaje
+            padający test, także jego nazwa; bez SHA i numeru runu (krok 7) i nigdy „make test nie przechodzi” ani
+            „make e2e nie przechodzi”;
+          - `evidence`: numer runu, SHA, część, krok, `reason` i koniec logu tej części;
+          - `files`: pliki testu i kodu wskazane w logu (ścieżki z repo).
+          Gdy log nie wskazuje żadnego pliku albo `gh` nie dał logu (kod różny od 0, pusty plik), `files` to pliki
+          diffu epiku najbliższe padającej części według tego, co wiadomo (np. dla `checks part api functional`
+          zmienione pliki API, dla `e2e shard …` zmienione testy E2E i ekrany), a `detail` ma zdanie, że plików nie
+          dało się ustalić z logu CI. Nazwy testu, kroku ani pliku, których nie ma w logu, nie wymyślasz.
+        - **`ci`** (CI jest czerwone tylko przez części albo joby z `timed_out`, `startup_failure` albo `cancelled`, bez
+          porażki kroku): to awaria CI, nie kodu. Zwracasz bloker `technical` (pytanie, co zrobić z runem CI; w
+          `evidence` numer runu, SHA, części z `failed_parts` z ich `conclusion` i `reason`), bez znaleziska z CI;
+          status `BLOCKED`. Log CI nie jest potrzebny; pozostałą pracę rundy kończysz jak zawsze.
       - **1** (bramki lokalne: run zakończony z jobem `cancelled`, `skipped`, `neutral` albo bez joba, inny SHA, błąd
         `gh` do końca budżetu, CI nadal w toku po budżecie): uruchamiasz lokalnie `make test` (cztery wywołania
         z sekcji „Pierwszy plan i ostatni blok”), potem `make e2e` w częściach (niżej), a `reason` trafia do raportu.
         Po ostatniej lokalnej bramce sprawdzasz CI jeszcze raz, jednym wywołaniem bez budżetu:
-        `python3 .claude/skills/integration/delta.py ci --head <HEAD>`. Kod 3 traktujesz jak punkt „3” wyżej: wynik
-        CI zastępuje lokalne wyniki `make test` i `make e2e` (czerwone CI wygrywa z lokalnym wynikiem), z wpisami
-        `ci:` i znaleziskiem z logu. Przy każdym innym kodzie zostają wyniki lokalne, bez wpisów `ci:`.
+        `python3 .claude/skills/integration/delta.py ci --head <HEAD>`. Kod 3 traktujesz jak punkt „3” wyżej:
+        czerwone CI wygrywa z lokalnym wynikiem, więc wpisy `ci:` i bramki według tej reguły zastępują lokalne wyniki
+        `make test` i `make e2e` (bramka, której wpis nie ma `passed`, ma `skipped`, także gdy lokalnie przeszła),
+        a dalej znaleziska albo bloker według `failure_kind`. Przy każdym innym kodzie zostają wyniki lokalne, bez
+        wpisów `ci:`.
       - **2** (błąd skryptu: komunikat na stderr, np. nieoczekiwana odpowiedź `gh`, niezapisywalny plik czekania):
         jak kod 1, bramki lokalne; komunikat skryptu trafia do raportu jako powód.
 
@@ -372,8 +389,9 @@ bramki; dodatkowe wpisy (np. `architecture-review`, `qa-adversarial` ze statusem
 Wpis `ux-review` ma status `passed` (po weryfikacji z kroku 5 brak znaleziska UX `Important`), `failed` (jest takie
 znalezisko) albo `skipped` (diff nie dotyka frontów, `make e2e-agent` nie działa albo agent nie zwrócił raportu;
 uwaga w raporcie).
-Testy z CI (krok 4, w `FULL` i `DELTA`) to wpisy `ci:checks@<head_sha>` i `ci:e2e@<head_sha>`, zawsze oba, ze
-statusem `passed` albo `failed`. `ci:checks` odpowiada `make test`, a `ci:e2e` odpowiada `make e2e`: bramka ma status
-swojego wpisu `ci:`. Walidator odrzuca inny SHA, jeden wpis bez drugiego, inny status wpisu, bramkę o innym statusie niż
-jej wpis, `PASSED` z wpisem `failed` i każdą inną nazwę zaczynającą się od `ci:`.
+Testy z CI (krok 4, w `FULL` i `DELTA`) to wpisy `ci:checks@<head_sha>` i `ci:e2e@<head_sha>`, zawsze oba, z wynikiem
+wymaganego joba: `passed`, `failed` albo `skipped` (wynik nieznany). `ci:checks` odpowiada `make test`, a `ci:e2e`
+odpowiada `make e2e`: bramka ma `passed`, gdy jej wpis ma `passed`, a inaczej `skipped` (job zbiera więcej niż bramka).
+Walidator odrzuca inny SHA, jeden wpis bez drugiego, bramkę o innym statusie niż wynika z jej wpisu, `PASSED` z wpisem
+innym niż `passed` i każdą inną nazwę zaczynającą się od `ci:`.
 Pola poza kontraktem są niedozwolone. Pisz zwięźle po polsku.

@@ -181,10 +181,12 @@ class IntegrationResultTest(unittest.TestCase):
         self.assertInvalid(result(status='FINDINGS', findings=two), 'fingerprint')
 
     def ci_checks(self, sha=SHA, status='passed', e2e=None):
-        """The three gates and both CI entries; `make test` and `make e2e` take the status of their CI job."""
+        """The three gates and both CI entries; `make test` and `make e2e` are passed when their CI job passed and
+        skipped otherwise (the job is more than the gate, so it never fails the gate)."""
         e2e = e2e or status
         checks = copy.deepcopy(GATES)
-        checks[1]['status'], checks[2]['status'] = status, e2e
+        checks[1]['status'] = 'passed' if status == 'passed' else 'skipped'
+        checks[2]['status'] = 'passed' if e2e == 'passed' else 'skipped'
         return checks + [{'name': 'ci:checks@' + sha, 'status': status}, {'name': 'ci:e2e@' + sha, 'status': e2e}]
 
     def test_a_round_may_take_the_test_gates_from_green_ci_of_its_head(self):
@@ -193,14 +195,29 @@ class IntegrationResultTest(unittest.TestCase):
                 r = self.validate(result(mode=mode, checks=self.ci_checks()), '--mode', mode, '--head', SHA)
                 self.assertEqual(0, r.returncode, r.stderr)
 
-    def test_a_round_may_take_failed_test_gates_from_red_ci_of_its_head(self):
+    def test_red_or_unknown_ci_of_its_head_leaves_the_gates_of_those_jobs_skipped(self):
         for mode in ('DELTA', 'FULL'):
-            for status, e2e in (('failed', 'passed'), ('passed', 'failed'), ('failed', 'failed')):
+            for status, e2e in (('failed', 'passed'), ('passed', 'failed'), ('failed', 'failed'),
+                                ('failed', 'skipped'), ('skipped', 'failed')):
                 with self.subTest(mode=mode, checks=status, e2e=e2e):
                     value = result(mode=mode, status='FINDINGS', findings=[finding()],
                                    checks=self.ci_checks(status=status, e2e=e2e))
                     r = self.validate(value)
                     self.assertEqual(0, r.returncode, r.stderr)
+
+    def test_red_ci_of_a_failure_of_ci_itself_is_blocked_with_skipped_gates(self):
+        value = result(status='BLOCKED', blockers=[blocker()], checks=self.ci_checks(status='failed', e2e='skipped'))
+        r = self.validate(value)
+        self.assertEqual(0, r.returncode, r.stderr)
+
+    def test_a_red_ci_job_does_not_fail_the_gate_it_stands_for(self):
+        for job, index in (('checks', 1), ('e2e', 2)):
+            with self.subTest(job=job):
+                checks = self.ci_checks(status='failed' if job == 'checks' else 'passed',
+                                        e2e='failed' if job == 'e2e' else 'passed')
+                checks[index]['status'] = 'failed'
+                self.assertInvalid(result(status='FINDINGS', findings=[finding()], checks=checks),
+                                   'must be skipped like ci:%s@' % job)
 
     def test_passed_cannot_carry_red_ci(self):
         checks = self.ci_checks(e2e='failed')
@@ -208,19 +225,27 @@ class IntegrationResultTest(unittest.TestCase):
         checks[2]['status'] = 'passed'
         self.assertInvalid(result(checks=checks), 'ci:e2e@')
 
+    def test_passed_needs_every_ci_entry_passed(self):
+        for status in ('failed', 'skipped'):
+            with self.subTest(status=status):
+                checks = self.ci_checks(e2e=status)
+                self.assertInvalid(result(checks=checks), 'PASSED needs the CI entry')
+
     def test_ci_gates_must_name_the_reviewed_head(self):
         self.assertInvalid(result(mode='DELTA', checks=self.ci_checks(sha='b' * 40)), 'head_sha')
         self.assertInvalid(result(checks=self.ci_checks(sha='b' * 40)), 'head_sha')
 
-    def test_ci_gates_come_in_pairs_and_only_passed_or_failed(self):
+    def test_ci_gates_come_in_pairs_with_a_check_status(self):
         for mode in ('DELTA', 'FULL'):
             with self.subTest(mode=mode):
                 self.assertInvalid(result(mode=mode, checks=self.ci_checks()[:-1]), 'ci:e2e@')
                 self.assertInvalid(result(mode=mode, checks=self.ci_checks()[:3] + self.ci_checks()[4:]), 'ci:checks@')
-                checks = [{'name': n, 'status': 'skipped'} for n in ('make check', 'make test', 'make e2e')]
-                checks += [{'name': 'ci:checks@' + SHA, 'status': 'skipped'}, {'name': 'ci:e2e@' + SHA, 'status': 'skipped'}]
-                self.assertInvalid(result(mode=mode, status='BLOCKED', blockers=[blocker()], checks=checks),
-                                   'passed or failed')
+                checks = self.ci_checks(status='skipped')
+                checks[0]['status'] = 'skipped'
+                r = self.validate(result(mode=mode, status='BLOCKED', blockers=[blocker()], checks=checks))
+                self.assertEqual(0, r.returncode, r.stderr)
+                checks[3]['status'] = 'pending'
+                self.assertInvalid(result(mode=mode, status='BLOCKED', blockers=[blocker()], checks=checks), 'status')
 
     def test_ci_gates_must_match_the_local_gates_they_replace(self):
         checks = self.ci_checks()
@@ -232,6 +257,10 @@ class IntegrationResultTest(unittest.TestCase):
                 checks[1]['status'] = 'passed'
                 self.assertInvalid(result(mode=mode, status='FINDINGS', findings=[finding()], checks=checks),
                                    'make test')
+                checks = self.ci_checks(e2e='skipped')
+                checks[2]['status'] = 'passed'
+                self.assertInvalid(result(mode=mode, status='FINDINGS', findings=[finding()], checks=checks),
+                                   'make e2e')
                 checks = self.ci_checks()
                 checks[2]['status'] = 'failed'
                 self.assertInvalid(result(mode=mode, status='FINDINGS', findings=[finding()], checks=checks),
