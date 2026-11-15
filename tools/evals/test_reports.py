@@ -319,6 +319,20 @@ class TestSyntheticReports(unittest.TestCase):
         self.assertEqual(1, len(report.findings))
         self.assertIsNotNone(reports.match_finding(report, path='a.php', keyword='500', severity='Minor'))
 
+    def test_an_item_under_a_severity_section_that_says_there_is_nothing_is_not_a_finding(self):
+        for nothing in ('brak', 'Brak.', '(brak)', 'nie ma', 'Nie zgłaszam.', 'none', 'None.', '**Brak.**'):
+            for template in ('### BLOCKER\n\n- %s\n', '**Important**\n\n- %s\n'):
+                text = template % nothing
+                with self.subTest(text=text):
+                    self.assertEqual([], reports.parse(text, 'code-reviewer').findings)
+
+    def test_a_real_item_next_to_a_none_item_and_a_title_starting_with_brak_are_findings(self):
+        text = '### Important\n\n- brak\n- brak zapisanego wyniku pomiaru\n- inny problem w `a.php`\n'
+        report = reports.parse(text, 'code-reviewer')
+        self.assertEqual(['brak zapisanego wyniku pomiaru', 'inny problem w a.php'], [f.text.lstrip('- ') for f in report.findings])
+        text = '### Minor\n\n**Brak.**\n\n**M1. problem**\n- szczegóły\n'
+        self.assertEqual(1, len(reports.parse(text, 'spec-critic').findings))
+
     def test_polish_letters_are_matched(self):
         text = '**IMPORTANT-1 (Important): zły komunikat**\n- Miejsce: `src/ż.php`: angielski „Required”\n'
         report = reports.parse(text, 'code-reviewer')

@@ -40,7 +40,7 @@ _LABEL_RE = re.compile(r'^(?:[A-Za-z]{1,3}\d+\s*[.:)\-–—]?\s*)?[\[(]?\s*(?P<
                        re.IGNORECASE)
 # the whole rest of a label line says there is nothing (`**BLOCKER**: brak`); a title that starts with the word
 # (`M2 (Minor): brak zapisanego wyniku`) is a finding
-_NOTHING_RE = re.compile(r'^(?:\d+\s*[.:)\-\u2013\u2014]\s*)?(?:brak|none|nothing|nie ma|bez uwag|0)\s*[.!)\]]*$',
+_NOTHING_RE = re.compile(r'^(?:\d+\s*[.:)\-\u2013\u2014]\s*)?(?:brak|none|nothing|nie ma|nie zgłaszam|bez uwag|0)\s*[.!)\]]*$',
                          re.IGNORECASE)
 _HEADING_RE = re.compile(r'^(#{1,6})\s+(.*?)\s*$')
 _ITEM_RE = re.compile(r'^([-*+]|\d+[.)])\s+(.*)$')
@@ -130,6 +130,12 @@ def _is_severity_word(word):
 def _plain(text):
     """A line without its emphasis and code marks, for the recognition of labels."""
     return re.sub(r'^[\s*_`]+', '', text.replace('**', '').replace('__', '').replace('`', '')).rstrip(' *_`')
+
+
+def _says_nothing(line):
+    """An item whose whole text is `brak`, `(brak)`, `Nie zgłaszam.`, `none` is the report saying there is nothing."""
+    text = re.sub(r'^[\s\-\u2013\u2014:.,;*_`(\[]*', '', _plain(line.content)).rstrip(' *_`')
+    return bool(_NOTHING_RE.match(text))
 
 
 def _clean(lines):
@@ -243,7 +249,8 @@ def _findings(lines):
         if section is not None and _is_start(section, line):
             close()
             started = True
-            open_(line, section.rank, 'section')
+            if not _says_nothing(line):
+                open_(line, section.rank, 'section')
             continue
         if current is not None and _continues(current, line, blank_before):
             current['lines'].append(line)
