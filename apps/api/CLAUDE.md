@@ -167,8 +167,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i poddrzewa jednym `UPDATE catalog_category … WHERE path LIKE :old || '%'` (indeks `text_pattern_ops`; ścieżka ma tylko
   cyfry szesnastkowe, myślniki i ukośniki, więc `LIKE` nie wymaga ucieczki), a rekordy poddrzewa obecne w identity map
   są potem odświeżane, żeby `flush` nie zapisał starych ścieżek. `DeleteCategory` blokuje wiersz kategorii
-  (`SELECT … FOR UPDATE`) przed liczeniem produktów: przypisanie produktu bierze na nim `FOR KEY SHARE`, więc produkt
-  zapisany w tym czasie jest policzony albo czeka. Seed (`CreateCategory::bySeed`, `DemoCatalogLoader`) zostawia pozycję
+  (`SELECT … FOR UPDATE`) przed liczeniem produktów: zapis produktu (`ProductInput`, `CategoryRepository::lockForAssignment`) bierze
+  w swojej transakcji `FOR KEY SHARE` na wierszu każdej swojej kategorii (głównej i dodatkowych) przed zapisem, więc
+  produkt zapisany w tym czasie jest policzony (409 `category-not-empty`) albo czeka na usunięcie i kończy się 422
+  „Kategoria nie istnieje.” (`UnknownCategory`), nigdy 500 z klucza obcego (`CategoryAssignmentLockTest`). Seed (`CreateCategory::bySeed`, `DemoCatalogLoader`) zostawia pozycję
   0 bez przenumerowania i bez zdarzenia. Przekierowania (`catalog_category_redirect`, `old_path` PK, `category_id` FK
   `ON DELETE CASCADE`, rekord `CategoryRedirectRecord`) zapisuje ta sama transakcja: zmiana sluga i przeniesienie na
   innego rodzica zapisują stare ścieżki slugów kategorii i potomków, a każda ścieżka, którą istniejąca kategoria ma po

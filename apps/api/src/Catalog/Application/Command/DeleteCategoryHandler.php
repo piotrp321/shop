@@ -19,8 +19,9 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 /**
  * Deletes an empty category in the transaction of command.bus, under the lock of the tree. The row of the category is
- * locked before its products are counted: assigning a product to it takes a key share lock on that row, so a product
- * saved meanwhile is either counted or waits and then fails on the missing category.
+ * locked before its products are counted: a product write locks the row of each of its categories with a key share
+ * lock (CategoryRepository::lockForAssignment) before it is saved, so a product saved meanwhile is either counted or
+ * waits for this delete and then fails on the missing category (UnknownCategory, 422), never on the foreign key.
  */
 #[AsMessageHandler(bus: 'command.bus')]
 final readonly class DeleteCategoryHandler

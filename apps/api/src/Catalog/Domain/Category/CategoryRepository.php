@@ -48,9 +48,18 @@ interface CategoryRepository
     public function movePaths(CategoryPath $from, CategoryPath $to): void;
 
     /**
-     * Locks the row of the category until the end of the transaction, so no product is assigned to it meanwhile.
+     * Locks the row of the category until the end of the transaction, so no product is assigned to it meanwhile
+     * (lockForAssignment() of the product writes waits for it).
      */
     public function lock(CategoryId $id): void;
+
+    /**
+     * Locks the row of the category against its delete until the end of the transaction (a key share lock: several
+     * product writes do not wait for each other, only a delete of the category waits for them).
+     *
+     * @throws CategoryNotFound when the row does not exist (also one deleted while this write waited for the lock)
+     */
+    public function lockForAssignment(CategoryId $id): void;
 
     /**
      * Deletes the category; its redirects go with it.

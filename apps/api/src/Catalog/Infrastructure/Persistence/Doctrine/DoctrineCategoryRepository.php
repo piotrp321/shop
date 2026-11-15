@@ -114,6 +114,14 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
         $this->entityManager->getConnection()->executeQuery('SELECT 1 FROM catalog_category WHERE id = ? FOR UPDATE', [$id->toString()]);
     }
 
+    public function lockForAssignment(CategoryId $id): void
+    {
+        $found = $this->entityManager->getConnection()->fetchOne('SELECT id FROM catalog_category WHERE id = ? FOR KEY SHARE', [$id->toString()]);
+        if (false === $found) {
+            throw new CategoryNotFound();
+        }
+    }
+
     public function remove(Category $category): void
     {
         $record = $this->entityManager->find(CategoryRecord::class, $category->id()->toString());

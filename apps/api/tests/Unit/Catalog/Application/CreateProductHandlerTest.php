@@ -131,6 +131,13 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame(1, $this->products->count());
     }
 
+    public function testEveryCategoryOfTheProductIsLockedForTheAssignment(): void
+    {
+        ($this->handler)($this->command());
+
+        self::assertSame([self::MAIN_ID, self::EXTRA_ID], $this->categories->assignmentLocks);
+    }
+
     public function testUnknownMainCategoryThrowsUnknownCategoryWithoutAnIndexAndSavesNothing(): void
     {
         try {

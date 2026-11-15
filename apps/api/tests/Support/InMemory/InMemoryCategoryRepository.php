@@ -21,6 +21,9 @@ final class InMemoryCategoryRepository implements CategoryRepository
     /** @var list<string> the categories locked by lock(), in order */
     public array $lockedRows = [];
 
+    /** @var list<string> the categories locked by lockForAssignment(), in order */
+    public array $assignmentLocks = [];
+
     public function save(Category $category): void
     {
         $this->categories[$category->id()->toString()] = self::copy($category);
@@ -69,6 +72,12 @@ final class InMemoryCategoryRepository implements CategoryRepository
     public function lock(CategoryId $id): void
     {
         $this->lockedRows[] = $id->toString();
+    }
+
+    public function lockForAssignment(CategoryId $id): void
+    {
+        isset($this->categories[$id->toString()]) || throw new CategoryNotFound();
+        $this->assignmentLocks[] = $id->toString();
     }
 
     public function remove(Category $category): void
