@@ -5,7 +5,6 @@ import shutil
 import tempfile
 import unittest
 
-import testutil
 from testutil import write_pass
 import evals_assertions as assertions
 import evals_history as history

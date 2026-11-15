@@ -3,11 +3,9 @@ runner leaves it). The reports are the stored real reports of tools/evals/testda
 import json
 import os
 import shutil
-import stat
 import tempfile
 import unittest
 
-import testutil
 from testutil import write_pass
 import evals_artifacts as artifacts
 import evals_assertions as assertions
