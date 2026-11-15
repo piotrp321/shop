@@ -106,7 +106,9 @@ Pola runnera (lint sprawdza ich kształt, runner wymaga zlecenia i dostarczenia 
 - `gh`: odpowiedzi zaślepki `gh`, lista `{"args": [dokładne argumenty], "stdout": "..." albo "stdout_file": "<plik>",
   "exit_code": 0}`; każde inne wywołanie kończy się kodem 1;
 - `patch`: plik przypadku z łatką (`git diff --binary`), nakładaną jednym commitem na stan przypadku (po nakładce,
-  a w przypadku z diffem po diffie zadania); łatka nie może dotykać ścieżek nakładki;
+  a w przypadku z diffem po diffie zadania); łatka nie może dotykać ścieżek nakładki. `{{BASE}}` to wtedy commit przed
+  recenzowaną zmianą: w przypadku z `commit` commit nakładki (recenzja samej łatki), w przypadku z diffem commit
+  nakładki na `base_sha` (recenzja diffu zadania razem z łatką);
 - `canary_file` (tylko `injection`): nazwa pliku-kanarka w katalogu przebiegu (domyślnie `canary-<losowe>`).
 
 Symbole zastępcze `{{NAZWA}}` (wielkie litery; inne nawiasy, np. `{{count}}` z szablonu Vue, zostają bez zmian) runner
@@ -218,7 +220,7 @@ można wznowić.
 ```
 
 `run.json`: `id`, `kind` (`suite` albo `trial`), `suite`, `case`, `status` (`running`, `done`, `cost_stop`,
-`limit_stop`, `infra_error`), `reason`, `fingerprint`, `head`, `overlay_rev`, `executor`, `agent`, `n`, limity,
+`limit_stop`, `infra_error`, `interrupted`), `reason`, `fingerprint`, `head`, `overlay_rev`, `executor`, `agent`, `n`, limity,
 `forecast_usd`, `cost_usd_total` (suma wszystkich części), `cases` (`id`, `case_hash`, `kind`) i `passes` (`case`,
 `repetition`, `status`, `reason`, `cost_usd`, `charged_usd`, `duration_s`, `attempts`).
 
@@ -229,8 +231,10 @@ obserwowanymi z rewizji nakładki (plik usunięty tam znika też w checkoucie). 
 `base_sha` i na `head_sha` jako dwa kolejne commity, więc `git diff <nowa baza>..<nowy HEAD>` to dokładnie diff
 zadania (sprawdzane; diff dotykający ścieżek nakładki to `infra_error`). Do repo bare trafiają tylko commity osiągalne
 z nowego HEAD: commit rewizji nakładki (dzisiejsze drzewo repo, z asercjami przypadków) nie. Commity mają datę commita
-przypadku, więc każde powtórzenie dostaje te same SHA. Po przebiegu runner nie uruchamia gita w checkoucie
-(jego `.git/config` kontroluje agent): `tree.txt` porównuje drzewo robocze z manifestem commita startowego w Pythonie.
+przypadku, więc każde powtórzenie dostaje te same SHA. W prawdziwym sandboxie `<checkout>/.git` jest w `denyWrite`
+(`render_settings.py` bez `--git-common-dir`): agent czyta historię, ale nie zmieni konfiguracji ani hooków checkoutu
+i nie zapisze w nim commita ani wyniku `git fetch`. Runner i tak nie uruchamia po przebiegu gita w checkoucie (testy
+działają bez sandboxu): `tree.txt` porównuje drzewo robocze z manifestem commita startowego w Pythonie.
 
 **Środowisko wykonawcy** (`evals_guard.py`) powstaje z listy dozwolonych zmiennych (`HOME`, `USER`, `LOGNAME`, `SHELL`,
 `LANG`, `LC_*`, `TERM`, `TZ`, `CLAUDE_CONFIG_DIR`, zmienne proxy i CA), nigdy z kopii środowiska. Dochodzą: `PATH`
@@ -238,7 +242,8 @@ z `runner/bin` na początku (zaślepka `gh`: odpowiedzi z `gh` przypadku, każde
 z danych przypadku kończy się kodem 1), `GH_CONFIG_DIR` na pusty katalog, `GIT_SSH_COMMAND` na zaślepkę SSH (kod
 255, wpis w `ssh.log`), `GIT_CONFIG_GLOBAL` na `runner/gitconfig` (tożsamość commitów, bez pomocnika poświadczeń),
 `GIT_CONFIG_NOSYSTEM=1`, `GIT_TERMINAL_PROMPT=0`, `GIT_ALLOW_PROTOCOL=file`, `GIT_TRACE2_EVENT` na `git-trace.jsonl`,
-`DOCKER_HOST` na nieistniejące gniazdo w `runner/`, `TMPDIR` na `tmp/`. Nie ma `GH_TOKEN`, `GITHUB_TOKEN`,
+`DOCKER_HOST` na nieistniejące gniazdo w `runner/`, `TMPDIR` na `tmp/`, `CLAUDE_CODE_TMPDIR` na prywatny katalog
+przebiegu (niżej). Nie ma `GH_TOKEN`, `GITHUB_TOKEN`,
 `SSH_AUTH_SOCK`, `GIT_ASKPASS`, `GIT_CONFIG_*` wywołującego ani zmiennych płatnego API, innych dostawców i nadpisania
 modelu (`evals_guard.PAID_API_VARIABLES`, m.in. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`,
 `ANTHROPIC_MODEL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`,
@@ -246,11 +251,20 @@ modelu (`evals_guard.PAID_API_VARIABLES`, m.in. `ANTHROPIC_API_KEY`, `ANTHROPIC_
 i `~/.claude`. `git push` na `git@github.com:…`, `ssh://…` i `https://…` git odrzuca przez `GIT_ALLOW_PROTOCOL=file`
 przed połączeniem (zaślepka SSH nie jest wtedy wołana), więc runner po przebiegu dopisuje te odmowy do `ssh.log`
 z argumentami polecenia (zdarzenia `error` „transport '…' not allowed” śladu trace2); wpisy zaślepki mają `"via":
-"ssh"`, odmowy gita `"via": "git"` i `"transport"`. Push do `origin` trafia do repo bare przebiegu.
+"ssh"`, odmowy gita `"via": "git"` i `"transport"`. `origin` to repo bare przebiegu (w katalogu przebiegu,
+zapisywalnym w sandboxie), więc push agenta trafia tylko tam; bez sandboxu (testy) push do `origin` działa w pełni.
 
 **Sandbox.** Ustawienia renderuje `tools/agent-security/render_settings.py` (wywoływany tym samym Pythonem, `-I`):
-`--workdir <checkout>`, `--state-dir <katalog przebiegu>`, `--deny-write` dla `runner/` i artefaktów runnera,
-`--no-network`, `--no-docker`; wszystkie ścieżki tworzy runner i podaje po `realpath`. Runner przekazuje plik
+`--workdir <checkout>`, `--state-dir <katalog przebiegu>`, `--claude-tmpdir <katalog tymczasowy Claude Code>`,
+`--deny-write` dla `runner/` i artefaktów runnera, `--no-network`, `--no-docker`; wszystkie ścieżki tworzy runner
+i podaje po `realpath`. Katalog tymczasowy Claude Code (`CLAUDE_CODE_TMPDIR`), jak we wrapperze `claude-agent`: na
+każdy przebieg świeży `agent.<losowe>` bezpośrednio w `/tmp` (po `realpath`, na macOS `/private/tmp`; krótka ścieżka,
+bo gniazdo `<katalog>/claude-<uid>` musi zmieścić się w 44 bajtach), katalog bieżącego użytkownika `0700` bez
+dowiązania, z pustym `claude-<uid>` (`0700`); sandbox dostaje tylko `claude-<uid>`, a gniazdo sesji (`cc-socks`)
+i wspólny `/tmp/claude-<uid>` innych sesji zostają zamknięte. Runner usuwa katalog po przebiegu, także po błędzie
+i przerwaniu; gdy nie da się go utworzyć albo nie jest prywatny, przebieg to `infra_error` bez uruchomienia CLI.
+Testy podają inny katalog nadrzędny przez `evals_runner.Options(claude_tmp_parent=...)` (bez opcji wiersza poleceń)
+i prawdziwy `render_settings.py` z tym samym katalogiem nadrzędnym zamiast `/tmp`. Runner przekazuje plik
 `runner/settings.json` przez `--settings` i nie używa wrappera wykonawców AO ani jego tokenu. Ustawienia muszą mieć
 `sandbox.enabled: true`, `failIfUnavailable: true`, `allowUnsandboxedCommands: false`, puste `allowedDomains`, bez
 gniazda Dockera i `allowLocalBinding`; inaczej (także brak skryptu albo jego błąd) odmowa przed pierwszym przebiegiem,
@@ -282,7 +296,9 @@ uruchomienie tym samym statusem, z możliwością wznowienia.
 ponad limit uruchomienia (`run_cost_cap_usd`, 50 USD; przebieg próbny: `N` × limit przebiegu) kończy uruchomienie
 jako `cost_stop`: niezaliczone, bez pliku historii, bez wznowienia; przebieg, który nie ruszył, dostaje artefakty ze
 statusem `cost_stop`. Do kosztu wchodzi `total_cost_usd` przebiegu; przy koszcie nieznanym po `init` (limit czasu,
-zatrzymanie, strumień bez wyniku) liczony jest limit przebiegu (górna granica), przy `infra_error` zero.
+zatrzymanie, strumień bez wyniku) liczony jest limit przebiegu (górna granica), przy `infra_error` zero. Tuż przed
+startem wykonawcy runner zapisuje w `run.json` przebieg jako `running` z doliczonym limitem przebiegu, a po wyniku
+koryguje go do kosztu przebiegu; runner zabity w trakcie przebiegu zostawia więc górną granicę w sumie kosztu.
 `rate_limit_event` z wykorzystaniem okna (`utilization` zdarzenia albo okna z `unifiedWindows`) co najmniej
 `usage.stop_percent` (90%) albo statusem innym niż `allowed`/`allowed_warning` zatrzymuje CLI i kończy uruchomienie
 jako `limit_stop`. Start przy progu `usage.start_max_percent` sprawdza `/evals` (`night_queue.py room`), nie runner.
@@ -292,10 +308,15 @@ przebiegu z ostatniego pomiaru zestawu (pola `cost_usd` powtórzeń w historii),
 `pass_cost_estimate_usd` z rejestru albo `config.json` (1,5 USD; 27 przebiegów to 40,50 USD, w limicie 50 USD); czas:
 mediana `duration_s` powtórzeń, bez pomiaru limit czasu przebiegu (górna granica). Prognoza ponad limit to odmowa.
 
-**Wznowienie** (`run --resume <id>`): tylko uruchomienie `limit_stop`, `infra_error` albo przerwane (`running` bez
-działającego procesu; blokada `run.lock`), przy niezmienionym odcisku zestawu (inaczej odmowa) i czystych plikach
+**Przerwanie.** `evals.py run` obsługuje SIGTERM, SIGHUP i SIGINT: zabija grupę procesów wykonawcy, usuwa jego
+katalog tymczasowy i kończy uruchomienie statusem `interrupted` (kod 1, z komendą wznowienia); przerwany przebieg
+zostaje `running` z doliczonym limitem przebiegu.
+
+**Wznowienie** (`run --resume <id>`): tylko uruchomienie `limit_stop`, `infra_error`, `interrupted` albo przerwane bez
+obsługi sygnału (`running` bez działającego procesu; blokada `run.lock`), przy niezmienionym odcisku zestawu (inaczej odmowa) i czystych plikach
 mierzonych. Ukończone przebiegi zostają, przebieg nieukończony dostaje nowy, świeży katalog; nakładka pochodzi z tej
-samej rewizji co na starcie, a koszt sumuje się do tego samego limitu.
+samej rewizji co na starcie, a koszt sumuje się do tego samego limitu (z górną granicą doliczoną przerwanemu
+przebiegowi, który jest powtarzany).
 
 **Przebieg próbny** (`run <zestaw> --case <id> [--overlay-rev <rewizja>]`): jeden przypadek `N` razy z nakładką
 z podanej rewizji (domyślnie HEAD), limit `N` × limit przebiegu; nigdy nie zapisuje pliku historii.
