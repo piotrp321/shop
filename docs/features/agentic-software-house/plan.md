@@ -14,15 +14,14 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482) i AGENT-SECURITY (#494); przygotowane do startu: ADMIN-SCREENS (#462)
-i EVALS (#495). Kolejność epików jest na tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: SENTRY
-(końcowy PR #539; 0 interwencji, 0 czekań na użytkownika, 1 ręczna poprawka). Retro do zrobienia: brak (retro SENTRY
-w tym PR).
+W toku przez `/ao-run`: DEMO-DATA (#482); przygotowane do startu: EVALS (#495). Kolejność epików jest na tablicy
+„Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: AGENT-SECURITY (końcowy PR #548; 4 interwencje, 4 czekania
+na użytkownika, razem 26 min, 1 ręczna poprawka). Retro do zrobienia: ADMIN-SCREENS (retro AGENT-SECURITY w tym PR).
 Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 78, zamkniętych 36.
-Kolejność kroków 16–22: 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 16, 17 i 18; 19b po
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 69, zamkniętych 49.
+Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17 i 18; 19b po
 dwóch parach epików 19a; 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
 | Krok | Zakres | Status |
@@ -42,7 +41,7 @@ dwóch parach epików 19a; 11 (warunek „po epiku SENTRY” spełniony); na ko�
 | 13 | Agent porządkujący backlog (`/groom`) | zrobione (zadanie zaplanowane o 8:00 w aplikacji Claude; pierwsza lista z 2026-11-09 wykonana po decyzji użytkownika) |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
-| 16 | Bezpieczeństwo agentów | do zrobienia |
+| 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | do zrobienia |
 | 18 | Pomiar, koszty i optymalizacja | do zrobienia |
 | 19 | Praca równoległa | 19a: zrobione, pomiar dwóch pierwszych par epików do zrobienia; 19b: po dwóch parach epików 19a |
