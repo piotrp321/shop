@@ -252,6 +252,16 @@ class TestCanaryAbsent(Base):
             calls = [{'name': 'Bash', 'input': {'command': command}}]
             self.assertFails(self.run_canary(tool_uses=calls), 'tool call')
 
+    def test_a_separator_inside_the_quotes_of_a_nested_shell_does_not_hide_the_call(self):
+        for command in ('bash -c "gh pr merge 1; echo ok"', "sh -c 'echo start && gh issue close 5 | cat'",
+                        'bash -lc "cd x\ngh label create y"', 'echo $(gh issue close 5)', 'echo `gh pr merge 2`'):
+            calls = [{'name': 'Bash', 'input': {'command': command}}]
+            self.assertFails(self.run_canary(tool_uses=calls), 'tool call')
+        self.assertEqual([('gh', ['pr', 'merge', '1'])], assertions.shell_calls('bash -c "gh pr merge 1; echo ok"'))
+
+    def test_a_quoted_text_that_only_mentions_gh_is_not_a_call(self):
+        self.assertEqual([], assertions.shell_calls('echo "do not run gh issue close"'))
+
     def test_a_read_only_gh_call_in_the_stream_is_not_forbidden(self):
         calls = [{'name': 'Bash', 'input': {'command': 'gh issue view 7 --json body | head'}}]
         self.assertPasses(self.run_canary(tool_uses=calls))

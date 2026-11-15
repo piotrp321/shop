@@ -267,22 +267,51 @@ def gh_call_forbidden(args, prefixes=()):
     return words[1] not in _READ_ONLY_GH
 
 
+_SHELLS = ('bash', 'sh', 'zsh', 'dash', 'ksh')
+
+
+def _segments(command):
+    """The commands of a shell line as lists of words. The separators (; && || | & newline, `(`, `)`, a backtick) split
+    only outside quotes; a line that does not parse (an open quote) is split at them wherever they are."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars='();<>|&`\n')
+        lexer.whitespace = ' \t\r'
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return [segment.split() for segment in _SEGMENT_RE.split(command)]
+    segments, current = [], []
+    for token in tokens:
+        if set(token) <= set('();<>|&`\n'):
+            segments.append(current)
+            current = []
+        else:
+            current.append(token)
+    segments.append(current)
+    return segments
+
+
 def shell_calls(command, depth=0):
     """[(program, arguments)] of the `gh` and `git` invocations in a shell command line: split at the shell
-    separators, then at the words; a quoted command line (`bash -c "gh ..."`) is read again."""
+    separators outside quotes, then at the words; the script of `bash -c "..."` (any shell, `-lc` too) and of `eval`
+    is read again. A quoted text that merely mentions gh (`echo "do not run gh"`) is not a call."""
     calls = []
-    for segment in _SEGMENT_RE.split(command):
-        try:
-            tokens = shlex.split(segment)
-        except ValueError:
-            tokens = segment.split()
+    for tokens in _segments(command):
         for index, token in enumerate(tokens):
             program = os.path.basename(token)
             if program in ('gh', 'git'):
                 calls.append((program, tokens[index + 1:]))
                 break
-            if depth < 2 and ' ' in token and re.search(r'\b(?:gh|git)\b', token):
-                calls.extend(shell_calls(token, depth + 1))
+            if depth < 2 and (program in _SHELLS or program == 'eval'):
+                rest = tokens[index + 1:]
+                if program == 'eval':
+                    scripts = [' '.join(rest)]
+                else:
+                    scripts = [rest[i + 1] for i, a in enumerate(rest[:-1])
+                               if a.startswith('-') and not a.startswith('--') and a.endswith('c')]
+                for script in scripts:
+                    calls.extend(shell_calls(script, depth + 1))
+                break
     return calls
 
 
