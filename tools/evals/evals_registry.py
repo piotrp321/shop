@@ -15,6 +15,7 @@ REGISTRY_PATH = 'tools/evals/suites.json'
 CONFIG_PATH = 'tools/evals/config.json'
 SUITES_DIR = 'tools/evals/suites'
 HISTORY_DIR = 'tools/evals/history'
+TESTDATA_DIR = 'tools/evals/testdata'   # sanitised real reports of the tests: scanned for leaks like the history
 EVALS_DIR = 'tools/evals'
 MIN_N = 3
 SCHEMA_VERSION = 1

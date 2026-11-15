@@ -260,6 +260,15 @@ class ScanTest(LintTestCase):
         # the target is not read: no finding comes from the content behind a link
         self.assertFalse(any('home path' in e and 'data.txt' in e for e in report.errors), report.errors)
 
+    def test_the_stored_real_reports_of_the_test_data_are_scanned_too(self):
+        # the reports of real runs are public as soon as they are committed
+        for text in (HOME_PATH, LINUX_HOME_PATH, EMAIL, GITHUB_TOKEN, GITHUB_PAT, ANTHROPIC_KEY):
+            with self.subTest(text=text[:10]):
+                self.repo.write('tools/evals/testdata/reports/code-reviewer/leaky.md', 'Key files: %s' % text)
+                self.assertError('testdata/reports/code-reviewer/leaky.md:1')
+        self.repo.write('tools/evals/testdata/reports/code-reviewer/leaky.md', 'Key files: <home>/Development/a.php')
+        self.assertClean()
+
     def test_files_outside_suites_and_history_are_not_scanned_for_the_patterns(self):
         self.repo.write('tools/evals/notes.txt', 'path %s' % HOME_PATH)
         self.assertClean()
