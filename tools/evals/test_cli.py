@@ -262,6 +262,26 @@ class DecisionCommandTest(CliTestCase):
         self.assertEqual(0, code, out)
         self.assertNotIn('run_file', history.latest(repo.DiskSource(self.repo.root), 'code-reviewer')[1])
 
+    def test_a_history_with_only_waived_files_is_a_suite_without_a_measurement(self):
+        self.repo.commit('base')
+        self.assertEqual(0, self.run_evals('waive', 'code-reviewer', '--reason', 'no cases yet')[0])
+        self.repo.append('.claude/agents/code-reviewer.md', ' tweak')
+        code, out, _ = self.run_evals('check', '--enforce')
+        self.assertEqual(0, code, out)
+        self.assertRegex(out, r'WARNING .*code-reviewer.*no measurement')
+        # a measurement (here an accepted regression) makes the same change an error
+        self.measure(verdict='regression', date='2026-12-01T00:00:00Z')
+        self.assertEqual(1, self.run_evals('check', '--enforce')[0])
+
+    def test_a_second_waiver_on_a_history_without_a_measurement_has_no_run_file(self):
+        self.repo.commit('base')
+        history.write_result(self.repo.root, 'code-reviewer', history.decision(
+            'waived', 'code-reviewer', self.fingerprint('code-reviewer'), 'a' * 40, 'first', None, date=OLD))
+        self.repo.append('.claude/agents/code-reviewer.md', ' tweak')
+        self.assertEqual(0, self.run_evals('waive', 'code-reviewer', '--reason', 'second')[0])
+        self.assertEqual(0, self.run_evals('lint')[0])
+        self.assertNotIn('run_file', history.latest(repo.DiskSource(self.repo.root), 'code-reviewer')[1])
+
     def test_waive_after_a_regression_names_it_so_a_pr_adding_both_passes(self):
         self.repo.commit('start')
         self.repo.branch('feature')
@@ -279,7 +299,7 @@ class DecisionCommandTest(CliTestCase):
         self.measure()
         self.repo.commit('base')
         self.run_evals('waive', 'code-reviewer', '--reason', 'x')
-        self.assertEqual('waived', history.current_verdict(repo.DiskSource(self.repo.root), 'code-reviewer'))
+        self.assertEqual('waived', history.latest(repo.DiskSource(self.repo.root), 'code-reviewer')[1]['verdict'])
 
 
 class ProcessTest(CliTestCase):

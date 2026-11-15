@@ -1,6 +1,7 @@
 """`evals.py check`: the fingerprint of every suite against its current result. Python 3.9+, standard library only.
 
-Errors only with `enforce`, and only for a suite that has a measurement (a non-empty history) and, when a diff is
+Errors only with `enforce`, and only for a suite that has a measurement (a history with a file of the verdict baseline,
+pass, regression or accepted; waived files alone are not a measurement) and, when a diff is
 given, is changed by it: its current result has another fingerprint (stale) or the verdict `regression`; also for a
 history file with the verdict `regression` that the diff adds (unless a newer `accepted` or `waived` file of the history
 names it as its run file). Everything else is a warning. Without a diff `enforce` makes every stale or regressed suite
@@ -104,6 +105,7 @@ def check(root, diff=None, enforce=False):
         try:
             latest = history.latest(source, name)
             previous = history.previous_measurement(source, name)
+            measured = latest is not None and history.has_measurement(source, name)
         except history.HistoryError as error:
             raise CheckError('%s (run `evals.py lint`)' % error)
         is_changed = changed is None or name in changed   # no diff: every suite counts as changed
@@ -111,6 +113,8 @@ def check(root, diff=None, enforce=False):
             report.warn('suite %s has no measurement (verdict none): run /evals %s' % (name, name))
             continue
         file_name, result = latest
+        if not measured:
+            report.warn('suite %s has no measurement (only waived files in the history): run /evals %s' % (name, name))
         current = registry.fingerprint(source, name, entry, cfg)
         stale = result.get('fingerprint') != current
         regression = result.get('verdict') == 'regression'
@@ -119,7 +123,7 @@ def check(root, diff=None, enforce=False):
         scope = '' if is_changed else ' (not changed in this diff)'
         if stale:
             problem('suite %s is stale: run /evals %s (the newest result %s was measured on another fingerprint)%s'
-                    % (name, name, file_name, scope), is_changed)
+                    % (name, name, file_name, scope), is_changed and measured)
         if regression:
             problem('suite %s has the verdict regression (%s): run /evals %s again or ask the user to accept it '
                     '(evals.py accept %s --reason ...)%s' % (name, file_name, name, name, scope), is_changed)

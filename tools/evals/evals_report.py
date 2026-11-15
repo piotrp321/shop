@@ -19,13 +19,6 @@ class Report:
     def note(self, message):
         self.notes.append(message)
 
-    def extend(self, other):
-        for message in other.errors:
-            self.error(message)
-        for message in other.warnings:
-            self.warn(message)
-        self.notes.extend(other.notes)
-
     def print(self, out):
         """Writes the notes, warnings and errors; GitHub Actions gets workflow annotations for the last two."""
         annotate = os.environ.get('GITHUB_ACTIONS') == 'true'

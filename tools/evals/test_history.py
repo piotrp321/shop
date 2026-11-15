@@ -191,9 +191,9 @@ class ReaderTest(unittest.TestCase):
 
     def test_an_empty_or_missing_history_is_none(self):
         self.assertIsNone(history.latest(self.source, 'code-reviewer'))
-        self.assertEqual('none', history.current_verdict(self.source, 'code-reviewer'))
         os.makedirs(os.path.join(self.repo.root, 'tools/evals/history/code-reviewer'))
-        self.assertEqual('none', history.current_verdict(self.source, 'code-reviewer'))
+        self.assertIsNone(history.latest(self.source, 'code-reviewer'))
+        self.assertFalse(history.has_measurement(self.source, 'code-reviewer'))
 
     def test_the_current_result_is_the_newest_file_by_name(self):
         self.write('2026-11-13T10:00:00Z', 'baseline')
@@ -201,7 +201,7 @@ class ReaderTest(unittest.TestCase):
         name, result = history.latest(self.source, 'code-reviewer')
         self.assertEqual(newest, name)
         self.assertEqual('pass', result['verdict'])
-        self.assertEqual('pass', history.current_verdict(self.source, 'code-reviewer'))
+        self.assertEqual('pass', history.latest(self.source, 'code-reviewer')[1]['verdict'])
 
     def test_the_newest_file_wins_even_when_it_was_written_in_another_order(self):
         older = measured_result(verdict='baseline', date='2026-11-13T10:00:00Z')
@@ -209,7 +209,25 @@ class ReaderTest(unittest.TestCase):
         base = 'tools/evals/history/code-reviewer/'
         self.repo.write_json(base + history.result_file_name(newer), newer)
         self.repo.write_json(base + history.result_file_name(older), older)
-        self.assertEqual('pass', history.current_verdict(self.source, 'code-reviewer'))
+        self.assertEqual('pass', history.latest(self.source, 'code-reviewer')[1]['verdict'])
+
+    def test_only_a_baseline_pass_regression_or_accepted_file_is_a_measurement(self):
+        history.write_result(self.repo.root, 'code-reviewer', history.decision(
+            'waived', 'code-reviewer', 'f' * 64, 'a' * 40, 'typo', None, date='2026-11-13T10:00:00Z'))
+        self.assertFalse(history.has_measurement(self.source, 'code-reviewer'))
+        for verdict, date in (('baseline', '2026-11-14T10:00:00Z'), ('pass', '2026-11-15T10:00:00Z')):
+            with self.subTest(verdict=verdict):
+                repo_ = TempRepo(populate=False)
+                self.addCleanup(repo_.cleanup)
+                source = repo.DiskSource(repo_.root)
+                result = measured_result(verdict=verdict, date=date)
+                history.write_result(repo_.root, 'code-reviewer', result)
+                self.assertTrue(history.has_measurement(source, 'code-reviewer'))
+        run = self.write('2026-11-16T10:00:00Z', 'regression', commit='b' * 40)
+        self.assertTrue(history.has_measurement(self.source, 'code-reviewer'))
+        history.write_result(self.repo.root, 'code-reviewer', history.decision(
+            'accepted', 'code-reviewer', 'f' * 64, 'c' * 40, 'known', run, date='2026-11-17T10:00:00Z'))
+        self.assertTrue(history.has_measurement(self.source, 'code-reviewer'))
 
     def test_other_files_in_the_directory_are_not_results(self):
         self.write('2026-11-13T10:00:00Z', 'baseline')
@@ -224,7 +242,7 @@ class ReaderTest(unittest.TestCase):
             'accepted', 'code-reviewer', 'f' * 64, 'c' * 40, 'known', second, date='2026-11-15T10:00:00Z'))
         history.write_result(self.repo.root, 'code-reviewer', history.decision(
             'waived', 'code-reviewer', 'f' * 64, 'd' * 40, 'typo', None, date='2026-11-15T11:00:00Z'))
-        self.assertEqual('waived', history.current_verdict(self.source, 'code-reviewer'))
+        self.assertEqual('waived', history.latest(self.source, 'code-reviewer')[1]['verdict'])
         name, result = history.previous_measurement(self.source, 'code-reviewer')
         self.assertEqual(second, name)
         self.assertEqual('regression', result['verdict'])

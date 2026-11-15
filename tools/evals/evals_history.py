@@ -283,9 +283,11 @@ def latest(source, suite):
     return (names[-1], load_result(source, suite, names[-1])) if names else None
 
 
-def current_verdict(source, suite):
-    found = latest(source, suite)
-    return found[1].get('verdict', 'invalid') if found else 'none'
+def has_measurement(source, suite):
+    """True when the history holds a measurement: a file with the verdict baseline, pass, regression or accepted.
+    A history of waived files only is a suite without a measurement (a waiver is a change excused without one)."""
+    return any(load_result(source, suite, name).get('verdict') in MEASURED_VERDICTS + ('accepted',)
+               for name in list_names(source, suite))
 
 
 def previous_measurement(source, suite):
