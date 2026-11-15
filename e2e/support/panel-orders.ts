@@ -81,3 +81,23 @@ export async function placeOrderAsJan(browser: Browser, product: string): Promis
     await context.close();
   }
 }
+
+/** The demo product that has the most units (apps/api/fixtures/stock.yaml); a cancelled order gives its unit back. */
+export const ORDERED_PRODUCT = "Buty trailowe Norvane Hala 500";
+
+/** Opens the list of orders at `address` (a path of the panel) and tells whether it has a row; the list shows rows or the empty state once loaded. */
+export async function listHasRows(page: Page, address: string): Promise<boolean> {
+  await page.goto(`${urls.admin}${address}`);
+  await expect(page.getByTestId("order-row").or(page.getByTestId("empty")).first()).toBeVisible();
+  return (await page.getByTestId("order-row").count()) > 0;
+}
+
+/**
+ * Makes sure the stack has a paid order: the seed has no orders, and the orders other spec files leave are not there when
+ * the file runs in a shard of its own, so a test that needs one orders it as Jan when the list of the paid orders is empty.
+ */
+export async function ensurePaidOrder(browser: Browser, page: Page): Promise<void> {
+  if (!(await listHasRows(page, "/orders?status=paid"))) {
+    await placeOrderAsJan(browser, ORDERED_PRODUCT);
+  }
+}

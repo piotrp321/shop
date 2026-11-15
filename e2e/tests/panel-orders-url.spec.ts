@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { openMenuItem, panelMenu } from "../support/panel-menu";
-import { openOrderList, openPanelAs } from "../support/panel-orders";
+import { ensurePaidOrder, openOrderList, openPanelAs } from "../support/panel-orders";
 import { urls } from "../support/urls";
 
 /** The query of the next request of the panel for the list of orders. */
@@ -105,9 +105,12 @@ test("the order list takes its filters from the address and the menu item „Zwr
 });
 
 test("the order list takes the status, the page size and the search from the address, and writes its changes back without a new entry of the history", async ({ browser }) => {
+  // A stack without a paid order gets one from Jan (the shard of this file may have none).
+  test.setTimeout(120_000);
   const panel = await openPanelAs(browser, staff.admin);
   try {
     const { page } = panel;
+    await ensurePaidOrder(browser, page);
 
     const query = nextOrderListQuery(page);
     await page.goto(`${urls.admin}/orders?status=paid&perPage=10`);

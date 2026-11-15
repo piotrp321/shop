@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { confirmWithNote, placeOrderAsJan } from "../support/panel-orders";
+import { confirmWithNote, ensurePaidOrder, listHasRows, ORDERED_PRODUCT, placeOrderAsJan } from "../support/panel-orders";
 import { documentWidths, expectControlsReachable, expectWithinWidth, viewports, WCAG_TAGS } from "../support/panel-layout";
 import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
 
@@ -9,8 +9,6 @@ import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInP
 // payment id. The orders of the tests are the ones the stack has: a stack without a paid order or without a refund to do
 // gets one from the customer and the panel. The tests change nothing; the changes of an order are in order-management.spec.ts.
 
-// The demo product that has the most units (apps/api/fixtures/stock.yaml); a cancelled order gives its unit back.
-const ORDERED_PRODUCT = "Buty trailowe Norvane Hala 500";
 const SEARCH = "Szukaj po numerze zamówienia lub e-mailu";
 
 let paidOrderId = "";
@@ -25,23 +23,15 @@ async function firstOrderOf(page: Page, address: string): Promise<{ id: string; 
   return { id: (await link.getAttribute("href"))!.split("/").pop()!, number };
 }
 
-async function hasRows(page: Page, address: string): Promise<boolean> {
-  await go(page, address);
-  await expect(page.getByTestId("order-row").or(page.getByTestId("empty")).first()).toBeVisible();
-  return (await page.getByTestId("order-row").count()) > 0;
-}
-
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(360_000);
   await signInPanelRoles(browser, ["admin"]);
   const page = await newPanelPage("admin", viewports.desktop);
   try {
-    if (!(await hasRows(page, "/orders?status=paid"))) {
-      await placeOrderAsJan(browser, ORDERED_PRODUCT);
-    }
+    await ensurePaidOrder(browser, page);
     paidOrderId = (await firstOrderOf(page, "/orders?status=paid")).id;
 
-    if (!(await hasRows(page, "/orders?refund=pending"))) {
+    if (!(await listHasRows(page, "/orders?refund=pending"))) {
       // A paid order of its own, cancelled by the admin: a refund is due.
       const number = await placeOrderAsJan(browser, ORDERED_PRODUCT);
       await go(page, `/orders?q=${encodeURIComponent(number)}`);
