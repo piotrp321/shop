@@ -195,6 +195,23 @@ class FingerprintTest(unittest.TestCase):
         self.repo.append('tools/evals/suites/code-reviewer/case-a/input.json', ' ')
         self.assertNotEqual(after_new, self.fp())
 
+    def test_a_symbolic_link_is_fingerprinted_as_a_link_and_the_target_is_not_read(self):
+        self.repo.write('docs/target.txt', 'one')
+        os.symlink(os.path.join(self.repo.root, 'docs/target.txt'),
+                   self.repo.path('tools/evals/suites/code-reviewer/case-a/link.txt'))
+        self.repo.commit('with a link')
+        from_disk = self.fp()
+        self.assertEqual(from_disk, self.fp(source=repo.GitSource(self.repo.root, 'HEAD')))
+        self.repo.write('docs/target.txt', 'two')
+        self.assertEqual(from_disk, self.fp())
+        source = repo.DiskSource(self.repo.root)
+        self.assertEqual(os.path.join(self.repo.root, 'docs/target.txt').encode(),
+                         source.read('tools/evals/suites/code-reviewer/case-a/link.txt'))
+
+    def test_a_broken_symbolic_link_does_not_fail_the_fingerprint(self):
+        os.symlink('/nonexistent/target', self.repo.path('tools/evals/suites/code-reviewer/case-a/broken.txt'))
+        self.assertRegex(self.fp(), r'^[0-9a-f]{64}$')
+
     def test_a_removed_watched_file_changes_it(self):
         before = self.fp()
         os.remove(os.path.join(self.repo.root, '.claude/agents/code-reviewer.md'))

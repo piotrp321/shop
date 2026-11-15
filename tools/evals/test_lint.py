@@ -240,6 +240,26 @@ class ScanTest(LintTestCase):
         self.assertTrue(any('.note' in e and 'hidden' in e for e in report.errors), report.errors)
         self.assertTrue(any('.note:1' in e for e in report.errors), report.errors)
 
+    def test_a_symbolic_link_in_the_suites_or_the_history_is_an_error_and_is_not_followed(self):
+        secret = self.repo.path('docs/secret.txt')
+        with open(secret, 'w') as handle:
+            handle.write('path %s' % HOME_PATH)
+        self.repo.write_case('code-reviewer', 'linked')
+        links = {
+            'tools/evals/suites/code-reviewer/linked/data.txt': secret,
+            'tools/evals/suites/code-reviewer/linked/dir': os.path.dirname(secret),
+            'tools/evals/suites/code-reviewer/linked/broken.txt': '/nonexistent/target',
+            'tools/evals/history/code-reviewer/20261115T100000Z-aaaaaaa.json': secret,
+        }
+        for rel, target in links.items():
+            os.symlink(target, self.repo.path(rel))
+        report = self.lint()
+        for rel in links:
+            with self.subTest(path=rel):
+                self.assertTrue(any(rel in e and 'symbolic link' in e for e in report.errors), report.errors)
+        # the target is not read: no finding comes from the content behind a link
+        self.assertFalse(any('home path' in e and 'data.txt' in e for e in report.errors), report.errors)
+
     def test_files_outside_suites_and_history_are_not_scanned_for_the_patterns(self):
         self.repo.write('tools/evals/notes.txt', 'path %s' % HOME_PATH)
         self.assertClean()
@@ -559,6 +579,15 @@ class HistoryLintTest(LintTestCase):
         data['run_file'] = '20200101T000000Z-bbbbbbb.json'
         self.repo.write_json('tools/evals/history/code-reviewer/20261115T100000Z-aaaaaaa.json', data)
         self.assertError('does not exist')
+
+    def test_accepted_with_a_run_file_that_is_not_an_object_is_an_error_in_the_report(self):
+        self.repo.write('tools/evals/history/code-reviewer/20261114T100000Z-aaaaaaa.json', '[1]')
+        data = history.decision('accepted', 'code-reviewer', 'f' * 64, 'a' * 40, 'why',
+                                '20261114T100000Z-aaaaaaa.json', date='2026-11-15T10:00:00Z')
+        self.repo.write_json('tools/evals/history/code-reviewer/20261115T100000Z-aaaaaaa.json', data)
+        report = self.lint()   # must not raise
+        self.assertError('20261114T100000Z-aaaaaaa.json is not an object', report)
+        self.assertError('20261115T100000Z-aaaaaaa.json', report)
 
     def test_the_file_name_must_match_the_date_and_the_commit(self):
         path = self.write_result(date='2026-11-15T10:00:00Z', commit='abcdef1' + '0' * 33)

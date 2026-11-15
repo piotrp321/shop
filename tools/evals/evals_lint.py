@@ -170,7 +170,22 @@ def _walk_all(root, rel_dir):
     for current, dirs, files in os.walk(base):
         dirs[:] = [d for d in dirs if d not in ('__pycache__', '.git')]
         for name in files:
-            found.append(os.path.relpath(os.path.join(current, name), root).replace(os.sep, '/'))
+            if not os.path.islink(os.path.join(current, name)):   # a link is never read (see _symlinks)
+                found.append(os.path.relpath(os.path.join(current, name), root).replace(os.sep, '/'))
+    return sorted(found)
+
+
+def _symlinks(root, rel_dir):
+    """Every symbolic link in or at a directory (to a file or a directory, a broken one too)."""
+    base = os.path.join(root, rel_dir)
+    found = []
+    if os.path.islink(base):
+        found.append(rel_dir)
+    for current, dirs, files in os.walk(base):
+        dirs[:] = [d for d in dirs if d not in ('__pycache__', '.git')]
+        for name in dirs + files:
+            if os.path.islink(os.path.join(current, name)):
+                found.append(os.path.relpath(os.path.join(current, name), root).replace(os.sep, '/'))
     return sorted(found)
 
 
@@ -299,7 +314,11 @@ def _lint_result(source, suite, name, names, report):
     elif run_file >= name:
         report.error('%s: run_file %s must be older than the decision' % (path, run_file))
     elif result['verdict'] == 'accepted':
-        referenced = history.load_result(source, suite, run_file)
+        try:
+            referenced = history.load_result(source, suite, run_file)
+        except history.HistoryError as error:
+            report.error('%s: run_file %s cannot be read: %s' % (path, run_file, error))
+            return
         if referenced.get('verdict') != 'regression':
             report.error('%s: accepted needs a run_file with the verdict regression (%s is %s)'
                          % (path, run_file, referenced.get('verdict')))
@@ -309,6 +328,9 @@ def _scan(root, report):
     """The leak scan reads every file, hidden ones included; a hidden file in a case directory is an error of its own
     (listings and fingerprints skip dotfiles, so it would be part of the case without being part of the fingerprint)."""
     for rel_dir in (registry.SUITES_DIR, registry.HISTORY_DIR):
+        for path in _symlinks(root, rel_dir):
+            report.error('%s: a symbolic link is not allowed (it is not followed, so it is not part of the case data '
+                         'or the fingerprint)' % path)
         for path in _walk_all(root, rel_dir):
             with open(os.path.join(root, path), 'rb') as handle:
                 content = _decode(handle.read())

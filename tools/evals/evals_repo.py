@@ -6,11 +6,9 @@ The fingerprint of a suite is computed from a source, so the same code gives the
 revision (the base and the head of a pull request).
 """
 import os
-import re
 import subprocess
 
 CACHE_DIRS = ('__pycache__',)
-SHA_RE = re.compile(r'^[0-9a-f]{40}$')
 
 
 class GitError(Exception):
@@ -71,8 +69,12 @@ class DiskSource:
         self.root = root
 
     def read(self, rel):
+        """The bytes of a file; for a symbolic link the target path, as git stores it (the target is not followed)."""
+        full = os.path.join(self.root, rel)
         try:
-            with open(os.path.join(self.root, rel), 'rb') as handle:
+            if os.path.islink(full):
+                return os.fsencode(os.readlink(full))
+            with open(full, 'rb') as handle:
                 return handle.read()
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
             return None
@@ -83,7 +85,8 @@ class DiskSource:
         found = []
         for current, dirs, files in os.walk(base):
             dirs[:] = [d for d in dirs if not _skipped(d)]
-            for name in files:
+            # a link to a directory is not descended into (as in git, it is a file of its own)
+            for name in files + [d for d in dirs if os.path.islink(os.path.join(current, d))]:
                 if not _skipped(name):
                     found.append(os.path.relpath(os.path.join(current, name), self.root).replace(os.sep, '/'))
         return sorted(found)
