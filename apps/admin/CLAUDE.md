@@ -635,7 +635,8 @@ Spec: `docs/features/sentry/spec.md`.
 - Test reguły ESLint sprawdza identyfikator reguły i liczbę błędów, nie tylko to, że coś zostało zgłoszone.
 - `tests/lint/color-rules.test.ts` sprawdza regułę koloru (identyfikator i liczba błędów dla każdej ścieżki i prób
   obejścia, brak błędu dla klas z tokenów), blokadę importu pakietów dawnej biblioteki (także w `src/main.ts`)
-  i to, że reguły obejmują każdy plik `src/` (kolor w `src/main.ts`, `<style>` w dowolnym `.vue`); typy konfiguracji dla testu są
+  i to, że reguły obejmują każdy plik `src/` (kolor w `src/main.ts`, `<style>` w dowolnym `.vue`; poziom `error` reguł
+  wyglądu dla każdego pliku z dysku według `calculateConfigForFile`, więc `ignores` w bloku reguł oblewa test); typy konfiguracji dla testu są
   w `eslint.config.d.ts`. Import dynamiczny `import()` blokuje dopiero brak pakietów (`vue-tsc`), nie ta reguła.
 - Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
   i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list

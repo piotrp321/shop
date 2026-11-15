@@ -270,7 +270,7 @@ zamówienia): `DataTable` (na komponencie
   znaków (punkty kodowe), po 300 ms przerwy w pisaniu trafia do `apply` (pusta, także same spacje, to `null`: brak filtra),
   a za krótka albo za długa nie jest stosowana i dostaje podpowiedź (`hint`). Zwraca pole (`search`), `tooShort`, `hint`,
   `reset` (czyści pole i anuluje oczekujące opóźnienie) i `setFromAddress` (wartość z adresu, np. Wstecz, ustawia pole bez
-  `apply`); opóźnienie jest anulowane też przy odmontowaniu. Używają go listy produktów, cen i stanów oraz wybór wariantów promocji (`apply` zapisuje `q` do adresu);
+  `apply`); opóźnienie jest anulowane też przy odmontowaniu. Używają go listy produktów, cen i stanów oraz wybór wariantów promocji (w listach `apply` zapisuje `q` do adresu, w wyborze wariantów do zapytania w pamięci);
   reguły wyszukiwania kodów (od 1 znaku) i zamówień (po Enterze) zostają w ich composables. Reguły są testowane raz,
   w `tests/useNameSearch.test.ts`.
 
@@ -365,12 +365,12 @@ do adresu trafia dopiero zastosowana fraza.
   przeglądarki), fokus po zamknięciu trafia na H1 formularza. Zamknięcie karty ostrzega przeglądarka
   (`beforeunload`), poza wylogowaniem (`signingOut`). Formularz produktu nie używa `window.confirm`.
 - **Okno potwierdzenia** (`ConfirmDialog` na shadcn-vue `AlertDialog`) dla każdej akcji nieodwracalnej albo
-  zmieniającej stan: tytuł z nazwą obiektu („Anulować zamówienie R-100002?”), opis skutku jednym zdaniem, przycisk
-  akcji z etykietą opisującą skutek („Anuluj zamówienie”, „Usuń promocję”, „Zakończ promocję teraz”, „Usuń wariant
-  czarny / 42”), czerwony przy akcjach niszczących (anulowanie i zwrot zamówienia, usunięcie, zakończenie promocji,
-  usunięcie wariantu), oraz „Wróć” z domyślnym fokusem. `Escape` i „Wróć” zamykają i oddają fokus na wyzwalacz.
-  Pytają nim usunięcie wariantu i ostatniej osi produktu (#251 F12), zakończenie i usunięcie promocji (#304 F6)
-  i zmiany statusu zamówienia.
+  zmieniającej stan: tytuł z nazwą obiektu („Zakończyć promocję Lato teraz?”), opis skutku jednym zdaniem, przycisk
+  akcji z etykietą opisującą skutek („Usuń promocję”, „Zakończ promocję teraz”, „Usuń wariant czarny / 42”),
+  czerwony przy akcjach niszczących (usunięcie, zakończenie promocji, usunięcie wariantu), oraz „Wróć” z domyślnym
+  fokusem. `Escape` i „Wróć” zamykają i oddają fokus na wyzwalacz.
+  Pytają nim usunięcie wariantu i ostatniej osi produktu (#251 F12) oraz zakończenie i usunięcie promocji (#304 F6).
+  Zmiana statusu zamówienia i wykonanie zwrotu to okna z polami (niżej).
 - **Fokus, gdy wyzwalacz zniknął**: po akcji, która zmienia zestaw przycisków (publikacja i wycofanie produktu,
   usunięcie wariantu i osi, zakończenie i usunięcie promocji, zmiana statusu zamówienia, wykonanie zwrotu), fokus trafia na nagłówek karty, w której była akcja („Status”, „Akcje”, „Warianty”; nagłówek
   z `tabindex="-1"`; `focusAfterAction` z `src/lib/focus.ts`), a gdy akcja przeniosła na inną trasę (usunięcie
