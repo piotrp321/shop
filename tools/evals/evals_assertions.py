@@ -381,7 +381,7 @@ def _json(assertion, art, context):
     text = art.read_file(name)
     try:
         data = json.loads(text) if text is not None else None
-    except ValueError:
+    except (ValueError, RecursionError):   # the file is the agent's: a deeply nested one must not stop the scoring
         data = None
     if text is None or data is None:
         return Result('json', False, '%s is missing or not JSON' % name)
@@ -435,7 +435,13 @@ def _validator(assertion, art, context):
         return Result('validator', False, 'the script %s does not exist' % script)
     base = os.path.realpath(art.directory)
     work = os.path.join(base, 'validate')
-    shutil.rmtree(work, ignore_errors=True)
+    try:
+        if os.path.islink(work) or os.path.isfile(work):
+            os.unlink(work)   # a link planted by the agent is replaced, never followed
+        elif os.path.isdir(work):
+            shutil.rmtree(work)
+    except OSError:
+        return Result('validator', False, 'the work directory of the validator cannot be cleared')
     values = {'PASS_DIR': base, 'FILES_DIR': os.path.join(base, 'files'), 'INPUT_DIR': os.path.join(base, 'input'),
               'RUN_DIR': os.path.join(work, 'run'), 'STATE_DIR': os.path.join(work, 'state'),
               'RETRO_HOME': os.path.join(work, 'retro-home'), 'SWEEP_HOME': os.path.join(work, 'sweep-home'),

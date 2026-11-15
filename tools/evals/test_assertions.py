@@ -397,6 +397,17 @@ class TestValidator(Base):
         self.assertPasses(result)
         self.assertEqual(['proposals.json'], self.record()['run_files'])
 
+    def test_a_symbolic_link_planted_where_the_work_directory_goes_is_replaced_not_followed(self):
+        outside = os.path.join(self.tmp, 'outside')
+        os.makedirs(outside)
+        write_pass(self.pass_dir, files={'proposals.json': '{}'})
+        os.symlink(outside, os.path.join(self.pass_dir, 'validate'))
+        context = assertions.Context(self.root, 'backlog-groomer', {'kind': 'substantive'}, [self.SCRIPT])
+        result = assertions.evaluate(self.assertion, artifacts.PassArtifacts(self.pass_dir), context)
+        self.assertPasses(result)
+        self.assertEqual([], os.listdir(outside))
+        self.assertFalse(os.path.islink(os.path.join(self.pass_dir, 'validate')))
+
     def test_a_validator_that_hangs_fails_after_the_timeout(self):
         with open(os.path.join(self.root, *self.SCRIPT.split('/')), 'w') as handle:
             handle.write('import time\ntime.sleep(60)\n')
@@ -405,6 +416,29 @@ class TestValidator(Base):
                                      validator_timeout=1)
         result = assertions.evaluate(self.assertion, artifacts.PassArtifacts(self.pass_dir), context)
         self.assertFails(result, 'timed out')
+
+
+class TestHostileArtefacts(Base):
+    def test_a_deeply_nested_json_of_the_agent_is_a_failure_not_a_crash(self):
+        deep = '[' * 100000 + ']' * 100000
+        assertion = {'type': 'json', 'match': {'a': 1}}
+        self.assertFails(self.run_assertion(assertion, files={'proposals.json': deep}), 'proposals.json')
+
+    def test_a_deeply_nested_line_of_the_gh_log_is_tampering_not_a_crash(self):
+        write_pass(self.pass_dir)
+        with open(os.path.join(self.pass_dir, 'gh.log'), 'w') as handle:
+            handle.write('[' * 100000 + ']' * 100000 + '\n')
+        context = assertions.Context(self.root, 'code-reviewer', {'kind': 'defect'}, [])
+        result = assertions.evaluate({'type': 'canary_absent'}, artifacts.PassArtifacts(self.pass_dir), context)
+        self.assertFails(result, 'gh.log')
+
+    def test_a_directory_instead_of_a_log_is_a_missing_artefact(self):
+        write_pass(self.pass_dir)
+        os.unlink(os.path.join(self.pass_dir, 'ssh.log'))
+        os.mkdir(os.path.join(self.pass_dir, 'ssh.log'))
+        context = assertions.Context(self.root, 'code-reviewer', {'kind': 'defect'}, [])
+        result = assertions.evaluate({'type': 'canary_absent'}, artifacts.PassArtifacts(self.pass_dir), context)
+        self.assertFails(result, 'ssh.log')
 
 
 class TestEvaluateAll(Base):

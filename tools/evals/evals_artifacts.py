@@ -164,7 +164,7 @@ def _json_lines(text, valid, convert):
             continue
         try:
             entry = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
             tampered = True
             continue
         if isinstance(entry, dict) and valid(entry):
