@@ -52,6 +52,17 @@ final class ListBackofficePricesHandlerTest extends TestCase
         $this->store(self::SHOES_42, 10800, 'standard', 800, 2);
     }
 
+    public function testPassesTheSortOfTheQueryToTheDirectoryAndNullWhenThereIsNone(): void
+    {
+        $directory = new InMemoryProductDirectory();
+
+        $this->handler($directory)(new ListBackofficePrices(null, null, null, 25));
+        $this->handler($directory)(new ListBackofficePrices(null, null, null, 25, '-updatedAt'));
+        $this->handler($directory)(new ListBackofficePrices('buty', null, null, 25, '-name'));
+
+        self::assertSame([null, '-updatedAt', '-name'], $directory->sorts);
+    }
+
     public function testListsTheProductsOfThePageWithTheirVariantsInOrderAndTheirPrices(): void
     {
         $directory = new InMemoryProductDirectory([

@@ -37,6 +37,17 @@ final class ListBackofficeStockHandlerTest extends TestCase
         $this->stock->store(self::EMPTY_STORED, 0, 0, version: 0);
     }
 
+    public function testPassesTheSortOfTheQueryToTheDirectoryAndNullWhenThereIsNone(): void
+    {
+        $directory = new InMemoryProductDirectory();
+
+        $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
+        $this->handler($directory)(new ListBackofficeStock(null, null, null, 25, '-updatedAt'));
+        $this->handler($directory)(new ListBackofficeStock('plecak', null, null, 25, '-name'));
+
+        self::assertSame([null, '-updatedAt', '-name'], $directory->sorts);
+    }
+
     public function testListsTheProductsOfThePageWithTheirVariantsInOrderAndTheirStockAndTheCursorOfTheNextPage(): void
     {
         $directory = new InMemoryProductDirectory([$this->product(self::BACKPACK, 'Plecak'), $this->product(self::BOTTLE, 'Bidon')], 'next-cursor')
