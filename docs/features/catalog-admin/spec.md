@@ -28,8 +28,8 @@ w `make seed`, slug kategorii i reguła „nazwa osi bez `:`”. Opiera się te�
 - Edycja z widoku z optimistic locking (wersja produktu).
 
 Poza zakresem:
-- tworzenie, edycja i usuwanie kategorii oraz przekierowania po zmianie sluga kategorii (kategorie zostają z danych
-  demo; osobne issue);
+- zarządzanie drzewem kategorii i przekierowania starych adresów kategorii (`docs/features/admin-features/spec.md`,
+  sekcja 4);
 - usuwanie produktu (zamiast niego wycofanie publikacji);
 - przekierowania 301 po zmianie sluga produktu (slug jest stały od pierwszej publikacji, decyzja K4);
 - import hurtowy, eksport, operacje masowe;
