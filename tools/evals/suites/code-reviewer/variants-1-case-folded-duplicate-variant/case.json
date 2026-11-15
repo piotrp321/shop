@@ -16,8 +16,8 @@
     {
       "type": "finding",
       "severity": "IMPORTANT",
-      "path": "VariantValues|ProductVariantRecord|DoctrineProductRepository|DuplicateVariantValues",
-      "keyword": "lower|wielko|locale|kolacj|collat|case|mb_|comparisonKey|500"
+      "path": "VariantValues|ProductVariantRecord|ProductVariants|DoctrineProductRepository|DuplicateVariantValues|Version20261104120000|values_key",
+      "keyword": "lower\\(|mb_strtolower|strtolower|(?-i:İ)|Σ|sigm|wielk\\w+ liter|małe i wielkie|case-?fold|case.insensitive|(values_key|comparisonKey)[\\s\\S]{0,200}(lower|wielk|case)|(lower|wielk|case)[\\s\\S]{0,200}(values_key|comparisonKey)"
     }
   ]
 }

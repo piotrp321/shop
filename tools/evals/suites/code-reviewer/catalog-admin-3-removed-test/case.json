@@ -18,7 +18,7 @@
       "type": "finding",
       "severity": "BLOCKER",
       "path": "ReconcileTaxTest",
-      "keyword": "usun|usuw|removed|deleted|testReadsThePricesAndTheCatalogInBatches|ReadsThePricesAndTheCatalog"
+      "keyword": "testReadsThePricesAndTheCatalogInBatches|ReadsThePricesAndTheCatalog|(usun|usuw|skasow)\\w*\\s+(\\w+\\s+){0,2}(\\btest|dostawc|data ?provider)|(\\btest\\w*|dostawc\\w*|data ?provider)\\s+(\\w+\\s+){0,2}(usunięt\\w+|usunięto|usunął|zniknął|zniknęł\\w+)|(removed|deleted)\\s+(\\w+\\s+){0,2}(\\btest|data ?provider)|(\\btest|data ?provider)\\s+(\\w+\\s+){0,2}(removed|deleted)"
     }
   ]
 }

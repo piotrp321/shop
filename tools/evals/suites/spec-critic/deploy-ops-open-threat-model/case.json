@@ -35,8 +35,8 @@
     {
       "type": "finding",
       "severity": "Important",
-      "path": "spec\\.md|monitoring|Alloy",
-      "keyword": "Model zagrożeń|ogóln\\w+ zakaz|zamknięt\\w+ list|list\\w+ dróg"
+      "path": "Alloy|grafana-cloud",
+      "keyword": "ogóln\\w+ zakaz|(model zagrożeń|zamknięt\\w+ list\\w+|list\\w+ dróg)[\\s\\S]{0,300}(sekret|dostęp|uprawnie|ClusterRole|RBAC)|(sekret|dostęp|uprawnie|ClusterRole|RBAC)[\\s\\S]{0,300}(model zagrożeń|zamknięt\\w+ list\\w+|list\\w+ dróg)"
     }
   ]
 }

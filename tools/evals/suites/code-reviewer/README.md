@@ -18,8 +18,13 @@ Przypadki agenta `.claude/agents/code-reviewer.md` (11: 8 z błędem, 2 bez bł�
   `tdd.status` jest `verified`, a w SEARCH-4 `lost_verified_on_base` (jak w tamtym przebiegu AO).
 - **Asercje.** Przypadek z błędem: werdykt `CHANGES_REQUIRED` i jedno `finding` (ścieżka pliku z błędem, słowo
   kluczowe, waga według punktu 7 promptu agenta). Przypadek bez błędu: werdykt `PASS` i `max_severity` `SUGGESTION`
-  (żadnego `IMPORTANT` ani `BLOCKER`). Wzorce `finding` są szerokie (wiele sformułowań tej samej wady), a dopasowanie
-  wymaga ścieżki i słowa w tym samym znalezisku.
+  (żadnego `IMPORTANT` ani `BLOCKER`). Wzorce `finding` opisują mechanizm wady (np. NBSP, `lower(`, surowa
+  wartość, usunięty test), nie ogólne słowa (`case`, `trim`, `UUID`, `500`), które pasują do każdego znaleziska o tym
+  samym pliku; słowo kluczowe jest dopasowywane bez wielkości liter, więc wzorzec, który jej wymaga (`NUL`, `İ`),
+  ma ją włączoną jawnie (`(?-i:…)`). Dopasowanie wymaga ścieżki i słowa w tym samym znalezisku. Test
+  `FindingAssertionsTest` w `test_suites_cases.py` sprawdza każdą asercję na wzorcowych znaleziskach z
+  `tools/evals/testdata/suite-findings.json` (poprawne znalezisko wady pasuje, znalezisko o innym problemie w tym
+  samym pliku nie pasuje) i na oryginalnych raportach, które wadę przeoczyły (nie pasują).
 - **Pole `outside_prompt`.** `true` oznacza przypadek z błędem, który nie jest przykładem ani kontrolą wymienioną wprost
   w prompcie agenta (punkt 4 i przykłady w punkcie 7: #247, #248, #256, #257, usunięty test, plik spoza `scope`).
   Test `test_suites_cases.py` wymaga co najmniej dwóch takich przypadków.
@@ -36,6 +41,12 @@ Przypadki agenta `.claude/agents/code-reviewer.md` (11: 8 z błędem, 2 bez bł�
 | `search-4-upper-case-category-uuid` | zgłoszenie #197, zadanie SEARCH-4, PR 184, `352fc199` na `epic/search` | `ListProductsHandler` normalizuje UUID kategorii tylko do sprawdzenia istnienia; do fasetów i indeksu idzie surowa wartość, więc wielkie litery dają pustą listę | IMPORTANT | tak |
 | `catalog-admin-3-removed-test` | zadanie CATALOG-ADMIN-3, PR 220, `35007f10` na `epic/catalog-admin`, łatka `patch.diff` | łatka usuwa istniejący test `ReconcileTaxTest::testReadsThePricesAndTheCatalogInBatches` razem z dostawcą danych (zachowanie `pricing:reconcile-tax` poza nowym kodem zadania) | BLOCKER | nie (kontrola 1 promptu) |
 | `order-management-1-file-outside-scope` | zadanie ORDER-MANAGEMENT-1, PR 231, `74e25e92` na `epic/order-management`, łatka `patch.diff` | łatka zmienia `Cart::MAX_LINES` z 50 na 100: plik i zmiana spoza `scope`, bez podstawy w specyfikacji | IMPORTANT | nie (kontrola 2 promptu) |
+
+W `search-4-upper-case-category-uuid` pusta lista przy wielkich literach w `term` istniała już przed SEARCH-4
+(`cae6e9e3`: `search($query->categoryId, …)` z surową wartością); diff przepisuje tę linię na `ProductSearchCriteria`
+i dodaje nową wadę: `facetCategories` i `find` (porównanie `===`) dostają to samo surowe id, więc także fasety kategorii
+są puste. Asercja łapie znalezisko o tym, co wnosi diff (surowa wartość w `ListProductsHandler`, fasety, zapytanie
+w `ProductSearchQuery`/`ElasticsearchProductSearch`), a nie o samej liście sprzed zadania.
 
 Wybór dwóch przypadków spoza promptu: to prawdziwe zgłoszenia `bug` z epiku QUALITY-FIXES (#113, #197), w których błąd
 przeszedł review i nie należy do przykładów promptu. Review #113 zgłosiło tylko dwie uwagi `Minor` (opis pustego

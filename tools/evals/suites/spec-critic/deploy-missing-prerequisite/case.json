@@ -36,7 +36,7 @@
       "type": "finding",
       "severity": "Important",
       "path": "elasticsearch|spec\\.md|Dockerfile",
-      "keyword": "stempel|Elasticsearch.{0,120}(obraz|image|GHCR|rejestr|publik)|(obraz|image|GHCR).{0,120}Elasticsearch"
+      "keyword": "stempel[\\s\\S]{0,300}(obraz|image|Dockerfile|GHCR|rejestr|niczy|nikt|zadani)|(obraz|image|Dockerfile|GHCR|rejestr|niczy|nikt|zadani)[\\s\\S]{0,300}stempel|Elasticsearch[\\s\\S]{0,200}(GHCR|rejestr\\w*|publik\\w+|niczy\\w+|nikt|żadn\\w+ zadani\\w*|nie jest (zadaniem|artefakt))|(GHCR|rejestr\\w*|publik\\w+|niczy\\w+|żadn\\w+ zadani\\w*)[\\s\\S]{0,200}obraz\\w* Elasticsearch"
     }
   ]
 }

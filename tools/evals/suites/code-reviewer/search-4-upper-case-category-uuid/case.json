@@ -17,8 +17,8 @@
     {
       "type": "finding",
       "severity": "IMPORTANT",
-      "path": "ListProductsHandler",
-      "keyword": "wielk|upper|lower|case|małe|duże|UUID|kanonicz|canonical"
+      "path": "ListProductsHandler|ProductSearchQuery|ElasticsearchProductSearch|ListProductsController",
+      "keyword": "(wielk\\w+|duż\\w+)\\s+lit\\w+|upper-?case|strtolower|kanoniczn\\w+|canonical|(nie)?znormalizowan\\w+|normalizacj\\w+\\s+(UUID|id|kategori)|surow\\w+\\s+(wartoś\\w+|id|identyfikator\\w*|UUID|parametr\\w*)|\\braw\\s+(value|id|uuid|parameter)"
     }
   ]
 }

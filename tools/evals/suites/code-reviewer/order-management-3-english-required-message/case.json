@@ -17,7 +17,7 @@
       "type": "finding",
       "severity": "IMPORTANT",
       "path": "ChangeOrderStatus|CompleteRefund|BackofficeOrder",
-      "keyword": "angiel|English|[Pp]olsk|This value|MissingConstructor|REQUIRE_ALL"
+      "keyword": "angiel|English|This (value|field)|MissingConstructor|(nie|bez)\\s+po\\s+polsku|nie jest po polsku|REQUIRE_ALL_PROPERTIES[\\s\\S]{0,200}(komunikat|message|polsk)"
     }
   ]
 }

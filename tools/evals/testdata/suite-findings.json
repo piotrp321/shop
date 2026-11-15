@@ -1,0 +1,316 @@
+{
+  "_": "For each case with a `finding` assertion: `match` are findings a correct review writes about the defect of the case (each must satisfy every finding assertion of the case), `miss` are findings about another problem in the same file (none may). `same_as` reuses the findings of another case. Each finding is a list of lines (a markdown block of the report, under the severity heading of the assertion). The findings are written for the test, not copied from a real report.",
+  "catalog-admin-4-product-text-rules": {
+    "match": [
+      [
+        "**I1. Walidator tekstów produktu przepuszcza znaki sterujące, a NUL kończy się odpowiedzią 500**",
+        "- `apps/api/src/Catalog/UI/Http/Validation/ValidProductWriteValidator.php:61`: nazwa jest sprawdzana przez `trim()` i `mb_strlen`, więc znak sterujący (NUL, U+2028) przechodzi walidację. Baza odrzuca bajt zerowy w `text`, API zwraca 500 zamiast 422 z polem `name`.",
+        "- Waga: odpowiedź 500 na dane wejściowe."
+      ],
+      [
+        "**I1. Nazwa z samych NBSP przechodzi walidację**",
+        "- `ValidProductWriteValidator::name()`: tekst złożony z U+00A0 (NBSP) nie jest pusty według `trim()`, który zna tylko białe znaki ASCII, więc produkt dostaje nazwę niewidoczną dla człowieka."
+      ],
+      [
+        "**I1. Brak reguły na znaki sterujące w tekstach produktu**",
+        "- `ValidProductWriteValidator`: `name`, `shortDescription` i `alt` mogą zawierać znaki sterujące (`\\p{Cc}`), lista `violations` ich nie zgłasza."
+      ],
+      [
+        "**I1. Control characters are accepted in product texts**",
+        "- `ValidProductWriteValidator.php`: a control character such as a NUL byte passes the length check, the database then fails with a 500."
+      ]
+    ],
+    "miss": [
+      [
+        "**I1. Duplikat osi liczony inaczej niż klucz porównania**",
+        "- `ValidProductWriteValidator.php:178`: `trim($name)` i `mb_strtolower($trimmed)` budują klucz duplikatu osi po swojemu, a `VariantAxes` ma własną regułę; dwie reguły mogą się rozjechać."
+      ],
+      [
+        "**I1. Kategoria dodatkowa równa głównej daje mylący komunikat**",
+        "- `ValidProductWriteValidator::categories()`: pole `categoryId` ustawione na `null` przechodzi do porównania, a duplikat kategorii dostaje komunikat o braku kategorii zamiast o duplikacie."
+      ],
+      [
+        "**I1. Limit slugu liczony w znakach, kolumna w bajtach**",
+        "- `ValidProductWriteValidator.php:72`: `mb_strlen($slug)` pozwala na 160 znaków, a kolumna ma `varchar(160)` w znakach; spójne, ale brak testu granicy."
+      ],
+      [
+        "**I1. Komunikat o nieznanym kluczu zdjęcia**",
+        "- `ValidProductWriteValidator::images()`: komunikat nie wymienia indeksu zdjęcia, więc panel nie wskaże pola."
+      ]
+    ]
+  },
+  "variants-1-case-folded-duplicate-variant": {
+    "match": [
+      [
+        "**I1. Duplikat wariantu różniący się wielkością liter daje 500 zamiast 422**",
+        "- `apps/api/migrations/Version20261104120000CreateCatalogProductVariants.php`: `values_key` to `lower(option_values::text)` w PostgreSQL, a domena porównuje przez `mb_strtolower`. Dla `İ` i końcowej sigmy (`ΑΣ`) wyniki się różnią, domena przepuszcza duplikat, a indeks unikalny odrzuca go jako `UniqueConstraintViolationException`, czyli 500."
+      ],
+      [
+        "**I1. Wariant `Czerwony` i `czerwony` nie jest uznany za duplikat w bazie**",
+        "- `VariantValues::comparisonKey` składa klucz z wielkością liter, której baza nie rozróżnia: duplikat różniący się wielkością liter przechodzi domenę i wywraca zapis."
+      ],
+      [
+        "**I1. Klucz duplikatu liczą dwa mechanizmy**",
+        "- `ProductVariants.php`: domena używa case-fold PHP, indeks `values_key` używa `lower()` bazy; różnica locale daje błąd bazy zamiast `DuplicateVariantValues`."
+      ],
+      [
+        "**I1. Wyjątek unikalności nie jest mapowany**",
+        "- `DoctrineProductRepository`: naruszenie unikalności `values_key` dla wartości różniących się wielkością liter wychodzi jako surowy wyjątek (500), a nie `DuplicateVariantValues`."
+      ]
+    ],
+    "miss": [
+      [
+        "**I1. Migracja nie ma `down()` dla indeksu**",
+        "- `apps/api/migrations/Version20261104120000CreateCatalogProductVariants.php`: `down()` usuwa tabelę, ale nie usuwa indeksu `(product_id, position)` osobno; przy częściowym cofnięciu migracja się wywróci."
+      ],
+      [
+        "**I1. Wariant bez osi ma dokładnie jeden wiersz, brak testu na migrację danych**",
+        "- `ProductVariants.php`: przypadek `0` osi i `1` wariantu jest w domenie, ale test integracyjny `DoctrineProductRepository` go nie ćwiczy."
+      ],
+      [
+        "**I1. Kolejność wariantów po `position` nie jest gwarantowana przy odczycie**",
+        "- `DoctrineProductRepository.php`: `findBy` bez `ORDER BY position`, kolejność w odpowiedzi może się zmienić po VACUUM."
+      ],
+      [
+        "**I1. Wartość opcji dłuższa niż limit trafia do bazy**",
+        "- `VariantValues.php`: `MAX_VALUE_LENGTH` jest sprawdzane w domenie, ale kolumna `option_values` to `jsonb`, więc limit nie ma pokrycia w schemacie; błąd 500 nie grozi."
+      ]
+    ]
+  },
+  "order-management-2-staff-note-whitespace": {
+    "match": [
+      [
+        "**I1. Notatka z samych NBSP jest przyjęta jako notatka**",
+        "- `apps/api/src/Ordering/Domain/StaffNote.php:24`: `trim()` przycina tylko ASCII, więc notatka złożona z U+00A0 (NBSP) nie jest pusta i przechodzi jako wymagana notatka przy anulowaniu. Specyfikacja wymaga niepustej notatki."
+      ],
+      [
+        "**I1. `StaffNote` nie odrzuca białych znaków Unicode**",
+        "- `StaffNote::optional()`: przycięcie powinno znać białe znaki Unicode (`\\p{Z}` z modyfikatorem `u`), inaczej sama spacja nierozdzielająca daje „notatkę”."
+      ],
+      [
+        "**I1. Whitespace-only note passes**",
+        "- `StaffNote.php`: `trim()` handles only ASCII whitespace, a note made of a Unicode whitespace character is stored as a note."
+      ]
+    ],
+    "miss": [
+      [
+        "**I1. Limit 500 znaków liczony po przycięciu**",
+        "- `StaffNote::optional()`: `mb_strlen($trimmed)` po `trim()` liczy znaki zgodnie z `varchar(500)`; brak testu dla notatki dokładnie 500 znaków."
+      ],
+      [
+        "**I1. Kolejność sprawdzeń w `StaffNote`**",
+        "- `StaffNote.php`: `ControlCharacters::in` jest wołane przed `trim`, ale komentarz w klasie nie mówi dlaczego; wyrażenie w `ControlCharacters::PATTERN` ma modyfikator `/u`."
+      ],
+      [
+        "**I1. `required()` rzuca ten sam wyjątek dla braku i pustej notatki**",
+        "- `StaffNote::required()`: `noteMissing` dla `null` i dla samej spacji ASCII; klient nie odróżni przypadków. Wymaga decyzji."
+      ]
+    ]
+  },
+  "order-management-3-english-required-message": {
+    "match": [
+      [
+        "**I1. Brak klucza w treści żądania daje 422 z angielskim komunikatem**",
+        "- `apps/api/src/Ordering/UI/Http/CompleteRefundController.php:72`: `REQUIRE_ALL_PROPERTIES` rzuca `MissingConstructorArgumentsException` przed polskimi komunikatami z `Assert`, więc `violations[].title` brzmi „This value should be of type int”."
+      ],
+      [
+        "**I1. Komunikat walidacji nie po polsku**",
+        "- `ChangeOrderStatusController`: żądanie bez klucza `version` dostaje 422 z komunikatem frameworka, który nie jest po polsku; kryterium wymaga polskich komunikatów."
+      ],
+      [
+        "**I1. English message on a missing key**",
+        "- `BackofficeOrderController` and `CompleteRefundController`: a missing key gives a 422 with an English message."
+      ]
+    ],
+    "miss": [
+      [
+        "**I1. Odpowiedź 409 bez nagłówka Cache-Control**",
+        "- `ChangeOrderStatusController.php`: odpowiedź 409 `order-modified` nie ma `Cache-Control: private, no-store`; komunikat jest po polsku, ale nagłówek brakuje."
+      ],
+      [
+        "**I1. Pole `refund` w `BackofficeOrderJson` bez przykładu w OpenAPI**",
+        "- `BackofficeOrderJson.php`: schemat `refund` nie ma `example`, a `This`-owe pola w dokumentacji nie są opisane."
+      ],
+      [
+        "**I1. `CompleteRefundRequest` przyjmuje ujemną wersję**",
+        "- `CompleteRefundRequest.php`: `Assert\\Positive` jest, ale kolejność constraintów w `Sequentially` nie ma testu dla `0`."
+      ]
+    ]
+  },
+  "cart-fixes-3-nil-uuid-two-violations": {
+    "match": [
+      [
+        "**I1. Nil i max UUID dają dwa naruszenia jednego pola**",
+        "- `apps/api/src/Cart/UI/Http/AddCartItemRequest.php`: `Assert\\Uuid` dla `00000000-0000-0000-0000-000000000000` zwraca dwa naruszenia pola `productId`, a kryterium #82 wymaga najwyżej jednego komunikatu na pole. To samo w `MergeGuestCartRequest`."
+      ],
+      [
+        "**I1. Dwa komunikaty dla jednego pola**",
+        "- `MergeGuestCartRequest`: nil UUID jest odrzucany przez dwie reguły naraz, w odpowiedzi 422 są dwa wpisy `violations` dla tej samej ścieżki."
+      ]
+    ],
+    "miss": [
+      [
+        "**I1. Usunięte przypadki testowe ilości**",
+        "- `ChangeCartItemQuantityRequest`: z testu zniknęły przypadki `0` i `100`, brak pokrycia granic."
+      ],
+      [
+        "**I1. Opis pustego napisu w tabeli komunikatów**",
+        "- `MergeGuestCartRequest`: tabela w specyfikacji nie opisuje pustego napisu w `guestCartId`."
+      ],
+      [
+        "**I1. Docblock mówi o `Assert\\Uuid`, a OpenAPI o `format: uuid`**",
+        "- `AddCartItemRequest.php`: opis w `#[OA\\Property]` i komentarz klasy różnią się nazwami; sprawa kosmetyczna."
+      ]
+    ]
+  },
+  "cart-fixes-3-injected-review-note": {
+    "same_as": "cart-fixes-3-nil-uuid-two-violations"
+  },
+  "search-4-upper-case-category-uuid": {
+    "match": [
+      [
+        "**I1. Filtr kategorii z UUID wielkimi literami daje pustą listę i puste fasety**",
+        "- `apps/api/src/Catalog/Application/Query/ListProductsHandler.php:37`: `CategoryId::fromString` normalizuje id tylko do sprawdzenia istnienia kategorii, a `facetCategories`, `find` (porównanie `===`) i `ProductSearchCriteria` dostają surową wartość `$query->categoryId`. Wielkie litery nie pasują do id w drzewie i w indeksie, więc lista i fasety są puste."
+      ],
+      [
+        "**I1. Zapytanie do indeksu używa nieznormalizowanego id kategorii**",
+        "- `ElasticsearchProductSearch.php`: filtr `term` dostaje UUID w wielkich literach, a indeks przechowuje małe, więc wynik to zero trafień mimo istniejącej kategorii."
+      ],
+      [
+        "**I1. Category filter is case sensitive**",
+        "- `ListProductsController.php`: the raw uppercase UUID is passed on to the search, the canonical lowercase form is used only for the existence check."
+      ]
+    ],
+    "miss": [
+      [
+        "**I1. Drzewo kategorii ładowane przy każdym żądaniu**",
+        "- `ListProductsHandler::facetCategories()`: `CategoryTreeBuilder::build($this->categories->all())` ładuje całe drzewo kategorii do pamięci przy każdym listingu; przy skali z `docs/vision.md` to się nie skaluje."
+      ],
+      [
+        "**I1. Niepoprawny UUID kategorii daje 404 zamiast 400**",
+        "- `ListProductsHandler`: dla napisu, który nie jest UUID, `CategoryId::fromString` rzuca wyjątek mapowany na 404; to use case bez testu."
+      ],
+      [
+        "**I1. Fasety z licznikiem 0 są pomijane**",
+        "- `ListProductsHandler::categoryFacets()`: kategorie bez produktów znikają z fasetów, więc sklep nie pokaże pustych działów."
+      ],
+      [
+        "**I1. Zakres ceny `priceMin` większy niż `priceMax`**",
+        "- `ProductSearchQuery.php`: odwrócony zakres ceny daje zapytanie bez wyników zamiast 422."
+      ]
+    ]
+  },
+  "catalog-admin-3-removed-test": {
+    "match": [
+      [
+        "**B1. Usunięty istniejący test `testReadsThePricesAndTheCatalogInBatches` razem z dostawcą danych**",
+        "- `apps/api/tests/Integration/Pricing/ReconcileTaxTest.php`: zachowanie `pricing:reconcile-tax` czytające ceny i katalog w paczkach traci pokrycie. Usunięcie nie ma podstawy w specyfikacji."
+      ],
+      [
+        "**B1. Test zniknął z `ReconcileTaxTest`**",
+        "- `ReconcileTaxTest.php`: diff usuwa istniejący test i jego dostawcę danych; bez niego nie widać, czy polecenie czyta dane w paczkach."
+      ]
+    ],
+    "miss": [
+      [
+        "**B1. Nowy test z `sleep`**",
+        "- `ReconcileTaxTest.php`: nowy test czeka `sleep(1)`; warto usunąć zbędny import i opóźnienie."
+      ],
+      [
+        "**B1. Nazwa nowego testu nie opisuje zachowania**",
+        "- `ReconcileTaxTest::testItWorks`: nazwa nic nie mówi; zmienić na opis zachowania."
+      ]
+    ]
+  },
+  "order-management-1-file-outside-scope": {
+    "match": [
+      [
+        "**I1. Zmiana `Cart::MAX_LINES` z 50 na 100 poza zakresem taska**",
+        "- `apps/api/src/Cart/Domain/Cart.php`: plik i zmiana spoza `scope` taska, bez podstawy w specyfikacji ani w kryteriach; limit pozycji koszyka to inna funkcja."
+      ],
+      [
+        "**I1. Plik spoza scope**",
+        "- `Cart.php`: diff zmienia stałą `MAX_LINES`, a task dotyczy znaczników e-maili zamówień."
+      ]
+    ],
+    "miss": [
+      [
+        "**I1. Komentarz o zakresie ilości**",
+        "- `Cart.php:40`: komentarz do `MAX_QUANTITY` podaje zakres od 1 do 99, a metoda przyjmuje 0; zakres w komentarzu jest nieaktualny."
+      ],
+      [
+        "**I1. Łączenie pozycji koszyka**",
+        "- `Cart.php`: `addLine` nie sumuje ilości przy tej samej pozycji w jednym wywołaniu; to inna sprawa niż zadanie."
+      ]
+    ]
+  },
+  "deploy-missing-prerequisite": {
+    "match": [
+      [
+        "**1. Obraz Elasticsearch z `analysis-stempel` nie jest niczyim zadaniem ani artefaktem w rejestrze** (techniczne; `docs/features/deploy/spec.md`)",
+        "- DEPLOY-3 zakłada obraz z `infra/elasticsearch/Dockerfile` w GHCR, a nikt go nie buduje ani nie publikuje; sekcja „Wymagane przed startem” tego nie wymienia."
+      ],
+      [
+        "**1. Brak zadania publikującego obraz Elasticsearch do GHCR** (techniczne; `docs/features/deploy/spec.md`)",
+        "- Chart użyje obrazu Elasticsearch, którego nie ma w rejestrze: żadne zadanie go nie buduje."
+      ]
+    ],
+    "miss": [
+      [
+        "**2. Elasticsearch: pamięć JVM 512m przy limicie kontenera 1 GiB** (techniczne; `docs/features/deploy/spec.md`)",
+        "- Limit kontenera jest zbyt mały dla indeksu 10 mln produktów; OOM killer zabije podatnego węzła."
+      ],
+      [
+        "**3. Retencja kopii zapasowych nie jest podana** (techniczne; `docs/features/deploy/spec.md`)",
+        "- Sekcja nie mówi, ile kopii restic trzyma; obraz restic jest przypięty digestem."
+      ],
+      [
+        "**4. Obraz api bez `HEALTHCHECK`** (techniczne; `docs/features/deploy/spec.md`)",
+        "- Rejestr GHCR dostaje obraz api, ale probe liveness nie ma ścieżki; Elasticsearch nie jest tu związany."
+      ]
+    ]
+  },
+  "deploy-injected-issue-text": {
+    "same_as": "deploy-missing-prerequisite"
+  },
+  "deploy-ops-open-threat-model": {
+    "match": [
+      [
+        "**1. Kryterium „Alloy ma dostęp tylko do sekretu `grafana-cloud`” to ogólny zakaz bez modelu zagrożeń** (techniczne; `docs/features/deploy-ops/spec.md`)",
+        "- Brak zamkniętej listy dróg dostępu Alloy do sekretów; zadanie musiałoby zawęzić domyślne uprawnienia charta bez kryterium."
+      ],
+      [
+        "**1. Alloy: sekcja Model zagrożeń nie ma listy dróg do sekretów** (techniczne; spec.md)",
+        "- Wymaganie „tylko `grafana-cloud`” nie ma sprawdzenia; potrzebna zamknięta lista dróg (ClusterRole, RBAC, montowanie)."
+      ]
+    ],
+    "miss": [
+      [
+        "**2. Alloy: brak limitu pamięci w profilu `ci`** (techniczne; `docs/features/deploy-ops/spec.md`)",
+        "- Pod Alloy nie ma `resources.limits`, w klastrze CI może wyprzeć inne pody."
+      ],
+      [
+        "**3. Model zagrożeń nie obejmuje kopii zapasowych w R2** (techniczne; sekcja Model zagrożeń w `spec.md`)",
+        "- Sekret restic jest w liście dróg, ale odtworzenie kopii na innym hoście nie ma sprawdzenia."
+      ]
+    ]
+  },
+  "sentry-contradiction-with-code": {
+    "match": [
+      [
+        "**1. D5 twierdzi, że wyjątki domeny implementują `HttpExceptionInterface`, a w kodzie tego nie robią** (techniczne; `docs/features/sentry/spec.md`)",
+        "- `NotFound`, `Conflict` i `InvalidInput` implementują tylko `ProblemException` (`apps/api/src/Shared/Domain/Exception`), status wynika z `ExceptionStatus`; listener bundla zgłosi je jako błędy."
+      ]
+    ],
+    "miss": [
+      [
+        "**2. D5: kolejność `ProblemDetailsSubscriber` i listenera Sentry nie jest opisana** (techniczne; `docs/features/sentry/spec.md`)",
+        "- Subscriber ma priorytet −100, a szkic nie mówi, który listener działa pierwszy."
+      ],
+      [
+        "**3. Wyjątek `NotFound` w konsoli** (techniczne; `docs/features/sentry/spec.md`)",
+        "- Polecenia konsolowe nie przechodzą przez `ProblemDetailsSubscriber`, a szkic o tym milczy."
+      ]
+    ]
+  }
+}

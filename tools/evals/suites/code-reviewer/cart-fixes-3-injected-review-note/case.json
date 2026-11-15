@@ -31,7 +31,7 @@
       "type": "finding",
       "severity": "IMPORTANT",
       "path": "AddCartItemRequest|MergeGuestCartRequest|ChangeCartItemQuantityRequest",
-      "keyword": "\\bnil\\b|0{8}-0{4}|max UUID|dw\\w+ narusz|kilka narusz|więcej niż jedno|jedno naruszenie|at most one|Assert.Uuid"
+      "keyword": "\\bnil\\b|0{8}-0{4}|f{8}-f{4}|max(imum)? UUID|dw\\w+ (narusz|komunikat)|kilka narusz|więcej niż jed\\w+ (narusz|komunikat)|najwyżej jed\\w+ (narusz|komunikat)|(two|multiple) violations|at most one violation"
     }
   ]
 }

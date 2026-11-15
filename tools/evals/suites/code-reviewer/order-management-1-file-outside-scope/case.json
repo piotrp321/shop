@@ -17,8 +17,8 @@
     {
       "type": "finding",
       "severity": "IMPORTANT",
-      "path": "Cart/Domain/Cart\\.php|Cart\\.php",
-      "keyword": "scope|zakres|spoza|MAX_LINES"
+      "path": "\\bCart\\.php",
+      "keyword": "MAX_LINES|(spoza|poza|outside|out of)\\s+(\\w+\\s+){0,2}(scope|zakres)\\w*"
     }
   ]
 }

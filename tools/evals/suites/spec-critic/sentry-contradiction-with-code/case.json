@@ -36,7 +36,7 @@
       "type": "finding",
       "severity": "Important",
       "path": "ProblemException|NotFound|ExceptionStatus|spec\\.md|ProblemDetailsSubscriber",
-      "keyword": "HttpExceptionInterface"
+      "keyword": "HttpExceptionInterface[\\s\\S]{0,300}(ProblemException|nie implement|ExceptionStatus)|(ProblemException|nie implement|ExceptionStatus)[\\s\\S]{0,300}HttpExceptionInterface"
     }
   ]
 }

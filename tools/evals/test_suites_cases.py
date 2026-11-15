@@ -18,6 +18,7 @@ import evals_case as case_module
 import evals_history as history
 import evals_lint as lint
 import evals_registry as registry
+import evals_reports as reports
 import evals_repo as repo
 import evals_runner as runner
 import evals_score as score
@@ -149,6 +150,133 @@ class AssertionsOfTheCasesTest(unittest.TestCase):
                  and any(a.get('severity') == 'IMPORTANT' for a in d['assertions'] if a['type'] == 'finding')]
         self.assertTrue(removed, 'a removed or weakened test (BLOCKER) as a patch')
         self.assertTrue(scope, 'a file outside the scope (IMPORTANT) as a patch')
+
+
+TESTDATA = os.path.join(HERE, 'testdata')
+# The original review or critic reports (stored sanitised copies; the rest of the fixtures package can be given in
+# EVALS_FIXTURES_DIR, then the reports that are not stored are checked too) that missed the defect of a case: no
+# finding assertion of the case may match them (spec: Asercje, a wzorzec, który pasuje do oryginału, nie mierzy wady).
+ORIGINAL_REPORTS = {
+    'catalog-admin-4-product-text-rules': [('code-reviewer', 'CATALOG-ADMIN-4-1')],
+    'variants-1-case-folded-duplicate-variant': [('code-reviewer', 'VARIANTS-1-1')],
+    'order-management-2-staff-note-whitespace': [('code-reviewer', 'ORDER-MANAGEMENT-2-1')],
+    'order-management-3-english-required-message': [('code-reviewer', 'ORDER-MANAGEMENT-3-1')],
+    'cart-fixes-3-nil-uuid-two-violations': [('code-reviewer', 'CART-FIXES-3-1')],
+    'cart-fixes-3-injected-review-note': [('code-reviewer', 'CART-FIXES-3-1')],
+    'search-4-upper-case-category-uuid': [('code-reviewer', 'SEARCH-4-1'), ('code-reviewer', 'SEARCH-4-2')],
+    'catalog-admin-3-removed-test': [('code-reviewer', 'CATALOG-ADMIN-3-1')],
+    'order-management-1-file-outside-scope': [('code-reviewer', 'ORDER-MANAGEMENT-1-1')],
+    'deploy-missing-prerequisite': [('spec-critic', 'DEPLOY-r1'), ('spec-critic', 'DEPLOY-r2')],
+    'deploy-injected-issue-text': [('spec-critic', 'DEPLOY-r1'), ('spec-critic', 'DEPLOY-r2')],
+    'deploy-ops-open-threat-model': [('spec-critic', 'DEPLOY-OPS-r1'), ('spec-critic', 'DEPLOY-OPS-r2')],
+    # SENTRY-r1 is deliberately absent: its first finding is this very contradiction in the first draft
+}
+
+
+def findings_data():
+    with open(os.path.join(TESTDATA, 'suite-findings.json'), encoding='utf-8') as handle:
+        return json.load(handle)
+
+
+def exemplars(data, case_id):
+    entry = data.get(case_id)
+    if entry and 'same_as' in entry:
+        entry = data[entry['same_as']]
+    return entry
+
+
+def report_with(suite, severity, block):
+    """A report of the shape the agent writes with one finding of the given severity word."""
+    body = '\n'.join(block)
+    if suite == 'code-reviewer':
+        return '**Werdykt: CHANGES_REQUIRED**\n\n## Ustalenia\n\n### %s\n\n%s\n' % (severity, body)
+    return '## Znaleziska\n\n### %s\n\n%s\n\n## Werdykt\n\n**DO POPRAWY**\n' % (severity, body)
+
+
+def finding_assertions(suite, case_id):
+    return [a for a in read_case(suite, case_id)['assertions'] if a['type'] == 'finding']
+
+
+def matches(suite, assertion, text):
+    report = reports.parse(text, suite)
+    return reports.match_finding(report, assertion.get('path'), assertion.get('keyword'),
+                                 assertion['severity']) is not None
+
+
+def original_report(agent, name):
+    for base in (os.path.join(TESTDATA, 'reports'), os.environ.get('EVALS_FIXTURES_DIR')):
+        if not base:
+            continue
+        for rel in (os.path.join(agent, name + '.md'), os.path.join(agent, 'reports', name + '.md')):
+            path = os.path.join(base, rel)
+            if os.path.isfile(path):
+                with open(path, encoding='utf-8') as handle:
+                    return handle.read()
+    return None
+
+
+class FindingAssertionsTest(unittest.TestCase):
+    """Whether the `finding` assertions of the cases measure the defect and nothing else: a correct finding of the
+    defect matches, a finding about another problem in the same file does not, the original report that missed the
+    defect does not (all through the real parser of reports and `match_finding`)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = findings_data()
+        cls.cases = [(suite, case_id) for suite in MINIMUM for case_id in case_dirs(suite)
+                     if finding_assertions(suite, case_id)]
+
+    def test_every_case_with_a_finding_assertion_has_a_matching_and_a_missing_example(self):
+        self.assertTrue(self.cases)
+        for suite, case_id in self.cases:
+            entry = exemplars(self.data, case_id)
+            self.assertIsNotNone(entry, case_id)
+            self.assertGreaterEqual(len(entry['match']), 1, case_id)
+            self.assertGreaterEqual(len(entry['miss']), 2, case_id)
+        known = {case_id for _, case_id in self.cases}
+        self.assertEqual([], sorted(k for k in self.data if k != '_' and k not in known))
+
+    def test_the_examples_are_findings_of_the_severity_of_the_assertion(self):
+        for suite, case_id in self.cases:
+            severity = finding_assertions(suite, case_id)[0]['severity']
+            entry = exemplars(self.data, case_id)
+            for kind in ('match', 'miss'):
+                for block in entry[kind]:
+                    report = reports.parse(report_with(suite, severity, block), suite)
+                    self.assertEqual(1, len(report.findings), (case_id, kind, block[0]))
+                    self.assertEqual(reports.severity_rank(severity), report.findings[0].rank, case_id)
+
+    def test_a_correct_finding_of_the_defect_satisfies_every_finding_assertion_of_the_case(self):
+        for suite, case_id in self.cases:
+            for assertion in finding_assertions(suite, case_id):
+                for block in exemplars(self.data, case_id)['match']:
+                    text = report_with(suite, assertion['severity'], block)
+                    self.assertTrue(matches(suite, assertion, text), (case_id, block[0]))
+
+    def test_a_finding_about_another_problem_in_the_same_file_satisfies_no_finding_assertion(self):
+        for suite, case_id in self.cases:
+            for assertion in finding_assertions(suite, case_id):
+                for block in exemplars(self.data, case_id)['miss']:
+                    text = report_with(suite, assertion['severity'], block)
+                    self.assertFalse(matches(suite, assertion, text), (case_id, block[0]))
+
+    def test_the_original_reports_that_missed_the_defect_do_not_match(self):
+        checked = []
+        for suite, case_id in self.cases:
+            for agent, name in ORIGINAL_REPORTS.get(case_id, []):
+                text = original_report(agent, name)
+                if text is None:
+                    continue
+                checked.append(name)
+                for assertion in finding_assertions(suite, case_id):
+                    self.assertFalse(matches(suite, assertion, text), (case_id, name))
+        # the stored copies are always there; the other reports come with EVALS_FIXTURES_DIR
+        self.assertGreaterEqual(len(set(checked)), 9)
+
+    def test_every_defect_case_has_the_original_reports_listed_or_none_exist(self):
+        listed = set(ORIGINAL_REPORTS)
+        for suite, case_id in self.cases:
+            self.assertTrue(case_id in listed or case_id.startswith('sentry-'), case_id)
 
 
 class PromptsOfTheCasesTest(unittest.TestCase):
