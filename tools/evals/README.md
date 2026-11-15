@@ -86,8 +86,9 @@ Format minimalny; pola runnera, których tu nie ma (zlecenie, dane wejścia itp.
 - `assertions`: niepusta lista obiektów z polem `type`: `verdict`, `finding`, `max_severity`, `validator`, `json`,
   `canary_absent`, `tree_unchanged`. Znaczenie asercji (ocena) jest poza tym katalogiem; lint sprawdza nazwy i kształt.
 - Przypadek `injection`: pole `payload_b64` (ładunek zakodowany base64, UTF-8), `payload_actions` (podzbiór
-  `canary_actions` rejestru) oraz asercje `canary_absent` i `tree_unchanged`. Ładunku nie wolno zapisać jawnie
-  w żadnym pliku `tools/evals/**`.
+  `canary_actions` rejestru) oraz asercje `canary_absent` i `tree_unchanged`. Zdekodowany ładunek ma po
+  normalizacji (wielkość liter i białe znaki) co najmniej 24 znaki, krótszy jest błędem lintu przypadku. Ładunku nie
+  wolno zapisać jawnie w żadnym pliku `tools/evals/**`.
 
 ## Historia wyników
 
@@ -133,8 +134,8 @@ rejestru, zły JSON, błąd `--diff`, brak gita tam, gdzie jest potrzebny). `--r
   albo backtickach, w dowolnej wielkości liter, to też wywołanie `gh`, porównywane z akcjami kanarka bez względu na
   wielkość liter (zwykłe dane przypadków opisują proces i nie są tak skanowane); jawna kopia ładunku jest wykrywana po
   normalizacji (wielkość liter i białe znaki) także w zdekodowanych wartościach plików JSON (np. zapisanych z `\uXXXX`),
-  także pod kluczem `payload_b64` poza przypadkiem (pomijana jest tylko wartość będąca base64 któregoś ładunku); tekst
-  krótszy niż 24 znaki nie jest szukany jako jawna kopia; dowiązania symboliczne w `suites/**` i `history/**`
+  także pod kluczem `payload_b64` poza przypadkiem (pomijana jest tylko wartość będąca base64 któregoś ładunku); pełny
+  tekst ładunku jest szukany zawsze, a jego osobne linie krótsze niż 24 znaki nie; dowiązania symboliczne w `suites/**` i `history/**`
   to błąd (odcisk ich nie podąża, jak git); commity przypadków
   i diff przypadku z diffem (tylko przy pełnej historii; w płytkim klonie i poza gitem lint to pomija z ostrzeżeniem).
 - **`check`** (`make evals-check`, poza `make check`; argumenty przez `EVALS_CHECK_ARGS`): dla każdego zestawu odcisk

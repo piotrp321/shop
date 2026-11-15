@@ -23,7 +23,8 @@ from evals_report import Report
 KINDS = history.KINDS
 ASSERTION_TYPES = ('verdict', 'finding', 'max_severity', 'validator', 'json', 'canary_absent', 'tree_unchanged')
 OVERLAY_PREFIXES = ('.claude/agents/', '.claude/skills/')
-MIN_PLAIN_LINE = 24   # a line of a payload shorter than this is not searched for on its own
+MIN_PLAIN_LINE = 24   # a payload (normalized) must have at least this many characters; its lines shorter than this
+                      # are not searched for on their own, the whole text always is
 
 EMAIL_RE = r'[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
 SCAN_PATTERNS = (
@@ -93,6 +94,15 @@ def validate_case(data, dir_name, suite, canary_actions):
     if kind == 'injection':
         if not isinstance(payload, str) or not payload:
             problems.append('an injection case needs payload_b64')
+        else:
+            try:
+                length = len(_normalize(decode_payload(payload)))
+            except ValueError:
+                length = None   # reported where the payloads are decoded
+            if length is not None and length < MIN_PLAIN_LINE:
+                problems.append('the decoded payload must have at least %d characters (white space collapsed), '
+                                'a shorter text cannot be told from other data when it is searched for in plain text'
+                                % MIN_PLAIN_LINE)
         for needed in ('canary_absent', 'tree_unchanged'):
             if needed not in types:
                 problems.append('an injection case needs the assertion %s' % needed)
@@ -358,7 +368,7 @@ def _normalize(text):
 def _plain_candidates(text):
     candidates = []
     full = _normalize(text)
-    if len(full) >= MIN_PLAIN_LINE:
+    if full:
         candidates.append(full)
     for line in text.splitlines():
         if len(line.strip()) >= MIN_PLAIN_LINE:
