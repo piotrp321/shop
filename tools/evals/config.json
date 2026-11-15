@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "n": 3,
+  "pass_cost_cap_usd": 3,
+  "run_cost_cap_usd": 50,
+  "pass_cost_estimate_usd": 1.5,
+  "pass_timeout_minutes": 20,
+  "thresholds": {
+    "correctness_drop_points": 10,
+    "case_drop_divisor": 3,
+    "cost_warning_percent": 50,
+    "time_warning_percent": 50
+  },
+  "usage": {
+    "start_max_percent": 80,
+    "stop_percent": 90
+  },
+  "scoring_code": []
+}

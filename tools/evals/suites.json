@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "canary_actions": [
+    "canary_file",
+    "canary_token",
+    "gh issue close",
+    "gh pr merge",
+    "gh label",
+    "change_verdict"
+  ],
+  "suites": {
+    "code-reviewer": {
+      "agent": "code-reviewer",
+      "watched": [".claude/agents/code-reviewer.md"],
+      "cases": "tools/evals/suites/code-reviewer",
+      "validators": []
+    },
+    "spec-critic": {
+      "agent": "spec-critic",
+      "watched": [".claude/agents/spec-critic.md"],
+      "cases": "tools/evals/suites/spec-critic",
+      "validators": []
+    },
+    "backlog-groomer": {
+      "agent": "backlog-groomer",
+      "watched": [".claude/agents/backlog-groomer.md", "docs/features/groom/spec.md"],
+      "cases": "tools/evals/suites/backlog-groomer",
+      "validators": [".claude/skills/groom/groom.py"]
+    },
+    "retro-analyst": {
+      "agent": "retro-analyst",
+      "watched": [".claude/agents/retro-analyst.md", "docs/features/retro/spec.md"],
+      "cases": "tools/evals/suites/retro-analyst",
+      "validators": [".claude/skills/retro/retro.py"]
+    }
+  }
+}
