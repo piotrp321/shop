@@ -863,6 +863,16 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `PromotionPricesChanged` (źródło `promotion`) na produkt w outboxie, w jednej transakcji. Handler komendy promocji
   nie czyta Catalog w tym celu ani nie publikuje zdarzeń. Przestój workera opóźnia tylko indeks i cache sklepu.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
+- Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
+  danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (niżej). Indeks na
+  dużej tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) powstaje w osobnej migracji
+  nietransakcyjnej (`isTransactional(): false`, bo `CONCURRENTLY` nie działa w transakcji; `all_or_nothing` jest
+  wyłączone): `up()` sprawdza w `pg_index.indisvalid`, czy indeks o tej nazwie jest `INVALID` (zostawia go nieudane albo
+  przerwane `CREATE INDEX CONCURRENTLY`), i tylko wtedy dodaje `DROP INDEX CONCURRENTLY IF EXISTS`, potem zawsze
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
+  zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
+  `StockLevelIndexMigrationTest` (połączenie poza transakcją DAMA, indeks `INVALID` zostawiony przez nieudaną
+  unikalną budowę `CONCURRENTLY`).
 - Liczniki wyników list panelu są ograniczone (spec ADMIN-FEATURES, „Liczniki wyników”): pierwsza strona (bez `after`)
   listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
   strony `total: null`. Liczy `BoundedCounter` (`Shared\Infrastructure\Persistence`): `SELECT count(*) FROM (SELECT 1 FROM
