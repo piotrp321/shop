@@ -5,7 +5,7 @@ ADR `docs/adr/agentic-software-house.md`. Epik daje każdemu przebiegowi epiku p
 (czas zegarowy i jego rozkład, wartość tokenów i koszt subskrypcji, ponowienia, naprawy, konflikty, testy,
 interwencje, regresje po merge'u), pokazuje wąskie gardła czasu zegarowego, wykrywa bezproduktywne zużycie w trakcie
 przebiegu z pushem i kończy raport odbioru oraz `/retro` decyzjami optymalizacyjnymi z mierzonym efektem. Telemetria
-Claude Code w Grafana Cloud to osobny epik TELEMETRY (#577, część 2 kroku 18, po AGENT-SECURITY); METRICS od niej
+Claude Code w lokalnym stosie na Macu to osobny epik TELEMETRY (#577, część 2 kroku 18, po AGENT-SECURITY); METRICS od niej
 nie zależy.
 
 Issues: #496
@@ -39,7 +39,7 @@ optymalizacyjne”, a `metrics.py trend` pokazuje wszystkie zmergowane epiki.
 Zatwierdzone 2026-11-15 (rekomendacje przyjęte w całości, z doprecyzowaniami):
 
 - Q0. Krok 18 podzielony na dwa niezależne epiki: METRICS (ta specyfikacja: pomiar, wąskie gardła, alarmy, decyzje,
-  raport, `/retro`) i TELEMETRY (#577: telemetria Claude Code w Grafana Cloud, po AGENT-SECURITY). METRICS nie
+  raport, `/retro`) i TELEMETRY (#577: telemetria Claude Code w lokalnym stosie na Macu, po AGENT-SECURITY). METRICS nie
   czeka na telemetrię ani na AGENT-SECURITY.
 - Q1. Decyzje optymalizacyjne przechodzą istniejący cykl `/retro` (próg, rejestry, skuteczność); raport odbioru
   pokazuje kandydatów z rekomendacją, bez osobnego rejestru decyzji.
@@ -53,7 +53,7 @@ Zatwierdzone 2026-11-15 (rekomendacje przyjęte w całości, z doprecyzowaniami)
 - Q9. Pakiet oczyszczonych fixture'ów przygotowuje sesja poza sandboxem przed `/ao-run metrics` („Wymagane przed
   startem”).
 
-Decyzje Q5–Q7 (stos Grafana Cloud, sesje interaktywne, dashboard) dotyczą epiku TELEMETRY i są zapisane w #577.
+Decyzje Q5–Q7 (stos telemetrii, sesje interaktywne, dashboard) dotyczą epiku TELEMETRY i są zapisane w #577.
 
 ## Pojęcia
 
@@ -355,7 +355,7 @@ użytkownika.
 
 ## Poza zakresem
 
-- Telemetria Claude Code w Grafana Cloud: epik TELEMETRY (#577).
+- Telemetria Claude Code w lokalnym stosie na Macu: epik TELEMETRY (#577).
 - Monitoring produkcji i dyżur agenta (krok 11), dokumentacja i studium przypadku (krok 21).
 - Pomiar `/sweep`, `/retro` i `/prepare-epic` w rekordzie epiku: mają własne sekcje `## Zużycie` (pp i czas).
 - Automatyczne zatrzymywanie prób przy alarmie i zmiany AO (zamrożone).
