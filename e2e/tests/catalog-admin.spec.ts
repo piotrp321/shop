@@ -212,3 +212,79 @@ test("product form: the save bar keeps a focused field in view, and leaving with
   await page.getByRole("alertdialog", { name: "Masz niezapisane zmiany" }).getByRole("button", { name: "Opuść bez zapisu" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Produkty" })).toBeVisible();
 });
+
+type PanelCategory = { id: string; slug: string; path: string; version: number; children?: PanelCategory[] };
+
+/** A category of the panel tree by its path (a fixed path of the demo catalog), or the failure naming the path. */
+async function panelCategoryByPath(request: APIRequestContext, headers: Record<string, string>, path: string): Promise<PanelCategory> {
+  const response = await request.get(`${urls.api}/api/v1/admin/categories`, { headers });
+  expect(response.status(), await response.text()).toBe(200);
+  const stack = (await response.json()) as PanelCategory[];
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    if (node.path === path) return node;
+    stack.push(...(node.children ?? []));
+  }
+  throw new Error(`the panel tree has no category "${path}"`);
+}
+
+test("an old category address follows the renamed category: 308 to the new address with the query, an unknown address is 404", async ({ page, request }) => {
+  test.setTimeout(6 * EVENT_WAIT_MS + 60_000);
+  const bearer = waitForBearerToken(page);
+  await loginStaff(page, staff.marketing);
+  const headers = { Authorization: `Bearer ${await bearer}` };
+
+  // A category of its own on the 4th level, below a leaf of the demo tree: the menu shows 3 levels, the sections of the
+  // home page and the footer only the roots, so no other test sees it, and the demo slugs stay as they are.
+  const parent = await panelCategoryByPath(request, headers, "bieganie/buty/szosowe");
+  const suffix = Date.now().toString(36);
+  const oldSlug = `e2e-stara-${suffix}`;
+  const newSlug = `e2e-nowa-${suffix}`;
+  const oldPath = `${parent.path}/${oldSlug}`;
+  const newPath = `${parent.path}/${newSlug}`;
+  const query = "?sort=cena-malejaco&o=Kolor%3Aczarne&o=Rozmiar%3A42&page=2";
+
+  const created = await request.post(`${urls.api}/api/v1/admin/categories`, { headers, data: { name: `E2E kategoria ${suffix}`, slug: oldSlug, parentId: parent.id } });
+  expect(created.status(), await created.text()).toBe(201);
+  let category = (await created.json()) as { id: string; version: number };
+  let deleted = false;
+  const locationOf = async (address: string) => {
+    const response = await request.get(`${urls.store}${address}`, { maxRedirects: 0 });
+    const location = response.headers().location;
+    return { status: response.status(), location: location === undefined ? null : new URL(location, urls.store).pathname + new URL(location, urls.store).search };
+  };
+
+  try {
+    expect(await locationOf(`/c/${parent.path}/${oldSlug}-nigdy`), "an address that was never a category is a 404, not a redirect").toMatchObject({ status: 404 });
+
+    const revised = await request.put(`${urls.api}/api/v1/admin/categories/${category.id}`, {
+      headers,
+      data: { name: `E2E kategoria ${suffix}`, slug: newSlug, version: category.version },
+    });
+    expect(revised.status(), await revised.text()).toBe(200);
+    category = (await revised.json()) as { id: string; version: number };
+
+    // The change reaches the store through the outbox, the purge of Varnish and the revalidation of the tag `catalog`.
+    await expect
+      .poll(() => locationOf(`/c/${oldPath}${query}`), { message: `the old address did not redirect to /c/${newPath} with the query within 20 s`, timeout: EVENT_WAIT_MS, intervals: [500] })
+      .toEqual({ status: 308, location: `/c/${newPath}${query}` });
+
+    // The new address is the page of the category; the name and the breadcrumbs show it.
+    const target = await page.goto(`/c/${oldPath}?page=1`);
+    expect(page.url(), "the browser follows the redirect to the new address").toBe(`${urls.store}/c/${newPath}?page=1`);
+    expect(target?.status()).toBe(200);
+    await expect(page.getByRole("heading", { level: 1, name: `E2E kategoria ${suffix}` })).toBeVisible();
+
+    // A deleted category takes its old addresses with it.
+    const removed = await request.delete(`${urls.api}/api/v1/admin/categories/${category.id}?version=${category.version}`, { headers });
+    expect(removed.status(), await removed.text()).toBe(204);
+    deleted = true;
+    await expect
+      .poll(() => locationOf(`/c/${oldPath}${query}`), { message: "the old address of the deleted category was not a 404 within 20 s", timeout: EVENT_WAIT_MS, intervals: [500] })
+      .toMatchObject({ status: 404 });
+    expect((await locationOf(`/c/${newPath}`)).status).toBe(404);
+  } finally {
+    if (!deleted) {
+      await request.delete(`${urls.api}/api/v1/admin/categories/${category.id}?version=${category.version}`, { headers });
+    }
+  }
+});
