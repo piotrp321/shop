@@ -10,7 +10,7 @@ use Doctrine\DBAL\ParameterType;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
- * The bounded count on PostgreSQL (shop_test): a series of numbers stands in for any table.
+ * The bounded count on PostgreSQL (shop_test): a series of numbers stands in for a table in the tests of the result, a real (temporary) table in the plan test.
  */
 final class BoundedCounterTest extends KernelTestCase
 {
@@ -67,22 +67,35 @@ final class BoundedCounterTest extends KernelTestCase
         self::assertFalse($count->capped);
     }
 
-    public function testTheStatementReadsAtMostTheLimitPlusOneRows(): void
+    public function testTheStatementStopsTheScanOfARealTableAfterTheLimitPlusOneRows(): void
     {
-        $sql = BoundedCounter::sql(self::FROM, ['s.n > 5'], 10);
+        // The scan of a table is the node that matters: a Function Scan of generate_series materializes every row, so
+        // the series above cannot show whether the statement stops reading.
+        $this->connection->beginTransaction();
+        try {
+            $this->connection->executeStatement('CREATE TEMPORARY TABLE bounded_counter_rows (n integer NOT NULL, label text NOT NULL) ON COMMIT DROP');
+            $this->connection->executeStatement("INSERT INTO bounded_counter_rows SELECT n, 'row '||n FROM generate_series(1, 5000) AS s(n)");
+            $this->connection->executeStatement('ANALYZE bounded_counter_rows');
 
-        $plan = $this->connection->fetchOne('EXPLAIN (ANALYZE, FORMAT JSON) '.$sql);
+            $sql = BoundedCounter::sql('bounded_counter_rows r', ['r.n > 5', "r.label <> ''"], 10);
+            $plan = $this->connection->fetchOne('EXPLAIN (ANALYZE, FORMAT JSON) '.$sql);
+        } finally {
+            $this->connection->rollBack();
+        }
+
         self::assertIsString($plan);
         $decoded = json_decode($plan, true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($decoded);
         self::assertIsArray($decoded[0]);
         self::assertIsArray($decoded[0]['Plan']);
-        $rowsRead = self::rowsOfScans($decoded[0]['Plan']);
+        $nodes = self::nodes($decoded[0]['Plan']);
 
-        self::assertNotSame([], $rowsRead, 'The plan has a scan of the source.');
-        foreach ($rowsRead as $rows) {
-            self::assertLessThanOrEqual(11, $rows);
-        }
+        self::assertContains('Limit', array_column($nodes, 'Node Type'), 'The statement has a Limit node.');
+        $scans = array_values(array_filter($nodes, static fn (array $node): bool => 'bounded_counter_rows' === ($node['Relation Name'] ?? null)));
+        self::assertCount(1, $scans, 'The plan scans the table once.');
+        // The filter drops no row of this table, so 4 995 rows match: a scan not stopped by the Limit would hand up all of them.
+        self::assertIsNumeric($scans[0]['Actual Rows']);
+        self::assertLessThanOrEqual(11, (int) $scans[0]['Actual Rows']);
     }
 
     public function testTheLimitMustBePositive(): void
@@ -93,29 +106,23 @@ final class BoundedCounterTest extends KernelTestCase
     }
 
     /**
-     * Rows each scan node of the plan handed up, one entry per node without children.
+     * Every node of the plan, the node itself before its children.
      *
      * @param array<mixed> $node
      *
-     * @return list<int>
+     * @return list<array<mixed>>
      */
-    private static function rowsOfScans(array $node): array
+    private static function nodes(array $node): array
     {
         $children = $node['Plans'] ?? [];
         self::assertIsArray($children);
-        if ([] === $children) {
-            // JSON numbers of EXPLAIN may come back as floats.
-            self::assertIsNumeric($node['Actual Rows']);
 
-            return [(int) $node['Actual Rows']];
-        }
-
-        $rows = [];
+        $nodes = [$node];
         foreach ($children as $child) {
             self::assertIsArray($child);
-            $rows = [...$rows, ...self::rowsOfScans($child)];
+            $nodes = [...$nodes, ...self::nodes($child)];
         }
 
-        return $rows;
+        return $nodes;
     }
 }
