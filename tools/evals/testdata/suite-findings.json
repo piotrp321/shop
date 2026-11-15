@@ -184,6 +184,18 @@
       [
         "**I1. `required()` rzuca ten sam wyjątek dla braku i pustej notatki**",
         "- `StaffNote::required()`: `noteMissing` dla `null` i dla samej spacji ASCII; klient nie odróżni przypadków. Wymaga decyzji."
+      ],
+      [
+        "**I1. Separator wiersza U+2028 przechodzi walidację notatki**",
+        "- `apps/api/src/Ordering/Domain/StaffNote.php:24`: separator wiersza U+2028 w notatce przechodzi `StaffNote::optional()`, bo `ControlCharacters::PATTERN` nie ma modyfikatora `/u` i nie zna tego znaku."
+      ],
+      [
+        "**I1. Znaki sterujące spoza ASCII nie są odrzucane**",
+        "- `StaffNote.php`: znaki sterujące spoza ASCII w notatce nie są odrzucane, bo `ControlCharacters::PATTERN` odrzuca tylko C0 i DEL."
+      ],
+      [
+        "**I1. Line separator accepted in the staff note**",
+        "- `StaffNote.php`: a line separator is accepted in the staff note, U+2028 passes `ControlCharacters::PATTERN` because the pattern has no `/u` modifier."
       ]
     ]
   },

@@ -17,7 +17,7 @@
       "type": "finding",
       "severity": "IMPORTANT",
       "path": "StaffNote",
-      "keyword": "\\bNBSP\\b|U\\+00A0|nierozdziel|biał\\w+ znak\\w*\\s+Unicode|Unicode\\w*\\s+(biał|whitespace|space|spacj)|spacj\\w*\\s+Unicode|trim\\w*(\\(\\))?[^.\\n]{0,80}(ASCII|Unicode)|\\\\p\\{|niełamiąc\\w*|non-breaking|no-break|\\\\u00A0|\\\\xA0|non-ASCII|spoza ASCII|poza ASCII|niełamliw\\w*|tward\\w*\\s+spacj\\w*|spacj\\w*\\s+tward\\w*|U\\+[0-9A-F]{4}|inn\\w+\\s+niż\\s+(ASCII|zwykł)"
+      "keyword": "\\bNBSP\\b|U\\+(00A0|1680|200[0-9A]|202F|205F|3000)|nierozdziel|biał\\w+ znak\\w*\\s+Unicode|Unicode\\w*\\s+(biał|whitespace|space|spacj)|spacj\\w*\\s+Unicode|trim\\w*(\\(\\))?[^.\\n]{0,80}(ASCII|Unicode)|\\\\p\\{|niełamiąc\\w*|non-breaking|no-break|\\\\u00A0|\\\\xA0|(biał\\w+\\s+znak\\w*|spacj\\w*|whitespace|space)[^.\\n]{0,40}non-ASCII|non-ASCII[^.\\n]{0,40}(biał\\w+\\s+znak\\w*|spacj\\w*|whitespace|space)|(biał\\w+\\s+znak\\w*|spacj\\w*|whitespace|space)[^.\\n]{0,40}(spoza|poza)\\s+ASCII|(spoza|poza)\\s+ASCII[^.\\n]{0,40}(biał\\w+\\s+znak\\w*|spacj\\w*|whitespace|space)|niełamliw\\w*|tward\\w*\\s+spacj\\w*|spacj\\w*\\s+tward\\w*|(biał\\w+\\s+znak\\w*|spacj\\w*|whitespace|space)[^.\\n]{0,40}inn\\w+\\s+niż\\s+(ASCII|zwykł)|inn\\w+\\s+niż\\s+(ASCII|zwykł)[^.\\n]{0,40}(biał\\w+\\s+znak\\w*|spacj\\w*|whitespace|space)"
     }
   ]
 }
