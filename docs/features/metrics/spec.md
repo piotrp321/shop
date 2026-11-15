@@ -403,8 +403,9 @@ procesy użytkownika (ten sam poziom zaufania co stan AO).
     `config`, `plan_path`); `events.data` tylko z kluczami liczbowymi, czasowymi i identyfikatorami (`from`, `to`,
     `until`, `seconds`, `sha`, `task_id`, `epic_id`, `final_pr`, `status`), bez `error`, `what`, `reason`
     i adresów URL;
-  - `stdout.jsonl` wybranych prób (w tym próba `timeout` DEPLOY-OPS-4 nr 3 i próba z 9 wynikami
-    CATALOG-ADMIN-INTEGRATION-2): pola `type`, `subtype`, `subagent_type`, `message.id`, `message.model`,
+  - `stdout.jsonl` wybranych prób (wszystkie próby DEPLOY-OPS, w tym próba `timeout` DEPLOY-OPS-4 nr 3;
+    CATALOG-ADMIN-INTEGRATION-2 z 9 wynikami i subagentami; CATALOG-ADMIN-INTEGRATION-1 z odmowami uprawnień;
+    CATALOG-ADMIN-4 z powtórzonymi testami i 22 wynikami; ADMIN-DESIGN-3 z ponowieniami API): pola `type`, `subtype`, `subagent_type`, `message.id`, `message.model`,
     `message.usage`, `timestamp`, `parent_tool_use_id`, nazwa narzędzia, `run_in_background`, `is_error`,
     `modelUsage`, `total_cost_usd`, `usage` wyniku, `model` i `claude_code_version` z `system/init`,
     `retry_delay_ms`, `attempt` i `error_status` z `system/api_retry`, `tool_name` z `system/permission_denied` (bez
