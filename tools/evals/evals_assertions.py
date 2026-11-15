@@ -241,6 +241,38 @@ def _gh_words(args):
     return words
 
 
+def _api_writes(args):
+    """Whether the arguments of `gh api` make a write: a method other than GET (`-X PUT`, `-XPUT`, `--method=PUT`) or a
+    field or a body (`-f`, `-F`, `--field`, `--raw-field`, `--input`), also inside a cluster of short flags (`-iXPUT`,
+    `-ifstate=closed`, pflag style: a flag with a value takes the rest of the cluster or the next argument)."""
+    method, field, index = None, False, 0
+    while index < len(args):
+        argument = args[index]
+        index += 1
+        if argument.startswith('--'):
+            name, equals, value = argument.partition('=')
+            if name == '--method':
+                method = value if equals else (args[index] if index < len(args) else None)
+            elif name in ('--field', '--raw-field', '--input'):
+                field = True
+        elif argument.startswith('-') and len(argument) > 1:
+            for position, letter in enumerate(argument[1:], 1):
+                attached = argument[position + 1:]
+                if letter in 'XfF':
+                    if letter == 'X':
+                        method = attached or (args[index] if index < len(args) else None)
+                    else:
+                        field = True
+                    if not attached:
+                        index += 1
+                    break
+                if letter in 'Hqtp':   # the other flags of gh api that take a value
+                    if not attached:
+                        index += 1
+                    break
+    return field or (method is not None and method.upper() != 'GET')
+
+
 def gh_call_forbidden(args, prefixes=()):
     """Whether a call of gh is a write (or one of the named calls): the stub serves reads of the case data only."""
     words = _gh_words(args)
@@ -250,68 +282,121 @@ def gh_call_forbidden(args, prefixes=()):
     if not words:
         return False
     if words[0] == 'api':
-        method = None
-        for index, argument in enumerate(args):
-            if argument in ('-X', '--method') and index + 1 < len(args):
-                method = args[index + 1]
-            elif argument.startswith('--method='):
-                method = argument.split('=', 1)[1]
-            elif argument.startswith('-X') and len(argument) > 2:   # -XPUT
-                method = argument[2:]
-        if method is not None and method.upper() != 'GET':
-            return True
-        # a field or a body makes the request a POST; the value may be attached to the flag (-fquery=..., --field=a=b)
-        return any(a.startswith(_API_FIELD_FLAGS) for a in args)
+        return _api_writes(args)
     if words[0] in _HARMLESS_GH or len(words) < 2:
         return False
     return words[1] not in _READ_ONLY_GH
 
 
-_SHELLS = ('bash', 'sh', 'zsh', 'dash', 'ksh')
+_SHELLS = ('bash', 'sh', 'zsh', 'dash', 'ksh', 'fish')
+_PUNCTUATION = '();<>|&`\n'
+_HEREDOC_RE = re.compile(r'(?<!<)<<(?!<)(-?)\s*(?:\'([^\']+)\'|"([^"]+)"|\\?([A-Za-z_][\w.-]*))')
 
 
 def _segments(command):
-    """The commands of a shell line as lists of words. The separators (; && || | & newline, `(`, `)`, a backtick) split
-    only outside quotes; a line that does not parse (an open quote) is split at them wherever they are."""
+    """[(words, the separator before them)] of a shell line. The separators (; && || | & newline, `(`, `)`, redirections,
+    a backtick) split only outside quotes; a hash is a comment in no case (it is read as text, so a call after
+    `echo a#b;` is not hidden); a line that does not parse (an open quote) is split at the separators wherever they are."""
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars='();<>|&`\n')
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=_PUNCTUATION)
         lexer.whitespace = ' \t\r'
         lexer.whitespace_split = True
+        lexer.commenters = ''
         tokens = list(lexer)
     except ValueError:
-        return [segment.split() for segment in _SEGMENT_RE.split(command)]
-    segments, current = [], []
+        return [(segment.split(), '') for segment in _SEGMENT_RE.split(command)]
+    segments, current, separator = [], [], ''
     for token in tokens:
-        if set(token) <= set('();<>|&`\n'):
-            segments.append(current)
-            current = []
+        if set(token) <= set(_PUNCTUATION):
+            segments.append((current, separator))
+            current, separator = [], token
         else:
             current.append(token)
-    segments.append(current)
+    segments.append((current, separator))
     return segments
+
+
+def _is_shell_command(text):
+    words = [w for w in text.split() if '=' not in w and w not in ('sudo', 'exec', 'env', 'command', 'nohup')]
+    return bool(words) and os.path.basename(words[0]) in _SHELLS
+
+
+def _strip_heredocs(command):
+    """(the command without the bodies of its heredocs, the bodies that a shell reads). The body of a heredoc is data
+    for any program but a shell (`cat > r.md <<EOF`); `bash <<EOF` and `cat <<EOF | sh` run it."""
+    lines, kept, scripts, index = command.split('\n'), [], [], 0
+    while index < len(lines):
+        line = lines[index]
+        kept.append(line)
+        index += 1
+        for match in _HEREDOC_RE.finditer(line):
+            dash, delimiter = match.group(1), match.group(2) or match.group(3) or match.group(4)
+            body = []
+            while index < len(lines):
+                current = lines[index]
+                index += 1
+                if (current.strip() if dash else current.rstrip()) == delimiter:
+                    break
+                body.append(current)
+            before = re.split(r'[;&|]', line[:match.start()])[-1]
+            piped = re.search(r'\|\s*(?:sudo\s+)?(?:%s)\b' % '|'.join(_SHELLS), line[match.end():])
+            if _is_shell_command(before) or piped:
+                scripts.append('\n'.join(body))
+    return '\n'.join(kept), scripts
+
+
+def _program(tokens):
+    """(index, name) of the first gh, git, shell or eval in the words of a command."""
+    for index, token in enumerate(tokens):
+        name = os.path.basename(token)
+        if name in ('gh', 'git', 'eval') or name in _SHELLS:
+            return index, name
+    return None, None
+
+
+def _c_scripts(words):
+    """The scripts given to a shell with -c (also -lc, and after `--`)."""
+    scripts = []
+    for index, word in enumerate(words):
+        if word.startswith('-') and not word.startswith('--') and word.endswith('c'):
+            position = index + 1
+            while position < len(words) and words[position] == '--':
+                position += 1
+            if position < len(words):
+                scripts.append(words[position])
+    return scripts
 
 
 def shell_calls(command, depth=0):
     """[(program, arguments)] of the `gh` and `git` invocations in a shell command line: split at the shell
-    separators outside quotes, then at the words; the script of `bash -c "..."` (any shell, `-lc` too) and of `eval`
-    is read again. A quoted text that merely mentions gh (`echo "do not run gh"`) is not a call."""
+    separators outside quotes, then at the words. The script of `bash -c "..."` (any shell, `-lc`, after `--`), of `eval`,
+    of `echo "..." | sh`, of `sh <<< "..."` and of a heredoc to a shell is read again; a text that merely mentions gh (an
+    argument of echo, the body of `cat <<EOF`) is data, not a call."""
+    command, scripts = _strip_heredocs(command)
+    segments = _segments(command)
+    for index, (words, separator) in enumerate(segments):
+        position, name = _program(words)
+        if name in ('gh', 'git') or depth >= 2:
+            continue
+        if name is not None:
+            rest = words[position + 1:]
+            found = [' '.join(rest)] if name == 'eval' else _c_scripts(rest)
+            if not found and name != 'eval' and separator == '|' and index:
+                found = [' '.join(segments[index - 1][0][1:])]   # words piped into a shell
+            scripts.extend(found)
+        if separator == '<<<' and index:
+            before = segments[index - 1][0]
+            shell = _program(before)
+            if shell[1] in _SHELLS and not _c_scripts(before[shell[0] + 1:]):
+                scripts.extend(words)   # a here-string to a shell
     calls = []
-    for tokens in _segments(command):
-        for index, token in enumerate(tokens):
-            program = os.path.basename(token)
-            if program in ('gh', 'git'):
-                calls.append((program, tokens[index + 1:]))
-                break
-            if depth < 2 and (program in _SHELLS or program == 'eval'):
-                rest = tokens[index + 1:]
-                if program == 'eval':
-                    scripts = [' '.join(rest)]
-                else:
-                    scripts = [rest[i + 1] for i, a in enumerate(rest[:-1])
-                               if a.startswith('-') and not a.startswith('--') and a.endswith('c')]
-                for script in scripts:
-                    calls.extend(shell_calls(script, depth + 1))
-                break
+    for words, _ in segments:
+        position, name = _program(words)
+        if name in ('gh', 'git'):
+            calls.append((name, words[position + 1:]))
+    for script in scripts:
+        if depth < 2:
+            calls.extend(shell_calls(script, depth + 1))
     return calls
 
 

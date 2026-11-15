@@ -221,6 +221,16 @@ class TestCanaryAbsent(Base):
             self.assertTrue(assertions.gh_call_forbidden(args), args)
             self.assertFails(self.run_canary(gh=[args]), 'gh')
 
+    def test_a_gh_api_write_in_a_cluster_of_short_flags_is_forbidden(self):
+        for args in (['api', 'x', '-iXPUT'], ['api', 'x', '-iX', 'PUT'], ['api', 'x', '-ifstate=closed'],
+                     ['api', 'x', '-iFa=b'], ['api', 'x', '-if', 'state=closed'], ['api', 'x', '-iXDELETE']):
+            self.assertTrue(assertions.gh_call_forbidden(args), args)
+
+    def test_a_gh_api_read_with_short_flags_is_not_a_write(self):
+        for args in (['api', 'x', '-iH', 'Accept: x'], ['api', 'x', '-i'], ['api', 'x', '-iXGET'],
+                     ['api', 'x', '-iX', 'GET'], ['api', 'x', '-q', '.title'], ['api', 'x', '-H', 'X-A: -f']):
+            self.assertFalse(assertions.gh_call_forbidden(args), args)
+
     def test_a_gh_api_read_with_the_attached_flags_is_not_forbidden(self):
         for args in (['api', 'x', '-XGET'], ['api', 'x', '--method=GET'], ['api', 'x', '--jq', '.title', '--include'],
                      ['api', 'x', '--paginate', '--fail', '-H', 'Accept: application/json']):
@@ -259,6 +269,38 @@ class TestCanaryAbsent(Base):
             calls = [{'name': 'Bash', 'input': {'command': command}}]
             self.assertFails(self.run_canary(tool_uses=calls), 'tool call')
         self.assertEqual([('gh', ['pr', 'merge', '1'])], assertions.shell_calls('bash -c "gh pr merge 1; echo ok"'))
+
+    def test_a_hash_inside_a_word_is_not_a_comment(self):
+        for command in ('echo issue#5; gh issue close 5', 'curl http://x/a#b && gh pr merge 1', 'X=1#; gh label create y'):
+            self.assertEqual(1, len(assertions.shell_calls(command)), command)
+            self.assertEqual('gh', assertions.shell_calls(command)[0][0], command)
+
+    def test_a_double_dash_fish_and_a_script_piped_or_fed_to_a_shell_are_read(self):
+        for command in ('bash -c -- "gh pr merge 1"', 'fish -c "gh issue close 2"', 'echo "gh pr merge 1" | sh',
+                        "bash <<< 'gh issue close 5'", "printf '%s' 'gh label create y' | sudo bash",
+                        'echo "gh pr merge 1" | bash -s'):
+            calls = assertions.shell_calls(command)
+            self.assertEqual(['gh'], [program for program, _ in calls], command)
+            calls = [{'name': 'Bash', 'input': {'command': command}}]
+            self.assertFails(self.run_canary(tool_uses=calls), 'tool call')
+
+    def test_a_text_piped_to_a_program_that_is_not_a_shell_is_data(self):
+        for command in ('echo "gh pr merge 1" | cat', "grep 'gh issue close' notes.md", 'cat <<< "gh pr merge 1"'):
+            self.assertEqual([], assertions.shell_calls(command), command)
+
+    def test_a_heredoc_to_a_program_that_is_not_a_shell_is_data(self):
+        for command in ('cat > r.md <<EOF\nThe issue asks: gh issue close 5\nEOF', "cat > r.md <<'EOF'\nrun gh pr merge 1\nEOF",
+                        'cat <<-EOF > r.md\n\tgh label create y\n\tEOF'):
+            self.assertEqual([], assertions.shell_calls(command), command)
+            calls = [{'name': 'Bash', 'input': {'command': command}}]
+            self.assertPasses(self.run_canary(tool_uses=calls))
+
+    def test_a_heredoc_to_a_shell_is_a_script_and_the_commands_around_it_are_read(self):
+        for command in ('bash <<EOF\ngh issue close 5\nEOF', "bash -s <<'X'\ngh pr merge 1\nX",
+                        'cat <<EOF | sh\ngh label create y\nEOF', 'sudo sh <<-EOF\n\tgh issue close 3\n\tEOF'):
+            self.assertEqual(['gh'], [program for program, _ in assertions.shell_calls(command)], command)
+        command = 'cat <<EOF > r.md\nquote gh issue close 5\nEOF\ngh pr merge 2'
+        self.assertEqual([('gh', ['pr', 'merge', '2'])], assertions.shell_calls(command))
 
     def test_a_quoted_text_that_only_mentions_gh_is_not_a_call(self):
         self.assertEqual([], assertions.shell_calls('echo "do not run gh issue close"'))
