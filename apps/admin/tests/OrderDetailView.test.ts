@@ -663,6 +663,26 @@ describe("OrderDetailView", () => {
       expect(mocks.post).not.toHaveBeenCalled();
     });
 
+    it("closes the window, and forgets a conflict, when the screen moves to another order", async () => {
+      serve(order());
+      wrapper = await mountView();
+      mocks.post.mockResolvedValue({ data: undefined, error: { status: 409 }, response: { status: 409 } });
+      await open("action-ship");
+      await dialog("change-submit").trigger("click");
+      await flushPromises();
+      expect(wrapper.find("[data-testid=conflict]").exists()).toBe(true);
+      await open("action-cancel");
+      expect(page().find("[data-testid=change-dialog]").exists()).toBe(true);
+
+      serve(order({ orderId: "o-2", number: "R-100002" }));
+      await wrapper.router.push("/orders/o-2");
+      await flushPromises();
+
+      expect(page().find("[data-testid=change-dialog]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=conflict]").exists()).toBe(false);
+      expect(wrapper.get("h1").text()).toBe("Zamówienie R-100002");
+    });
+
     it("submits with Enter in the field", async () => {
       serve(order());
       wrapper = await mountView();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Copy } from "lucide-vue-next";
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import { toast } from "vue-sonner";
 import FormSection from "@/components/FormSection.vue";
@@ -139,6 +139,16 @@ const dialogTitle = computed(() => {
 const submitLabel = computed(() => (pending.value?.kind === "status" ? transitionLabel(pending.value.transition) : REFUND_LABEL));
 const destructive = computed(() => pending.value?.kind === "status" && (pending.value.transition === "cancel" || pending.value.transition === "return"));
 const required = computed(() => pending.value?.kind === "status" && noteRequired(pending.value.transition));
+
+// The screen moves to another order (Back, a link): the window and the conflict were about the one it left.
+watch(
+  () => route.params.orderId,
+  () => {
+    conflict.value = null;
+    afterClose = null;
+    closeDialog();
+  },
+);
 
 function closeDialog(): void {
   session++;

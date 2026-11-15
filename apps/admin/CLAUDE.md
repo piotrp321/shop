@@ -99,7 +99,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   promocji): zostaje na naciśniętym przycisku, a gdy kolejna strona go wyłącza, przechodzi na drugi, chyba że pracownik sam
   przeniósł fokus poza pager; `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji i wybór wariantów promocji; lista zamówień ma jeszcze własną kopię do ADMIN-SCREENS).
+  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień i wybór wariantów promocji).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
@@ -269,34 +269,65 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   komunikaty, bo ich ścieżki liczą pozycje. Bez roli do zmiany produktów edytor nie ma kontrolek edycji, a pola są
   wyłączone.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
-  jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList`: filtr statusu, przełącznik
-  „Zwroty do wykonania” (oba też z adresu: `status` i `refund=pending` przy wejściu i przy zmianie `route.query` przy
-  otwartej liście, np. pozycja menu „Zwroty do wykonania”; ustawia oba filtry według adresu, wraca na pierwszą stronę,
-  zostawia wyszukiwanie, pomija nieznaną wartość i niczego nie zapisuje do adresu; `refund=pending`: widok dodaje kolumny kwoty i terminu zwrotu oraz `Tag` „Po terminie” według
-  `overdue` z API), wyszukiwanie dokładnego numeru albo e-maila wysyłane dopiero po Enterze (`submitSearch`), stronicowanie
-  po kursorach ze stosem kursorów w panelu (zmiana filtra albo wyszukiwania zaczyna od pierwszej strony i porzuca
-  wiersze oraz kursory, bo należą do filtrów i sortowania, z których pochodzą: po nieudanym żądaniu nowego filtra tabela
-  i pager są ukryte do udanego ponowienia, a nieudane przejście na sąsiednią stronę zostawia wyświetloną stronę). Pusta lista: „Brak zamówień.” bez filtrów
-  i wyszukiwania, „Nie znaleziono zamówień.” z nimi. Błąd listy zostawia wyświetloną stronę i pozwala ponowić; 403 to
-  „Nie masz dostępu do zamówień.” bez ponowienia. `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
+  jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach; oba bez PrimeVue). `useOrderList` (standard
+  listy): na `useListUrlState` (`q`, `status`, `refund=pending`, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
+  odczyt przy wejściu i przy zmianie z zewnątrz, np. pozycja menu „Zwroty do wykonania” na otwartej liście albo link „Inne
+  zamówienia klienta” z `?q=<e-mail>`, zapis przez `replace` bez nowego wpisu historii, nieznana wartość jest pomijana,
+  a adres poprawiany; do adresu trafia tylko zastosowane wyszukiwanie) i `useCursorPager` (stos kursorów, spóźnione
+  odpowiedzi, ponowienie, skutek błędu: nieudana zmiana filtra usuwa wiersze i kursory, nieudana sąsiednia strona zostawia
+  wyświetloną stronę; fokus po zmianie strony, błędzie i 403 daje standard, #260 F7). Własne zostają żądanie `GET /orders`
+  z komunikatami (403: „Nie masz dostępu do zamówień.” bez ponowienia, 400, inne, sieć) i reguła wyszukiwania dokładnego
+  numeru albo e-maila: tylko po Enterze (`submitSearch`; zdarzenie `submit` paska `ListToolbar`), tekst przycięty
+  (`trim()` zna też spację nierozdzielającą i U+2028) ma 1–254 punkty kodowe, ten sam tekst ładuje listę ponownie.
+  `status`, `refundPending` i `filtered` wynikają z zapytania, „Wyczyść filtry” (`clearFilters`) wraca na `/orders`.
+  `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
   przyciski to wyłącznie `allowedTransitions` (`actions`) i `canCompleteRefund` z API, panel nie liczy statusów ani ról.
   `changeStatus` i `completeRefund` wysyłają `version` pokazanego widoku, a zamówienie z odpowiedzi zastępuje widok.
-  Notatka jest wymagana przy `cancel` i `return` (dialog sprawdza przed wysłaniem, API sprawdza jeszcze raz), pusta
-  notatka w pozostałych to `null`. 409 (wersja, przejście, zwrot) przeładowuje szczegóły i zamyka dialog
-  z komunikatem „Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.” na stronie; 422 wskazuje pole
-  notatki (`violations[].propertyPath`), a 403 i pozostałe błędy to komunikat w dialogu. Jednocześnie leci najwyżej jedna
-  zmiana, a odpowiedź na zmianę po przejściu widoku do innego zamówienia jest pomijana (`ignored`, także przeładowanie po 409). 404 szczegółów: „Nie znaleźliśmy zamówienia.” z linkiem do listy; inny błąd odczytu: komunikat z „Spróbuj
-  ponownie” (403 bez ponowienia). Błąd przeładowania po 409 zostawia pokazane zamówienie. `format.ts`: etykiety i kolory
-  statusów (`statusLabel`, `STATUS_OPTIONS`), aktorów historii (`actorLabel`: nazwa pracownika, Klient, System),
-  przejść (`transitionLabel`), powodu anulowania i `noteRequired`; kwoty i czas przez `formatMoney` i `formatDateTime`
-  z `src/prices/format.ts`. Widok szczegółów pokazuje kontakt, adres, pozycje z sumami od API, daty statusów, termin
-  płatności tylko dla `new`, historię statusów (data, zmiana, aktor, notatka) oraz sekcję „Zwrot pieniędzy” (kwota,
-  termin z „Po terminie”, wykonanie: data, pracownik, notatka, i `paymentId` płatności do zwrotu).
-  Rabat z kodu: gdy zamówienie ma `discount`, tabela pozycji ma kolumny „Wartość przed rabatem” (`grossBeforeDiscount`),
-  „Rabat” (`discountGross` linii, „—” przy zerze) i „Wartość po rabacie” (`lineGross`), pod nią stoi linia „Kod <KOD>:
-  −X zł” (`discount.amountGross`), a suma brutto nazywa się „Brutto po rabacie”; sumy netto, VAT i brutto są po rabacie,
-  z API. Zamówienie bez kodu ma jedną kolumnę „Wartość brutto” jak dotąd. Kopia promocji pozycji (`promotion`: nazwa,
-  procent, cena katalogowa jednostki) jest pod nazwą produktu, z kodem i bez.
+  Notatka jest wymagana przy `cancel` i `return` (okno sprawdza przed wysłaniem, API sprawdza jeszcze raz), pusta
+  notatka w pozostałych to `null`. 409 (wersja, przejście, zwrot) przeładowuje szczegóły i zamyka okno
+  z komunikatem „Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.” (`conflict`, `tabindex="-1"`, fokus na nim);
+  422 wskazuje pole notatki (`violations[].propertyPath`), a 403 i pozostałe błędy to komunikat w oknie z fokusem na nim
+  (#260 F8). Jednocześnie leci najwyżej jedna zmiana, a odpowiedź na zmianę po przejściu widoku do innego zamówienia jest
+  pomijana (`ignored`, także przeładowanie po 409). 404 szczegółów: H1 „Nie znaleziono zamówienia”, „Nie znaleźliśmy zamówienia.” z linkiem
+  do listy (`Alert` w tokenach `status-danger`); inny błąd odczytu: komunikat z „Spróbuj ponownie” (403 bez ponowienia;
+  po udanym ponowieniu fokus na H1, po nieudanym zostaje na przycisku). Błąd przeładowania po 409 zostawia pokazane
+  zamówienie. `format.ts`: etykiety i warianty `Badge` statusów (`statusLabel`: `label` i `variant` jak na pulpicie,
+  nieznany status to wartość z API w neutralnym `Badge`; `STATUS_OPTIONS`), aktorów historii (`actorLabel`: nazwa
+  pracownika, „Pracownik” bez loginu, Klient, System), przejść (`transitionLabel`), powodu anulowania i `noteRequired`; kwoty
+  i czas przez `formatMoney` i `formatDateTime` z `src/prices/format.ts`.
+  `OrdersView`: `PageHeader` (H1 „Zamówienia” albo „Zwroty do wykonania” przy `refund=pending`, okruszki „Pulpit ›
+  Zamówienia” albo „Pulpit › Zamówienia › Zwroty do wykonania” z linkiem do listy), karta z `ListToolbar` (wyszukiwanie
+  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią o Enterze, `Select` „Status”, `Switch` „Zwroty do wykonania”
+  z `id` i `data-testid` `refund-pending` i `label for`, rozmiar strony), `DataTable`, `ListPager` i `ListEmpty` („Nie ma
+  jeszcze zamówień.”, „Brak wyników dla wybranych filtrów.”). Widok renderuje jeden układ według
+  `useMediaQuery("(min-width: 640px)")` (`@vueuse/core`, jak `AppLayout`): od 640 px tabela (Numer: link bez łamania, #261, z datą
+  i liczbą pozycji jako liniami komórki poniżej 1024 px; Data, Klient: imię i nazwisko, pod nim e-mail obcięty z pełną wartością
+  w `title`; Pozycje; Kwota; Status jako `Badge`; przy zwrotach Kwota zwrotu i Termin zwrotu z „Po terminie”), poniżej
+  640 px lista kart (`DataTable` z `cards`: `<ul>` z nazwą „Zamówienia”, `<li>` z numerem, statusem, klientem, kwotą, datą i przy zwrocie
+  kwotą i terminem); `order-row` i identyfikatory `number`, `status`, `total`… są na wierszu albo na karcie, nigdy w obu.
+  `OrderDetailView`: `PageHeader` (H1 „Zamówienie <numer>” z `Badge` statusu w slocie `status`, okruszki „Pulpit › Zamówienia › <numer>”
+  zamiast „Wróć do listy”), od 1280 px dwie kolumny (boczna 320 px w DOM przed główną, poniżej 1280 px nad nią, Tab zaczyna od niej:
+  wyjątek od kolejności zgodnej z układem jak w formularzach). Boczna: „Akcje” (przyciski `allowedTransitions` i „Oznacz zwrot jako
+  wykonany”; karta ukryta bez akcji), „Klient” (e-mail jako `mailto:` z zawijaniem, link „Inne zamówienia klienta” do
+  `/orders?q=<e-mail>`), „Adres dostawy”, „Płatność” (daty statusów, termin płatności tylko dla `new`, powód anulowania,
+  `paymentId` krojem o stałej szerokości z przyciskiem „Kopiuj identyfikator płatności”: `navigator.clipboard.writeText`,
+  `copy-status` w `role="status"` ogłasza „Skopiowano”, a przy odmowie albo braku schowka „Nie udało się skopiować –
+  zaznacz identyfikator ręcznie” i zaznacza tekst identyfikatora). Główna: „Pozycje” (tabela w regionie z nazwą:
+  Produkt z wariantem i kopią promocji, Ilość, Cena brutto, a przy `discount` Wartość przed rabatem i Rabat, na końcu
+  Wartość brutto albo po rabacie; poniżej 640 px widoczne Produkt, Ilość i ostatnia Wartość, a pozostałe są liniami komórki
+  produktu `line-meta-*`; pod tabelą linia kodu i sumy od API), „Historia” (`OrderTimeline`) i „Zwrot pieniędzy” (kwota, termin
+  z „Po terminie”, wykonanie: data, pracownik, notatka, płatność do zwrotu). `OrderTimeline`: `<ol>` wpisów `history` w kolejności z API
+  (od najstarszego, nic nie jest sortowane ani dokładane), wpis `history-row` ma czas w `<time datetime>` (`history-at`),
+  zmianę „Opłacone → Wysłane” jako dwa `Badge` (`history-change`; złożenie, `from: null`, to sam status docelowy),
+  aktora (`history-actor`) i notatkę (`history-note`). Okno zmiany statusu i zwrotu stoi na `Dialog` (`change-dialog`,
+  szerokość `min(28rem, 100vw - 2rem)`): tytuł ze skutkiem i numerem („Anulować zamówienie R-100002?”, „Oznaczyć zamówienie
+  R-100002 jako wysłane?”, „…jako dostarczone?”, „Przyjąć zwrot zamówienia R-100002?”, „Oznaczyć zwrot pieniędzy za R-100002 jako
+  wykonany?”), pole „Notatka” z fokusem po otwarciu (wymagana przy anulowaniu i zwrocie), przycisk skutku (`destructive` przy
+  anulowaniu i zwrocie, inaczej `interface`) i „Wróć”; Enter w polu zatwierdza. Po udanej akcji toast „Status zamówienia
+  zmieniony: <polska etykieta statusu z odpowiedzi API>.” (nieznany status: wartość z API, nigdy pusty) albo „Zwrot oznaczony jako
+  wykonany.”, a fokus trafia na nagłówek karty „Akcje” (zestaw przycisków się zmienił), gdy karta zniknęła na „Historia”;
+  „Wróć” i `Escape` oddają fokus przyciskowi, który otworzył okno. Zdarzenie `close-auto-focus` okna jest przejęte, żeby fokus nie
+  spadł na `body`.
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
   `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Promocje”,
   `ListToolbar` bez wyszukiwania, bo API nie szuka promocji, `DataTable`, `ListPager`) na `useListUrlState` (`status` jako
@@ -410,7 +441,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
   wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
-  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna) i okruszki (`<nav aria-label="Okruszki">`
+  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna; slot `status` stoi tuż za H1, np. `Badge` statusu zamówienia) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
   `aria-current` każdy link do bieżącej trasy); używają go ekrany po migracji. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
   `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
@@ -431,8 +462,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów, lista kodów rabatowych i lista promocji, pozostała lista przejdzie w
-  ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji i lista zamówień. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`; `cards` zamiast tabeli pokazuje wiersze jako listę kart: `<ul>` z nazwą z `label`, `<li>` z `rowTestid` i zawartością slotu `card`, a szkielet, błąd i pusty stan zostają te same: widok wybiera jeden układ): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
   swojej kolumny, więc żadna informacja nie ginie), slot `empty` dla pustej listy. Pokazuje też stan listy: szkielet
@@ -443,7 +473,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   komunikat, tabelę albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
   błąd sąsiedniej strony nad nią. Tabela przewija się w swoim regionie (`role="region"` z nazwą z prop `label`,
   `tabindex="0"`) z cieniem przy krawędzi, za którą jest dalsza treść; strona nie przewija się w poziomie. `ListToolbar`:
-  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem), sloty `filters` i
+  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
   `actions`, „Wyczyść filtry” przy `filtered`, rozmiar strony (Select 10, 25, 50, etykieta „Wierszy na stronie”),
   `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”), przyciski
   „Poprzednia strona” i „Następna strona” z numerem strony; fokus zostaje na naciśniętym przycisku, a gdy kolejna strona go
