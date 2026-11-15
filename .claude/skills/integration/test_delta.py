@@ -502,7 +502,7 @@ class CiTest(unittest.TestCase):
         self.assertFalse(out['use_ci'])
         self.assertEqual([], out['checks'])
         self.assertGreaterEqual(self.view_calls(), 2)
-        self.assertGreaterEqual(out['waited_s'], 0.3)
+        self.assertGreaterEqual(out['waited_s'], 1)
         self.assertLess(out['waited_s'], 5)
 
     def test_still_running_after_the_budget_means_local_gates(self):
