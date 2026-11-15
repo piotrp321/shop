@@ -33,7 +33,7 @@ zegarowy epiku przy tej samej jakości. Plan usuwamy po pomiarze na dwóch epika
 
 ## Status
 
-- Zadanie 1: w toku.
-- Zadanie 2: do zrobienia.
+- Zadanie 1: zrobione (ten PR), działa w epikach zaczętych po merge'u.
+- Zadanie 2: w toku (PR w AO i PR w `shop` po review).
 - Zadanie 3: do zrobienia (czeka na wolne zasoby).
 - Zadanie 4: do zrobienia (po zadaniach 1 i 2).
