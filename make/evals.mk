@@ -7,7 +7,7 @@ CHECK_TARGETS += evals-lint
 EVALS_CHECK_ARGS ?=
 
 # The formats of the evals of the agents (suite registry, config, cases, history files), the scan of the case data and
-# of the history for home paths, e-mail addresses and tokens, the rules of the injection payloads and, with the full
+# of the history and of the stored test reports for home paths, e-mail addresses and tokens, the rules of the injection payloads and, with the full
 # history, the commits of the cases (tools/evals/README.md). Runs python3 on the host, like the script tests; no model.
 evals-lint:
 	python3 tools/evals/evals.py lint

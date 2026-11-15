@@ -115,6 +115,27 @@ class TestFindingsOfRealCodeReviewerReports(unittest.TestCase):
         report = parsed('code-reviewer', 'CATALOG-ADMIN-3-1')   # **Minor** / - **M1. ...**
         self.assertEqual({1: 3}, ranks(report))
 
+    def test_numbered_items_under_a_section_are_not_confused_by_a_bold_note_after_the_list(self):
+        report = parsed('code-reviewer', 'CART-1-a1')   # ### Zgłoszenia Minor / 1. **...** ... **Uwaga bez wpływu…**
+        self.assertEqual({1: 4}, ranks(report))
+        self.assertIsNone(reports.match_finding(report, keyword='Uwaga bez wpływu', severity='Minor'))
+        self.assertIsNotNone(reports.match_finding(report, path=r'DoctrineCartRepository\.php:83',
+                                                   keyword='purge-expired', severity='Minor'))
+        self.assertIsNone(reports.match_finding(report, path=r'DoctrineCartRepository\.php:83',
+                                                keyword='CartHandlersTest', severity='Minor'))
+
+    def test_a_numbered_polish_suggestion_is_a_finding_of_the_lowest_severity(self):
+        report = parsed('code-reviewer', 'ORDER-MANAGEMENT-1-1')   # **Minor 1. …** … **Sugestia 5.** …
+        self.assertEqual({1: 6}, ranks(report))
+        self.assertIsNotNone(reports.match_finding(report, keyword=r'refactor\(ordering\)', severity='SUGGESTION'))
+        self.assertIsNone(reports.match_finding(report, keyword=r'refactor\(ordering\)', severity='IMPORTANT'))
+
+    def test_a_title_that_starts_with_the_word_for_none_is_a_finding(self):
+        # "M2 (Minor): brak zapisanego wyniku pomiaru ..." (a real report of a DELTA review): `brak` is part of the title
+        report = parsed('code-reviewer', 'SEARCH-4-2')
+        self.assertEqual({1: 3}, ranks(report))
+        self.assertIsNotNone(reports.match_finding(report, keyword='brak zapisanego wyniku', severity='Minor'))
+
     def test_findings_of_an_english_report(self):
         self.assertEqual({1: 5}, ranks(parsed('code-reviewer', 'VARIANTS-1-1')))   # **M1 (Minor) – ...**
 
@@ -264,7 +285,8 @@ class TestSyntheticReports(unittest.TestCase):
         self.assertIsNone(reports.match_finding(report, path=r'src/b\.php', keyword='500', severity='SUGGESTION'))
 
     def test_a_none_line_is_not_a_finding(self):
-        text = '- **BLOCKER**: brak\n- **IMPORTANT**: brak\n- **SUGGESTION**: literówka w `a.md`\n'
+        text = ('- **BLOCKER**: brak\n- **IMPORTANT**: brak.\n- **Critical**: none\n- **MINOR** (nie ma)\n'
+                '- **SUGGESTION**: literówka w `a.md`\n')
         report = reports.parse(text, 'code-reviewer')
         self.assertEqual([1], [f.rank for f in report.findings])
 

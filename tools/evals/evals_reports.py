@@ -25,19 +25,23 @@ and the keyword pattern both in the same finding), so a path in one list item an
 """
 import re
 
-SEVERITY_RANKS = {'blocker': 3, 'critical': 3, 'important': 2, 'suggestion': 1, 'minor': 1}
+SEVERITY_RANKS = {'blocker': 3, 'critical': 3, 'important': 2, 'suggestion': 1, 'minor': 1, 'sugestia': 1}
 SEVERITY_NAMES = ('BLOCKER', 'IMPORTANT', 'SUGGESTION', 'Critical', 'Important', 'Minor')
 RANK_NAMES = {3: 'BLOCKER', 2: 'IMPORTANT', 1: 'SUGGESTION'}
 VERDICTS = {'code-reviewer': ('PASS', 'CHANGES_REQUIRED'), 'spec-critic': ('GOTOWA', 'DO POPRAWY')}
 ALL_VERDICTS = ('PASS', 'CHANGES_REQUIRED', 'GOTOWA', 'DO POPRAWY')
 
-_SEV = r'BLOCKER|CRITICAL|IMPORTANT|SUGGESTION|MINOR'
+# `Sugestia 5.` (the Polish word, numbered) is the lowest severity too
+_SEV = r'BLOCKER|CRITICAL|IMPORTANT|SUGGESTION|MINOR|SUGESTIA(?=\s*\d)'
 _GENERIC = r'uwagi|zgłoszenia|zgłoszenie|ustalenia|znaleziska|findings|issues|problemy|sugestie'
 _SECTION_RE = re.compile(r'^(?:(?:%s)\s+)?(?P<sev>%s)(?:\s+(?:%s|\(\d+\)|[×x]\s*\d+))*\s*[:.]?$'
                          % (_GENERIC, _SEV, _GENERIC), re.IGNORECASE)
 _LABEL_RE = re.compile(r'^(?:[A-Za-z]{1,3}\d+\s*[.:)\-–—]?\s*)?[\[(]?\s*(?P<sev>%s)(?![A-Za-z])' % _SEV,
                        re.IGNORECASE)
-_NOTHING_RE = re.compile(r'^(?:brak|none|nothing|nie ma|bez uwag|0)\b', re.IGNORECASE)
+# the whole rest of a label line says there is nothing (`**BLOCKER**: brak`); a title that starts with the word
+# (`M2 (Minor): brak zapisanego wyniku`) is a finding
+_NOTHING_RE = re.compile(r'^(?:\d+\s*[.:)\-\u2013\u2014]\s*)?(?:brak|none|nothing|nie ma|bez uwag|0)\s*[.!)\]]*$',
+                         re.IGNORECASE)
 _HEADING_RE = re.compile(r'^(#{1,6})\s+(.*?)\s*$')
 _ITEM_RE = re.compile(r'^([-*+]|\d+[.)])\s+(.*)$')
 _VERDICT_LABEL_RE = re.compile(r'(?<![A-Za-z])(?:werdykt|verdict)(?![A-Za-z])', re.IGNORECASE)
@@ -108,7 +112,7 @@ class _Line:
             return
         match = _LABEL_RE.match(core)
         if match and _is_severity_word(match.group('sev')):
-            tail = re.sub(r'^[\s\d\-–—:.,;*_`)\]]*', '', core[match.end():])
+            tail = re.sub(r'^[\s\-\u2013\u2014:.,;*_`(\[]*', '', core[match.end():]).rstrip(' *_`')
             self.label = (severity_rank(match.group('sev')), match.group('sev'), bool(_NOTHING_RE.match(tail)))
 
     @property
@@ -156,15 +160,21 @@ def _sections(lines):
             if other.kind == 'heading' and (line.level is None or other.level <= line.level):
                 end = j
                 break
-        body = lines[index + 1:end]
-        plain = [x for x in body if x.section is None and x.label is None]
-        if line.level is not None and any(x.kind == 'heading' and x.level > line.level for x in plain):
-            mode, base = 'heading', None
-        elif any(x.bold_start for x in plain):
-            mode, base = 'para', None
-        else:
-            indents = [x.indent for x in plain if x.kind == 'item']
-            mode, base = 'list', (min(indents) if indents else None)
+        # the first line that can start an item decides how the items of the section look: a note in bold after a list
+        # (`**Uwaga:** ...`) does not turn the numbered items above it into one paragraph finding
+        mode, base = 'list', None
+        for x in lines[index + 1:end]:
+            if x.section is not None or x.label is not None:
+                continue
+            if line.level is not None and x.kind == 'heading' and x.level > line.level:
+                mode, base = 'heading', None
+            elif x.bold_start:
+                mode, base = 'para', None
+            elif x.kind == 'item':
+                mode, base = 'list', x.indent
+            else:
+                continue
+            break
         found[index] = _Section(line, end, mode, base)
     return found
 
