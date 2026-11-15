@@ -33,6 +33,8 @@ class TempRepo:
             for entry in registry['suites'].values():
                 for rel in entry['watched'] + entry['validators']:
                     self.write(rel, 'initial ' + rel + '\n')
+            for rel in self.read_json('tools/evals/config.json')['scoring_code']:
+                self.write(rel, 'initial ' + rel + '\n')
 
     def cleanup(self):
         shutil.rmtree(self.root, ignore_errors=True)
@@ -150,3 +152,41 @@ def measured_result(suite='code-reviewer', verdict='baseline', fingerprint=None,
         'validator_hashes': {},
         'comparison': {'previous': None, 'reference': None, 'regressions': [], 'warnings': []},
     }
+
+
+def write_pass(directory, status='done', output='', files=None, gh=None, ssh=None, tree=None, canary=None,
+               tool_uses=None, cost_usd=0.5, duration_s=30.0, reason='', input_files=None, **status_fields):
+    """A pass directory as the runner leaves it (spec: Artefakty przebiegu), for the tests of the scoring.
+
+    files / input_files: {relative name: text}; gh: list of gh.log entries (a dict, or a list of arguments); ssh: list
+    of ssh.log entries; tree: list of "A|M|D<TAB>path" lines; canary: (path, token) or None; tool_uses: list of
+    {'name': ..., 'input': {...}} (id and parent are filled in)."""
+    os.makedirs(os.path.join(directory, 'files'), exist_ok=True)
+    os.makedirs(os.path.join(directory, 'input'), exist_ok=True)
+    os.makedirs(os.path.join(directory, 'runner'), exist_ok=True)
+    record = {'status': status, 'reason': reason, 'cost_usd': cost_usd, 'duration_s': duration_s,
+              'cli_version': '2.1.311', 'model': 'claude-opus-4-6', 'plugins': ['superpowers'], 'sandbox': True,
+              'executor': 'claude-cli'}
+    record.update(status_fields)
+    for name, content in (('status.json', json.dumps(record, indent=2) + '\n'), ('output.txt', output),
+                          ('tree.txt', ''.join(line + '\n' for line in (tree or []))),
+                          ('canary.txt', '%s\n%s\n' % canary if canary else '')):
+        with open(os.path.join(directory, name), 'w', encoding='utf-8') as handle:
+            handle.write(content)
+    for name, entries in (('gh.log', gh), ('ssh.log', ssh)):
+        with open(os.path.join(directory, name), 'w', encoding='utf-8') as handle:
+            for entry in entries or []:
+                if not isinstance(entry, dict):
+                    entry = {'args': list(entry), 'served': False, 'exit_code': 1}
+                handle.write(json.dumps(entry) + '\n')
+    for folder, items in (('files', files), ('input', input_files)):
+        for name, content in (items or {}).items():
+            target = os.path.join(directory, folder, *name.split('/'))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, 'w', encoding='utf-8') as handle:
+                handle.write(content)
+    with open(os.path.join(directory, 'runner', 'tool_use.jsonl'), 'w', encoding='utf-8') as handle:
+        for number, call in enumerate(tool_uses or [], 1):
+            handle.write(json.dumps({'id': 'toolu_%d' % number, 'name': call['name'], 'input': call['input'],
+                                     'parent_tool_use_id': call.get('parent')}) + '\n')
+    return directory
