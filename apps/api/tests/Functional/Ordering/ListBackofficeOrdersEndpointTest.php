@@ -81,22 +81,21 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         $this->order('paid', '-1 day', 'R-100003', email: 'kowalski@example.com');
 
         self::assertSame([$second, $first], $this->ids($this->list('q='.rawurlencode('JAN.KOWALSKI@example.COM'), self::staff(['warehouse']))));
-        self::assertSame([], $this->ids($this->list('q='.rawurlencode('example.com'), self::staff(['warehouse']))), 'no part of an email');
     }
 
     /**
      * @return iterable<string, array{string}>
      */
-    public static function otherSearches(): iterable
+    public static function searchesThatFindNothing(): iterable
     {
-        yield 'a name' => ['Kowalski'];
-        yield 'the digits of a number' => ['100001'];
-        yield 'a part of a number' => ['R-1000'];
-        yield 'the longest term' => [str_repeat('a', 254)];
+        yield 'a surname nobody has' => ['Nowakowski'];
+        yield 'a fragment of an email nobody has' => ['zzz@'];
+        yield 'a number that is not there' => ['R-999999'];
+        yield 'the longest email' => [str_repeat('a', 64).'@'.str_repeat('b', 186).'.pl'];
     }
 
-    #[DataProvider('otherSearches')]
-    public function testAnyOtherSearchIsAnEmptyList(string $q): void
+    #[DataProvider('searchesThatFindNothing')]
+    public function testASearchThatFindsNothingIsAnEmptyList(string $q): void
     {
         $this->order('paid', '-1 day', 'R-100001');
 

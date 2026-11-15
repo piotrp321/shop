@@ -34,16 +34,20 @@ final class RecordingConnection extends Connection
 
     /**
      * The plan of the last recorded query, one line per row, planned with sequential scans and explicit sorts made as
-     * unattractive as the planner allows: what is left shows whether an index delivers the order.
+     * unattractive as the planner allows: what is left shows whether an index delivers the order. With
+     * $steerAwayFromScans false the settings stay as they are, so the plan is the one the planner picks on its own
+     * statistics.
      */
-    public function planOfTheLastQuery(Connection $database): string
+    public function planOfTheLastQuery(Connection $database, bool $steerAwayFromScans = true): string
     {
         if ([] === $this->queries) {
             throw new \LogicException('No query was recorded.');
         }
         [$sql, $params, $types] = $this->queries[array_key_last($this->queries)];
-        $database->executeStatement('SET LOCAL enable_seqscan = off');
-        $database->executeStatement('SET LOCAL enable_sort = off');
+        if ($steerAwayFromScans) {
+            $database->executeStatement('SET LOCAL enable_seqscan = off');
+            $database->executeStatement('SET LOCAL enable_sort = off');
+        }
         $lines = $database->executeQuery('EXPLAIN '.$sql, $params, $types)->fetchFirstColumn();
 
         return implode("\n", array_map(static fn (mixed $line): string => \is_string($line) ? $line : '', $lines));

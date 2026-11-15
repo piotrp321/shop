@@ -278,20 +278,25 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wyłączone.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList` (standard
-  listy): na `useListUrlState` (`q`, `status`, `refund=pending`, `sort`: `-placedAt` (domyślny), `placedAt`, `-total`, `total`, niewysyłany, gdy domyślny, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
+  listy): na `useListUrlState` (`q`, `status`, `refund=pending`, `placedFrom`, `placedTo` (dni `YYYY-MM-DD`), `sort`: `-placedAt` (domyślny), `placedAt`, `-total`, `total`, niewysyłany, gdy domyślny, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
   odczyt przy wejściu i przy zmianie z zewnątrz, np. pozycja menu „Zwroty do wykonania” na otwartej liście albo link „Inne
   zamówienia klienta” z `?q=<e-mail>`, zapis przez `replace` bez nowego wpisu historii, nieznana wartość jest pomijana,
   a adres poprawiany; do adresu trafia tylko zastosowane wyszukiwanie) i `useCursorPager` (stos kursorów, spóźnione
   odpowiedzi, ponowienie, skutek błędu: nieudana zmiana filtra usuwa wiersze i kursory, nieudana sąsiednia strona zostawia
   wyświetloną stronę; fokus po zmianie strony, błędzie i 403 daje standard, #260 F7). Własne zostają żądanie `GET /orders`
-  z komunikatami (403: „Nie masz dostępu do zamówień.” bez ponowienia, 400, inne, sieć) i reguła wyszukiwania dokładnego
-  numeru albo e-maila: tylko po Enterze (`submitSearch`; zdarzenie `submit` paska `ListToolbar`), tekst przycięty
-  (`trim()` zna też spację nierozdzielającą i U+2028) ma 1–254 punkty kodowe, ten sam tekst ładuje listę ponownie.
+  z komunikatami (403: „Nie masz dostępu do zamówień.” bez ponowienia, 400, inne, sieć) i reguła wyszukiwania numeru, e-maila
+  albo fragmentu: tylko po Enter (`submitSearch`; zdarzenie `submit` paska `ListToolbar`), tekst przycięty
+  (`trim()` zna też spację nierozdzielającą i U+2028) ma 3–254 punkty kodowe (tekst o 1–2 znakach nie zmienia niczego,
+  a `searchHint` mówi, że trzeba 3), ten sam tekst ładuje listę ponownie. Zakres dni: `placedFromField` i `placedToField`
+  to to, co wybrano, `setPlacedFrom` i `setPlacedTo` stosują zakres od razu przez `url.set`; pusty dzień go czyści, a wartość,
+  która nie jest dniem 2000–2999 (Chrome przepuszcza `0002`, `0020`, `0202` przy wpisywaniu roku), nie zmienia zastosowanego
+  dnia ani nie wywołuje żądania; koniec przed początkiem nie jest stosowany (`rangeError`, liczony z dni, które zostałyby wysłane, także gdy jedno pole ma niepełny rok); `dayBounds` daje `min` i `max` pól: lata 2000–2999 i drugi koniec zakresu; przy zwrotach do wykonania
+  dni nie są wysyłane (`rangeDisabled`, `rangeDisabledReason`).
   `status`, `refundPending` i `filtered` wynikają z zapytania (kolejność nie jest filtrem), „Wyczyść filtry” (`clearFilters`)
   wraca na `/orders`. Kolejność (`sort`, `sortOptions`, `setSort`): `sort` to kolejność w użyciu, `null` przy zwrotach do
-  wykonania (mają własną, wg terminu zwrotu, i nie dostają `sort` w żądaniu), a kwota przy zastosowanym wyszukiwaniu
+  wykonania (mają własną, wg terminu zwrotu, i nie dostają `sort` w żądaniu), a kwota przy zastosowanym wyszukiwaniu albo zakresie dat
   wraca do „Najnowsze” (API odrzuca to połączenie); `sortOptions` wyłącza te opcje z powodem (`disabledReason`), a zatwierdzenie
-  wyszukiwania przy sortowaniu po kwocie ustawia „Najnowsze”.
+  wyszukiwania albo wybór dnia przy sortowaniu po kwocie ustawia „Najnowsze”.
   `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
   przyciski to wyłącznie `allowedTransitions` (`actions`) i `canCompleteRefund` z API, panel nie liczy statusów ani ról.
   `changeStatus` i `completeRefund` wysyłają `version` pokazanego widoku, a zamówienie z odpowiedzi zastępuje widok.
@@ -309,7 +314,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   i czas przez `formatMoney` i `formatDateTime` z `src/prices/format.ts`.
   `OrdersView`: `PageHeader` (H1 „Zamówienia” albo „Zwroty do wykonania” przy `refund=pending`, okruszki „Pulpit ›
   Zamówienia” albo „Pulpit › Zamówienia › Zwroty do wykonania” z linkiem do listy), karta z `ListToolbar` (wyszukiwanie
-  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią o Enterze, `Select` „Status”, `Switch` „Zwroty do wykonania”
+  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią „Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.” (tekst o 1–2 znakach nie wyszukuje i zmienia podpowiedź na „Wpisz co najmniej 3 znaki, aby wyszukać.”), grupa „Data zamówienia” z polami „Od” i „Do” (`input type="date"`, `placedFrom` i `placedTo` w adresie; zastosowane od razu po wybraniu dnia; koniec przed początkiem nie jest stosowany, komunikat w `role="alert"` i `aria-invalid` na „Do”; przy zwrotach do wykonania pola są wyłączone z opisem, bo API odmawia tego połączenia; kwota przy zakresie dat jest wyłączona w „Sortuj”), `Select` „Status”, `Switch` „Zwroty do wykonania”
   z `id` i `data-testid` `refund-pending` i `label for`, `Select` „Sortuj” (nad tabelą i nad kartami; przy zwrotach do
   wykonania z napisem „Termin zwrotu”), rozmiar strony), `DataTable` (nagłówki „Data” i „Kwota” mają `aria-sort` według
   kolejności, a przy zwrotach do wykonania „Termin zwrotu” `ascending`), `ListPager` i `ListEmpty` („Nie ma

@@ -267,17 +267,33 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `canCompleteRefund` = zwrot do wykonania i `COMPLETE_REFUND`.
   - Zapytania panelu (`query.bus`, bez blokad): `GetBackofficeOrder(orderId)` czyta zamówienie przez
     `OrderRepository::get` i zwraca ten sam `BackofficeOrderView` co komendy pracownika (`overdue` z zegara; nieznane
-    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort)` czyta przez
+    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort, placedFrom, placedTo)` czyta przez
     port `BackofficeOrderReader` (adapter DBAL `DbalBackofficeOrderReader`, liczba sztuk z sumy linii): `q` po
-    przycięciu to dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$`, inaczej dokładny e-mail (`lower(email) =
-    lower(:email)`), gdy ma `@`, inaczej pusta lista bez odczytu; sort z `sort` (domyślnie `placed_at DESC, id DESC`,
+    przycięciu (także o spacje Unicode) znaczy (`OrderSearchTerm`): dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$` (cały `q` ma najwyżej 254 znaki, dłuższy to 400);
+    dokładny pełny adres e-mail (`lower(email) = lower(:email)`, do 254 znaków), gdy ma lokalną część, `@` i domenę
+    z kropką z ostatnim członem co najmniej 2 znaki (więc „jan@gm” nim nie jest); inny tekst 3–100 znaków to fragment
+    numeru, e-maila albo imienia i nazwiska; krótszy, dłuższy albo ze znakiem sterującym (w tym U+001F) to 400 przy
+    `q` (polski komunikat). Fragment to warunek `lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE
+    '%' || lower(:fragment) || '%'` z ucieczką `\`, `%` i `_` (znaczą siebie): dokładnie wyrażenie jedynego indeksu GIN
+    trigram `ordering_order_search_trgm_idx` (migracja nietransakcyjna `Version20261115140000`, `CONCURRENTLY`;
+    `number`, `email` i `full_name` są `NOT NULL`, więc konkatenacja nie daje NULL, a separator U+001F nie występuje w polach,
+    więc fragment nie przechodzi przez granicę pól). `placedFrom` i `placedTo` to dni `YYYY-MM-DD` w `Europe/Warsaw`
+    (2000–2999, oba końce włącznie), które `OrderPlacedRange` zamienia na chwile UTC `[początek dnia, początek dnia
+    po ostatnim)` (dzień zmiany czasu ma 23 albo 25 godzin); `placedFrom` po `placedTo` to 400 przy `placedTo`; łączą się
+    ze `status`, `q` i sortem po dacie (indeksy `placed_at`), a z `sort=total|-total` (400 przy `sort`) i `refund=pending`
+    (400 przy polach dat) nie. Sort z `sort` (domyślnie `placed_at DESC, id DESC`,
     patrz „Sortowanie list panelu”), a przy `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC`
     (łączy się ze `status` i `q`). Kursor keyset `BackofficeOrderCursor` (base64url JSON klucza sortu, chwili w UTC
-    z mikrosekundami albo kwoty i id); zły kursor i kursor innego sortu to 400 przy `after`. Parametry: `q` 1–254 znaki po przycięciu bez NUL, `perPage` 1–100
-    (domyślnie 25), inaczej 400. Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
-    `(status, placed_at DESC, id DESC)`, `(total_gross, id)`, `(status, total_gross, id)`, `(lower(email))` (wyrażenie, mapowanie go nie zna, więc narzędzia schematu
-    go pomijają) i częściowy `(refund_due_at, id) WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL`
-    (warunek w mapowaniu tak, jak zwraca go PostgreSQL); `OrderingSchemaTest` pilnuje zgodności mapowania z migracją.
+    z mikrosekundami albo kwoty i id); zły kursor i kursor innego sortu to 400 przy `after`. Parametry: `perPage` 1–100
+    (domyślnie 25), inaczej 400. `q`, `placedFrom` i `placedTo` są w DTO typu `mixed` i sprawdzane w callbackach, żeby
+    błąd typu (`q[]=…`) miał ten sam polski komunikat, co zły tekst. Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
+    `(status, placed_at DESC, id DESC)`, `(total_gross, id)`, `(status, total_gross, id)`, `(lower(email))`, GIN trigram
+    wyszukiwania (wyrażenia, mapowanie ich nie zna, więc narzędzia schematu je pomijają) i częściowy `(refund_due_at, id)
+    WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL` (warunek w mapowaniu tak, jak zwraca go PostgreSQL);
+    `OrderingSchemaTest` pilnuje zgodności mapowania z migracją. `OrderSearchPlanTest` na 100 000 zamówień w tabeli
+    tymczasowej `ordering_order` (kopia definicji z indeksami, po `ANALYZE`; zasłania tabelę w połączeniu testu, więc
+    nie zostawia śmieci po wycofaniu) sprawdza `EXPLAIN` bez wyłączania skanów: `Bitmap Index Scan` na indeksie
+    wyszukiwania i brak `Seq Scan` po `ordering_order` dla fragmentu numeru, e-maila i nazwiska (strona i licznik).
   - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
     `GET /api/v1/me/orders?after=&perPage=` i `GET /api/v1/me/orders/{orderId}`; każda odpowiedź `private, no-store`
     (`OrderResponseCacheSubscriber` obejmuje `me/orders`), brak tokenu albo token panelu to 401. Klient to `sub` z tokenu
@@ -908,11 +924,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `(name, id)`, `(updated_at, id)` i częściowe warianty szkiców, `(placed_at DESC, id DESC)`, `(total_gross, id)`
   i ich wersje z `status`. Połączenia, których żaden indeks nie obsługuje, to 400 z naruszeniem pola `sort`
   (callback `BackofficeOrderListQuery`; handler dodatkowo rzuca `InvalidBackofficeOrderList`): `sort` z `refund=pending`
-  i kwota (`-total`, `total`) z `q`. Nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis
+  i kwota (`-total`, `total`) z `q` albo zakresem dni (`placedFrom`, `placedTo`). Nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis
   `#[ORM\Index]` w rekordzie (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection`
   (`tests/Support`; wyłączone `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`). Liczniki nie
   zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`,
-  `ListBackofficeOrdersEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
+  `ListBackofficeOrdersEndpointTest`, `OrderSearchEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
   budowa przerwana na timeoucie blokady).
 - Liczniki wyników list panelu są ograniczone (spec ADMIN-FEATURES, „Liczniki wyników”): pierwsza strona (bez `after`)
   listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
@@ -925,9 +941,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   skanu. Wynik zapytania niesie `BoundedCount` (`Shared\Domain`); odpowiedź mapuje `BoundedCountResponse` (`Shared\UI\Http`, schemat OpenAPI
   `BoundedCountResponse`, `ofNullable`), a `Catalog_UI` ma w Deptracu `Shared_UI` właśnie po ten schemat. „Wiersz” licznika
   to wiersz strony: na Cenach i Stanach produkt (strona liczy produkty, nie warianty), więc licznik tych list to licznik
-  `SearchBackofficeProducts` przekazany przez `DirectoryPage`. Lista z filtrem, który nic nie może znaleźć (zamówienia
-  z `q`, które nie jest numerem ani e-mailem; kody z prefiksem ze znakiem, którego żaden kod nie może mieć,
-  `ListDiscountCodesHandler::prefix`), daje na pierwszej stronie `{value: 0, capped: false}` bez odczytu; poprawny
+  `SearchBackofficeProducts` przekazany przez `DirectoryPage`. Lista z filtrem, który nic nie może znaleźć (kody
+  z prefiksem ze znakiem, którego żaden kod nie może mieć, `ListDiscountCodesHandler::prefix`), daje na pierwszej stronie `{value: 0, capped: false}` bez odczytu; poprawny
   prefiks bez trafień jest liczony w bazie jak każdy inny. Test: `BoundedCounterTest` (plan `EXPLAIN ANALYZE` na
   prawdziwej tabeli: węzeł `Limit` i skan zatrzymany po limit + 1 wierszach), liczniki czytników, testy handlerów
   (licznik wołany tylko na pierwszej stronie z następną) i testy funkcjonalne każdej listy.

@@ -301,7 +301,7 @@ export interface paths {
         };
         /**
          * Order list
-         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), which takes no `sort`. The status filter and the search combine with it; sorting by the amount takes no search. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
+         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), which takes no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
          */
         get: operations["listOrders"];
         put?: never;
@@ -1088,6 +1088,16 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /**
+             * Format: date
+             * @default null
+             */
+            placedFrom: string | null;
+            /**
+             * Format: date
+             * @default null
+             */
+            placedTo: string | null;
         };
         /** @description A change of the status of an order, based on the version of the order the staff member saw. */
         ChangeOrderStatusRequest: {
@@ -3254,9 +3264,13 @@ export interface operations {
                 status?: components["schemas"]["BackofficeOrderStatus"];
                 /** @description `pending`: only the orders with a refund to do, nearest due date first. */
                 refund?: "pending";
-                /** @description An order number or an email, exact, any letter case; 1 to 254 characters once trimmed. */
+                /** @description An order number or a complete email address (exact, any letter case; the email up to 254 characters), otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` literal); without control characters, trimmed. Not with `sort` by the amount. */
                 q?: string;
-                /** @description The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q`. */
+                /** @description The first day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included. Not with `refund=pending` or `sort` by the amount. */
+                placedFrom?: string;
+                /** @description The last day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included; not before `placedFrom`. Not with `refund=pending` or `sort` by the amount. */
+                placedTo?: string;
+                /** @description The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q` or the range of days. */
                 sort?: "-placedAt" | "placedAt" | "-total" | "total";
                 /** @description The `nextCursor` of the previous page of the same sort. */
                 after?: string;

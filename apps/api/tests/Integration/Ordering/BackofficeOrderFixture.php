@@ -46,6 +46,7 @@ final class BackofficeOrderFixture
         ?string $refundCompletedAt = null,
         ?string $orderId = null,
         ?string $customerId = null,
+        string $fullName = 'Jan Kowalski',
     ): string {
         $orderId ??= Uuid::v7()->toRfc4122();
         $placed = new \DateTimeImmutable($placedAt);
@@ -63,7 +64,7 @@ final class BackofficeOrderFixture
             'customer_id' => $customerId,
             'access_token' => null === $customerId ? rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=') : null,
             'email' => $email,
-            'full_name' => 'Jan Kowalski',
+            'full_name' => $fullName,
             'phone' => '+48600100200',
             'street' => 'Długa 1',
             'postal_code' => '00-950',

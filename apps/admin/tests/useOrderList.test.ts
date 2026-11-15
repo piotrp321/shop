@@ -324,7 +324,8 @@ describe("useOrderList", () => {
     const list = await start({ "": page(["R-1"]) });
     serve({}, 400);
 
-    list.search.value = "x";
+    // Over 100 characters that are no email: the panel sends it (a 1 or 2 characters long term it does not), the API refuses it.
+    list.search.value = "x".repeat(101);
     list.submitSearch();
     await settle();
 

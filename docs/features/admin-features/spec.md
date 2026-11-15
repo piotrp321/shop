@@ -248,10 +248,10 @@ Parametr `sort=<klucz>` z zamkniętą listą na endpoint; każdy klucz ma indeks
 
 ### Wyszukiwanie zamówień (decyzja P8)
 
-- `q`: dokładny numer (`^[Rr]-[0-9]+$`) i pełny adres e-mail (format `EmailAddress` Ordering, do 254 znaków) szukane
-  dokładnie jak dziś; inny tekst 3–100 znaków (także fragment z `@`, np. „jan@gm”) to fragment szukany w numerze,
-  e-mailu i imieniu i nazwisku. Inny tekst krótszy niż 3 albo dłuższy niż 100 znaków albo ze znakiem sterującym: 400
-  z komunikatem pola `q`.
+- `q`: dokładny numer (`^[Rr]-[0-9]+$`) i pełny adres e-mail (lokalna część, `@`, domena z kropką i ostatnim członem co
+  najmniej 2 znaki, do 254 znaków; „jan@gm” nim nie jest) szukane dokładnie jak dziś; inny tekst 3–100 znaków (także
+  fragment z `@`, np. „jan@gm”) to fragment szukany w numerze, e-mailu i imieniu i nazwisku. Inny tekst krótszy niż 3
+  albo dłuższy niż 100 znaków albo ze znakiem sterującym: 400 z komunikatem pola `q`.
 - Fragment używa jednego indeksu GIN trigram (`gin_trgm_ops`) na wyrażeniu `lower(number || E'\x1f' || email ||
   E'\x1f' || full_name)` (jeden indeks zamiast trzech, mniejszy koszt zapisu przy składaniu zamówienia), a warunek
   zapytania to dokładnie to wyrażenie `LIKE '%' || lower(:fragment) || '%'` z ucieczką `\`, `%` i `_`, więc planista

@@ -31,6 +31,7 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
 
     private const string CATALOG = 'Version20261115130000IndexCatalogProductUpdatedAt';
     private const string ORDERS = 'Version20261115130100IndexOrderTotals';
+    private const string ORDER_SEARCH = 'Version20261115140000IndexOrderSearch';
 
     private Connection $connection;
     private string $migrationClass = '';
@@ -58,6 +59,24 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
             ['ordering_order_total_gross_id_idx' => '(total_gross, id)', 'ordering_order_status_total_gross_id_idx' => '(status, total_gross, id)'],
             ['ordering_order_total_gross_id_idx' => 'USING btree (total_gross, id)', 'ordering_order_status_total_gross_id_idx' => 'USING btree (status, total_gross, id)'],
         ];
+        yield 'the order index of the search by fragment' => [
+            self::ORDER_SEARCH,
+            'ordering_order',
+            ['ordering_order_search_trgm_idx' => "USING gin (lower(number || E'\\x1f' || email || E'\\x1f' || full_name) gin_trgm_ops)"],
+            ['ordering_order_search_trgm_idx' => "USING gin (lower((((((number)::text || '\x1f'::text) || (email)::text) || '\x1f'::text) || (full_name)::text)) gin_trgm_ops)"],
+        ];
+    }
+
+    /**
+     * @return iterable<string, array{string, string, array<string, string>, array<string, string>}> the migrations of more than one index
+     */
+    public static function migrationsOfSeveralIndexes(): iterable
+    {
+        foreach (self::migrations() as $label => $migration) {
+            if (\count($migration[2]) > 1) {
+                yield $label => $migration;
+            }
+        }
     }
 
     /**
@@ -98,7 +117,7 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
      * @param array<string, string>           $builds
      * @param array<string, non-empty-string> $definitions
      */
-    #[DataProvider('migrations')]
+    #[DataProvider('migrationsOfSeveralIndexes')]
     public function testARetryAfterTheFirstIndexWasBuiltBuildsTheOtherAndKeepsTheFirst(string $class, string $table, array $builds, array $definitions): void
     {
         $this->migrationClass = $class;
