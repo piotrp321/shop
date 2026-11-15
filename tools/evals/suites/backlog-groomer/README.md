@@ -13,7 +13,8 @@ agenta: `.claude/agents/backlog-groomer.md`, `docs/features/groom/spec.md`). Czt
 - **Dane GitHuba** agent czyta tak jak na `main` po AGENT-SECURITY: wyłącznie z `input.json`, który w prawdziwym
   przebiegu zapisuje `groom.py collect` przez bramkę pochodzenia (`tools/agent-security/github_trust.py`). Agent nie
   woła `gh`, więc przypadki nie mają pola `gh` (zaślepka kończy każde wywołanie kodem 1). Rekordy autorów bez prawa
-  zapisu byłyby tylko w `external`; żaden z tych przypadków go nie ma.
+  zapisu byłyby tylko w `external`; każdy `input.json` ma `"external": []` (kształt z `collect`), bo w tych danych
+  nie ma zgłoszeń takich autorów.
 - **Asercja `validator`** to `groom.py validate {{RUN_DIR}} --state {{STATE_DIR}}`: walidator dostaje `input.json`
   i `proposals.json` przebiegu oraz pusty katalog stanu (brak odrzuceń), nigdy domyślnego `~/.local/state/shop-groom`.
   Walidator odrzuca m.in. pozycję dla issue przypisanego do otwartego epiku, `fix_epic` obok otwartego `-FIXES`,
@@ -42,9 +43,12 @@ agenta: `.claude/agents/backlog-groomer.md`, `docs/features/groom/spec.md`). Czt
 
 - **Źródło:** pakiet `backlog-groomer/2026-11-12-6073c4f-1/input.json`, commit przypadku
   `6073c4fd996ddbed8e78d4fcaf837bcc09e381c8`; prawdziwe issues #407, #406, #135, #346, #446, #345, #340.
-  **Wyjątek: issue #447 jest zbudowane, nie prawdziwe.** W pakiecie nie ma pary duplikatów (backlog jest co dzień
-  porządkowany), więc #447 to wtórne zgłoszenie #407 (ten sam endpoint, ta sama przyczyna, to samo kryterium
-  akceptacji), napisane na potrzeby przypadku w stylu zgłoszeń z `agent`; ma wyższy numer niż prawdziwe #446.
+  **Wyjątek: issue #447 jest zbudowane, nie prawdziwe.** W obu przebiegach `/groom` z pakietu nie ma pary duplikatów
+  (przejrzane: podobieństwo tytułów i treści, wspólne pliki i endpointy, kryteria akceptacji; najbliższe pary, np.
+  #390/#391/#392, #340/#345, #272/#273, mają różne kryteria i przyczyny; pakiet zawiera tylko issues otwarte), więc
+  #447 to wtórne zgłoszenie #407 (ten sam endpoint, ta sama przyczyna, to samo kryterium akceptacji), napisane na
+  potrzeby przypadku. Numer #447 w prawdziwym repozytorium oznacza inny obiekt (PR), więc to zastępcza para do
+  decyzji, czy zostawić ją, czy usunąć przypadek.
 - **Po co:** para duplikatów, w której starsze #407 ma pełniejszy opis (`keep` = 407), oraz twarde negatywy z
   prawdziwych danych: #406 (też „brak limitu”, ale inny endpoint) i trzy zgłoszenia kontrastu w panelu (#135, #346,
   #446: ta sama klasa problemu, inne miejsca i kryteria).
@@ -60,9 +64,9 @@ agenta: `.claude/agents/backlog-groomer.md`, `docs/features/groom/spec.md`). Czt
 - **Po co:** wybór 3–8 kandydatów z jednego albo dwóch modułów (np. trzy zgłoszenia Pricing: #305, #306, #387) przy
   prawdziwych pułapkach: pięć zgłoszeń z wagą `Important` w stopce (#421, #392, #391, #390, #343) nie może wejść do
   epiku, a #442 nie ma etykiety rodzaju.
-- **Asercje:** `fix_epic` z ID `…-FIXES` i tytułem `<ID>: opis`; brak pozycji `obsolete` ani `duplicate` dla zgłoszeń
-  z wagą `Important`; `validator` (reguły kandydatów: etykiety, `needs-info`, waga, ID i zakres, sekcje treści epiku);
-  `tree_unchanged`.
+- **Asercje:** `fix_epic` z ID `…-FIXES` (z opcjonalnym `-N`, gdy ID jest zajęte) i tytułem `<ID>: opis`; `validator`
+  (reguły kandydatów: etykiety, `needs-info`, waga Critical i Important, ID i zakres, sekcje treści epiku, więc
+  zgłoszenie z wagą `Important` w epiku poprawek oblewa przypadek); `tree_unchanged`.
 
 ### `assigned-to-open-epic` (merytoryczny)
 

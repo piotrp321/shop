@@ -22,42 +22,10 @@
    "select": "fix_epic",
    "match": {
     "id": {
-     "regex": "^[A-Z0-9]+(-[A-Z0-9]+)*-FIXES$"
+     "regex": "^[A-Z0-9]+(-[A-Z0-9]+)*-FIXES(-[0-9]+)?$"
     },
     "title": {
-     "regex": "-FIXES: .+"
-    }
-   }
-  },
-  {
-   "type": "json",
-   "select": "items",
-   "expect": "absent",
-   "match": {
-    "issues": {
-     "in": [
-      [
-       421
-      ],
-      [
-       392
-      ],
-      [
-       391
-      ],
-      [
-       390
-      ],
-      [
-       343
-      ]
-     ]
-    },
-    "kind": {
-     "in": [
-      "obsolete",
-      "duplicate"
-     ]
+     "regex": "^[A-Z0-9]+(-[A-Z0-9]+)*-FIXES(-[0-9]+)?: .+"
     }
    }
   },

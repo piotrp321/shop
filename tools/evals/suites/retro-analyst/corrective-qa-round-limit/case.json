@@ -29,7 +29,8 @@
    "match": {
     "kind": "issue",
     "repo": "ao",
-    "existing_issue": 45
+    "existing_issue": 45,
+    "classes.visual-design/wait/visual-design\u00401794276256.class": "corrective"
    }
   },
   {

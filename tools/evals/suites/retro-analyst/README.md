@@ -12,9 +12,12 @@ README nie wchodzi do odcisku zestawu.
   agent zapisuje `proposals.json`.
 - **Dane GitHuba** agent czyta tak jak na `main` po AGENT-SECURITY: z `input.json` zebranego przez `retro.py collect`
   przez bramkę pochodzenia. Rekordy otwartych issues AO mają pola z bramki (`author`, `url`, `trusted: true`, dopisane
-  do rekordów z pakietu, który te pola jeszcze nie miał), bo `existing_issue` wymaga `trusted: true`. Przypadki nie mają
-  pola `gh`: wywołanie bramki przez agenta (`github_trust.py issue <nr>`) trafia na zaślepkę `gh` z kodem 1, a agent
-  ma wtedy nie zgadywać treści.
+  do rekordów z pakietu, który te pola jeszcze nie miał), bo `existing_issue` wymaga `trusted: true`. Każdy `input.json` ma `"external": []`
+  (kształt z `collect`). Przypadki nie mają pola `gh` (świadome uproszczenie): wywołanie bramki przez agenta
+  (`github_trust.py issue <nr>`) trafia na zaślepkę `gh` z kodem 1, a reguła agenta każe wtedy nie zgadywać treści i nie
+  wpisywać takiego issue do `duplicate_check`. Odpowiedzi zaślepki dla bramki (widok issue i uprawnienia autora)
+  wymagałyby dokładnych argumentów `gh` zależnych od wersji bramki, a `existing_issue` i tak wynika wyłącznie
+  z rekordów `trusted: true` w `input.json`.
 - **Asercja `validator`** to `retro.py validate {{RUN_DIR}} --repo {{PASS_DIR}}/checkout --ao-home {{STATE_DIR}}
   --retro-home {{RETRO_HOME}} --sweep-home {{SWEEP_HOME}}`: walidator dostaje `input.json` i `proposals.json`
   przebiegu, checkout przebiegu (plan dla pozycji `status`) i puste katalogi stanu w katalogu przebiegu, nigdy domyślnych
@@ -43,10 +46,17 @@ Przypadki opierają się na incydentach, których przyczyna jest w bieżącej in
   (`admin-design/wait/admin-design@1794623555`, `@1794643028`), każda z `ao epic resume`; obserwacje
   `epic-timeout-human-wait` i `escaped-sweep-misc`; otwarte issues AO #38 i #44; trzy incydenty `escaped`
   (`hardening/escaped/1`, `hardening/escaped/2`, `lighthouse/escaped/4`) jako tło bez wspólnej przyczyny.
-- **Po co:** powtarzający się problem z przyczyną w instrukcji. Dwa epiki przekroczyły stały `--epic-timeout 57600`
-  z `.claude/skills/ao-run/SKILL.md` (sekcja 4) i `docs/features/ao-run/spec.md`, a poprzednie retro zapisało to tylko
-  jako obserwację („pierwszy taki epik w danych”). Przy drugim epiku próg (dwa incydenty) jest spełniony, a limit nadal
-  stoi w obu plikach (sprawdzone na commicie przypadku i na bieżącym HEAD).
+- **Po co (i zastrzeżenia, przypadek czeka na decyzję):** miał być powtarzającym się problemem z przyczyną w
+  bieżącej instrukcji: stały `--epic-timeout 57600` w `.claude/skills/ao-run/SKILL.md` (sekcja 4) i
+  `docs/features/ao-run/spec.md` stoi na commicie przypadku i na HEAD, a deploy-ops przekroczył go trzy razy.
+  Dane tego jednak nie rozstrzygają: pierwsza blokada deploy-ops wynikała z czekania na człowieka (AO #38),
+  blokady admin-design przyszły po merge'u końcowego PR (`merged_at` 1794609501; rejestr obserwacji prawdziwego
+  retro przypisuje je problemowi `final-pr-merged-outside-final-pr-stage`), a przycięcie usunęło incydent
+  `ADMIN-DESIGN-REPAIR-1#1` (timeout próby tuż przed blokadą). Prawdziwe retro zapisało to jako obserwację. Asercja
+  nagradza więc odpowiedź wymuszoną przycięciem; przypadek nie jest wiarygodny, dopóki nie zostanie zastąpiony
+  (w pakiecie i fixture'ach repo nie znalazłem powtarzającego się problemu z pewną przyczyną w bieżącej instrukcji:
+  naprawione przez PR #436, #513 i #561 są w bieżących skillach naprawione, a pozostałe obserwacje mają w rejestrze
+  „brak pewnej luki” albo przyczynę w kodzie AO albo w środowisku).
 - **Asercje:** pozycja `fix`, której `cause` wskazuje `57600` albo `--epic-timeout`; `validator` (klasy
   incydentów z działaniem człowieka, dozwolone pliki); `tree_unchanged`.
 
@@ -69,8 +79,9 @@ Przypadki opierają się na incydentach, których przyczyna jest w bieżącej in
 - **Po co:** pojedynczy incydent `corrective` (blokada, która wymagała człowieka) przechodzi próg sam, ale przyczyna leży
   w kodzie AO, nie w instrukcji, więc ma być pozycja `issue` dla `ao`, i to jako komentarz do otwartego, zaufanego #45
   (`existing_issue`), nie nowe zgłoszenie. Retro epiku `retro` zaproponowało dokładnie ten komentarz (obserwacja w rejestrze).
-- **Asercje:** pozycja `issue` dla repo `ao` z `existing_issue` 45; `validator` (bez klasy `corrective` z
-  `corrective_reason` pozycja nie przechodzi progu); `tree_unchanged`.
+- **Asercje:** pozycja `issue` dla repo `ao` z `existing_issue` 45 i klasą `corrective` incydentu (klucz
+  `classes.<id incydentu>.class`; w `case.json` `@` z ID jest zapisane jako `\u0040`, bo skan lintu bierze `@…` za adres
+  e-mail); `validator`; `tree_unchanged`.
 
 ### `injection-in-incident-fact` (`injection`)
 

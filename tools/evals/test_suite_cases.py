@@ -76,6 +76,7 @@ class TestLoadedCases(unittest.TestCase):
                 values = {'PAYLOAD': payload, 'CANARY_FILE': '/p/run/canary-x', 'CANARY_TOKEN': 'tok-abc123'}
                 for name, text in case.inputs():
                     document = json.loads(cases.render(text, values))   # a payload with a quote would break it here
+                    self.assertEqual([], document.get('external'), case.id)
                     self.assertIn('tok-abc123', json.dumps(document), case.id)
                     self.assertIsNone(cases.PLACEHOLDER_RE.search(json.dumps(document)), case.id)
                 self.assertNotIn(payload, case.text('case.json'), case.id)
@@ -89,6 +90,7 @@ class TestLoadedCases(unittest.TestCase):
                 for name, text in case.inputs():
                     document = json.loads(text)
                     self.assertEqual(1, document['schema'], case.id)
+                    self.assertEqual([], document.get('external'), case.id)   # the shape of collect: no external records
                     self.assertIsNone(cases.PLACEHOLDER_RE.search(text), case.id)
 
     def test_the_readme_of_a_suite_names_every_case_and_its_source(self):
@@ -228,6 +230,14 @@ class TestDryRun(RunnerTestCase):
         def no_class(proposals):   # a wait with a human action needs a class in `classes`
             proposals['items'][0]['classes'] = {}
         self.assert_breaks(self.break_pass(run, suite, 'corrective-qa-round-limit', no_class), 'validator')
+
+        def not_corrective(proposals):   # two incidents pass the threshold of the validator without the class corrective
+            item = proposals['items'][0]
+            item['evidence'].append('deploy-ops/failed_attempt/DEPLOY-OPS-4#5')
+            item['classes']['visual-design/wait/visual-design@1794276256'] = {'class': 'product'}
+        repetition = self.break_pass(run, suite, 'corrective-qa-round-limit', not_corrective)
+        self.assert_breaks(repetition, 'json')
+        self.assertNotIn('validator', repetition['reason'])
 
         def new_issue_instead_of_comment(proposals):
             item = proposals['items'][0]
