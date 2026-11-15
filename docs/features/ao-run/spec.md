@@ -198,8 +198,8 @@ Remote Control skill nie sprawdza.
    „Przegląd po merge'u”). Pytanie z punktu 7 nie czeka na przegląd ani na retro. Po `MERGED` i po `CLOSED` sesja
    sprawdza pary epiku (`pairs.py`) i dla pary z obydwoma końcowymi PR zamkniętymi pokazuje blok `Para równoległa`
    z werdyktem krytycznego problemu (krytyczny problem: `night_queue.py hold`, które wstrzymuje starty obok epiku
-   w toku do `unhold` po decyzji użytkownika), a po zgodzie dopisuje go do issue epiku zamkniętego później; po drugiej
-   parze wysyła push o kroku 19b; po każdej parze zapisuje werdykt (`pairs.py record`) i przedstawia dane o regule
+   w toku do `unhold` po decyzji użytkownika), a po zgodzie dopisuje go do issue epiku zamkniętego później; po każdej
+   parze zapisuje werdykt (`pairs.py record`) i przedstawia dane o regule
    plików (spec pracy równoległej, „Metryki par” i „Ocena reguły plików”).
 7. **Następny epik.** Po merge'u końcowego PR, na prośbę użytkownika (`/ao-run` bez argumentu), a w dzień także po
    starcie epiku i po jego `epic_done`, sesja uruchamia bramkę bez rezerwacji (`night_queue.py gate`; spec pracy

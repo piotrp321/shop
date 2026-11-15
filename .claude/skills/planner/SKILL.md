@@ -37,9 +37,10 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
    - `risk` według `/delivery`: `FAST` (lokalna zmiana niskiego ryzyka), `STANDARD` (funkcjonalność, API,
      integracja), `CRITICAL` (auth, pieniądze, migracje danych, transakcje, współbieżność, bezpieczeństwo).
      To ocena do planu i przeglądu; `/delivery` klasyfikuje ryzyko zadania sam i jego wynik jest wiążący.
-   - `paths`: pliki i katalogi (z `/` na końcu), które zadanie zmieni, łącznie z testami, dokumentacją i każdym
-     `CLAUDE.md` (wpisz go jako plik). Przy niepewności wpisz szerszy katalog: za wąska lista może puścić naraz
-     zadania, które zmieniają to samo.
+   - `paths`: pliki i katalogi (z `/` na końcu), które zadanie zmieni, łącznie z testami i dokumentacją. Plik, który
+     zadanie na pewno zmieni (np. `spec.md` epiku, każdy `CLAUDE.md`), wpisz jako plik; katalog tylko dla plików
+     nieznanych z góry. Przy niepewności wpisz szerszy katalog: za wąska lista może puścić naraz zadania, które
+     zmieniają to samo.
 4. Kontrola przed przedstawieniem: każde kryterium akceptacji i każde zadanie dokumentacji ze specyfikacji jest
    w dokładnie jednym zadaniu (albo jawnie rozdzielone między kilka); żadne zadanie nie wnosi zakresu spoza
    specyfikacji.

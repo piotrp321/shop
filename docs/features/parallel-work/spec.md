@@ -356,8 +356,6 @@ jest pomijany w całości. Metryki zbieramy dla każdej pary, nie tylko dla dwó
   i problem>"`, więc epiki dalej ruszają równolegle dopiero po decyzji użytkownika o zmianie bramki (w rozmowie albo
   w PR do tej specyfikacji); `unhold` sesja uruchamia tylko po wyraźnej decyzji użytkownika w rozmowie. Konflikt,
   niespójność albo regresja rozwiązane automatycznie trafiają tylko do metryk.
-- Push „Krok 19b może ruszyć: dwie pary bez krytycznego problemu” sesja wysyła po werdykcie drugiej pary, gdy obie
-  pierwsze pary są zamknięte (żaden epik nie ma `open`) i żadna nie ma krytycznego problemu.
 
 ### Ocena reguły plików
 
