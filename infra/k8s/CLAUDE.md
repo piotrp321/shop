@@ -82,6 +82,14 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   docelowej skali przechodzi cały katalog i zamówienia. Lokalnie (compose) kroki uruchamia koniec `bin/seed-demo`
   (`app:backfill --force`); `restore` go nie ponawia. Test: `tests/test_jobs.py`, `tests/test_waves.py`.
 
+## Worker
+
+- Deployment `worker` (obraz `api`) uruchamia `messenger:consume outbox events scheduled payment_simulator promotions
+  jobs`, transporty po kolei, ta sama komenda co `worker` w compose; sonda gotowości czeka, aż PID 1 to ten konsument
+  z tą listą transportów. `jobs` to partie zadań w tle wywołanych zmianą w domenie (reindeksacja poddrzewa kategorii,
+  `apps/api/CLAUDE.md`). Nowy transport trafia do compose i chartu w tym samym PR (test
+  `test_worker_consumes_the_transports_of_compose` w `tests/test_workloads.py`).
+
 ## Co sprawdza `check`
 
 - `make -C infra/k8s check` (woła go też główny `make check`): `helm lint`, render chartu dla `prod`, `ci` i `load` (nakładka z zasobami podów jak `prod` i nagłówkiem adresu klienta;

@@ -17,7 +17,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
 - dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
-  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog; po załadowaniu produktów woła `ANALYZE catalog_product`, bo pulpit liczy produkty ze statystyk tabeli), potem
+  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog razem z przebiegami reindeksacji kategorii `catalog_category_reindex`
+  i kolejkami `outbox` i `jobs`; po załadowaniu produktów woła `ANALYZE catalog_product`, bo pulpit liczy produkty ze statystyk tabeli), potem
   `pricing:seed-demo`, który w jednej transakcji czyści ceny z historią, promocje (`pricing_promotion`,
   `pricing_promotion_variant`), kody rabatowe z użyciami (`pricing_discount_code`, `pricing_discount_code_usage`) i kolejkę promocji (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
   pozostałe kolejki zostają), potem ustawia cenę (źródło `seed`) każdemu wariantowi demo według
@@ -40,7 +41,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem
   `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
   i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
-  `outbox`, `scheduled`, `promotions`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
+  `outbox`, `scheduled`, `promotions`, `jobs`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
   linie, historię statusów, powiadomienia i sprzedaż godzinową (`ordering_sales_hour`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
@@ -577,8 +578,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
   `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, oba, rekord stanu z produktem dla każdego wariantu),
   `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu),
-  `InvalidateStorefrontOnCategoryTreeChange` (`Catalog_Infrastructure`, `CategoryTreeChanged`, unieważnienie tagu `catalog`)
-  i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
+  `InvalidateStorefrontOnCategoryTreeChange` (`Catalog_Infrastructure`, `CategoryTreeChanged`, unieważnienie tagu `catalog`),
+  `ReindexSubtreeOnCategoryTreeChange` (`Catalog_Application`, `CategoryTreeChanged` `revised` i `moved`, start łańcucha
+  reindeksacji poddrzewa na transporcie `jobs`, niżej) i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
   podatkowej).
 - Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
   i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` (port `ProductDirectory::taxClassOf`,
@@ -782,7 +784,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   do kupienia” i cena „od” są tylko w Cart, a ceny są skuteczne (w aktywnej promocji promocyjne, Pricing
   `GetCurrentPrices`). Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
   Inventory.
-- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, poza `command.bus`): znacznik
+- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, zwykle poza `command.bus`, a w partii łańcucha
+  reindeksacji kategorii w jego transakcji; tylko czyta bazę, a w READ COMMITTED każdy odczyt ma świeży snapshot): znacznik
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
   z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały” (także spóźniony zapis
   opublikowanego stanu po nowszym zapisie szkicu). Zapisuje każdy produkt, szkic jako dokument `draft`; przebudowa
@@ -792,7 +795,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
   obsłużona bez zapisu; `ReindexProductOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`) tak
   samo, ale produkt jest w zdarzeniu (bez `GetVariant`). `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane,
-  `SearchIndexError` idzie do `failed`. Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
+  `SearchIndexError` idzie do `failed`. Zmiana nazwy i przeniesienie kategorii przepisują dokumenty poddrzewa łańcuchem
+  partii na transporcie `jobs` (niżej). Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
   cen i stanów obsłużone w jej trakcie trafiają do starego indeksu (przebudowa nie jest online).
 
 - `GET /api/v1/products` (`listProducts`) szuka i filtruje w indeksie (`ElasticsearchProductSearch`, zapytanie składa
@@ -952,8 +956,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
   Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
   pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
-  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled
-  payment_simulator promotions` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
+  `failed`. Worker (`infra/docker-compose.yml` i chart, komenda i healthcheck albo sonda) konsumuje `outbox events scheduled
+  payment_simulator promotions jobs` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
   prawdziwy (Doctrine na `shop_test`).
 - Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
   `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
@@ -977,6 +981,40 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `GetVariantSummaries` paczkami po 100; wariant nieznany Catalogowi pomija) i publikuje jedno
   `PromotionPricesChanged` (źródło `promotion`) na produkt w outboxie, w jednej transakcji. Handler komendy promocji
   nie czyta Catalog w tym celu ani nie publikuje zdarzeń. Przestój workera opóźnia tylko indeks i cache sklepu.
+- Transport `jobs` (Doctrine, `queue_name=jobs`, ten sam DSN, opcje i ponowienia co `scheduled`: `redeliver_timeout=300`,
+  `use_notify: false`, 5 prób po 1, 3, 9, 27 i 81 s, potem `failed`; w `test` w pamięci, w `test_messaging` prawdziwy)
+  trzyma partie zadań w tle. **Wzorzec łańcucha partii** to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
+  workera (komendy uruchamiane świadomie, jak `catalog:reindex`, `cart:purge-expired` i `pricing:reconcile-tax`, zostają
+  przy swoich wzorcach): odbiorca zdarzenia w jednej transakcji `command.bus` zakłada wiersz przebiegu (`next_batch` 0,
+  `cursor` pusty) i wysyła wiadomość pierwszej partii `{runId, batch}`; handler partii w jednej transakcji `command.bus`
+  najpierw blokuje wiersz przebiegu (`SELECT … FOR UPDATE`), partia inna niż `next_batch` albo przebieg zakończony
+  (albo nieznany) to koniec bez skutku, potem robi partię po `cursor`, zapisuje nowy `cursor` i `next_batch + 1`
+  i wysyła wiadomość następnej partii w tej samej transakcji; pusta partia ustawia `finished_at`. Druga kopia partii
+  (ponowna dostawa po `redeliver_timeout`, ponowienie) czeka na blokadę i widzi nowy `next_batch`, więc partia jest
+  zrobiona raz i następna wiadomość jest jedna (`CategoryReindexConcurrencyTest`, dwa procesy). Partia trwa sekundy,
+  daleko poniżej `redeliver_timeout`. Po wyczerpaniu ponowień wiadomość jest w `failed`, a Messenger zapisuje błąd
+  w logu (`critical`, kanał `messenger`); przebieg zostaje bez `finished_at` i nikt go nie wznawia, a skutek naprawia
+  narzędzie zadania (dla reindeksacji `catalog:reindex`).
+  - Dziś jedyny łańcuch: reindeksacja poddrzewa kategorii (spec ADMIN-FEATURES, 4 „Odświeżenie sklepu i reindeksacja”).
+    `ReindexSubtreeOnCategoryTreeChange` (`event.bus`, transport `events`) po `CategoryTreeChanged` `revised` (nazwa
+    i slug; zdarzenie nie odróżnia samego sluga, którego nie ma w dokumentach, więc taki przebieg przepisuje je bez zmian)
+    i `moved` (nowy rodzic) wysyła `StartCategoryReindex` (handler: przebieg w `catalog_category_reindex (id,
+    category_id, cursor, next_batch, finished_at)` i `ReindexCategoryBatch(runId, 0)` przez port
+    `CategoryReindexBatches`); `created`, `reordered` i `deleted` nie reindeksują. `ReindexCategoryBatchHandler` bierze
+    identyfikatory 500 kolejnych produktów (parametr `app.catalog.category_reindex_batch_size`, w testach 2) z indeksu
+    wyszukiwania (port `SubtreeProductIds`, `ElasticsearchSubtreeProductIds`: `term category_ancestor_ids` = kategoria,
+    także szkice, sort po `id`, `search_after` = `cursor`; dokumenty poddrzewa mają kategorię przed zmianą i po niej,
+    a koszt partii nie zależy od rozmiaru katalogu, bez indeksów SQL) i przepisuje je `ProductIndexing` (wersja
+    zewnętrzna daje idempotencję; produkt, którego nie ma w bazie, pomija). `SearchUnavailable` i `OfferFactsUnavailable`
+    są ponawiane, `SearchIndexError` idzie wprost do `failed`. Pusta partia ustawia `finished_at` i unieważnia tag
+    `catalog` jeszcze raz (port `StorefrontCatalogCache`, `HttpStorefrontCatalogCache`), w tej samej transakcji: błąd
+    Varnisha albo sklepu wycofuje `finished_at`, a ponowienie powtarza pustą partię i unieważnienie. Wyjątek DBAL:
+    przebiegi czyta, blokuje i zapisuje `DbalCategoryReindexRuns` (rekord `CategoryReindexRunRecord` tylko definiuje
+    schemat; bez klucza obcego do kategorii, bo przebieg usuniętej pustej kategorii nic nie znajduje i się kończy).
+    `catalog:seed-demo` czyści przebiegi i kolejkę `jobs`. Do końca łańcucha filtr kategorii w sklepie może pokazywać
+    stare przypisania. Testy: `ReindexCategoryBatchHandlerTest`, `CategoryReindexStartTest`, `DbalCategoryReindexRunsTest`,
+    `SubtreeProductIdsTest`, `CategoryReindexFlowTest` (zmiana nazwy i przeniesienie na Elasticsearchu, kilka partii),
+    `CategoryReindexConcurrencyTest`.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
 - Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
   danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (sekcja „Komendy”). Indeks na
@@ -1083,7 +1121,7 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
   zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
   Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator` i `promotions`) są zgodne w obie
+- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`) są zgodne w obie
   strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
   mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
   z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
