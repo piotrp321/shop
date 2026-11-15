@@ -9,6 +9,8 @@ use App\Backoffice\Application\Port\CatalogStatistics;
 use App\Backoffice\Application\Port\MessagingStatistics;
 use App\Backoffice\Application\Port\OrderQueueCounts;
 use App\Backoffice\Application\Port\OrderQueues;
+use App\Backoffice\Application\Port\SalesFigures;
+use App\Backoffice\Application\Port\SalesSummary;
 use App\Backoffice\Application\Port\StockQueues;
 use App\Backoffice\Application\Port\SystemHealth;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -25,6 +27,7 @@ final readonly class GetDashboardHandler
         private MessagingStatistics $messaging,
         private OrderQueues $orderQueues,
         private StockQueues $stockQueues,
+        private SalesSummary $sales,
     ) {
     }
 
@@ -34,7 +37,7 @@ final readonly class GetDashboardHandler
         if (!$query->includeSystem) {
             $counts = $this->catalog->counts($access->manageProducts);
 
-            return new Dashboard($this->catalogSection($counts), $this->queues($access, $counts), null);
+            return new Dashboard($this->catalogSection($counts), $this->queues($access, $counts), null, $this->sales($query));
         }
 
         // The slow requests of the system section are sent first and collected together, before the catalogue
@@ -47,7 +50,15 @@ final readonly class GetDashboardHandler
 
         $counts = $this->catalog->counts($access->manageProducts);
 
-        return new Dashboard($this->catalogSection($counts), $this->queues($access, $counts), $this->system($counts, $services, $queues, $outboxPending));
+        return new Dashboard($this->catalogSection($counts), $this->queues($access, $counts), $this->system($counts, $services, $queues, $outboxPending), $this->sales($query));
+    }
+
+    /**
+     * Asked from their owner only for a staff member who may see them.
+     */
+    private function sales(GetDashboard $query): ?SalesFigures
+    {
+        return $query->includeSales ? $this->sales->summary() : null;
     }
 
     private function catalogSection(CatalogCounts $counts): CatalogSection

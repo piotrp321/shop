@@ -53,6 +53,7 @@ export function dashboard(overrides: Partial<Dashboard> = {}): Dashboard {
   return {
     catalog: { productCount: { value: 412, estimated: true }, categoryCount: 36 },
     queues: queues(),
+    sales: null,
     system: system(),
     ...overrides,
   };

@@ -960,7 +960,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   budowa przerwana na timeoucie blokady).
 - Pulpit (`GET /admin/dashboard`, decyzja A1 spec ADMIN-FEATURES): `GetDashboard` (Backoffice) składa sekcje przez porty Backoffice
   z adapterami na `query.bus` do zapytań modułów właścicieli: `CatalogStatistics` → `GetCatalogStatistics` (Catalog),
-  `OrderQueues` → `GetOrderQueues` (Ordering), `StockQueues` → `GetStockQueues` (Inventory); Deptrac pozwala
+  `OrderQueues` → `GetOrderQueues` (Ordering), `StockQueues` → `GetStockQueues` (Inventory), `SalesSummary` →
+  `GetSalesSummary` (Ordering); Deptrac pozwala
   `Backoffice_Infrastructure` na `Ordering_Application` i `Inventory_Application` (tylko zapytania i widoki), a
   `Backoffice_UI` na `Shared_UI` (schemat `BoundedCountResponse`). Uprawnienie kolejki sprawdza voter modułu, który ją
   posiada: kontroler pyta `isGranted` (`VIEW_ORDERS`, `VIEW_PENDING_PAYMENTS` (admin i support, `OrderVoter`),
@@ -973,6 +974,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   kolejka liczy warianty, a lista stanów pokazuje ich produkty), więc zapytania idą po indeksach list
   (`OrderQueuesPlanTest`, `StockLevelProductsPlanTest`, `ProductsWithoutImagesPlanTest`: plan bez `Seq Scan`). Kolejka
   zwrotów płatności z części 2 dopisze się tym samym wzorcem (port, zapytanie w module, pole `null` według votera).
+  Sprzedaż (`sales`) tylko dla `admin` (`VIEW_SALES` w `OrderVoter`; kontroler przekazuje wynik jako `includeSales`, bez
+  niego port nie jest pytany, a pole jest `null`): `GetSalesSummary` sumuje `ordering_sales_hour` (wyjątek DBAL wyżej) dla
+  okresów `SalesPeriods` z zakończonych godzin do początku bieżącej (`dataUntil`, UTC): „Dziś” od północy zegara
+  `Europe/Warsaw` z porównaniem z wczoraj do tej samej godziny zegara (między 0:00 a 1:00 wszystkie pola `null`),
+  7 i 30 dni jako 168 i 720 godzin z porównaniem z tyloma godzinami wcześniej (zegar z portu `Clock` Ordering).
+  Miary w groszach (`revenue`, `orderCount`, `averageOrderValue` zaokrąglona do grosza, `null` bez zamówień) i
+  `changeBasisPoints` (`null` bez przychodu w okresie porównawczym), zaokrąglenia połówek od zera (`PeriodSales`). Testy:
+  `SalesPeriodsTest` (granica doby, pierwsza godzina, oba dni zmiany czasu), `GetSalesSummaryHandlerTest`,
+  `DashboardSalesEndpointTest` (role, wartości przy stałym zegarze, schemat).
   Liczba produktów (`catalog.productCount`) nigdy nie jest `count(*)`: `ProductTableStatistics::estimatedProductCount`
   czyta `pg_class.reltuples` (jeden wiersz katalogu bazy), odpowiedź to `{value, estimated: true}`, a `null` przed
   pierwszą analizą tabeli (`reltuples` < 0); odświeża ją `ANALYZE catalog_product` na końcu `catalog:seed-demo`
