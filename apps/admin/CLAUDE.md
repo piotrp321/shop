@@ -1,7 +1,6 @@
 # CLAUDE.md – apps/admin
 
-Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), ikony Lucide;
-PrimeVue 4 (preset Aura) i PrimeIcons tylko na ekranach jeszcze niezmigrowanych (`LEGACY_FILES`, do ADMIN-SCREENS).
+Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), ikony Lucide.
 Panel administracyjny dla pracowników. Zasady wspólne dla całego repo są w głównym `CLAUDE.md`,
 opis domeny w `docs/vision.md`.
 
@@ -34,12 +33,14 @@ Klienta API generuje `make api-client` z katalogu głównego.
   przenosi fokus na `<main tabindex="-1">`), sidebar 260 px od 1024 px (`hidden lg:flex`), poniżej tej szerokości szuflada
   (`Sheet` z lewej: pułapka fokusu, `Escape` i wybór pozycji zamykają, fokus wraca na „Menu” przez `close-auto-focus`,
   powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`), stopka
-  („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"`,
-  5 s) i `useIdleLogout` (15 min). `usePageFocus`: po zmianie ścieżki trasy (inny ekran albo rekord; sama zmiana `query` lub `hash`, nawigacja
+  („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"` o nazwie
+  dokładnie „Powiadomienia”, bez skrótu klawiszowego vue-sonner, który doklejałby się do nazwy; 5 s; `position="top-right"` z odsunięciem
+  pod topbar, `TOAST_TOP` w `AppLayout`, więc toast nie zasłania paska zapisu ani topbaru; poniżej 640 px na szerokość ekranu
+  z marginesem 16 px: klasy `max-sm:…!` `TOAST_NARROW`, bo vue-sonner robi to dopiero do 600 px) i `useIdleLogout` (15 min). `usePageFocus`: po zmianie ścieżki trasy (inny ekran albo rekord; sama zmiana `query` lub `hash`, nawigacja
   anulowana i pierwsze wczytanie niczego nie ruszają) wolny fokus (na `body`, np. po zniknięciu klikniętego linku, albo na `<main>`)
   trafia na H1 nowej strony; do czasu pojawienia się H1 (widok ładuje dane) na `<main>`. Fokus, który ma istniejący element
   (przeniesiony przez widok, np. formularz po zapisie przed `router.replace` na trasę utworzonego rekordu tą samą instancją,
-  pole, w którym jest pracownik, topbar, menu), zostaje. H1 ekranu niezmigrowanego dostaje `tabindex="-1"`. Pozycja wybrana w szufladzie,
+  pole, w którym jest pracownik, topbar, menu), zostaje. H1 bez własnego `tabindex` (pulpit) dostaje od powłoki `tabindex="-1"`. Pozycja wybrana w szufladzie,
   która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
   Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
@@ -47,9 +48,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   „Listy zamówień”, „Pulpit” tylko na `/`). `AppMenu` i `AppMenuItem` renderują ją: grupa to przycisk z `aria-expanded`
   i `aria-controls`, grupa bieżącej pozycji otwiera się przy wejściu i przy każdej zmianie trasy (zamyka ją tylko
   przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Region grupy ma `id`
-z `useId()` instancji menu (sidebar i szuflada są razem w DOM). Klik w pozycję o celu równym bieżącej lokalizacji
-nawiguje ponownie (`force`, `replace`), bo stare listy nie zapisują swoich filtrów do adresu i router odrzuciłby push
-jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarce i nie zamyka szuflady. Pozycja
+z `useId()` instancji menu (sidebar i szuflada są razem w DOM). Wybór pozycji to zwykła nawigacja routera: listy
+zapisują filtry do adresu, więc pozycja o celu równym bieżącej lokalizacji nic nie zmienia (duplikat) i tylko zamyka
+szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarce i nie zamyka szuflady. Pozycja
   „Stan systemu” (`/system`, sekcja System) jest tylko dla `admin`. `AppTopbar`: przycisk „Menu” (`lg:hidden`), wyszukiwarka produktów
   (`role="search"`; fraza po przycięciu 2–100 punktów kodowych idzie do `/products?q=`, znaki sterujące i separatory
   wierszy liczą się jak spacje, pusta nic nie robi, za krótka i za długa pokazują „Wpisz od 2 do 100 znaków.” w stałym
@@ -80,17 +81,24 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `serviceLabel`, nieznana nazwa zostaje jak z API) i stanem „Działa” / „Nie działa” z opóźnieniem, „Zdarzenia czekające
   na wysłanie”, tabela kolejek w regionie `role="region"` z nazwą i `tabindex="0"` (przewijana w poziomie) i porównanie
   indeksu wyszukiwania z katalogiem; `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
-  danych o stanie systemu”. Pliki bez PrimeVue i bez bloku `<style>`.
+  danych o stanie systemu”. Pliki bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
+  `useNameSearch({ initial, apply })`: jedyne miejsce reguł wyszukiwania po nazwie listy produktów, listy cen, listy stanów i wyboru wariantów promocji (od 2 do 100 znaków w punktach kodowych po
+  przycięciu, 300 ms przerwy w pisaniu, pusta fraza i same spacje to `null`, podpowiedź dla frazy za krótkiej i za długiej);
+  zwraca `search`, `tooShort`, `hint`, `reset` (czyści pole i anuluje opóźnienie) i `setFromAddress` (wartość z adresu ustawia
+  pole bez `apply`); opóźnienie jest anulowane też przy odmontowaniu. Reguły są testowane raz, w `tests/useNameSearch.test.ts`.
   `useUnsavedChangesGuard(dirty)`: strażnik niezapisanych zmian formularza (globalny `router.beforeEach`, nie
   `onBeforeRouteLeave`, bo po utworzeniu obiektu ta sama instancja przechodzi z trasy „nowy” na trasę utworzonego):
   przejście na inną trasę przy `dirty` czeka na odpowiedź, którą dają `open` (okno; zamknięcie, np. `Escape`, to
   zostanie), `stay()` i `leave()` (zamknięcie i potwierdzenie w jednym kliknięciu rozstrzyga potwierdzenie; nowsza
   nawigacja unieważnia poprzednie pytanie), a zamknięcie karty ostrzega `beforeunload` poza wylogowaniem (`signingOut`
   w store `auth`: blokada wylogowania po bezczynności zostawiłaby sesję bez limitu); po odmontowaniu nic nie pilnuje.
+  `usePagerFocus({ hasPrevious, hasNext, previous, next })`: fokus pagera z dwoma przyciskami (`ListPager`, wybór wariantów
+  promocji): zostaje na naciśniętym przycisku, a gdy kolejna strona go wyłącza, przechodzi na drugi, chyba że pracownik sam
+  przeniósł fokus poza pager (fokus przechodzi tylko z `body` albo z wnętrza pagera i najwyżej raz na naciśnięcie, więc późniejsza odpowiedź, np. wyszukiwania, nie zabiera go z pola); `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, pozostałe listy mają jeszcze własne kopie do ADMIN-SCREENS).
+  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień i wybór wariantów promocji).
   `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
@@ -110,47 +118,86 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   żądania, a zmiana `route.query` z zewnątrz (menu, wyszukiwarka topbaru, Wstecz i Dalej) ustawia zapytanie jednym
   przypisaniem, czyli jednym żądaniem od pierwszej strony. Zmiany adresu po opuszczeniu trasy widoku są pomijane
   (nazwa trasy). Pusty i powtórzony parametr nie jest wartością.
-- `src/prices/` – lista cen (`/prices`): `usePriceList` (wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii,
-  stronicowanie po kursorach ze stosem kursorów w panelu; strona to produkty z API, a `rows` ma wiersz na wariant pod
-  nazwą swojego produktu, z etykietą wariantu w kolumnie „Wariant”, pustą dla wariantu domyślnego; zmiana ceny
-  wariantu wiersza: zapisana cena z API zastępuje wiersz, a spóźniona odpowiedź listy z niższą wersją ceny jej nie
-  nadpisuje, 409 odświeża bieżącą stronę, a 409 po `type` `price-locked-by-promotion`, czyli wariant w aktywnej promocji,
-  zwraca `locked` z `detail` z API: `PricesView` pokazuje go przy polu ceny, bez komunikatu o zmianie w międzyczasie
-  i bez odświeżania wiersza), `format.ts` (kwoty z groszy i stawki z punktów
-  bazowych przez `Intl`, bez liczenia czegokolwiek), `parseGross.ts` (tekst kwoty w złotych na grosze na cyfrach
-  tekstu, bez `float`; zakres kwoty sprawdza API). Dialog „Zmień cenę” w `PricesView` widzi tylko rola `admin`
-  (role z `/me`). `usePriceHistory` (dialog „Historia” w `PricesView`, dostępny dla każdego pracownika): pierwsza
-  strona historii wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu dialogu albo otwarciu
+- `src/prices/` – lista cen (`/prices`, widok `PricesView`). `pricePage.ts`: czyste funkcje `fetchPricePage({ query, after })`
+  (`GET /prices`; `perPage` idzie do API zawsze, bo domyślne API to 25, a lista zaczyna od 10; błędy: 403 „Nie masz dostępu do
+  cen.” bez ponowienia, 404 kategoria, 400, sieć) i `priceRows(items)` (wiersz na wariant, `first` oznacza pierwszy wariant
+  produktu), typ `PriceRow`. `usePriceList({ nodes, loaded })` składa z nich listę jak `useProductList`: `useListUrlState` (`q`,
+  `category`, `perPage`: 10, 25, 50, domyślnie 10, a 10 nie trafia do adresu), `useCursorPager` stronicujący produkty (więc
+  „Pokazano produkty X–Y” liczy produkty, a zmiana rozmiaru wraca na pierwszą stronę) i `useNameSearch`; `rows` rozbija strony
+  na warianty. Zmiana ceny wariantu (`changePrice`): zapisana cena z API jest nakładką w `computed` nad `items` pagera
+  (`savedPrices`, nie zapisuje do `items` i nie jest czyszczona na starcie żądania), obowiązuje, dopóki cena z listy nie ma
+  wersji nowszej albo jest `null`, więc ani trwające odświeżenie, ani spóźniona odpowiedź listy nie przywraca starej ceny;
+  409 odświeża bieżącą stronę (`refresh`), a 409 po `type` `price-locked-by-promotion`, czyli wariant w aktywnej promocji,
+  zwraca `locked` z `detail` z API: widok pokazuje go przy polu ceny, bez komunikatu o zmianie w międzyczasie i bez
+  odświeżania. `PricesView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie produktu”, `CategoryCombobox`
+  „Kategoria”, rozmiar strony), `DataTable` z wierszami grup (`groupKey`: wiersz `product-row` z `<th scope="rowgroup">` na
+  całą szerokość: `name` pogrubiona i `tax-class`, czyli polska nazwa klasy z `fetchTaxClasses` (`src/products/taxClasses.ts`,
+  wspólne z formularzem produktu; kod spoza listy albo błąd żądania daje sam kod, bez komunikatu), bez akcji), pod nim
+  `price-row` z kolumnami Wariant („Wariant domyślny” dla pustej etykiety), Brutto (pogrubione), Netto i VAT (ukryte poniżej
+  1024 px jako linie komórki Wariant), Stawka (z `Badge` nieaktualnej stawki) i Akcje (`RowActions` z przyciskami ikon „Zmień
+  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`:
+  „Zmień cenę” (`change-dialog`, szerokość `min(28rem, 100vw - 2rem)`, fokus w `gross-input` także po otwarciu Enterem,
+  „Zapisz cenę” w wariancie `interface`, błędy 422 i `locked` przy polu z fokusem w polu, 403, 404, sieć i `conflict` w
+  `Alert` z fokusem; po zapisie okno się zamyka, toast „Cena zapisana: <produkt> / <wariant>” i fokus wraca na „Zmień
+  cenę” wiersza, a odpowiedź na zapis z innego otwarcia okna jest pomijana) i „Historia ceny” (`history-dialog`, szerokość
+  `min(56rem, 100vw - 2rem)`, `DataTable` bez błędu własnego: Data zmiany, Brutto i Źródło zostają poniżej 1024 px, reszta jest
+  liniami komórki daty; błąd i „Pokaż więcej” poza tabelą, po zniknięciu przycisku fokus trafia na „Zamknij”). Okno zamyka się
+  z fokusem na przycisku, który je otworzył (`RowActions` podaje go w `select`), a gdy zniknął, na H1. Fokus po zmianie strony,
+  błędzie i 403 daje standard (`useCursorPager`, `ListPager`), bez obsługi w widoku. `format.ts` (kwoty z groszy i stawki z
+  punktów bazowych przez `Intl`, bez liczenia czegokolwiek), `parseGross.ts` (tekst kwoty w złotych na grosze na cyfrach
+  tekstu, bez `float`; zakres kwoty sprawdza API). `usePriceHistory` (okno „Historia ceny”, dostępne dla każdego pracownika):
+  pierwsza strona historii wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu okna albo otwarciu
   innego wariantu jest ignorowana. `format.ts` ma też `formatDateTime` (czas polski niezależnie od strefy przeglądarki)
   i `sourceLabel` (etykiety źródeł zmiany: Pracownik, Dane demo, Uzgodnienie podatkowe).
-- `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `useStockList` (wyszukiwanie od
-  2 znaków z opóźnieniem, filtr kategorii, stronicowanie po kursorach ze stosem kursorów w panelu, jak w `usePriceList`;
-  strona to produkty z API, a `rows` ma wiersz na wariant pod nazwą swojego produktu, z etykietą wariantu w kolumnie
-  „Wariant”, pustą dla wariantu domyślnego),
-  `format.ts` (`levelLabel`: etykieta i kolor poziomu z API: Dostępny, Ostatnie sztuki, Niedostępny; `movementTypeLabel`,
-  `movementReasonLabel`, `movementSourceLabel` i `formatDelta` dla historii stanów). Wariant bez
-  rekordu (`stock: null`) pokazuje zera w kolumnach liczbowych i „—” zamiast poziomu; panel nie przypisuje mu poziomu.
-  Przyjęcie, korekta i historia dotyczą wariantu wiersza (dialogi pokazują nazwę produktu z etykietą wariantu).
-  Przyciski „Przyjęcie” i „Korekta” w wierszu oraz ich dialogi (w `InventoryView`) widzą tylko role `admin` i
-  `warehouse` (role z `/me`; API sprawdza niezależnie). `receiveStock` i `correctStock` w `useStockList`: stan
-  wariantu z odpowiedzi API zastępuje jego wiersz, a spóźniona odpowiedź listy z niższą wersją stanu go nie nadpisuje. Klucz
-  `Idempotency-Key` (UUID z `crypto.randomUUID()`) powstaje przy otwarciu dialogu przyjęcia i jest wysyłany ponownie
-  przy ponowieniu zapisu; nowy dialog to nowy klucz. Korekta wysyła `version` wiersza (null bez rekordu), a notatkę
-  wymaga przy powodzie „Inne”. 422: `violations[].propertyPath` wskazuje pole, a 422 bez `violations` (np. ponad
-  1 000 000) i 403 pokazuje komunikat w dialogu. 409 przyjęcia (klucz użyty z inną treścią) pokazuje `detail` z API i odświeża bieżącą stronę, bo pierwsze przyjęcie z tym kluczem mogło się zapisać mimo zgubionej odpowiedzi. Oba 409 korekty mają
-  `type: about:blank`, więc panel nie czyta `detail`: na 409 odświeża bieżącą stronę i jeśli wersja wiersza różni się od
-  wysłanej, pokazuje „Stan został w międzyczasie zmieniony – odśwież”, w przeciwnym razie `detail` z API (poniżej
-  zarezerwowanego).
-  `useStockHistory` (dialog „Historia” w `InventoryView`, dostępny dla każdego pracownika): pierwsza strona historii
-  stanów wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu dialogu albo otwarciu innego
-  wariantu jest ignorowana, błąd kolejnej strony zostawia wczytane wpisy i pozwala ponowić tę stronę.
+- `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `fetchStockPage` i `stockRows`
+  (`stockPage.ts`: żądanie `GET /stock` z `perPage` zawsze w żądaniu, domyślne API to 25, panel zaczyna od 10, i rozbicie
+  produktów strony na wiersze wariantów), `useStockList(kategorie)` na `useListUrlState` (`q`, `category`, `perPage`: 10, 25
+  albo 50 produktów, 10 nie trafia do adresu), `useCursorPager` i `useNameSearch` (jak `usePriceList`; kategoria z adresu, której
+  nie ma w drzewie, jest pomijana). Strona to produkty z API, więc „Pokazano produkty X–Y” liczy produkty, a `rows` ma wiersz na
+  wariant w kolejności produktów i ich wariantów. Stan z odpowiedzi na przyjęcie i korektę jest nakładką `savedStocks` nad
+  `items` pagera (nie zapisuje do nich i nie jest czyszczona): wiersz pokazuje go, dopóki wersja stanu z listy nie jest
+  nowsza albo stan z listy jest `null`, więc ani trwające żądanie, ani spóźniona odpowiedź listy nie przywracają starego
+  stanu. 403 listy: „Nie masz dostępu do stanów magazynowych.” bez ponowienia, 404: kategoria nie istnieje.
+  `format.ts` (`levelLabel`: etykieta i wariant `Badge` poziomu z API: Dostępny `success`, Ostatnie sztuki `warning`,
+  Niedostępny `danger`; `movementTypeLabel`, `movementReasonLabel`, `movementSourceLabel` i `formatDelta` dla historii stanów).
+  `parseCount.ts` (pole liczby okien przyjęcia i korekty: tekst przycięty, także o spacje nierozdzielające, na liczbę
+  całkowitą z ASCII cyfr, pusty tekst to komunikat pola, inny „Podaj liczbę całkowitą.”, ponad bezpieczny zakres „Liczba
+  jest za duża.”; zakres wartości sprawdza API). `InventoryView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie
+  produktu”, `CategoryCombobox` „Kategoria”, rozmiar strony), `DataTable` z wierszami grup (`product-row` z `<th
+  scope="rowgroup">` i pogrubioną `name`, bez akcji), pod nim `stock-row` z kolumnami Wariant („Wariant domyślny” dla pustej
+  etykiety), Fizycznie, Zarezerwowane (ukryte poniżej 1024 px jako linia komórki Wariant), Dostępne (pogrubione), Poziom
+  (`Badge`) i Akcje (`RowActions`: przyciski ikon „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/me`;
+  API sprawdza niezależnie), „Historia” dla każdego pracownika; nazwa „Przyjęcie: <produkt> / <wariant>”). Wariant bez rekordu
+  (`stock: null`) pokazuje „—” w liczbach i w komórce poziomu, bez `Badge`; panel nie przypisuje mu poziomu.
+  Okna to `Dialog`: „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
+  nazwa produktu z wariantem w opisie, pola `Input` z `inputmode="numeric"` („Przyjęta ilość (szt.)”, „Stan policzony
+  (szt.)”), powód korekty jako `Select` „Powód” (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka (przy powodzie
+  „Inne” wymagana), „Przyjmij” i „Zapisz korektę” w wariancie `interface`. Fokus trafia w pierwsze pole po otwarciu (także
+  Enterem), a po zapisie na przycisk, który okno otworzył (`RowActions` podaje go w `select`; gdy zniknął, na H1);
+  po błędzie fokus trafia w pole, które API wskazuje (422: `violations[].propertyPath`), a bez pola na komunikat (`Alert`).
+  Po zapisie okno się zamyka i pojawia się toast „Przyjęto N szt.: <produkt> / <wariant>” albo „Stan skorygowany: <produkt> /
+  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` w `useStockList`: klucz
+  `Idempotency-Key` (UUID z `crypto.randomUUID()`) powstaje przy otwarciu okna przyjęcia i jest wysyłany ponownie
+  przy ponowieniu zapisu; nowe okno to nowy klucz. Korekta wysyła `version` wiersza (null bez rekordu). 422 bez `violations`
+  (np. ponad 1 000 000), 403, 404 i sieć pokazują komunikat w oknie. 409 przyjęcia (klucz użyty z inną treścią) pokazuje
+  `detail` z API i odświeża bieżącą stronę (`refresh`), bo pierwsze przyjęcie z tym kluczem mogło się zapisać mimo
+  zgubionej odpowiedzi. Oba 409 korekty mają `type: about:blank`, więc panel nie czyta `detail`: na 409 odświeża bieżącą
+  stronę i jeśli wersja wiersza różni się od wysłanej, pokazuje „Stan został w międzyczasie zmieniony – odśwież”, w przeciwnym
+  razie `detail` z API (poniżej zarezerwowanego); gdy wiersza nie da się odczytać (odświeżenie nieudane albo wiersza nie ma już na
+  stronie), powód nie jest znany, więc też „odśwież”, nigdy `detail`. Odpowiedź na zapis z innego otwarcia okna jest pomijana.
+  `useStockHistory` (okno „Historia stanu”, `history-dialog`, dostępne dla każdego pracownika, szerokość
+  `min(56rem, 100vw - 2rem)`): pierwsza strona historii stanów wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź
+  po zamknięciu okna albo otwarciu innego wariantu jest ignorowana, błąd kolejnej strony zostawia wczytane wpisy i pozwala
+  ponowić tę stronę (po zniknięciu przycisku fokus trafia na „Zamknij”). `DataTable` okna ma 11 kolumn w przewijanym regionie
+  „Historia stanu” (`role="region"`, `tabindex="0"`): Data, Rodzaj, Zmiana fizycznego i Stan fizyczny po zmianie zostają
+  poniżej 1024 px, reszta (zarezerwowane, powód, notatka, referencja, źródło, pracownik) jest liniami komórki daty.
 - `src/products/` – produkty (menu „Produkty”, trasy `/products`, `/products/new`, `/products/:id`). `useProductList`
   (widok `ProductsView`, `useProductList({ nodes, loaded })` z drzewem z `useCategoryTree`): na `useListUrlState`
   (`q`, `category`, `status`, `perPage`) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage` idzie
   tylko, gdy to nie 25, domyślne API), komunikaty błędów (403: „Nie masz dostępu do produktów.” bez ponowienia, 404:
-  kategoria nie istnieje) i wyszukiwanie: od 2 do 100 znaków (punkty kodowe) po 300 ms przerwy w pisaniu, przycięte;
-  do adresu i zapytania trafia dopiero zastosowana fraza, a za krótka albo za długa (też z adresu) zostaje w polu z
-  podpowiedzią (`searchHint`) i nie filtruje. Kategoria z adresu, której nie ma w drzewie (także przy błędzie drzewa),
+  kategoria nie istnieje) i połączenie wyszukiwania z adresem: reguły ma `useNameSearch` (od 2 do 100 znaków w punktach
+  kodowych po 300 ms przerwy w pisaniu, przycięte; `apply` zapisuje `q` do adresu); do adresu i zapytania trafia dopiero
+  zastosowana fraza, a za krótka albo za długa (też z adresu) zostaje w polu z podpowiedzią (`searchHint`) i nie filtruje. Kategoria z adresu, której nie ma w drzewie (także przy błędzie drzewa),
   jest pomijana, a przy kategorii w adresie lista czeka na drzewo przed pierwszym żądaniem. `clearFilters` czyści
   wyszukiwanie, filtry i rozmiar strony (adres `/products`). `ProductsView`: karta z `ListToolbar` (wyszukiwanie,
   `CategoryCombobox` „Kategoria”, Select „Status”, rozmiar strony, „Dodaj produkt” dla `admin` i `marketing`), `DataTable`
@@ -164,7 +211,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   pusty stan mówi tylko „Na tej stronie nie ma już wyników.”. Po „Wyczyść filtry” fokus trafia na pole wyszukiwania.
   `useProductForm` (widok `ProductFormView`): ładuje produkt (`GET /products/{id}`) albo zaczyna pusty formularz
   z wariantem domyślnym (bez osi, jeden wiersz `{variantId: null, values: []}`) i klasy podatkowe
-  (`GET /tax-classes`). Panel niczego nie liczy: slug, `slugLocked`, status i wersja pochodzą z odpowiedzi API, a po
+  (`GET /tax-classes` przez `fetchTaxClasses` z `taxClasses.ts`, wspólnego z listą cen). Panel niczego nie liczy: slug, `slugLocked`, status i wersja pochodzą z odpowiedzi API, a po
   każdym sukcesie formularz jest budowany z odpowiedzi. `dirty` porównuje formularz ze stanem z API. „Zapisz”:
   nowy produkt `POST` i `onCreated(id)` (widok przechodzi na `/products/:id` tą samą instancją, bez ponownego
   pobrania), istniejący `PUT` z `version`. „Opublikuj” i „Wycofaj z publikacji” wysyłają `version` i są wyłączone
@@ -200,7 +247,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `thumbnail.ts` buduje `src` i `srcset` z podpisanych adresów API. `ProductImages.vue`: po usunięciu zdjęcia fokus
   przechodzi na przycisk usuwania zdjęcia, które zajęło jego miejsce, a bez następnego na „Dodaj zdjęcia”; po ukryciu
   wyniku wysyłania na następny wynik albo „Dodaj zdjęcia” (nigdy `body`, #250 F8); błąd wysyłania pliku ma
-  `role="alert"` (#250 F14). Obie sekcje to `FormSection` na tokenach, bez PrimeVue. `ProductVariants.vue` to edytor wariantów
+  `role="alert"` (#250 F14). Obie sekcje to `FormSection` na tokenach. `ProductVariants.vue` to edytor wariantów
   (karta „Warianty”): osie (0–2: dodanie, zmiana nazwy, przestawienie strzałkami razem z wartościami w wierszach,
   usunięcie) i tabela wierszy (pole wartości na oś, dodanie i usunięcie wiersza, 1–100 wierszy). Operacje na
   kształcie robi `useProductForm` (`addAxis`, `setAxis`, `removeAxis`, `moveAxis`, `addVariant`, `removeVariant`,
@@ -222,82 +269,148 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   komunikaty, bo ich ścieżki liczą pozycje. Bez roli do zmiany produktów edytor nie ma kontrolek edycji, a pola są
   wyłączone.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
-  jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList`: filtr statusu, przełącznik
-  „Zwroty do wykonania” (oba też z adresu: `status` i `refund=pending` przy wejściu i przy zmianie `route.query` przy
-  otwartej liście, np. pozycja menu „Zwroty do wykonania”; ustawia oba filtry według adresu, wraca na pierwszą stronę,
-  zostawia wyszukiwanie, pomija nieznaną wartość i niczego nie zapisuje do adresu; `refund=pending`: widok dodaje kolumny kwoty i terminu zwrotu oraz `Tag` „Po terminie” według
-  `overdue` z API), wyszukiwanie dokładnego numeru albo e-maila wysyłane dopiero po Enterze (`submitSearch`), stronicowanie
-  po kursorach ze stosem kursorów w panelu (zmiana filtra albo wyszukiwania zaczyna od pierwszej strony i porzuca
-  wiersze oraz kursory, bo należą do filtrów i sortowania, z których pochodzą: po nieudanym żądaniu nowego filtra tabela
-  i pager są ukryte do udanego ponowienia, a nieudane przejście na sąsiednią stronę zostawia wyświetloną stronę). Pusta lista: „Brak zamówień.” bez filtrów
-  i wyszukiwania, „Nie znaleziono zamówień.” z nimi. Błąd listy zostawia wyświetloną stronę i pozwala ponowić; 403 to
-  „Nie masz dostępu do zamówień.” bez ponowienia. `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
+  jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList` (standard
+  listy): na `useListUrlState` (`q`, `status`, `refund=pending`, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
+  odczyt przy wejściu i przy zmianie z zewnątrz, np. pozycja menu „Zwroty do wykonania” na otwartej liście albo link „Inne
+  zamówienia klienta” z `?q=<e-mail>`, zapis przez `replace` bez nowego wpisu historii, nieznana wartość jest pomijana,
+  a adres poprawiany; do adresu trafia tylko zastosowane wyszukiwanie) i `useCursorPager` (stos kursorów, spóźnione
+  odpowiedzi, ponowienie, skutek błędu: nieudana zmiana filtra usuwa wiersze i kursory, nieudana sąsiednia strona zostawia
+  wyświetloną stronę; fokus po zmianie strony, błędzie i 403 daje standard, #260 F7). Własne zostają żądanie `GET /orders`
+  z komunikatami (403: „Nie masz dostępu do zamówień.” bez ponowienia, 400, inne, sieć) i reguła wyszukiwania dokładnego
+  numeru albo e-maila: tylko po Enterze (`submitSearch`; zdarzenie `submit` paska `ListToolbar`), tekst przycięty
+  (`trim()` zna też spację nierozdzielającą i U+2028) ma 1–254 punkty kodowe, ten sam tekst ładuje listę ponownie.
+  `status`, `refundPending` i `filtered` wynikają z zapytania, „Wyczyść filtry” (`clearFilters`) wraca na `/orders`.
+  `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
   przyciski to wyłącznie `allowedTransitions` (`actions`) i `canCompleteRefund` z API, panel nie liczy statusów ani ról.
   `changeStatus` i `completeRefund` wysyłają `version` pokazanego widoku, a zamówienie z odpowiedzi zastępuje widok.
-  Notatka jest wymagana przy `cancel` i `return` (dialog sprawdza przed wysłaniem, API sprawdza jeszcze raz), pusta
-  notatka w pozostałych to `null`. 409 (wersja, przejście, zwrot) przeładowuje szczegóły i zamyka dialog
-  z komunikatem „Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.” na stronie; 422 wskazuje pole
-  notatki (`violations[].propertyPath`), a 403 i pozostałe błędy to komunikat w dialogu. Jednocześnie leci najwyżej jedna
-  zmiana, a odpowiedź na zmianę po przejściu widoku do innego zamówienia jest pomijana (`ignored`, także przeładowanie po 409). 404 szczegółów: „Nie znaleźliśmy zamówienia.” z linkiem do listy; inny błąd odczytu: komunikat z „Spróbuj
-  ponownie” (403 bez ponowienia). Błąd przeładowania po 409 zostawia pokazane zamówienie. `format.ts`: etykiety i kolory
-  statusów (`statusLabel`, `STATUS_OPTIONS`), aktorów historii (`actorLabel`: nazwa pracownika, Klient, System),
-  przejść (`transitionLabel`), powodu anulowania i `noteRequired`; kwoty i czas przez `formatMoney` i `formatDateTime`
-  z `src/prices/format.ts`. Widok szczegółów pokazuje kontakt, adres, pozycje z sumami od API, daty statusów, termin
-  płatności tylko dla `new`, historię statusów (data, zmiana, aktor, notatka) oraz sekcję „Zwrot pieniędzy” (kwota,
-  termin z „Po terminie”, wykonanie: data, pracownik, notatka, i `paymentId` płatności do zwrotu).
-  Rabat z kodu: gdy zamówienie ma `discount`, tabela pozycji ma kolumny „Wartość przed rabatem” (`grossBeforeDiscount`),
-  „Rabat” (`discountGross` linii, „—” przy zerze) i „Wartość po rabacie” (`lineGross`), pod nią stoi linia „Kod <KOD>:
-  −X zł” (`discount.amountGross`), a suma brutto nazywa się „Brutto po rabacie”; sumy netto, VAT i brutto są po rabacie,
-  z API. Zamówienie bez kodu ma jedną kolumnę „Wartość brutto” jak dotąd. Kopia promocji pozycji (`promotion`: nazwa,
-  procent, cena katalogowa jednostki) jest pod nazwą produktu, z kodem i bez.
+  Notatka jest wymagana przy `cancel` i `return` (okno sprawdza przed wysłaniem, API sprawdza jeszcze raz), pusta
+  notatka w pozostałych to `null`. 409 (wersja, przejście, zwrot) przeładowuje szczegóły i zamyka okno
+  z komunikatem „Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.” (`conflict`, `tabindex="-1"`, fokus na nim);
+  422 wskazuje pole notatki (`violations[].propertyPath`), a 403 i pozostałe błędy to komunikat w oknie z fokusem na nim
+  (#260 F8). Jednocześnie leci najwyżej jedna zmiana, a odpowiedź na zmianę po przejściu widoku do innego zamówienia jest
+  pomijana (`ignored`, także przeładowanie po 409). 404 szczegółów: H1 „Nie znaleziono zamówienia”, „Nie znaleźliśmy zamówienia.” z linkiem
+  do listy (`Alert` w tokenach `status-danger`); inny błąd odczytu: komunikat z „Spróbuj ponownie” (403 bez ponowienia;
+  po udanym ponowieniu fokus na H1, po nieudanym zostaje na przycisku). Błąd przeładowania po 409 zostawia pokazane
+  zamówienie. `format.ts`: etykiety i warianty `Badge` statusów (`statusLabel`: `label` i `variant` jak na pulpicie,
+  nieznany status to wartość z API w neutralnym `Badge`; `STATUS_OPTIONS`), aktorów historii (`actorLabel`: nazwa
+  pracownika, „Pracownik” bez loginu, Klient, System), przejść (`transitionLabel`), powodu anulowania i `noteRequired`; kwoty
+  i czas przez `formatMoney` i `formatDateTime` z `src/prices/format.ts`.
+  `OrdersView`: `PageHeader` (H1 „Zamówienia” albo „Zwroty do wykonania” przy `refund=pending`, okruszki „Pulpit ›
+  Zamówienia” albo „Pulpit › Zamówienia › Zwroty do wykonania” z linkiem do listy), karta z `ListToolbar` (wyszukiwanie
+  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią o Enterze, `Select` „Status”, `Switch` „Zwroty do wykonania”
+  z `id` i `data-testid` `refund-pending` i `label for`, rozmiar strony), `DataTable`, `ListPager` i `ListEmpty` („Nie ma
+  jeszcze zamówień.”, „Brak wyników dla wybranych filtrów.”). Widok renderuje jeden układ według
+  `useMediaQuery("(min-width: 640px)")` (`@vueuse/core`, jak `AppLayout`): od 640 px tabela (Numer: link bez łamania, #261, z datą
+  i liczbą pozycji jako liniami komórki poniżej 1024 px; Data, Klient: imię i nazwisko, pod nim e-mail obcięty z pełną wartością
+  w `title`; Pozycje; Kwota; Status jako `Badge`; przy zwrotach Kwota zwrotu i Termin zwrotu z „Po terminie”), poniżej
+  640 px lista kart (`DataTable` z `cards`: `<ul>` z nazwą „Zamówienia”, `<li>` z numerem, statusem, klientem, kwotą, liczbą pozycji („Pozycje: N”, `items`), datą i w widoku
+  „Zwroty do wykonania” kwotą i terminem zwrotu, jak kolumny tabeli); `order-row` i identyfikatory `number`, `status`, `total`… są na wierszu albo na karcie, nigdy w obu.
+  `OrderDetailView`: `PageHeader` (H1 „Zamówienie <numer>” z `Badge` statusu w slocie `status`, okruszki „Pulpit › Zamówienia › <numer>”
+  zamiast „Wróć do listy”), od 1280 px dwie kolumny (boczna 320 px w DOM przed główną, poniżej 1280 px nad nią, Tab zaczyna od niej:
+  wyjątek od kolejności zgodnej z układem jak w formularzach). Boczna: „Akcje” (przyciski `allowedTransitions` i „Oznacz zwrot jako
+  wykonany”; karta ukryta bez akcji), „Klient” (e-mail jako `mailto:` z zawijaniem, link „Inne zamówienia klienta” do
+  `/orders?q=<e-mail>`), „Adres dostawy”, „Płatność” (daty statusów, termin płatności tylko dla `new`, powód anulowania,
+  `paymentId` krojem o stałej szerokości z przyciskiem „Kopiuj identyfikator płatności”: `navigator.clipboard.writeText`,
+  `copy-status` w `role="status"` ogłasza „Skopiowano”, a przy odmowie albo braku schowka „Nie udało się skopiować –
+  zaznacz identyfikator ręcznie” i zaznacza tekst identyfikatora). Główna: „Pozycje” (tabela w regionie z nazwą:
+  Produkt z wariantem i kopią promocji, Ilość, Cena brutto, a przy `discount` Wartość przed rabatem i Rabat, na końcu
+  Wartość brutto albo po rabacie; poniżej 640 px widoczne Produkt, Ilość i ostatnia Wartość, a pozostałe są liniami komórki
+  produktu `line-meta-*`; pod tabelą linia kodu i sumy od API), „Historia” (`OrderTimeline`) i „Zwrot pieniędzy” (kwota, termin
+  z „Po terminie”, wykonanie: data, pracownik, notatka, płatność do zwrotu). `OrderTimeline`: `<ol>` wpisów `history` w kolejności z API
+  (od najstarszego, nic nie jest sortowane ani dokładane), wpis `history-row` ma czas w `<time datetime>` (`history-at`),
+  zmianę „Opłacone → Wysłane” jako dwa `Badge` (`history-change`; złożenie, `from: null`, to sam status docelowy),
+  aktora (`history-actor`) i notatkę (`history-note`). Okno zmiany statusu i zwrotu stoi na `Dialog` (`change-dialog`,
+  szerokość `min(28rem, 100vw - 2rem)`): tytuł ze skutkiem i numerem („Anulować zamówienie R-100002?”, „Oznaczyć zamówienie
+  R-100002 jako wysłane?”, „…jako dostarczone?”, „Przyjąć zwrot zamówienia R-100002?”, „Oznaczyć zwrot pieniędzy za R-100002 jako
+  wykonany?”), pole „Notatka” z fokusem po otwarciu (wymagana przy anulowaniu i zwrocie), przycisk skutku (`destructive` przy
+  anulowaniu i zwrocie, inaczej `interface`) i „Wróć”; Enter w polu zatwierdza. Po udanej akcji toast „Status zamówienia
+  zmieniony: <polska etykieta statusu z odpowiedzi API>.” (nieznany status: wartość z API, nigdy pusty) albo „Zwrot oznaczony jako
+  wykonany.”, a fokus trafia na nagłówek karty „Akcje” (zestaw przycisków się zmienił), gdy karta zniknęła na „Historia”;
+  „Wróć” i `Escape` oddają fokus przyciskowi, który otworzył okno. Zdarzenie `close-auto-focus` okna jest przejęte, żeby fokus nie
+  spadł na `body`.
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
-  `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`): filtr
-  statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone; także z adresu: `status` przy wejściu i przy zmianie `route.query`
-  przy otwartej liście, np. link „Aktywne promocje” z pulpitu; ustawia filtr według adresu, wraca na pierwszą stronę,
-  pomija nieznaną wartość, rozpoznaje swój widok po nazwie trasy i niczego nie zapisuje do adresu; filtr w widoku
-  pokazuje status listy) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
-  w `useOrderList` (zmiana filtra porzuca wiersze i kursory; błąd następnej strony zostawia wyświetloną; 403 bez
-  ponowienia). Status wiersza i jego etykieta (`format.ts`) pochodzą z API. Przycisk „Dodaj promocję” i cała edycja:
+  `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Promocje”,
+  `ListToolbar` bez wyszukiwania, bo API nie szuka promocji, `DataTable`, `ListPager`) na `useListUrlState` (`status` jako
+  `Select` „Status”: Wszystkie, Zaplanowane, Aktywne, Zakończone, i `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
+  odczyt przy wejściu i przy zmianie z zewnątrz, np. link „Aktywne promocje” z pulpitu, zapis przez `replace`, nieznana
+  wartość jest pomijana, a adres poprawiany) i `useCursorPager` (stos kursorów, spóźnione odpowiedzi, ponowienie, skutek
+  błędu; 403 bez ponowienia; „Wyczyść filtry” kładzie fokus na filtrze statusu). Kolumny: Nazwa (link), Obniżka, Początek
+  i Koniec (poniżej 1024 px jako linie komórki Nazwa), Status (`Badge` z tokenami `status-*`), Warianty i Akcje („Edytuj:
+  <nazwa>” dla ról z prawem zmiany). Status wiersza i jego etykieta (`format.ts`) pochodzą z API. Przycisk „Dodaj promocję” i cała edycja:
   tylko `admin` i `marketing` (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą
   listę i szczegóły tylko do odczytu, a `/promotions/new` bez tej roli przekierowuje na listę (`beforeEnter`, jak
-  `/products/new`). `usePromotionForm` (widok `PromotionFormView`): ładuje promocję (`GET /promotions/{id}`) albo zaczyna
+  `/products/new`). `usePromotionForm` (widok `PromotionFormView`, standard formularza: `PageHeader` z okruszkami „Pulpit › Marketing ›
+  Promocje › <nazwa>”, od 1280 px dwie kolumny z kartą „Status” w DOM przed kartami „Dane promocji” i „Warianty”, `FormField`,
+  `SaveBar` tylko przy zmianach albo przy nowej promocji, `useUnsavedChangesGuard` z `UnsavedChangesDialog`, toast
+  i fokus jak w formularzu kodu): ładuje promocję (`GET /promotions/{id}`) albo zaczyna
   pusty formularz. Panel niczego nie liczy: status, wersja i ceny (katalogowa i promocyjna wariantu, `null` dla
   zakończonej) pochodzą z odpowiedzi API, a po każdym sukcesie formularz jest budowany z odpowiedzi. Status wyznacza
   pola: zaplanowana zmienia wszystko, aktywna tylko nazwę i koniec (`scheduleLocked`: procent, początek i warianty
-  zablokowane, a do API idą zapisane wartości), zakończona i pracownik bez roli: tylko odczyt. „Zapisz”: `POST` (potem
-  `onCreated(id)`, widok przechodzi na `/promotions/:id` tą samą instancją) albo `PUT` z `version`. „Zakończ teraz”
-  (aktywna) wysyła `PUT` z zapisanymi wartościami i `endsAt` równym czasowi przeglądarki, „Usuń” (zaplanowana) wysyła
-  `DELETE ?version=`; oba pytają o potwierdzenie i są wyłączone przy niezapisanych zmianach (pytanie znika, gdy akcja przestaje być dozwolona, np. po edycji formularza). Komunikat po „Zakończ teraz” wynika ze `status` odpowiedzi: `ended` to „Promocja zakończona.”, a `active` (zegar przeglądarki wyprzedza serwer, API tylko skraca promocję) to „Koniec promocji ustawiony na <czas>.”. Czasy są wpisywane
+  zablokowane, notatka w karcie „Dane promocji”, a do API idą zapisane wartości), zakończona i pracownik bez roli: tylko
+  odczyt (bez paska zapisu, bez zmiany wariantów i bez akcji; notatka `read-only-note` w karcie „Status”). „Zapisz”:
+  `POST` (potem `onCreated(id)`, widok przechodzi na `/promotions/:id` tą samą instancją, `replace`) albo `PUT`
+  z `version`; po sukcesie toast „Promocja zapisana.” i fokus na H1 (chyba że pracownik przeniósł go do pola), po błędzie
+  fokus na pierwszym `data-form-error` albo polu `aria-invalid` z przewinięciem do niego (#304 F3). „Odrzuć” (`discard`)
+  przywraca formularz z ostatniej odpowiedzi API bez żądania. „Zakończ teraz” (aktywna) wysyła `PUT` z zapisanymi
+  wartościami i `endsAt` równym czasowi przeglądarki, „Usuń” (zaplanowana) wysyła `DELETE ?version=`; oba stoją w karcie
+  „Status”, pytają `ConfirmDialog` („Zakończyć promocję <nazwa> teraz?” z „Zakończ promocję teraz”, „Usunąć promocję
+  <nazwa>?” z „Usuń promocję”, czerwone; „Wróć” ma fokus, `Escape` zamyka i fokus wraca na przycisk, #304 F6)
+  i są wyłączone przy niezapisanych zmianach (z opisem „Najpierw zapisz zmiany.”). Po usunięciu toast „Promocja
+  usunięta.”, przejście na listę (fokus na jej H1 daje powłoka). Ponowny odczyt po „Zakończ teraz” (#304 F7): API
+  ustawia koniec chwilę w przyszłości, więc odpowiedź `PUT` zwykle ma `status: active`; `watchEnd` czeka
+  `max(endsAt − teraz, 0) + 1 s`, odczytuje promocję ponownie i, gdy dalej jest `active` (zegar przeglądarki różni się od
+  serwera), ponawia co 1 s najwyżej 5 razy. Do końca czekania `ending` wyłącza „Zapisz” i „Zakończ teraz” z opisem
+  „Promocja kończy się.” (region `role="status"` w karcie „Status”, istniejący przed tekstem). Odczyt ze `status: ended`
+  (albo taka odpowiedź `PUT`) daje toast „Promocja zakończona.” (przez `onEnded`, a przy `ended` w odpowiedzi `PUT` przez
+  wynik wywołania), tryb tylko do odczytu i fokus na nagłówku „Status”; wyczerpane ponowienia zostawiają promocję aktywną
+  z `endNotice` („Koniec promocji ustawiony na <czas>.” z ostatniej odpowiedzi), a formularz, `view` i wersja pochodzą
+  z tej ostatniej odpowiedzi (także ponad niezapisane zmiany); błąd odczytu to `endError` z „Odśwież”, a gdy odświeżenie też zawiedzie
+  (`loadError` zastępuje formularz), fokus trafia na H1. Odczyt `active` przed ostatnim nie nadpisuje tego, co pracownik wpisał
+  w międzyczasie. Opuszczenie formularza przerywa czekanie
+  (bez żądań po odmontowaniu). Czasy są wpisywane
   i pokazywane w `Europe/Warsaw` (pole `datetime-local`, nie `DatePicker`, bo ten liczy w strefie przeglądarki):
   `time.ts` zamienia je z i na moment RFC 3339 przez `Intl`, bez bibliotek (godzina z przejścia na czas letni, która
   nie istnieje, jest błędem pola, a godzina powtórzona jesienią daje pierwsze wystąpienie); czas, którego nie
-  edytowano, idzie do API tak, jak go zwróciło (sekundy się nie gubią). „Od teraz” wysyła `startsAt: null`. Procent
+  edytowano, idzie do API tak, jak go zwróciło (sekundy się nie gubią). „Od teraz” (`Switch`) wysyła `startsAt: null`. Procent
   to tekst z liczbą całkowitą (zakres sprawdza API). Błędy: 422 z `violations[].propertyPath` trafia do pól
-  (`errorsAt`), 422 bez `violations`, 403, 404, 503 i sieć to komunikat bez utraty formularza; 409 po `type`:
+  (`errorsAt`), 422 bez `violations`, 403, 404, 503 i sieć to komunikat (`Alert`) bez utraty formularza; 409 po `type`:
   `promotion-overlap` oznacza warianty z `conflictingVariantIds` („Koliduje z inną promocją”) i zostawia formularz,
   pozostałe (wersja `about:blank` z własnym komunikatem, `promotion-not-editable` i inne z `detail`) pokazują komunikat
-  i przeładowują promocję z API. `PromotionVariantPicker.vue`: wybór wariantów przez `usePriceList` (wyszukiwanie od
-  2 znaków, stronicowanie), „Dodaj wariant” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane; „Dodaj cały produkt” jest wyłączony, gdy nie ma czego dodać); lista
-  wybranych z „Usuń”, wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
-  się po opuszczeniu formularza, jest ignorowana.
+  i przeładowują promocję z API. 404 promocji: H1 „Nie udało się wczytać promocji”, „Ta promocja nie istnieje.”
+  w `Alert` z tokenem `status-danger` (kontrast, #446) i link do listy. `PromotionVariantPicker.vue` (shadcn-vue): wybór wariantów przez `useCursorPager(fetchPricePage, …)` z zapytaniem w pamięci (25 produktów na
+  stronę, bez rozmiaru i stanu w adresie), `priceRows` i `useNameSearch` (wyszukiwanie od 2 znaków, podpowiedź w regionie
+  `status`, stronicowanie „Poprzednia”/„Następna” z fokusem `usePagerFocus` jak w `ListPager`, bez wyłączania przycisków na czas żądania;
+  „Spróbuj ponownie” zostawia fokus na sobie, a gdy komunikat znika, daje go tabeli albo polu wyszukiwania), „Dodaj” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane;
+  „Dodaj cały produkt” jest wyłączony, gdy nie ma czego dodać). Przyciski mają nazwy z nazwą wariantu („Dodaj: <produkt> /
+  <wariant>”, „Dodaj cały produkt: <produkt>”, „Usuń: <produkt> / <wariant>”, #304 F5); fokus (#304 F4): otwarcie wyboru
+  na pole wyszukiwania, po dodaniu wraca na pole wyszukiwania (przycisk, który go miał, jest już wyłączony), po
+  usunięciu wybranego wariantu na przycisk usuwania następnego wiersza, a bez następnego na pole wyszukiwania otwartego
+  wyboru albo na przycisk „Dodaj warianty”, po zamknięciu wyboru na ten przycisk. Lista wybranych (tabela w przewijanym
+  regionie) ma „Usuń”; wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
+  się po opuszczeniu formularza, jest ignorowana. Pliki bez bloku `<style>`.
 - `src/discount-codes/` – kody rabatowe (menu „Kody rabatowe”, trasy `/discount-codes`, `/discount-codes/new`,
   `/discount-codes/:id`: jedna ścieżka `discount-codes`, więc pozycja menu zostaje aktywna na formularzu).
-  `useDiscountCodeList` (widok `DiscountCodesView`): filtr statusu (Wszystkie, Zaplanowane, Aktywne, Wygasłe,
-  Wyłączone; także z adresu jak w `usePromotionList`, np. link „Kody rabatowe” z pulpitu; wyszukiwanie zostaje), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
-  jest wysyłany i widok to mówi; wielkość liter normalizuje API) i stronicowanie po kursorach ze stosem kursorów
-  w panelu, jak w `usePromotionList` (zmiana filtra albo wyszukiwania porzuca wiersze i kursory; błąd następnej strony
-  zostawia wyświetloną; 403 bez ponowienia). Przyciski „Poprzednia” i „Następna” nie są wyłączane na czas ładowania
-  (fokus zostaje na naciśniętym; ponowne naciśnięcie prosi o tę samą stronę), a przycisk wyłączony po przejściu
-  (ostatnia albo pierwsza strona) oddaje fokus drugiemu; „Strona N” to `aria-live="polite"`. „Spróbuj ponownie” też nie jest wyłączany na czas
-  ładowania (nieudane ponowienie zostawia fokus na nim; ponowne naciśnięcie pyta jeszcze raz), a po udanym fokus
-  (który spadłby na `body`) trafia na pierwszy kod listy albo, gdy strona nie ma kodów, na włączony przycisk pagera, a gdy nie ma też
-  drugiej strony (filtr lub wyszukiwanie bez wyników), na pole wyszukiwania. Kolumny: kod, rabat (procent albo kwota), minimum, okres (czas polski,
-  „bez końca”), użycia (`activeUses` / limit albo „(bez limitu)”) i status; status, `activeUses` i kwoty pochodzą
-  z API, panel niczego nie liczy (`format.ts`). Przycisk „Dodaj kod” i cała edycja: tylko `admin` i `marketing`
+  `useDiscountCodeList` (widok `DiscountCodesView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Kody
+  rabatowe”, `ListToolbar`, `DataTable`, `ListPager`) na `useListUrlState` (`q`, `status`, `perPage`: 10, 25 albo 50,
+  domyślnie 25, niewysyłane) i `useCursorPager`; stan listy jest w adresie (czytany przy wejściu i przy zmianie z zewnątrz,
+  np. link „Kody rabatowe” z pulpitu z `?status=active`, Wstecz; zapisywany przez `replace`, bez nowego wpisu historii;
+  zła wartość jest pomijana, a adres poprawiany; „Wyczyść filtry” wraca na `/discount-codes`). Filtr statusu to `Select`
+  „Status” (Wszystkie, Zaplanowane, Aktywne, Wygasłe, Wyłączone), wyszukiwanie po początku kodu to reguły tego composable
+  (nie `useNameSearch`): od 1 do 32 znaków (punkty kodowe) po przycięciu białych znaków, separatorów i znaków formatu
+  `/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/gu` jak robi to API, więc sam U+200B, U+00AD albo U+2060 to puste wyszukiwanie bez
+  żądania z `q` (#336); po 300 ms przerwy w pisaniu; tekst dłuższy niż 32 znaki nie jest wysyłany, a podpowiedź (`role="status"`)
+  to mówi; wielkość liter normalizuje API. Fokus po zmianie strony, po błędzie i po 403 robią `ListPager` i `DataTable`
+  (widok nie ma własnej obsługi fokusu; #337). Kolumny: kod (link), rabat (procent albo kwota), minimum i okres (czas polski,
+  „bez końca”; poniżej 1024 px są liniami komórki kodu), użycia (`activeUses` / limit albo „(bez limitu)”), status
+  (`Badge` z tokenami `status-*`) i akcje; status, `activeUses` i kwoty pochodzą z API, panel niczego nie liczy
+  (`format.ts`). Akcja wiersza „Edytuj: <kod>”, przycisk „Dodaj kod” i cała edycja: tylko `admin` i `marketing`
   (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą listę i formularz tylko do
   odczytu, a `/discount-codes/new` bez tej roli przekierowuje na listę (`beforeEnter`, jak `/products/new`).
   `useDiscountCodeForm` (widok `DiscountCodeFormView`): ładuje kod (`GET /discount-codes/{id}`) albo zaczyna pusty
-  formularz. Po każdym sukcesie formularz jest budowany z odpowiedzi API. Pola według reguł edycji: tekst kodu
+  formularz (standard formularza: H1 „Nowy kod rabatowy” albo kod, kolumna boczna z kartą „Status” w DOM przed główną
+  z kartami „Kod i rabat” i „Okres i limit”; rodzaj rabatu to `RadioGroup` Procent/Kwota, przełącznik „Aktywny” jest
+  polem formularza: jego zmiana pokazuje `SaveBar` i trafia do API dopiero z „Zapisz”; `discard()` wraca do kodu z API bez
+  żądania). Po każdym sukcesie formularz jest budowany z odpowiedzi API. Pola według reguł edycji: tekst kodu
   zmienia się tylko przy tworzeniu; kod `planned` zmienia wszystko poza tekstem; po starcie (`active`, `expired` i kod
   `disabled`, którego początek już minął według zegara przeglądarki; zegar tylko wybiera, które pola są dostępne,
   pomyłkę poprawia 409 z komunikatem i odświeżeniem) zmieniają się tylko koniec, `enabled` i limit (`termsLocked`:
@@ -312,11 +425,13 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   komunikat bez utraty formularza; 409 po `type`: `discount-code-taken` przy polu kodu (formularz zostaje), pozostałe
   (wersja `about:blank`, `discount-code-not-editable` i inne) pokazują `detail` z API i przeładowują kod. Po
   nieudanym zapisie fokus trafia na pierwsze pole z błędem, a bez takiego na komunikat formularza; po udanym (także
-  po utworzeniu kodu) na komunikat „Kod rabatowy zapisany.”. Odpowiedź żądania,
+  po utworzeniu kodu) pokazuje się toast „Kod rabatowy zapisany.” i fokus trafia na H1 (chyba że pracownik przeniósł go
+  do pola). Niezapisane zmiany (także samego „Aktywny”) pilnuje `useUnsavedChangesGuard`. Kod, który nie istnieje albo
+  się nie wczytał: H1 „Nie udało się wczytać kodu rabatowego”, `Alert` w tokenach `status-danger` (kontrast, #446)
+  i link do listy. Tryb tylko do odczytu nie ma paska zapisu. Odpowiedź żądania,
   które skończyło się po opuszczeniu formularza, jest ignorowana. Lista zamówień per kod jest poza panelem.
-- `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 - `src/components/ui/` – komponenty shadcn-vue na Reka UI (Button, Input, Label, Textarea, Select, Combobox, Switch,
-  Checkbox, Dialog, AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb):
+  Checkbox, RadioGroup, Dialog, AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb):
   nasz kod, tylko na tokenach, z polskimi nazwami dostępnymi („Zamknij”). Nowy komponent shadcn-vue dodaje się CLI
   w kontenerze i poprawia (klasy palety na tokeny, polskie teksty); `components.json` w `apps/admin`.
 - `src/components/` – własne komponenty, gdy `ui/` nie ma odpowiednika. `ConfirmDialog` (na `AlertDialog`): tytuł z nazwą
@@ -324,9 +439,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
   wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
-  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna) i okruszki (`<nav aria-label="Okruszki">`
+  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna; slot `status` stoi tuż za H1, np. `Badge` statusu zamówienia) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
-  `aria-current` każdy link do bieżącej trasy); używają go ekrany po migracji. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
+  `aria-current` każdy link do bieżącej trasy); używają go wszystkie ekrany poza pulpitem. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
   `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
   w prop `label` (z `hideLabel` tylko dla czytników), opcje w kolejności drzewa z pełną ścieżką jako nazwą dostępną
   („Turystyka › Biwak › Namioty”) i wcięciem według poziomu, filtrowanie po nazwie i ścieżce bez względu na wielkość
@@ -336,18 +451,16 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   wybraną wartość i nie przełącza jej. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
   (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Z prop
   `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Używa go lista
-  produktów i formularz produktu; ceny i stany (ADMIN-SCREENS) są jeszcze na `TreeSelect`.
-  Standard formularza (spec „Standard formularza i okien”; podłączony tylko do formularza produktu, reszta formularzy
-  w ADMIN-SCREENS): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
+  produktów, lista cen, lista stanów i formularz produktu.
+  Standard formularza (spec „Standard formularza i okien”; podłączony do formularza produktu, kodu rabatowego i promocji): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
   `FormField` (etykieta nad polem, podpowiedź w slocie `hint` i błędy pod nim z `data-form-error`, slot daje `describedBy`
   i `invalid` do wstawienia na kontrolkę; kontrolka z własną etykietą, jak `CategoryCombobox`, pomija `label`), `SaveBar`
   (przyklejony do dołu obszaru treści: „Niezapisane zmiany” albo prop `newLabel` przy `creating`, „Odrzuć” albo „Anuluj”
-  i „Zapisz”; wyłączone w trakcie żądania; ustawia `scroll-padding-bottom` strony na swoją wysokość, więc pole z fokusem
+  i „Zapisz”; wyłączone w trakcie żądania; prop `saveDescribedBy` to `id` elementu, który opisuje wyłączony „Zapisz”; ustawia `scroll-padding-bottom` strony na swoją wysokość, więc pole z fokusem
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, pozostałe listy przejdą w
-  ADMIN-SCREENS. `DataTable` (na `Table` shadcn-vue): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji i lista zamówień. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`; `cards` zamiast tabeli pokazuje wiersze jako listę kart: `<ul>` z nazwą z `label`, `<li>` z `rowTestid` i zawartością slotu `card`, a szkielet, błąd i pusty stan zostają te same: widok wybiera jeden układ): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
   swojej kolumny, więc żadna informacja nie ginie), slot `empty` dla pustej listy. Pokazuje też stan listy: szkielet
@@ -355,10 +468,10 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `useCursorPager` jest wtedy prawdziwe) i po nieudanym zapytaniu, gdy filtr zmienia się znowu (nowe zapytanie czyści
   stary błąd i zakres „Pokazano X–Y”; ponowienie zostawia błąd do odpowiedzi), `aria-busy` na tabeli przy kolejnych, komunikat błędu (`role="alert"`,
   `tabindex="-1"`, „Spróbuj ponownie” poza 403: po ponowieniu fokus zostaje na przycisku, a gdy znika, trafia na
-  komunikat, tabelę albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
+  komunikat, tabelę (w trybie `cards` listę kart, `tabindex="-1"`) albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
   błąd sąsiedniej strony nad nią. Tabela przewija się w swoim regionie (`role="region"` z nazwą z prop `label`,
   `tabindex="0"`) z cieniem przy krawędzi, za którą jest dalsza treść; strona nie przewija się w poziomie. `ListToolbar`:
-  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem), sloty `filters` i
+  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
   `actions`, „Wyczyść filtry” przy `filtered`, rozmiar strony (Select 10, 25, 50, etykieta „Wierszy na stronie”),
   `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”), przyciski
   „Poprzednia strona” i „Następna strona” z numerem strony; fokus zostaje na naciśniętym przycisku, a gdy kolejna strona go
@@ -368,8 +481,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `laterPage` (strona po pierwszej bez wierszy) pokazuje samo „Na tej stronie nie ma już wyników.”. `RowActions`: kwadratowe przyciski 34 px z
   ikoną i nazwą dostępną „Czasownik: nazwa obiektu” (zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”,
   `target="_blank"` `rel="noopener"`) oraz podpowiedzią z tą samą nazwą (`TooltipProvider` jest w komponencie); zwykły link,
-  nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcję, której rola
-  nie wykona, widok w ogóle nie podaje.
+  nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcja bez `to` i `href` to przycisk (`select` z kluczem akcji i przyciskiem, `testid`
+  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje.
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
@@ -404,7 +517,7 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   Wszystkie z `always` (także 404): `X-Content-Type-Options: nosniff`, `Referrer-Policy:
   strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Permissions-Policy: camera=(), microphone=(),
   geolocation=()` i `Content-Security-Policy: script-src 'self'; frame-ancestors 'none'; object-src 'none';
-  base-uri 'self'`. `style-src` nie jest ograniczony (PrimeVue i komponenty Reka UI ustawiają style inline). `index.html` nie może mieć
+  base-uri 'self'`. `style-src` nie jest ograniczony (komponenty Reka UI ustawiają style inline przy pozycjonowaniu okien i list). `index.html` nie może mieć
   skryptów inline ani zewnętrznych: skrypt spoza własnego origin (poza `/config.js` i bundlem) zablokuje CSP.
   Nowa lokalizacja w `nginx.conf` musi dołączać ten plik. Obraz deweloperski (Vite) nagłówków nie ma; nagłówki
   i załadowanie panelu bez naruszeń CSP sprawdza test dymny chartu (`make -C infra/k8s smoke`, obraz produkcyjny).
@@ -479,11 +592,10 @@ Spec: `docs/features/sentry/spec.md`.
 
 ## Wygląd
 
-- Nowe i zmigrowane ekrany: najpierw komponent shadcn-vue z `src/components/ui/`, potem własny w `src/components/`,
-  na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Ekrany z listy
-  `LEGACY_FILES` zostają na komponentach PrimeVue, PrimeIcons i motywie Aura do ADMIN-SCREENS; PrimeVue działa obok
-  Tailwinda (style PrimeVue są poza warstwami CSS, więc wygrywają z preflightem).
-- Formularz według standardu (wzorem jest `ProductFormView`; promocja i kod rabatowy w ADMIN-SCREENS): `PageHeader`, dwie
+- Ekrany i komponenty: najpierw komponent shadcn-vue z `src/components/ui/`, potem własny w `src/components/`,
+  na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Wszystko w `src/`
+  podlega regułom niżej, bez listy wyjątków.
+- Formularz według standardu (wzorem jest `ProductFormView`, tak samo `DiscountCodeFormView` i `PromotionFormView`): `PageHeader`, dwie
   kolumny od 1280 px, karty `FormSection`, pola `FormField` (etykieta nad polem, podpowiedź i błąd połączone przez
   `aria-describedby`, `aria-invalid` przy błędzie), `SaveBar` i `useUnsavedChangesGuard` z `UnsavedChangesDialog` zamiast
   `window.confirm`. Po zapisie toast (`vue-sonner`, region `aria-live`) i fokus na H1 (chyba że pracownik przeniósł go do
@@ -498,7 +610,7 @@ Spec: `docs/features/sentry/spec.md`.
 - Tokeny wyglądu są wyłącznie w `src/styles/tokens.css` (`--color-*: initial`: domyślnej palety Tailwinda nie ma).
   Nowy kolor to nowy token w tym pliku i para w `tests/tokens.test.ts` (kontrast WCAG 2.x: tekst ≥ 4,5:1, obramowania
   pól, fokus i ikony KPI ≥ 3:1).
-- Reguła koloru (`eslint.config.js`, pliki `src/**/*.{ts,vue}`): kolor „na sztywno” poza `tokens.css` jest błędem.
+- Reguły wyglądu (`eslint.config.js`, każdy plik `src/**/*.{ts,vue}`, w tym `src/main.ts`): kolor „na sztywno” poza `tokens.css` jest błędem.
   `no-restricted-syntax` łapie wartości arbitralne z kolorem (`bg-[#fff]`, `text-[rgb(…)]`, `bg-[oklch(…)]`,
   `color-mix`, kolory nazwane, także we właściwościach arbitralnych `[color:red]` i jako człon wartości złożonej:
   `shadow-[0_0_0_2px_red]`, `bg-[linear-gradient(red,blue)]`; nazwa tokenu jak `var(--kpi-blue)` nie jest kolorem)
@@ -508,11 +620,8 @@ Spec: `docs/features/sentry/spec.md`.
   bez spreadu; szablonowy napis, konkatenacja, zmienna, wywołanie i warunek są błędem, a kolory w nim są dozwolone tylko
   jako `var(--token)` (właściwość koloru z wartością wyliczaną też jest błędem), `vue/no-restricted-static-attribute` statyczny `style`, `vue/no-restricted-block` bloki
   `<style>`, a `better-tailwindcss/no-unknown-classes` (punkt wejścia `tokens.css`) klasy spoza tokenów, np.
-  `bg-red-500`. `no-restricted-imports` blokuje import PrimeVue i PrimeIcons. Kolor złożony w `<script>` poza
+  `bg-red-500`. `no-restricted-imports` blokuje import pakietów dawnej biblioteki panelu (lista w `docs/adr/admin-ui-library.md`). Kolor złożony w `<script>` poza
   łańcuchem klas (np. wartość zbudowana z kawałków) nie jest analizowany.
-- `LEGACY_FILES` w `eslint.config.js`: jawne ścieżki plików jeszcze na PrimeVue (bez wzorców i katalogów); tylko
-  reguły z punktu wyżej ich nie obejmują. Migracja ekranu usuwa jego pliki z listy, nowy plik na nią nie trafia (test
-  reguł sprawdza, że każdy wpis istnieje i importuje PrimeVue). Lista znika z PrimeVue w ADMIN-SCREENS.
 - Krój Nunito z plików panelu, stos zapasowy `system-ui, sans-serif`. Cyfry Nunito są tabelaryczne bez cechy `tnum`
   (podzbiory Google Fonts jej nie mają, ale każda cyfra 0–9 ma tę samą szerokość 600 jednostek przy wagach 400–800,
   więc „111” i „888” są równej szerokości), dlatego kolumny liczbowe używają Nunito z `tabular-nums`, bez stosu
@@ -526,7 +635,10 @@ Spec: `docs/features/sentry/spec.md`.
 - Logika w composables i store'ach (np. `useIdleLogout`, obsługa 401, guard routera) ma testy.
 - Test reguły ESLint sprawdza identyfikator reguły i liczbę błędów, nie tylko to, że coś zostało zgłoszone.
 - `tests/lint/color-rules.test.ts` sprawdza regułę koloru (identyfikator i liczba błędów dla każdej ścieżki i prób
-  obejścia, brak błędu dla klas z tokenów) i listę `LEGACY_FILES`; typy listy dla testu są w `eslint.config.d.ts`.
+  obejścia, brak błędu dla klas z tokenów), blokadę importu pakietów dawnej biblioteki (także w `src/main.ts`)
+  i to, że reguły obejmują każdy plik `src/` (kolor w `src/main.ts`, `<style>` w dowolnym `.vue`; poziom `error` reguł
+  wyglądu dla każdego pliku z dysku według `calculateConfigForFile`, więc `ignores` w bloku reguł oblewa test); typy konfiguracji dla testu są
+  w `eslint.config.d.ts`. Import dynamiczny `import()` blokuje dopiero brak pakietów (`vue-tsc`), nie ta reguła.
 - Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
   i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list
   rozwijanych trafia do `document.body`, więc testy montują z `attachTo: document.body` i czyszczą je po teście.

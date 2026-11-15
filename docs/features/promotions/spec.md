@@ -253,13 +253,25 @@ pozostali 403; odczyt: każdy pracownik):
 
 - Menu „Promocje” (`/promotions`). Przyciski zmian widzą tylko role `admin` i `marketing` (role z `/me`; API sprawdza
   niezależnie).
-- Promocje: lista z filtrem statusu i stronicowaniem kursorami; formularz (nazwa, procent, początek z opcją „od teraz”,
-  koniec; czasy wpisywane i pokazywane w `Europe/Warsaw`); wybór wariantów: wyszukiwanie produktów z listy cen
-  (`GET /api/v1/admin/prices`) i zaznaczanie wariantów albo całego produktu, lista wybranych z możliwością usunięcia;
-  widok szczegółów z cenami katalogowymi i promocyjnymi z API (wariant usunięty z katalogu oznaczony „Wariant
-  usunięty”); „Zakończ teraz” (aktywna: `PUT` z `endsAt` = teraz), „Usuń” (zaplanowana). Pola niedostępne dla
-  aktywnej promocji są zablokowane. 409 `promotion-overlap` oznacza kolidujące warianty, inne 409: komunikat
-  z `detail` i odświeżenie.
+- Lista w standardzie listy (okruszki „Pulpit › Marketing › Promocje”): filtr statusu jako `Select` „Status”, rozmiar
+  strony 10/25/50 (domyślnie 25) i stronicowanie kursorami; stan (`status`, `perPage`) jest w adresie. API nie szuka
+  promocji, więc lista nie ma wyszukiwania. Kolumny: nazwa, obniżka, początek i koniec (poniżej 1024 px liniami komórki
+  nazwy), status jako `Badge`, liczba wariantów; akcja wiersza „Edytuj: <nazwa>” i „Dodaj promocję” tylko dla `admin`
+  i `marketing`.
+- Formularz w standardzie formularza: karta „Dane promocji” (nazwa, procent, początek z opcją „od teraz”, koniec; czasy
+  wpisywane i pokazywane w `Europe/Warsaw`), karta „Warianty” i boczna „Status”. Wybór wariantów: wyszukiwanie produktów
+  z listy cen (`GET /api/v1/admin/prices`) i zaznaczanie wariantów albo całego produktu (przyciski mają nazwy z nazwą
+  wariantu: „Dodaj: Hantle regulowane Lumora Para 10 / 10 kg”), lista wybranych z możliwością usunięcia, widok
+  z cenami katalogowymi i promocyjnymi z API (wariant usunięty z katalogu oznaczony „Wariant usunięty”). Zmiana pól
+  pokazuje pasek zapisu, a opuszczenie formularza z niezapisanymi zmianami pyta w oknie; po zapisie toast „Promocja
+  zapisana.” i fokus na nagłówku. „Zakończ teraz” (aktywna: `PUT` z `endsAt` = teraz) i „Usuń” (zaplanowana) są w karcie
+  „Status” i pytają w oknie potwierdzenia. API ustawia koniec chwilę w przyszłości, więc po „Zakończ teraz” panel czeka
+  do końca i jedną sekundę dłużej, czyta promocję ponownie (najwyżej 5 ponowień co sekundę); toast „Promocja zakończona.” i widok tylko do
+  odczytu daje odczyt ze statusem `ended` albo odpowiedź `PUT` z `ended`. Po wyczerpaniu ponowień promocja zostaje
+  aktywna z komunikatem „Koniec promocji ustawiony na <czas>.”, a formularz pokazuje stan z ostatniej odpowiedzi; do tego czasu „Zapisz” i „Zakończ teraz” są
+  wyłączone z opisem „Promocja kończy się.”. Pola niedostępne dla aktywnej promocji są zablokowane. 409
+  `promotion-overlap` oznacza kolidujące warianty, inne 409: komunikat z `detail` i odświeżenie. Promocja, która nie
+  istnieje: komunikat „Ta promocja nie istnieje.” z linkiem do listy.
 - Ceny (`PricesView`): 409 `price-locked-by-promotion` pokazuje `detail` przy polu ceny bez komunikatu o zmianie
   w międzyczasie i bez odświeżania wiersza (pozostałe 409 jak dziś); rozróżnienie po `type`.
 
@@ -329,7 +341,7 @@ pozostali 403; odczyt: każdy pracownik):
   `Pricing_* → Ordering_*`, `Cart_Domain → Pricing_*`.
 - Vitest: sklep – kafelek i strona produktu z promocją i bez, `lowestPriorGross = null`, wybór wariantu w promocji
   w kafelku, JSON-LD z `priceValidUntil` (także koniec o 00:00); panel – lista, formularz (blokada pól aktywnej
-  promocji, czasy w strefie `Europe/Warsaw`, „Zakończ teraz”), wybór wariantów, widoczność przycisków według ról, 409
+  promocji, czasy w strefie `Europe/Warsaw`, „Zakończ teraz” z ponownym odczytem), wybór wariantów, widoczność przycisków według ról, 409
   (także `conflictingVariantIds` i `price-locked-by-promotion` w `PricesView`).
 - E2E (Playwright): `promotions.spec.ts` na własnym produkcie demo, spoza innych testów i spoza promocji demo; da się
   go powtarzać na tym samym stosie: na początku kończy aktywną promocję tego produktu z poprzedniego uruchomienia

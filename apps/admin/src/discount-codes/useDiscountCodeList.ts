@@ -1,30 +1,49 @@
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { type LocationQuery, useRoute } from "vue-router";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { type PageRequest, type PageResult, useCursorPager } from "@/composables/useCursorPager";
+import { type ListParam, useListUrlState } from "@/composables/useListUrlState";
 import { STATUS_FILTER_OPTIONS } from "./format";
 
 export type DiscountCodeListItem = components["schemas"]["DiscountCodeResponse"];
 export type DiscountCodeStatus = DiscountCodeListItem["status"];
 
 export const FORBIDDEN_MESSAGE = "Nie masz dostępu do kodów rabatowych.";
-export const EMPTY_MESSAGE = "Brak kodów rabatowych.";
-export const FILTERED_EMPTY_MESSAGE = "Nie znaleziono kodów rabatowych.";
+export const EMPTY_MESSAGE = "Nie ma jeszcze kodów rabatowych.";
 
 /** A code has 3 to 32 characters, so a longer search can match nothing and the API refuses it. */
 export const MAX_SEARCH_LENGTH = 32;
+export const SEARCH_TOO_LONG_HINT = `Kod ma najwyżej ${MAX_SEARCH_LENGTH} znaki.`;
 export const SEARCH_DEBOUNCE_MS = 300;
+
+/** The page sizes of the list; 25 is the default of the API, so it is not sent. */
+export const PER_PAGE_OPTIONS = [10, 25, 50];
+export const DEFAULT_PER_PAGE = 25;
 
 interface CodeQuery {
   status?: DiscountCodeStatus;
   q?: string;
   after?: string;
+  perPage?: number;
 }
 
-/** The status of an address (`?status=active`): a known one; an unknown, empty or repeated value is skipped. */
-function statusOf(query: LocationQuery): DiscountCodeStatus | null {
-  const option = STATUS_FILTER_OPTIONS.find((candidate) => candidate.value === query.status);
-  return option === undefined || option.value === "all" ? null : option.value;
+// The API trims a search of white space, separators and invisible format characters (U+200B, U+00AD, U+2060, ...), so a
+// search of only those is an empty one. `trim()` does not remove the format characters.
+const SEARCH_EDGES = /^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/gu;
+
+function normalise(text: string): string {
+  return text.replace(SEARCH_EDGES, "");
+}
+
+function characters(text: string): number {
+  return [...text].length;
+}
+
+/** The trimmed term when the API takes it as a search (1 to 32 code points), otherwise null. */
+function validTerm(text: string): string | null {
+  const term = normalise(text);
+  const length = characters(term);
+  return length >= 1 && length <= MAX_SEARCH_LENGTH ? term : null;
 }
 
 function failureMessage(status: number): string {
@@ -38,185 +57,129 @@ function failureMessage(status: number): string {
   }
 }
 
-/** `trim()` removes all Unicode white space, NBSP included. */
-function normalise(text: string): string {
-  return text.trim();
-}
-
-function characters(text: string): number {
-  return [...text].length;
-}
-
 /**
- * The discount code list with a status filter, a search by the beginning of the code (after a pause in typing, from one
- * character) and paging with the cursors of the API. The panel keeps the stack of the cursors it has visited:
- * `cursors[i]` is the `after` of page i (null for the first), so "previous" is the cursor below the current one.
- * Changing the filter or the search starts again from the first page and drops the rows and the cursors, because a
- * cursor belongs to the filter it came from: after a failed request for a new filter the table and the pager stay off
- * until a retry succeeds. A failed move to a neighbouring page keeps the page that is shown. A 403 is reported as such
- * (`forbidden`), a retry would not help. The status and the uses of a row are the API's; the panel computes nothing.
- *
- * The status filter is also read from the address (`?status=active`: the dashboard links to it): on entering and
- * whenever the query changes while the list is open. Such a change sets the filter from the address and starts from the
- * first page; the search stays. A status chosen in the list is not written to the address (ADMIN-SCREENS).
+ * The discount code list: a status filter, a search by the beginning of the code (after a pause in typing, from one
+ * character) and a page size (10, 25 or 50). The search, the filter and the page size live in the address
+ * (`useListUrlState`: `q`, `status`, `perPage`; read on entering and on a change from outside, such as the link of the
+ * dashboard or Back, written with `replace` when changed; only the applied search goes there, not what is being typed)
+ * and the paging is `useCursorPager` (cursor stack, late answers, retry, what a failure leaves on the screen). What stays
+ * here is the request to the API with its messages, and the rules of the search of codes (1 to 32 code points after
+ * trimming the characters the API trims; the longer text is not sent and the hint says why). The status and the uses of a
+ * row are the API's; the panel computes nothing.
  */
 export function useDiscountCodeList() {
-  const route = useRoute();
-  const routeName = route.name;
-  const status = ref<DiscountCodeStatus | null>(statusOf(route.query));
-  const search = ref("");
-  const items = ref<DiscountCodeListItem[]>([]);
-  const next = ref<string | null>(null);
-  const cursors = ref<(string | null)[]>([null]);
-  const loading = ref(false);
-  const loaded = ref(false);
-  const error = ref<string | null>(null);
-  const forbidden = ref(false);
+  const url = useListUrlState({
+    q: { parse: validTerm, fallback: null } satisfies ListParam<string, null>,
+    status: {
+      parse: (raw) => {
+        const option = STATUS_FILTER_OPTIONS.find((candidate) => candidate.value === raw);
+        return option === undefined || option.value === "all" ? null : option.value;
+      },
+      fallback: null,
+    } satisfies ListParam<DiscountCodeStatus, null>,
+    perPage: {
+      parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
+      fallback: DEFAULT_PER_PAGE,
+    } satisfies ListParam<number, number>,
+  });
 
-  // The term the list was last asked for (null: all codes); a pending debounce compares against it.
-  const appliedTerm = ref<string | null>(null);
-  let attempted: (string | null)[] = [null];
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  // Only the newest request may change the state; an older one that finishes late is ignored.
-  let latest = 0;
-
-  const searchTooLong = computed(() => characters(normalise(search.value)) > MAX_SEARCH_LENGTH);
-  const hasPrevious = computed(() => cursors.value.length > 1);
-  const hasNext = computed(() => next.value !== null);
-  const pageNumber = computed(() => cursors.value.length);
-  const emptyText = computed(() => (status.value === null && appliedTerm.value === null ? EMPTY_MESSAGE : FILTERED_EMPTY_MESSAGE));
-
-  async function load(stack: (string | null)[]): Promise<void> {
-    const request = ++latest;
-    attempted = stack;
-    loading.value = true;
-    const query: CodeQuery = {};
-    if (status.value !== null) {
-      query.status = status.value;
+  async function fetchPage({ query, after }: PageRequest<typeof url.query.value>): Promise<PageResult<DiscountCodeListItem>> {
+    const apiQuery: CodeQuery = {};
+    if (query.status !== null) {
+      apiQuery.status = query.status;
     }
-    if (appliedTerm.value !== null) {
-      query.q = appliedTerm.value;
+    if (query.q !== null) {
+      apiQuery.q = query.q;
     }
-    const after = stack[stack.length - 1];
+    if (query.perPage !== DEFAULT_PER_PAGE) {
+      apiQuery.perPage = query.perPage;
+    }
     if (after) {
-      query.after = after;
+      apiQuery.after = after;
     }
     try {
-      const result = await getApiClient().GET("/api/v1/admin/discount-codes", { params: { query } });
-      if (request !== latest) {
-        return;
-      }
+      const result = await getApiClient().GET("/api/v1/admin/discount-codes", { params: { query: apiQuery } });
       if (result.data) {
-        items.value = result.data.items;
-        next.value = result.data.next;
-        cursors.value = stack;
-        loaded.value = true;
-        error.value = null;
-        forbidden.value = false;
-      } else {
-        error.value = failureMessage(result.response.status);
-        forbidden.value = result.response.status === 403;
+        return { items: result.data.items, next: result.data.next };
       }
+      return { error: failureMessage(result.response.status), forbidden: result.response.status === 403 };
     } catch {
-      if (request === latest) {
-        error.value = "Nie udało się pobrać kodów rabatowych. Sprawdź połączenie z API.";
-        forbidden.value = false;
-      }
-    } finally {
-      if (request === latest) {
-        loading.value = false;
-      }
+      return { error: "Nie udało się pobrać kodów rabatowych. Sprawdź połączenie z API." };
     }
   }
 
-  // The cursors and `next` belong to the list of the old filter. Dropping them now means that if the request for the
-  // new filter fails, the pager cannot pair the new filter with an old cursor: it stays off until a retry succeeds.
-  function startFromFirstPage(): void {
-    items.value = [];
-    loaded.value = false;
-    cursors.value = [null];
-    next.value = null;
-  }
+  const pager = useCursorPager(fetchPage, url.query, { ready: url.ready });
 
-  watch(search, () => {
+  // What is typed in the field; only a term that passes the rules, after the pause, reaches the address.
+  const search = ref(url.address.value.q ?? "");
+  // The term that is already applied (or came from outside): typing it again is no change to apply.
+  let synced = normalise(search.value);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const searchHint = computed(() => (characters(normalise(search.value)) > MAX_SEARCH_LENGTH ? SEARCH_TOO_LONG_HINT : null));
+
+  watch(search, (value) => {
     clearTimeout(timer);
+    if (normalise(value) === synced) {
+      return;
+    }
     timer = setTimeout(() => {
       const term = normalise(search.value);
       if (characters(term) > MAX_SEARCH_LENGTH) {
         // No code is that long: the list stays as it is and the hint says why.
         return;
       }
-      const effective = term === "" ? null : term;
-      if (effective !== appliedTerm.value) {
-        appliedTerm.value = effective;
-        startFromFirstPage();
-        void load([null]);
-      }
+      synced = term;
+      url.set({ q: term === "" ? null : term });
     }, SEARCH_DEBOUNCE_MS);
   });
 
-  function selectStatus(selected: DiscountCodeStatus | null): Promise<void> {
-    if (selected === status.value) {
-      return Promise.resolve();
-    }
-    status.value = selected;
-    startFromFirstPage();
-    return load([null]);
-  }
-
-  // A change of the query that leaves the page (the route is already the next one while this view is still mounted)
-  // must not ask for a list nobody will see.
-  // The source is a new object on every change of the query, so navigating to the same address again (the menu does
-  // it, because a list does not write its filter to the address) applies the address over a filter chosen in the list.
-  watch(
-    () => ({ status: statusOf(route.query) }),
-    ({ status: fromAddress }) => {
-      if (route.name !== routeName || fromAddress === status.value) {
-        return;
-      }
-      status.value = fromAddress;
-      startFromFirstPage();
-      void load([null]);
-    },
-  );
-
-  function goNext(): Promise<void> {
-    return next.value === null ? Promise.resolve() : load([...cursors.value, next.value]);
-  }
-
-  function goPrevious(): Promise<void> {
-    return hasPrevious.value ? load(cursors.value.slice(0, -1)) : Promise.resolve();
-  }
-
-  function retry(): Promise<void> {
-    return load(attempted);
-  }
-
-  onMounted(() => {
-    void load([null]);
-  });
-
-  onUnmounted(() => {
+  function setSearch(term: string | null): void {
     clearTimeout(timer);
-    latest++;
-  });
+    search.value = term ?? "";
+    synced = normalise(search.value);
+  }
+
+  // The address changed from outside: it is the new truth, also for what is in the field.
+  watch(url.address, (address) => setSearch(address.q));
+
+  onUnmounted(() => clearTimeout(timer));
+
+  const filtered = computed(() => url.query.value.q !== null || url.query.value.status !== null);
+
+  function selectStatus(selected: DiscountCodeStatus | null): void {
+    url.set({ status: selected });
+  }
+
+  function setPerPage(size: number): void {
+    url.set({ perPage: size });
+  }
+
+  /** Drops the search, the filter and the page size: the address is `/discount-codes` again. */
+  function clearFilters(): void {
+    setSearch(null);
+    url.clear();
+  }
 
   return {
-    status,
     search,
-    searchTooLong,
-    items,
-    loading,
-    loaded,
-    error,
-    forbidden,
-    emptyText,
-    hasPrevious,
-    hasNext,
-    pageNumber,
+    searchHint,
+    query: url.query,
+    filtered,
+    items: pager.items,
+    loading: pager.loading,
+    loaded: pager.loaded,
+    error: pager.error,
+    forbidden: pager.forbidden,
+    hasPrevious: pager.hasPrevious,
+    hasNext: pager.hasNext,
+    pageNumber: pager.pageNumber,
+    range: pager.range,
     selectStatus,
-    goNext,
-    goPrevious,
-    retry,
+    setPerPage,
+    clearFilters,
+    goNext: pager.goNext,
+    goPrevious: pager.goPrevious,
+    retry: pager.retry,
   };
 }

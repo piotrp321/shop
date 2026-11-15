@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown } from "lucide-vue-next";
 import { inject } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { RouterLink } from "vue-router";
 import { cn } from "@/lib/utils";
 import type { MenuEntry } from "./menu";
 import { MENU_CONTEXT } from "./menuContext";
@@ -14,30 +14,20 @@ if (injected === undefined) {
 }
 const menu = injected;
 
-const router = useRouter();
-const route = useRoute();
-
 /** A click the browser handles itself (a new tab or window, a download): the panel does not navigate nor close the drawer. */
 function leftToBrowser(event: MouseEvent): boolean {
   return event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
 }
 
 /**
- * A choice of an item. The location of the item may be the current one while the open list holds filters set in it
- * (they are not in the address): the router would drop such a push as a duplicate, so it is forced, which gives the
- * list a new route to read its filters from. It replaces the entry, so the history gets no copy of the page.
+ * A choice of an item: the router navigates (a click on the current location is a duplicate it drops; the lists read
+ * their filters from the address, so the open list follows the address) and the parent closes the drawer.
  */
 function choose(event: MouseEvent, navigate: (event?: MouseEvent) => Promise<unknown>) {
   if (props.entry.kind !== "leaf" || leftToBrowser(event)) {
     return;
   }
-  const target = router.resolve(props.entry.to);
-  if (target.fullPath === route.fullPath) {
-    event.preventDefault();
-    void router.push({ path: target.path, query: target.query, hash: target.hash, force: true, replace: true });
-  } else {
-    void navigate(event);
-  }
+  void navigate(event);
   menu.chosen();
 }
 

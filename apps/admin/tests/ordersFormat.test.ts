@@ -20,6 +20,21 @@ describe("statusLabel", () => {
     expect(statusLabel(status).label).toBe(label);
   });
 
+  it.each([
+    ["new", "warning"],
+    ["paid", "info"],
+    ["shipped", "success"],
+    ["delivered", "info"],
+    ["cancelled", "danger"],
+    ["returned", "neutral"],
+  ] as const)("shows %s as a Badge of the variant %s, the same as the dashboard", (status, variant) => {
+    expect(statusLabel(status).variant).toBe(variant);
+  });
+
+  it("shows a status the panel does not know as the API sent it, in a neutral Badge", () => {
+    expect(statusLabel("refunded" as never)).toEqual({ label: "refunded", variant: "neutral" });
+  });
+
   it("offers every status as a filter option, in the order of the lifecycle", () => {
     expect(STATUS_OPTIONS.map((option) => option.value)).toEqual(["new", "paid", "shipped", "delivered", "cancelled", "returned"]);
     expect(STATUS_OPTIONS.map((option) => option.label)).toEqual(["Czeka na płatność", "Opłacone", "Wysłane", "Dostarczone", "Anulowane", "Zwrócone"]);

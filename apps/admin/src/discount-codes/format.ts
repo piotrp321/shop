@@ -2,22 +2,23 @@ import { formatDateTime, formatMoney } from "@/prices/format";
 import { CURRENCY } from "@/promotions/format";
 import type { DiscountCodeListItem, DiscountCodeStatus } from "./useDiscountCodeList";
 
-type Severity = "info" | "success" | "secondary" | "warn";
+/** The variants of `Badge` that are the status colours of the panel. */
+type BadgeVariant = "info" | "success" | "neutral" | "warning";
 
-const statuses: Record<DiscountCodeStatus, { label: string; severity: Severity }> = {
-  disabled: { label: "Wyłączony", severity: "warn" },
-  planned: { label: "Zaplanowany", severity: "info" },
-  active: { label: "Aktywny", severity: "success" },
-  expired: { label: "Wygasły", severity: "secondary" },
+const statuses: Record<DiscountCodeStatus, { label: string; variant: BadgeVariant }> = {
+  disabled: { label: "Wyłączony", variant: "warning" },
+  planned: { label: "Zaplanowany", variant: "info" },
+  active: { label: "Aktywny", variant: "success" },
+  expired: { label: "Wygasły", variant: "neutral" },
 };
 
-/** The label and the colour of a status the API reports. */
+/** The label and the `Badge` variant of a status the API reports. */
 export function statusLabel(status: DiscountCodeStatus): string {
   return statuses[status].label;
 }
 
-export function statusSeverity(status: DiscountCodeStatus): Severity {
-  return statuses[status].severity;
+export function statusVariant(status: DiscountCodeStatus): BadgeVariant {
+  return statuses[status].variant;
 }
 
 export const STATUS_FILTER_OPTIONS: { label: string; value: "all" | DiscountCodeStatus }[] = [

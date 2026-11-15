@@ -1,8 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import PrimeVue from "primevue/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { primeVueOptions } from "@/primevue";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 
 const mocks = vi.hoisted(() => ({ signinRedirectCallback: vi.fn(), signinRedirect: vi.fn() }));
@@ -23,7 +21,7 @@ async function mountView() {
     ],
   });
   await router.push("/auth/callback?code=c&state=s");
-  const wrapper = mount(AuthCallbackView, { global: { plugins: [router, [PrimeVue, primeVueOptions]] } });
+  const wrapper = mount(AuthCallbackView, { global: { plugins: [router] } });
   await flushPromises();
   return { router, wrapper };
 }

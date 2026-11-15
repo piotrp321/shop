@@ -108,4 +108,37 @@ describe("ListPager", () => {
 
     expect(document.activeElement).toBe(outside);
   });
+
+  it("keeps the focus in the search field when a response enables „Następna strona” after the staff member left the pager by a click on nothing", async () => {
+    const search = document.createElement("input");
+    document.body.append(search);
+    const pager = mountPager({ hasPrevious: true, hasNext: true, pageNumber: 2 });
+    previous().focus();
+    previous().click();
+    await pager.setProps({ hasPrevious: false, pageNumber: 1 });
+    expect(document.activeElement).toBe(next());
+
+    // A click on a spot that cannot take the focus: `focusout` without a `relatedTarget`, then typing in the search field.
+    next().blur();
+    search.focus();
+    await pager.setProps({ hasNext: false });
+    await pager.setProps({ hasNext: true });
+
+    expect(document.activeElement).toBe(search);
+  });
+
+  it("moves the focus only once for a press: a later change of the buttons leaves it where it is", async () => {
+    const pager = mountPager({ hasPrevious: true, hasNext: true, pageNumber: 2 });
+    previous().focus();
+    previous().click();
+    await pager.setProps({ hasPrevious: false, pageNumber: 1 });
+    expect(document.activeElement).toBe(next());
+
+    next().blur();
+    expect(document.activeElement).toBe(document.body);
+    await pager.setProps({ hasNext: false });
+    await pager.setProps({ hasNext: true });
+
+    expect(document.activeElement).toBe(document.body);
+  });
 });

@@ -122,8 +122,8 @@ describe("Sonner", () => {
     toast("Zapisano");
     await flushPromises();
 
-    // vue-sonner appends the hotkey to the name of the region („Powiadomienia alt+T”).
-    expect(document.body.querySelector("section")?.getAttribute("aria-label")).toMatch(/^Powiadomienia\b/);
+    // vue-sonner appends the label of its hotkey to the name of the region („Powiadomienia alt+T”); the name is exact.
+    expect(document.body.querySelector("section")?.getAttribute("aria-label")?.trim()).toBe("Powiadomienia");
     expect(buttonNames()).toEqual(["Zamknij powiadomienie"]);
   });
 });

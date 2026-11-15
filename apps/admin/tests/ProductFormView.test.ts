@@ -121,8 +121,6 @@ describe("ProductFormView", () => {
     mocks.get.mockReset();
     mocks.post.mockReset();
     mocks.put.mockReset();
-    // jsdom has no matchMedia, which the Select of PrimeVue asks for when it is mounted.
-    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     // jsdom does not scroll and has no scrollIntoView either.
     scrollIntoView = vi.fn<Element["scrollIntoView"]>();
     Element.prototype.scrollIntoView = scrollIntoView;

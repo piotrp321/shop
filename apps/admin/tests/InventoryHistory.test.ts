@@ -1,10 +1,9 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import PrimeVue from "primevue/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
-import { primeVueOptions } from "@/primevue";
-import { useAuthStore, type StaffMe } from "@/stores/auth";
+import { type StaffMe, useAuthStore } from "@/stores/auth";
 import InventoryView from "@/views/InventoryView.vue";
 
 type StockList = components["schemas"]["StockListResponse"];
@@ -68,12 +67,23 @@ async function settle() {
   await flushPromises();
 }
 
+/** Everything is in the body: the windows are teleported there, so a query goes through the whole document. */
+const page = () => new DOMWrapper(document.body);
+
 async function mountView(roles: StaffMe["roles"] = ["support"]) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().staff = { id: "u1", username: "anna", roles };
-  // The dialogs are teleported to <body>; rendered in place they can be found in the wrapper.
-  const wrapper = mount(InventoryView, { global: { plugins: [pinia, [PrimeVue, primeVueOptions]] as never[], stubs: { teleport: true } } });
+  const empty = { template: "<div />" };
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/inventory", name: "inventory", component: empty },
+      { path: "/", name: "dashboard", component: empty },
+    ],
+  });
+  await router.push("/inventory");
+  const wrapper = mount(InventoryView, { global: { plugins: [pinia, router] }, attachTo: document.body });
   await settle();
   return wrapper;
 }
@@ -89,15 +99,16 @@ describe("InventoryView: stock history", () => {
   afterEach(() => {
     wrapper?.unmount();
     wrapper = undefined;
+    document.body.innerHTML = "";
     vi.useRealTimers();
   });
 
   async function openHistory(row = 0) {
-    await wrapper!.findAll("[data-testid=stock-row]")[row]!.get("[data-testid=show-history]").trigger("click");
+    await page().findAll("[data-testid=stock-row]")[row]!.get("[data-testid=show-history]").trigger("click");
     await settle();
   }
 
-  const cells = (testId: string) => wrapper!.findAll(`[data-testid=${testId}]`).map((cell) => cell.text());
+  const cells = (testId: string) => page().findAll(`[data-testid=${testId}]`).map((cell) => cell.text());
 
   it.each([[["admin"]], [["marketing"]], [["support"]], [["warehouse"]], [[]]] as StaffMe["roles"][][])(
     "offers the history on every row to a staff member with the roles %j, without asking the API yet",
@@ -105,7 +116,7 @@ describe("InventoryView: stock history", () => {
       serve({}, [item("A"), item("B")]);
       wrapper = await mountView(roles);
 
-      expect(wrapper.findAll("[data-testid=show-history]")).toHaveLength(2);
+      expect(page().findAll("[data-testid=show-history]")).toHaveLength(2);
       expect(historyCalls()).toEqual([]);
     },
   );
@@ -114,14 +125,14 @@ describe("InventoryView: stock history", () => {
     serve({});
     wrapper = await mountView(["support"]);
 
-    expect(wrapper.find("[data-testid=receive-stock]").exists()).toBe(false);
-    expect(wrapper.find("[data-testid=correct-stock]").exists()).toBe(false);
+    expect(page().find("[data-testid=receive-stock]").exists()).toBe(false);
+    expect(page().find("[data-testid=correct-stock]").exists()).toBe(false);
     wrapper.unmount();
 
     wrapper = await mountView(["warehouse"]);
-    expect(wrapper.find("[data-testid=receive-stock]").exists()).toBe(true);
-    expect(wrapper.find("[data-testid=correct-stock]").exists()).toBe(true);
-    expect(wrapper.find("[data-testid=show-history]").exists()).toBe(true);
+    expect(page().find("[data-testid=receive-stock]").exists()).toBe(true);
+    expect(page().find("[data-testid=correct-stock]").exists()).toBe(true);
+    expect(page().find("[data-testid=show-history]").exists()).toBe(true);
   });
 
   it("shows the entries newest first with labels for the type, the reason and the source", async () => {
@@ -150,7 +161,7 @@ describe("InventoryView: stock history", () => {
     await openHistory();
 
     expect(historyCalls()).toEqual([{ path: { variantId: "var-A" }, query: {} }]);
-    const dialog = wrapper.get("[data-testid=history-dialog]");
+    const dialog = page().get("[data-testid=history-dialog]");
     expect(dialog.text()).toContain("A");
     expect(dialog.findAll("[data-testid=history-row]")).toHaveLength(3);
     expect(cells("history-type")).toEqual(["Korekta", "Rezerwacja", "Przyjęcie"]);
@@ -197,7 +208,7 @@ describe("InventoryView: stock history", () => {
     await openHistory(1);
 
     expect(historyCalls()).toEqual([{ path: { variantId: "v-orange" }, query: {} }]);
-    expect(wrapper.get("[data-testid=history-dialog]").text()).toContain("Kajak – pomarańczowy");
+    expect(page().get("[data-testid=history-dialog]").text()).toContain("Kajak / pomarańczowy");
   });
 
   it("loads further entries with 'Pokaż więcej' using the cursor of the API, until the last page", async () => {
@@ -209,14 +220,14 @@ describe("InventoryView: stock history", () => {
     await openHistory();
 
     expect(cells("history-physical-delta")).toEqual(["+3", "+2"]);
-    expect(wrapper.get("[data-testid=history-more]").text()).toBe("Pokaż więcej");
+    expect(page().get("[data-testid=history-more]").text()).toBe("Pokaż więcej");
 
-    await wrapper.get("[data-testid=history-more]").trigger("click");
+    await page().get("[data-testid=history-more]").trigger("click");
     await settle();
 
     expect(historyCalls().at(-1)).toEqual({ path: { variantId: "var-A" }, query: { after: "c1" } });
     expect(cells("history-physical-delta")).toEqual(["+3", "+2", "+1"]);
-    expect(wrapper.find("[data-testid=history-more]").exists()).toBe(false);
+    expect(page().find("[data-testid=history-more]").exists()).toBe(false);
   });
 
   it("says so when the variant has no recorded stock change", async () => {
@@ -225,8 +236,8 @@ describe("InventoryView: stock history", () => {
 
     await openHistory();
 
-    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(0);
-    expect(wrapper.get("[data-testid=history-empty]").text()).toBe("Produkt nie ma jeszcze zmian stanu.");
+    expect(page().findAll("[data-testid=history-row]")).toHaveLength(0);
+    expect(page().get("[data-testid=history-empty]").text()).toBe("Produkt nie ma jeszcze zmian stanu.");
   });
 
   it("shows the error of the API and loads again on retry", async () => {
@@ -235,15 +246,15 @@ describe("InventoryView: stock history", () => {
 
     await openHistory();
 
-    expect(wrapper.get("[data-testid=history-error]").text()).toContain("Nie udało się pobrać historii stanów (HTTP 500).");
-    expect(wrapper.find("[data-testid=history-empty]").exists()).toBe(false);
+    expect(page().get("[data-testid=history-error]").text()).toContain("Nie udało się pobrać historii stanów (HTTP 500).");
+    expect(page().find("[data-testid=history-empty]").exists()).toBe(false);
 
     serve({ "": { items: [entry()], next: null } });
-    await wrapper.get("[data-testid=history-retry]").trigger("click");
+    await page().get("[data-testid=history-retry]").trigger("click");
     await settle();
 
-    expect(wrapper.find("[data-testid=history-error]").exists()).toBe(false);
-    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
+    expect(page().find("[data-testid=history-error]").exists()).toBe(false);
+    expect(page().findAll("[data-testid=history-row]")).toHaveLength(1);
   });
 
   it("closes the dialog and forgets the entries, and another variant starts from its first page", async () => {
@@ -251,13 +262,99 @@ describe("InventoryView: stock history", () => {
     wrapper = await mountView();
     await openHistory(0);
 
-    await wrapper.get("[data-testid=close-history]").trigger("click");
+    await page().get("[data-testid=close-history]").trigger("click");
     await settle();
-    expect(wrapper.find("[data-testid=history-dialog]").exists()).toBe(false);
+    expect(page().find("[data-testid=history-dialog]").exists()).toBe(false);
 
     await openHistory(1);
     expect(historyCalls().map((params) => params.path.variantId)).toEqual(["var-A", "var-B"]);
-    expect(wrapper.get("[data-testid=history-dialog]").text()).toContain("B");
-    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
+    expect(page().get("[data-testid=history-dialog]").text()).toContain("B");
+    expect(page().findAll("[data-testid=history-row]")).toHaveLength(1);
+  });
+  it("is a dialog titled „Historia stanu” in the wide width, with the 11 columns in a named region that the keyboard reaches", async () => {
+    serve({ "": { items: [entry()], next: null } });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    const dialog = page().get("[role=dialog]");
+    expect(dialog.attributes("data-testid")).toBe("history-dialog");
+    expect(page().get("[role=dialog] [data-slot=dialog-title]").text()).toBe("Historia stanu");
+    expect(dialog.classes()).toContain("w-[min(56rem,calc(100vw-2rem))]");
+    const region = dialog.get("[role=region]");
+    expect(region.attributes("aria-label")).toBe("Historia stanu");
+    expect(region.attributes("tabindex")).toBe("0");
+    expect(dialog.findAll("thead th").map((head) => head.text())).toEqual([
+      "Data",
+      "Rodzaj",
+      "Zmiana fizycznego",
+      "Stan fizyczny po zmianie",
+      "Zmiana zarezerwowanego",
+      "Stan zarezerwowanego po zmianie",
+      "Powód",
+      "Notatka",
+      "Referencja",
+      "Źródło",
+      "Pracownik",
+    ]);
+  });
+
+  it("keeps Data, Rodzaj, Zmiana fizycznego and Stan fizyczny po zmianie on a narrow screen and gives the rest as lines of the date cell", async () => {
+    serve({
+      "": {
+        items: [entry({ type: "correction", physicalDelta: -3, reservedDelta: 0, physicalAfter: 17, reservedAfter: 4, reason: "damage", note: "Zalane", reference: "ref-1", source: "staff", actorName: "Jan Kowalski" })],
+        next: null,
+      },
+    });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    const heads = page().findAll("[role=dialog] thead th");
+    expect(heads.map((head) => head.classes().includes("hidden"))).toEqual([false, false, false, false, true, true, true, true, true, true, true]);
+    const row = page().get("[data-testid=history-row]");
+    expect(row.findAll("[data-testid^=line-]").map((line) => line.text().replace(/\s+/g, " "))).toEqual([
+      "Zmiana zarezerwowanego: 0",
+      "Stan zarezerwowanego po zmianie: 4",
+      "Powód: Uszkodzenie",
+      "Notatka: Zalane",
+      "Referencja: ref-1",
+      "Źródło: Pracownik",
+      "Pracownik: Jan Kowalski",
+    ]);
+  });
+
+  it("gives the focus back to „Historia” of the row when it closes", async () => {
+    serve({ "": { items: [entry()], next: null } }, [item("A"), item("B")]);
+    wrapper = await mountView();
+
+    await openHistory(1);
+    await page().get("[data-testid=close-history]").trigger("click");
+    await settle();
+
+    expect(document.activeElement).toBe(page().findAll("[data-testid=show-history]")[1]!.element);
+  });
+
+  it("keeps the entries and offers a retry when a further page fails, and puts the focus on „Zamknij” when the retry button goes", async () => {
+    serve({ "": { items: [entry({ physicalDelta: 3 })], next: "c1" } });
+    wrapper = await mountView();
+    await openHistory();
+    const answerWithFirstPage = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (path: string, options?: { params?: { query?: { after?: string } } }) =>
+      path === HISTORY && options?.params?.query?.after ? { data: undefined, response: { status: 500 } } : answerWithFirstPage(path, options),
+    );
+
+    await page().get("[data-testid=history-more]").trigger("click");
+    await settle();
+    expect(page().get("[data-testid=history-error]").text()).toContain("HTTP 500");
+    expect(page().findAll("[data-testid=history-row]")).toHaveLength(1);
+
+    serve({ "": { items: [entry({ physicalDelta: 3 })], next: "c1" }, c1: { items: [entry({ physicalDelta: 1 })], next: null } });
+    await page().get("[data-testid=history-retry]").trigger("click");
+    await settle();
+
+    expect(page().findAll("[data-testid=history-row]")).toHaveLength(2);
+    expect(page().find("[data-testid=history-error]").exists()).toBe(false);
+    expect(document.activeElement).toBe(page().get("[data-testid=close-history]").element);
   });
 });

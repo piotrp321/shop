@@ -2,9 +2,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { type FormImage, useImageUpload } from "./useImageUpload";
+import { fetchTaxClasses, type TaxClass } from "./taxClasses";
 
 export type ProductEditView = components["schemas"]["ProductEditViewResponse"];
-export type TaxClass = components["schemas"]["TaxClassResponse"];
 
 /** A variant row of the form. `variantId` is null for a row that is new. */
 export interface VariantRow {
@@ -257,16 +257,12 @@ export function useProductForm(options: ProductFormOptions) {
   }
 
   async function loadTaxClasses(): Promise<void> {
-    try {
-      const result = await getApiClient().GET("/api/v1/admin/tax-classes");
-      if (result.data) {
-        taxClasses.value = result.data;
-        taxClassesError.value = null;
-      } else {
-        taxClassesError.value = `Nie udało się pobrać klas podatkowych (HTTP ${result.response.status}).`;
-      }
-    } catch {
-      taxClassesError.value = "Nie udało się pobrać klas podatkowych. Sprawdź połączenie z API.";
+    const result = await fetchTaxClasses();
+    if ("error" in result) {
+      taxClassesError.value = result.error;
+    } else {
+      taxClasses.value = result.taxClasses;
+      taxClassesError.value = null;
     }
   }
 

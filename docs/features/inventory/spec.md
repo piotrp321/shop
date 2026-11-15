@@ -279,20 +279,34 @@ z tokenem realmu `shop`: 401):
 ## Panel (`apps/admin`)
 
 - Pozycja menu „Stany magazynowe” i trasa `/inventory`.
-- Lista: wyszukiwanie po nazwie (od 2 znaków, z opóźnieniem), filtr kategorii (drzewo), stronicowanie
-  „następna/poprzednia” po kursorach (po produktach). Wiersz na wariant, warianty pod nazwą swojego produktu (nazwa
-  w pierwszym wierszu produktu); kolumny nazwa, wariant (etykieta, pusta dla wariantu domyślnego), fizyczny,
-  zarezerwowany, dostępny, poziom. Wariant bez rekordu: zera. Przyjęcie, korekta i historia dotyczą wariantu wiersza;
-  dialogi pokazują nazwę produktu z etykietą wariantu.
+- Lista (H1 „Stany magazynowe”, okruszki „Pulpit › Katalog › Stany magazynowe”, standard listy panelu:
+  `docs/features/admin-design/spec.md`): wyszukiwanie po nazwie produktu (od 2 do 100 znaków, z opóźnieniem), filtr
+  kategorii `CategoryCombobox` (z podkategoriami), rozmiar strony 10, 25 albo 50 produktów (domyślnie 10; do API idzie
+  zawsze) i „Wyczyść filtry”. Wyszukiwanie, kategoria i rozmiar strony są w adresie (`q`, `category`, `perPage`; 10 nie
+  jest zapisywane). Stronicowanie „następna/poprzednia” po kursorach, strona to produkty, a „Pokazano produkty X–Y” liczy
+  produkty niezależnie od liczby wariantów. Lista jest pogrupowana po produkcie: wiersz produktu (nazwa pogrubiona) bez
+  akcji, a pod nim wiersz na wariant z etykietą wariantu („Wariant domyślny” dla pustej). Kolumny: wariant, fizycznie,
+  zarezerwowane, dostępne, poziom (etykieta `Badge`: Dostępny, Ostatnie sztuki, Niedostępny), akcje. Wariant bez rekordu
+  stanu: „—” w liczbach i w komórce poziomu, bez etykiety poziomu. Poniżej 1024 px zarezerwowane jest linią komórki wariantu.
+  Błąd przy zmianie zapytania ukrywa tabelę i pager do udanego ponowienia; 403 nie ma ponowienia. Stan zapisany z odpowiedzi
+  API jest nakładką nad stroną z listy, więc odświeżenie, także spóźnione, nie przywraca starego stanu.
+- „Przyjęcie”, „Korekta” i „Historia” to przyciski ikon wiersza wariantu z nazwą dostępną „Przyjęcie: <produkt> / <wariant>”;
+  okna (`Dialog`) pokazują nazwę produktu z etykietą wariantu i mieszczą się w 375 px.
 - „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/api/v1/admin/me`; API sprawdza niezależnie).
-  - Przyjęcie: ilość i notatka. Klucz (UUID) powstaje przy otwarciu dialogu i jest używany ponownie przy ponowieniu
-    tego samego zapisu po błędzie sieci; nowy dialog to nowy klucz.
-  - Korekta: stan policzony, powód z listy (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka (wymagana przy
-    „Inne”), wersja z wiersza.
-  - 409 wersji: „Stan został w międzyczasie zmieniony – odśwież” i odświeżenie wiersza; 409 poniżej zarezerwowanego
-    i 409 klucza: `detail` z API; 422: komunikat naruszenia przy polu.
-- „Historia” (przycisk w wierszu, dla każdego pracownika): wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie, Korekta, Rezerwacja, Zwolnienie,
-  Zatwierdzenie), powodów i źródeł (Pracownik, Dane demo, System).
+  Fokus trafia w pierwsze pole po otwarciu okna (także klawiaturą), po błędzie w pole z błędem albo na komunikat okna, a po
+  zapisie okno się zamyka, pojawia się toast i fokus wraca na przycisk wiersza.
+  - Przyjęcie: ilość całkowita i notatka; przycisk „Przyjmij”; toast „Przyjęto N szt.: <produkt> / <wariant>”. Klucz (UUID)
+    powstaje przy otwarciu okna i jest używany ponownie przy ponowieniu tego samego zapisu po błędzie sieci; nowe okno to
+    nowy klucz.
+  - Korekta: stan policzony (liczba całkowita), powód z listy (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka
+    (wymagana przy „Inne”), wersja z wiersza; przycisk „Zapisz korektę”; toast „Stan skorygowany: <produkt> / <wariant>”.
+  - 409 korekty: panel odświeża bieżącą stronę; inna wersja wiersza (409 wersji) albo wiersza nie da się odczytać (odświeżenie
+    nieudane, wiersza nie ma na stronie): „Stan został w międzyczasie zmieniony – odśwież”; ta sama wersja (409 poniżej
+    zarezerwowanego): `detail` z API. 409 klucza przyjęcia: `detail` z API (409 klucza też odświeża bieżącą stronę); 422: komunikat naruszenia przy polu.
+- „Historia” (okno `Dialog`, dla każdego pracownika): wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie,
+  Korekta, Rezerwacja, Zwolnienie, Zatwierdzenie), powodów i źródeł (Pracownik, Dane demo, System). Tabela ma 11 kolumn
+  w przewijanym regionie dostępnym z klawiatury; poniżej 1024 px zostają Data, Rodzaj, Zmiana fizycznego i Stan fizyczny
+  po zmianie, a reszta jest liniami komórki daty.
 
 ## Scenariusze błędów
 

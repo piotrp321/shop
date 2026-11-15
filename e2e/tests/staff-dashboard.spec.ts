@@ -64,7 +64,7 @@ test("marketing sees the promotions and the codes, and does not ask for the orde
   await filtered;
   await expect(page).toHaveURL(`${urls.admin}/promotions?status=active`);
   await expect(page.getByRole("heading", { level: 1, name: "Promocje" })).toBeVisible();
-  await expect(page.getByTestId("status-filter")).toContainText("Aktywne");
+  await expect(page.getByRole("combobox", { name: "Status" }), "the Select „Status” shows the status of the address").toHaveText("Aktywne");
   for (const status of await page.getByTestId("promotion-status").allTextContents()) {
     expect(status.trim()).toBe("Aktywna");
   }

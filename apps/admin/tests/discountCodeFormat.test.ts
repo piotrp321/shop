@@ -6,7 +6,7 @@ import {
   groszeToInput,
   STATUS_FILTER_OPTIONS,
   statusLabel,
-  statusSeverity,
+  statusVariant,
 } from "@/discount-codes/format";
 
 // The grouping space of Intl is a no-break space; compare the text as people read it.
@@ -18,10 +18,10 @@ describe("discount code format", () => {
     expect(statusLabel("planned")).toBe("Zaplanowany");
     expect(statusLabel("active")).toBe("Aktywny");
     expect(statusLabel("expired")).toBe("Wygasły");
-    expect(statusSeverity("active")).toBe("success");
-    expect(statusSeverity("planned")).toBe("info");
-    expect(statusSeverity("disabled")).toBe("warn");
-    expect(statusSeverity("expired")).toBe("secondary");
+    expect(statusVariant("active")).toBe("success");
+    expect(statusVariant("planned")).toBe("info");
+    expect(statusVariant("disabled")).toBe("warning");
+    expect(statusVariant("expired")).toBe("neutral");
   });
 
   it("offers all statuses and each one for the filter", () => {

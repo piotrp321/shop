@@ -291,30 +291,35 @@ sklepu się nie zmienia.
 
 ## Panel (`apps/admin`)
 
-- Menu „Zamówienia” (role z P6, z `/me`), trasa `/orders` (`OrdersView`): tabela (numer, data, klient, e-mail,
-  status jako `Tag`, kwota), filtr statusu, przełącznik „Zwroty do wykonania” (kolumny kwoty i terminu zwrotu,
-  `Tag` „Po terminie” według `overdue`), pole wyszukiwania (numer albo e-mail, po Enter), stronicowanie po kursorach
-  ze stosem kursorów jak `usePriceList`. Błąd listy: komunikat z „Spróbuj ponownie”; 403 (zabezpieczenie, gdy API
-  odmówi mimo strażnika trasy): „Nie masz dostępu do zamówień.”. Pusta lista bez filtrów i wyszukiwania: „Brak
-  zamówień.”; z filtrem albo wyszukiwaniem: „Nie znaleziono zamówień.”.
+- Menu „Zamówienia” (role z P6, z `/me`), trasa `/orders` (`OrdersView`, standard listy panelu): tabela (numer, data,
+  klient z e-mailem, liczba pozycji, kwota, status jako `Badge`), od 640 px; poniżej 640 px lista kart z tych samych
+  danych (jeden układ naraz). Filtr statusu (`Select`), przełącznik „Zwroty do wykonania” (kolumny kwoty i terminu
+  zwrotu, `Badge` „Po terminie” według `overdue`), pole wyszukiwania (numer albo e-mail, po Enter), rozmiar strony
+  10, 25 albo 50 i stronicowanie po kursorach (`useCursorPager`). Błąd listy: komunikat z „Spróbuj ponownie”; 403
+  (zabezpieczenie, gdy API odmówi mimo strażnika trasy): „Nie masz dostępu do zamówień.”. Pusta lista bez filtrów
+  i wyszukiwania: „Nie ma jeszcze zamówień.”; z filtrem albo wyszukiwaniem: „Brak wyników dla wybranych filtrów.”.
 - Strażnik trasy: `/orders` i `/orders/:orderId` otwierają tylko `admin`, `support` i `warehouse` (role z `/me`,
   które strażnik w razie potrzeby sam pobiera). Pozostałe role trafiają na pulpit (`history.state.denied`), który
   pokazuje „Nie masz dostępu do tej strony.” (`role="alert"`) i czyści znacznik, więc przeładowanie komunikatu nie
   powtarza. Gdy `/me` się nie wczyta, strażnik przepuszcza trasę, a dostęp sprawdza API (403 widoku). Menu ukrywa
   pozycje tak samo, ale to strażnik i API egzekwują dostęp.
-- Filtry z adresu: lista czyta `status` (znany status) i `refund=pending` przy wejściu oraz przy każdej zmianie
-  `route.query` przy otwartej liście (pozycja menu „Zwroty do wykonania” na `/orders`): ustawia oba filtry według
-  adresu i wraca na pierwszą stronę, wyszukiwanie zostaje. Nieznana, pusta albo powtórzona wartość jest pomijana.
-  Zmiany filtrów w liście nie trafiają do adresu.
-- `/orders/:orderId` (`OrderDetailView`): kontakt, adres, pozycje, sumy, termin płatności dla `new`, historia
-  statusów (data, zmiana, aktor, notatka), sekcja „Zwrot pieniędzy” (kwota, termin z „Po terminie”, wykonanie:
-  data, pracownik, notatka) i przyciski z `allowedTransitions` („Oznacz jako wysłane”, „Oznacz jako dostarczone”,
-  „Anuluj zamówienie”, „Przyjmij zwrot”) oraz „Zwrot pieniędzy wykonany” przy `canCompleteRefund`. Dialog
-  potwierdzenia z jednowierszowym polem notatki (wymagane przy anulowaniu i zwrocie). Wysyła `version` widoku.
-- 409 (wersja, przejście, zwrot): odświeżenie szczegółów i komunikat „Zamówienie zostało w międzyczasie zmienione –
-  sprawdź jego stan.”; 422 przy polu notatki; 403 komunikat w dialogu. 404 szczegółów: „Nie znaleźliśmy
-  zamówienia.” z linkiem do listy; inny błąd odczytu: komunikat z „Spróbuj ponownie”.
-- Kod w `src/orders/` (`useOrderList`, `useOrderDetail`, `format.ts` z etykietami statusów i aktorów).
+- Stan listy w adresie (`useListUrlState`): `status` (znany status), `refund=pending`, `q` (zastosowane wyszukiwanie,
+  np. link „Inne zamówienia klienta” `/orders?q=<e-mail>`) i `perPage`; czytane przy wejściu i przy każdej zmianie
+  `route.query` przy otwartej liście (pozycja menu „Zwroty do wykonania” na `/orders`), zapisywane przez `replace`
+  bez nowego wpisu historii. Zmiana z adresu wraca na pierwszą stronę. Nieznana, pusta albo powtórzona wartość jest
+  pomijana, a adres poprawiany.
+- `/orders/:orderId` (`OrderDetailView`): H1 z numerem i etykietą statusu, okruszki „Pulpit › Zamówienia › numer”; od
+  1280 px dwie kolumny. Główna: pozycje (z promocją i rabatem z kodu), sumy, historia statusów jako oś czasu (czas,
+  zmiana, aktor, notatka) i sekcja „Zwrot pieniędzy” (kwota, termin z „Po terminie”, wykonanie: data, pracownik,
+  notatka). Boczna: karta „Akcje” z przyciskami z `allowedTransitions` („Oznacz jako wysłane”, „Oznacz jako dostarczone”,
+  „Anuluj zamówienie”, „Przyjmij zwrot”) i „Oznacz zwrot jako wykonany” przy `canCompleteRefund`, „Klient” (z linkiem
+  „Inne zamówienia klienta”), „Adres dostawy” i „Płatność” (daty, termin płatności dla `new`, `paymentId` z kopiowaniem).
+  Okno zmiany na `Dialog` z jednowierszowym polem notatki (wymagane przy anulowaniu i zwrocie); po zmianie toast ze
+  statusem z odpowiedzi API i fokus na karcie „Akcje” (a gdy zniknęła, na „Historii”). Wysyła `version` widoku.
+- 409 (wersja, przejście, zwrot): zamknięcie okna, odświeżenie szczegółów i komunikat „Zamówienie zostało w międzyczasie
+  zmienione – sprawdź jego stan.” z fokusem; 422 przy polu notatki; 403 komunikat w oknie. 404 szczegółów: „Nie
+  znaleźliśmy zamówienia.” z linkiem do listy; inny błąd odczytu: komunikat z „Spróbuj ponownie”.
+- Kod w `src/orders/` (`useOrderList`, `useOrderDetail`, `OrderTimeline`, `format.ts` z etykietami statusów i aktorów).
 
 ## Sklep (`apps/store`)
 

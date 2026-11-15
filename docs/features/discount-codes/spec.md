@@ -377,11 +377,19 @@ pozostali 403; odczyt: każdy pracownik):
 ## Panel (`apps/admin`)
 
 - Menu „Kody rabatowe” (`/discount-codes`). Przyciski zmian widzą tylko `admin` i `marketing`.
-- Lista z filtrem statusu, wyszukiwaniem po początku kodu i stronicowaniem kursorami; kolumny: kod, rabat, minimum,
-  okres (w `Europe/Warsaw`), użycia (`activeUses` / limit), status.
-- Formularz: kod (tylko przy tworzeniu), rodzaj i wartość, minimum, początek, koniec (opcjonalny), limit (opcjonalny),
-  włączony. Pola niedostępne według reguł edycji są zablokowane. 409 `discount-code-taken` przy polu kodu, inne 409:
-  `detail` i odświeżenie.
+- Lista w standardzie listy (okruszki „Pulpit › Marketing › Kody rabatowe”): filtr statusu jako `Select` „Status”,
+  wyszukiwanie po początku kodu (1–32 znaki po przycięciu białych znaków, separatorów i znaków niewidocznych jak w API,
+  więc sam znak niewidoczny to puste wyszukiwanie), rozmiar strony 10/25/50 (domyślnie 25) i stronicowanie kursorami;
+  stan (`status`, `q`, `perPage`) jest w adresie. Kolumny: kod, rabat, minimum, okres (w `Europe/Warsaw`), użycia
+  (`activeUses` / limit), status jako `Badge`; minimum i okres poniżej 1024 px są liniami komórki kodu. Akcja wiersza
+  „Edytuj: <kod>” i „Dodaj kod” tylko dla `admin` i `marketing`.
+- Formularz w standardzie formularza: karty „Kod i rabat” (kod tylko przy tworzeniu, rodzaj rabatu jako grupa opcji
+  Procent/Kwota, wartość, minimum) i „Okres i limit” (początek, koniec opcjonalny, limit opcjonalny) oraz boczna „Status”
+  (etykieta, przełącznik „Aktywny” jako zwykłe pole formularza, aktywne użycia). Pola niedostępne według reguł edycji
+  są zablokowane. Zmiana pól, także samego „Aktywny”, pokazuje pasek zapisu i trafia do API dopiero z „Zapisz”;
+  opuszczenie formularza z niezapisanymi zmianami pyta w oknie. Po zapisie toast „Kod rabatowy zapisany.” i fokus na
+  nagłówku. 409 `discount-code-taken` przy polu kodu, inne 409: `detail` i odświeżenie. Kod, który nie istnieje:
+  komunikat „Ten kod rabatowy nie istnieje.” z linkiem do listy.
 - Szczegóły zamówienia (`OrderDetailView`): wartość pozycji przed rabatem, kopia promocji przy pozycji, linia kodu,
   sumy po rabacie.
 
@@ -391,8 +399,8 @@ pozostali 403; odczyt: każdy pracownik):
   minimum, bez limitu i końca, początek w chwili seeda), `MINUS50` (50 zł od 300 zł, początek w chwili seeda, bez
   końca), `LATO15` (15%, okres od 60 do 30 dni przed seedem, wygasły). Czasy w pliku są względne (przesunięcie od chwili
   seeda). Plik sprawdzany przed resetem (błąd kończy seed bez zmian w danych).
-- E2E nie realizuje ani nie zmienia kodów demo: tworzy własny kod przez API panelu (helper w `e2e/support`) z unikalnym
-  tekstem na uruchomienie; `admin-design.spec.ts` tylko otwiera formularz pierwszego kodu z listy panelu, więc lista
+- E2E nie realizuje ani nie zmienia kodów demo: tworzy własny kod przez API panelu (helper w `e2e/support`) albo przez
+  formularz panelu, z unikalnym tekstem na uruchomienie; `admin-design.spec.ts` tylko otwiera formularz pierwszego kodu z listy panelu, więc lista
   nie może być pusta.
 
 ## Scenariusze błędów
