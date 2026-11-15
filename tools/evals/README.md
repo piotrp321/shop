@@ -26,6 +26,7 @@ i bez sieci; skrypty uruchamia się na hoście jak testy skryptów (`python3`).
 | `evals_score.py` | ocena przebiegu i przypadku, metryki, ocena całego uruchomienia (`score_run`) |
 | `evals_compare.py` | porównanie z poprzednim wynikiem i wynikiem odniesienia, werdykty |
 | `testdata/reports/` | oczyszczone prawdziwe raporty agentów, na których testowany jest parser |
+| `testdata/suite-reports/` | oczyszczone oryginalne raporty, które przeoczyły wadę przypadków zestawów (tylko `test_suites_cases.py`) |
 | `evals_registry.py` | rejestr, konfiguracja, odcisk, skróty kodu oceny i walidatorów |
 | `evals_history.py` | format pliku historii, czytanie i zapis (jedyna droga zapisu wyniku) |
 | `evals_lint.py`, `evals_check.py` | logika komend `lint` i `check` |
@@ -510,8 +511,8 @@ sh .github/scripts/test_evals_args.sh
 `injection`, zmianę odcisku po zmianie pliku przypadku oraz przebieg na sucho obu zestawów z atrapą CLI na klonie
 repozytorium (oceniany przez `score_run`), a także asercje `finding` (`FindingAssertionsTest`: poprawne znalezisko wady
 pasuje, znalezisko o innym problemie w tym samym pliku nie pasuje, oryginalne raporty, które wadę przeoczyły, nie pasują;
-wzorcowe znaleziska są w `testdata/suite-findings.json`, a raporty spoza `testdata/reports` test czyta z katalogu
-`EVALS_FIXTURES_DIR`, gdy jest ustawiony), specyfikację w zleceniach i zgodność kopii bramki w łatkach z plikiem w repo.
+wzorcowe znaleziska są w `testdata/suite-findings.json`, a oryginalne raporty w `testdata/reports` i `testdata/suite-reports`;
+katalog `EVALS_FIXTURES_DIR`, gdy jest ustawiony, dodaje ich kopie z pakietu fixture'ów), specyfikację w zleceniach i zgodność kopii bramki w łatkach z plikiem w repo.
 Testy, które potrzebują historii gita (commity, przebieg na sucho), same się
 pomijają w płytkim klonie, tak jak lint (`evals` w CI ma pełną historię, testy skryptów nie).
 

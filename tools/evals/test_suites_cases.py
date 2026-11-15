@@ -205,7 +205,11 @@ def matches(suite, assertion, text):
 
 
 def original_report(agent, name):
-    for base in (os.path.join(TESTDATA, 'reports'), os.environ.get('EVALS_FIXTURES_DIR')):
+    # `reports` (parsed by test_reports.py) and `suite-reports` (only these tests) are stored copies; the package of
+    # fixtures is optional
+    bases = (os.path.join(TESTDATA, 'reports'), os.path.join(TESTDATA, 'suite-reports'),
+             os.environ.get('EVALS_FIXTURES_DIR'))
+    for base in bases:
         if not base:
             continue
         for rel in (os.path.join(agent, name + '.md'), os.path.join(agent, 'reports', name + '.md')):
@@ -271,8 +275,9 @@ class FindingAssertionsTest(unittest.TestCase):
                 checked.append(name)
                 for assertion in finding_assertions(suite, case_id):
                     self.assertFalse(matches(suite, assertion, text), (case_id, name))
-        # the stored copies are always there; the other reports come with EVALS_FIXTURES_DIR
-        self.assertGreaterEqual(len(set(checked)), 9)
+        # every original report listed is stored in testdata, so the check also runs in CI
+        listed = {name for pairs in ORIGINAL_REPORTS.values() for _, name in pairs}
+        self.assertEqual(sorted(listed), sorted(set(checked)))
 
     def test_every_defect_case_has_the_original_reports_listed_or_none_exist(self):
         listed = set(ORIGINAL_REPORTS)
