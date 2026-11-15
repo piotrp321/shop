@@ -8,7 +8,9 @@ use App\Ordering\Application\Port\BackofficeOrderFilter;
 use App\Ordering\Application\Port\ListedOrder;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
 use App\Ordering\Application\Query\BackofficeOrderList;
+use App\Ordering\Application\Query\BackofficeOrderSort;
 use App\Ordering\Application\Query\InvalidBackofficeOrderCursor;
+use App\Ordering\Application\Query\InvalidBackofficeOrderList;
 use App\Ordering\Application\Query\ListBackofficeOrders;
 use App\Ordering\Application\Query\ListBackofficeOrdersHandler;
 use App\Ordering\Domain\OrderStatus;
@@ -168,8 +170,8 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
 
         self::assertSame([self::id(1), self::id(2)], array_map(static fn ($item): string => $item->orderId, $list->items));
         self::assertNotNull($list->nextCursor);
-        $cursor = BackofficeOrderCursor::decode($list->nextCursor, false);
-        self::assertEquals([new \DateTimeImmutable('2026-11-05 12:00:02+00:00'), self::id(2)], [$cursor->at, $cursor->id], 'placed_at and id of the last order of the page');
+        $cursor = BackofficeOrderCursor::decode($list->nextCursor, BackofficeOrderSort::PlacedDescending);
+        self::assertEquals([new \DateTimeImmutable('2026-11-05 12:00:02+00:00'), self::id(2)], [$cursor->value, $cursor->id], 'placed_at and id of the last order of the page');
 
         $this->list(new ListBackofficeOrders(null, false, null, $list->nextCursor, 2));
 
@@ -187,8 +189,8 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
 
         self::assertEquals(new BackofficeOrderFilter(OrderStatus::Cancelled, true, null, null), $this->reader->pages[0][0]);
         self::assertNotNull($list->nextCursor);
-        $cursor = BackofficeOrderCursor::decode($list->nextCursor, true);
-        self::assertEquals([new \DateTimeImmutable('2026-11-19 09:00:00+00:00'), self::id(1)], [$cursor->at, $cursor->id], 'the due date and id of the last order of the page');
+        $cursor = BackofficeOrderCursor::decode($list->nextCursor, BackofficeOrderSort::RefundDueDate);
+        self::assertEquals([new \DateTimeImmutable('2026-11-19 09:00:00+00:00'), self::id(1)], [$cursor->value, $cursor->id], 'the due date and id of the last order of the page');
     }
 
     public function testACursorOfTheOtherSortIsRefused(): void
@@ -218,6 +220,96 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         } finally {
             self::assertSame([], $this->reader->pages);
         }
+    }
+
+    public function testWithoutASortTheNewestComeFirst(): void
+    {
+        $this->list(new ListBackofficeOrders(null, false, null, null, 25));
+
+        self::assertSame(BackofficeOrderSort::PlacedDescending, $this->reader->pages[0][0]->sort);
+    }
+
+    public function testThePendingRefundsAreSortedByTheirDueDate(): void
+    {
+        $this->list(new ListBackofficeOrders(null, true, null, null, 25));
+
+        self::assertSame(BackofficeOrderSort::RefundDueDate, $this->reader->pages[0][0]->sort);
+    }
+
+    /**
+     * @return iterable<string, array{BackofficeOrderSort}>
+     */
+    public static function sorts(): iterable
+    {
+        yield 'newest first' => [BackofficeOrderSort::PlacedDescending];
+        yield 'oldest first' => [BackofficeOrderSort::PlacedAscending];
+        yield 'highest amount first' => [BackofficeOrderSort::TotalDescending];
+        yield 'lowest amount first' => [BackofficeOrderSort::TotalAscending];
+    }
+
+    #[DataProvider('sorts')]
+    public function testASortGoesToTheReaderAndTheNextCursorKeepsItWithThePositionOfTheLastOrder(BackofficeOrderSort $sort): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2), self::listed(3)];
+
+        $list = $this->list(new ListBackofficeOrders(OrderStatus::Paid, false, null, null, 2, $sort));
+
+        self::assertSame($sort, $this->reader->pages[0][0]->sort);
+        self::assertNotNull($list->nextCursor);
+        $cursor = BackofficeOrderCursor::decode($list->nextCursor, $sort);
+        self::assertEquals($sort->byTotal() ? 26_600 : new \DateTimeImmutable('2026-11-05 12:00:02+00:00'), $cursor->value);
+        self::assertSame(self::id(2), $cursor->id);
+
+        $this->list(new ListBackofficeOrders(OrderStatus::Paid, false, null, $list->nextCursor, 2, $sort));
+
+        self::assertEquals($cursor, $this->reader->pages[1][1]);
+    }
+
+    public function testACursorOfAnotherSortOfTheSameFamilyIsRefusedWithoutARead(): void
+    {
+        $this->reader->orders = [self::listed(1), self::listed(2)];
+        $cursor = $this->list(new ListBackofficeOrders(null, false, null, null, 1, BackofficeOrderSort::TotalDescending))->nextCursor;
+        self::assertNotNull($cursor);
+        $reads = $this->reader->pages;
+
+        foreach ([null, BackofficeOrderSort::PlacedAscending, BackofficeOrderSort::TotalAscending] as $sort) {
+            try {
+                $this->list(new ListBackofficeOrders(null, false, null, $cursor, 1, $sort));
+                self::fail('A cursor of another sort is no cursor.');
+            } catch (InvalidBackofficeOrderCursor) {
+            }
+        }
+        self::assertSame($reads, $this->reader->pages);
+    }
+
+    /**
+     * @return iterable<string, array{ListBackofficeOrders}>
+     */
+    public static function refusedCombinations(): iterable
+    {
+        yield 'a sort with the pending refunds' => [new ListBackofficeOrders(null, true, null, null, 25, BackofficeOrderSort::PlacedAscending)];
+        yield 'the amount with a search' => [new ListBackofficeOrders(null, false, 'R-100001', null, 25, BackofficeOrderSort::TotalDescending)];
+        yield 'the ascending amount with a search' => [new ListBackofficeOrders(OrderStatus::Paid, false, 'jan@example.com', null, 25, BackofficeOrderSort::TotalAscending)];
+        yield 'the due date of the refunds as a sort' => [new ListBackofficeOrders(null, false, null, null, 25, BackofficeOrderSort::RefundDueDate)];
+    }
+
+    #[DataProvider('refusedCombinations')]
+    public function testACombinationNoIndexServesIsRefusedWithoutARead(ListBackofficeOrders $query): void
+    {
+        try {
+            $this->list($query);
+            self::fail('The combination must be refused.');
+        } catch (InvalidBackofficeOrderList) {
+            self::assertSame([], $this->reader->pages);
+            self::assertSame([], $this->reader->counts);
+        }
+    }
+
+    public function testThePlacementSortsAcceptASearch(): void
+    {
+        $this->list(new ListBackofficeOrders(null, false, 'R-100001', null, 25, BackofficeOrderSort::PlacedAscending));
+
+        self::assertSame(BackofficeOrderSort::PlacedAscending, $this->reader->pages[0][0]->sort);
     }
 
     /**

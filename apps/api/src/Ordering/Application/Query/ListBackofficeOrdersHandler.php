@@ -30,10 +30,12 @@ final readonly class ListBackofficeOrdersHandler
      * its rows when there is no next page (nothing to count), otherwise the reader counts, never the table whole.
      *
      * @throws InvalidBackofficeOrderCursor
+     * @throws InvalidBackofficeOrderList   a sort with the pending refunds, the amount with a search
      */
     public function __invoke(ListBackofficeOrders $query): BackofficeOrderList
     {
-        $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, $query->pendingRefunds);
+        $sort = self::sortOf($query);
+        $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, $sort);
 
         $number = null;
         $email = null;
@@ -49,12 +51,12 @@ final readonly class ListBackofficeOrdersHandler
             }
         }
 
-        $filter = new BackofficeOrderFilter($query->status, $query->pendingRefunds, $number, $email);
+        $filter = new BackofficeOrderFilter($query->status, $query->pendingRefunds, $number, $email, $sort);
         $orders = $this->orders->page($filter, $after, $query->perPage + 1);
         $next = null;
         if (\count($orders) > $query->perPage) {
             $orders = \array_slice($orders, 0, $query->perPage);
-            $next = BackofficeOrderCursor::after($orders[$query->perPage - 1], $query->pendingRefunds)->encode();
+            $next = BackofficeOrderCursor::after($orders[$query->perPage - 1], $sort)->encode();
             $total = null === $after ? $this->orders->count($filter) : null;
         } else {
             $total = null === $after ? new BoundedCount(\count($orders), false) : null;
@@ -62,6 +64,26 @@ final readonly class ListBackofficeOrdersHandler
         $now = $this->clock->now();
 
         return new BackofficeOrderList(array_map(static fn (ListedOrder $order): BackofficeOrderListItem => self::item($order, $now), $orders), $next, $total);
+    }
+
+    /**
+     * @throws InvalidBackofficeOrderList
+     */
+    private static function sortOf(ListBackofficeOrders $query): BackofficeOrderSort
+    {
+        if ($query->pendingRefunds) {
+            return null === $query->sort ? BackofficeOrderSort::RefundDueDate : throw InvalidBackofficeOrderList::sortWithPendingRefunds();
+        }
+        if (BackofficeOrderSort::RefundDueDate === $query->sort) {
+            throw InvalidBackofficeOrderList::dueDateAsASort();
+        }
+        $sort = $query->sort ?? BackofficeOrderSort::PlacedDescending;
+        // No index serves the amount together with the search: the list would read every order of the search first.
+        if ($sort->byTotal() && null !== $query->q) {
+            throw InvalidBackofficeOrderList::totalWithSearch();
+        }
+
+        return $sort;
     }
 
     private static function item(ListedOrder $order, \DateTimeImmutable $now): BackofficeOrderListItem

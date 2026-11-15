@@ -156,7 +156,7 @@
                     "Catalog"
                 ],
                 "summary": "Product list",
-                "description": "A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "description": "A page of products, drafts included, sorted by name (by default) or by `sort`, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
                 "operationId": "listBackofficeProducts",
                 "parameters": [
                     {
@@ -194,9 +194,25 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "name",
+                            "enum": [
+                                "name",
+                                "-name",
+                                "-updatedAt",
+                                "updatedAt"
+                            ]
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
-                        "description": "The `next` cursor of the previous page.",
+                        "description": "The `next` cursor of the previous page of the same sort.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -982,7 +998,7 @@
                     "Inventory"
                 ],
                 "summary": "Stock list",
-                "description": "A page of products sorted by name, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "description": "A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
                 "operationId": "listStock",
                 "parameters": [
                     {
@@ -1007,9 +1023,25 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "name",
+                            "enum": [
+                                "name",
+                                "-name",
+                                "-updatedAt",
+                                "updatedAt"
+                            ]
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
-                        "description": "The `next` cursor of the previous page.",
+                        "description": "The `next` cursor of the previous page of the same sort.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -1560,7 +1592,7 @@
                     "Ordering"
                 ],
                 "summary": "Order list",
-                "description": "A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.",
+                "description": "A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), which takes no `sort`. The status filter and the search combine with it; sorting by the amount takes no search. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.",
                 "operationId": "listOrders",
                 "parameters": [
                     {
@@ -1596,9 +1628,25 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q`.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "-placedAt",
+                            "enum": [
+                                "-placedAt",
+                                "placedAt",
+                                "-total",
+                                "total"
+                            ]
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
-                        "description": "The `nextCursor` of the previous page.",
+                        "description": "The `nextCursor` of the previous page of the same sort.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -1944,7 +1992,7 @@
                     "Pricing"
                 ],
                 "summary": "Price list",
-                "description": "A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "description": "A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
                 "operationId": "listPrices",
                 "parameters": [
                     {
@@ -1969,9 +2017,25 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "name",
+                            "enum": [
+                                "name",
+                                "-name",
+                                "-updatedAt",
+                                "updatedAt"
+                            ]
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
-                        "description": "The `next` cursor of the previous page.",
+                        "description": "The `next` cursor of the previous page of the same sort.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -4268,6 +4332,17 @@
                             "published"
                         ]
                     },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "name",
+                            "-name",
+                            "-updatedAt",
+                            "updatedAt"
+                        ]
+                    },
                     "after": {
                         "type": "string",
                         "nullable": true,
@@ -4315,6 +4390,17 @@
                         "type": "string",
                         "nullable": true,
                         "default": null
+                    },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "name",
+                            "-name",
+                            "-updatedAt",
+                            "updatedAt"
+                        ]
                     },
                     "after": {
                         "type": "string",
@@ -4450,6 +4536,17 @@
                         "maxLength": 254,
                         "minLength": 1
                     },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "-placedAt",
+                            "placedAt",
+                            "-total",
+                            "total"
+                        ]
+                    },
                     "after": {
                         "type": "string",
                         "nullable": true,
@@ -4540,6 +4637,17 @@
                         "type": "string",
                         "nullable": true,
                         "default": null
+                    },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "name",
+                            "-name",
+                            "-updatedAt",
+                            "updatedAt"
+                        ]
                     },
                     "after": {
                         "type": "string",

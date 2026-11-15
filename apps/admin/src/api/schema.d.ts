@@ -73,7 +73,7 @@ export interface paths {
         };
         /**
          * Product list
-         * @description A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products, drafts included, sorted by name (by default) or by `sort`, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listBackofficeProducts"];
         put?: never;
@@ -201,7 +201,7 @@ export interface paths {
         };
         /**
          * Stock list
-         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listStock"];
         put?: never;
@@ -301,7 +301,7 @@ export interface paths {
         };
         /**
          * Order list
-         * @description A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
+         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), which takes no `sort`. The status filter and the search combine with it; sorting by the amount takes no search. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
          */
         get: operations["listOrders"];
         put?: never;
@@ -361,7 +361,7 @@ export interface paths {
         };
         /**
          * Price list
-         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listPrices"];
         put?: never;
@@ -989,6 +989,11 @@ export interface components {
              * @enum {string|null}
              */
             status: "draft" | "published" | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "name" | "-name" | "-updatedAt" | "updatedAt" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
@@ -1008,6 +1013,11 @@ export interface components {
             q: string | null;
             /** @default null */
             category: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "name" | "-name" | "-updatedAt" | "updatedAt" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
@@ -1069,6 +1079,11 @@ export interface components {
             refund: "pending" | null;
             /** @default null */
             q: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "-placedAt" | "placedAt" | "-total" | "total" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
@@ -1111,6 +1126,11 @@ export interface components {
             q: string | null;
             /** @default null */
             category: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "name" | "-name" | "-updatedAt" | "updatedAt" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
@@ -2229,7 +2249,9 @@ export interface operations {
                 category?: string;
                 /** @description Only drafts or only published products. */
                 status?: "draft" | "published";
-                /** @description The `next` cursor of the previous page. */
+                /** @description The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
+                sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description The `next` cursor of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
@@ -2832,7 +2854,9 @@ export interface operations {
                 q?: string;
                 /** @description Category id (UUID). */
                 category?: string;
-                /** @description The `next` cursor of the previous page. */
+                /** @description The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
+                sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description The `next` cursor of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
@@ -3232,7 +3256,9 @@ export interface operations {
                 refund?: "pending";
                 /** @description An order number or an email, exact, any letter case; 1 to 254 characters once trimmed. */
                 q?: string;
-                /** @description The `nextCursor` of the previous page. */
+                /** @description The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q`. */
+                sort?: "-placedAt" | "placedAt" | "-total" | "total";
+                /** @description The `nextCursor` of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
@@ -3495,7 +3521,9 @@ export interface operations {
                 q?: string;
                 /** @description Category id (UUID). */
                 category?: string;
-                /** @description The `next` cursor of the previous page. */
+                /** @description The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
+                sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description The `next` cursor of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
