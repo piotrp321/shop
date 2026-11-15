@@ -54,7 +54,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
   przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
   i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
-  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa). Błąd dowolnego kroku przerywa skrypt
+  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego krok `ordering:read-models:rebuild:sales`
+  to przebudowa sprzedaży po `ordering:seed-demo`, bez osobnego wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
@@ -62,7 +63,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
   zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
   `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
-  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300) i `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów). Krok, który się nie powiedzie, nie jest
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) i `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
   zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
   ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
   uruchomione). Test: `BackfillCommandTest`
@@ -70,6 +71,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
   partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
   (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
+- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; część
+  sprzedaży to krok `app:backfill`, więc woła ją też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
+  odczytu Ordering z zamówień: sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
+  pierwszej godziny z opłaconym zamówieniem albo wierszem sprzedaży (`nextHour`: po indeksie częściowym
+  `ordering_order (paid_at) WHERE paid_at IS NOT NULL` i kluczu tabeli; godziny bez jednego i drugiego pomija), każda
+  w osobnej transakcji (opis protokołu przy wyjątku DBAL sprzedaży w „Architekturze”). Idempotentna: drugi przebieg
+  zostawia te same wiersze, a wynik to dokładnie tabela zapisu przyrostowego (wiersz godziny i kubełka z zamówieniami,
+  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Kod wyjścia: 0 –
+  gotowe, 1 – przerwane błędem (przebudowane godziny zostają; ponowne uruchomienie zaczyna od początku)
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -163,6 +173,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wycofany webhook wycofuje też licznik, a równoległe płatności jednej godziny czekają najwyżej na wiersz swojego
   kubełka. Godzinę (`date_bin` od `paid_at`) i kubełek (dolne 4 bity ostatniego bajtu UUID) liczą wyłącznie wyrażenia
   SQL `SalesSql`, wspólne dla zapisu przyrostowego i przebudowy, więc obie drogi trafiają w ten sam wiersz.
+  Przebudowa godziny (`SalesHoursRebuild::rebuild`, `READ COMMITTED`) w jednej transakcji: `INSERT` 16 wierszy godziny
+  `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` tych wierszy, dopiero potem liczenie zamówień opłaconych w godzinie
+  (`UPDATE` z agregacją po kubełku) i `DELETE` wierszy z zerem. Płatność godziny dopisuje się do jednego z tych
+  wierszy przed swoim commitem, więc albo zatwierdziła się przed blokadą (liczenie ją widzi, a zapis nadpisuje jej
+  dopisanie), albo czeka na commit przebudowy i dopisuje się do nowego wiersza; żadne zamówienie nie ginie ani nie
+  liczy się dwa razy (test `SalesRebuildConcurrencyTest`, dwa procesy). Odczyt (`GetSalesSummary`) sumuje najwyżej
+  2 × 720 godzin po kluczu tabeli, nigdy zamówień.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym

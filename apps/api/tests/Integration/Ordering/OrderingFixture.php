@@ -90,13 +90,14 @@ final class OrderingFixture
 
     /**
      * A guest order of one line (10,00 zł net, 12,30 zł gross) to $email, written as plain SQL with a number and keys
-     * of its own: new, or paid when $paid. No reservation, no outbox row.
+     * of its own: new, or paid when $paid (now, or at $paidAt). No reservation, no outbox row. The id is a new UUID v7
+     * unless given.
      *
      * @return string the order id
      */
-    public static function order(Connection $connection, string $email = 'jan@example.com', bool $paid = false): string
+    public static function order(Connection $connection, string $email = 'jan@example.com', bool $paid = false, ?string $paidAt = null, ?string $id = null): string
     {
-        $orderId = Uuid::v7()->toRfc4122();
+        $orderId = $id ?? Uuid::v7()->toRfc4122();
         $connection->executeStatement(
             "INSERT INTO ordering_order (id, number, status, owner_type, customer_id, access_token, email, full_name, phone, street, postal_code, city, country, currency, total_net, total_vat, total_gross, idempotency_key, request_fingerprint, placed_at, payment_deadline, paid_at, payment_id, version)
              VALUES (?, ?, ?, 'guest', NULL, ?, ?, 'Jan Kowalski', '+48600100200', 'Długa 1', '00-950', 'Warszawa', 'PL', 'PLN', 1000, 230, 1230, ?, ?, now(), now() + interval '30 minutes', ?, ?, 1)",
@@ -108,7 +109,7 @@ final class OrderingFixture
                 $email,
                 'fixture-'.$orderId,
                 str_repeat('a', 64),
-                $paid ? new \DateTimeImmutable()->format('Y-m-d H:i:sP') : null,
+                $paid ? new \DateTimeImmutable($paidAt ?? 'now')->format('Y-m-d H:i:sP') : null,
                 $paid ? Uuid::v7()->toRfc4122() : null,
             ],
         );
