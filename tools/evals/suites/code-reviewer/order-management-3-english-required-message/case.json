@@ -17,7 +17,7 @@
       "type": "finding",
       "severity": "IMPORTANT",
       "path": "ChangeOrderStatus|CompleteRefund|BackofficeOrder",
-      "keyword": "angiel|English|This (value|field)|MissingConstructor|(nie|bez)\\s+po\\s+polsku|nie jest po polsku|REQUIRE_ALL_PROPERTIES[\\s\\S]{0,200}(komunikat|message|polsk)"
+      "keyword": "angiel|English|This (value|field)|MissingConstructor|(nie|bez)\\s+po\\s+polsku|nie jest po polsku|REQUIRE_ALL_PROPERTIES[\\s\\S]{0,200}(komunikat|message|polsk)|polskiego komunikatu|non-Polish|untranslated|nieprzetłumacz\\w*|not (in )?Polish|inn\\w+\\s+niż\\s+polsk\\w*|domyślny\\w*\\s+komunikat\\w*|default\\s+(Symfony|framework)\\w*\\s+message|nie jest przetłumaczon\\w*|not translated"
     }
   ]
 }

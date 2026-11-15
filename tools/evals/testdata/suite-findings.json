@@ -18,6 +18,54 @@
       [
         "**I1. Control characters are accepted in product texts**",
         "- `ValidProductWriteValidator.php`: a control character such as a NUL byte passes the length check, the database then fails with a 500."
+      ],
+      [
+        "**I1. Bajt null w nazwie daje 500**",
+        "- `apps/api/src/Catalog/UI/Http/Validation/ValidProductWriteValidator.php:61`: nazwa z bajtem null przechodzi walidację, PostgreSQL ją odrzuca, API zwraca 500 zamiast 422."
+      ],
+      [
+        "**I1. Znak U+0000 w nazwie daje 500**",
+        "- `ValidProductWriteValidator::name()`: znak U+0000 przechodzi sprawdzenie długości, zapis kończy się błędem bazy."
+      ],
+      [
+        "**I1. Nazwa z `\\x00` daje 500**",
+        "- `ValidProductWriteValidator.php`: nazwa z `\\x00` przechodzi walidator, a zapis wywraca się w bazie (500)."
+      ],
+      [
+        "**I1. Null byte in product name gives 500**",
+        "- `ValidProductWriteValidator.php`: a name with a null byte (\\x00) passes the validator and the insert fails with a 500."
+      ],
+      [
+        "**I1. Nazwa z samej spacji niełamiącej przechodzi**",
+        "- `ValidProductWriteValidator::name()`: nazwa złożona tylko ze spacji niełamiącej nie jest pusta, bo `trim()` jej nie usuwa."
+      ],
+      [
+        "**I1. Non-breaking space only name accepted**",
+        "- `ValidProductWriteValidator.php`: a name made of a non-breaking space only is accepted, `trim()` is ASCII only."
+      ],
+      [
+        "**I1. Znak NULL w nazwie daje 500**",
+        "- `ValidProductWriteValidator.php`: znak NULL w nazwie przechodzi walidację, a zapis w bazie kończy się 500."
+      ],
+      [
+        "**I1. Nazwa ze znakiem zerowym daje 500**",
+        "- `ValidProductWriteValidator::name()`: nazwa ze znakiem zerowym przechodzi walidator, baza ją odrzuca."
+      ],
+      [
+        "**I1. Nazwa z twardej spacji przechodzi**",
+        "- `ValidProductWriteValidator::name()`: nazwa z samej twardej spacji nie jest pusta, `trim()` jej nie usuwa."
+      ],
+      [
+        "**I1. Spacje spoza ASCII przechodzą**",
+        "- `ValidProductWriteValidator.php`: nazwa składająca się z samych spacji spoza ASCII przechodzi sprawdzenie pustego tekstu."
+      ],
+      [
+        "**I1. Nazwa z \\u2028 przechodzi**",
+        "- `ValidProductWriteValidator.php`: separator wiersza w nazwie (\\u2028) nie jest odrzucany."
+      ],
+      [
+        "**I1. Znaki kontrolne w nazwie**",
+        "- `ValidProductWriteValidator.php`: znaki kontrolne w nazwie przechodzą walidację."
       ]
     ],
     "miss": [
@@ -90,6 +138,38 @@
       [
         "**I1. Whitespace-only note passes**",
         "- `StaffNote.php`: `trim()` handles only ASCII whitespace, a note made of a Unicode whitespace character is stored as a note."
+      ],
+      [
+        "**I1. Notatka z samej spacji niełamiącej jest przyjęta**",
+        "- `apps/api/src/Ordering/Domain/StaffNote.php`: notatka złożona wyłącznie ze spacji niełamiącej nie jest pusta po `trim()`, więc anulowanie przechodzi bez prawdziwej notatki."
+      ],
+      [
+        "**I1. Non-breaking space only note accepted**",
+        "- `StaffNote.php`: a note of a non-breaking space only is stored as a note, `trim()` is ASCII only."
+      ],
+      [
+        "**I1. Notatka z białych znaków spoza ASCII**",
+        "- `StaffNote::optional()`: `trim()` nie usuwa białych znaków spoza ASCII, więc notatka z samych takich znaków przechodzi jako niepusta."
+      ],
+      [
+        "**I1. Notatka z samego `\\u00A0` jest przyjęta**",
+        "- `StaffNote.php`: ciąg `\\u00A0` nie jest przycinany, więc wymagana notatka jest pusta w oczach człowieka, a walidacja przechodzi."
+      ],
+      [
+        "**I1. Notatka z twardej spacji**",
+        "- `StaffNote.php`: notatka z samej twardej spacji przechodzi, `trim()` jej nie usuwa."
+      ],
+      [
+        "**I1. Notatka ze spacji niełamliwej**",
+        "- `StaffNote.php`: notatka z samą spacją niełamliwą przechodzi jako niepusta."
+      ],
+      [
+        "**I1. Notatka z U+2003**",
+        "- `StaffNote.php`: notatka złożona z U+2003 przechodzi walidację `trim()`."
+      ],
+      [
+        "**I1. Spacje inne niż ASCII**",
+        "- `StaffNote.php`: notatka z samych spacji innych niż ASCII przechodzi, `trim()` nie pomaga."
       ]
     ],
     "miss": [
@@ -120,6 +200,42 @@
       [
         "**I1. English message on a missing key**",
         "- `BackofficeOrderController` and `CompleteRefundController`: a missing key gives a 422 with an English message."
+      ],
+      [
+        "**I1. Brak polskiego komunikatu dla brakującego klucza**",
+        "- `apps/api/src/Ordering/UI/Http/ChangeOrderStatusController.php`: brakujący klucz w treści daje 422 bez polskiego komunikatu w `violations[].title`."
+      ],
+      [
+        "**I1. Missing key yields non-Polish violation title**",
+        "- `CompleteRefundController.php`: a request without a required key returns a 422 whose `violations[].title` is non-Polish."
+      ],
+      [
+        "**I1. Nieprzetłumaczony komunikat brakującego klucza**",
+        "- `BackofficeOrderController`: `violations[].title` dla brakującego klucza jest nieprzetłumaczony, kryterium wymaga polskiego."
+      ],
+      [
+        "**I1. Untranslated message for a missing key**",
+        "- `ChangeOrderStatusController.php`: the violation for a missing key carries an untranslated framework message, the criterion requires Polish."
+      ],
+      [
+        "**I1. Komunikat brakującego klucza nie jest polski**",
+        "- `CompleteRefundController.php`: odpowiedź 422 na brakujący klucz ma tytuł naruszenia nie po polsku."
+      ],
+      [
+        "**I1. Komunikat inny niż polski**",
+        "- `ChangeOrderStatusController.php`: brakujący klucz daje komunikat inny niż polski."
+      ],
+      [
+        "**I1. Domyślny komunikat frameworka**",
+        "- `CompleteRefundController.php`: brakujący klucz zwraca domyślny komunikat Symfony zamiast polskiego."
+      ],
+      [
+        "**I1. Komunikat nieprzetłumaczony**",
+        "- `CompleteRefundController.php`: komunikat o brakującym kluczu nie jest przetłumaczony na polski."
+      ],
+      [
+        "**I1. Missing key returns the default message**",
+        "- `BackofficeOrderController.php`: a missing key returns the default Symfony message, not a Polish one."
       ]
     ],
     "miss": [

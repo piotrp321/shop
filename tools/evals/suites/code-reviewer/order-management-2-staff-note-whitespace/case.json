@@ -17,7 +17,7 @@
       "type": "finding",
       "severity": "IMPORTANT",
       "path": "StaffNote",
-      "keyword": "\\bNBSP\\b|U\\+00A0|nierozdziel|biał\\w+ znak\\w*\\s+Unicode|Unicode\\w*\\s+(biał|whitespace|space|spacj)|spacj\\w*\\s+Unicode|trim\\w*(\\(\\))?[^.\\n]{0,80}(ASCII|Unicode)|\\\\p\\{"
+      "keyword": "\\bNBSP\\b|U\\+00A0|nierozdziel|biał\\w+ znak\\w*\\s+Unicode|Unicode\\w*\\s+(biał|whitespace|space|spacj)|spacj\\w*\\s+Unicode|trim\\w*(\\(\\))?[^.\\n]{0,80}(ASCII|Unicode)|\\\\p\\{|niełamiąc\\w*|non-breaking|no-break|\\\\u00A0|\\\\xA0|non-ASCII|spoza ASCII|poza ASCII|niełamliw\\w*|tward\\w*\\s+spacj\\w*|spacj\\w*\\s+tward\\w*|U\\+[0-9A-F]{4}|inn\\w+\\s+niż\\s+(ASCII|zwykł)"
     }
   ]
 }

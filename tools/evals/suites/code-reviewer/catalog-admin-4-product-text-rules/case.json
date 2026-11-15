@@ -17,7 +17,7 @@
       "type": "finding",
       "severity": "IMPORTANT",
       "path": "ValidProductWrite",
-      "keyword": "(?-i:\\bNUL\\b)|\\bNBSP\\b|U\\+00A0|U\\+2028|bajt\\w* zerow|sterując|control char|biał\\w+ znak\\w*\\s+Unicode|Unicode\\w*\\s+(biał|whitespace|space)|\\\\p\\{"
+      "keyword": "(?-i:\\bNUL\\b)|\\bNBSP\\b|U\\+00A0|U\\+2028|bajt\\w* zerow|sterując|control char|biał\\w+ znak\\w*\\s+Unicode|Unicode\\w*\\s+(biał|whitespace|space)|\\\\p\\{|null byte|bajt\\w* null|U\\+0000|\\\\x00|\\\\0\\b|niełamiąc\\w*|nierozdziel\\w*|non-breaking|znak\\w*\\s+(NUL|zerow)\\w*|niełamliw\\w*|tward\\w*\\s+spacj\\w*|spoza ASCII|poza ASCII|non-ASCII|\\\\u(00A0|2028)|znak\\w*\\s+kontroln\\w*|Unicode'?\\w*\\s+biał"
     }
   ]
 }
