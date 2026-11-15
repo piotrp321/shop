@@ -50,7 +50,8 @@ final class EventFlowTest extends MessagingKernelTestCase
     public function testCreatedProductReachesTheIndexThroughTheOutboxAndRabbitMq(): void
     {
         $this->createProduct();
-        self::assertSame(1, $this->rows('outbox'));
+        // Both ProductCreated: the domain one for the previous version and the contract.
+        self::assertSame(2, $this->rows('outbox'));
 
         $this->consumeOutboxAndEvents();
 
@@ -182,9 +183,10 @@ final class EventFlowTest extends MessagingKernelTestCase
         self::assertSame($requestId, $byMessage['{class} was handled successfully (acknowledging to transport).'] ?? null, 'the identifier of the entry of the worker');
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
 
-        // The retry comes back to the queue after its delay (100 ms ±10 %); it must not reach a later test.
-        $this->awaitEventsInQueue(1);
-        self::assertCount(1, $this->drainEvents());
+        // The retries (one per ProductCreated) come back to the queue after their delay (100 ms ±10 %); they must not
+        // reach a later test.
+        $this->awaitEventsInQueue(2);
+        self::assertCount(2, $this->drainEvents());
     }
 
     private function createProduct(): void
@@ -212,7 +214,8 @@ final class EventFlowTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 2, '--time-limit' => 10, '--sleep' => 0.05]);
+        // The relay of both ProductCreated, then their handling.
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 4, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }

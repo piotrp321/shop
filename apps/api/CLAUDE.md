@@ -498,7 +498,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product` zapisuje wewnętrzne
   `Catalog\Domain\Product\ProductCreated` przy utworzeniu i `Catalog\Domain\Product\ProductChanged` przy każdej
   edycji, publikacji i wycofaniu, a handler komendy tłumaczy je na kontrakty (`IntegrationEvents::translate`) przed
-  publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Seed tworzy produkty bez
+  publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Wyjątek zgodności wersji (do
+  usunięcia w kolejnej wersji): w tej wersji `CreateProduct` publikuje oba `ProductCreated`, domenowe (poprzednia
+  wersja indeksuje produkt tylko z niego) i integracyjne, a `IndexProduct` obsługuje też domenowe z outboxa poprzedniej
+  wersji, więc nowy produkt jest indeksowany dwa razy (reindeksacja to dopuszcza). Inventory subskrybuje tylko
+  integracyjne (Deptrac); rekordy produktów utworzonych w oknie wymiany uzupełnia Job `backfill`. Seed tworzy produkty bez
   `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana pól
   kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
   `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, oba, rekord stanu z produktem dla każdego wariantu),

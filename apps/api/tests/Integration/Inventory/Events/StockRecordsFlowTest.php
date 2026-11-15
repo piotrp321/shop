@@ -51,8 +51,8 @@ final class StockRecordsFlowTest extends MessagingKernelTestCase
             'staff-sub-1',
         ));
 
-        // The relay of ProductCreated, then its consumers.
-        $this->consumeOutboxAndEvents(2);
+        // The relay of both ProductCreated (the domain one for the previous version), then their consumers.
+        $this->consumeOutboxAndEvents(4);
 
         self::assertSame([[self::GREEN, self::PRODUCT_ID, 0, 0], [self::ORANGE, self::PRODUCT_ID, 0, 0]], $this->records());
 

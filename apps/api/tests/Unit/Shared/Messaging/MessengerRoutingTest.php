@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Shared\Messaging;
 use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
 use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
+use App\Catalog\Domain\Product\ProductCreated as ProductCreatedInCatalog;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
@@ -92,6 +93,21 @@ final class MessengerRoutingTest extends KernelTestCase
         self::assertSame(self::PRODUCT_ID, $this->indexer->indexed[0]->id);
         self::assertSame([], $this->transport('outbox')->get());
         self::assertSame([], $this->transport('events')->get());
+    }
+
+    /**
+     * The outbox of the previous version holds the domain ProductCreated; the new worker indexes its product too.
+     */
+    public function testTheDomainProductCreatedOfThePreviousVersionIndexesTheProduct(): void
+    {
+        $this->publisher()->publish(new ProductCreatedInCatalog(self::PRODUCT_ID, new \DateTimeImmutable('2026-10-29T12:00:00+00:00')));
+        $this->consume('outbox');
+
+        $this->consume('events');
+
+        self::assertCount(1, $this->indexer->indexed);
+        self::assertSame(self::PRODUCT_ID, $this->indexer->indexed[0]->id);
+        self::assertCount(0, $this->transport('failed')->getSent());
     }
 
     private function event(): ProductCreated
