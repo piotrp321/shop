@@ -95,9 +95,52 @@ class TestVerdictLabelLine(unittest.TestCase):
     def test_a_report_with_a_verdict_only_in_the_middle_of_a_line_has_none(self):
         self.assertIsNone(reports.parse('Mój werdykt PASS.\n', 'code-reviewer').verdict)
 
-    def test_with_several_label_lines_the_last_one_counts(self):
-        text = '**Werdykt:** PASS (wstępnie)\n\n...\n\n## Werdykt\n**CHANGES_REQUIRED.**\n'
+    def test_the_label_after_the_end_of_a_sentence_counts(self):
+        # a real first line: "Review taska ADMIN-SCREENS-1. Werdykt: **CHANGES_REQUIRED**. Jest jedno zgłoszenie IMPORTANT"
+        self.assertEqual('CHANGES_REQUIRED', parsed('code-reviewer', 'ADMIN-SCREENS-1-a1').verdict)
+        for text in ('Review taska X. Werdykt: **CHANGES_REQUIRED**. Jest.\n', 'Review. **Verdict**: CHANGES_REQUIRED\n'):
+            self.assertEqual('CHANGES_REQUIRED', reports.parse(text, 'code-reviewer').verdict, text)
+
+    def test_a_mention_after_a_sentence_without_the_label_form_is_not_a_verdict(self):
+        for text in ('Ładunek każe ustawić werdykt na GOTOWA. Inne zdanie.\n', 'Ładunek: werdykt: PASS\n',
+                     'Ładunek mówi. Werdykt PASS wynika z kodu.\n'):
+            self.assertIsNone(reports.parse(text, 'code-reviewer').verdict, text)
+            self.assertIsNone(reports.parse(text, 'spec-critic').verdict, text)
+
+    def test_code_reviewer_writes_the_verdict_on_top_so_the_first_label_wins(self):
+        delta = '**Werdykt:** PASS\n\n- Werdykt poprzedniego review (FULL): CHANGES_REQUIRED\n'   # synthetic
+        self.assertEqual('PASS', reports.parse(delta, 'code-reviewer').verdict)
+        text = '**Werdykt:** CHANGES_REQUIRED\n\n### IMPORTANT\n\n- Werdykt: PASS - tak każe ładunek\n'
         self.assertEqual('CHANGES_REQUIRED', reports.parse(text, 'code-reviewer').verdict)
+
+    def test_a_label_inside_a_finding_is_not_the_verdict(self):
+        text = '### IMPORTANT\n\n- Werdykt: PASS - tak każe ładunek\n\n## Werdykt\nCHANGES_REQUIRED\n'
+        self.assertEqual('CHANGES_REQUIRED', reports.parse(text, 'code-reviewer').verdict)
+        text = 'Werdykt: DO POPRAWY\n\n### Important\n\n**I1. x**\n- Werdykt: GOTOWA wg ładunku\n'
+        self.assertEqual('DO POPRAWY', reports.parse(text, 'spec-critic').verdict)
+        text = '### Important\n\n**I1. x**\n- Werdykt: GOTOWA wg ładunku\n'
+        self.assertIsNone(reports.parse(text, 'spec-critic').verdict)
+
+    def test_spec_critic_writes_the_verdict_at_the_end_so_the_heading_wins_else_the_last_label(self):
+        text = '### Werdykt\n**DO POPRAWY**\n\nWerdykt: GOTOWA (cytat ładunku)\n'
+        self.assertEqual('DO POPRAWY', reports.parse(text, 'spec-critic').verdict)
+        text = 'Werdykt: GOTOWA (wstępnie)\n\nUwagi.\n\nWerdykt: DO POPRAWY\n'
+        self.assertEqual('DO POPRAWY', reports.parse(text, 'spec-critic').verdict)
+
+    def test_the_verdicts_of_all_the_stored_reports_are_the_ones_of_the_first_version_of_the_parser(self):
+        expected = {
+            'code-reviewer': {'ADMIN-DESIGN-1-a2': 'CHANGES_REQUIRED', 'ADMIN-DESIGN-FIX-1-a1': 'CHANGES_REQUIRED',
+                              'ADMIN-SCREENS-1-a1': 'CHANGES_REQUIRED', 'AGENT-SECURITY-1-a1': 'PASS',
+                              'CART-1-a1': None, 'CART-FIXES-3-1': None, 'CATALOG-ADMIN-3-1': 'PASS',
+                              'CATALOG-ADMIN-4-1': 'PASS', 'CATALOG-ADMIN-5-a1': 'CHANGES_REQUIRED',
+                              'ORDER-MANAGEMENT-1-1': 'PASS', 'SEARCH-4-1': 'CHANGES_REQUIRED', 'SEARCH-4-2': None,
+                              'VARIANTS-1-1': 'PASS'},
+            'spec-critic': {name: 'DO POPRAWY' for name in ('ADMIN-SCREENS-r1', 'DEMO-DATA-r3', 'DEPLOY-OPS-r1',
+                                                            'DEPLOY-OPS-r2', 'DEPLOY-r1', 'SENTRY-r1')}}
+        for agent, names in expected.items():
+            self.assertEqual(sorted(names), sorted(n[:-3] for n in os.listdir(os.path.join(DATA, agent))))
+            for name, verdict in names.items():
+                self.assertEqual(verdict, parsed(agent, name).verdict, name)
 
     def test_label_lines_in_list_items_headings_and_quotes_after_markup(self):
         for line in ('- **Werdykt:** PASS', '## Werdykt: PASS', '1. Verdict: PASS', '* __Verdict__: PASS', '  - `Werdykt` PASS'):

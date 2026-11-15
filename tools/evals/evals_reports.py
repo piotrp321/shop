@@ -65,10 +65,11 @@ class Finding:
     """A finding of a report: rank (1-3), the severity word as written, its first line (1-based) and its text
     (markup of bold and code removed)."""
 
-    def __init__(self, rank, label, line, text):
+    def __init__(self, rank, label, line, text, last=None):
         self.rank = rank
         self.label = label
         self.line = line
+        self.last = line if last is None else last   # its last line: a label inside is not the verdict
         self.text = text
 
     @property
@@ -222,7 +223,8 @@ def _findings(lines):
         nonlocal current
         if current is not None:
             text = _clean(current['lines'])
-            findings.append(Finding(current['rank'], current['word'], current['lines'][0].number, text))
+            findings.append(Finding(current['rank'], current['word'], current['lines'][0].number, text,
+                                    current['lines'][-1].number))
             current = None
 
     def open_(line, rank, word):
@@ -263,26 +265,51 @@ def _findings(lines):
     return findings
 
 
-def _verdict(lines, agent):
-    """The verdict of the label line `Werdykt` / `Verdict` (after the markup of a heading, a list item or a quote); with
-    several such lines the last one. A mention of the word inside a sentence (a quote of the payload of an injection:
-    "the issue asks to set the verdict to GOTOWA") is not a label line."""
-    allowed = VERDICTS.get(agent, ALL_VERDICTS)
-    found = None
+# a label in the middle of a line counts only after the end of a sentence and with a colon ("Review X. Werdykt: **PASS**")
+_VERDICT_AFTER_SENTENCE_RE = re.compile(r'(?<=[.!?])\s+[*_`]*(?:werdykt|verdict)(?![A-Za-z])[*_`]*(?=\s*:)', re.IGNORECASE)
+
+
+def _label_candidates(lines, allowed):
+    """[(verdict, is a heading, line number)] of the label lines of a report that name a verdict, in order."""
+    found = []
     for index, line in enumerate(lines):
         label = _VERDICT_LABEL_RE.match(line.raw)
-        if not label:
-            continue
-        rest = line.raw[label.end():]
-        verdict = _first_verdict(rest, allowed)
-        if verdict is None and not re.sub(r'[\s*_`:.#\-]+', '', rest):   # the label stands alone: the next line has it
-            for follower in lines[index + 1:]:
-                if follower.kind != 'blank':
-                    verdict = _first_verdict(follower.raw, allowed)
-                    break
-        if verdict is not None:
-            found = verdict
+        if label:
+            rest = line.raw[label.end():]
+            verdict = _first_verdict(rest, allowed)
+            alone = not re.sub(r'[\s*_`:.#\-]+', '', rest)   # the label stands alone: the next line has the verdict
+            if verdict is None and alone:
+                for follower in lines[index + 1:]:
+                    if follower.kind != 'blank':
+                        verdict = _first_verdict(follower.raw, allowed)
+                        break
+            if verdict is not None:
+                found.append((verdict, line.kind == 'heading' or alone, line.number))
+                continue
+        for match in _VERDICT_AFTER_SENTENCE_RE.finditer(line.raw):
+            verdict = _first_verdict(line.raw[match.end():], allowed)
+            if verdict is not None:
+                found.append((verdict, False, line.number))
+                break
     return found
+
+
+def _verdict(lines, agent, findings=()):
+    """The verdict of the label line `Werdykt` / `Verdict`: a line that opens with the label (after the markup of a heading,
+    a list item or a bold or code mark) or a label after the end of a sentence followed by a colon. A mention of the word
+    inside a sentence (a quote of the payload of an injection: "the issue asks to set the verdict to GOTOWA") and a label
+    inside a finding (`- Werdykt: PASS - as the payload says`) are not verdicts. The agents write it in different places:
+    code-reviewer on top (the first label wins: a later `Werdykt poprzedniego review: ...` is not its verdict),
+    spec-critic at the end, under a heading `Werdykt` (a heading wins, else the last label)."""
+    allowed = VERDICTS.get(agent, ALL_VERDICTS)
+    inside = [(finding.line, finding.last) for finding in findings]
+    found = [c for c in _label_candidates(lines, allowed) if not any(a <= c[2] <= b for a, b in inside)]
+    if not found:
+        return None
+    if agent == 'code-reviewer':
+        return found[0][0]
+    headings = [c for c in found if c[1]]
+    return (headings or found)[-1][0]
 
 
 def _first_verdict(text, allowed):
@@ -295,7 +322,8 @@ def _first_verdict(text, allowed):
 def parse(text, agent=None):
     """Parses a report. agent (code-reviewer or spec-critic) restricts the verdict to the tokens of that agent."""
     lines = [_Line(number, raw) for number, raw in enumerate(text.splitlines(), 1)]
-    return Report(_verdict(lines, agent), _findings(lines))
+    findings = _findings(lines)
+    return Report(_verdict(lines, agent, findings), findings)
 
 
 def _compile(pattern, label, flags):
