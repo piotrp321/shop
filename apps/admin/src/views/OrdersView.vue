@@ -239,13 +239,17 @@ async function clearFilters() {
                 data-testid="total"
                 class="font-bold whitespace-nowrap tabular-nums"
               >{{ formatMoney(row.totalGross, row.currency) }}</span>
+              <span class="text-xs text-muted-foreground">Pozycje: <span
+                data-testid="items"
+                class="tabular-nums"
+              >{{ row.itemCount }}</span></span>
               <span
                 data-testid="placed-at"
                 class="text-xs text-muted-foreground"
               >{{ dateOf(row) }}</span>
             </div>
             <div
-              v-if="row.refund"
+              v-if="refundPending && row.refund"
               class="flex flex-col gap-1 border-t border-separator pt-2 text-sm"
             >
               <span>Kwota zwrotu: <span

@@ -42,16 +42,31 @@ function queries(): Record<string, unknown>[] {
   return mocks.get.mock.calls.map(([, options]) => (options as { params: { query: Record<string, unknown> } }).params.query);
 }
 
-/** The screen is as wide as the real one when `wide` (a table from 640 px), a phone otherwise (cards). */
+/**
+ * The screen is as wide as the real one when `wide` (a table from 640 px), a phone otherwise (cards); `resize` changes
+ * the width and reports it to the listeners of the media query, as a browser does.
+ */
 function screen(wide: boolean) {
+  let isWide = wide;
+  const listeners = new Set<(event: { matches: boolean }) => void>();
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: wide && query === "(min-width: 640px)",
+    get matches() {
+      return isWide && query === "(min-width: 640px)";
+    },
     media: query,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
+    addEventListener: (_type: string, listener: (event: { matches: boolean }) => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: (event: { matches: boolean }) => void) => listeners.delete(listener),
+    addListener: (listener: (event: { matches: boolean }) => void) => listeners.add(listener),
+    removeListener: (listener: (event: { matches: boolean }) => void) => listeners.delete(listener),
   }));
+  return {
+    resize(nowWide: boolean) {
+      isWide = nowWide;
+      for (const listener of listeners) {
+        listener({ matches: nowWide });
+      }
+    },
+  };
 }
 
 async function mountView(path = "/orders") {
@@ -192,6 +207,25 @@ describe("OrdersView", () => {
       expect(card.get("[data-testid=refund-overdue]").text()).toBe("Po terminie");
     });
 
+    it("shows the count of items on the card, as the table does", async () => {
+      serve({ items: [order("R-100001", { itemCount: 3 })], nextCursor: null });
+      wrapper = await mountView();
+
+      const card = wrapper.get("[data-testid=order-row]");
+      expect(card.get("[data-testid=items]").text()).toBe("3");
+      expect(card.text()).toContain("Pozycje: 3");
+    });
+
+    it("shows no refund on the card outside the refunds to do, as the table has no refund columns there", async () => {
+      serve({ items: [order("R-1", { status: "cancelled", refund: { amount: 39998, dueAt: "2026-11-01T12:30:00+00:00", completedAt: null, overdue: true } })], nextCursor: null });
+      wrapper = await mountView();
+
+      const card = wrapper.get("[data-testid=order-row]");
+      expect(card.find("[data-testid=refund-amount]").exists()).toBe(false);
+      expect(card.find("[data-testid=refund-due]").exists()).toBe(false);
+      expect(card.find("[data-testid=refund-overdue]").exists()).toBe(false);
+    });
+
     it("keeps the states of the list: the error with a retry, and the empty state", async () => {
       serve(500);
       wrapper = await mountView();
@@ -205,11 +239,24 @@ describe("OrdersView", () => {
     });
   });
 
-  it("changes the layout with the width of the screen, never showing both", async () => {
-    serve({ items: [order("R-100001")], nextCursor: null });
+  it("changes the layout with the width of the screen, never showing both, with one row per order in each", async () => {
+    const viewport = screen(true);
+    serve({ items: [order("R-100002"), order("R-100001")], nextCursor: null });
     wrapper = await mountView();
 
-    expect(wrapper.findAll("[data-testid=order-row]")).toHaveLength(1);
+    expect(wrapper.findAll("[data-testid=order-row]")).toHaveLength(2);
+    expect(wrapper.find("table").exists()).toBe(true);
+    expect(wrapper.find("ul[aria-label=Zamówienia]").exists()).toBe(false);
+
+    viewport.resize(false);
+    await flushPromises();
+    expect(wrapper.findAll("[data-testid=order-row]")).toHaveLength(2);
+    expect(wrapper.find("table").exists()).toBe(false);
+    expect(wrapper.find("ul[aria-label=Zamówienia]").exists()).toBe(true);
+
+    viewport.resize(true);
+    await flushPromises();
+    expect(wrapper.findAll("[data-testid=order-row]")).toHaveLength(2);
     expect(wrapper.find("table").exists()).toBe(true);
     expect(wrapper.find("ul[aria-label=Zamówienia]").exists()).toBe(false);
   });

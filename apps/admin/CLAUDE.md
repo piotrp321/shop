@@ -303,8 +303,8 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   `useMediaQuery("(min-width: 640px)")` (`@vueuse/core`, jak `AppLayout`): od 640 px tabela (Numer: link bez łamania, #261, z datą
   i liczbą pozycji jako liniami komórki poniżej 1024 px; Data, Klient: imię i nazwisko, pod nim e-mail obcięty z pełną wartością
   w `title`; Pozycje; Kwota; Status jako `Badge`; przy zwrotach Kwota zwrotu i Termin zwrotu z „Po terminie”), poniżej
-  640 px lista kart (`DataTable` z `cards`: `<ul>` z nazwą „Zamówienia”, `<li>` z numerem, statusem, klientem, kwotą, datą i przy zwrocie
-  kwotą i terminem); `order-row` i identyfikatory `number`, `status`, `total`… są na wierszu albo na karcie, nigdy w obu.
+  640 px lista kart (`DataTable` z `cards`: `<ul>` z nazwą „Zamówienia”, `<li>` z numerem, statusem, klientem, kwotą, liczbą pozycji („Pozycje: N”, `items`), datą i w widoku
+  „Zwroty do wykonania” kwotą i terminem zwrotu, jak kolumny tabeli); `order-row` i identyfikatory `number`, `status`, `total`… są na wierszu albo na karcie, nigdy w obu.
   `OrderDetailView`: `PageHeader` (H1 „Zamówienie <numer>” z `Badge` statusu w slocie `status`, okruszki „Pulpit › Zamówienia › <numer>”
   zamiast „Wróć do listy”), od 1280 px dwie kolumny (boczna 320 px w DOM przed główną, poniżej 1280 px nad nią, Tab zaczyna od niej:
   wyjątek od kolejności zgodnej z układem jak w formularzach). Boczna: „Akcje” (przyciski `allowedTransitions` i „Oznacz zwrot jako
