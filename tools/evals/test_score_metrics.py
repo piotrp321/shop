@@ -161,6 +161,16 @@ class TestScorePass(Base):
         self.assertIsNone(result.defect_found)
         self.assertEqual(0, result.false_alarms)
 
+    def test_a_case_with_an_invalid_assertion_is_an_error_not_a_failed_case(self):
+        # the runner refuses such a case at the start; the scoring does not trust that and refuses it too
+        case = dict(DEFECT_CASE, assertions=[{'type': 'finding', 'keyword': '(', 'severity': 'Minor'}])
+        self.counter += 1
+        directory = os.path.join(self.tmp, 'pass-%d' % self.counter)
+        write_pass(directory, output=DEFECT_REPORT)
+        with self.assertRaises(score.ScoreError) as raised:
+            score.score_case(case, 'c' * 64, [(directory, done())], self.context(case))
+        self.assertIn('invalid assertion', str(raised.exception))
+
     def test_a_pass_that_is_not_finished_is_an_error(self):
         for status in ('pending', 'running', 'infra_error', 'cost_stop', 'limit_stop'):
             with self.assertRaises(score.ScoreError):

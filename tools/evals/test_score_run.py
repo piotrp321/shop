@@ -237,14 +237,6 @@ class TestRefusals(ScoreRunCase):
             self.score(run)
         self.assertIn('changed since the run', str(raised.exception))
 
-    def test_a_case_with_an_invalid_assertion_is_an_error_not_a_failed_case(self):
-        self.add_case('one', kind='clean', assertions=[{'type': 'finding', 'keyword': '(', 'severity': 'Minor'}])
-        self.repo.commit('an invalid assertion')
-        run = self.finished()
-        with self.assertRaises(score.ScoreError) as raised:
-            self.score(run)
-        self.assertIn('invalid assertion', str(raised.exception))
-
     def test_writing_is_refused_after_the_suite_changed_since_the_run(self):
         run = self.finished()
         self.repo.write('.claude/agents/code-reviewer.md', 'changed after the run\n')
