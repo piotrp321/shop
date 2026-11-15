@@ -31,8 +31,9 @@ final readonly class CorrectStockHandler
     /**
      * The version is compared once the stock is locked, so a change committed since the staff member's view is a
      * conflict and nothing is overwritten. A variant without a stored stock is corrected with the null version; its
-     * stock is created only when the count changes it (counting nothing stores nothing), and a stock created by
-     * another transaction in the meantime is a conflict like any other change.
+     * stock is created only when the count changes it (counting nothing stores nothing). The null version also takes
+     * an empty stock (0/0, version 0) stored meanwhile, e.g. by the sync of the stock records after a product event:
+     * it equals no stock at all. Any other stock created by another transaction in the meantime is a conflict.
      *
      * @return StockView the stock as saved, or as stored when nothing changed
      *
@@ -63,11 +64,10 @@ final readonly class CorrectStockHandler
                 return StockView::unstored($unstored);
             }
             $item = $this->stock->lockOrCreate($variantId);
-            // An empty stock (0/0, version 0) committed meanwhile equals no stock at all, so the null version takes it.
-            if (0 !== $item->version()) {
+            if (!self::takes($command->expectedVersion, $item)) {
                 throw new StockModifiedConcurrently();
             }
-        } elseif ($command->expectedVersion !== $item->version()) {
+        } elseif (!self::takes($command->expectedVersion, $item)) {
             throw new StockModifiedConcurrently();
         }
 
@@ -76,5 +76,14 @@ final readonly class CorrectStockHandler
         }
 
         return StockView::of($item);
+    }
+
+    /**
+     * Whether the version the staff member saw is that of the stock: the null version (no stock) takes an empty
+     * stock (0/0, version 0), which equals no stock at all; every change raises the version above 0.
+     */
+    private static function takes(?int $expectedVersion, StockItem $item): bool
+    {
+        return ($expectedVersion ?? 0) === $item->version();
     }
 }

@@ -231,8 +231,9 @@ Komendy (`command.bus`):
   w panelu): `VariantNotFound` (404, „Wariant produktu nie istnieje.”). Wariant szkicu jest znany (`GetVariant` widzi
   szkice).
 - `CorrectStock(variantId, countedPhysical, expectedVersion|null, reason, note, actorId, actorName)` → `StockView`.
-  Nieznany wariant: 404. Wariant bez rekordu wymaga `expectedVersion = null`; rekord istnieje, a wersja jest inna
-  (także `null`): 409.
+  Nieznany wariant: 404. Wariant bez rekordu wymaga `expectedVersion = null`; `null` przyjmuje też pusty rekord
+  (0/0, wersja 0) zapisany w międzyczasie (np. przez synchronizację rekordów po zdarzeniu produktu), bo jest
+  równoważny brakowi stanu. Rekord istnieje, a wersja jest inna (także `null` przy wersji powyżej 0): 409.
 - `CreateEmptyStock(variantId)`: pusty rekord (0/0) w wersji 0 bez wpisu historii; idempotentna (istniejący rekord
   zostaje bez zmian). Nieznany wariant: `VariantNotFound` (404). Używa jej tylko seed.
 - Port dla Ordering:
