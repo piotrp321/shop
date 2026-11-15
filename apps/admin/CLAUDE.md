@@ -309,7 +309,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   i czas przez `formatMoney` i `formatDateTime` z `src/prices/format.ts`.
   `OrdersView`: `PageHeader` (H1 „Zamówienia” albo „Zwroty do wykonania” przy `refund=pending`, okruszki „Pulpit ›
   Zamówienia” albo „Pulpit › Zamówienia › Zwroty do wykonania” z linkiem do listy), karta z `ListToolbar` (wyszukiwanie
-  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią o Enterze, `Select` „Status”, `Switch` „Zwroty do wykonania”
+  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią „Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.” (tekst o 1–2 znakach nie wyszukuje i zmienia podpowiedź na „Wpisz co najmniej 3 znaki, aby wyszukać.”), grupa „Data zamówienia” z polami „Od” i „Do” (`input type="date"`, `placedFrom` i `placedTo` w adresie; zastosowane od razu po wybraniu dnia; koniec przed początkiem nie jest stosowany, komunikat w `role="alert"` i `aria-invalid` na „Do”; przy zwrotach do wykonania pola są wyłączone z opisem, bo API odmawia tego połączenia; kwota przy zakresie dat jest wyłączona w „Sortuj”), `Select` „Status”, `Switch` „Zwroty do wykonania”
   z `id` i `data-testid` `refund-pending` i `label for`, `Select` „Sortuj” (nad tabelą i nad kartami; przy zwrotach do
   wykonania z napisem „Termin zwrotu”), rozmiar strony), `DataTable` (nagłówki „Data” i „Kwota” mają `aria-sort` według
   kolejności, a przy zwrotach do wykonania „Termin zwrotu” `ascending`), `ListPager` i `ListEmpty` („Nie ma
