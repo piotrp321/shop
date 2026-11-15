@@ -23,6 +23,8 @@ final readonly class BackofficeStockQuery
     public const string BAD_LEVEL = 'Poziom stanu musi być jednym z: out_of_stock, low_stock.';
     public const string LEVEL_EXCLUDES = 'Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.';
 
+    public const string PRODUCT_EXCLUDES = 'Filtr produktu nie łączy się z wyszukiwaniem, kategorią, poziomem, sortowaniem ani kursorem.';
+
     public function __construct(
         #[Assert\Length(min: 2, max: 100)]
         // PostgreSQL cannot take a NUL in a parameter: the driver would cut the term there and search for something else.
@@ -40,7 +42,26 @@ final readonly class BackofficeStockQuery
         // A string checked by validateLevel: a value of another kind (`level[]=…`) gets the same Polish message.
         #[OA\Property(type: 'string', enum: self::LEVELS, nullable: true)]
         public mixed $level = null,
+        #[Assert\NotBlank(allowNull: true)]
+        #[Assert\Uuid]
+        public ?string $productId = null,
     ) {
+    }
+
+    /**
+     * One product is not searched, filtered, sorted or paged: the violation is on each of the fields to drop.
+     */
+    #[Assert\Callback]
+    public function validateProductWithFilters(ExecutionContextInterface $context): void
+    {
+        if (null === $this->productId) {
+            return;
+        }
+        foreach (['q' => $this->q, 'category' => $this->category, 'level' => $this->level, 'sort' => $this->sort, 'after' => $this->after] as $path => $value) {
+            if (null !== $value) {
+                $context->buildViolation(self::PRODUCT_EXCLUDES)->atPath($path)->addViolation();
+            }
+        }
     }
 
     /**

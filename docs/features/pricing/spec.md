@@ -328,11 +328,13 @@ Pricing:
     bez ceny przed startem jest `null`. Wariant bez ceny lub z nieaktualną stawką nie ma ceny i nie może zostać kupiony.
   - Autorytatywny odczyt dla koszyka i zamówienia: wywoływany w procesie przez port Cart/Ordering, z bazy, bez cache
     HTTP. Ordering kopiuje cenę skuteczną do pozycji zamówienia, a `version` (wersja ceny katalogowej) wykrywa zmianę ceny katalogowej, nie ceny skutecznej: start lub koniec promocji zmienia netto, VAT i brutto przy tej samej wersji.
-- `ListBackofficePrices(q, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory`
+- `ListBackofficePrices(q, categoryId, after, perPage, sort, productId)`: strona produktów z portu `ProductDirectory`
   (Catalog `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem
   (Catalog `ListProductVariants` z `includeDrafts: true`) i ich ceny jednym zapytaniem. Wynik: produkty strony, także
   szkice (cenę szkicu ustawia się przed publikacją), a w każdym jego warianty w kolejności pozycji z ceną albo `null`. `applicableVatRate` z `PolishVatRates` dla klasy produktu,
-  `vatRateOutdated` = nie `isCurrent`.
+  `vatRateOutdated` = nie `isCurrent`. Z `productId` strona to ten jeden produkt, odczytany po identyfikatorze przez
+  `ProductDirectory::describe` (nazwa, klasa podatkowa i warianty z `ListProductVariants`, szkic też), bez wyszukiwania
+  i stronicowania.
 - `GetPriceHistory(variantId, after, perPage)`: od najnowszych, stronicowanie keyset. Nieznany wariant: 404; wariant
   bez ceny: pusta lista.
 - `ReconcileTax(apply)`: opis w sekcji „Reconcile”.
@@ -429,7 +431,7 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/prices?q&category&sort&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); 400 złe parametry (także klucz spoza listy i kursor innego sortu); 404 nieznana kategoria |
+| `GET /api/v1/admin/prices?q&category&sort&productId&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); `productId=<uuid>`: jeden produkt (także szkic) ze wszystkimi wariantami, `next: null`, `total` `{value: 1, capped: false}` (nieznany produkt: pusta lista, `total` 0), wyklucza `q`, `category`, `sort` i `after` (400 z naruszeniem przy każdym z tych pól, „Filtr produktu nie łączy się z wyszukiwaniem, kategorią, sortowaniem ani kursorem.”); 400 złe parametry (także klucz spoza listy, kursor innego sortu i `productId` bez UUID-a); 404 nieznana kategoria |
 | `PUT /api/v1/admin/variants/{variantId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo `price-locked-by-promotion`; 422 kwota poza zakresem lub zły typ |
 | `GET /api/v1/admin/promotions?status&after&perPage` | pracownik z rolą personelu | `200 {items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; `status` `planned`, `active`, `ended`; `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
 | `POST /api/v1/admin/promotions`, body `{name, percentOff, startsAt \| null, endsAt, variantIds}` | `admin`, `marketing` | 201 promocja (`Location`); 403; 409 `promotion-overlap`; 422 |

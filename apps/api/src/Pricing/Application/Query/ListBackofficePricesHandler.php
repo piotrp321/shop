@@ -9,10 +9,12 @@ use App\Pricing\Application\Port\DirectoryProduct;
 use App\Pricing\Application\Port\DirectoryVariant;
 use App\Pricing\Application\Port\InvalidPriceListCursor;
 use App\Pricing\Application\Port\ProductDirectory;
+use App\Pricing\Domain\Price\ProductId;
 use App\Pricing\Domain\Price\VariantPrice;
 use App\Pricing\Domain\Price\VariantPriceRepository;
 use App\Pricing\Domain\Tax\TaxClassWithoutRate;
 use App\Pricing\Domain\Tax\VatRates;
+use App\Shared\Domain\BoundedCount;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -30,18 +32,59 @@ final readonly class ListBackofficePricesHandler
      * from Catalog with one call and their prices with one query. A variant without a price is listed without one;
      * a product Catalog no longer has variants for (removed meanwhile) is listed without variants.
      *
+     * With a product id the page is that one product (a draft too) with all its variants, read by its id: the first
+     * page, so with the bounded total of one, and an unknown product gives an empty page with a total of zero.
+     *
      * @throws CategoryNotFound
      * @throws InvalidPriceListCursor
+     * @throws InvalidPriceList
      * @throws TaxClassWithoutRate    when Catalog gives a class that has no rate (the contract test prevents it)
      */
     public function __invoke(ListBackofficePrices $query): PriceList
     {
+        if (null !== $query->productId) {
+            return $this->ofProduct($query, ProductId::fromString($query->productId));
+        }
+
         $page = $this->products->page($query->term, $query->categoryId, $query->after, $query->perPage, $query->sort);
         if ([] === $page->items) {
             return new PriceList([], $page->next, $page->total);
         }
 
         $variants = $this->products->variantsOf(array_map(static fn (DirectoryProduct $product) => $product->id, $page->items));
+
+        return new PriceList($this->listed($page->items, $variants), $page->next, $page->total);
+    }
+
+    /**
+     * @throws InvalidPriceList
+     */
+    private function ofProduct(ListBackofficePrices $query, ProductId $productId): PriceList
+    {
+        if (null !== $query->term || null !== $query->categoryId || null !== $query->after || null !== $query->sort) {
+            throw InvalidPriceList::productWithFilters();
+        }
+
+        $described = $this->products->describe($productId);
+        if (null === $described) {
+            return new PriceList([], null, new BoundedCount(0, false));
+        }
+
+        return new PriceList(
+            $this->listed([$described->product], [$productId->toString() => $described->variants]),
+            null,
+            new BoundedCount(1, false),
+        );
+    }
+
+    /**
+     * @param list<DirectoryProduct>                $products
+     * @param array<string, list<DirectoryVariant>> $variants product id => its variants
+     *
+     * @return list<PriceListItem>
+     */
+    private function listed(array $products, array $variants): array
+    {
         $variantIds = [];
         foreach ($variants as $ofProduct) {
             foreach ($ofProduct as $variant) {
@@ -56,11 +99,7 @@ final readonly class ListBackofficePricesHandler
             }
         }
 
-        return new PriceList(
-            array_map(fn (DirectoryProduct $product): PriceListItem => $this->item($product, $variants[$product->id->toString()] ?? [], $stored), $page->items),
-            $page->next,
-            $page->total,
-        );
+        return array_map(fn (DirectoryProduct $product): PriceListItem => $this->item($product, $variants[$product->id->toString()] ?? [], $stored), $products);
     }
 
     /**

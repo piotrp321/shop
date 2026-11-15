@@ -1032,6 +1032,8 @@ export interface components {
              * @enum {string|null}
              */
             level: "out_of_stock" | "low_stock" | null;
+            /** @default null */
+            productId: string | null;
         };
         /** @description The counted physical stock of a product variant, based on the version of the stock the staff member saw. */
         CorrectStockRequest: {
@@ -1155,6 +1157,8 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /** @default null */
+            productId: string | null;
         };
         /** @description A new gross price, based on the version of the price the staff member saw. */
         ChangePriceRequest: {
@@ -2948,6 +2952,8 @@ export interface operations {
                 sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
                 /** @description Only the products with at least one variant at the level: `out_of_stock` (nothing available) or `low_stock` (1 to 5 available), in ascending order of the product ids, each with all its variants; the variants at the level have `matchesLevel`. Not with `q`, `category` or `sort` (a 400). */
                 level?: "out_of_stock" | "low_stock";
+                /** @description Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `level`, `sort` or `after` (a 400). */
+                productId?: string;
                 /** @description The `next` cursor of the previous page of the same sort (of the same level with `level`). */
                 after?: string;
                 /** @description Page size. */
@@ -3619,6 +3625,8 @@ export interface operations {
                 category?: string;
                 /** @description The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
                 sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `sort` or `after` (a 400). */
+                productId?: string;
                 /** @description The `next` cursor of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */

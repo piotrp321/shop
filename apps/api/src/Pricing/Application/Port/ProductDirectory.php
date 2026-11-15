@@ -39,6 +39,14 @@ interface ProductDirectory
     public function variantsOf(array $productIds): array;
 
     /**
+     * The name, the tax class and the variants of one product (a draft too), read with one query; the product of the
+     * price list of one product.
+     *
+     * @return DescribedProduct|null null when the product does not exist in Catalog
+     */
+    public function describe(ProductId $productId): ?DescribedProduct;
+
+    /**
      * The current tax class of the product and its variants, read with one query.
      *
      * @return ProductTaxClass|null null when the product does not exist in Catalog

@@ -1064,6 +1064,16 @@
                         }
                     },
                     {
+                        "name": "productId",
+                        "in": "query",
+                        "description": "Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `level`, `sort` or `after` (a 400).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
                         "description": "The `next` cursor of the previous page of the same sort (of the same level with `level`).",
@@ -2078,6 +2088,16 @@
                                 "-updatedAt",
                                 "updatedAt"
                             ]
+                        }
+                    },
+                    {
+                        "name": "productId",
+                        "in": "query",
+                        "description": "Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `sort` or `after` (a 400).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
                         }
                     },
                     {
@@ -4479,6 +4499,11 @@
                             "out_of_stock",
                             "low_stock"
                         ]
+                    },
+                    "productId": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
                     }
                 },
                 "type": "object"
@@ -4738,6 +4763,11 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    },
+                    "productId": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
                     }
                 },
                 "type": "object"

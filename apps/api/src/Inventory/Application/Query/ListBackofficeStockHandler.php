@@ -12,6 +12,7 @@ use App\Inventory\Application\Port\InvalidStockListCursor;
 use App\Inventory\Application\Port\ProductDirectory;
 use App\Inventory\Application\Port\StockLevelProducts;
 use App\Inventory\Domain\Stock\AvailabilityLevel;
+use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Shared\Domain\BoundedCount;
@@ -36,12 +37,19 @@ final readonly class ListBackofficeStockHandler
      * With a level the page of products comes from the stock records instead (by product id, from the partial indexes
      * of the level), and Catalog only names the products and gives their variants; the variants at the level are marked.
      *
+     * With a product id the page is that one product (a draft too) with all its variants, read by its id: the first
+     * page, so with the bounded total of one, and an unknown product gives an empty page with a total of zero.
+     *
      * @throws CategoryNotFound
      * @throws InvalidStockListCursor
      * @throws InvalidStockList
      */
     public function __invoke(ListBackofficeStock $query): StockList
     {
+        if (null !== $query->productId) {
+            return $this->ofProduct($query, ProductId::fromString($query->productId));
+        }
+
         if (null !== $query->level) {
             return $this->atLevel($query, self::levelOf($query));
         }
@@ -58,6 +66,23 @@ final readonly class ListBackofficeStockHandler
             $page->next,
             $page->total,
         );
+    }
+
+    /**
+     * @throws InvalidStockList
+     */
+    private function ofProduct(ListBackofficeStock $query, ProductId $productId): StockList
+    {
+        if (null !== $query->term || null !== $query->categoryId || null !== $query->after || null !== $query->sort || null !== $query->level) {
+            throw InvalidStockList::productWithFilters();
+        }
+
+        $described = $this->products->describe([$productId])[$productId->toString()] ?? null;
+        if (null === $described) {
+            return new StockList([], null, new BoundedCount(0, false));
+        }
+
+        return new StockList($this->listed([$described], null), null, new BoundedCount(1, false));
     }
 
     /**
