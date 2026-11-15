@@ -34,8 +34,9 @@
       at its end.
       Without --budget it looks once. With --budget and --wait-file it polls every 30 s while the state is pending or
       gh fails (a failing gh is waited out like pending CI, its message in reason), for at most min(the budget left,
-      540 s) per call; the wait file keeps the time of the first call for this head (a file of another head, or a
-      broken one, starts a new wait), so the budget spans repeated calls. A red job seen while the other required job
+      540 s) per call; the wait file keeps the time of the first call for this head, so the budget spans repeated
+      calls (a file of another head, a broken one, or one whose start is not a finite time within one wait,
+      now - budget - 540 s <= started <= now, like the file of an earlier round on the same head, starts a new wait). A red job seen while the other required job
       runs is kept in the wait file too: from then on no answer (pending at the end of the budget, gh failing, a later
       look that means local gates) gives local, it gives red with that job, in this call and in later ones. Pending at
       the end of a call with budget left asks for another call; pending after the budget means the local gates unless
@@ -52,6 +53,7 @@
 """
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -269,17 +271,20 @@ def write_wait(path, head, started, red=None):
         raise Failure('cannot write the wait file %s: %s' % (path, e))
 
 
-def wait_start(path, head, now):
+def wait_start(path, head, now, budget):
     """(started, red) of the wait for head kept in the wait file: the time of the first call and the red jobs seen
-    by an earlier call (or None). A file of another head or a broken one starts anew."""
+    by an earlier call (or None). A file of another head, a broken one or one whose start is not a finite time within
+    one wait (now - budget - CALL_S <= started <= now; an older file is left by an earlier round) starts anew."""
     try:
         with open(path, encoding='utf-8') as f:
             kept = json.load(f)
-        if isinstance(kept, dict) and kept.get('head') == head and isinstance(kept.get('started'), (int, float)) \
-                and not isinstance(kept.get('started'), bool) and kept['started'] <= now:
-            return kept['started'], kept_red(kept.get('red'))
     except (OSError, ValueError):
-        pass
+        kept = None
+    started = kept.get('started') if isinstance(kept, dict) else None
+    if isinstance(kept, dict) and kept.get('head') == head and isinstance(started, (int, float)) \
+            and not isinstance(started, bool) and not (isinstance(started, float) and not math.isfinite(started)) \
+            and now - budget - CALL_S <= started <= now:
+        return started, kept_red(kept.get('red'))
     write_wait(path, head, now)
     return now, None
 
@@ -292,7 +297,7 @@ def ci(head, budget=None, wait_file=None, clock=time.time, sleep=time.sleep):
     call = float(os.environ.get('DELTA_CI_CALL_S', CALL_S))
     waiting = budget is not None
     begin = clock()
-    started, red = wait_start(wait_file, head, begin) if waiting else (begin, None)
+    started, red = wait_start(wait_file, head, begin, budget) if waiting else (begin, None)
     end = begin + max(0.0, min(budget - (begin - started), call)) if waiting else begin
     polls = 0
     while True:

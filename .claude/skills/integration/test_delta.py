@@ -609,6 +609,30 @@ class CiTest(unittest.TestCase):
         with open(self.wait_file) as f:
             self.assertEqual(SHA, json.load(f)['head'])
 
+    def test_a_start_outside_the_window_of_one_wait_starts_a_new_wait(self):
+        # The window is now - budget - CALL_S <= started <= now; a file of an earlier AO round on the same head is older.
+        texts = {'zero': '0', 'minus infinity': '-Infinity', 'infinity': 'Infinity', 'nan': 'NaN',
+                 'future': repr(time.time() + 100), 'an earlier round': repr(time.time() - 600 - 540 - 100)}
+        for case, started in texts.items():
+            with self.subTest(case=case):
+                with open(self.wait_file, 'w') as f:
+                    f.write('{"head": "%s", "started": %s, "red": {"run": 7, "failed_jobs": ["checks"], '
+                            '"passed": [], "reason": "old"}}' % (SHA, started))
+                self.runs(self.run_(7, status='in_progress', conclusion=''))
+                self.jobs(7, *self.RUNNING)
+                out = self.result(4, budget=600)
+                self.assertLess(out['waited_s'], 5)
+                with open(self.wait_file) as f:
+                    kept = json.load(f)
+                self.assertNotIn('red', kept)
+                self.assertGreater(kept['started'], time.time() - 60)
+
+    def test_a_start_within_the_window_of_one_wait_is_kept(self):
+        self.write('ci-wait.json', {'head': SHA, 'started': time.time() - 600 - 540 + 30})
+        self.runs(self.run_(7, status='in_progress', conclusion=''))
+        self.jobs(7, *self.RUNNING)
+        self.assertLocal('still running after the budget', budget=600)
+
     def test_a_broken_wait_file_starts_a_new_wait(self):
         with open(self.wait_file, 'w') as f:
             f.write('{broken')
