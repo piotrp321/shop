@@ -27,8 +27,10 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
   `apps/store/` albo `apps/admin/`), bramki jakości (`make check`, `make test`, `make e2e`), weryfikację zgłoszeń, raport do `<report_path>` i wynik JSON.
 - **Nie robisz:** kodu i poprawek (naprawy to osobne zadania `/delivery` zlecane przez AO), `git commit`, `git push`,
   `git merge`, zmiany gałęzi, `gh pr` (opisy PR zadań czytasz tylko przez bramkę pochodzenia, krok 6), merge, deploymentu, sprzątania stosu (`.ao/teardown` należy do AO). Jedyny
-  plik w repo i w katalogu raportu, który zapisujesz, to raport (oraz logi bramek i katalog agenta UX poza repo;
-  w repo tylko chwilowo pliki generowane przy sprawdzeniu z kroku 3a, przywracane od razu). Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
+  plik w repo i w katalogu raportu, który zapisujesz, to raport (oraz, w katalogu raportu poza repo, logi bramek,
+  plik czekania na CI `ci-wait-<HEAD>.json`, który zapisuje `delta.py ci` (krok 4), log błędów CI
+  `ci-failed-<sha7>.log` (krok 4) i katalog agenta UX; w repo tylko chwilowo pliki generowane przy sprawdzeniu
+  z kroku 3a, przywracane od razu). Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
   `evidence` znaleziska; nie trafiają do repo. Skrypty, zrzuty i wyniki agenta UX zostają w `AGENT_DIR` poza
   repo (krok 3), więc `git status --porcelain` się nie zmienia.
 - **Źródłem prawdy** jest diff `origin/main...HEAD`, specyfikacja i plan, nie raporty z PR zadań ani opinie
@@ -184,24 +186,45 @@ JSON i AO powtarza rundę. Dlatego:
       CI jeszcze trwa, a budżet się nie skończył: wywołuj tę samą komendę, dopóki kod to 4. Plik czekania pamięta
       początek pierwszego wywołania, więc budżet (10 min czekania w `DELTA`, 20 min w `FULL`) obejmuje wszystkie
       wywołania. Skrypt bierze ostatni run workflow CI z pusha dokładnie dla HEAD. Runy PR się nie liczą, bo pomijają
-      pracę przy zmianach dokumentacji i narzędzi.
+      pracę przy zmianach dokumentacji i narzędzi. Błąd `gh` w trakcie czekania skrypt przeczekuje do końca budżetu
+      jak trwające CI, a czerwony job zauważony w trakcie pamięta w pliku czekania: wtedy kolejne wywołania i koniec
+      budżetu dają kod 3, nie 1.
    3. Dalej według kodu wyjścia:
       - **0** (wymagane joby `checks` i `e2e` mają `success`): nie uruchamiasz lokalnie `make test`, `make seed` ani
         `make e2e`. `make test` i `make e2e` mają `passed`, a obok dodajesz oba wpisy z pola `checks` skryptu
         (`ci:checks@<HEAD>`, `ci:e2e@<HEAD>`).
       - **3** (czerwone CI: job zakończony `failure`, `timed_out` albo `startup_failure`): bramka czerwonego joba ma
         `failed` (`checks` → `make test`, `e2e` → `make e2e`), druga bramka status swojego wpisu `ci:`; oba wpisy
-        `ci:` z pola `checks` skryptu dodajesz bez zmian. Dodaj znalezisko `Important` z `evidence` = numer runu, SHA
-        i czerwone joby (`failed_jobs`, `reason`). Tych bramek nie uruchamiasz lokalnie i nie ponawiasz runu CI:
-        czerwonego CI nie zastępuje lokalny wynik.
+        `ci:` z pola `checks` skryptu dodajesz bez zmian. Tych bramek nie uruchamiasz lokalnie i nie ponawiasz runu CI:
+        czerwonego CI nie zastępuje lokalny wynik. Przyczynę bierzesz z logu padających jobów: osobnym wywołaniem
+        Bash `timeout 570 gh run view <run> --log-failed > <katalog pliku <report_path>>/ci-failed-<sha7>.log 2>&1`
+        (`<run>` z pola `run` skryptu, `<sha7>` to pierwsze 7 znaków HEAD), potem `tail` i `grep` tego logu (nazwy
+        padających testów, komunikaty asercji, ścieżki plików). Dodaj jedno znalezisko `Important` na padający job
+        (krok 7: `title` bez SHA i numeru runu, np. nazwa padającego testu albo kroku):
+        - `title`: problem z logu (padający test albo krok joba);
+        - `evidence`: numer runu, SHA, `failed_jobs`, `reason` i koniec logu z nazwą padającego testu;
+        - `files`: pliki testu i kodu wskazane w logu (ścieżki z repo).
+        Gdy log nie wskazuje żadnego pliku albo `gh` nie dał logu (kod różny od 0, pusty plik), `files` to pliki diffu
+        epiku najbliższe padającemu jobowi według tego, co wiadomo (np. dla `checks` zmienione pliki aplikacji, której
+        część padła, dla `e2e` zmienione testy E2E i ekrany), a `detail` ma zdanie, że plików nie dało się ustalić
+        z logu CI. Nazwy testu, kroku ani pliku, których nie ma w logu, nie wymyślasz.
       - **1** (bramki lokalne: run zakończony z jobem `cancelled`, `skipped`, `neutral` albo bez joba, inny SHA, błąd
-        `gh`, CI nadal w toku po budżecie): uruchamiasz lokalnie `make test` (cztery wywołania z sekcji „Pierwszy plan
-        i ostatni blok”), potem `make e2e` w częściach (niżej), a `reason` trafia do raportu.
+        `gh` do końca budżetu, CI nadal w toku po budżecie): uruchamiasz lokalnie `make test` (cztery wywołania
+        z sekcji „Pierwszy plan i ostatni blok”), potem `make e2e` w częściach (niżej), a `reason` trafia do raportu.
+        Po ostatniej lokalnej bramce sprawdzasz CI jeszcze raz, jednym wywołaniem bez budżetu:
+        `python3 .claude/skills/integration/delta.py ci --head <HEAD>`. Kod 3 traktujesz jak punkt „3” wyżej: wynik
+        CI zastępuje lokalne wyniki `make test` i `make e2e` (czerwone CI wygrywa z lokalnym wynikiem), z wpisami
+        `ci:` i znaleziskiem z logu. Przy każdym innym kodzie zostają wyniki lokalne, bez wpisów `ci:`.
+      - **2** (błąd skryptu: komunikat na stderr, np. nieoczekiwana odpowiedź `gh`, niezapisywalny plik czekania):
+        jak kod 1, bramki lokalne; komunikat skryptu trafia do raportu jako powód.
 
    Przy awarii środowiska wpisy `make test`, `make e2e` i oba `ci:` z kodu 0 albo 3 zostają bez zmian, a `skipped`
    dostaje tylko `make check`.
    **Lokalne `make e2e` w częściach.** `python3 .claude/skills/integration/delta.py e2e-parts` podaje `parts`
-   i `weights` (podział zestawu z `.github/workflows/ci.yml`). Dla i = 1..`parts` uruchom
+   i `weights` (podział zestawu z `.github/workflows/ci.yml`). Kod 2 (komunikat na stderr: brak workflowu, brak albo
+   zła wartość `E2E_SHARD_WEIGHTS`) oznacza, że nie ma podziału, a całe `make e2e` w jednym wywołaniu nie jest
+   dopuszczalne (nie zmieści się w limicie jednego wywołania): `make e2e` ma `skipped`, a bloker `technical` dostaje
+   komendę i komunikat skryptu; pozostałe bramki uruchamiasz dalej. Dla i = 1..`parts` uruchom
    `make seed RUN="docker compose exec -T"`, potem
    `make e2e E2E_FLAGS=-T E2E_SHARD=<i>/<parts> E2E_SHARD_WEIGHTS=<weights>` (sesja nie ma terminala, więc bez `-T`
    komendy padają), każde osobnym wywołaniem w `timeout 570` z logiem w katalogu raportu. Część, która padła,
