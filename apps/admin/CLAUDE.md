@@ -332,9 +332,9 @@ jako duplikat; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglą
   „Promocja kończy się.” (region `role="status"` w karcie „Status”, istniejący przed tekstem). Odczyt ze `status: ended`
   (albo taka odpowiedź `PUT`) daje toast „Promocja zakończona.” (przez `onEnded`, a przy `ended` w odpowiedzi `PUT` przez
   wynik wywołania), tryb tylko do odczytu i fokus na nagłówku „Status”; wyczerpane ponowienia zostawiają promocję aktywną
-  z `endNotice` („Koniec promocji ustawiony na <czas>.” z ostatniej odpowiedzi); bez niezapisanych zmian formularz, `view`
-  i wersja pochodzą z tej ostatniej odpowiedzi; błąd odczytu to `endError` z „Odśwież”, a gdy odświeżenie też zawiedzie
-  (`loadError` zastępuje formularz), fokus trafia na H1. Odczyt `active` nie nadpisuje tego, co pracownik wpisał
+  z `endNotice` („Koniec promocji ustawiony na <czas>.” z ostatniej odpowiedzi), a formularz, `view` i wersja pochodzą
+  z tej ostatniej odpowiedzi (także ponad niezapisane zmiany); błąd odczytu to `endError` z „Odśwież”, a gdy odświeżenie też zawiedzie
+  (`loadError` zastępuje formularz), fokus trafia na H1. Odczyt `active` przed ostatnim nie nadpisuje tego, co pracownik wpisał
   w międzyczasie. Opuszczenie formularza przerywa czekanie
   (bez żądań po odmontowaniu). Czasy są wpisywane
   i pokazywane w `Europe/Warsaw` (pole `datetime-local`, nie `DatePicker`, bo ten liczy w strefie przeglądarki):

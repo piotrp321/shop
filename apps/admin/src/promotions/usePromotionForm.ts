@@ -466,9 +466,9 @@ export function usePromotionForm(options: PromotionFormOptions) {
    * Reads the promotion again once its end has passed (the end the API set, and one second more) and, while it is still
    * active because the clock of the browser differs from the server's, every second, at most 5 more times. An `ended`
    * answer shows the promotion as ended (the form becomes read-only) and says so through `onEnded`; the last `active`
-   * one leaves it active with `endNotice` and, when nothing is unsaved, shows that answer (the form, the view and its
-   * version); a failed read is `endError`. While it waits, `ending` disables saving and
-   * ending. Leaving the form stops it. An `active` answer does not replace what the staff member typed meanwhile.
+   * one leaves it active with `endNotice` and shows that answer (the form, the view and its version); a failed read is
+   * `endError`. While it waits, `ending` disables saving and ending. Leaving the form stops it. An `active` answer
+   * before the last one does not replace what the staff member typed meanwhile.
    */
   function watchEnd(saved: PromotionView): void {
     ending.value = true;
@@ -499,11 +499,8 @@ export function usePromotionForm(options: PromotionFormOptions) {
         return;
       }
       ending.value = false;
-      // The state of the last answer, unless the staff member has changes of their own: an `active` read does not
-      // overwrite an edit.
-      if (!dirty.value) {
-        apply(result.data);
-      }
+      // The state of the last answer (the form, the view and its version), also over what was typed meanwhile.
+      apply(result.data);
       endNotice.value = `Koniec promocji ustawiony na ${formatDateTime(result.data.endsAt)}.`;
     };
 

@@ -547,7 +547,7 @@ describe("usePromotionForm", () => {
         expect(form.dirty.value).toBe(false);
       });
 
-      it("leaves the edit as it is when the retries are used up and the form has unsaved changes", async () => {
+      it("shows the state of the last answer when the retries are used up, also over unsaved changes", async () => {
         const { form } = await openActive();
         setEnd("2026-11-15T10:20:30+00:00");
         await form.endNow();
@@ -558,9 +558,9 @@ describe("usePromotionForm", () => {
         await flushPromises();
 
         expect(form.endNotice.value).toBe(`Koniec promocji ustawiony na ${formatDateTime("2026-11-15T10:25:45+00:00")}.`);
-        expect(form.form.value.name).toBe("Inna nazwa");
-        expect(form.view.value?.version).toBe(4);
-        expect(form.dirty.value).toBe(true);
+        expect(form.form.value.name).toBe(promotion().name);
+        expect(form.view.value?.version).toBe(9);
+        expect(form.dirty.value).toBe(false);
       });
 
       it("stops at the first read that says ended, without the remaining retries", async () => {

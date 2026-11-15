@@ -268,8 +268,7 @@ pozostali 403; odczyt: każdy pracownik):
   „Status” i pytają w oknie potwierdzenia. API ustawia koniec chwilę w przyszłości, więc po „Zakończ teraz” panel czeka
   do końca i jedną sekundę dłużej, czyta promocję ponownie (najwyżej 5 ponowień co sekundę); toast „Promocja zakończona.” i widok tylko do
   odczytu daje odczyt ze statusem `ended` albo odpowiedź `PUT` z `ended`. Po wyczerpaniu ponowień promocja zostaje
-  aktywna z komunikatem „Koniec promocji ustawiony na <czas>.”, a formularz pokazuje stan z ostatniej odpowiedzi (przy
-  niezapisanych zmianach zostaje edycja pracownika); do tego czasu „Zapisz” i „Zakończ teraz” są
+  aktywna z komunikatem „Koniec promocji ustawiony na <czas>.”, a formularz pokazuje stan z ostatniej odpowiedzi; do tego czasu „Zapisz” i „Zakończ teraz” są
   wyłączone z opisem „Promocja kończy się.”. Pola niedostępne dla aktywnej promocji są zablokowane. 409
   `promotion-overlap` oznacza kolidujące warianty, inne 409: komunikat z `detail` i odświeżenie. Promocja, która nie
   istnieje: komunikat „Ta promocja nie istnieje.” z linkiem do listy.
