@@ -123,6 +123,8 @@ final class OrderSearchTermTest extends TestCase
         yield 'over a hundred characters, no email' => [str_repeat('a ', 60).'z'];
         yield 'over a hundred characters, an @ but no complete address' => [str_repeat('a', 100).'@'.str_repeat('b', 10)];
         yield 'over 254 characters, even an email' => [str_repeat('a', 250).'@b.com'];
+        yield 'a number of over 254 characters' => ['R-'.str_repeat('1', 253)];
+        yield 'a number of 300 digits' => ['r-'.str_repeat('9', 300)];
         yield 'a NUL' => ["jan\0kowalski"];
         yield 'the separator of the index' => ["jan\u{001F}kowalski"];
         yield 'a tab' => ["jan\tkowalski"];
@@ -142,6 +144,13 @@ final class OrderSearchTermTest extends TestCase
         } catch (InvalidBackofficeOrderList $refused) {
             self::assertStringNotContainsString('kowalski', $refused->getMessage());
         }
+    }
+
+    public function testTheLongestNumberIsOf254Characters(): void
+    {
+        $number = 'R-'.str_repeat('1', 252);
+
+        self::assertSame($number, OrderSearchTerm::parse($number)->number);
     }
 
     public function testATextThatIsNotUtf8IsRefused(): void

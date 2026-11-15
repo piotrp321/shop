@@ -145,6 +145,7 @@ final class OrderSearchEndpointTest extends WebTestCase
         yield 'a line break inside' => ['jan%0Akowalski'];
         yield 'the separator of the index' => ['jan%1Fkowalski'];
         yield 'a line separator' => ['jan%E2%80%A8kowalski'];
+        yield 'a number of 300 digits' => ['R-'.str_repeat('1', 300)];
         yield 'a NUL' => ['jan%00kowalski'];
         yield 'not UTF-8' => ['jan%FFkowalski'];
     }

@@ -45,10 +45,13 @@ final readonly class OrderSearchTerm
         if (!\is_string($term)) {
             throw InvalidBackofficeOrderList::searchTerm();
         }
+        $length = mb_strlen($term);
+        if ($length > ListBackofficeOrders::MAX_QUERY_LENGTH) {
+            throw InvalidBackofficeOrderList::searchTerm();
+        }
         if (1 === preg_match(self::NUMBER, $term)) {
             return new self('R-'.substr($term, 2), null, null);
         }
-        $length = mb_strlen($term);
         if ($length <= ListBackofficeOrders::MAX_QUERY_LENGTH && 1 === preg_match(self::EMAIL, $term)) {
             return new self(null, $term, null);
         }
