@@ -327,7 +327,7 @@ sklepu się nie zmienia.
   pokazuje „Nie masz dostępu do tej strony.” (`role="alert"`) i czyści znacznik, więc przeładowanie komunikatu nie
   powtarza. Gdy `/me` się nie wczyta, strażnik przepuszcza trasę, a dostęp sprawdza API (403 widoku). Menu ukrywa
   pozycje tak samo, ale to strażnik i API egzekwują dostęp.
-- Stan listy w adresie (`useListUrlState`): `status` (znany status), `refund=pending`, `q` (zastosowane wyszukiwanie,
+- Stan listy w adresie (`useListUrlState`): `status` (znany status), `refund` (`pending`: zwroty do wykonania, `overdue`: tylko po terminie; przełącznik „Tylko po terminie” pokazuje się przy włączonych zwrotach do wykonania, wyłączenie go wraca do `pending`, wyłączenie zwrotów zdejmuje oba; sort i zakres dat są wtedy wyłączone jak przy `pending`), `q` (zastosowane wyszukiwanie,
   np. link „Inne zamówienia klienta” `/orders?q=<e-mail>`), `placedFrom` i `placedTo` (dni `YYYY-MM-DD`), `sort` (klucz API; domyślny `-placedAt` nie jest
   zapisywany ani wysyłany, a zmiana wraca na pierwszą stronę) i `perPage`; czytane przy wejściu i przy każdej zmianie
   `route.query` przy otwartej liście (pozycja menu „Zwroty do wykonania” na `/orders`), zapisywane przez `replace`

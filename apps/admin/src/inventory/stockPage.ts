@@ -1,20 +1,24 @@
 import { getApiClient } from "@/api/client";
-import type { components } from "@/api/schema";
+import type { components, operations } from "@/api/schema";
 import type { ProductSort } from "@/composables/listSort";
 import type { PageRequest, PageResult } from "@/composables/useCursorPager";
 
 export type StockListItem = components["schemas"]["StockListItemResponse"];
 export type ListedStock = components["schemas"]["ListedStockResponse"];
+/** The levels the list is filtered by: the products with a variant out of stock or with a low stock. */
+export type StockLevelFilter = NonNullable<NonNullable<operations["listStock"]["parameters"]["query"]>["level"]>;
 
 /**
  * The query of the stock list: a part of the name (null: all), a category (null: all), the number of products per page
- * and the order (the default, by name, when it is missing).
+ * and the order (the default, by name, when it is missing). A level (null: all) excludes the name, the category and the
+ * order: the API refuses them together, so only the level is sent.
  */
 export interface StockQuery {
   q: string | null;
   category: string | null;
   perPage: number;
   sort?: ProductSort;
+  level?: StockLevelFilter | null;
 }
 
 /**
@@ -29,6 +33,8 @@ export interface StockRow {
   label: string;
   stock: ListedStock | null;
   first: boolean;
+  /** The stock of the variant is at the level the list is filtered by (the API's `matchesLevel`). */
+  matchesLevel: boolean;
 }
 
 export const FORBIDDEN_MESSAGE = "Nie masz dostępu do stanów magazynowych.";
@@ -52,15 +58,19 @@ function failureMessage(status: number): string {
  * page source of `useCursorPager` for the stock list.
  */
 export async function fetchStockPage({ query, after }: PageRequest<StockQuery>): Promise<PageResult<StockListItem>> {
-  const apiQuery: { q?: string; category?: string; sort?: ProductSort; after?: string; perPage: number } = { perPage: query.perPage };
-  if (query.q !== null) {
-    apiQuery.q = query.q;
-  }
-  if (query.category !== null) {
-    apiQuery.category = query.category;
-  }
-  if (query.sort !== undefined && query.sort !== "name") {
-    apiQuery.sort = query.sort;
+  const apiQuery: { q?: string; category?: string; sort?: ProductSort; level?: StockLevelFilter; after?: string; perPage: number } = { perPage: query.perPage };
+  if (query.level) {
+    apiQuery.level = query.level;
+  } else {
+    if (query.q !== null) {
+      apiQuery.q = query.q;
+    }
+    if (query.category !== null) {
+      apiQuery.category = query.category;
+    }
+    if (query.sort !== undefined && query.sort !== "name") {
+      apiQuery.sort = query.sort;
+    }
   }
   if (after) {
     apiQuery.after = after;
@@ -86,6 +96,7 @@ export function stockRows(items: StockListItem[]): StockRow[] {
       label: variant.label,
       stock: variant.stock,
       first: index === 0,
+      matchesLevel: variant.matchesLevel,
     })),
   );
 }

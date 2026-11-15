@@ -35,6 +35,19 @@ describe("ListToolbar", () => {
     expect(field.attributes("maxlength")).toBe("100");
   });
 
+  it("disables the search field when the list says so, and keeps its hint as the description of the field", () => {
+    const toolbar = mountToolbar({ searchDisabled: true, searchHint: "Filtr poziomu nie łączy się z wyszukiwaniem." });
+
+    const field = toolbar.get<HTMLInputElement>("[data-testid=search]");
+    expect(field.element.disabled).toBe(true);
+    expect(toolbar.get("[data-testid=search-hint]").attributes("id")).toBe(field.attributes("aria-describedby"));
+    expect(toolbar.get("[data-testid=search-hint]").text()).toBe("Filtr poziomu nie łączy się z wyszukiwaniem.");
+  });
+
+  it("has an enabled search field by default", () => {
+    expect(mountToolbar().get<HTMLInputElement>("[data-testid=search]").element.disabled).toBe(false);
+  });
+
   it("reports what is typed", async () => {
     const toolbar = mountToolbar();
 

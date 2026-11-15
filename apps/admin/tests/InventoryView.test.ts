@@ -31,7 +31,7 @@ function item(name: string, overrides: { stock?: ListedStock | null; variants?: 
   return {
     productId: `id-${name}`,
     name,
-    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? stock() : overrides.stock }],
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? stock() : overrides.stock, matchesLevel: false }],
   };
 }
 
@@ -161,8 +161,8 @@ describe("InventoryView", () => {
           items: [
             item("Kajak", {
               variants: [
-                { variantId: "v-green", label: "zielony", stock: stock({ physical: 0, reserved: 0, available: 0, level: "out_of_stock" }) },
-                { variantId: "v-orange", label: "pomarańczowy", stock: null },
+                { variantId: "v-green", label: "zielony", stock: stock({ physical: 0, reserved: 0, available: 0, level: "out_of_stock" }), matchesLevel: false },
+                { variantId: "v-orange", label: "pomarańczowy", stock: null, matchesLevel: false },
               ],
             }),
             item("Bidon"),
@@ -185,7 +185,7 @@ describe("InventoryView", () => {
   });
 
   it("has no actions in the row of a product: the buttons are in the rows of the variants", async () => {
-    serve({ pages: { "": { items: [item("Buty", { variants: [{ variantId: "v-40", label: "40", stock: stock() }, { variantId: "v-41", label: "41", stock: stock() }] })], next: null } } });
+    serve({ pages: { "": { items: [item("Buty", { variants: [{ variantId: "v-40", label: "40", stock: stock(), matchesLevel: false }, { variantId: "v-41", label: "41", stock: stock(), matchesLevel: false }] })], next: null } } });
     wrapper = await mountView(["admin"]);
 
     expect(page().get("[data-testid=product-row]").findAll("button, a")).toHaveLength(0);
@@ -248,7 +248,7 @@ describe("InventoryView", () => {
   describe("„Pokazano produkty X–Y”", () => {
     const productsPage = (prefix: string, next: string | null): StockList => ({
       items: Array.from({ length: 10 }, (_, index) =>
-        item(`${prefix}${index}`, { variants: [{ variantId: `${prefix}${index}-a`, label: "a", stock: null }, { variantId: `${prefix}${index}-b`, label: "b", stock: null }] }),
+        item(`${prefix}${index}`, { variants: [{ variantId: `${prefix}${index}-a`, label: "a", stock: null, matchesLevel: false }, { variantId: `${prefix}${index}-b`, label: "b", stock: null, matchesLevel: false }] }),
       ),
       next,
     });
@@ -355,6 +355,104 @@ describe("InventoryView", () => {
       expect(document.activeElement).toBe(page().get("[data-testid=search]").element);
     });
 
+    it("has a Select „Poziom” with a visible label, „Wszystkie”, „Bez stanu” and „Niski stan”", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+
+      const trigger = page().get<HTMLButtonElement>("[data-testid=level-filter]");
+      expect(trigger.element.labels?.[0]?.textContent?.trim()).toBe("Poziom");
+      expect(trigger.text()).toBe("Wszystkie");
+      trigger.element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await settle();
+      const options = [...document.body.querySelectorAll("[role=option]")].map((option) => option.textContent?.trim());
+      expect(options).toEqual(["Wszystkie", "Bez stanu", "Niski stan"]);
+    });
+
+    it("clears and disables the search and the category when a level is chosen, says why, and asks for the level alone", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView(["support"], "/inventory?q=buty&category=c-run&sort=-name");
+      expect(page().get<HTMLInputElement>("[data-testid=search]").element.value).toBe("buty");
+      expect(page().get("[data-testid=level-hint]").text()).toBe("");
+
+      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "out_of_stock");
+      await settle();
+
+      expect(stockQueries().at(-1)).toEqual({ perPage: 10, level: "out_of_stock" });
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/inventory?level=out_of_stock");
+      const search = page().get<HTMLInputElement>("[data-testid=search]");
+      expect(search.element.value).toBe("");
+      expect(search.element.disabled).toBe(true);
+      const category = page().get<HTMLInputElement>("[data-testid=category-filter] input");
+      expect(category.element.disabled).toBe(true);
+      const description = "Filtr poziomu nie łączy się z wyszukiwaniem ani kategorią.";
+      const hint = page().get("[data-testid=level-hint]");
+      expect(hint.text()).toBe(description);
+      expect(hint.attributes("role")).toBe("status");
+      expect(page().get("[data-testid=search-hint]").text()).toBe(description);
+      expect(search.attributes("aria-describedby")).toBe(page().get("[data-testid=search-hint]").attributes("id"));
+      expect(category.attributes("aria-describedby")?.split(" ")).toContain(hint.attributes("id"));
+      expect(page().get("[data-testid=level-filter]").text()).toBe("Bez stanu");
+    });
+
+    it("enables the search and the category again when the level is dropped", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView(["support"], "/inventory?level=low_stock");
+      expect(page().get<HTMLInputElement>("[data-testid=search]").element.disabled).toBe(true);
+      expect(page().get("[data-testid=level-filter]").text()).toBe("Niski stan");
+
+      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "all");
+      await settle();
+
+      expect(stockQueries().at(-1)).toEqual({ perPage: 10 });
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/inventory");
+      expect(page().get<HTMLInputElement>("[data-testid=search]").element.disabled).toBe(false);
+      expect(page().get<HTMLInputElement>("[data-testid=category-filter] input").element.disabled).toBe(false);
+      expect(page().get("[data-testid=level-hint]").text()).toBe("");
+    });
+
+    it("shows „Wyczyść filtry” for a level and clears it", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView(["support"], "/inventory?level=out_of_stock");
+
+      await page().get("[data-testid=clear-filters]").trigger("click");
+      await settle();
+
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/inventory");
+      expect(page().find("[data-testid=clear-filters]").exists()).toBe(false);
+    });
+
+    it("disables the orders of the sort while a level is on, with its reason, and shows the order of the level", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView(["support"], "/inventory?level=low_stock");
+
+      expect(page().get("[data-testid=sort]").text()).toBe("Wg produktu");
+      expect(page().get("[data-testid=sort-hint]").text()).toBe("Filtr poziomu ma własną kolejność.");
+    });
+
+    it("marks the variants at the level of the filter", async () => {
+      serve({
+        pages: {
+          "": {
+            items: [
+              item("Kajak", {
+                variants: [
+                  { variantId: "v-green", label: "zielony", stock: stock({ physical: 2, reserved: 2, available: 0, level: "out_of_stock" }), matchesLevel: true },
+                  { variantId: "v-orange", label: "pomarańczowy", stock: stock(), matchesLevel: false },
+                ],
+              }),
+            ],
+            next: null,
+          },
+        },
+      });
+      wrapper = await mountView(["support"], "/inventory?level=out_of_stock");
+
+      const rows = page().findAll("[data-testid=stock-row]");
+      expect(rows.map((row) => row.get("[data-testid=level]").attributes("data-matches-level"))).toEqual(["true", "false"]);
+      expect(rows[0]!.text()).toContain("pasuje do filtra");
+      expect(rows[1]!.text()).not.toContain("pasuje do filtra");
+    });
+
     it("has a Select „Sortuj” by the name or the last change, which sets the address and asks once from the first page", async () => {
       serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } } });
       wrapper = await mountView();
@@ -364,7 +462,7 @@ describe("InventoryView", () => {
       await page().get("[data-testid=next-page]").trigger("click");
       await settle();
 
-      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "-updatedAt");
+      wrapper.findAllComponents(Select)[1]!.vm.$emit("update:modelValue", "-updatedAt");
       await settle();
 
       expect(stockQueries().at(-1)).toEqual({ perPage: 10, sort: "-updatedAt" });
@@ -393,7 +491,7 @@ describe("InventoryView", () => {
       await page().get("[data-testid=next-page]").trigger("click");
       await settle();
 
-      wrapper.findAllComponents(Select)[1]!.vm.$emit("update:modelValue", "25");
+      wrapper.findAllComponents(Select)[2]!.vm.$emit("update:modelValue", "25");
       await settle();
 
       expect(stockQueries().at(-1)).toEqual({ perPage: 25 });
@@ -404,7 +502,7 @@ describe("InventoryView", () => {
 
   describe("the actions of a row", () => {
     it("names the buttons with the product and the variant, and the default variant with the product only", async () => {
-      serve({ pages: { "": { items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock() }] }), item("Bidon")], next: null } } });
+      serve({ pages: { "": { items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock(), matchesLevel: false }] }), item("Bidon")], next: null } } });
       wrapper = await mountView(["warehouse"]);
 
       const names = (testid: string) => page().findAll(`[data-testid=${testid}]`).map((button) => button.attributes("aria-label"));

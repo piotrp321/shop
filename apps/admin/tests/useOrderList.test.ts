@@ -140,6 +140,38 @@ describe("useOrderList", () => {
     expect(list.refundPending.value).toBe(false);
   });
 
+  it("asks for the overdue refunds when „Tylko po terminie” is on, and for the refunds to do when it is off", async () => {
+    const list = await start({ "": page(["R-100001"]) });
+
+    list.setRefundPending(true);
+    await settle();
+    list.setRefundOverdue(true);
+    await settle();
+    expect(list.refundPending.value).toBe(true);
+    expect(list.refundOverdue.value).toBe(true);
+    list.setRefundOverdue(false);
+    await settle();
+
+    expect(queries()).toEqual([{}, { refund: "pending" }, { refund: "overdue" }, { refund: "pending" }]);
+    expect(list.refundOverdue.value).toBe(false);
+    expect(list.refundPending.value).toBe(true);
+  });
+
+  it("drops the overdue refunds with the refunds to do, and does not turn them on by switching off what is off", async () => {
+    const list = await start({ "": page(["R-100001"]) });
+
+    list.setRefundOverdue(false);
+    await settle();
+    list.setRefundOverdue(true);
+    await settle();
+    list.setRefundPending(false);
+    await settle();
+
+    expect(queries()).toEqual([{}, { refund: "overdue" }, {}]);
+    expect(list.refundPending.value).toBe(false);
+    expect(list.refundOverdue.value).toBe(false);
+  });
+
   it("combines the refund switch with the status and the search", async () => {
     const list = await start({ "": page(["R-100001"]) });
 
@@ -588,6 +620,43 @@ describe("useOrderList", () => {
       expect(queries()).toEqual([{ status: "paid" }]);
       expect(list.status.value).toBe("paid");
       expect(list.refundPending.value).toBe(false);
+    });
+
+    it("reads the overdue refunds from the address with one request, and writes them back", async () => {
+      const { list, router } = await startAt("/orders?refund=overdue&status=returned");
+
+      expect(queries()).toEqual([{ status: "returned", refund: "overdue" }]);
+      expect(list.refundPending.value).toBe(true);
+      expect(list.refundOverdue.value).toBe(true);
+      expect(list.filtered.value).toBe(true);
+
+      list.setRefundOverdue(false);
+      await settle();
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=returned&refund=pending");
+
+      list.setRefundOverdue(true);
+      await settle();
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=returned&refund=overdue");
+    });
+
+    it("gives the overdue refunds the order and the days of the refunds to do: no sort, no range", async () => {
+      const { list } = await startAt("/orders?refund=overdue&sort=-total&placedFrom=2026-11-01");
+
+      expect(queries()).toEqual([{ refund: "overdue" }]);
+      expect(list.sort.value).toBeNull();
+      expect(list.rangeDisabled.value).toBe(true);
+      expect(list.sortOptions.value.every((option) => option.disabledReason === "Zwroty do wykonania są w kolejności terminu zwrotu.")).toBe(true);
+    });
+
+    it("switches the open list to the overdue refunds when the address changes, from the first page with one request", async () => {
+      const { list, router } = await startAt("/orders?refund=pending");
+      mocks.get.mockClear();
+
+      await router.push({ path: "/orders", query: { refund: "overdue" } });
+      await settle();
+
+      expect(queries()).toEqual([{ refund: "overdue" }]);
+      expect(list.refundOverdue.value).toBe(true);
     });
 
     it("reads the refunds to do from the address with one request", async () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ClipboardPen, History, PackagePlus } from "lucide-vue-next";
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, useId } from "vue";
 import { toast } from "vue-sonner";
 import CategoryCombobox from "@/components/CategoryCombobox.vue";
 import FormField from "@/components/FormField.vue";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCategoryTree } from "@/composables/useCategoryTree";
@@ -23,7 +24,7 @@ import { focusAfterAction } from "@/lib/focus";
 import { formatDelta, levelLabel, movementReasonLabel, movementSourceLabel, movementTypeLabel } from "@/inventory/format";
 import { parseCount } from "@/inventory/parseCount";
 import { type StockHistoryItem, useStockHistory } from "@/inventory/useStockHistory";
-import { EMPTY_MESSAGE, MAX_SEARCH_LENGTH, type StockChange, type StockRow, useStockList } from "@/inventory/useStockList";
+import { EMPTY_MESSAGE, LEVEL_EXCLUDES_MESSAGE, LEVEL_FILTERS, MAX_SEARCH_LENGTH, type StockChange, type StockRow, useStockList } from "@/inventory/useStockList";
 import { formatDateTime } from "@/prices/format";
 import { useAuthStore } from "@/stores/auth";
 
@@ -31,6 +32,13 @@ const categories = useCategoryTree();
 const list = useStockList({ nodes: categories.nodes, loaded: categories.loaded });
 const { search, searchHint, query, filtered, items, rows, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total, receiveStock, correctStock } = list;
 const history = useStockHistory();
+
+// The filter „Poziom”: while a level is on, the search and the category are off and the description says why.
+const levelFilterId = useId();
+const levelHintId = useId();
+const ALL_LEVELS = "all";
+const levelFilterLabel = computed(() => (list.level.value === null ? "Wszystkie" : LEVEL_FILTERS.find((filter) => filter.value === list.level.value)?.label));
+const levelHint = computed(() => (list.level.value === null ? null : LEVEL_EXCLUDES_MESSAGE));
 
 // Only hides the actions: the API checks the permission on every change. The roles come from /api/v1/admin/me.
 const auth = useAuthStore();
@@ -407,11 +415,13 @@ const DIALOG_CLASS = "max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto sm:ma
         search-label="Szukaj po nazwie produktu"
         search-placeholder="Szukaj po nazwie"
         :search-max="MAX_SEARCH_LENGTH"
-        :search-hint="searchHint"
+        :search-hint="levelHint ?? searchHint"
+        :search-disabled="list.level.value !== null"
         :filtered="filtered"
         :per-page="query.perPage"
-        :sort-options="list.sortOptions"
-        :sort="query.sort"
+        :sort-options="list.sortOptions.value"
+        :sort="list.sort.value"
+        sort-placeholder="Wg produktu"
         @update:per-page="list.setPerPage"
         @update:sort="list.setSort"
         @clear="clearFilters"
@@ -425,9 +435,47 @@ const DIALOG_CLASS = "max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto sm:ma
             :nodes="categories.nodes.value"
             :model-value="query.category"
             deselectable
-            :disabled="categories.nodes.value.length === 0"
+            :disabled="categories.nodes.value.length === 0 || list.level.value !== null"
+            :described-by="levelHint === null ? undefined : levelHintId"
             @update:model-value="list.selectCategory(($event as string | null) ?? null)"
           />
+          <div class="flex flex-col gap-1.5">
+            <Label :for="levelFilterId">
+              Poziom
+            </Label>
+            <Select
+              :model-value="list.level.value ?? ALL_LEVELS"
+              @update:model-value="list.selectLevel(LEVEL_FILTERS.find((filter) => filter.value === $event)?.value ?? null)"
+            >
+              <SelectTrigger
+                :id="levelFilterId"
+                data-testid="level-filter"
+                class="w-44"
+              >
+                <SelectValue>{{ levelFilterLabel }}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="ALL_LEVELS">
+                  Wszystkie
+                </SelectItem>
+                <SelectItem
+                  v-for="filter in LEVEL_FILTERS"
+                  :key="filter.value"
+                  :value="filter.value"
+                >
+                  {{ filter.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p
+              :id="levelHintId"
+              role="status"
+              data-testid="level-hint"
+              class="max-w-52 text-xs text-muted-foreground empty:hidden"
+            >
+              {{ levelHint }}
+            </p>
+          </div>
         </template>
       </ListToolbar>
 
@@ -488,13 +536,19 @@ const DIALOG_CLASS = "max-h-[calc(100dvh-2rem)] max-w-none overflow-y-auto sm:ma
           <Badge
             v-if="row.stock"
             data-testid="level"
+            :data-matches-level="row.matchesLevel"
+            :class="row.matchesLevel ? 'ring-2 ring-ring ring-offset-1' : undefined"
             :variant="levelLabel(row.stock.level).variant"
           >
-            {{ levelLabel(row.stock.level).label }}
+            {{ levelLabel(row.stock.level).label }}<span
+              v-if="row.matchesLevel"
+              class="sr-only"
+            >, pasuje do filtra</span>
           </Badge>
           <span
             v-else
             data-testid="level"
+            :data-matches-level="row.matchesLevel"
           >—</span>
         </template>
         <template #cell-actions="{ row }">

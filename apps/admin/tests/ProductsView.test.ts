@@ -108,8 +108,53 @@ describe("ProductsView", () => {
   });
 
   const statusSelect = () => wrapper!.findAllComponents(Select)[0]!;
-  const sortSelect = () => wrapper!.findAllComponents(Select)[1]!;
-  const perPageSelect = () => wrapper!.findAllComponents(Select)[2]!;
+  const imagesSelect = () => wrapper!.findAllComponents(Select)[1]!;
+  const sortSelect = () => wrapper!.findAllComponents(Select)[2]!;
+  const perPageSelect = () => wrapper!.findAllComponents(Select)[3]!;
+
+  describe("the filter of the images", () => {
+    const one = { "": { items: [item("Buty")], next: null } };
+
+    it("has a Select „Zdjęcia” with a visible label, „Wszystkie” and „Bez zdjęć”", async () => {
+      serve(one);
+      wrapper = await mountView();
+
+      const images = wrapper.get<HTMLButtonElement>("[data-testid=images-filter]");
+      expect(images.element.labels?.[0]?.textContent?.trim()).toBe("Zdjęcia");
+      expect(images.text()).toBe("Wszystkie");
+      images.element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await settle();
+      const options = [...document.body.querySelectorAll("[role=option]")].map((option) => option.textContent?.trim());
+      expect(options).toEqual(["Wszystkie", "Bez zdjęć"]);
+    });
+
+    it("asks for the products without images, writes it to the address and shows „Wyczyść filtry”", async () => {
+      serve(one);
+      wrapper = await mountView();
+      expect(wrapper.find("[data-testid=clear-filters]").exists()).toBe(false);
+
+      imagesSelect().vm.$emit("update:modelValue", "none");
+      await settle();
+
+      expect(productQueries().at(-1)).toEqual({ images: "none" });
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/products?images=none");
+      expect(wrapper.get("[data-testid=images-filter]").text()).toBe("Bez zdjęć");
+      expect(wrapper.find("[data-testid=clear-filters]").exists()).toBe(true);
+
+      imagesSelect().vm.$emit("update:modelValue", "all");
+      await settle();
+      expect(productQueries().at(-1)).toEqual({});
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/products");
+    });
+
+    it("opens the list already filtered by the address (the link of the dashboard)", async () => {
+      serve(one);
+      wrapper = await mountView(["admin"], "/products?images=none");
+
+      expect(productQueries()).toEqual([{ images: "none" }]);
+      expect(wrapper.get("[data-testid=images-filter]").text()).toBe("Bez zdjęć");
+    });
+  });
 
   describe("the sort", () => {
     const sortTrigger = () => wrapper!.get<HTMLButtonElement>("[data-testid=sort]");

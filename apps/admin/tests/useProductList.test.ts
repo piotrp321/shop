@@ -193,6 +193,31 @@ describe("useProductList", () => {
     expect(queries().at(-1)).toEqual({ q: "baton" });
   });
 
+  it("filters the products without images, together with the search, the category and the status", async () => {
+    const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+    await list.goNext();
+
+    list.selectImages("none");
+    await settle();
+    expect(queries().at(-1)).toEqual({ images: "none" });
+    expect(list.hasPrevious.value).toBe(false);
+    expect(list.filtered.value).toBe(true);
+
+    list.selectCategory("c-run");
+    list.selectStatus("draft");
+    await settle();
+    expect(queries().at(-1)).toEqual({ category: "c-run", status: "draft", images: "none" });
+
+    list.search.value = "baton";
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+    await settle();
+    expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run", status: "draft", images: "none" });
+
+    list.selectImages(null);
+    await settle();
+    expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run", status: "draft" });
+  });
+
   it("does not ask again for a filter that did not change", async () => {
     const list = await start({ "": { items: [item("A")], next: null } });
 
@@ -342,6 +367,44 @@ describe("useProductList", () => {
       list.setPerPage(10);
       await settle();
       expect(router!.currentRoute.value.query).toEqual({ q: "bidon", status: "published", category: "c-run", perPage: "10" });
+    });
+
+    it("reads the filter of the products without images from the address with one request and writes it back", async () => {
+      const list = await start(one, undefined, "/products?images=none&status=draft");
+
+      expect(queries()).toEqual([{ status: "draft", images: "none" }]);
+      expect(list.query.value.images).toBe("none");
+
+      list.selectImages(null);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ status: "draft" });
+
+      list.selectImages("none");
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ status: "draft", images: "none" });
+    });
+
+    it.each(["/products?images=all", "/products?images=", "/products?images=NONE", "/products?images=none&images=some"])(
+      "skips a filter of the images that is not „none” (%s), without asking for it",
+      async (address) => {
+        const list = await start(one, undefined, address);
+
+        expect(queries()).toEqual([{}]);
+        expect(list.query.value.images).toBeNull();
+        expect(router!.currentRoute.value.query).toEqual({});
+      },
+    );
+
+    it("clears the filter of the images with the rest of the filters", async () => {
+      const list = await start(one, undefined, "/products?images=none&q=buty");
+      mocks.get.mockClear();
+
+      list.clearFilters();
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries()).toEqual([{}]);
     });
 
     it("sends the page size only when it is not the default of the API", async () => {

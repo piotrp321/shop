@@ -22,6 +22,8 @@ const props = withDefaults(
     searchPlaceholder?: string;
     searchMax?: number;
     searchHint?: string | null;
+    /** The search is off (another filter excludes it): the field is disabled and `searchHint` says why. */
+    searchDisabled?: boolean;
     /** True while a filter or the search is set: „Wyczyść filtry” shows. */
     filtered: boolean;
     perPage: number;
@@ -38,6 +40,7 @@ const props = withDefaults(
     searchPlaceholder: undefined,
     searchMax: undefined,
     searchHint: null,
+    searchDisabled: false,
     perPageOptions: () => [10, 25, 50],
     sortOptions: undefined,
     sort: null,
@@ -76,6 +79,7 @@ defineExpose({
           data-testid="search"
           class="pl-9"
           :maxlength="searchMax"
+          :disabled="searchDisabled"
           :placeholder="searchPlaceholder"
           :aria-label="searchLabel"
           :aria-describedby="ids.hint"

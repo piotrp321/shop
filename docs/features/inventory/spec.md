@@ -322,6 +322,9 @@ z tokenem realmu `shop`: 401):
   pól, „Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.”); inna wartość `level` to 400 przy
   `level`. Test planu: `StockLevelProductsPlanTest` (100 000 rekordów w tabeli tymczasowej, plan bez wyłączania skanów:
   strona, kolejna strona i licznik czytają indeks poziomu, bez `Seq Scan`).
+  Panel (`/inventory?level=`): `Select` „Poziom” (Wszystkie, Bez stanu, Niski stan) wyłącza i czyści wyszukiwanie oraz kategorię
+  z opisem „Filtr poziomu nie łączy się z wyszukiwaniem ani kategorią.”, wysyła tylko `level` i `perPage`, a wiersze wariantów
+  na poziomie filtra oznacza z `matchesLevel`.
 - Uprawnienie `MANAGE_STOCK` sprawdza `StockVoter` w `Inventory_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `support` i `marketing` dostają 403.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.

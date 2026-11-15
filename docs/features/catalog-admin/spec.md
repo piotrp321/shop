@@ -254,7 +254,7 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
   `marketing` przekierowuje na listę.
 - Lista (`useProductList` na `useListUrlState` i `useCursorPager`, standard listy z `docs/features/admin-design/spec.md`):
   wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii (`CategoryCombobox` na `useCategoryTree`), filtr statusu
-  (Select: Wszystkie, Szkice, Opublikowane), `Select` „Sortuj” („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio zmienione”,
+  (Select: Wszystkie, Szkice, Opublikowane), filtr „Zdjęcia” (Select: Wszystkie, Bez zdjęć; `images=none` w adresie), `Select` „Sortuj” („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio zmienione”,
   „Najdawniej zmienione”; nagłówek „Produkt” albo „Ostatnia zmiana” ma `aria-sort`), rozmiar strony 10/25/50, stan listy
   w adresie (`q`, `category`, `status`, `sort` (domyślny `name` nie jest zapisywany ani wysyłany), `perPage`),
   stronicowanie kursorem ze stosem kursorów i „Pokazano X–Y”. Kolumny: produkt (miniatura albo placeholder,

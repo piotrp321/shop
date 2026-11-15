@@ -48,7 +48,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
   Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
-  szczegóły należą do pozycji listy, `/orders?refund=pending` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
+  szczegóły należą do pozycji listy, `/orders?refund=pending` i `/orders?refund=overdue` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
   „Listy zamówień”, „Pulpit” tylko na `/`). `AppMenu` i `AppMenuItem` renderują ją: grupa to przycisk z `aria-expanded`
   i `aria-controls`, grupa bieżącej pozycji otwiera się przy wejściu i przy każdej zmianie trasy (zamyka ją tylko
   przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Region grupy ma `id`
@@ -159,19 +159,27 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   i `sourceLabel` (etykiety źródeł zmiany: Pracownik, Dane demo, Uzgodnienie podatkowe).
 - `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `fetchStockPage` i `stockRows`
   (`stockPage.ts`: żądanie `GET /stock` z `perPage` zawsze w żądaniu, domyślne API to 25, panel zaczyna od 10, i rozbicie
-  produktów strony na wiersze wariantów), `useStockList(kategorie)` na `useListUrlState` (`q`, `category`, `sort` jak na liście cen, `perPage`: 10, 25
-  albo 50 produktów, 10 nie trafia do adresu), `useCursorPager` i `useNameSearch` (jak `usePriceList`; kategoria z adresu, której
+  produktów strony na wiersze wariantów), `useStockList(kategorie)` na `useListUrlState` (`q`, `category`, `level`, `sort` jak na liście cen, `perPage`: 10, 25
+  albo 50 produktów, 10 nie trafia do adresu; `level` to `out_of_stock` albo `low_stock`, inna wartość jest pomijana), `useCursorPager` i `useNameSearch` (jak `usePriceList`; kategoria z adresu, której
   nie ma w drzewie, jest pomijana). Strona to produkty z API, więc „Pokazano produkty X–Y” liczy produkty, a `rows` ma wiersz na
   wariant w kolejności produktów i ich wariantów. Stan z odpowiedzi na przyjęcie i korektę jest nakładką `savedStocks` nad
   `items` pagera (nie zapisuje do nich i nie jest czyszczona): wiersz pokazuje go, dopóki wersja stanu z listy nie jest
   nowsza albo stan z listy jest `null`, więc ani trwające żądanie, ani spóźniona odpowiedź listy nie przywracają starego
-  stanu. 403 listy: „Nie masz dostępu do stanów magazynowych.” bez ponowienia, 404: kategoria nie istnieje.
+  stanu. Filtr poziomu wyklucza wyszukiwanie, kategorię i sortowanie (API odmawia ich łącznie z `level`): `selectLevel` czyści `q`,
+  `category` i `sort` w adresie i pole wyszukiwania, a `query` listy ma przy poziomie tylko `level` i `perPage` (adres z `level`
+  i `q` albo `category` daje jedno żądanie z samym poziomem). Wiersz ma `matchesLevel` z API (wariant na poziomie filtra).
+  403 listy: „Nie masz dostępu do stanów magazynowych.” bez ponowienia, 404: kategoria nie istnieje.
   `format.ts` (`levelLabel`: etykieta i wariant `Badge` poziomu z API: Dostępny `success`, Ostatnie sztuki `warning`,
   Niedostępny `danger`; `movementTypeLabel`, `movementReasonLabel`, `movementSourceLabel` i `formatDelta` dla historii stanów).
   `parseCount.ts` (pole liczby okien przyjęcia i korekty: tekst przycięty, także o spacje nierozdzielające, na liczbę
   całkowitą z ASCII cyfr, pusty tekst to komunikat pola, inny „Podaj liczbę całkowitą.”, ponad bezpieczny zakres „Liczba
   jest za duża.”; zakres wartości sprawdza API). `InventoryView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie
-  produktu”, `CategoryCombobox` „Kategoria”, `Select` „Sortuj”, rozmiar strony), `DataTable` z wierszami grup (`product-row` z `<th
+  produktu”, `CategoryCombobox` „Kategoria”, `Select` „Poziom” (`level-filter`: Wszystkie, Bez stanu, Niski stan; wybór poziomu wyłącza
+  i czyści wyszukiwanie (`ListToolbar` `searchDisabled`) i kategorię, a opis „Filtr poziomu nie łączy się z wyszukiwaniem ani
+  kategorią.” (`level-hint`, `role="status"`) jest w podpowiedzi pola wyszukiwania i w `aria-describedby` kategorii; „Sortuj” pokazuje
+  „Wg produktu” z opcjami wyłączonymi z opisem „Filtr poziomu ma własną kolejność.”), `Select` „Sortuj”, rozmiar strony; wariant
+  na poziomie filtra ma w komórce Poziom `data-matches-level="true"`, obrys i ukryty dla czytnika tekst „pasuje do filtra”),
+  `DataTable` z wierszami grup (`product-row` z `<th
   scope="rowgroup">` i pogrubioną `name`, bez akcji), pod nim `stock-row` z kolumnami Wariant („Wariant domyślny” dla pustej
   etykiety), Fizycznie, Zarezerwowane (ukryte poniżej 1024 px jako linia komórki Wariant), Dostępne (pogrubione), Poziom
   (`Badge`) i Akcje (`RowActions`: przyciski ikon „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/me`;
@@ -201,7 +209,8 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   poniżej 1024 px, reszta (zarezerwowane, powód, notatka, referencja, źródło, pracownik) jest liniami komórki daty.
 - `src/products/` – produkty (menu „Produkty”, trasy `/products`, `/products/new`, `/products/:id`). `useProductList`
   (widok `ProductsView`, `useProductList({ nodes, loaded })` z drzewem z `useCategoryTree`): na `useListUrlState`
-  (`q`, `category`, `status`, `sort`, `perPage`) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage`
+  (`q`, `category`, `status`, `images`, `sort`, `perPage`; `images=none` to filtr „Zdjęcia”: `Select` Wszystkie, Bez zdjęć, inna wartość jest
+  pomijana) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage`
   i `sort` idą tylko, gdy to nie 25 i nie `name`, domyślne API), komunikaty błędów (403: „Nie masz dostępu do produktów.” bez ponowienia, 404:
   kategoria nie istnieje) i połączenie wyszukiwania z adresem: reguły ma `useNameSearch` (od 2 do 100 znaków w punktach
   kodowych po 300 ms przerwy w pisaniu, przycięte; `apply` zapisuje `q` do adresu); do adresu i zapytania trafia dopiero
@@ -278,7 +287,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wyłączone.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList` (standard
-  listy): na `useListUrlState` (`q`, `status`, `refund=pending`, `placedFrom`, `placedTo` (dni `YYYY-MM-DD`), `sort`: `-placedAt` (domyślny), `placedAt`, `-total`, `total`, niewysyłany, gdy domyślny, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
+  listy): na `useListUrlState` (`q`, `status`, `refund` (`pending`: zwroty do wykonania, `overdue`: tylko po terminie; inna wartość jest pomijana), `placedFrom`, `placedTo` (dni `YYYY-MM-DD`), `sort`: `-placedAt` (domyślny), `placedAt`, `-total`, `total`, niewysyłany, gdy domyślny, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
   odczyt przy wejściu i przy zmianie z zewnątrz, np. pozycja menu „Zwroty do wykonania” na otwartej liście albo link „Inne
   zamówienia klienta” z `?q=<e-mail>`, zapis przez `replace` bez nowego wpisu historii, nieznana wartość jest pomijana,
   a adres poprawiany; do adresu trafia tylko zastosowane wyszukiwanie) i `useCursorPager` (stos kursorów, spóźnione
@@ -314,8 +323,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   i czas przez `formatMoney` i `formatDateTime` z `src/prices/format.ts`.
   `OrdersView`: `PageHeader` (H1 „Zamówienia” albo „Zwroty do wykonania” przy `refund=pending`, okruszki „Pulpit ›
   Zamówienia” albo „Pulpit › Zamówienia › Zwroty do wykonania” z linkiem do listy), karta z `ListToolbar` (wyszukiwanie
-  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią „Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.” (tekst o 1–2 znakach nie wyszukuje i zmienia podpowiedź na „Wpisz co najmniej 3 znaki, aby wyszukać.”), grupa „Data zamówienia” z polami „Od” i „Do” (`input type="date"`, `placedFrom` i `placedTo` w adresie; zastosowane od razu po wybraniu dnia; koniec przed początkiem nie jest stosowany, komunikat w `role="alert"` i `aria-invalid` na „Do”; przy zwrotach do wykonania pola są wyłączone z opisem, bo API odmawia tego połączenia; kwota przy zakresie dat jest wyłączona w „Sortuj”), `Select` „Status”, `Switch` „Zwroty do wykonania”
-  z `id` i `data-testid` `refund-pending` i `label for`, `Select` „Sortuj” (nad tabelą i nad kartami; przy zwrotach do
+  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią „Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.” (tekst o 1–2 znakach nie wyszukuje i zmienia podpowiedź na „Wpisz co najmniej 3 znaki, aby wyszukać.”), grupa „Data zamówienia” z polami „Od” i „Do” (`input type="date"`, `placedFrom` i `placedTo` w adresie; zastosowane od razu po wybraniu dnia; koniec przed początkiem nie jest stosowany, komunikat w `role="alert"` i `aria-invalid` na „Do”; przy zwrotach do wykonania pola są wyłączone z opisem, bo API odmawia tego połączenia; kwota przy zakresie dat jest wyłączona w „Sortuj”), `Select` „Status”, `Switch` „Zwroty do wykonania” z `id` i `data-testid` `refund-pending` i `label for`; gdy jest włączony, obok niego `Switch` „Tylko po terminie” (`refund-overdue-only`, `refund=overdue`: wyłączenie wraca do `refund=pending`, wyłączenie zwrotów do wykonania zdejmuje oba), `Select` „Sortuj” (nad tabelą i nad kartami; przy zwrotach do
   wykonania z napisem „Termin zwrotu”), rozmiar strony), `DataTable` (nagłówki „Data” i „Kwota” mają `aria-sort` według
   kolejności, a przy zwrotach do wykonania „Termin zwrotu” `ascending`), `ListPager` i `ListEmpty` („Nie ma
   jeszcze zamówień.”, „Brak wyników dla wybranych filtrów.”). Widok renderuje jeden układ według
