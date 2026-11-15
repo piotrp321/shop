@@ -405,8 +405,9 @@ błędu z czasem pokazanych danych; dotyczy kafli katalogu i „Ostatnich zamów
 
 - **Kafle KPI** (komponent `KpiTile`: `title`, `icon`, `tone` z par `kpi-*`, `value` sformatowane z liczby z API,
   opcjonalnie `footer` z etykietą i wartością oraz `to` dla kafla-linku, `estimated` (oznaczenie „ok.” przed wartością
-  szacunkową) i `description` (wyjaśnienie wartości, której nie ma, połączone z wartością przez `aria-describedby`);
-  etykietę zmiany doda ADMIN-FEATURES razem z kaflami sprzedaży; `CatalogTiles` składa kafle katalogu):
+  szacunkową), `description` (wyjaśnienie wartości, połączone z wartością przez `aria-describedby`) i `trend` (linia
+  zmiany pod wartością w tonie `success`, `danger` albo wyciszonym); `CatalogTiles` składa kafle katalogu, `SalesTiles`
+  kafle sprzedaży):
   - „Produkty”: `catalog.productCount` to szacunek bazy (`{value, estimated: true}`), pokazany z „ok.” (od miliona
     „ok. 10 mln”), link do `/products`; bez szacunku (`null`, baza jeszcze nie ma statystyk) kafel pokazuje „—”
     i opis „Liczba produktów będzie dostępna po aktualizacji statystyk bazy.”; stopka „Bez zdjęć” z kolejki
@@ -415,7 +416,11 @@ błędu z czasem pokazanych danych; dotyczy kafli katalogu i „Ostatnich zamów
   - „Bez zdjęć”: kolejka `queues.productsWithoutImages` (`admin`, `marketing`; dla pozostałych ról kafla nie ma), link do
     `/products?images=none`; stopka „Uzupełnij zdjęcia w formularzu produktu” tylko przy liczbie większej od zera.
   Liczba kolejki to `BoundedCount` (do 1000): „1000+” przy `capped`.
-  Kafle sprzedaży doda ADMIN-FEATURES tym samym komponentem.
+  Kafle sprzedaży (tylko `admin`, przy `sales` różnym od `null`): „Sprzedaż dziś”, „Sprzedaż 7 dni”, „Sprzedaż 30 dni”
+  z przychodem, stopką „Zamówienia: N” i „śr. <kwota>” oraz trendem „+12,5% vs wczoraj” / „vs poprzednie 7 dni” /
+  „vs poprzednie 30 dni” (zielony przy wzroście, czerwony przy spadku, „brak danych do porównania” bez okresu
+  porównawczego); „Dziś” z opisem „Od północy do pełnej godziny, wg godzin zegara.”, a między 0:00 a 1:00 „—” z opisem
+  „Pierwsze dane po 1:00”; pod kaflami „Dane do <godzina>”.
 - **„Do obsługi”** (karta z listą linków z liczbami kolejek): każdy wiersz to ikona w pastelowym kółku, etykieta, opis,
   liczba kolejki (`todo-count`, „1000+” przy `capped`, „0” zostaje) i strzałka; wiersz bez kolejki (promocje, kody) nie ma
   liczby; widoczny według ról, a po wczytaniu pulpitu tylko gdy API dało jego kolejkę (nie `null`):
@@ -528,7 +533,7 @@ Spis funkcji panelu (sprawdza go `/integration`; każda pozycja ma test, który 
 
 - **Powłoka**: menu według ról (ukrywanie do wczytania `/me`), nazwa i role pracownika, wylogowanie, wylogowanie po
   15 min bezczynności, błąd wczytania pracownika, problem z logowaniem z „Zaloguj ponownie”.
-- **Pulpit i Stan systemu**: liczniki katalogu (szacunkowa liczba produktów, kategorie, bez zdjęć z ostrzeżeniem), kolejki „Do obsługi” z liczbami, usługi ze stanem
+- **Pulpit i Stan systemu**: liczniki katalogu (szacunkowa liczba produktów, kategorie, bez zdjęć z ostrzeżeniem), kafle sprzedaży z porównaniem (tylko `admin`), kolejki „Do obsługi” z liczbami, usługi ze stanem
   i opóźnieniem, zdarzenia outboxu, kolejki (nazwa, wiadomości, konsumenci), porównanie indeksu, „Odśwież”,
   odświeżanie co 30 s z pauzą w ukrytej karcie, „Dane z …”, błąd z czasem danych.
 - **Produkty**: wyszukiwanie od 2 znaków, filtr kategorii (z podkategoriami) i statusu, stronicowanie, miniatury, link
@@ -724,7 +729,7 @@ interfejsu, pomarańczowy przycisk główny Worf z ciemnym tekstem), WCAG 2.2 AA
 - D6. Nowa zmienna `VITE_STORE_URL` (compose i chart) dla linku „Sklep” i akcji „Podgląd w sklepie”.
 - D7. Telefon: lista i szczegóły zamówienia zaprojektowane pod telefon, okna mieszczą się na ekranie,
   a każdy ekran spełnia reflow przy 320 px (WCAG 1.4.10) z dostępem do wszystkich informacji i funkcji.
-- D8. Zawartość pulpitu: kafle katalogu, „Do obsługi” jako linki według ról, „Ostatnie zamówienia”; „Stan systemu” na
+- D8. Zawartość pulpitu: kafle katalogu, kafle sprzedaży (tylko `admin`), „Do obsługi” jako linki według ról, „Ostatnie zamówienia”; „Stan systemu” na
   `/system` tylko dla `admin`.
 - D9. Rozmiary strony 10/25/50, domyślnie 25 (Ceny i Stany: 10 produktów); filtry w adresie, pozycja stronicowania nie.
 - D10. Strażniki tras `/orders` i `/system`; `/prices` bez strażnika, bo API daje ceny każdemu pracownikowi z rolą personelu.
@@ -741,7 +746,7 @@ interfejsu, pomarańczowy przycisk główny Worf z ciemnym tekstem), WCAG 2.2 AA
 
 ## Poza zakresem
 
-Każda zmiana API i klienta TS (liczniki wyników, KPI sprzedaży, kolejki z liczbami, filtr „bez zdjęć”,
+Każda zmiana API i klienta TS (liczniki wyników, kolejki z liczbami, filtr „bez zdjęć”,
 filtr poziomu stanu, klienci, kategorie, akcje masowe, eksport, wyszukiwarka globalna Ctrl+K, dziennik zmian,
 wyszukiwanie częściowe zamówień): ADMIN-FEATURES (#461). Tryb ciemny. Zwijanie sidebaru na desktopie do ikon. Wygląd
 strony logowania Keycloaka. Ostrzeżenie przed wylogowaniem po bezczynności. Cena i stan w formularzu produktu

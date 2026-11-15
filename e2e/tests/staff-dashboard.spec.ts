@@ -52,6 +52,27 @@ test("admin sees the dashboard and opens „Stan systemu” from the menu", asyn
   await expect(page.getByTestId("updated-at")).toContainText("Dane z");
 });
 
+// An amount of the panel („12 345,50 zł”, with the spaces of Intl), or „—” for today between 0:00 and 1:00.
+const MONEY = /^(\d{1,3}([\s\u00a0\u202f]\d{3})*,\d{2}[\s\u00a0]zł|—)$/;
+
+test("admin sees the sales of today, 7 and 30 days up to the last full hour", async ({ page }) => {
+  await loginStaff(page, staff.admin);
+
+  const sales = page.getByRole("region", { name: "Sprzedaż" });
+  await expect(sales.getByRole("heading", { level: 2 })).toHaveText(["Sprzedaż dziś", "Sprzedaż 7 dni", "Sprzedaż 30 dni"]);
+  for (const value of await sales.getByTestId("kpi-value").allTextContents()) {
+    expect(value.trim()).toMatch(MONEY);
+  }
+  // The 7 and 30 days always have a completed hour: their orders and their comparison are there.
+  const tiles = sales.getByTestId("kpi-tile");
+  for (const index of [1, 2]) {
+    await expect(tiles.nth(index).getByTestId("kpi-footer")).toContainText(/Zamówienia: \d/);
+    await expect(tiles.nth(index).getByTestId("kpi-trend")).toHaveText(/(vs poprzednie (7|30) dni|brak danych do porównania)$/);
+  }
+  await expect(tiles.first().getByTestId("kpi-description")).toHaveText(/^(Od północy do pełnej godziny, wg godzin zegara\.|Pierwsze dane po 1:00)$/);
+  await expect(sales.getByTestId("sales-until")).toHaveText(/^Dane do \d{2}:00$/);
+});
+
 test("support sees the tasks of the orders and the latest orders, and no system status", async ({ page }) => {
   await loginStaff(page, staff.support);
 
@@ -61,6 +82,8 @@ test("support sees the tasks of the orders and the latest orders, and no system 
   // The queues of the others are null for support: no tile of the products without images, no footer of „Produkty”.
   await expect(page.getByTestId("kpi-tile")).toHaveCount(2);
   await expect(page.getByTestId("products-without-images")).toHaveCount(0);
+  // The sales only for an administrator.
+  await expect(page.getByRole("region", { name: "Sprzedaż" })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 2, name: "Ostatnie zamówienia" })).toBeVisible();
   await expect(panelMenu(page).getByRole("link", { name: "Stan systemu" })).toHaveCount(0);
 
@@ -83,6 +106,7 @@ test("marketing sees the promotions and the codes, and does not ask for the orde
   await expect(page.getByTestId("todo-label")).toHaveText([ROWS.images, ROWS.promotions, ROWS.codes]);
   await expectCounts(page, [ROWS.images]);
   await expect(page.getByTestId("products-without-images")).toHaveText(COUNT);
+  await expect(page.getByRole("region", { name: "Sprzedaż" })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 2, name: "Ostatnie zamówienia" })).toHaveCount(0);
   expect(orderRequests).toEqual([]);
 
@@ -106,6 +130,7 @@ test("warehouse sees the stock queues and follows them to the filtered lists", a
   await expect(page.getByTestId("todo-label")).toHaveText([ROWS.paid, ROWS.inventory, ROWS.low]);
   await expectCounts(page, [ROWS.paid, ROWS.inventory, ROWS.low]);
   await expect(page.getByTestId("kpi-tile")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Sprzedaż" })).toHaveCount(0);
 
   const lowStock = page.waitForRequest((request) => {
     const url = new URL(request.url());
