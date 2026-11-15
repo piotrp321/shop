@@ -32,7 +32,11 @@ REGISTRY_KEYS = {'schema_version', 'canary_actions', 'suites'}
 
 
 class ConfigError(Exception):
-    """The registry or the config cannot be read or is not valid."""
+    """The registry or the config cannot be read or is not valid; `problems` lists what is wrong."""
+
+    def __init__(self, message, problems=None):
+        Exception.__init__(self, message)
+        self.problems = problems or [message]
 
 
 # ----------------------------------------------------------------------------------------------------- validation
@@ -169,7 +173,7 @@ def load(source):
     cfg = read_json(source, CONFIG_PATH)
     problems = validate_registry(reg) + validate_config(cfg)
     if problems:
-        raise ConfigError('; '.join(problems))
+        raise ConfigError('; '.join(problems), problems)
     return reg, cfg
 
 

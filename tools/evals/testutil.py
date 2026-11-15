@@ -82,8 +82,8 @@ class TempRepo:
     def checkout(self, name):
         self.git('checkout', '-q', name)
 
-    def write_case(self, suite, case_id, **overrides):
-        """Writes tools/evals/suites/<suite>/<case_id>/case.json with a valid minimal case and returns its data."""
+    def write_case(self, suite_dir, case_id, **overrides):
+        """Writes tools/evals/suites/<suite_dir>/<case_id>/case.json with a valid minimal case and returns its data."""
         case = {
             'id': case_id,
             'kind': 'defect',
@@ -92,7 +92,7 @@ class TempRepo:
         }
         case.update(overrides)
         case = {key: value for key, value in case.items() if value is not None}
-        self.write_json('tools/evals/suites/%s/%s/case.json' % (suite, case_id), case)
+        self.write_json('tools/evals/suites/%s/%s/case.json' % (suite_dir, case_id), case)
         return case
 
     def _has_commit(self):
