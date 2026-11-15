@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Inventory\Application\Query;
 
 /**
- * One page of the stock list of the panel: products with their variants and the stock of each, sorted by name, then
- * by id. The page size counts products.
+ * One page of the stock list of the panel: products with their variants and the stock of each, sorted by name (by
+ * default) or by the moment of the last change, then by id. The page size counts products.
  */
 final readonly class ListBackofficeStock
 {
@@ -18,12 +18,14 @@ final readonly class ListBackofficeStock
      * @param string|null $categoryId a category id (UUID), including its subcategories
      * @param string|null $after      the `next` of the previous page
      * @param int         $perPage    1 to 100
+     * @param string|null $sort       `name`, `-name`, `-updatedAt` or `updatedAt`; null for `name`
      */
     public function __construct(
         public ?string $term,
         public ?string $categoryId,
         public ?string $after,
         public int $perPage,
+        public ?string $sort = null,
     ) {
     }
 }

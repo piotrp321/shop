@@ -33,7 +33,7 @@ final readonly class ListBackofficeStockHandler
      */
     public function __invoke(ListBackofficeStock $query): StockList
     {
-        $page = $this->products->page($query->term, $query->categoryId, $query->after, $query->perPage);
+        $page = $this->products->page($query->term, $query->categoryId, $query->after, $query->perPage, $query->sort);
         if ([] === $page->items) {
             return new StockList([], $page->next, $page->total);
         }

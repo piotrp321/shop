@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Application;
 
 use App\Catalog\Application\Query\BackofficeProduct;
+use App\Catalog\Application\Query\InvalidBackofficeProductSearch;
+use App\Catalog\Application\Query\InvalidProductCursor;
+use App\Catalog\Application\Query\ProductSort;
 use App\Catalog\Application\Query\SearchBackofficeProducts;
 use App\Catalog\Application\Query\SearchBackofficeProductsHandler;
 use App\Shared\Domain\BoundedCount;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -85,8 +89,75 @@ final class SearchBackofficeProductsHandlerTest extends TestCase
         self::assertSame($countsOfTheFirstPage, $this->source->counts, 'only the first page counted');
     }
 
+    public function testThePageIsAskedInTheNameOrderWhenNoSortIsGiven(): void
+    {
+        ($this->handler)(new SearchBackofficeProducts(null, null, null, 2));
+
+        self::assertSame(ProductSort::Name, $this->source->sorts[0]);
+    }
+
+    /**
+     * @return iterable<string, array{string, ProductSort}>
+     */
+    public static function sortKeys(): iterable
+    {
+        yield 'name' => ['name', ProductSort::Name];
+        yield 'name descending' => ['-name', ProductSort::NameDescending];
+        yield 'updated last first' => ['-updatedAt', ProductSort::UpdatedAtDescending];
+        yield 'updated first first' => ['updatedAt', ProductSort::UpdatedAtAscending];
+    }
+
+    #[DataProvider('sortKeys')]
+    public function testEveryKeyOfTheClosedListSortsThePageAndItsNextCursorKeepsTheKey(string $key, ProductSort $expected): void
+    {
+        $page = ($this->handler)(new SearchBackofficeProducts(null, null, null, 2, null, $key));
+
+        self::assertSame($expected, $this->source->sorts[0]);
+        self::assertNotNull($page->next);
+
+        ($this->handler)(new SearchBackofficeProducts(null, null, $page->next, 2, null, $key));
+        self::assertSame($expected, $this->source->sorts[1]);
+        self::assertSame($expected, $this->source->pages[1][3]?->sort);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unknownKeys(): iterable
+    {
+        yield 'unknown' => ['price'];
+        yield 'empty' => [''];
+        yield 'another letter case' => ['Name'];
+        yield 'a key of the orders' => ['-placedAt'];
+    }
+
+    #[DataProvider('unknownKeys')]
+    public function testAKeyOutsideTheClosedListIsRejectedWithoutARead(string $key): void
+    {
+        try {
+            ($this->handler)(new SearchBackofficeProducts(null, null, null, 2, null, $key));
+            self::fail('The key must be rejected.');
+        } catch (InvalidBackofficeProductSearch) {
+            self::assertSame([], $this->source->pages);
+        }
+    }
+
+    public function testACursorOfAnotherSortIsRejectedWithoutARead(): void
+    {
+        $first = ($this->handler)(new SearchBackofficeProducts(null, null, null, 2, null, '-updatedAt'));
+        self::assertNotNull($first->next);
+        $reads = $this->source->pages;
+
+        try {
+            ($this->handler)(new SearchBackofficeProducts(null, null, $first->next, 2, null, 'updatedAt'));
+            self::fail('The cursor of another sort must be rejected.');
+        } catch (InvalidProductCursor) {
+            self::assertSame($reads, $this->source->pages);
+        }
+    }
+
     private static function product(int $n): BackofficeProduct
     {
-        return new BackofficeProduct(\sprintf('00000000-0000-4000-8000-%012d', $n), 'Produkt '.$n, 'standard');
+        return new BackofficeProduct(\sprintf('00000000-0000-4000-8000-%012d', $n), 'Produkt '.$n, 'standard', new \DateTimeImmutable('2026-11-05 10:00:00+00:00'));
     }
 }

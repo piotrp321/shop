@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Catalog\Application;
 use App\Catalog\Application\Port\BackofficeProductSource;
 use App\Catalog\Application\Query\BackofficeProduct;
 use App\Catalog\Application\Query\ProductCursor;
+use App\Catalog\Application\Query\ProductSort;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Shared\Domain\BoundedCount;
@@ -19,6 +20,8 @@ final class InMemoryBackofficeProductSource implements BackofficeProductSource
 {
     /** @var list<array{?string, ?CategoryPath, ?ProductStatus, ?ProductCursor, int}> */
     public array $pages = [];
+    /** @var list<ProductSort> the sort of each page read, in the order of */
+    public array $sorts = [];
     /** @var list<array{?string, ?CategoryPath, ?ProductStatus}> */
     public array $counts = [];
     public BoundedCount $total;
@@ -31,9 +34,10 @@ final class InMemoryBackofficeProductSource implements BackofficeProductSource
         $this->total = new BoundedCount(\count($products), false);
     }
 
-    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, int $limit): array
+    public function page(?string $term, ?CategoryPath $category, ?ProductStatus $status, ?ProductCursor $after, ProductSort $sort, int $limit): array
     {
         $this->pages[] = [$term, $category, $status, $after, $limit];
+        $this->sorts[] = $sort;
 
         return \array_slice($this->products, 0, $limit);
     }

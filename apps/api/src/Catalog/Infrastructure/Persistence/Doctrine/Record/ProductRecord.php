@@ -22,6 +22,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'catalog_product_name_id_idx', columns: ['name', 'id'])]
 // The predicate as PostgreSQL reports it, so the mapping and the migrated schema compare equal.
 #[ORM\Index(name: 'catalog_product_draft_name_id_idx', columns: ['name', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
+// The sort by the last change: (updated_at, id), whole and of the drafts. Both are created CONCURRENTLY by the
+// migration, which the mapping cannot express.
+#[ORM\Index(name: 'catalog_product_updated_at_id_idx', columns: ['updated_at', 'id'])]
+#[ORM\Index(name: 'catalog_product_draft_updated_at_id_idx', columns: ['updated_at', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
 class ProductRecord
 {
     public const string SLUG_CONSTRAINT = 'catalog_product_slug_key';

@@ -36,16 +36,17 @@ final class BackofficeStockController
     #[OA\Get(
         operationId: 'listStock',
         summary: 'Stock list',
-        description: 'A page of products sorted by name, then by id, each with its variants in presentation order and the stock '
+        description: 'A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the stock '
             .'of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, '
-            .'each with all its variants. Page with the opaque `next` cursor as `after`; the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. '
+            .'each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. '
             .'The category filter includes the subcategories and the products that have the category as an additional one; '
             .'an unknown category gives 404. The search term is a literal part of the name, case-insensitive.',
         tags: ['Inventory'],
         parameters: [
             new OA\Parameter(name: 'q', in: 'query', required: false, description: 'A part of the product name, 2 to 100 characters.', schema: new OA\Schema(type: 'string', minLength: 2, maxLength: 100)),
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Category id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
-            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeStockQuery::MAX_CURSOR_LENGTH)),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.', schema: new OA\Schema(type: 'string', enum: BackofficeStockQuery::SORTS, default: 'name')),
+            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page of the same sort.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeStockQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: ListBackofficeStock::MAX_PER_PAGE, default: ListBackofficeStock::DEFAULT_PER_PAGE)),
         ],
         responses: [
@@ -80,7 +81,7 @@ final class BackofficeStockController
     {
         try {
             /** @var StockList $list */
-            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage));
+            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

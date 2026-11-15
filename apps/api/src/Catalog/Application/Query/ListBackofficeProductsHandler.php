@@ -31,7 +31,7 @@ final readonly class ListBackofficeProductsHandler
      */
     public function __invoke(ListBackofficeProducts $query): BackofficeProductList
     {
-        $page = ($this->search)(new SearchBackofficeProducts($query->term, $query->categoryId, $query->after, $query->perPage, $query->status));
+        $page = ($this->search)(new SearchBackofficeProducts($query->term, $query->categoryId, $query->after, $query->perPage, $query->status, $query->sort));
         $summaries = $this->source->summaries(array_map(static fn (BackofficeProduct $product): string => $product->id, $page->items));
 
         $items = [];

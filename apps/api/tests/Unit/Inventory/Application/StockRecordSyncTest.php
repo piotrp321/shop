@@ -80,7 +80,7 @@ final class PagedDirectory implements ProductDirectory
     {
     }
 
-    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage
+    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage, ?string $sort = null): DirectoryPage
     {
         $this->requests[] = [$term, $categoryId, $after, $perPage];
         $index = null === $after ? 0 : (int) substr($after, 5);

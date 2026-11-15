@@ -22,6 +22,8 @@ final class InMemoryProductDirectory implements ProductDirectory
 {
     /** @var list<array{?string, ?string, ?string, int}> term, category id, cursor and page size of every call */
     public array $requests = [];
+    /** @var list<string|null> the sort key of every page() call, one per request */
+    public array $sorts = [];
     /** @var list<list<string>> the product ids of every variantsOf() call */
     public array $variantRequests = [];
     public bool $categoryExists = true;
@@ -79,9 +81,10 @@ final class InMemoryProductDirectory implements ProductDirectory
         return $this;
     }
 
-    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage
+    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage, ?string $sort = null): DirectoryPage
     {
         $this->requests[] = [$term, $categoryId, $after, $perPage];
+        $this->sorts[] = $sort;
         if (!$this->categoryExists) {
             throw new CategoryNotFound();
         }
