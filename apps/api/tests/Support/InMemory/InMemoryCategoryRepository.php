@@ -7,27 +7,44 @@ namespace App\Tests\Support\InMemory;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Category\CategoryRepository;
-use App\Catalog\Domain\Category\CategorySlug;
 
 final class InMemoryCategoryRepository implements CategoryRepository
 {
     /** @var array<string, Category> */
     private array $categories = [];
 
+    /** How many reads (get, all) since the test last reset it. */
+    public int $reads = 0;
+
+    /** @var list<string> the categories locked by lock(), in order */
+    public array $lockedRows = [];
+
     public function save(Category $category): void
     {
-        $this->categories[$category->id()->toString()] = $category;
+        $this->categories[$category->id()->toString()] = self::copy($category);
+    }
+
+    public function saveAll(array $categories): void
+    {
+        foreach ($categories as $category) {
+            $this->save($category);
+        }
     }
 
     public function get(CategoryId $id): Category
     {
-        return $this->categories[$id->toString()] ?? throw new CategoryNotFound();
+        ++$this->reads;
+
+        return isset($this->categories[$id->toString()]) ? self::copy($this->categories[$id->toString()]) : throw new CategoryNotFound();
     }
 
     public function all(): array
     {
-        return array_values($this->categories);
+        ++$this->reads;
+
+        return array_values(array_map(self::copy(...), $this->categories));
     }
 
     public function count(): int
@@ -35,17 +52,35 @@ final class InMemoryCategoryRepository implements CategoryRepository
         return \count($this->categories);
     }
 
-    public function slugTakenAmongSiblings(?CategoryId $parentId, CategorySlug $slug): bool
+    public function movePaths(CategoryPath $from, CategoryPath $to): void
     {
-        foreach ($this->categories as $category) {
-            $sameParent = null === $parentId
-                ? null === $category->parentId()
-                : null !== $category->parentId() && $category->parentId()->equals($parentId);
-            if ($sameParent && $category->slug()->equals($slug)) {
-                return true;
+        $prefix = $from->toString();
+        foreach ($this->categories as $key => $category) {
+            $path = $category->path()->toString();
+            if (!str_starts_with($path, $prefix)) {
+                continue;
             }
+            $newPath = CategoryPath::fromString($to->toString().substr($path, \strlen($prefix)));
+            $ancestorIds = $newPath->ancestorIds();
+            $this->categories[$key] = Category::reconstitute($category->id(), $category->name(), $category->slug(), $ancestorIds[\count($ancestorIds) - 2] ?? null, $newPath, $category->position(), $category->version());
         }
+    }
 
-        return false;
+    public function lock(CategoryId $id): void
+    {
+        $this->lockedRows[] = $id->toString();
+    }
+
+    public function remove(Category $category): void
+    {
+        unset($this->categories[$category->id()->toString()]);
+    }
+
+    /**
+     * The stored state is never the object a test or a handler goes on changing.
+     */
+    private static function copy(Category $category): Category
+    {
+        return Category::reconstitute($category->id(), $category->name(), $category->slug(), $category->parentId(), $category->path(), $category->position(), $category->version());
     }
 }
