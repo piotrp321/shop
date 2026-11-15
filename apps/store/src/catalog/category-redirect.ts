@@ -21,7 +21,7 @@ export async function loadCategoryRedirect(path: string): Promise<string | null>
     }
     throw new Error(`GET /api/v1/categories/redirect failed with status ${response.status}.`);
   }
-  if (typeof data?.path !== "string" || data.path === "") {
+  if (typeof data.path !== "string" || data.path === "") {
     throw new Error("GET /api/v1/categories/redirect returned an unexpected body.");
   }
   return data.path;

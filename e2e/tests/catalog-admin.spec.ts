@@ -249,8 +249,9 @@ test("an old category address follows the renamed category: 308 to the new addre
   let deleted = false;
   const locationOf = async (address: string) => {
     const response = await request.get(`${urls.store}${address}`, { maxRedirects: 0 });
-    const location = response.headers().location;
-    return { status: response.status(), location: location === undefined ? null : new URL(location, urls.store).pathname + new URL(location, urls.store).search };
+    const header = response.headers().location;
+    const target = header === undefined ? null : new URL(header, urls.store);
+    return { status: response.status(), location: target === null ? null : target.pathname + target.search };
   };
 
   try {
