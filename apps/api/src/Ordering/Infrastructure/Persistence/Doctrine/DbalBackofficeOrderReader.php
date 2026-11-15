@@ -79,11 +79,11 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
         return array_map($this->fromRow(...), $this->connection->fetchAllAssociative($sql, $parameters, $types));
     }
 
-    public function count(BackofficeOrderFilter $filter): BoundedCount
+    public function count(BackofficeOrderFilter $filter, int $limit = BoundedCounter::DEFAULT_LIMIT): BoundedCount
     {
         [$conditions, $parameters] = self::conditions($filter);
 
-        return $this->counter->count('ordering_order o', $conditions, $parameters);
+        return $this->counter->count('ordering_order o', $conditions, $parameters, limit: $limit);
     }
 
     /**
