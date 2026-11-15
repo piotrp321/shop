@@ -35,7 +35,12 @@ Zasady:
     zakaz („żadnej drogi do sekretów”, „brak możliwości eskalacji”) zamiast zamkniętej listy dróg ze sprawdzeniem
     każdej i jawnej listy „poza zakresem”; droga w zakresie bez sprawdzenia; komponent zewnętrzny (chart, operator,
     obraz), którego domyślnych uprawnień szkic nie porównał z kryteriami (sprawdź jego manifesty). Każde to
-    `Important`.
+    `Important`;
+  - niesprawdzonego założenia o zachowaniu narzędzia albo biblioteki w wersji, której epik używa (ustawienie CLI
+    albo sandboxa, opcja SDK, mechanizm frameworka), na którym stoi kryterium akceptacji albo przypadek pracy: brak
+    eksperymentu na tej wersji w „Wymagane przed startem” (polecenie, wersja, wynik), a przy epiku ograniczającym
+    środowisko (sandbox, uprawnienia, sieć, udostępnione katalogi) eksperymentu z każdym przypadkiem pracy pod tym
+    ograniczeniem, to `Important`.
 - Nie rozstrzygaj decyzji produktowych (zakres, reguły, limity, zachowanie klienta): nazwij je jako znalezisko
   `produktowe` z rekomendacją wariantu.
 - Nie rozstrzygaj istotnych decyzji DDD i architektonicznych (agregaty, value objecty, granice modułów, persystencja,

@@ -143,6 +143,17 @@ treść nie trafia do agentów; przepisz je we własne issue”, bez opisu jego 
      k8s-monitoring dawała dostęp do sekretów wbrew kryterium spec, a kolejne rundy review DELTA znajdowały nowe
      drogi pośrednie (hostPath, tokeny, Service), bo kryterium nie miało granic: 6 prób, 9,8 h, 3 odpowiedzi
      użytkownika.
+   - Rozwiązanie oparte na zachowaniu narzędzia albo biblioteki w wersji, której epik używa (ustawienie CLI albo
+     sandboxa, opcja SDK, mechanizm frameworka), sprawdź przed startem eksperymentem na tej wersji. Gdy epik
+     ogranicza środowisko pracy (sandbox, profil uprawnień, sieć, udostępnione katalogi), eksperyment uruchamia pod
+     projektowanym ograniczeniem każdy przypadek pracy, który ma przejść (np. `docker compose build`, `mktemp`,
+     `git push`), i każdą ścieżkę błędu z kryteriów akceptacji. Wynik (polecenie, wersja, wynik) wpisz do „Wymagane
+     przed startem” jako `istnieje: <eksperyment>`. Przypadek, który nie przechodzi, i kryterium niewykonalne na tej
+     wersji to pytanie z kroku 4, nie odkrycie w trakcie zadania. Przykład: AGENT-SECURITY-3 zgłosił trzy blokery
+     z decyzjami użytkownika, bo przy przygotowaniu sprawdzono tylko, że ustawienia sandboxa Claude Code 2.1.311
+     istnieją: `denyRead` `/tmp` psuł `docker compose build`, CLI nadpisywał `TMPDIR` poleceń Bash, goły `mktemp`
+     pisał do `/var/folders` tylko do odczytu, a kryterium „sonda bez `denyRead` kończy się kodem 1” było
+     niewykonalne.
 2. **Review szkicu.** Uruchom `spec-critic` i `architecture-reviewer` (narzędzie Agent, `subagent_type`)
    równolegle, w jednej wiadomości, na pierwszym planie, i poczekaj na oba wyniki. Każdy dostaje tylko numery issues
    i ścieżkę szkicu, bez rozumowania analityka ani cudzych wniosków:
