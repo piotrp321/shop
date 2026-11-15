@@ -7,6 +7,19 @@
       a task of wave N depends only on tasks of earlier waves. The spec path is relative to the root of the git
       repository that contains PLAN and must point to a file in the plan's directory.
 
+  parallel PLAN
+      Checks PLAN like validate, without its `parallel_with` lists, and prints a JSON object {task id: [task ids]} in
+      plan order: for every task the maximal `parallel_with`, i.e. every other task it may run at once with. A task
+      without `paths` gets [].
+
+Optional task keys (step 19b, docs/features/parallel-work/spec.md): `paths`, a non-empty list of paths relative to
+the repository root that the task changes (a file, or a directory ending with /; no absolute path, no `.` or `..`
+segment, no control character or Unicode separator other than the space, no duplicate), and `parallel_with`, the
+ids of tasks that may run at once with it. A listed pair must be symmetric, both tasks must have `paths`, neither may
+depend on the other (also through depends_on of another task) and their `paths` must not share a path that
+parallel_gate.task_conflicts refuses (application code, a CLAUDE.md or a file; two directories outside application
+code may overlap). Without `parallel_with` the task runs alone.
+
 Exit code 2: unreadable plan, missing or broken block, or an invalid manifest (every problem on stderr).
 """
 import argparse
@@ -17,12 +30,16 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ao-run'))
+import parallel_gate  # noqa: E402  (the file rule of parallel work lives in one place)
+
 SCHEMA_VERSION = 1
 # Same rule as the orchestrator's task ids: the manifest's ids become AO task ids and branch names.
 TASK_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
 RISKS = ('FAST', 'STANDARD', 'CRITICAL')
 MANIFEST_KEYS = ('schema_version', 'epic', 'spec', 'tasks')
 TASK_KEYS = ('id', 'title', 'scope', 'acceptance_criteria', 'risk', 'depends_on')
+OPTIONAL_TASK_KEYS = ('paths', 'parallel_with')
 OPENING = re.compile(r'^```json[ \t]*$')
 FENCE = re.compile(r'^```[ \t]*$')
 
@@ -77,7 +94,22 @@ def check(manifest, root, plan_dir):
         problems.extend(_task_problems(i, item, epic, ids))
     if not problems:
         problems.extend(_dependency_problems(tasks))
+    if not problems:
+        problems.extend(_parallel_problems(tasks))
     return problems
+
+
+def parallel_lists(tasks):
+    """The maximal `parallel_with` of every task: the other tasks it may run at once with, in plan order. Expects a
+    valid, acyclic manifest."""
+    ancestors = _ancestors(tasks)
+    lists = {t['id']: [] for t in tasks}
+    for i, a in enumerate(tasks):
+        for b in tasks[i + 1:]:
+            if not _pair_problem(a, b, ancestors):
+                lists[a['id']].append(b['id'])
+                lists[b['id']].append(a['id'])
+    return lists
 
 
 def waves(tasks):
@@ -101,9 +133,9 @@ def waves(tasks):
     return result
 
 
-def _keys(where, value, expected):
+def _keys(where, value, expected, optional=()):
     problems = []
-    unknown = sorted(set(value) - set(expected))
+    unknown = sorted(set(value) - set(expected) - set(optional))
     missing = [k for k in expected if k not in value]
     if unknown:
         problems.append('%s: unknown keys: %s' % (where, ', '.join(unknown)))
@@ -131,7 +163,7 @@ def _spec_problems(spec, root, plan_dir):
 def _task_problems(i, item, epic, ids):
     task_id = item.get('id')
     where = 'tasks[%d] (%s)' % (i, task_id) if isinstance(task_id, str) else 'tasks[%d]' % i
-    problems = _keys(where, item, TASK_KEYS)
+    problems = _keys(where, item, TASK_KEYS, OPTIONAL_TASK_KEYS)
     if 'id' in item:
         if not (isinstance(task_id, str) and TASK_ID.fullmatch(task_id)):
             problems.append('%s: id must match %s' % (where, TASK_ID.pattern))
@@ -154,6 +186,42 @@ def _task_problems(i, item, epic, ids):
     depends_on = item.get('depends_on')
     if 'depends_on' in item and not (isinstance(depends_on, list) and all(isinstance(d, str) for d in depends_on)):
         problems.append('%s: depends_on must be a list of task ids' % where)
+    if 'paths' in item:
+        problems.extend(_paths_problems(where, item['paths']))
+    parallel_with = item.get('parallel_with')
+    if 'parallel_with' in item:
+        if not (isinstance(parallel_with, list) and all(isinstance(p, str) for p in parallel_with)):
+            problems.append('%s: parallel_with must be a list of task ids' % where)
+        else:
+            seen = set()
+            for p in parallel_with:
+                if p == task_id:
+                    problems.append('%s lists itself in parallel_with' % p)
+                elif p in seen:
+                    problems.append('%s lists %s twice in parallel_with' % (task_id, p))
+                seen.add(p)
+    return problems
+
+
+def _is_relative_path(path):
+    if not isinstance(path, str) or not path or path != path.strip() or path.startswith('/') or '\\' in path:
+        return False
+    if not path.isprintable():
+        # Control characters and Unicode separators other than the ASCII space (NUL, U+2028, NBSP).
+        return False
+    segments = (path[:-1] if path.endswith('/') else path).split('/')
+    return all(s not in ('', '.', '..') for s in segments)
+
+
+def _paths_problems(where, paths):
+    if not (isinstance(paths, list) and paths and all(_is_relative_path(p) for p in paths)):
+        return ['%s: paths must be a non-empty list of relative paths (a file, or a directory ending with /)' % where]
+    problems, seen = [], set()
+    for p in paths:
+        name = p.rstrip('/')
+        if name in seen:
+            problems.append('%s: paths lists %s twice' % (where, name))
+        seen.add(name)
     return problems
 
 
@@ -187,6 +255,58 @@ def _dependency_problems(tasks):
     return problems
 
 
+def _ancestors(tasks):
+    """Every task id with the set of tasks it depends on, directly or through other tasks."""
+    by_id = {t['id']: t for t in tasks}
+    found = {}
+
+    def of(task_id):
+        if task_id not in found:
+            found[task_id] = set()
+            for d in by_id[task_id]['depends_on']:
+                found[task_id] |= {d} | of(d)
+        return found[task_id]
+
+    for t in tasks:
+        of(t['id'])
+    return found
+
+
+def _pair_problem(a, b, ancestors):
+    """Why tasks a and b may not run at once (a before b in the plan), None when they may."""
+    if 'paths' not in a or 'paths' not in b:
+        return '%s and %s are parallel without paths in both' % (a['id'], b['id'])
+    for first, second in ((a, b), (b, a)):
+        if first['id'] in ancestors[second['id']]:
+            return '%s and %s cannot run in parallel: %s depends on %s' % (a['id'], b['id'], second['id'],
+                                                                           first['id'])
+    shared = parallel_gate.task_conflicts(a['paths'], b['paths'])
+    if shared:
+        return '%s and %s cannot run in parallel: shared paths %s' % (a['id'], b['id'], ', '.join(shared))
+    return None
+
+
+def _parallel_problems(tasks):
+    problems = []
+    by_id = {t['id']: t for t in tasks}
+    order = [t['id'] for t in tasks]
+    ancestors = _ancestors(tasks)
+    pairs = set()
+    for t in tasks:
+        for other in t.get('parallel_with', ()):
+            if other not in by_id:
+                problems.append('%s is parallel with unknown task %s' % (t['id'], other))
+                continue
+            if t['id'] not in by_id[other].get('parallel_with', ()):
+                problems.append('%s is parallel with %s, but %s does not list %s' % (t['id'], other, other, t['id']))
+            pairs.add(tuple(sorted((t['id'], other), key=order.index)))
+    for first, second in sorted(pairs, key=lambda p: (order.index(p[0]), order.index(p[1]))):
+        problem = _pair_problem(by_id[first], by_id[second], ancestors)
+        if problem:
+            problems.append(problem)
+    return problems
+
+
 def _repo_root(path):
     try:
         r = subprocess.run(['git', '-C', os.path.dirname(path) or '.', 'rev-parse', '--show-toplevel'],
@@ -198,7 +318,9 @@ def _repo_root(path):
     return r.stdout.strip()
 
 
-def validate(path):
+def validate(path, ignore_parallel_with=False):
+    """The checked manifest of the plan at `path` with its waves; with `ignore_parallel_with` the `parallel_with`
+    lists are dropped before the check (the manifest is returned without them)."""
     try:
         with open(path, encoding='utf-8') as f:
             text = f.read()
@@ -210,6 +332,9 @@ def validate(path):
         manifest = json.loads(extract_block(text))
     except ValueError as e:
         raise PlanError('the ```json block is not valid JSON: %s' % e) from None
+    if ignore_parallel_with and isinstance(manifest, dict) and isinstance(manifest.get('tasks'), list):
+        manifest['tasks'] = [{k: v for k, v in t.items() if k != 'parallel_with'} if isinstance(t, dict) else t
+                             for t in manifest['tasks']]
     problems = check(manifest, root, plan_dir)
     if problems:
         raise PlanError('\n'.join(problems))
@@ -220,9 +345,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Validates the task manifest of an epic plan.')
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('validate', help='check PLAN and print its manifest with waves').add_argument('plan')
+    sub.add_parser('parallel', help='print the maximal parallel_with of every task of PLAN').add_argument('plan')
     args = parser.parse_args(argv)
     try:
-        result = validate(args.plan)
+        if args.command == 'parallel':
+            result = parallel_lists(validate(args.plan, ignore_parallel_with=True)['tasks'])
+        else:
+            result = validate(args.plan)
     except PlanError as e:
         print('plan_manifest: %s' % e, file=sys.stderr)
         return 2

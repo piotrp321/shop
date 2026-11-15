@@ -256,6 +256,31 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual(['a/b', 'c/d/e'], cp(['c/d', 'a/b', 'a/b'], ['a', 'c/d/e', 'a/b']))
 
 
+    def test_task_conflicts(self):
+        tc = pg.task_conflicts
+        # Application code, a CLAUDE.md or a file in the common part keeps two tasks apart.
+        self.assertEqual(['apps/api/src/Cart'], tc(['apps/api/src/'], ['apps/api/src/Cart/']))
+        self.assertEqual(['apps/api/src'], tc(['apps/api/'], ['apps/api/src/']))
+        self.assertEqual(['apps/api/src/Cart/Cart.php'], tc(['apps/'], ['apps/api/src/Cart/Cart.php']))
+        self.assertEqual(['CLAUDE.md'], tc(['CLAUDE.md'], ['CLAUDE.md']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/'], ['infra/k8s/CLAUDE.md']))
+        self.assertEqual(['docs/vision.md'], tc(['docs/vision.md'], ['docs/']))
+        self.assertEqual(['apps/api/openapi.json'], tc(['apps/api/openapi.json'], ['apps/api/openapi.json']))
+        self.assertEqual(['apps/admin/src/router/index.ts'],
+                         tc(['apps/admin/src/router/index.ts'], ['apps/admin/src/router/index.ts']))
+        # A path declared as a file on one side is a file, even when the other side names it as a directory.
+        self.assertEqual(['docs/x'], tc(['docs/x'], ['docs/x/']))
+        self.assertEqual(['docs/x/y'], tc(['docs/x'], ['docs/x/y/']))
+        # Two directories outside application code may overlap; disjoint paths never conflict.
+        self.assertEqual([], tc(['docs/'], ['docs/features/cart/']))
+        self.assertEqual([], tc(['apps/api/tests/', 'infra/', '.github/'], ['apps/api/tests/Unit/', 'infra/k8s/',
+                                                                          '.github/']))
+        self.assertEqual([], tc(['apps/api/src/Cart/'], ['apps/api/src/CartX/', 'apps/store/src/cart/']))
+        self.assertEqual([], tc(['docs/a.md'], ['docs/b.md']))
+        self.assertEqual(['CLAUDE.md', 'apps/api/src/Cart', 'docs/x.md'],
+                         tc(['docs/', 'CLAUDE.md', 'apps/api/src/Cart/'], ['apps/api/', 'docs/x.md', 'CLAUDE.md']))
+
+
 STATS_OUT = '\n'.join([
     'ao-x-api-1\t94.33MiB / 31.29GiB',
     'ao-x-db-1\t1GiB / 31GiB',
