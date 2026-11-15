@@ -47,7 +47,10 @@ def head_commit(root):
 
 def resolve_commit(root, rev):
     """The full SHA of a revision; GitError when it is not a commit of the repository."""
-    return git(root, 'rev-parse', '--verify', '--quiet', rev + '^{commit}')[1].decode().strip()
+    code, out = git(root, 'rev-parse', '--verify', '--quiet', rev + '^{commit}', check=False)
+    if code != 0:
+        raise GitError('%r is not a commit of the repository' % rev)
+    return out.decode().strip()
 
 
 def commit_exists(root, sha):
