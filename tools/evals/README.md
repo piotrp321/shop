@@ -128,10 +128,13 @@ rejestru, zły JSON, błąd `--diff`, brak gita tam, gdzie jest potrzebny). `--r
   na ścieżki domowe, adresy e-mail i wzorce tokenów (`ghp_`, `github_pat_`, `sk-ant-`); ładunki `injection`: zdekodowany
   tekst nie może występować jawnie w żadnym pliku `tools/evals/**`, może polecać tylko akcje kanarka z rejestru (każde
   wywołanie `gh` musi zaczynać się od akcji z listy), a wzorce destrukcyjne (`rm -rf`, `push --force`, odczyt `.env`
-  i `~/.ssh` bez względu na wielkość liter, wymuszony push także przez `+` w refspecu albo łączone krótkie flagi) są w nim
-  odrzucane, a `gh` wywołane po ścieżce albo w cudzysłowie to też wywołanie `gh` (zwykłe dane przypadków opisują proces
-  i nie są tak skanowane); jawna kopia ładunku jest wykrywana po normalizacji (wielkość liter i białe znaki) także
-  w zdekodowanych wartościach plików JSON (np. zapisanych z `\uXXXX`); dowiązania symboliczne w `suites/**` i `history/**`
+  i `~/.ssh` bez względu na wielkość liter, `rm` także w cudzysłowie albo backtickach, wymuszony push także przez `+`
+  w refspecu, łączone krótkie flagi albo kontynuację linii) są w nim odrzucane, a `gh` wywołane po ścieżce, w cudzysłowie
+  albo backtickach, w dowolnej wielkości liter, to też wywołanie `gh`, porównywane z akcjami kanarka bez względu na
+  wielkość liter (zwykłe dane przypadków opisują proces i nie są tak skanowane); jawna kopia ładunku jest wykrywana po
+  normalizacji (wielkość liter i białe znaki) także w zdekodowanych wartościach plików JSON (np. zapisanych z `\uXXXX`),
+  także pod kluczem `payload_b64` poza przypadkiem (pomijana jest tylko wartość będąca base64 któregoś ładunku); tekst
+  krótszy niż 24 znaki nie jest szukany jako jawna kopia; dowiązania symboliczne w `suites/**` i `history/**`
   to błąd (odcisk ich nie podąża, jak git); commity przypadków
   i diff przypadku z diffem (tylko przy pełnej historii; w płytkim klonie i poza gitem lint to pomija z ostrzeżeniem).
 - **`check`** (`make evals-check`, poza `make check`; argumenty przez `EVALS_CHECK_ARGS`): dla każdego zestawu odcisk

@@ -35,18 +35,20 @@ SCAN_PATTERNS = (
     ('Anthropic key (sk-ant-)', re.compile(re.escape('sk-ant-'))),
 )
 DESTRUCTIVE_PATTERNS = (
-    ('rm -rf', re.compile(r'\brm\s+(?:-\S*[rRfF]\S*|--recursive|--force)')),
+    # rm by name, by path, in quotes or backticks, in any case
+    ('rm -rf', re.compile(r'\brm["\'`]?\s+(?:-\S*[rf]\S*|--recursive|--force)', re.IGNORECASE)),
     # a forced push: a --force flag anywhere (--force-with-lease too), a short flag group with f (-f, -fu, -uf) and
     # a refspec with `+`
     ('push --force', re.compile(r'(?<!\S)--force\S*')),
-    ('push -f', re.compile(r'\bpush\b[^\n]*\s-[A-Za-z]*f[A-Za-z]*(?=\s|$)')),
-    ('push +refspec', re.compile(r'\bpush\b[^\n]*\s["\']?\+\S')),
+    # `[^\n]*` goes on over a line continuation (a backslash and a line break)
+    ('push -f', re.compile(r'\bpush\b(?:\\\r?\n|[^\n])*\s-[A-Za-z]*f[A-Za-z]*(?=\s|$)')),
+    ('push +refspec', re.compile(r'\bpush\b(?:\\\r?\n|[^\n])*\s["\']?\+\S')),
     # the file system of the developer machine ignores the case of a name
     ('reading .env', re.compile(r'\.env\b', re.IGNORECASE)),
     ('reading ~/.ssh', re.compile(r'\.ssh\b', re.IGNORECASE)),
 )
-# a call of gh by name, by any path (./gh, /opt/homebrew/bin/gh) or in quotes ("gh")
-GH_CALL_RE = re.compile(r'(?<![\w.-])gh["\']?\s+(\S+)(?:\s+(\S+))?')
+# a call of gh by name, by any path (./gh, /opt/homebrew/bin/gh), in quotes or backticks ("gh"), in any case
+GH_CALL_RE = re.compile(r'(?<![\w.-])gh["\'`]?\s+(\S+)(?:\s+(\S+))?', re.IGNORECASE)
 
 
 # ----------------------------------------------------------------------------------------------------- the cases
@@ -138,7 +140,7 @@ def check_payload_text(text, canary_actions):
     problems = []
     allowed = [action.split() for action in canary_actions if action.startswith('gh ')]
     for match in GH_CALL_RE.finditer(text):
-        words = ['gh'] + [w for w in match.groups() if w]
+        words = ['gh'] + [w.lower() for w in match.groups() if w]
         if not any(words[:len(prefix)] == prefix for prefix in allowed):
             problems.append('calls `%s`, which is not a canary action of the registry' % ' '.join(words))
     for label, regex in DESTRUCTIVE_PATTERNS:
@@ -356,7 +358,7 @@ def _normalize(text):
 def _plain_candidates(text):
     candidates = []
     full = _normalize(text)
-    if full:
+    if len(full) >= MIN_PLAIN_LINE:
         candidates.append(full)
     for line in text.splitlines():
         if len(line.strip()) >= MIN_PLAIN_LINE:
@@ -366,23 +368,32 @@ def _plain_candidates(text):
     return candidates
 
 
-def _json_strings(data):
-    """The decoded string values of a parsed JSON document, except `payload_b64` (the encoded payload itself)."""
+def _is_encoded_payload(value, texts):
+    """True for a `payload_b64` value that is valid base64 of the text of a payload (the encoded payload itself)."""
+    try:
+        return decode_payload(value) in texts
+    except ValueError:
+        return False
+
+
+def _json_strings(data, texts):
+    """The decoded string values of a parsed JSON document, except the encoded payloads themselves (a `payload_b64`
+    value that is not base64 of a payload is an ordinary string, a plain copy hidden under that key)."""
     if isinstance(data, str):
         yield data
     elif isinstance(data, dict):
         for key, value in data.items():
-            if key != 'payload_b64':
-                yield from _json_strings(value)
+            if not (key == 'payload_b64' and _is_encoded_payload(value, texts)):
+                yield from _json_strings(value, texts)
     elif isinstance(data, list):
         for value in data:
-            yield from _json_strings(value)
+            yield from _json_strings(value, texts)
 
 
-def _haystacks(path, content):
+def _haystacks(path, content, texts):
     """The normalized texts of a file in which a payload may be hiding: the file itself and, for a JSON file, its
-    decoded string values (json.dumps writes Polish letters as \\uXXXX). The encoded payloads are cut out, so a case
-    never finds its own payload."""
+    decoded string values (json.dumps writes Polish letters as \\uXXXX). The encoded payloads (and only they) are cut
+    out, so a case never finds its own payload."""
     if path.endswith('.json'):
         try:
             document = json.loads(content)
@@ -391,22 +402,23 @@ def _haystacks(path, content):
         if document is not None:
             raw = content
             for _, value in find_payloads(document):
-                if isinstance(value, str) and value:
+                if _is_encoded_payload(value, texts):
                     raw = raw.replace(value, '')
-            return [_normalize(raw)] + [_normalize(value) for value in _json_strings(document)]
+            return [_normalize(raw)] + [_normalize(value) for value in _json_strings(document, texts)]
     return [_normalize(content)]
 
 
 def _plain_payloads(root, decoded_payloads, report):
     if not decoded_payloads:
         return
+    texts = {text for _, text in decoded_payloads}
     candidates = []
     for where, text in decoded_payloads:
         candidates.extend((where, c) for c in _plain_candidates(text))
     for path in _walk_all(root, registry.EVALS_DIR):
         with open(os.path.join(root, path), 'rb') as handle:
             content = _decode(handle.read())
-        haystacks = _haystacks(path, content)
+        haystacks = _haystacks(path, content, texts)
         for where, candidate in candidates:
             if any(candidate in haystack for haystack in haystacks):
                 report.error('%s contains the decoded payload of %s in plain text' % (path, where.split(' ')[0]))
