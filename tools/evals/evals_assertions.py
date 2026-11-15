@@ -293,10 +293,45 @@ _PUNCTUATION = '();<>|&`\n'
 _HEREDOC_RE = re.compile(r'(?<!<)<<(?!<)(-?)\s*(?:\'([^\']+)\'|"([^"]+)"|\\?([A-Za-z_][\w.-]*))')
 
 
+def _strip_comments(text):
+    """The text without its shell comments: a hash that starts a word outside quotes, up to the end of the line (the
+    newline stays). A hash inside a word (`a#b`, `$#`), after a backslash or in quotes is text."""
+    out, quote, boundary, index = [], None, True, 0
+    while index < len(text):
+        char = text[index]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif quote == '"':
+            if char == '\\' and index + 1 < len(text):
+                out.append(char)
+                index += 1
+                char = text[index]
+            elif char == '"':
+                quote = None
+        elif char == '\\' and index + 1 < len(text):
+            out.append(char)
+            index += 1
+            char = text[index]
+            boundary = False
+        elif char in '\'"':
+            quote, boundary = char, False
+        elif char == '#' and boundary:
+            while index < len(text) and text[index] != '\n':
+                index += 1
+            continue
+        else:
+            boundary = char in ' \t\r' or char in _PUNCTUATION
+        out.append(char)
+        index += 1
+    return ''.join(out)
+
+
 def _segments(command):
     """[(words, the separator before them)] of a shell line. The separators (; && || | & newline, `(`, `)`, redirections,
-    a backtick) split only outside quotes; a hash is a comment in no case (it is read as text, so a call after
-    `echo a#b;` is not hidden); a line that does not parse (an open quote) is split at the separators wherever they are."""
+    a backtick) split only outside quotes; a hash at the start of a word outside quotes is a comment up to the end of
+    the line (the next line is read), a hash inside a word is text (so a call after `echo a#b;` is not hidden); a line
+    that does not parse (an open quote) is split at the separators wherever they are."""
+    command = _strip_comments(command)
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=_PUNCTUATION)
         lexer.whitespace = ' \t\r'
@@ -329,7 +364,8 @@ def _strip_heredocs(command):
         line = lines[index]
         kept.append(line)
         index += 1
-        for match in _HEREDOC_RE.finditer(line):
+        code = _strip_comments(line)
+        for match in _HEREDOC_RE.finditer(code):
             dash, delimiter = match.group(1), match.group(2) or match.group(3) or match.group(4)
             body = []
             while index < len(lines):
@@ -338,19 +374,36 @@ def _strip_heredocs(command):
                 if (current.strip() if dash else current.rstrip()) == delimiter:
                     break
                 body.append(current)
-            before = re.split(r'[;&|]', line[:match.start()])[-1]
-            piped = re.search(r'\|\s*(?:sudo\s+)?(?:%s)\b' % '|'.join(_SHELLS), line[match.end():])
+            before = re.split(r'[;&|]', code[:match.start()])[-1]
+            piped = re.search(r'\|\s*(?:sudo\s+)?(?:%s)\b' % '|'.join(_SHELLS), code[match.end():])
             if _is_shell_command(before) or piped:
                 scripts.append('\n'.join(body))
     return '\n'.join(kept), scripts
 
 
 def _program(tokens):
-    """(index, name) of the first gh, git, shell or eval in the words of a command."""
+    """(index, name) of the first gh, git, shell or eval in the words of a command (a position anywhere in the segment)."""
     for index, token in enumerate(tokens):
         name = os.path.basename(token)
         if name in ('gh', 'git', 'eval') or name in _SHELLS:
             return index, name
+    return None, None
+
+
+_WRAPPERS = ('sudo', 'exec', 'env', 'command', 'nohup')
+
+
+def _command_word(words):
+    """(index, name) of the word that the segment runs: the first word, after the wrappers (sudo, env, exec, command,
+    nohup, with their options) and the assignments (`VAR=1`)."""
+    wrapped = False
+    for index, word in enumerate(words):
+        if re.match(r'[A-Za-z_]\w*=', word) or (wrapped and word.startswith('-')):
+            continue
+        name = os.path.basename(word)
+        if name not in _WRAPPERS:
+            return index, name
+        wrapped = True
     return None, None
 
 
@@ -370,15 +423,16 @@ def _c_scripts(words):
 def shell_calls(command, depth=0):
     """[(program, arguments)] of the `gh` and `git` invocations in a shell command line: split at the shell
     separators outside quotes, then at the words. The script of `bash -c "..."` (any shell, `-lc`, after `--`), of `eval`,
-    of `echo "..." | sh`, of `sh <<< "..."` and of a heredoc to a shell is read again; a text that merely mentions gh (an
-    argument of echo, the body of `cat <<EOF`) is data, not a call."""
+    of `echo "..." | sh`, of `sh <<< "..."` and of a heredoc to a shell is read again; a shell (and eval) counts only as the
+    word of the command of its segment, after sudo, env, exec, command, nohup and assignments (`grep -v bash` is not a
+    shell). A text that merely mentions gh (an argument of echo, the body of `cat <<EOF`, a comment) is data, not a call."""
     command, scripts = _strip_heredocs(command)
     segments = _segments(command)
     for index, (words, separator) in enumerate(segments):
-        position, name = _program(words)
-        if name in ('gh', 'git') or depth >= 2:
+        if _program(words)[1] in ('gh', 'git') or depth >= 2:
             continue
-        if name is not None:
+        position, name = _command_word(words)
+        if name in _SHELLS or name == 'eval':
             rest = words[position + 1:]
             found = [' '.join(rest)] if name == 'eval' else _c_scripts(rest)
             if not found and name != 'eval' and separator == '|' and index:
@@ -386,7 +440,7 @@ def shell_calls(command, depth=0):
             scripts.extend(found)
         if separator == '<<<' and index:
             before = segments[index - 1][0]
-            shell = _program(before)
+            shell = _command_word(before)
             if shell[1] in _SHELLS and not _c_scripts(before[shell[0] + 1:]):
                 scripts.extend(words)   # a here-string to a shell
     calls = []
