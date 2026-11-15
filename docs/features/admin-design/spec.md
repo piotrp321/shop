@@ -397,30 +397,39 @@ do adresu trafia dopiero zastosowana fraza.
 
 ## Pulpit i Stan systemu
 
-Pulpit (`/`, H1 „Pulpit”) korzysta z `GET /api/v1/admin/dashboard` (sekcja `catalog`) i, dla ról z dostępem do zamówień,
+Pulpit (`/`, H1 „Pulpit”) korzysta z `GET /api/v1/admin/dashboard` (sekcje `catalog` i `queues`) i, dla ról z dostępem do zamówień,
 z `GET /api/v1/admin/orders?perPage=5`. Świeżość danych opisuje
 `docs/features/dashboard-data-freshness/spec.md`: „Odśwież”, odświeżanie co 30 s wstrzymane w ukrytej karcie,
 „Dane z 01.11.2026, 14:03:12” (pełna data i godzina w czasie polskim przez `formatDateTime`, `FreshnessBar`) i komunikat
 błędu z czasem pokazanych danych; dotyczy kafli katalogu i „Ostatnich zamówień”.
 
 - **Kafle KPI** (komponent `KpiTile`: `title`, `icon`, `tone` z par `kpi-*`, `value` sformatowane z liczby z API,
-  opcjonalnie `footer` z etykietą i wartością oraz `to` dla kafla-linku; etykietę zmiany i oznaczenie wartości
-  szacunkowej doda ADMIN-FEATURES razem z kaflami sprzedaży; `CatalogTiles` składa trzy kafle katalogu):
-  - „Produkty”: `productCount`, link do `/products`, stopka „Bez zdjęć” z `productsWithoutImages`;
-  - „Kategorie”: `categoryCount`, bez linku (panel nie ma ekranu kategorii);
-  - „Bez zdjęć”: `productsWithoutImages`, bez linku (API nie filtruje produktów bez zdjęć); stopka „Uzupełnij zdjęcia
-    w formularzu produktu” tylko przy liczbie większej od zera.
+  opcjonalnie `footer` z etykietą i wartością oraz `to` dla kafla-linku, `estimated` (oznaczenie „ok.” przed wartością
+  szacunkową) i `description` (wyjaśnienie wartości, której nie ma, połączone z wartością przez `aria-describedby`);
+  etykietę zmiany doda ADMIN-FEATURES razem z kaflami sprzedaży; `CatalogTiles` składa kafle katalogu):
+  - „Produkty”: `catalog.productCount` to szacunek bazy (`{value, estimated: true}`), pokazany z „ok.” (od miliona
+    „ok. 10 mln”), link do `/products`; bez szacunku (`null`, baza jeszcze nie ma statystyk) kafel pokazuje „—”
+    i opis „Liczba produktów będzie dostępna po aktualizacji statystyk bazy.”; stopka „Bez zdjęć” z kolejki
+    `queues.productsWithoutImages` (tylko gdy rola ją widzi);
+  - „Kategorie”: `categoryCount`, link do `/categories` (ekran kategorii dodaje ADMIN-FEATURES);
+  - „Bez zdjęć”: kolejka `queues.productsWithoutImages` (`admin`, `marketing`; dla pozostałych ról kafla nie ma), link do
+    `/products?images=none`; stopka „Uzupełnij zdjęcia w formularzu produktu” tylko przy liczbie większej od zera.
+  Liczba kolejki to `BoundedCount` (do 1000): „1000+” przy `capped`.
   Kafle sprzedaży doda ADMIN-FEATURES tym samym komponentem.
-- **„Do obsługi”** (karta z listą linków, bez liczb, bo API ich nie liczy): każdy wiersz to ikona w pastelowym kółku,
-  etykieta, opis i strzałka; widoczny według ról:
+- **„Do obsługi”** (karta z listą linków z liczbami kolejek): każdy wiersz to ikona w pastelowym kółku, etykieta, opis,
+  liczba kolejki (`todo-count`, „1000+” przy `capped`, „0” zostaje) i strzałka; wiersz bez kolejki (promocje, kody) nie ma
+  liczby; widoczny według ról, a po wczytaniu pulpitu tylko gdy API dało jego kolejkę (nie `null`):
   - „Opłacone do wysłania” → `/orders?status=paid` (`admin`, `support`, `warehouse`);
   - „Czekają na płatność” → `/orders?status=new` (`admin`, `support`);
   - „Zwroty do wykonania” → `/orders?refund=pending` (`admin`, `support`);
-  - „Stany magazynowe” → `/inventory` (`admin`, `warehouse`);
+  - „Zwroty po terminie” → `/orders?refund=overdue` (`admin`, `support`);
+  - „Stany magazynowe” (warianty bez stanu) → `/inventory?level=out_of_stock` (`admin`, `warehouse`);
+  - „Niski stan” → `/inventory?level=low_stock` (`admin`, `warehouse`);
+  - „Produkty bez zdjęć” → `/products?images=none` (`admin`, `marketing`);
   - „Aktywne promocje” → `/promotions?status=active` (`admin`, `marketing`);
   - „Kody rabatowe” → `/discount-codes?status=active` (`admin`, `marketing`).
-  Rola `support` bez innych zadań widzi co najmniej pierwsze trzy; każda rola widzi co najmniej jeden wiersz,
-  a rola z kilku widzi każdy raz. Do czasu wczytania `/me` karty nie ma.
+  Każda rola widzi co najmniej jeden wiersz, a rola z kilku widzi każdy raz. Do czasu wczytania `/me` karty nie ma;
+  do czasu wczytania pulpitu (i po błędzie jego pobrania) wiersze ról pokazują się bez liczb.
 - **„Ostatnie zamówienia”** (role `admin`, `support`, `warehouse`): tabela pięciu najnowszych (numer jako link, klient,
   data, pozycje `itemCount`, kwota, status) i link „Wszystkie zamówienia →”. Błąd tej karty nie psuje reszty pulpitu
   (komunikat w karcie z „Spróbuj ponownie”, a 403 bez ponowienia; nieudane odświeżenie zostawia pokazane zamówienia
@@ -432,7 +441,7 @@ sekcji „Stan systemu” w nowym wyglądzie i po polsku (okruszki „Pulpit ›
 „Baza danych (PostgreSQL)”, `labels.ts`; nieznana nazwa zostaje jak z API), etykietą „Działa” / „Nie działa”
 (status-success / status-danger) i opóźnieniem, „Zdarzenia czekające na wysłanie” zamiast „Outbox”, tabela kolejek
 (nazwa techniczna jak z API, wiadomości, konsumenci) w przewijanym regionie `role="region"`, porównanie indeksu
-wyszukiwarki z katalogiem. Zachowanie świeżości z
+wyszukiwarki z katalogiem (liczba produktów to szacunek bazy, indeks jest „w zgodzie” w granicach 1% szacunku; bez szacunku ekran mówi „Nie można porównać: brak statystyk bazy.”). Zachowanie świeżości z
 `docs/features/dashboard-data-freshness/spec.md` działa na tym ekranie tak samo jak na pulpicie (odświeżanie co 30 s wstrzymane
 w ukrytej karcie, „Dane z 01.11.2026, 14:03:12” (pełna data i godzina polska przez `formatDateTime`), komunikat z czasem
 pokazanych danych), a tekst „Dane z …” ma kontrast `muted-foreground` (#346). Rola inna niż `admin` dostaje z API
@@ -519,7 +528,7 @@ Spis funkcji panelu (sprawdza go `/integration`; każda pozycja ma test, który 
 
 - **Powłoka**: menu według ról (ukrywanie do wczytania `/me`), nazwa i role pracownika, wylogowanie, wylogowanie po
   15 min bezczynności, błąd wczytania pracownika, problem z logowaniem z „Zaloguj ponownie”.
-- **Pulpit i Stan systemu**: liczniki katalogu (produkty, kategorie, bez zdjęć z ostrzeżeniem), usługi ze stanem
+- **Pulpit i Stan systemu**: liczniki katalogu (szacunkowa liczba produktów, kategorie, bez zdjęć z ostrzeżeniem), kolejki „Do obsługi” z liczbami, usługi ze stanem
   i opóźnieniem, zdarzenia outboxu, kolejki (nazwa, wiadomości, konsumenci), porównanie indeksu, „Odśwież”,
   odświeżanie co 30 s z pauzą w ukrytej karcie, „Dane z …”, błąd z czasem danych.
 - **Produkty**: wyszukiwanie od 2 znaków, filtr kategorii (z podkategoriami) i statusu, stronicowanie, miniatury, link

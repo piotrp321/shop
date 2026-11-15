@@ -17,7 +17,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
 - dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
-  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog), potem
+  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog; po załadowaniu produktów woła `ANALYZE catalog_product`, bo pulpit liczy produkty ze statystyk tabeli), potem
   `pricing:seed-demo`, który w jednej transakcji czyści ceny z historią, promocje (`pricing_promotion`,
   `pricing_promotion_variant`), kody rabatowe z użyciami (`pricing_discount_code`, `pricing_discount_code_usage`) i kolejkę promocji (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
   pozostałe kolejki zostają), potem ustawia cenę (źródło `seed`) każdemu wariantowi demo według
@@ -62,7 +62,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
   zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
   `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
-  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300). Krok, który się nie powiedzie, nie jest
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300) i `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów). Krok, który się nie powiedzie, nie jest
   zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
   ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
   uruchomione). Test: `BackfillCommandTest`
@@ -932,6 +932,29 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`,
   `ListBackofficeOrdersEndpointTest`, `OrderSearchEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
   budowa przerwana na timeoucie blokady).
+- Pulpit (`GET /admin/dashboard`, decyzja A1 spec ADMIN-FEATURES): `GetDashboard` (Backoffice) składa sekcje przez porty Backoffice
+  z adapterami na `query.bus` do zapytań modułów właścicieli: `CatalogStatistics` → `GetCatalogStatistics` (Catalog),
+  `OrderQueues` → `GetOrderQueues` (Ordering), `StockQueues` → `GetStockQueues` (Inventory); Deptrac pozwala
+  `Backoffice_Infrastructure` na `Ordering_Application` i `Inventory_Application` (tylko zapytania i widoki), a
+  `Backoffice_UI` na `Shared_UI` (schemat `BoundedCountResponse`). Uprawnienie kolejki sprawdza voter modułu, który ją
+  posiada: kontroler pyta `isGranted` (`VIEW_ORDERS`, `VIEW_PENDING_PAYMENTS` (admin i support, `OrderVoter`),
+  `COMPLETE_REFUND`, `MANAGE_STOCK`, `MANAGE_PRODUCTS`) i przekazuje wynik w `QueueAccess`; kolejka bez dostępu nie jest
+  liczona i jest `null` w odpowiedzi, a właściciel, od którego nic nie trzeba, nie jest pytany. Każda kolejka to
+  `BoundedCount` z limitem 1000 (`GetOrderQueuesHandler::LIMIT`, `GetStockQueuesHandler::LIMIT`,
+  `GetCatalogStatisticsHandler::LIMIT`), liczony tymi samymi warunkami co lista, do której prowadzi link (zamówienia:
+  `BackofficeOrderReader::count($filter, 1000)` z filtrem statusu, zwrotów do wykonania i po terminie; produkty bez zdjęć:
+  `BackofficeProductSource::count(..., withoutImages: true, limit: 1000)`; stany: `StockLevelProducts::countVariants`, bo
+  kolejka liczy warianty, a lista stanów pokazuje ich produkty), więc zapytania idą po indeksach list
+  (`OrderQueuesPlanTest`, `StockLevelProductsPlanTest`, `ProductsWithoutImagesPlanTest`: plan bez `Seq Scan`). Kolejka
+  zwrotów płatności z części 2 dopisze się tym samym wzorcem (port, zapytanie w module, pole `null` według votera).
+  Liczba produktów (`catalog.productCount`) nigdy nie jest `count(*)`: `ProductTableStatistics::estimatedProductCount`
+  czyta `pg_class.reltuples` (jeden wiersz katalogu bazy), odpowiedź to `{value, estimated: true}`, a `null` przed
+  pierwszą analizą tabeli (`reltuples` < 0); odświeża ją `ANALYZE catalog_product` na końcu `catalog:seed-demo`
+  i w kroku `app:backfill` `catalog:analyze-products`, a generator danych demo robi to po masowym wstawieniu produktów.
+  `system.searchIndex.inSync` porównuje dokładny `_count` Elasticsearcha z szacunkiem: różnica najwyżej 1% szacunku,
+  `null` bez szacunku, `false` gdy indeksu nie da się policzyć. Test: `DashboardQueuesEndpointTest` (każda rola widzi swoje
+  kolejki i `null` dla pozostałych, `{1000, capped}` powyżej limitu), `PostgresProductTableStatisticsTest` (brak zapytania
+  o produkty także bez statystyk).
 - Liczniki wyników list panelu są ograniczone (spec ADMIN-FEATURES, „Liczniki wyników”): pierwsza strona (bez `after`)
   listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
   strony `total: null`. Liczy `BoundedCounter` (`Shared\Infrastructure\Persistence`): `SELECT count(*) FROM (SELECT 1 FROM
