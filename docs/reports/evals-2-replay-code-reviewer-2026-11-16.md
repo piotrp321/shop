@@ -8,8 +8,8 @@ oryginalne zlecenie orkiestratora `/delivery`, `code-reviewer` jako subagent. Be
   subagent na `claude-opus-5-5`, sesja nadrzędna na `claude-sonnet-5-5`, Claude Code 2.1.311.
 - **Surowe wyniki** (poza repo): `~/.local/state/shop-evals-pilot/2026-11-16-replay/`.
 - **Etykiety:** 8 zgłoszeń `IMPORTANT` z pierwszych przebiegów zatwierdził właściciel (2026-11-16). W drugich
-  przebiegach 6 etykiet jest przeniesionych z tych decyzji na te same zgłoszenia, a 1 nowe zgłoszenie ma tylko
-  propozycję (`nieznane`). Kryteriów wad wzorcowych nie zmieniano.
+  przebiegach 6 etykiet jest przeniesionych z tych decyzji na te same zgłoszenia, a 1 nowe zgłoszenie właściciel
+  zostawił jako `nieznane`. Wyniki zaakceptował 2026-11-16. Kryteriów wad wzorcowych nie zmieniano.
 - **Pilot** dla porównania: `evals-2-pilot-code-reviewer-2026-11-15.md` (tryb `squash`, 3 przebiegi na przypadek).
 
 ## 1. Wykrywanie pierwotnych wad wzorcowych
@@ -44,7 +44,7 @@ przebiegu 6 wróciło jako `IMPORTANT`, a 2 jako `SUGGESTION`.
 | `trafne`, proces TDD | 2 | `order-management-2`: poprawka `save()` bez fazy RED (w obu przebiegach) |
 | `trafne` warunkowo | 1 | `catalog-admin-3`: wyścig pierwszej ceny ze zmianą klasy podatkowej; wymaga testu potwierdzającego |
 | `drobne` | 3 | `cart-fixes-3`: pusty napis (1); `search-4`: końcowy znak nowej linii w cenie (2) |
-| `nieznane` (propozycja) | 1 | `search-4`: liczniki dla osi z wyborem a kryterium 4; spec jest tu niejednoznaczny |
+| `nieznane` | 1 | `search-4`: liczniki dla osi z wyborem a kryterium 4; spec jest tu niejednoznaczny |
 | `falszywe` | 0 | |
 
 Jakość werdyktu, osobno: 4 uzasadnione `CHANGES_REQUIRED`, 4 zgodne `PASS`, 1 nieuzasadniony `CHANGES_REQUIRED`
@@ -84,7 +84,7 @@ subagentem została przerwana przy 0,32 USD. Koszt to szacunek CLI według cenni
   czy #113 da się znaleźć bez uruchomienia walidatora.
 - **Stare zlecenia, nowy agent:** zlecenia napisała ówczesna wersja `/delivery`, a sesja nadrzędna to krótki prompt
   zamiast orkiestratora.
-- **Etykiety:** 8 z 15 nadał właściciel, 6 jest przeniesionych, 1 to propozycja. Dodatkowe cele i przypadki czyste
+- **Etykiety:** 9 z 15 nadał właściciel bezpośrednio, 6 jest przeniesionych z jego decyzji na powtórzenia. Dodatkowe cele i przypadki czyste
   nie mają potwierdzenia właściciela, a sędzia widział tylko jeden rodzaj trafienia (#256).
 
 ## 6. Rekomendacje
