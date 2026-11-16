@@ -11,10 +11,10 @@
       Checks PLAN like validate, without its `parallel_with` lists, and prints a JSON object {task id: [task ids]} in
       plan order: for every task the maximal `parallel_with`, i.e. every other task it may run at once with. A task
       without `paths` gets []. Exit code 2 also when git cannot list the tracked CLAUDE.md files.
-      With --blocked the object also has the key "blocked" (a task id always contains "-", so it cannot clash): a
-      list of {"tasks": [A, B], "paths": [...]} for every pair of tasks of one wave (as in `waves`) that both have
-      `paths`, but may not run at once because those paths are shared (what parallel_gate.task_conflicts refuses),
-      in wave order, then plan order; [] when there is none. Without the flag the output is unchanged.
+      With --blocked the output is instead {"parallel_with": {that object}, "blocked": [...]}, where "blocked" lists
+      {"tasks": [A, B], "paths": [...]} for every pair of tasks of one wave (as in `waves`) that both have `paths`,
+      but may not run at once because those paths are shared (what parallel_gate.task_conflicts refuses), in wave
+      order, then plan order; [] when there is none. Without the flag the output is unchanged.
 
 Optional task keys (step 19b, docs/features/parallel-work/spec.md): `paths`, a non-empty list of paths relative to
 the repository root that the task changes (a file, or a directory ending with /; no absolute path, no `.` or `..`
@@ -406,16 +406,16 @@ def validate(path, ignore_parallel_with=False):
 
 def parallel(path, with_blocked=False):
     """The maximal `parallel_with` of every task of the plan at `path`, its current lists ignored; with
-    `with_blocked` also the key "blocked" (see blocked_pairs). PlanError when the plan is invalid or the tracked
+    `with_blocked` {"parallel_with": the lists, "blocked": blocked_pairs}. PlanError when the plan is invalid or the tracked
     CLAUDE.md files are unknown."""
     manifest = validate(path, ignore_parallel_with=True)
     claude_md = _tracked_claude_md(_repo_root(os.path.abspath(path)))
     if isinstance(claude_md, ClaudeMdUnknown):
         raise claude_md
-    result = parallel_lists(manifest['tasks'], claude_md)
+    lists = parallel_lists(manifest['tasks'], claude_md)
     if with_blocked:
-        result['blocked'] = blocked_pairs(manifest['tasks'], claude_md)
-    return result
+        return {'parallel_with': lists, 'blocked': blocked_pairs(manifest['tasks'], claude_md)}
+    return lists
 
 
 def main(argv=None):

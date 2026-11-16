@@ -478,7 +478,7 @@ class PlanManifestTest(unittest.TestCase):
         out = self.blocked([task('CART-1', paths=['docs/a.md', 'docs/shared.md']),
                             task('CART-2', paths=['docs/shared.md'])])
         self.assertEqual([{'tasks': ['CART-1', 'CART-2'], 'paths': ['docs/shared.md']}], out['blocked'])
-        self.assertEqual([], out['CART-1'])
+        self.assertEqual([], out['parallel_with']['CART-1'])
 
     def test_parallel_blocked_reports_shared_application_code(self):
         out = self.blocked([task('CART-1', paths=['apps/api/src/Cart/']),
@@ -492,8 +492,8 @@ class PlanManifestTest(unittest.TestCase):
             task('CART-4', ['CART-3'], paths=['apps/api/src/Cart/']),
             task('CART-5', paths=['apps/api/src/Cart/']), task('CART-6')])
         self.assertEqual([{'tasks': ['CART-1', 'CART-5'], 'paths': ['apps/api/src/Cart']}], out['blocked'])
-        self.assertEqual(['CART-2'], out['CART-1'])
-        self.assertEqual([], out['CART-6'])
+        self.assertEqual(['CART-2'], out['parallel_with']['CART-1'])
+        self.assertEqual([], out['parallel_with']['CART-6'])
 
     def test_parallel_blocked_skips_dependent_tasks_of_different_waves(self):
         out = self.blocked([task('CART-1', paths=['docs/a.md']), task('CART-2', ['CART-1'], paths=['docs/a.md']),
@@ -507,6 +507,12 @@ class PlanManifestTest(unittest.TestCase):
 
     def test_parallel_blocked_is_empty_without_pairs(self):
         self.assertEqual([], self.blocked([task('CART-1', paths=['docs/a.md'])])['blocked'])
+
+    def test_parallel_blocked_output_has_keeps_tasks_named_blocked_apart(self):
+        self.write_plan(self.manifest([task('blocked-1', paths=['docs/a.md']),
+                                       task('blocked-2', paths=['docs/b.md'])], epic='blocked'))
+        out = json.loads(self.parallel('--blocked').stdout)
+        self.assertEqual({'parallel_with': {'blocked-1': ['blocked-2'], 'blocked-2': ['blocked-1']}, 'blocked': []}, out)
 
     def test_parallel_without_the_flag_keeps_the_plain_map(self):
         self.write_plan(self.manifest([task('CART-1', paths=['docs/a.md']), task('CART-2', paths=['docs/a.md'])]))
