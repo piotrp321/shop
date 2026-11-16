@@ -223,7 +223,7 @@ class FakeGh:
 
     prs: {number: {state, mergedAt, closingIssuesReferences, mergeCommit}}; sync: the list answered for `gh pr list`;
     runs: {commit or branch: [run, ...]} for `gh run list --commit/--branch`; jobs: {run id: [job, ...]} for
-    `gh run view`; commits: the list answered for `gh api repos/.../commits`; editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); repo_view: the answer of `gh repo view --json owner,name`; issues: {label: [issue, ...]} for
+    `gh run view`; commits: the list answered for `gh api repos/.../commits` (cut to the `page` and `per_page` of the query); editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); repo_view: the answer of `gh repo view --json owner,name`; issues: {label: [issue, ...]} for
     `gh issue list --label`; permissions: {login: role} for `gh api .../collaborators/<login>/permission` (a login
     without an entry is a non-collaborator: HTTP 404); fail: when set, every command ends with exit code 1 and that
     stderr; fail_on: the command prefixes, e.g. ('run', 'list') or ('api',), that end with that error."""
@@ -282,7 +282,9 @@ class FakeGh:
         if command[:2] == ['gh', 'api']:
             path = command[2]
             if '/commits' in path:
-                return result(0, json.dumps(self.commits))
+                query = dict(p.split('=', 1) for p in path.partition('?')[2].split('&') if '=' in p)
+                size, page = int(query.get('per_page', 30)), int(query.get('page', 1))
+                return result(0, json.dumps(self.commits[(page - 1) * size:page * size]))
             if '/collaborators/' in path:
                 login = path.split('/collaborators/')[1].split('/')[0]
                 if login not in self.permissions:

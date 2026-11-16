@@ -1596,7 +1596,8 @@ def _issue_list(run, repo, label, low, high):
 
 
 ISSUE_LIMIT = 200
-COMMIT_LIMIT = 100
+COMMIT_LIMIT = 100              # commits per page of `gh api .../commits`
+COMMIT_PAGE_LIMIT = 10          # pages read at most: 1000 commits of the window
 
 
 def red_ci(run, repo, config, sha):
@@ -1607,13 +1608,28 @@ def red_ci(run, repo, config, sha):
     return sum(1 for r in runs if isinstance(r, dict) and r.get('event') == 'push' and r.get('conclusion') == 'failure')
 
 
+def commits_of_window(run, repo, low, high, gaps, truncated):
+    """The commits of `main` in the window, page by page (`page`=1, 2, ...) until a page shorter than COMMIT_LIMIT or
+    an empty one. The window counts as cut (a gap and `truncated`) only when COMMIT_PAGE_LIMIT pages were read and the
+    last one was full: the list may go on. A gh error on any page is a GhError for the whole source."""
+    commits, page = [], 0
+    while page < COMMIT_PAGE_LIMIT:
+        page += 1
+        batch = gh_api(run, 'commits?sha=main&since=%s&until=%s&per_page=%d&page=%d' % (iso(low), iso(high), COMMIT_LIMIT,
+                                                                                        page), repo)
+        if not isinstance(batch, list):
+            raise GhError('gh api commits: nieoczekiwany kształt odpowiedzi')
+        commits.extend(batch)
+        if len(batch) < COMMIT_LIMIT:
+            return commits
+    truncated.append('regressions.reverts')
+    gaps.add('regressions.reverts', 'lista commitów main obcięta do %d stron po %d (limit %d commitów): revert mógł '
+             'zostać pominięty' % (COMMIT_PAGE_LIMIT, COMMIT_LIMIT, COMMIT_PAGE_LIMIT * COMMIT_LIMIT))
+    return commits
+
+
 def reverts_of(run, repo, final_pr, merge_sha, low, high, gaps, truncated):
-    commits = gh_api(run, 'commits?sha=main&since=%s&until=%s&per_page=%d' % (iso(low), iso(high), COMMIT_LIMIT), repo)
-    if not isinstance(commits, list):
-        raise GhError('gh api commits: nieoczekiwany kształt odpowiedzi')
-    if len(commits) >= COMMIT_LIMIT:
-        truncated.append('regressions.reverts')
-        gaps.add('regressions.reverts', 'lista commitów main obcięta do %d: revert mógł zostać pominięty' % COMMIT_LIMIT)
+    commits = commits_of_window(run, repo, low, high, gaps, truncated)
     mention = re.compile(r'#%d(?!\d)' % final_pr)
     found = []
     for entry in commits:
@@ -1634,13 +1650,21 @@ EDITOR_QUERY = ('query($owner: String!, $name: String!, $number: Int!) { reposit
 REPO_PATTERN = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})$')
 
 
+_REPOSITORIES = {}      # {runner: (owner, name)} of `gh repo view`: one call per process (a runner lives as long)
+
+
 def repository_of(run, repo):
-    """(owner, name) of the repository: from --repo, else asked once of `gh repo view` (read only). `gh api` expands
-    the {owner} and {repo} placeholders only in the endpoint and in -F fields, not in the raw -f fields a GraphQL
-    variable needs, so the real names are given."""
-    match = REPO_PATTERN.match(repo or '')
-    if match:
+    """(owner, name) of the repository: from --repo, else asked once per runner (so once per process) of `gh repo
+    view` (read only); a failed answer is not remembered. A given --repo that is not OWNER/NAME is a GhError, never a
+    silent question about the working directory. `gh api` expands the {owner} and {repo} placeholders only in the
+    endpoint and in -F fields, not in the raw -f fields a GraphQL variable needs, so the real names are given."""
+    if repo:
+        match = REPO_PATTERN.match(repo)
+        if not match:
+            raise GhError('--repo: niepoprawna nazwa repozytorium (oczekiwano OWNER/NAZWA)')
         return match.groups()
+    if run in _REPOSITORIES:
+        return _REPOSITORIES[run]
     data = gh_json(run, ['repo', 'view', '--json', 'owner,name'], None)
     try:
         match = REPO_PATTERN.match('%s/%s' % (data['owner']['login'], data['name']))
@@ -1648,7 +1672,8 @@ def repository_of(run, repo):
         match = None
     if not match:
         raise GhError('gh repo view: nieoczekiwany kształt odpowiedzi')
-    return match.groups()
+    _REPOSITORIES[run] = match.groups()
+    return _REPOSITORIES[run]
 
 
 def last_editor(run, owner, name, number):

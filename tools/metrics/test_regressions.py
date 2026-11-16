@@ -390,11 +390,67 @@ class TruncationTest(RegressionEnv):
         record = self.record(self.gh(issues={'agent': self.filler_issues(metrics.ISSUE_LIMIT, 'agent')}), self.AFTER)
         self.assertFalse(record['regressions']['complete'])
 
-    def test_a_full_commit_list_leaves_the_window_open(self):
-        commits = [commit('%040x' % n, 'chore: x', '2026-11-14T08:00:00Z') for n in range(metrics.COMMIT_LIMIT)]
-        record = self.record(self.gh(commits=commits), self.AFTER)
+    def filler_commits(self, count, start=0):
+        return [commit('%040x' % (start + n), 'chore: x', '2026-11-14T08:00:00Z') for n in range(count)]
+
+    def commit_pages(self, gh):
+        return [c[2] for c in gh.calls if c[:2] == ['gh', 'api'] and '/commits' in c[2]]
+
+    def test_a_full_first_page_and_an_empty_second_one_is_a_complete_list(self):
+        gh = self.gh(commits=self.filler_commits(metrics.COMMIT_LIMIT))
+        record = self.record(gh, self.AFTER)
+        self.assertTrue(record['regressions']['complete'])
+        self.assertFalse(record['regressions']['open'])
+        self.assertFalse([g for g in record['gaps'] if 'obcięta' in g], record['gaps'])
+        pages = self.commit_pages(gh)
+        self.assertEqual(len(pages), 2, pages)
+        self.assertIn('&page=1', pages[0])
+        self.assertIn('&page=2', pages[1])
+        self.assertIn('per_page=%d' % metrics.COMMIT_LIMIT, pages[1])
+
+    def test_a_revert_on_the_second_page_of_a_window_with_more_than_a_page_is_found_and_the_window_closes(self):
+        commits = self.filler_commits(130) + [commit('b' * 40, 'Revert "feat: deploy ops (#476)" (#480)',
+                                                     '2026-11-14T08:00:00Z')] + self.filler_commits(49, 1000)
+        gh = self.gh(commits=commits)                     # 180 commits, the revert is the 131st
+        record = self.record(gh, self.AFTER)
+        self.assertEqual(record['regressions']['reverts'], ['b' * 40])
+        self.assertTrue(record['regressions']['complete'])
+        self.assertFalse(record['regressions']['open'])
+        self.assertEqual(len(self.commit_pages(gh)), 2)
+
+    def test_the_page_limit_with_full_pages_leaves_the_window_open_with_a_gap(self):
+        limit = metrics.COMMIT_PAGE_LIMIT
+        gh = self.gh(commits=self.filler_commits(limit * metrics.COMMIT_LIMIT))
+        record = self.record(gh, self.AFTER)
         self.assertFalse(record['regressions']['complete'])
         self.assertTrue(record['regressions']['open'])
+        self.assertTrue(any(g.startswith('regressions.reverts') and 'obcięta' in g for g in record['gaps']), record['gaps'])
+        self.assertEqual(len(self.commit_pages(gh)), limit)
+
+    def test_a_short_last_page_at_the_page_limit_is_still_a_complete_list(self):
+        limit = metrics.COMMIT_PAGE_LIMIT
+        gh = self.gh(commits=self.filler_commits((limit - 1) * metrics.COMMIT_LIMIT + 1))
+        record = self.record(gh, self.AFTER)
+        self.assertTrue(record['regressions']['complete'])
+        self.assertFalse(record['regressions']['open'])
+        self.assertEqual(len(self.commit_pages(gh)), limit)
+
+    def test_a_gh_error_on_a_later_page_fails_the_whole_source_and_keeps_the_stored_value(self):
+        class FailsOnSecondPage(FakeGh):
+            def __call__(self, command):
+                if command[:2] == ['gh', 'api'] and '/commits' in command[2] and '&page=2' in command[2]:
+                    self.calls.append(list(command))
+                    return testkit.result(1, '', 'HTTP 502')
+                return super().__call__(command)
+
+        gh = FailsOnSecondPage(prs={476: merged_pr(MERGED, sha=SHA)}, commits=self.filler_commits(130))
+        code, out, err = self.deploy_ops(gh, self.AFTER)
+        self.assertEqual(code, 3)
+        record = json.loads(out)
+        self.assertIsNone(record['regressions']['reverts'])
+        self.assertFalse(record['regressions']['complete'])
+        self.assertTrue(record['regressions']['open'])
+        self.assertTrue(any(g.startswith('regressions.reverts') and 'gh' in g for g in record['gaps']), record['gaps'])
 
     def test_lists_below_the_limits_close_the_window(self):
         record = self.record(self.gh(issues={'bug': self.filler_issues(metrics.ISSUE_LIMIT - 1)}), self.AFTER)
@@ -464,6 +520,50 @@ class EditorTest(RegressionEnv):
             self.assertIn('owner=acme', call)
             self.assertIn('name=shop', call)
             self.assertFalse([a for a in call if '{' in a and a.startswith(('owner=', 'name='))], call)
+
+    def test_an_invalid_repo_option_is_a_gh_error_and_never_asks_the_working_directory(self):
+        gh = self.gh_with(editors={10: 'writer'}, permissions={'writer': 'write'})
+        code, out, err = self.deploy_ops(gh, NOW, '--repo', 'not a repository')
+        self.assertEqual(code, 3)
+        record = json.loads(out)
+        self.assertIsNone(record['regressions']['issues'])
+        self.assertTrue(any(g.startswith('regressions.issues') and '--repo' in g for g in record['gaps']), record['gaps'])
+        self.assertIn('--repo: niepoprawna nazwa repozytorium', err)
+        self.assertFalse([c for c in gh.calls if c[:3] == ['gh', 'repo', 'view']])
+
+    def test_repository_of_rejects_a_given_but_invalid_repo_without_calling_gh(self):
+        gh = FakeGh()
+        for repo in ('not a repository', 'owner/', '/name', 'a/b/c', '-x/y'):
+            with self.assertRaises(metrics.GhError, msg=repo):
+                metrics.repository_of(gh, repo)
+        self.assertEqual(gh.calls, [])
+
+    def test_repository_of_without_repo_asks_gh_repo_view_once_per_runner(self):
+        gh = FakeGh()
+        self.assertEqual(metrics.repository_of(gh, None), ('acme', 'shop'))
+        self.assertEqual(metrics.repository_of(gh, ''), ('acme', 'shop'))
+        self.assertEqual([c for c in gh.calls if c[:3] == ['gh', 'repo', 'view']], [gh.calls[0]])
+        other = FakeGh(repo_view={'owner': {'login': 'other'}, 'name': 'repo'})
+        self.assertEqual(metrics.repository_of(other, None), ('other', 'repo'))
+        self.assertEqual(len(other.calls), 1)
+
+    def test_two_records_needing_an_editor_ask_gh_repo_view_once(self):
+        gh = self.gh(issues={'bug': [bug(10, 'deploy-ops', 'stranger')]}, permissions={'writer': 'write'},
+                     editors={10: 'writer'})
+        for _ in range(2):                                          # the issues of two records
+            self.assertEqual(metrics.bug_issues(gh, None, 'deploy-ops', 476, epoch(MERGED), epoch(MERGED) + 86400,
+                                                metrics.Gaps(), []), [10])
+        self.assertEqual(len([c for c in gh.calls if c[:3] == ['gh', 'repo', 'view']]), 1)
+        self.assertEqual(len([c for c in gh.calls if c[2:3] == ['graphql']]), 2)
+
+    def test_a_failed_repo_view_is_not_remembered(self):
+        gh = FakeGh(fail_on=[('repo', 'view')])
+        with self.assertRaises(metrics.GhError):
+            metrics.repository_of(gh, None)
+        gh.fail_on = ()
+        self.assertEqual(metrics.repository_of(gh, None), ('acme', 'shop'))
+        self.assertEqual(metrics.repository_of(gh, None), ('acme', 'shop'))
+        self.assertEqual(len([c for c in gh.calls if c[:3] == ['gh', 'repo', 'view']]), 2)
 
     def test_the_stub_rejects_a_placeholder_in_a_raw_field(self):
         result = FakeGh()(['gh', 'api', 'graphql', '-f', 'query=query { x }', '-f', 'owner={owner}', '-f',
