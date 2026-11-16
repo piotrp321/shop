@@ -4,8 +4,8 @@ Pomiar przebiegów epików AO (specyfikacja: `docs/features/metrics/spec.md`). P
 Skrypt czyta dane AO, miary limitów nocnej kolejki i GitHub (`gh`, tylko odczyt), nie czyta sklepu. Baza AO jest
 otwierana tylko do odczytu (`mode=ro`, `busy_timeout`), a `ao` nie jest nigdy uruchamiane.
 
-Stan tego zakresu (METRICS-1): komendy `epic` i `backfill`. Pozostałe komendy i pola rekordu dodają kolejne zadania
-epiku (zob. „Pola jeszcze nieobecne”).
+Stan tego zakresu (METRICS-1 i METRICS-2): komendy `epic` i `backfill` z rekordem z danych AO i z transkryptów prób.
+Pozostałe komendy i pola rekordu dodają kolejne zadania epiku (zob. „Pola jeszcze nieobecne”).
 
 ## Komendy
 
@@ -50,9 +50,14 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `integration` | `work_s` (suma `wall_s` prób zadań `integration`, `fix`, `finalize`), `attempts`, `rounds` (`epics.round`) |
 | `retries` | `attempts` (`total`, `per_task`, klasy prób), `failed_by_outcome`, `repair` (`count`, `final_pr_conflict`, `ci_red`, `unknown`), `fix` (liczba zadań FIX), `sync_prs` (PR `sync/<epik>-main`: `number`, `state`) |
 | `parallel` | `epics` (epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem), `repairs` (zadania REPAIR z próbą w czasie nakładania), `sync_prs` (numery PR sync utworzonych w czasie nakładania) |
-| `subscription` | `windows`: surowy przyrost procentu każdego okna limitu w pp (`null` gdy okno odnowione w trakcie albo stan jednego z pomiarów inny niż `ok`, wtedy `{etykieta: null}`; gdy żaden pomiar nie ma stanu `ok`, nie da się ustalić etykiet okien i całe `windows` to `null`, z pozycją w `gaps`; reguły `night_queue._window_deltas`), `overlap`: epiki z nakładającym się przedziałem |
+| `subscription` | `share` i `share_estimated` (niżej), `windows`: surowy przyrost procentu każdego okna limitu w pp (`null` gdy okno odnowione w trakcie albo stan jednego z pomiarów inny niż `ok`, wtedy `{etykieta: null}`; gdy żaden pomiar nie ma stanu `ok`, nie da się ustalić etykiet okien i całe `windows` to `null`, z pozycją w `gaps`; reguły `night_queue._window_deltas`), `overlap`: epiki z nakładającym się przedziałem |
 | `gate_wait` | `wait_s`: od pierwszego wpisu `waiting` epiku w `gate.jsonl` do `started_at` (0 bez czekania; `null`, gdy brak pliku albo wpisów epiku), `reasons`: różne powody czekania |
 | `human` | `interventions` (`human_action`), `waits`, `wait_s` (suma zakończonych czekań, nakładające się liczone raz), `open` (czekania otwarte), `manual_fixes` (`[{pr, text}]` z `--manual-fixes` albo `null`); z `ao_events.summarize` |
+| `in_attempts` | czas poleceń powłoki w próbach z transkryptów: `categories` (`read`, `test`, `e2e`, `check`, `selftest`, `stack`, `ci_watch`, `other`: `count`, `background`, `unfinished`, `seconds`), `repeat_runs` (`count`, `seconds`, `by_category`), `api_retry` (`count`, `delay_ms`), `permission_denials` (`{narzędzie: liczba}`); `null` bez żadnego transkryptu |
+| `by_task` | `{zadanie: {kind, work, attempts}}`: `work` to suma `wall_s` prób zadania, także prób po `epic_done` |
+| `versions` | `cli` (`[{version, attempts}]`, z `system/init`) i `models` (`[{model, attempts}]`, z wiadomości `assistant`); `null` bez transkryptów |
+| `attempts` | lista prób: `task`, `kind`, `number`, `outcome`, `executor_status`, `wall_s`, `started_at`, `ended_at`, `value` (USD), `estimated`, `tokens` (`input`, `output`, `cache_read`, `cache_write`), `estimated_tokens`, `cli_result` (czy próba ma wynik CLI), `model_rates` (USD na ważony token wejścia i cache modelu, tylko próby z wynikiem CLI); próba bez transkryptu ma `null` w polach wartości |
+| `value` | `total`, `by_role`, `by_model`, `by_task`, `by_role_model` (`{rola: {model: komórka}}`); komórka: `usd`, `estimated`, `tokens`, `estimated_tokens` i `incomplete`, gdy część wartości jest nieznana |
 | `gaps` | braki danych |
 
 Źródła i ich pierwszeństwo w `breakdown` (każda chwila trafia do pierwszej pasującej kategorii, kolejność w
@@ -88,12 +93,62 @@ Nakładanie jak w `night_queue.measurements`: przedział innego epiku, który pr
 w środku (otwarty `start` sprzed przedziału nie liczy się). Przyrost okien liczy `night_queue._window_deltas`
 (importowane z `.claude/skills/ao-run`, nie kopiowane), czekania `ao_events.waits`.
 
+### Transkrypty prób: tokeny, wartość, polecenia
+
+Źródło: `<AO_HOME>/tasks/<zadanie>/attempts/<numer>/stdout.jsonl` (czytane wierszami; ostatni, uciętej próby, jest
+pomijany). Brak pliku to pozycja w `gaps` (`attempts.transcript`) i `null`, nigdy zero. Treść polecenia powłoki służy
+tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie ze ścieżką `/Users/`).
+
+- **Rola:** `subagent_type` wiadomości `assistant`; wiadomość bez `parent_tool_use_id` to orkiestrator próby (`delivery` dla
+  zadań `plan`, `repair`, `fix`, `finalize`, `integration` dla `integration`); model w `modelUsage` bez wiadomości i
+  nadwyżka `modelUsage` nad wiadomościami to `other`; wiadomość subagenta bez `subagent_type` to rola `subagent`.
+  Wiadomości o tym samym `message.id` liczą się raz (pierwszy wiersz).
+- **Tokeny:** wejście i cache roli z wiadomości (dokładne). Wyjście orkiestratora to suma `usage.output_tokens` wszystkich
+  `result` próby (każdy obejmuje tylko odcinek od poprzedniego), wyjście subagentów razem na modelu to `outputTokens`
+  modelu z ostatniego `result` minus wyjście orkiestratora na nim (dokładne), a między typy subagentów dzieli je liczba
+  unikalnych `message.id` metodą największej reszty (szacowane, gdy typów jest kilka). Niedobór `modelUsage` względem
+  wiadomości: role modelu są zmniejszane proporcjonalnie do `modelUsage` i szacowane, z pozycją w `gaps` (suma ról nigdy nie
+  przekracza `modelUsage`). Orkiestrator na więcej niż jednym modelu (`system/init` albo wiadomości): jego wyjście na
+  modelach i wyjście subagentów są szacowane, z pozycją w `gaps`.
+- **Wartość:** `costUSD` modelu z ostatniego `result` dzielone między role wagami `token_weights`; dokładna tylko dla roli
+  jedynej na modelu (przy kilku rolach, niedoborze albo szacowanym wyjściu `estimated: true`). Wartość próby, modelu i
+  zadania (`total`, `by_model`, `by_task`) jest dokładna dla prób z wynikiem CLI, podział na role (`by_role`,
+  `by_role_model`) szacowany tam, gdzie rola dzieli model. `costBasis: unknown` modelu to `null` i pozycja w `gaps`.
+- **Próba bez wyniku CLI** (timeout, przerwanie, awaria): nie ma żadnego `result` albo ostatni jest zerowy (zerowe
+  `total_cost_usd` i `modelUsage`) przy niezerowych tokenach wiadomości. Tokeny z wiadomości (wyjście to wartość zastępcza
+  wiadomości, szacowana), wartość `estimated: true`: ważone tokeny wejścia i cache × mediana stawki historycznej modelu.
+  Stawka próby z wynikiem CLI (`model_rates`) to pełne `costUSD` modelu (z wyjściem) przez jego ważone tokeny wejścia i
+  cache; mediana z prób z wynikiem CLI zapisanych rekordów innych epików (`<state>/epics/*.json`) i bieżącego przebiegu.
+  Bez historii stawki modelu wartość to `null` z pozycją w `gaps`.
+- **Przekroje:** sumy komórek po próbach; `incomplete`, gdy część prób nie ma wartości (suma obejmuje znane).
+  Wartości zapisane z dokładnością 1e-8 USD.
+- **Polecenia** (`in_attempts`): narzędzia powłoki z `shell_tools`; czas od `tool_use` do `tool_result` o tym samym
+  identyfikatorze, według pierwszej pasującej kategorii z `command_categories` (`read` jest pierwsza, bo pasuje tylko do
+  całego polecenia tylko do odczytu; brak dopasowania to `other`). Polecenie w tle (`run_in_background`) jest tylko w
+  `count` i `background`, bez wyniku w `count` i `unfinished`. Dotyczy każdej roli.
+- **`repeat_runs`** (heurystyka, dolna granica; „możliwe powtórzenia testów”, nie zbędna praca): uruchomienie z kategorii
+  `repeat_categories` (`test`, `e2e`, `check`), którego klucz (kategoria i fragment polecenia dopasowany wzorcem do
+  najbliższego operatora `|`, `;`, `&&`, `>`) jest taki sam jak poprzedniego uruchomienia w tej samej próbie, bez zmiany
+  kodu pomiędzy. Zmiana kodu: `Edit`, `Write`, `NotebookEdit` (`code_change_tools`) w dowolnej roli albo polecenie `other`.
+  Nie zmieniają kodu `read`, `ci_watch`, `stack` ani inne kategorie testów (także `selftest`). Uruchomienie nie wchodzi do
+  `repeat_runs`, gdy pomiędzy trwało polecenie w tle, wywołanie narzędzia bez `tool_result` (także niezakończony
+  subagent) albo gdy samo nie ma wyniku; takie wywołanie zeruje też pamięć uruchomień.
+- **`api_retry`:** liczba zdarzeń `system/api_retry` i suma `retry_delay_ms`; **`permission_denials`:** zdarzenia
+  `system/permission_denied` według `tool_name` (także subagentów i prób bez wyniku).
+- **`versions`:** wersje CLI z `system/init` i modele z wiadomości z liczbą prób; nazwa, która nie jest identyfikatorem
+  (`[A-Za-z0-9._+-[]]`, do 64 znaków), nie trafia do rekordu.
+- **`subscription.share`:** wartość tokenów epiku w jego przedziale pomiaru (od `start` do `done` w `measurements.jsonl`)
+  przez łączną wartość tokenów epiku i epików, które się w nim nakładały. Wartość próby jest przypisana do przedziału
+  równomiernie w czasie trwania próby (próba częściowo poza przedziałem wnosi proporcjonalną część); wartość innych
+  epików z ich zapisanych rekordów (`attempts` z `started_at`, `ended_at`, `value`). Bez nakładania `1`
+  (`share_estimated: false`); przy nakładaniu `share_estimated: true`, a gdy brak rekordu nakładającego się epiku, jego
+  próby bez wartości albo własna wartość nieznana: `null` z pozycją w `gaps`. Surowy przyrost (`windows`) zostaje obok.
+
 ### Pola jeszcze nieobecne
 
-Rekord tego zakresu nie ma kluczy: `in_attempts`, `by_task`, `versions`, `attempts`, `value`, `share` w
-`subscription` (METRICS-2), `ci`, `regressions`, `found_after_merge`, `bottlenecks` (METRICS-3), `waste` (METRICS-4).
-Kluczy nie ma, zamiast `null` z pozycją w `gaps`, więc dodanie ich nie zmienia istniejących pól. Komendy `trend`,
-`render`, `waste`, `decide` i `effect` dodają kolejne zadania.
+Rekord tego zakresu nie ma kluczy: `ci`, `regressions`, `found_after_merge`, `bottlenecks` (METRICS-3), `waste`
+(METRICS-4). Kluczy nie ma, zamiast `null` z pozycją w `gaps`, więc dodanie ich nie zmienia istniejących pól. Komendy
+`trend`, `render`, `waste`, `decide` i `effect` dodają kolejne zadania.
 
 ### Cache
 
@@ -112,8 +167,9 @@ zapisany rekord jest pomijany.
 | `breakdown_order` | kolejność kategorii `breakdown` (pierwszeństwo; `idle` zawsze liczy resztę) |
 | `github_wait_cap_s` | najdłuższy `github_wait` od ostatniego zdarzenia serii (1800 s) |
 | `busy_timeout_ms`, `gh_timeout_s` | czas oczekiwania na zajętą bazę (5000 ms) i na `gh` (60 s) |
-| `shell_tools`, `command_categories` | nazwy narzędzi powłoki i wzorce kategorii poleceń (używa je METRICS-2); `read` pasuje tylko do całego polecenia tylko do odczytu (`git status`, `diff`, `log`, `show`, `rev-parse`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `wc`, `pwd`) bez operatorów powłoki, przekierowań, `$` i odwrotnych apostrofów, więc `repeat_runs` jest dolną granicą |
-| `token_weights` | proporcje cennika do podziału wartości na role (METRICS-2) |
+| `shell_tools`, `command_categories` | nazwy narzędzi powłoki i wzorce kategorii poleceń (kolejność ma znaczenie: pierwsza pasująca kategoria; `read` jest pierwsza); `read` pasuje tylko do całego polecenia tylko do odczytu (`git status`, `diff`, `log`, `show`, `rev-parse`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `wc`, `pwd`) bez operatorów powłoki, przekierowań, `$` i odwrotnych apostrofów, więc `repeat_runs` jest dolną granicą |
+| `code_change_tools`, `repeat_categories` | narzędzia, które zmieniają kod (`Edit`, `Write`, `NotebookEdit`), i kategorie poleceń liczone w `repeat_runs` (`test`, `e2e`, `check`; każda musi być w `command_categories`) |
+| `token_weights` | proporcje cennika do podziału wartości na role: wejście 1, zapis cache 5 min 1,25, zapis cache 1 h 2, odczyt cache 0,1, wyjście 5 |
 | `bottlenecks`, `waste`, `decisions`, `evals` | progi wąskich gardeł, alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 (METRICS-3 i dalej) |
 | `regression_window_days`, `trend_last` | okno regresji (14 dni), domyślna liczba epików w `trend` (10) |
 
@@ -130,6 +186,10 @@ podstawiany funkcją `run`, a test procesu używa atrapy na `PATH`) i nie dotyka
 `fixtures/ao-data/` to oczyszczony pakiet danych przebiegów DEPLOY-OPS i CATALOG-ADMIN (zrzuty SQL tabel `epics`,
 `tasks`, `attempts`, `events`, `events.jsonl`, `measurements.jsonl`, `gate.jsonl`): pola z listy dozwolonych, bez
 tekstów, ścieżek bezwzględnych i poleceń. Pliki są skopiowane bez zmian z pakietu przygotowanego przed startem epiku.
+`fixtures/transcripts/<epik>/tasks/<zadanie>/attempts/<n>/stdout.jsonl` to oczyszczone transkrypty prób (pakiet METRICS-2:
+wszystkie próby DEPLOY-OPS, CATALOG-ADMIN-INTEGRATION-1 i -2, CATALOG-ADMIN-4, ADMIN-DESIGN-3): pola z listy dozwolonych,
+polecenia powłoki zastąpione kanonicznym poleceniem kategorii z numerem `# c<n>` (taki sam numer = ten sam klucz
+`repeat_runs`). `testkit.py` ma też `Transcript`, który buduje syntetyczny transkrypt.
 `fixture_scan.py` (test: `test_fixture_scan.py`) sprawdza każdy plik pod `fixtures/`: brak ścieżek bezwzględnych
 (`/Users/`, `/private/`, `~`), adresów e-mail, wzorców tokenów (`ghp_`, `gho_`, `github_pat_`, `sk-`, `Bearer`,
 `Basic`), ciągów base64 od 32 znaków (poza SHA i UUID; ciąg musi mieć cyfrę albo mieszane litery, a ścieżka ze samych

@@ -15,6 +15,24 @@ and events (`orchestrator.db` is opened read only, `ao` is never run), from meas
 from GitHub (`gh`, read only; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
 zero. A value from GitHub or from --manual-fixes that is `null` now but not in the stored record is kept (a transient
 error never replaces it); the gap says so.
+
+Transcripts (`<ao-home>/tasks/<task>/attempts/<n>/stdout.jsonl`, read line by line, a killed run's last line skipped)
+give `attempts`, `value`, `by_task`, `in_attempts`, `versions` and `subscription.share` (spec: Pojęcia, Dokładność
+tokenów i wartości). Roles: the `subagent_type` of a message, a message without `parent_tool_use_id` is the orchestrator
+of the attempt (`delivery`; `integration` for integration tasks), a model of the last `result` without messages (or the
+surplus of its tokens over the messages) is `other`. Assistant lines with the same `message.id` count once. The output
+of the orchestrator is the sum of `usage.output_tokens` of all `result` lines; the rest of a model's `outputTokens` is
+the subagents' and is split between their types by unique message ids (estimated when there are several types). The
+value of a model (`costUSD` of the last `result`) is split between its roles by the token weights of config.json
+(exact only for the sole role of the model). An attempt without a CLI result (no `result`, or a zeroed last one next to
+tokens in the messages) has the tokens of its messages and a value estimated as input and cache tokens times the median
+historical rate of the model (attempts with a CLI result of the stored records and of this run; without history null and
+a gap). A missing transcript is a gap and null, never zero. The text of a shell command is only compared in memory
+(`repeat_runs`) and never stored. `subscription.share` is the value of this epic in its measurement interval by the
+value of all the epics that ran in it (the attempts of each epic assigned to the interval evenly over their duration,
+other epics from their stored records); 1 without overlap, null with a gap when a record of an overlapping epic is
+missing.
+
 backfill: records every run `ao-*` under the AO root (--ao-root, default as above) whose database has the row of its
 epic with a final PR that GitHub reports MERGED (also in the AO states INTEGRATING and BLOCKED). Skips runs in progress
 and directories without a database or an epic row. Prints one JSON line {"recorded": [...], "skipped": [{"run",
