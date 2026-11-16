@@ -13,6 +13,7 @@ use App\Ordering\Infrastructure\Persistence\Doctrine\DbalCustomerReader;
 use App\Shared\Domain\BoundedCount;
 use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use App\Tests\Integration\Ordering\OrderingFixture;
+use App\Tests\Support\RecordingConnection;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -67,6 +68,40 @@ final class DbalCustomerReaderTest extends KernelTestCase
         } while (null !== $after);
 
         self::assertSame($expected, $ids);
+    }
+
+    /**
+     * @return iterable<string, array{BackofficeCustomerSort, string}>
+     */
+    public static function indexedPages(): iterable
+    {
+        yield 'the newest last order first' => [BackofficeCustomerSort::LastOrderDescending, 'ordering_customer_last_order_at_idx'];
+        yield 'by name' => [BackofficeCustomerSort::Name, 'ordering_customer_name_idx'];
+        yield 'the most orders first' => [BackofficeCustomerSort::OrderCountDescending, 'ordering_customer_order_count_idx'];
+        yield 'the highest paid value first' => [BackofficeCustomerSort::PaidGrossDescending, 'ordering_customer_paid_gross_idx'];
+    }
+
+    /**
+     * The plan of the first page and of a page after a cursor of every sort (sequential scans and explicit sorts made
+     * unattractive, as in the plan tests of the other lists): the index of the sort delivers the order.
+     */
+    #[DataProvider('indexedPages')]
+    public function testEveryPageOfEverySortIsServedByItsIndexWithoutASort(BackofficeCustomerSort $sort, string $index): void
+    {
+        $this->customers();
+        $recording = RecordingConnection::like($this->connection);
+        $reader = new DbalCustomerReader($recording, new BoundedCounter($recording));
+
+        $first = $reader->page(null, $sort, null, 2);
+        $firstPlan = $recording->planOfTheLastQuery($this->connection);
+        $reader->page(null, $sort, BackofficeCustomerCursor::after($first[1], $sort), 2);
+        $nextPlan = $recording->planOfTheLastQuery($this->connection);
+
+        foreach (['the first page' => $firstPlan, 'a page after a cursor' => $nextPlan] as $label => $plan) {
+            self::assertStringContainsString($index, $plan, $label."\n".$plan);
+            self::assertStringNotContainsString('Sort', $plan, $label."\n".$plan);
+            self::assertStringNotContainsString('Seq Scan', $plan, $label."\n".$plan);
+        }
     }
 
     public function testARowHasTheListedValues(): void

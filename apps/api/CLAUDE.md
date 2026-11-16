@@ -1102,7 +1102,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i kwota (`-total`, `total`) z `q` albo zakresem dni (`placedFrom`, `placedTo`). Nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis
   `#[ORM\Index]` w rekordzie (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection`
   (`tests/Support`; wyłączone `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`). Liczniki nie
-  zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`,
+  zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`, `DbalCustomerReaderTest` (plan pierwszej strony i strony po kursorze każdego sortu klientów),
   `ListBackofficeOrdersEndpointTest`, `OrderSearchEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
   budowa przerwana na timeoucie blokady).
 - Pulpit (`GET /admin/dashboard`, decyzja A1 spec ADMIN-FEATURES): `GetDashboard` (Backoffice) składa sekcje przez porty Backoffice

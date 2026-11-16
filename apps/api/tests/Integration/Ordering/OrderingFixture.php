@@ -153,8 +153,8 @@ final class OrderingFixture
     }
 
     /**
-     * Deletes the orders (their notifications, history and lines first) and the reservations they hold, on a connection that
-     * commits.
+     * Deletes the orders (their notifications, history and lines first), the reservations they hold and the summaries of
+     * their customers that are left without orders (PlaceOrder writes them), on a connection that commits.
      *
      * @param list<string> $orderIds
      */
@@ -163,10 +163,18 @@ final class OrderingFixture
         if ([] === $orderIds) {
             return;
         }
+        $customers = $connection->fetchFirstColumn("SELECT DISTINCT customer_id FROM ordering_order WHERE id IN (?) AND owner_type = 'customer'", [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_notification WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_status_change WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_line WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order WHERE id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
+        if ([] !== $customers) {
+            $connection->executeStatement(
+                'DELETE FROM ordering_customer c WHERE c.customer_id IN (?) AND NOT EXISTS (SELECT 1 FROM ordering_order o WHERE o.customer_id = c.customer_id)',
+                [$customers],
+                [ArrayParameterType::STRING],
+            );
+        }
         StockFixture::delete($connection, [], $orderIds);
     }
 }
