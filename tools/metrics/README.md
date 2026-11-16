@@ -4,9 +4,9 @@ Pomiar przebiegów epików AO (specyfikacja: `docs/features/metrics/spec.md`). P
 Skrypt czyta dane AO, miary limitów nocnej kolejki i GitHub (`gh`, tylko odczyt), nie czyta sklepu. Baza AO jest
 otwierana tylko do odczytu (`mode=ro`, `busy_timeout`), a `ao` nie jest nigdy uruchamiane.
 
-Stan tego zakresu (METRICS-1 do METRICS-3): komendy `epic`, `backfill`, `trend` i `render` z rekordem z danych AO,
-transkryptów prób i GitHuba. Pozostałe komendy i pola rekordu dodają kolejne zadania epiku (zob. „Pola jeszcze
-nieobecne”).
+Stan tego zakresu (METRICS-1 do METRICS-4): komendy `epic`, `backfill`, `trend` i `render` z rekordem z danych AO,
+transkryptów prób i GitHuba oraz `waste` (alarmy bezproduktywnego zużycia w trakcie przebiegu). Pozostałe komendy
+i pola rekordu dodają kolejne zadania epiku (zob. „Pola jeszcze nieobecne”).
 
 ## Komendy
 
@@ -15,6 +15,7 @@ python3 tools/metrics/metrics.py epic EPIK [--ao-home DIR] [--manual-fixes FILE]
 python3 tools/metrics/metrics.py backfill [--ao-root DIR] [WSPÓLNE]
 python3 tools/metrics/metrics.py trend [--last N] [--epic EPIK] [--json] [--no-gh] [WSPÓLNE]
 python3 tools/metrics/metrics.py render EPIK [--format report|comment] [WSPÓLNE]
+python3 tools/metrics/metrics.py waste AO_HOME [--max-qa-rounds N] [WSPÓLNE]
 python3 tools/metrics/fixture_scan.py [DIR]
 ```
 
@@ -59,11 +60,13 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   lista ręcznych poprawek z `--manual-fixes` (pisze ją sesja `/ao-run`, nie dane przebiegu, a użytkownik widzi komentarz przed
   dodaniem): jedna linia, bez znaków sterujących, do 200 znaków, w pozycji bez PR bez dwukropka i z małej litery (parser czyta
   „Wielka litera…: ” jako następną etykietę). Brak rekordu epiku albo zły identyfikator: kod `2`.
+- `waste`: nowe alarmy bezproduktywnego zużycia przebiegu `AO_HOME` (niżej), po jednej linii JSON; kod `0` także bez
+  alarmów. `--max-qa-rounds` (domyślnie 3, tyle co w `/ao-run`) to runda QA, od której alarmuje W3.
 - `fixture_scan.py`: skan fixture'ów (zob. niżej).
 
-Kody wyjścia: `0` sukces; `2` nic nie zapisano (złe argumenty albo `config.json`, brak katalogu AO, nieczytelna albo
-zablokowana baza, brak wiersza epiku, nieczytelny plik `--manual-fixes`, stan niezapisywalny; komunikat po polsku na
-stderr, stdout pusty); `3` rekord wypisano i zapisano, ale źródło zawiodło (błąd `gh`: brak programu, kod ≠ 0,
+Kody wyjścia: `0` sukces; `2` nic nie zapisano ani nie wypisano (złe argumenty albo `config.json`, brak katalogu AO,
+nieczytelna albo zablokowana baza, brak wiersza epiku, nieczytelny plik `--manual-fixes`, stan niezapisywalny,
+nieczytelny `waste.json` w `waste`; komunikat po polsku na stderr, stdout pusty); `3` rekord wypisano i zapisano, ale źródło zawiodło (błąd `gh`: brak programu, kod ≠ 0,
 przekroczony czas, odpowiedź inna niż JSON; w `backfill` także pominięty przebieg z błędem bazy albo `gh`). Błąd `gh`
 nie zatrzymuje pomiaru: pola z GitHuba są `null` z pozycją w `gaps`, a poprzednie wartości zostają (zob. „Cache”).
 
@@ -93,6 +96,7 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `regressions` | okno `window_days` (14) od merge'u końcowego PR: `until`, `open` (czas okna nie minął albo ostatni przebieg miał zawiedzione źródło), `complete` (wszystkie źródła, także `found_after_merge`, odpowiedziały; okno zamyka się, `open: false`, dopiero po takim przebiegu; lista obcięta do limitu 200 issues albo 100 commitów też daje `complete: false`, a `trend` do tego czasu przelicza rekord), `checked_at`, `merge_commit`, `ci_red` (liczba czerwonych przebiegów `ci_workflow` ze zdarzeniem `push` na commicie merge'u; 0 przy zielonym), `reverts` (SHA commitów `main` w oknie, których pierwsza linia zaczyna się od `Revert`, a treść wymienia `#<numer końcowego PR>`), `issues` (numery issues `bug` z okna, których pole „Wprowadzone przez (epik albo PR, jeśli znane)” wskazuje ID epiku albo numer końcowego PR, założone albo ostatnio zmienione przez osobę z prawem zapisu: autor, a gdy go nie ma, ostatni edytor treści (`editor` z zapytania `gh api graphql`, tylko `query`, po jednym na issue, które wskazuje epik; bez `--repo` owner i nazwę ustala raz `gh repo view --json owner,name`, bo `gh api` nie podstawia `{owner}` i `{repo}` w polach `-f`) sprawdzani tym samym `gh api repos/{owner}/{repo}/collaborators/{login}/permission` (`write`, `maintain` albo `admin`); 404 to brak prawa, login niepasujący do wzorca loginu GitHuba nie jest sprawdzany; issues z etykietą `agent` nie liczą się tu), `count` (czerwone CI jako 1, plus reverty i issues; `null`, gdy któryś składnik nieznany). Składnik, którego źródło zawiodło, ma poprzednią zapisaną wartość albo `null`, z `gaps` |
 | `found_after_merge` | `issues` i `count`: issues z etykietą `agent` utworzone w oknie, których sekcja „Źródło” ma linię `Przebieg `/sweep` <data>-<sha7>-<epik>` tego epiku (propozycje `/sweep`, osobno od regresji; etykietę `agent` ustawiają tylko osoby z prawem zapisu, więc bez sprawdzania autora) |
 | `bottlenecks` | do `max_items` (3) pozycji o największej nadwyżce czasu ponad medianę historii, malejąco, nadwyżka co najmniej `min_excess_h` (0,5 h): `kind` (`breakdown`, `task`, `in_attempts`, `gate_wait`, `review`), `name`, `value_s`, `median_s`, `excess_h`, `share` i `share_of` (`to_done`, `gate_wait+to_done` albo `to_merge`), `rule` (klucz reguły decyzji: D2 dla zadania planu, D3 dla `gate_wait`, D4 dla `human_wait`, `ci_wait`, `limit_wait`, `in_attempts.ci_watch` i `review`, inaczej `null`), `repeat_h` (tylko `in_attempts`: ile z nadwyżki to `repeat_runs` tej kategorii, nie więcej niż nadwyżka). Potencjalny efekt reguły dodaje METRICS-5 |
+| `waste` | alarmy tego epiku z `<state>/waste.json` (jak w pliku: `key`, `rule`, `epic`, `task`, `attempt`, `at`, `push`, liczby); `[]`, gdy plik jest i nie ma alarmów epiku; `null` z pozycją w `gaps` (sam powód, bez ścieżki) bez pliku (komenda `waste` jeszcze nie działała) albo gdy plik jest nieczytelny (`epic` nie kończy się wtedy błędem); zapisana wcześniej lista zostaje (zob. „Cache”) |
 | `gaps` | braki danych |
 
 Źródła i ich pierwszeństwo w `breakdown` (każda chwila trafia do pierwszej pasującej kategorii, kolejność w
@@ -199,15 +203,49 @@ je z mniejszej historii: `epic <epik>` liczy je od nowa. Szczegóły i progi: `c
 
 ### Pola jeszcze nieobecne
 
-Rekord tego zakresu nie ma klucza `waste` (METRICS-4). Klucza nie ma, zamiast `null` z pozycją w `gaps`, więc dodanie go nie
-zmienia istniejących pól (render pokazuje „Alarmy: brak danych”). Komendy `waste`, `decide` i `effect` dodają kolejne zadania.
+Rekord tego zakresu nie ma potencjalnego efektu reguł w `bottlenecks` (METRICS-5). Komendy `decide` i `effect` dodają
+kolejne zadania. Rekord zapisany przed komendą `waste` albo bez `waste.json` ma `waste: null` z pozycją w `gaps`, a render
+pokazuje wtedy „Alarmy (waste): brak danych”.
+
+### Alarmy bezproduktywnego zużycia (`waste`)
+
+`waste AO_HOME` uruchamia się wielokrotnie w trakcie przebiegu (sesja `/ao-run` przy zdarzeniach AO i przy
+uzbrojeniu Monitora). Stan bieżący to baza `AO_HOME` (tylko do odczytu; epik to wiersz tabeli `epics`, przy katalogu
+`ao-<epik>` ten, który nazywa katalog; próby bez `ended_at` trwają) i transkrypty zakończonych prób. Historia to zapisane
+rekordy `<state>/epics/*.json` poza rekordem bieżącego epiku; pomiar to jedna próba (W1, W2) albo jedno zadanie (W4).
+Próg medianowy wymaga `waste.min_history` (5) pomiarów tego samego `kind`; bez nich reguła nie alarmuje, a wyjście kończy
+linia `{"gaps": [...]}` z pozycją `W1`, `W2` albo `W4` (tylko gdy wielkość przekracza próg bezwzględny, bo inaczej brak
+historii niczego nie zmienia). Linia `gaps` nie ma klucza `push`: sesja `/ao-run` pushuje wyłącznie linie z kluczem `push`.
+
+| Reguła | Warunek (progi w `config.json`, sekcja `waste`) | Klucz alarmu |
+|---|---|---|
+| W1 koszt próby | próba zakończona: `value` > `cost_multiple` (3) × mediana `value` zakończonych prób tego `kind` z wartością **i** `value` ≥ `cost_min_usd` (5 USD); próba bez wartości nie alarmuje (pozycja w `gaps`); wartość szacowana (próba bez wyniku CLI) może alarmować i ma w `push` „≈” | `W1:<epik>:<zadanie>:<próba>` |
+| W2 trwająca próba | próba bez `ended_at` i bez `outcome` w epiku, który się nie skończył: `now − started_at` > `time_multiple` (3) × mediana `wall_s` zakończonych prób tego `kind` **i** > `time_min_h` (1) h; bez szacowania kosztu trwającej próby | `W2:<epik>:<zadanie>:<próba>` |
+| W3 pętla prób (bez mediany i bez kwoty) | (a) próba zadania rozpoczęta po co najmniej `loop_failed_attempts` (2) nieudanych próbach tego samego zadania (klasa `failed`; `blocked` i `usage_limit` się nie liczą); alarmuje każda kolejna próba z własnym kluczem; (b) kolejny REPAIR epiku z rzędu: zadanie `repair` rozpoczęte, gdy od startu poprzedniego zadania `repair` (kolejność pierwszych prób) nie było zdarzenia `epic_ci_green` ani `epic_ci_inherited` epiku; trzeci REPAIR bez zielonego CI alarmuje też; (c) `epics.round` równe `--max-qa-rounds` | (a) `W3:<epik>:<zadanie>:<próba>`, (b) `W3:<epik>:repair:<zadanie>`, (c) `W3:<epik>:qa:<runda>` |
+| W4 koszt zadania | suma `value` **zakończonych** prób zadania (trwającej się nie dolicza; zadanie, w którym zakończona próba nie ma wartości, jest pomijane z pozycją w `gaps`) > `cost_multiple` × mediana tej sumy po zadaniach tego `kind` w historii (zadania, w których wszystkie zakończone próby mają wartość) **i** ≥ `cost_min_usd`; raz na zadanie | `W4:<epik>:<zadanie>` |
+
+Alarm kosztowy wymaga obu warunków (dokładnie 3× mediany nie alarmuje, dokładnie 5 USD alarmuje), czasowy też (dokładnie
+3× mediany i dokładnie 1 h nie alarmują). Mediana zerowa nie ma ilorazu (`ratio: null`, `push` bez „×”).
+
+Wyjście: jedna linia JSON na nowy alarm, np. `{"alarm": "W2", "key": "W2:deploy-ops:DEPLOY-OPS-4:3", "epic":
+"deploy-ops", "task": "DEPLOY-OPS-4", "attempt": 3, "push": "deploy-ops: DEPLOY-OPS-4 próba 3 trwa 4,1 h (3,2× mediany)",
+"seconds": 14760, "median": 4600, "ratio": 3.2}`. `push` ma najwyżej 200 znaków, liczby z przecinkiem dziesiętnym,
+a z danych przebiegu tylko identyfikatory epiku i zadania (`[A-Za-z0-9._-]`, do 64 znaków, inaczej `?`) i liczby.
+
+`<state>/waste.json` (`{"alarms": [{"key", "rule", "epic", "task", "attempt", "at", "push", ...liczby}]}`) i
+`<state>/waste.lock`: odczyt pliku, wybór nowych kluczy, zapis atomowy (plik tymczasowy i `os.replace`) i wypisanie
+dzieją się pod wyłącznym `flock` na `waste.lock`, więc dwie sesje wypisują każdy alarm raz. Zapis jest przed
+wypisaniem: nieudany zapis nic nie wypisuje, a awaria wypisywania po zapisie gubi alarm, ale go nie duplikuje (alarm nigdy
+dwa razy). Brak `waste.json` to pusty stan, a udane wywołanie bez nowych alarmów tworzy `{"alarms": []}` (pod tą samą blokadą), żeby rekord pokazywał `[]`, nie `null`; plik nieczytelny albo w innym kształcie kończy komendę kodem `2` bez zmiany
+pliku (po usunięciu przyczyny wysłane alarmy nie wracają). Zajęta żywa baza: `busy_timeout`, potem ponowienia
+(`DB_RETRIES` = 2, przerwa 0,5 s), na końcu kod `2` i komunikat `zablokowana`; nic nie jest wtedy zapisane.
 
 ### Cache
 
 Rekord zapisuje się w `<state>/epics/<epik>.json`. Przejściowy błąd źródła nigdy nie zastępuje wartości niepustej
 wartością `null`: dla `issue`, `merged_at`, `wall.to_merge`, `wall.review`, `retries.sync_prs`, `parallel.sync_prs`,
-`human.manual_fixes`, `ci`, `regressions` i `found_after_merge` (błąd `gh`, `--no-gh`, brak `--manual-fixes`) zostaje
-poprzednia wartość (składniki `regressions` osobno), a w `gaps` jest
+`human.manual_fixes`, `ci`, `regressions`, `found_after_merge` i `waste` (błąd `gh`, `--no-gh`, brak `--manual-fixes`,
+brak albo nieczytelny `waste.json`) zostaje poprzednia wartość (składniki `regressions` osobno), a w `gaps` jest
 `pole: źródło niedostępne: zachowano poprzednią wartość` obok powodu. Pozostałe pola liczą się od nowa. Nieczytelny
 zapisany rekord jest pomijany.
 
