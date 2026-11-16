@@ -55,8 +55,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
   przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
   i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
-  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego krok `ordering:read-models:rebuild:sales`
-  to przebudowa sprzedaży po `ordering:seed-demo`, bez osobnego wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
+  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego kroki `ordering:read-models:rebuild:sales`
+  i `ordering:read-models:rebuild:customers` to przebudowa sprzedaży i klientów po `ordering:seed-demo`, bez osobnego
+  wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
@@ -64,7 +65,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
   zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
   `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
-  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) i `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`) i `ordering:read-models:rebuild:customers` (90: część klientów tej komendy; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
   zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
   ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
   uruchomione). Test: `BackfillCommandTest`
@@ -72,15 +73,20 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
   partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
   (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
-- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; część
-  sprzedaży to krok `app:backfill`, więc woła ją też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
-  odczytu Ordering z zamówień: sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
+- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; obie
+  części to kroki `app:backfill`, więc woła je też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
+  odczytu Ordering z zamówień, najpierw sprzedaż, potem klientów. Sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
   pierwszej godziny z opłaconym zamówieniem albo wierszem sprzedaży (`nextHour`: po indeksie częściowym
   `ordering_order (paid_at) WHERE paid_at IS NOT NULL` i kluczu tabeli; godziny bez jednego i drugiego pomija), każda
   w osobnej transakcji (opis protokołu przy wyjątku DBAL sprzedaży w „Architekturze”). Idempotentna: drugi przebieg
   zostawia te same wiersze, a wynik to dokładnie tabela zapisu przyrostowego (wiersz godziny i kubełka z zamówieniami,
-  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Kod wyjścia: 0 –
-  gotowe, 1 – przerwane błędem (przebudowane godziny zostają; ponowne uruchomienie zaczyna od początku)
+  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Klientów
+  (`ordering_customer`, `CustomerRebuild`) partiami po 500 klientów w kolejności `customer_id`: koniec partii to 500.
+  klient po poprzedniej spośród kont z zamówieniami albo z wierszem (`nextBatchEnd`: po indeksie częściowym zamówień
+  klientów `(customer_id, placed_at DESC, id DESC)` i kluczu tabeli), każda partia w osobnej transakcji (opis
+  protokołu przy wyjątku DBAL klientów w „Architekturze”); wiersz klienta bez zamówień usuwa. Wynik to dokładnie tabela
+  zapisu przyrostowego. Wypisuje postęp co 100 partii i podsumowanie (klienci, partie, zamówienia). Kod wyjścia: 0 –
+  gotowe, 1 – przerwane błędem (przebudowane godziny i partie zostają; ponowne uruchomienie zaczyna od początku)
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -219,6 +225,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `paid_count + 1`, `paid_gross + total_gross`; klient bez wiersza (zamówienia sprzed wdrożenia, przed backfillem)
   dostaje wiersz z samego opłaconego zamówienia (`INSERT … SELECT` z `ordering_order`: jego kontakt i chwila, jedno
   zamówienie, opłacone), nigdy wiersz z `NULL`, a przebudowa i tak go nadpisze. Wycofana transakcja wycofuje dopisanie.
+  Przebudowa partii (`CustomerSummariesRebuild::rebuild`, zakres `customer_id`, `READ COMMITTED`) w jednej transakcji:
+  `INSERT` brakujących wierszy klientów zakresu z zatwierdzonymi zamówieniami (wartości zastępcze) `ON CONFLICT DO
+  NOTHING`, `SELECT … FOR UPDATE` wszystkich wierszy zakresu, dopiero potem liczenie zamówień (`UPDATE` z agregacją
+  i kontaktem najnowszego zamówienia) i `DELETE` wierszy klientów bez zamówień. Złożenie i płatność dopisują się do
+  wiersza swojego klienta przed commitem, więc albo zatwierdziły się przed blokadą (liczenie je widzi, zapis nadpisuje
+  dopisanie), albo czekają na commit przebudowy i dopisują się do nowego wiersza; pierwsze zamówienie klienta bez wiersza
+  jest albo widoczne dla liczenia razem ze swoim wierszem, albo jego wstawienie zostaje. Żadne zamówienie nie ginie ani
+  nie liczy się dwa razy (test `CustomerSummariesConcurrencyTest`, dwa procesy, oba przeplecenia ze złożeniem
+  i z płatnością).
   Indeksy (migracje `Version20261116090000CreateCustomers`, `Version20261116090100IndexCustomerSearch`):
   `(last_order_at DESC, customer_id)`, `(lower(full_name), customer_id)` (mapowany tylko kolumną `customer_id`, bo tyle
   odczytują narzędzia schematu), `(order_count DESC, customer_id)`, `(paid_gross DESC, customer_id)` i GIN trigram na
