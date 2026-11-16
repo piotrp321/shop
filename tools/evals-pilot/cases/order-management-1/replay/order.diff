@@ -1,0 +1,11 @@
+--- order.orig.md
++++ order.md
+@@ -3 +3 @@
+-- Repo/worktree: <home>/Development/claude/shop-ORDER-MANAGEMENT-1 (używaj ścieżek absolutnych, `git -C`).
++- Repo/worktree: {{CHECKOUT}} (używaj ścieżek absolutnych, `git -C`).
+@@ -7 +7 @@
+-- tdd.status: verified. Dziennik dowodów (RED/GREEN, commity, `dirty` drzewa przy RED): `<home>/.local/state/ao-order-management/tasks/ORDER-MANAGEMENT-1/delivery-state.json.evidence.jsonl`.
++- tdd.status: verified. Dziennik dowodów (RED/GREEN, commity, `dirty` drzewa przy RED): `{{INPUT_DIR}}/tdd-evidence.jsonl`.
+@@ -19,0 +20,2 @@
++
++Uwaga do tego przebiegu (dopisana przez ewaluację, nie przez orkiestratora): stos Dockera nie działa i nie ma sieci. Nie uruchamiaj testów, `make` ani `docker`; pracuj na odczycie kodu i dziennika dowodów.

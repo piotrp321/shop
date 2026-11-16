@@ -68,7 +68,8 @@ AGENT-ISOLATION (#498).
 - Sesje interaktywne nie mają sandboxa Bash i mogą wywołać `gh` z pominięciem bramki: granica promptu.
 - Wykonawca może zmienić instrukcje procesu (`CLAUDE.md`, skille, agentów) w gałęzi epiku; ogranicza to przegląd
   końcowego PR przez użytkownika.
-- Logi CI i wyjście zależności czytane przez `/delivery` nie przechodzą przez bramkę; chronią R2–R5.
+- Logi CI i wyjście zależności czytane przez `/delivery` i `/integration` (log czerwonych jobów CI pusha) nie
+  przechodzą przez bramkę; chronią R2–R5.
 - Nakładka `mktemp` jest wygodą pracy, nie granicą bezpieczeństwa: wykonawca steruje `PATH` własnego Basha i może
   wywołać `/usr/bin/mktemp`, który w sandboxie się nie uda. Granicą jest profil (brak zapisu do `/var/folders/…`).
 - Katalog tymczasowy użytkownika (`/var/folders/…`) jest czytelny dla wykonawcy (bez zapisu), w tym `KUBE_DIR`

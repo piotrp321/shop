@@ -5,8 +5,8 @@
 # the shop: no account or a wrong token leaves this application Degraded and does not stop the shop. The interface of the chart
 # changes between major versions (destinations are a map since 4.x): the version is pinned, an upgrade is a change of its own.
 #
-# To fill in (runbook, infra/k8s/README.md): the addresses and the instance ids of the two destinations (Grafana Cloud portal,
-# the stack in the EU region); the values below are examples. The token is not here: it is the Secret grafana-cloud
+# The addresses and the instance ids of the two destinations come from the Grafana Cloud portal (the stack in the EU region,
+# Germany; runbook, infra/k8s/README.md). The token is not here: it is the Secret grafana-cloud
 # (GRAFANA_CLOUD_TOKEN) of the namespace shop, written by seal-secrets.sh.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -29,12 +29,12 @@ spec:
         destinations:
           grafana-metrics:
             type: prometheus
-            url: https://prometheus-prod-24-prod-eu-west-2.grafana.net/api/prom/push
+            url: https://prometheus-prod-72-prod-eu-west-4.grafana.net/api/prom/push
             auth:
               type: basic
               # An Alloy expression: the instance id of the metrics (not a secret; the same value is the tenant). The chart reads
               # every other credential from the Secret, where there is only the token (a key missing there is empty).
-              usernameFrom: &metricsInstance '"1234567"'
+              usernameFrom: &metricsInstance '"3773882"'
               passwordKey: GRAFANA_CLOUD_TOKEN
             tenantIdFrom: *metricsInstance
             secret:
@@ -44,14 +44,14 @@ spec:
             # The PrometheusRule objects of the cluster go to the ruler of the same stack: the base address, not the push path.
             rules:
               enabled: true
-              address: https://prometheus-prod-24-prod-eu-west-2.grafana.net
+              address: https://prometheus-prod-72-prod-eu-west-4.grafana.net
               prometheusHttpPrefix: /api/prom
           grafana-logs:
             type: loki
-            url: https://logs-prod-eu-west-2.grafana.net/loki/api/v1/push
+            url: https://logs-prod-050-prod-eu-west-4.grafana.net/loki/api/v1/push
             auth:
               type: basic
-              usernameFrom: &logsInstance '"7654321"'
+              usernameFrom: &logsInstance '"1882609"'
               passwordKey: GRAFANA_CLOUD_TOKEN
             tenantIdFrom: *logsInstance
             secret:
