@@ -116,3 +116,35 @@ export function formatProductCount(count: Count | null): string {
   }
   return count.capped ? `ponad ${count.value}` : String(count.value);
 }
+
+/** Where the category goes for „Przenieś do…”: the end of the children of the chosen parent (null: of the roots). Null when nothing would change or the parent is in its own subtree. */
+export function moveToCommand(rows: CategoryRow[], id: string, parentId: string | null): MoveCommand | null {
+  const dragged = findRow(rows, id);
+  if (dragged === null) {
+    return null;
+  }
+  if (parentId !== null) {
+    return dropCommand(rows, id, parentId, "inside");
+  }
+  const position = rows.filter((row) => row.id !== id).length;
+  return dragged.parent === null && position === dragged.index ? null : { id, parentId: null, position };
+}
+
+/** The zone of a row a pointer is in, from its place in the row (0 top, 1 bottom): the top and bottom quarters are before and after, between them inside. */
+export function zoneForRatio(ratio: number): DropZone {
+  if (ratio < 0.25) {
+    return "before";
+  }
+  return ratio > 0.75 ? "after" : "inside";
+}
+
+export const ROOT_PLACE = "Poziom główny";
+
+/** The place of a category: the names of its parents („Turystyka › Biwak”), or the top level for a root. */
+export function placeOf(rows: CategoryRow[], id: string): string {
+  const names: string[] = [];
+  for (let parent = findRow(rows, id)?.parent ?? null; parent !== null; parent = findRow(rows, parent.id)?.parent ?? null) {
+    names.unshift(parent.name);
+  }
+  return names.length === 0 ? ROOT_PLACE : names.join(" › ");
+}

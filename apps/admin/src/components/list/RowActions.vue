@@ -56,7 +56,7 @@ const labelOf = (action: RowAction) => `${action.label}: ${props.name}`;
 
 <template>
   <TooltipProvider v-if="actions.length > 0">
-    <div class="flex items-center justify-end gap-2">
+    <div class="flex flex-wrap items-center justify-end gap-2">
       <Tooltip
         v-for="action in actions"
         :key="action.key"

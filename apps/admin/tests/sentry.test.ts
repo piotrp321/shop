@@ -350,7 +350,7 @@ describe("the user of the events (P5)", () => {
         {
           path: "/",
           component: AppLayout,
-          children: ["dashboard", "products", "product-new", "prices", "promotions", "discount-codes", "inventory", "system", "orders"].map((name) => ({
+          children: ["dashboard", "products", "product-new", "categories", "prices", "promotions", "discount-codes", "inventory", "system", "orders"].map((name) => ({
             path: name === "dashboard" ? "" : name === "product-new" ? "products/new" : name,
             name,
             component: Blank,

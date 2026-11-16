@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { components } from "@/api/schema";
-import { comboboxNodes, dropCommand, findRow, formatProductCount, moveCommand, subtreeIds, toRows } from "@/categories/tree";
+import { comboboxNodes, dropCommand, findRow, formatProductCount, moveCommand, moveToCommand, placeOf, subtreeIds, toRows, zoneForRatio } from "@/categories/tree";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
 
@@ -112,5 +112,47 @@ describe("formatProductCount", () => {
     expect(formatProductCount({ value: 0, capped: false })).toBe("0");
     expect(formatProductCount({ value: 1000, capped: true })).toBe("ponad 1000");
     expect(formatProductCount(null)).toBe("—");
+  });
+});
+
+describe("moveToCommand („Przenieś do…”: the end of the chosen parent)", () => {
+  it("puts the category last under the chosen parent", () => {
+    expect(moveToCommand(rows, "n", "sp")).toEqual({ id: "n", parentId: "sp", position: 1 });
+    expect(moveToCommand(rows, "o", "r")).toEqual({ id: "o", parentId: "r", position: 0 });
+    expect(moveToCommand(rows, "n", "b")).toEqual({ id: "n", parentId: "b", position: 1 });
+  });
+
+  it("puts the category last among the roots for the root", () => {
+    expect(moveToCommand(rows, "n", null)).toEqual({ id: "n", parentId: null, position: 3 });
+    expect(moveToCommand(rows, "t", null)).toEqual({ id: "t", parentId: null, position: 2 });
+  });
+
+  it("has no command when the category is already last there, or the parent is its own subtree", () => {
+    expect(moveToCommand(rows, "o", null)).toBeNull();
+    expect(moveToCommand(rows, "s", "b")).toBeNull();
+    expect(moveToCommand(rows, "t", "s")).toBeNull();
+    expect(moveToCommand(rows, "t", "t")).toBeNull();
+    expect(moveToCommand(rows, "nope", null)).toBeNull();
+  });
+});
+
+describe("zoneForRatio (where in the row a node was dropped)", () => {
+  it("is before in the top quarter, after in the bottom quarter and inside between", () => {
+    expect(zoneForRatio(0)).toBe("before");
+    expect(zoneForRatio(0.24)).toBe("before");
+    expect(zoneForRatio(0.25)).toBe("inside");
+    expect(zoneForRatio(0.5)).toBe("inside");
+    expect(zoneForRatio(0.75)).toBe("inside");
+    expect(zoneForRatio(0.76)).toBe("after");
+    expect(zoneForRatio(1)).toBe("after");
+  });
+});
+
+describe("placeOf (where a category is, in words)", () => {
+  it("names the path of the parents, or the top level for a root", () => {
+    expect(placeOf(rows, "n")).toBe("Turystyka › Biwak");
+    expect(placeOf(rows, "b")).toBe("Turystyka");
+    expect(placeOf(rows, "o")).toBe("Poziom główny");
+    expect(placeOf(rows, "nope")).toBe("Poziom główny");
   });
 });

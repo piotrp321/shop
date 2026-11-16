@@ -206,41 +206,35 @@ describe("focusAfterAction", () => {
 });
 
 describe("ConfirmDialog that the view closes itself (close-on-confirm off)", () => {
-  const Keeping = defineComponent({
-    components: { ConfirmDialog },
-    props: { error: { type: String, default: null }, busy: { type: Boolean, default: false } },
-    emits: ["confirm"],
-    setup() {
-      return { open: ref(true) };
-    },
-    template: `
-      <ConfirmDialog
-        v-model:open="open"
-        title="Usunąć kategorię Namioty?"
-        description="Kategoria zniknie z drzewa."
-        confirm-label="Usuń kategorię"
-        :close-on-confirm="false"
-        :error="error"
-        :busy="busy"
-        destructive
-        @confirm="$emit('confirm')"
-      />
-    `,
-  });
+  const mountKeeping = (props: { error?: string; busy?: boolean } = {}) =>
+    mount(ConfirmDialog, {
+      props: {
+        open: true,
+        title: "Usunąć kategorię Namioty?",
+        description: "Kategoria zniknie z drzewa.",
+        confirmLabel: "Usuń kategorię",
+        closeOnConfirm: false,
+        destructive: true,
+        ...props,
+      },
+      attachTo: document.body,
+    });
 
   it("stays open after the confirmation, so that a refusal can be said in it", async () => {
-    wrapper = mount(Keeping, { attachTo: document.body });
+    const mounted = mountKeeping();
+    wrapper = mounted;
     await flushPromises();
 
     button("Usuń kategorię")!.click();
     await flushPromises();
 
-    expect(wrapper.emitted("confirm")).toHaveLength(1);
+    expect(mounted.emitted("confirm")).toHaveLength(1);
+    expect(mounted.emitted("update:open")).toBeUndefined();
     expect(dialog()).not.toBeNull();
   });
 
   it("shows the error as an alert in the dialog and the busy state as a disabled button", async () => {
-    wrapper = mount(Keeping, { props: { error: "Przenieś produkty do innej kategorii, zanim usuniesz tę.", busy: true }, attachTo: document.body });
+    wrapper = mountKeeping({ error: "Przenieś produkty do innej kategorii, zanim usuniesz tę.", busy: true });
     await flushPromises();
 
     const alert = dialog()!.querySelector("[role=alert]");
@@ -248,13 +242,14 @@ describe("ConfirmDialog that the view closes itself (close-on-confirm off)", () 
     expect(button("Usuń kategorię")!.disabled).toBe(true);
   });
 
-  it("still closes with „Wróć”", async () => {
-    wrapper = mount(Keeping, { attachTo: document.body });
+  it("still asks to close with „Wróć”", async () => {
+    const mounted = mountKeeping();
+    wrapper = mounted;
     await flushPromises();
 
     button("Wróć")!.click();
     await flushPromises();
 
-    expect(dialog()).toBeNull();
+    expect(mounted.emitted("update:open")).toEqual([[false]]);
   });
 });
