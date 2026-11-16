@@ -11,6 +11,10 @@
       Checks PLAN like validate, without its `parallel_with` lists, and prints a JSON object {task id: [task ids]} in
       plan order: for every task the maximal `parallel_with`, i.e. every other task it may run at once with. A task
       without `paths` gets []. Exit code 2 also when git cannot list the tracked CLAUDE.md files.
+      With --blocked the output is instead {"parallel_with": {that object}, "blocked": [...]}, where "blocked" lists
+      {"tasks": [A, B], "paths": [...]} for every pair of tasks of one wave (as in `waves`) that both have `paths`,
+      but may not run at once because those paths are shared (what parallel_gate.task_conflicts refuses), in wave
+      order, then plan order; [] when there is none. Without the flag the output is unchanged.
 
 Optional task keys (step 19b, docs/features/parallel-work/spec.md): `paths`, a non-empty list of paths relative to
 the repository root that the task changes (a file, or a directory ending with /; no absolute path, no `.` or `..`
@@ -121,6 +125,23 @@ def parallel_lists(tasks, claude_md):
                 lists[a['id']].append(b['id'])
                 lists[b['id']].append(a['id'])
     return lists
+
+
+def blocked_pairs(tasks, claude_md):
+    """Pairs of tasks of one wave that both have `paths` and may not run at once because of shared paths, as
+    {"tasks": [a, b], "paths": [...]}, in wave order, then plan order. Expects a valid, acyclic manifest and the
+    tuple of tracked CLAUDE.md files. Tasks of one wave never depend on each other."""
+    by_id = {t['id']: t for t in tasks}
+    result = []
+    for wave in waves(tasks):
+        for i, first in enumerate(wave):
+            for second in wave[i + 1:]:
+                a, b = by_id[first], by_id[second]
+                if 'paths' in a and 'paths' in b:
+                    shared = parallel_gate.task_conflicts(a['paths'], b['paths'], claude_md=claude_md)
+                    if shared:
+                        result.append({'tasks': [first, second], 'paths': list(shared)})
+    return result
 
 
 def waves(tasks):
@@ -384,25 +405,32 @@ def validate(path, ignore_parallel_with=False):
     return dict(manifest, waves=waves(manifest['tasks']))
 
 
-def parallel(path):
-    """The maximal `parallel_with` of every task of the plan at `path`, its current lists ignored. PlanError when the
-    plan is invalid or the tracked CLAUDE.md files are unknown."""
+def parallel(path, with_blocked=False):
+    """The maximal `parallel_with` of every task of the plan at `path`, its current lists ignored; with
+    `with_blocked` {"parallel_with": the lists, "blocked": blocked_pairs}. PlanError when the plan is invalid or the tracked
+    CLAUDE.md files are unknown."""
     manifest = validate(path, ignore_parallel_with=True)
     claude_md = _tracked_claude_md(_repo_root(os.path.abspath(path)))
     if isinstance(claude_md, ClaudeMdUnknown):
         raise claude_md
-    return parallel_lists(manifest['tasks'], claude_md)
+    lists = parallel_lists(manifest['tasks'], claude_md)
+    if with_blocked:
+        return {'parallel_with': lists, 'blocked': blocked_pairs(manifest['tasks'], claude_md)}
+    return lists
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Validates the task manifest of an epic plan.')
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('validate', help='check PLAN and print its manifest with waves').add_argument('plan')
-    sub.add_parser('parallel', help='print the maximal parallel_with of every task of PLAN').add_argument('plan')
+    parallel_parser = sub.add_parser('parallel', help='print the maximal parallel_with of every task of PLAN')
+    parallel_parser.add_argument('plan')
+    parallel_parser.add_argument('--blocked', action='store_true',
+                                 help='also list same-wave pairs blocked by shared paths')
     args = parser.parse_args(argv)
     try:
         if args.command == 'parallel':
-            result = parallel(args.plan)
+            result = parallel(args.plan, args.blocked)
         else:
             result = validate(args.plan)
     except PlanError as e:
