@@ -399,7 +399,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `firstOrderAt`, `lastOrderAt`) i `addresses` (do 10 różnych adresów dostawy z ostatnich 50 zamówień klienta, ostatnio
     użyty pierwszy; po częściowym indeksie zamówień klientów); nieznany klient, gość, konto bez zamówień i id puste,
     dłuższe niż 255 znaków albo ze znakiem sterującym to 404 `CustomerNotFound` („Klient nie istnieje.”). Zamówienia
-    klienta to lista zamówień z `customerId`. Testy: `BackofficeCustomersEndpointTest`, `DbalCustomerReaderTest`.
+    klienta to lista zamówień z `customerId` (`GET /api/v1/admin/orders?customerId=<sub>`, `VIEW_ORDERS`: tylko
+    `owner_type = 'customer'` i ten `customer_id`, od najnowszego, po częściowym indeksie `(customer_id, placed_at DESC,
+    id DESC)`; łączy się tylko ze `status`, a `q`, `sort`, `placedFrom`, `placedTo` i `refund` z nim to 400 przy każdym
+    z tych pól; `customerId` pusty, dłuższy niż 255 znaków albo ze znakiem sterującym to 400), a szczegóły zamówienia
+    w panelu (`BackofficeOrder`) mają `customerId` (`null` dla gościa). Testy: `BackofficeCustomersEndpointTest`,
+    `DbalCustomerReaderTest`, `ListBackofficeOrdersEndpointTest`.
   - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
     `GET /api/v1/me/orders?after=&perPage=` i `GET /api/v1/me/orders/{orderId}`; każda odpowiedź `private, no-store`
     (`OrderResponseCacheSubscriber` obejmuje `me/orders`), brak tokenu albo token panelu to 401. Klient to `sub` z tokenu

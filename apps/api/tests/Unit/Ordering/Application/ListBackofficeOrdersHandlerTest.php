@@ -350,6 +350,43 @@ final class ListBackofficeOrdersHandlerTest extends TestCase
         }
     }
 
+    public function testTheOrdersOfACustomerGoToTheReaderNewestFirstWithTheStatus(): void
+    {
+        $this->reader->orders = [self::listed(1)];
+
+        $list = $this->list(new ListBackofficeOrders(OrderStatus::Paid, false, null, null, 25, customerId: 'kc-1'));
+
+        self::assertEquals([[new BackofficeOrderFilter(OrderStatus::Paid, false, null, null, customerId: 'kc-1'), null, 26]], $this->reader->pages);
+        self::assertSame(BackofficeOrderSort::PlacedDescending, $this->reader->pages[0][0]->sort);
+        self::assertCount(1, $list->items);
+    }
+
+    /**
+     * @return iterable<string, array{ListBackofficeOrders}>
+     */
+    public static function refusedWithACustomer(): iterable
+    {
+        yield 'a search' => [new ListBackofficeOrders(null, false, 'Kowalski', null, 25, customerId: 'kc-1')];
+        yield 'the sort newest first, given' => [new ListBackofficeOrders(null, false, null, null, 25, BackofficeOrderSort::PlacedDescending, customerId: 'kc-1')];
+        yield 'the sort by the amount' => [new ListBackofficeOrders(null, false, null, null, 25, BackofficeOrderSort::TotalDescending, customerId: 'kc-1')];
+        yield 'the start of a range' => [new ListBackofficeOrders(null, false, null, null, 25, null, '2026-11-01', customerId: 'kc-1')];
+        yield 'the end of a range' => [new ListBackofficeOrders(null, false, null, null, 25, null, null, '2026-11-30', customerId: 'kc-1')];
+        yield 'the pending refunds' => [new ListBackofficeOrders(null, true, null, null, 25, customerId: 'kc-1')];
+        yield 'the overdue refunds' => [new ListBackofficeOrders(null, true, null, null, 25, null, null, null, true, customerId: 'kc-1')];
+    }
+
+    #[DataProvider('refusedWithACustomer')]
+    public function testTheOrdersOfACustomerRefuseTheSearchTheSortTheRangeAndTheRefundsWithoutARead(ListBackofficeOrders $query): void
+    {
+        try {
+            $this->list($query);
+            self::fail('The combination must be refused.');
+        } catch (InvalidBackofficeOrderList) {
+            self::assertSame([], $this->reader->pages);
+            self::assertSame([], $this->reader->counts);
+        }
+    }
+
     public function testThePlacementSortsAcceptASearch(): void
     {
         $this->list(new ListBackofficeOrders(null, false, 'R-100001', null, 25, BackofficeOrderSort::PlacedAscending));

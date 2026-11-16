@@ -1042,11 +1042,16 @@ nelmio_api_doc:
                             description: >-
                                 An order with everything the panel shows of it, copies of the names and prices of its placement included.
                                 Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to.
-                            required: [orderId, number, status, version, email, fullName, phone, shippingAddress, lines, discount, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
+                            required: [orderId, number, status, version, customerId, email, fullName, phone, shippingAddress, lines, discount, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
                             properties:
                                 orderId:
                                     type: string
                                     format: uuid
+                                customerId:
+                                    type: string
+                                    nullable: true
+                                    description: The id of the account of the store that placed the order (`sub` of its token), the key of the customer card and of `customerId` of the order list; null for a guest.
+                                    example: 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
                                 number:
                                     type: string
                                     example: R-100001

@@ -51,4 +51,9 @@ final class InvalidBackofficeOrderList extends \DomainException implements Inval
     {
         return new self('The pending refunds cannot be limited to a range of days.');
     }
+
+    public static function customerWithOtherFilters(): self
+    {
+        return new self('The orders of a customer take the status filter only: no search, sort, range of days or refunds.');
+    }
 }

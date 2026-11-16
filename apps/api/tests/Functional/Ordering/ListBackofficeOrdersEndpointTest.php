@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Ordering;
 
 use App\Tests\Integration\Ordering\BackofficeOrderFixture;
+use App\Tests\Integration\Ordering\OrderingFixture;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -553,6 +554,119 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         $this->assertProblem(403, $this->list('', self::staff($roles)));
         self::assertStringNotContainsString('R-100001', (string) $this->response()->getContent());
         $this->assertProblem(403, $this->list('perPage=0&after=garbage!', self::staff($roles)));
+    }
+
+    public function testTheOrdersOfACustomerAreOnlyItsOwnNewestFirstAndCombineWithTheStatus(): void
+    {
+        $older = OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna', placedAt: '2026-11-01 10:00:00+00:00');
+        $newer = OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna', placedAt: '2026-11-02 10:00:00+00:00', paid: true);
+        // Another customer, and a guest with the same email: not the orders of the customer.
+        OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna-2', placedAt: '2026-11-03 10:00:00+00:00');
+        OrderingFixture::order($this->connection, email: 'anna@example.com', placedAt: '2026-11-04 10:00:00+00:00');
+
+        $all = $this->list('customerId=kc-anna', self::staff(['warehouse']));
+
+        self::assertResponseIsSuccessful();
+        $this->assertPrivateAndNotStored();
+        self::assertSame([$newer, $older], self::customerOrderIds($all));
+        self::assertSame(['value' => 2, 'capped' => false], $all['total']);
+        self::assertSame([$older], self::customerOrderIds($this->list('customerId=kc-anna&status=new', self::staff(['support']))));
+        self::assertSame([], self::customerOrderIds($this->list('customerId=kc-nobody', self::staff(['admin']))));
+    }
+
+    public function testTheOrdersOfACustomerPageWithTheCursorAndCountTheFirstPage(): void
+    {
+        $ids = [];
+        for ($day = 1; $day <= 3; ++$day) {
+            $ids[] = OrderingFixture::order($this->connection, customerId: 'kc-anna', placedAt: \sprintf('2026-11-0%d 10:00:00+00:00', $day));
+        }
+
+        $first = $this->list('customerId=kc-anna&perPage=2', self::staff(['admin']));
+        self::assertIsString($first['nextCursor']);
+        $second = $this->list('customerId=kc-anna&perPage=2&after='.$first['nextCursor'], self::staff(['admin']));
+
+        self::assertSame(['value' => 3, 'capped' => false], $first['total']);
+        self::assertSame(array_reverse($ids), [...self::customerOrderIds($first), ...self::customerOrderIds($second)]);
+        self::assertNull($second['total']);
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>}>
+     */
+    public static function excludedWithACustomer(): iterable
+    {
+        yield 'a search' => ['customerId=kc-anna&q=Kowalski', ['q']];
+        yield 'a sort, also the default one' => ['customerId=kc-anna&sort=-placedAt', ['sort']];
+        yield 'the sort by the amount' => ['customerId=kc-anna&sort=-total', ['sort']];
+        yield 'the start of a range' => ['customerId=kc-anna&placedFrom=2026-11-01', ['placedFrom']];
+        yield 'both ends of a range' => ['customerId=kc-anna&placedFrom=2026-11-01&placedTo=2026-11-30', ['placedFrom', 'placedTo']];
+        yield 'the pending refunds' => ['customerId=kc-anna&refund=pending', ['refund']];
+        yield 'the overdue refunds' => ['customerId=kc-anna&refund=overdue', ['refund']];
+    }
+
+    /**
+     * @param list<string> $paths
+     */
+    #[DataProvider('excludedWithACustomer')]
+    public function testTheOrdersOfACustomerRejectTheSearchTheSortTheRangeAndTheRefunds(string $query, array $paths): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame($paths, $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            self::assertSame('Zamówienia klienta łączą się tylko z filtrem statusu: bez wyszukiwania, sortowania, zakresu dat i zwrotów.', $violation['title']);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badCustomerIds(): iterable
+    {
+        yield 'empty' => ['customerId='];
+        yield 'longer than a customer id' => ['customerId='.str_repeat('a', 256)];
+        yield 'with a NUL' => ['customerId=kc%00'];
+        yield 'with a line separator' => ['customerId='.rawurlencode("kc\u{2028}1")];
+        yield 'an array' => ['customerId[]=kc-anna'];
+    }
+
+    #[DataProvider('badCustomerIds')]
+    public function testACustomerIdNoCustomerCanHaveIsA400InPolish(string $query): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame(['customerId'], $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('Identyfikator klienta ma od 1 do 255 znaków bez znaków sterujących.', $violation['title']);
+    }
+
+    public function testMarketingIsForbiddenTheOrdersOfACustomer(): void
+    {
+        OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna');
+
+        $this->assertProblem(403, $this->list('customerId=kc-anna', self::staff(['marketing'])));
+        self::assertStringNotContainsString('anna@example.com', (string) $this->response()->getContent());
+    }
+
+    /**
+     * @param array<mixed> $list
+     *
+     * @return list<string>
+     */
+    private static function customerOrderIds(array $list): array
+    {
+        self::assertIsArray($list['items'] ?? null);
+
+        return array_map(static function (mixed $item): string {
+            self::assertIsArray($item);
+            self::assertIsString($item['orderId']);
+
+            return $item['orderId'];
+        }, array_values($list['items']));
     }
 
     public function testATokenIsRequiredAndACustomerTokenIsNotAccepted(): void
