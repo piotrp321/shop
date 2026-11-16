@@ -18,8 +18,9 @@ segment, no control character or Unicode separator other than the space, no glob
 a first segment that exists in the repository root, compared case-sensitively, other than .git; no duplicate), and
 `parallel_with`, the ids of tasks that may run at once with it. A listed pair must be symmetric, both tasks must
 have `paths`, neither may depend on the other (also through depends_on of another task) and their `paths` must not
-share a path that parallel_gate.task_conflicts refuses (application code, a CLAUDE.md or a file, or a directory
-holding a CLAUDE.md tracked by git, `git ls-files`; other directories outside application code may overlap). When
+share a path that parallel_gate.task_conflicts refuses (executable code: application and tool code, a CLAUDE.md or
+a file, or a directory holding a CLAUDE.md tracked by git, `git ls-files`; other directories outside executable code
+may overlap). When
 git cannot list the tracked CLAUDE.md files, every listed pair is refused. Without `parallel_with` the task runs
 alone.
 

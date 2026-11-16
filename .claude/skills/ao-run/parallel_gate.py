@@ -7,8 +7,8 @@ Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
 - claims file <state>/claims.json: {"claims": [{dir, claim, at, expires_at}], "owners": {dir: token}}. Reservations
   (30 minutes, renewed with the same token, ClaimConflict for another token), release, owners, claim_to_owner.
   Writers hold state_lock. A missing file is empty; an unreadable or wrong-shaped one is StateFileError.
-- file classification of the gate (is_app_code, is_allowed, is_claude_md, common_paths), GENERATED and REGISTRATION
-  files, and the rule for tasks of one wave running at once (task_conflicts, used by planner/plan_manifest.py).
+- file classification of the gate (is_app_code, is_executable_code, is_allowed, is_claude_md, common_paths),
+  GENERATED and REGISTRATION files, and the rule for tasks of one wave running at once (task_conflicts, used by planner/plan_manifest.py).
 - MAX_PARALLEL: the `--max-parallel` that /ao-run passes to AO (SKILL.md, section 4); the gate reserves that many
   stacks for every active epic.
 - Docker memory snapshot (docker_snapshot with an injected runner, DockerError) and free_mib.
@@ -38,6 +38,9 @@ GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store
 REGISTRATION = ('apps/admin/src/layout/AppMenu.vue', 'apps/admin/src/router/index.ts')
 # Directories of application code inside apps/<app>/.
 CODE_DIRS = ('src', 'app')
+# Directories of executable repository code outside the applications (step 19b only): tools, skills, AO hooks and
+# scripts of CI and infrastructure. Compared by segments.
+EXECUTABLE_DIRS = ('tools', '.claude/skills', '.ao', '.github/scripts', 'infra/scripts')
 
 
 class LockTimeout(Exception):
@@ -187,6 +190,22 @@ def is_app_code(path):
     return len(segments) <= 2 or segments[2] in CODE_DIRS
 
 
+def is_executable_code(path):
+    """Whether a path of the common part holds executable code (step 19b): application code (is_app_code), or a path in
+    one of EXECUTABLE_DIRS or containing one (`.claude`, `.github`, `infra`), compared by segments and without case.
+    Generated and registration files, CLAUDE.md and README.md are not code. Step 19a does not use it."""
+    if is_app_code(path):
+        return True
+    segments = path.casefold().split('/')
+    if path in GENERATED or path in REGISTRATION or segments[-1] in ('claude.md', 'readme.md'):
+        return False
+    for directory in EXECUTABLE_DIRS:
+        parts = directory.split('/')
+        if segments[:len(parts)] == parts or parts[:len(segments)] == segments:
+            return True
+    return False
+
+
 def is_allowed(path):
     """Step 5 of the gate: a shared path blocks the candidate only when it is application code."""
     return not is_app_code(path)
@@ -213,9 +232,9 @@ def common_paths(a, b):
 
 def task_conflicts(a, b, claude_md=()):
     """Paths that keep two tasks of one wave from running at once (step 19b), sorted: the common part of their
-    manifest `paths` (a file, or a directory with a trailing /) that is application code (is_app_code), a CLAUDE.md or
-    a file, and every file of `claude_md` (the tracked CLAUDE.md files of the repository) inside a common path. Two
-    directories outside application code may overlap (the exceptions of step 5) when they hold no tracked CLAUDE.md.
+    manifest `paths` (a file, or a directory with a trailing /) that is executable code (is_executable_code:
+    application code and the tool directories), a CLAUDE.md or a file, and every file of `claude_md` (the tracked CLAUDE.md files of the repository) inside a
+    common path. Two directories outside executable code may overlap (the exceptions of step 5) when they hold no tracked CLAUDE.md.
     A common path counts as a directory only when every path of both tasks that contains it is declared as a
     directory. Paths are compared without case (casefold, as the file system of the host does); a found path keeps
     the spelling it was declared or tracked with."""
@@ -231,7 +250,7 @@ def task_conflicts(a, b, claude_md=()):
 
     common = common_paths(*declared)
     found = {spelling[path] for path in common
-             if is_app_code(path) or path.split('/')[-1] == 'claude.md' or not directory(path)}
+             if is_executable_code(path) or path.split('/')[-1] == 'claude.md' or not directory(path)}
     found.update(f for f in claude_md for path in common if _inside(f.casefold(), path))
     return sorted(found)
 
