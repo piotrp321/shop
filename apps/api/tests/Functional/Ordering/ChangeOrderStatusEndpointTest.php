@@ -136,6 +136,19 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
     {
         yield 'an unknown order' => [self::UNKNOWN_ORDER];
         yield 'an id that is no UUID' => ['R-100001'];
+        yield from InputValues::uuidsOutsideTheVersions();
+    }
+
+    public function testAnotherNotationOfTheOrderIdChangesTheSameOrder(): void
+    {
+        [$orderId] = $this->paidOrder();
+
+        foreach (InputValues::equivalentUuidForms($orderId) as [$notation]) {
+            $this->change($notation, ['transition' => 'ship', 'version' => 2, 'note' => null], self::staff(['warehouse']));
+
+            self::assertResponseStatusCodeSame(200);
+            self::assertSame(['shipped', 3], $this->stored($orderId));
+        }
     }
 
     #[DataProvider('unknownOrders')]

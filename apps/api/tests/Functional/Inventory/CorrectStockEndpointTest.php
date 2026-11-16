@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Inventory;
 
 use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Integration\Inventory\StockFixture;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -42,6 +43,19 @@ final class CorrectStockEndpointTest extends WebTestCase
             [['type' => 'correction', 'physical_delta' => -3, 'physical_after' => 7, 'reason' => 'damage', 'note' => 'Zalane', 'reference' => null, 'source' => 'staff', 'actor_id' => TestTokenFactory::STAFF_ID, 'actor_name' => 'admin']],
             $this->movements($variantId),
         );
+    }
+
+    public function testAnotherNotationOfTheVariantIdCorrectsTheSameStock(): void
+    {
+        foreach (InputValues::equivalentUuidForms($this->stockedVariant(10, 3, 4)) as [$notation]) {
+            $variantId = strtolower($notation);
+
+            $this->correct($notation, ['physical' => 7, 'version' => 4, 'reason' => 'damage', 'note' => null]);
+
+            self::assertResponseStatusCodeSame(200);
+            self::assertSame(['physical' => 7, 'reserved' => 3, 'version' => 5], $this->storedStock($variantId));
+            self::assertCount(1, $this->movements($variantId));
+        }
     }
 
     public function testTheFirstCorrectionOfAVariantWithoutStockCreatesIt(): void
@@ -261,6 +275,7 @@ final class CorrectStockEndpointTest extends WebTestCase
         yield 'a word' => ['shoes'];
         yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
         yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
+        yield from InputValues::uuidsOutsideTheVersions();
     }
 
     #[DataProvider('idsThatAreNotUuids')]
