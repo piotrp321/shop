@@ -219,21 +219,40 @@ def result(returncode=0, stdout='', stderr=''):
 
 
 class FakeGh:
-    """A stub of the command runner: records every command and answers `gh pr view N` and `gh pr list`.
+    """A stub of the command runner: records every command and answers the read only `gh` calls of metrics.py.
 
-    prs: {number: {state, mergedAt, closingIssuesReferences}}; sync: the list answered for `gh pr list`;
-    fail: when set, every command ends with exit code 1 and that stderr."""
+    prs: {number: {state, mergedAt, closingIssuesReferences, mergeCommit}}; sync: the list answered for `gh pr list`;
+    runs: {commit or branch: [run, ...]} for `gh run list --commit/--branch`; jobs: {run id: [job, ...]} for
+    `gh run view`; commits: the list answered for `gh api repos/.../commits` (cut to the `page` and `per_page` of the query); editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); repo_view: the answer of `gh repo view --json owner,name`; issues: {label: [issue, ...]} for
+    `gh issue list --label`; permissions: {login: role} for `gh api .../collaborators/<login>/permission` (a login
+    without an entry is a non-collaborator: HTTP 404); fail: when set, every command ends with exit code 1 and that
+    stderr; fail_on: the command prefixes, e.g. ('run', 'list') or ('api',), that end with that error."""
 
-    def __init__(self, prs=None, sync=None, fail=None):
+    def __init__(self, prs=None, sync=None, fail=None, runs=None, jobs=None, commits=None, issues=None,
+                 permissions=None, fail_on=(), editors=None, repo_view=None):
         self.prs = prs or {}
         self.sync = sync or []
         self.fail = fail
+        self.runs = runs or {}
+        self.jobs = jobs or {}
+        self.commits = commits or []
+        self.issues = issues or {}
+        self.permissions = permissions or {}
+        self.editors = editors or {}
+        self.repo_view = repo_view or {'owner': {'login': 'acme'}, 'name': 'shop'}
+        self.fail_on = tuple(fail_on)
         self.calls = []
+
+    @staticmethod
+    def _option(command, name):
+        return command[command.index(name) + 1] if name in command else None
 
     def __call__(self, command):
         self.calls.append(list(command))
         if self.fail is not None:
             return result(1, '', self.fail)
+        if any(tuple(command[1:1 + len(entry)]) == tuple(entry) for entry in self.fail_on):
+            return result(1, '', 'HTTP 502')
         if command[:3] == ['gh', 'pr', 'view']:
             number = int(command[3])
             if number not in self.prs:
@@ -241,12 +260,100 @@ class FakeGh:
             return result(0, json.dumps(self.prs[number]))
         if command[:3] == ['gh', 'pr', 'list']:
             return result(0, json.dumps(self.sync))
+        if command[:3] == ['gh', 'run', 'list']:
+            key = self._option(command, '--commit') or self._option(command, '--branch')
+            return result(0, json.dumps(self.runs.get(key, [])))
+        if command[:3] == ['gh', 'run', 'view']:
+            return result(0, json.dumps({'jobs': self.jobs.get(int(command[3]), [])}))
+        if command[:3] == ['gh', 'issue', 'list']:
+            return result(0, json.dumps(self.issues.get(self._option(command, '--label'), [])))
+        if command[:3] == ['gh', 'repo', 'view']:
+            return result(0, json.dumps(self.repo_view))
+        if command[:3] == ['gh', 'api', 'graphql']:
+            # `gh api` expands the {owner} and {repo} placeholders only in the endpoint and in -F fields, never in -f
+            # (raw) fields: a placeholder in a variable reaches GitHub as it is
+            if any('{' in a for a in command if a.startswith(('owner=', 'name='))):
+                return result(1, '', 'GraphQL: Could not resolve to a Repository with the name \'{owner}/{repo}\'.')
+            number = int(next(a.split('=', 1)[1] for a in command if a.startswith('number=')))
+            login = self.editors.get(number)
+            issue = {'lastEditedAt': None, 'editor': None} if login is None else {
+                'lastEditedAt': '2026-11-14T12:00:00Z', 'editor': {'login': login}}
+            return result(0, json.dumps({'data': {'repository': {'issue': issue}}}))
+        if command[:2] == ['gh', 'api']:
+            path = command[2]
+            if '/commits' in path:
+                query = dict(p.split('=', 1) for p in path.partition('?')[2].split('&') if '=' in p)
+                size, page = int(query.get('per_page', 30)), int(query.get('page', 1))
+                return result(0, json.dumps(self.commits[(page - 1) * size:page * size]))
+            if '/collaborators/' in path:
+                login = path.split('/collaborators/')[1].split('/')[0]
+                if login not in self.permissions:
+                    return result(1, '', 'gh: Not Found (HTTP 404)')
+                role = self.permissions[login]
+                legacy = {'maintain': 'write', 'triage': 'read'}.get(role, role)
+                return result(0, json.dumps({'permission': legacy, 'role_name': role}))
         return result(1, '', 'unexpected command %s' % command)
 
 
-def merged_pr(merged_at='2026-11-13T10:00:00Z', issues=(496,)):
-    return {'state': 'MERGED', 'mergedAt': merged_at,
+def merged_pr(merged_at='2026-11-13T10:00:00Z', issues=(496,), sha='f' * 40):
+    return {'state': 'MERGED', 'mergedAt': merged_at, 'mergeCommit': {'oid': sha},
             'closingIssuesReferences': [{'number': n} for n in issues]}
+
+
+WEEKLY = 'Weekly \u00b7 all models'
+
+
+def fake_record(epic, merged='2026-11-10T10:00:00Z', tasks=10, to_done=36000.0, work=18000.0, human_wait=3600.0,
+                review=1800.0, gate_wait=0.0, repeat=600.0, value=10.0, share=1, weekly=4, failed=1, repair=0,
+                interventions=1, regressions=0, cli=('2.1.311',), models=('claude-opus-5-5',), final_pr=None,
+                window_open=False, **over):
+    """A stored record with the fields `trend`, `bottlenecks` and `render` read. A parameter given as None is a null
+    source (the field is None). Other top-level fields can be given as keyword arguments."""
+    def maybe(value, make):
+        return None if value is None else make(value)
+
+    record = {
+        'epic': epic, 'issue': 1, 'final_pr': final_pr, 'tasks': tasks, 'started_at': '2026-11-09T10:00:00Z',
+        'done_at': '2026-11-10T08:00:00Z', 'merged_at': merged,
+        'wall': {'to_done': to_done, 'to_merge': maybe(to_done, lambda v: v + (review or 0)), 'review': review},
+        'breakdown': None if to_done is None else {'work': work, 'human_wait': human_wait, 'limit_wait': 0.0,
+                                                    'ci_wait': 0.0, 'host_pause': 0.0, 'github_wait': 0.0,
+                                                    'idle': 0.0},
+        'integration': {'work_s': 0.0, 'attempts': 0, 'rounds': 1},
+        'retries': {'attempts': {'total': 3, 'per_task': {}, 'successful': 3 - (failed or 0), 'blocked': 0,
+                                 'failed': failed, 'usage_limit': 0, 'running': 0, 'unclassified': 0},
+                    'failed_by_outcome': {}, 'repair': {'count': repair, 'final_pr_conflict': 0, 'ci_red': 0,
+                                                        'unknown': 0}, 'fix': 0, 'sync_prs': []},
+        'parallel': None,
+        'subscription': None if weekly is None else {'windows': {WEEKLY: weekly}, 'overlap': [], 'share': share,
+                                                      'share_estimated': False},
+        'gate_wait': None if gate_wait is None else {'wait_s': gate_wait, 'reasons': []},
+        'human': {'interventions': interventions, 'waits': 0, 'wait_s': 0.0, 'open': 0, 'manual_fixes': []},
+        'in_attempts': None if repeat is None else {
+            'categories': {n: {'count': 0, 'background': 0, 'unfinished': 0, 'seconds': 0.0}
+                           for n in ('read', 'test', 'e2e', 'check', 'selftest', 'stack', 'ci_watch', 'other')},
+            'repeat_runs': {'count': 1, 'seconds': repeat, 'by_category': {n: {'count': 0, 'seconds': 0.0}
+                                                                            for n in ('test', 'e2e', 'check')}},
+            'api_retry': {'count': 0, 'delay_ms': 0}, 'permission_denials': {}},
+        'by_task': {}, 'attempts': [],
+        'value': {'total': maybe(value, lambda v: {'usd': v, 'estimated': False, 'tokens': {}, 'estimated_tokens': []}),
+                  'by_role': {}, 'by_model': {}, 'by_task': {}, 'by_role_model': {}},
+        'versions': None if cli is None else {'cli': [{'version': v, 'attempts': 1} for v in cli],
+                                              'models': [{'model': m, 'attempts': 1} for m in (models or ())]},
+        'regressions': None if regressions is None else {
+            'window_days': 14, 'until': '2026-11-24T10:00:00Z', 'open': window_open, 'checked_at': merged,
+            'merge_commit': None, 'complete': not window_open, 'ci_red': 0, 'reverts': [], 'issues': list(range(regressions)), 'count': regressions},
+        'found_after_merge': {'issues': [], 'count': 0}, 'ci': None, 'gaps': []}
+    record.update(over)
+    return record
+
+
+def store_records(state, *records):
+    """Writes the records to <state>/epics/<epic>.json."""
+    os.makedirs(os.path.join(state, 'epics'), exist_ok=True)
+    for record in records:
+        with open(os.path.join(state, 'epics', '%s.json' % record['epic']), 'w', encoding='utf-8') as f:
+            json.dump(record, f)
 
 
 def run_cli(argv, runner=None, now=1800000000.0):

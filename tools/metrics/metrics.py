@@ -3,6 +3,8 @@
 
   metrics.py epic EPIC [--ao-home DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
   metrics.py backfill [--ao-root DIR] [COMMON]
+  metrics.py trend [--last N] [--epic EPIC] [--json] [--no-gh] [COMMON]
+  metrics.py render EPIC [--format report|comment] [COMMON]
   metrics.py waste AO_HOME [--max-qa-rounds N] [COMMON]
 
 COMMON: --config FILE (default: config.json next to this script), --state DIR (default: $SHOP_METRICS_STATE or
@@ -13,7 +15,7 @@ the working directory).
 epic: prints the record of the epic run as one JSON line and stores it in <state>/epics/<EPIC>.json. The run is the
 directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state). Fields from the AO database
 and events (`orchestrator.db` is opened read only, `ao` is never run), from measurements.jsonl and gate.jsonl, and
-from GitHub (`gh`, read only; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
+from GitHub (`gh`, read only, also for `ci`, `regressions` and `found_after_merge`; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
 zero. A value from GitHub or from --manual-fixes that is `null` now but not in the stored record is kept (a transient
 error never replaces it); the gap says so.
 
@@ -39,6 +41,17 @@ epic with a final PR that GitHub reports MERGED (also in the AO states INTEGRATI
 and directories without a database or an epic row. Prints one JSON line {"recorded": [...], "skipped": [{"run",
 "reason"}]}.
 
+trend: the table of the last N merged epics (default: trend_last of config.json) with the columns per plan task, the
+median of each column (nulls skipped), the position of --epic (default: the latest) against it and the notes of a change
+of the CLI version or of the models against the previous epic. Before it, the regressions of the records whose window is
+open (or never computed) are recomputed with `gh` and stored (--no-gh skips that; a `gh` error keeps the stored values
+and ends with exit code 3 after the table).
+
+render: the text of the acceptance report (--format report: bottlenecks first, without `review`) or of the comment
+after the merge (--format comment: the lines `Interwencje człowieka`, `Czekanie na użytkownika` and `Ręczne poprawki: N`
+that retro.py reads, then the block `Pomiar epiku`) from the stored record and the stored history. Only numbers,
+identifiers and PR numbers of the record are written; the one free text is the list of manual fixes from --manual-fixes.
+
 waste: reads the current state of the run AO_HOME (the database read only, a locked live database is tried again
 after busy_timeout, DB_RETRIES times) and the stored records of other epics (the history) and prints the new alarms of
 rules W1 (cost of an ended attempt), W2 (a running attempt that takes long), W3 (loop of attempts: a task's attempt after
@@ -54,6 +67,7 @@ Exit codes: 0 success (also without alarms); 2 nothing recorded or printed: bad 
 directory, unreadable or locked database, no epic row, unreadable --manual-fixes file, state not writable, waste.json
 unreadable or of another shape (never overwritten) (message on stderr, nothing on stdout);
 3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`).
+trend and render also end with 2 without a stored record (or without the requested epic).
 """
 import argparse
 import fcntl
@@ -159,7 +173,10 @@ CONFIG_SCHEMA = {
                   'obiekt liczb'),
     'evals': (_evals, 'obiekt {roles: lista, results_dir: ścieżka}'),
     'regression_window_days': (lambda v: _is_int(v) and v > 0, 'liczba dni (całkowita, dodatnia)'),
+    'ci_workflow': (lambda v: isinstance(v, str) and bool(v), 'nazwa pliku workflowu CI (np. ci.yml)'),
+    'ci_jobs': (_string_list, 'niepusta lista nazw zadań CI (przedrostki grup, np. checks i e2e)'),
     'trend_last': (lambda v: _is_int(v) and v > 0, 'liczba epików (całkowita, dodatnia)'),
+    'weekly_window_label': (lambda v: isinstance(v, str) and bool(v), 'etykieta okna tygodniowego z get_usage'),
 }
 
 
@@ -1423,32 +1440,55 @@ def human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps):
 
 # ------------------------------------------------------------------------------------------------------- GitHub
 
+SHA_PATTERN = re.compile(r'^[0-9a-f]{7,64}$')
+LOGIN_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,38}$')
+WRITE_ROLES = ('write', 'maintain', 'admin')
+
+
 class GhError(Exception):
-    """`gh` failed (cannot be run, timed out, exit code other than 0, or an answer that is not JSON)."""
+    """`gh` failed (cannot be run, timed out, exit code other than 0, or an answer that is not JSON). `not_found`:
+    the answer was HTTP 404."""
+
+    def __init__(self, message, not_found=False):
+        super().__init__(message)
+        self.not_found = not_found
 
 
-def gh_json(run, args, repo):
-    command = ['gh'] + args + (['-R', repo] if repo else [])
-    label = 'gh %s' % ' '.join(args[:2])
+def _gh_call(run, command, label):
     try:
         result = run(command)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise GhError('%s: %s' % (label, getattr(e, 'strerror', None) or e))
     if result.returncode != 0:
-        raise GhError('%s: kod %s: %s' % (label, result.returncode, (result.stderr or '').strip()[:200]))
+        stderr = (result.stderr or '').strip()
+        raise GhError('%s: kod %s: %s' % (label, result.returncode, stderr[:200]), 'HTTP 404' in stderr)
     try:
         return json.loads(result.stdout)
     except (ValueError, TypeError):
         raise GhError('%s: odpowiedź nie jest JSON' % label)
 
 
+def gh_json(run, args, repo):
+    return _gh_call(run, ['gh'] + args + (['-R', repo] if repo else []), 'gh %s' % ' '.join(args[:2]))
+
+
+def gh_api(run, path, repo):
+    """`gh api repos/<repo>/<path>` (read only): `gh api` has no -R, so the repository is in the path; without --repo
+    gh expands the {owner}/{repo} placeholders from the repository of the working directory."""
+    return _gh_call(run, ['gh', 'api', 'repos/%s/%s' % (repo or '{owner}/{repo}', path)], 'gh api %s' % path.split('?')[0])
+
+
 def fetch_pr(run, number, repo):
-    """{state, merged_at (epoch or None), issue (first closing issue or None)} of a pull request."""
-    data = gh_json(run, ['pr', 'view', str(number), '--json', 'state,mergedAt,closingIssuesReferences'], repo)
+    """{state, merged_at (epoch or None), issue (first closing issue or None), merge_sha (or None)} of a pull
+    request."""
+    data = gh_json(run, ['pr', 'view', str(number), '--json', 'state,mergedAt,closingIssuesReferences,mergeCommit'],
+                   repo)
     try:
         merged = night_queue.parse_time(data['mergedAt']).timestamp() if data.get('mergedAt') else None
         issues = [i['number'] for i in data.get('closingIssuesReferences') or []]
-        return {'state': data['state'], 'merged_at': merged, 'issue': issues[0] if issues else None}
+        commit = (data.get('mergeCommit') or {}).get('oid')
+        return {'state': data['state'], 'merged_at': merged, 'issue': issues[0] if issues else None,
+                'merge_sha': commit if isinstance(commit, str) and SHA_PATTERN.match(commit) else None}
     except (KeyError, TypeError, ValueError, AttributeError):
         raise GhError('gh pr view: nieoczekiwany kształt odpowiedzi')
 
@@ -1487,6 +1527,310 @@ def github_data(run, no_gh, final_pr, epic_id, repo, gaps, pr=None):
     return data
 
 
+# ------------------------------------------------------------------------------- regressions, found after merge, CI
+
+DAY = 86400
+
+
+def _day(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime('%Y-%m-%d')
+
+
+def field_value(body, heading):
+    """The answer of the issue form field `heading` (`### <heading>...` up to the next `###`), or None when the field is
+    missing, empty or `_No response_`."""
+    match = re.search(r'^###\s+%s[^\n]*$' % re.escape(heading), body or '', re.MULTILINE)
+    if not match:
+        return None
+    rest = body[match.end():]
+    following = re.search(r'^###\s', rest, re.MULTILINE)
+    value = (rest[:following.start()] if following else rest).strip()
+    return None if not value or value == '_No response_' else value
+
+
+def names_epic(value, epic_id, pr):
+    """Whether the field `Wprowadzone przez` names the epic (its id as a whole word) or its final PR (`#N`, `PR N`,
+    a pull request URL)."""
+    if re.search(r'(?<![\w-])%s(?![\w-])' % re.escape(epic_id), value, re.IGNORECASE):
+        return True
+    return pr is not None and bool(re.search(r'(?:(?<!\w)#|\bPR\s*#?\s*|/pull/)%d(?!\d)' % pr, value, re.IGNORECASE))
+
+
+def has_write_access(run, login, repo, cache):
+    """Whether `login` may write to the repository (role write, maintain or admin; spec: Regresje po merge'u). A
+    login that cannot be a GitHub login is never asked about. A 404 (not a collaborator) is no access; any other
+    error is a GhError."""
+    if not isinstance(login, str) or not LOGIN_PATTERN.match(login):
+        return False
+    if login not in cache:
+        try:
+            data = gh_api(run, 'collaborators/%s/permission' % login, repo)
+        except GhError as e:
+            if not e.not_found:
+                raise
+            data = {}
+        role = data.get('role_name') or data.get('permission') if isinstance(data, dict) else None
+        cache[login] = role in WRITE_ROLES
+    return cache[login]
+
+
+def _created(issue):
+    try:
+        return night_queue.parse_time(issue['createdAt']).timestamp()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def _labels(issue):
+    return {l.get('name') for l in issue.get('labels') or [] if isinstance(l, dict)}
+
+
+def _issue_list(run, repo, label, low, high):
+    issues = gh_json(run, ['issue', 'list', '--label', label, '--state', 'all', '--search',
+                           'created:%s..%s' % (_day(low), _day(high)), '--json', 'number,body,author,createdAt,labels',
+                           '--limit', str(ISSUE_LIMIT)], repo)
+    if not isinstance(issues, list):
+        raise GhError('gh issue list: nieoczekiwany kształt odpowiedzi')
+    return [i for i in issues if isinstance(i, dict) and _is_int(i.get('number')) and label in _labels(i)
+            and _created(i) is not None and low <= _created(i) <= high], len(issues) >= ISSUE_LIMIT
+
+
+ISSUE_LIMIT = 200
+COMMIT_LIMIT = 100              # commits per page of `gh api .../commits`
+COMMIT_PAGE_LIMIT = 10          # pages read at most: 1000 commits of the window
+
+
+def red_ci(run, repo, config, sha):
+    runs = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow'], '--commit', sha, '--json',
+                         'conclusion,event', '--limit', '50'], repo)
+    if not isinstance(runs, list):
+        raise GhError('gh run list: nieoczekiwany kształt odpowiedzi')
+    return sum(1 for r in runs if isinstance(r, dict) and r.get('event') == 'push' and r.get('conclusion') == 'failure')
+
+
+def commits_of_window(run, repo, low, high, gaps, truncated):
+    """The commits of `main` in the window, page by page (`page`=1, 2, ...) until a page shorter than COMMIT_LIMIT or
+    an empty one. The window counts as cut (a gap and `truncated`) only when COMMIT_PAGE_LIMIT pages were read and the
+    last one was full: the list may go on. A gh error on any page is a GhError for the whole source."""
+    commits, page = [], 0
+    while page < COMMIT_PAGE_LIMIT:
+        page += 1
+        batch = gh_api(run, 'commits?sha=main&since=%s&until=%s&per_page=%d&page=%d' % (iso(low), iso(high), COMMIT_LIMIT,
+                                                                                        page), repo)
+        if not isinstance(batch, list):
+            raise GhError('gh api commits: nieoczekiwany kształt odpowiedzi')
+        commits.extend(batch)
+        if len(batch) < COMMIT_LIMIT:
+            return commits
+    truncated.append('regressions.reverts')
+    gaps.add('regressions.reverts', 'lista commitów main obcięta do %d stron po %d (limit %d commitów): revert mógł '
+             'zostać pominięty' % (COMMIT_PAGE_LIMIT, COMMIT_LIMIT, COMMIT_PAGE_LIMIT * COMMIT_LIMIT))
+    return commits
+
+
+def reverts_of(run, repo, final_pr, merge_sha, low, high, gaps, truncated):
+    commits = commits_of_window(run, repo, low, high, gaps, truncated)
+    mention = re.compile(r'#%d(?!\d)' % final_pr)
+    found = []
+    for entry in commits:
+        try:
+            message = entry['commit']['message']
+            when = night_queue.parse_time(entry['commit']['committer']['date']).timestamp()
+            sha = entry['sha']
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        if (isinstance(message, str) and message.startswith('Revert') and mention.search(message) and low <= when <= high
+                and sha != merge_sha and isinstance(sha, str) and SHA_PATTERN.match(sha)):
+            found.append(sha)
+    return found
+
+
+EDITOR_QUERY = ('query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) '
+                '{ issue(number: $number) { lastEditedAt editor { login } } } }')
+REPO_PATTERN = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})$')
+
+
+_REPOSITORIES = {}      # {runner: (owner, name)} of `gh repo view`: one call per process (a runner lives as long)
+
+
+def repository_of(run, repo):
+    """(owner, name) of the repository: from --repo, else asked once per runner (so once per process) of `gh repo
+    view` (read only); a failed answer is not remembered. A given --repo that is not OWNER/NAME is a GhError, never a
+    silent question about the working directory. `gh api` expands the {owner} and {repo} placeholders only in the
+    endpoint and in -F fields, not in the raw -f fields a GraphQL variable needs, so the real names are given."""
+    if repo:
+        match = REPO_PATTERN.match(repo)
+        if not match:
+            raise GhError('--repo: niepoprawna nazwa repozytorium (oczekiwano OWNER/NAZWA)')
+        return match.groups()
+    if run in _REPOSITORIES:
+        return _REPOSITORIES[run]
+    data = gh_json(run, ['repo', 'view', '--json', 'owner,name'], None)
+    try:
+        match = REPO_PATTERN.match('%s/%s' % (data['owner']['login'], data['name']))
+    except (KeyError, TypeError, AttributeError):
+        match = None
+    if not match:
+        raise GhError('gh repo view: nieoczekiwany kształt odpowiedzi')
+    _REPOSITORIES[run] = match.groups()
+    return _REPOSITORIES[run]
+
+
+def last_editor(run, owner, name, number):
+    """The login of the last editor of the issue (`editor` of the GraphQL `Issue`, a query only), or None when it was
+    never edited. The values are given as raw -f fields (a numeric-looking name stays a string); the number as -F."""
+    data = _gh_call(run, ['gh', 'api', 'graphql', '-f', 'query=%s' % EDITOR_QUERY, '-f', 'owner=%s' % owner, '-f',
+                          'name=%s' % name, '-F', 'number=%d' % number], 'gh api graphql')
+    try:
+        issue = data['data']['repository']['issue']
+        editor = issue.get('editor') if issue is not None else None
+        return editor.get('login') if editor is not None else None
+    except (KeyError, TypeError, AttributeError):
+        raise GhError('gh api graphql: nieoczekiwany kształt odpowiedzi')
+
+
+def bug_issues(run, repo, epic_id, final_pr, low, high, gaps, truncated):
+    """The numbers of the `bug` issues of the window whose `Wprowadzone przez` names the epic or its PR and that were
+    created, or last edited, by someone who may write to the repository (the form is public: a foreign issue that no
+    writer touched does not count)."""
+    issues, cut = _issue_list(run, repo, 'bug', low, high)
+    if cut:
+        truncated.append('regressions.issues')
+        gaps.add('regressions.issues', 'lista issues obcięta do %d' % ISSUE_LIMIT)
+    cache, found, place = {}, [], None
+    for issue in issues:
+        if 'agent' in _labels(issue):
+            continue                # a proposal of /sweep is counted in found_after_merge, not as a regression
+        value = field_value(issue.get('body'), 'Wprowadzone przez')
+        if value is None or not names_epic(value, epic_id, final_pr):
+            continue
+        author = issue.get('author')
+        if has_write_access(run, author.get('login') if isinstance(author, dict) else None, repo, cache):
+            found.append(issue['number'])
+            continue
+        if place is None:
+            place = repository_of(run, repo)
+        if has_write_access(run, last_editor(run, place[0], place[1], issue['number']), repo, cache):
+            found.append(issue['number'])
+    return sorted(found)
+
+
+def sweep_issues(run, repo, epic_id, low, high, gaps, truncated):
+    """The numbers of the issues of the `/sweep` proposals of the epic (label `agent`, whose `Źródło` names the review
+    of the epic) created in the window. The `agent` label is set by people with write access only."""
+    issues, cut = _issue_list(run, repo, 'agent', low, high)
+    if cut:
+        truncated.append('found_after_merge')
+        gaps.add('found_after_merge', 'lista issues obcięta do %d' % ISSUE_LIMIT)
+    source = re.compile(r'Przebieg\s+`/sweep`\s+\d{4}-\d{2}-\d{2}-[0-9a-f]{7}-%s(?![\w-])' % re.escape(epic_id))
+    return sorted(i['number'] for i in issues if isinstance(i.get('body'), str) and source.search(i['body']))
+
+
+def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now, previous, gaps, errors):
+    """(regressions, found_after_merge) of the epic in the window after the merge of its final PR (spec: Regresje po
+    merge'u). A source that fails is None with a gap and the message in `errors`; the stored value of that part
+    (`previous`: the stored record) is kept then."""
+    until = merged + config['regression_window_days'] * DAY
+    merge_sha = merge_sha if isinstance(merge_sha, str) and SHA_PATTERN.match(merge_sha) else None
+    result = {'window_days': config['regression_window_days'], 'until': iso(until), 'open': None,
+              'complete': None, 'checked_at': iso(now), 'merge_commit': merge_sha}
+    truncated = []          # the sources whose list was cut at its limit
+    sources = (
+        ('ci_red', 'regressions.ci_red', ('regressions', 'ci_red'),
+         (lambda: red_ci(run, repo, config, merge_sha)) if merge_sha else None),
+        ('reverts', 'regressions.reverts', ('regressions', 'reverts'),
+         lambda: reverts_of(run, repo, final_pr, merge_sha, merged, until, gaps, truncated)),
+        ('issues', 'regressions.issues', ('regressions', 'issues'),
+         lambda: bug_issues(run, repo, epic_id, final_pr, merged, until, gaps, truncated)),
+        ('found', 'found_after_merge', ('found_after_merge', 'issues'),
+         lambda: sweep_issues(run, repo, epic_id, merged, until, gaps, truncated)),
+    )
+    values, complete = {}, True
+    for key, field, path, compute in sources:
+        values[key] = None
+        if compute is None:
+            complete = False
+            gaps.add(field, 'brak commita merge\'u końcowego PR')
+            continue
+        try:
+            values[key] = compute()
+        except GhError as e:
+            complete = False
+            errors.append(str(e))
+            gaps.add(field, 'błąd gh: %s' % e)
+            values[key] = _get(previous, path)
+            if values[key] is not None:
+                gaps.add(field, 'źródło niedostępne: zachowano poprzednią wartość')
+    # The window closes only after a run in which every source answered in full: a failed or cut one leaves it open.
+    complete = complete and not truncated
+    result.update(ci_red=values['ci_red'], reverts=values['reverts'], issues=values['issues'], complete=complete,
+                  open=now < until or not complete)
+    counts = [None if values['ci_red'] is None else min(values['ci_red'], 1),
+              None if values['reverts'] is None else len(values['reverts']),
+              None if values['issues'] is None else len(values['issues'])]
+    result['count'] = None if None in counts else sum(counts)
+    found = values['found']
+    return result, None if found is None else {'issues': found, 'count': len(found)}
+
+
+def job_seconds(jobs, prefix):
+    """The wall time of the CI jobs named `prefix` or `prefix <part>` (the parts of a group), from the first start to
+    the last end; None without a finished job."""
+    started, ended = [], []
+    for item in jobs:
+        name = item.get('name') if isinstance(item, dict) else None
+        if isinstance(name, str) and (name == prefix or name.startswith(prefix + ' ')):
+            try:
+                started.append(night_queue.parse_time(item['startedAt']).timestamp())
+                ended.append(night_queue.parse_time(item['completedAt']).timestamp())
+            except (KeyError, TypeError, ValueError, AttributeError):
+                continue
+    return round(max(ended) - min(started), 3) if started and ended and max(ended) >= min(started) else None
+
+
+def ci_entry(run, repo, config, pr, branch):
+    runs = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow'], '--branch', branch, '--event',
+                         'pull_request', '--json', 'databaseId,createdAt,conclusion', '--limit', '100'], repo)
+    if not isinstance(runs, list):
+        raise GhError('gh run list: nieoczekiwany kształt odpowiedzi')
+    runs = [r for r in runs if isinstance(r, dict) and _is_int(r.get('databaseId'))]
+    entry = {'pr': pr, 'runs': len(runs)}
+    for name in config['ci_jobs']:
+        entry['%s_s' % name] = None
+    if runs:
+        last = max(runs, key=lambda r: (str(r.get('createdAt')), r['databaseId']))
+        jobs = gh_json(run, ['run', 'view', str(last['databaseId']), '--json', 'jobs'], repo)
+        jobs = jobs.get('jobs') if isinstance(jobs, dict) else None
+        for name in config['ci_jobs']:
+            entry['%s_s' % name] = job_seconds(jobs or [], name)
+    return entry
+
+
+def ci_of(run, repo, config, epic_id, tasks, final_pr, previous, gaps, errors):
+    """{final, tasks}: for the final PR and every task PR the wall time of the last CI run of the groups of jobs
+    `ci_jobs` and the number of CI runs of its branch (the retries). None with a gap on a gh error (the stored value is
+    kept)."""
+    try:
+        found, empty = {'final': None, 'tasks': {}}, []
+        if final_pr is not None:
+            found['final'] = ci_entry(run, repo, config, final_pr, 'epic/%s' % epic_id)
+            if not found['final']['runs']:
+                empty.append('epic/%s' % epic_id)
+        for task in sorted(tasks, key=lambda t: str(t['task_id'])):
+            if _is_int(task['pr_number']) and isinstance(task['task_id'], str) and SAFE_NAME.match(task['task_id']):
+                found['tasks'][task['task_id']] = ci_entry(run, repo, config, task['pr_number'],
+                                                           'task/%s' % task['task_id'])
+                if not found['tasks'][task['task_id']]['runs']:
+                    empty.append('task/%s' % task['task_id'])
+        if empty:
+            gaps.add('ci', 'brak przebiegów CI gałęzi: %s' % ', '.join(empty[:5]) + (', …' if len(empty) > 5 else ''))
+        return found
+    except GhError as e:
+        errors.append(str(e))
+        gaps.add('ci', 'błąd gh: %s' % e)
+        return None
+
+
 def _get(record, path):
     for key in path:
         if not isinstance(record, dict):
@@ -1504,7 +1848,8 @@ def _set(record, path, value):
 # Fields of a source that can fail for a moment (gh) or is not given every time (the list of manual fixes): a null
 # from the source never replaces the stored value.
 KEPT_PATHS = (('issue',), ('merged_at',), ('wall', 'to_merge'), ('wall', 'review'), ('retries', 'sync_prs'),
-              ('parallel', 'sync_prs'), ('human', 'manual_fixes'), ('waste',))
+              ('parallel', 'sync_prs'), ('human', 'manual_fixes'), ('ci',), ('regressions',), ('found_after_merge',),
+              ('waste',))
 
 
 def keep_stored_values(record, previous, gaps):
@@ -1547,6 +1892,25 @@ def read_previous(path):
         return data if isinstance(data, dict) else None
     except (OSError, ValueError):
         return None
+
+
+def github_derived(run, no_gh, repo, config, epic_id, tasks, final_pr, pr, merged, now, previous, gaps, errors):
+    """{ci, regressions, found_after_merge} of the record from GitHub (all None with a gap under --no-gh, on an error
+    or while the final PR is not merged). `merged`: the merge time (epoch) of the final PR, stored or fresh."""
+    fields = {'ci': None, 'regressions': None, 'found_after_merge': None}
+    if no_gh:
+        for field in fields:
+            gaps.add(field, 'pominięto gh (--no-gh)')
+        return fields
+    fields['ci'] = ci_of(run, repo, config, epic_id, tasks, final_pr, previous, gaps, errors)
+    if merged is None or final_pr is None:
+        for field in ('regressions', 'found_after_merge'):
+            gaps.add(field, 'końcowy PR nie jest zmergowany albo jego stan nieznany: okno regresji nie zaczęło się')
+        return fields
+    sha = pr['merge_sha'] if pr else _get(previous, ('regressions', 'merge_commit'))
+    fields['regressions'], fields['found_after_merge'] = regressions_of(
+        run, repo, config, epic_id, final_pr, sha, merged, now, previous, gaps, errors)
+    return fields
 
 
 def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now, run=None, no_gh=True,
@@ -1621,11 +1985,740 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'value': fields['value'],
         'waste': waste[0],
     }
+    errors = github['errors']
+    record.update(github_derived(run, no_gh, repo, config, epic_id, ao_run['tasks'], final_pr, github['pr'], known_merge,
+                                 now, previous, gaps, errors))
     if waste[0] is None:
         gaps.add('waste', waste[1])
     keep_stored_values(record, previous, gaps)
+    record['bottlenecks'] = bottlenecks_of(record, history_of(record, records), config, gaps)
     record['gaps'] = gaps.render()
-    return record, github['errors']
+    return record, errors
+
+
+# ------------------------------------------------------------------------------------------------- bottlenecks
+
+# The decision rule of a candidate (spec: Wąskie gardła): D2 for a plan task, D3 for gate_wait, D4 for the waiting
+# categories and review; None for the others.
+CATEGORY_RULES = {('breakdown', 'human_wait'): 'D4', ('breakdown', 'ci_wait'): 'D4', ('breakdown', 'limit_wait'): 'D4',
+                  ('in_attempts', 'in_attempts.ci_watch'): 'D4', ('gate_wait', 'gate_wait'): 'D3', ('review', 'review'): 'D4'}
+
+
+def history_of(record, records):
+    """The stored records of the other epics merged before this one (all merged ones while it is not merged): the
+    history the medians come from."""
+    try:
+        merged = night_queue.parse_time(record['merged_at']).timestamp()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        merged = None
+    found = []
+    for other in records.values():
+        if other.get('epic') == record.get('epic'):
+            continue
+        try:
+            when = night_queue.parse_time(other['merged_at']).timestamp()
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        if merged is None or when < merged:
+            found.append(other)
+    return found
+
+
+def bottlenecks_of(record, history, config, gaps, include_review=True):
+    """The bottlenecks of an epic (spec: Wąskie gardła): at most `max_items` items with the largest excess of time over
+    the median of the history, at least `min_excess_h` hours, in descending order. Candidates: the `breakdown`
+    categories except `work`, the tasks (against the median of their kind), the `in_attempts` categories (with the
+    part that is `repeat_runs`), gate_wait and, when `include_review`, review. Category medians are per plan task
+    (scaled to the number of tasks of this epic). The potential effect of a decision is not computed here."""
+    settings = config['bottlenecks']
+    tasks = record.get('tasks')
+    if len(history) < settings['min_history']:
+        gaps.add('bottlenecks', 'mediana z %d zmergowanych epików (mniej niż %d)' % (len(history), settings['min_history']))
+    candidates = []
+
+    def add(kind, name, value, median_s, denominator, share_of, repeat_s=None):
+        excess = value - median_s
+        item = {'kind': kind, 'name': name, 'value_s': round(value, 3), 'median_s': round(median_s, 3),
+                'excess_h': round(excess / HOUR, 3),
+                'share': round(excess / denominator, 4) if _is_number(denominator) and denominator > 0 else None,
+                'share_of': share_of, 'rule': CATEGORY_RULES.get((kind, name))}
+        if kind == 'in_attempts':
+            item['repeat_h'] = None if repeat_s is None else round(min(repeat_s, max(excess, 0.0)) / HOUR, 3)
+        candidates.append((excess, item))
+
+    def per_task_median(getter):
+        values = [getter(h) / h['tasks'] for h in history if _is_number(getter(h)) and _is_int(h.get('tasks'))
+                  and h['tasks'] > 0]
+        return median(values) * tasks if values else None
+
+    to_done = _get(record, ('wall', 'to_done'))
+    scaled = _is_int(tasks) and tasks > 0
+
+    def category(kind, name, value, getter, denominator, share_of, repeat_s=None):
+        if not scaled or not _is_number(value):
+            return
+        middle = per_task_median(getter)
+        if middle is not None:
+            add(kind, name, value, middle, denominator, share_of, repeat_s)
+
+    for name in config['breakdown_order']:
+        if name != 'work':
+            category('breakdown', name, _get(record, ('breakdown', name)), lambda r, n=name: _get(r, ('breakdown', n)),
+                     to_done, 'to_done')
+    kinds = {}
+    for other in history:
+        for entry in (other.get('by_task') or {}).values():
+            if isinstance(entry, dict) and entry.get('kind') and _is_number(entry.get('work')):
+                kinds.setdefault(entry['kind'], []).append(entry['work'])
+    for task, entry in sorted((record.get('by_task') or {}).items()):
+        if isinstance(entry, dict) and _is_number(entry.get('work')) and kinds.get(entry.get('kind')):
+            add('task', task, entry['work'], median(kinds[entry['kind']]), to_done, 'to_done')
+            candidates[-1][1]['rule'] = 'D2' if entry['kind'] == 'plan' else None
+    for name in (record.get('in_attempts') or {}).get('categories', {}):
+        category('in_attempts', 'in_attempts.%s' % name, _get(record, ('in_attempts', 'categories', name, 'seconds')),
+                 lambda r, n=name: _get(r, ('in_attempts', 'categories', n, 'seconds')), to_done, 'to_done',
+                 _get(record, ('in_attempts', 'repeat_runs', 'by_category', name, 'seconds')))
+    gate = _get(record, ('gate_wait', 'wait_s'))
+    if gate is None:
+        gaps.add('bottlenecks.gate_wait', 'brak wpisów epiku w gate.jsonl: kandydat pominięty')
+    else:
+        category('gate_wait', 'gate_wait', gate, lambda r: _get(r, ('gate_wait', 'wait_s')),
+                 gate + to_done if _is_number(to_done) else None, 'gate_wait+to_done')
+    if include_review:
+        category('review', 'review', _get(record, ('wall', 'review')), lambda r: _get(r, ('wall', 'review')),
+                 _get(record, ('wall', 'to_merge')), 'to_merge')
+    keep = [(excess, item) for excess, item in candidates if excess >= settings['min_excess_h'] * HOUR]
+    keep.sort(key=lambda pair: (-pair[0], pair[1]['kind'], pair[1]['name']))
+    return [item for _, item in keep[:int(settings['max_items'])]]
+
+
+# ------------------------------------------------------------------------------------------------------- trend
+
+TREND_COLUMNS = ('to_done', 'work', 'human_wait', 'review', 'gate_wait', 'repeat_runs', 'value', 'pp', 'failed',
+                 'repair', 'interventions', 'regressions')
+HOUR = 3600.0
+
+
+def per_task_sources(record, config):
+    """{column: (value, scale)} of a record before the division by the plan tasks: times in seconds (scale: 3600 for
+    hours), the others counts, USD or pp. A value that is not known is None."""
+    windows = _get(record, ('subscription', 'windows'))
+    weekly = windows.get(config['weekly_window_label']) if isinstance(windows, dict) else None
+    share = _get(record, ('subscription', 'share'))
+    return {
+        'to_done': (_get(record, ('wall', 'to_done')), HOUR), 'work': (_get(record, ('breakdown', 'work')), HOUR),
+        'human_wait': (_get(record, ('breakdown', 'human_wait')), HOUR), 'review': (_get(record, ('wall', 'review')), HOUR),
+        'gate_wait': (_get(record, ('gate_wait', 'wait_s')), HOUR),
+        'repeat_runs': (_get(record, ('in_attempts', 'repeat_runs', 'seconds')), HOUR),
+        'value': (_get(record, ('value', 'total', 'usd')), 1.0),
+        'pp': (weekly * share if _is_number(weekly) and _is_number(share) else None, 1.0),
+        'failed': (_get(record, ('retries', 'attempts', 'failed')), 1.0),
+        'repair': (_get(record, ('retries', 'repair', 'count')), 1.0),
+        'interventions': (_get(record, ('human', 'interventions')), 1.0),
+        'regressions': (_get(record, ('regressions', 'count')), 1.0),
+    }
+
+
+def trend_values(record, config):
+    """The columns of `trend` of one record, per plan task (times in hours, rounded to 4 places); None where the source
+    is unknown or the epic has no plan tasks."""
+    tasks = record.get('tasks')
+    values = {}
+    for column, (value, scale) in per_task_sources(record, config).items():
+        usable = _is_number(value) and _is_int(tasks) and tasks > 0
+        values[column] = round(value / tasks / scale, 4) if usable else None
+    return values
+
+
+def median_of(values):
+    known = [v for v in values if v is not None]
+    return round(median(known), 4) if known else None
+
+
+def position_of(values, medians):
+    found = {}
+    for column in TREND_COLUMNS:
+        value, middle = values[column], medians[column]
+        diff = None if value is None or middle is None else round(value - middle, 4)
+        pct = None if diff is None or not middle else round(diff / middle * 100, 1)
+        found[column] = {'value': value, 'median': middle, 'diff': diff, 'diff_pct': pct}
+    return found
+
+
+def merged_records(records):
+    """[(epoch, record)] of the records with a merge time, oldest first (ties by the epic id)."""
+    found = []
+    for record in records.values():
+        try:
+            found.append((night_queue.parse_time(record['merged_at']).timestamp(), record))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+    return [record for _, record in sorted(found, key=lambda item: (item[0], str(item[1].get('epic'))))]
+
+
+def _version_sets(record):
+    versions = record.get('versions')
+    if not isinstance(versions, dict):
+        return None, None
+    return ({v['version'] for v in versions.get('cli') or [] if isinstance(v, dict) and 'version' in v},
+            {m['model'] for m in versions.get('models') or [] if isinstance(m, dict) and 'model' in m})
+
+
+def change_annotations(previous, current):
+    """The notes of a change of the CLI version or of the set of models against the previous epic (the numbers are not
+    corrected)."""
+    old_cli, old_models = _version_sets(previous)
+    new_cli, new_models = _version_sets(current)
+    notes = []
+    if old_cli is not None and new_cli is not None and old_cli != new_cli:
+        notes.append('wersja CLI: %s → %s' % (', '.join(sorted(old_cli)) or 'brak', ', '.join(sorted(new_cli)) or 'brak'))
+    if old_models is not None and new_models is not None and old_models != new_models:
+        parts = []
+        if new_models - old_models:
+            parts.append('+ ' + ', '.join(sorted(new_models - old_models)))
+        if old_models - new_models:
+            parts.append('− ' + ', '.join(sorted(old_models - new_models)))
+        notes.append('modele: ' + ' '.join(parts))
+    return notes
+
+
+def refresh_windows(records, state_dir, config, run, repo, now, errors):
+    """Recomputes the regressions and found_after_merge of the records whose window is open (or never computed, or
+    computed with a failed source: `complete` is false): a merge of another epic and the start of a `/ao-run` session call `trend`. Stores
+    the changed records; returns the ids. Values of a source that fails stay (regressions_of)."""
+    done = []
+    for epic in sorted(records):
+        record = records[epic]
+        try:
+            merged = night_queue.parse_time(record['merged_at']).timestamp()
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        final_pr = record.get('final_pr')
+        current = record.get('regressions')
+        found = record.get('found_after_merge')
+        if not _is_int(final_pr) or (isinstance(current, dict) and current.get('open') is False
+                                     and current.get('complete') is True and isinstance(found, dict)
+                                     and current.get('count') is not None and found.get('count') is not None):
+            continue
+        sha = current.get('merge_commit') if isinstance(current, dict) else None
+        if not (isinstance(sha, str) and SHA_PATTERN.match(sha)):
+            try:
+                sha = fetch_pr(run, final_pr, repo)['merge_sha']
+            except GhError as e:
+                errors.append(str(e))
+                continue
+        gaps = Gaps()
+        record['regressions'], record['found_after_merge'] = regressions_of(
+            run, repo, config, epic, final_pr, sha, merged, now, dict(record), gaps, errors)
+        record['gaps'] = [g for g in record.get('gaps') or [] if not g.startswith(('regressions', 'found_after_merge'))] \
+            + gaps.render()
+        write_record(state_path(state_dir, epic), record)
+        done.append(epic)
+    return done
+
+
+def build_trend(records, config, last, epic):
+    """The trend table: the last `last` merged epics with their columns, the medians of
+    the shown epics (nulls skipped), the position of `epic` (default: the latest; it may be older than the shown ones)
+    against them and the annotations."""
+    ordered = merged_records(records)
+    if not ordered:
+        raise MetricsError('brak zapisanych rekordów zmergowanych epików (uruchom: metrics.py backfill)')
+    by_id = {r.get('epic'): r for r in ordered}
+    chosen = by_id.get(epic) if epic is not None else ordered[-1]
+    if chosen is None:
+        raise MetricsError('brak rekordu zmergowanego epiku %s (zapisane: %s)' % (epic, ', '.join(sorted(by_id))))
+    shown = ordered[-last:]
+    rows = []
+    for record in shown:
+        index = ordered.index(record)
+        rows.append({'epic': record['epic'], 'merged_at': record.get('merged_at'), 'tasks': record.get('tasks'),
+                     'values': trend_values(record, config),
+                     'annotations': change_annotations(ordered[index - 1], record) if index else []})
+    medians = {column: median_of([row['values'][column] for row in rows]) for column in TREND_COLUMNS}
+    values = trend_values(chosen, config)
+    return {'columns': list(TREND_COLUMNS), 'epics': rows, 'median': medians,
+            'position': {'epic': chosen['epic'], 'columns': position_of(values, medians)}, 'recomputed': []}
+
+
+def pl(value, digits=1):
+    """A number with a decimal comma; `-` for an unknown one."""
+    if value is None:
+        return '-'
+    return ('%.*f' % (digits, value)).replace('.', ',')
+
+
+def format_trend(table):
+    heads = {'to_done': 'do_done', 'work': 'work', 'human_wait': 'human', 'review': 'review', 'gate_wait': 'gate',
+             'repeat_runs': 'powt.', 'value': 'USD', 'pp': 'pp', 'failed': 'nieud.', 'repair': 'REPAIR',
+             'interventions': 'interw.', 'regressions': 'regr.'}
+    width = max([len('mediana')] + [len(r['epic']) for r in table['epics']])
+    lines = ['Trend (na zadanie planu; czasy w godzinach; epików: %d)' % len(table['epics']),
+             ' '.join(['epik'.ljust(width)] + [heads[c].rjust(8) for c in table['columns']])]
+    for row in table['epics']:
+        lines.append(' '.join([row['epic'].ljust(width)] + [pl(row['values'][c], 2).rjust(8)
+                                                           for c in table['columns']]))
+    lines.append(' '.join(['mediana'.ljust(width)] + [pl(table['median'][c], 2).rjust(8)
+                                                      for c in table['columns']]))
+    position = table['position']
+    lines.append('%s wobec mediany:' % position['epic'])
+    for column in table['columns']:
+        entry = position['columns'][column]
+        if entry['diff'] is None:
+            lines.append('  %s: brak danych' % heads[column])
+            continue
+        pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
+                                                                 pl(abs(entry['diff_pct']), 0))
+        lines.append('  %s: %s (mediana %s%s)' % (heads[column], pl(entry['value'], 2), pl(entry['median'], 2), pct))
+    notes = ['%s: %s' % (row['epic'], note) for row in table['epics'] for note in row['annotations']]
+    if notes:
+        lines.append('Zmiany wersji CLI i modeli (liczby bez korekty):')
+        lines.extend('  ' + note for note in notes)
+    return '\n'.join(lines)
+
+
+def cmd_trend(args, config, run, now):
+    last = config['trend_last'] if args.last is None else args.last
+    if last <= 0:
+        raise MetricsError('--last: oczekiwano dodatniej liczby epików, podano %d' % last)
+    state = _expand(args.state)
+    records = read_records(state)
+    errors = []
+    recomputed = [] if args.no_gh else refresh_windows(records, state, config, run, args.repo, now, errors)
+    table = build_trend(records, config, last, args.epic)
+    table['recomputed'] = recomputed
+    print(json.dumps(table, ensure_ascii=False) if args.json else format_trend(table))
+    for error in errors:
+        print('metrics: błąd gh: %s (okno regresji: zachowano poprzednie wartości)' % error, file=sys.stderr)
+    return EXIT_SOURCE if errors else 0
+
+
+# ------------------------------------------------------------------------------------------------------- render
+#
+# `render` writes only what it can check: numbers (booleans and text are no numbers), identifiers (task ids, roles,
+# models, CLI versions, tool names, epic ids: SAFE_NAME), PR numbers and fixed words of this file. Any other text of the
+# record (the reasons of `gaps`, messages of errors, commands, paths) is dropped: the comment goes to a public issue
+# (spec: Model zagrożeń, droga 1). The only free text is the list of manual fixes the /ao-run session wrote itself.
+
+NO_DATA = 'brak danych'
+BOTTLENECK_KINDS = ('breakdown', 'task', 'in_attempts', 'gate_wait', 'review')
+SHARE_OF = {'to_done': 'czasu', 'gate_wait+to_done': 'czasu z oczekiwaniem w bramce', 'to_merge': "czasu do merge'u"}
+LABEL_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 \u00b7.\-]{0,39}$')
+STATE_PATTERN = re.compile(r'^[A-Z_]{1,16}$')
+RULE_PATTERN = re.compile(r'^D[1-9]$')
+FIELD_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_.\-]{0,59}$')
+MANUAL_FIX_LIMIT = 200
+
+
+def _dict(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value):
+    return value if isinstance(value, list) else []
+
+
+SECRET_LIKE = re.compile(r'ghp_|gho_|github_pat_|(?<![A-Za-z0-9])sk-|[A-Za-z0-9+/]{32,}')
+
+
+def _safe(name):
+    """The identifier (task id, role, model, CLI version, tool, epic) or None: an identifier that looks like a secret is
+    not one."""
+    return name if isinstance(name, str) and SAFE_NAME.match(name) and not SECRET_LIKE.search(name) else None
+
+
+def _count(value):
+    return value if _is_int(value) and value >= 0 else None
+
+
+def hours_text(seconds):
+    return NO_DATA if not _is_number(seconds) else '%s h' % pl(seconds / HOUR)
+
+
+def percent_of(part, whole):
+    return None if not _is_number(part) or not _is_number(whole) or whole <= 0 else int(round(part / whole * 100))
+
+
+def usd_text(cell):
+    """`12,34 USD`, `≈ 12,34 USD` for an estimated value, `brak danych` for an unknown one."""
+    cell = _dict(cell)
+    usd = cell.get('usd')
+    if not _is_number(usd):
+        return NO_DATA
+    text = '%s%s USD' % ('≈ ' if cell.get('estimated') is True else '', pl(usd, 2))
+    return text + (' (suma niepełna)' if cell.get('incomplete') is True else '')
+
+
+def plural(number, one, few, many):
+    if number == 1:
+        return one
+    return few if number % 10 in (2, 3, 4) and number % 100 not in (12, 13, 14) else many
+
+
+def bottleneck_lines(items):
+    """The numbered lines of the bottlenecks: kind, name, rule and the share come only from the known words."""
+    lines = []
+    for item in _list(items):
+        item = _dict(item)
+        name, excess = _safe(item.get('name')), item.get('excess_h')
+        if item.get('kind') not in BOTTLENECK_KINDS or name is None or not _is_number(excess):
+            continue
+        share = percent_of(item.get('share'), 1)
+        text = '%d. `%s`: +%s h ponad medianę' % (len(lines) + 1, name, pl(excess))
+        if share is not None and item.get('share_of') in SHARE_OF:
+            text += ' (%d%% %s)' % (share, SHARE_OF[item['share_of']])
+        if isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
+            text += ', reguła %s' % item['rule']
+        if _is_number(item.get('repeat_h')) and item['repeat_h'] > 0:
+            text += ', w tym możliwe powtórzenia: %s h' % pl(item['repeat_h'])
+        lines.append(text)
+    return lines
+
+
+def time_topic(record, comment):
+    to_done = _dict(record.get('wall')).get('to_done')
+    tasks = record.get('tasks')
+    if not _is_number(to_done):
+        lines = ['Czas do epic_done: %s' % NO_DATA]
+    else:
+        text = 'Czas do epic_done: %s' % hours_text(to_done)
+        if _is_int(tasks) and tasks > 0:
+            text += ' (%s na zadanie planu)' % hours_text(to_done / tasks)
+        breakdown = record.get('breakdown')
+        if isinstance(breakdown, dict):
+            parts = []
+            for name in BREAKDOWN_CATEGORIES:
+                value = breakdown.get(name)
+                if not _is_number(value):
+                    parts.append('%s %s' % (name, NO_DATA))
+                elif value > 0:
+                    parts.append('%s %s (%d%%)' % (name, hours_text(value), percent_of(value, to_done) or 0))
+            text += '; rozkład: ' + ', '.join(parts)
+        lines = [text]
+    if comment:
+        wall = _dict(record.get('wall'))
+        lines.append("Czas do merge'u: %s, odbiór (review): %s" % (hours_text(wall.get('to_merge')),
+                                                                  hours_text(wall.get('review'))))
+    return [lines[0]] + ['  ' + line for line in lines[1:]]
+
+
+def attempts_time_topic(record):
+    data = record.get('in_attempts')
+    if not isinstance(data, dict):
+        return ['Czas w próbach (polecenia powłoki): %s (brak transkryptów)' % NO_DATA]
+    parts = []
+    for name, entry in _dict(data.get('categories')).items():
+        entry = _dict(entry)
+        if _safe(name) and _count(entry.get('count')) and _is_number(entry.get('seconds')):
+            parts.append('%s %s (%d)' % (name, hours_text(entry['seconds']), entry['count']))
+    lines = ['Czas w próbach (polecenia powłoki): ' + (', '.join(parts) if parts else 'brak poleceń')]
+    repeat = _dict(data.get('repeat_runs'))
+    if _count(repeat.get('count')) is not None and _is_number(repeat.get('seconds')):
+        lines.append('możliwe powtórzenia testów: %d (%s), dolna granica' % (repeat['count'], hours_text(repeat['seconds'])))
+    retry = _dict(data.get('api_retry'))
+    if _count(retry.get('count')) is not None and _is_number(retry.get('delay_ms')):
+        lines.append('ponowienia API: %d (łącznie %s s)' % (retry['count'], pl(retry['delay_ms'] / 1000.0, 0)))
+    denied = ', '.join('%s %d' % (tool, n) for tool, n in sorted(_dict(data.get('permission_denials')).items())
+                       if _safe(tool) and _count(n))
+    lines.append('odmowy uprawnień: %s' % (denied or 'brak'))
+    return [lines[0]] + ['  ' + line for line in lines[1:]]
+
+
+def integration_topic(record):
+    data = _dict(record.get('integration'))
+    if not _is_number(data.get('work_s')):
+        return ['Integracja: %s' % NO_DATA]
+    text = 'Integracja: %s' % hours_text(data['work_s'])
+    if _count(data.get('attempts')) is not None:
+        text += ' w %d %s' % (data['attempts'], plural(data['attempts'], 'próbie', 'próbach', 'próbach'))
+    if _count(data.get('rounds')) is not None:
+        text += ', rund: %d' % data['rounds']
+    return [text]
+
+
+def value_topic(record):
+    value = _dict(record.get('value'))
+    head = 'Wartość tokenów (szacunek CLI według cen API, nie koszt subskrypcji): '
+    if not isinstance(value.get('total'), dict):
+        return [head + NO_DATA]
+    lines = [head + 'razem ' + usd_text(value['total'])]
+
+    def ranked(section):
+        found = [(key, cell) for key, cell in _dict(value.get(section)).items() if _safe(key) and isinstance(cell, dict)]
+        return sorted(found, key=lambda pair: (-(pair[1].get('usd') if _is_number(pair[1].get('usd')) else -1), pair[0]))
+
+    roles = ranked('by_role')
+    if roles:
+        lines.append('role: %s (podział między subagentów szacowany)' % ', '.join('%s %s' % (k, usd_text(c)) for k, c in roles))
+    models = ranked('by_model')
+    if models:
+        lines.append('modele: %s' % ', '.join('%s %s' % (k, usd_text(c)) for k, c in models))
+    tasks = [(k, c) for k, c in ranked('by_task') if _is_number(c.get('usd'))]
+    if tasks:
+        lines.append('najdroższe zadanie: %s %s' % (tasks[0][0], usd_text(tasks[0][1])))
+    return [lines[0]] + ['  ' + line for line in lines[1:]]
+
+
+def subscription_topic(record):
+    head = 'Subskrypcja (punkty procentowe okien limitu, osobno od wartości tokenów): '
+    data = record.get('subscription')
+    if not isinstance(data, dict):
+        return [head + NO_DATA]
+    windows = data.get('windows')
+    if not isinstance(windows, dict):
+        parts = ['okna: ' + NO_DATA]
+    else:
+        parts = []
+        for label, delta in windows.items():
+            if isinstance(label, str) and LABEL_PATTERN.match(label):
+                parts.append('%s %s' % (label, '+%s pp' % pl(delta, 0 if float(delta).is_integer() else 1)
+                                        if _is_number(delta) else NO_DATA))
+    text = head + ', '.join(parts)
+    overlap = [e for e in _list(data.get('overlap')) if _safe(e)]
+    if overlap:
+        share = data.get('share')
+        shown = '%s%s' % ('≈ ' if data.get('share_estimated') is True else '', pl(share, 2)) if _is_number(share) \
+            else NO_DATA
+        text += '; share %s (nakładanie z: %s)' % (shown, ', '.join(overlap))
+    return [text]
+
+
+def retries_topics(record):
+    data = _dict(record.get('retries'))
+    attempts = _dict(data.get('attempts'))
+    lines = []
+    if _count(attempts.get('total')) is None:
+        lines.append('Próby: %s' % NO_DATA)
+    else:
+        def number(name):
+            return _count(attempts.get(name)) or 0
+        failed = ', '.join('%s %d' % (k, n) for k, n in sorted(_dict(data.get('failed_by_outcome')).items())
+                           if _safe(k) and _count(n))
+        text = 'Próby: %d (udane %d, nieudane %d%s, zablokowane %d' % (
+            attempts['total'], number('successful'), number('failed'), ' [%s]' % failed if failed else '',
+            number('blocked'))
+        if number('usage_limit'):
+            text += ', limit subskrypcji %d' % number('usage_limit')
+        lines.append(text + ')')
+    repair = _dict(data.get('repair'))
+    if _count(repair.get('count')) is None:
+        lines.append('REPAIR: %s' % NO_DATA)
+    else:
+        lines.append('REPAIR: %d (konflikt końcowego PR %d, czerwone CI %d)' % (
+            repair['count'], _count(repair.get('final_pr_conflict')) or 0, _count(repair.get('ci_red')) or 0))
+    lines.append('FIX: %s' % (_count(data.get('fix')) if _count(data.get('fix')) is not None else NO_DATA))
+    if not isinstance(data.get('sync_prs'), list):
+        lines.append('Sync: %s' % NO_DATA)
+    else:
+        prs = ['#%d%s' % (p['number'], ' (%s)' % p['state'] if isinstance(p.get('state'), str)
+                          and STATE_PATTERN.match(p['state']) else '')
+               for p in data['sync_prs'] if isinstance(p, dict) and _count(p.get('number')) is not None]
+        lines.append('Sync: %s' % (', '.join(prs) if prs else 'brak PR synchronizacji'))
+    return lines
+
+
+def gate_topic(record):
+    gate = record.get('gate_wait')
+    if not isinstance(gate, dict) or not _is_number(gate.get('wait_s')):
+        return ['Czekanie w bramce: %s' % NO_DATA]
+    if gate['wait_s'] == 0:
+        return ['Czekanie w bramce: bez czekania']
+    reasons = [r for r in _list(gate.get('reasons')) if isinstance(r, str) and re.match(r'^[A-Za-z0-9_.\-]{1,40}$', r)]
+    return ['Czekanie w bramce: %s%s' % (hours_text(gate['wait_s']), ' (powód: %s)' % ', '.join(reasons)
+                                         if reasons else '')]
+
+
+def human_topic(record):
+    human = _dict(record.get('human'))
+    interventions = _count(human.get('interventions'))
+    text = 'Interwencje człowieka: %s' % (interventions if interventions is not None else NO_DATA)
+    waits, seconds = _count(human.get('waits')), human.get('wait_s')
+    if waits is not None and _is_number(seconds):
+        text += '; czekania na użytkownika: %d, razem %d min' % (waits, int(round(seconds / 60.0)))
+    return [text]
+
+
+def waste_topic(record):
+    alarms = record.get('waste')
+    if not isinstance(alarms, list):
+        return ['Alarmy (waste): %s' % NO_DATA]
+    names = ['%s %s' % (a['rule'], a['task']) for a in alarms if isinstance(a, dict) and isinstance(a.get('rule'), str)
+             and re.match(r'^W[1-9]$', a['rule']) and _safe(a.get('task'))]
+    return ['Alarmy (waste): %d%s' % (len(alarms), ' (%s)' % ', '.join(names) if names else '')]
+
+
+def versions_topic(record):
+    versions = record.get('versions')
+    if not isinstance(versions, dict):
+        return ['Wersje CLI i modele: %s' % NO_DATA]
+
+    def listed(key, name):
+        return ', '.join('%s (%d)' % (e[name], e['attempts']) for e in _list(versions.get(key))
+                         if isinstance(e, dict) and _safe(e.get(name)) and _count(e.get('attempts')) is not None)
+    return ['Wersje CLI: %s; modele: %s' % (listed('cli', 'version') or 'brak', listed('models', 'model') or 'brak')]
+
+
+def ci_topic(record):
+    ci = record.get('ci')
+    if not isinstance(ci, dict):
+        return ['CI: %s' % NO_DATA]
+
+    def minutes(entry, name):
+        value = _dict(entry).get('%s_s' % name)
+        return '%s min' % pl(value / 60.0) if _is_number(value) else NO_DATA
+
+    final = _dict(ci.get('final'))
+    parts = []
+    if _count(final.get('pr')) is not None:
+        parts.append('końcowy PR #%d: checks %s, e2e %s, przebiegów %s' % (
+            final['pr'], minutes(final, 'checks'), minutes(final, 'e2e'), _count(final.get('runs'))
+            if _count(final.get('runs')) is not None else NO_DATA))
+    tasks = {k: v for k, v in _dict(ci.get('tasks')).items() if _safe(k) and _count(_dict(v).get('runs')) is not None}
+    if tasks:
+        repeated = ['%s (%d)' % (k, v['runs']) for k, v in sorted(tasks.items()) if v['runs'] > 1]
+        parts.append('PR zadań: przebiegów łącznie %d%s' % (sum(v['runs'] for v in tasks.values()),
+                                                             ', więcej niż jeden: %s' % ', '.join(repeated)
+                                                             if repeated else ''))
+    return ['CI: %s' % ('; '.join(parts) if parts else NO_DATA)]
+
+
+def regressions_topic(record):
+    data, found = record.get('regressions'), record.get('found_after_merge')
+    if not isinstance(data, dict):
+        text = "Regresje po merge'u: %s" % NO_DATA
+    else:
+        parts = []
+        for name, label in (('ci_red', "czerwone CI na commicie merge'u"), ('reverts', 'revert'),
+                            ('issues', 'issues bug')):
+            value = data.get(name)
+            value = len(value) if isinstance(value, list) else value
+            parts.append('%s: %s' % (label, value if _count(value) is not None else NO_DATA))
+        count = _count(data.get('count'))
+        text = "Regresje po merge'u (okno %s dni%s): %s (%s)" % (
+            data.get('window_days') if _count(data.get('window_days')) is not None else '?',
+            ', otwarte' if data.get('open') is True else '', count if count is not None else NO_DATA, '; '.join(parts))
+    count = _count(_dict(found).get('count'))
+    return [text, "znalezione po merge'u: %s (propozycje /sweep, osobno od regresji)" % (
+        count if count is not None else NO_DATA)]
+
+
+def position_topic(record, history, config, comment):
+    if not history:
+        return ['Pozycja na tle mediany: brak historii (zmergowanych epików przed tym: 0)']
+    values = [trend_values(h, config) for h in history]
+    medians = {c: median_of([v[c] for v in values]) for c in TREND_COLUMNS}
+    position = position_of(trend_values(record, config), medians)
+    parts = []
+    for column in TREND_COLUMNS:
+        entry = position[column]
+        if entry['diff'] is None or (column == 'review' and not comment):
+            continue            # the review is known only after the merge
+        pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
+                                                                 pl(abs(entry['diff_pct']), 0))
+        parts.append('%s %s (mediana %s%s)' % (column, pl(entry['value'], 2), pl(entry['median'], 2), pct))
+    return ['Pozycja na tle mediany (%d %s, na zadanie planu; czasy w godzinach): %s' % (
+        len(history), plural(len(history), 'epik', 'epiki', 'epików'), '; '.join(parts) or NO_DATA)]
+
+
+def gaps_topic(record, comment):
+    gaps = [g for g in _list(record.get('gaps')) if isinstance(g, str)]
+    if not gaps:
+        return ['Braki danych: brak']
+    if not comment:
+        return ['Braki danych (%d): %s' % (len(gaps), '; '.join(g[:160] for g in gaps))]
+    fields = []
+    for gap in gaps:
+        field = gap.split(': ', 1)[0]
+        if FIELD_PATTERN.match(field) and field not in fields:
+            fields.append(field)
+    return ['Braki danych: %d (pola: %s)' % (len(gaps), ', '.join(fields[:12]) or NO_DATA)]
+
+
+def manual_fix_text(text):
+    """One line of a manual fix: control characters dropped, whitespace collapsed, at most 200 characters, and for an
+    item without a PR no colon and a lower case first letter (retro.py reads `Capital: ` as the next label)."""
+    text = ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]', ' ', str(text)).split())
+    return text if len(text) <= MANUAL_FIX_LIMIT else text[:MANUAL_FIX_LIMIT - 1] + '…'
+
+
+def manual_fix_lines(fixes):
+    """`Ręczne poprawki: N` and one `- PR #<nr>: <text>` or `- <text>` line each (the format retro.py collect reads)."""
+    if not isinstance(fixes, list):
+        return ['Ręczne poprawki: %s' % NO_DATA]
+    items = []
+    for fix in fixes:
+        fix = _dict(fix)
+        text = manual_fix_text(fix.get('text') or '')
+        if _count(fix.get('pr')) is not None:
+            items.append('- PR #%d: %s' % (fix['pr'], text) if text else '- PR #%d' % fix['pr'])
+        elif text:
+            text = text.replace(':', ' -')
+            if len(text) > 1 and text[0].isupper() and text[1].islower():
+                text = text[0].lower() + text[1:]
+            items.append('- ' + text)
+    return ['Ręczne poprawki: %d' % len(items)] + items
+
+
+def comment_head(record):
+    human = _dict(record.get('human'))
+    interventions, waits, seconds = _count(human.get('interventions')), _count(human.get('waits')), human.get('wait_s')
+    lines = ['Interwencje człowieka: %s' % (interventions if interventions is not None else NO_DATA)]
+    if waits is None or not _is_number(seconds):
+        lines.append('Czekanie na użytkownika: %s' % NO_DATA)
+    else:
+        lines.append('Czekanie na użytkownika: %d %s, razem %d min%s' % (
+            waits, plural(waits, 'czekanie', 'czekania', 'czekań'), int(round(seconds / 60.0)),
+            ', otwarte: %d' % human['open'] if _count(human.get('open')) else ''))
+    return lines + manual_fix_lines(human.get('manual_fixes'))
+
+
+def render_measurement(record, records, config, comment):
+    """The text of `render`: the report of the acceptance (bottlenecks first, without `review`, which is known only
+    after the merge) or the comment after the merge (the lines retro.py reads, then the block `Pomiar epiku`)."""
+    history = history_of(record, records)
+    if comment:
+        items = record.get('bottlenecks')
+        if not isinstance(items, list):
+            items = bottlenecks_of(record, history, config, Gaps())
+    else:
+        items = bottlenecks_of(record, history, config, Gaps(), include_review=False)
+    head = 'Wąskie gardła (mediana z %d %s)' % (len(history), plural(len(history), 'epiku', 'epików', 'epików'))
+    numbered = bottleneck_lines(items)
+    topics = [[head + ':'] + numbered if numbered else
+              [head + ': brak pozycji z nadwyżką co najmniej %s h ponad medianę' % pl(config['bottlenecks']['min_excess_h'])]]
+    topics += [time_topic(record, comment), attempts_time_topic(record), integration_topic(record),
+               value_topic(record), subscription_topic(record)]
+    topics += [[line] for line in retries_topics(record)]
+    topics += [gate_topic(record)]
+    if not comment:
+        topics += [human_topic(record)]
+    topics += [waste_topic(record), versions_topic(record), ci_topic(record)]
+    if comment:
+        topics += [[line] for line in regressions_topic(record)]
+    topics += [position_topic(record, history, config, comment), gaps_topic(record, comment)]
+    lines = []
+    for topic in topics:
+        if comment:
+            lines.append('- ' + topic[0])
+            lines.extend('  - ' + line.strip() for line in topic[1:])
+        else:
+            lines.extend(topic[:1] + ['  ' + line.strip() for line in topic[1:]])
+    if comment:
+        return '\n'.join(comment_head(record) + ['', '### Pomiar epiku'] + lines) + '\n'
+    return '\n'.join(lines) + '\n'
+
+
+def cmd_render(args, config, run, now):
+    if os.path.basename(args.epic) != args.epic or args.epic in ('.', '..'):
+        raise MetricsError('niepoprawny identyfikator epiku %r' % args.epic)
+    state = _expand(args.state)
+    records = read_records(state)
+    record = records.get(args.epic)
+    if record is None:
+        raise MetricsError('brak (albo nieczytelny) rekord epiku %s w %s: uruchom `metrics.py epic %s`'
+                           % (args.epic, os.path.join(state, 'epics'), args.epic))
+    sys.stdout.write(render_measurement(record, records, config, args.format == 'comment'))
+    return 0
 
 
 # ------------------------------------------------------------------------------------------------- state and CLI
@@ -2059,6 +3152,14 @@ def build_parser():
     epic.add_argument('--no-gh', action='store_true')
     backfill = sub.add_parser('backfill', parents=[common])
     backfill.add_argument('--ao-root')
+    render = sub.add_parser('render', parents=[common])
+    render.add_argument('epic')
+    render.add_argument('--format', choices=('report', 'comment'), default='report')
+    trend = sub.add_parser('trend', parents=[common])
+    trend.add_argument('--last', type=int, default=None)
+    trend.add_argument('--epic')
+    trend.add_argument('--json', action='store_true')
+    trend.add_argument('--no-gh', action='store_true')
     waste = sub.add_parser('waste', parents=[common])
     waste.add_argument('ao_home')
     waste.add_argument('--max-qa-rounds', type=_positive_int, default=3)
@@ -2078,6 +3179,10 @@ def main(argv=None, run=None, now=None):
             return cmd_epic(args, config, runner, now)
         if args.command == 'backfill':
             return cmd_backfill(args, config, runner, now)
+        if args.command == 'trend':
+            return cmd_trend(args, config, runner, now)
+        if args.command == 'render':
+            return cmd_render(args, config, runner, now)
         if args.command == 'waste':
             return cmd_waste(args, config, now)
     except MetricsError as e:

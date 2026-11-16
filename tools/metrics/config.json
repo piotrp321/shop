@@ -83,5 +83,8 @@
     "results_dir": "~/.local/state/shop-evals-pilot"
   },
   "regression_window_days": 14,
-  "trend_last": 10
+  "ci_workflow": "ci.yml",
+  "ci_jobs": ["checks", "e2e"],
+  "trend_last": 10,
+  "weekly_window_label": "Weekly \u00b7 all models"
 }
