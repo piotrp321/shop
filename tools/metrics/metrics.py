@@ -2437,7 +2437,17 @@ def cmd_decide(args, config, run, now):
     if record is None:
         raise MetricsError('brak (albo nieczytelny) rekord epiku %s w %s: uruchom `metrics.py epic %s`'
                            % (args.epic, os.path.join(state, 'epics'), args.epic))
-    print(json.dumps(decide_epic(record, records, config), ensure_ascii=False))
+    evals = EvalsResults(config)
+    result = decide_epic(record, records, config, evals)
+    if args.history:
+        result['history'] = [{k: v for k, v in decide_epic(other, records, config, evals).items() if k != 'report'}
+                             for other in merged_records(records)]
+        keys = {}
+        for entry in result['history']:
+            for candidate in entry['candidates']:
+                keys.setdefault(candidate['key'], []).append(entry['epic'])
+        result['keys'] = keys
+    print(json.dumps(result, ensure_ascii=False))
     return 0
 
 
@@ -3511,6 +3521,7 @@ def build_parser():
     trend.add_argument('--no-gh', action='store_true')
     decide = sub.add_parser('decide', parents=[common])
     decide.add_argument('epic')
+    decide.add_argument('--history', action='store_true')
     waste = sub.add_parser('waste', parents=[common])
     waste.add_argument('ao_home')
     waste.add_argument('--max-qa-rounds', type=_positive_int, default=3)
