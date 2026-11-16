@@ -1,7 +1,8 @@
-import { Activity, LayoutDashboard, Package, Percent, ShoppingCart, Ticket } from "lucide-vue-next";
+import { Activity, LayoutDashboard, Package, Percent, ShoppingCart, Ticket, Users } from "lucide-vue-next";
 import type { Component } from "vue";
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from "vue-router";
 import { canViewSystem } from "@/dashboard/permissions";
+import { canViewCustomers } from "@/customers/permissions";
 import { canCompleteRefunds, canViewOrders } from "@/orders/permissions";
 import { canManageProducts } from "@/products/permissions";
 import type { StaffMe } from "@/stores/auth";
@@ -99,6 +100,7 @@ export const MENU: MenuSection[] = [
           },
         ],
       },
+      { kind: "leaf", id: "customers", label: "Klienci", to: { name: "customers" }, icon: Users, matches: named("customers", "customer"), visible: canViewCustomers },
     ],
   },
   {

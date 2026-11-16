@@ -194,13 +194,14 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   | Główne | Pulpit (`/`) | — | wszyscy |
   | Sklep | Katalog | Produkty (Lista produktów `/products`, Dodaj produkt `/products/new`), Ceny `/prices`, Stany magazynowe `/inventory` | wszyscy; „Dodaj produkt” tylko `admin` i `marketing` |
   | Sklep | Zamówienia | Lista zamówień `/orders` (`admin`, `support`, `warehouse`), Zwroty do wykonania `/orders?refund=pending` (`admin`, `support`: tylko oni wykonują zwroty) | `admin`, `support`, `warehouse` |
+  | Sklep | Klienci `/customers` | — | `admin`, `support` |
   | Marketing | Promocje `/promotions`, Kody rabatowe `/discount-codes` | — | wszyscy |
   | System | Stan systemu `/system` | — | `admin` |
 
   Grupa (Katalog, Zamówienia, Produkty) to przycisk z `aria-expanded` i strzałką; grupa z bieżącą trasą jest rozwinięta
   przy wejściu i przy każdej zmianie trasy (zamyka ją tylko jej przycisk). Bieżąca pozycja ma `aria-current="page"` i tylko ona jest wyróżniona: „Pulpit” jest aktywny wyłącznie
   na `/` (#251 F15). Formularze i szczegóły podświetlają pozycję listy (`/products/:id` → „Lista produktów”,
-  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”); `/orders?refund=pending` podświetla „Zwroty do
+  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”, `/customers/:id` → „Klienci”); `/orders?refund=pending` podświetla „Zwroty do
   wykonania”, a nie „Lista zamówień” (rola bez tej pozycji ma podświetloną „Listę zamówień”). Pozycje do czasu wczytania `/me` wymagające roli są ukryte.
 - **Topbar**: na początku przycisk „Menu” (tylko poniżej 1024 px, otwiera szufladę); pole „Szukaj produktu…”
   (`role="search"`, `searchbox` z etykietą). Enter z frazą, która po przycięciu ma 2–100 znaków (punkty kodowe, jak
@@ -508,7 +509,7 @@ z tego dokumentu; ich wygląd i zachowanie opisuje `docs/features/admin-screens/
 
 WCAG 2.2 AA dla całego panelu: kontrasty z tokenów (test Vitest), widoczny fokus, link „Przejdź do treści”, nazwy
 dostępne każdej kontrolki (także ikon, comboboxów i przycisków rozwijania), kolejność fokusu zgodna z układem (wyjątek: w formularzach produktu, promocji i kodu rabatowego oraz na szczegółach
-zamówienia kolumna boczna stoi w DOM przed główną, więc Tab zaczyna od niej), fokus nigdy nie spada na `body` po akcji (zmiana strony: powłoka przenosi go na H1 nowej strony,
+zamówienia i karcie klienta kolumna boczna stoi w DOM przed główną, więc Tab zaczyna od niej), fokus nigdy nie spada na `body` po akcji (zmiana strony: powłoka przenosi go na H1 nowej strony,
 sekcja „Powłoka”; zamknięcie okna, błąd, usunięcie elementu), cele kliknięcia co
 najmniej 24 × 24 px, komunikaty statusu przez `role="status"`/`aria-live`, błędy przez `role="alert"`, język `pl`
 (`<html lang="pl">`), polskie nazwy wszystkich elementów komponentów (żadnego „Close”).

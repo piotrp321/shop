@@ -24,7 +24,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (tokeny w pamięci).
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`; ustawia i czyści użytkownika Sentry, patrz „Sentry”).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania. `/orders` i `/orders/:orderId` mają
-  strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`), a `/system` strażnika
+  strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`), `/customers` i `/customers/:customerId`
+  strażnika na ścieżce `customers` (`canViewCustomers` z `src/customers/permissions.ts`: `admin` i `support`), a `/system` strażnika
   `canViewSystem` (`src/dashboard/permissions.ts`: tylko `admin`): rola bez dostępu trafia na
   pulpit z `history.state.denied`, który pokazuje „Nie masz dostępu do tej strony.” (`useAccessDenied`: odczyt i czyszczenie
   znacznika w tym samym wpisie historii, więc przeładowanie komunikatu nie powtarza); gdy `/me` się nie wczyta, trasa jest
@@ -46,9 +47,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (przeniesiony przez widok, np. formularz po zapisie przed `router.replace` na trasę utworzonego rekordu tą samą instancją,
   pole, w którym jest pracownik, topbar, menu), zostaje. H1 bez własnego `tabindex` (pulpit) dostaje od powłoki `tabindex="-1"`. Pozycja wybrana w szufladzie,
   która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog (Produkty, Kategorie, Ceny, Stany magazynowe),
-  Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
+  Produkty, Zamówienia, a obok nich pozycja „Klienci” `/customers` dla `admin` i `support`; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
-  szczegóły należą do pozycji listy, `/orders?refund=pending` i `/orders?refund=overdue` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
+  szczegóły należą do pozycji listy (`/customers/:customerId` do „Klientów”), `/orders?refund=pending` i `/orders?refund=overdue` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
   „Listy zamówień”, „Pulpit” tylko na `/`). `AppMenu` i `AppMenuItem` renderują ją: grupa to przycisk z `aria-expanded`
   i `aria-controls`, grupa bieżącej pozycji otwiera się przy wejściu i przy każdej zmianie trasy (zamyka ją tylko
   przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Region grupy ma `id`
@@ -415,6 +416,28 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wykonany.”, a fokus trafia na nagłówek karty „Akcje” (zestaw przycisków się zmienił), gdy karta zniknęła na „Historia”;
   „Wróć” i `Escape` oddają fokus przyciskowi, który otworzył okno. Zdarzenie `close-auto-focus` okna jest przejęte, żeby fokus nie
   spadł na `body`.
+- `src/customers/` – klienci (menu Sklep › Klienci, trasy `/customers` i `/customers/:customerId`: dwie trasy jednej ścieżki
+  `customers`, więc pozycja menu zostaje aktywna na karcie; strażnik `canViewCustomers` w routerze, wyjątki od niego jak przy
+  zamówieniach: odmowa to pulpit z `history.state.denied`, nieznane `/me` przepuszcza). Klient to konto sklepu z co najmniej jednym
+  zamówieniem (docs/features/admin-features/spec.md, sekcja 5). `useCustomerList` (widok `CustomersView`, standard listy:
+  `ListToolbar` z wyszukiwaniem, `DataTable`, `ListPager` z licznikiem pierwszej strony) na `useListUrlState` (`q`, `sort`:
+  `-lastOrderAt` (domyślny, niewysyłany), `name`, `-orderCount`, `-paidGross`, `perPage`): fraza 3–100 znaków po przycięciu
+  bez znaków sterujących (też U+2028 i U+2029; `trim()` zna NBSP), stosowana po Enterze; krótsza albo z takim znakiem nic nie
+  zmienia, a podpowiedź mówi, że trzeba 3 znaków. API łączy `q` tylko z `-lastOrderAt`, więc przy `q` pozostałe opcje „Sortuj”
+  są wyłączone z opisem „Wyszukiwanie działa tylko z sortowaniem po ostatnim zamówieniu.”, a fraza zastosowana nad innym
+  sortem wraca do ostatniego zamówienia. Kolumny: Klient (imię i nazwisko jako link do karty, pod nim e-mail), Zamówienia,
+  Wartość (`paidGross`), Ostatnie zamówienie (od 1024 px kolumna, niżej linia komórki Klient); `aria-sort` ma kolumna sortu
+  (`name` Klient, `orderCount` Zamówienia, `paidGross` Wartość, `lastOrderAt`). Poniżej 640 px karty. `CustomerDetailView`
+  w układzie szczegółów zamówienia: od 1280 px dwie kolumny, boczna 320 px w DOM przed główną (Tab zaczyna od niej, wyjątek od
+  kolejności zgodnej z układem: `docs/features/admin-design/spec.md`, „Dostępność”). Boczna: „Kontakt” (e-mail `mailto:`, telefon
+  `tel:`), „Podsumowanie” (`useCustomerDetail`: `GET /customers/{customerId}`; zamówienia, opłacone, wartość opłaconych, pierwsze
+  i ostatnie zamówienie, wszystko z odpowiedzi API), „Adresy” (do 10, najnowszy pierwszy, albo „Brak adresów dostawy.”). Główna:
+  „Zamówienia” (`useCustomerOrders`: `GET /orders?customerId=` na `useCursorPager`, bez wyszukiwania, sortu i filtrów, które API
+  odrzuca przy `customerId`; wybór liczby wierszy w `ListToolbar`, niezapisywany w adresie karty; wiersz prowadzi do
+  `/orders/:orderId`). 404 klienta to alert „Nie znaleźliśmy klienta.” z linkiem „Wróć do listy klientów”, błąd karty to alert
+  z „Spróbuj ponownie” (bez niego przy 403), a błąd samych zamówień zostaje w ich tabeli i nie psuje karty. W szczegółach
+  zamówienia karta „Klient” ma link „Karta klienta” (`customer-card`) tylko przy `customerId !== null` i `canViewCustomers`
+  (rola z `useAuthStore`, nieznany pracownik: bez linku).
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
   `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Promocje”,
   `ListToolbar` bez wyszukiwania, bo API nie szuka promocji, `DataTable`, `ListPager`) na `useListUrlState` (`status` jako
