@@ -403,7 +403,11 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
     który zadanie na pewno zmieni (np. `spec.md` epiku, `CLAUDE.md`), `/planner` wpisuje jako plik; katalog tylko dla
     plików nieznanych z góry, a przy niepewności szerszy katalog.
   - `parallel_with`: ID zadań, z którymi zadanie może trwać naraz. `/planner` wpisuje tu wynik `plan_manifest.py
-    parallel`: wszystkie pary dopuszczone przez regułę niżej.
+    parallel --blocked`: wszystkie pary dopuszczone przez regułę niżej. Klucz `blocked` tego wyniku
+    (`{"tasks": [A, B], "paths": [...]}`) wymienia pary zadań jednej fali, które obie mają `paths`, a nie mogą iść
+    naraz, bo reguła poniżej zwraca niepustą część wspólną (`paths`); kolejność: fala, potem plan; brak par to `[]`.
+    Bez `--blocked` wynik to sama mapa `{ID: [ID]}`. `/planner` preferuje w jednej fali rozłączne pliki
+    (`.claude/skills/planner/SKILL.md`).
   Zadanie bez `parallel_with` (także cały manifest bez tych pól, np. sprzed 19b) idzie szeregowo; `schema_version`
   zostaje 1.
 - **Reguła pary** (`plan_manifest.py validate` odrzuca manifest, który ją łamie): relacja jest symetryczna (każde
@@ -514,6 +518,8 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   bezpośrednią i przechodnią; wspólny kod aplikacji, ten sam plik dokumentacji, wspólny `CLAUDE.md`, wspólny katalog
   ze śledzonym `CLAUDE.md` (odrzucone), nakładające się katalogi dokumentacji, testów, CI i infrastruktury, także
   z nieśledzonym `CLAUDE.md` (dozwolone); błąd `git ls-files` (każda para odrzucona, `parallel` z kodem 2, manifest
-  bez par poprawny); `parallel`: lista maksymalna
+  bez par poprawny); `parallel --blocked`: wspólny plik jednej fali i wspólny kod aplikacji w `blocked`, para
+  dozwolona poza `blocked` i w `parallel_with`, zadania z różnych fal i zadanie bez `paths` poza `blocked`, kolejność
+  fala-plan, `[]` bez par, wynik bez flagi bez klucza `blocked`; `parallel`: lista maksymalna
   i symetryczna, zadanie bez `paths` z `[]`, wynik wpisany do planu przechodzi `validate`, obecne `parallel_with` bez
   wpływu, odmowa przy innym błędzie manifestu, brak pliku i zły JSON (kod 2).

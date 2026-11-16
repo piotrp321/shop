@@ -468,6 +468,51 @@ class PlanManifestTest(unittest.TestCase):
         self.assertEqual((2, ''), (r.returncode, r.stdout))
         self.assertIn('not valid JSON', r.stderr)
 
+    def blocked(self, tasks):
+        self.write_plan(self.manifest(tasks))
+        r = self.parallel('--blocked')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_parallel_blocked_reports_a_shared_file_of_one_wave(self):
+        out = self.blocked([task('CART-1', paths=['docs/a.md', 'docs/shared.md']),
+                            task('CART-2', paths=['docs/shared.md'])])
+        self.assertEqual([{'tasks': ['CART-1', 'CART-2'], 'paths': ['docs/shared.md']}], out['blocked'])
+        self.assertEqual([], out['CART-1'])
+
+    def test_parallel_blocked_reports_shared_application_code(self):
+        out = self.blocked([task('CART-1', paths=['apps/api/src/Cart/']),
+                            task('CART-2', paths=['apps/api/src/Cart/Cart.php'])])
+        self.assertEqual([{'tasks': ['CART-1', 'CART-2'], 'paths': ['apps/api/src/Cart/Cart.php']}], out['blocked'])
+
+    def test_parallel_blocked_skips_allowed_dependent_other_wave_and_pathless_pairs(self):
+        out = self.blocked([
+            task('CART-1', paths=['apps/api/src/Cart/']), task('CART-2', paths=['apps/store/src/cart/']),
+            task('CART-3', ['CART-1'], paths=['apps/api/src/Cart/']),
+            task('CART-4', ['CART-3'], paths=['apps/api/src/Cart/']),
+            task('CART-5', paths=['apps/api/src/Cart/']), task('CART-6')])
+        self.assertEqual([{'tasks': ['CART-1', 'CART-5'], 'paths': ['apps/api/src/Cart']}], out['blocked'])
+        self.assertEqual(['CART-2'], out['CART-1'])
+        self.assertEqual([], out['CART-6'])
+
+    def test_parallel_blocked_skips_dependent_tasks_of_different_waves(self):
+        out = self.blocked([task('CART-1', paths=['docs/a.md']), task('CART-2', ['CART-1'], paths=['docs/a.md']),
+                            task('CART-3', ['CART-2'], paths=['docs/a.md'])])
+        self.assertEqual([], out['blocked'])
+
+    def test_parallel_blocked_is_ordered_by_wave_then_plan_order(self):
+        out = self.blocked([task('CART-1', paths=['docs/a.md']), task('CART-2', ['CART-1'], paths=['docs/b.md']),
+                            task('CART-3', ['CART-1'], paths=['docs/b.md']), task('CART-4', paths=['docs/a.md'])])
+        self.assertEqual([['CART-1', 'CART-4'], ['CART-2', 'CART-3']], [b['tasks'] for b in out['blocked']])
+
+    def test_parallel_blocked_is_empty_without_pairs(self):
+        self.assertEqual([], self.blocked([task('CART-1', paths=['docs/a.md'])])['blocked'])
+
+    def test_parallel_without_the_flag_keeps_the_plain_map(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/a.md']), task('CART-2', paths=['docs/a.md'])]))
+        r = self.parallel()
+        self.assertEqual({'CART-1': [], 'CART-2': []}, json.loads(r.stdout))
+
     def test_usage_error(self):
         r = subprocess.run([sys.executable, SCRIPT], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2)
