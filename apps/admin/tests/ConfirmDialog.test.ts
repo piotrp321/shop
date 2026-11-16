@@ -204,3 +204,57 @@ describe("focusAfterAction", () => {
     expect(document.activeElement).toBe(document.getElementById("other"));
   });
 });
+
+describe("ConfirmDialog that the view closes itself (close-on-confirm off)", () => {
+  const Keeping = defineComponent({
+    components: { ConfirmDialog },
+    props: { error: { type: String, default: null }, busy: { type: Boolean, default: false } },
+    emits: ["confirm"],
+    setup() {
+      return { open: ref(true) };
+    },
+    template: `
+      <ConfirmDialog
+        v-model:open="open"
+        title="Usunąć kategorię Namioty?"
+        description="Kategoria zniknie z drzewa."
+        confirm-label="Usuń kategorię"
+        :close-on-confirm="false"
+        :error="error"
+        :busy="busy"
+        destructive
+        @confirm="$emit('confirm')"
+      />
+    `,
+  });
+
+  it("stays open after the confirmation, so that a refusal can be said in it", async () => {
+    wrapper = mount(Keeping, { attachTo: document.body });
+    await flushPromises();
+
+    button("Usuń kategorię")!.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("confirm")).toHaveLength(1);
+    expect(dialog()).not.toBeNull();
+  });
+
+  it("shows the error as an alert in the dialog and the busy state as a disabled button", async () => {
+    wrapper = mount(Keeping, { props: { error: "Przenieś produkty do innej kategorii, zanim usuniesz tę.", busy: true }, attachTo: document.body });
+    await flushPromises();
+
+    const alert = dialog()!.querySelector("[role=alert]");
+    expect(alert?.textContent).toContain("Przenieś produkty do innej kategorii, zanim usuniesz tę.");
+    expect(button("Usuń kategorię")!.disabled).toBe(true);
+  });
+
+  it("still closes with „Wróć”", async () => {
+    wrapper = mount(Keeping, { attachTo: document.body });
+    await flushPromises();
+
+    button("Wróć")!.click();
+    await flushPromises();
+
+    expect(dialog()).toBeNull();
+  });
+});
