@@ -15,6 +15,7 @@ use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderPaid;
 use App\Ordering\Domain\OrderStatus;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
+use App\Tests\Unit\Ordering\InMemoryCustomerSummaries;
 use App\Tests\Unit\Ordering\InMemorySalesHours;
 use App\Tests\Unit\Ordering\Journal;
 use App\Tests\Unit\Ordering\JournalingEventPublisher;
@@ -37,10 +38,12 @@ final class MarkOrderPaidHandlerTest extends TestCase
     private JournalingEventPublisher $events;
     private FixedOrderingClock $clock;
     private InMemorySalesHours $sales;
+    private InMemoryCustomerSummaries $customers;
 
     protected function setUp(): void
     {
         $this->sales = new InMemorySalesHours();
+        $this->customers = new InMemoryCustomerSummaries();
         $this->orders = new VersionedOrders();
         $this->orders->add(OrderExamples::placed());
         $this->events = new JournalingEventPublisher(new Journal());
@@ -61,6 +64,24 @@ final class MarkOrderPaidHandlerTest extends TestCase
         self::assertEquals([['orderId' => OrderExamples::ORDER, 'paidAt' => $this->clock->now, 'gross' => OrderExamples::TOTAL]], $this->sales->added, 'the paid order is added to the sales of its hour once');
     }
 
+    public function testAPaymentThatPaysAnOrderOfACustomerIsAddedToTheCustomerOnce(): void
+    {
+        $this->orders = new VersionedOrders();
+        $this->orders->add(OrderExamples::placed(byCustomer: true));
+
+        self::assertSame(MarkOrderPaidResult::Paid, $this->handle(self::command()));
+        self::assertSame(MarkOrderPaidResult::AlreadyPaid, $this->handle(self::command()));
+
+        self::assertSame([['customerId' => OrderExamples::CUSTOMER, 'orderId' => OrderExamples::ORDER, 'gross' => OrderExamples::TOTAL]], $this->customers->payments);
+    }
+
+    public function testAPaymentOfAnOrderOfAGuestAddsNoCustomer(): void
+    {
+        self::assertSame(MarkOrderPaidResult::Paid, $this->handle(self::command()));
+
+        self::assertSame([], $this->customers->payments);
+    }
+
     /**
      * @return iterable<string, array{\Closure(self): void, MarkOrderPaid, MarkOrderPaidResult}>
      */
@@ -71,6 +92,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
             $test->events->published = [];
             $test->orders->saved = [];
             $test->sales->added = [];
+            $test->customers->payments = [];
         };
 
         yield 'the same payment again' => [$paid, self::command(), MarkOrderPaidResult::AlreadyPaid];
@@ -94,6 +116,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
         self::assertSame([], $this->orders->saved);
         self::assertSame([], $this->events->published);
         self::assertSame([], $this->sales->added, 'only a payment that pays the order adds to the sales');
+        self::assertSame([], $this->customers->payments, 'nor to the customer');
     }
 
     public function testAnUnknownOrderOrAnIdThatIsNoUuidIsOrderToPayNotFound(): void
@@ -143,7 +166,7 @@ final class MarkOrderPaidHandlerTest extends TestCase
 
     private function handle(MarkOrderPaid $command): MarkOrderPaidResult
     {
-        return new MarkOrderPaidHandler($this->orders, $this->events, $this->clock, $this->sales)($command);
+        return new MarkOrderPaidHandler($this->orders, $this->events, $this->clock, $this->sales, $this->customers)($command);
     }
 
     private static function command(

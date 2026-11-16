@@ -44,7 +44,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `outbox`, `scheduled`, `promotions`, `jobs`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie, historię statusów, powiadomienia i sprzedaż godzinową (`ordering_sales_hour`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  linie, historię statusów, powiadomienia, sprzedaż godzinową (`ordering_sales_hour`) i klientów (`ordering_customer`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
@@ -205,6 +205,24 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   dopisanie), albo czeka na commit przebudowy i dopisuje się do nowego wiersza; żadne zamówienie nie ginie ani nie
   liczy się dwa razy (test `SalesRebuildConcurrencyTest`, dwa procesy). Odczyt (`GetSalesSummary`) sumuje najwyżej
   2 × 720 godzin po kluczu tabeli, nigdy zamówień.
+- Wyjątek: klienci panelu w Ordering (spec ADMIN-FEATURES, sekcja 5, decyzja A4). Tabela `ordering_customer`
+  (PK `customer_id` = `sub` konta sklepu; `email`, `full_name`, `phone` najnowszego zamówienia, `order_count`,
+  `paid_count`, `paid_gross` w groszach bez odejmowania zwrotów, `first_order_at`, `last_order_at` i `last_order_id`)
+  jest zapisywana przez DBAL (`DbalCustomerSummaries`, port `CustomerSummaries`), a rekord `CustomerRecord` tylko
+  definiuje schemat. Klient to konto z co najmniej jednym zamówieniem; gość nim nie jest. `PlaceOrder` tylko dla nowego
+  zamówienia klienta (nie dla powtórzenia po `Idempotency-Key`) robi w swojej transakcji jeden `INSERT … ON CONFLICT
+  (customer_id) DO UPDATE SET order_count = order_count + 1, first_order_at = LEAST(…), last_order_at = GREATEST(…)`,
+  a kontakt i `last_order_id` bierze z zamówienia tylko wtedy, gdy `(placed_at, id)` zamówienia nie jest wcześniejsze
+  niż `(last_order_at, last_order_id)` wiersza (`placed_at` ma sekundy, więc remis rozstrzyga identyfikator, tak jak
+  przebudowa `ORDER BY placed_at DESC, id DESC`); starsze zamówienie zatwierdzone po nowszym nie nadpisuje kontaktu (test
+  `CustomerSummariesConcurrencyTest`, dwa procesy). `MarkOrderPaid` przy wyniku `Paid` zamówienia klienta dopisuje
+  `paid_count + 1`, `paid_gross + total_gross`; klient bez wiersza (zamówienia sprzed wdrożenia, przed backfillem)
+  dostaje wiersz z samego opłaconego zamówienia (`INSERT … SELECT` z `ordering_order`: jego kontakt i chwila, jedno
+  zamówienie, opłacone), nigdy wiersz z `NULL`, a przebudowa i tak go nadpisze. Wycofana transakcja wycofuje dopisanie.
+  Indeksy (migracje `Version20261116090000CreateCustomers`, `Version20261116090100IndexCustomerSearch`):
+  `(last_order_at DESC, customer_id)`, `(lower(full_name), customer_id)` (mapowany tylko kolumną `customer_id`, bo tyle
+  odczytują narzędzia schematu), `(order_count DESC, customer_id)`, `(paid_gross DESC, customer_id)` i GIN trigram na
+  `lower(email)` i `lower(full_name)` (`CONCURRENTLY`).
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym

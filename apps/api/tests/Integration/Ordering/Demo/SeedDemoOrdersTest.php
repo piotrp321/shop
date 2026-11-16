@@ -81,6 +81,17 @@ final class SeedDemoOrdersTest extends KernelTestCase
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_sales_hour'), 'no orders, no sales');
     }
 
+    public function testRemovesTheCustomersOfTheOrders(): void
+    {
+        $this->connection->executeStatement("INSERT INTO ordering_customer (customer_id, email, full_name, phone, order_count, paid_count, paid_gross, first_order_at, last_order_at, last_order_id) VALUES ('kc-seed', 'jan@example.com', 'Jan Kowalski', '+48600100200', 1, 0, 0, now(), now(), '01970000-0000-7000-8000-000000000001')");
+
+        $tester = new CommandTester(new Application(self::$kernel ?? self::bootKernel())->find('ordering:seed-demo'));
+        $exitCode = $tester->execute([]);
+
+        self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_customer'), 'no orders, no customers');
+    }
+
     public function testRemovesTheScheduledQueueOnlyAndKeepsTheOutboxAndFailed(): void
     {
         foreach (['scheduled', 'scheduled', 'outbox', 'failed', 'events'] as $queue) {
