@@ -57,7 +57,8 @@ pomiarem jest tylko drugi.
 
 W pilocie na tych samych przypadkach było 2 fałszywe alarmy i 9 z 18 zgłoszeń `nieznane`. Tu zmieniły się naraz
 recenzowany commit, zlecenie i sposób uruchomienia, więc różnicy nie da się przypisać jednemu z nich. W danych widać
-tylko tyle, że zgłoszenia `nieznane` z pilota dotyczyły kodu albo dowodów, których w odtworzeniu nie ma albo które tu są.
+tylko tyle: z dziewięciu zgłoszeń `nieznane` z pilota trzy dotyczyły kodu, którego w recenzowanym diffie nie ma, trzy
+brakujących dowodów, które tutaj są, a trzy (angielskie komunikaty) wróciły raz, jako `SUGGESTION`.
 
 ## 4. Koszt i czas
 
