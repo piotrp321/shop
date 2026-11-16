@@ -336,6 +336,26 @@ class ReplayRun(Base):
         meta = json.loads((d / "meta.json").read_text())
         self.assertEqual((meta["status"], meta["subagent_tokens"], meta["task"]), ("ok", 10, "T"))
 
+    def test_a_system_line_with_a_string_message_is_skipped(self):
+        denied = json.dumps({"type": "system", "subtype": "permission_denied", "message": "Permission was denied."})
+        code, d = self.go([INIT, agent_use(), denied, agent_result(), result(text="gotowe")])
+        self.assertEqual(code, 0)
+        self.assertEqual((d / "report.md").read_text(), "the report")
+
+    def test_a_failure_while_reading_the_report_keeps_the_real_cost(self):
+        def boom(path, order):
+            raise AttributeError("broken reader")
+        with mock.patch.object(run, "parse_subagent", boom):
+            code, d = self.go([INIT, agent_use(), agent_result(), result(text="gotowe")])
+        self.assertEqual(code, 1)
+        meta = json.loads((d / "meta.json").read_text())
+        self.assertEqual(meta["status"], "infra_error")
+        self.assertIn("broken reader", meta["error"])
+        self.assertFalse((d / "report.md").exists())
+        row = json.loads((self.out / "out" / "ledger.jsonl").read_text().splitlines()[0])
+        self.assertEqual(row["cost_usd"], meta["cost_usd"])
+        self.assertIsNotNone(meta["cost_usd"])
+
     def test_case_without_replay_exits_2(self):
         code, d = self.go([], with_replay=False)
         self.assertEqual(code, 2)

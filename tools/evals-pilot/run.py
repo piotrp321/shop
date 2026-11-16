@@ -216,7 +216,8 @@ def parse_subagent(path, order):
             continue
         if not isinstance(obj, dict) or obj.get("parent_tool_use_id"):
             continue
-        content = (obj.get("message") or {}).get("content")
+        message = obj.get("message")  # a string in some system lines (e.g. permission_denied)
+        content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, list):
             continue
         for block in content:
@@ -322,6 +323,7 @@ def run_case(args, case_id):
             started_model = True
             timed_out = run_claude(run_dir, args)
         info = parse_result(run_dir / "stdout.jsonl")
+        meta["cost_usd"] = info["cost_usd"]  # known from here on, also when reading the report fails below
         if timed_out:
             info.update(status="infra_error", error=f"timeout after {args.timeout_min} min")
         if replay_mode and info["status"] == "ok" and not timed_out:
@@ -336,9 +338,9 @@ def run_case(args, case_id):
             (run_dir / "report.md").write_text(info["text"])
         info.pop("text")
         meta.update(info)
-    except (RuntimeError, subprocess.CalledProcessError, OSError) as exc:
+    except Exception as exc:  # any failure, also in reading the transcript, must still reach meta.json and the ledger
         detail = getattr(exc, "stderr", "") or ""
-        meta["error"] = f"{exc} {detail}".strip()
+        meta.update(status="infra_error", error=f"{type(exc).__name__}: {exc} {detail}".strip())
     meta["wall_s"] = round(time.time() - t0, 1)
     meta["agent_commit"] = meta.get("agent_commit")
     run_dir.mkdir(parents=True, exist_ok=True)
