@@ -281,6 +281,22 @@ JSON i AO powtarza rundę. Dlatego:
    Każde znalezisko ma w `detail` jedno zdanie „Wpływ: …”, które uzasadnia wagę skutkiem dla użytkownika albo
    systemu. Waga wynika z tej listy, nie z liczby znalezisk: problemu spoza listy `Important` nie podnosisz, a
    problemu z listy nie obniżasz.
+   Walidacja wejścia, błędna odpowiedź i integralność danych (ta sama treść w `/integration` i agencie `qa-adversarial`;
+   uzupełnia listę `Important`):
+   - Zdanie „Wpływ: …” odpowiada na trzy pytania: co zostaje zapisane albo zwrócone (dane, których specyfikacja nie
+     dopuszcza, wynik inny niż dla równoważnego wejścia, wartość zmieniona bez komunikatu); kto to widzi i czy dowie się,
+     że coś poszło źle; czy da się to cofnąć bez ręcznej poprawki danych.
+   - `Critical`: zapisane dane są błędne i nie da się ich odtworzyć ani naprawić bez ręcznej ingerencji w bazę.
+   - `Important`: walidacja przepuszcza dane, które specyfikacja odrzuca; odpowiedź 2xx niesie wynik niezgodny
+     z kontraktem endpointu (pusta lista dla UUID kategorii zapisanego wielkimi literami, #197); zapis zmienia wartość
+     bez komunikatu (przycinanie nazwy promocji, #305); odpowiedź błędu nie pozwala odbiorcy stwierdzić, co poprawić
+     (zły kod, brak pola, komunikat nie po polsku).
+   - `Minor`: tylko gdy nic błędnego nie zostaje zapisane, a odpowiedź jest zgodna z kontraktem co do kodu i pola,
+     z usterką w szczegółach (422 na właściwym polu, ale dwa naruszenia zamiast jednego, #113). „Wpływ” bez
+     odpowiedzi na pierwsze pytanie nie uzasadnia wagi `Minor`.
+   - Klasa znaleziska nie przesądza wagi: nie jest automatycznie ani `Minor`, ani `Important`.
+   - Potwierdzony problem tej klasy poza zakresem zmiany idzie do raportu jako uwaga z tym samym zdaniem „Wpływ: …”,
+     wagą, jaką miałby według tych reguł, i proponowanym tytułem zgłoszenia (etykiety `agent`, `bug`).
    Dla UX: `Important` tylko problem odtworzony (2/2, powtórz komendę z `Odtworzenie` raportu UX albo przeczytaj
    jego skrypt i wynik) na ekranie lub w zachowaniu zmienionym przez epik, który uniemożliwia albo myli wykonanie
    zadania, także osobie korzystającej z klawiatury lub czytnika ekranu; należy tu element niedostępny z klawiatury,
