@@ -166,7 +166,10 @@ Wymaga certyfikatu w repo (2.5).
    stos i token dla Alloy (9.).
 3. **agent** – wpisuje adres repozytorium (`s3:https://<id konta>.r2.cloudflarestorage.com/<bucket>`, id konta podaje
    użytkownik) w `backup.repository` i region `auto` w `environments/prod/values.yaml` (PR) oraz adresy i identyfikatory instancji
-   Grafana Cloud w `argocd/apps/monitoring.yaml` (9.).
+   Grafana Cloud w `argocd/apps/monitoring.yaml` (9.). Kopie są w `prod` wyłączone (`backup.enabled: false`), dopóki nie ma
+   bucketu i sekretu `shop-backup` (krok 4); `backup.enabled: true` trafia do tego samego PR co zaszyfrowany `shop-backup` (krok 5).
+   Wcześniej trzeba przynajmniej raz uruchomić `bootstrap` z wersją `argocd/install/argocd.yaml`, która ma customizację zdrowia
+   PVC (inaczej synchronizacja `shop` czeka bez końca na PVC `backup-work`, który do pierwszej kopii jest `Pending`).
 4. **użytkownik** – wpisuje wartości w terminalu (bez echa, nigdy w argumentach, zmiennych ani rozmowie z agentem):
 
    ```sh
@@ -264,7 +267,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
-| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, punkt kontaktowy: użytkownik | siedem reguł w rulerze; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
+| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, punkt kontaktowy: użytkownik | siedem reguł w rulerze (trzy przy wyłączonych kopiach); `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
 | Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
@@ -433,6 +436,7 @@ wtedy, gdy serwer albo Alloy nie żyje. Alerty z treści logów (np. ostrzeżeni
    powiadomień. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; czy reguły z rulera trafiają do tego punktu
    kontaktowego, potwierdza dopiero krok 8.
 8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać siedem reguł grupy `shop-backup` i `shop-cluster`
+   (przy kopiach wyłączonych w `prod`, 3.: trzy reguły `shop-cluster`)
    (źródło: `PrometheusRule` `shop-alerts` w przestrzeni `shop`, synchronizowany przez Alloy do rulera). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
    `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.

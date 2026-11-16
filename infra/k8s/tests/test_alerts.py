@@ -11,7 +11,7 @@ ALERTS = ["BackupFailed", "BackupMissing", "BackupVerifyFailed", "BackupVerifyMi
 BACKUP_ALERTS = ALERTS[:4]
 
 
-def rules(case="prod"):
+def rules(case="prod-backup"):
     found = of_kind(case, "PrometheusRule")
     assert len(found) == 1, f"{case} has {len(found)} PrometheusRule objects"
     groups = found[0]["spec"]["groups"]
@@ -35,7 +35,7 @@ def absent_of(expr):
 
 class RenderTest(unittest.TestCase):
     def test_prod_has_one_prometheus_rule_with_the_seven_alerts(self):
-        found = of_kind("prod", "PrometheusRule")
+        found = of_kind("prod-backup", "PrometheusRule")
         self.assertEqual(1, len(found))
         self.assertEqual("monitoring.coreos.com/v1", found[0]["apiVersion"])
         self.assertEqual("shop", found[0]["metadata"]["namespace"])
@@ -84,7 +84,7 @@ class RenderTest(unittest.TestCase):
 
 class WorkloadNotReadyTest(unittest.TestCase):
     def test_it_has_an_absent_for_every_deployment_and_statefulset_of_the_render(self):
-        for case in ("prod", "prod-nobackup", "prod-noinit"):
+        for case in ("prod-backup", "prod-nobackup", "prod-noinit"):
             expected = workloads(case)
             self.assertGreater(len(expected), 10, case)
             self.assertIn(("StatefulSet", "redis"), expected, case)

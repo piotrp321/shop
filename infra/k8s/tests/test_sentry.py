@@ -127,7 +127,8 @@ class SentryEnvTest(unittest.TestCase):
             self.assertRegex(dsn, r"^https://[0-9a-f]{32}@o[0-9]+\.ingest\.de\.sentry\.io/[0-9]+$")
         apps = sorted(by_dsn.values(), key=len)
         self.assertEqual([{"admin"}, {"store"}], sorted(apps[:2], key=sorted))
-        self.assertTrue(API_WORKLOADS <= apps[2])
+        # The CronJob restore comes only with the backup, which prod has off until it is configured.
+        self.assertTrue(API_WORKLOADS - {"restore"} <= apps[2])
         self.assertFalse({"store", "admin"} & apps[2])
 
     def test_the_default_rate_is_zero_a_string(self):
