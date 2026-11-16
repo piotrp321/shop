@@ -166,7 +166,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   konfiguracja z renderu przechodzi `alloy validate`),
   reguły alertów (`templates/00-alerts.yaml`: nazwa sortuje się tak, żeby Helm, który renderuje szablony w odwrotnej kolejności
   nazw, wyrenderował ją po wszystkich workloadach; `PrometheusRule` z siedmioma alertami tylko przy `alerts.enabled`, czyli w
-  `prod`, nie w `ci` i `load`, a bez `backup.enabled` bez czterech alertów kopii; `WorkloadNotReady` ma `absent` dla każdego Deploymentu
+  `prod`, nie w `ci` i `load`, a bez `backup.enabled` (w `prod`, dopóki kopie nie są skonfigurowane) bez czterech alertów kopii;
+  `promtool` testuje reguły renderu `prod-backup` (`prod` z `backup.enabled=true`), z którego czytają też testy kopii; `WorkloadNotReady` ma `absent` dla każdego Deploymentu
   i StatefulSetu renderu, także w `ci` z `alerts.enabled`, bo `shop.deployment` i `shop.statefulset` zapisują workload w rejestrze
   czytanym przez regułę; alerty kopii patrzą na dokładną nazwę CronJoba, `BackupMissing` i `BackupVerifyMissing` mają `absent`,
   `NodeDiskFull` pomija systemy tymczasowe; brak CRD przy `alerts.enabled` ma dawać błąd synchronizacji, więc szablon nie pyta

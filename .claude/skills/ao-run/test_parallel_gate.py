@@ -274,8 +274,8 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual(['docs/x/y'], tc(['docs/x'], ['docs/x/y/']))
         # Two directories outside application code may overlap; disjoint paths never conflict.
         self.assertEqual([], tc(['docs/'], ['docs/features/cart/']))
-        self.assertEqual([], tc(['apps/api/tests/', 'infra/', '.github/'], ['apps/api/tests/Unit/', 'infra/k8s/',
-                                                                          '.github/']))
+        self.assertEqual([], tc(['apps/api/tests/', 'infra/', '.github/workflows/'],
+                                ['apps/api/tests/Unit/', 'infra/k8s/', '.github/workflows/']))
         self.assertEqual([], tc(['apps/api/src/Cart/'], ['apps/api/src/CartX/', 'apps/store/src/cart/']))
         self.assertEqual([], tc(['docs/a.md'], ['docs/b.md']))
         self.assertEqual(['CLAUDE.md', 'apps/api/src/Cart', 'docs/x.md'],
@@ -291,7 +291,7 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/k8s/']))
         self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/'], ['infra/k8s/']))
         self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/']))
-        self.assertEqual(['e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md'], tc(['infra/', 'e2e/'], ['e2e/', 'infra/']))
+        self.assertEqual(['e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md'], tc(['infra/k8s/', 'e2e/'], ['e2e/', 'infra/k8s/']))
         self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/CLAUDE.md'], ['infra/']))
         self.assertEqual(['apps/api', 'apps/api/CLAUDE.md'], tc(['apps/api/'], ['apps/api/']))
         # A common directory without a tracked CLAUDE.md stays allowed.
@@ -310,6 +310,59 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual(['infra/k8s/CLAUDE.md'],
                          pg.task_conflicts(['INFRA/k8s/'], ['infra/k8s/'], claude_md=('infra/k8s/CLAUDE.md',)))
         self.assertEqual(['infra/k8s/claude.md'], pg.task_conflicts(['infra/k8s/claude.md'], ['infra/k8s/CLAUDE.md']))
+
+    def test_task_conflicts_treat_executable_tool_code_as_blocking(self):
+        tc = pg.task_conflicts
+        # Directories of executable code block a common directory, also when both sides declare it (#638).
+        self.assertEqual(['tools/metrics'], tc(['tools/metrics/'], ['tools/metrics/']))
+        self.assertEqual(['tools/metrics'], tc(['tools/metrics/'], ['tools/']))
+        self.assertEqual(['.ao'], tc(['.ao/'], ['.ao/']))
+        self.assertEqual(['.github/scripts'], tc(['.github/scripts/'], ['.github/scripts/']))
+        self.assertEqual(['infra/scripts'], tc(['infra/scripts/'], ['infra/']))
+        self.assertEqual(['.claude/skills/x'], tc(['.claude/'], ['.claude/skills/x/']))
+        self.assertEqual(['.claude/skills/ao-run'], tc(['.claude/skills/ao-run/'], ['.claude/skills/ao-run/']))
+        # A broader declaration contains the code, as `apps` contains apps/<app>/src.
+        self.assertEqual(['infra'], tc(['infra/'], ['infra/']))
+        self.assertEqual(['.github'], tc(['.github/'], ['.github/']))
+        # Other directories stay as they were.
+        self.assertEqual([], tc(['.claude/skills/ao-run/'], ['.claude/skills/retro/']))
+        self.assertEqual([], tc(['.github/workflows/'], ['.github/workflows/']))
+        self.assertEqual([], tc(['docs/'], ['docs/']))
+        self.assertEqual([], tc(['.claude/agents/'], ['.claude/agents/']))
+        self.assertEqual([], tc(['e2e/'], ['e2e/']))
+        self.assertEqual([], tc(['load/'], ['load/']))
+        self.assertEqual([], tc(['infra/k8s/'], ['infra/k8s/']))
+        self.assertEqual([], tc(['infra/k8s/'], ['infra/']))
+        self.assertEqual([], tc(['apps/api/tests/'], ['apps/api/tests/']))
+        # Bypass attempts: another segment is another directory, the case does not matter.
+        self.assertEqual([], tc(['toolsx/'], ['tools/']))
+        self.assertEqual([], tc(['tools/metrics/'], ['tools/metrics2/']))
+        self.assertEqual(['Tools/metrics'], tc(['Tools/metrics/'], ['tools/metrics/']))
+        self.assertEqual(['.CLAUDE/skills/x'], tc(['.CLAUDE/skills/x/'], ['.claude/skills/x/']))
+        # Exceptions of step 5: a README.md is a file in common, never executable code; so is a CLAUDE.md.
+        self.assertEqual(['tools/README.md'], tc(['tools/README.md'], ['tools/README.md']))
+        self.assertFalse(pg.is_executable_code('tools/README.md'))
+        self.assertFalse(pg.is_executable_code('tools/metrics/CLAUDE.md'))
+        self.assertFalse(pg.is_executable_code('apps/api/openapi.json'))
+
+    def test_is_executable_code(self):
+        for path in ('tools', 'tools/x.py', 'tools/metrics', '.claude', '.claude/skills', '.claude/skills/x/a.py',
+                     '.ao', '.ao/setup', '.github', '.github/scripts', '.github/scripts/a.sh', 'infra',
+                     'infra/scripts', 'infra/scripts/init-env.sh', 'apps', 'apps/api/src/Cart'):
+            with self.subTest(path=path):
+                self.assertTrue(pg.is_executable_code(path))
+        for path in ('docs', 'docs/a.md', 'e2e', '.claude/agents', '.claude/agents/a.md', '.claude/settings.json',
+                     '.github/workflows', '.github/workflows/ci.yml', 'infra/k8s', 'infra/scripts2', 'toolsx',
+                     'tools/README.md', 'tools/CLAUDE.md', 'apps/api/tests', 'apps/api/openapi.json'):
+            with self.subTest(path=path):
+                self.assertFalse(pg.is_executable_code(path))
+
+    def test_the_gate_of_19a_keeps_treating_tool_code_as_allowed(self):
+        self.assertFalse(pg.is_app_code('tools/x.py'))
+        self.assertTrue(pg.is_allowed('tools/x.py'))
+        self.assertTrue(pg.is_allowed('.claude/skills/ao-run/parallel_gate.py'))
+        self.assertTrue(pg.is_allowed('infra/scripts/init-env.sh'))
+        self.assertFalse(pg.is_allowed('apps/api/src/Cart/Cart.php'))
 
 
 class MaxParallelTest(unittest.TestCase):
