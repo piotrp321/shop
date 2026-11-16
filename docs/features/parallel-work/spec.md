@@ -403,9 +403,10 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
     który zadanie na pewno zmieni (np. `spec.md` epiku, `CLAUDE.md`), `/planner` wpisuje jako plik; katalog tylko dla
     plików nieznanych z góry, a przy niepewności szerszy katalog.
   - `parallel_with`: ID zadań, z którymi zadanie może trwać naraz. `/planner` wpisuje tu wynik `plan_manifest.py
-    parallel --blocked`: wszystkie pary dopuszczone przez regułę niżej. Wynik z `--blocked` to `{"parallel_with": {ID: [ID]}, "blocked": [...]}`; `blocked`
-    (`{"tasks": [A, B], "paths": [...]}`) wymienia pary zadań jednej fali, które obie mają `paths`, a nie mogą iść
-    naraz, bo reguła poniżej zwraca niepustą część wspólną (`paths`); kolejność: fala, potem plan; brak par to `[]`.
+    parallel --blocked`: wszystkie pary dopuszczone przez regułę niżej. Wynik z `--blocked` to
+    `{"parallel_with": {ID: [ID]}, "blocked": [...]}`; `blocked` (`{"tasks": [A, B], "paths": [...]}`)
+    wymienia pary zadań jednej fali, które obie mają `paths`, a nie mogą iść naraz, bo reguła poniżej zwraca niepustą
+    część wspólną (`paths`); kolejność: fala, potem plan; brak par to `[]`.
     Bez `--blocked` wynik to sama mapa `{ID: [ID]}`. `/planner` preferuje w jednej fali rozłączne pliki
     (`.claude/skills/planner/SKILL.md`).
   Zadanie bez `parallel_with` (także cały manifest bez tych pól, np. sprzed 19b) idzie szeregowo; `schema_version`
@@ -450,7 +451,7 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
 - `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4 (także `--max-parallel 2`), 5, 6, 6a, 7, 7a, 8, „Noc”
   i „Czego nie robisz”.
 - `.claude/skills/planner/plan_manifest.py`, `test_plan_manifest.py` i `SKILL.md`: pola `paths` i `parallel_with`,
-  reguła pary (z `parallel_gate.task_conflicts`) i komenda `parallel`.
+  reguła pary (z `parallel_gate.task_conflicts`) i komenda `parallel` (z `--blocked`: także pary zablokowane).
 - `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów, pliki generowane bez konfliktu, kontrola migracji
   i testy stanu zintegrowanego w sekcji „Konflikt z gałęzią docelową lub z `main`”.
 - Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: wskazują
@@ -520,6 +521,6 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   z nieśledzonym `CLAUDE.md` (dozwolone); błąd `git ls-files` (każda para odrzucona, `parallel` z kodem 2, manifest
   bez par poprawny); `parallel --blocked`: wspólny plik jednej fali i wspólny kod aplikacji w `blocked`, para
   dozwolona poza `blocked` i w `parallel_with`, zadania z różnych fal i zadanie bez `paths` poza `blocked`, kolejność
-  fala-plan, `[]` bez par, wynik z flagą w osobnych kluczach `parallel_with` i `blocked`, wynik bez flagi jako sama mapa; `parallel`: lista maksymalna
-  i symetryczna, zadanie bez `paths` z `[]`, wynik wpisany do planu przechodzi `validate`, obecne `parallel_with` bez
-  wpływu, odmowa przy innym błędzie manifestu, brak pliku i zły JSON (kod 2).
+  fala-plan, `[]` bez par, wynik z flagą w osobnych kluczach `parallel_with` i `blocked`, wynik bez flagi jako sama
+  mapa; `parallel`: lista maksymalna i symetryczna, zadanie bez `paths` z `[]`, wynik wpisany do planu przechodzi
+  `validate`, obecne `parallel_with` bez wpływu, odmowa przy innym błędzie manifestu, brak pliku i zły JSON (kod 2).

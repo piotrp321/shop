@@ -508,7 +508,7 @@ class PlanManifestTest(unittest.TestCase):
     def test_parallel_blocked_is_empty_without_pairs(self):
         self.assertEqual([], self.blocked([task('CART-1', paths=['docs/a.md'])])['blocked'])
 
-    def test_parallel_blocked_output_has_keeps_tasks_named_blocked_apart(self):
+    def test_parallel_blocked_output_keeps_tasks_named_blocked_apart(self):
         self.write_plan(self.manifest([task('blocked-1', paths=['docs/a.md']),
                                        task('blocked-2', paths=['docs/b.md'])], epic='blocked'))
         out = json.loads(self.parallel('--blocked').stdout)
