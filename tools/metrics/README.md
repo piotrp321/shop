@@ -112,7 +112,7 @@ zapisany rekord jest pomijany.
 | `breakdown_order` | kolejność kategorii `breakdown` (pierwszeństwo; `idle` zawsze liczy resztę) |
 | `github_wait_cap_s` | najdłuższy `github_wait` od ostatniego zdarzenia serii (1800 s) |
 | `busy_timeout_ms`, `gh_timeout_s` | czas oczekiwania na zajętą bazę (5000 ms) i na `gh` (60 s) |
-| `shell_tools`, `command_categories` | nazwy narzędzi powłoki i wzorce kategorii poleceń (używa je METRICS-2) |
+| `shell_tools`, `command_categories` | nazwy narzędzi powłoki i wzorce kategorii poleceń (używa je METRICS-2); `read` pasuje tylko do całego polecenia tylko do odczytu (`git status`, `diff`, `log`, `show`, `rev-parse`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `wc`, `pwd`) bez operatorów powłoki, przekierowań, `$` i odwrotnych apostrofów, więc `repeat_runs` jest dolną granicą |
 | `token_weights` | proporcje cennika do podziału wartości na role (METRICS-2) |
 | `bottlenecks`, `waste`, `decisions`, `evals` | progi wąskich gardeł, alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 (METRICS-3 i dalej) |
 | `regression_window_days`, `trend_last` | okno regresji (14 dni), domyślna liczba epików w `trend` (10) |

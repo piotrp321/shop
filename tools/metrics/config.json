@@ -39,7 +39,7 @@
       "\\bgh\\s+run\\s+watch\\b[^|;&>]*"
     ],
     "read": [
-      "^\\s*(?:git\\s+(?:status|diff|log|show|branch|rev-parse)|ls|cat|head|tail|grep|rg|find|wc|pwd|sed\\s+-n)\\b[^|;&>]*"
+      "^\\s*(?:git\\s+(?:status|diff|log|show|rev-parse)|ls|cat|head|tail|grep|rg|wc|pwd)\\b[^|;&<>`$\\n]*$"
     ]
   },
   "token_weights": {
