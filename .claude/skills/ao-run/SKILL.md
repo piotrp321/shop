@@ -536,6 +536,35 @@ Ręczne poprawki: 2
 - ręczne ao release po awarii stosu
 ```
 
+**Zadania naraz (19b)** (definicje: `docs/features/parallel-work/spec.md`, „Pomiar zadań naraz”). Przy `MERGED`
+uruchom (tylko odczyt):
+
+```bash
+python3 "$SKILL_ROOT/.claude/skills/ao-run/task_pairs.py" <dir> --ao-home "$AO_HOME" --repo "$SHOP"
+```
+
+Kod różny od 0: powiedz o tym i pomiń blok. Inaczej dopisz blok na końcu komentarza z pomiarem, oddzielony pustą
+linią od listy poprawek (`retro.py collect` kończy na niej listę); `null` to „brak danych”, nigdy 0:
+
+```text
+Zadania naraz (19b)
+Współbieżność zmierzona: 30 min (METRICS-4 + METRICS-7: 30 min)
+Teoretyczna oszczędność: 12.5% (przy tych samych czasach prób szeregowo, nie przyspieszenie)
+Wskaźnik obciążenia: 1.08 (suma prób / czas epiku)
+Konflikty zadań: 1 (METRICS-7: 1); rundy poprawek PR: conflict 1, ci_failed 2
+Naprawy: REPAIR 0 (prób 0), poprawki QA 1 (prób 1)
+Decyzje człowieka 1, operacyjne 0
+Kolejka zadań równoległych: 2 wejścia, razem 6 min; cooldown 0 min; przerwy hosta 0 min; ostrzeżenia limitu 1; zasoby: brak danych; awarie stosu 0
+Audyt paths: spoza deklaracji METRICS-1 (docs/vision.md); konflikty rzeczywiste par: brak
+```
+
+Źródła: `concurrency.concurrent_s` i `pairs` (min), `theoretical_saving` (%), `attempts_to_wall`, `conflicts`
+i `fix_rounds`, `repairs`, `interventions` (`human`, `operational`), `waits` (`queue.count` i `total_s`, `cooldowns`
+i `host_pauses` `total_s`, `usage_warnings`, `resources`, `setup_failures`), `audit.tasks` z niepustym `undeclared`
+i `audit.pairs` z niepustym `actual_conflicts`. Bez tych pozycji: „brak”. Blok to tylko metryka, bez decyzji ani
+blokad; nie używaj w nim etykiet komentarza pomiaru (`Interwencje człowieka`, `Czekanie na użytkownika`, `Ręczne
+poprawki`) ani słowa „czekanie” z liczbą (`retro.py collect` czyta je z komentarza).
+
 **Para równoległa** (krok 19a; definicje: `docs/features/parallel-work/spec.md`, „Metryki par”). Przy
 `MERGED` i przy `CLOSED` sprawdź pary tego epiku (dwie pierwsze linie bloku startowego):
 
