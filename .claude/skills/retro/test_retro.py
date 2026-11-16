@@ -3015,6 +3015,23 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         self.retro_spec = repo_text('docs', 'features', 'retro', 'spec.md')
         self.ao_run_spec = repo_text('docs', 'features', 'ao-run', 'spec.md')
 
+    # METRICS-7: the closing section of the report with the measured effect
+
+    def test_the_report_ends_with_the_optimization_section_that_copies_the_effect(self):
+        agent = repo_text('.claude', 'agents', 'retro-analyst.md')
+        for where, text in (('SKILL.md', self.skill), ('spec.md', self.retro_spec)):
+            self.assertIn('Decyzje optymalizacyjne', text, where)
+            self.assertIn('optimization_effects', text, where)
+            self.assertIn('metrics.py effect', text, where)
+            self.assertIn('za mało danych', text, where)
+            self.assertIn('brak danych pomiaru', text, where)
+        report = section(self.skill, '**Sekcja `## Decyzje optymalizacyjne`**', '7. **Decyzje użytkownika**')
+        self.assertIn('przepisany', report)
+        self.assertIn('Efektu nie liczysz', report)
+        self.assertLess(self.skill.index('## Decyzje optymalizacyjne'), self.skill.index('sekcja `## Zużycie` (krok 8)'))
+        self.assertIn('Efektu poprawki nie liczysz', agent)
+        self.assertIn('optimization', agent)
+
     # F2: the first date of the automatic retro
 
     def test_retro_since_is_the_fixed_date_that_takes_the_first_three_epics(self):
