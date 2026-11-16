@@ -6,6 +6,8 @@
   metrics.py trend [--last N] [--epic EPIC] [--json] [--no-gh] [COMMON]
   metrics.py render EPIC [--format report|comment] [COMMON]
   metrics.py waste AO_HOME [--max-qa-rounds N] [COMMON]
+  metrics.py decide EPIC [--history] [COMMON]
+  metrics.py effect KEY --at TIME [COMMON]
 
 COMMON: --config FILE (default: config.json next to this script), --state DIR (default: $SHOP_METRICS_STATE or
 ~/.local/state/shop-metrics), --night DIR (measurements.jsonl and gate.jsonl; default: ~/.local/state/ao-night),
@@ -63,11 +65,25 @@ task, attempt, at, push, ...}]}); read, filter, atomic write and printing happen
 <state>/waste.lock, so every key is printed once even with parallel sessions (written before printed: an alarm is never
 printed twice). `epic` puts the alarms of the epic from waste.json in the field `waste`.
 
+decide: the candidates of the decision rules D1-D4 (spec: Decyzje optymalizacyjne) for the stored record of EPIC, as one
+JSON object: `candidates` (key, rule, data, proposal, expected_effect, verification; ordered by the expected saving of
+wall-clock time, then of token value), `report` (the first `decisions.report_max`), `skipped` (rules that ran without a
+proposal or lacked data, with the reason) and `gaps`. D1 reads only status, mode and subagent_model of the EVALS 2.0
+`meta.json` files (config.json `evals`) and never proposes a change of a model. --history adds the candidates of every
+merged epic and `keys` ({key: epics}). Stateless: reads the stored records, writes nothing, no `gh`.
+
+effect: the measure of the rule of KEY (D1:<role>, D2:plan_split, D3:gate_wait, D4:<human_wait|ci|limit_wait|review>)
+over the merged epics started after TIME (after window; ISO 8601 with an offset or Z) and the same number of epics
+merged at or before it (before window): median, quartiles and counts, the difference in the unit and in percent, the
+time to epic_done per plan task (3 epics each side), the CLI and model changes between the windows, and "za mało
+danych" without a difference below the thresholds of config.json `decisions`. Stateless like decide.
+
 Exit codes: 0 success (also without alarms); 2 nothing recorded or printed: bad arguments or config.json, missing AO
 directory, unreadable or locked database, no epic row, unreadable --manual-fixes file, state not writable, waste.json
 unreadable or of another shape (never overwritten) (message on stderr, nothing on stdout);
 3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`).
-trend and render also end with 2 without a stored record (or without the requested epic).
+trend, render and decide also end with 2 without a stored record (or without the requested epic), effect with a bad key
+or --at or without a stored record of a merged epic.
 """
 import argparse
 import fcntl
@@ -153,6 +169,26 @@ def _evals(value):
             and isinstance(value['results_dir'], str) and bool(value['results_dir']))
 
 
+DECISION_SHARES = ('d1_role_share', 'd4_human_wait_share', 'd4_ci_share', 'd4_limit_wait_share', 'd4_review_share')
+DECISION_COUNTS = ('d2_failed_attempts', 'report_max', 'effect_min_tasks', 'effect_min_task_epics', 'effect_min_epics')
+DECISION_POSITIVE = ('d2_work_multiple', 'd3_gate_wait_h')
+
+
+def decisions_problem(decisions):
+    """The first bad value of the `decisions` section as `key: expectation` (None when all are fine): a share is a
+    fraction above 0 up to 1, a count a whole number of at least 1, the other thresholds numbers above 0."""
+    for key in DECISION_SHARES:
+        if not 0 < decisions[key] <= 1:
+            return 'decisions.%s: oczekiwano ułamka większego od 0 i najwyżej 1' % key
+    for key in DECISION_COUNTS:
+        if not _is_int(decisions[key]) or decisions[key] < 1:
+            return 'decisions.%s: oczekiwano liczby całkowitej, co najmniej 1' % key
+    for key in DECISION_POSITIVE:
+        if decisions[key] <= 0:
+            return 'decisions.%s: oczekiwano liczby większej od 0' % key
+    return None
+
+
 CONFIG_SCHEMA = {
     'breakdown_order': (_order, 'lista siedmiu kategorii: %s' % ', '.join(BREAKDOWN_CATEGORIES)),
     'github_wait_cap_s': (lambda v: _is_number(v) and v > 0, 'liczba sekund większa od 0'),
@@ -195,6 +231,9 @@ def load_config(path):
             raise MetricsError('config.json %s: brak klucza %s' % (path, key))
         if not check(config[key]):
             raise MetricsError('config.json %s: klucz %s: oczekiwano: %s' % (path, key, expected))
+    problem = decisions_problem(config['decisions'])
+    if problem:
+        raise MetricsError('config.json %s: klucz %s' % (path, problem))
     unknown = sorted(set(config) - set(CONFIG_SCHEMA))
     if unknown:
         raise MetricsError('config.json %s: nieznany klucz %s' % (path, ', '.join(unknown)))
@@ -947,10 +986,11 @@ def render_cell(cell):
 
 
 def value_sections(items):
-    """The `value` of the record from items [(task, {role: {model: cell}} or None)]: total, by_role, by_model, by_task
-    and by_role_model. An attempt without cells (no transcript) is an unknown part of its sections."""
-    sections = {name: Section(name in ('by_role', 'by_role_model'))
-                for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model')}
+    """The `value` of the record from items [(task, {role: {model: cell}} or None)]: total, by_role, by_model, by_task,
+    by_role_model and by_task_role ({task: {role: cell}}, the value of a role in one task). An attempt without cells
+    (no transcript) is an unknown part of its sections."""
+    sections = {name: Section(name in ('by_role', 'by_role_model', 'by_task_role'))
+                for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model', 'by_task_role')}
     nothing = {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'shared': False, 'no_cli': False}
     for task, cells in items:
         if cells is None:
@@ -967,6 +1007,7 @@ def value_sections(items):
                 sections['by_model'].add(model, cell)
                 sections['by_task'].add(task, cell)
                 sections['by_role_model'].add((role, model), cell)
+                sections['by_task_role'].add((task, role), cell)
     value = {'total': sections['total'].render('all') if sections['total'].cells else None}
     for name in ('by_role', 'by_model', 'by_task'):
         value[name] = {key: sections[name].render(key) for key in sorted(sections[name].cells)}
@@ -974,6 +1015,10 @@ def value_sections(items):
     for role, model in sorted(sections['by_role_model'].cells):
         nested.setdefault(role, {})[model] = sections['by_role_model'].render((role, model))
     value['by_role_model'] = nested
+    by_task_role = {}
+    for task, role in sorted(sections['by_task_role'].cells):
+        by_task_role.setdefault(task, {})[role] = sections['by_task_role'].render((task, role))
+    value['by_task_role'] = by_task_role
     return value
 
 # ------------------------------------------------------------------------------------- transcripts: shell commands
@@ -2004,6 +2049,12 @@ CATEGORY_RULES = {('breakdown', 'human_wait'): 'D4', ('breakdown', 'ci_wait'): '
                   ('in_attempts', 'in_attempts.ci_watch'): 'D4', ('gate_wait', 'gate_wait'): 'D3', ('review', 'review'): 'D4'}
 
 
+# The subject (the key of the candidate of `decide`) a bottleneck is about, by its kind and name; a plan task is D2.
+BOTTLENECK_SUBJECTS = {('breakdown', 'human_wait'): 'D4:human_wait', ('breakdown', 'limit_wait'): 'D4:limit_wait',
+                       ('breakdown', 'ci_wait'): 'D4:ci', ('in_attempts', 'in_attempts.ci_watch'): 'D4:ci',
+                       ('gate_wait', 'gate_wait'): 'D3:gate_wait', ('review', 'review'): 'D4:review'}
+
+
 def history_of(record, records):
     """The stored records of the other epics merged before this one (all merged ones while it is not merged): the
     history the medians come from."""
@@ -2029,7 +2080,7 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
     the median of the history, at least `min_excess_h` hours, in descending order. Candidates: the `breakdown`
     categories except `work`, the tasks (against the median of their kind), the `in_attempts` categories (with the
     part that is `repeat_runs`), gate_wait and, when `include_review`, review. Category medians are per plan task
-    (scaled to the number of tasks of this epic). The potential effect of a decision is not computed here."""
+    (scaled to the number of tasks of this epic). Every item gets its potential effect (add_effects)."""
     settings = config['bottlenecks']
     tasks = record.get('tasks')
     if len(history) < settings['min_history']:
@@ -2089,7 +2140,584 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
                  _get(record, ('wall', 'to_merge')), 'to_merge')
     keep = [(excess, item) for excess, item in candidates if excess >= settings['min_excess_h'] * HOUR]
     keep.sort(key=lambda pair: (-pair[0], pair[1]['kind'], pair[1]['name']))
-    return [item for _, item in keep[:int(settings['max_items'])]]
+    items = [item for _, item in keep[:int(settings['max_items'])]]
+    add_effects(items, record, history, config)
+    return items
+
+
+def add_effects(items, record, history, config):
+    """The potential optimization effect of every item (spec: Wąskie gardła): `effect_h` is the expected wall-clock
+    saving in hours of the candidate that `decide` has for the same rule and subject (`effect_rule` is its key; a plan
+    task gets its own time over the median); without such a candidate `effect_h` is the excess as an upper bound and
+    `effect_rule` is None („bez reguły decyzji”). Two items of the same subject (`ci_wait` and `ci_watch`) show the same
+    effect: it is not additive."""
+    found = {c['key']: c for c in rule_candidates(record, history, config, Gaps())[0]}
+    for item in items:
+        key = D2_KEY if item['kind'] == 'task' and item['rule'] == 'D2' else BOTTLENECK_SUBJECTS.get(
+            (item['kind'], item['name']))
+        candidate, saving = found.get(key), None
+        if candidate is not None and key == D2_KEY:
+            saving = next((t['excess_h'] for t in candidate['data']['tasks'] if t['task'] == item['name']), None)
+        elif candidate is not None:
+            saving = candidate['expected_effect']['wall_h']
+        item['effect_rule'] = key if saving is not None else None
+        item['effect_h'] = round(saving if saving is not None else item['excess_h'], 3)
+
+
+# ----------------------------------------------------------------------------------------------------- decisions
+#
+# `decide` (spec: Decyzje optymalizacyjne) is stateless: it builds the candidates of the rules from a stored record,
+# the stored history and, for D1, the EVALS 2.0 results. A candidate is a rule that fired and has a proposal; a rule
+# that ran without a proposal or could not run for lack of data is in `skipped` with its reason.
+
+# The reason of a wait of the gate that comes from the file rule (night_queue.check_files, steps 4-5): only a WAIT
+# writes `waiting` (so a reason in `gate_wait.reasons`), and the file rule waits only when the scope of an epic in
+# progress is not readable: `<epik> w toku bez zakresu: ...` (MissingScope). A SKIP for common files (`wspólne pliki z
+# <epik>: ...`) has `waiting: null`: it is no wait of the epic, so no reason of `gate_wait` and no D3. The other
+# reasons (`dwa epiki aktywne`, `pamięć Dockera`, `stan limitów`, `równoległość wstrzymana`, ...) are not the file rule.
+FILE_RULE_REASON = re.compile(r'\sw toku bez zakresu(?::|$)')
+MEASURES = {'D1': 'wartość roli na zadanie (USD)', 'D2': '`work` zadania planu (h)', 'D3': '`gate_wait` epiku (h)',
+            'D4': 'udział kategorii czekania w jej mianowniku (pp)'}
+D2_KEY = 'D2:plan_split'
+D3_KEY = 'D3:gate_wait'
+
+
+def make_candidate(key, data, proposal, wall_h, value_usd=None, estimated=False):
+    """A candidate of a rule: `key` is the rule and its subject (the same for the same rule and subject in every epic),
+    `expected_effect` the saving of wall-clock time in hours and/or of token value in USD (None where the rule says
+    nothing), `verification` the measure of the rule and the command that computes it after the fix."""
+    rule = key.split(':', 1)[0]
+    return {'key': key, 'rule': rule, 'data': data, 'proposal': proposal,
+            'expected_effect': {'wall_h': None if wall_h is None else round(wall_h, 3),
+                                'value_usd': None if value_usd is None else round(value_usd, 4),
+                                'estimated': bool(estimated)},
+            'verification': "%s: `metrics.py effect %s --at <czas merge'u poprawki>`" % (MEASURES[rule], key)}
+
+
+def order_candidates(candidates):
+    """Spec: the expected wall-clock saving descending, then the token value descending (unknown is 0), then the key."""
+    return sorted(candidates, key=lambda c: (-(c['expected_effect']['wall_h'] or 0.0),
+                                             -(c['expected_effect']['value_usd'] or 0.0), c['key']))
+
+
+def skip_rule(skipped, key, reason):
+    skipped.append({'key': key, 'reason': reason})
+
+
+def d4_candidates(record, config, skipped):
+    """D4: the share of a waiting category in its denominator reaches its threshold: human_wait and limit_wait in
+    to_done, ci (`ci_wait` plus `in_attempts.ci_watch`) in `work`, review in to_merge (known only after the merge).
+    The effect is the time of the category (the share times its denominator); for `ci` the waiting time itself, never
+    more."""
+    settings = config['decisions']
+    found = []
+
+    def check(subject, parts, denominator, denominator_name, threshold, proposal):
+        key = 'D4:%s' % subject
+        if not all(_is_number(p) for p in parts) or not _is_number(denominator) or denominator <= 0:
+            return skip_rule(skipped, key, 'brak danych: %s' % ', '.join(
+                [n for n, p in zip(parts_names[subject], parts) if not _is_number(p)]
+                + ([denominator_name] if not _is_number(denominator) or denominator <= 0 else [])))
+        seconds = sum(parts)
+        share = seconds / denominator
+        if share < threshold:
+            return
+        data = {'seconds': round(seconds, 3), 'share': round(share, 4), '%s_s' % denominator_name: round(denominator, 3),
+                'threshold': threshold}
+        found.append(make_candidate(key, data, proposal, share * denominator / HOUR))
+        return data
+
+    parts_names = {'human_wait': ['human_wait'], 'limit_wait': ['limit_wait'], 'ci': ['ci_wait', 'in_attempts.ci_watch'],
+                   'review': ['review']}
+    to_done, work = _get(record, ('wall', 'to_done')), _get(record, ('breakdown', 'work'))
+    check('human_wait', [_get(record, ('breakdown', 'human_wait'))], to_done, 'to_done', settings['d4_human_wait_share'],
+          'Skrócić czekanie na użytkownika: zebrać pytania przed startem epiku i uruchamiać go o godzinie, '
+          'w której użytkownik odpowiada.')
+    check('limit_wait', [_get(record, ('breakdown', 'limit_wait'))], to_done, 'to_done',
+          settings['d4_limit_wait_share'],
+          'Zaplanować start epiku (planowanie nocy) tak, żeby mieścił się w oknie limitów bez przerwy na cooldown.')
+    ci = [_get(record, ('breakdown', 'ci_wait')), _get(record, ('in_attempts', 'categories', 'ci_watch', 'seconds'))]
+    data = check('ci', ci, work, 'work', settings['d4_ci_share'],
+                 'Skrócić czekanie na CI: sprawdzić, które przebiegi CI zadań i końcowego PR trwają najdłużej '
+                 'i ile jest ponowień.')
+    if data is not None:
+        data['ci_wait_s'], data['ci_watch_s'] = round(ci[0], 3), round(ci[1], 3)
+    if _get(record, ('merged_at',)) is None or _get(record, ('wall', 'review')) is None:
+        skip_rule(skipped, 'D4:review', "review jest znany dopiero po merge'u końcowego PR")
+    else:
+        check('review', [_get(record, ('wall', 'review'))], _get(record, ('wall', 'to_merge')), 'to_merge',
+              settings['d4_review_share'],
+              'Ustalić porę oddania epiku do odbioru i rozmiar końcowego PR, żeby odbiór nie czekał.')
+    return found
+
+
+def d3_candidates(record, config, skipped):
+    """D3: `gate_wait` of at least `d3_gate_wait_h` hours because of the file rule of the gate (a reason of
+    `gate_wait.reasons` matching FILE_RULE_REASON). The effect is the whole wait."""
+    wait = _get(record, ('gate_wait', 'wait_s'))
+    if not _is_number(wait):
+        return skip_rule(skipped, D3_KEY, 'brak danych: gate_wait (brak wpisów epiku w gate.jsonl)')
+    if wait < config['decisions']['d3_gate_wait_h'] * HOUR:
+        return []
+    reasons = [r for r in _get(record, ('gate_wait', 'reasons')) or [] if isinstance(r, str)]
+    files = [r for r in reasons if FILE_RULE_REASON.search(r)]
+    if not files:
+        return skip_rule(skipped, D3_KEY, 'czekanie w bramce z innego powodu niż reguła plików')
+    return [make_candidate(D3_KEY, {'wait_s': round(wait, 3), 'file_rule_reasons': len(files),
+                                    'reasons': len(reasons)},
+                           'Zmienić linię `Zakres:` epiku przy przygotowaniu albo regułę plików bramki '
+                           '(docs/features/parallel-work/spec.md, „Bramka”).', wait / HOUR)]
+
+
+def d2_candidates(record, history, config, skipped, gaps):
+    """D2: a plan task with `work` over `d2_work_multiple` times the median of plan tasks in the history, or with at
+    least `d2_failed_attempts` failed attempts. One candidate for the epic (the key is the same in every epic, a task
+    has another id in each); the effect is the time of the tasks over the median."""
+    settings = config['decisions']
+    by_task = record.get('by_task')
+    if not isinstance(by_task, dict):
+        return skip_rule(skipped, D2_KEY, 'brak danych: by_task')
+    works = [e['work'] for h in history for e in (h.get('by_task') or {}).values()
+             if isinstance(e, dict) and e.get('kind') == 'plan' and _is_number(e.get('work'))]
+    middle = median(works) if works else None
+    if middle is None:
+        gaps.add('decide.D2', 'brak historii mediany work zadań planu: kryterium czasu pominięte')
+    ended = record.get('done_at') is not None or record.get('merged_at') is not None
+    failed = {}
+    for attempt in record.get('attempts') or []:
+        if isinstance(attempt, dict) and classify_attempt(attempt.get('outcome'), attempt.get('executor_status'),
+                                                          ended)[0] == 'failed':
+            failed[attempt.get('task')] = failed.get(attempt.get('task'), 0) + 1
+    tasks = []
+    for task, entry in sorted(by_task.items()):
+        if not isinstance(entry, dict) or entry.get('kind') != 'plan':
+            continue
+        work = entry.get('work')
+        reasons = []
+        if middle is not None and _is_number(work) and work > settings['d2_work_multiple'] * middle:
+            reasons.append('work')
+        if failed.get(task, 0) >= settings['d2_failed_attempts']:
+            reasons.append('failed_attempts')
+        if reasons:
+            over = max(work - middle, 0.0) if middle is not None and _is_number(work) else None
+            tasks.append({'task': task, 'work_h': None if not _is_number(work) else round(work / HOUR, 3),
+                          'excess_h': None if over is None else round(over / HOUR, 3),
+                          'failed_attempts': failed.get(task, 0), 'reasons': reasons})
+    if not tasks:
+        return []
+    wall = sum(t['excess_h'] for t in tasks if t['excess_h'] is not None)
+    return [make_candidate(D2_KEY, {'tasks': tasks, 'median_h': None if middle is None else round(middle / HOUR, 3),
+                                    'history_epics': len(history)},
+                           'Dodać do /planner regułę podziału zadania z cechami: liczba ścieżek `scope`, ryzyko, '
+                           'aplikacje, liczba zmienionych plików.', wall)]
+
+
+AGENT_EXCLUDED_ROLES = ('delivery', 'integration', OTHER_ROLE, SUBAGENT)    # the orchestrators and what is no agent
+META_LIMIT = 1 << 20
+
+
+class EvalsResults:
+    """The EVALS 2.0 runs of D1, read once and only when a rule needs them: from `<results_dir>/*/runs/*/meta.json`
+    only `status`, `mode` and `subagent_model` (labels, reports and the other fields of meta.json are never read, and
+    no text of a run is kept). `runs` is None, with the reason in `gaps`, when there is no directory or no readable
+    meta.json; an unreadable file or one without these fields is skipped and counted in `gaps`."""
+
+    def __init__(self, config):
+        self.settings = config['evals']
+        self.loaded = False
+        self.requests = 0                    # how many times a rule asked for the runs (the scan itself runs once)
+        self.runs = None
+        self.gaps = []
+
+    def load(self):
+        self.requests += 1
+        if not self.loaded:
+            self.loaded = True
+            self._scan()
+        return self.runs
+
+    def _paths(self, root):
+        found = []
+        for measurement in sorted(os.listdir(root)):
+            runs = os.path.join(root, measurement, 'runs')
+            if not os.path.isdir(runs):
+                continue
+            for run in sorted(os.listdir(runs)):
+                path = os.path.join(runs, run, 'meta.json')
+                if os.path.isfile(path):
+                    found.append((measurement if SAFE_NAME.match(measurement) else '?', path))
+        return found
+
+    def _scan(self):
+        root = _expand(self.settings['results_dir'])
+        try:
+            paths = self._paths(root)
+        except OSError:
+            self.gaps.append('brak katalogu wyników EVALS 2.0 (nieistniejący albo nieczytelny)')
+            return
+        runs, unreadable = [], 0
+        for measurement, path in paths:
+            run = self._read(path)
+            if run is None:
+                unreadable += 1
+            else:
+                runs.append(dict(run, measurement=measurement))
+        if unreadable:
+            self.gaps.append('%d %s meta.json nieczytelnych albo bez pól status, mode, subagent_model: pominięte'
+                             % (unreadable, plural(unreadable, 'plik', 'pliki', 'plików')))
+        if not runs:
+            self.gaps.append('brak czytelnego meta.json w wynikach EVALS 2.0')
+            return
+        self.runs = runs
+
+    @staticmethod
+    def _read(path):
+        try:
+            if os.path.getsize(path) > META_LIMIT:
+                return None
+            with open(path, encoding='utf-8') as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(meta, dict) or not isinstance(meta.get('status'), str) or 'mode' not in meta:
+            return None
+        mode, model = meta['mode'], meta.get('subagent_model')
+        if not (mode is None or isinstance(mode, str)) or not (model is None or isinstance(model, str)):
+            return None
+        if meta['status'] == 'ok' and mode == 'replay' and not model:
+            return None                      # a counted run must name its model
+        return {'status': meta['status'], 'mode': mode, 'model': model}
+
+
+def counted(run):
+    """Whether an EVALS 2.0 run counts for D1: a replay that ended `ok` (squash, infra_error and budget_stop do not)."""
+    return run['status'] == 'ok' and run['mode'] == 'replay'
+
+
+def d1_candidates(record, rates, evals, config, skipped, gaps):
+    """D1: a role of an agent has at least `d1_role_share` of the value of the epic on models more expensive than the
+    cheapest one used in it (the rates are the medians of the history). It never proposes a change of a model: with
+    no counted EVALS 2.0 run of the role on the cheapest model it proposes the experiment of a variant comparison;
+    with such runs, or for a role outside `evals.roles`, it only lists the rule among the skipped ones."""
+    by_role_model = _get(record, ('value', 'by_role_model'))
+    total = _get(record, ('value', 'total', 'usd'))
+    if not isinstance(by_role_model, dict) or not _is_number(total) or total <= 0:
+        return skip_rule(skipped, 'D1', 'brak danych: value.by_role_model albo value.total')
+    models = sorted({m for roles in by_role_model.values() if isinstance(roles, dict) for m in roles})
+    ranked = {m: rates[m] for m in models if m in rates}
+    for model in models:
+        if model not in ranked:
+            gaps.add('decide.D1', 'brak stawki historycznej modelu %s: pominięty w porównaniu' % model)
+    if len(ranked) < 2:
+        return skip_rule(skipped, 'D1', 'mniej niż dwa modele z historyczną stawką w epiku: brak porównania')
+    cheapest = min(ranked, key=lambda m: (ranked[m], m))
+    found = []
+    for role, cells in sorted(by_role_model.items()):
+        if role in AGENT_EXCLUDED_ROLES or not isinstance(cells, dict):
+            continue
+        costly = {m: c for m, c in cells.items() if m in ranked and ranked[m] > ranked[cheapest]
+                  and isinstance(c, dict) and _is_number(c.get('usd'))}
+        value = sum(c['usd'] for c in costly.values())
+        share = value / total
+        if not costly or share < config['decisions']['d1_role_share']:
+            continue
+        key = 'D1:%s' % role
+        if role not in config['evals']['roles']:
+            skip_rule(skipped, key, 'bez evali')
+            continue
+        if len(config['evals']['roles']) != 1:
+            skip_rule(skipped, key, 'meta.json nie wskazuje agenta, a lista ról EVALS 2.0 ma więcej niż jedną: '
+                                    'przebiegów nie da się przypisać do roli')
+            continue
+        runs = evals.load()
+        if runs is None:
+            skip_rule(skipped, key, 'brak wyników EVALS 2.0 (powód w gaps)')
+            continue
+        done = [r for r in runs if counted(r) and r['model'] == cheapest]
+        if done:
+            skipped.append({'key': key, 'reason': 'porównanie w EVALS 2.0, decyzja w jego raporcie',
+                            'data': {'runs': len(done), 'measurements': sorted({r['measurement'] for r in done})}})
+            continue
+        estimated = any(c.get('estimated') is True or c.get('incomplete') is True for c in costly.values())
+        saving = sum(c['usd'] * (1 - ranked[cheapest] / ranked[m]) for m, c in costly.items())
+        data = {'role': role, 'share': round(share, 4), 'models': {m: c['usd'] for m, c in sorted(costly.items())},
+                'cheaper_model': cheapest, 'rates': {m: ranked[m] for m in sorted(ranked)},
+                'estimated': ['role_value'] if estimated else []}
+        found.append(make_candidate(key, data, (
+            'Eksperyment porównania wariantów agenta %s w EVALS 2.0 na modelu %s (wariant to commit ze zmianą `model:` '
+            'w pliku agenta, `--agent-rev`; płatny pomiar wymaga zgody właściciela), nie zmiany modelu.%s'
+            % (role, cheapest, ' Wartość roli jest szacowana.' if estimated else '')), None, saving, estimated))
+    return found
+
+
+def rule_candidates(record, history, config, gaps):
+    """(candidates, skipped) of the rules D2, D3 and D4, which need only the record and the history of the epic."""
+    skipped, found = [], []
+    found += d2_candidates(record, history, config, skipped, gaps) or []
+    found += d3_candidates(record, config, skipped) or []
+    found += d4_candidates(record, config, skipped)
+    return found, skipped
+
+
+def decide_epic(record, records, config, evals=None):
+    """The result of `decide` for one record: {epic, candidates (ordered), report (the first report_max), skipped,
+    gaps}. evals: the EvalsResults shared by the records of one call."""
+    gaps = Gaps()
+    evals = evals or EvalsResults(config)
+    history = history_of(record, records)
+    found, skipped = rule_candidates(record, history, config, gaps)
+    asked = evals.requests
+    found += d1_candidates(record, historical_rates(records, []), evals, config, skipped, gaps) or []
+    for reason in evals.gaps if evals.requests > asked else []:     # only when the D1 of this epic read the results
+        gaps.add('decide.D1', reason)
+    ordered = order_candidates(found)
+    return {'epic': record.get('epic'), 'candidates': ordered, 'report': ordered[:int(config['decisions']['report_max'])],
+            'skipped': skipped, 'gaps': gaps.render()}
+
+
+def cmd_decide(args, config, run, now):
+    if os.path.basename(args.epic) != args.epic or args.epic in ('.', '..'):
+        raise MetricsError('niepoprawny identyfikator epiku %r' % args.epic)
+    state = _expand(args.state)
+    records = read_records(state)
+    record = records.get(args.epic)
+    if record is None:
+        raise MetricsError('brak (albo nieczytelny) rekord epiku %s w %s: uruchom `metrics.py epic %s`'
+                           % (args.epic, os.path.join(state, 'epics'), args.epic))
+    evals = EvalsResults(config)
+    result = decide_epic(record, records, config, evals)
+    if args.history:
+        result['history'] = [{k: v for k, v in decide_epic(other, records, config, evals).items() if k != 'report'}
+                             for other in merged_records(records)]
+        keys = {}
+        for entry in result['history']:
+            for candidate in entry['candidates']:
+                keys.setdefault(candidate['key'], []).append(entry['epic'])
+        result['keys'] = keys
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+# ------------------------------------------------------------------------------------------------------- effect
+#
+# `effect KEY --at TIME` (spec: Decyzje optymalizacyjne, Efekt decyzji) measures a rule before and after the merge of its
+# fix, from the stored records only (nothing is written). Only merged epics are in the windows: the after window is the
+# epics started after TIME (strictly) and merged, the before window the same number of epics merged at or before TIME,
+# the closest ones; an epic started at or before TIME and merged after it is in neither.
+
+D4_SUBJECTS = {'human_wait': 'to_done', 'limit_wait': 'to_done', 'ci': 'work', 'review': 'to_merge'}
+EFFECT_UNITS = {'D1': 'USD', 'D2': 'h', 'D3': 'h', 'D4': 'pp'}
+EPIC_TIME_COUNT = 3
+NOT_ENOUGH = 'za mało danych'
+
+
+def parse_effect_key(key):
+    """(rule, subject) of a key of `effect`: D1:<role>, D2:plan_split, D3:gate_wait or D4:<human_wait|ci|limit_wait|review>."""
+    rule, _, subject = key.partition(':')
+    if (rule == 'D1' and SAFE_NAME.match(subject)) or key in (D2_KEY, D3_KEY) or (rule == 'D4' and subject in D4_SUBJECTS):
+        return rule, subject
+    raise MetricsError('zły klucz reguły %r: oczekiwano D1:<rola>, %s, %s albo D4:<%s>'
+                       % (key, D2_KEY, D3_KEY, '|'.join(D4_SUBJECTS)))
+
+
+def parse_at(text):
+    try:
+        return night_queue.parse_time(text).timestamp()
+    except (ValueError, TypeError, AttributeError):
+        raise MetricsError('zły --at %r: oczekiwano czasu ISO 8601 z przesunięciem UTC albo Z (np. 2026-11-10T12:00:00Z)' % text)
+
+
+def _epoch(record, field):
+    try:
+        return night_queue.parse_time(record[field]).timestamp()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def percentile(ordered, fraction):
+    """The linear interpolation between the closest ranks of the ordered values (the `inclusive` method)."""
+    position = (len(ordered) - 1) * fraction
+    low = int(position)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
+
+
+def effect_windows(records, at, gaps):
+    """(before, after, before_pool, spanning, unmerged): the records of the two windows (oldest first), the whole pool of
+    epics merged at or before `at` (its closest ones give the epic time) and the ids left out."""
+    pool, after, spanning, unmerged = [], [], [], []
+    for record in records.values():
+        started, merged = _epoch(record, 'started_at'), _epoch(record, 'merged_at')
+        if started is not None and started > at:
+            (after if merged is not None else unmerged).append((started, record))
+        elif merged is None:
+            continue
+        elif merged <= at:
+            pool.append((merged, record))
+        else:
+            spanning.append(record)
+            if started is None:
+                gaps.add('effect', 'epik %s bez started_at, zmergowany po --at: w żadnym oknie' % record.get('epic'))
+    order = lambda pair: (pair[0], str(pair[1].get('epic')))
+    after = [r for _, r in sorted(after, key=order)]
+    pool = [r for _, r in sorted(pool, key=order)]
+    before = pool[len(pool) - len(after):] if after else []
+    names = lambda items: sorted(str(r.get('epic')) for r in items)
+    return before, after, pool, names(spanning), names([r for _, r in unmerged])
+
+
+def epic_value(record, rule, subject):
+    """The measure of an epic (D3: hours of gate_wait; D4: the share of the category in its denominator, in pp), None
+    when unknown."""
+    if rule == 'D3':
+        wait = _get(record, ('gate_wait', 'wait_s'))
+        return wait / HOUR if _is_number(wait) else None
+    if subject == 'ci':
+        parts = [_get(record, ('breakdown', 'ci_wait')), _get(record, ('in_attempts', 'categories', 'ci_watch', 'seconds'))]
+    else:
+        parts = [_get(record, ('wall', 'review') if subject == 'review' else ('breakdown', subject))]
+    denominator = _get(record, {'to_done': ('wall', 'to_done'), 'work': ('breakdown', 'work'),
+                                'to_merge': ('wall', 'to_merge')}[D4_SUBJECTS[subject]])
+    if not all(_is_number(p) for p in parts) or not _is_number(denominator) or denominator <= 0:
+        return None
+    return sum(parts) / denominator * 100.0
+
+
+def plan_work_samples(record):
+    tasks = record.get('by_task')
+    if not isinstance(tasks, dict):
+        return None
+    return [e['work'] / HOUR for _, e in sorted(tasks.items())
+            if isinstance(e, dict) and e.get('kind') == 'plan' and _is_number(e.get('work'))]
+
+
+def role_kind(records, role):
+    """The kind of the tasks in which the role has the largest value over the records (None when it has none)."""
+    sums = {}
+    for record in records:
+        by_role = _get(record, ('value', 'by_task_role'))
+        by_task = record.get('by_task')
+        if not isinstance(by_role, dict) or not isinstance(by_task, dict):
+            continue
+        for task, roles in by_role.items():
+            usd = _get(roles, (role, 'usd'))
+            kind = _get(by_task, (task, 'kind'))
+            if _is_number(usd) and kind:
+                sums[kind] = sums.get(kind, 0.0) + usd
+    return max(sorted(sums), key=lambda k: sums[k]) if any(v > 0 for v in sums.values()) else None
+
+
+def role_samples(record, role, kind):
+    """The value of the role in each task of `kind` (0 where it did not act); None for a record without
+    value.by_task_role (older than the field)."""
+    by_role, by_task = _get(record, ('value', 'by_task_role')), record.get('by_task')
+    if not isinstance(by_role, dict) or not isinstance(by_task, dict):
+        return None
+    found = []
+    for task, entry in sorted(by_task.items()):
+        if not isinstance(entry, dict) or entry.get('kind') != kind:
+            continue
+        if not _is_number(_get(record, ('value', 'by_task', task, 'usd'))):
+            continue                                    # the value of the task is unknown: not a zero
+        usd = _get(by_role, (task, role, 'usd'))
+        found.append(usd if _is_number(usd) else 0.0)
+    return found
+
+
+def window_stats(records, samples_of, gaps, label, missing='brak miary'):
+    """{epics, n, n_epics, median, p25, p75} of the samples of the records of a window; a record whose samples are
+    unknown (None) is left out with a gap."""
+    values, epics = [], []
+    for record in records:
+        found = samples_of(record)
+        if found is None:
+            gaps.add('effect', 'epik %s (okno %s): %s, pominięty' % (record.get('epic'), label, missing))
+        elif found:
+            values.extend(found)
+            epics.append(str(record.get('epic')))
+    ordered = sorted(values)
+    stat = lambda f: round(percentile(ordered, f), 4) if ordered else None
+    return {'epics': epics, 'n': len(values), 'n_epics': len(epics),
+            'median': round(median(ordered), 4) if ordered else None, 'p25': stat(0.25), 'p75': stat(0.75)}
+
+
+def epic_time(records, config):
+    """The median time to epic_done per plan task (hours) of `records` and their ids."""
+    values, names = [], []
+    for record in records:
+        trend = trend_values(record, config)['to_done']
+        if trend is not None:
+            values.append(trend)
+            names.append(str(record.get('epic')))
+    return {'epics': names, 'median': median_of(values)}
+
+
+def version_change(before, after, gaps):
+    """{cli, models}: what the epics of `after` have that those of `before` do not (added) and the reverse (removed).
+    A window with no `versions` at all has nothing to compare: no change and a gap."""
+    sets = {'before': [_version_sets(r) for r in before], 'after': [_version_sets(r) for r in after]}
+    change = {}
+    for index, name in enumerate(('cli', 'models')):
+        known = {w: [s[index] for s in found if s[index] is not None] for w, found in sets.items()}
+        if not known['before'] or not known['after']:
+            gaps.add('effect', 'versions: brak wersji w jednym z okien: zmiany nieznane (%s)' % name)
+            change[name] = {'added': [], 'removed': []}
+            continue
+        old, new = set().union(*known['before']), set().union(*known['after'])
+        change[name] = {'added': sorted(new - old), 'removed': sorted(old - new)}
+    return change
+
+
+def build_effect(records, key, at, config):
+    rule, subject = parse_effect_key(key)
+    gaps = Gaps()
+    before, after, pool, spanning, unmerged = effect_windows(records, at, gaps)
+    settings = config['decisions']
+    level_kind = None
+    if rule == 'D1':
+        level_kind = role_kind(before + after, subject)
+        samples_of = (lambda r: role_samples(r, subject, level_kind)) if level_kind else (lambda r: [])
+    elif rule == 'D2':
+        samples_of = plan_work_samples
+    else:
+        samples_of = lambda r: [v] if (v := epic_value(r, rule, subject)) is not None else None
+    missing = 'rekord bez value.by_task_role (starszy niż pole)' if rule == 'D1' else 'brak miary'
+    stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing),
+             'after': window_stats(after, samples_of, gaps, 'po', missing)}
+    task_level = rule in ('D1', 'D2')
+    reasons = []
+    if task_level:
+        if stats['after']['n'] < settings['effect_min_tasks'] or stats['after']['n_epics'] < settings['effect_min_task_epics']:
+            reasons.append('okno po: %d zadań z %d epików (potrzeba co najmniej %d z %d)' % (
+                stats['after']['n'], stats['after']['n_epics'], settings['effect_min_tasks'],
+                settings['effect_min_task_epics']))
+    elif stats['after']['n'] < settings['effect_min_epics']:
+        reasons.append('okno po: %d epików (potrzeba co najmniej %d)' % (stats['after']['n'], settings['effect_min_epics']))
+    if not reasons and stats['before']['median'] is None:
+        reasons.append('okno przed bez pomiarów')
+    diff = None
+    if not reasons:
+        change = stats['after']['median'] - stats['before']['median']
+        diff = {'value': round(change, 4),
+                'pct': round(change / stats['before']['median'] * 100, 1) if stats['before']['median'] else None}
+    return {'key': key, 'rule': rule, 'at': iso(at), 'measure': MEASURES[rule], 'unit': EFFECT_UNITS[rule],
+            'level': 'task' if task_level else 'epic', 'level_kind': level_kind, 'before': stats['before'],
+            'after': stats['after'], 'message': NOT_ENOUGH if reasons else None, 'reasons': reasons, 'diff': diff,
+            'epic_time': {'unit': 'h na zadanie planu', 'before': epic_time(pool[-EPIC_TIME_COUNT:], config),
+                          'after': epic_time(after[:EPIC_TIME_COUNT], config)},
+            'versions': version_change(before, after, gaps), 'spanning': spanning, 'unmerged_after': unmerged,
+            'gaps': gaps.render()}
+
+
+def cmd_effect(args, config, run, now):
+    rule_key = args.key
+    parse_effect_key(rule_key)
+    at = parse_at(args.at)
+    records = read_records(_expand(args.state))
+    if not merged_records(records):
+        raise MetricsError('brak zapisanych rekordów zmergowanych epików (uruchom: metrics.py backfill)')
+    print(json.dumps(build_effect(records, rule_key, at, config), ensure_ascii=False))
+    return 0
 
 
 # ------------------------------------------------------------------------------------------------------- trend
@@ -2367,7 +2995,11 @@ def bottleneck_lines(items):
         text = '%d. `%s`: +%s h ponad medianę' % (len(lines) + 1, name, pl(excess))
         if share is not None and item.get('share_of') in SHARE_OF:
             text += ' (%d%% %s)' % (share, SHARE_OF[item['share_of']])
-        if isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
+        effect = item.get('effect_h')
+        if _is_number(effect):
+            rule = str(item.get('effect_rule') or '').split(':')[0]
+            text += ', potencjalnie −%s h (%s)' % (pl(effect), rule if RULE_PATTERN.match(rule) else 'bez reguły decyzji')
+        elif isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
             text += ', reguła %s' % item['rule']
         if _is_number(item.get('repeat_h')) and item['repeat_h'] > 0:
             text += ', w tym możliwe powtórzenia: %s h' % pl(item['repeat_h'])
@@ -3160,6 +3792,12 @@ def build_parser():
     trend.add_argument('--epic')
     trend.add_argument('--json', action='store_true')
     trend.add_argument('--no-gh', action='store_true')
+    decide = sub.add_parser('decide', parents=[common])
+    decide.add_argument('epic')
+    decide.add_argument('--history', action='store_true')
+    effect = sub.add_parser('effect', parents=[common])
+    effect.add_argument('key')
+    effect.add_argument('--at', required=True)
     waste = sub.add_parser('waste', parents=[common])
     waste.add_argument('ao_home')
     waste.add_argument('--max-qa-rounds', type=_positive_int, default=3)
@@ -3183,6 +3821,10 @@ def main(argv=None, run=None, now=None):
             return cmd_trend(args, config, runner, now)
         if args.command == 'render':
             return cmd_render(args, config, runner, now)
+        if args.command == 'decide':
+            return cmd_decide(args, config, runner, now)
+        if args.command == 'effect':
+            return cmd_effect(args, config, runner, now)
         if args.command == 'waste':
             return cmd_waste(args, config, now)
     except MetricsError as e:

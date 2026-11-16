@@ -423,5 +423,48 @@ class ByTaskTest(AttemptEnv):
         self.assertFalse(attempt['estimated'])
 
 
+class ByTaskRoleTest(AttemptEnv):
+    """`value.by_task_role` ({task: {role: cell}}): the value of a role in one task, the input of the D1 measure of
+    `metrics.py effect` (spec: Decyzje optymalizacyjne)."""
+
+    def home_with_two_tasks(self):
+        home = testkit.synthetic_home(
+            self.root, tasks=[('T-1', 'plan'), ('T-2', 'plan')], created=1000.0,
+            attempts=[dict(task_id='T-1', number=1, started_at=1100.0, ended_at=1300.0),
+                      dict(task_id='T-1', number=2, started_at=1400.0, ended_at=1450.0),
+                      dict(task_id='T-2', number=1, started_at=1500.0, ended_at=1600.0)],
+            events=[(2000.0, 'epic_done', {})])
+        first = (Transcript().init().message(input=10).message(role='rev', parent='t', model=SONNET, input=5)
+                 .result({OPUS: model_usage(input=10, output=1, cost=1.0), SONNET: model_usage(input=5, output=2, cost=0.5)},
+                         output=1))
+        second = Transcript().init().message(input=10).result({OPUS: model_usage(input=10, output=1, cost=2.0)}, output=1)
+        testkit.put_transcript(home, 'T-1', 1, first.lines)
+        testkit.put_transcript(home, 'T-1', 2, second.lines)
+        return home
+
+    def test_the_value_of_a_role_is_summed_over_the_attempts_of_the_task(self):
+        record = self.record('demo', home=self.home_with_two_tasks())
+        by_task_role = record['value']['by_task_role']
+        self.assertAlmostEqual(by_task_role['T-1']['rev']['usd'], 0.5)
+        self.assertAlmostEqual(by_task_role['T-1']['delivery']['usd'], 3.0)
+
+    def test_the_roles_of_a_task_sum_to_its_value_and_only_acting_roles_have_an_entry(self):
+        record = self.record('demo', home=self.home_with_two_tasks())
+        roles = record['value']['by_task_role']['T-1']
+        self.assertEqual(sorted(roles), ['delivery', 'rev'])
+        self.assertAlmostEqual(sum(c['usd'] for c in roles.values()), record['value']['by_task']['T-1']['usd'])
+
+    def test_a_task_without_a_transcript_has_no_role_values_and_an_unknown_task_value(self):
+        record = self.record('demo', home=self.home_with_two_tasks())
+        self.assertNotIn('T-2', record['value']['by_task_role'])
+        self.assertIsNone(record['value']['by_task']['T-2']['usd'])
+
+    def test_the_cell_marks_a_role_value_that_is_estimated(self):
+        lines = Transcript().init().message(input=1).message(role='a', parent='t', input=1)
+        lines.message(role='b', parent='t', input=1).result({OPUS: model_usage(input=3, output=9, cost=1.0)}, output=3)
+        record = self.attempt_record(lines)
+        self.assertTrue(record['value']['by_task_role']['T-1']['a']['estimated'])
+
+
 if __name__ == '__main__':
     unittest.main()
