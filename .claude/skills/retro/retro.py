@@ -12,7 +12,16 @@ that does not exist) and, for `validate`, proposals that do not pass.
       Writes DIR/input.json (default DIR: <retro-home>/EPIC) and prints its path. input.json has the incidents of the
       whole history of AO runs (docs/features/retro/spec.md, "Incydenty"), the facts of the plan "Status"
       (`status/in-progress`, `status/last-epic`, `status/agent-issues`, `status/pending-retro`), the registers, the
-      items of the open retro PR and the open issues to check duplicates against. GitHub content (epic issues and
+      items of the open retro PR and the open issues to check duplicates against. The measurement of
+      tools/metrics/metrics.py (run as `python3 tools/metrics/metrics.py` in --repo through an injectable runner)
+      is added too: `decide EPIC --history` gives the incidents of the kind `optimization` (ID
+      `<epic>/optimization/<key>`, one per candidate of an epic of the history), `trend --json --epic EPIC --no-gh`
+      and the decide result of the epic are the facts `<epic>/measurement/{trend,record,decide}` (with `data`), and
+      `optimization_effects` [{key, applied_key, pr, merged_at, at, effect}] holds, for every row of applied.jsonl
+      with an `optimization` incident, the output of `metrics.py effect KEY --at <merge of the fix>` as it is (null
+      when the call failed). A missing script, a non-zero exit code or an output that is not the expected JSON is
+      the fact `<epic>/measurement/missing/<call>` ("brak danych pomiaru"); the other incidents are collected anyway.
+      GitHub content (epic issues and
       their comments, PRs into epic/*, the open retro PR, open issues) comes through the origin gate
       tools/agent-security/github_trust.py, AO issues judged by the permission in the AO repository: a measurement
       comment counts only from a trusted author, an untrusted epic issue, comment or task PR is only an entry of
@@ -895,7 +904,132 @@ def blocked_in_runs(ao_home, in_progress):
     return blocked
 
 
-KIND_ORDER = ('wait', 'failed_attempt', 'finding', 'repair', 'manual_fix', 'escaped', 'no_sweep', 'unasked')
+KIND_ORDER = ('wait', 'failed_attempt', 'finding', 'repair', 'manual_fix', 'escaped', 'no_sweep', 'unasked',
+              'optimization')
+
+# ------------------------------------------------------------------------------- measurement (tools/metrics/metrics.py)
+
+METRICS_SCRIPT = os.path.join('tools', 'metrics', 'metrics.py')
+METRICS_TIMEOUT_S = 120
+NO_MEASUREMENT = 'brak danych pomiaru'
+OPTIMIZATION_ID = re.compile(r'^[^/]+/optimization/(.+)$')
+
+
+def make_metrics_runner(repo):
+    """A runner of `python3 tools/metrics/metrics.py` (path relative to the repository root `repo`): takes the arguments
+    after the script and returns the standard output. A missing script, a non-zero exit code and a timeout are
+    next_epic.CommandError, like for `gh`."""
+    run = next_epic.make_runner(repo, timeout=METRICS_TIMEOUT_S)
+    script = os.path.join(os.path.abspath(repo), METRICS_SCRIPT)
+
+    def metrics(args):
+        shown = ['metrics.py'] + list(args)    # the failure keeps neither the interpreter nor a local path
+        if not os.path.isfile(script):
+            raise next_epic.CommandError(shown, 'brak skryptu %s' % METRICS_SCRIPT)
+        command = [sys.executable, script] + list(args)
+        try:
+            return run(command)
+        except next_epic.CommandError as e:
+            prefix = '%s: ' % ' '.join(command)
+            message = str(e)
+            raise next_epic.CommandError(shown, message[len(prefix):] if message.startswith(prefix) else message)
+    return metrics
+
+
+def metrics_json(metrics, args, shape):
+    """The JSON object printed by one `metrics.py` call, or raises next_epic.CommandError when there is no runner, the
+    call fails, the output is not JSON or lacks a key of `shape`."""
+    if metrics is None:
+        raise next_epic.CommandError(['metrics.py'] + list(args), 'no runner of metrics.py')
+    out = metrics(args)
+    try:
+        value = json.loads(out)
+    except ValueError:
+        raise next_epic.CommandError(['metrics.py'] + list(args), 'output is not valid JSON')
+    if not isinstance(value, dict) or not all(key in value for key in shape):
+        raise next_epic.CommandError(['metrics.py'] + list(args), 'unexpected JSON shape')
+    return value
+
+
+def no_measurement(epic_id, what, error):
+    """The fact that a measurement could not be read (the retrospective goes on without it)."""
+    return {'id': '%s/measurement/missing/%s' % (epic_id, what),
+            'text': '%s: metrics.py (%s) nie dał wyniku (%s)' % (NO_MEASUREMENT, what, cut(error, 200))}
+
+
+def optimization_incidents(epic_id, entry, merged_at):
+    """The incidents of the kind `optimization` of one epic: a candidate of `decide --history` per incident, with its
+    numbers as the data and its proposal as the fact (text written by metrics.py, never a text of the AO run)."""
+    incidents = []
+    candidates = entry.get('candidates') if isinstance(entry, dict) else None
+    for found in candidates if isinstance(candidates, list) else []:
+        if not (isinstance(found, dict) and filled(found.get('key'))):
+            continue
+        data = {name: found.get(name) for name in ('rule', 'data', 'expected_effect', 'verification')}
+        data['can_be_corrective'] = False
+        facts = [{'source': 'metrics.py', 'text': found['proposal']}] if filled(found.get('proposal')) else []
+        incidents.append(_incident(epic_id, 'optimization', found['key'], merged_at, data, facts))
+    return incidents
+
+
+def measurement_of(epic_id, metrics):
+    """(history by epic, facts) of the collected epic: `decide EPIC --history` (one call), `trend --json` (the record
+    row and the position of the epic). A failing call is the fact "brak danych pomiaru"."""
+    history, facts = {}, []
+    try:
+        decided = metrics_json(metrics, ['decide', epic_id, '--history'], ('history',))
+        for entry in decided['history'] if isinstance(decided['history'], list) else []:
+            if isinstance(entry, dict) and isinstance(entry.get('epic'), str):
+                history[entry['epic']] = entry
+        own = history.get(epic_id) or {}
+        facts.append({'id': '%s/measurement/decide' % epic_id,
+                      'text': 'reguły pominięte i braki danych decide dla %s' % epic_id,
+                      'data': {'skipped': own.get('skipped'), 'gaps': own.get('gaps')}})
+    except next_epic.CommandError as e:
+        facts.append(no_measurement(epic_id, 'decide', e))
+    try:
+        trend = metrics_json(metrics, ['trend', '--json', '--epic', epic_id, '--no-gh'], ('epics', 'position'))
+        row = next((r for r in trend['epics'] if isinstance(r, dict) and r.get('epic') == epic_id), None)
+        facts.append({'id': '%s/measurement/trend' % epic_id, 'text': 'trend ostatnich epików (metrics.py trend)',
+                      'data': trend})
+        facts.append({'id': '%s/measurement/record' % epic_id,
+                      'text': 'miary epiku %s i jego pozycja na tle mediany trendu' % epic_id,
+                      'data': {'row': row, 'position': trend['position']}})
+    except next_epic.CommandError as e:
+        facts.append(no_measurement(epic_id, 'trend', e))
+    return history, facts
+
+
+def iso_utc(epoch):
+    return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def optimization_effects(epic_id, applied, metrics):
+    """([{key, applied_key, pr, merged_at, at, effect}], facts): for every row of applied.jsonl with an `optimization`
+    incident, the output of `metrics.py effect KEY --at MERGE` as it is (the agent copies it, never computes it);
+    `effect` is null when the call fails or the row has no merge time (and then there is a fact for the key)."""
+    effects, facts, asked = [], [], {}
+    for row in applied:
+        listed = row.get('incidents') if isinstance(row.get('incidents'), list) else []
+        keys = list(dict.fromkeys(m.group(1) for m in (OPTIMIZATION_ID.match(str(i)) for i in listed) if m))
+        for key in keys:
+            merged_at = row.get('merged_at')
+            usable = isinstance(merged_at, (int, float)) and not isinstance(merged_at, bool)
+            at = iso_utc(merged_at) if usable else None
+            entry = {'key': key, 'applied_key': row.get('key'), 'pr': row.get('pr'), 'merged_at': merged_at, 'at': at,
+                     'effect': None}
+            effects.append(entry)
+            if not usable:
+                facts.append(no_measurement(epic_id, 'effect/%s' % key, 'wiersz applied.jsonl bez czasu merge\'u'))
+                continue
+            if (key, at) not in asked:
+                try:
+                    asked[(key, at)] = metrics_json(metrics, ['effect', key, '--at', at], ())
+                except next_epic.CommandError as e:
+                    asked[(key, at)] = None
+                    facts.append(no_measurement(epic_id, 'effect/%s' % key, e))
+            entry['effect'] = asked[(key, at)]
+    return effects, facts
 
 
 def epic_title_id(title):
@@ -913,12 +1047,13 @@ def external_record(source, number, record):
     return {'source': source, 'number': number, 'author': record.get('author'), 'url': record.get('url')}
 
 
-def collect(epic_id, paths, run, gates=None):
+def collect(epic_id, paths, run, gates=None, metrics=None):
     """The contents of input.json for the retrospective of epic_id (see the module docstring). GitHub content (epic
     issues and their comments, task PRs, the open retro PR, open issues) comes through the origin gates `gates`
     (default: make_gates(run)); a record of an author without write access gives only `external` or an untrusted
     record ({number, author, url, trusted: false}). `gh` calls without content (states, merge dates, counts) do not
-    use the gate."""
+    use the gate. `metrics` is the runner of tools/metrics/metrics.py (make_metrics_runner); without it, or when a
+    call fails, the measurement is the fact "brak danych pomiaru" and the rest is collected as usual."""
     epics = discover_epics(paths['ao_home'])
     if epic_id not in [e['id'] for e in epics]:
         raise ValueError('ao-%s is not the run of a finished epic (DONE with a final PR) in %s'
@@ -942,6 +1077,8 @@ def collect(epic_id, paths, run, gates=None):
         issues.setdefault(epic_title_id(issue.get('title')), {'number': issue['number'], 'comments': comments})
 
     entries, incidents, facts, measurements = [], [], [], {}
+    history, measured = measurement_of(epic_id, metrics)
+    facts += measured
     for epic in epics:
         name = epic['id']
         state, merged_at = final_pr(run, epic['final_pr_number'])
@@ -966,6 +1103,7 @@ def collect(epic_id, paths, run, gates=None):
             task_prs = shop.prs(state='merged', base='epic/%s' % name, limit=200, fields=('title', 'body'))
             external += [external_record('task_pr', p['number'], p) for p in task_prs if not p['trusted']]
             found += unasked_incidents(name, [p for p in task_prs if p['trusted']])
+        found += optimization_incidents(name, history.get(name), merged_at)
         incidents += sorted(found, key=lambda i: (KIND_ORDER.index(i['kind']), i['at'] or 0, i['key']))
     entries.sort(key=lambda e: (e['merged_at'] is None, e['merged_at'] or 0, e['created_at'] or 0, e['id']))
     order = {e['id']: n for n, e in enumerate(entries)}
@@ -1007,9 +1145,11 @@ def collect(epic_id, paths, run, gates=None):
             if item['trusted']:
                 item['body'] = cut(item.get('body') or '', 2000)
     external.sort(key=lambda e: (e['source'], e['number'], e['url'] or ''))
+    effects, effect_facts = optimization_effects(epic_id, registers['applied'], metrics)
+    facts += effect_facts
     return {'schema': 1, 'epic': epic_id, 'generated_at': int(time.time()), 'commit': commit, 'epics': entries,
-            'incidents': incidents, 'facts': facts, 'status': status, 'registers': registers,
-            'open_retro_pr': retro_pr, 'open_issues': open_issues, 'external': external}
+            'incidents': incidents, 'facts': facts, 'optimization_effects': effects, 'status': status,
+            'registers': registers, 'open_retro_pr': retro_pr, 'open_issues': open_issues, 'external': external}
 
 
 def report_text(epic, facts):
@@ -1929,7 +2069,7 @@ def print_json(value):
     print(json.dumps(value, ensure_ascii=False))
 
 
-def main(argv=None, run=None):
+def main(argv=None, run=None, metrics=None):
     args = build_parser().parse_args(argv)
     try:
         if args.command == 'collect':
@@ -1937,7 +2077,8 @@ def main(argv=None, run=None):
             paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home}
             # The gate's own runner keeps the output of a failed `gh api --include`, so a 404 is an untrusted author.
             gates = None if run else make_gates(github_trust.make_runner(args.repo))
-            data = collect(args.epic, paths, run or next_epic.make_runner(args.repo), gates)
+            data = collect(args.epic, paths, run or next_epic.make_runner(args.repo), gates,
+                           metrics or make_metrics_runner(args.repo))
             print(write_json(args.out or os.path.join(args.retro_home, args.epic), 'input.json', data))
         elif args.command == 'pending':
             print_json(cmd_pending(args, run or next_epic.make_runner(args.repo)))
