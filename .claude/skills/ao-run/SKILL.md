@@ -398,21 +398,21 @@ Zostaw w rozmowie raport odbioru:
   tokenów (szacowana z „≈”) osobno od przyrostu okna limitu w pp, próby, REPAIR, FIX, sync, czekanie w bramce,
   interwencje człowieka i czekanie na użytkownika, alarmy bezproduktywnego zużycia, wersje CLI i modele, CI, pozycja na
   tle mediany historii i braki danych. Dopisz czekania otwarte z `summary` (wyżej), gdy są.
-- **Decyzje optymalizacyjne:** sekcja po „Pomiarze”, z `decide <epik> --history` (pola `report`, `skipped`, `keys`;
-  pola `history` nie czytasz). Kandydaci to pole `report`: najwyżej 3, w podanej kolejności. Każdy kandydat: klucz
-  reguły (`key`), rekomendacja (`proposal` dosłownie), efekt (`expected_effect`: `wall_h` w godzinach, `value_usd`
-  w USD, „szacowany” przy `estimated`, `null` to „bez oszacowania”) i liczba epików, w których reguła zadziałała
-  (długość listy `keys[<key>]` plus ten epik: nie ma go w `keys`, bo `keys` obejmuje tylko epiki zmergowane). Gdy
-  `candidates` ma więcej pozycji niż `report`, dopisz „+N dalszych”. Bez kandydatów: „brak: żadna reguła nie
-  zadziałała”, a pod spodem reguły pominięte z braku danych albo z innej przyczyny: każda pozycja `skipped` jako
-  `key: reason`. Decyzji nie zapisujesz i `metrics.py effect` nie wołasz: o niej decyduje `/retro` (sekcja 7a)
-  razem z użytkownikiem.
 - **Równoległość:** epiki z `parallel_with` przy rezerwacji (sekcja 1) i powód bramki, gdy epik ruszył mimo niej;
   bez równoległego epiku pomiń.
 - **Link do końcowego PR i dopisane linie `Closes #N`** (albo lista do dopisania ręcznie, gdy komenda się nie udała).
 - **Sonda bezpieczeństwa:** z `$AO_HOME/probe-runs.jsonl` (wiersz na każde `ao-prepare` z sondą tego epiku) liczba
   przebiegów, suma czasu (`seconds`) i kosztu (`cost_usd`; `null` to „brak danych”) oraz przyczyny nieudanych
   (`reason`). Brak pliku: „brak danych”.
+- **Decyzje optymalizacyjne:** ostatnia sekcja raportu, po „Pomiarze”, z `decide <epik> --history` (pola `report`,
+  `skipped`, `keys`; pola `history` nie czytasz). Kandydaci to pole `report`: najwyżej 3, w podanej kolejności. Każdy
+  kandydat: klucz reguły (`key`), rekomendacja (`proposal` dosłownie), efekt (`expected_effect`: `wall_h` w godzinach,
+  `value_usd` w USD, „szacowany” przy `estimated`, `null` to „bez oszacowania”) i liczba epików, w których reguła
+  zadziałała (długość listy `keys[<key>]` plus ten epik: nie ma go w `keys`, bo `keys` obejmuje tylko epiki
+  zmergowane). Gdy `candidates` ma więcej pozycji niż `report`, dopisz „+N dalszych”. Bez kandydatów: „brak: żadna
+  reguła nie zadziałała”, a pod spodem reguły pominięte z braku danych albo z innej przyczyny: każda pozycja `skipped`
+  jako `key: reason`. Decyzji nie zapisujesz i `metrics.py effect` nie wołasz: o niej decyduje `/retro` (sekcja 7a)
+  razem z użytkownikiem.
 
 Gdy epik kończy się jako `BLOCKED` (np. `max_repairs`, `epic_timeout`) albo AO zatrzymał się bez `DONE`, nie buduj raportu
 odbioru ani pomiaru (`done`, rekord `metrics.py epic`): opisz ten stan i powiedz, co użytkownik musi rozstrzygnąć; gdy końcowy PR istnieje,
@@ -644,7 +644,9 @@ Ręczne poprawki: 2
 
 **Bez rekordu** (kod 2 z `epic` albo `render`) komentarz składasz sam, tylko z tych linii i listy jak wyżej, bez bloku
 „Pomiar epiku”: interwencje z `ao report` (`Interwencje człowieka`), czekanie z `ao_events.py summary` (liczba czekań
-i suma `wait_s` w minutach, czekania `open` osobno, przy błędzie „brak danych”) i ręczne poprawki z pliku.
+i suma `wait_s` w minutach, czekania `open` osobno, przy błędzie „brak danych”) i ręczne poprawki z pliku. Zapisz go do
+`"$AO_HOME/comment.md"` (cytowany heredoc, `cat > "$AO_HOME/comment.md" <<'COMMENT'`) przed pokazaniem użytkownikowi
+i wysyłką `--body-file`: przy kodzie 2 ten plik jest pusty albo zawiera komentarz sprzed merge'u.
 
 **Para równoległa** (krok 19a; definicje: `docs/features/parallel-work/spec.md`, „Metryki par”). Przy
 `MERGED` i przy `CLOSED` sprawdź pary tego epiku (dwie pierwsze linie bloku startowego):

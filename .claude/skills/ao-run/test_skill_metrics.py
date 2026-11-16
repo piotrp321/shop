@@ -116,6 +116,21 @@ class SkillCallsMetrics(unittest.TestCase):
         self.assertLess(text.index('metrics.py" epic'), text.index('metrics.py" render'))
         self.assertLess(text.index('night_queue.py" --repo "$SHOP" done'), text.index('metrics.py" epic'))
 
+    def test_decisions_are_the_last_item_of_the_report_after_the_measurement(self):
+        text = self.sections['6']
+        start = text.index('Zostaw w rozmowie raport odbioru:')
+        end = text.index('Gdy epik kończy się jako `BLOCKED`')
+        items = re.findall(r'^- \*\*([^*]+?):?\*\*', text[start:end], re.M)
+        self.assertEqual(items[-1], 'Decyzje optymalizacyjne')
+        self.assertLess(items.index('Pomiar'), items.index('Decyzje optymalizacyjne'))
+
+    def test_manual_comment_without_a_record_is_written_to_the_comment_file(self):
+        text = ' '.join(self.sections['7'].split())
+        fallback = text[text.index('**Bez rekordu**'):text.index('**Para równoległa**')]
+        self.assertIn('$AO_HOME/comment.md', fallback)
+        self.assertIn('cytowany heredoc', fallback)
+        self.assertIn('--body-file', fallback)
+
     def test_decisions_are_not_written_down(self):
         text = self.sections['6']
         self.assertFalse(any(command_of(a) == 'effect' for a in calls(self.text)))

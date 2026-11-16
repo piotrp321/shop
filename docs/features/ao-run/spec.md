@@ -194,17 +194,17 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
      zużycia, wersje CLI i modele, CI, pozycja na tle mediany i braki danych. Interwencje, czas, koszt i czekanie
      pochodzą z rekordu (`metrics.py epic <epik> --ao-home <AO_HOME>`, zapisanego po `night_queue.py done` i ostatnim
      `waste`), nie z `ao report`; z `ao_events.py summary` sesja bierze tylko czekania otwarte (bez zapisanej decyzji);
-   - sekcja „Decyzje optymalizacyjne” z `metrics.py decide <epik> --history`: najwyżej 3 kandydatów (pole `report`), każdy
-     z kluczem reguły, rekomendacją, oczekiwanym efektem (godziny czasu zegarowego, USD wartości tokenów, z oznaczeniem
-     szacunku) i liczbą epików, w których reguła zadziałała (zmergowane z `keys` i ten epik). Bez kandydatów: „brak:
-     żadna reguła nie zadziałała” z regułami pominiętymi (`skipped`: klucz i powód, np. brak danych albo brak wyników
-     EVALS 2.0). Decyzji sesja nie zapisuje: zapada w `/retro`, które uruchamia po merge'u;
    - epiki, z którymi epik trwał równolegle (z powodem bramki, gdy ruszył mimo niej);
    - link do końcowego PR i linie `Closes #N`, które sesja dopisała do jego opisu (`gh pr edit`) już przy
      `final_pr_created` (raport tylko je sprawdza i uzupełnia), więc są też w PR zmergowanym przed `DONE`: każde issue
      z linii `Issues:` specyfikacji na `origin/main`, tylko brakujące. Gdy się nie uda, raport podaje listę do dopisania;
    - sonda bezpieczeństwa: liczba przebiegów `ao-prepare` epiku, suma czasu i kosztu i przyczyny nieudanych
-     (`probe-runs.jsonl`).
+     (`probe-runs.jsonl`);
+   - ostatnia sekcja raportu, „Decyzje optymalizacyjne”, z `metrics.py decide <epik> --history`: najwyżej 3 kandydatów
+     (pole `report`), każdy z kluczem reguły, rekomendacją, oczekiwanym efektem (godziny czasu zegarowego, USD wartości tokenów, z oznaczeniem
+     szacunku) i liczbą epików, w których reguła zadziałała (zmergowane z `keys` i ten epik). Bez kandydatów: „brak:
+     żadna reguła nie zadziałała” z regułami pominiętymi (`skipped`: klucz i powód, np. brak danych albo brak wyników
+     EVALS 2.0). Decyzji sesja nie zapisuje: zapada w `/retro`, które uruchamia po merge'u.
    Błąd pomiaru nie zatrzymuje epiku: `metrics.py epic` z kodem 3 (rekord zapisany, `gh` zawiódł) to adnotacja „pomiar
    niepełny” w sekcji „Pomiar”, a kod 2 (nic nie zapisano albo brak rekordu) w `epic`, `render` albo `decide` to
    „brak danych pomiaru” zamiast sekcji „Pomiar” i „Decyzje optymalizacyjne” (z komunikatem w rozmowie); epik z listy
@@ -237,7 +237,8 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
    (`gh issue comment --body-file`); bez zgody niczego nie komentuje. Po merge'u sesja uruchamia też
    `metrics.py trend --epic <epik>` i pokazuje pozycję epiku względem mediany ostatnich zmergowanych. Błąd `gh`
    (`epic` albo `trend` z kodem 3) to adnotacja w rozmowie (komentarz ma „brak danych” przy polach z GitHuba); kod 2
-   (brak rekordu) to komentarz składany bez rekordu i bez bloku „Pomiar epiku”: liczba interwencji z `ao report`,
+   (brak rekordu) to komentarz składany bez rekordu (zapisany do `comment.md` przed pokazaniem i wysyłką) i bez bloku
+   „Pomiar epiku”: liczba interwencji z `ao report`,
    czekanie z `ao_events.py summary` (liczba czekań, suma, czekania otwarte osobno, przy błędzie „brak danych”)
    i ręczne poprawki w tym samym formacie. Minut pracy użytkownika sesja nie pyta i nie szacuje. PR zamknięty bez
    merge'u: sesja mówi o tym, nie pokazuje komentarza ani trendu i nie przechodzi do punktu 7.

@@ -216,8 +216,9 @@ flowchart TB
    - `/ao-run` dopisuje do opisu końcowego PR `Closes #N` każdego issue z linii `Issues:` specyfikacji. Użytkownik
      sprawdza je i merguje PR (squash). Issue zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
    - Raport odbioru ma sekcje „Pomiar” (wąskie gardła, czas, wartość tokenów, próby, alarmy, pozycja na tle mediany;
-     `metrics.py render --format report`) i „Decyzje optymalizacyjne” (najwyżej 3 kandydatów z rekomendacją, efektem
-     i liczbą epików, w których reguła zadziałała; `metrics.py decide`, decyzji nie zapisuje) (krok 18).
+     `metrics.py render --format report`) i, jako ostatnia sekcja raportu, „Decyzje optymalizacyjne” (najwyżej 3
+     kandydatów z rekomendacją, efektem i liczbą epików, w których reguła zadziałała; `metrics.py decide`, decyzji nie
+     zapisuje) (krok 18).
    - Po każdym epiku komentarz do issue epiku to blok „Pomiar epiku” (`metrics.py render --format comment`): trzy liczby
      (interwencje człowieka, czas czekania na decyzje użytkownika, liczba ręcznych poprawek) i pomiar po merge'u. Minut
      pracy użytkownika nie szacujemy. `/ao-run` pokazuje też trend (`metrics.py trend`) na starcie i po każdym merge'u,
