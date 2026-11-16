@@ -1,6 +1,8 @@
 """Tests of the shipped config.json: the command categories that later steps match against shell commands."""
+import json
 import os
 import re
+import tempfile
 import unittest
 
 import metrics
@@ -35,6 +37,49 @@ class ReadCategoryTest(unittest.TestCase):
     def test_commands_of_other_categories_are_not_read(self):
         for command in ('make test', 'python3 -m unittest discover', 'git commit -m x', 'rm file'):
             self.assertFalse(matches(self.config, 'read', command), command)
+
+
+class DecisionConfigTest(unittest.TestCase):
+    """The keys of the decision rules (decisions, evals) are checked when the config is loaded: a bad value ends the
+    command with a message that names the key."""
+
+    def load(self, change):
+        config = metrics.load_config(os.path.join(HERE, 'config.json'))
+        change(config)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'config.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(config, f)
+            return metrics.load_config(path)
+
+    def rejects(self, change, text):
+        with self.assertRaises(metrics.MetricsError) as caught:
+            self.load(change)
+        self.assertIn(text, str(caught.exception))
+
+    def test_the_shipped_decision_thresholds_are_valid(self):
+        self.assertEqual(self.load(lambda c: None)['decisions']['report_max'], 3)
+
+    def test_a_share_threshold_must_be_a_fraction_above_zero(self):
+        for key in ('d1_role_share', 'd4_human_wait_share', 'd4_ci_share', 'd4_limit_wait_share', 'd4_review_share'):
+            for bad in (0, -0.1, 1.5):
+                self.rejects(lambda c: c['decisions'].update({key: bad}), 'decisions.%s' % key)
+
+    def test_the_other_thresholds_must_be_positive(self):
+        for key in ('d2_work_multiple', 'd3_gate_wait_h'):
+            self.rejects(lambda c: c['decisions'].update({key: 0}), 'decisions.%s' % key)
+
+    def test_the_counts_must_be_whole_numbers_of_at_least_one(self):
+        for key in ('d2_failed_attempts', 'report_max', 'effect_min_tasks', 'effect_min_task_epics', 'effect_min_epics'):
+            for bad in (0, 2.5, -1):
+                self.rejects(lambda c: c['decisions'].update({key: bad}), 'decisions.%s' % key)
+
+    def test_a_missing_decision_key_is_rejected(self):
+        self.rejects(lambda c: c['decisions'].pop('d3_gate_wait_h'), 'decisions')
+
+    def test_evals_roles_and_the_results_directory_are_checked(self):
+        self.rejects(lambda c: c['evals'].update({'roles': []}), 'evals')
+        self.rejects(lambda c: c['evals'].update({'results_dir': ''}), 'evals')
 
 
 if __name__ == '__main__':

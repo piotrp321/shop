@@ -153,6 +153,26 @@ def _evals(value):
             and isinstance(value['results_dir'], str) and bool(value['results_dir']))
 
 
+DECISION_SHARES = ('d1_role_share', 'd4_human_wait_share', 'd4_ci_share', 'd4_limit_wait_share', 'd4_review_share')
+DECISION_COUNTS = ('d2_failed_attempts', 'report_max', 'effect_min_tasks', 'effect_min_task_epics', 'effect_min_epics')
+DECISION_POSITIVE = ('d2_work_multiple', 'd3_gate_wait_h')
+
+
+def decisions_problem(decisions):
+    """The first bad value of the `decisions` section as `key: expectation` (None when all are fine): a share is a
+    fraction above 0 up to 1, a count a whole number of at least 1, the other thresholds numbers above 0."""
+    for key in DECISION_SHARES:
+        if not 0 < decisions[key] <= 1:
+            return 'decisions.%s: oczekiwano ułamka większego od 0 i najwyżej 1' % key
+    for key in DECISION_COUNTS:
+        if not _is_int(decisions[key]) or decisions[key] < 1:
+            return 'decisions.%s: oczekiwano liczby całkowitej, co najmniej 1' % key
+    for key in DECISION_POSITIVE:
+        if decisions[key] <= 0:
+            return 'decisions.%s: oczekiwano liczby większej od 0' % key
+    return None
+
+
 CONFIG_SCHEMA = {
     'breakdown_order': (_order, 'lista siedmiu kategorii: %s' % ', '.join(BREAKDOWN_CATEGORIES)),
     'github_wait_cap_s': (lambda v: _is_number(v) and v > 0, 'liczba sekund większa od 0'),
@@ -195,6 +215,9 @@ def load_config(path):
             raise MetricsError('config.json %s: brak klucza %s' % (path, key))
         if not check(config[key]):
             raise MetricsError('config.json %s: klucz %s: oczekiwano: %s' % (path, key, expected))
+    problem = decisions_problem(config['decisions'])
+    if problem:
+        raise MetricsError('config.json %s: klucz %s' % (path, problem))
     unknown = sorted(set(config) - set(CONFIG_SCHEMA))
     if unknown:
         raise MetricsError('config.json %s: nieznany klucz %s' % (path, ', '.join(unknown)))
