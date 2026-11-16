@@ -373,8 +373,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (łączy się ze `status` i `q`); `refund=overdue` to podzbiór `pending` z `refund_due_at` < chwila odczytu
     (`BackofficeOrderFilter::$refundDueBefore`, zakres tego samego częściowego indeksu), z tym samym sortem i kursorem. Kursor keyset `BackofficeOrderCursor` (base64url JSON klucza sortu, chwili w UTC
     z mikrosekundami albo kwoty i id); zły kursor i kursor innego sortu to 400 przy `after`. Parametry: `perPage` 1–100
-    (domyślnie 25), inaczej 400. `refund`, `q`, `placedFrom` i `placedTo` są w DTO typu `mixed` i sprawdzane w callbackach, żeby
-    błąd typu (`q[]=…`) miał ten sam polski komunikat, co zły tekst (tak samo `level` listy stanów i `images` listy produktów). Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
+    (domyślnie 25), inaczej 400. `refund`, `q`, `sort`, `placedFrom`, `placedTo` i `customerId` są w DTO typu `mixed` i sprawdzane w callbackach, żeby
+    błąd typu (`q[]=…`) miał ten sam polski komunikat, co zły tekst (tak samo `level` listy stanów, `images` listy produktów, `sort` list produktów, cen i stanów oraz `productId` list cen i stanów). Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
     `(status, placed_at DESC, id DESC)`, `(total_gross, id)`, `(status, total_gross, id)`, `(lower(email))`, GIN trigram
     wyszukiwania (wyrażenia, mapowanie ich nie zna, więc narzędzia schematu je pomijają) i częściowy `(refund_due_at, id)
     WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL` (warunek w mapowaniu tak, jak zwraca go PostgreSQL);
@@ -1089,7 +1089,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `StockLevelIndexMigrationTest` (połączenie poza transakcją DAMA, indeks `INVALID` zostawiony przez nieudaną
   unikalną budowę `CONCURRENTLY`).
 - Sortowanie list panelu (spec ADMIN-FEATURES, „Sortowanie”; produkty, ceny, stany i zamówienia): parametr `sort`
-  z zamkniętą listą kluczy (`-` to malejąco), którą pilnuje `Choice` w DTO zapytania (klucz spoza listy to 400 przy `sort`).
+  z zamkniętą listą kluczy (`-` to malejąco); w DTO zapytania `sort` jest typu `mixed` i sprawdza go callback `validateSort`, więc klucz spoza listy i wartość innego typu (`sort[]=…`) to 400 przy `sort` z tym samym polskim komunikatem.
   Produkty, ceny i stany stronicują produkty Catalog po `name` (domyślny), `-name`, `-updatedAt` albo `updatedAt`
   (`ProductSort`); Pricing i Inventory przekazują klucz tekstem przez `ProductDirectory::page(..., $sort)` do
   `SearchBackofficeProducts`, a Catalog go waliduje. Zamówienia: `-placedAt` (domyślny), `placedAt`, `-total`, `total`
