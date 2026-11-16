@@ -970,10 +970,11 @@ def render_cell(cell):
 
 
 def value_sections(items):
-    """The `value` of the record from items [(task, {role: {model: cell}} or None)]: total, by_role, by_model, by_task
-    and by_role_model. An attempt without cells (no transcript) is an unknown part of its sections."""
-    sections = {name: Section(name in ('by_role', 'by_role_model'))
-                for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model')}
+    """The `value` of the record from items [(task, {role: {model: cell}} or None)]: total, by_role, by_model, by_task,
+    by_role_model and by_task_role ({task: {role: cell}}, the value of a role in one task). An attempt without cells
+    (no transcript) is an unknown part of its sections."""
+    sections = {name: Section(name in ('by_role', 'by_role_model', 'by_task_role'))
+                for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model', 'by_task_role')}
     nothing = {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'shared': False, 'no_cli': False}
     for task, cells in items:
         if cells is None:
@@ -990,6 +991,7 @@ def value_sections(items):
                 sections['by_model'].add(model, cell)
                 sections['by_task'].add(task, cell)
                 sections['by_role_model'].add((role, model), cell)
+                sections['by_task_role'].add((task, role), cell)
     value = {'total': sections['total'].render('all') if sections['total'].cells else None}
     for name in ('by_role', 'by_model', 'by_task'):
         value[name] = {key: sections[name].render(key) for key in sorted(sections[name].cells)}
@@ -997,6 +999,10 @@ def value_sections(items):
     for role, model in sorted(sections['by_role_model'].cells):
         nested.setdefault(role, {})[model] = sections['by_role_model'].render((role, model))
     value['by_role_model'] = nested
+    by_task_role = {}
+    for task, role in sorted(sections['by_task_role'].cells):
+        by_task_role.setdefault(task, {})[role] = sections['by_task_role'].render((task, role))
+    value['by_task_role'] = by_task_role
     return value
 
 # ------------------------------------------------------------------------------------- transcripts: shell commands
