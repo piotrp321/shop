@@ -84,13 +84,26 @@ Zgłoszenie `IMPORTANT` w czystym przypadku ocenia właściciel; nie jest z gór
 
 ## Limity
 
-- `--run-cap` (domyślnie 3 USD) idzie do `--max-budget-usd`, więc CLI przerywa przebieg w trakcie (sprawdzone w trybie
-  `squash`: limit 0,10 USD przerwał przebieg przy 0,16 USD). W trybie `replay` limit dotyczy sesji nadrzędnej; tego,
-  że wlicza koszt subagenta, nie sprawdzono na prawdziwym przebiegu.
-- `--total-cap` (domyślnie 25 USD): przed każdym wywołaniem modelu skrypt sumuje `ledger.jsonl` i odmawia startu,
-  gdy wydane + limit wywołania przekracza limit łączny (kod wyjścia 2).
-- Przebieg bez znanego kosztu (limit czasu, awaria) jest liczony w `ledger.jsonl` po pełnym limicie przebiegu.
-- Koszt to szacunek CLI według cennika. Przebieg przerwany limitem albo błędem nie dostaje oceny.
+- **Limit przebiegu.** `--run-cap` (domyślnie 3 USD) idzie do `--max-budget-usd`, więc CLI przerywa sesję w trakcie.
+  Limit obejmuje sesję nadrzędną i subagenta: przy limicie 0,30 USD sesja z pracującym subagentem została przerwana
+  przy 0,32 USD (przekroczenie o jedno wywołanie modelu).
+- **Limit łączny.** `--total-cap` (domyślnie 25 USD). Przed każdym wywołaniem modelu (`run.py`, `grade.py extract`,
+  `grade.py judge`) skrypt pod blokadą katalogu wyników dopisuje do `ledger.jsonl` rezerwację pełnego limitu tego
+  wywołania albo odmawia startu (kod wyjścia 2), gdy wydane plus limit przekracza limit łączny. Po wywołaniu dopisuje
+  rozliczenie, czyli różnicę między kosztem obciążonym a rezerwacją. Suma wierszy to koszt obciążony.
+- **Koszt obciążony.** Rzeczywisty koszt jest znany tylko wtedy, gdy CLI zakończyło się samo i podało sumę. Przebieg
+  przerwany limitem czasu albo sygnałem i przebieg bez linii wyniku są obciążane pełnym limitem przebiegu. Przebieg,
+  który nie uruchomił modelu (błąd budowy checkoutu), nie kosztuje nic. `meta.json` ma oba pola: `cost_usd` (zgłoszony
+  przez CLI) i `cost_charged_usd` (zapisany w rejestrze).
+- **Przerwanie.** Limit czasu, Ctrl-C i SIGTERM kończą całą grupę procesów CLI, razem z subagentem i tym, co uruchomił.
+  SIGKILL samego skryptu zostawia CLI przy życiu; jego wydatek ogranicza wtedy `--max-budget-usd`, a rezerwacja pełnego
+  limitu zostaje w rejestrze.
+- **Równoległe wywołania** na tym samym `--out` nie przekroczą limitu łącznego i nie dostaną tego samego katalogu
+  przebiegu (rezerwacja i przydział katalogu są pod wspólną blokadą).
+- **Kilka linii wyniku.** Sesja może wypisać wynik po każdej turze. Przerwanie limitem w dowolnej turze daje
+  `budget_stop`, błąd w dowolnej turze daje `infra_error`, także gdy wcześniejsza albo późniejsza tura się udała.
+- Koszt to szacunek CLI według cennika. Przebieg przerwany limitem albo błędem nie dostaje raportu ani oceny, a przebieg
+  bez ekstrakcji (`findings.json`) nie wchodzi do liczb `summary` i jest w nim wypisany osobno.
 
 ## Uruchomienie
 
@@ -103,4 +116,6 @@ Każde uruchomienie `run.py`, `grade.py extract` i `grade.py judge` wywołuje mo
     python3 tools/evals-pilot/grade.py table --out "$OUT"
     python3 tools/evals-pilot/grade.py summary --out "$OUT"
 
-Testy (bez modelu): `python3 -m unittest discover -s tools/evals-pilot -p 'test_*.py'`.
+Testy (bez modelu): `python3 -m unittest discover -s tools/evals-pilot -p 'test_*.py'`. `test_enforcement.py` uruchamia
+prawdziwe `run_case`, budowę checkoutów i `render_settings.py` na tymczasowym repozytorium z atrapą CLI, która zapisuje,
+jak została wywołana.

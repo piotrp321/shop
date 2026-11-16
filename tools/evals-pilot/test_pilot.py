@@ -174,7 +174,7 @@ class Summary(Base):
         self.assertIn("gold_detected true / defect runs ok: 1 / 1", text)
         self.assertIn("zero falszywe among IMPORTANT+BLOCKER / clean runs ok: 0 / 2", text)
         self.assertIn("nierozstrzygnięte (unlabelled IMPORTANT+BLOCKER): 1", text)
-        self.assertIn("1 total, over 3 ok runs", text)
+        self.assertIn("1 total, over 3 graded runs", text)
         self.assertIn("agree 2, disagree 0", text)
         self.assertIn("c-3: infra_error boom", text)
 
@@ -312,8 +312,9 @@ class ReplayRun(Base):
             code = run.main(["--out", str(out), "--case", "c1", "--mode", "replay"])
         return code, out / "runs" / "c1-1"
 
-    def ledger_rows(self):
-        return (self.out / "out" / "ledger.jsonl").read_text().count("\n")
+    def charged(self):
+        """What the ledger holds for the run: its reservation and the settlement add up to the charged cost."""
+        return round(run.ledger_spent(self.out / "out"), 6)
 
     def test_zero_agent_calls(self):
         code, d = self.go([INIT, result()])
@@ -321,13 +322,13 @@ class ReplayRun(Base):
         meta = json.loads((d / "meta.json").read_text())
         self.assertEqual((meta["status"], meta["mode"]), ("infra_error", "replay"))
         self.assertFalse((d / "report.md").exists())
-        self.assertEqual(self.ledger_rows(), 1)
+        self.assertEqual(self.charged(), 0.5)
 
     def test_two_agent_calls(self):
         code, d = self.go([INIT, agent_use(), agent_use("toolu_2"), agent_result(), result()])
         self.assertEqual(json.loads((d / "meta.json").read_text())["status"], "infra_error")
         self.assertFalse((d / "report.md").exists())
-        self.assertEqual(self.ledger_rows(), 1)
+        self.assertEqual(self.charged(), 0.5)
 
     def test_valid_call(self):
         code, d = self.go([INIT, agent_use(), agent_result(), result(text="gotowe")])
@@ -352,8 +353,7 @@ class ReplayRun(Base):
         self.assertEqual(meta["status"], "infra_error")
         self.assertIn("broken reader", meta["error"])
         self.assertFalse((d / "report.md").exists())
-        row = json.loads((self.out / "out" / "ledger.jsonl").read_text().splitlines()[0])
-        self.assertEqual(row["cost_usd"], meta["cost_usd"])
+        self.assertEqual(self.charged(), meta["cost_usd"])
         self.assertIsNotNone(meta["cost_usd"])
 
     def test_case_without_replay_exits_2(self):

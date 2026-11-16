@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Eval pilot grading: extract findings, judge them against gold, build label tables and a summary."""
 import argparse
+import contextlib
+import fcntl
 import json
 import re
 import subprocess
@@ -71,8 +73,30 @@ def check_budget(out, cap, total_cap):
         raise SystemExit(2)
 
 
+@contextlib.contextmanager
+def _locked(out):
+    """The same lock as in run.py: one invocation at a time reads and extends the ledger of an output directory."""
+    Path(out).mkdir(parents=True, exist_ok=True)
+    with open(Path(out) / ".lock", "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _ledger_add(out, kind, id_, cost, **extra):
+    row = {"kind": kind, "id": id_, "cost_usd": cost, "at": datetime.now(timezone.utc).isoformat(), **extra}
+    with open(Path(out) / "ledger.jsonl", "a") as f:
+        f.write(json.dumps(row) + "\n")
+
+
 def call_model(prompt, schema, model, out, kind, id_, cap_usd=0.25, claude_bin="claude", total_cap=25):
-    check_budget(out, cap_usd, total_cap)
+    # Reserve the whole cap before the call (or refuse with exit status 2) and settle it afterwards, as run.py does:
+    # a call that dies keeps its reservation, and parallel invocations cannot overspend the total.
+    with _locked(out):
+        check_budget(out, cap_usd, total_cap)
+        _ledger_add(out, kind, id_, cap_usd, reserved=True)
     with tempfile.TemporaryDirectory() as tmp:
         proc = subprocess.run(
             [claude_bin, "-p", prompt, "--model", model, "--output-format", "json", "--json-schema", schema,
@@ -82,10 +106,9 @@ def call_model(prompt, schema, model, out, kind, id_, cap_usd=0.25, claude_bin="
         data = json.loads(proc.stdout)
         cost = float(data["total_cost_usd"])
     except (ValueError, KeyError, TypeError):
-        data, cost = {}, cap_usd  # unknown cost: charge the whole cap so the total limit still holds
-    row = {"kind": kind, "id": id_, "cost_usd": cost, "at": datetime.now(timezone.utc).isoformat()}
-    with open(Path(out) / "ledger.jsonl", "a") as f:
-        f.write(json.dumps(row) + "\n")
+        data, cost = {}, cap_usd  # unknown cost: keep the whole cap charged so the total limit still holds
+    with _locked(out):
+        _ledger_add(out, kind, id_, cost - cap_usd, settles=True)
     return data.get("structured_output"), cost
 
 
@@ -212,7 +235,7 @@ def cmd_summary(args):
          "| run | kind | status | verdict | gold_detected | " + " | ".join(LABELS) + " | bez etykiety | cost_usd | wall_s |",
          "|" + "---|" * (8 + len(LABELS))]
     d_ok = d_hit = d_part = c_ok = c_zero = c_open = alarms = agree = disagree = unknown = by_owner = high = 0
-    bad, per_case = [], {}
+    bad, ungraded, per_case = [], [], {}
     for d, meta in run_dirs(args.out):
         e = labels["runs"].get(meta["run"], {"verdict": None, "gold_detected": None, "findings": []})
         c = count_labels(e["findings"])
@@ -221,6 +244,9 @@ def cmd_summary(args):
                  *c.values(), meta.get("cost_usd"), meta.get("wall_s"))) + " |")
         if meta["status"] != "ok":
             bad.append(f"- {meta['run']}: {meta['status']} {meta.get('error')}")
+            continue
+        if not (d / "findings.json").exists():  # no extraction, no findings to label: not part of the quality numbers
+            ungraded.append(f"- {meta['run']}")
             continue
         alarms += c["falszywe"]
         marked = [f for f in e["findings"] if f["severity"] in HIGH]
@@ -254,10 +280,11 @@ def cmd_summary(args):
     L += [f"- IMPORTANT+BLOCKER findings: {high}, labelled by the owner: {by_owner}",
           f"- clean runs with zero falszywe among IMPORTANT+BLOCKER / clean runs ok: {c_zero} / {c_ok}",
           f"- clean runs nierozstrzygnięte (unlabelled IMPORTANT+BLOCKER): {c_open}",
-          f"- false alarms (IMPORTANT+BLOCKER falszywe): {alarms} total, over {ok_runs} ok runs",
+          f"- false alarms (IMPORTANT+BLOCKER falszywe): {alarms} total, over {ok_runs} graded runs",
           f"- judge vs owner on defect runs: agree {agree}, disagree {disagree}, judge UNKNOWN {unknown}",
           "- cost USD by kind: " + (", ".join(f"{k} {v:.2f}" for k, v in sorted(spent.items())) or "none")
           + f"; total {sum(spent.values()):.2f}", "", "Runs not ok:"] + (bad or ["- none"])
+    L += ["", "Runs without extraction (not graded):"] + (ungraded or ["- none"])
     text = "\n".join(L) + "\n"
     (Path(args.out) / "summary.md").write_text(text)
     print(text)

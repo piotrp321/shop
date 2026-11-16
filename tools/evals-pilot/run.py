@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Eval pilot: run the code-reviewer agent on prepared cases and record results."""
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 import signal
@@ -32,11 +34,40 @@ def ledger_spent(out):
     return total
 
 
-def ledger_add(out, kind, id_, cost):
+def ledger_add(out, kind, id_, cost, **extra):
     Path(out).mkdir(parents=True, exist_ok=True)
-    row = {"kind": kind, "id": id_, "cost_usd": cost, "at": datetime.now(timezone.utc).isoformat()}
+    row = {"kind": kind, "id": id_, "cost_usd": cost, "at": datetime.now(timezone.utc).isoformat(), **extra}
     with open(Path(out) / "ledger.jsonl", "a") as f:
         f.write(json.dumps(row) + "\n")
+
+
+@contextlib.contextmanager
+def _locked(out):
+    """One invocation at a time reads and extends the ledger and claims run directories of an output directory."""
+    Path(out).mkdir(parents=True, exist_ok=True)
+    with open(Path(out) / ".lock", "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def reserve(out, kind, id_, cap, total_cap):
+    """Charge the whole cap of a model call before it starts, or refuse (exit status 2) when the total would be
+    exceeded. The reservation stays when the process dies, so an orphaned call is already paid for in the ledger."""
+    with _locked(out):
+        spent = ledger_spent(out)
+        if spent + cap > total_cap:
+            print(f"budget: spent {spent:.2f} + cap {cap:.2f} exceeds total {total_cap:.2f}", file=sys.stderr)
+            raise SystemExit(2)
+        ledger_add(out, kind, id_, cap, reserved=True)
+
+
+def settle(out, kind, id_, cap, charged):
+    """Replace the reservation of a finished call by what it is charged (a second row with the difference)."""
+    with _locked(out):
+        ledger_add(out, kind, id_, charged - cap, settles=True)
 
 
 def check_budget(out, cap, total_cap):
@@ -73,11 +104,13 @@ def parse_result(path):
             "permission_denials": 0, "cli_version": (init or {}).get("claude_code_version")}
     if not results:
         return info
-    # A session can print several result lines (one per turn). The budget stop of any turn decides the status, the
-    # cost is the highest total seen and the text is the last non-empty one.
+    # A session can print several result lines (one per turn). A budget stop of any turn decides the status, then an
+    # error of any turn (an earlier or later success does not hide it); the cost is the highest total seen and the
+    # text is the last non-empty one.
     stopped = [r for r in results if "max_budget" in str(r.get("subtype"))]
+    failed = [r for r in results if r.get("is_error") or r.get("subtype") != "success"]
     spoken = [r for r in results if str(r.get("result") or "").strip()]
-    result = dict(stopped[0] if stopped else (spoken[-1] if spoken else results[-1]))
+    result = dict((stopped or failed or spoken[-1:] or results[-1:])[0])
     costs = [r.get("total_cost_usd") for r in results if isinstance(r.get("total_cost_usd"), (int, float))]
     if costs:
         result["total_cost_usd"] = max(costs)
@@ -101,6 +134,14 @@ def next_run_dir(out, case):
     while (Path(out) / "runs" / f"{case}-{n}").exists():
         n += 1
     return n, Path(out) / "runs" / f"{case}-{n}"
+
+
+def claim_run_dir(out, case):
+    """The next free run directory of a case, created under the lock so two invocations never share one."""
+    with _locked(out):
+        n, run_dir = next_run_dir(out, case)
+        run_dir.mkdir(parents=True)
+        return n, run_dir
 
 
 def build_checkout(run_dir, case_dir, case, agent_rev):
@@ -267,6 +308,20 @@ def parse_subagent(path, order):
             "subagent_tokens": tur.get("totalTokens"), "subagent_tool_uses": tur.get("totalToolUseCount")}
 
 
+def _end_group(proc):
+    """End the CLI and everything it started (it leads its own process group): TERM, then KILL after 10 s."""
+    for sig, grace in ((signal.SIGTERM, 10), (signal.SIGKILL, None)):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=grace)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 def run_claude(run_dir, args, prompt=None, extra=None):
     if prompt is None:
         prompt = (run_dir / "prompt.md").read_text()
@@ -282,13 +337,11 @@ def run_claude(run_dir, args, prompt=None, extra=None):
             proc.wait(timeout=args.timeout_min * 60)
             return False
         except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGTERM)
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(proc.pid, signal.SIGKILL)
-                proc.wait()
+            _end_group(proc)
             return True
+        except BaseException:  # Ctrl-C or a termination of this script: never leave the CLI running
+            _end_group(proc)
+            raise
 
 
 def run_case(args, case_id):
@@ -296,8 +349,13 @@ def run_case(args, case_id):
     case = json.loads((case_dir / "case.json").read_text())
     replay_mode = args.mode == "replay"
     replay = json.loads((case_dir / "replay" / "replay.json").read_text()) if replay_mode else None
-    n, run_dir = next_run_dir(args.out, case_id)
+    n, run_dir = claim_run_dir(args.out, case_id)
     run_id = f"{case_id}-{n}"
+    try:
+        reserve(args.out, "run", run_id, args.run_cap, args.total_cap)
+    except SystemExit:
+        run_dir.rmdir()
+        raise
     started = datetime.now(timezone.utc).isoformat()
     t0 = time.time()
     meta = {"case": case_id, "run": run_id, "kind": case.get("kind"), "status": "infra_error", "error": None,
@@ -310,7 +368,7 @@ def run_case(args, case_id):
         meta.update(parent_model=args.parent_model, task=replay.get("task"), pr=replay.get("pr"),
                     base_sha=replay.get("base_sha"), head_sha=replay.get("review_sha"),
                     subagent_model=None, subagent_tokens=None, subagent_tool_uses=None)
-    started_model = False
+    started_model = exited = False
     try:
         if replay_mode:
             meta.update(build_replay_checkout(run_dir, case_dir, replay, args.agent_rev))
@@ -322,6 +380,7 @@ def run_case(args, case_id):
             meta.update(build_checkout(run_dir, case_dir, case, args.agent_rev))
             started_model = True
             timed_out = run_claude(run_dir, args)
+        exited = not timed_out
         info = parse_result(run_dir / "stdout.jsonl")
         meta["cost_usd"] = info["cost_usd"]  # known from here on, also when reading the report fails below
         if timed_out:
@@ -341,18 +400,24 @@ def run_case(args, case_id):
     except Exception as exc:  # any failure, also in reading the transcript, must still reach meta.json and the ledger
         detail = getattr(exc, "stderr", "") or ""
         meta.update(status="infra_error", error=f"{type(exc).__name__}: {exc} {detail}".strip())
-    meta["wall_s"] = round(time.time() - t0, 1)
-    meta["agent_commit"] = meta.get("agent_commit")
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
-    if meta["cost_usd"] is not None:
-        ledger_add(args.out, "run", run_id, meta["cost_usd"])
-    elif started_model:
-        # The model ran but reported no cost (timeout, crash): charge the whole cap so the total limit still holds.
-        meta["cost_assumed_usd"] = args.run_cap
+    except BaseException as exc:  # Ctrl-C or termination: record it, keep the reservation, pass it on
+        meta.update(status="infra_error", error=f"interrupted: {type(exc).__name__}")
+        raise
+    finally:
+        # The real cost is known only when the CLI ended by itself and reported a total. A run that timed out, was
+        # interrupted or left no result is charged the whole cap; a run that never started the model costs nothing.
+        reported = meta["cost_usd"] if isinstance(meta["cost_usd"], (int, float)) else None
+        if not started_model:
+            charged = 0.0
+        elif exited and reported is not None:
+            charged = reported
+        else:
+            charged = max(reported or 0.0, args.run_cap)
+        meta["cost_charged_usd"] = charged
+        meta["wall_s"] = round(time.time() - t0, 1)
         (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
-        ledger_add(args.out, "run", run_id, args.run_cap)
-    print(f"{run_id} {meta['status']} cost={meta['cost_usd']} wall={meta['wall_s']}s")
+        settle(args.out, "run", run_id, args.run_cap, charged)
+        print(f"{run_id} {meta['status']} cost={meta['cost_usd']} charged={charged} wall={meta['wall_s']}s")
     return meta["status"] == "ok"
 
 
@@ -377,10 +442,10 @@ def main(argv=None):
             return 2
     all_ok = True
     for c in args.case:
-        check_budget(args.out, args.run_cap, args.total_cap)
-        all_ok = run_case(args, c) and all_ok
+        all_ok = run_case(args, c) and all_ok  # reserves the run cap first and exits with 2 when it does not fit
     return 0 if all_ok else 1
 
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(143))  # so a termination also ends the CLI
     sys.exit(main())
