@@ -403,7 +403,9 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
     z runbooka). Certyfikat kontrolera trafia do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma; inny niż w repo
     to błąd zgłaszany przed zastosowaniem `root` (sekrety z repo nie dałyby się odszyfrować), nic nie jest nadpisywane.
     Kontroler nie rotuje klucza (`keyrenewperiod: "0"`), więc certyfikat w repo i kopia klucza zostają aktualne.
-    `argocd-cm` ma standardową customizację zdrowia `Application`, więc `root` czeka na aplikacje-dzieci w falach.
+    `argocd-cm` ma standardową customizację zdrowia `Application`, więc `root` czeka na aplikacje-dzieci w falach, oraz
+    customizację zdrowia PVC: `Bound` zdrowy, `Lost` zdegradowany, `Pending` zdrowy tylko z adnotacją
+    `shop/bound-by-first-pod: "true"` (PVC wiązany przez pierwszy pod CronJoba, np. `backup-work`), inny `Pending` w toku.
   - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun`, `create-admin`, `restore` i `backups`.
     `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej; trwałych kubeconfigów produkcji nie
     trzyma się w katalogach udostępnionych Dockerowi. Cel zapisuje bezwzględną ścieżkę w rejestrze
