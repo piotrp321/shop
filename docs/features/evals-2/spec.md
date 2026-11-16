@@ -2,7 +2,7 @@
 
 Mierzy jakość agenta na prawdziwych zadaniach: uruchamia produkcyjną definicję agenta, zbiera jego raport, a wynik
 powstaje z etykiet właściciela nadanych konkretnym zgłoszeniom. Obejmuje dziś jednego agenta, `code-reviewer`,
-i pięć przypadków. Narzędzie: `tools/evals-pilot/` (opis uruchomienia w jego `README.md`). Stan prac: `plan.md`.
+i sześć przypadków. Narzędzie: `tools/evals-pilot/` (opis uruchomienia w jego `README.md`). Stan prac: `plan.md`.
 
 EVALS 2.0 jest niezależne od epiku EVALS (`docs/features/evals/`, gałąź `epic/evals`): nie używa jego runnera,
 asercji ani formatu wyników i nie jest z nim łączone.
@@ -47,6 +47,12 @@ w którym subagent nie został wywołany dokładnie raz z niezmienionym zlecenie
 | `drobne` | prawdziwe, ale bez wagi `IMPORTANT` | osobno |
 | `nieznane` | nie da się rozstrzygnąć z danych przypadku | osobno; ani trafienie, ani fałszywy alarm |
 
+Etykieta `trafne` może być warunkowa (PROVISIONAL, `provisional: true` w `labels.json`): problem jest wiarygodny, ale
+nie został odtworzony. Takie zgłoszenia liczy się osobno i nie są potwierdzonymi usterkami, dopóki ktoś ich nie odtworzy.
+Zgłoszenie o naruszeniu procesu (np. brak fazy RED) ma kategorię „proces TDD” i też jest liczone osobno od usterek kodu.
+Wykrycie wady wzorcowej oznacza zidentyfikowanie jej mechanizmu, niezależnie od wagi nadanej przez agenta; poprawność
+wagi raportuje się osobno.
+
 Etykieta przeniesiona na to samo zgłoszenie w powtórzeniu wymaga sprawdzenia w raporcie, że to ten sam problem bez
 nowych okoliczności, i zatwierdzenia przez właściciela.
 
@@ -63,9 +69,22 @@ Dwie osobne tabele; żadna nie jest wyprowadzana z drugiej.
 Wyniki podaje się w liczbach przebiegów, bez odsetków i bez progów. Przebieg przerwany limitem albo błędem
 infrastruktury nie wchodzi do żadnej tabeli.
 
+## Porównanie wariantów agenta
+
+Zmianę agenta (promptu, modelu) ocenia się eksperymentem na tych samych przypadkach, zleceniach i wersji CLI:
+
+- wariant to commit na osobnej gałęzi, podawany przez `--agent-rev`; do `main` trafia dopiero po przyjęciu zmiany;
+- kryteria przyjęcia, kolejność przebiegów i limit kosztu są zapisane przed pomiarem i nie zmieniają się po wynikach;
+- rundy są kompletne (wszystkie przypadki w obu wariantach albo żaden), a wynik niepełnej rundy jest raportowany jako
+  niepełny;
+- nowe zgłoszenia `IMPORTANT` właściciel ocenia bez informacji o wariancie tam, gdzie działały oba warianty;
+- wynik na wadach, dla których zmianę napisano, nie jest dowodem ogólnej poprawy: o braku szkody mówią przypadki
+  kontrolne, których zmiana nie dotyczy.
+
 ## Ograniczenia
 
-- Pięć przypadków po trzy przebiegi pokazuje tylko duże różnice; nie jest miarą skuteczności produkcyjnego reviewera.
+- Sześć przypadków po dwa albo trzy przebiegi pokazuje tylko duże różnice; nie jest miarą skuteczności produkcyjnego
+  reviewera.
 - Wada #256 jest przykładem w prompcie agenta, więc jej wykrycie mierzy też znajomość wzorca.
 - Odtworzenie różni się od produkcji: nie ma działającego stosu Dockera, zlecenia pochodzą z ówczesnej wersji
   `/delivery`, a sesja nadrzędna to krótki stały prompt (lista w `tools/evals-pilot/README.md`).

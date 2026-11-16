@@ -20,4 +20,7 @@ którą zatwierdza właściciel. AO nie prowadzi tych prac.
 - Etap 2B: zrobiony w zakresie 2 przebiegów na przypadek (budżet 25 USD nie mieścił trzech). Raport:
   `docs/reports/evals-2-replay-code-reviewer-2026-11-16.md`. Prace nad runnerem są zakończone.
 - Etap 2C: lista kandydatów przygotowana poza repo; czeka na decyzję właściciela, które przypadki dodać.
-- Następny krok: decyzja właściciela, jak użyć EVALS 2.0 do optymalizacji `code-reviewer`.
+- Eksperyment A/B (punkt „Przepływ wartości wejściowych” w `code-reviewer`): zrobiony, zmiana nie spełniła kryteriów
+  przyjęcia. Raport: `docs/reports/evals-2-ab-code-reviewer-value-flow-2026-11-16.md`. Wariant promptu zostaje na gałęzi
+  `evals/code-reviewer-value-flow` i nie jest mergowany.
+- Następny krok: decyzja właściciela o kolejnej próbie poprawy `code-reviewer`.

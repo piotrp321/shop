@@ -20,6 +20,8 @@ Nie ma tu progów, werdyktów regresji, joba CI ani testów bezpieczeństwa. Zas
    `wada` (wada wzorcowa), `czesciowe` (tylko jej część), `trafne` (inny prawdziwy problem), `falszywe`, `drobne`,
    `nieznane` (nie da się rozstrzygnąć z danych przypadku; nie liczy się ani jako trafienie, ani jako fałszywy alarm);
    `gold_detected` na przebieg z wadą (`true`, `false`, `"partial"`); `by: "owner"` przy etykiecie właściciela.
+   Etykieta `trafne` niepotwierdzona odtworzeniem dostaje `provisional: true`, a zgłoszenie o procesie `category`
+   (np. „proces TDD”); `summary` ich nie rozdziela, raport liczy je osobno.
    Ponowne `table` zachowuje wpisane etykiety. Każdą ocenę da się zmienić ręcznie w tym pliku.
 5. `grade.py summary` liczy tabelę z etykiet i kosztów. Dopóki `approved_by_owner` jest `false`, wynik jest
    propozycją.
@@ -76,6 +78,7 @@ a dla przypadku z wadą `gold.md` (opis wady ze zgłoszenia).
 | `cart-fixes-3` | wada | zgłoszenie #113 | `bbabb283`, PR 107 |
 | `search-4` | wada | zgłoszenie #197 | `78ddc299`, PR 184 |
 | `order-management-2` | wada | zgłoszenie #256 | `541d06e9`, PR 233 |
+| `cart-4` | wada (tylko tryb `replay`) | zgłoszenie #81 | `cdc63bf7`, PR 76 |
 | `catalog-admin-3` | czysty warunkowo (`known.md`: udokumentowany wyścig pierwszej ceny ze zmianą klasy podatkowej) | zadanie CATALOG-ADMIN-3 | `1c35b5d4`, PR 220 |
 | `order-management-1` | czysty (niepotwierdzony przez właściciela) | zadanie ORDER-MANAGEMENT-1 | `8803554a`, PR 231 |
 
