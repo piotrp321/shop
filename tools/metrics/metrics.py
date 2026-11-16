@@ -2325,10 +2325,12 @@ class EvalsResults:
     def __init__(self, config):
         self.settings = config['evals']
         self.loaded = False
+        self.requests = 0                    # how many times a rule asked for the runs (the scan itself runs once)
         self.runs = None
         self.gaps = []
 
     def load(self):
+        self.requests += 1
         if not self.loaded:
             self.loaded = True
             self._scan()
@@ -2464,8 +2466,9 @@ def decide_epic(record, records, config, evals=None):
     evals = evals or EvalsResults(config)
     history = history_of(record, records)
     found, skipped = rule_candidates(record, history, config, gaps)
+    asked = evals.requests
     found += d1_candidates(record, historical_rates(records, []), evals, config, skipped, gaps) or []
-    for reason in evals.gaps if evals.loaded else []:
+    for reason in evals.gaps if evals.requests > asked else []:     # only when the D1 of this epic read the results
         gaps.add('decide.D1', reason)
     ordered = order_candidates(found)
     return {'epic': record.get('epic'), 'candidates': ordered, 'report': ordered[:int(config['decisions']['report_max'])],

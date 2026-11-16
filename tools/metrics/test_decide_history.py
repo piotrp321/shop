@@ -110,5 +110,46 @@ class HistoryOfD1Test(DecideEnv):
         self.assertEqual(result['keys']['D1:code-reviewer'], ['first', 'second'])
 
 
+class HistoryEvalsGapsTest(DecideEnv):
+    """The gaps of the EVALS 2.0 results are in the result of an epic only when its D1 reached for them."""
+
+    def run_history(self):
+        import os
+        with open(__file__.replace('test_decide_history.py', 'config.json'), encoding='utf-8') as f:
+            config = json.load(f)
+        config['evals']['results_dir'] = os.path.join(self.root, 'no-such-results')      # missing: a gap when read
+        path = os.path.join(self.root, 'config.json')
+        with open(path, 'w') as f:
+            json.dump(config, f)
+        code, out, err = run_cli(['decide', 'last', '--history', '--state', self.state, '--night', self.night,
+                                  '--config', path])
+        self.assertEqual(code, 0, err)
+        return {e['epic']: e for e in json.loads(out)['history']}
+
+    def evals_gaps(self, entry):
+        return [g for g in entry['gaps'] if 'EVALS' in g]
+
+    def epic(self, name, merged, role):
+        record = model_target({role: {OPUS: 30.0, SONNET: 2.0}, 'delivery': {OPUS: 68.0}})
+        record['epic'], record['merged_at'] = name, merged
+        return record
+
+    def test_only_the_epics_whose_d1_read_the_results_have_the_gap(self):
+        store_records(self.state, self.epic('first', '2026-11-01T10:00:00Z', 'qa-adversarial'),       # role outside evals
+                      self.epic('second', '2026-11-02T10:00:00Z', 'code-reviewer'),                    # reads the results
+                      self.epic('last', '2026-11-03T10:00:00Z', 'qa-adversarial'))
+        history = self.run_history()
+        self.assertEqual(self.evals_gaps(history['first']), [])
+        self.assertEqual(len(self.evals_gaps(history['second'])), 1)
+        self.assertEqual(self.evals_gaps(history['last']), [])
+
+    def test_every_epic_that_reads_the_results_has_the_gap_although_they_are_read_once(self):
+        store_records(self.state, self.epic('first', '2026-11-01T10:00:00Z', 'code-reviewer'),
+                      self.epic('last', '2026-11-03T10:00:00Z', 'code-reviewer'))
+        history = self.run_history()
+        for name in ('first', 'last'):
+            self.assertEqual(len(self.evals_gaps(history[name])), 1, name)
+
+
 if __name__ == '__main__':
     unittest.main()
