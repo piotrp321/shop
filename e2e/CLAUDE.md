@@ -7,7 +7,7 @@ sklepu (`STORE_MODE`) opisuje główny `CLAUDE.md`.
 
 - `make e2e`: testy Playwright na działającym stosie (`make up` i `make seed` przed nimi). `E2E_SHARD=<i>/<n>` (np.
   `1/3`) uruchamia tylko i-tą z n części zestawu: całe pliki spec w kolejności plików, podział według liczby testów
-  (Playwright `--shard`). `E2E_SHARD_WEIGHTS=125:93:107` (po jednej wadze na część, te same w każdej części) przesuwa
+  (Playwright `--shard`). `E2E_SHARD_WEIGHTS=110:109:131` (po jednej wadze na część, te same w każdej części) przesuwa
   granice; to nieudokumentowana zmienna `PWTEST_SHARD_WEIGHTS` Playwrighta, a bez niej podział jest równy i każdy test
   nadal biegnie dokładnie raz.
 - `make e2e-check`: sprawdzenie typów pakietu `e2e` i testy skryptu median Lighthouse, bez działających usług.
@@ -25,11 +25,10 @@ sklepu (`STORE_MODE`) opisuje główny `CLAUDE.md`.
   runnerze z własnym, świeżo zasianym stosem, bo testy dzielą stan jednego stosu i działają po kolei (`workers: 1`).
   Część to całe pliki spec: test nie może zależeć od stanu, który zostawia inny plik, bo ten może być w innej części.
   Plik trafia do części, w której zaczyna się jego pierwszy test przed granicą. Granice (`E2E_SHARD_WEIGHTS` w kroku
-  `make e2e`, 125:93:107 z 325 testów) leżą po 125 testach (w środku `admin-screens-prices`, więc pierwsza część to
-  pliki od `admin-design` do `admin-screens-prices`: 135 wolnych testów panelu, ok. 6,5 min) i po 218 (w środku
-  `listing-filters`, więc druga to pliki od `admin-screens-promotions` do `listing-filters`: 89 testów, ok. 6 min);
-  trzecia część (od `listing-tile-variants` do `visual-screens`, 101 szybkich testów, ok. 3,5 min) robi jeszcze
-  sprawdzenia po testach (ok. 2 min). Granica w środku pliku nie przesuwa podziału, gdy przybędzie kilka testów. Po dodaniu testów przesuń granice, żeby wszystkie części kończyły
+  `make e2e`, 110:109:131 z 350 testów) leżą po 110 testach (w środku `admin-screens-orders`, więc pierwsza część to pliki
+  od `admin-customers` do `admin-screens-orders`: 120 wolnych testów panelu) i po 219 (między `discount-codes` a `home`, więc
+  druga to pliki od `admin-screens-prices` do `discount-codes`: 100 testów); trzecia część (od `home` do `visual-screens`,
+  130 szybszych testów) robi jeszcze sprawdzenia po testach (ok. 2 min). Granica w środku pliku nie przesuwa podziału, gdy przybędzie kilka testów; granica 219 leży między plikami z zapasem jednego testu, więc dodanie testu w pierwszej albo drugiej części wymaga jej przesunięcia. Po dodaniu testów przesuń granice, żeby wszystkie części kończyły
   się mniej więcej razem (podział sprawdzisz bez stosu:
   `docker compose --profile e2e run --rm --no-deps -e PWTEST_SHARD_WEIGHTS=<wagi> --entrypoint npx e2e playwright test --list --shard=<i>/3`).
 - Wymagany check `e2e` to osobny, lekki job, który jest zielony tylko wtedy, gdy zakończył się sukcesem job `scope`
