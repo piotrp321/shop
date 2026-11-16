@@ -247,12 +247,46 @@ class AuditTest(Base):
         pair = self.report()['audit']['pairs'][0]
         self.assertEqual((pair['declared_conflicts'], pair['actual_conflicts']), (None, None))
 
-    def test_unreadable_plan_is_exit_1(self):
-        self.add_task('DEMO-1', pr=11, merged='c1')
+    def test_unreadable_plan_still_reports_everything_else(self):
+        self.add_task('DEMO-1', pr=11, merged='c1', parallel=['DEMO-2'])
+        self.add_task('DEMO-2', pr=12, merged='c2', parallel=['DEMO-1'])
+        commit(self.run, 'c1', ['docs/a.md'])
+        commit(self.run, 'c2', ['docs/a.md'])
+        self.add_attempt('DEMO-1', 1, 0, 100)
         del self.run.outputs[show()]
-        code, out = self.main()
-        self.assertEqual((code, out), (1, ''))
-        self.assertIn(PLAN_SHA, self.err)
+        result = self.report()
+        audit = result['audit']
+        self.assertIsNone(audit['declarations']['value'])
+        self.assertIn(PLAN_SHA, audit['declarations']['note'])
+        item = self.audit_task(result, 'DEMO-1')
+        self.assertEqual((item['declared'], item['undeclared'], item['changed']), (None, None, ['docs/a.md']))
+        self.assertEqual(item['declared_note'], task_pairs.NOTE_PLAN_UNREADABLE)
+        self.assertEqual(audit['pairs'][0]['declared_conflicts'], None)
+        self.assertEqual(audit['pairs'][0]['actual_conflicts'], ['docs/a.md'])
+        self.assertEqual(result['concurrency']['attempts_sum_s'], 100)
+
+    def test_unparsable_manifest_still_reports(self):
+        self.add_task('DEMO-1', pr=11, merged='c1')
+        commit(self.run, 'c1', ['docs/a.md'])
+        self.run.outputs[show()] = '# Plan without a block\n'
+        result = self.report()
+        self.assertIsNone(result['audit']['declarations']['value'])
+        self.assertIsNone(self.audit_task(result, 'DEMO-1')['declared'])
+
+    def test_readable_plan_has_declarations_note_null(self):
+        self.assertEqual(self.report()['audit']['declarations'], {'value': PLAN_SHA, 'note': None})
+
+    def test_task_missing_from_manifest_differs_from_task_without_paths(self):
+        self.set_plan([task('DEMO-1'), task('DEMO-3', ['docs/'])])
+        self.add_task('DEMO-1', pr=11, merged='c1')
+        self.add_task('DEMO-2', pr=12, merged='c2')
+        self.add_task('DEMO-3', pr=13, merged='c3')
+        for sha in ('c1', 'c2', 'c3'):
+            commit(self.run, sha, ['docs/a.md'])
+        result = self.report()
+        notes = [self.audit_task(result, t)['declared_note'] for t in ('DEMO-1', 'DEMO-2', 'DEMO-3')]
+        self.assertEqual(notes, [task_pairs.NOTE_NO_PATHS, task_pairs.NOTE_NOT_IN_PLAN, None])
+        self.assertIsNone(self.audit_task(result, 'DEMO-2')['declared'])
 
 
 class ConcurrencyTest(Base):
@@ -296,6 +330,23 @@ class ConcurrencyTest(Base):
         c = self.concurrency()
         self.assertEqual((c['attempts_sum_s'], c['concurrent_s']), (800, 200))
         self.assertEqual([a['open'] for a in c['attempts']], [True, False])
+
+    def test_triple_overlap_saving_is_exact(self):
+        for name in ('DEMO-1', 'DEMO-2', 'DEMO-3'):
+            self.add_task(name)
+            self.add_attempt(name, 1, 0, 100)
+        c = self.concurrency()
+        self.assertEqual((c['attempts_sum_s'], c['busy_s'], c['concurrent_s']), (300, 100, 100))
+        self.assertEqual(c['theoretical_saving'], 0.667)
+        self.assertEqual([p['overlap_s'] for p in c['pairs']], [100, 100, 100])
+
+    def test_open_attempt_of_a_closed_epic_ends_at_the_epic_end(self):
+        self.sql("UPDATE epics SET status = 'DONE', updated_at = ?", T0 + 99_999)
+        self.add_event(4000, 'epic_done', data={'epic_id': EPIC})
+        self.add_task('DEMO-1')
+        self.add_attempt('DEMO-1', 1, 1000, None)
+        c = self.concurrency()
+        self.assertEqual((c['attempts_sum_s'], c['attempts'][0]['open']), (3000, True))
 
     def test_only_plan_attempts_count(self):
         self.add_task('DEMO-1')

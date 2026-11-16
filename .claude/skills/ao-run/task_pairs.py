@@ -10,25 +10,34 @@ directory) is where `git` and `gh` run, each with a COMMAND_TIMEOUT limit; --set
 ~/.local/state/ao-setup. Times in the output are seconds (one decimal) or local ISO timestamps. One JSON line, exit 0:
 
   epic          {id, plan_path, plan_sha, status}
+  audit.declarations  {value: plan_sha, note: null}, or {value: null, note: the reason} when the plan at plan_sha
+                cannot be read (`git show` fails, no manifest block): every declared and declared_conflicts is then
+                null and all other metrics are still computed
   audit.tasks   one item per task of kind `plan` with a PR (pr_number), in AO order:
                   declared   `paths` of the task in the manifest at the epic's plan_sha (`git show plan_sha:plan_path`,
-                             the declaration in force while the task ran), null when the task has none
+                             the declaration in force while the task ran), else null with
+                  declared_note  NOTE_NO_PATHS (task without paths), NOTE_NOT_IN_PLAN (no such task in the manifest)
+                             or NOTE_PLAN_UNREADABLE; null when declared is set
                   changed    the files of the PR: `git diff --name-only S^1 S` for merged_sha S when the commit is in the
                              checkout (the first parent is the epic branch before the merge, for a squash and for a merge
-                             commit), else `gh pr view N --json files`; null when both fail
+                             commit), else `gh pr view N --json files`; null when both fail. A rename lists only
+                             the new path, and gh may truncate the files of a very large PR
                   source     merge_commit (2+ parents), squash (1 parent), gh, or null
                   undeclared files of `changed` inside no `declared` path (by segments, casefold), sorted; null when
                              declared or changed is null
   audit.pairs   tasks that list each other in `parallel_with` (AO database): {tasks, declared_conflicts,
                 actual_conflicts}, parallel_gate.task_conflicts on the declarations (with the CLAUDE.md files tracked at
                 plan_sha) and on the changed files (each a file); null without the data
-  concurrency   attempts of `plan` tasks (an attempt without ended_at runs to now, open: true):
+  concurrency   attempts of `plan` tasks (an attempt without ended_at, open: true, runs to now, or to the epic end
+                when the epic is closed):
                   attempts            [{task_id, number, start, end, seconds, open}]
                   attempts_sum_s      the sum of their durations
                   busy_s              the time with at least one attempt open
                   concurrent_s        the measured time with at least two attempts open (real concurrency)
-                  pairs               [{tasks, overlap_s}] for every two tasks with overlapping attempts
-                  theoretical_saving  concurrent_s / attempts_sum_s (3 decimals; null without attempts): the saving
+                  pairs               [{tasks, overlap_s}] for every two tasks with overlapping attempts (with three
+                                      at once the overlaps of the pairs add up to more than concurrent_s)
+                  theoretical_saving  (attempts_sum_s - busy_s) / attempts_sum_s (3 decimals; null without attempts):
+                                      the saving
                                       under the assumption that serially the attempts would take the same time; NOT a
                                       speedup
                   epic_wall_s         created_at of the epic to its end: the last epic_done event, else updated_at of a
@@ -53,8 +62,8 @@ release on (AO-3, AO-8 and AO-13). When no run_started event is at or before the
 without attempts), the AO that ran it may not have written them: operational interventions, cooldowns, host_pauses
 and usage_warnings are then null (no data), not 0.
 
-Exit codes: 0 report; 1 the plan at plan_sha cannot be read (`git show` fails, no manifest block); 2 no database,
-an unreadable database or no row EPIC in `epics`. A `git`/`gh` failure while reading a PR gives null for that item.
+Exit codes: 0 report (also with an unreadable plan, see audit.declarations); 2 no database, an unreadable database
+or no row EPIC in `epics`. A `git`/`gh` failure while reading a PR gives null for that item.
 """
 import argparse
 import glob
@@ -77,6 +86,9 @@ import plan_manifest  # noqa: E402  (the manifest block of a plan)
 
 COMMAND_TIMEOUT = 60
 RESOURCES_NOTE = 'AO nie zapisuje czekania na zasoby'
+NOTE_PLAN_UNREADABLE = 'plan przy plan_sha nieczytelny'
+NOTE_NOT_IN_PLAN = 'brak zadania w manifeście przy plan_sha'
+NOTE_NO_PATHS = 'zadanie bez paths w manifeście przy plan_sha'
 CLOSED = ('DONE', 'BLOCKED')
 
 
@@ -85,7 +97,7 @@ class DatabaseError(Exception):
 
 
 class PlanError(Exception):
-    pass
+    """The plan at plan_sha cannot be read: the audit reports it, every other metric is still computed."""
 
 
 def open_readonly(path):
@@ -219,7 +231,10 @@ def undeclared(declared, changed):
 
 def audit(data, run):
     epic = data['epic']
-    declared = declarations(run, epic['plan_sha'], epic['plan_path'])
+    try:
+        declared, plan_note = declarations(run, epic['plan_sha'], epic['plan_path']), None
+    except PlanError as e:
+        declared, plan_note = None, str(e)
     plan_tasks = [t for t in data['tasks'] if t['kind'] == 'plan']
     items, changed = [], {}
     for t in plan_tasks:
@@ -227,9 +242,16 @@ def audit(data, run):
             continue
         files, source = changed_files(run, t['pr_number'], t['merged_sha'])
         changed[t['task_id']] = files
-        mine = declared.get(t['task_id'])
+        mine = (declared or {}).get(t['task_id'])
+        if declared is None:
+            note = NOTE_PLAN_UNREADABLE
+        elif t['task_id'] not in declared:
+            note = NOTE_NOT_IN_PLAN
+        else:
+            note = None if mine is not None else NOTE_NO_PATHS
         items.append({'task_id': t['task_id'], 'pr_number': t['pr_number'], 'merged_sha': t['merged_sha'],
-                      'declared': mine, 'changed': files, 'source': source, 'undeclared': undeclared(mine, files)})
+                      'declared': mine, 'declared_note': note, 'changed': files, 'source': source,
+                      'undeclared': undeclared(mine, files)})
     claude_md, listed = None, False
     found = []
     for i, a in enumerate(plan_tasks):
@@ -238,14 +260,15 @@ def audit(data, run):
                 continue
             if not listed:
                 claude_md, listed = tracked_claude_md(run, epic['plan_sha']), True
-            da, db = declared.get(a['task_id']), declared.get(b['task_id'])
+            da, db = (declared or {}).get(a['task_id']), (declared or {}).get(b['task_id'])
             ca, cb = changed.get(a['task_id']), changed.get(b['task_id'])
             found.append({
                 'tasks': [a['task_id'], b['task_id']],
                 'declared_conflicts': None if da is None or db is None or claude_md is None
                 else parallel_gate.task_conflicts(da, db, claude_md),
                 'actual_conflicts': None if ca is None or cb is None else parallel_gate.task_conflicts(ca, cb)})
-    return {'tasks': items, 'pairs': found}
+    return {'declarations': {'value': None if declared is None else epic['plan_sha'], 'note': plan_note},
+            'tasks': items, 'pairs': found}
 
 
 # ------------------------------------------------------------------------------------------------- time
@@ -284,36 +307,39 @@ def _covered(intervals, minimum):
 def concurrency(data, now):
     kinds = {t['task_id']: t['kind'] for t in data['tasks']}
     order = {t['task_id']: i for i, t in enumerate(data['tasks'])}
+    closed_at, epic_open = epic_end(data, now)
     items = []
     for a in data['attempts']:
         if kinds.get(a['task_id']) != 'plan':
             continue
         is_open = a['ended_at'] is None
-        end = now if is_open else a['ended_at']
+        # An attempt left open in a closed epic ends with the epic, not now.
+        end = (now if epic_open else closed_at) if is_open else a['ended_at']
         items.append({'task_id': a['task_id'], 'number': a['number'], 'begin': a['started_at'],
-                      'end': max(end, a['started_at']), 'open': is_open})
-    intervals = [(i['begin'], i['end']) for i in items]
+                      'stop': max(end, a['started_at']), 'open': is_open})
+    intervals = [(i['begin'], i['stop']) for i in items]
     summed = sum(high - low for low, high in intervals)
+    busy = _covered(intervals, 1)
     concurrent = _covered(intervals, 2)
     overlaps = {}
     for i, x in enumerate(items):
         for y in items[i + 1:]:
             if x['task_id'] == y['task_id']:
                 continue
-            overlap = min(x['end'], y['end']) - max(x['begin'], y['begin'])
+            overlap = min(x['stop'], y['stop']) - max(x['begin'], y['begin'])
             if overlap > 0:
                 key = tuple(sorted((x['task_id'], y['task_id']), key=order.get))
                 overlaps[key] = overlaps.get(key, 0.0) + overlap
-    end, is_open = epic_end(data, now)
-    wall = max(0.0, end - data['epic']['created_at'])
+    wall = max(0.0, closed_at - data['epic']['created_at'])
     return {
-        'attempts': [{'task_id': i['task_id'], 'number': i['number'], 'start': iso(i['begin']), 'end': iso(i['end']),
-                      'seconds': _s(i['end'] - i['begin']), 'open': i['open']} for i in items],
-        'attempts_sum_s': _s(summed), 'busy_s': _s(_covered(intervals, 1)), 'concurrent_s': _s(concurrent),
+        'attempts': [{'task_id': i['task_id'], 'number': i['number'], 'start': iso(i['begin']),
+                      'end': iso(i['stop']),
+                      'seconds': _s(i['stop'] - i['begin']), 'open': i['open']} for i in items],
+        'attempts_sum_s': _s(summed), 'busy_s': _s(busy), 'concurrent_s': _s(concurrent),
         'pairs': [{'tasks': list(k), 'overlap_s': _s(v)}
                   for k, v in sorted(overlaps.items(), key=lambda kv: (order[kv[0][0]], order[kv[0][1]]))],
-        'theoretical_saving': round(concurrent / summed, 3) if summed > 0 else None,
-        'epic_wall_s': _s(wall), 'epic_open': is_open,
+        'theoretical_saving': round((summed - busy) / summed, 3) if summed > 0 else None,
+        'epic_wall_s': _s(wall), 'epic_open': epic_open,
         'attempts_to_wall': round(summed / wall, 3) if wall > 0 else None}
 
 
@@ -480,9 +506,6 @@ def main(argv=None, run=None, now=None):
     except DatabaseError as e:
         print(e, file=sys.stderr)
         return 2
-    except PlanError as e:
-        print(e, file=sys.stderr)
-        return 1
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

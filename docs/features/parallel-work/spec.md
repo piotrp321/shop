@@ -438,28 +438,33 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
 `python3 .claude/skills/ao-run/task_pairs.py <epik> [--ao-home DIR] [--repo DIR] [--setup-diag DIR]` tylko raportuje:
 niczego nie blokuje ani nie zapisuje. Bazę AO (`*.db` w `--ao-home`, domyślnie `~/.local/state/ao-<epik>`, pierwsza
 z wierszem epiku w `epics`) otwiera tylko do odczytu (`sqlite3` z URI `mode=ro`). `git` i `gh` uruchamia w `--repo`
-z limitem czasu 60 s. Wynik to jeden wiersz JSON, kod 0; plan nieczytelny przy `plan_sha` (błąd `git show`, brak bloku
-manifestu) → kod 1; brak bazy, baza nieczytelna albo bez epiku → kod 2. Błąd `git`/`gh` przy odczycie PR daje `null`
-w tej pozycji, nie błąd.
+z limitem czasu 60 s. Wynik to jeden wiersz JSON, kod 0; brak bazy, baza nieczytelna albo bez epiku → kod 2. Błąd
+`git`/`gh` przy odczycie PR daje `null` w tej pozycji, nie błąd. Plan nieczytelny przy `plan_sha` (błąd `git show`,
+np. commit spoza `--repo`, albo brak bloku manifestu) też daje kod 0: `audit.declarations` to `{"value": null,
+"note": "<powód>"}` (przy czytelnym planie `{"value": "<plan_sha>", "note": null}`), każde `declared`, `undeclared`
+i `declared_conflicts` to `null`, a pozostałe metryki są liczone.
 
 - `audit.tasks`, dla każdego zadania typu `plan` z PR: `declared` to `paths` zadania z manifestu przy `plan_sha` epiku
   w bazie AO (`git show <plan_sha>:<plan_path>`, deklaracja obowiązująca w trakcie wykonania, nie bieżący plan),
-  `null` bez `paths`; `changed` to rzeczywisty diff PR: `git diff --name-only <merged_sha>^1 <merged_sha>`, gdy commit
+  inaczej `null` z `declared_note`: zadanie bez `paths`, zadania nie ma w manifeście przy `plan_sha` albo plan
+  nieczytelny; `changed` to rzeczywisty diff PR: `git diff --name-only <merged_sha>^1 <merged_sha>`, gdy commit
   jest w historii (pierwszy rodzic to gałąź epiku przed merge'em, przy squashu i merge commicie), inaczej
   `gh pr view <nr> --json files`, a gdy oba zawiodą `null`; `source` to `squash` (1 rodzic), `merge_commit`
   (2 i więcej), `gh` albo `null`; `undeclared` to pliki `changed` poza każdą ścieżką `declared` (po segmentach, bez
-  wielkości liter), `null` przy braku jednej ze stron.
+  wielkości liter), `null` przy braku jednej ze stron. Przy zmianie nazwy pliku oba źródła podają tylko nową ścieżkę,
+  a lista z `gh pr view --json files` może być obcięta przy bardzo dużym PR.
 - `audit.pairs`: zadania, które w bazie AO mają się nawzajem w `parallel_with`: `declared_conflicts` to
   `parallel_gate.task_conflicts` na deklaracjach (ze śledzonymi `CLAUDE.md` przy `plan_sha`, `git ls-tree`),
   `actual_conflicts` to ta sama funkcja na `changed` obu stron (każdy plik jako plik); `null` bez danych.
-- `concurrency`, z prób zadań typu `plan` (próba bez `ended_at` trwa do teraz, `open: true`): `attempts_sum_s` (suma
-  czasów prób), `busy_s` (czas z co najmniej jedną próbą), `concurrent_s` (zmierzony czas z co najmniej dwiema
-  próbami naraz: rzeczywista współbieżność), `pairs` (pary zadań z nakładającymi się próbami i `overlap_s`),
-  `theoretical_saving` = `concurrent_s / attempts_sum_s`: teoretyczna oszczędność przy założeniu, że szeregowo próby
-  trwałyby tyle samo, nie przyspieszenie; `epic_wall_s` od `created_at` epiku do ostatniego `epic_done`, a bez niego do
-  `updated_at` epiku `DONE` albo `BLOCKED` lub do teraz (`epic_open: true`); `attempts_to_wall` = `attempts_sum_s /
-  epic_wall_s` to wskaźnik obciążenia (średnia liczba prób naraz w całym czasie epiku, także bez prób), nie
-  przyspieszenie.
+- `concurrency`, z prób zadań typu `plan` (próba bez `ended_at`, `open: true`, trwa do teraz, a w epiku już
+  zakończonym do końca epiku): `attempts_sum_s` (suma czasów prób), `busy_s` (czas z co najmniej jedną próbą),
+  `concurrent_s` (zmierzony czas z co najmniej dwiema próbami naraz: rzeczywista współbieżność), `pairs` (pary zadań
+  z nakładającymi się próbami i `overlap_s`; przy trzech próbach naraz suma `overlap_s` par przekracza
+  `concurrent_s`), `theoretical_saving` = `(attempts_sum_s - busy_s) / attempts_sum_s` (dokładne przy każdej liczbie
+  prób naraz): teoretyczna oszczędność przy założeniu, że szeregowo próby trwałyby tyle samo, nie przyspieszenie;
+  `epic_wall_s` od `created_at` epiku do ostatniego `epic_done`, a bez niego do `updated_at` epiku `DONE` albo
+  `BLOCKED` lub do teraz (`epic_open: true`); `attempts_to_wall` = `attempts_sum_s / epic_wall_s` to wskaźnik
+  obciążenia (średnia liczba prób naraz w całym czasie epiku, także bez prób), nie przyspieszenie.
 - `conflicts`: zdarzenia `fix_requested` z `reason: conflict` zadań epiku, na zadanie i razem; `fix_rounds`: wszystkie
   `fix_requested` według `reason`.
 - `repairs`: liczba zadań `repair` i `fix` (QA) i ich prób.
@@ -550,8 +555,10 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   spoza `paths`, porównanie po segmentach bez wielkości liter, zadanie bez `paths`, squash i merge commit z tym samym
   diffem `^1`, brak commitu w historii i brak `merged_sha` (`gh`), oba źródła zawodzą (`null`), deklaracja z `plan_sha`,
   nie z HEAD, tylko zadania `plan` z PR, para `parallel_with` z `actual_conflicts` mimo pustych `declared_conflicts`,
-  śledzony `CLAUDE.md` przy `plan_sha` w `declared_conflicts`, `null` w parze bez danych, nieczytelny plan (kod 1);
-  współbieżność: nakładanie 30 min (`concurrent_s` 1800), trzy próby z jedną parą, próby rozłączne, próba otwarta,
+  śledzony `CLAUDE.md` przy `plan_sha` w `declared_conflicts`, `null` w parze bez danych, nieczytelny plan i manifest bez bloku (kod 0, `declarations` z powodem, metryki liczone),
+  zadanie spoza manifestu odróżnione od zadania bez `paths`;
+  współbieżność: nakładanie 30 min (`concurrent_s` 1800), trzy próby z jedną parą, próby rozłączne, trzy próby naraz (oszczędność z `busy_s`), próba otwarta (także w epiku zakończonym: do końca
+  epiku),
   tylko próby `plan`, brak prób, czas epiku z `epic_done`, do teraz i do `updated_at`; konflikty i rundy z
   `fix_requested`, naprawy, interwencje (także `null` operacyjnych bez `run_started`); `queue`, `resources` zawsze
   `null` z notatką, `null` przy braku `run_started` przed pierwszą próbą, 0 przy zapisującym AO, przedziały cooldown

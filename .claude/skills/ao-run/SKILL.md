@@ -543,8 +543,10 @@ uruchom (tylko odczyt):
 python3 "$SKILL_ROOT/.claude/skills/ao-run/task_pairs.py" <dir> --ao-home "$AO_HOME" --repo "$SHOP"
 ```
 
-Kod różny od 0: powiedz o tym i pomiń blok. Inaczej dopisz blok na końcu komentarza z pomiarem, oddzielony pustą
-linią od listy poprawek (`retro.py collect` kończy na niej listę); `null` to „brak danych”, nigdy 0:
+Kod różny od 0 (baza AO): powiedz o tym i pomiń blok. Nieczytelny plan nie przerywa bloku: przy
+`audit.declarations.value` równym `null` w linii „Audyt paths” napisz „deklaracje: brak danych (<note>)”. Dopisz blok
+na końcu komentarza z pomiarem, oddzielony pustą linią od listy poprawek (`retro.py collect` kończy na niej listę);
+`null` to „brak danych”, nigdy 0:
 
 ```text
 Zadania naraz (19b)
