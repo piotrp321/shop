@@ -734,6 +734,15 @@ def keep_stored_values(record, previous, gaps):
             gaps.add('.'.join(path), 'źródło niedostępne: zachowano poprzednią wartość')
 
 
+def _stored_merged(previous):
+    """The merge time (epoch) of the stored record, or None: a failed `gh` must not make the classes of the attempts
+    depend on the call (the record keeps merged_at from the cache, so its classes keep it too)."""
+    try:
+        return night_queue.parse_time(_get(previous, ('merged_at',))).timestamp()
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def read_previous(path):
     try:
         with open(path, encoding='utf-8') as f:
@@ -764,7 +773,8 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
             gaps.add('merged_at', 'końcowy PR nie jest zmergowany (stan %s)' % github['pr']['state'])
         if github['pr']['issue'] is None:
             gaps.add('issue', 'końcowy PR nie zamyka żadnego issue')
-    run_ended = done is not None or epic['status'] == 'DONE' or merged is not None
+    known_merge = merged if merged is not None else _stored_merged(previous)
+    run_ended = done is not None or epic['status'] == 'DONE' or known_merge is not None
     jsonl, jsonl_gap = read_jsonl_events(os.path.join(ao_home, 'events.jsonl'))
     run_end = done if done is not None else (_number(epic['updated_at']) or now)
     subscription, parallel, stretches = night_fields(ao_run, epic_id, started, run_end, night_dir, gaps)

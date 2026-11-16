@@ -92,6 +92,22 @@ class GithubFieldsTest(Env):
         self.assertEqual((merged['running'], merged['failed']), (0, 1))
 
 
+    def test_attempt_classes_do_not_change_when_gh_fails_after_a_merged_answer(self):
+        home = testkit.synthetic_home(self.root, status='INTEGRATING', created=1000.0, jsonl=[],
+                                      tasks=[('T-1', 'plan')],
+                                      attempts=[dict(task_id='T-1', started_at=1100, ended_at=None,
+                                                     outcome=None, executor_status=None)])
+        first = self.epic('demo', home=home, runner=FakeGh(prs={7: merged_pr()}), no_gh=False)
+        self.assertEqual(first[0], 0, first[2])
+        again = self.epic('demo', home=home, runner=FakeGh(fail='HTTP 502'), no_gh=False)
+        self.assertEqual(again[0], 3, again[2])
+        merged, repeated = json.loads(first[1]), json.loads(again[1])
+        self.assertEqual(repeated['merged_at'], merged['merged_at'])
+        self.assertEqual(repeated['retries']['attempts'], merged['retries']['attempts'])
+        self.assertEqual((repeated['retries']['attempts']['running'], repeated['retries']['attempts']['failed']),
+                         (0, 1))
+
+
 class MissingSourceTest(Env):
     """A missing source is `null` and a gap, never zero."""
 
