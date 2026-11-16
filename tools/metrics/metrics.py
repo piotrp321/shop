@@ -849,6 +849,68 @@ def cmd_epic(args, config, run, now):
     return EXIT_SOURCE if errors else 0
 
 
+def peek_epic(ao_home, epic_id, busy_timeout_ms):
+    """The epics row `epic_id` of the run directory (epic_id, status, final_pr_number), or None without it."""
+    con = open_readonly(os.path.join(ao_home, 'orchestrator.db'), busy_timeout_ms)
+    try:
+        rows = select(con, 'epics', ['epic_id', 'status', 'final_pr_number'], Gaps())
+    except sqlite3.Error as e:
+        raise _database_error(os.path.join(ao_home, 'orchestrator.db'), e)
+    finally:
+        con.close()
+    return next((r for r in rows if r['epic_id'] == epic_id), None)
+
+
+def cmd_backfill(args, config, run, now):
+    root = _expand(args.ao_root or os.environ.get('SHOP_METRICS_AO_ROOT', '~/.local/state'))
+    try:
+        names = sorted(n for n in os.listdir(root) if n.startswith('ao-') and os.path.isdir(os.path.join(root, n)))
+    except OSError as e:
+        raise MetricsError('brak katalogu AO %s: %s' % (root, e.strerror or e))
+    busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
+    recorded, skipped, failures = [], [], []
+
+    def skip(name, reason, failure=False):
+        skipped.append({'run': name, 'reason': reason})
+        if failure:
+            failures.append('%s: %s' % (name, reason))
+
+    for name in names:
+        epic_id, home = name[len('ao-'):], os.path.join(root, name)
+        if not os.path.isfile(os.path.join(home, 'orchestrator.db')):
+            skip(name, 'brak orchestrator.db (to nie przebieg epiku)')
+            continue
+        try:
+            row = peek_epic(home, epic_id, busy)
+            if row is None:
+                skip(name, 'baza nie ma wiersza epiku %s' % epic_id)
+                continue
+            if row['final_pr_number'] is None:
+                skip(name, 'epik w toku (bez końcowego PR)')
+                continue
+            try:
+                pr = fetch_pr(run, row['final_pr_number'], args.repo)
+            except GhError as e:
+                skip(name, 'błąd gh: %s' % e, True)
+                continue
+            if pr['state'] != 'MERGED':
+                skip(name, 'końcowy PR nie jest zmergowany (stan %s)' % pr['state'])
+                continue
+            path = state_path(_expand(args.state), epic_id)
+            record, errors = build_record(epic_id, home, config, busy, _expand(args.night), None, now, run=run,
+                                          no_gh=False, repo=args.repo, previous=read_previous(path), pr=pr)
+            write_record(path, record)
+        except MetricsError as e:
+            skip(name, str(e), True)
+            continue
+        recorded.append(epic_id)
+        failures.extend('%s: %s' % (name, error) for error in errors)
+    print(json.dumps({'recorded': recorded, 'skipped': skipped}, ensure_ascii=False))
+    for failure in failures:
+        print('metrics: backfill: %s' % failure, file=sys.stderr)
+    return EXIT_SOURCE if failures else 0
+
+
 def build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument('--config', default=DEFAULT_CONFIG)
@@ -863,6 +925,8 @@ def build_parser():
     epic.add_argument('--ao-home')
     epic.add_argument('--manual-fixes')
     epic.add_argument('--no-gh', action='store_true')
+    backfill = sub.add_parser('backfill', parents=[common])
+    backfill.add_argument('--ao-root')
     return parser
 
 
@@ -874,9 +938,11 @@ def main(argv=None, run=None, now=None):
     now = time.time() if now is None else now
     try:
         config = load_config(_expand(args.config))
+        runner = run or (lambda command: default_runner(command, config['gh_timeout_s']))
         if args.command == 'epic':
-            return cmd_epic(args, config, run or (lambda command: default_runner(command, config['gh_timeout_s'])),
-                            now)
+            return cmd_epic(args, config, runner, now)
+        if args.command == 'backfill':
+            return cmd_backfill(args, config, runner, now)
     except MetricsError as e:
         print('metrics: %s' % e, file=sys.stderr)
         return EXIT_FATAL
