@@ -79,6 +79,23 @@ class ParseResult(Base):
         r = self.parse(["not json", INIT, "{broken", "[1,2]", result(), "tail garbage"])
         self.assertEqual(r["status"], "ok")
 
+    def test_several_result_lines(self):
+        def line(subtype, text, cost, is_error=False):
+            return json.dumps({"type": "result", "subtype": subtype, "is_error": is_error, "result": text,
+                               "total_cost_usd": cost, "num_turns": 1, "modelUsage": {"m": {}}})
+        path = self.out / "s.jsonl"
+        # a budget stop in any turn decides, also when a later turn ends with an empty success
+        path.write_text("\n".join([line("success", "still working", 0.2), line("error_max_budget_usd", None, 0.32, True),
+                                   line("success", "", 0.32)]))
+        info = run.parse_result(path)
+        self.assertEqual(info["status"], "budget_stop")
+        self.assertEqual(info["cost_usd"], 0.32)
+        # without a stop: the last non-empty text and the highest cost
+        path.write_text("\n".join([line("success", "agent started", 0.2), line("success", "gotowe", 0.9),
+                                   line("success", "", 0.9)]))
+        info = run.parse_result(path)
+        self.assertEqual((info["status"], info["text"], info["cost_usd"]), ("ok", "gotowe", 0.9))
+
     def test_empty_text_is_error(self):
         self.assertEqual(self.parse([result(text="  ")])["status"], "infra_error")
 

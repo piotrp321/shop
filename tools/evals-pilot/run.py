@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CASES = Path(__file__).resolve().parent / "cases"
 AGENT_PATH = ".claude/agents/code-reviewer.md"
 GIT_ID = ["-c", "user.name=evals", "-c", "user.email=evals@example.invalid"]
-PARENT_PROMPT = """Wywołaj dokładnie raz narzędzie Agent z `subagent_type` równym `code-reviewer`, bez `run_in_background`, z parametrem `prompt` równym dokładnie tekstowi między znacznikami <order> i </order> (bez zmian, skrótów i dopisków). Nie używaj żadnych innych narzędzi i nie czytaj plików. Gdy agent zwróci wynik, odpowiedz jednym słowem: gotowe.
+PARENT_PROMPT = """Wywołaj dokładnie raz narzędzie Agent z `subagent_type` równym `code-reviewer`, z `run_in_background` równym `false` (agent ma działać na pierwszym planie, czekaj na jego wynik), z parametrem `prompt` równym dokładnie tekstowi między znacznikami <order> i </order> (bez zmian, skrótów i dopisków). Nie używaj żadnych innych narzędzi i nie czytaj plików. Gdy agent zwróci wynik, odpowiedz jednym słowem: gotowe.
 
 <order>
 {order}
@@ -52,6 +52,7 @@ def git(*args, cwd=None):
 
 def parse_result(path):
     init = result = None
+    results = []
     try:
         lines = Path(path).read_text(errors="replace").splitlines()
     except OSError:
@@ -66,12 +67,20 @@ def parse_result(path):
         if obj.get("type") == "system" and obj.get("subtype") == "init" and init is None:
             init = obj
         if obj.get("type") == "result":
-            result = obj
+            results.append(obj)
     info = {"status": "infra_error", "error": "no result line", "text": "", "cost_usd": None,
             "duration_ms": None, "num_turns": None, "model_usage": {}, "models": [],
             "permission_denials": 0, "cli_version": (init or {}).get("claude_code_version")}
-    if result is None:
+    if not results:
         return info
+    # A session can print several result lines (one per turn). The budget stop of any turn decides the status, the
+    # cost is the highest total seen and the text is the last non-empty one.
+    stopped = [r for r in results if "max_budget" in str(r.get("subtype"))]
+    spoken = [r for r in results if str(r.get("result") or "").strip()]
+    result = dict(stopped[0] if stopped else (spoken[-1] if spoken else results[-1]))
+    costs = [r.get("total_cost_usd") for r in results if isinstance(r.get("total_cost_usd"), (int, float))]
+    if costs:
+        result["total_cost_usd"] = max(costs)
     usage = result.get("modelUsage") or {}
     text = result.get("result") or ""
     sub = str(result.get("subtype"))
