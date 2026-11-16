@@ -111,7 +111,8 @@ zarezerwowany albo w toku`). Steps against the epics in progress other than the 
 wait; a parallel hold (parallel-hold.json, see hold) -> wait `równoległość wstrzymana: <reason>`; dependency on an open
 epic -> skip; no readable scope: candidate -> skip, epic in progress (also without spec.md on origin/main) -> wait; a
 common path that is not allowed (parallel_gate.is_allowed) -> skip with the blocking paths of all epics in progress;
-free Docker memory below one stack (--stack-gib, default 6) -> wait; usage status not `ok`, no estimate, an active epic
+free Docker memory below parallel_gate.MAX_PARALLEL stacks (the reserve of every active epic is as many stacks; one
+stack: --stack-gib, default 6) -> wait; usage status not `ok`, no estimate, an active epic
 without a readable plan.md on origin/main, or a window resetting after the candidate's estimated end above 80% with the
 full estimates of the active epics and the candidate -> wait. A skip moves to the next candidate (with --dir it stops);
 a wait stops. Prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null, "reason", "reserved": false,
@@ -993,16 +994,18 @@ def check_files(ctx, entry, others):
 
 
 def check_docker(ctx, active, stack_mib):
-    """Step 6: free Docker memory for one more stack; sets ctx.docker (None when not measured)."""
+    """Step 6: free Docker memory for one more epic: parallel_gate.MAX_PARALLEL stacks, the same reserve as for every
+    active epic; sets ctx.docker (None when not measured)."""
     try:
         snapshot = parallel_gate.docker_snapshot(ctx.run)
     except parallel_gate.DockerError as error:
         ctx.docker = None
         return str(error)
-    free = parallel_gate.free_mib(snapshot, len(active), stack_mib)
-    ctx.docker = dict(snapshot, free_mib=round(free, 1), required_mib=round(stack_mib, 1))
-    if free < stack_mib:
-        return 'pamięć Dockera: wolne %.0f MiB < %.0f MiB' % (free, stack_mib)
+    epic_mib = stack_mib * parallel_gate.MAX_PARALLEL
+    free = parallel_gate.free_mib(snapshot, len(active), epic_mib)
+    ctx.docker = dict(snapshot, free_mib=round(free, 1), required_mib=round(epic_mib, 1))
+    if free < epic_mib:
+        return 'pamięć Dockera: wolne %.0f MiB < %.0f MiB' % (free, epic_mib)
     return None
 
 

@@ -8,7 +8,9 @@ Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
   (30 minutes, renewed with the same token, ClaimConflict for another token), release, owners, claim_to_owner.
   Writers hold state_lock. A missing file is empty; an unreadable or wrong-shaped one is StateFileError.
 - file classification of the gate (is_app_code, is_allowed, is_claude_md, common_paths), GENERATED and REGISTRATION
-  files.
+  files, and the rule for tasks of one wave running at once (task_conflicts, used by planner/plan_manifest.py).
+- MAX_PARALLEL: the `--max-parallel` that /ao-run passes to AO (SKILL.md, section 4); the gate reserves that many
+  stacks for every active epic.
 - Docker memory snapshot (docker_snapshot with an injected runner, DockerError) and free_mib.
 - orchestrator_running: probes <ao_home>/orchestrator.lock with a shared non-blocking flock; never creates the file.
 """
@@ -27,6 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import next_epic  # noqa: E402
 
 CLAIM_TTL = timedelta(minutes=30)
+# Task attempts AO runs at once in one epic (`ao run --max-parallel`): the stacks one active epic may hold.
+MAX_PARALLEL = 2
 
 GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store/src/api/schema.d.ts',
              'apps/admin/src/api/schema.d.ts')
@@ -204,6 +208,31 @@ def common_paths(a, b):
                 found.add(x)
             elif _inside(y, x):
                 found.add(y)
+    return sorted(found)
+
+
+def task_conflicts(a, b, claude_md=()):
+    """Paths that keep two tasks of one wave from running at once (step 19b), sorted: the common part of their
+    manifest `paths` (a file, or a directory with a trailing /) that is application code (is_app_code), a CLAUDE.md or
+    a file, and every file of `claude_md` (the tracked CLAUDE.md files of the repository) inside a common path. Two
+    directories outside application code may overlap (the exceptions of step 5) when they hold no tracked CLAUDE.md.
+    A common path counts as a directory only when every path of both tasks that contains it is declared as a
+    directory. Paths are compared without case (casefold, as the file system of the host does); a found path keeps
+    the spelling it was declared or tracked with."""
+    declared, spelling = [{}, {}], {}
+    for d, paths in zip(declared, (a, b)):
+        for p in paths:
+            key = p.rstrip('/').casefold()
+            spelling.setdefault(key, p.rstrip('/'))
+            d[key] = d.get(key, True) and p.endswith('/')
+
+    def directory(path):
+        return all(is_dir for d in declared for p, is_dir in d.items() if _inside(path, p))
+
+    common = common_paths(*declared)
+    found = {spelling[path] for path in common
+             if is_app_code(path) or path.split('/')[-1] == 'claude.md' or not directory(path)}
+    found.update(f for f in claude_md for path in common if _inside(f.casefold(), path))
     return sorted(found)
 
 

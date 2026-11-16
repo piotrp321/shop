@@ -144,7 +144,8 @@ Remote Control skill nie sprawdza.
    w `$AO_HOME/agent-security/`), zmiennymi `AGENT_CLAUDE_BIN` i `AGENT_AO_HOME` z wyniku `ao-prepare` i
    `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami
    `--max-budget-usd 30 --timeout 14400 --max-qa-rounds 3`, `--epic-max-attempts` max(24, 2·N + 4) i `--epic-timeout`
-   max(57600, 8640·N) s, gdzie N to liczba zadań planu; te same wartości przy każdym `ao run` epiku.
+   max(57600, 8640·N) s, gdzie N to liczba zadań planu; te same wartości przy każdym `ao run` epiku; oraz
+   `--max-parallel 2` (zadania fali naraz: `docs/features/parallel-work/spec.md`, „19b”).
    Zmienne `CLAUDE*` usuwa ze środowiska AO (jak wrapper z README AO). Tak startuje każde `ao run`: pierwsze,
    ponowne po blokerze, po `ao resume` i `ao epic resume`, w nowej sesji i w nocy; sesja nigdy nie pomija
    `ao-prepare` ani nie używa jego wyniku z wcześniejszego przebiegu (sonda przy każdym starcie, P8 spec
@@ -198,8 +199,8 @@ Remote Control skill nie sprawdza.
    „Przegląd po merge'u”). Pytanie z punktu 7 nie czeka na przegląd ani na retro. Po `MERGED` i po `CLOSED` sesja
    sprawdza pary epiku (`pairs.py`) i dla pary z obydwoma końcowymi PR zamkniętymi pokazuje blok `Para równoległa`
    z werdyktem krytycznego problemu (krytyczny problem: `night_queue.py hold`, które wstrzymuje starty obok epiku
-   w toku do `unhold` po decyzji użytkownika), a po zgodzie dopisuje go do issue epiku zamkniętego później; po drugiej
-   parze wysyła push o kroku 19b; po każdej parze zapisuje werdykt (`pairs.py record`) i przedstawia dane o regule
+   w toku do `unhold` po decyzji użytkownika), a po zgodzie dopisuje go do issue epiku zamkniętego później; po każdej
+   parze zapisuje werdykt (`pairs.py record`) i przedstawia dane o regule
    plików (spec pracy równoległej, „Metryki par” i „Ocena reguły plików”).
 7. **Następny epik.** Po merge'u końcowego PR, na prośbę użytkownika (`/ao-run` bez argumentu), a w dzień także po
    starcie epiku i po jego `epic_done`, sesja uruchamia bramkę bez rezerwacji (`night_queue.py gate`; spec pracy

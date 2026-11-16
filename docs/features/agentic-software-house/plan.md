@@ -22,8 +22,8 @@ Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
 Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 91, zamkniętych 50.
-Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17 i 18; 19b po
-dwóch parach epików 19a; 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
+Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17, 18 i 19b
+(w toku); 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -45,7 +45,7 @@ dwóch parach epików 19a; 11 (warunek „po epiku SENTRY” spełniony); na ko�
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | do zrobienia |
 | 18 | Pomiar, koszty i optymalizacja | do zrobienia |
-| 19 | Praca równoległa | 19a: zrobione, pomiar dwóch pierwszych par epików do zrobienia; 19b: po dwóch parach epików 19a |
+| 19 | Praca równoległa | 19a: zrobione, pomiar par trwa; 19b: w toku (AO `--max-parallel`, piotrp321/agentic-orchestrator#50; w `shop` pola `paths` i `parallel_with` manifestu, `--max-parallel 2` w `/ao-run`, rezerwa pamięci bramki na dwa stosy na epik) |
 | 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
 | 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
 | 22 | Porównanie Claude Code i OpenAI Codex | do zrobienia |
@@ -65,7 +65,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
 | | Kolejka epików: następny epik po merge'u i lista na noc | `/ao-run` w sesji z Remote Control | działa, lista na noc do sprawdzenia w pierwszej nocy |
-| | Praca równoległa: epiki naraz i zadania fali naraz, bramka ryzyka | `/ao-run` z bramką `night_queue.py gate` (19a), AO `--max-parallel` (19b) | 19a działa, pomiar dwóch par do zrobienia; 19b: krok 19 |
+| | Praca równoległa: epiki naraz i zadania fali naraz, bramka ryzyka | `/ao-run` z bramką `night_queue.py gate` (19a), AO `--max-parallel` (19b) | 19a działa, pomiar par trwa; 19b w toku |
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
@@ -366,19 +366,21 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    - **19a, bez zmian w AO: zrobione.** Epiki trwają naraz (najwyżej dwa aktywne), gdy kandydat przejdzie bramkę
      ryzyka `night_queue.py gate` (`docs/features/parallel-work/spec.md`): kolejkę wymusza tylko wspólny kod
      aplikacji (`apps/*/src`, `apps/*/app`), a wspólne CI, `CLAUDE.md`, `Makefile`, testy, konfiguracja,
-     infrastruktura i dokumentacja nie; wolna pamięć Dockera na kolejny stos; zapas limitu subskrypcji. Bramka korzysta z `Zakres:`, sync i REPAIR, bez
+     infrastruktura i dokumentacja nie; wolna pamięć Dockera na `max-parallel` stosów na epik (`MAX_PARALLEL`
+     w `parallel_gate.py`); zapas limitu subskrypcji. Bramka korzysta z `Zakres:`, sync i REPAIR, bez
      ich dublowania; rezerwacja pod blokadą nie pozwala dwóm sesjom ruszyć jednego epiku. Konflikt, który sync
      i REPAIR rozwiązują automatycznie (także sync spójności dokumentów w parze), nie blokuje startu. Scalenie kończą
      testy na połączonym stanie. Każdą parę mierzymy (`pairs.py`, zapis `pairs.py record`, blok pary w issue epiku):
      czas zegarowy, pary dopuszczone, konflikty (rozwiązane automatycznie i wymagające człowieka), regresje,
      interwencje, wspólne `CLAUDE.md` i kod, zużycie zasobów i koszt. Wstrzymanie tylko przy krytycznym problemie.
-   - **19b, zmiana w AO (piotrp321/agentic-orchestrator#50), po walidacji 19a.** `ao run --max-parallel 2`:
-     niezależne zadania jednej fali równolegle, każde we własnym worktree i stosie; integracja i merge'e po kolei;
-     kontrola zasobów i limitów; awaria jednego zadania nie zatrzymuje drugiego. Gdy dwie pierwsze pary 19a nie
-     pokażą krytycznego problemu, 19b rusza bez kolejnej akceptacji użytkownika. Krytyczny problem: zepsuty `main`,
+   - **19b, zmiana w AO (piotrp321/agentic-orchestrator#50): w toku.** Start zaakceptowany przez użytkownika
+     2026-11-15 (decyzje D1–D4 w `docs/features/ao-speedup/plan.md`). `ao run --max-parallel 2`: niezależne zadania
+     jednej fali równolegle (pary dopuszczone przez `parallel_with` manifestu, `docs/features/parallel-work/spec.md`,
+     „19b”), każde we własnym worktree i stosie; integracja i merge'e po kolei; kontrola zasobów i limitów; awaria
+     jednego zadania nie zatrzymuje drugiego. Pomiar par 19a trwa dalej; krytyczny problem pary (zepsuty `main`,
      konflikt, którego sync i REPAIR nie rozwiązały bez ręcznej poprawki, przebieg przerwany przez brak zasobów albo
-     limitu, albo więcej ręcznych poprawek lub interwencji niż w porównywalnych epikach szeregowych (REPAIR i sync
-     automatyczny się nie liczą).
+     limitu, albo więcej ręcznych poprawek lub interwencji niż w porównywalnych epikach szeregowych; REPAIR i sync
+     automatyczny się nie liczą) wstrzymuje równoległe epiki do decyzji użytkownika.
 20. **Asystent zakupowy i serwer MCP katalogu.** Osobny, niezależny epik przez `/prepare-epic`, poza „Zakresem MVP”,
    który nie blokuje MVP (zmianę `docs/vision.md` robi przygotowanie epiku). Asystent w sklepie sięga do wyszukiwarki
    i karty produktu przez tool calling i nasz serwer MCP katalogu (tylko odczyt); serwer jest jedyną drogą asystenta
@@ -439,11 +441,10 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
   skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie
   autonomii wymaga jego jawnej zgody.
 - **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika. Wyjątek: równoległe zadania
-  (krok 19b), zatwierdzone przez użytkownika, z warunkiem startu z kroku 19.
+  (krok 19b), zatwierdzone przez użytkownika.
 - **Produkcja:** rollback i inne operacje produkcyjne wykonuje wyłącznie użytkownik; agenci mają do produkcji dostęp
   tylko do odczytu.
 - **Krok 4:** issues epików powstają dopiero po akceptacji listy.
-- **Kroki 8–22:** specyfikacja każdego kroku zaakceptowana przed implementacją. 19b rusza bez kolejnej akceptacji
-  po dwóch parach epików 19a bez krytycznego problemu.
+- **Kroki 8–22:** specyfikacja każdego kroku zaakceptowana przed implementacją.
 - **`/groom`:** zamknięcie issue, nowe issue epiku i zmiana tablicy dopiero po „tak” użytkownika na listę propozycji.
 - **Zgłoszenia agentów:** trafiają do backlogu dopiero po triage użytkownika.

@@ -2111,8 +2111,8 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual(['a'], result['parallel_with'])
         self.assertEqual(['a'], result['active'])
         self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}], result['in_progress'])
-        self.assertEqual({'total_mib': 65536.0, 'other_mib': 0.0, 'ao_mib': 0.0, 'free_mib': 59392.0,
-                          'required_mib': 6144.0}, result['docker'])
+        self.assertEqual({'total_mib': 65536.0, 'other_mib': 0.0, 'ao_mib': 0.0, 'free_mib': 53248.0,
+                          'required_mib': 12288.0}, result['docker'])
         self.assertEqual([['gh', 'pr', 'list', '--repo', 'piotrp321/shop', '--head', 'epic/a', '--base', 'main',
                            '--state', 'merged', '--json', 'number', '--limit', '1']], self.commands('gh', 'pr'))
 
@@ -2334,27 +2334,50 @@ class GateCliTest(unittest.TestCase):
     def ab(self):
         return [epic(1, 'A', 'apps/a', tasks=3), epic(2, 'B', 'apps/b')]
 
+    # The reserve is MAX_PARALLEL (2) stacks for every active epic, and the candidate needs as many free.
+
     def test_memory_too_small(self):
         self.events(*self.old_measurement())
-        docker = {'info': str(12 * GIB), 'ps': 'web\tother\n', 'stats': 'web\t1GiB / 12GiB\n'}
+        docker = {'info': str(26 * GIB), 'ps': 'web\tother\n', 'stats': 'web\t3GiB / 26GiB\n'}
         result = self.result(self.ab(), branches=['a'], docker=docker)
-        self.assertEqual('pamięć Dockera: wolne 5120 MiB < 6144 MiB', result['reason'])
-        self.assertEqual({'total_mib': 12288.0, 'other_mib': 1024.0, 'ao_mib': 0.0, 'free_mib': 5120.0,
-                          'required_mib': 6144.0}, result['docker'])
+        self.assertEqual('pamięć Dockera: wolne 11264 MiB < 12288 MiB', result['reason'])
+        self.assertEqual({'total_mib': 26624.0, 'other_mib': 3072.0, 'ao_mib': 0.0, 'free_mib': 11264.0,
+                          'required_mib': 12288.0}, result['docker'])
+        self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title'}, result['waiting'])
+
+    def test_free_memory_for_one_stack_but_not_two_waits(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(22 * GIB), 'ps': '', 'stats': ''}
+        result = self.result(self.ab(), branches=['a'], docker=docker)
+        self.assertIsNone(result['epic'])
+        self.assertEqual('pamięć Dockera: wolne 10240 MiB < 12288 MiB', result['reason'])
+
+    def test_free_memory_for_two_stacks_passes(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(24 * GIB), 'ps': '', 'stats': ''}
+        result = self.result(self.ab(), branches=['a'], docker=docker)
+        self.assertEqual('b', result['epic']['dir'])
+        self.assertEqual({'total_mib': 24576.0, 'other_mib': 0.0, 'ao_mib': 0.0, 'free_mib': 12288.0,
+                          'required_mib': 12288.0}, result['docker'])
 
     def test_reserve_of_an_active_epic_without_a_stack(self):
         self.events(*self.old_measurement())
-        docker = {'info': str(16 * GIB), 'ps': '', 'stats': ''}
-        result = self.result(self.ab(), branches=['a'], docker=docker, extra=['--stack-gib', '9'])
-        self.assertEqual('pamięć Dockera: wolne 7168 MiB < 9216 MiB', result['reason'])
+        docker = {'info': str(30 * GIB), 'ps': '', 'stats': ''}
+        result = self.result(self.ab(), branches=['a'], docker=docker, extra=['--stack-gib', '7'])
+        self.assertEqual('b', result['epic']['dir'])
+        result = self.result(self.ab(), branches=['a'], docker=docker, extra=['--stack-gib', '8'])
+        self.assertEqual('pamięć Dockera: wolne 14336 MiB < 16384 MiB', result['reason'])
 
     def test_measured_ao_memory_above_the_reserve_counts(self):
         self.events(*self.old_measurement())
-        docker = {'info': str(20 * GIB), 'ps': 'ao-a-api-1\tao-a-1\n', 'stats': 'ao-a-api-1\t10GiB / 20GiB\n'}
+        docker = {'info': str(30 * GIB), 'ps': 'ao-a-api-1\tao-a-1\n', 'stats': 'ao-a-api-1\t16GiB / 30GiB\n'}
         result = self.result(self.ab(), branches=['a'], docker=docker)
         self.assertEqual('b', result['epic']['dir'])
-        self.assertEqual({'total_mib': 20480.0, 'other_mib': 0.0, 'ao_mib': 10240.0, 'free_mib': 10240.0,
-                          'required_mib': 6144.0}, result['docker'])
+        self.assertEqual({'total_mib': 30720.0, 'other_mib': 0.0, 'ao_mib': 16384.0, 'free_mib': 14336.0,
+                          'required_mib': 12288.0}, result['docker'])
+        docker['stats'] = 'ao-a-api-1\t19GiB / 30GiB\n'
+        self.assertEqual('pamięć Dockera: wolne 11264 MiB < 12288 MiB',
+                         self.result(self.ab(), branches=['a'], docker=docker)['reason'])
 
     def test_docker_failure_waits(self):
         self.events(*self.old_measurement())
@@ -2574,10 +2597,10 @@ class GateCliTest(unittest.TestCase):
         self.events(*self.old_measurement())
         epics = [epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')]
         self.reserve_a(epics)
-        enough = {'info': str(12 * GIB), 'ps': '', 'stats': ''}
+        enough = {'info': str(24 * GIB), 'ps': '', 'stats': ''}
         self.assertEqual('b', self.result(epics, docker=enough)['epic']['dir'])
-        small = {'info': str(11 * GIB), 'ps': '', 'stats': ''}
-        self.assertEqual('pamięć Dockera: wolne 5120 MiB < 6144 MiB', self.reason(epics, docker=small))
+        small = {'info': str(23 * GIB), 'ps': '', 'stats': ''}
+        self.assertEqual('pamięć Dockera: wolne 11264 MiB < 12288 MiB', self.reason(epics, docker=small))
 
     def test_reservation_counts_with_its_full_usage_estimate(self):
         # A has 3 tasks in its manifest: 6 %; candidate B 2 tasks: 4 %.
@@ -2694,11 +2717,11 @@ class GateCliTest(unittest.TestCase):
 
     def test_force_reserves_despite_a_gate_refusal(self):
         self.events(*self.old_measurement())
-        small = {'info': str(11 * GIB), 'ps': '', 'stats': ''}
+        small = {'info': str(23 * GIB), 'ps': '', 'stats': ''}
         c = {'dir': 'c', 'id': 'C', 'issue': 3, 'title': 'C: title'}
         cases = [
             # wait: Docker memory (step 6)
-            ([epic(1, 'A', 'apps/a'), epic(3, 'C', 'apps/c')], ['a'], 'pamięć Dockera: wolne 5120 MiB < 6144 MiB',
+            ([epic(1, 'A', 'apps/a'), epic(3, 'C', 'apps/c')], ['a'], 'pamięć Dockera: wolne 11264 MiB < 12288 MiB',
              c, {'docker': small}, False),
             # skip: common files
             ([epic(1, 'A', 'apps/x'), epic(3, 'C', 'apps/x')], ['a'], 'wspólne pliki z A: apps/x', None, {}, False),
