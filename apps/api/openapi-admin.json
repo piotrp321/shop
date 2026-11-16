@@ -2028,6 +2028,205 @@
                 ]
             }
         },
+        "/api/v1/admin/customers/{customerId}": {
+            "get": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Customer card",
+                "description": "The contact of the newest order of the customer, the summary of its orders (all, the paid ones and their gross value without the refunds taken off, the first and the last one) and up to 10 distinct shipping addresses of its last 50 orders, the one used last first. Its orders are the order list with `customerId`. Administrators and support only.",
+                "operationId": "getCustomer",
+                "parameters": [
+                    {
+                        "name": "customerId",
+                        "in": "path",
+                        "description": "The id of the account of the store (`sub` of its token), as in `customerId` of the list.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 255,
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The customer.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCustomerResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see customers (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No customer with this id: no account with an order (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/customers": {
+            "get": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Customer list",
+                "description": "A page of the customers: the accounts of the store with at least one order (guests are no customers), the newest last order first (then by id) or in the order of `sort`. The search `q` is a fragment of 3 to 100 characters of the email or the name (any letter case, `%` and `_` mean themselves), only with the sort by the last order. Page with the opaque `nextCursor` as `after`, with the same `q` and `sort` (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching customers, counted up to 10 000. Administrators and support only.",
+                "operationId": "listCustomers",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "A fragment of the email or the name, 3 to 100 characters once trimmed, without control characters. Only with `sort=-lastOrderAt`.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 3
+                        }
+                    },
+                    {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order: `-lastOrderAt` (the newest last order first, the default), `name` (A to Z, any letter case), `-orderCount` (the most orders first) or `-paidGross` (the highest paid value first); the customer id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "-lastOrderAt",
+                            "enum": [
+                                "-lastOrderAt",
+                                "name",
+                                "-orderCount",
+                                "-paidGross"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `nextCursor` of the previous page of the same sort.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCustomerListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor, also a cursor of another sort or the search with another sort (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see customers (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/orders/{orderId}": {
             "get": {
                 "tags": [
@@ -5298,6 +5497,43 @@
                 },
                 "type": "object"
             },
+            "BackofficeCustomerListQuery": {
+                "properties": {
+                    "q": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 100,
+                        "minLength": 3
+                    },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "-lastOrderAt",
+                            "name",
+                            "-orderCount",
+                            "-paidGross"
+                        ]
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "nullable": true,
+                        "default": null,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
             "BackofficeOrderListQuery": {
                 "properties": {
                     "status": {
@@ -6835,6 +7071,217 @@
                 },
                 "type": "object"
             },
+            "BackofficeCustomerContactResponse": {
+                "description": "The contact of the newest order of the customer.",
+                "required": [
+                    "email",
+                    "fullName",
+                    "phone"
+                ],
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "phone": {
+                        "description": "+48 and 9 digits.",
+                        "type": "string",
+                        "example": "+48600100200"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerSummaryResponse": {
+                "description": "The orders of the customer: all, the paid ones and their gross value (refunds not taken off), the first and the last one. Amounts in grosze, moments RFC 3339 in UTC.",
+                "required": [
+                    "orderCount",
+                    "paidCount",
+                    "paidGross",
+                    "currency",
+                    "firstOrderAt",
+                    "lastOrderAt"
+                ],
+                "properties": {
+                    "orderCount": {
+                        "type": "integer",
+                        "example": 3,
+                        "minimum": 1
+                    },
+                    "paidCount": {
+                        "type": "integer",
+                        "example": 2,
+                        "minimum": 0
+                    },
+                    "paidGross": {
+                        "type": "integer",
+                        "example": 24600,
+                        "minimum": 0
+                    },
+                    "currency": {
+                        "type": "string",
+                        "example": "PLN"
+                    },
+                    "firstOrderAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-10-01T10:00:00+00:00"
+                    },
+                    "lastOrderAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerAddressResponse": {
+                "description": "A shipping address of the orders of the customer.",
+                "required": [
+                    "street",
+                    "postalCode",
+                    "city",
+                    "country"
+                ],
+                "properties": {
+                    "street": {
+                        "type": "string",
+                        "example": "D\u0142uga 1"
+                    },
+                    "postalCode": {
+                        "type": "string",
+                        "example": "00-950"
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Warszawa"
+                    },
+                    "country": {
+                        "description": "ISO 3166-1 alpha-2.",
+                        "type": "string",
+                        "example": "PL"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerResponse": {
+                "description": "The card of a customer.",
+                "required": [
+                    "customerId",
+                    "contact",
+                    "summary",
+                    "addresses"
+                ],
+                "properties": {
+                    "customerId": {
+                        "description": "The id of the account of the store (`sub` of its token).",
+                        "type": "string",
+                        "example": "5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
+                    },
+                    "contact": {
+                        "$ref": "#/components/schemas/BackofficeCustomerContactResponse"
+                    },
+                    "summary": {
+                        "$ref": "#/components/schemas/BackofficeCustomerSummaryResponse"
+                    },
+                    "addresses": {
+                        "description": "Up to 10 distinct shipping addresses of the last 50 orders, the one used last first.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeCustomerAddressResponse"
+                        },
+                        "maxItems": 10
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerListItemResponse": {
+                "description": "A customer in the list: an account of the store with at least one order. Amounts in grosze.",
+                "required": [
+                    "customerId",
+                    "email",
+                    "fullName",
+                    "orderCount",
+                    "paidGross",
+                    "currency",
+                    "lastOrderAt"
+                ],
+                "properties": {
+                    "customerId": {
+                        "description": "The id of the account of the store (`sub` of its token).",
+                        "type": "string",
+                        "example": "5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
+                    },
+                    "email": {
+                        "description": "The email of the newest order.",
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "description": "The name of the newest order.",
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "orderCount": {
+                        "description": "All orders of the customer.",
+                        "type": "integer",
+                        "example": 3,
+                        "minimum": 1
+                    },
+                    "paidGross": {
+                        "description": "The gross total of the paid orders, refunds not taken off.",
+                        "type": "integer",
+                        "example": 24600,
+                        "minimum": 0
+                    },
+                    "currency": {
+                        "type": "string",
+                        "example": "PLN"
+                    },
+                    "lastOrderAt": {
+                        "description": "The moment of the newest order, RFC 3339 in UTC.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerListResponse": {
+                "description": "A page of the customer list.",
+                "required": [
+                    "items",
+                    "nextCursor",
+                    "total"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeCustomerListItemResponse"
+                        }
+                    },
+                    "nextCursor": {
+                        "description": "Opaque cursor of the next page (send it as `after` with the same `q` and `sort`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJzIjoibmFtZSIsInYiOiJhbm5hIG5vd2FrIiwiaSI6ImtjLTEifQ",
+                        "nullable": true
+                    },
+                    "total": {
+                        "description": "How many customers match the search, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
             "ListedPriceResponse": {
                 "description": "The stored price of a product variant. Amounts are in grosze, the rate in basis points; all computed by the API.",
                 "required": [
@@ -7575,6 +8022,10 @@
         {
             "name": "Inventory",
             "description": "Inventory"
+        },
+        {
+            "name": "Customers",
+            "description": "Customers"
         },
         {
             "name": "Ordering",

@@ -336,7 +336,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (szczegóły), `POST …/{orderId}/status-changes` (`{transition, version, note}`) i `POST …/{orderId}/refund-completion`
     (`{version, note}`); każda odpowiedź `private, no-store` (`OrderResponseCacheSubscriber` obejmuje `admin/orders`).
     Reguła ról (P6) jest tylko w `OrderVoter` (`Ordering_Infrastructure`, role z `AuthenticatedStaffMember`):
-    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
+    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `VIEW_CUSTOMERS` (`admin`, `support`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
     subject (`ship`, `deliver`: `admin`, `warehouse`; `cancel`, `return`: `admin`, `support`; bez przejścia voter
     wstrzymuje się, czyli odmowa) i `COMPLETE_REFUND` (`admin`, `support`); `marketing` nie ma dostępu. Kontrolery
     znają tylko nazwy atrybutów (`BackofficeOrderAttributes`) i pytają `isGranted`; Deptrac pozwala `Ordering_UI`
@@ -379,6 +379,27 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     tymczasowej `ordering_order` (kopia definicji z indeksami, po `ANALYZE`; zasłania tabelę w połączeniu testu, więc
     nie zostawia śmieci po wycofaniu) sprawdza `EXPLAIN` bez wyłączania skanów: `Bitmap Index Scan` na indeksie
     wyszukiwania i brak `Seq Scan` po `ordering_order` dla fragmentu numeru, e-maila i nazwiska (strona i licznik).
+  - Klienci panelu (`openapi-admin.json`, tag `Customers`, model odczytu `ordering_customer`, wyjątek DBAL wyżej):
+    `GET /api/v1/admin/customers?q=&sort=&after=&perPage=` (`BackofficeCustomersController`) i
+    `GET /api/v1/admin/customers/{customerId}` (`BackofficeCustomerController`), obie z `#[IsGranted('VIEW_CUSTOMERS')]`
+    (`OrderVoter`: `admin`, `support`; `warehouse` i `marketing` 403 przed parametrami) i `private, no-store`
+    (`OrderResponseCacheSubscriber` obejmuje `admin/customers`, także 401, 403 i 404). `ListBackofficeCustomers(q, sort,
+    after, perPage)` czyta przez port `BackofficeCustomerReader` (adapter `DbalCustomerReader`): `q` po przycięciu (także
+    spacji Unicode) to fragment 3–100 znaków e-maila albo imienia i nazwiska (`BackofficeCustomerSearchTerm`; warunek
+    `lower(c.email) LIKE … OR lower(c.full_name) LIKE …` z ucieczką `\`, `%`, `_`, wyrażenia dwóch indeksów GIN
+    trigram), znak sterujący albo inna długość to 400 przy `q`; `sort` z zamkniętej listy `-lastOrderAt` (domyślny),
+    `name` (`lower(full_name)` rosnąco), `-orderCount`, `-paidGross`, remis zawsze `customer_id` rosnąco (kursor
+    malejącego sortu `kolumna <= v AND (kolumna < v OR customer_id > id)`, nazwy porównanie wierszy); `q` łączy się tylko
+    z `-lastOrderAt` (inny sort z `q` to 400 przy `sort`). Kursor keyset `BackofficeCustomerCursor` (base64url JSON
+    klucza sortu, wartości kolumny i `customer_id`); zły kursor i kursor innego sortu to 400 przy `after`. `perPage`
+    1–100 (domyślnie 25). Wszystkie parametry są w DTO typu `mixed` i sprawdzane w callbacku, więc błąd typu ma ten sam
+    polski komunikat. Pierwsza strona ma `total` (`BoundedCount` do 10 000), kolejne `null`. Element: `customerId,
+    email, fullName, orderCount, paidGross, currency, lastOrderAt`. `GetBackofficeCustomer(customerId)`: `contact`
+    (`email`, `fullName`, `phone` najnowszego zamówienia), `summary` (`orderCount`, `paidCount`, `paidGross`, `currency`,
+    `firstOrderAt`, `lastOrderAt`) i `addresses` (do 10 różnych adresów dostawy z ostatnich 50 zamówień klienta, ostatnio
+    użyty pierwszy; po częściowym indeksie zamówień klientów); nieznany klient, gość, konto bez zamówień i id puste,
+    dłuższe niż 255 znaków albo ze znakiem sterującym to 404 `CustomerNotFound` („Klient nie istnieje.”). Zamówienia
+    klienta to lista zamówień z `customerId`. Testy: `BackofficeCustomersEndpointTest`, `DbalCustomerReaderTest`.
   - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
     `GET /api/v1/me/orders?after=&perPage=` i `GET /api/v1/me/orders/{orderId}`; każda odpowiedź `private, no-store`
     (`OrderResponseCacheSubscriber` obejmuje `me/orders`), brak tokenu albo token panelu to 401. Klient to `sub` z tokenu

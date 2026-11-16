@@ -150,6 +150,30 @@ final class OrderVoterTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{list<string>, int}>
+     */
+    public static function customerViewers(): iterable
+    {
+        yield 'admin' => [['admin'], self::GRANTED];
+        yield 'support' => [['support'], self::GRANTED];
+        yield 'warehouse' => [['warehouse'], self::DENIED];
+        yield 'marketing' => [['marketing'], self::DENIED];
+        yield 'warehouse and marketing together' => [['warehouse', 'marketing'], self::DENIED];
+        yield 'support with warehouse' => [['warehouse', 'support'], self::GRANTED];
+        yield 'no staff role' => [[], self::DENIED];
+    }
+
+    /**
+     * @param list<string> $roles
+     */
+    #[DataProvider('customerViewers')]
+    public function testOnlyAnAdministratorAndSupportSeeTheCustomers(array $roles, int $expected): void
+    {
+        self::assertSame($expected, $this->vote($this->staff($roles), 'VIEW_CUSTOMERS'));
+        self::assertSame(VoterInterface::ACCESS_ABSTAIN, $this->vote($this->staff(['admin']), 'VIEW_CUSTOMERS', StaffTransition::Ship));
+    }
+
+    /**
      * A status change is decided for a transition only: without one (or with its name as a string) the voter abstains,
      * and a decision of nothing but abstentions denies.
      *
