@@ -52,8 +52,9 @@ test("admin sees the dashboard and opens „Stan systemu” from the menu", asyn
   await expect(page.getByTestId("updated-at")).toContainText("Dane z");
 });
 
-// An amount of the panel („12 345,50 zł”, with the spaces of Intl), or „—” for today between 0:00 and 1:00.
-const MONEY = /^(\d{1,3}([\s\u00a0\u202f]\d{3})*,\d{2}[\s\u00a0]zł|—)$/;
+// An amount of the panel in the pl-PL format of Intl, or „—” for today between 0:00 and 1:00. Intl groups thousands only
+// from 10 000 (minimumGroupingDigits 2): „1148,00 zł”, but „12 345,50 zł”.
+const MONEY = /^((\d{1,4}|\d{1,3}([\s\u00a0\u202f]\d{3})+),\d{2}[\s\u00a0]zł|—)$/;
 
 test("admin sees the sales of today, 7 and 30 days up to the last full hour", async ({ page }) => {
   await loginStaff(page, staff.admin);
