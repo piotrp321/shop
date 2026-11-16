@@ -2033,6 +2033,12 @@ CATEGORY_RULES = {('breakdown', 'human_wait'): 'D4', ('breakdown', 'ci_wait'): '
                   ('in_attempts', 'in_attempts.ci_watch'): 'D4', ('gate_wait', 'gate_wait'): 'D3', ('review', 'review'): 'D4'}
 
 
+# The subject (the key of the candidate of `decide`) a bottleneck is about, by its kind and name; a plan task is D2.
+BOTTLENECK_SUBJECTS = {('breakdown', 'human_wait'): 'D4:human_wait', ('breakdown', 'limit_wait'): 'D4:limit_wait',
+                       ('breakdown', 'ci_wait'): 'D4:ci', ('in_attempts', 'in_attempts.ci_watch'): 'D4:ci',
+                       ('gate_wait', 'gate_wait'): 'D3:gate_wait', ('review', 'review'): 'D4:review'}
+
+
 def history_of(record, records):
     """The stored records of the other epics merged before this one (all merged ones while it is not merged): the
     history the medians come from."""
@@ -2058,7 +2064,7 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
     the median of the history, at least `min_excess_h` hours, in descending order. Candidates: the `breakdown`
     categories except `work`, the tasks (against the median of their kind), the `in_attempts` categories (with the
     part that is `repeat_runs`), gate_wait and, when `include_review`, review. Category medians are per plan task
-    (scaled to the number of tasks of this epic). The potential effect of a decision is not computed here."""
+    (scaled to the number of tasks of this epic). Every item gets its potential effect (add_effects)."""
     settings = config['bottlenecks']
     tasks = record.get('tasks')
     if len(history) < settings['min_history']:
@@ -2118,7 +2124,28 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
                  _get(record, ('wall', 'to_merge')), 'to_merge')
     keep = [(excess, item) for excess, item in candidates if excess >= settings['min_excess_h'] * HOUR]
     keep.sort(key=lambda pair: (-pair[0], pair[1]['kind'], pair[1]['name']))
-    return [item for _, item in keep[:int(settings['max_items'])]]
+    items = [item for _, item in keep[:int(settings['max_items'])]]
+    add_effects(items, record, history, config)
+    return items
+
+
+def add_effects(items, record, history, config):
+    """The potential optimization effect of every item (spec: Wąskie gardła): `effect_h` is the expected wall-clock
+    saving in hours of the candidate that `decide` has for the same rule and subject (`effect_rule` is its key; a plan
+    task gets its own time over the median); without such a candidate `effect_h` is the excess as an upper bound and
+    `effect_rule` is None („bez reguły decyzji”). Two items of the same subject (`ci_wait` and `ci_watch`) show the same
+    effect: it is not additive."""
+    found = {c['key']: c for c in rule_candidates(record, history, config, Gaps())[0]}
+    for item in items:
+        key = D2_KEY if item['kind'] == 'task' and item['rule'] == 'D2' else BOTTLENECK_SUBJECTS.get(
+            (item['kind'], item['name']))
+        candidate, saving = found.get(key), None
+        if candidate is not None and key == D2_KEY:
+            saving = next((t['excess_h'] for t in candidate['data']['tasks'] if t['task'] == item['name']), None)
+        elif candidate is not None:
+            saving = candidate['expected_effect']['wall_h']
+        item['effect_rule'] = key if saving is not None else None
+        item['effect_h'] = round(saving if saving is not None else item['excess_h'], 3)
 
 
 # ----------------------------------------------------------------------------------------------------- decisions
@@ -2726,7 +2753,11 @@ def bottleneck_lines(items):
         text = '%d. `%s`: +%s h ponad medianę' % (len(lines) + 1, name, pl(excess))
         if share is not None and item.get('share_of') in SHARE_OF:
             text += ' (%d%% %s)' % (share, SHARE_OF[item['share_of']])
-        if isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
+        effect = item.get('effect_h')
+        if _is_number(effect):
+            rule = str(item.get('effect_rule') or '').split(':')[0]
+            text += ', potencjalnie −%s h (%s)' % (pl(effect), rule if RULE_PATTERN.match(rule) else 'bez reguły decyzji')
+        elif isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
             text += ', reguła %s' % item['rule']
         if _is_number(item.get('repeat_h')) and item['repeat_h'] > 0:
             text += ', w tym możliwe powtórzenia: %s h' % pl(item['repeat_h'])
