@@ -11,6 +11,7 @@ use App\Pricing\Domain\DiscountCode\OrderId;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeRepository;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeUsageRepository;
 use App\Tests\Factory\DiscountCodeFactory;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -329,6 +330,21 @@ final class DiscountCodesEndpointTest extends WebTestCase
     {
         yield 'an unknown id' => ['/api/v1/admin/discount-codes/'.self::UNKNOWN];
         yield 'an id that is no UUID' => ['/api/v1/admin/discount-codes/code-1'];
+        foreach (InputValues::uuidsOutsideTheVersions() as $name => [$uuid]) {
+            yield $name => ['/api/v1/admin/discount-codes/'.$uuid];
+        }
+    }
+
+    public function testAnotherNotationOfTheCodeIdReadsTheSameCode(): void
+    {
+        $id = $this->storedCode();
+        $canonical = $this->send('GET', '/api/v1/admin/discount-codes/'.$id);
+        self::assertResponseStatusCodeSame(200);
+
+        foreach (InputValues::equivalentUuidForms($id) as [$notation]) {
+            self::assertSame($canonical, $this->send('GET', '/api/v1/admin/discount-codes/'.$notation));
+            self::assertResponseStatusCodeSame(200);
+        }
     }
 
     #[DataProvider('unknownCodes')]

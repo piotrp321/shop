@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Payment;
 
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -55,6 +56,19 @@ final class GuestPaymentEndpointTest extends WebTestCase
         self::assertStringEndsWith('/checkout/confirmation', $transaction['success_url']);
     }
 
+    public function testAnotherNotationOfTheOrderIdStartsThePaymentOfTheSameOrder(): void
+    {
+        $order = $this->guestOrder();
+
+        foreach (InputValues::equivalentUuidForms($order['orderId']) as [$notation]) {
+            $payment = $this->startPayment('/api/v1/orders/'.$notation.'/payments', accessToken: $order['accessToken']);
+
+            self::assertResponseStatusCodeSame(201);
+            $this->assertStarted($payment, 'demo-transfer');
+            self::assertSame(1, $this->payments());
+        }
+    }
+
     public function testARepeatAnswers200WithTheSamePayment(): void
     {
         $order = $this->guestOrder();
@@ -99,6 +113,9 @@ final class GuestPaymentEndpointTest extends WebTestCase
 
         $this->assertOrderNotFound($this->startPayment('/api/v1/orders/0192f0c4-7c1a-7c4e-9a6e-0000000000ff/payments', accessToken: $order['accessToken']));
         $this->assertOrderNotFound($this->startPayment('/api/v1/orders/R-100001/payments', accessToken: $order['accessToken']));
+        foreach (InputValues::uuidsOutsideTheVersions() as [$uuid]) {
+            $this->assertOrderNotFound($this->startPayment('/api/v1/orders/'.$uuid.'/payments', accessToken: $order['accessToken']));
+        }
         $this->assertOrderNotFound($this->startPayment(self::startPath($order)));
         $this->assertOrderNotFound($this->startPayment(self::startPath($order), accessToken: 'wrong'));
         $this->assertOrderNotFound($this->startPayment(self::startPath($customerOrder), accessToken: $order['accessToken']));
@@ -368,6 +385,9 @@ final class GuestPaymentEndpointTest extends WebTestCase
         $this->assertOrderNotFound($this->readStatus(self::statusPath($order), 'wrong'));
         $this->assertOrderNotFound($this->readStatus('/api/v1/orders/0192f0c4-7c1a-7c4e-9a6e-0000000000ff/payment', $order['accessToken']));
         $this->assertOrderNotFound($this->readStatus('/api/v1/orders/not-a-uuid/payment', $order['accessToken']));
+        foreach (InputValues::uuidsOutsideTheVersions() as [$uuid]) {
+            $this->assertOrderNotFound($this->readStatus('/api/v1/orders/'.$uuid.'/payment', $order['accessToken']));
+        }
         $this->assertOrderNotFound($this->readStatus(self::statusPath($customerOrder), $order['accessToken']));
     }
 

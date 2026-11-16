@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Inventory;
 
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -46,6 +47,19 @@ final class StockHistoryEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($items[0], 'StockHistoryItemResponse');
         self::assertStringNotContainsString('sub-123', (string) $this->client->getResponse()->getContent());
         $this->assertPrivateAndNotStored();
+    }
+
+    public function testAnotherNotationOfTheVariantIdGivesTheSameHistory(): void
+    {
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 20);
+        $canonical = $this->get($variantId);
+        self::assertCount(1, $this->items($canonical));
+
+        foreach (InputValues::equivalentUuidForms($variantId) as [$notation]) {
+            self::assertSame($canonical, $this->get($notation));
+            self::assertResponseStatusCodeSame(200);
+        }
     }
 
     public function testAVariantWithoutAStockRecordHasAnEmptyHistory(): void
@@ -163,6 +177,7 @@ final class StockHistoryEndpointTest extends WebTestCase
         yield 'a word' => ['shoes'];
         yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
         yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
+        yield from InputValues::uuidsOutsideTheVersions();
     }
 
     #[DataProvider('idsThatAreNotUuids')]
