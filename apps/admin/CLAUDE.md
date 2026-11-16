@@ -164,8 +164,8 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   Slugiem, fokus w Nazwie po otwarciu; odmowa przy polu albo w `Alert` okna z fokusem na komunikacie, zapis zamyka okno) i `CategoryMoveDialog`
   (`CategoryCombobox` „Nowa kategoria nadrzędna” z „Poziom główny” i wyłączonym poddrzewem; kategoria trafia na koniec dzieci wybranego miejsca); „Usuń” pyta
   `ConfirmDialog` z `close-on-confirm` wyłączonym, więc odmowę (niepusta kategoria) mówi okno. Zmiany bez okna (W górę, W dół, upuszczenie) kończą się toastem,
-  a odmowa `Alert` `change-error` nad drzewem; po „W górę” i „W dół” fokus wraca na ten sam przycisk (wiersz przesuwa się w DOM), po usunięciu
-  na H1. Węzły z podkategoriami są otwarte przy pierwszym wczytaniu, potem decyduje pracownik; dodanie podkategorii i przeniesienie otwierają rodzica.
+  a odmowa `Alert` `change-error` nad drzewem; po „W górę” i „W dół” fokus wraca na ten sam przycisk (wiersz przesuwa się w DOM), a gdy ten zniknął na brzegu rodzeństwa, na przycisk przeciwnego kierunku,
+  w ostateczności na wiersz; po usunięciu na H1. Węzły z podkategoriami są otwarte przy pierwszym wczytaniu, potem decyduje pracownik; dodanie podkategorii i przeniesienie otwierają rodzica.
   Wczytywanie to `role="status"` ze szkieletem, pusta lista „Nie ma jeszcze żadnych kategorii.” (z „Dodaj kategorię” dla ról zarządzających), błąd odczytu
   `Alert` z „Spróbuj ponownie” (nieudane przeładowanie po zmianie zostawia drzewo i pokazuje ten sam alert).
 - `src/prices/` – lista cen (`/prices`, widok `PricesView`). `pricePage.ts`: czyste funkcje `fetchPricePage({ query, after })`
@@ -525,7 +525,8 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   obiektu, opis skutku, przycisk skutku (`destructive`: czerwony, inaczej niebieski) i „Wróć” z domyślnym fokusem;
   zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
   wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. Akcja, której odmowę API ma powiedzieć okno, wyłącza `close-on-confirm`:
-  potwierdzenie zostawia okno otwarte (zamyka je widok przez `open`), `busy` wyłącza przycisk na czas żądania, a `error` jest w oknie (`role="alert"`). `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
+  potwierdzenie zostawia okno otwarte (zamyka je widok przez `open`), `busy` blokuje przycisk na czas żądania przez `aria-disabled` (nie `disabled`, który oddałby fokus
+  `body`), a `error` jest w oknie (`role="alert"`, `tabindex="-1"`) i dostaje fokus, gdy się pojawi. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
   zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna; slot `status` stoi tuż za H1, np. `Badge` statusu zamówienia) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
@@ -579,7 +580,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   ikoną i nazwą dostępną „Czasownik: nazwa obiektu” (zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”,
   `target="_blank"` `rel="noopener"`) oraz podpowiedzią z tą samą nazwą (`TooltipProvider` jest w komponencie); zwykły link,
   nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcja bez `to` i `href` to przycisk (`select` z kluczem akcji i przyciskiem, `testid`
-  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje; przyciski zawijają się do następnego wiersza, gdy nie mieszczą się obok nazwy (węzeł drzewa kategorii przy 320 px).
+  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje; przyciski są w jednym wierszu (kolumna tabeli listy zachowuje szerokość); prop `wrap` pozwala im zawinąć się do następnego, gdy nie mieszczą się obok nazwy (tylko węzeł drzewa kategorii przy 320 px).
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,

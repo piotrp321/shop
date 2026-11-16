@@ -28,9 +28,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 /**
  * The actions of a row (docs/features/admin-design/spec.md, „Standard listy”): square 34 px buttons with an icon, each
  * with an accessible name that has the name of the object („Edytuj: Buty trailowe Norvane Grań 300”) and a tooltip with
- * it on hover and focus. An action that the role can never do is not passed in at all.
+ * it on hover and focus. An action that the role can never do is not passed in at all. The buttons stay in one line
+ * (a column of a table keeps its width); `wrap` lets them go to the next line where the row has room for nothing else
+ * (the node of the category tree at 320 px).
  */
-const props = defineProps<{ name: string; actions: RowAction[] }>();
+const props = withDefaults(defineProps<{ name: string; actions: RowAction[]; wrap?: boolean }>(), { wrap: false });
 const emit = defineEmits<{ select: [key: string, trigger: HTMLElement] }>();
 
 const router = useRouter();
@@ -56,7 +58,7 @@ const labelOf = (action: RowAction) => `${action.label}: ${props.name}`;
 
 <template>
   <TooltipProvider v-if="actions.length > 0">
-    <div class="flex flex-wrap items-center justify-end gap-2">
+    <div :class="['flex items-center justify-end gap-2', wrap && 'flex-wrap']">
       <Tooltip
         v-for="action in actions"
         :key="action.key"

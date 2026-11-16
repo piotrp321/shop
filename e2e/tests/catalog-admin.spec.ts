@@ -321,6 +321,7 @@ test.describe("categories screen", () => {
       const confirm = page.getByRole("alertdialog", { name: `Usunąć kategorię ${rootName}?` });
       await confirm.getByRole("button", { name: "Usuń kategorię" }).click();
       await expect(confirm.getByRole("alert")).not.toBeEmpty();
+      await expect(confirm.getByRole("alert"), "the refusal is read: the focus is on it, not lost on the page").toBeFocused();
       await confirm.getByRole("button", { name: "Wróć" }).click();
       await expect(confirm).toHaveCount(0);
 
@@ -416,6 +417,35 @@ test.describe("categories screen", () => {
       await page.keyboard.press("Enter");
       await expect(toast(page)).toContainText(`Usunięto kategorię: ${second} 2`);
       await expect(page.getByRole("heading", { level: 1, name: "Kategorie" })).toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("dragging a node onto another gives the command of the menu: it becomes its last subcategory", async () => {
+    test.setTimeout(120_000);
+    const dragSlug = `${rootSlug}-przeciaganie`;
+    const source = `Przenoszona ${suffix}`;
+    const target = `Cel ${suffix}`;
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      const token = await readToken(page);
+      const rootId = await createCategory(page.context().request, token, { name: `Zz E2E Przeciaganie ${suffix}`, slug: dragSlug, parentId: null });
+      await createCategory(page.context().request, token, { name: source, slug: `${dragSlug}-zrodlo`, parentId: rootId });
+      await createCategory(page.context().request, token, { name: target, slug: `${dragSlug}-cel`, parentId: rootId });
+      await go(page, "/categories");
+      await expect(treeItem(page, source)).toHaveAttribute("aria-level", "2");
+
+      // The middle of the target is „inside”: the node becomes its last child (the same command as „Przenieś do…”).
+      await treeItem(page, source).dragTo(treeItem(page, target), { targetPosition: { x: 200, y: (await treeItem(page, target).boundingBox())!.height / 2 } });
+      await expect(toast(page)).toContainText(`Przeniesiono kategorię: ${source}. Stary adres przekierowuje na nowy.`);
+      await expect(treeItem(page, source)).toHaveAttribute("aria-level", "3");
+
+      // The tree of the API agrees: the node is under the target.
+      const response = await page.context().request.get(`${urls.api}/api/v1/admin/categories`, { headers: { Authorization: `Bearer ${await readToken(page)}` } });
+      const roots = (await response.json()) as { slug: string; children: { slug: string; children: { slug: string }[] }[] }[];
+      const moved = roots.find((root) => root.slug === dragSlug)!.children.find((child) => child.slug === `${dragSlug}-cel`)!.children;
+      expect(moved.map((child) => child.slug)).toEqual([`${dragSlug}-zrodlo`]);
     } finally {
       await page.close();
     }

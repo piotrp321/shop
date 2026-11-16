@@ -164,6 +164,7 @@ const dropMark = computed(() => over.value);
         <RowActions
           :name="item.value.name"
           :actions="actionsOf(item.value)"
+          wrap
           @select="(key, trigger) => emit('action', key, item.value, trigger)"
         />
       </div>

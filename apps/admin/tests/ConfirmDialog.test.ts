@@ -239,7 +239,50 @@ describe("ConfirmDialog that the view closes itself (close-on-confirm off)", () 
 
     const alert = dialog()!.querySelector("[role=alert]");
     expect(alert?.textContent).toContain("Przenieś produkty do innej kategorii, zanim usuniesz tę.");
-    expect(button("Usuń kategorię")!.disabled).toBe(true);
+    const confirmButton = button("Usuń kategorię")!;
+    expect(confirmButton.getAttribute("aria-disabled")).toBe("true");
+    expect(confirmButton.disabled, "a disabled button would take the focus away").toBe(false);
+  });
+
+  it("does not run the action again while it is busy", async () => {
+    const mounted = mountKeeping({ busy: true });
+    wrapper = mounted;
+    await flushPromises();
+
+    button("Usuń kategorię")!.click();
+
+    expect(mounted.emitted("confirm")).toBeUndefined();
+  });
+
+  it("keeps the focus in the dialog through the request and puts it on the error that comes", async () => {
+    const mounted = mountKeeping();
+    wrapper = mounted;
+    await flushPromises();
+    const confirmButton = button("Usuń kategorię")!;
+    confirmButton.focus();
+    confirmButton.click();
+    await mounted.setProps({ busy: true });
+    expect(document.activeElement, "the focus stays on the button while the request runs").toBe(confirmButton);
+
+    await mounted.setProps({ busy: false, error: "Przenieś produkty do innej kategorii, zanim usuniesz tę." });
+    await flushPromises();
+
+    const alert = dialog()!.querySelector("[role=alert]");
+    expect(document.activeElement).toBe(alert);
+    expect(alert!.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("puts the focus on the error again when the same refusal comes a second time", async () => {
+    const mounted = mountKeeping({ error: "Powód." });
+    wrapper = mounted;
+    await flushPromises();
+    button("Wróć")!.focus();
+
+    await mounted.setProps({ error: null });
+    await mounted.setProps({ error: "Powód." });
+    await flushPromises();
+
+    expect(document.activeElement).toBe(dialog()!.querySelector("[role=alert]"));
   });
 
   it("still asks to close with „Wróć”", async () => {

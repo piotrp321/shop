@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +21,8 @@ import { focusAfterAction } from "@/lib/focus";
  * element is gone by then, to `fallbackFocus`, the heading of the card the action belongs to (`tabindex="-1"`).
  * An action that the API may refuse and that has to say why in the dialog turns `closeOnConfirm` off: the confirmation
  * then leaves the dialog open (the view closes it with `open` when the action succeeds), `busy` disables the button
- * while the request runs and `error` is said in the dialog (`role="alert"`).
+ * while the request runs (`aria-disabled`, not `disabled`: a disabled button would drop the focus on `body`) and `error`
+ * is said in the dialog (`role="alert"`, `tabindex="-1"`) with the focus moved to it, so the refusal is read.
  */
 const props = withDefaults(
   defineProps<{
@@ -54,6 +55,17 @@ watch(
   { flush: "sync" },
 );
 
+const errorElement = ref<HTMLElement | null>(null);
+watch(
+  () => props.error,
+  async (error) => {
+    if (error) {
+      await nextTick();
+      errorElement.value?.focus();
+    }
+  },
+);
+
 function returnFocus(event: Event) {
   event.preventDefault();
   focusAfterAction(opener, props.fallbackFocus);
@@ -69,9 +81,11 @@ function returnFocus(event: Event) {
         <AlertDialogDescription>{{ description }}</AlertDialogDescription>
         <p
           v-if="error"
+          ref="errorElement"
           role="alert"
+          tabindex="-1"
           data-testid="confirm-error"
-          class="text-sm text-status-danger"
+          class="text-sm text-status-danger focus:outline-none"
         >
           {{ error }}
         </p>
@@ -89,8 +103,8 @@ function returnFocus(event: Event) {
           v-else
           type="button"
           :variant="destructive ? 'destructive' : 'interface'"
-          :disabled="busy"
-          @click="emit('confirm')"
+          :aria-disabled="busy ? 'true' : undefined"
+          @click="!busy && emit('confirm')"
         >
           {{ confirmLabel }}
         </Button>
