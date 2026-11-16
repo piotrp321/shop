@@ -461,7 +461,185 @@ def integration_of(run, epic, gaps):
     return {'work_s': round(work, 3), 'attempts': count, 'rounds': epic['round']}
 
 
-def build_record(epic_id, ao_home, config, busy_timeout_ms):
+# ----------------------------------------------------------------------------- night state: limits, overlap, gate
+
+def read_measurements(night_dir):
+    """(events, None) of <night>/measurements.jsonl, or (None, reason) when it is missing or unreadable."""
+    if not os.path.exists(os.path.join(night_dir, night_queue.MEASUREMENTS_FILE)):
+        return None, 'brak pliku measurements.jsonl'
+    try:
+        return night_queue.read_events(night_dir), None
+    except night_queue.StateError as e:
+        return None, 'nieczytelny measurements.jsonl: %s' % e
+
+
+def measurement_intervals(events):
+    """[{epic, begin, end (None while open), start, done}] in epoch seconds: a `start` opens the interval of its
+    epic, the next `done` of that epic closes it, a later `start` without a `done` replaces the open one."""
+    found, opened = [], {}
+    for event in events:
+        epic = event['epic']
+        if event['event'] == 'start':
+            if epic in opened:
+                found.remove(opened[epic])
+            item = {'epic': epic, 'begin': night_queue.parse_time(event['at']).timestamp(), 'end': None,
+                    'start': event, 'done': None}
+            opened[epic] = item
+            found.append(item)
+        elif epic in opened:
+            item = opened.pop(epic)
+            item['done'] = event
+            item['end'] = night_queue.parse_time(event['at']).timestamp()
+    return found
+
+
+def own_span(intervals, epic_id, low, high):
+    """The measurement interval of the epic run: from the first start to the last done of the intervals of this epic
+    that lie in [low, high] (the run from epics.created_at to its end). None without any."""
+    mine = [i for i in intervals if i['epic'] == epic_id and i['begin'] <= high and (i['end'] is None
+                                                                                       or i['end'] >= low)]
+    if not mine:
+        return None
+    closed = [i for i in mine if i['end'] is not None]
+    last = max(closed, key=lambda i: i['end']) if closed else None
+    return {'begin': min(i['begin'] for i in mine), 'start': min(mine, key=lambda i: i['begin'])['start'],
+            'end': last['end'] if last else None, 'done': last['done'] if last else None}
+
+
+def overlaps_of(intervals, epic_id, begin, end):
+    """{other epic: [(start, end)]} of the stretches in which other epics ran inside [begin, end]: a closed interval
+    that intersects it, or an open start inside it (as night_queue.measurements; an open start before does not
+    count)."""
+    found = {}
+    for item in intervals:
+        if item['epic'] == epic_id:
+            continue
+        if item['end'] is None:
+            stretch = (item['begin'], end) if begin <= item['begin'] < end else None
+        else:
+            stretch = (max(begin, item['begin']), min(end, item['end'])) if begin < item['end'] and item['begin'] < end \
+                else None
+        if stretch:
+            found.setdefault(item['epic'], []).append(stretch)
+    return found
+
+
+def subscription_of(span, overlap, gaps):
+    """The raw increase of every limit window between the start and the done measurement (night_queue._window_deltas:
+    a window renewed during the epic, or a usage state other than ok, gives None)."""
+    before, after = span['start']['usage'], span['done']['usage']
+    labels = [w['label'] for w in (before if before.get('status') == 'ok' else after).get('windows', [])] \
+        if 'ok' in (before.get('status'), after.get('status')) else []
+    deltas = night_queue._window_deltas(before, after)
+    windows = {label: deltas.get(label) for label in labels}
+    if before.get('status') != 'ok' or after.get('status') != 'ok':
+        gaps.add('subscription', 'stan limitu inny niż ok (start: %s, done: %s)' % (before.get('status'),
+                                                                                  after.get('status')))
+    for label, delta in windows.items():
+        if delta is None and before.get('status') == 'ok' and after.get('status') == 'ok':
+            gaps.add('subscription', 'okno %s odnowione w trakcie epiku albo bez przyrostu' % label)
+    return {'windows': windows, 'overlap': sorted(overlap)}
+
+
+def night_fields(run, epic_id, started, run_end, night_dir, gaps):
+    """(subscription, parallel) of the epic from measurements.jsonl."""
+    events, reason = read_measurements(night_dir)
+    if events is None:
+        gaps.add('subscription', reason)
+        gaps.add('parallel', reason)
+        return None, None
+    span = own_span(measurement_intervals(events), epic_id, started, run_end) if started is not None else None
+    if span is None or span['end'] is None:
+        why = 'epik bez pomiaru start w measurements.jsonl' if span is None else 'epik bez pomiaru done w measurements.jsonl'
+        gaps.add('subscription', why)
+        gaps.add('parallel', why)
+        return None, None
+    stretches = overlaps_of(measurement_intervals(events), epic_id, span['begin'], span['end'])
+    repairs = {t['task_id'] for t in run['tasks'] if t['kind'] == 'repair'}
+    in_overlap = set()
+    for attempt in run['attempts']:
+        start = _number(attempt['started_at'])
+        if attempt['task_id'] not in repairs or start is None:
+            continue
+        end = _number(attempt['ended_at'])
+        end = span['end'] if end is None else end
+        if any(start < s_end and s_start < end for stretch in stretches.values() for s_start, s_end in stretch):
+            in_overlap.add(attempt['task_id'])
+    return (subscription_of(span, stretches, gaps),
+            {'epics': sorted(stretches), 'repairs': sorted(in_overlap)})
+
+
+def gate_wait_of(night_dir, epic_id, started, gaps):
+    """{wait_s, reasons}: from the first `waiting` entry of the epic in gate.jsonl to the start of the epic; 0 when
+    the gate let it through without waiting; None (and a gap) without the file or any entry of the epic."""
+    path = os.path.join(night_dir, 'gate.jsonl')
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        gaps.add('gate_wait', 'brak pliku gate.jsonl')
+        return None
+    except OSError as e:
+        gaps.add('gate_wait', 'nieczytelny gate.jsonl: %s' % (e.strerror or e))
+        return None
+    entries = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+            if isinstance(entry, dict) and isinstance(entry.get('at'), str):
+                entries.append((night_queue.parse_time(entry['at']).timestamp(), entry))
+        except (ValueError, TypeError):
+            continue
+    mine = [(at, e) for at, e in entries if epic_id in (e.get('epic'), e.get('waiting'), e.get('dir_arg'))]
+    if not mine or started is None:
+        gaps.add('gate_wait', 'brak wpisów epiku w gate.jsonl')
+        return None
+    waiting = sorted((at, e) for at, e in mine if e.get('waiting') == epic_id and at <= started)
+    if not waiting:
+        return {'wait_s': 0.0, 'reasons': []}
+    reasons = []
+    for _, entry in waiting:
+        if isinstance(entry.get('reason'), str) and entry['reason'] not in reasons:
+            reasons.append(entry['reason'])
+    return {'wait_s': round(started - waiting[0][0], 3), 'reasons': reasons}
+
+
+PR_ITEM = re.compile(r'^PR\s*#(\d+)\s*[:\-\u2013\u2014]?\s*(.*)$')
+
+
+def read_manual_fixes(path):
+    """[{pr, text}] from the list of manual fixes of the /ao-run session: one per line (`- PR #12: text` or
+    `- text`); blank lines and the `Ręczne poprawki: N` header are skipped."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            lines = f.read().splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        raise MetricsError('nieczytelny plik ręcznych poprawek %s: %s' % (path, getattr(e, 'strerror', None) or e))
+    fixes = []
+    for line in lines:
+        text = re.sub(r'^\s*[-*]\s+', '', line).strip()
+        if not text or re.match(r'^Ręczne poprawki:', text, re.IGNORECASE):
+            continue
+        match = PR_ITEM.match(text)
+        fixes.append({'pr': int(match.group(1)), 'text': match.group(2)} if match else {'pr': None, 'text': text})
+    return fixes
+
+
+def human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps):
+    if jsonl is None:
+        gaps.add('human', jsonl_gap)
+        summary = {'interventions': None, 'waits': None, 'wait_s': None, 'open': None}
+    else:
+        # A wait still open at epic_done ends there (the epic_done of the database, when events.jsonl lacks it).
+        closing = [{'type': 'epic_done', 'at': done}] if done is not None else []
+        summary = ao_events.summarize(jsonl + closing, now)
+        summary = {k: summary[k] for k in ('interventions', 'waits', 'wait_s', 'open')}
+    if manual_fixes is None:
+        gaps.add('human.manual_fixes', 'nie podano --manual-fixes')
+    return {**summary, 'manual_fixes': manual_fixes}
+
+
+def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now):
     gaps = Gaps()
     run = load_run(ao_home, epic_id, busy_timeout_ms, gaps)
     epic = run['epic']
@@ -486,6 +664,10 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms):
         'integration': integration_of(run, epic, gaps),
         'retries': retries_of(run, run_ended, gaps),
     }
+    run_end = done if done is not None else (_number(epic['updated_at']) or now)
+    record['subscription'], record['parallel'] = night_fields(run, epic_id, started, run_end, night_dir, gaps)
+    record['gate_wait'] = gate_wait_of(night_dir, epic_id, started, gaps)
+    record['human'] = human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps)
     record['gaps'] = gaps.render()
     return record
 
@@ -526,7 +708,8 @@ def cmd_epic(args, config, run, now):
     ao_root = os.environ.get('SHOP_METRICS_AO_ROOT', '~/.local/state')
     ao_home = _expand(args.ao_home or os.path.join(ao_root, 'ao-%s' % args.epic))
     busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
-    record = build_record(args.epic, ao_home, config, busy)
+    manual_fixes = read_manual_fixes(_expand(args.manual_fixes)) if args.manual_fixes else None
+    record = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now)
     write_record(state_path(_expand(args.state), args.epic), record)
     print(json.dumps(record, ensure_ascii=False))
     return 0
