@@ -20,7 +20,8 @@ use Doctrine\DBAL\ParameterType;
  * serve the sort by placement with and without the status, (total_gross, id) and (status, total_gross, id) the sort by
  * the amount; both directions of a sort read the same index, forwards or backwards, because the id follows the
  * direction of the sorted column. The partial (refund_due_at, id) of the pending refunds serves their sort, and the overdue ones (due before a moment) as a range of it; the number
- * has its unique index and the email the index on lower(email), which the condition repeats as it is. The cursor is a
+ * has its unique index and the email the index on lower(email), which the condition repeats as it is; the orders of a
+ * customer the partial (customer_id, placed_at DESC, id DESC) of the orders of customers, whose condition is repeated. The cursor is a
  * row comparison of the columns of the sort in its direction, so it stays an index condition. The units of an order are
  * summed from its lines (index on order_id), only for the orders of the page.
  */
@@ -39,6 +40,8 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
     private const string FRAGMENT = "lower(o.number || E'\\x1f' || o.email || E'\\x1f' || o.full_name) LIKE '%' || lower(:fragment) || '%'";
     private const string PLACED_FROM = 'o.placed_at >= :placed_from';
     private const string PLACED_BEFORE = 'o.placed_at < :placed_before';
+    /** The condition of the partial index (customer_id, placed_at DESC, id DESC) WHERE owner_type = 'customer'. */
+    private const string CUSTOMER = "o.owner_type = 'customer' AND o.customer_id = :customer_id";
     /** The sorted column of every sort, by the key of the sort, and the type of the position its cursor holds. */
     private const array SORT_COLUMNS = [
         '-placedAt' => ['o.placed_at', 'timestamptz'],
@@ -127,6 +130,10 @@ final readonly class DbalBackofficeOrderReader implements BackofficeOrderReader
         if (null !== $filter->placedBefore) {
             $conditions[] = self::PLACED_BEFORE;
             $parameters['placed_before'] = $filter->placedBefore->format('Y-m-d H:i:s.uP');
+        }
+        if (null !== $filter->customerId) {
+            $conditions[] = self::CUSTOMER;
+            $parameters['customer_id'] = $filter->customerId;
         }
 
         return [$conditions, $parameters];

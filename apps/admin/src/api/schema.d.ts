@@ -320,6 +320,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/customers/{customerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Customer card
+         * @description The contact of the newest order of the customer, the summary of its orders (all, the paid ones and their gross value without the refunds taken off, the first and the last one) and up to 10 distinct shipping addresses of its last 50 orders, the one used last first. Its orders are the order list with `customerId`. Administrators and support only.
+         */
+        get: operations["getCustomer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Customer list
+         * @description A page of the customers: the accounts of the store with at least one order (guests are no customers), the newest last order first (then by id) or in the order of `sort`. The search `q` is a fragment of 3 to 100 characters of the email or the name (any letter case, `%` and `_` mean themselves), only with the sort by the last order. Page with the opaque `nextCursor` as `after`, with the same `q` and `sort` (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching customers, counted up to 10 000. Administrators and support only.
+         */
+        get: operations["listCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/{orderId}": {
         parameters: {
             query?: never;
@@ -349,7 +389,7 @@ export interface paths {
         };
         /**
          * Order list
-         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `refund=overdue` only those past their due date (a subset of the pending ones in the same order, so the cursor of one leads the other); both take no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.
+         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `refund=overdue` only those past their due date (a subset of the pending ones in the same order, so the cursor of one leads the other); both take no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. With `customerId` only the orders of that customer, newest first, with the status filter only (its history on the card of the customer). Administrators, support and the warehouse only.
          */
         get: operations["listOrders"];
         put?: never;
@@ -691,6 +731,11 @@ export interface components {
         BackofficeOrder: {
             /** Format: uuid */
             orderId: string;
+            /**
+             * @description The id of the account of the store that placed the order (`sub` of its token), the key of the customer card and of `customerId` of the order list; null for a guest.
+             * @example 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
+             */
+            customerId: string | null;
             /** @example R-100001 */
             number: string;
             status: components["schemas"]["BackofficeOrderStatus"];
@@ -1230,6 +1275,19 @@ export interface components {
             /** @default 25 */
             perPage: number;
         };
+        BackofficeCustomerListQuery: {
+            /** @default null */
+            q: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "-lastOrderAt" | "name" | "-orderCount" | "-paidGross" | null;
+            /** @default null */
+            after: string | null;
+            /** @default null */
+            perPage: number | null;
+        };
         BackofficeOrderListQuery: {
             /**
              * @default null
@@ -1262,6 +1320,8 @@ export interface components {
              * @default null
              */
             placedTo: string | null;
+            /** @default null */
+            customerId: string | null;
         };
         /** @description A change of the status of an order, based on the version of the order the staff member saw. */
         ChangeOrderStatusRequest: {
@@ -1960,6 +2020,112 @@ export interface components {
              * @example eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+        };
+        /** @description The contact of the newest order of the customer. */
+        BackofficeCustomerContactResponse: {
+            /** @example anna.nowak@example.com */
+            email: string;
+            /** @example Anna Nowak */
+            fullName: string;
+            /**
+             * @description +48 and 9 digits.
+             * @example +48600100200
+             */
+            phone: string;
+        };
+        /** @description The orders of the customer: all, the paid ones and their gross value (refunds not taken off), the first and the last one. Amounts in grosze, moments RFC 3339 in UTC. */
+        BackofficeCustomerSummaryResponse: {
+            /** @example 3 */
+            orderCount: number;
+            /** @example 2 */
+            paidCount: number;
+            /** @example 24600 */
+            paidGross: number;
+            /** @example PLN */
+            currency: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-01T10:00:00+00:00
+             */
+            firstOrderAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            lastOrderAt: string;
+        };
+        /** @description A shipping address of the orders of the customer. */
+        BackofficeCustomerAddressResponse: {
+            /** @example Długa 1 */
+            street: string;
+            /** @example 00-950 */
+            postalCode: string;
+            /** @example Warszawa */
+            city: string;
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example PL
+             */
+            country: string;
+        };
+        /** @description The card of a customer. */
+        BackofficeCustomerResponse: {
+            /**
+             * @description The id of the account of the store (`sub` of its token).
+             * @example 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
+             */
+            customerId: string;
+            contact: components["schemas"]["BackofficeCustomerContactResponse"];
+            summary: components["schemas"]["BackofficeCustomerSummaryResponse"];
+            /** @description Up to 10 distinct shipping addresses of the last 50 orders, the one used last first. */
+            addresses: components["schemas"]["BackofficeCustomerAddressResponse"][];
+        };
+        /** @description A customer in the list: an account of the store with at least one order. Amounts in grosze. */
+        BackofficeCustomerListItemResponse: {
+            /**
+             * @description The id of the account of the store (`sub` of its token).
+             * @example 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
+             */
+            customerId: string;
+            /**
+             * @description The email of the newest order.
+             * @example anna.nowak@example.com
+             */
+            email: string;
+            /**
+             * @description The name of the newest order.
+             * @example Anna Nowak
+             */
+            fullName: string;
+            /**
+             * @description All orders of the customer.
+             * @example 3
+             */
+            orderCount: number;
+            /**
+             * @description The gross total of the paid orders, refunds not taken off.
+             * @example 24600
+             */
+            paidGross: number;
+            /** @example PLN */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description The moment of the newest order, RFC 3339 in UTC.
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            lastOrderAt: string;
+        };
+        /** @description A page of the customer list. */
+        BackofficeCustomerListResponse: {
+            items: components["schemas"]["BackofficeCustomerListItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after` with the same `q` and `sort`), null on the last page.
+             * @example eyJzIjoibmFtZSIsInYiOiJhbm5hIG5vd2FrIiwiaSI6ImtjLTEifQ
+             */
+            nextCursor: string | null;
+            /** @description How many customers match the search, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description The stored price of a product variant. Amounts are in grosze, the rate in basis points; all computed by the API. */
         ListedPriceResponse: {
@@ -3820,6 +3986,130 @@ export interface operations {
             };
         };
     };
+    getCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of the account of the store (`sub` of its token), as in `customerId` of the list. */
+                customerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCustomerResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see customers (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No customer with this id: no account with an order (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listCustomers: {
+        parameters: {
+            query?: {
+                /** @description A fragment of the email or the name, 3 to 100 characters once trimmed, without control characters. Only with `sort=-lastOrderAt`. */
+                q?: string;
+                /** @description The order: `-lastOrderAt` (the newest last order first, the default), `name` (A to Z, any letter case), `-orderCount` (the most orders first) or `-paidGross` (the highest paid value first); the customer id breaks the ties. */
+                sort?: "-lastOrderAt" | "name" | "-orderCount" | "-paidGross";
+                /** @description The `nextCursor` of the previous page of the same sort. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCustomerListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor, also a cursor of another sort or the search with another sort (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see customers (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getOrder: {
         parameters: {
             query?: never;
@@ -3894,6 +4184,8 @@ export interface operations {
                 placedTo?: string;
                 /** @description The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q` or the range of days. */
                 sort?: "-placedAt" | "placedAt" | "-total" | "total";
+                /** @description Only the orders of this customer (the `customerId` of the customer list and of an order), newest first; with `status` only, not with `q`, `sort`, `placedFrom`, `placedTo` or `refund` (a 400 at each). */
+                customerId?: string;
                 /** @description The `nextCursor` of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */

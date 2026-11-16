@@ -31,12 +31,17 @@ final readonly class ListBackofficeOrdersHandler
      * @throws InvalidBackofficeOrderCursor
      * @throws InvalidBackofficeOrderList   a sort with the pending refunds, the amount with a search or a range of days,
      *                                      the pending refunds with a range of days, a search term or a day that is
-     *                                      refused, a range that ends before it starts
+     *                                      refused, a range that ends before it starts, the orders of a customer
+     *                                      with a search, a sort, a range of days or the refunds
      */
     public function __invoke(ListBackofficeOrders $query): BackofficeOrderList
     {
         $now = $this->clock->now();
         $pendingRefunds = $query->pendingRefunds || $query->overdueRefunds;
+        // The history of a customer is read on its partial index (customer_id, placed_at DESC, id DESC) only.
+        if (null !== $query->customerId && ($pendingRefunds || null !== $query->q || null !== $query->sort || null !== $query->placedFrom || null !== $query->placedTo)) {
+            throw InvalidBackofficeOrderList::customerWithOtherFilters();
+        }
         $sort = self::sortOf($query, $pendingRefunds);
         $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, $sort);
         $term = null === $query->q ? null : OrderSearchTerm::parse($query->q);
@@ -45,7 +50,7 @@ final readonly class ListBackofficeOrdersHandler
             throw InvalidBackofficeOrderList::pendingRefundsWithDateRange();
         }
 
-        $filter = new BackofficeOrderFilter($query->status, $pendingRefunds, $term?->number, $term?->email, $sort, $term?->fragment, $range->from, $range->before, $query->overdueRefunds ? $now : null);
+        $filter = new BackofficeOrderFilter($query->status, $pendingRefunds, $term?->number, $term?->email, $sort, $term?->fragment, $range->from, $range->before, $query->overdueRefunds ? $now : null, $query->customerId);
         $orders = $this->orders->page($filter, $after, $query->perPage + 1);
         $next = null;
         if (\count($orders) > $query->perPage) {

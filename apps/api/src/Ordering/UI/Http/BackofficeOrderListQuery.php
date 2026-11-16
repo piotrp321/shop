@@ -8,6 +8,8 @@ use App\Ordering\Application\Query\InvalidBackofficeOrderList;
 use App\Ordering\Application\Query\ListBackofficeOrders;
 use App\Ordering\Application\Query\OrderPlacedRange;
 use App\Ordering\Application\Query\OrderSearchTerm;
+use App\Ordering\Domain\ControlCharacters;
+use App\Ordering\Domain\OrderOwner;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
@@ -28,6 +30,8 @@ final readonly class BackofficeOrderListQuery
     public const string BAD_REFUND = 'Filtr zwrotów może mieć tylko wartość pending albo overdue.';
     public const string BAD_TERM = 'Szukana fraza to numer zamówienia albo tekst od 3 do 100 znaków bez znaków sterujących.';
     public const string BAD_DAY = 'Podaj datę w formacie RRRR-MM-DD, od 2000 do 2999 roku.';
+    public const string BAD_CUSTOMER = 'Identyfikator klienta ma od 1 do 255 znaków bez znaków sterujących.';
+    public const string CUSTOMER_EXCLUDES = 'Zamówienia klienta łączą się tylko z filtrem statusu: bez wyszukiwania, sortowania, zakresu dat i zwrotów.';
     /** Longer than any cursor the API hands out (a sort, a moment and a UUID in JSON and base64url). */
     public const int MAX_CURSOR_LENGTH = 2048;
 
@@ -52,6 +56,10 @@ final readonly class BackofficeOrderListQuery
         public mixed $placedFrom = null,
         #[OA\Property(type: 'string', format: 'date', nullable: true)]
         public mixed $placedTo = null,
+        // A string checked by validateCustomer: the `sub` of an account of the store, 1 to 255 characters without a
+        // control character.
+        #[OA\Property(type: 'string', nullable: true, minLength: 1, maxLength: OrderOwner::MAX_CUSTOMER_ID_LENGTH)]
+        public mixed $customerId = null,
     ) {
     }
 
@@ -100,6 +108,26 @@ final readonly class BackofficeOrderListQuery
         }
         if ($valid && \is_string($this->placedFrom) && \is_string($this->placedTo) && OrderPlacedRange::dayStart($this->placedFrom) > OrderPlacedRange::dayStart($this->placedTo)) {
             $context->buildViolation('Data „Do” nie może być wcześniejsza niż data „Od”.')->atPath('placedTo')->addViolation();
+        }
+    }
+
+    /**
+     * The customer is the `sub` of an account; its orders are read on their partial index newest first, so they take
+     * the status filter only: the violation is on each of the other filters given.
+     */
+    #[Assert\Callback]
+    public function validateCustomer(ExecutionContextInterface $context): void
+    {
+        if (null === $this->customerId) {
+            return;
+        }
+        if (!\is_string($this->customerId) || '' === $this->customerId || mb_strlen($this->customerId) > OrderOwner::MAX_CUSTOMER_ID_LENGTH || ControlCharacters::in($this->customerId)) {
+            $context->buildViolation(self::BAD_CUSTOMER)->atPath('customerId')->addViolation();
+        }
+        foreach (['q' => $this->q, 'sort' => $this->sort, 'placedFrom' => $this->placedFrom, 'placedTo' => $this->placedTo, 'refund' => $this->refund] as $path => $value) {
+            if (null !== $value) {
+                $context->buildViolation(self::CUSTOMER_EXCLUDES)->atPath($path)->addViolation();
+            }
         }
     }
 

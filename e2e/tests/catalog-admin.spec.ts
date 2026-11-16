@@ -1,7 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
+import { createCategory, readToken, removeTestCategories, SLUG_PREFIX, testCategorySlugs } from "../support/categories";
 import { createDraftInPanel, newProduct, publishInPanel, receiveStockInPanel, solidPng, unpublishInPanel } from "../support/catalog-admin";
+import { documentWidths, expectControlsReachable, viewports, WCAG_TAGS } from "../support/panel-layout";
 import { openMenuItem } from "../support/panel-menu";
+import { closePanelContexts, go, inState, newPanelPage, type PanelState, signInPanelRoles, violationsOf } from "../support/panel-states";
+import { toasts } from "../support/promotions";
 import { changePriceInPanel, formatPln, normalize } from "../support/price-change";
 import { loginStaff, waitForBearerToken } from "../support/staff-login";
 import { urls } from "../support/urls";
@@ -298,5 +302,341 @@ test("an old category address follows the renamed category: 308 to the new addre
     if (!deleted) {
       await request.delete(`${urls.api}/api/v1/admin/categories/${category.id}?version=${category.version}`, { headers });
     }
+  }
+});
+
+// The category screen (docs/features/admin-features/spec.md, „Kategorie”). The tests make categories of their own, all
+// with the slug prefix of `support/categories.ts`, and remove them at the end: the demo categories are not changed, so the
+// tree of the store is as it was for the files that run after this one.
+test.describe("categories screen", () => {
+  const suffix = Date.now().toString(36);
+  const rootName = `Zz E2E Kategorie ${suffix}`;
+  const rootSlug = `${SLUG_PREFIX}${suffix}`;
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(120_000);
+    await signInPanelRoles(browser, ["admin", "support"]);
+  });
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    try {
+      const page = await newPanelPage("admin", viewports.desktop);
+      try {
+        await removeTestCategories(page.context().request, await readToken(page));
+      } finally {
+        await page.close();
+      }
+    } finally {
+      await closePanelContexts();
+    }
+  });
+
+  // A node is named by its name, its slug and its count: the name followed by a space (a longer name that starts with it is another node).
+  const treeItem = (page: Page, name: string) => page.getByRole("treeitem", { name: new RegExp(`^${name} `) });
+  const toast = (page: Page) => toasts(page);
+
+  /** Fills the window of a category (Nazwa and Slug) and presses its button. */
+  async function submitCategory(page: Page, windowName: string, name: string | null, slug: string | null, button: string) {
+    const window = page.getByRole("dialog", { name: windowName });
+    await expect(window).toBeVisible();
+    if (name !== null) await window.getByLabel("Nazwa").fill(name);
+    if (slug !== null) await window.getByLabel("Slug").fill(slug);
+    await window.getByRole("button", { name: button, exact: true }).click();
+  }
+
+  test("admin adds, renames, moves and deletes categories, and an error is said where it belongs", async () => {
+    test.setTimeout(180_000);
+    const alfa = `Alfa ${suffix}`;
+    const beta = `Beta ${suffix}`;
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      await go(page, "/");
+      await openMenuItem(page, "Kategorie", "Katalog");
+      await expect(page.getByRole("heading", { level: 1, name: "Kategorie" })).toBeVisible();
+      const tree = page.getByRole("tree", { name: "Drzewo kategorii" });
+      await expect(tree.getByRole("treeitem", { name: /^Turystyka turystyka / }), "the tree of the demo data, with the count").toBeVisible();
+      await expect(tree.getByRole("treeitem", { name: /^Turystyka turystyka / }).getByTestId("category-count")).toContainText(/^Produkty: \d+|ponad/);
+
+      // A root, then two subcategories of it.
+      await page.getByTestId("add-category").click();
+      await submitCategory(page, "Dodaj kategorię", rootName, rootSlug, "Dodaj");
+      await expect(toast(page)).toContainText(`Dodano kategorię: ${rootName}`);
+      await expect(treeItem(page, rootName)).toBeVisible();
+
+      const subcategories: [string, string][] = [
+        [alfa, `${rootSlug}-alfa`],
+        [beta, `${rootSlug}-beta`],
+      ];
+      for (const [name, slug] of subcategories) {
+        await treeItem(page, rootName).getByRole("button", { name: `Dodaj podkategorię: ${rootName}` }).click();
+        await submitCategory(page, "Dodaj podkategorię", name, slug, "Dodaj");
+        await expect(treeItem(page, name), "the parent is open, so the new subcategory is seen").toBeVisible();
+        await expect(treeItem(page, name)).toHaveAttribute("aria-level", "2");
+      }
+
+      // A taken slug is said at the field of the slug, with the focus in it; nothing else changed.
+      await treeItem(page, rootName).getByRole("button", { name: `Dodaj podkategorię: ${rootName}` }).click();
+      const window = page.getByRole("dialog", { name: "Dodaj podkategorię" });
+      await submitCategory(page, "Dodaj podkategorię", `Gamma ${suffix}`, `${rootSlug}-alfa`, "Dodaj");
+      await expect(window.getByTestId("slug-error")).toBeVisible();
+      await expect(window.getByLabel("Slug")).toBeFocused();
+      await window.getByRole("button", { name: "Anuluj" }).click();
+      await expect(window).toHaveCount(0);
+
+      // A new name only: no note about the address; a new slug: the old address redirects.
+      await treeItem(page, alfa).getByRole("button", { name: `Edytuj: ${alfa}` }).click();
+      await expect(page.getByRole("dialog", { name: "Edytuj kategorię" }).getByLabel("Slug")).toHaveValue(`${rootSlug}-alfa`);
+      await submitCategory(page, "Edytuj kategorię", `${alfa} nowa`, null, "Zapisz");
+      await expect(toast(page)).toContainText(`Zapisano kategorię: ${alfa} nowa`);
+      await expect(toast(page)).not.toContainText("przekierowuje");
+      await treeItem(page, `${alfa} nowa`).getByRole("button", { name: `Edytuj: ${alfa} nowa` }).click();
+      await submitCategory(page, "Edytuj kategorię", null, `${rootSlug}-alfa-2`, "Zapisz");
+      await expect(toast(page)).toContainText("Stary adres przekierowuje na nowy.");
+
+      // Move under the other subcategory, which makes the tree three levels deep.
+      await treeItem(page, `${alfa} nowa`).getByRole("button", { name: `Przenieś do…: ${alfa} nowa` }).click();
+      const moveWindow = page.getByRole("dialog", { name: `Przenieś kategorię ${alfa} nowa` });
+      await moveWindow.getByRole("combobox", { name: "Nowa kategoria nadrzędna" }).click();
+      await expect(page.getByRole("option", { name: `${rootName} › ${alfa} nowa` }), "the category itself cannot be chosen").toHaveAttribute("aria-disabled", "true");
+      await page.getByRole("option", { name: `${rootName} › ${beta}`, exact: true }).click();
+      await moveWindow.getByRole("button", { name: "Przenieś", exact: true }).click();
+      await expect(toast(page)).toContainText(`Przeniesiono kategorię: ${alfa} nowa. Stary adres przekierowuje na nowy.`);
+      await expect(treeItem(page, `${alfa} nowa`)).toHaveAttribute("aria-level", "3");
+
+      // A category with a subcategory is not deleted: the window says why and stays open.
+      await treeItem(page, rootName).getByRole("button", { name: `Usuń: ${rootName}` }).click();
+      const confirm = page.getByRole("alertdialog", { name: `Usunąć kategorię ${rootName}?` });
+      await confirm.getByRole("button", { name: "Usuń kategorię" }).click();
+      await expect(confirm.getByRole("alert")).not.toBeEmpty();
+      await expect(confirm.getByRole("alert"), "the refusal is read: the focus is on it, not lost on the page").toBeFocused();
+      await confirm.getByRole("button", { name: "Wróć" }).click();
+      await expect(confirm).toHaveCount(0);
+
+      // Empty categories are deleted, the deepest first.
+      for (const name of [`${alfa} nowa`, beta, rootName]) {
+        await treeItem(page, name).getByRole("button", { name: `Usuń: ${name}` }).click();
+        await page.getByRole("alertdialog", { name: `Usunąć kategorię ${name}?` }).getByRole("button", { name: "Usuń kategorię" }).click();
+        await expect(toast(page)).toContainText(`Usunięto kategorię: ${name}`);
+        await expect(treeItem(page, name)).toHaveCount(0);
+      }
+      await expect(page.getByRole("heading", { level: 1, name: "Kategorie" }), "the focus of a deleted row is on the heading").toBeFocused();
+      expect(await testCategorySlugs(page.context().request, await readToken(page)), "nothing of the test is left").toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  /** Presses Tab (or Shift+Tab) until the focus is on the control with this name (its aria-label or its text). */
+  async function tabTo(page: Page, name: string, key = "Tab") {
+    for (let step = 0; step < 40; step++) {
+      await page.keyboard.press(key);
+      const focused = await page.evaluate(() => (document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.textContent ?? "").trim());
+      if (focused === name) return;
+    }
+    throw new Error(`the focus did not reach "${name}" with ${key}`);
+  }
+
+  test("every action is done with the keyboard alone: the arrows of the tree, then the buttons of the node", async () => {
+    test.setTimeout(180_000);
+    const keyboardSlug = `${rootSlug}-klawiatura`;
+    const first = `Pierwsza ${suffix}`;
+    const second = `Druga ${suffix}`;
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      const token = await readToken(page);
+      const rootId = await createCategory(page.context().request, token, { name: `Zz E2E Klawiatura ${suffix}`, slug: keyboardSlug, parentId: null });
+      await createCategory(page.context().request, token, { name: first, slug: `${keyboardSlug}-pierwsza`, parentId: rootId });
+      await createCategory(page.context().request, token, { name: second, slug: `${keyboardSlug}-druga`, parentId: rootId });
+      await go(page, "/categories");
+      const tree = page.getByRole("tree", { name: "Drzewo kategorii" });
+      await expect(treeItem(page, second)).toBeVisible();
+
+      // The tree: one stop for the Tab key, the arrows and End move inside it.
+      await tree.getByRole("treeitem").first().focus();
+      await page.keyboard.press("End");
+      await expect(treeItem(page, second), "End goes to the last node").toBeFocused();
+      await page.keyboard.press("ArrowUp");
+      await expect(treeItem(page, first)).toBeFocused();
+      await page.keyboard.press("ArrowLeft");
+      await expect(treeItem(page, `Zz E2E Klawiatura ${suffix}`), "Left goes to the parent").toBeFocused();
+      await page.keyboard.press("ArrowLeft");
+      await expect(treeItem(page, `Zz E2E Klawiatura ${suffix}`), "Left closes an open node").toHaveAttribute("aria-expanded", "false");
+      await page.keyboard.press("ArrowRight");
+      await expect(treeItem(page, second)).toBeVisible();
+      await page.keyboard.press("End");
+      await expect(treeItem(page, second)).toBeFocused();
+
+      // The buttons of the node: up, said in a toast; the focus stays on a button of the node.
+      await tabTo(page, `W górę: ${second}`);
+      await page.keyboard.press("Enter");
+      await expect(toast(page)).toContainText(`Zmieniono kolejność: ${second}`);
+      await expect(page.getByRole("button", { name: `W dół: ${second}` }), "the focus follows the node that moved").toBeFocused();
+
+      // Edit: the window opens on the name, Enter saves, the focus is back on the button.
+      await tabTo(page, `Edytuj: ${second}`, "Shift+Tab");
+      await page.keyboard.press("Enter");
+      await expect(page.getByLabel("Nazwa")).toBeFocused();
+      await page.keyboard.press("End");
+      await page.keyboard.type(" 2");
+      await page.keyboard.press("Enter");
+      await expect(toast(page)).toContainText(`Zapisano kategorię: ${second} 2`);
+      await expect(page.getByRole("button", { name: `Edytuj: ${second} 2` })).toBeFocused();
+
+      // Move to the top level: the picker is used with the keys only.
+      await tabTo(page, `Przenieś do…: ${second} 2`);
+      await page.keyboard.press("Enter");
+      const combobox = page.getByRole("combobox", { name: "Nowa kategoria nadrzędna" });
+      await expect(combobox).toBeFocused();
+      await page.keyboard.type("Poziom");
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+      await tabTo(page, "Przenieś");
+      await page.keyboard.press("Enter");
+      await expect(toast(page)).toContainText(`Przeniesiono kategorię: ${second} 2. Stary adres przekierowuje na nowy.`);
+      await expect(treeItem(page, `${second} 2`)).toHaveAttribute("aria-level", "1");
+
+      // Delete: „Wróć” has the focus, Tab goes to the action.
+      await tabTo(page, `Usuń: ${second} 2`);
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("button", { name: "Wróć" })).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.getByRole("button", { name: "Usuń kategorię" })).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(toast(page)).toContainText(`Usunięto kategorię: ${second} 2`);
+      await expect(page.getByRole("heading", { level: 1, name: "Kategorie" })).toBeFocused();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("dragging a node onto another gives the command of the menu: it becomes its last subcategory", async () => {
+    test.setTimeout(120_000);
+    const dragSlug = `${rootSlug}-przeciaganie`;
+    const source = `Przenoszona ${suffix}`;
+    const target = `Cel ${suffix}`;
+    const page = await newPanelPage("admin", viewports.desktop);
+    try {
+      const token = await readToken(page);
+      const rootId = await createCategory(page.context().request, token, { name: `Zz E2E Przeciaganie ${suffix}`, slug: dragSlug, parentId: null });
+      await createCategory(page.context().request, token, { name: source, slug: `${dragSlug}-zrodlo`, parentId: rootId });
+      await createCategory(page.context().request, token, { name: target, slug: `${dragSlug}-cel`, parentId: rootId });
+      await go(page, "/categories");
+      await expect(treeItem(page, source)).toHaveAttribute("aria-level", "2");
+
+      // The middle of the target is „inside”: the node becomes its last child (the same command as „Przenieś do…”).
+      await treeItem(page, source).dragTo(treeItem(page, target), { targetPosition: { x: 200, y: (await treeItem(page, target).boundingBox())!.height / 2 } });
+      await expect(toast(page)).toContainText(`Przeniesiono kategorię: ${source}. Stary adres przekierowuje na nowy.`);
+      await expect(treeItem(page, source)).toHaveAttribute("aria-level", "3");
+
+      // The tree of the API agrees: the node is under the target.
+      const response = await page.context().request.get(`${urls.api}/api/v1/admin/categories`, { headers: { Authorization: `Bearer ${await readToken(page)}` } });
+      const roots = (await response.json()) as { slug: string; children: { slug: string; children: { slug: string }[] }[] }[];
+      const moved = roots.find((root) => root.slug === dragSlug)!.children.find((child) => child.slug === `${dragSlug}-cel`)!.children;
+      expect(moved.map((child) => child.slug)).toEqual([`${dragSlug}-zrodlo`]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  test("support reads the tree and has neither the actions nor „Dodaj kategorię”", async () => {
+    const page = await newPanelPage("support", viewports.desktop);
+    try {
+      await go(page, "/categories");
+      await expect(page.getByRole("tree", { name: "Drzewo kategorii" }).getByRole("treeitem").first()).toBeVisible();
+      await expect(page.getByTestId("add-category")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^(Edytuj|Usuń|Przenieś do…|Dodaj podkategorię):/ })).toHaveCount(0);
+      await expect(page.getByRole("treeitem").first()).not.toHaveAttribute("draggable", "true");
+    } finally {
+      await page.close();
+    }
+  });
+
+  // The screen and its windows, opened on a demo category (opening a window changes nothing).
+  const opensTree = async (page: Page) => {
+    await go(page, "/categories");
+    await expect(page.getByRole("treeitem").first()).toBeVisible();
+  };
+  const states: PanelState[] = [
+    {
+      name: "the tree",
+      role: "admin",
+      open: async (page) => {
+        await opensTree(page);
+        return null;
+      },
+    },
+    {
+      name: "the window of a new category",
+      role: "admin",
+      overlay: true,
+      open: async (page) => {
+        await opensTree(page);
+        await page.getByTestId("add-category").click();
+        const window = page.getByRole("dialog", { name: "Dodaj kategorię" });
+        await expect(window.getByLabel("Nazwa")).toBeFocused();
+        return window;
+      },
+    },
+    {
+      name: "the window of a new category with errors",
+      role: "admin",
+      overlay: true,
+      open: async (page) => {
+        await opensTree(page);
+        await page.getByTestId("add-category").click();
+        const window = page.getByRole("dialog", { name: "Dodaj kategorię" });
+        await window.getByRole("button", { name: "Dodaj", exact: true }).click();
+        await expect(window.getByTestId("name-error")).toBeVisible();
+        return window;
+      },
+    },
+    {
+      name: "the window of a move",
+      role: "admin",
+      overlay: true,
+      open: async (page) => {
+        await opensTree(page);
+        await page.getByRole("treeitem").first().getByRole("button", { name: /^Przenieś do…:/ }).click();
+        const window = page.getByRole("dialog", { name: /^Przenieś kategorię/ });
+        await window.getByRole("combobox").click();
+        await expect(page.getByRole("option", { name: "Poziom główny" })).toBeVisible();
+        return window;
+      },
+    },
+    {
+      name: "the confirmation of a delete",
+      role: "admin",
+      overlay: true,
+      open: async (page) => {
+        await opensTree(page);
+        await page.getByRole("treeitem").first().getByRole("button", { name: /^Usuń:/ }).click();
+        const window = page.getByRole("alertdialog", { name: /^Usunąć kategorię/ });
+        await expect(window).toBeVisible();
+        return window;
+      },
+    },
+  ];
+
+  for (const state of states) {
+    test(`axe finds no violation of WCAG 2.2 AA at 1280 and 768 px: ${state.name}`, async () => {
+      test.setTimeout(90_000);
+      for (const size of [viewports.desktop, viewports.tablet]) {
+        await inState(state, size, async (page) => {
+          expect(await violationsOf(page, WCAG_TAGS), `axe at ${size.width} px`).toEqual([]);
+        });
+      }
+    });
+
+    test(`at 320 px nothing scrolls sideways and every control is reachable: ${state.name}`, async () => {
+      test.setTimeout(90_000);
+      await inState(state, viewports.reflow, async (page, overlay) => {
+        const widths = await documentWidths(page);
+        expect(widths.scrollWidth, "the document does not scroll sideways").toBe(widths.clientWidth);
+        await expectControlsReachable(page, overlay);
+        const after = await documentWidths(page);
+        expect(after.scrollWidth).toBe(after.clientWidth);
+      });
+    });
   }
 });

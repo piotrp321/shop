@@ -47,7 +47,7 @@ final class BackofficeOrdersController
             .'or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name '
             .'(any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. '
             .'Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also '
-            .'has the `total` of the matching orders, counted up to 10 000. Administrators, support and the warehouse only.',
+            .'has the `total` of the matching orders, counted up to 10 000. With `customerId` only the orders of that customer, newest first, with the status filter only (its history on the card of the customer). Administrators, support and the warehouse only.',
         tags: ['Ordering'],
         parameters: [
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only the orders in this status.', schema: new OA\Schema(ref: '#/components/schemas/BackofficeOrderStatus')),
@@ -56,6 +56,7 @@ final class BackofficeOrdersController
             new OA\Parameter(name: 'placedFrom', in: 'query', required: false, description: 'The first day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included. Not with `refund=pending` or `sort` by the amount.', schema: new OA\Schema(type: 'string', format: 'date', pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')),
             new OA\Parameter(name: 'placedTo', in: 'query', required: false, description: 'The last day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included; not before `placedFrom`. Not with `refund=pending` or `sort` by the amount.', schema: new OA\Schema(type: 'string', format: 'date', pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q` or the range of days.', schema: new OA\Schema(type: 'string', enum: BackofficeOrderListQuery::SORTS, default: '-placedAt')),
+            new OA\Parameter(name: 'customerId', in: 'query', required: false, description: 'Only the orders of this customer (the `customerId` of the customer list and of an order), newest first; with `status` only, not with `q`, `sort`, `placedFrom`, `placedTo` or `refund` (a 400 at each).', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: 255)),
             new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `nextCursor` of the previous page of the same sort.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeOrderListQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: ListBackofficeOrders::MAX_PER_PAGE, default: ListBackofficeOrders::DEFAULT_PER_PAGE)),
         ],
@@ -75,10 +76,11 @@ final class BackofficeOrdersController
         $q = \is_string($query->q) ? $query->q : null;
         $placedFrom = \is_string($query->placedFrom) ? $query->placedFrom : null;
         $placedTo = \is_string($query->placedTo) ? $query->placedTo : null;
+        $customerId = \is_string($query->customerId) ? $query->customerId : null;
 
         try {
             /** @var BackofficeOrderList $list */
-            $list = $this->handle(new ListBackofficeOrders($status, null !== $query->refund, $q, $query->after, $query->perPage, null === $query->sort ? null : BackofficeOrderSort::from($query->sort), $placedFrom, $placedTo, 'overdue' === $query->refund));
+            $list = $this->handle(new ListBackofficeOrders($status, null !== $query->refund, $q, $query->after, $query->perPage, null === $query->sort ? null : BackofficeOrderSort::from($query->sort), $placedFrom, $placedTo, 'overdue' === $query->refund, $customerId));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued (for this sort) is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

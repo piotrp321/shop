@@ -178,11 +178,15 @@ Decyzje użytkownika:
     albo `refund=overdue` i kwota (`-total`, `total`) z `q` albo zakresem dni; `refund=pending` i `refund=overdue`
     z zakresem dni to 400 przy polach dat; `refund` inny niż `pending` i `overdue` to 400 przy `refund`; klucz
     spoza listy to 400 przy `sort`;
+  - `customerId` (`sub` konta sklepu, 1–255 znaków bez znaków sterujących, inaczej 400 przy `customerId`): tylko
+    zamówienia tego klienta (`owner_type = 'customer'`), od najnowszego, po częściowym indeksie `(customer_id,
+    placed_at DESC, id DESC)`; łączy się tylko ze `status`, a `q`, `sort`, `placedFrom`, `placedTo` i `refund` z nim to
+    400 przy każdym z tych pól; ten sam kursor i `total` co lista (historia zamówień na karcie klienta panelu);
   - kursor keyset (base64url JSON `{s: klucz sortu, v: chwila albo kwota, i: id}`), `perPage` 1–100 (domyślnie 25), zły
     kursor albo kursor innego sortu 400 przy `after`;
   - element: `orderId, number, placedAt, status, email, fullName, totalGross, currency, itemCount, refund:
     {amount, dueAt, completedAt, overdue} | null`.
-- `GetBackofficeOrder(orderId)` → `BackofficeOrderView`: kontakt, adres, pozycje (z `grossBeforeDiscount`,
+- `GetBackofficeOrder(orderId)` → `BackofficeOrderView`: `customerId` (`sub` konta, `null` dla gościa), kontakt, adres, pozycje (z `grossBeforeDiscount`,
   `discountGross`, wartością po rabacie i kopią promocji `promotion {name, percentOff, regularUnitGross} | null`),
   kopia kodu `discount {code, kind, value, amountGross} | null`, sumy po rabacie, daty statusów,
   `paymentDeadline`, `cancellationReason`, `paidAt`, `paymentId` (P13), `version`, `history` (od najstarszego), `refund` (kwota, termin,
@@ -284,7 +288,7 @@ sklepu się nie zmienia.
 
 | Endpoint | Uprawnienie (`OrderVoter`) | Sukces | Błędy |
 |---|---|---|---|
-| `GET /api/v1/admin/orders?status=&refund=&q=&placedFrom=&placedTo=&sort=&after=&perPage=` | `VIEW_ORDERS` | 200 `{items, nextCursor}` | 400 parametry, 401, 403, 503 |
+| `GET /api/v1/admin/orders?status=&refund=&q=&placedFrom=&placedTo=&sort=&customerId=&after=&perPage=` | `VIEW_ORDERS` | 200 `{items, nextCursor, total}` | 400 parametry, 401, 403, 503 |
 | `GET /api/v1/admin/orders/{orderId}` | `VIEW_ORDERS` | 200 `BackofficeOrder` | 401, 403, 404, 503 |
 | `POST /api/v1/admin/orders/{orderId}/status-changes`, body `{transition, version, note}` | `VIEW_ORDERS` i `CHANGE_ORDER_STATUS` dla przejścia | 200 `BackofficeOrder` | 400 zły JSON, 401, 403, 404, 409 (przejście, wersja), 415, 422, 503 |
 | `POST /api/v1/admin/orders/{orderId}/refund-completion`, body `{version, note}` | `COMPLETE_REFUND` | 200 `BackofficeOrder` | 400, 401, 403, 404, 409 (`refund-not-pending`, wersja), 415, 422, 503 |

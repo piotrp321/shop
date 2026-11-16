@@ -89,26 +89,44 @@ final class OrderingFixture
     }
 
     /**
-     * A guest order of one line (10,00 zł net, 12,30 zł gross) to $email, written as plain SQL with a number and keys
-     * of its own: new, or paid when $paid (now, or at $paidAt). No reservation, no outbox row. The id is a new UUID v7
-     * unless given.
+     * An order of one line (10,00 zł net, 12,30 zł gross) to $email, written as plain SQL with a number and keys of its
+     * own: of a guest, or of the customer $customerId; placed now or at $placedAt; new, or paid when $paid (now, or at
+     * $paidAt). No reservation, no outbox row, nothing in the read models. The id is a new UUID v7 unless given.
      *
      * @return string the order id
      */
-    public static function order(Connection $connection, string $email = 'jan@example.com', bool $paid = false, ?string $paidAt = null, ?string $id = null): string
-    {
+    public static function order(
+        Connection $connection,
+        string $email = 'jan@example.com',
+        bool $paid = false,
+        ?string $paidAt = null,
+        ?string $id = null,
+        ?string $customerId = null,
+        string $fullName = 'Jan Kowalski',
+        ?string $placedAt = null,
+        string $street = 'Długa 1',
+        string $phone = '+48600100200',
+    ): string {
         $orderId = $id ?? Uuid::v7()->toRfc4122();
+        $placed = null === $placedAt ? null : new \DateTimeImmutable($placedAt)->format('Y-m-d H:i:sP');
         $connection->executeStatement(
             "INSERT INTO ordering_order (id, number, status, owner_type, customer_id, access_token, email, full_name, phone, street, postal_code, city, country, currency, total_net, total_vat, total_gross, idempotency_key, request_fingerprint, placed_at, payment_deadline, paid_at, payment_id, version)
-             VALUES (?, ?, ?, 'guest', NULL, ?, ?, 'Jan Kowalski', '+48600100200', 'Długa 1', '00-950', 'Warszawa', 'PL', 'PLN', 1000, 230, 1230, ?, ?, now(), now() + interval '30 minutes', ?, ?, 1)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '00-950', 'Warszawa', 'PL', 'PLN', 1000, 230, 1230, ?, ?, COALESCE(CAST(? AS timestamptz), now()), COALESCE(CAST(? AS timestamptz), now()) + interval '30 minutes', ?, ?, 1)",
             [
                 $orderId,
                 'R-'.random_int(100_000_000, 999_999_999),
                 $paid ? 'paid' : 'new',
-                rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '='),
+                null === $customerId ? 'guest' : 'customer',
+                $customerId,
+                null === $customerId ? rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=') : null,
                 $email,
+                $fullName,
+                $phone,
+                $street,
                 'fixture-'.$orderId,
                 str_repeat('a', 64),
+                $placed,
+                $placed,
                 $paid ? new \DateTimeImmutable($paidAt ?? 'now')->format('Y-m-d H:i:sP') : null,
                 $paid ? Uuid::v7()->toRfc4122() : null,
             ],
@@ -135,8 +153,8 @@ final class OrderingFixture
     }
 
     /**
-     * Deletes the orders (their notifications, history and lines first) and the reservations they hold, on a connection that
-     * commits.
+     * Deletes the orders (their notifications, history and lines first), the reservations they hold and the summaries of
+     * their customers that are left without orders (PlaceOrder writes them), on a connection that commits.
      *
      * @param list<string> $orderIds
      */
@@ -145,10 +163,18 @@ final class OrderingFixture
         if ([] === $orderIds) {
             return;
         }
+        $customers = $connection->fetchFirstColumn("SELECT DISTINCT customer_id FROM ordering_order WHERE id IN (?) AND owner_type = 'customer'", [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_notification WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_status_change WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_line WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order WHERE id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
+        if ([] !== $customers) {
+            $connection->executeStatement(
+                'DELETE FROM ordering_customer c WHERE c.customer_id IN (?) AND NOT EXISTS (SELECT 1 FROM ordering_order o WHERE o.customer_id = c.customer_id)',
+                [$customers],
+                [ArrayParameterType::STRING],
+            );
+        }
         StockFixture::delete($connection, [], $orderIds);
     }
 }

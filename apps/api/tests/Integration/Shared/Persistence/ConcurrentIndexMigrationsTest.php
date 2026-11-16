@@ -34,6 +34,7 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
     private const string ORDER_SEARCH = 'Version20261115140000IndexOrderSearch';
     private const string PRODUCT_IMAGES = 'Version20261115150000IndexCatalogProductWithoutImages';
     private const string ORDER_PAYMENTS = 'Version20261115160100IndexOrderPaidAt';
+    private const string CUSTOMER_SEARCH = 'Version20261116090100IndexCustomerSearch';
 
     private Connection $connection;
     private string $migrationClass = '';
@@ -78,6 +79,12 @@ final class ConcurrentIndexMigrationsTest extends KernelTestCase
             'ordering_order',
             ['ordering_order_paid_at_idx' => '(paid_at) WHERE paid_at IS NOT NULL'],
             ['ordering_order_paid_at_idx' => 'USING btree (paid_at) WHERE (paid_at IS NOT NULL)'],
+        ];
+        yield 'the customer indexes of the search by fragment' => [
+            self::CUSTOMER_SEARCH,
+            'ordering_customer',
+            ['ordering_customer_email_trgm_idx' => 'USING gin (lower(email) gin_trgm_ops)', 'ordering_customer_name_trgm_idx' => 'USING gin (lower(full_name) gin_trgm_ops)'],
+            ['ordering_customer_email_trgm_idx' => 'USING gin (lower((email)::text) gin_trgm_ops)', 'ordering_customer_name_trgm_idx' => 'USING gin (lower((full_name)::text) gin_trgm_ops)'],
         ];
     }
 
