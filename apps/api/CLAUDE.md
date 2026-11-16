@@ -226,14 +226,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   dostaje wiersz z samego opłaconego zamówienia (`INSERT … SELECT` z `ordering_order`: jego kontakt i chwila, jedno
   zamówienie, opłacone), nigdy wiersz z `NULL`, a przebudowa i tak go nadpisze. Wycofana transakcja wycofuje dopisanie.
   Przebudowa partii (`CustomerSummariesRebuild::rebuild`, zakres `customer_id`, `READ COMMITTED`) w jednej transakcji:
-  `INSERT` brakujących wierszy klientów zakresu z zatwierdzonymi zamówieniami (wartości zastępcze) `ON CONFLICT DO
-  NOTHING`, `SELECT … FOR UPDATE` wszystkich wierszy zakresu, dopiero potem liczenie zamówień (`UPDATE` z agregacją
-  i kontaktem najnowszego zamówienia) i `DELETE` wierszy klientów bez zamówień. Złożenie i płatność dopisują się do
+  `INSERT` brakujących wierszy klientów zakresu z zatwierdzonymi zamówieniami (wartości zastępcze, `ORDER BY
+  customer_id`) `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` wszystkich widocznych wierszy zakresu (kolejność
+  `customer_id`), dopiero potem liczenie zamówień (`UPDATE` z agregacją i kontaktem najnowszego zamówienia) i `DELETE`
+  wierszy klientów bez zamówień, oba tylko dla zablokowanych wierszy (wiersz klienta, którego wszystkie zamówienia
+  zatwierdziły się po utworzeniu wartości zastępczych, nie jest zablokowany, więc przebudowa go nie rusza: jego
+  dopisania są pełne, a nadpisanie z liczenia po blokadzie zgubiłoby dopisanie równoległej płatności). Złożenie i płatność dopisują się do
   wiersza swojego klienta przed commitem, więc albo zatwierdziły się przed blokadą (liczenie je widzi, zapis nadpisuje
   dopisanie), albo czekają na commit przebudowy i dopisują się do nowego wiersza; pierwsze zamówienie klienta bez wiersza
-  jest albo widoczne dla liczenia razem ze swoim wierszem, albo jego wstawienie zostaje. Żadne zamówienie nie ginie ani
+  jest albo widoczne dla liczenia razem ze swoim wierszem, albo jego wiersz zostaje nietknięty. Żadne zamówienie nie ginie ani
   nie liczy się dwa razy (test `CustomerSummariesConcurrencyTest`, dwa procesy, oba przeplecenia ze złożeniem
-  i z płatnością).
+  i z płatnością oraz pierwsze złożenie nowego klienta w trakcie przebudowy z płatnością po nim).
   Indeksy (migracje `Version20261116090000CreateCustomers`, `Version20261116090100IndexCustomerSearch`):
   `(last_order_at DESC, customer_id)`, `(lower(full_name), customer_id)` (mapowany tylko kolumną `customer_id`, bo tyle
   odczytują narzędzia schematu), `(order_count DESC, customer_id)`, `(paid_gross DESC, customer_id)` i GIN trigram na

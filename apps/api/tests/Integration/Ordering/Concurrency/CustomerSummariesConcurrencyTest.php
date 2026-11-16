@@ -34,7 +34,10 @@ use Symfony\Component\Uid\Uuid;
  * as the webhook pays): a placement or a payment that has added itself but not committed while the rebuild reaches
  * its customer (the rebuild must wait and count it), a rebuild of the batch that has not committed while a placement
  * or a payment adds to it (which must wait and add itself after), and many placements (new customers among them) and
- * payments in two processes while the rebuild runs again and again. The summaries end as the orders say. The rows
+ * payments in two processes while the rebuild runs again and again, and a customer whose first order commits while the
+ * rebuild waits for a row (after the statement that locks the rows it sees) and whose payment is then made while the
+ * rebuild counts (the rebuild must leave a row it has not locked to the placements and payments). The summaries end as
+ * the orders say. The rows
  * commit, so the orders and the summaries of the test are deleted after it.
  */
 final class CustomerSummariesConcurrencyTest extends KernelTestCase
@@ -202,6 +205,37 @@ final class CustomerSummariesConcurrencyTest extends KernelTestCase
             self::assertSame(['paid', 'rebuilt, another waited'], $outcomes, $message);
             self::assertSame($this->allFromTheOrders(), $this->allSummaries(), $message);
             self::assertSame(1, $this->summaryOf($customer)['paid_count'], $message);
+        }
+    }
+
+    public function testAPaymentOfACustomerWhoseFirstOrderCommittedDuringARebuildIsNotLost(): void
+    {
+        for ($round = 1; $round <= self::ROUNDS; ++$round) {
+            // The new customer sorts before the locked one, so it is in the range of the batch (which ends at the
+            // last customer the rebuild knows when it starts).
+            [$new, $held] = [$this->customer(), $this->customer()];
+            if ($new > $held) {
+                [$new, $held] = [$held, $new];
+            }
+            $this->order($held, '2031-05-04 12:00:00+00:00', added: true);
+            $flags = self::flags();
+
+            try {
+                $outcomes = ParallelProcesses::run($this->control, [
+                    self::lockingTheRow($held, $flags),
+                    self::rebuild(flag: $flags.'/rebuilt', afterFlag: $flags.'/held'),
+                    self::firstOrderThenPayment($new, $this->orderId(), $flags),
+                ]);
+            } finally {
+                self::removeFlags($flags);
+            }
+
+            $message = 'round '.$round.': '.implode('; ', $outcomes);
+            self::assertSame('locked, rebuild waited', $outcomes[0], $message);
+            self::assertStringStartsWith('customers: ', $outcomes[1], $message);
+            self::assertSame('placed, paid', $outcomes[2], $message);
+            self::assertSame(1, $this->summaryOf($new)['paid_count'], $message);
+            self::assertSame($this->allFromTheOrders(), $this->allSummaries(), $message);
         }
     }
 
@@ -430,6 +464,71 @@ final class CustomerSummariesConcurrencyTest extends KernelTestCase
     }
 
     /**
+     * Locks the row of the summary of the (known) customer (a lock alone, no change, so the first statement of the
+     * rebuild passes it and its second, which locks the rows it sees, waits for it) until the rebuild waits, tells the
+     * others ($directory/rebuild-waits), holds the lock until the payment of the new customer is made and not
+     * committed ($directory/paying), commits and leaves $directory/committed.
+     *
+     * @return \Closure(): (\Closure(): string)
+     */
+    private static function lockingTheRow(string $customer, string $directory): \Closure
+    {
+        return static function () use ($customer, $directory): \Closure {
+            [$connection] = self::participant();
+
+            return static function () use ($connection, $customer, $directory): string {
+                $connection->beginTransaction();
+                $connection->executeQuery('SELECT customer_id FROM ordering_customer WHERE customer_id = ? FOR UPDATE', [$customer]);
+                touch($directory.'/held');
+                $waits = self::await(static fn (): bool => self::anotherWaits($connection));
+                touch($directory.'/rebuild-waits');
+                $paying = self::await(static fn (): bool => is_file($directory.'/paying'));
+                $connection->commit();
+                touch($directory.'/committed');
+
+                return $waits && $paying ? 'locked, rebuild waited' : 'locked, the others did not come';
+            };
+        };
+    }
+
+    /**
+     * After the rebuild waits at the row locked by lockingTheRow (past the statement that locks the rows it sees),
+     * the first order of a new customer commits (its row is not one the rebuild has locked), then its payment
+     * (MarkOrderPaid) adds to the row and stays uncommitted until the rebuild, released by the commit of
+     * lockingTheRow, waits for it (the rebuild that counts a row it has not locked) or has finished ($directory/rebuilt:
+     * it leaves the row alone), and commits.
+     *
+     * @return \Closure(): (\Closure(): string)
+     */
+    private static function firstOrderThenPayment(string $customer, string $orderId, string $directory): \Closure
+    {
+        return static function () use ($customer, $orderId, $directory): \Closure {
+            [$connection, $container] = self::participant();
+            $bus = $container->get('command.bus');
+            \assert($bus instanceof MessageBusInterface);
+
+            return static function () use ($connection, $bus, $customer, $orderId, $directory): string {
+                if (!self::await(static fn (): bool => is_file($directory.'/rebuild-waits'))) {
+                    return 'the flag did not appear';
+                }
+                $placedAt = '2031-05-04 14:00:01+00:00';
+                $connection->transactional(static function (Connection $connection) use ($customer, $orderId, $placedAt): void {
+                    OrderingFixture::order($connection, email: 'new@example.com', id: $orderId, customerId: $customer, placedAt: $placedAt);
+                    new DbalCustomerSummaries($connection)->addOrder($customer, OrderId::fromString($orderId), Contact::of(EmailAddress::fromString('new@example.com'), 'Jan Kowalski', '600100200'), new \DateTimeImmutable($placedAt));
+                });
+                $connection->beginTransaction();
+                $bus->dispatch(new MarkOrderPaid($orderId, Uuid::v7()->toRfc4122(), self::GROSS, 'PLN', new \DateTimeImmutable()));
+                touch($directory.'/paying');
+                $waited = self::await(static fn (): bool => is_file($directory.'/committed'))
+                    && self::await(static fn (): bool => self::anotherWaitsForThisTransaction($connection) || is_file($directory.'/rebuilt'));
+                $connection->commit();
+
+                return $waited ? 'placed, paid' : 'placed, paid, the rebuild neither waited nor finished';
+            };
+        };
+    }
+
+    /**
      * A kernel of the participant (its connection commits).
      *
      * @return array{Connection, ContainerInterface}
@@ -454,6 +553,16 @@ final class CustomerSummariesConcurrencyTest extends KernelTestCase
     {
         return true === $connection->fetchOne(
             "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE NOT granted AND locktype <> 'advisory' AND pid <> pg_backend_pid())",
+        );
+    }
+
+    /**
+     * Whether a backend waits for the transaction of this one to end (it has an id once it has written).
+     */
+    private static function anotherWaitsForThisTransaction(Connection $connection): bool
+    {
+        return true === $connection->fetchOne(
+            "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE NOT granted AND locktype = 'transactionid' AND transactionid = pg_current_xact_id_if_assigned()::xid)",
         );
     }
 

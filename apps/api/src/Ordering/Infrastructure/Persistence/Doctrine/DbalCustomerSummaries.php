@@ -9,6 +9,7 @@ use App\Ordering\Application\Port\CustomerSummaries;
 use App\Ordering\Application\Port\CustomerSummariesRebuild;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\OrderId;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Types\Types;
@@ -24,14 +25,16 @@ use Doctrine\DBAL\Types\Types;
  * apart) leave the contact of the newest one, the one the rebuild takes (ORDER BY placed_at DESC, id DESC).
  *
  * The rebuild of a batch of customers (a range of customer ids) runs in a transaction of its own (READ COMMITTED, the
- * default): it creates the missing rows of the customers of the range with committed orders (placeholders) and locks
- * every row of the range, and only then counts their orders, each statement on what has committed by its start. A
- * placement or a payment adds to the row of its customer in its own transaction before it commits, so it either
- * committed before the lock was granted (the count sees its order and the rewrite replaces its addition) or waits for
- * the rebuild to commit and adds itself to the rewritten row; the first order of a customer without a row is either
- * committed when the rewrite starts (the rewrite sees its row and its order) or not (its own insert stands). No order
- * is lost or counted twice. The rows of customers without orders are deleted before the commit, so the table holds what
- * the placements and payments alone would have written. The orders of a range are read on the partial index
+ * default): it creates the missing rows of the customers of the range with committed orders (placeholders), locks every
+ * row of the range it sees, and only then counts the orders of the customers of exactly the rows it locked, each
+ * statement on what has committed by its start. A placement or a payment adds to the row of its customer in its own
+ * transaction before it commits, so it either committed before the lock was granted (the count sees its order and the
+ * rewrite replaces its addition) or waits for the rebuild to commit and adds itself to the rewritten row. A row the
+ * lock did not see belongs to a customer whose every order committed after the placeholders were made: the rewrite
+ * leaves it alone (a rewrite from a count taken after the lock, on a row another transaction updates meanwhile, would
+ * write the count without that update), and what its placements and payments added is complete. No order is lost or
+ * counted twice. The rows of the range without orders are deleted before the commit, so the table holds what the
+ * placements and payments alone would have written. The orders of a range are read on the partial index
  * (customer_id, placed_at DESC, id DESC) of the orders of customers.
  */
 final readonly class DbalCustomerSummaries implements CustomerSummaries, CustomerSummariesRebuild
@@ -126,15 +129,20 @@ final readonly class DbalCustomerSummaries implements CustomerSummaries, Custome
             $connection->executeStatement(
                 \sprintf(
                     "INSERT INTO ordering_customer (customer_id, email, full_name, phone, order_count, paid_count, paid_gross, first_order_at, last_order_at, last_order_id)
-                     SELECT DISTINCT o.customer_id, '', '', '', 0, 0, 0, now(), now(), CAST('%s' AS uuid) FROM ordering_order o WHERE %s
+                     SELECT DISTINCT o.customer_id, '', '', '', 0, 0, 0, now(), now(), CAST('%s' AS uuid) FROM ordering_order o WHERE %s ORDER BY o.customer_id
                      ON CONFLICT (customer_id) DO NOTHING",
                     self::PLACEHOLDER_ORDER,
                     $orders,
                 ),
                 $parameters,
             );
-            $connection->executeQuery(\sprintf('SELECT c.customer_id FROM ordering_customer c WHERE %s ORDER BY c.customer_id FOR UPDATE', $rows), $parameters);
-            // Counted only now, under the lock: what committed before it is counted, what did not waits for it.
+            // The placeholders are made and the rows locked in the order of their ids, so two rebuilds of one range wait
+            // for each other's rows, never in a cycle.
+            $locked = $connection->fetchFirstColumn(\sprintf('SELECT c.customer_id FROM ordering_customer c WHERE %s ORDER BY c.customer_id FOR UPDATE', $rows), $parameters);
+            // Counted only now, under the lock: what committed before it is counted, what did not waits for it. Only the
+            // locked rows are rewritten.
+            $parameters['locked'] = $locked;
+            $types = ['locked' => ArrayParameterType::STRING];
             $counts = $connection->fetchFirstColumn(
                 \sprintf(
                     'UPDATE ordering_customer AS c SET
@@ -151,15 +159,17 @@ final readonly class DbalCustomerSummaries implements CustomerSummaries, Custome
                          SELECT DISTINCT ON (o.customer_id) o.customer_id, o.email, o.full_name, o.phone, o.id
                          FROM ordering_order o WHERE %1$s ORDER BY o.customer_id, o.placed_at DESC, o.id DESC
                      ) AS n ON n.customer_id = a.customer_id
-                     WHERE c.customer_id = a.customer_id
+                     WHERE c.customer_id = a.customer_id AND c.customer_id IN (:locked)
                      RETURNING c.order_count',
                     $orders,
                 ),
                 $parameters,
+                $types,
             );
             $connection->executeStatement(
-                \sprintf('DELETE FROM ordering_customer c WHERE %s AND NOT EXISTS (SELECT 1 FROM ordering_order o WHERE %s AND o.customer_id = c.customer_id)', $rows, self::CUSTOMER_ORDERS),
+                \sprintf('DELETE FROM ordering_customer c WHERE %s AND c.customer_id IN (:locked) AND NOT EXISTS (SELECT 1 FROM ordering_order o WHERE %s AND o.customer_id = c.customer_id)', $rows, self::CUSTOMER_ORDERS),
                 $parameters,
+                $types,
             );
 
             $orders = 0;
