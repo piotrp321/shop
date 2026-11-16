@@ -36,7 +36,9 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "Error paths: unreadable or locked database, missing AO directory, gh error and bad config.json each end with a non-zero exit code and a message; the fixture scan test over tools/metrics fixtures (no absolute paths /Users/, /private/ or ~, no e-mail addresses, no token patterns ghp_, gho_, github_pat_, sk-, Bearer, Basic or base64 strings of 32+ characters other than SHAs and UUIDs, no text value longer than 120 characters) passes and fails on a planted example of each."
       ],
       "risk": "STANDARD",
-      "depends_on": []
+      "depends_on": [],
+      "paths": ["tools/metrics/metrics.py", "tools/metrics/"],
+      "parallel_with": []
     },
     {
       "id": "METRICS-2",
@@ -50,7 +52,9 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "versions lists the CLI versions and the models of assistant messages with attempt counts; subscription.share is the token value share of the epic in the overlapping interval, and 1 without overlap; the raw delta stays next to it."
       ],
       "risk": "STANDARD",
-      "depends_on": ["METRICS-1"]
+      "depends_on": ["METRICS-1"],
+      "paths": ["tools/metrics/metrics.py", "tools/metrics/"],
+      "parallel_with": []
     },
     {
       "id": "METRICS-3",
@@ -64,7 +68,9 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "render --format report starts with the bottlenecks, shows estimated values with „≈” and the role breakdown with the note that the split between subagents is estimated, and contains every field listed in the spec section Raport odbioru i komentarz w issue."
       ],
       "risk": "STANDARD",
-      "depends_on": ["METRICS-2"]
+      "depends_on": ["METRICS-2"],
+      "paths": ["tools/metrics/metrics.py", "tools/metrics/", ".github/ISSUE_TEMPLATE/bug.yml"],
+      "parallel_with": []
     },
     {
       "id": "METRICS-4",
@@ -77,7 +83,9 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "Error paths: unreadable waste.json, missing AO directory and locked database end with a code and a message, without a duplicate alarm."
       ],
       "risk": "STANDARD",
-      "depends_on": ["METRICS-2"]
+      "depends_on": ["METRICS-2"],
+      "paths": ["tools/metrics/metrics.py", "tools/metrics/"],
+      "parallel_with": ["METRICS-7"]
     },
     {
       "id": "METRICS-5",
@@ -92,7 +100,9 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "effect: on a fixture history before and after --at it prints the measure of the rule, median, p25–p75 and n of both windows, the difference in the unit and percent, the epic time from 3 epics before and after and the version changes between windows; an epic started before --at and merged after it is in neither window; below the count thresholds it prints „za mało danych” and no difference."
       ],
       "risk": "STANDARD",
-      "depends_on": ["METRICS-3"]
+      "depends_on": ["METRICS-3"],
+      "paths": ["tools/metrics/metrics.py", "tools/metrics/"],
+      "parallel_with": []
     },
     {
       "id": "METRICS-6",
@@ -105,7 +115,9 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "docs/features/ao-run/spec.md, the plan and the ADR describe the same behaviour; the ao-run skill tests (python3 -m unittest discover -s .claude/skills/ao-run) pass."
       ],
       "risk": "STANDARD",
-      "depends_on": ["METRICS-3", "METRICS-4", "METRICS-5"]
+      "depends_on": ["METRICS-3", "METRICS-4", "METRICS-5"],
+      "paths": [".claude/skills/ao-run/", "docs/features/ao-run/spec.md", "docs/adr/agentic-software-house.md", "docs/features/agentic-software-house/plan.md"],
+      "parallel_with": ["METRICS-7"]
     },
     {
       "id": "METRICS-7",
@@ -117,7 +129,9 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "A failing metrics.py call (missing script, non-zero exit) gives a fact „brak danych pomiaru” and collect still produces the other incidents; the retro tests pass."
       ],
       "risk": "STANDARD",
-      "depends_on": ["METRICS-5"]
+      "depends_on": ["METRICS-5"],
+      "paths": [".claude/skills/retro/", ".claude/agents/retro-analyst.md", "docs/features/retro/spec.md"],
+      "parallel_with": ["METRICS-4", "METRICS-6"]
     }
   ]
 }
