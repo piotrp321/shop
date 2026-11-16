@@ -3,6 +3,8 @@
 
   metrics.py epic EPIC [--ao-home DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
   metrics.py backfill [--ao-root DIR] [COMMON]
+  metrics.py trend [--last N] [--epic EPIC] [--json] [--no-gh] [COMMON]
+  metrics.py render EPIC [--format report|comment] [COMMON]
 
 COMMON: --config FILE (default: config.json next to this script), --state DIR (default: $SHOP_METRICS_STATE or
 ~/.local/state/shop-metrics), --night DIR (measurements.jsonl and gate.jsonl; default: ~/.local/state/ao-night),
@@ -12,7 +14,7 @@ the working directory).
 epic: prints the record of the epic run as one JSON line and stores it in <state>/epics/<EPIC>.json. The run is the
 directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state). Fields from the AO database
 and events (`orchestrator.db` is opened read only, `ao` is never run), from measurements.jsonl and gate.jsonl, and
-from GitHub (`gh`, read only; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
+from GitHub (`gh`, read only, also for `ci`, `regressions` and `found_after_merge`; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
 zero. A value from GitHub or from --manual-fixes that is `null` now but not in the stored record is kept (a transient
 error never replaces it); the gap says so.
 
@@ -38,9 +40,21 @@ epic with a final PR that GitHub reports MERGED (also in the AO states INTEGRATI
 and directories without a database or an epic row. Prints one JSON line {"recorded": [...], "skipped": [{"run",
 "reason"}]}.
 
+trend: the table of the last N merged epics (default: trend_last of config.json) with the columns per plan task, the
+median of each column (nulls skipped), the position of --epic (default: the latest) against it and the notes of a change
+of the CLI version or of the models against the previous epic. Before it, the regressions of the records whose window is
+open (or never computed) are recomputed with `gh` and stored (--no-gh skips that; a `gh` error keeps the stored values
+and ends with exit code 3 after the table).
+
+render: the text of the acceptance report (--format report: bottlenecks first, without `review`) or of the comment
+after the merge (--format comment: the lines `Interwencje człowieka`, `Czekanie na użytkownika` and `Ręczne poprawki: N`
+that retro.py reads, then the block `Pomiar epiku`) from the stored record and the stored history. Only numbers,
+identifiers and PR numbers of the record are written; the one free text is the list of manual fixes from --manual-fixes.
+
 Exit codes: 0 success; 2 nothing recorded: bad arguments or config.json, missing AO directory, unreadable or locked
 database, no epic row, unreadable --manual-fixes file, state not writable (message on stderr, nothing on stdout);
 3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`).
+trend and render also end with 2 without a stored record (or without the requested epic).
 """
 import argparse
 import json
@@ -1622,6 +1636,7 @@ def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now,
     merge'u). A source that fails is None with a gap and the message in `errors`; the stored value of that part
     (`previous`: the stored record) is kept then."""
     until = merged + config['regression_window_days'] * DAY
+    merge_sha = merge_sha if isinstance(merge_sha, str) and SHA_PATTERN.match(merge_sha) else None
     result = {'window_days': config['regression_window_days'], 'until': iso(until), 'open': now < until,
               'checked_at': iso(now), 'merge_commit': merge_sha}
     sources = (
@@ -2078,7 +2093,7 @@ def refresh_windows(records, state_dir, config, run, repo, now, errors):
                                      and current.get('count') is not None):
             continue
         sha = current.get('merge_commit') if isinstance(current, dict) else None
-        if not sha:
+        if not (isinstance(sha, str) and SHA_PATTERN.match(sha)):
             try:
                 sha = fetch_pr(run, final_pr, repo)['merge_sha']
             except GhError as e:
@@ -2130,13 +2145,12 @@ def format_trend(table):
              'repeat_runs': 'powt.', 'value': 'USD', 'pp': 'pp', 'failed': 'nieud.', 'repair': 'REPAIR',
              'interventions': 'interw.', 'regressions': 'regr.'}
     width = max([len('mediana')] + [len(r['epic']) for r in table['epics']])
-    digits = {'value': 2, 'pp': 2, 'failed': 2, 'repair': 2, 'interventions': 2, 'regressions': 2}
     lines = ['Trend (na zadanie planu; czasy w godzinach; epików: %d)' % len(table['epics']),
              ' '.join(['epik'.ljust(width)] + [heads[c].rjust(8) for c in table['columns']])]
     for row in table['epics']:
-        lines.append(' '.join([row['epic'].ljust(width)] + [pl(row['values'][c], digits.get(c, 2)).rjust(8)
+        lines.append(' '.join([row['epic'].ljust(width)] + [pl(row['values'][c], 2).rjust(8)
                                                            for c in table['columns']]))
-    lines.append(' '.join(['mediana'.ljust(width)] + [pl(table['median'][c], digits.get(c, 2)).rjust(8)
+    lines.append(' '.join(['mediana'.ljust(width)] + [pl(table['median'][c], 2).rjust(8)
                                                       for c in table['columns']]))
     position = table['position']
     lines.append('%s wobec mediany:' % position['epic'])
@@ -2147,8 +2161,7 @@ def format_trend(table):
             continue
         pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
                                                                  pl(abs(entry['diff_pct']), 0))
-        lines.append('  %s: %s (mediana %s%s)' % (heads[column], pl(entry['value'], 2 if column in digits else 1),
-                                                    pl(entry['median'], 2 if column in digits else 1), pct))
+        lines.append('  %s: %s (mediana %s%s)' % (heads[column], pl(entry['value'], 2), pl(entry['median'], 2), pct))
     notes = ['%s: %s' % (row['epic'], note) for row in table['epics'] for note in row['annotations']]
     if notes:
         lines.append('Zmiany wersji CLI i modeli (liczby bez korekty):')

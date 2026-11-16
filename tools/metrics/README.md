@@ -4,14 +4,17 @@ Pomiar przebiegów epików AO (specyfikacja: `docs/features/metrics/spec.md`). P
 Skrypt czyta dane AO, miary limitów nocnej kolejki i GitHub (`gh`, tylko odczyt), nie czyta sklepu. Baza AO jest
 otwierana tylko do odczytu (`mode=ro`, `busy_timeout`), a `ao` nie jest nigdy uruchamiane.
 
-Stan tego zakresu (METRICS-1 i METRICS-2): komendy `epic` i `backfill` z rekordem z danych AO i z transkryptów prób.
-Pozostałe komendy i pola rekordu dodają kolejne zadania epiku (zob. „Pola jeszcze nieobecne”).
+Stan tego zakresu (METRICS-1 do METRICS-3): komendy `epic`, `backfill`, `trend` i `render` z rekordem z danych AO,
+transkryptów prób i GitHuba. Pozostałe komendy i pola rekordu dodają kolejne zadania epiku (zob. „Pola jeszcze
+nieobecne”).
 
 ## Komendy
 
 ```
 python3 tools/metrics/metrics.py epic EPIK [--ao-home DIR] [--manual-fixes FILE] [--no-gh] [WSPÓLNE]
 python3 tools/metrics/metrics.py backfill [--ao-root DIR] [WSPÓLNE]
+python3 tools/metrics/metrics.py trend [--last N] [--epic EPIK] [--json] [--no-gh] [WSPÓLNE]
+python3 tools/metrics/metrics.py render EPIK [--format report|comment] [WSPÓLNE]
 python3 tools/metrics/fixture_scan.py [DIR]
 ```
 
@@ -28,6 +31,34 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   z końcowym PR w stanie `MERGED` według `gh` (także przy stanie AO `INTEGRATING` i `BLOCKED`). Pomija epiki w toku
   (bez końcowego PR albo PR niezmergowany) i katalogi bez bazy albo bez wiersza epiku (np. `ao-night`). Wypisuje
   `{"recorded": [...], "skipped": [{"run", "reason"}]}`. Wymaga `gh` (nie ma `--no-gh`).
+- `trend`: tabela ostatnich `--last N` zmergowanych epików (domyślnie `trend_last`, 10; epik bez czasu merge'u nie wchodzi)
+  z kolumnami na zadanie planu: `to_done`, `work`, `human_wait`, `review`, `gate_wait`, `repeat_runs` (godziny),
+  `value` (USD wartości tokenów), `pp` (przyrost okna tygodniowego z `weekly_window_label` razy `share`, w pp),
+  `failed` (próby nieudane), `repair`, `interventions`, `regressions` (liczby). Wartość nieznana (`null` w rekordzie albo
+  epik bez zadań planu) jest `null`, nie zero. Pod tabelą: mediana każdej kolumny z pominięciem `null`, pozycja epiku
+  `--epic` (domyślnie ostatniego; może być starszy niż tabela) względem tej mediany (różnica i procent) i adnotacje
+  „wersja CLI: a → b” oraz „modele: + x − y”, gdy wersje CLI albo zestaw modeli różnią się od poprzedniego zmergowanego
+  epiku (liczby bez korekty). Przed tabelą `trend` przelicza `regressions` i `found_after_merge` rekordów z otwartym oknem
+  (`regressions.open`), bez tych pól albo z nieznanym składnikiem (`gh`; zapisuje rekordy; `--no-gh` pomija). Błąd `gh`
+  zostawia zapisane wartości, tabela się wypisuje, kod wyjścia `3`. `--json` wypisuje tabelę jako JSON (`columns`, `epics`,
+  `median`, `position`, `recomputed`). Bez rekordów kod `2` z podpowiedzią `backfill`.
+- `render EPIK --format report|comment`: tekst z zapisanego rekordu i historii (`<state>/epics`), bez `gh`.
+  `report` (raport odbioru, przed merge'em) zaczyna się od wąskich gardeł liczonych od nowa bez `review`, potem: czas do
+  `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami), integracja, wartość
+  tokenów (razem, role z dopiskiem „podział między subagentów szacowany”, modele, najdroższe zadanie; liczby szacowane z „≈”),
+  subskrypcja w pp (osobno, nigdy w sumie z wartością tokenów; `share` przy nakładaniu), próby, REPAIR, FIX, sync, czekanie
+  w bramce, interwencje, alarmy, wersje CLI i modele, CI, pozycja na tle mediany historii (epiki zmergowane przed tym) i braki
+  danych (pełny tekst `gaps`). `comment` (po merge'u): linie `Interwencje człowieka: N`, `Czekanie na użytkownika: M czekania,
+  razem K min` i `Ręczne poprawki: N` z listą `- PR #<nr>: <opis>` albo `- <opis>` (format, który czyta `retro.py collect`; test
+  używa jego parsera), pusta linia i blok `### Pomiar epiku` z tymi samymi liczbami oraz `to_merge`, `review`, wąskimi gardłami
+  z `review` z rekordu i regresjami. Bez `--manual-fixes` w rekordzie linia to `Ręczne poprawki: brak danych` (bez liczby, więc
+  `retro.py` jej nie weźmie za pomiar). Komentarz idzie do publicznego issue, więc render przepuszcza tylko liczby (nie tekst
+  i nie bool), identyfikatory (ID zadań, ról, modeli, wersji CLI, narzędzi i epików według `SAFE_NAME`, bez tego, co wygląda
+  jak sekret), numery PR, stany PR z dużych liter i stałe słowa z kodu; reszta rekordu (teksty `gaps`, powody bramki
+  poza kodami, komunikaty błędów, ścieżki, polecenia) odpada, a braki danych to liczba i nazwy pól. Jedyny tekst swobodny to
+  lista ręcznych poprawek z `--manual-fixes` (pisze ją sesja `/ao-run`, nie dane przebiegu, a użytkownik widzi komentarz przed
+  dodaniem): jedna linia, bez znaków sterujących, do 200 znaków, w pozycji bez PR bez dwukropka i z małej litery (parser czyta
+  „Wielka litera…: ” jako następną etykietę). Brak rekordu epiku albo zły identyfikator: kod `2`.
 - `fixture_scan.py`: skan fixture'ów (zob. niżej).
 
 Kody wyjścia: `0` sukces; `2` nic nie zapisano (złe argumenty albo `config.json`, brak katalogu AO, nieczytelna albo
@@ -58,6 +89,10 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `versions` | `cli` (`[{version, attempts}]`, z `system/init`) i `models` (`[{model, attempts}]`, z wiadomości `assistant`); `null` bez transkryptów |
 | `attempts` | lista prób: `task`, `kind`, `number`, `outcome`, `executor_status`, `wall_s`, `started_at`, `ended_at`, `value` (USD), `estimated`, `tokens` (`input`, `output`, `cache_read`, `cache_write`), `estimated_tokens`, `cli_result` (czy próba ma wynik CLI), `model_rates` (USD na ważony token wejścia i cache modelu, tylko próby z wynikiem CLI); próba bez transkryptu ma `null` w polach wartości |
 | `value` | `total`, `by_role`, `by_model`, `by_task`, `by_role_model` (`{rola: {model: komórka}}`); komórka: `usd`, `estimated`, `tokens`, `estimated_tokens` i `incomplete`, gdy część wartości jest nieznana |
+| `ci` | `final` i `tasks` (`{zadanie: ...}`): `pr`, `runs` (liczba przebiegów `ci_workflow` gałęzi `epic/<epik>` albo `task/<zadanie>` dla zdarzenia `pull_request`, czyli ponowienia), `checks_s` i `e2e_s` (czas ostatniego przebiegu: od pierwszego startu do ostatniego końca zadań o nazwie z `ci_jobs` albo z jej przedrostkiem i spacją, np. `checks part 1/3`; `null` bez takich zadań). Zadania bez numeru PR nie wchodzą. `null` z `gaps` bez `gh` albo przy błędzie |
+| `regressions` | okno `window_days` (14) od merge'u końcowego PR: `until`, `open`, `checked_at`, `merge_commit`, `ci_red` (liczba czerwonych przebiegów `ci_workflow` ze zdarzeniem `push` na commicie merge'u; 0 przy zielonym), `reverts` (SHA commitów `main` w oknie, których pierwsza linia zaczyna się od `Revert`, a treść wymienia `#<numer końcowego PR>`), `issues` (numery issues `bug` z okna, których pole „Wprowadzone przez (epik albo PR, jeśli znane)” wskazuje ID epiku albo numer końcowego PR, od autora z prawem zapisu: `gh api repos/{owner}/{repo}/collaborators/{login}/permission` daje `write`, `maintain` albo `admin`; 404 to brak prawa, login niepasujący do wzorca loginu GitHuba nie jest sprawdzany; issues z etykietą `agent` nie liczą się tu), `count` (czerwone CI jako 1, plus reverty i issues; `null`, gdy któryś składnik nieznany). Składnik, którego źródło zawiodło, ma poprzednią zapisaną wartość albo `null`, z `gaps` |
+| `found_after_merge` | `issues` i `count`: issues z etykietą `agent` utworzone w oknie, których sekcja „Źródło” ma linię `Przebieg `/sweep` <data>-<sha7>-<epik>` tego epiku (propozycje `/sweep`, osobno od regresji; etykietę `agent` ustawiają tylko osoby z prawem zapisu, więc bez sprawdzania autora) |
+| `bottlenecks` | do `max_items` (3) pozycji o największej nadwyżce czasu ponad medianę historii, malejąco, nadwyżka co najmniej `min_excess_h` (0,5 h): `kind` (`breakdown`, `task`, `in_attempts`, `gate_wait`, `review`), `name`, `value_s`, `median_s`, `excess_h`, `share` i `share_of` (`to_done`, `gate_wait+to_done` albo `to_merge`), `rule` (klucz reguły decyzji: D2 dla zadania planu, D3 dla `gate_wait`, D4 dla `human_wait`, `ci_wait`, `limit_wait`, `in_attempts.ci_watch` i `review`, inaczej `null`), `repeat_h` (tylko `in_attempts`: ile z nadwyżki to `repeat_runs` tej kategorii, nie więcej niż nadwyżka). Potencjalny efekt reguły dodaje METRICS-5 |
 | `gaps` | braki danych |
 
 Źródła i ich pierwszeństwo w `breakdown` (każda chwila trafia do pierwszej pasującej kategorii, kolejność w
@@ -150,17 +185,29 @@ tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie z
   ma ani rekordu, ani katalogu przebiegu, jego próby nie mają wartości albo własna wartość jest nieznana: `null`
   z pozycją w `gaps`. Surowy przyrost (`windows`) zostaje obok i obejmuje cały przedział pomiaru.
 
+### Wąskie gardła i historia
+
+Kandydaci: kategorie `breakdown` poza `work` i kategorie `in_attempts` (nadwyżka = wartość − mediana na zadanie planu razy
+liczba zadań planu tego epiku; udział w `to_done`), zadania (`work` zadania − mediana `work` zadań tego `kind`; udział
+w `to_done`; kind bez historii nie jest kandydatem), `gate_wait` (udział w `gate_wait` + `to_done`; 0 bez czekania nie daje
+pozycji, a brak wpisów w `gate.jsonl` pomija kandydata z pozycją `bottlenecks.gate_wait` w `gaps`) i `review` (udział w `to_merge`;
+znany po merge'u, więc raport odbioru go pomija, a blok po merge'u ma). Historia to zapisane rekordy innych epików zmergowanych
+przed tym (gdy ten nie ma czasu merge'u: wszystkie zmergowane); mediana ignoruje `null` i epiki bez zadań planu. Przy mniej
+niż `min_history` (5) epikach mediana jest z dostępnych, z pozycją `bottlenecks` w `gaps`; bez historii lista jest pusta.
+Rekord liczy wąskie gardła przy zapisie (`epic`, `backfill`), więc rekord starego epiku zapisany przed jego poprzednikami ma
+je z mniejszej historii: `epic <epik>` liczy je od nowa. Szczegóły i progi: `config.json`, klucz `bottlenecks`.
+
 ### Pola jeszcze nieobecne
 
-Rekord tego zakresu nie ma kluczy: `ci`, `regressions`, `found_after_merge`, `bottlenecks` (METRICS-3), `waste`
-(METRICS-4). Kluczy nie ma, zamiast `null` z pozycją w `gaps`, więc dodanie ich nie zmienia istniejących pól. Komendy
-`trend`, `render`, `waste`, `decide` i `effect` dodają kolejne zadania.
+Rekord tego zakresu nie ma klucza `waste` (METRICS-4). Klucza nie ma, zamiast `null` z pozycją w `gaps`, więc dodanie go nie
+zmienia istniejących pól (render pokazuje „Alarmy: brak danych”). Komendy `waste`, `decide` i `effect` dodają kolejne zadania.
 
 ### Cache
 
 Rekord zapisuje się w `<state>/epics/<epik>.json`. Przejściowy błąd źródła nigdy nie zastępuje wartości niepustej
-wartością `null`: dla `issue`, `merged_at`, `wall.to_merge`, `wall.review`, `retries.sync_prs`, `parallel.sync_prs`
-i `human.manual_fixes` (błąd `gh`, `--no-gh`, brak `--manual-fixes`) zostaje poprzednia wartość, a w `gaps` jest
+wartością `null`: dla `issue`, `merged_at`, `wall.to_merge`, `wall.review`, `retries.sync_prs`, `parallel.sync_prs`,
+`human.manual_fixes`, `ci`, `regressions` i `found_after_merge` (błąd `gh`, `--no-gh`, brak `--manual-fixes`) zostaje
+poprzednia wartość (składniki `regressions` osobno), a w `gaps` jest
 `pole: źródło niedostępne: zachowano poprzednią wartość` obok powodu. Pozostałe pola liczą się od nowa. Nieczytelny
 zapisany rekord jest pomijany.
 
@@ -176,8 +223,11 @@ zapisany rekord jest pomijany.
 | `shell_tools`, `command_categories` | nazwy narzędzi powłoki i wzorce kategorii poleceń (kolejność ma znaczenie: pierwsza pasująca kategoria; `read` jest pierwsza); `read` pasuje tylko do całego polecenia tylko do odczytu (`git status`, `diff`, `log`, `show`, `rev-parse`, `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `wc`, `pwd`) bez operatorów powłoki, przekierowań, `$` i odwrotnych apostrofów, więc `repeat_runs` jest dolną granicą |
 | `code_change_tools`, `repeat_categories` | narzędzia, które zmieniają kod (`Edit`, `Write`, `NotebookEdit`), i kategorie poleceń liczone w `repeat_runs` (`test`, `e2e`, `check`; każda musi być w `command_categories`) |
 | `token_weights` | proporcje cennika do podziału wartości na role: wejście 1, zapis cache 5 min 1,25, zapis cache 1 h 2, odczyt cache 0,1, wyjście 5 |
-| `bottlenecks`, `waste`, `decisions`, `evals` | progi wąskich gardeł, alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 (METRICS-3 i dalej) |
+| `bottlenecks` | `min_excess_h` (0,5), `max_items` (3), `min_history` (5): progi wąskich gardeł |
+| `waste`, `decisions`, `evals` | progi alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 (METRICS-4 i dalej) |
 | `regression_window_days`, `trend_last` | okno regresji (14 dni), domyślna liczba epików w `trend` (10) |
+| `ci_workflow`, `ci_jobs` | plik workflowu CI (`ci.yml`) i grupy zadań, których czas liczy `ci` (`checks`, `e2e`: zadania o tej nazwie i `<nazwa> …`) |
+| `weekly_window_label` | etykieta okna limitu z `get_usage` brana do kolumny `pp` w `trend` (`Weekly · all models`) |
 
 ## Testy i fixture'y
 

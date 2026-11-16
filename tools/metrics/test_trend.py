@@ -247,6 +247,15 @@ class RegressionWindowTest(TrendEnv):
         self.table(runner=gh, now=self.now)
         self.assertEqual(self.stored_record()['regressions']['ci_red'], 1)
 
+    def test_a_stored_merge_commit_that_is_not_a_sha_is_never_given_to_gh(self):
+        record = self.stored()
+        record['regressions']['merge_commit'] = '--web'
+        store_records(self.state, record)
+        gh = self.gh()
+        self.table(runner=gh, now=self.now)
+        self.assertFalse([c for c in gh.calls if '--web' in c], gh.calls)
+        self.assertEqual(self.stored_record()['regressions']['merge_commit'], 'a' * 40)
+
     def test_no_gh_does_not_call_gh_and_keeps_the_record(self):
         self.stored()
         gh = self.gh()
