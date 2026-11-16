@@ -290,6 +290,17 @@ CI_END = ('epic_ci_green', 'epic_ci_inherited', 'epic_ci_inherited_red', 'epic_c
 GITHUB_QUIET = ('github_wait', 'gh_call')
 
 
+def _of_epic(event, epic_id, task_ids):
+    """Whether the event belongs to the epic: it has a task of the epic or `data.epic_id` of the epic. A host event
+    (host_on_battery, a usage_warning without an epic) belongs to none."""
+    return event['task_id'] in task_ids or event['data'].get('epic_id') == epic_id
+
+
+def _quiet(event, epic_id, task_ids):
+    """Whether the event leaves a github_wait running: gh_call, github_wait or an event of no epic or another one."""
+    return event['type'] in GITHUB_QUIET or not _of_epic(event, epic_id, task_ids)
+
+
 def _next_at(events, index, kinds, after=None):
     """The `at` of the first event from `index` on whose type is in `kinds`."""
     for event in events[index:]:
@@ -302,6 +313,8 @@ def category_intervals(run, done, jsonl, config, gaps):
     """{category: [(start, end)] or None} for the breakdown categories except idle (before clipping and
     precedence). None: the source of the category is missing."""
     events = run['events']
+    epic_id = run['epic']['epic_id']
+    task_ids = {t['task_id'] for t in run['tasks']}
     found = {'work': [], 'human_wait': None, 'limit_wait': [], 'ci_wait': [], 'host_pause': [], 'github_wait': []}
     for attempt in run['attempts']:
         start = _number(attempt['started_at'])
@@ -335,10 +348,10 @@ def category_intervals(run, done, jsonl, config, gaps):
                 gaps.add('breakdown.host_pause', 'host_pause bez from/to i seconds: pominięty')
                 continue
             found['host_pause'].append((start, end))
-        elif kind == 'github_wait' and not (i and events[i - 1]['type'] in GITHUB_QUIET
-                                            and _run_of_github_waits(events, i)):
+        elif kind == 'github_wait' and not (i and _quiet(events[i - 1], epic_id, task_ids)
+                                            and _run_of_github_waits(events, i, epic_id, task_ids)):
             last, j = at, i + 1
-            while j < len(events) and events[j]['type'] in GITHUB_QUIET:
+            while j < len(events) and _quiet(events[j], epic_id, task_ids):
                 if events[j]['type'] == 'github_wait':
                     last = events[j]['at']
                 j += 1
@@ -349,11 +362,11 @@ def category_intervals(run, done, jsonl, config, gaps):
     return found
 
 
-def _run_of_github_waits(events, index):
-    """Whether the event at `index` continues a run of github_wait / gh_call events that a github_wait before it
+def _run_of_github_waits(events, index, epic_id, task_ids):
+    """Whether the event at `index` continues a run of quiet events (see `_quiet`) that a github_wait before it
     already started (that run is one wait, measured from its first github_wait)."""
     j = index - 1
-    while j >= 0 and events[j]['type'] in GITHUB_QUIET:
+    while j >= 0 and _quiet(events[j], epic_id, task_ids):
         if events[j]['type'] == 'github_wait':
             return True
         j -= 1

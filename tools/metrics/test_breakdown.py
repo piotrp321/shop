@@ -7,6 +7,8 @@ from testkit import Env
 
 CATEGORIES = ('work', 'human_wait', 'limit_wait', 'ci_wait', 'host_pause', 'github_wait', 'idle')
 
+OWN = {'epic_id': 'demo'}      # data of an event of the epic `demo`
+
 
 def blocked(at, task=None):
     """A line of events.jsonl that starts a wait for the user."""
@@ -112,16 +114,45 @@ class BreakdownTest(Env):
 
     def test_github_wait_ends_at_the_next_event_other_than_gh_call(self):
         breakdown, record = self.breakdown(events=[(1100, 'github_wait', {}), (1150, 'gh_call', {}),
-                                                   (1400, 'promoted', {})])
+                                                   (1400, 'promoted', OWN)])
         self.assertAlmostEqual(breakdown['github_wait'], 300)
 
+    def test_host_event_without_an_epic_does_not_end_github_wait(self):
+        breakdown, record = self.breakdown(events=[(1100, 'github_wait', {}),
+                                                   (1160, 'host_on_battery', {'percent': 10}),
+                                                   (1900, 'promoted', OWN)])
+        self.assertAlmostEqual(breakdown['github_wait'], 800)
+
+    def test_usage_warning_without_an_epic_does_not_end_github_wait(self):
+        breakdown, record = self.breakdown(events=[(1100, 'github_wait', {}), (1160, 'usage_warning', {'window': 'x'}),
+                                                   (1900, 'epic_ci_green', OWN)])
+        self.assertAlmostEqual(breakdown['github_wait'], 800)
+
+    def test_event_of_a_task_of_the_epic_ends_github_wait(self):
+        breakdown, record = self.breakdown(events=[(1100, 'github_wait', {}), (1160, 'host_on_battery', {}),
+                                                   (1500, 'promoted', {}, 'T-1')])
+        self.assertAlmostEqual(breakdown['github_wait'], 400)
+
+    def test_event_of_another_epic_does_not_end_github_wait(self):
+        breakdown, record = self.breakdown(events=[(1100, 'github_wait', {}),
+                                                   (1300, 'epic_idle', {'epic_id': 'other'}),
+                                                   (1900, 'epic_idle', OWN)])
+        self.assertAlmostEqual(breakdown['github_wait'], 800)
+
+    def test_host_event_between_repeated_waits_keeps_them_one_wait(self):
+        breakdown, record = self.breakdown(length=5000, events=[(1100, 'github_wait', {}),
+                                                                (1200, 'host_on_battery', {}),
+                                                                (1300, 'github_wait', {}),
+                                                                (4900, 'promoted', OWN)])
+        self.assertAlmostEqual(breakdown['github_wait'], 1300 + 1800 - 1100)
+
     def test_github_wait_is_capped_at_30_minutes(self):
-        breakdown, record = self.breakdown(length=5000, events=[(1100, 'github_wait', {}), (4000, 'promoted', {})])
+        breakdown, record = self.breakdown(length=5000, events=[(1100, 'github_wait', {}), (4000, 'promoted', OWN)])
         self.assertAlmostEqual(breakdown['github_wait'], 1800)
 
     def test_github_wait_is_capped_30_minutes_after_the_last_of_repeated_waits(self):
         breakdown, record = self.breakdown(length=5000, events=[(1100, 'github_wait', {}), (1300, 'github_wait', {}),
-                                                                (1350, 'gh_call', {}), (4900, 'promoted', {})])
+                                                                (1350, 'gh_call', {}), (4900, 'promoted', OWN)])
         self.assertAlmostEqual(breakdown['github_wait'], 1300 + 1800 - 1100)
 
     def test_github_wait_without_a_following_event_is_capped_too(self):
@@ -142,7 +173,7 @@ class BreakdownTest(Env):
             events=[(1200, 'cooldown_set', {'from': 1200, 'until': 1400}),               # limit_wait 1200-1400
                     (1250, 'epic_ci_pending', {}), (1500, 'epic_ci_green', {}),          # ci_wait 1250-1500
                     (1450, 'host_pause', {'from': 1450, 'to': 1600}),                    # host_pause 1450-1600
-                    (1550, 'github_wait', {}), (1700, 'promoted', {})])                  # github_wait 1550-1700
+                    (1550, 'github_wait', {}), (1700, 'promoted', OWN)])                  # github_wait 1550-1700
         self.assertAlmostEqual(breakdown['work'], 100)
         self.assertAlmostEqual(breakdown['human_wait'], 100)         # 1200-1300 (1150-1200 is work)
         self.assertAlmostEqual(breakdown['limit_wait'], 100)         # 1300-1400
