@@ -23,9 +23,9 @@ import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const auth = useAuthStore();
+const { order, loading, error, forbidden, notFound, notFoundMessage, saving, actions, canCompleteRefund, retry, changeStatus, completeRefund } = useOrderDetail(() => String(route.params.orderId));
 // The link to the card of the customer: only for an order of a store account (a guest has no card) and for the staff who may open it.
 const showCustomerCard = computed(() => order.value?.customerId != null && canViewCustomers(auth.staff));
-const { order, loading, error, forbidden, notFound, notFoundMessage, saving, actions, canCompleteRefund, retry, changeStatus, completeRefund } = useOrderDetail(() => String(route.params.orderId));
 
 const header = ref<InstanceType<typeof PageHeader> | null>(null);
 const actionsCard = ref<InstanceType<typeof FormSection> | null>(null);

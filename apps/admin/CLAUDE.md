@@ -117,7 +117,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   promocji): zostaje na naciśniętym przycisku, a gdy kolejna strona go wyłącza, przechodzi na drugi, chyba że pracownik sam
   przeniósł fokus poza pager (fokus przechodzi tylko z `body` albo z wnętrza pagera i najwyżej raz na naciśnięcie, więc późniejsza odpowiedź, np. wyszukiwania, nie zabiera go z pola); `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień i wybór wariantów promocji).
+  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień, lista klientów, zamówienia na karcie klienta i wybór wariantów promocji).
   `fetchPage({ query, after })` zwraca `{ items, next, total? }` (`total` to `BoundedCountResponse` z pierwszej strony, na kolejnych
   null) albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
@@ -574,7 +574,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji i lista zamówień. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`; `cards` zamiast tabeli pokazuje wiersze jako listę kart: `<ul>` z nazwą z `label`, `<li>` z `rowTestid` i zawartością slotu `card`, a szkielet, błąd i pusty stan zostają te same: widok wybiera jeden układ): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `sort` (`ascending` albo `descending`: `aria-sort` na `<th>` kolumny, po której lista jest posortowana), `hideBelow`
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień, lista klientów i zamówienia na karcie klienta. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`; `cards` zamiast tabeli pokazuje wiersze jako listę kart: `<ul>` z nazwą z `label`, `<li>` z `rowTestid` i zawartością slotu `card`, a szkielet, błąd i pusty stan zostają te same: widok wybiera jeden układ): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `sort` (`ascending` albo `descending`: `aria-sort` na `<th>` kolumny, po której lista jest posortowana), `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
   swojej kolumny, więc żadna informacja nie ginie), slot `empty` dla pustej listy. Pokazuje też stan listy: szkielet
@@ -725,8 +725,8 @@ Spec: `docs/features/sentry/spec.md`.
 - Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
   rozmiar strony 10/25/50, domyślnie 25) jest w adresie przez `useListUrlState`, stronicowanie przez `useCursorPager`, a
   pozycja w stronicowaniu tylko w pamięci. Wzorem jest `ProductsView`. Ukrywanie kolumn to klasy CSS na progach 1024 i 900 px
-  (`hideBelow`), bez modelu tabeli. Kolejność wybiera `Select` „Sortuj” w `ListToolbar` (lista produktów, cen, stanów
-  i zamówień; klucze API, `sortParam` i `ariaSortOf` z `src/composables/listSort.ts`), jest w adresie jako `sort`
+  (`hideBelow`), bez modelu tabeli. Kolejność wybiera `Select` „Sortuj” w `ListToolbar` (lista produktów, cen, stanów,
+  zamówień i klientów; klucze API, `sortParam` i `ariaSortOf` z `src/composables/listSort.ts`), jest w adresie jako `sort`
   (domyślna nie jest zapisywana ani wysyłana), a jej zmiana wraca na pierwszą stronę. Sortuje API, bez
   `@tanstack/vue-table`; zaznaczania nie ma.
 - Wygląd, standard listy, formularza i okien: `docs/features/admin-design/spec.md`; biblioteka i licencje:
