@@ -10,7 +10,8 @@ use App\Ordering\Domain\OrderStatus;
  * One page of the order list of the panel: newest first by default, in another order of {@see BackofficeOrderSort}, or
  * the pending refunds nearest due date first. The search term is an exact order number (`R-100001`, any letter case)
  * or a fragment of the number, the email or the name ({@see OrderSearchTerm}); the days limit the placement (days of
- * Europe/Warsaw, both ends included).
+ * Europe/Warsaw, both ends included). The orders of one customer are its history, newest first, with the status filter
+ * only.
  */
 final readonly class ListBackofficeOrders
 {
@@ -30,6 +31,8 @@ final readonly class ListBackofficeOrders
      * @param string|null              $placedTo       `YYYY-MM-DD`, the last day of the range
      * @param bool                     $overdueRefunds only the pending refunds past their due date at the moment of the read (a
      *                                                 subset of the pending ones with the same order and cursor); implies $pendingRefunds
+     * @param string|null              $customerId     only the orders of this customer (the `sub` of the account), newest first;
+     *                                                 with the status only (no search, sort, range of days or refunds)
      */
     public function __construct(
         public ?OrderStatus $status,
@@ -41,6 +44,7 @@ final readonly class ListBackofficeOrders
         public ?string $placedFrom = null,
         public ?string $placedTo = null,
         public bool $overdueRefunds = false,
+        public ?string $customerId = null,
     ) {
     }
 }

@@ -110,17 +110,20 @@ final class BackfillCommandTest extends KernelTestCase
 
         self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
         $first = $tester->getDisplay();
-        // The stock records come first, the statistics of the products after them, then the hourly sales; every one
-        // is recorded.
+        // The stock records come first, the statistics of the products after them, then the hourly sales and the
+        // customers; every one is recorded.
         self::assertSame(0, strpos($first, 'inventory:stock-records:sync: running'), $first);
         self::assertLessThan(strpos($first, 'catalog:analyze-products: running'), strpos($first, 'inventory:stock-records:sync: completed'));
         self::assertLessThan(strpos($first, 'ordering:read-models:rebuild:sales: running'), strpos($first, 'catalog:analyze-products: completed'));
         self::assertStringContainsString('ordering:read-models:rebuild:sales: sales: ', $first);
-        self::assertEqualsCanonicalizing(['inventory:stock-records:sync', 'catalog:analyze-products', 'ordering:read-models:rebuild:sales'], $this->recorded());
+        self::assertLessThan(strpos($first, 'ordering:read-models:rebuild:customers: running'), strpos($first, 'ordering:read-models:rebuild:sales: completed'));
+        self::assertStringContainsString('ordering:read-models:rebuild:customers: customers: ', $first);
+        self::assertEqualsCanonicalizing(['inventory:stock-records:sync', 'catalog:analyze-products', 'ordering:read-models:rebuild:sales', 'ordering:read-models:rebuild:customers'], $this->recorded());
         self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
         self::assertStringContainsString('inventory:stock-records:sync: skipped', $tester->getDisplay());
         self::assertStringContainsString('catalog:analyze-products: skipped', $tester->getDisplay());
         self::assertStringContainsString('ordering:read-models:rebuild:sales: skipped', $tester->getDisplay());
+        self::assertStringContainsString('ordering:read-models:rebuild:customers: skipped', $tester->getDisplay());
     }
 
     public function testMigratedSchemaMatchesTheMapping(): void

@@ -18,6 +18,7 @@ const PAYMENT_ID = "0192f0c4-aaaa-7000-8000-000000000001";
 function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
   return {
     orderId: "o-1",
+    customerId: null,
     number: "R-100001",
     status: "paid",
     version: 2,

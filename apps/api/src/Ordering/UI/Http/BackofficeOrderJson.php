@@ -31,6 +31,7 @@ final class BackofficeOrderJson
             'number' => $order->number,
             'status' => $order->status,
             'version' => $order->version,
+            'customerId' => $order->customerId,
             'email' => $order->email,
             'fullName' => $order->fullName,
             'phone' => $order->phone,

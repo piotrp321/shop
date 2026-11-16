@@ -97,6 +97,10 @@ Klient sklepu (`Customer`) i pracownik obsługujący panel (`Staff`) to dwa osob
 - Zmiany wykonane w panelu zapisują identyfikator pracownika (z tokena), żeby było wiadomo, kto zmienił
   cenę, stan czy status zamówienia.
 - Ta sama osoba jako klient i jako pracownik ma dwa osobne konta. To świadoma decyzja.
+- Klienci w panelu (lista i karta klienta, `admin` i `support`) to model odczytu Ordering nad zamówieniami
+  (`ordering_customer`): klient to konto sklepu z co najmniej jednym zamówieniem, z kontaktem najnowszego zamówienia,
+  liczbą i wartością zamówień oraz adresami dostawy ostatnich zamówień. Goście nie są klientami, a konta bez zamówień
+  nie są widoczne (API nie pyta Keycloaka). Context Customer zostaje przy tożsamości z tokenu.
 
 ## Cache HTTP i unieważnianie
 
@@ -193,10 +197,10 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 | Catalog | Produkty, warianty, kategorie, atrybuty, zdjęcia |
 | Pricing | Ceny katalogowe (netto, VAT, brutto), promocje, kody rabatowe, historia cen (Omnibus) |
 | Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
-| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień |
+| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień, modele odczytu z zamówień (sprzedaż godzinowa, klienci w panelu) |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
-| Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak |
+| Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak (klient to tożsamość z tokenu, a klientów w panelu daje model odczytu Ordering) |
 
 Contexty nie importują nawzajem swojego kodu domenowego. Komunikują się przez zdarzenia domenowe
 (asynchronicznie, RabbitMQ) albo przez jawne porty w warstwie aplikacji. To samo słowo może znaczyć

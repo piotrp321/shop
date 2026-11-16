@@ -44,7 +44,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `outbox`, `scheduled`, `promotions`, `jobs`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie, historię statusów, powiadomienia i sprzedaż godzinową (`ordering_sales_hour`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  linie, historię statusów, powiadomienia, sprzedaż godzinową (`ordering_sales_hour`) i klientów (`ordering_customer`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
@@ -55,8 +55,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
   przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
   i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
-  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego krok `ordering:read-models:rebuild:sales`
-  to przebudowa sprzedaży po `ordering:seed-demo`, bez osobnego wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
+  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego kroki `ordering:read-models:rebuild:sales`
+  i `ordering:read-models:rebuild:customers` to przebudowa sprzedaży i klientów po `ordering:seed-demo`, bez osobnego
+  wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
@@ -64,7 +65,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
   zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
   `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
-  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) i `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`) i `ordering:read-models:rebuild:customers` (90: część klientów tej komendy; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
   zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
   ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
   uruchomione). Test: `BackfillCommandTest`
@@ -72,15 +73,20 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
   partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
   (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
-- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; część
-  sprzedaży to krok `app:backfill`, więc woła ją też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
-  odczytu Ordering z zamówień: sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
+- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; obie
+  części to kroki `app:backfill`, więc woła je też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
+  odczytu Ordering z zamówień, najpierw sprzedaż, potem klientów. Sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
   pierwszej godziny z opłaconym zamówieniem albo wierszem sprzedaży (`nextHour`: po indeksie częściowym
   `ordering_order (paid_at) WHERE paid_at IS NOT NULL` i kluczu tabeli; godziny bez jednego i drugiego pomija), każda
   w osobnej transakcji (opis protokołu przy wyjątku DBAL sprzedaży w „Architekturze”). Idempotentna: drugi przebieg
   zostawia te same wiersze, a wynik to dokładnie tabela zapisu przyrostowego (wiersz godziny i kubełka z zamówieniami,
-  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Kod wyjścia: 0 –
-  gotowe, 1 – przerwane błędem (przebudowane godziny zostają; ponowne uruchomienie zaczyna od początku)
+  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Klientów
+  (`ordering_customer`, `CustomerRebuild`) partiami po 500 klientów w kolejności `customer_id`: koniec partii to 500.
+  klient po poprzedniej spośród kont z zamówieniami albo z wierszem (`nextBatchEnd`: po indeksie częściowym zamówień
+  klientów `(customer_id, placed_at DESC, id DESC)` i kluczu tabeli), każda partia w osobnej transakcji (opis
+  protokołu przy wyjątku DBAL klientów w „Architekturze”); wiersz klienta bez zamówień usuwa. Wynik to dokładnie tabela
+  zapisu przyrostowego. Wypisuje postęp co 100 partii i podsumowanie (klienci, partie, zamówienia). Kod wyjścia: 0 –
+  gotowe, 1 – przerwane błędem (przebudowane godziny i partie zostają; ponowne uruchomienie zaczyna od początku)
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -205,6 +211,36 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   dopisanie), albo czeka na commit przebudowy i dopisuje się do nowego wiersza; żadne zamówienie nie ginie ani nie
   liczy się dwa razy (test `SalesRebuildConcurrencyTest`, dwa procesy). Odczyt (`GetSalesSummary`) sumuje najwyżej
   2 × 720 godzin po kluczu tabeli, nigdy zamówień.
+- Wyjątek: klienci panelu w Ordering (spec ADMIN-FEATURES, sekcja 5, decyzja A4). Tabela `ordering_customer`
+  (PK `customer_id` = `sub` konta sklepu; `email`, `full_name`, `phone` najnowszego zamówienia, `order_count`,
+  `paid_count`, `paid_gross` w groszach bez odejmowania zwrotów, `first_order_at`, `last_order_at` i `last_order_id`)
+  jest zapisywana przez DBAL (`DbalCustomerSummaries`, port `CustomerSummaries`), a rekord `CustomerRecord` tylko
+  definiuje schemat. Klient to konto z co najmniej jednym zamówieniem; gość nim nie jest. `PlaceOrder` tylko dla nowego
+  zamówienia klienta (nie dla powtórzenia po `Idempotency-Key`) robi w swojej transakcji jeden `INSERT … ON CONFLICT
+  (customer_id) DO UPDATE SET order_count = order_count + 1, first_order_at = LEAST(…), last_order_at = GREATEST(…)`,
+  a kontakt i `last_order_id` bierze z zamówienia tylko wtedy, gdy `(placed_at, id)` zamówienia nie jest wcześniejsze
+  niż `(last_order_at, last_order_id)` wiersza (`placed_at` ma sekundy, więc remis rozstrzyga identyfikator, tak jak
+  przebudowa `ORDER BY placed_at DESC, id DESC`); starsze zamówienie zatwierdzone po nowszym nie nadpisuje kontaktu (test
+  `CustomerSummariesConcurrencyTest`, dwa procesy). `MarkOrderPaid` przy wyniku `Paid` zamówienia klienta dopisuje
+  `paid_count + 1`, `paid_gross + total_gross`; klient bez wiersza (zamówienia sprzed wdrożenia, przed backfillem)
+  dostaje wiersz z samego opłaconego zamówienia (`INSERT … SELECT` z `ordering_order`: jego kontakt i chwila, jedno
+  zamówienie, opłacone), nigdy wiersz z `NULL`, a przebudowa i tak go nadpisze. Wycofana transakcja wycofuje dopisanie.
+  Przebudowa partii (`CustomerSummariesRebuild::rebuild`, zakres `customer_id`, `READ COMMITTED`) w jednej transakcji:
+  `INSERT` brakujących wierszy klientów zakresu z zatwierdzonymi zamówieniami (wartości zastępcze, `ORDER BY
+  customer_id`) `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` wszystkich widocznych wierszy zakresu (kolejność
+  `customer_id`), dopiero potem liczenie zamówień (`UPDATE` z agregacją i kontaktem najnowszego zamówienia) i `DELETE`
+  wierszy klientów bez zamówień, oba tylko dla zablokowanych wierszy (wiersz klienta, którego wszystkie zamówienia
+  zatwierdziły się po utworzeniu wartości zastępczych, nie jest zablokowany, więc przebudowa go nie rusza: jego
+  dopisania są pełne, a nadpisanie z liczenia po blokadzie zgubiłoby dopisanie równoległej płatności). Złożenie i płatność dopisują się do
+  wiersza swojego klienta przed commitem, więc albo zatwierdziły się przed blokadą (liczenie je widzi, zapis nadpisuje
+  dopisanie), albo czekają na commit przebudowy i dopisują się do nowego wiersza; pierwsze zamówienie klienta bez wiersza
+  jest albo widoczne dla liczenia razem ze swoim wierszem, albo jego wiersz zostaje nietknięty. Żadne zamówienie nie ginie ani
+  nie liczy się dwa razy (test `CustomerSummariesConcurrencyTest`, dwa procesy, oba przeplecenia ze złożeniem
+  i z płatnością oraz pierwsze złożenie nowego klienta w trakcie przebudowy z płatnością po nim).
+  Indeksy (migracje `Version20261116090000CreateCustomers`, `Version20261116090100IndexCustomerSearch`):
+  `(last_order_at DESC, customer_id)`, `(lower(full_name), customer_id)` (mapowany tylko kolumną `customer_id`, bo tyle
+  odczytują narzędzia schematu), `(order_count DESC, customer_id)`, `(paid_gross DESC, customer_id)` i GIN trigram na
+  `lower(email)` i `lower(full_name)` (`CONCURRENTLY`).
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
@@ -303,7 +339,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (szczegóły), `POST …/{orderId}/status-changes` (`{transition, version, note}`) i `POST …/{orderId}/refund-completion`
     (`{version, note}`); każda odpowiedź `private, no-store` (`OrderResponseCacheSubscriber` obejmuje `admin/orders`).
     Reguła ról (P6) jest tylko w `OrderVoter` (`Ordering_Infrastructure`, role z `AuthenticatedStaffMember`):
-    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
+    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `VIEW_CUSTOMERS` (`admin`, `support`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
     subject (`ship`, `deliver`: `admin`, `warehouse`; `cancel`, `return`: `admin`, `support`; bez przejścia voter
     wstrzymuje się, czyli odmowa) i `COMPLETE_REFUND` (`admin`, `support`); `marketing` nie ma dostępu. Kontrolery
     znają tylko nazwy atrybutów (`BackofficeOrderAttributes`) i pytają `isGranted`; Deptrac pozwala `Ordering_UI`
@@ -346,6 +382,32 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     tymczasowej `ordering_order` (kopia definicji z indeksami, po `ANALYZE`; zasłania tabelę w połączeniu testu, więc
     nie zostawia śmieci po wycofaniu) sprawdza `EXPLAIN` bez wyłączania skanów: `Bitmap Index Scan` na indeksie
     wyszukiwania i brak `Seq Scan` po `ordering_order` dla fragmentu numeru, e-maila i nazwiska (strona i licznik).
+  - Klienci panelu (`openapi-admin.json`, tag `Customers`, model odczytu `ordering_customer`, wyjątek DBAL wyżej):
+    `GET /api/v1/admin/customers?q=&sort=&after=&perPage=` (`BackofficeCustomersController`) i
+    `GET /api/v1/admin/customers/{customerId}` (`BackofficeCustomerController`), obie z `#[IsGranted('VIEW_CUSTOMERS')]`
+    (`OrderVoter`: `admin`, `support`; `warehouse` i `marketing` 403 przed parametrami) i `private, no-store`
+    (`OrderResponseCacheSubscriber` obejmuje `admin/customers`, także 401, 403 i 404). `ListBackofficeCustomers(q, sort,
+    after, perPage)` czyta przez port `BackofficeCustomerReader` (adapter `DbalCustomerReader`): `q` po przycięciu (także
+    spacji Unicode) to fragment 3–100 znaków e-maila albo imienia i nazwiska (`BackofficeCustomerSearchTerm`; warunek
+    `lower(c.email) LIKE … OR lower(c.full_name) LIKE …` z ucieczką `\`, `%`, `_`, wyrażenia dwóch indeksów GIN
+    trigram), znak sterujący albo inna długość to 400 przy `q`; `sort` z zamkniętej listy `-lastOrderAt` (domyślny),
+    `name` (`lower(full_name)` rosnąco), `-orderCount`, `-paidGross`, remis zawsze `customer_id` rosnąco (kursor
+    malejącego sortu `kolumna <= v AND (kolumna < v OR customer_id > id)`, nazwy porównanie wierszy); `q` łączy się tylko
+    z `-lastOrderAt` (inny sort z `q` to 400 przy `sort`). Kursor keyset `BackofficeCustomerCursor` (base64url JSON
+    klucza sortu, wartości kolumny i `customer_id`); zły kursor i kursor innego sortu to 400 przy `after`. `perPage`
+    1–100 (domyślnie 25). Wszystkie parametry są w DTO typu `mixed` i sprawdzane w callbacku, więc błąd typu ma ten sam
+    polski komunikat. Pierwsza strona ma `total` (`BoundedCount` do 10 000), kolejne `null`. Element: `customerId,
+    email, fullName, orderCount, paidGross, currency, lastOrderAt`. `GetBackofficeCustomer(customerId)`: `contact`
+    (`email`, `fullName`, `phone` najnowszego zamówienia), `summary` (`orderCount`, `paidCount`, `paidGross`, `currency`,
+    `firstOrderAt`, `lastOrderAt`) i `addresses` (do 10 różnych adresów dostawy z ostatnich 50 zamówień klienta, ostatnio
+    użyty pierwszy; po częściowym indeksie zamówień klientów); nieznany klient, gość, konto bez zamówień i id puste,
+    dłuższe niż 255 znaków albo ze znakiem sterującym to 404 `CustomerNotFound` („Klient nie istnieje.”). Zamówienia
+    klienta to lista zamówień z `customerId` (`GET /api/v1/admin/orders?customerId=<sub>`, `VIEW_ORDERS`: tylko
+    `owner_type = 'customer'` i ten `customer_id`, od najnowszego, po częściowym indeksie `(customer_id, placed_at DESC,
+    id DESC)`; łączy się tylko ze `status`, a `q`, `sort`, `placedFrom`, `placedTo` i `refund` z nim to 400 przy każdym
+    z tych pól; `customerId` pusty, dłuższy niż 255 znaków albo ze znakiem sterującym to 400), a szczegóły zamówienia
+    w panelu (`BackofficeOrder`) mają `customerId` (`null` dla gościa). Testy: `BackofficeCustomersEndpointTest`,
+    `DbalCustomerReaderTest`, `ListBackofficeOrdersEndpointTest`.
   - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
     `GET /api/v1/me/orders?after=&perPage=` i `GET /api/v1/me/orders/{orderId}`; każda odpowiedź `private, no-store`
     (`OrderResponseCacheSubscriber` obejmuje `me/orders`), brak tokenu albo token panelu to 401. Klient to `sub` z tokenu
@@ -1040,7 +1102,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i kwota (`-total`, `total`) z `q` albo zakresem dni (`placedFrom`, `placedTo`). Nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis
   `#[ORM\Index]` w rekordzie (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection`
   (`tests/Support`; wyłączone `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`). Liczniki nie
-  zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`,
+  zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`, `DbalCustomerReaderTest` (plan pierwszej strony i strony po kursorze każdego sortu klientów),
   `ListBackofficeOrdersEndpointTest`, `OrderSearchEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
   budowa przerwana na timeoucie blokady).
 - Pulpit (`GET /admin/dashboard`, decyzja A1 spec ADMIN-FEATURES): `GetDashboard` (Backoffice) składa sekcje przez porty Backoffice

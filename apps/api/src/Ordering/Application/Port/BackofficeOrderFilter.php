@@ -10,7 +10,8 @@ use App\Ordering\Domain\OrderStatus;
 /**
  * What the order list of the panel is limited to; every condition given applies, and the order of the list. The number
  * and the email are exact (the email regardless of letter case); the fragment is searched, regardless of letter case,
- * in the number, the email and the name together.
+ * in the number, the email and the name together. The customer limits the list to the orders of one account of the
+ * store.
  */
 final readonly class BackofficeOrderFilter
 {
@@ -27,10 +28,12 @@ final readonly class BackofficeOrderFilter
      * @param \DateTimeImmutable|null  $placedBefore    the instant the orders must be placed before, exclusive
      * @param \DateTimeImmutable|null  $refundDueBefore the instant the refunds must be due before, exclusive: only the pending
      *                                                  refunds past their due date at that moment (the overdue ones)
+     * @param string|null              $customerId      only the orders of this customer, newest first, with the status only
      *
      * @throws \LogicException a sort other than the due date with the pending refunds, or the due date without them; the
      *                         sort by the amount, or the pending refunds, with a search by fragment or a range of days; a due
-     *                         moment without the pending refunds
+     *                         moment without the pending refunds; a customer with anything but the status and the
+     *                         sort newest first
      */
     public function __construct(
         public ?OrderStatus $status,
@@ -42,6 +45,7 @@ final readonly class BackofficeOrderFilter
         public ?\DateTimeImmutable $placedFrom = null,
         public ?\DateTimeImmutable $placedBefore = null,
         public ?\DateTimeImmutable $refundDueBefore = null,
+        public ?string $customerId = null,
     ) {
         if ($pendingRefunds ? (null !== $sort && BackofficeOrderSort::RefundDueDate !== $sort) : BackofficeOrderSort::RefundDueDate === $sort) {
             throw new \LogicException('The due date is the sort of the pending refunds, and only of them.');
@@ -55,6 +59,9 @@ final readonly class BackofficeOrderFilter
         }
         if (null !== $fragment && $sorted->byTotal()) {
             throw new \LogicException('No index serves a search by fragment with the sort by the amount.');
+        }
+        if (null !== $customerId && (BackofficeOrderSort::PlacedDescending !== $sorted || null !== $number || null !== $email || null !== $fragment || null !== $placedFrom || null !== $placedBefore)) {
+            throw new \LogicException('The history of a customer is read newest first with the status filter only.');
         }
         $this->sort = $sorted;
     }
