@@ -1870,8 +1870,105 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     record.update(github_derived(run, no_gh, repo, config, epic_id, ao_run['tasks'], final_pr, github['pr'], known_merge,
                                  now, previous, gaps, errors))
     keep_stored_values(record, previous, gaps)
+    record['bottlenecks'] = bottlenecks_of(record, history_of(record, records), config, gaps)
     record['gaps'] = gaps.render()
     return record, errors
+
+
+# ------------------------------------------------------------------------------------------------- bottlenecks
+
+# The decision rule of a candidate (spec: Wąskie gardła): D2 for a plan task, D3 for gate_wait, D4 for the waiting
+# categories and review; None for the others.
+CATEGORY_RULES = {('breakdown', 'human_wait'): 'D4', ('breakdown', 'ci_wait'): 'D4', ('breakdown', 'limit_wait'): 'D4',
+                  ('in_attempts', 'in_attempts.ci_watch'): 'D4', ('gate_wait', 'gate_wait'): 'D3', ('review', 'review'): 'D4'}
+
+
+def history_of(record, records):
+    """The stored records of the other epics merged before this one (all merged ones while it is not merged): the
+    history the medians come from."""
+    try:
+        merged = night_queue.parse_time(record['merged_at']).timestamp()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        merged = None
+    found = []
+    for other in records.values():
+        if other.get('epic') == record.get('epic'):
+            continue
+        try:
+            when = night_queue.parse_time(other['merged_at']).timestamp()
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        if merged is None or when < merged:
+            found.append(other)
+    return found
+
+
+def bottlenecks_of(record, history, config, gaps, include_review=True):
+    """The bottlenecks of an epic (spec: Wąskie gardła): at most `max_items` items with the largest excess of time over
+    the median of the history, at least `min_excess_h` hours, in descending order. Candidates: the `breakdown`
+    categories except `work`, the tasks (against the median of their kind), the `in_attempts` categories (with the
+    part that is `repeat_runs`), gate_wait and, when `include_review`, review. Category medians are per plan task
+    (scaled to the number of tasks of this epic). The potential effect of a decision is not computed here."""
+    settings = config['bottlenecks']
+    tasks = record.get('tasks')
+    if len(history) < settings['min_history']:
+        gaps.add('bottlenecks', 'mediana z %d zmergowanych epików (mniej niż %d)' % (len(history), settings['min_history']))
+    candidates = []
+
+    def add(kind, name, value, median_s, denominator, share_of, repeat_s=None):
+        excess = value - median_s
+        item = {'kind': kind, 'name': name, 'value_s': round(value, 3), 'median_s': round(median_s, 3),
+                'excess_h': round(excess / HOUR, 3),
+                'share': round(excess / denominator, 4) if _is_number(denominator) and denominator > 0 else None,
+                'share_of': share_of, 'rule': CATEGORY_RULES.get((kind, name))}
+        if kind == 'in_attempts':
+            item['repeat_h'] = None if repeat_s is None else round(min(repeat_s, max(excess, 0.0)) / HOUR, 3)
+        candidates.append((excess, item))
+
+    def per_task_median(getter):
+        values = [getter(h) / h['tasks'] for h in history if _is_number(getter(h)) and _is_int(h.get('tasks'))
+                  and h['tasks'] > 0]
+        return median(values) * tasks if values else None
+
+    to_done = _get(record, ('wall', 'to_done'))
+    scaled = _is_int(tasks) and tasks > 0
+
+    def category(kind, name, value, getter, denominator, share_of, repeat_s=None):
+        if not scaled or not _is_number(value):
+            return
+        middle = per_task_median(getter)
+        if middle is not None:
+            add(kind, name, value, middle, denominator, share_of, repeat_s)
+
+    for name in config['breakdown_order']:
+        if name != 'work':
+            category('breakdown', name, _get(record, ('breakdown', name)), lambda r, n=name: _get(r, ('breakdown', n)),
+                     to_done, 'to_done')
+    kinds = {}
+    for other in history:
+        for entry in (other.get('by_task') or {}).values():
+            if isinstance(entry, dict) and entry.get('kind') and _is_number(entry.get('work')):
+                kinds.setdefault(entry['kind'], []).append(entry['work'])
+    for task, entry in sorted((record.get('by_task') or {}).items()):
+        if isinstance(entry, dict) and _is_number(entry.get('work')) and kinds.get(entry.get('kind')):
+            add('task', task, entry['work'], median(kinds[entry['kind']]), to_done, 'to_done')
+            candidates[-1][1]['rule'] = 'D2' if entry['kind'] == 'plan' else None
+    for name in (record.get('in_attempts') or {}).get('categories', {}):
+        category('in_attempts', 'in_attempts.%s' % name, _get(record, ('in_attempts', 'categories', name, 'seconds')),
+                 lambda r, n=name: _get(r, ('in_attempts', 'categories', n, 'seconds')), to_done, 'to_done',
+                 _get(record, ('in_attempts', 'repeat_runs', 'by_category', name, 'seconds')))
+    gate = _get(record, ('gate_wait', 'wait_s'))
+    if gate is None:
+        gaps.add('bottlenecks.gate_wait', 'brak wpisów epiku w gate.jsonl: kandydat pominięty')
+    else:
+        category('gate_wait', 'gate_wait', gate, lambda r: _get(r, ('gate_wait', 'wait_s')),
+                 gate + to_done if _is_number(to_done) else None, 'gate_wait+to_done')
+    if include_review:
+        category('review', 'review', _get(record, ('wall', 'review')), lambda r: _get(r, ('wall', 'review')),
+                 _get(record, ('wall', 'to_merge')), 'to_merge')
+    keep = [(excess, item) for excess, item in candidates if excess >= settings['min_excess_h'] * HOUR]
+    keep.sort(key=lambda pair: (-pair[0], pair[1]['kind'], pair[1]['name']))
+    return [item for _, item in keep[:int(settings['max_items'])]]
 
 
 # ------------------------------------------------------------------------------------------------------- trend
