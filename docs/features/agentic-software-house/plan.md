@@ -14,13 +14,14 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482); przygotowane do startu: EVALS (#495). Kolejność epików jest na tablicy
-„Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: AGENT-SECURITY (końcowy PR #548; 4 interwencje, 4 czekania
-na użytkownika, razem 26 min, 1 ręczna poprawka). Retro do zrobienia: ADMIN-SCREENS (retro AGENT-SECURITY w tym PR).
+W toku przez `/ao-run`: DEMO-DATA (#482), EVALS (#495); przygotowane do startu: METRICS (#496). Kolejność epików
+jest na tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: ADMIN-FEATURES (końcowy PR #623;
+5 interwencji, 5 czekań na użytkownika, razem 528 min, 1 ręczna poprawka). Retro do zrobienia: brak (retro
+ADMIN-FEATURES w tym PR).
 Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 69, zamkniętych 49.
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 91, zamkniętych 50.
 Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17 i 18; 19b po
 dwóch parach epików 19a; 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
