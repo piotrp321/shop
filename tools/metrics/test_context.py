@@ -145,7 +145,8 @@ class SubscriptionTest(NightEnv):
         shutil.copy(testkit.fixture('measurements.jsonl'), self.night)
         record = self.record('deploy-ops', home=testkit.fixture_home(self.root, 'deploy-ops'))
         self.assertEqual(record['subscription'],
-                         {'windows': {ALL: None, 'Weekly · Fable': None}, 'overlap': []})
+                         {'windows': {ALL: None, 'Weekly · Fable': None}, 'overlap': [], 'share': 1,
+                          'share_estimated': False})
 
     def test_catalog_admin_fixture_delta_and_overlap(self):
         shutil.copy(testkit.fixture('measurements.jsonl'), self.night)

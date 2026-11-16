@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sqlite3
 import tempfile
 import types
@@ -14,6 +15,7 @@ import metrics
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, 'fixtures', 'ao-data')
+TRANSCRIPTS = os.path.join(HERE, 'fixtures', 'transcripts')
 
 SCHEMA = """
 CREATE TABLE attempts (id, task_id, number, started_at, ended_at, wall_s, outcome, executor_status, exit_code, cost_usd, duration_ms, num_turns);
@@ -27,8 +29,9 @@ def fixture(name):
     return os.path.join(FIXTURES, name)
 
 
-def fixture_home(root, epic, copy_events=True):
-    """`<root>/ao-<epic>` with orchestrator.db built from the SQL dump of the fixture and its events.jsonl."""
+def fixture_home(root, epic, copy_events=True, copy_transcripts=True):
+    """`<root>/ao-<epic>` with orchestrator.db built from the SQL dump of the fixture, its events.jsonl and the
+    transcripts (`tasks/<id>/attempts/<n>/stdout.jsonl`) of the fixture, when it has them."""
     home = os.path.join(root, 'ao-%s' % epic)
     os.makedirs(home)
     con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
@@ -36,6 +39,9 @@ def fixture_home(root, epic, copy_events=True):
         con.executescript(f.read())
     con.commit()
     con.close()
+    tasks = os.path.join(TRANSCRIPTS, epic, 'tasks')
+    if copy_transcripts and os.path.isdir(tasks):
+        shutil.copytree(tasks, os.path.join(home, 'tasks'))
     if copy_events:
         with open(fixture('%s.events.jsonl' % epic), encoding='utf-8') as src:
             with open(os.path.join(home, 'events.jsonl'), 'w', encoding='utf-8') as dst:
@@ -77,6 +83,135 @@ def synthetic_home(root, epic='demo', status='DONE', created=1000.0, final_pr=7,
             for line in jsonl:
                 f.write(json.dumps(line) + '\n')
     return home
+
+
+def transcript_path(home, task, number):
+    return os.path.join(home, 'tasks', task, 'attempts', str(number), 'stdout.jsonl')
+
+
+def fixture_transcript(epic, task, number):
+    """The path of a sanitized transcript of the fixtures."""
+    return os.path.join(TRANSCRIPTS, epic, 'tasks', task, 'attempts', str(number), 'stdout.jsonl')
+
+
+def put_transcript(home, task, number, lines):
+    """Writes the transcript of an attempt: `lines` are dicts (one JSON line each) or ready text lines."""
+    path = transcript_path(home, task, number)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        for line in lines:
+            f.write((line if isinstance(line, str) else json.dumps(line)) + '\n')
+    return path
+
+
+def copy_transcript(home, source, task, number):
+    path = transcript_path(home, task, number)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    shutil.copyfile(source, path)
+    return path
+
+
+def read_lines(path):
+    with open(path, encoding='utf-8') as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+OPUS = 'claude-opus-5-5'
+SONNET = 'claude-sonnet-5-5'
+HAIKU = 'claude-haiku-5'
+T0 = 1800000000.0     # the time of the first line of a synthetic transcript
+
+
+def stamp(seconds):
+    """The `timestamp` of a transcript line `seconds` after T0 (as the CLI writes it: UTC, milliseconds)."""
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(T0 + seconds, timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+
+
+def usage_of(input=0, output=1, cache_read=0, cache_write=0, cache_write_1h=0):
+    """The `usage` of a message: `cache_write` is the 5 minute cache write, `cache_write_1h` the 1 hour one."""
+    return {'input_tokens': input, 'output_tokens': output, 'cache_read_input_tokens': cache_read,
+            'cache_creation_input_tokens': cache_write + cache_write_1h,
+            'cache_creation': {'ephemeral_5m_input_tokens': cache_write, 'ephemeral_1h_input_tokens': cache_write_1h}}
+
+
+def model_usage(input=0, output=0, cache_read=0, cache_write=0, cache_write_1h=0, cost=0.0, basis='list'):
+    return {'inputTokens': input, 'outputTokens': output, 'cacheReadInputTokens': cache_read,
+            'cacheCreationInputTokens': cache_write + cache_write_1h,
+            'cacheCreationEphemeral5mInputTokens': cache_write, 'cacheCreationEphemeral1hInputTokens': cache_write_1h,
+            'costUSD': cost, 'costBasis': basis}
+
+
+class Transcript:
+    """Builds the lines of a synthetic `stdout.jsonl`. Every method returns self; `.lines` are the dicts."""
+
+    def __init__(self):
+        self.lines = []
+        self._tool = 0
+        self._message = 0
+
+    def init(self, model=OPUS, version='2.1.311'):
+        self.lines.append({'type': 'system', 'subtype': 'init', 'model': model, 'claude_code_version': version})
+        return self
+
+    def message(self, model=OPUS, role=None, parent=None, at=0, message_id=None, blocks=1, tools=(), **tokens):
+        """An assistant message written as `blocks` lines with the same message id and usage (as stream-json does).
+        role: the `subagent_type` (None: the orchestrator); parent: `parent_tool_use_id`; tools: tool_use blocks
+        [(name, input dict)], written one per line; tokens: input, output, cache_read, cache_write, cache_write_1h."""
+        self._message += 1
+        message_id = message_id or 'msg_%d' % self._message
+        found = []
+        for name, tool_input in tools:
+            self._tool += 1
+            found.append('toolu_%d' % self._tool)
+            self._append_message(message_id, model, role, parent, at, tokens,
+                                 [{'type': 'tool_use', 'id': found[-1], 'name': name, 'input': tool_input}])
+        for _ in range(max(0, blocks - len(tools)) if not tools else 0):
+            self._append_message(message_id, model, role, parent, at, tokens, [{'type': 'text'}])
+        self.last_tools = found
+        return self
+
+    def _append_message(self, message_id, model, role, parent, at, tokens, content):
+        self.lines.append({'type': 'assistant', 'parent_tool_use_id': parent, 'subagent_type': role,
+                           'timestamp': stamp(at),
+                           'message': {'id': message_id, 'model': model, 'content': content,
+                                       'usage': usage_of(**tokens)}})
+
+    def tool_result(self, tool_id, at, parent=None, is_error=False):
+        self.lines.append({'type': 'user', 'parent_tool_use_id': parent, 'timestamp': stamp(at),
+                           'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': tool_id,
+                                                                    'is_error': is_error}]}})
+        return self
+
+    def tool(self, name, tool_input, start, end=None, model=OPUS, role=None, parent=None, **tokens):
+        """A message with one tool_use at `start` and, unless end is None, its tool_result at `end`. Returns the
+        tool_use id (the transcript is in self)."""
+        self.message(model=model, role=role, parent=parent, at=start, tools=[(name, tool_input)], **tokens)
+        tool_id = self.last_tools[0]
+        if end is not None:
+            self.tool_result(tool_id, end, parent=parent)
+        return tool_id
+
+    def bash(self, command, start, end=None, background=False, **kwargs):
+        return self.tool('Bash', {'command': command, 'run_in_background': background}, start, end, **kwargs)
+
+    def retry(self, delay_ms):
+        self.lines.append({'type': 'system', 'subtype': 'api_retry', 'attempt': 1, 'error_status': 503,
+                           'max_retries': 9, 'retry_delay_ms': delay_ms})
+        return self
+
+    def denied(self, tool_name):
+        self.lines.append({'type': 'system', 'subtype': 'permission_denied', 'tool_name': tool_name})
+        return self
+
+    def result(self, models, output=0, cost=None, **extra):
+        """A `result` line: models {name: model_usage(...)}; output: `usage.output_tokens` of the segment; cost:
+        total_cost_usd (default: the sum of the model costs)."""
+        total = sum(m['costUSD'] for m in models.values()) if cost is None else cost
+        self.lines.append({'type': 'result', 'subtype': 'success', 'is_error': False, 'total_cost_usd': total,
+                           'modelUsage': models, 'usage': {'output_tokens': output, 'input_tokens': 0},
+                           **extra})
+        return self
 
 
 def result(returncode=0, stdout='', stderr=''):
@@ -149,3 +284,29 @@ class Env(unittest.TestCase):
         code, out, err = self.epic(name, *extra, home=home, runner=runner, no_gh=no_gh)
         self.assertIn(code, (0, 3), err)
         return json.loads(out)
+
+
+class AttemptEnv(Env):
+    """A run of one task whose attempts have synthetic or copied transcripts."""
+
+    def attempt_record(self, lines, task='T-1', kind='plan', outcome='result', status='READY_FOR_INTEGRATION',
+                       stored=None, extra_events=()):
+        """The record of a one task run whose only attempt has the transcript `lines` (a Transcript, a list of lines
+        or the path of a transcript to copy). stored: {epic: record} written to the state directory first."""
+        for name, content in (stored or {}).items():
+            os.makedirs(os.path.join(self.state, 'epics'), exist_ok=True)
+            with open(os.path.join(self.state, 'epics', '%s.json' % name), 'w') as f:
+                json.dump(content, f)
+        home = synthetic_home(
+            self.root, tasks=[(task, kind)], created=1000.0,
+            attempts=[dict(task_id=task, number=1, started_at=1100.0, ended_at=1300.0, outcome=outcome,
+                           executor_status=status)], events=[(2000.0, 'epic_done', {})] + list(extra_events))
+        if lines is not None:
+            if isinstance(lines, str):
+                copy_transcript(home, lines, task, 1)
+            else:
+                put_transcript(home, task, 1, lines.lines if isinstance(lines, Transcript) else lines)
+        return self.record('demo', home=home)
+
+    def cell(self, record, role, model):
+        return record['value']['by_role_model'][role][model]

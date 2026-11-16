@@ -18,6 +18,12 @@ Reads every file under DIR and prints one JSON line {"findings": [{file, line, r
 .json and .jsonl files are read as JSON (every string and key is a value), .sql files by their quoted literals (a
 literal that is JSON is read as JSON; the other rules also run over the raw text), other files line by line.
 UUIDs and SHAs pass: dashes break a UUID into short runs and a SHA is hex.
+
+One exception, to the base64 rule only: the key names `cacheCreationEphemeral1hInputTokens` and
+`cacheCreationEphemeral5mInputTokens` pass when they are keys of a model entry of the top-level `modelUsage` of a
+JSON value (`modelUsage.<model>.<key>`, the shape of the result of the CLI in a transcript). The same name as a string
+value, as a key anywhere else, in a line of a file that is not JSON or in the raw text of an SQL file is still found,
+and so is any base64 value (also the value of these keys); the other rules run on these keys as on any other.
 """
 import json
 import os
@@ -42,7 +48,10 @@ def _looks_like_base64(candidate):
     return any(c.isdigit() for c in run) or (any(c.isupper() for c in run) and any(c.islower() for c in run))
 
 
-def check_value(value, long_text=True):
+USAGE_KEYS = frozenset(('cacheCreationEphemeral1hInputTokens', 'cacheCreationEphemeral5mInputTokens'))
+
+
+def check_value(value, long_text=True, base64=True):
     """The rules a text value breaks."""
     found = []
     if PATH.search(value) or value.strip() == '~':
@@ -51,28 +60,36 @@ def check_value(value, long_text=True):
         found.append('email')
     if TOKEN.search(value):
         found.append('token')
-    if any(_looks_like_base64(m.group(0)) for m in BASE64.finditer(value)):
+    if base64 and any(_looks_like_base64(m.group(0)) for m in BASE64.finditer(value)):
         found.append('base64')
     if long_text and len(value) > MAX_TEXT:
         found.append('long-text')
     return found
 
 
-def _strings(node):
-    """Every string and every key of a parsed JSON value."""
+def _strings(node, where='root'):
+    """Every string and every key of a parsed JSON value as (text, exempt). `exempt` is true only for the two names of
+    USAGE_KEYS that are keys of a model entry (`where` = 'entry') of the `modelUsage` object under the key
+    `modelUsage` of the top-level object (`where` = 'root')."""
     if isinstance(node, str):
-        yield node
+        yield node, False
     elif isinstance(node, list):
         for item in node:
-            yield from _strings(item)
+            yield from _strings(item, None)
     elif isinstance(node, dict):
         for key, item in node.items():
-            yield key
-            yield from _strings(item)
+            yield key, where == 'entry' and key in USAGE_KEYS
+            if where == 'root' and key == 'modelUsage' and isinstance(item, dict):
+                for model, entry in item.items():
+                    yield model, False
+                    yield from _strings(entry, 'entry')
+            else:
+                yield from _strings(item, None)
 
 
 def _json_findings(text, line):
-    return [(line, rule) for value in _strings(json.loads(text)) for rule in check_value(value)]
+    return [(line, rule) for value, exempt in _strings(json.loads(text))
+            for rule in check_value(value, base64=not exempt)]
 
 
 def _sql_findings(text):

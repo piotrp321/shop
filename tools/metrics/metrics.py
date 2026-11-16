@@ -15,6 +15,24 @@ and events (`orchestrator.db` is opened read only, `ao` is never run), from meas
 from GitHub (`gh`, read only; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
 zero. A value from GitHub or from --manual-fixes that is `null` now but not in the stored record is kept (a transient
 error never replaces it); the gap says so.
+
+Transcripts (`<ao-home>/tasks/<task>/attempts/<n>/stdout.jsonl`, read line by line, a killed run's last line skipped)
+give `attempts`, `value`, `by_task`, `in_attempts`, `versions` and `subscription.share` (spec: Pojęcia, Dokładność
+tokenów i wartości). Roles: the `subagent_type` of a message, a message without `parent_tool_use_id` is the orchestrator
+of the attempt (`delivery`; `integration` for integration tasks), a model of the last `result` without messages (or the
+surplus of its tokens over the messages) is `other`. Assistant lines with the same `message.id` count once. The output
+of the orchestrator is the sum of `usage.output_tokens` of all `result` lines; the rest of a model's `outputTokens` is
+the subagents' and is split between their types by unique message ids (estimated when there are several types). The
+value of a model (`costUSD` of the last `result`) is split between its roles by the token weights of config.json
+(exact only for the sole role of the model). An attempt without a CLI result (no `result`, or a zeroed last one next to
+tokens in the messages) has the tokens of its messages and a value estimated as input and cache tokens times the median
+historical rate of the model (attempts with a CLI result of the stored records and of this run; without history null and
+a gap). A missing transcript is a gap and null, never zero. The text of a shell command is only compared in memory
+(`repeat_runs`) and never stored. `subscription.share` is the value of this epic in its measurement interval by the
+value of all the epics that ran in it (the attempts of each epic assigned to the interval evenly over their duration,
+other epics from their stored records); 1 without overlap, null with a gap when a record of an overlapping epic is
+missing.
+
 backfill: records every run `ao-*` under the AO root (--ao-root, default as above) whose database has the row of its
 epic with a final PR that GitHub reports MERGED (also in the AO states INTEGRATING and BLOCKED). Skips runs in progress
 and directories without a database or an epic row. Prints one JSON line {"recorded": [...], "skipped": [{"run",
@@ -102,6 +120,8 @@ CONFIG_SCHEMA = {
     'gh_timeout_s': (lambda v: _is_number(v) and v > 0, 'liczba sekund większa od 0'),
     'shell_tools': (_string_list, 'niepusta lista nazw narzędzi'),
     'command_categories': (_patterns, 'obiekt: kategoria -> lista poprawnych wyrażeń regularnych'),
+    'code_change_tools': (_string_list, 'niepusta lista nazw narzędzi zmieniających kod'),
+    'repeat_categories': (_string_list, 'niepusta lista kategorii poleceń z command_categories'),
     'token_weights': (_number_map(('input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output')),
                       'wagi input, cache_write_5m, cache_write_1h, cache_read, output (liczby)'),
     'bottlenecks': (_number_map(('min_excess_h', 'max_items', 'min_history')), 'obiekt liczb'),
@@ -135,6 +155,10 @@ def load_config(path):
     unknown = sorted(set(config) - set(CONFIG_SCHEMA))
     if unknown:
         raise MetricsError('config.json %s: nieznany klucz %s' % (path, ', '.join(unknown)))
+    missing = [c for c in config['repeat_categories'] if c not in config['command_categories']]
+    if missing:
+        raise MetricsError('config.json %s: klucz repeat_categories: kategoria %s nie jest w command_categories'
+                           % (path, ', '.join(missing)))
     return config
 
 
@@ -474,6 +498,724 @@ def integration_of(run, epic, gaps):
     return {'work_s': round(work, 3), 'attempts': count, 'rounds': epic['round']}
 
 
+# --------------------------------------------------------------------------------------------- transcripts: reading
+
+TOKEN_KINDS = ('input', 'output', 'cache_read', 'cache_write')
+RAW_KINDS = ('input', 'cache_read', 'cw5', 'cw1')       # the input side; the cache write split by its lifetime
+ZERO_TOKENS = {'input': 0, 'cache_read': 0, 'cw5': 0, 'cw1': 0, 'output': 0}
+SUBAGENT = 'subagent'                                   # a message of a subagent without `subagent_type`
+OTHER_ROLE = 'other'
+# A CLI version, a model in `versions`, a role (subagent_type) and a denied tool name are stored only when they are
+# identifiers (a role as `subagent`, a tool as `unknown` otherwise): the record holds no free text from the transcripts.
+SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+\-\[\]]{0,63}$')
+ORCHESTRATOR_ROLE = {'integration': 'integration'}      # task kind -> orchestrator role; the rest is `delivery`
+
+
+def _int(value):
+    return int(value) if _is_number(value) and value >= 0 else 0
+
+
+def _timestamp(text):
+    try:
+        return night_queue.parse_time(text).timestamp()
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _message_tokens(usage):
+    """The tokens of the `usage` of a message: the cache write is split into 5 minute and 1 hour writes (all of it is
+    taken as a 5 minute write when the CLI does not say)."""
+    usage = usage if isinstance(usage, dict) else {}
+    written = _int(usage.get('cache_creation_input_tokens'))
+    split = usage.get('cache_creation') if isinstance(usage.get('cache_creation'), dict) else None
+    if split is not None:
+        cw5, cw1 = _int(split.get('ephemeral_5m_input_tokens')), _int(split.get('ephemeral_1h_input_tokens'))
+        if cw5 + cw1 != written:
+            cw5, cw1 = written - cw1 if written >= cw1 else 0, min(cw1, written)
+    else:
+        cw5, cw1 = written, 0
+    return {'input': _int(usage.get('input_tokens')), 'cache_read': _int(usage.get('cache_read_input_tokens')),
+            'cw5': cw5, 'cw1': cw1, 'output': _int(usage.get('output_tokens'))}
+
+
+def _model_tokens(used):
+    used = used if isinstance(used, dict) else {}
+    written = _int(used.get('cacheCreationInputTokens'))
+    has_split = 'cacheCreationEphemeral5mInputTokens' in used or 'cacheCreationEphemeral1hInputTokens' in used
+    cw5, cw1 = _int(used.get('cacheCreationEphemeral5mInputTokens')), _int(used.get('cacheCreationEphemeral1hInputTokens'))
+    if not has_split:
+        cw5, cw1 = written, 0
+    elif cw5 + cw1 != written:
+        cw5, cw1 = written - cw1 if written >= cw1 else 0, min(cw1, written)
+    return {'input': _int(used.get('inputTokens')), 'cache_read': _int(used.get('cacheReadInputTokens')),
+            'cw5': cw5, 'cw1': cw1, 'output': _int(used.get('outputTokens'))}
+
+
+def read_transcript(path):
+    """(data, None) of a `stdout.jsonl` of an attempt, or (None, reason) when it is missing or unreadable. Lines that
+    are not JSON objects (the last line of a killed run) are skipped. data:
+      messages  {id: {role (subagent_type that is an identifier, or None), orchestrator (no parent), model, tokens}} (first line of an id)
+      inits     [{version, model}]               results  [{output, cost, models}] (every `result`)
+      retries   [retry_delay_ms]                 denials  {tool_name (or `unknown`): count}
+      tools     [(`use`, id, name, command, background, at) | (`result`, id, at)] in file order (command only of a
+                shell tool, and only in memory: it is never stored in the record)."""
+    data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': []}
+    seen_tools = set()
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for raw in f:
+                try:
+                    line = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(line, dict):
+                    _read_line(line, data, seen_tools)
+    except FileNotFoundError:
+        return None, 'brak pliku stdout.jsonl'
+    except OSError as e:
+        return None, 'nieczytelny stdout.jsonl: %s' % (e.strerror or e)
+    return data, None
+
+
+def _read_line(line, data, seen_tools):
+    kind, subtype = line.get('type'), line.get('subtype')
+    if kind == 'assistant' and isinstance(line.get('message'), dict):
+        message = line['message']
+        if isinstance(message.get('id'), str) and message['id'] not in data['messages']:
+            role = line.get('subagent_type')
+            data['messages'][message['id']] = {
+                'role': role if isinstance(role, str) and SAFE_NAME.match(role) else None,
+                'orchestrator': line.get('parent_tool_use_id') is None,
+                'model': message['model'] if isinstance(message.get('model'), str) else None,
+                'tokens': _message_tokens(message.get('usage'))}
+        for block in message.get('content') if isinstance(message.get('content'), list) else []:
+            if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('id') not in seen_tools:
+                seen_tools.add(block.get('id'))
+                tool_input = block.get('input') if isinstance(block.get('input'), dict) else {}
+                command = tool_input.get('command')
+                data['tools'].append(('use', block.get('id'), block.get('name'),
+                                      command if isinstance(command, str) else '',
+                                      tool_input.get('run_in_background') is True, _timestamp(line.get('timestamp'))))
+    elif kind == 'user' and isinstance(line.get('message'), dict) and isinstance(line['message'].get('content'), list):
+        for block in line['message']['content']:
+            if isinstance(block, dict) and block.get('type') == 'tool_result':
+                data['tools'].append(('result', block.get('tool_use_id'), _timestamp(line.get('timestamp'))))
+    elif kind == 'system' and subtype == 'init':
+        data['inits'].append({'version': line.get('claude_code_version'), 'model': line.get('model')})
+    elif kind == 'system' and subtype == 'api_retry':
+        data['retries'].append(_int(line.get('retry_delay_ms')))
+    elif kind == 'system' and subtype == 'permission_denied':
+        name = line.get('tool_name') if isinstance(line.get('tool_name'), str) and SAFE_NAME.match(
+            line.get('tool_name')) else 'unknown'
+        data['denials'][name] = data['denials'].get(name, 0) + 1
+    elif kind == 'result':
+        usage = line.get('usage') if isinstance(line.get('usage'), dict) else {}
+        models = line.get('modelUsage') if isinstance(line.get('modelUsage'), dict) else {}
+        data['results'].append({'output': _int(usage.get('output_tokens')), 'cost': _number(line.get('total_cost_usd')),
+                                'models': {m: u for m, u in models.items() if isinstance(u, dict)}})
+
+
+# ----------------------------------------------------------------------------------- transcripts: tokens and value
+
+def apportion(total, weights):
+    """The integer `total` split in proportion to `weights` ({key: number}) by the largest remainder, so the parts sum
+    to the total exactly (a tie goes to the larger weight, then to the key)."""
+    weight_sum = float(sum(weights.values()))
+    if not weights or weight_sum <= 0:
+        return {key: 0 for key in weights}
+    exact = {key: total * weight / weight_sum for key, weight in weights.items()}
+    parts = {key: int(value) for key, value in exact.items()}
+    left = total - sum(parts.values())
+    for key in sorted(weights, key=lambda k: (-(exact[k] - parts[k]), -weights[k], k))[:left]:
+        parts[key] += 1
+    return parts
+
+
+def weighted(tokens, weights, with_output=True):
+    """The tokens of a cell weighted by the price proportions of config.json (`token_weights`)."""
+    total = (tokens['input'] * weights['input'] + tokens['cw5'] * weights['cache_write_5m']
+             + tokens['cw1'] * weights['cache_write_1h'] + tokens['cache_read'] * weights['cache_read'])
+    return total + (tokens['output'] * weights['output'] if with_output else 0)
+
+
+def _new_cell():
+    return {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': None, 'shared': False, 'no_cli': False}
+
+
+def _tokens_out(tokens):
+    return {'input': tokens['input'], 'output': tokens['output'], 'cache_read': tokens['cache_read'],
+            'cache_write': tokens['cw5'] + tokens['cw1']}
+
+
+def orchestrator_role(kind):
+    return ORCHESTRATOR_ROLE.get(kind, 'delivery')
+
+
+def _message_groups(data, orchestrator):
+    """{model: {role: {ids, tokens}}} of the unique messages by their role (the subagent_type of the message; no
+    parent: the orchestrator of the attempt)."""
+    groups = {}
+    for message in data['messages'].values():
+        if message['model'] is None:
+            continue
+        role = message['role'] or (orchestrator if message['orchestrator'] else SUBAGENT)
+        group = groups.setdefault(message['model'], {}).setdefault(role, {'ids': 0, 'tokens': dict(ZERO_TOKENS)})
+        group['ids'] += 1
+        for key in RAW_KINDS + ('output',):
+            group['tokens'][key] += message['tokens'][key]
+    return groups
+
+
+def _zeroed(result):
+    """Whether a `result` is empty: zero cost and no tokens or cost in any model (the result written after a crash)."""
+    if result['cost']:
+        return False
+    return not any(any(_int(u.get(f)) for f in ('inputTokens', 'outputTokens', 'cacheReadInputTokens',
+                                                'cacheCreationInputTokens')) or _number(u.get('costUSD'))
+                   for u in result['models'].values())
+
+
+def _has_tokens(groups):
+    return any(any(g['tokens'].values()) for roles in groups.values() for g in roles.values())
+
+
+def result_usage(data, orchestrator, weights, label, gaps):
+    """The cells {role: {model: cell}} of an attempt with a CLI result: the last `result` says what each model used
+    and cost (the whole tree, cumulative); the messages say which role used it (spec: Dokładność tokenów i wartości)."""
+    last = data['results'][-1]
+    used = last['models']
+    groups = _message_groups(data, orchestrator)
+    orch_models = {m for m, roles in groups.items() if orchestrator in roles}
+    orch_models |= {i['model'] for i in data['inits'] if isinstance(i['model'], str)}
+    multi = len(orch_models) > 1
+    orch_total = sum(r['output'] for r in data['results'])
+    if not orch_models:
+        orch_models = {next(iter(used))} if used else set()
+        if orch_total and orch_models:
+            gaps.add('attempts.%s' % label, 'model orkiestratora nieznany (brak system/init i wiadomości): wyjście szacowane')
+            multi = True
+    if multi:
+        gaps.add('attempts.%s' % label, 'orkiestrator próby działa na więcej niż jednym modelu: wyjście subagentów'
+                 ' szacowane')
+    orch_out = {}
+    if len(orch_models) == 1:
+        orch_out[next(iter(orch_models))] = orch_total
+    elif orch_models:
+        counts = {m: groups.get(m, {}).get(orchestrator, {}).get('ids', 0) for m in orch_models}
+        orch_out = apportion(orch_total, counts if any(counts.values()) else {m: 1 for m in counts})
+    cells = {}
+    for model in list(used) + [m for m in groups if m not in used]:
+        _model_cells(model, used.get(model), groups.get(model, {}), orchestrator, orch_out.get(model, 0), multi,
+                     cells, weights, label, gaps)
+    return cells
+
+
+def _model_cells(model, used, roles, orchestrator, orch_out, multi, cells, weights, label, gaps):
+    totals = _model_tokens(used)
+    flagged = multi
+    made = {}
+    for role, group in roles.items():
+        made[role] = _new_cell()
+    # the input side: the roles take what their messages say; the rest of modelUsage is `other` (a surplus), and when
+    # the messages say more than modelUsage the roles are scaled down to it (a shortfall, estimated)
+    shortfall = False
+    for key in RAW_KINDS:
+        said = {role: roles[role]['tokens'][key] for role in roles}
+        if sum(said.values()) <= totals[key]:
+            for role, amount in said.items():
+                made[role]['tokens'][key] = amount
+            rest = totals[key] - sum(said.values())
+            if rest:
+                made.setdefault(OTHER_ROLE, _new_cell())['tokens'][key] = rest
+        else:
+            shortfall = True
+            for role, amount in apportion(totals[key], said).items():
+                made[role]['tokens'][key] = amount
+                made[role]['estimated'].add(_kind_name(key))
+    if shortfall:
+        flagged = True
+        gaps.add('attempts.%s' % label, 'niedobór modelUsage względem wiadomości (model %s): role szacowane' % model)
+    # the output: the orchestrator has the sum of its result outputs; the subagents together have the rest of the
+    # model output, split between their types by their unique message ids (an estimate when there are several)
+    if used is None and roles:
+        orch_out = 0
+    if orch_out > totals['output']:
+        gaps.add('attempts.%s' % label, 'wyjście orkiestratora większe niż modelUsage (model %s): ucięte' % model)
+        orch_out, flagged = totals['output'], True
+    if orch_out or orchestrator in roles:
+        cell = made.setdefault(orchestrator, _new_cell())
+        cell['tokens']['output'] = orch_out
+        if multi or flagged:
+            cell['estimated'].add('output')
+    subagents = {role: group['ids'] for role, group in roles.items() if role != orchestrator}
+    rest = totals['output'] - orch_out
+    if rest and subagents:
+        for role, amount in apportion(rest, subagents).items():
+            made[role]['tokens']['output'] = amount
+            if len(subagents) > 1 or multi or flagged:
+                made[role]['estimated'].add('output')
+    elif rest:
+        made.setdefault(OTHER_ROLE, _new_cell())['tokens']['output'] = rest
+    # the value of the model split by the weighted tokens of its roles
+    cost = _number(used.get('costUSD')) if used else None
+    if used is not None and used.get('costBasis') == 'unknown':
+        gaps.add('attempts.%s' % label, 'costBasis unknown (model %s): wartość nieznana' % model)
+        cost = None
+    elif used is not None and cost is None:
+        gaps.add('attempts.%s' % label, 'brak costUSD w modelUsage (model %s): wartość nieznana' % model)
+    present = {role: cell for role, cell in made.items() if any(cell['tokens'].values())}
+    sums = {role: weighted(cell['tokens'], weights) for role, cell in present.items()}
+    for role, cell in present.items():
+        cell['shared'] = len(present) > 1 or flagged
+        if cost is not None:
+            cell['usd'] = cost * sums[role] / sum(sums.values()) if sum(sums.values()) else 0.0
+        cells.setdefault(role, {})[model] = cell
+
+
+def _kind_name(key):
+    return 'cache_write' if key in ('cw5', 'cw1') else key
+
+
+def message_usage(data, orchestrator, rates, weights, label, gaps):
+    """The cells of an attempt without a CLI result (timeout, interruption, a result zeroed after a crash): the tokens
+    of the unique messages (the output is the placeholder of the messages, so it is estimated) and the value from the
+    median historical rate of each model: input and cache tokens (weighted) times the rate."""
+    cells, missing = {}, set()
+    for model, roles in _message_groups(data, orchestrator).items():
+        for role, group in roles.items():
+            cell = _new_cell()
+            cell['tokens'] = dict(group['tokens'])
+            cell['estimated'] = {'output'}
+            cell['shared'] = True
+            cell['no_cli'] = True
+            rate = rates.get(model)
+            if rate is None:
+                missing.add(model)
+            else:
+                cell['usd'] = weighted(cell['tokens'], weights, with_output=False) * rate
+            cells.setdefault(role, {})[model] = cell
+    gaps.add('attempts.%s' % label, 'próba bez wyniku CLI: tokeny z wiadomości, wartość szacowana ze stawki historycznej')
+    for model in sorted(missing):
+        gaps.add('attempts.%s' % label, 'brak historii stawki modelu %s: wartość nieznana' % model)
+    return cells
+
+
+def attempt_rates(data, weights):
+    """{model: USD per weighted input and cache token} of an attempt with a CLI result: the full cost of the model
+    (with its output) by its input and cache tokens (the proportions of config.json)."""
+    rates = {}
+    for model, used in data['results'][-1]['models'].items():
+        cost, base = _number(used.get('costUSD')), weighted(_model_tokens(used), weights, with_output=False)
+        if cost and base and used.get('costBasis') != 'unknown':
+            rates[model] = cost / base
+    return rates
+
+
+def median(values):
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def historical_rates(records, own_attempts):
+    """{model: median rate} from the attempts with a CLI result of the stored records of other epics and of this one."""
+    found = {}
+    for record in records.values():
+        for attempt in record.get('attempts') or []:
+            if isinstance(attempt, dict) and attempt.get('cli_result') and isinstance(attempt.get('model_rates'), dict):
+                for model, rate in attempt['model_rates'].items():
+                    if _is_number(rate) and rate > 0:
+                        found.setdefault(model, []).append(rate)
+    for rates in own_attempts:
+        for model, rate in rates.items():
+            found.setdefault(model, []).append(rate)
+    return {model: median(values) for model, values in found.items()}
+
+
+def usage_of_attempt(data, orchestrator, weights, label, gaps):
+    """(cells, cli_result) of an attempt: with a CLI result (the last `result` is not zeroed) or from the messages."""
+    if data['results'] and not (_zeroed(data['results'][-1]) and _has_tokens(_message_groups(data, orchestrator))):
+        return result_usage(data, orchestrator, weights, label, gaps), True
+    return None, False
+
+
+# ----------------------------------------------------------------------------------- transcripts: value sections
+
+def _round_usd(value):
+    return None if value is None else round(value, 8)
+
+
+def attempt_summary(cells, cli_result):
+    """(value, estimated, tokens, estimated token kinds) of the cells {role: {model: cell}} of one attempt: the value is
+    None when any cell has no value (the sum would be too low). With a CLI result the value and the tokens of the
+    attempt are exact (the split between roles is not part of them); without it both are estimated."""
+    tokens, values = dict(ZERO_TOKENS), []
+    for models in cells.values():
+        for cell in models.values():
+            for key in ZERO_TOKENS:
+                tokens[key] += cell['tokens'][key]
+            values.append(cell['usd'])
+    value = None if any(v is None for v in values) else _round_usd(sum(values))
+    return value, not cli_result, _tokens_out(tokens), [] if cli_result else ['output']
+
+
+class Section:
+    """One section of `value` (total, by_role, ...): cells added from attempts, summed by key. A section with a role
+    split (by_role, by_role_model) is estimated where its roles share a model or have an estimated token kind; a section
+    that sums the roles (total, by_model, by_task) is estimated only where an attempt has no CLI result."""
+
+    def __init__(self, role_split):
+        self.role_split = role_split
+        self.cells = {}
+
+    def add(self, key, cell):
+        into = self.cells.setdefault(key, {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'known': 0,
+                                           'unknown': 0, 'shared': False})
+        for token in ZERO_TOKENS:
+            into['tokens'][token] += cell['tokens'][token]
+        if self.role_split or cell['no_cli']:
+            into['estimated'] |= cell['estimated']
+            into['shared'] = into['shared'] or cell['shared'] or bool(cell['estimated'])
+        if cell['usd'] is None:
+            into['unknown'] += 1
+        else:
+            into['usd'] += cell['usd']
+            into['known'] += 1
+
+    def mark_unknown(self, key):
+        into = self.cells.setdefault(key, {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'known': 0,
+                                           'unknown': 0, 'shared': False})
+        into['unknown'] += 1
+
+    def render(self, key):
+        return render_cell(self.cells[key])
+
+
+def render_cell(cell):
+    """A cell of the record: usd (None when no part has a value), estimated (a part is shared with another role, has an
+    estimated token kind or has no value), tokens, estimated_tokens; `incomplete` when part of the value is unknown."""
+    out = {'usd': _round_usd(cell['usd']) if cell['known'] else None,
+           'estimated': bool(cell['shared'] or cell['estimated'] or cell['unknown']),
+           'tokens': _tokens_out(cell['tokens']),
+           'estimated_tokens': [k for k in TOKEN_KINDS if k in {_kind_name(x) for x in cell['estimated']}]}
+    if cell['unknown'] and cell['known']:
+        out['incomplete'] = True
+    return out
+
+
+def value_sections(items):
+    """The `value` of the record from items [(task, {role: {model: cell}} or None)]: total, by_role, by_model, by_task
+    and by_role_model. An attempt without cells (no transcript) is an unknown part of its sections."""
+    sections = {name: Section(name in ('by_role', 'by_role_model'))
+                for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model')}
+    nothing = {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'shared': False, 'no_cli': False}
+    for task, cells in items:
+        if cells is None:
+            sections['total'].mark_unknown('all')
+            sections['by_task'].mark_unknown(task)
+            continue
+        if not cells:                       # a CLI result without any usage: a real zero
+            sections['total'].add('all', nothing)
+            sections['by_task'].add(task, nothing)
+        for role, models in cells.items():
+            for model, cell in models.items():
+                sections['total'].add('all', cell)
+                sections['by_role'].add(role, cell)
+                sections['by_model'].add(model, cell)
+                sections['by_task'].add(task, cell)
+                sections['by_role_model'].add((role, model), cell)
+    value = {'total': sections['total'].render('all') if sections['total'].cells else None}
+    for name in ('by_role', 'by_model', 'by_task'):
+        value[name] = {key: sections[name].render(key) for key in sorted(sections[name].cells)}
+    nested = {}
+    for role, model in sorted(sections['by_role_model'].cells):
+        nested.setdefault(role, {})[model] = sections['by_role_model'].render((role, model))
+    value['by_role_model'] = nested
+    return value
+
+# ------------------------------------------------------------------------------------- transcripts: shell commands
+
+def compile_categories(config):
+    return [(name, [re.compile(p) for p in patterns]) for name, patterns in config['command_categories'].items()]
+
+
+def classify_command(command, compiled):
+    """(category, key) of a shell command: the first category of config.json with a pattern that matches; the key is
+    the fragment the pattern matched (up to the nearest shell operator, without the file descriptor of a redirect), so
+    an appended `| tail` or a redirect does not change it. A command that matches no category is `other`. The text
+    is only compared, never stored."""
+    for name, patterns in compiled:
+        for pattern in patterns:
+            match = pattern.search(command)
+            if match:
+                fragment = match.group(0)
+                if command[match.end():match.end() + 1] in ('<', '>'):
+                    # `2>&1`, `2> file`: the digit glued to the operator is a file descriptor, not part of the command
+                    fragment = re.sub(r'(?<=\s)\d+$', '', fragment)
+                return name, ' '.join(fragment.split())
+    return 'other', None
+
+
+def commands_of(data, config, compiled):
+    """The shell commands of one attempt: time per category from the `tool_use` of a shell tool to the `tool_result`
+    with its id (a command in the background only in `count` and `background`, one without a result in `unfinished`),
+    and `repeat_runs` (spec, Rekord epiku: in_attempts; a heuristic and a lower bound): a run of a repeat category
+    (test, e2e, check) whose key equals the previous run's in the attempt with no code change in between. A code change
+    is `Edit`, `Write`, `NotebookEdit` or an `other` command of any role; read, ci_watch, stack and the test categories
+    do not change code. When the absence of a change is not certain (a background command, a tool call without a
+    result, an unfinished subagent in between) the run is not counted."""
+    names = list(config['command_categories']) + ['other']
+    categories = {name: {'count': 0, 'background': 0, 'unfinished': 0, 'seconds': 0.0} for name in names}
+    repeat_names = config['repeat_categories']
+    repeat = {'count': 0, 'seconds': 0.0, 'by_category': {n: {'count': 0, 'seconds': 0.0} for n in repeat_names}}
+    ended = {event[1]: event[2] for event in reversed(data['tools']) if event[0] == 'result'}
+    clean = set()           # the keys of the runs after which no code change (and nothing uncertain) happened
+    for event in data['tools']:
+        if event[0] != 'use':
+            continue
+        _, tool_id, name, command, background, started = event
+        finished = tool_id in ended
+        if name in config['shell_tools']:
+            category, key = classify_command(command, compiled)
+            entry = categories[category]
+            entry['count'] += 1
+            if background or not finished:
+                entry['background' if background else 'unfinished'] += 1
+                clean.clear()
+                continue
+            seconds = ended[tool_id] - started if started is not None and ended[tool_id] is not None else None
+            seconds = seconds if seconds is not None and seconds >= 0 else None
+            if seconds is not None:
+                entry['seconds'] += seconds
+            if category == 'other':
+                clean.clear()
+            elif category in repeat_names:
+                if (category, key) in clean:
+                    repeat['count'] += 1
+                    repeat['by_category'][category]['count'] += 1
+                    repeat['seconds'] += seconds or 0.0
+                    repeat['by_category'][category]['seconds'] += seconds or 0.0
+                clean.add((category, key))
+        elif name in config['code_change_tools'] or background or not finished:
+            clean.clear()
+    return {'categories': categories, 'repeat_runs': repeat,
+            'api_retry': {'count': len(data['retries']), 'delay_ms': sum(data['retries'])},
+            'permission_denials': dict(data['denials'])}
+
+
+def in_attempts_of(parts):
+    """The `in_attempts` of the record: the sum of `commands_of` over the attempts with a transcript."""
+    total = None
+    for part in parts:
+        if total is None:
+            total = json.loads(json.dumps(part))
+            continue
+        for name, entry in part['categories'].items():
+            for field, value in entry.items():
+                total['categories'][name][field] += value
+        total['repeat_runs']['count'] += part['repeat_runs']['count']
+        total['repeat_runs']['seconds'] += part['repeat_runs']['seconds']
+        for name, entry in part['repeat_runs']['by_category'].items():
+            for field, value in entry.items():
+                total['repeat_runs']['by_category'][name][field] += value
+        total['api_retry']['count'] += part['api_retry']['count']
+        total['api_retry']['delay_ms'] += part['api_retry']['delay_ms']
+        for tool, count in part['permission_denials'].items():
+            total['permission_denials'][tool] = total['permission_denials'].get(tool, 0) + count
+    if total is None:
+        return None
+    for entry in list(total['categories'].values()) + [total['repeat_runs']] + list(
+            total['repeat_runs']['by_category'].values()):
+        entry['seconds'] = round(entry['seconds'], 3)
+    total['permission_denials'] = {tool: total['permission_denials'][tool] for tool in sorted(total['permission_denials'])}
+    return total
+
+
+def versions_of(datas):
+    """CLI versions (`system/init`) and models (assistant messages) with the number of attempts that have them. A name
+    that is not an identifier is skipped: the record holds no free text from the transcripts."""
+    cli, models = {}, {}
+    for data in datas:
+        for version in {i['version'] for i in data['inits'] if isinstance(i['version'], str)}:
+            if SAFE_NAME.match(version):
+                cli[version] = cli.get(version, 0) + 1
+        for model in {m['model'] for m in data['messages'].values() if m['model']}:
+            if SAFE_NAME.match(model):
+                models[model] = models.get(model, 0) + 1
+
+    def ranked(counts, name):
+        return [{name: key, 'attempts': n} for key, n in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+    return {'cli': ranked(cli, 'version'), 'models': ranked(models, 'model')}
+
+
+# ---------------------------------------------------------------------------------- transcripts: the record fields
+
+def _wall(attempt):
+    seconds = _number(attempt['wall_s'])
+    start, end = _number(attempt['started_at']), _number(attempt['ended_at'])
+    if seconds is None and start is not None and end is not None:
+        seconds = end - start
+    return seconds
+
+
+def transcript_path(ao_home, attempt):
+    """The `stdout.jsonl` of an attempt, or None when the task id or number would leave the attempt directory."""
+    task, number = attempt['task_id'], attempt['number']
+    if not isinstance(task, str) or not task or os.path.basename(task) != task or task in ('.', '..'):
+        return None
+    if not _is_int(number):
+        return None
+    return os.path.join(ao_home, 'tasks', task, 'attempts', str(number), 'stdout.jsonl')
+
+
+def transcript_fields(ao_home, run, config, records, epic_id, gaps):
+    """{by_task, attempts, value, in_attempts, versions} of the record from the attempts of the run and their
+    transcripts (`tasks/<id>/attempts/<n>/stdout.jsonl`). `records`: the stored records of other epics (the history
+    of the rates of models)."""
+    kinds = {t['task_id']: t['kind'] for t in run['tasks']}
+    attempts = sorted(run['attempts'], key=lambda a: (_number(a['started_at']) is None, _number(a['started_at']) or 0,
+                                                       str(a['task_id']), a['number'] or 0))
+    weights, compiled = config['token_weights'], compile_categories(config)
+    by_task = {}
+    for attempt in attempts:
+        task = by_task.setdefault(attempt['task_id'], {'kind': kinds.get(attempt['task_id']), 'work': 0.0,
+                                                       'attempts': 0})
+        task['attempts'] += 1
+        seconds = _wall(attempt)
+        if seconds is None:
+            gaps.add('by_task', 'próba %s/%s bez wall_s i końca: pominięta w czasie' % (attempt['task_id'],
+                                                                                    attempt['number']))
+        else:
+            task['work'] = round(task['work'] + seconds, 3)
+    entries, parsed, missing, rates, pending = [], [], [], [], []
+    for attempt in attempts:
+        label = '%s/%s' % (attempt['task_id'], attempt['number'])
+        path = transcript_path(ao_home, attempt)
+        data, reason = read_transcript(path) if path else (None, 'nieprawidłowy identyfikator próby')
+        seconds = _wall(attempt)
+        entry = {'task': attempt['task_id'], 'kind': kinds.get(attempt['task_id']), 'number': attempt['number'],
+                 'outcome': attempt['outcome'], 'executor_status': attempt['executor_status'],
+                 'wall_s': None if seconds is None else round(seconds, 3),
+                 'started_at': iso(_number(attempt['started_at'])), 'ended_at': iso(_number(attempt['ended_at'])),
+                 'value': None, 'estimated': None, 'tokens': None, 'estimated_tokens': None, 'cli_result': None,
+                 'model_rates': None}
+        entries.append(entry)
+        if data is None:
+            missing.append((label, reason))
+            parsed.append((attempt, None, None))
+            continue
+        orchestrator = orchestrator_role(kinds.get(attempt['task_id']))
+        cells, cli = usage_of_attempt(data, orchestrator, weights, label, gaps)
+        entry['cli_result'] = cli
+        if cli:
+            found = attempt_rates(data, weights)
+            entry['model_rates'] = {m: round(r, 12) for m, r in found.items()}
+            rates.append(found)
+        else:
+            pending.append((entry, data, orchestrator, label))
+        entry['_cells'] = cells
+        parsed.append((attempt, data, cells))
+    history = historical_rates({k: v for k, v in records.items() if k != epic_id}, rates)
+    for entry, data, orchestrator, label in pending:
+        entry['_cells'] = message_usage(data, orchestrator, history, weights, label, gaps)
+    items = []
+    for entry in entries:
+        cells = entry.pop('_cells', None)
+        items.append((entry['task'], cells))
+        if cells is not None:
+            entry['value'], entry['estimated'], entry['tokens'], entry['estimated_tokens'] = attempt_summary(
+                cells, entry['cli_result'])
+    if missing:
+        shown = ', '.join(label for label, _ in missing[:5]) + (', …' if len(missing) > 5 else '')
+        gaps.add('attempts.transcript', '%s: %d z %d prób (%s)' % (missing[0][1], len(missing), len(entries), shown))
+    if any(e['value'] is None and e['cli_result'] is not None for e in entries):
+        gaps.add('value', 'część prób bez wartości: suma niepełna')
+    datas = [data for _, data, _ in parsed if data is not None]
+    in_attempts = in_attempts_of([commands_of(d, config, compiled) for d in datas])
+    if not datas:
+        gaps.add('in_attempts', 'brak transkryptów prób')
+        gaps.add('versions', 'brak transkryptów prób')
+    return {'by_task': by_task, 'attempts': entries, 'value': value_sections(items), 'in_attempts': in_attempts,
+            'versions': versions_of(datas) if datas else None}
+
+
+# ------------------------------------------------------------------------------------------------- subscription share
+
+def value_within(attempts, intervals):
+    """The value of the attempts (entries of the record) inside the disjoint [low, high] intervals, assigned evenly
+    over the duration of each attempt (an attempt without an end runs to the end of the last interval). None when an
+    attempt that touches an interval has no value."""
+    total = 0.0
+    horizon = max((high for _, high in intervals), default=None)
+    for attempt in attempts:
+        start, end = _timestamp(attempt.get('started_at')), _timestamp(attempt.get('ended_at'))
+        if start is None:
+            continue
+        end = horizon if end is None else end
+        for low, high in intervals:
+            if end > start:
+                fraction = max(0.0, min(end, high) - max(start, low)) / (end - start)
+            else:
+                fraction = 1.0 if low <= start <= high else 0.0
+            if fraction <= 0:
+                continue
+            if not _is_number(attempt.get('value')):
+                return None
+            total += attempt['value'] * fraction
+    return total
+
+
+def other_attempts(epic, records, ao_root, config, busy_timeout_ms):
+    """The attempts (entries of the record) of another epic: from its stored record, else computed (value included)
+    from its run directory `ao-<epic>` under the AO root with the functions of the record of this epic (the database
+    read only, the transcripts; nothing is stored). None without both, or when the run directory is unreadable."""
+    record = records.get(epic)
+    if isinstance(record, dict) and isinstance(record.get('attempts'), list):
+        return record['attempts']
+    if ao_root is None or not epic or os.path.basename(epic) != epic or epic in ('.', '..'):
+        return None
+    home = os.path.join(ao_root, 'ao-%s' % epic)
+    try:
+        run = load_run(home, epic, busy_timeout_ms, Gaps())
+        return transcript_fields(home, run, config, records, epic, Gaps())['attempts']
+    except MetricsError:
+        return None
+
+
+def add_share(subscription, stretches, attempts, lookup, gaps):
+    """`share` of the subscription (spec: Rekord epiku): the value of this epic in the common interval (the parts of
+    its measurement interval in which another epic ran; the union when there are several) by the value of this epic and
+    of the overlapping epics in it (each epic's attempts assigned to the interval evenly over their duration, the other
+    epics' only within their own stretches of the overlap); 1 without overlapping epics; None with a gap when the value
+    of this epic or of an overlapping one is not known (no record and no run directory of it, or attempts without a
+    value). `stretches`: {epic: [(start, end)]}; `lookup(epic)`: the attempts of another epic or None."""
+    subscription['share'], subscription['share_estimated'] = None, False
+    if not subscription['overlap']:
+        subscription['share'] = 1
+        return
+    subscription['share_estimated'] = True
+    common = clip_merge([stretch for epic in subscription['overlap'] for stretch in stretches.get(epic, [])],
+                        float('-inf'), float('inf'))
+    mine = value_within(attempts, common)
+    if mine is None:
+        gaps.add('subscription.share', 'wartość tokenów epiku nieznana (próby bez wartości)')
+        return
+    total = mine
+    for other in subscription['overlap']:
+        others = lookup(other)
+        theirs = None if others is None else value_within(others, clip_merge(stretches.get(other, []), float('-inf'),
+                                                                              float('inf')))
+        if theirs is None:
+            gaps.add('subscription.share', 'brak wartości tokenów epiku %s (brak rekordu i katalogu przebiegu albo próby'
+                     ' bez wartości)' % other)
+            return
+        total += theirs
+    if total <= 0:
+        gaps.add('subscription.share', 'wartość tokenów epiku i nakładających się epików równa zero')
+        return
+    subscription['share'] = round(mine / total, 4)
+
+
 # ----------------------------------------------------------------------------- night state: limits, overlap, gate
 
 def read_measurements(night_dir):
@@ -556,18 +1298,18 @@ def subscription_of(span, overlap, gaps):
 
 
 def night_fields(run, epic_id, started, run_end, night_dir, gaps):
-    """(subscription, parallel, stretches) of the epic from measurements.jsonl."""
+    """(subscription, parallel, stretches, span) of the epic from measurements.jsonl."""
     events, reason = read_measurements(night_dir)
     if events is None:
         gaps.add('subscription', reason)
         gaps.add('parallel', reason)
-        return None, None, {}
+        return None, None, {}, None
     span = own_span(measurement_intervals(events), epic_id, started, run_end) if started is not None else None
     if span is None or span['end'] is None:
         why = 'epik bez pomiaru %s w measurements.jsonl' % ('start' if span is None else 'done')
         gaps.add('subscription', why)
         gaps.add('parallel', why)
-        return None, None, {}
+        return None, None, {}, None
     stretches = overlaps_of(measurement_intervals(events), epic_id, span['begin'], span['end'])
     repairs = {t['task_id'] for t in run['tasks'] if t['kind'] == 'repair'}
     in_overlap = set()
@@ -580,7 +1322,7 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
         if any(start < s_end and s_start < end for stretch in stretches.values() for s_start, s_end in stretch):
             in_overlap.add(attempt['task_id'])
     return (subscription_of(span, stretches, gaps),
-            {'epics': sorted(stretches), 'repairs': sorted(in_overlap)}, stretches)
+            {'epics': sorted(stretches), 'repairs': sorted(in_overlap)}, stretches, span)
 
 
 def gate_wait_of(night_dir, epic_id, started, gaps):
@@ -756,6 +1498,22 @@ def _stored_merged(previous):
         return None
 
 
+def read_records(state_dir):
+    """{epic: record} of the stored records <state>/epics/*.json (an unreadable one is skipped)."""
+    found = {}
+    directory = os.path.join(state_dir, 'epics')
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return found
+    for name in names:
+        if name.endswith('.json') and not name.startswith('.'):
+            record = read_previous(os.path.join(directory, name))
+            if record is not None:
+                found[name[:-len('.json')]] = record
+    return found
+
+
 def read_previous(path):
     try:
         with open(path, encoding='utf-8') as f:
@@ -766,9 +1524,14 @@ def read_previous(path):
 
 
 def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now, run=None, no_gh=True,
-                 repo=None, previous=None, pr=None):
+                 repo=None, previous=None, pr=None, records=None, ao_root=None):
     """(record, errors): the record of the epic run and the messages of failed GitHub calls (the record is complete
-    anyway: a failed source is null and a gap)."""
+    anyway: a failed source is null and a gap). records: {epic: stored record} of the other epics (the history of the
+    rates of models for attempts without a CLI result, and the overlapping epics of `subscription.share`); ao_root: the
+    directory of the run directories `ao-<epic>` (the overlapping epics without a record are computed from them;
+    default: the parent of ao_home)."""
+    records = records or {}
+    ao_root = os.path.dirname(ao_home) if ao_root is None else ao_root
     gaps = Gaps()
     ao_run = load_run(ao_home, epic_id, busy_timeout_ms, gaps)
     epic = ao_run['epic']
@@ -790,7 +1553,11 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     run_ended = done is not None or epic['status'] == 'DONE' or known_merge is not None
     jsonl, jsonl_gap = read_jsonl_events(os.path.join(ao_home, 'events.jsonl'))
     run_end = done if done is not None else (_number(epic['updated_at']) or now)
-    subscription, parallel, stretches = night_fields(ao_run, epic_id, started, run_end, night_dir, gaps)
+    subscription, parallel, stretches, span = night_fields(ao_run, epic_id, started, run_end, night_dir, gaps)
+    fields = transcript_fields(ao_home, ao_run, config, records, epic_id, gaps)
+    if subscription is not None:
+        add_share(subscription, stretches, fields['attempts'],
+                  lambda other: other_attempts(other, records, ao_root, config, busy_timeout_ms), gaps)
     retries = retries_of(ao_run, run_ended, gaps)
     retries['sync_prs'] = None if github['sync'] is None else [{'number': p['number'], 'state': p['state']}
                                                                 for p in github['sync']]
@@ -820,6 +1587,11 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'subscription': subscription,
         'gate_wait': gate_wait_of(night_dir, epic_id, started, gaps),
         'human': human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps),
+        'in_attempts': fields['in_attempts'],
+        'by_task': fields['by_task'],
+        'versions': fields['versions'],
+        'attempts': fields['attempts'],
+        'value': fields['value'],
     }
     keep_stored_values(record, previous, gaps)
     record['gaps'] = gaps.render()
@@ -865,7 +1637,8 @@ def cmd_epic(args, config, run, now):
     manual_fixes = read_manual_fixes(_expand(args.manual_fixes)) if args.manual_fixes else None
     path = state_path(_expand(args.state), args.epic)
     record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now, run=run,
-                                  no_gh=args.no_gh, repo=args.repo, previous=read_previous(path))
+                                  no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
+                                  records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home))
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
@@ -893,6 +1666,7 @@ def cmd_backfill(args, config, run, now):
         raise MetricsError('brak katalogu AO %s: %s' % (root, e.strerror or e))
     busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
     recorded, skipped, failures = [], [], []
+    records = read_records(_expand(args.state))
 
     def skip(name, reason, failure=False):
         skipped.append({'run': name, 'reason': reason})
@@ -922,8 +1696,10 @@ def cmd_backfill(args, config, run, now):
                 continue
             path = state_path(_expand(args.state), epic_id)
             record, errors = build_record(epic_id, home, config, busy, _expand(args.night), None, now, run=run,
-                                          no_gh=False, repo=args.repo, previous=read_previous(path), pr=pr)
+                                          no_gh=False, repo=args.repo, previous=read_previous(path), pr=pr,
+                                          records=records, ao_root=root)
             write_record(path, record)
+            records[epic_id] = record
         except MetricsError as e:
             skip(name, str(e), True)
             continue

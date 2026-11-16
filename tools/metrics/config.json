@@ -5,6 +5,9 @@
   "gh_timeout_s": 60,
   "shell_tools": ["Bash", "bash"],
   "command_categories": {
+    "read": [
+      "^\\s*(?:git\\s+(?:status|diff|log|show|rev-parse)|ls|cat|head|tail|grep|rg|wc|pwd)\\b[^|;&<>`$\\n]*$"
+    ],
     "test": [
       "\\bmake\\s+(?:-C\\s+\\S+\\s+)?test\\b[^|;&>]*",
       "\\bphpunit\\b[^|;&>]*",
@@ -37,11 +40,10 @@
     "ci_watch": [
       "\\bgh\\s+pr\\s+checks\\b[^|;&>]*--watch[^|;&>]*",
       "\\bgh\\s+run\\s+watch\\b[^|;&>]*"
-    ],
-    "read": [
-      "^\\s*(?:git\\s+(?:status|diff|log|show|rev-parse)|ls|cat|head|tail|grep|rg|wc|pwd)\\b[^|;&<>`$\\n]*$"
     ]
   },
+  "code_change_tools": ["Edit", "Write", "NotebookEdit"],
+  "repeat_categories": ["test", "e2e", "check"],
   "token_weights": {
     "input": 1,
     "cache_write_5m": 1.25,

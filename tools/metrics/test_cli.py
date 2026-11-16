@@ -55,7 +55,7 @@ class SkeletonTest(Env):
         self.assertTrue(uris and all('mode=ro' in u for u in uris), uris)
         with open(db, 'rb') as f:
             self.assertEqual(f.read(), before)
-        self.assertEqual(sorted(os.listdir(home)), ['events.jsonl', 'orchestrator.db'])
+        self.assertEqual(sorted(os.listdir(home)), ['events.jsonl', 'orchestrator.db', 'tasks'])
 
 
 class ErrorPathTest(Env):
@@ -162,6 +162,18 @@ class ConfigTest(Env):
         code, out, err = self.run_with(self.config(breakdown_order=['work', 'sleep']))
         self.assertEqual(code, 2)
         self.assertIn('breakdown_order', err)
+
+    def test_config_with_bad_code_change_tools(self):
+        code, out, err = self.run_with(self.config(code_change_tools='Edit'))
+        self.assertEqual(code, 2)
+        self.assertIn('code_change_tools', err)
+        self.assertIn('oczekiwano', err)
+
+    def test_config_with_a_repeat_category_that_has_no_command_pattern(self):
+        code, out, err = self.run_with(self.config(repeat_categories=['test', 'sleep']))
+        self.assertEqual(code, 2)
+        self.assertIn('repeat_categories', err)
+        self.assertIn('sleep', err)
 
     def test_config_with_a_bad_command_pattern(self):
         code, out, err = self.run_with(self.config(command_categories={'test': ['(unclosed']}))
