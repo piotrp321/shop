@@ -221,7 +221,7 @@ class RegressionWindowTest(TrendEnv):
 
     def test_a_closed_window_is_not_recomputed(self):
         record = self.stored()
-        record['regressions']['open'] = False
+        record['regressions'].update(open=False, complete=True)
         store_records(self.state, record)
         gh = self.gh()
         table = self.table(runner=gh, now=self.now)
@@ -233,6 +233,43 @@ class RegressionWindowTest(TrendEnv):
         table = self.table(runner=self.gh(), now=self.now + 30 * 86400)
         self.assertFalse(self.stored_record()['regressions']['open'])
         self.assertEqual(table['recomputed'], ['a'])
+
+    def test_after_the_end_of_the_window_a_gh_error_leaves_it_open_and_the_next_trend_closes_it(self):
+        self.stored()
+        after = self.now + 30 * 86400
+        first = self.table(runner=self.gh(fail_on=[('issue', 'list')]), now=after)
+        self.assertEqual(first['recomputed'], ['a'])
+        record = self.stored_record()
+        self.assertTrue(record['regressions']['open'])
+        self.assertFalse(record['regressions']['complete'])
+        gh = self.gh()
+        again = self.table(runner=gh, now=after)
+        self.assertEqual(again['recomputed'], ['a'])
+        record = self.stored_record()
+        self.assertFalse(record['regressions']['open'])
+        self.assertTrue(record['regressions']['complete'])
+        self.assertEqual(self.table(runner=self.gh(), now=after)['recomputed'], [])
+
+    def test_a_failed_sweep_source_alone_also_keeps_the_record_to_be_recomputed(self):
+        self.stored()
+        after = self.now + 30 * 86400
+        self.table(runner=self.gh(fail_on=[('issue', 'list')]), now=after)
+        self.assertEqual(self.table(runner=self.gh(), now=after)['recomputed'], ['a'])
+
+    def test_a_closed_record_without_found_after_merge_is_recomputed(self):
+        record = self.stored()
+        record['regressions'].update(open=False, complete=True)
+        record['found_after_merge'] = None
+        store_records(self.state, record)
+        self.assertEqual(self.table(runner=self.gh(), now=self.now)['recomputed'], ['a'])
+
+    def test_a_record_without_the_complete_flag_is_recomputed_once(self):
+        record = self.stored()
+        record['regressions'].update(open=False)
+        del record['regressions']['complete']
+        store_records(self.state, record)
+        self.assertEqual(self.table(runner=self.gh(), now=self.now + 30 * 86400)['recomputed'], ['a'])
+        self.assertEqual(self.table(runner=self.gh(), now=self.now + 30 * 86400)['recomputed'], [])
 
     def test_a_record_without_regressions_is_computed_when_gh_is_available(self):
         store_records(self.state, fake_record('a', merged='2026-11-10T10:00:00Z', final_pr=7, regressions=None))

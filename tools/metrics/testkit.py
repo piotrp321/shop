@@ -223,13 +223,13 @@ class FakeGh:
 
     prs: {number: {state, mergedAt, closingIssuesReferences, mergeCommit}}; sync: the list answered for `gh pr list`;
     runs: {commit or branch: [run, ...]} for `gh run list --commit/--branch`; jobs: {run id: [job, ...]} for
-    `gh run view`; commits: the list answered for `gh api repos/.../commits`; issues: {label: [issue, ...]} for
+    `gh run view`; commits: the list answered for `gh api repos/.../commits`; editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); issues: {label: [issue, ...]} for
     `gh issue list --label`; permissions: {login: role} for `gh api .../collaborators/<login>/permission` (a login
     without an entry is a non-collaborator: HTTP 404); fail: when set, every command ends with exit code 1 and that
     stderr; fail_on: the command prefixes, e.g. ('run', 'list') or ('api',), that end with that error."""
 
     def __init__(self, prs=None, sync=None, fail=None, runs=None, jobs=None, commits=None, issues=None,
-                 permissions=None, fail_on=()):
+                 permissions=None, fail_on=(), editors=None):
         self.prs = prs or {}
         self.sync = sync or []
         self.fail = fail
@@ -238,6 +238,7 @@ class FakeGh:
         self.commits = commits or []
         self.issues = issues or {}
         self.permissions = permissions or {}
+        self.editors = editors or {}
         self.fail_on = tuple(fail_on)
         self.calls = []
 
@@ -265,6 +266,12 @@ class FakeGh:
             return result(0, json.dumps({'jobs': self.jobs.get(int(command[3]), [])}))
         if command[:3] == ['gh', 'issue', 'list']:
             return result(0, json.dumps(self.issues.get(self._option(command, '--label'), [])))
+        if command[:3] == ['gh', 'api', 'graphql']:
+            number = int(next(a.split('=', 1)[1] for a in command if a.startswith('number=')))
+            login = self.editors.get(number)
+            issue = {'lastEditedAt': None, 'editor': None} if login is None else {
+                'lastEditedAt': '2026-11-14T12:00:00Z', 'editor': {'login': login}}
+            return result(0, json.dumps({'data': {'repository': {'issue': issue}}}))
         if command[:2] == ['gh', 'api']:
             path = command[2]
             if '/commits' in path:
@@ -326,7 +333,7 @@ def fake_record(epic, merged='2026-11-10T10:00:00Z', tasks=10, to_done=36000.0, 
                                               'models': [{'model': m, 'attempts': 1} for m in (models or ())]},
         'regressions': None if regressions is None else {
             'window_days': 14, 'until': '2026-11-24T10:00:00Z', 'open': window_open, 'checked_at': merged,
-            'merge_commit': None, 'ci_red': 0, 'reverts': [], 'issues': list(range(regressions)), 'count': regressions},
+            'merge_commit': None, 'complete': not window_open, 'ci_red': 0, 'reverts': [], 'issues': list(range(regressions)), 'count': regressions},
         'found_after_merge': {'issues': [], 'count': 0}, 'ci': None, 'gaps': []}
     record.update(over)
     return record

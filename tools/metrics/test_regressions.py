@@ -335,16 +335,111 @@ class BugFormTest(unittest.TestCase):
                                               'Wprowadzone przez'))
 
 
+def forbidden_flag(argument):
+    """Whether an argument of `gh api` makes it write: a method, a request body or a field."""
+    return (argument in ('-X', '--method', '--input', '-f', '-F', '--field', '--raw-field') or argument.startswith(
+        ('-X', '--method=', '--input=', '--field=', '--raw-field=', '-f', '-F')))
+
+
 class ReadOnlyTest(RegressionEnv):
     def test_every_gh_call_only_reads(self):
-        gh = self.gh(issues={'bug': [bug(10, 'deploy-ops', 'w')], 'agent': [sweep_issue(30)]},
-                     permissions={'w': 'write'})
+        gh = self.gh(issues={'bug': [bug(10, 'deploy-ops', 'stranger'), bug(11, 'deploy-ops', 'w')],
+                             'agent': [sweep_issue(30)]}, permissions={'w': 'write', 'e': 'write'},
+                     editors={10: 'e'})
         self.record(gh)
+        self.assertTrue([c for c in gh.calls if c[2:3] == ['graphql']])
         for call in gh.calls:
             self.assertIn(call[1], ('pr', 'run', 'issue', 'api'), call)
-            self.assertIn(call[2], ('view', 'list') if call[1] != 'api' else call[2:3], call)
-            self.assertFalse({'edit', 'merge', 'close', 'comment', 'create', '-X', '--method', '-f', '-F'}
-                             & set(call), call)
+            self.assertFalse({'edit', 'merge', 'close', 'comment', 'create', 'mutation'} & set(call), call)
+            if call[1] != 'api':
+                self.assertIn(call[2], ('view', 'list'), call)
+            elif call[2] == 'graphql':
+                query = next(a for a in call if a.startswith('query='))
+                self.assertTrue(query[len('query='):].lstrip().startswith('query'), query)
+                self.assertNotIn('mutation', ' '.join(call).lower())
+                self.assertFalse([a for a in call if a.startswith(('-X', '--method', '--input'))], call)
+            else:
+                self.assertTrue(call[2].startswith('repos/'), call)
+                self.assertFalse([a for a in call[2:] if forbidden_flag(a)], call)
+
+    def test_the_forbidden_flag_check_catches_the_write_forms(self):
+        for argument in ('-X', '-XPOST', '--method', '--method=POST', '--input', '--input=x', '-f', '-fa=b', '-F',
+                         '-Fa=b', '--field', '--field=a=b', '--raw-field', '--raw-field=a=b'):
+            self.assertTrue(forbidden_flag(argument), argument)
+        for argument in ('repos/{owner}/{repo}/commits?sha=main', 'graphql'):
+            self.assertFalse(forbidden_flag(argument), argument)
+
+
+class EditorTest(RegressionEnv):
+    """An issue of a foreign author counts when the last editor of its body may write (spec: Regresje po merge'u)."""
+
+    def gh_with(self, **kwargs):
+        kwargs.setdefault('permissions', {'writer': 'write', 'reader': 'read'})
+        return self.gh(issues={'bug': [bug(10, 'deploy-ops', 'stranger')]}, **kwargs)
+
+    def issues_of(self, gh):
+        return self.record(gh)['regressions']['issues']
+
+    def test_foreign_author_with_a_write_editor_counts(self):
+        self.assertEqual(self.issues_of(self.gh_with(editors={10: 'writer'})), [10])
+
+    def test_foreign_author_with_a_read_editor_does_not_count(self):
+        self.assertEqual(self.issues_of(self.gh_with(editors={10: 'reader'})), [])
+
+    def test_foreign_author_with_an_editor_who_is_not_a_collaborator_does_not_count(self):
+        self.assertEqual(self.issues_of(self.gh_with(editors={10: 'passerby'})), [])
+
+    def test_foreign_author_without_an_edit_does_not_count(self):
+        self.assertEqual(self.issues_of(self.gh_with()), [])
+
+    def test_an_editor_that_is_not_a_login_is_not_asked_about(self):
+        gh = self.gh_with(editors={10: '../../orgs/x'})
+        self.assertEqual(self.issues_of(gh), [])
+        self.assertFalse([c for c in gh.calls if c[:2] == ['gh', 'api'] and '/collaborators/' in c[2]
+                          and 'orgs' in c[2]])
+
+    def test_an_author_with_write_permission_needs_no_editor_lookup(self):
+        gh = self.gh(issues={'bug': [bug(10, 'deploy-ops', 'writer')]}, permissions={'writer': 'write'})
+        self.assertEqual(self.issues_of(gh), [10])
+        self.assertFalse([c for c in gh.calls if c[2:3] == ['graphql']])
+
+    def test_the_editor_is_not_looked_up_for_issues_that_do_not_name_the_epic(self):
+        gh = self.gh(issues={'bug': [bug(10, 'other-epic', 'stranger')]}, editors={10: 'writer'},
+                     permissions={'writer': 'write'})
+        self.assertEqual(self.issues_of(gh), [])
+        self.assertFalse([c for c in gh.calls if c[2:3] == ['graphql']])
+
+    def test_the_query_names_the_repository_and_the_issue(self):
+        gh = self.gh_with(editors={10: 'writer'})
+        self.record(gh, NOW, '--repo', 'owner/shop')
+        call = next(c for c in gh.calls if c[2:3] == ['graphql'])
+        self.assertIn('owner=owner', call)
+        self.assertIn('name=shop', call)
+        self.assertIn('number=10', call)
+        self.assertNotIn('-R', call)
+        placeholders = self.gh_with(editors={10: 'writer'})
+        self.record(placeholders)
+        call = next(c for c in placeholders.calls if c[2:3] == ['graphql'])
+        self.assertIn('owner={owner}', call)
+        self.assertIn('name={repo}', call)
+
+    def test_a_graphql_error_is_a_gh_error_that_keeps_the_stored_value(self):
+        first = self.record(self.gh_with(editors={10: 'writer'}))
+        self.assertEqual(first['regressions']['issues'], [10])
+        gh = self.gh_with(editors={10: 'writer'}, fail_on=[('api', 'graphql')])
+        code, out, err = self.deploy_ops(gh)
+        self.assertEqual(code, 3)
+        again = json.loads(out)
+        self.assertEqual(again['regressions']['issues'], [10])
+        self.assertTrue(any(g.startswith('regressions.issues') and 'gh' in g for g in again['gaps']), again['gaps'])
+        self.assertFalse(again['regressions']['complete'])
+
+    def test_a_graphql_error_without_a_stored_value_is_null_with_a_gap(self):
+        code, out, err = self.deploy_ops(self.gh_with(editors={10: 'writer'}, fail_on=[('api', 'graphql')]))
+        self.assertEqual(code, 3)
+        record = json.loads(out)
+        self.assertIsNone(record['regressions']['issues'])
+        self.assertIsNone(record['regressions']['count'])
 
 
 if __name__ == '__main__':

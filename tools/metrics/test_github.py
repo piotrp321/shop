@@ -39,7 +39,10 @@ class GithubFieldsTest(Env):
         for call in gh.calls:
             self.assertEqual(call[0], 'gh')
             self.assertIn(call[1], ('pr', 'run', 'issue', 'api'))
-            self.assertIn(call[2], ('view', 'list') if call[1] != 'api' else call[2:3])
+            if call[1] == 'api':
+                self.assertTrue(call[2].startswith('repos/') or call[2] == 'graphql', call)
+            else:
+                self.assertIn(call[2], ('view', 'list'))
             self.assertFalse({'edit', 'merge', 'close', 'comment', 'create'} & set(call), call)
         self.assertEqual(gh.calls[0][:4], ['gh', 'pr', 'view', '476'])
 

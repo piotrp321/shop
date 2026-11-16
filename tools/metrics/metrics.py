@@ -1602,9 +1602,30 @@ def reverts_of(run, repo, final_pr, merge_sha, low, high, gaps):
     return found
 
 
+EDITOR_QUERY = ('query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) '
+                '{ issue(number: $number) { lastEditedAt editor { login } } } }')
+REPO_PATTERN = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})$')
+
+
+def last_editor(run, repo, number):
+    """The login of the last editor of the issue (`editor` of the GraphQL `Issue`, a query only), or None when it was
+    never edited. Without --repo gh expands the {owner} and {repo} placeholders."""
+    match = REPO_PATTERN.match(repo or '')
+    owner, name = match.groups() if match else ('{owner}', '{repo}')
+    data = _gh_call(run, ['gh', 'api', 'graphql', '-f', 'query=%s' % EDITOR_QUERY, '-f', 'owner=%s' % owner, '-f',
+                          'name=%s' % name, '-F', 'number=%d' % number], 'gh api graphql')
+    try:
+        issue = data['data']['repository']['issue']
+        editor = issue.get('editor') if issue is not None else None
+        return editor.get('login') if editor is not None else None
+    except (KeyError, TypeError, AttributeError):
+        raise GhError('gh api graphql: nieoczekiwany kształt odpowiedzi')
+
+
 def bug_issues(run, repo, epic_id, final_pr, low, high, gaps):
-    """The numbers of the `bug` issues of the window whose `Wprowadzone przez` names the epic or its PR and whose
-    author may write to the repository (the form is public: a foreign issue does not count)."""
+    """The numbers of the `bug` issues of the window whose `Wprowadzone przez` names the epic or its PR and that were
+    created, or last edited, by someone who may write to the repository (the form is public: a foreign issue that no
+    writer touched does not count)."""
     issues, truncated = _issue_list(run, repo, 'bug', low, high)
     if truncated:
         gaps.add('regressions.issues', 'lista issues obcięta do %d' % ISSUE_LIMIT)
@@ -1616,7 +1637,8 @@ def bug_issues(run, repo, epic_id, final_pr, low, high, gaps):
         if value is None or not names_epic(value, epic_id, final_pr):
             continue
         author = issue.get('author')
-        if has_write_access(run, author.get('login') if isinstance(author, dict) else None, repo, cache):
+        if (has_write_access(run, author.get('login') if isinstance(author, dict) else None, repo, cache)
+                or has_write_access(run, last_editor(run, repo, issue['number']), repo, cache)):
             found.append(issue['number'])
     return sorted(found)
 
@@ -1637,8 +1659,8 @@ def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now,
     (`previous`: the stored record) is kept then."""
     until = merged + config['regression_window_days'] * DAY
     merge_sha = merge_sha if isinstance(merge_sha, str) and SHA_PATTERN.match(merge_sha) else None
-    result = {'window_days': config['regression_window_days'], 'until': iso(until), 'open': now < until,
-              'checked_at': iso(now), 'merge_commit': merge_sha}
+    result = {'window_days': config['regression_window_days'], 'until': iso(until), 'open': None,
+              'complete': None, 'checked_at': iso(now), 'merge_commit': merge_sha}
     sources = (
         ('ci_red', 'regressions.ci_red', ('regressions', 'ci_red'),
          (lambda: red_ci(run, repo, config, merge_sha)) if merge_sha else None),
@@ -1649,21 +1671,25 @@ def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now,
         ('found', 'found_after_merge', ('found_after_merge', 'issues'),
          lambda: sweep_issues(run, repo, epic_id, merged, until, gaps)),
     )
-    values = {}
+    values, complete = {}, True
     for key, field, path, compute in sources:
         values[key] = None
         if compute is None:
+            complete = False
             gaps.add(field, 'brak commita merge\'u końcowego PR')
             continue
         try:
             values[key] = compute()
         except GhError as e:
+            complete = False
             errors.append(str(e))
             gaps.add(field, 'błąd gh: %s' % e)
             values[key] = _get(previous, path)
             if values[key] is not None:
                 gaps.add(field, 'źródło niedostępne: zachowano poprzednią wartość')
-    result.update(ci_red=values['ci_red'], reverts=values['reverts'], issues=values['issues'])
+    # The window closes only after a run in which every source answered: a failed one leaves it open for the next trend.
+    result.update(ci_red=values['ci_red'], reverts=values['reverts'], issues=values['issues'], complete=complete,
+                  open=now < until or not complete)
     counts = [None if values['ci_red'] is None else min(values['ci_red'], 1),
               None if values['reverts'] is None else len(values['reverts']),
               None if values['issues'] is None else len(values['issues'])]
@@ -2078,7 +2104,7 @@ def change_annotations(previous, current):
 
 def refresh_windows(records, state_dir, config, run, repo, now, errors):
     """Recomputes the regressions and found_after_merge of the records whose window is open (or never computed, or
-    computed with a failed source): a merge of another epic and the start of a `/ao-run` session call `trend`. Stores
+    computed with a failed source: `complete` is false): a merge of another epic and the start of a `/ao-run` session call `trend`. Stores
     the changed records; returns the ids. Values of a source that fails stay (regressions_of)."""
     done = []
     for epic in sorted(records):
@@ -2089,8 +2115,10 @@ def refresh_windows(records, state_dir, config, run, repo, now, errors):
             continue
         final_pr = record.get('final_pr')
         current = record.get('regressions')
+        found = record.get('found_after_merge')
         if not _is_int(final_pr) or (isinstance(current, dict) and current.get('open') is False
-                                     and current.get('count') is not None):
+                                     and current.get('complete') is True and isinstance(found, dict)
+                                     and current.get('count') is not None and found.get('count') is not None):
             continue
         sha = current.get('merge_commit') if isinstance(current, dict) else None
         if not (isinstance(sha, str) and SHA_PATTERN.match(sha)):
