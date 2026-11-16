@@ -542,18 +542,18 @@ def subscription_of(span, overlap, gaps):
 
 
 def night_fields(run, epic_id, started, run_end, night_dir, gaps):
-    """(subscription, parallel) of the epic from measurements.jsonl."""
+    """(subscription, parallel, stretches) of the epic from measurements.jsonl."""
     events, reason = read_measurements(night_dir)
     if events is None:
         gaps.add('subscription', reason)
         gaps.add('parallel', reason)
-        return None, None
+        return None, None, {}
     span = own_span(measurement_intervals(events), epic_id, started, run_end) if started is not None else None
     if span is None or span['end'] is None:
         why = 'epik bez pomiaru start w measurements.jsonl' if span is None else 'epik bez pomiaru done w measurements.jsonl'
         gaps.add('subscription', why)
         gaps.add('parallel', why)
-        return None, None
+        return None, None, {}
     stretches = overlaps_of(measurement_intervals(events), epic_id, span['begin'], span['end'])
     repairs = {t['task_id'] for t in run['tasks'] if t['kind'] == 'repair'}
     in_overlap = set()
@@ -566,7 +566,7 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
         if any(start < s_end and s_start < end for stretch in stretches.values() for s_start, s_end in stretch):
             in_overlap.add(attempt['task_id'])
     return (subscription_of(span, stretches, gaps),
-            {'epics': sorted(stretches), 'repairs': sorted(in_overlap)})
+            {'epics': sorted(stretches), 'repairs': sorted(in_overlap)}, stretches)
 
 
 def gate_wait_of(night_dir, epic_id, started, gaps):
@@ -639,37 +639,167 @@ def human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps):
     return {**summary, 'manual_fixes': manual_fixes}
 
 
-def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now):
+# ------------------------------------------------------------------------------------------------------- GitHub
+
+class GhError(Exception):
+    """`gh` failed (cannot be run, timed out, exit code other than 0, or an answer that is not JSON)."""
+
+
+def gh_json(run, args, repo):
+    command = ['gh'] + args + (['-R', repo] if repo else [])
+    label = 'gh %s' % ' '.join(args[:2])
+    try:
+        result = run(command)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise GhError('%s: %s' % (label, getattr(e, 'strerror', None) or e))
+    if result.returncode != 0:
+        raise GhError('%s: kod %s: %s' % (label, result.returncode, (result.stderr or '').strip()[:200]))
+    try:
+        return json.loads(result.stdout)
+    except (ValueError, TypeError):
+        raise GhError('%s: odpowiedź nie jest JSON' % label)
+
+
+def fetch_pr(run, number, repo):
+    """{state, merged_at (epoch or None), issue (first closing issue or None)} of a pull request."""
+    data = gh_json(run, ['pr', 'view', str(number), '--json', 'state,mergedAt,closingIssuesReferences'], repo)
+    try:
+        merged = night_queue.parse_time(data['mergedAt']).timestamp() if data.get('mergedAt') else None
+        issues = [i['number'] for i in data.get('closingIssuesReferences') or []]
+        return {'state': data['state'], 'merged_at': merged, 'issue': issues[0] if issues else None}
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise GhError('gh pr view: nieoczekiwany kształt odpowiedzi')
+
+
+def fetch_sync_prs(run, epic_id, repo):
+    """[{number, state, created (epoch)}] of the PRs of the branch sync/<epic>-main."""
+    data = gh_json(run, ['pr', 'list', '--head', 'sync/%s-main' % epic_id, '--state', 'all', '--json',
+                         'number,state,createdAt', '--limit', '100'], repo)
+    try:
+        return [{'number': p['number'], 'state': p['state'],
+                 'created': night_queue.parse_time(p['createdAt']).timestamp()} for p in data]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise GhError('gh pr list: nieoczekiwany kształt odpowiedzi')
+
+
+def github_data(run, no_gh, final_pr, epic_id, repo, gaps, pr=None):
+    """{pr (fetch_pr result or None), sync (list or None), errors}: what GitHub says. With --no-gh, or on a gh
+    error, the fields are None, with a gap each; the errors are the messages of the failed calls."""
+    data = {'pr': pr, 'sync': None, 'errors': []}
+    if no_gh:
+        for field in ('issue', 'merged_at', 'retries.sync_prs'):
+            gaps.add(field, 'pominięto gh (--no-gh)')
+        return data
+    if final_pr is not None and pr is None:
+        try:
+            data['pr'] = fetch_pr(run, final_pr, repo)
+        except GhError as e:
+            data['errors'].append(str(e))
+            gaps.add('issue', 'błąd gh: %s' % e)
+            gaps.add('merged_at', 'błąd gh: %s' % e)
+    try:
+        data['sync'] = fetch_sync_prs(run, epic_id, repo)
+    except GhError as e:
+        data['errors'].append(str(e))
+        gaps.add('retries.sync_prs', 'błąd gh: %s' % e)
+    return data
+
+
+def _get(record, path):
+    for key in path:
+        if not isinstance(record, dict):
+            return None
+        record = record.get(key)
+    return record
+
+
+def _set(record, path, value):
+    for key in path[:-1]:
+        record = record[key]
+    record[path[-1]] = value
+
+
+# Fields of a source that can fail for a moment (gh) or is not given every time (the list of manual fixes): a null
+# from the source never replaces the stored value.
+KEPT_PATHS = (('issue',), ('merged_at',), ('wall', 'to_merge'), ('wall', 'review'), ('retries', 'sync_prs'),
+              ('parallel', 'sync_prs'), ('human', 'manual_fixes'))
+
+
+def keep_stored_values(record, previous, gaps):
+    for path in KEPT_PATHS:
+        old = _get(previous, path)
+        if old is not None and _get(record, path) is None and isinstance(_get(record, path[:-1]), dict):
+            _set(record, path, old)
+            gaps.add('.'.join(path), 'źródło niedostępne: zachowano poprzednią wartość')
+
+
+def read_previous(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now, run=None, no_gh=True,
+                 repo=None, previous=None, pr=None):
+    """(record, errors): the record of the epic run and the messages of failed GitHub calls (the record is complete
+    anyway: a failed source is null and a gap)."""
     gaps = Gaps()
-    run = load_run(ao_home, epic_id, busy_timeout_ms, gaps)
-    epic = run['epic']
+    ao_run = load_run(ao_home, epic_id, busy_timeout_ms, gaps)
+    epic = ao_run['epic']
     started = _number(epic['created_at'])
-    done = next((e['at'] for e in run['events'] if e['type'] == 'epic_done'), None)
+    done = next((e['at'] for e in ao_run['events'] if e['type'] == 'epic_done'), None)
     if done is None:
         gaps.add('done_at', 'brak zdarzenia epic_done')
-    to_done = round(done - started, 3) if done is not None and started is not None else None
-    run_ended = done is not None or epic['status'] == 'DONE'
     final_pr = epic['final_pr_number']
     if final_pr is None:
         gaps.add('final_pr', 'epik nie ma końcowego PR')
+    github = github_data(run, no_gh, final_pr, epic_id, repo, gaps, pr)
+    merged = github['pr']['merged_at'] if github['pr'] else None
+    if github['pr'] is not None:
+        if merged is None:
+            gaps.add('merged_at', 'końcowy PR nie jest zmergowany (stan %s)' % github['pr']['state'])
+        if github['pr']['issue'] is None:
+            gaps.add('issue', 'końcowy PR nie zamyka żadnego issue')
+    run_ended = done is not None or epic['status'] == 'DONE' or merged is not None
     jsonl, jsonl_gap = read_jsonl_events(os.path.join(ao_home, 'events.jsonl'))
+    run_end = done if done is not None else (_number(epic['updated_at']) or now)
+    subscription, parallel, stretches = night_fields(ao_run, epic_id, started, run_end, night_dir, gaps)
+    retries = retries_of(ao_run, run_ended, gaps)
+    retries['sync_prs'] = None if github['sync'] is None else [{'number': p['number'], 'state': p['state']}
+                                                                for p in github['sync']]
+    if parallel is not None:
+        parallel['sync_prs'] = None if github['sync'] is None else sorted(
+            p['number'] for p in github['sync']
+            if any(s_start <= p['created'] < s_end for stretch in stretches.values() for s_start, s_end in stretch))
+        if github['sync'] is None:
+            gaps.add('parallel.sync_prs', 'brak listy PR sync')
     record = {
         'epic': epic_id,
+        'issue': github['pr']['issue'] if github['pr'] else None,
         'final_pr': final_pr,
-        'tasks': sum(1 for t in run['tasks'] if t['kind'] == 'plan'),
+        'tasks': sum(1 for t in ao_run['tasks'] if t['kind'] == 'plan'),
         'started_at': iso(started),
         'done_at': iso(done),
-        'wall': {'to_done': to_done},
-        'breakdown': breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps),
-        'integration': integration_of(run, epic, gaps),
-        'retries': retries_of(run, run_ended, gaps),
+        'merged_at': iso(merged),
+        'wall': {
+            'to_done': round(done - started, 3) if done is not None and started is not None else None,
+            'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
+            'review': round(merged - done, 3) if merged is not None and done is not None else None,
+        },
+        'breakdown': breakdown_of(ao_run, started, done, jsonl, jsonl_gap, config, gaps),
+        'integration': integration_of(ao_run, epic, gaps),
+        'retries': retries,
+        'parallel': parallel,
+        'subscription': subscription,
+        'gate_wait': gate_wait_of(night_dir, epic_id, started, gaps),
+        'human': human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps),
     }
-    run_end = done if done is not None else (_number(epic['updated_at']) or now)
-    record['subscription'], record['parallel'] = night_fields(run, epic_id, started, run_end, night_dir, gaps)
-    record['gate_wait'] = gate_wait_of(night_dir, epic_id, started, gaps)
-    record['human'] = human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps)
+    keep_stored_values(record, previous, gaps)
     record['gaps'] = gaps.render()
-    return record
+    return record, github['errors']
 
 
 # ------------------------------------------------------------------------------------------------- state and CLI
@@ -709,10 +839,14 @@ def cmd_epic(args, config, run, now):
     ao_home = _expand(args.ao_home or os.path.join(ao_root, 'ao-%s' % args.epic))
     busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
     manual_fixes = read_manual_fixes(_expand(args.manual_fixes)) if args.manual_fixes else None
-    record = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now)
-    write_record(state_path(_expand(args.state), args.epic), record)
+    path = state_path(_expand(args.state), args.epic)
+    record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now, run=run,
+                                  no_gh=args.no_gh, repo=args.repo, previous=read_previous(path))
+    write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
-    return 0
+    for error in errors:
+        print('metrics: błąd gh: %s (pola z GitHuba są null, zachowano poprzednie wartości)' % error, file=sys.stderr)
+    return EXIT_SOURCE if errors else 0
 
 
 def build_parser():
