@@ -95,6 +95,14 @@ class SubscriptionTest(NightEnv):
         self.assertTrue(any(g.startswith('subscription') and 'unavailable' in g for g in record['gaps']),
                         record['gaps'])
 
+    def test_usage_state_other_than_ok_at_both_ends_is_null_not_empty(self):
+        sub, record = self.subscription([start('demo', 110, status='unavailable'),
+                                         done('demo', 5010, status='unreadable')])
+        self.assertIsNone(sub['windows'])
+        self.assertEqual(sub['overlap'], [])
+        self.assertTrue(any(g.startswith('subscription') and 'unavailable' in g and 'unreadable' in g
+                            for g in record['gaps']), record['gaps'])
+
     def test_usage_state_other_than_ok_at_start_is_null(self):
         sub, record = self.subscription([start('demo', 110, all_percent=0, status='unreadable'),
                                          done('demo', 5010, all_percent=30)])

@@ -526,16 +526,17 @@ def overlaps_of(intervals, epic_id, begin, end):
 
 def subscription_of(span, overlap, gaps):
     """The raw increase of every limit window between the start and the done measurement (night_queue._window_deltas:
-    a window renewed during the epic, or a usage state other than ok, gives None)."""
+    a window renewed during the epic, or a usage state other than ok, gives None; when neither state is ok the
+    labels of the windows are unknown and `windows` itself is None)."""
     before, after = span['start']['usage'], span['done']['usage']
     labels = [w['label'] for w in (before if before.get('status') == 'ok' else after).get('windows', [])] \
-        if 'ok' in (before.get('status'), after.get('status')) else []
+        if 'ok' in (before.get('status'), after.get('status')) else None
     deltas = night_queue._window_deltas(before, after)
-    windows = {label: deltas.get(label) for label in labels}
+    windows = None if labels is None else {label: deltas.get(label) for label in labels}
     if before.get('status') != 'ok' or after.get('status') != 'ok':
         gaps.add('subscription', 'stan limitu inny niż ok (start: %s, done: %s)' % (before.get('status'),
                                                                                   after.get('status')))
-    for label, delta in windows.items():
+    for label, delta in (windows or {}).items():
         if delta is None and before.get('status') == 'ok' and after.get('status') == 'ok':
             gaps.add('subscription', 'okno %s odnowione w trakcie epiku albo bez przyrostu' % label)
     return {'windows': windows, 'overlap': sorted(overlap)}
