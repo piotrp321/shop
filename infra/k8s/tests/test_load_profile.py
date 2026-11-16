@@ -35,7 +35,8 @@ def java_options(case):
 
 class LoadProfileTest(unittest.TestCase):
     def test_every_pod_has_the_resources_it_has_in_prod(self):
-        load, prod = resources("load"), resources("prod")
+        # prod-backup: the load profile has the backup (ci), prod has it off until it is configured.
+        load, prod = resources("load"), resources("prod-backup")
         self.assertEqual(set(prod), set(load))
         for key in prod:
             self.assertEqual(prod[key], load[key], key)

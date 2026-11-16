@@ -9,11 +9,11 @@ TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount"
 SECRET = "shop-backup"
 
 
-def verify(case="prod"):
+def verify(case="prod-backup"):
     return by_logical(case, "CronJob")["backup-verify"]
 
 
-def all_containers(case="prod"):
+def all_containers(case="prod-backup"):
     spec = pod_spec(verify(case))
     return spec.get("initContainers", []) + spec["containers"]
 
@@ -36,7 +36,7 @@ def mounts(container):
 
 class CronJobTest(unittest.TestCase):
     def test_it_runs_every_morning_at_five_in_warsaw_and_never_twice_at_once(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = verify(case)["spec"]
             self.assertEqual("0 5 * * *", spec["schedule"], case)
             self.assertEqual("Europe/Warsaw", spec["timeZone"], case)
@@ -47,7 +47,7 @@ class CronJobTest(unittest.TestCase):
             self.assertNotIn("suspend", spec, case)
 
     def test_it_has_the_limits_of_time_and_of_retries_of_the_backup(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             job = verify(case)["spec"]["jobTemplate"]["spec"]
             backup_job = by_logical(case, "CronJob")["backup"]["spec"]["jobTemplate"]["spec"]
             self.assertEqual(1, job["backoffLimit"], case)
@@ -61,13 +61,13 @@ class CronJobTest(unittest.TestCase):
         self.assertEqual("0 3 * * *", by_logical("prod-verify-schedule", "CronJob")["backup"]["spec"]["schedule"])
 
     def test_it_is_in_the_wave_of_the_backup(self):
-        self.assertEqual(wave(by_logical("prod", "CronJob")["backup"]), wave(verify()))
+        self.assertEqual(wave(by_logical("prod-backup", "CronJob")["backup"]), wave(verify()))
 
     def test_without_backup_enabled_it_is_not_rendered(self):
         self.assertNotIn("backup-verify", by_logical("prod-nobackup", "CronJob"))
 
     def test_every_container_has_resources(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container in all_containers(case):
                 self.assertIn("resources", container, f"{case} {container['name']}")
 
@@ -97,7 +97,7 @@ class PodTest(unittest.TestCase):
         self.assertNotIn("persistentVolumeClaim", [k for v in spec["volumes"] for k in v])
 
     def test_nothing_of_the_production_database_is_reachable(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = pod_spec(verify(case))
             for container in all_containers(case):
                 label = f"{case} {container['name']}"
@@ -111,8 +111,8 @@ class PodTest(unittest.TestCase):
             self.assertEqual("127.0.0.1", env_of(spec["containers"][0])["PGHOST"], case)
 
     def test_the_images_have_a_digest_and_the_postgres_is_the_one_of_the_server(self):
-        from_chart = containers(by_logical("prod", "StatefulSet")["postgres"])[0]["image"]
-        for case in ("prod", "ci"):
+        from_chart = containers(by_logical("prod-backup", "StatefulSet")["postgres"])[0]["image"]
+        for case in ("prod-backup", "ci"):
             for container in all_containers(case):
                 if container["name"] in ("postgres", "verify"):
                     self.assertEqual(from_chart, container["image"], f"{case} {container['name']}")
@@ -120,7 +120,7 @@ class PodTest(unittest.TestCase):
                 self.assertNotIn("piotrp321", container["image"])
 
     def test_restic_comes_from_the_image_of_restic_mounted_as_a_volume(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = pod_spec(verify(case))
             volumes = {v["name"]: v for v in spec["volumes"]}
             verifying = spec["containers"][0]
@@ -134,7 +134,7 @@ class PodTest(unittest.TestCase):
         volumes = {v["name"]: v for v in spec["volumes"]}
         self.assertEqual("shop-scripts", volumes["scripts"]["configMap"]["name"])
         self.assertEqual(["sh", "/scripts/backup-verify.sh"], spec["containers"][0]["command"])
-        configs = [d for d in of_kind("prod", "ConfigMap") if name(d) == "shop-scripts"]
+        configs = [d for d in of_kind("prod-backup", "ConfigMap") if name(d) == "shop-scripts"]
         self.assertIn("backup-verify.sh", configs[0]["data"])
 
 
@@ -142,7 +142,7 @@ class CertificatesTest(unittest.TestCase):
     def test_restic_trusts_the_certificates_of_its_own_image(self):
         """The image of postgres has no bundle of CA certificates in the place restic looks at, and the repository in prod is
         https (R2): the bundle comes from the same volume as the binary."""
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             verifying = pod_spec(verify(case))["containers"][0]
             env = env_of(verifying)
             mount = next(path for path, volume in mounts(verifying).items() if env["RESTIC_BIN"].startswith(path + "/"))
@@ -153,7 +153,7 @@ class CertificatesTest(unittest.TestCase):
 
 class AccessTest(unittest.TestCase):
     def test_only_the_container_that_reads_the_id_of_the_cluster_has_the_token(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = pod_spec(verify(case))
             self.assertIs(False, spec["automountServiceAccountToken"], case)
             self.assertEqual("shop-backup", spec["serviceAccountName"], case)
@@ -161,7 +161,7 @@ class AccessTest(unittest.TestCase):
             self.assertEqual(["cluster-id"], with_token, case)
 
     def test_no_container_with_the_secret_of_the_backup_has_the_token_and_the_one_with_the_token_has_no_secret(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container in all_containers(case):
                 with_secret = any(secret == SECRET for _, secret, _ in secret_refs(container))
                 self.assertFalse(with_secret and TOKEN_PATH in mounts(container), f"{case} {container['name']}")
@@ -172,21 +172,21 @@ class AccessTest(unittest.TestCase):
         def cluster_id(doc):
             return next(c for c in pod_spec(doc).get("initContainers", []) if c["name"] == "cluster-id")
 
-        self.assertEqual(cluster_id(by_logical("prod", "CronJob")["backup"]), cluster_id(verify()))
+        self.assertEqual(cluster_id(by_logical("prod-backup", "CronJob")["backup"]), cluster_id(verify()))
         spec = pod_spec(verify())
         mounted = {c["name"] for c in all_containers() if "cluster" in mounts(c).values()}
         self.assertEqual({"cluster-id", "verify"}, mounted)
         self.assertEqual({}, {v["name"]: v for v in spec["volumes"]}["cluster"]["emptyDir"])
 
     def test_the_service_account_and_its_role_are_those_of_the_backup(self):
-        roles = [d for d in of_kind("prod", "ClusterRole") if "backup" in name(d)]
+        roles = [d for d in of_kind("prod-backup", "ClusterRole") if "backup" in name(d)]
         self.assertEqual(1, len(roles))
-        bindings = [d for d in of_kind("prod", "ClusterRoleBinding") if "backup" in name(d)]
+        bindings = [d for d in of_kind("prod-backup", "ClusterRoleBinding") if "backup" in name(d)]
         self.assertEqual(1, len(bindings))
-        self.assertEqual(1, len([d for d in of_kind("prod", "ServiceAccount") if "backup" in name(d)]))
+        self.assertEqual(1, len([d for d in of_kind("prod-backup", "ServiceAccount") if "backup" in name(d)]))
 
     def test_only_the_verifying_container_reads_the_secret_of_the_backup_with_the_repository_and_its_password(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container in all_containers(case):
                 uses = any(secret == SECRET for _, secret, _ in secret_refs(container))
                 self.assertEqual(container["name"] == "verify", uses, f"{case} {container['name']}")
@@ -205,7 +205,7 @@ class AccessTest(unittest.TestCase):
 class DiskTest(unittest.TestCase):
     def test_the_restored_databases_may_not_fill_the_disk_of_the_node(self):
         """The data of the temporary Postgres is limited to the size of the production one: a pod that outgrows it is evicted."""
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             volumes = {v["name"]: v for v in pod_spec(verify(case))["volumes"]}
             claims = by_logical(case, "StatefulSet")["postgres"]["spec"]["volumeClaimTemplates"]
             data = next(c for c in claims if c["metadata"]["name"] == "data")
@@ -214,7 +214,7 @@ class DiskTest(unittest.TestCase):
 
 class ReadDataTest(unittest.TestCase):
     def test_prod_reads_a_subset_of_the_data_and_ci_all_of_it(self):
-        for case, expected in (("prod", "subset"), ("ci", "all")):
+        for case, expected in (("prod-backup", "subset"), ("ci", "all")):
             verifying = pod_spec(verify(case))["containers"][0]
             self.assertEqual(expected, env_of(verifying)["VERIFY_READ_DATA"], case)
 

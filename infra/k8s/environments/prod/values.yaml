@@ -70,8 +70,9 @@ ipAllowList:
 # The nightly backup into a restic repository in a Cloudflare R2 bucket (docs/features/deploy-ops/spec.md, O2). Replace the
 # repository with the address of the bucket (s3:https://<account id>.r2.cloudflarestorage.com/<bucket>) before the first
 # deployment with the backups; the secret is the SealedSecret shop-backup (make -C infra/k8s seal-secrets WHAT=backup).
+# Off until both exist (README.md, section 2, step 3): without them the backup would fail every night and fire its alerts.
 backup:
-  enabled: true
+  enabled: false
   repository: s3:https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/shop-backups
   s3Region: auto
   secretName: shop-backup
