@@ -2121,6 +2121,186 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
     return [item for _, item in keep[:int(settings['max_items'])]]
 
 
+# ----------------------------------------------------------------------------------------------------- decisions
+#
+# `decide` (spec: Decyzje optymalizacyjne) is stateless: it builds the candidates of the rules from a stored record,
+# the stored history and, for D1, the EVALS 2.0 results. A candidate is a rule that fired and has a proposal; a rule
+# that ran without a proposal or could not run for lack of data is in `skipped` with its reason.
+
+# The reasons of the gate (night_queue.py, steps 4-5) that come from the file rule: `wspólne pliki z <epik>: <ścieżki>`
+# (candidates of the same files), `zakres wspólny z <epik>: ...` (night list) and `<epik> w toku bez zakresu: ...`
+# (the scope of an epic in progress is not readable). The other reasons (`dwa epiki aktywne`, `pamięć Dockera`, `stan
+# limitów`, `równoległość wstrzymana`, ...) are not the file rule.
+FILE_RULE_REASON = re.compile(r'^(?:wspólne pliki z |zakres wspólny z )|\sw toku bez zakresu(?::|$)')
+MEASURES = {'D1': 'wartość roli na zadanie (USD)', 'D2': '`work` zadania planu (h)', 'D3': '`gate_wait` epiku (h)',
+            'D4': 'udział kategorii czekania w jej mianowniku (pp)'}
+D2_KEY = 'D2:plan_split'
+D3_KEY = 'D3:gate_wait'
+
+
+def make_candidate(key, data, proposal, wall_h, value_usd=None, estimated=False):
+    """A candidate of a rule: `key` is the rule and its subject (the same for the same rule and subject in every epic),
+    `expected_effect` the saving of wall-clock time in hours and/or of token value in USD (None where the rule says
+    nothing), `verification` the measure of the rule and the command that computes it after the fix."""
+    rule = key.split(':', 1)[0]
+    return {'key': key, 'rule': rule, 'data': data, 'proposal': proposal,
+            'expected_effect': {'wall_h': None if wall_h is None else round(wall_h, 3),
+                                'value_usd': None if value_usd is None else round(value_usd, 4),
+                                'estimated': bool(estimated)},
+            'verification': "%s: `metrics.py effect %s --at <czas merge'u poprawki>`" % (MEASURES[rule], key)}
+
+
+def order_candidates(candidates):
+    """Spec: the expected wall-clock saving descending, then the token value descending (unknown is 0), then the key."""
+    return sorted(candidates, key=lambda c: (-(c['expected_effect']['wall_h'] or 0.0),
+                                             -(c['expected_effect']['value_usd'] or 0.0), c['key']))
+
+
+def skip_rule(skipped, key, reason):
+    skipped.append({'key': key, 'reason': reason})
+
+
+def d4_candidates(record, config, skipped):
+    """D4: the share of a waiting category in its denominator reaches its threshold: human_wait and limit_wait in
+    to_done, ci (`ci_wait` plus `in_attempts.ci_watch`) in `work`, review in to_merge (known only after the merge).
+    The effect is the time of the category (the share times its denominator); for `ci` the waiting time itself, never
+    more."""
+    settings = config['decisions']
+    found = []
+
+    def check(subject, parts, denominator, denominator_name, threshold, proposal):
+        key = 'D4:%s' % subject
+        if not all(_is_number(p) for p in parts) or not _is_number(denominator) or denominator <= 0:
+            return skip_rule(skipped, key, 'brak danych: %s' % ', '.join(
+                [n for n, p in zip(parts_names[subject], parts) if not _is_number(p)]
+                + ([denominator_name] if not _is_number(denominator) or denominator <= 0 else [])))
+        seconds = sum(parts)
+        share = seconds / denominator
+        if share < threshold:
+            return
+        data = {'seconds': round(seconds, 3), 'share': round(share, 4), '%s_s' % denominator_name: round(denominator, 3),
+                'threshold': threshold}
+        found.append(make_candidate(key, data, proposal, share * denominator / HOUR))
+        return data
+
+    parts_names = {'human_wait': ['human_wait'], 'limit_wait': ['limit_wait'], 'ci': ['ci_wait', 'in_attempts.ci_watch'],
+                   'review': ['review']}
+    to_done, work = _get(record, ('wall', 'to_done')), _get(record, ('breakdown', 'work'))
+    check('human_wait', [_get(record, ('breakdown', 'human_wait'))], to_done, 'to_done', settings['d4_human_wait_share'],
+          'Skrócić czekanie na użytkownika: zebrać pytania przed startem epiku i uruchamiać go o godzinie, '
+          'w której użytkownik odpowiada.')
+    check('limit_wait', [_get(record, ('breakdown', 'limit_wait'))], to_done, 'to_done',
+          settings['d4_limit_wait_share'],
+          'Zaplanować start epiku (planowanie nocy) tak, żeby mieścił się w oknie limitów bez przerwy na cooldown.')
+    ci = [_get(record, ('breakdown', 'ci_wait')), _get(record, ('in_attempts', 'categories', 'ci_watch', 'seconds'))]
+    data = check('ci', ci, work, 'work', settings['d4_ci_share'],
+                 'Skrócić czekanie na CI: sprawdzić, które przebiegi CI zadań i końcowego PR trwają najdłużej '
+                 'i ile jest ponowień.')
+    if data is not None:
+        data['ci_wait_s'], data['ci_watch_s'] = round(ci[0], 3), round(ci[1], 3)
+    if _get(record, ('merged_at',)) is None or _get(record, ('wall', 'review')) is None:
+        skip_rule(skipped, 'D4:review', "review jest znany dopiero po merge'u końcowego PR")
+    else:
+        check('review', [_get(record, ('wall', 'review'))], _get(record, ('wall', 'to_merge')), 'to_merge',
+              settings['d4_review_share'],
+              'Ustalić porę oddania epiku do odbioru i rozmiar końcowego PR, żeby odbiór nie czekał.')
+    return found
+
+
+def d3_candidates(record, config, skipped):
+    """D3: `gate_wait` of at least `d3_gate_wait_h` hours because of the file rule of the gate (a reason of
+    `gate_wait.reasons` matching FILE_RULE_REASON). The effect is the whole wait."""
+    wait = _get(record, ('gate_wait', 'wait_s'))
+    if not _is_number(wait):
+        return skip_rule(skipped, D3_KEY, 'brak danych: gate_wait (brak wpisów epiku w gate.jsonl)')
+    if wait < config['decisions']['d3_gate_wait_h'] * HOUR:
+        return []
+    reasons = [r for r in _get(record, ('gate_wait', 'reasons')) or [] if isinstance(r, str)]
+    files = [r for r in reasons if FILE_RULE_REASON.search(r)]
+    if not files:
+        return skip_rule(skipped, D3_KEY, 'czekanie w bramce z innego powodu niż reguła plików')
+    return [make_candidate(D3_KEY, {'wait_s': round(wait, 3), 'file_rule_reasons': len(files),
+                                    'reasons': len(reasons)},
+                           'Zmienić linię `Zakres:` epiku przy przygotowaniu albo regułę plików bramki '
+                           '(docs/features/parallel-work/spec.md, „Bramka”).', wait / HOUR)]
+
+
+def d2_candidates(record, history, config, skipped, gaps):
+    """D2: a plan task with `work` over `d2_work_multiple` times the median of plan tasks in the history, or with at
+    least `d2_failed_attempts` failed attempts. One candidate for the epic (the key is the same in every epic, a task
+    has another id in each); the effect is the time of the tasks over the median."""
+    settings = config['decisions']
+    by_task = record.get('by_task')
+    if not isinstance(by_task, dict):
+        return skip_rule(skipped, D2_KEY, 'brak danych: by_task')
+    works = [e['work'] for h in history for e in (h.get('by_task') or {}).values()
+             if isinstance(e, dict) and e.get('kind') == 'plan' and _is_number(e.get('work'))]
+    middle = median(works) if works else None
+    if middle is None:
+        gaps.add('decide.D2', 'brak historii mediany work zadań planu: kryterium czasu pominięte')
+    ended = record.get('done_at') is not None or record.get('merged_at') is not None
+    failed = {}
+    for attempt in record.get('attempts') or []:
+        if isinstance(attempt, dict) and classify_attempt(attempt.get('outcome'), attempt.get('executor_status'),
+                                                          ended)[0] == 'failed':
+            failed[attempt.get('task')] = failed.get(attempt.get('task'), 0) + 1
+    tasks = []
+    for task, entry in sorted(by_task.items()):
+        if not isinstance(entry, dict) or entry.get('kind') != 'plan':
+            continue
+        work = entry.get('work')
+        reasons = []
+        if middle is not None and _is_number(work) and work > settings['d2_work_multiple'] * middle:
+            reasons.append('work')
+        if failed.get(task, 0) >= settings['d2_failed_attempts']:
+            reasons.append('failed_attempts')
+        if reasons:
+            over = max(work - middle, 0.0) if middle is not None and _is_number(work) else None
+            tasks.append({'task': task, 'work_h': None if not _is_number(work) else round(work / HOUR, 3),
+                          'excess_h': None if over is None else round(over / HOUR, 3),
+                          'failed_attempts': failed.get(task, 0), 'reasons': reasons})
+    if not tasks:
+        return []
+    wall = sum(t['excess_h'] for t in tasks if t['excess_h'] is not None)
+    return [make_candidate(D2_KEY, {'tasks': tasks, 'median_h': None if middle is None else round(middle / HOUR, 3),
+                                    'history_epics': len(history)},
+                           'Dodać do /planner regułę podziału zadania z cechami: liczba ścieżek `scope`, ryzyko, '
+                           'aplikacje, liczba zmienionych plików.', wall)]
+
+
+def rule_candidates(record, history, config, gaps):
+    """(candidates, skipped) of the rules D2, D3 and D4, which need only the record and the history of the epic."""
+    skipped, found = [], []
+    found += d2_candidates(record, history, config, skipped, gaps) or []
+    found += d3_candidates(record, config, skipped) or []
+    found += d4_candidates(record, config, skipped)
+    return found, skipped
+
+
+def decide_epic(record, records, config):
+    """The result of `decide` for one record: {epic, candidates (ordered), report (the first report_max), skipped,
+    gaps}."""
+    gaps = Gaps()
+    history = history_of(record, records)
+    found, skipped = rule_candidates(record, history, config, gaps)
+    ordered = order_candidates(found)
+    return {'epic': record.get('epic'), 'candidates': ordered, 'report': ordered[:int(config['decisions']['report_max'])],
+            'skipped': skipped, 'gaps': gaps.render()}
+
+
+def cmd_decide(args, config, run, now):
+    if os.path.basename(args.epic) != args.epic or args.epic in ('.', '..'):
+        raise MetricsError('niepoprawny identyfikator epiku %r' % args.epic)
+    state = _expand(args.state)
+    records = read_records(state)
+    record = records.get(args.epic)
+    if record is None:
+        raise MetricsError('brak (albo nieczytelny) rekord epiku %s w %s: uruchom `metrics.py epic %s`'
+                           % (args.epic, os.path.join(state, 'epics'), args.epic))
+    print(json.dumps(decide_epic(record, records, config), ensure_ascii=False))
+    return 0
+
+
 # ------------------------------------------------------------------------------------------------------- trend
 
 TREND_COLUMNS = ('to_done', 'work', 'human_wait', 'review', 'gate_wait', 'repeat_runs', 'value', 'pp', 'failed',
@@ -3189,6 +3369,8 @@ def build_parser():
     trend.add_argument('--epic')
     trend.add_argument('--json', action='store_true')
     trend.add_argument('--no-gh', action='store_true')
+    decide = sub.add_parser('decide', parents=[common])
+    decide.add_argument('epic')
     waste = sub.add_parser('waste', parents=[common])
     waste.add_argument('ao_home')
     waste.add_argument('--max-qa-rounds', type=_positive_int, default=3)
@@ -3212,6 +3394,8 @@ def main(argv=None, run=None, now=None):
             return cmd_trend(args, config, runner, now)
         if args.command == 'render':
             return cmd_render(args, config, runner, now)
+        if args.command == 'decide':
+            return cmd_decide(args, config, runner, now)
         if args.command == 'waste':
             return cmd_waste(args, config, now)
     except MetricsError as e:
