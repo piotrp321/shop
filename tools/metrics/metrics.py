@@ -3,6 +3,7 @@
 
   metrics.py epic EPIC [--ao-home DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
   metrics.py backfill [--ao-root DIR] [COMMON]
+  metrics.py waste AO_HOME [--max-qa-rounds N] [COMMON]
 
 COMMON: --config FILE (default: config.json next to this script), --state DIR (default: $SHOP_METRICS_STATE or
 ~/.local/state/shop-metrics), --night DIR (measurements.jsonl and gate.jsonl; default: ~/.local/state/ao-night),
@@ -38,11 +39,24 @@ epic with a final PR that GitHub reports MERGED (also in the AO states INTEGRATI
 and directories without a database or an epic row. Prints one JSON line {"recorded": [...], "skipped": [{"run",
 "reason"}]}.
 
-Exit codes: 0 success; 2 nothing recorded: bad arguments or config.json, missing AO directory, unreadable or locked
-database, no epic row, unreadable --manual-fixes file, state not writable (message on stderr, nothing on stdout);
+waste: reads the current state of the run AO_HOME (the database read only, a locked live database is tried again
+after busy_timeout, DB_RETRIES times) and the stored records of other epics (the history) and prints the new alarms of
+rules W1 (cost of an ended attempt), W2 (a running attempt that takes long), W3 (loop of attempts: a task's attempt after
+`loop_failed_attempts` failed ones, a REPAIR after a REPAIR with no green CI between, QA round equal to
+--max-qa-rounds, default 3) and W4 (cost of a task), one JSON line each (`alarm`, `key`, `epic`, `task`, `attempt`,
+`push` of at most 200 characters, the numbers), then {"gaps": [...]} when something could not be checked. Thresholds
+are in the `waste` section of config.json. The alarms sent are in <state>/waste.json ({"alarms": [{key, rule, epic,
+task, attempt, at, push, ...}]}); read, filter, atomic write and printing happen under an exclusive flock on
+<state>/waste.lock, so every key is printed once even with parallel sessions (written before printed: an alarm is never
+printed twice). `epic` puts the alarms of the epic from waste.json in the field `waste`.
+
+Exit codes: 0 success (also without alarms); 2 nothing recorded or printed: bad arguments or config.json, missing AO
+directory, unreadable or locked database, no epic row, unreadable --manual-fixes file, state not writable, waste.json
+unreadable or of another shape (never overwritten) (message on stderr, nothing on stdout);
 3 the record was printed and stored but a source failed (`gh` error; message on stderr, the gap is in `gaps`).
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -66,6 +80,10 @@ BREAKDOWN_CATEGORIES = ('work', 'human_wait', 'limit_wait', 'ci_wait', 'host_pau
 
 class MetricsError(Exception):
     """A failure that ends the command with exit code 2 and the message on stderr."""
+
+
+class DatabaseLocked(MetricsError):
+    """The AO database stayed locked for longer than busy_timeout (a running AO holds short write locks)."""
 
 
 # ------------------------------------------------------------------------------------------------------- config
@@ -180,7 +198,7 @@ def open_readonly(path, busy_timeout_ms):
 
 def _database_error(path, error):
     if isinstance(error, sqlite3.OperationalError) and 'locked' in str(error).lower():
-        return MetricsError('baza AO %s zablokowana (zajęta dłużej niż busy_timeout): %s' % (path, error))
+        return DatabaseLocked('baza AO %s zablokowana (zajęta dłużej niż busy_timeout): %s' % (path, error))
     return MetricsError('nieczytelna baza AO %s: %s' % (path, error))
 
 
@@ -1524,12 +1542,13 @@ def read_previous(path):
 
 
 def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now, run=None, no_gh=True,
-                 repo=None, previous=None, pr=None, records=None, ao_root=None):
+                 repo=None, previous=None, pr=None, records=None, ao_root=None,
+                 waste=(None, 'brak pliku waste.json')):
     """(record, errors): the record of the epic run and the messages of failed GitHub calls (the record is complete
     anyway: a failed source is null and a gap). records: {epic: stored record} of the other epics (the history of the
     rates of models for attempts without a CLI result, and the overlapping epics of `subscription.share`); ao_root: the
     directory of the run directories `ao-<epic>` (the overlapping epics without a record are computed from them;
-    default: the parent of ao_home)."""
+    default: the parent of ao_home). waste: (alarms of the epic or None, reason of None) of `waste_of_epic`."""
     records = records or {}
     ao_root = os.path.dirname(ao_home) if ao_root is None else ao_root
     gaps = Gaps()
@@ -1592,7 +1611,10 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'versions': fields['versions'],
         'attempts': fields['attempts'],
         'value': fields['value'],
+        'waste': waste[0],
     }
+    if waste[0] is None:
+        gaps.add('waste', waste[1])
     keep_stored_values(record, previous, gaps)
     record['gaps'] = gaps.render()
     return record, github['errors']
@@ -1638,7 +1660,8 @@ def cmd_epic(args, config, run, now):
     path = state_path(_expand(args.state), args.epic)
     record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now, run=run,
                                   no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
-                                  records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home))
+                                  records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home),
+                                  waste=waste_of_epic(_expand(args.state), args.epic))
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
@@ -1697,7 +1720,8 @@ def cmd_backfill(args, config, run, now):
             path = state_path(_expand(args.state), epic_id)
             record, errors = build_record(epic_id, home, config, busy, _expand(args.night), None, now, run=run,
                                           no_gh=False, repo=args.repo, previous=read_previous(path), pr=pr,
-                                          records=records, ao_root=root)
+                                          records=records, ao_root=root,
+                                          waste=waste_of_epic(_expand(args.state), epic_id))
             write_record(path, record)
             records[epic_id] = record
         except MetricsError as e:
@@ -1709,6 +1733,303 @@ def cmd_backfill(args, config, run, now):
     for failure in failures:
         print('metrics: backfill: %s' % failure, file=sys.stderr)
     return EXIT_SOURCE if failures else 0
+
+
+# ------------------------------------------------------------------------------------------------------ waste alarms
+
+DB_RETRIES = 2                  # extra tries of a locked live database (each after busy_timeout, a pause between)
+DB_RETRY_PAUSE_S = 0.5
+PUSH_MAX = 200
+CI_GREEN = ('epic_ci_green', 'epic_ci_inherited')
+SAFE_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._\-]{0,63}$')
+
+
+def retry_when_locked(action):
+    """The result of action(), run again (up to DB_RETRIES times, after a pause) while the database is locked."""
+    for left in range(DB_RETRIES, -1, -1):
+        try:
+            return action()
+        except DatabaseLocked:
+            if not left:
+                raise
+            time.sleep(DB_RETRY_PAUSE_S)
+
+
+def epic_ids(ao_home, busy_timeout_ms):
+    """The epic ids of the database of the run directory: the one named by the directory (`ao-<epic>`) when the
+    database has it, else every `epics` row."""
+    if not os.path.isdir(ao_home):
+        raise MetricsError('brak katalogu AO %s' % ao_home)
+    db = os.path.join(ao_home, 'orchestrator.db')
+    con = open_readonly(db, busy_timeout_ms)
+    try:
+        rows = select(con, 'epics', ['epic_id'], Gaps())
+    except sqlite3.Error as e:
+        raise _database_error(db, e)
+    finally:
+        con.close()
+    ids = [r['epic_id'] for r in rows if isinstance(r['epic_id'], str)]
+    if not ids:
+        raise MetricsError('baza AO %s nie ma wiersza epiku' % db)
+    name = os.path.basename(ao_home.rstrip(os.sep))
+    return [name[len('ao-'):]] if name.startswith('ao-') and name[len('ao-'):] in ids else ids
+
+
+def waste_history(records, skip):
+    """The measurements of the stored records (of other epics than `skip`) the median rules compare with, per kind:
+    `value` (of an ended attempt that has one), `wall` (wall_s of an ended attempt), `task` (the sum of the values of a
+    task whose ended attempts all have one)."""
+    found = {'value': {}, 'wall': {}, 'task': {}}
+    for epic, record in records.items():
+        if epic in skip:
+            continue
+        tasks = {}
+        for attempt in record.get('attempts') or []:
+            if not isinstance(attempt, dict) or attempt.get('ended_at') is None:
+                continue
+            kind = attempt.get('kind') if isinstance(attempt.get('kind'), str) else None
+            if _is_number(attempt.get('value')):
+                found['value'].setdefault(kind, []).append(attempt['value'])
+            if _is_number(attempt.get('wall_s')):
+                found['wall'].setdefault(kind, []).append(attempt['wall_s'])
+            tasks.setdefault((str(attempt.get('task')), kind), []).append(attempt.get('value'))
+        for (_, kind), values in tasks.items():
+            if all(_is_number(v) for v in values):
+                found['task'].setdefault(kind, []).append(sum(values))
+    return found
+
+
+def over_median(rule, kind, values, amount, multiple, minimum, minimum_is_strict, min_history, gaps):
+    """(median, ratio to it) when `amount` is more than `multiple` times the median of `values` and passes the minimum
+    (more than it, or at least it), else None. Below the minimum no median could make it alarm, so a history shorter
+    than `min_history` is a gap only for an amount that passes it (the rule does not alarm then)."""
+    if not (amount > minimum if minimum_is_strict else amount >= minimum):
+        return None
+    if len(values) < min_history:
+        gaps.add(rule, 'kind %s: %d z %d wymaganych pomiarów historii: reguła nie alarmuje' % (kind, len(values),
+                                                                                              min_history))
+        return None
+    middle = median(values)
+    if amount > multiple * middle:
+        return middle, (amount / middle if middle > 0 else None)
+    return None
+
+
+def _id(value):
+    return value if isinstance(value, str) and SAFE_ID.match(value) else '?'
+
+
+def _decimal(value, digits=1):
+    return ('%.*f' % (digits, value)).replace('.', ',')
+
+
+def _of_median(ratio, what='mediany'):
+    return '' if ratio is None else ' (%s× %s)' % (_decimal(ratio), what)
+
+
+def make_alarm(rule, key, epic, task, attempt, push, **numbers):
+    """An alarm: the push text holds only ids that are identifiers and numbers (never text of the run)."""
+    return {'alarm': rule, 'key': key, 'epic': epic, 'task': task, 'attempt': attempt, 'push': push[:PUSH_MAX],
+            **numbers}
+
+
+def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
+    """The alarms (W1-W4) the current state of the run raises, whether or not they were sent before. Ended attempts
+    only for the cost rules (a running attempt has no cost estimate), running ones only for W2."""
+    rules = config['waste']
+    epic, epic_id = run['epic'], run['epic']['epic_id']
+    kinds = {t['task_id']: t['kind'] for t in run['tasks']}
+    task_ids = set(kinds)
+    name = _id(epic_id)
+    found = []
+    ended = [a for a in run['attempts'] if a['ended_at'] is not None]
+    entries = transcript_fields(ao_home, dict(run, attempts=ended), config, records, epic_id, Gaps())['attempts']
+    # W1: the value of an ended attempt
+    unknown = 0
+    for entry in entries:
+        if entry['value'] is None:
+            unknown += 1
+            continue
+        hit = over_median('W1', entry['kind'], history['value'].get(entry['kind'], []), entry['value'],
+                          rules['cost_multiple'], rules['cost_min_usd'], False, rules['min_history'], gaps)
+        if hit:
+            found.append(make_alarm(
+                'W1', 'W1:%s:%s:%s' % (epic_id, entry['task'], entry['number']), epic_id, entry['task'],
+                entry['number'],
+                '%s: %s próba %s kosztowała %s%s USD%s' % (name, _id(entry['task']), entry['number'],
+                                                           '≈' if entry['estimated'] else '',
+                                                           _decimal(entry['value'], 2), _of_median(hit[1])),
+                value=entry['value'], median=hit[0], ratio=hit[1], estimated=bool(entry['estimated'])))
+    if unknown:
+        gaps.add('W1', '%d z %d zakończonych prób bez wartości (brak transkryptu albo stawki): nie sprawdzone'
+                 % (unknown, len(entries)))
+    # W2: a running attempt of a run that is not over
+    over = epic['status'] == 'DONE' or any(e['type'] == 'epic_done' for e in run['events'])
+    for attempt in run['attempts']:
+        start = _number(attempt['started_at'])
+        if over or attempt['ended_at'] is not None or attempt['outcome'] or start is None or not _is_int(
+                attempt['number']):
+            continue
+        kind, seconds = kinds.get(attempt['task_id']), now - start
+        hit = over_median('W2', kind, history['wall'].get(kind, []), seconds, rules['time_multiple'],
+                          rules['time_min_h'] * 3600, True, rules['min_history'], gaps)
+        if hit:
+            found.append(make_alarm(
+                'W2', 'W2:%s:%s:%s' % (epic_id, attempt['task_id'], attempt['number']), epic_id, attempt['task_id'],
+                attempt['number'], '%s: %s próba %s trwa %s h%s' % (name, _id(attempt['task_id']), attempt['number'],
+                                                                    _decimal(seconds / 3600.0), _of_median(hit[1])),
+                seconds=round(seconds, 3), median=hit[0], ratio=hit[1]))
+    found.extend(loop_alarms(run, name, task_ids, rules, max_rounds))
+    # W4: the value of the ended attempts of a task
+    by_task, no_value = {}, 0
+    for entry in entries:
+        by_task.setdefault(entry['task'], []).append(entry)
+    for task, task_entries in by_task.items():
+        if any(e['value'] is None for e in task_entries):
+            no_value += 1
+            continue
+        kind, amount = task_entries[0]['kind'], sum(e['value'] for e in task_entries)
+        hit = over_median('W4', kind, history['task'].get(kind, []), amount, rules['cost_multiple'],
+                          rules['cost_min_usd'], False, rules['min_history'], gaps)
+        if hit:
+            found.append(make_alarm(
+                'W4', 'W4:%s:%s' % (epic_id, task), epic_id, task, None,
+                '%s: %s kosztuje łącznie %s USD%s' % (name, _id(task), _decimal(amount, 2),
+                                                     _of_median(hit[1], 'mediany zadań')),
+                value=round(amount, 8), median=hit[0], ratio=hit[1], attempts=len(task_entries)))
+    if no_value:
+        gaps.add('W4', '%d zadań z zakończoną próbą bez wartości: nie sprawdzone' % no_value)
+    return found
+
+
+def loop_alarms(run, name, task_ids, rules, max_rounds):
+    """W3: loops of attempts, independent of the median and the cost. (a) an attempt that starts after at least
+    `loop_failed_attempts` failed attempts of its task (blocked and usage_limit attempts are not failures); (b) a REPAIR
+    task that starts with no green CI of the epic (epic_ci_green, epic_ci_inherited) since the previous REPAIR started;
+    (c) the QA round of the epic equal to `max_rounds`."""
+    epic, epic_id = run['epic'], run['epic']['epic_id']
+    found, per_task = [], {}
+    for attempt in run['attempts']:
+        per_task.setdefault(attempt['task_id'], []).append(attempt)
+    for task, attempts in per_task.items():
+        failed = 0
+        for attempt in sorted(attempts, key=lambda a: (_number(a['started_at']) is None, _number(a['started_at']) or 0,
+                                                       a['number'] or 0)):
+            if failed >= rules['loop_failed_attempts'] and _is_int(attempt['number']):
+                found.append(make_alarm(
+                    'W3', 'W3:%s:%s:%s' % (epic_id, task, attempt['number']), epic_id, task, attempt['number'],
+                    '%s: %s: %s. próba po %s nieudanych' % (name, _id(task), attempt['number'], failed),
+                    failed=failed))
+            if classify_attempt(attempt['outcome'], attempt['executor_status'],
+                                attempt['ended_at'] is not None)[0] == 'failed':
+                failed += 1
+    greens = [e['at'] for e in run['events'] if e['type'] in CI_GREEN and _of_epic(e, epic_id, task_ids)]
+    starts = []
+    for task in run['tasks']:
+        begun = [_number(a['started_at']) for a in per_task.get(task['task_id'], [])
+                 if _number(a['started_at']) is not None]
+        if task['kind'] == 'repair' and begun:
+            starts.append((min(begun), task['task_id']))
+    starts.sort()
+    for (before, _), (start, task) in zip(starts, starts[1:]):
+        if not any(before <= g <= start for g in greens):
+            found.append(make_alarm('W3', 'W3:%s:repair:%s' % (epic_id, task), epic_id, task, None,
+                                    '%s: %s: kolejny REPAIR z rzędu bez zielonego CI epiku' % (name, _id(task))))
+    if _is_int(epic['round']) and epic['round'] == max_rounds:
+        found.append(make_alarm('W3', 'W3:%s:qa:%s' % (epic_id, epic['round']), epic_id, None, None,
+                                '%s: runda QA %s (limit %s)' % (name, epic['round'], max_rounds), round=epic['round'],
+                                max_rounds=max_rounds))
+    return found
+
+
+def read_waste_file(path):
+    """The alarms stored in waste.json, or None when the file is missing. A file that cannot be read, is not JSON or
+    has another shape than {"alarms": [{"key": ...}, ...]} is an error: it must never be replaced."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        raise MetricsError('nieczytelny plik %s: %s' % (path, e.strerror or e))
+    except ValueError as e:
+        raise MetricsError('plik %s nie jest poprawnym JSON: %s' % (path, e))
+    if not (isinstance(data, dict) and isinstance(data.get('alarms'), list)
+            and all(isinstance(a, dict) and isinstance(a.get('key'), str) for a in data['alarms'])):
+        raise MetricsError('plik %s: oczekiwano {"alarms": [{"key": ...}]}' % path)
+    return data['alarms']
+
+
+def waste_of_epic(state_dir, epic_id):
+    """(alarms of the epic from waste.json, None), or (None, reason) when the file is missing or unreadable."""
+    path = os.path.join(state_dir, 'waste.json')
+    try:
+        stored = read_waste_file(path)
+    except MetricsError as e:
+        return None, 'nieczytelny waste.json: %s' % e
+    if stored is None:
+        return None, 'brak pliku waste.json (komenda waste jeszcze nie zapisała alarmów)'
+    return [a for a in stored if a.get('epic') == epic_id], None
+
+
+def store_and_print(state_dir, candidates, now):
+    """The candidates whose key is not in waste.json yet, stored and then printed (one JSON line each) while holding
+    <state>/waste.lock: read, filter, atomic write, print are one step for parallel sessions, so a key is printed once.
+    The file is written before the printing, so a failure stores nothing that was not printed, and a printing that fails
+    after the write loses the alarm instead of printing it twice. Returns the printed alarms."""
+    path, lock_path = os.path.join(state_dir, 'waste.json'), os.path.join(state_dir, 'waste.lock')
+    try:
+        os.makedirs(state_dir, exist_ok=True)
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError as e:
+        raise MetricsError('nie można utworzyć blokady %s: %s' % (lock_path, e.strerror or e))
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError as e:
+            raise MetricsError('nie można zablokować %s: %s' % (lock_path, e.strerror or e))
+        stored = read_waste_file(path) or []
+        known = {a['key'] for a in stored}
+        new = []
+        for alarm in candidates:
+            if alarm['key'] not in known:
+                known.add(alarm['key'])
+                new.append(alarm)
+        if new:
+            at = iso(now)
+            write_record(path, {'alarms': stored + [{**{k: v for k, v in a.items() if k != 'alarm'}, 'rule': a['alarm'],
+                                                     'at': at} for a in new]})
+            sys.stdout.write(''.join(json.dumps(a, ensure_ascii=False) + '\n' for a in new))
+            sys.stdout.flush()
+        return new
+    finally:
+        os.close(fd)
+
+
+def cmd_waste(args, config, now):
+    ao_home, state = _expand(args.ao_home), _expand(args.state)
+    busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
+    ids = retry_when_locked(lambda: epic_ids(ao_home, busy))
+    records = read_records(state)
+    history = waste_history(records, set(ids))
+    gaps, candidates = Gaps(), []
+    for epic_id in ids:
+        run = retry_when_locked(lambda: load_run(ao_home, epic_id, busy, Gaps()))
+        candidates.extend(waste_alarms(ao_home, run, config, records, history, args.max_qa_rounds, now, gaps))
+    store_and_print(state, candidates, now)
+    if gaps.items:
+        print(json.dumps({'gaps': gaps.render()}, ensure_ascii=False))
+    return 0
+
+
+def _positive_int(text):
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError('oczekiwano dodatniej liczby całkowitej, jest %r' % text)
+    if value < 1:
+        raise argparse.ArgumentTypeError('oczekiwano dodatniej liczby całkowitej, jest %r' % text)
+    return value
 
 
 def build_parser():
@@ -1727,6 +2048,9 @@ def build_parser():
     epic.add_argument('--no-gh', action='store_true')
     backfill = sub.add_parser('backfill', parents=[common])
     backfill.add_argument('--ao-root')
+    waste = sub.add_parser('waste', parents=[common])
+    waste.add_argument('ao_home')
+    waste.add_argument('--max-qa-rounds', type=_positive_int, default=3)
     return parser
 
 
@@ -1743,6 +2067,8 @@ def main(argv=None, run=None, now=None):
             return cmd_epic(args, config, runner, now)
         if args.command == 'backfill':
             return cmd_backfill(args, config, runner, now)
+        if args.command == 'waste':
+            return cmd_waste(args, config, now)
     except MetricsError as e:
         print('metrics: %s' % e, file=sys.stderr)
         return EXIT_FATAL
