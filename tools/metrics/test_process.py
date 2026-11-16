@@ -11,11 +11,12 @@ from testkit import Env
 
 SCRIPT = os.path.join(testkit.HERE, 'metrics.py')
 FAKE_GH = """#!/bin/sh
-# stand-in for `gh`: answers pr view / pr list, or fails when FAKE_GH_FAIL is set
+# stand-in for `gh`: answers pr view, run view and empty lists for the other calls, or fails when FAKE_GH_FAIL is set
 [ -n "$FAKE_GH_FAIL" ] && { echo "$FAKE_GH_FAIL" >&2; exit 1; }
-case "$2" in
-  view) echo '{"state": "MERGED", "mergedAt": "2026-11-13T10:00:00Z", "closingIssuesReferences": [{"number": 496}]}' ;;
-  list) echo '[]' ;;
+case "$1 $2" in
+  "pr view") echo '{"state": "MERGED", "mergedAt": "2026-11-13T10:00:00Z", "closingIssuesReferences": [{"number": 496}], "mergeCommit": {"oid": "aaaaaaa"}}' ;;
+  "run view") echo '{"jobs": []}' ;;
+  *) echo '[]' ;;
 esac
 """
 

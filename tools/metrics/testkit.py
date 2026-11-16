@@ -219,21 +219,38 @@ def result(returncode=0, stdout='', stderr=''):
 
 
 class FakeGh:
-    """A stub of the command runner: records every command and answers `gh pr view N` and `gh pr list`.
+    """A stub of the command runner: records every command and answers the read only `gh` calls of metrics.py.
 
-    prs: {number: {state, mergedAt, closingIssuesReferences}}; sync: the list answered for `gh pr list`;
-    fail: when set, every command ends with exit code 1 and that stderr."""
+    prs: {number: {state, mergedAt, closingIssuesReferences, mergeCommit}}; sync: the list answered for `gh pr list`;
+    runs: {commit or branch: [run, ...]} for `gh run list --commit/--branch`; jobs: {run id: [job, ...]} for
+    `gh run view`; commits: the list answered for `gh api repos/.../commits`; issues: {label: [issue, ...]} for
+    `gh issue list --label`; permissions: {login: role} for `gh api .../collaborators/<login>/permission` (a login
+    without an entry is a non-collaborator: HTTP 404); fail: when set, every command ends with exit code 1 and that
+    stderr; fail_on: the command prefixes, e.g. ('run', 'list') or ('api',), that end with that error."""
 
-    def __init__(self, prs=None, sync=None, fail=None):
+    def __init__(self, prs=None, sync=None, fail=None, runs=None, jobs=None, commits=None, issues=None,
+                 permissions=None, fail_on=()):
         self.prs = prs or {}
         self.sync = sync or []
         self.fail = fail
+        self.runs = runs or {}
+        self.jobs = jobs or {}
+        self.commits = commits or []
+        self.issues = issues or {}
+        self.permissions = permissions or {}
+        self.fail_on = tuple(fail_on)
         self.calls = []
+
+    @staticmethod
+    def _option(command, name):
+        return command[command.index(name) + 1] if name in command else None
 
     def __call__(self, command):
         self.calls.append(list(command))
         if self.fail is not None:
             return result(1, '', self.fail)
+        if any(tuple(command[1:1 + len(entry)]) == tuple(entry) for entry in self.fail_on):
+            return result(1, '', 'HTTP 502')
         if command[:3] == ['gh', 'pr', 'view']:
             number = int(command[3])
             if number not in self.prs:
@@ -241,11 +258,29 @@ class FakeGh:
             return result(0, json.dumps(self.prs[number]))
         if command[:3] == ['gh', 'pr', 'list']:
             return result(0, json.dumps(self.sync))
+        if command[:3] == ['gh', 'run', 'list']:
+            key = self._option(command, '--commit') or self._option(command, '--branch')
+            return result(0, json.dumps(self.runs.get(key, [])))
+        if command[:3] == ['gh', 'run', 'view']:
+            return result(0, json.dumps({'jobs': self.jobs.get(int(command[3]), [])}))
+        if command[:3] == ['gh', 'issue', 'list']:
+            return result(0, json.dumps(self.issues.get(self._option(command, '--label'), [])))
+        if command[:2] == ['gh', 'api']:
+            path = command[2]
+            if '/commits' in path:
+                return result(0, json.dumps(self.commits))
+            if '/collaborators/' in path:
+                login = path.split('/collaborators/')[1].split('/')[0]
+                if login not in self.permissions:
+                    return result(1, '', 'gh: Not Found (HTTP 404)')
+                role = self.permissions[login]
+                legacy = {'maintain': 'write', 'triage': 'read'}.get(role, role)
+                return result(0, json.dumps({'permission': legacy, 'role_name': role}))
         return result(1, '', 'unexpected command %s' % command)
 
 
-def merged_pr(merged_at='2026-11-13T10:00:00Z', issues=(496,)):
-    return {'state': 'MERGED', 'mergedAt': merged_at,
+def merged_pr(merged_at='2026-11-13T10:00:00Z', issues=(496,), sha='f' * 40):
+    return {'state': 'MERGED', 'mergedAt': merged_at, 'mergeCommit': {'oid': sha},
             'closingIssuesReferences': [{'number': n} for n in issues]}
 
 

@@ -133,6 +133,8 @@ CONFIG_SCHEMA = {
                   'obiekt liczb'),
     'evals': (_evals, 'obiekt {roles: lista, results_dir: ścieżka}'),
     'regression_window_days': (lambda v: _is_int(v) and v > 0, 'liczba dni (całkowita, dodatnia)'),
+    'ci_workflow': (lambda v: isinstance(v, str) and bool(v), 'nazwa pliku workflowu CI (np. ci.yml)'),
+    'ci_jobs': (_string_list, 'niepusta lista nazw zadań CI (przedrostki grup, np. checks i e2e)'),
     'trend_last': (lambda v: _is_int(v) and v > 0, 'liczba epików (całkowita, dodatnia)'),
 }
 
@@ -1397,32 +1399,55 @@ def human_of(jsonl, jsonl_gap, manual_fixes, done, now, gaps):
 
 # ------------------------------------------------------------------------------------------------------- GitHub
 
+SHA_PATTERN = re.compile(r'^[0-9a-f]{7,64}$')
+LOGIN_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,38}$')
+WRITE_ROLES = ('write', 'maintain', 'admin')
+
+
 class GhError(Exception):
-    """`gh` failed (cannot be run, timed out, exit code other than 0, or an answer that is not JSON)."""
+    """`gh` failed (cannot be run, timed out, exit code other than 0, or an answer that is not JSON). `not_found`:
+    the answer was HTTP 404."""
+
+    def __init__(self, message, not_found=False):
+        super().__init__(message)
+        self.not_found = not_found
 
 
-def gh_json(run, args, repo):
-    command = ['gh'] + args + (['-R', repo] if repo else [])
-    label = 'gh %s' % ' '.join(args[:2])
+def _gh_call(run, command, label):
     try:
         result = run(command)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise GhError('%s: %s' % (label, getattr(e, 'strerror', None) or e))
     if result.returncode != 0:
-        raise GhError('%s: kod %s: %s' % (label, result.returncode, (result.stderr or '').strip()[:200]))
+        stderr = (result.stderr or '').strip()
+        raise GhError('%s: kod %s: %s' % (label, result.returncode, stderr[:200]), 'HTTP 404' in stderr)
     try:
         return json.loads(result.stdout)
     except (ValueError, TypeError):
         raise GhError('%s: odpowiedź nie jest JSON' % label)
 
 
+def gh_json(run, args, repo):
+    return _gh_call(run, ['gh'] + args + (['-R', repo] if repo else []), 'gh %s' % ' '.join(args[:2]))
+
+
+def gh_api(run, path, repo):
+    """`gh api repos/<repo>/<path>` (read only): `gh api` has no -R, so the repository is in the path; without --repo
+    gh expands the {owner}/{repo} placeholders from the repository of the working directory."""
+    return _gh_call(run, ['gh', 'api', 'repos/%s/%s' % (repo or '{owner}/{repo}', path)], 'gh api %s' % path.split('?')[0])
+
+
 def fetch_pr(run, number, repo):
-    """{state, merged_at (epoch or None), issue (first closing issue or None)} of a pull request."""
-    data = gh_json(run, ['pr', 'view', str(number), '--json', 'state,mergedAt,closingIssuesReferences'], repo)
+    """{state, merged_at (epoch or None), issue (first closing issue or None), merge_sha (or None)} of a pull
+    request."""
+    data = gh_json(run, ['pr', 'view', str(number), '--json', 'state,mergedAt,closingIssuesReferences,mergeCommit'],
+                   repo)
     try:
         merged = night_queue.parse_time(data['mergedAt']).timestamp() if data.get('mergedAt') else None
         issues = [i['number'] for i in data.get('closingIssuesReferences') or []]
-        return {'state': data['state'], 'merged_at': merged, 'issue': issues[0] if issues else None}
+        commit = (data.get('mergeCommit') or {}).get('oid')
+        return {'state': data['state'], 'merged_at': merged, 'issue': issues[0] if issues else None,
+                'merge_sha': commit if isinstance(commit, str) and SHA_PATTERN.match(commit) else None}
     except (KeyError, TypeError, ValueError, AttributeError):
         raise GhError('gh pr view: nieoczekiwany kształt odpowiedzi')
 
@@ -1461,6 +1486,234 @@ def github_data(run, no_gh, final_pr, epic_id, repo, gaps, pr=None):
     return data
 
 
+# ------------------------------------------------------------------------------- regressions, found after merge, CI
+
+DAY = 86400
+
+
+def _day(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime('%Y-%m-%d')
+
+
+def field_value(body, heading):
+    """The answer of the issue form field `heading` (`### <heading>...` up to the next `###`), or None when the field is
+    missing, empty or `_No response_`."""
+    match = re.search(r'^###\s+%s[^\n]*$' % re.escape(heading), body or '', re.MULTILINE)
+    if not match:
+        return None
+    rest = body[match.end():]
+    following = re.search(r'^###\s', rest, re.MULTILINE)
+    value = (rest[:following.start()] if following else rest).strip()
+    return None if not value or value == '_No response_' else value
+
+
+def names_epic(value, epic_id, pr):
+    """Whether the field `Wprowadzone przez` names the epic (its id as a whole word) or its final PR (`#N`, `PR N`,
+    a pull request URL)."""
+    if re.search(r'(?<![\w-])%s(?![\w-])' % re.escape(epic_id), value, re.IGNORECASE):
+        return True
+    return pr is not None and bool(re.search(r'(?:(?<!\w)#|\bPR\s*#?\s*|/pull/)%d(?!\d)' % pr, value, re.IGNORECASE))
+
+
+def has_write_access(run, login, repo, cache):
+    """Whether `login` may write to the repository (role write, maintain or admin; spec: Regresje po merge'u). A
+    login that cannot be a GitHub login is never asked about. A 404 (not a collaborator) is no access; any other
+    error is a GhError."""
+    if not isinstance(login, str) or not LOGIN_PATTERN.match(login):
+        return False
+    if login not in cache:
+        try:
+            data = gh_api(run, 'collaborators/%s/permission' % login, repo)
+        except GhError as e:
+            if not e.not_found:
+                raise
+            data = {}
+        role = data.get('role_name') or data.get('permission') if isinstance(data, dict) else None
+        cache[login] = role in WRITE_ROLES
+    return cache[login]
+
+
+def _created(issue):
+    try:
+        return night_queue.parse_time(issue['createdAt']).timestamp()
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def _labels(issue):
+    return {l.get('name') for l in issue.get('labels') or [] if isinstance(l, dict)}
+
+
+def _issue_list(run, repo, label, low, high):
+    issues = gh_json(run, ['issue', 'list', '--label', label, '--state', 'all', '--search',
+                           'created:%s..%s' % (_day(low), _day(high)), '--json', 'number,body,author,createdAt,labels',
+                           '--limit', str(ISSUE_LIMIT)], repo)
+    if not isinstance(issues, list):
+        raise GhError('gh issue list: nieoczekiwany kształt odpowiedzi')
+    return [i for i in issues if isinstance(i, dict) and _is_int(i.get('number')) and label in _labels(i)
+            and _created(i) is not None and low <= _created(i) <= high], len(issues) >= ISSUE_LIMIT
+
+
+ISSUE_LIMIT = 200
+COMMIT_LIMIT = 100
+
+
+def red_ci(run, repo, config, sha):
+    runs = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow'], '--commit', sha, '--json',
+                         'conclusion,event', '--limit', '50'], repo)
+    if not isinstance(runs, list):
+        raise GhError('gh run list: nieoczekiwany kształt odpowiedzi')
+    return sum(1 for r in runs if isinstance(r, dict) and r.get('event') == 'push' and r.get('conclusion') == 'failure')
+
+
+def reverts_of(run, repo, final_pr, merge_sha, low, high, gaps):
+    commits = gh_api(run, 'commits?sha=main&since=%s&until=%s&per_page=%d' % (iso(low), iso(high), COMMIT_LIMIT), repo)
+    if not isinstance(commits, list):
+        raise GhError('gh api commits: nieoczekiwany kształt odpowiedzi')
+    if len(commits) >= COMMIT_LIMIT:
+        gaps.add('regressions.reverts', 'lista commitów main obcięta do %d: revert mógł zostać pominięty' % COMMIT_LIMIT)
+    mention = re.compile(r'#%d(?!\d)' % final_pr)
+    found = []
+    for entry in commits:
+        try:
+            message = entry['commit']['message']
+            when = night_queue.parse_time(entry['commit']['committer']['date']).timestamp()
+            sha = entry['sha']
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        if (isinstance(message, str) and message.startswith('Revert') and mention.search(message) and low <= when <= high
+                and sha != merge_sha and isinstance(sha, str) and SHA_PATTERN.match(sha)):
+            found.append(sha)
+    return found
+
+
+def bug_issues(run, repo, epic_id, final_pr, low, high, gaps):
+    """The numbers of the `bug` issues of the window whose `Wprowadzone przez` names the epic or its PR and whose
+    author may write to the repository (the form is public: a foreign issue does not count)."""
+    issues, truncated = _issue_list(run, repo, 'bug', low, high)
+    if truncated:
+        gaps.add('regressions.issues', 'lista issues obcięta do %d' % ISSUE_LIMIT)
+    cache, found = {}, []
+    for issue in issues:
+        if 'agent' in _labels(issue):
+            continue                # a proposal of /sweep is counted in found_after_merge, not as a regression
+        value = field_value(issue.get('body'), 'Wprowadzone przez')
+        if value is None or not names_epic(value, epic_id, final_pr):
+            continue
+        author = issue.get('author')
+        if has_write_access(run, author.get('login') if isinstance(author, dict) else None, repo, cache):
+            found.append(issue['number'])
+    return sorted(found)
+
+
+def sweep_issues(run, repo, epic_id, low, high, gaps):
+    """The numbers of the issues of the `/sweep` proposals of the epic (label `agent`, whose `Źródło` names the review
+    of the epic) created in the window. The `agent` label is set by people with write access only."""
+    issues, truncated = _issue_list(run, repo, 'agent', low, high)
+    if truncated:
+        gaps.add('found_after_merge', 'lista issues obcięta do %d' % ISSUE_LIMIT)
+    source = re.compile(r'Przebieg\s+`/sweep`\s+\d{4}-\d{2}-\d{2}-[0-9a-f]{7}-%s(?![\w-])' % re.escape(epic_id))
+    return sorted(i['number'] for i in issues if isinstance(i.get('body'), str) and source.search(i['body']))
+
+
+def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now, previous, gaps, errors):
+    """(regressions, found_after_merge) of the epic in the window after the merge of its final PR (spec: Regresje po
+    merge'u). A source that fails is None with a gap and the message in `errors`; the stored value of that part
+    (`previous`: the stored record) is kept then."""
+    until = merged + config['regression_window_days'] * DAY
+    result = {'window_days': config['regression_window_days'], 'until': iso(until), 'open': now < until,
+              'checked_at': iso(now), 'merge_commit': merge_sha}
+    sources = (
+        ('ci_red', 'regressions.ci_red', ('regressions', 'ci_red'),
+         (lambda: red_ci(run, repo, config, merge_sha)) if merge_sha else None),
+        ('reverts', 'regressions.reverts', ('regressions', 'reverts'),
+         lambda: reverts_of(run, repo, final_pr, merge_sha, merged, until, gaps)),
+        ('issues', 'regressions.issues', ('regressions', 'issues'),
+         lambda: bug_issues(run, repo, epic_id, final_pr, merged, until, gaps)),
+        ('found', 'found_after_merge', ('found_after_merge', 'issues'),
+         lambda: sweep_issues(run, repo, epic_id, merged, until, gaps)),
+    )
+    values = {}
+    for key, field, path, compute in sources:
+        values[key] = None
+        if compute is None:
+            gaps.add(field, 'brak commita merge\'u końcowego PR')
+            continue
+        try:
+            values[key] = compute()
+        except GhError as e:
+            errors.append(str(e))
+            gaps.add(field, 'błąd gh: %s' % e)
+            values[key] = _get(previous, path)
+            if values[key] is not None:
+                gaps.add(field, 'źródło niedostępne: zachowano poprzednią wartość')
+    result.update(ci_red=values['ci_red'], reverts=values['reverts'], issues=values['issues'])
+    counts = [None if values['ci_red'] is None else min(values['ci_red'], 1),
+              None if values['reverts'] is None else len(values['reverts']),
+              None if values['issues'] is None else len(values['issues'])]
+    result['count'] = None if None in counts else sum(counts)
+    found = values['found']
+    return result, None if found is None else {'issues': found, 'count': len(found)}
+
+
+def job_seconds(jobs, prefix):
+    """The wall time of the CI jobs named `prefix` or `prefix <part>` (the parts of a group), from the first start to
+    the last end; None without a finished job."""
+    started, ended = [], []
+    for item in jobs:
+        name = item.get('name') if isinstance(item, dict) else None
+        if isinstance(name, str) and (name == prefix or name.startswith(prefix + ' ')):
+            try:
+                started.append(night_queue.parse_time(item['startedAt']).timestamp())
+                ended.append(night_queue.parse_time(item['completedAt']).timestamp())
+            except (KeyError, TypeError, ValueError, AttributeError):
+                continue
+    return round(max(ended) - min(started), 3) if started and ended and max(ended) >= min(started) else None
+
+
+def ci_entry(run, repo, config, pr, branch):
+    runs = gh_json(run, ['run', 'list', '--workflow', config['ci_workflow'], '--branch', branch, '--event',
+                         'pull_request', '--json', 'databaseId,createdAt,conclusion', '--limit', '100'], repo)
+    if not isinstance(runs, list):
+        raise GhError('gh run list: nieoczekiwany kształt odpowiedzi')
+    runs = [r for r in runs if isinstance(r, dict) and _is_int(r.get('databaseId'))]
+    entry = {'pr': pr, 'runs': len(runs)}
+    for name in config['ci_jobs']:
+        entry['%s_s' % name] = None
+    if runs:
+        last = max(runs, key=lambda r: (str(r.get('createdAt')), r['databaseId']))
+        jobs = gh_json(run, ['run', 'view', str(last['databaseId']), '--json', 'jobs'], repo)
+        jobs = jobs.get('jobs') if isinstance(jobs, dict) else None
+        for name in config['ci_jobs']:
+            entry['%s_s' % name] = job_seconds(jobs or [], name)
+    return entry
+
+
+def ci_of(run, repo, config, epic_id, tasks, final_pr, previous, gaps, errors):
+    """{final, tasks}: for the final PR and every task PR the wall time of the last CI run of the groups of jobs
+    `ci_jobs` and the number of CI runs of its branch (the retries). None with a gap on a gh error (the stored value is
+    kept)."""
+    try:
+        found, empty = {'final': None, 'tasks': {}}, []
+        if final_pr is not None:
+            found['final'] = ci_entry(run, repo, config, final_pr, 'epic/%s' % epic_id)
+            if not found['final']['runs']:
+                empty.append('epic/%s' % epic_id)
+        for task in sorted(tasks, key=lambda t: str(t['task_id'])):
+            if _is_int(task['pr_number']) and isinstance(task['task_id'], str) and SAFE_NAME.match(task['task_id']):
+                found['tasks'][task['task_id']] = ci_entry(run, repo, config, task['pr_number'],
+                                                           'task/%s' % task['task_id'])
+                if not found['tasks'][task['task_id']]['runs']:
+                    empty.append('task/%s' % task['task_id'])
+        if empty:
+            gaps.add('ci', 'brak przebiegów CI gałęzi: %s' % ', '.join(empty[:5]) + (', …' if len(empty) > 5 else ''))
+        return found
+    except GhError as e:
+        errors.append(str(e))
+        gaps.add('ci', 'błąd gh: %s' % e)
+        return None
+
+
 def _get(record, path):
     for key in path:
         if not isinstance(record, dict):
@@ -1478,7 +1731,7 @@ def _set(record, path, value):
 # Fields of a source that can fail for a moment (gh) or is not given every time (the list of manual fixes): a null
 # from the source never replaces the stored value.
 KEPT_PATHS = (('issue',), ('merged_at',), ('wall', 'to_merge'), ('wall', 'review'), ('retries', 'sync_prs'),
-              ('parallel', 'sync_prs'), ('human', 'manual_fixes'))
+              ('parallel', 'sync_prs'), ('human', 'manual_fixes'), ('ci',), ('regressions',), ('found_after_merge',))
 
 
 def keep_stored_values(record, previous, gaps):
@@ -1521,6 +1774,25 @@ def read_previous(path):
         return data if isinstance(data, dict) else None
     except (OSError, ValueError):
         return None
+
+
+def github_derived(run, no_gh, repo, config, epic_id, tasks, final_pr, pr, merged, now, previous, gaps, errors):
+    """{ci, regressions, found_after_merge} of the record from GitHub (all None with a gap under --no-gh, on an error
+    or while the final PR is not merged). `merged`: the merge time (epoch) of the final PR, stored or fresh."""
+    fields = {'ci': None, 'regressions': None, 'found_after_merge': None}
+    if no_gh:
+        for field in fields:
+            gaps.add(field, 'pominięto gh (--no-gh)')
+        return fields
+    fields['ci'] = ci_of(run, repo, config, epic_id, tasks, final_pr, previous, gaps, errors)
+    if merged is None or final_pr is None:
+        for field in ('regressions', 'found_after_merge'):
+            gaps.add(field, 'końcowy PR nie jest zmergowany albo jego stan nieznany: okno regresji nie zaczęło się')
+        return fields
+    sha = pr['merge_sha'] if pr else _get(previous, ('regressions', 'merge_commit'))
+    fields['regressions'], fields['found_after_merge'] = regressions_of(
+        run, repo, config, epic_id, final_pr, sha, merged, now, previous, gaps, errors)
+    return fields
 
 
 def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now, run=None, no_gh=True,
@@ -1593,9 +1865,12 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'attempts': fields['attempts'],
         'value': fields['value'],
     }
+    errors = github['errors']
+    record.update(github_derived(run, no_gh, repo, config, epic_id, ao_run['tasks'], final_pr, github['pr'], known_merge,
+                                 now, previous, gaps, errors))
     keep_stored_values(record, previous, gaps)
     record['gaps'] = gaps.render()
-    return record, github['errors']
+    return record, errors
 
 
 # ------------------------------------------------------------------------------------------------- state and CLI

@@ -38,15 +38,16 @@ class GithubFieldsTest(Env):
         self.assertTrue(gh.calls)
         for call in gh.calls:
             self.assertEqual(call[0], 'gh')
-            self.assertEqual(call[1], 'pr')
-            self.assertIn(call[2], ('view', 'list'))
+            self.assertIn(call[1], ('pr', 'run', 'issue', 'api'))
+            self.assertIn(call[2], ('view', 'list') if call[1] != 'api' else call[2:3])
             self.assertFalse({'edit', 'merge', 'close', 'comment', 'create'} & set(call), call)
         self.assertEqual(gh.calls[0][:4], ['gh', 'pr', 'view', '476'])
 
     def test_repo_option_is_passed_to_gh(self):
         gh = FakeGh(prs={476: merged_pr()})
         self.deploy_ops(gh, '--repo', 'owner/shop')
-        self.assertTrue(all(c[-2:] == ['-R', 'owner/shop'] for c in gh.calls), gh.calls)
+        self.assertTrue(all(c[-2:] == ['-R', 'owner/shop'] for c in gh.calls if c[1] != 'api'), gh.calls)
+        self.assertTrue(all('owner/shop' in c[2] and '-R' not in c for c in gh.calls if c[1] == 'api'), gh.calls)
 
     def test_final_pr_that_is_not_merged_has_no_merge_time_and_a_gap(self):
         gh = FakeGh(prs={476: {'state': 'OPEN', 'mergedAt': None, 'closingIssuesReferences': [{'number': 496}]}})
