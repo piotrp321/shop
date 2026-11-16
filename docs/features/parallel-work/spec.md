@@ -441,9 +441,60 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
 - Awaria jednej próby (`FAILED`, `BLOCKED`, awaria stosu) nie zatrzymuje drugiej.
 - `/ao-run` przekazuje `--max-parallel 2` w każdym starcie AO (sekcja 4 skilla); wymaga to AO z tą opcją w `AO_DIR`.
   Wartość równa się `MAX_PARALLEL` w `parallel_gate.py`, co sprawdza test.
-- Pomiar pierwszych dwóch epików z `--max-parallel 2`: czas zegarowy epiku wobec sumy czasów prób (`ao report`)
-  i wobec epików szeregowych o podobnej liczbie zadań; konflikty zadań, interwencje, awarie stosu i koszt jak w bloku
-  pary.
+- Pomiar każdego epiku po merge'u: `task_pairs.py` (niżej, „Pomiar zadań naraz”), blok „Zadania naraz (19b)”
+  w komentarzu pomiaru (`/ao-run`, sekcja 7).
+
+### Pomiar zadań naraz
+
+`python3 .claude/skills/ao-run/task_pairs.py <epik> [--ao-home DIR] [--repo DIR] [--setup-diag DIR]` tylko raportuje:
+niczego nie blokuje ani nie zapisuje. Bazę AO (`*.db` w `--ao-home`, domyślnie `~/.local/state/ao-<epik>`, pierwsza
+z wierszem epiku w `epics`) otwiera tylko do odczytu (`sqlite3` z URI `mode=ro`). `git` i `gh` uruchamia w `--repo`
+z limitem czasu 60 s. Wynik to jeden wiersz JSON, kod 0; brak bazy, baza nieczytelna albo bez epiku → kod 2. Błąd
+`git`/`gh` przy odczycie PR daje `null` w tej pozycji, nie błąd. Plan nieczytelny przy `plan_sha` (błąd `git show`,
+np. commit spoza `--repo`, albo brak bloku manifestu) też daje kod 0: `audit.declarations` to `{"value": null,
+"note": "<powód>"}` (przy czytelnym planie `{"value": "<plan_sha>", "note": null}`), każde `declared`, `undeclared`
+i `declared_conflicts` to `null`, a pozostałe metryki są liczone.
+
+- `audit.tasks`, dla każdego zadania typu `plan` z PR: `declared` to `paths` zadania z manifestu przy `plan_sha` epiku
+  w bazie AO (`git show <plan_sha>:<plan_path>`, deklaracja obowiązująca w trakcie wykonania, nie bieżący plan),
+  inaczej `null` z `declared_note`: zadanie bez `paths`, zadania nie ma w manifeście przy `plan_sha` albo plan
+  nieczytelny; `changed` to rzeczywisty diff PR: `git diff --name-only <merged_sha>^1 <merged_sha>`, gdy commit
+  jest w historii (pierwszy rodzic to gałąź epiku przed merge'em, przy squashu i merge commicie), inaczej
+  `gh pr view <nr> --json files`, a gdy oba zawiodą `null`; `source` to `squash` (1 rodzic), `merge_commit`
+  (2 i więcej), `gh` albo `null`; `undeclared` to pliki `changed` poza każdą ścieżką `declared` (po segmentach, bez
+  wielkości liter), `null` przy braku jednej ze stron. Przy zmianie nazwy pliku oba źródła podają tylko nową ścieżkę,
+  a lista z `gh pr view --json files` może być obcięta przy bardzo dużym PR.
+- `audit.pairs`: zadania, które w bazie AO mają się nawzajem w `parallel_with`: `declared_conflicts` to
+  `parallel_gate.task_conflicts` na deklaracjach (ze śledzonymi `CLAUDE.md` przy `plan_sha`, `git ls-tree`),
+  `actual_conflicts` to ta sama funkcja na `changed` obu stron (każdy plik jako plik); `null` bez danych.
+- `concurrency`, z prób zadań typu `plan` (próba bez `ended_at`, `open: true`, trwa do teraz, a w epiku już
+  zakończonym do końca epiku): `attempts_sum_s` (suma czasów prób), `busy_s` (czas z co najmniej jedną próbą),
+  `concurrent_s` (zmierzony czas z co najmniej dwiema próbami naraz: rzeczywista współbieżność), `pairs` (pary zadań
+  z nakładającymi się próbami i `overlap_s`; przy trzech próbach naraz suma `overlap_s` par przekracza
+  `concurrent_s`), `theoretical_saving` = `(attempts_sum_s - busy_s) / attempts_sum_s` (dokładne przy każdej liczbie
+  prób naraz): teoretyczna oszczędność przy założeniu, że szeregowo próby trwałyby tyle samo, nie przyspieszenie;
+  `epic_wall_s` od `created_at` epiku do ostatniego `epic_done`, a bez niego do `updated_at` epiku `DONE` albo
+  `BLOCKED` lub do teraz (`epic_open: true`); `attempts_to_wall` = `attempts_sum_s / epic_wall_s` to wskaźnik
+  obciążenia (średnia liczba prób naraz w całym czasie epiku, także bez prób), nie przyspieszenie.
+- `conflicts`: zdarzenia `fix_requested` z `reason: conflict` zadań epiku, na zadanie i razem; `fix_rounds`: wszystkie
+  `fix_requested` według `reason`.
+- `repairs`: liczba zadań `repair` i `fix` (QA) i ich prób.
+- `interventions`: `human` jak `ao report` (w zadaniach `answer_recorded`, `status_changed` z `reason: resumed`,
+  `hold_released` przez operatora, oraz `epic_resumed` epiku); `operational`: `config_changed` w oknie epiku
+  i `state_file_edited` jego zadań.
+- `waits`: `queue` dla zadań z niepustym `parallel_with`: od wejścia w `PENDING` (`status_changed`) do następnego
+  `attempt_started` (`first` z `WAITING_DEPS`, `retry` w innych przypadkach; zadania jeszcze w kolejce w `waiting`),
+  bez zgadywania przyczyny; `cooldowns` i `host_pauses`: liczba i suma sumy mnogościowej przedziałów (`cooldown_set`
+  skrócony przez `cooldown_released`, jak w AO) w oknie epiku, bo AO zapisuje zdarzenie na próbę (`host_pause`) albo
+  na zadanie (`cooldown_set`), więc równoległe próby zapisują tę samą przerwę kilka razy, a nakładające się
+  przedziały liczą się raz; `usage_warnings`: liczba zdarzeń (na próbę, nie różnych ostrzeżeń); `resources`: zawsze
+  `null` z notatką „AO nie zapisuje czekania na zasoby” (AO nie sprawdza Dockera); `setup_failures`: logi awarii
+  stosu tego domu AO (`ao-<home>-…-RRRRMMDD-GGMMSS-….log`, `<home>` jak `lifecycle.home_id` bazy) w `--setup-diag`
+  w oknie epiku; starsze logi bez przedrostka `ao-<home>-` nie są liczone; bez katalogu 0.
+- Brak danych to `null`, nie 0. `run_started`, `config_changed`, `state_file_edited`, `cooldown_set`, `host_pause`
+  i `usage_warning` AO zapisuje od tego samego wydania. Gdy w bazie nie ma `run_started` najpóźniej przy pierwszej
+  próbie epiku (bez prób: przy jego końcu), interwencje operacyjne, `cooldowns`, `host_pauses` i `usage_warnings` są
+  `null`; z takim zdarzeniem brak zdarzeń danego typu oznacza 0.
 
 ## Pliki
 
@@ -454,6 +505,8 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
   (algorytm bramki na tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`,
   szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
 - `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: metryki par i zapis werdyktu (`record`).
+- `.claude/skills/ao-run/task_pairs.py` i `test_task_pairs.py`: audyt `paths` i pomiar zadań naraz jednego epiku
+  (19b), z bazy AO tylko do odczytu.
 - `.claude/skills/ao-run/next_epic.py`: bez zmiany zachowania; wspólny odczyt tablicy zostaje w nim.
 - `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4 (także `--max-parallel 2`), 5, 6, 6a, 7, 7a, 8, „Noc”
   i „Czego nie robisz”.
@@ -512,6 +565,20 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   i `code`, brak `gate.jsonl` i `pairs.jsonl`, nieczytelny plik → kod 2. `record`: poprawny zapis, brak i nadmiar pola,
   para spoza raportu, `record` nie jako pierwszy argument, liczba ujemna, ułamkowa albo logiczna, `auto_resolved` większe od `conflicts`, zły numer w `critical`, `shared` nie
   będące listą ścieżek ani `null`, `A` równe `B`, nieczytelny JSON, zajęta blokada → kod 2 bez zapisu.
+- `task_pairs.py` (baza SQLite w katalogu tymczasowym, podstawiony `git`/`gh`): zadanie zgodne z deklaracją, plik
+  spoza `paths`, porównanie po segmentach bez wielkości liter, zadanie bez `paths`, squash i merge commit z tym samym
+  diffem `^1`, brak commitu w historii i brak `merged_sha` (`gh`), oba źródła zawodzą (`null`), deklaracja z `plan_sha`,
+  nie z HEAD, tylko zadania `plan` z PR, para `parallel_with` z `actual_conflicts` mimo pustych `declared_conflicts`,
+  śledzony `CLAUDE.md` przy `plan_sha` w `declared_conflicts`, `null` w parze bez danych, nieczytelny plan
+  i manifest bez bloku (kod 0, `declarations` z powodem, metryki liczone),
+  zadanie spoza manifestu odróżnione od zadania bez `paths`;
+  współbieżność: nakładanie 30 min (`concurrent_s` 1800), trzy próby z jedną parą, próby rozłączne, trzy próby
+  naraz (oszczędność z `busy_s`), próba otwarta (także w epiku zakończonym: do końca epiku),
+  tylko próby `plan`, brak prób, czas epiku z `epic_done`, do teraz i do `updated_at`; konflikty i rundy z
+  `fix_requested`, naprawy, interwencje (także `null` operacyjnych bez `run_started`); `queue`, `resources` zawsze
+  `null` z notatką, `null` przy braku `run_started` przed pierwszą próbą, 0 przy zapisującym AO, przedziały cooldown
+  i przerw w oknie epiku (te same przerwy z równoległych prób liczone raz), awarie stosu tego domu w oknie i brak
+  katalogu; brak bazy, nieczytelna baza, epik spoza bazy (kod 2), baza bez zmian i bez zapisu, limit czasu komend.
 - Testy skryptów `/delivery` w `.github/scripts/script-tests.sh` (jeśli sprawdzają treść sekcji) dalej przechodzą.
 - Rezerwa `max-parallel`: wolna pamięć na jeden stos, ale nie na dwa → czekanie; na dwa → przejście; rezerwa
   epiku aktywnego bez stosu i zmierzona pamięć AO powyżej rezerwy; `MAX_PARALLEL` równe 2 i każde polecenie startu
