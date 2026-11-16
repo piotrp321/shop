@@ -2268,6 +2268,142 @@ def d2_candidates(record, history, config, skipped, gaps):
                            'aplikacje, liczba zmienionych plików.', wall)]
 
 
+AGENT_EXCLUDED_ROLES = ('delivery', 'integration', OTHER_ROLE, SUBAGENT)    # the orchestrators and what is no agent
+META_LIMIT = 1 << 20
+
+
+class EvalsResults:
+    """The EVALS 2.0 runs of D1, read once and only when a rule needs them: from `<results_dir>/*/runs/*/meta.json`
+    only `status`, `mode` and `subagent_model` (labels, reports and the other fields of meta.json are never read, and
+    no text of a run is kept). `runs` is None, with the reason in `gaps`, when there is no directory or no readable
+    meta.json; an unreadable file or one without these fields is skipped and counted in `gaps`."""
+
+    def __init__(self, config):
+        self.settings = config['evals']
+        self.loaded = False
+        self.runs = None
+        self.gaps = []
+
+    def load(self):
+        if not self.loaded:
+            self.loaded = True
+            self._scan()
+        return self.runs
+
+    def _paths(self, root):
+        found = []
+        for measurement in sorted(os.listdir(root)):
+            runs = os.path.join(root, measurement, 'runs')
+            if not os.path.isdir(runs):
+                continue
+            for run in sorted(os.listdir(runs)):
+                path = os.path.join(runs, run, 'meta.json')
+                if os.path.isfile(path):
+                    found.append((measurement if SAFE_NAME.match(measurement) else '?', path))
+        return found
+
+    def _scan(self):
+        root = _expand(self.settings['results_dir'])
+        try:
+            paths = self._paths(root)
+        except OSError:
+            self.gaps.append('brak katalogu wyników EVALS 2.0 (nieistniejący albo nieczytelny)')
+            return
+        runs, unreadable = [], 0
+        for measurement, path in paths:
+            run = self._read(path)
+            if run is None:
+                unreadable += 1
+            else:
+                runs.append(dict(run, measurement=measurement))
+        if unreadable:
+            self.gaps.append('%d %s meta.json nieczytelnych albo bez pól status, mode, subagent_model: pominięte'
+                             % (unreadable, plural(unreadable, 'plik', 'pliki', 'plików')))
+        if not runs:
+            self.gaps.append('brak czytelnego meta.json w wynikach EVALS 2.0')
+            return
+        self.runs = runs
+
+    @staticmethod
+    def _read(path):
+        try:
+            if os.path.getsize(path) > META_LIMIT:
+                return None
+            with open(path, encoding='utf-8') as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(meta, dict) or not isinstance(meta.get('status'), str) or 'mode' not in meta:
+            return None
+        mode, model = meta['mode'], meta.get('subagent_model')
+        if not (mode is None or isinstance(mode, str)) or not (model is None or isinstance(model, str)):
+            return None
+        if meta['status'] == 'ok' and mode == 'replay' and not model:
+            return None                      # a counted run must name its model
+        return {'status': meta['status'], 'mode': mode, 'model': model}
+
+
+def counted(run):
+    """Whether an EVALS 2.0 run counts for D1: a replay that ended `ok` (squash, infra_error and budget_stop do not)."""
+    return run['status'] == 'ok' and run['mode'] == 'replay'
+
+
+def d1_candidates(record, rates, evals, config, skipped, gaps):
+    """D1: a role of an agent has at least `d1_role_share` of the value of the epic on models more expensive than the
+    cheapest one used in it (the rates are the medians of the history). It never proposes a change of a model: with
+    no counted EVALS 2.0 run of the role on the cheapest model it proposes the experiment of a variant comparison;
+    with such runs, or for a role outside `evals.roles`, it only lists the rule among the skipped ones."""
+    by_role_model = _get(record, ('value', 'by_role_model'))
+    total = _get(record, ('value', 'total', 'usd'))
+    if not isinstance(by_role_model, dict) or not _is_number(total) or total <= 0:
+        return skip_rule(skipped, 'D1', 'brak danych: value.by_role_model albo value.total')
+    models = sorted({m for roles in by_role_model.values() if isinstance(roles, dict) for m in roles})
+    ranked = {m: rates[m] for m in models if m in rates}
+    for model in models:
+        if model not in ranked:
+            gaps.add('decide.D1', 'brak stawki historycznej modelu %s: pominięty w porównaniu' % model)
+    if len(ranked) < 2:
+        return skip_rule(skipped, 'D1', 'mniej niż dwa modele z historyczną stawką w epiku: brak porównania')
+    cheapest = min(ranked, key=lambda m: (ranked[m], m))
+    found = []
+    for role, cells in sorted(by_role_model.items()):
+        if role in AGENT_EXCLUDED_ROLES or not isinstance(cells, dict):
+            continue
+        costly = {m: c for m, c in cells.items() if m in ranked and ranked[m] > ranked[cheapest]
+                  and isinstance(c, dict) and _is_number(c.get('usd'))}
+        value = sum(c['usd'] for c in costly.values())
+        share = value / total
+        if not costly or share < config['decisions']['d1_role_share']:
+            continue
+        key = 'D1:%s' % role
+        if role not in config['evals']['roles']:
+            skip_rule(skipped, key, 'bez evali')
+            continue
+        if len(config['evals']['roles']) != 1:
+            skip_rule(skipped, key, 'meta.json nie wskazuje agenta, a lista ról EVALS 2.0 ma więcej niż jedną: '
+                                    'przebiegów nie da się przypisać do roli')
+            continue
+        runs = evals.load()
+        if runs is None:
+            skip_rule(skipped, key, 'brak wyników EVALS 2.0 (powód w gaps)')
+            continue
+        done = [r for r in runs if counted(r) and r['model'] == cheapest]
+        if done:
+            skipped.append({'key': key, 'reason': 'porównanie w EVALS 2.0, decyzja w jego raporcie',
+                            'data': {'runs': len(done), 'measurements': sorted({r['measurement'] for r in done})}})
+            continue
+        estimated = any(c.get('estimated') is True or c.get('incomplete') is True for c in costly.values())
+        saving = sum(c['usd'] * (1 - ranked[cheapest] / ranked[m]) for m, c in costly.items())
+        data = {'role': role, 'share': round(share, 4), 'models': {m: c['usd'] for m, c in sorted(costly.items())},
+                'cheaper_model': cheapest, 'rates': {m: ranked[m] for m in sorted(ranked)},
+                'estimated': ['role_value'] if estimated else []}
+        found.append(make_candidate(key, data, (
+            'Eksperyment porównania wariantów agenta %s w EVALS 2.0 na modelu %s (wariant to commit ze zmianą `model:` '
+            'w pliku agenta, `--agent-rev`; płatny pomiar wymaga zgody właściciela), nie zmiany modelu.%s'
+            % (role, cheapest, ' Wartość roli jest szacowana.' if estimated else '')), None, saving, estimated))
+    return found
+
+
 def rule_candidates(record, history, config, gaps):
     """(candidates, skipped) of the rules D2, D3 and D4, which need only the record and the history of the epic."""
     skipped, found = [], []
@@ -2277,12 +2413,16 @@ def rule_candidates(record, history, config, gaps):
     return found, skipped
 
 
-def decide_epic(record, records, config):
+def decide_epic(record, records, config, evals=None):
     """The result of `decide` for one record: {epic, candidates (ordered), report (the first report_max), skipped,
-    gaps}."""
+    gaps}. evals: the EvalsResults shared by the records of one call."""
     gaps = Gaps()
+    evals = evals or EvalsResults(config)
     history = history_of(record, records)
     found, skipped = rule_candidates(record, history, config, gaps)
+    found += d1_candidates(record, historical_rates(records, []), evals, config, skipped, gaps) or []
+    for reason in evals.gaps if evals.loaded else []:
+        gaps.add('decide.D1', reason)
     ordered = order_candidates(found)
     return {'epic': record.get('epic'), 'candidates': ordered, 'report': ordered[:int(config['decisions']['report_max'])],
             'skipped': skipped, 'gaps': gaps.render()}
