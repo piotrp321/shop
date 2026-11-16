@@ -163,6 +163,18 @@ class ConfigTest(Env):
         self.assertEqual(code, 2)
         self.assertIn('breakdown_order', err)
 
+    def test_config_with_bad_code_change_tools(self):
+        code, out, err = self.run_with(self.config(code_change_tools='Edit'))
+        self.assertEqual(code, 2)
+        self.assertIn('code_change_tools', err)
+        self.assertIn('oczekiwano', err)
+
+    def test_config_with_a_repeat_category_that_has_no_command_pattern(self):
+        code, out, err = self.run_with(self.config(repeat_categories=['test', 'sleep']))
+        self.assertEqual(code, 2)
+        self.assertIn('repeat_categories', err)
+        self.assertIn('sleep', err)
+
     def test_config_with_a_bad_command_pattern(self):
         code, out, err = self.run_with(self.config(command_categories={'test': ['(unclosed']}))
         self.assertEqual(code, 2)

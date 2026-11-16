@@ -7,7 +7,7 @@ import sqlite3
 import unittest
 
 import testkit
-from testkit import HAIKU, OPUS, SONNET, Env, Transcript, model_usage
+from testkit import HAIKU, OPUS, SONNET, AttemptEnv, Transcript, model_usage
 
 KINDS = (('INTEGRATION', 'integration'), ('REPAIR', 'repair'), ('FIX', 'fix'), ('FINALIZE', 'finalize'))
 TOKEN_KINDS = ('input', 'output', 'cache_read', 'cache_write')
@@ -46,31 +46,7 @@ def oracle(path):
             'model_usage': results[-1]['modelUsage'] if results else None}
 
 
-class TokensEnv(Env):
-    def attempt_record(self, lines, task='T-1', kind='plan', outcome='result', status='READY_FOR_INTEGRATION',
-                       stored=None, extra_events=()):
-        """The record of a one task run whose only attempt has the transcript `lines` (a Transcript, a list of lines
-        or the path of a transcript to copy). stored: {epic: record} written to the state directory first."""
-        for name, content in (stored or {}).items():
-            os.makedirs(os.path.join(self.state, 'epics'), exist_ok=True)
-            with open(os.path.join(self.state, 'epics', '%s.json' % name), 'w') as f:
-                json.dump(content, f)
-        home = testkit.synthetic_home(
-            self.root, tasks=[(task, kind)], created=1000.0,
-            attempts=[dict(task_id=task, number=1, started_at=1100.0, ended_at=1300.0, outcome=outcome,
-                           executor_status=status)], events=[(2000.0, 'epic_done', {})] + list(extra_events))
-        if lines is not None:
-            if isinstance(lines, str):
-                testkit.copy_transcript(home, lines, task, 1)
-            else:
-                testkit.put_transcript(home, task, 1, lines.lines if isinstance(lines, Transcript) else lines)
-        return self.record('demo', home=home)
-
-    def cell(self, record, role, model):
-        return record['value']['by_role_model'][role][model]
-
-
-class RealTranscriptsTest(TokensEnv):
+class RealTranscriptsTest(AttemptEnv):
     def test_the_fixtures_hold_the_transcripts_of_the_spec(self):
         found = {(epic, task, number) for epic, task, number, _ in real_transcripts()}
         self.assertEqual(len([f for f in found if f[0] == 'deploy-ops']), 18)
@@ -216,7 +192,7 @@ class RealTranscriptsTest(TokensEnv):
         self.assertTrue(any('stdout.jsonl' in gap for gap in record['gaps']), record['gaps'])
 
 
-class DeduplicationAndRolesTest(TokensEnv):
+class DeduplicationAndRolesTest(AttemptEnv):
     def test_assistant_lines_with_the_same_message_id_count_once(self):
         lines = (Transcript().init().message(blocks=3, input=10, output=2, cache_read=100, cache_write=40)
                  .result({OPUS: model_usage(input=10, output=50, cache_read=100, cache_write=40, cost=1.0)}, output=50))
@@ -341,7 +317,7 @@ class DeduplicationAndRolesTest(TokensEnv):
         self.assertIsNone(record['value']['total']['usd'])
 
 
-class AttemptWithoutCliResultTest(TokensEnv):
+class AttemptWithoutCliResultTest(AttemptEnv):
     def history(self, rates, epic='old'):
         """A stored record of another epic whose attempts have the given opus rate per weighted token."""
         return {epic: {'epic': epic, 'attempts': [{'task': 'X-%d' % i, 'number': 1, 'cli_result': True,
@@ -413,7 +389,7 @@ class AttemptWithoutCliResultTest(TokensEnv):
         self.assertEqual(record['attempts'][0]['value'], 0)
 
 
-class ByTaskTest(TokensEnv):
+class ByTaskTest(AttemptEnv):
     def test_by_task_has_work_of_every_task_including_attempts_after_epic_done(self):
         home = testkit.synthetic_home(
             self.root, tasks=[('T-1', 'plan'), ('T-REPAIR', 'repair')], created=1000.0,

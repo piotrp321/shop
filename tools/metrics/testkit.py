@@ -284,3 +284,29 @@ class Env(unittest.TestCase):
         code, out, err = self.epic(name, *extra, home=home, runner=runner, no_gh=no_gh)
         self.assertIn(code, (0, 3), err)
         return json.loads(out)
+
+
+class AttemptEnv(Env):
+    """A run of one task whose attempts have synthetic or copied transcripts."""
+
+    def attempt_record(self, lines, task='T-1', kind='plan', outcome='result', status='READY_FOR_INTEGRATION',
+                       stored=None, extra_events=()):
+        """The record of a one task run whose only attempt has the transcript `lines` (a Transcript, a list of lines
+        or the path of a transcript to copy). stored: {epic: record} written to the state directory first."""
+        for name, content in (stored or {}).items():
+            os.makedirs(os.path.join(self.state, 'epics'), exist_ok=True)
+            with open(os.path.join(self.state, 'epics', '%s.json' % name), 'w') as f:
+                json.dump(content, f)
+        home = synthetic_home(
+            self.root, tasks=[(task, kind)], created=1000.0,
+            attempts=[dict(task_id=task, number=1, started_at=1100.0, ended_at=1300.0, outcome=outcome,
+                           executor_status=status)], events=[(2000.0, 'epic_done', {})] + list(extra_events))
+        if lines is not None:
+            if isinstance(lines, str):
+                copy_transcript(home, lines, task, 1)
+            else:
+                put_transcript(home, task, 1, lines.lines if isinstance(lines, Transcript) else lines)
+        return self.record('demo', home=home)
+
+    def cell(self, record, role, model):
+        return record['value']['by_role_model'][role][model]
