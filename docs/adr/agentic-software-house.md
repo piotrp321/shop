@@ -72,7 +72,7 @@ w [planie](../features/agentic-software-house/plan.md).
 | Skrzynka decyzji | Jedno miejsce na decyzje człowieka, z rekomendacją agenta i powiadomieniem |
 | Budżet i limity | Limity subskrypcji, budżet na funkcję, priorytety kolejki |
 | Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie; bramka ryzyka równoległych epików i zadań (wspólny kod aplikacji, pamięć Dockera, zapas limitu) |
-| Metryki i evale | Pomiar czasu zegarowego, kosztu i jakości na agenta, model i zadanie, z decyzjami optymalizacyjnymi; evale agentów i workflowów z historią wyników i kryteriami regresji |
+| Metryki i evale | Pomiar czasu zegarowego, kosztu i jakości na agenta, model i zadanie, z decyzjami optymalizacyjnymi (`tools/metrics`, opis w `tools/metrics/README.md`; `/ao-run` pokazuje go w raporcie odbioru i w komentarzu po merge'u, alarmy bezproduktywnego zużycia wysyła pushem); evale agentów i workflowów z historią wyników i kryteriami regresji (`tools/evals-pilot`) |
 | Bezpieczeństwo agentów | Niezaufane wejścia spoza repozytorium, izolacja uprawnień i sekretów na poziomie systemu, testy prób obejścia; model zagrożeń, decyzje i luki: [`agent-security.md`](agent-security.md) |
 | Pętla uczenia | `/retro` po merge'u epiku: poprawki procesu w skillach, agentach i `CLAUDE.md` w PR z dowodami z przebiegów, który merguje człowiek |
 
