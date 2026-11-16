@@ -31,11 +31,13 @@ const routes = [
       { path: "forms/:id", name: "form", component: form },
       // Targets of the menu that the tests do not visit.
       { path: "products/new", name: "product-new", component: page("Nowy produkt") },
+      { path: "categories", name: "categories", component: page("Kategorie") },
       { path: "prices", name: "prices", component: page("Ceny") },
       { path: "inventory", name: "inventory", component: page("Stany") },
       { path: "discount-codes", name: "discount-codes", component: page("Kody") },
       // A screen whose H1 has no tabindex of its own.
       { path: "orders", name: "orders", component: { template: "<div><h1>Zamówienia</h1></div>" } },
+      { path: "customers", name: "customers", component: { template: "<div><h1>Klienci</h1></div>" } },
       // The H1 shows only after the data has loaded.
       {
         path: "promotions",

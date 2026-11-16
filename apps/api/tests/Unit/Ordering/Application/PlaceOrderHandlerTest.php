@@ -22,6 +22,7 @@ use App\Ordering\Domain\OrderTotalChanged;
 use App\Ordering\Domain\PromotionCopy;
 use App\Tests\Unit\Ordering\CartGone;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
+use App\Tests\Unit\Ordering\InMemoryCustomerSummaries;
 use App\Tests\Unit\Ordering\InMemoryDiscountCodeRedemptions;
 use App\Tests\Unit\Ordering\InMemoryOrderCart;
 use App\Tests\Unit\Ordering\InMemoryOrderCatalog;
@@ -68,6 +69,7 @@ final class PlaceOrderHandlerTest extends TestCase
     private SequenceOrderNumbers $numbers;
     private InMemoryUnpaidOrderExpiry $expiry;
     private FixedOrderingClock $clock;
+    private InMemoryCustomerSummaries $customers;
 
     protected function setUp(): void
     {
@@ -90,6 +92,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->numbers = new SequenceOrderNumbers($this->journal);
         $this->expiry = new InMemoryUnpaidOrderExpiry($this->journal);
         $this->clock = new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:00+00:00'));
+        $this->customers = new InMemoryCustomerSummaries();
         $this->carts->put(self::guest(), [self::SHOES => 2, self::CAP => 1]);
     }
 
@@ -348,6 +351,58 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame([self::SHOES => 2, self::CAP => 1], $this->carts->lines(self::guest()), 'another cart is untouched');
     }
 
+    public function testANewOrderOfACustomerIsAddedToTheCustomerWithItsContactAndMoment(): void
+    {
+        $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
+
+        $placed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), email: 'anna@example.com', fullName: 'Anna Nowak', expectedTotalGross: 3_690));
+
+        self::assertEquals([[
+            'customerId' => self::CUSTOMER,
+            'orderId' => $placed->order->orderId,
+            'email' => 'anna@example.com',
+            'fullName' => 'Anna Nowak',
+            'phone' => '+48600100200',
+            'placedAt' => $this->clock->now,
+        ]], $this->customers->orders);
+        self::assertSame([], $this->customers->payments);
+    }
+
+    public function testAReplayOfAnOrderOfACustomerAddsNothingToTheCustomer(): void
+    {
+        $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
+        $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690));
+
+        $replayed = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690));
+
+        self::assertTrue($replayed->replayed);
+        self::assertCount(1, $this->customers->orders, 'the replay is no new order');
+    }
+
+    public function testAReplayUnderTheCartLockAddsNothingToTheCustomer(): void
+    {
+        $customer = CartReference::customer(self::CUSTOMER);
+        $this->carts->put($customer, [self::MAP => 3]);
+        $this->carts->whileLocking = function () use ($customer): void {
+            $this->carts->whileLocking = null;
+            $this->place(self::command(cart: $customer, expectedTotalGross: 3_690));
+            $this->carts->put($customer, []);
+        };
+
+        $placed = $this->place(self::command(cart: $customer, expectedTotalGross: 3_690));
+
+        self::assertTrue($placed->replayed);
+        self::assertCount(1, $this->customers->orders);
+    }
+
+    public function testAnOrderOfAGuestOrARefusedPlacementAddsNoCustomer(): void
+    {
+        $this->place(self::command());
+        $this->assertRefused(CartEmpty::class, 'Koszyk jest pusty.', self::command(cart: CartReference::customer(self::CUSTOMER), key: 'key-2'));
+
+        self::assertSame([], $this->customers->orders, 'a guest is no customer');
+    }
+
     public function testAnEmptyCartIsRefusedBeforeAnyCopyNumberOrReservation(): void
     {
         $this->carts->put(self::guest(), []);
@@ -552,7 +607,7 @@ final class PlaceOrderHandlerTest extends TestCase
 
     private function place(PlaceOrder $command): PlacedOrder
     {
-        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->redemptions, $this->catalog, $this->stock, $this->numbers, $this->expiry, $this->events, $this->clock);
+        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->redemptions, $this->catalog, $this->stock, $this->numbers, $this->expiry, $this->events, $this->clock, $this->customers);
 
         return $handler($command);
     }

@@ -204,3 +204,95 @@ describe("focusAfterAction", () => {
     expect(document.activeElement).toBe(document.getElementById("other"));
   });
 });
+
+describe("ConfirmDialog that the view closes itself (close-on-confirm off)", () => {
+  const mountKeeping = (props: { error?: string; busy?: boolean } = {}) =>
+    mount(ConfirmDialog, {
+      props: {
+        open: true,
+        title: "Usunąć kategorię Namioty?",
+        description: "Kategoria zniknie z drzewa.",
+        confirmLabel: "Usuń kategorię",
+        closeOnConfirm: false,
+        destructive: true,
+        ...props,
+      },
+      attachTo: document.body,
+    });
+
+  it("stays open after the confirmation, so that a refusal can be said in it", async () => {
+    const mounted = mountKeeping();
+    wrapper = mounted;
+    await flushPromises();
+
+    button("Usuń kategorię")!.click();
+    await flushPromises();
+
+    expect(mounted.emitted("confirm")).toHaveLength(1);
+    expect(mounted.emitted("update:open")).toBeUndefined();
+    expect(dialog()).not.toBeNull();
+  });
+
+  it("shows the error as an alert in the dialog and the busy state as a disabled button", async () => {
+    wrapper = mountKeeping({ error: "Przenieś produkty do innej kategorii, zanim usuniesz tę.", busy: true });
+    await flushPromises();
+
+    const alert = dialog()!.querySelector("[role=alert]");
+    expect(alert?.textContent).toContain("Przenieś produkty do innej kategorii, zanim usuniesz tę.");
+    const confirmButton = button("Usuń kategorię")!;
+    expect(confirmButton.getAttribute("aria-disabled")).toBe("true");
+    expect(confirmButton.disabled, "a disabled button would take the focus away").toBe(false);
+  });
+
+  it("does not run the action again while it is busy", async () => {
+    const mounted = mountKeeping({ busy: true });
+    wrapper = mounted;
+    await flushPromises();
+
+    button("Usuń kategorię")!.click();
+
+    expect(mounted.emitted("confirm")).toBeUndefined();
+  });
+
+  it("keeps the focus in the dialog through the request and puts it on the error that comes", async () => {
+    const mounted = mountKeeping();
+    wrapper = mounted;
+    await flushPromises();
+    const confirmButton = button("Usuń kategorię")!;
+    confirmButton.focus();
+    confirmButton.click();
+    await mounted.setProps({ busy: true });
+    expect(document.activeElement, "the focus stays on the button while the request runs").toBe(confirmButton);
+
+    await mounted.setProps({ busy: false, error: "Przenieś produkty do innej kategorii, zanim usuniesz tę." });
+    await flushPromises();
+
+    const alert = dialog()!.querySelector("[role=alert]");
+    expect(document.activeElement).toBe(alert);
+    expect(alert!.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("puts the focus on the error again when the same refusal comes a second time", async () => {
+    const mounted = mountKeeping({ error: "Powód." });
+    wrapper = mounted;
+    await flushPromises();
+    button("Wróć")!.focus();
+
+    await mounted.setProps({ error: null });
+    await mounted.setProps({ error: "Powód." });
+    await flushPromises();
+
+    expect(document.activeElement).toBe(dialog()!.querySelector("[role=alert]"));
+  });
+
+  it("still asks to close with „Wróć”", async () => {
+    const mounted = mountKeeping();
+    wrapper = mounted;
+    await flushPromises();
+
+    button("Wróć")!.click();
+    await flushPromises();
+
+    expect(mounted.emitted("update:open")).toEqual([[false]]);
+  });
+});

@@ -92,10 +92,15 @@ Klient sklepu (`Customer`) i pracownik obsługujący panel (`Staff`) to dwa osob
   `backoffice` (sprawdzany wystawca tokena). Token klienta nie przejdzie przez firewall panelu, niezależnie od ról.
 - Uprawnienia pracowników sprawdzane w voterach na podstawie ról z tokena.
 - Katalog (tworzenie i edycja produktów, upload zdjęć, publikacja i wycofanie) edytują `admin` i `marketing`; listę
-  i podgląd produktów widzi każdy pracownik. Ceny zmienia `admin`, stany magazynowe `admin` i `warehouse`.
+  i podgląd produktów widzi każdy pracownik z rolą personelu (konto panelu bez roli nie widzi żadnych danych). Ceny
+  zmienia `admin`, stany magazynowe `admin` i `warehouse`.
 - Zmiany wykonane w panelu zapisują identyfikator pracownika (z tokena), żeby było wiadomo, kto zmienił
   cenę, stan czy status zamówienia.
 - Ta sama osoba jako klient i jako pracownik ma dwa osobne konta. To świadoma decyzja.
+- Klienci w panelu (lista i karta klienta, `admin` i `support`) to model odczytu Ordering nad zamówieniami
+  (`ordering_customer`): klient to konto sklepu z co najmniej jednym zamówieniem, z kontaktem najnowszego zamówienia,
+  liczbą i wartością zamówień oraz adresami dostawy ostatnich zamówień. Goście nie są klientami, a konta bez zamówień
+  nie są widoczne (API nie pyta Keycloaka). Context Customer zostaje przy tożsamości z tokenu.
 
 ## Cache HTTP i unieważnianie
 
@@ -146,6 +151,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Strony kategorii** (`/c/<ścieżka slugów>`) i lista `/`: renderowane na serwerze przy każdym żądaniu (SSR), bez ISR.
   Odczyty idą przez Varnisha, który jest jedynym cache list (bez data cache Next.js), więc strona nie zależy od
   rewalidacji. Mega menu działów w nagłówku jest zbudowane z drzewa kategorii, a wszystkie jego linki są w HTML.
+  Kolejność działów i podkategorii ustawia pracownik w panelu; poziom, którego nikt nie ułożył, jest alfabetyczny.
 - **Wyszukiwarka i filtry**: SSR, parametry w URL, kanoniczne adresy dla kombinacji filtrów,
   `noindex` dla kombinacji bez wartości SEO.
 - **Koszyk, checkout, konto klienta**: renderowane po stronie klienta, `noindex`.
@@ -160,7 +166,8 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
   `/auth/` i `/api/`, nie blokuje stron z `noindex, follow` (listing z filtrami, `/szukaj`), żeby robot widział ich
   dyrektywę, i wskazuje indeks map; jest taki sam w każdym środowisku.
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<ścieżka slugów kategorii>` (np. `/c/turystyka/biwak/namioty`),
-  przekierowania 301 przy zmianie sluga. Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
+  przekierowanie 308 przy zmianie sluga albo położenia kategorii (stare adresy kategorii i jej podkategorii prowadzą do
+  bieżących, także po kolejnych zmianach). Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
   z publikacji); zmienia się tylko w szkicu, który nie był nigdy opublikowany, więc w MVP adres produktu nie wymaga
   przekierowania. Stary adres `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
 - **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP z `srcset`,
@@ -190,10 +197,10 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 | Catalog | Produkty, warianty, kategorie, atrybuty, zdjęcia |
 | Pricing | Ceny katalogowe (netto, VAT, brutto), promocje, kody rabatowe, historia cen (Omnibus) |
 | Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
-| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień |
+| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień, modele odczytu z zamówień (sprzedaż godzinowa, klienci w panelu) |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
-| Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak |
+| Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak (klient to tożsamość z tokenu, a klientów w panelu daje model odczytu Ordering) |
 
 Contexty nie importują nawzajem swojego kodu domenowego. Komunikują się przez zdarzenia domenowe
 (asynchronicznie, RabbitMQ) albo przez jawne porty w warstwie aplikacji. To samo słowo może znaczyć

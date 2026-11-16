@@ -7,8 +7,9 @@ import type { components } from "@/api/schema";
 import { Select } from "@/components/ui/select";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import InventoryView from "@/views/InventoryView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type StockList = components["schemas"]["StockListResponse"];
+type StockList = WithOptionalTotal<components["schemas"]["StockListResponse"]>;
 type StockListItem = components["schemas"]["StockListItemResponse"];
 type ListedStock = components["schemas"]["ListedStockResponse"];
 type StockState = components["schemas"]["StockStateResponse"];
@@ -30,7 +31,7 @@ function item(name: string, overrides: { stock?: ListedStock | null; variants?: 
   return {
     productId: `id-${name}`,
     name,
-    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? stock() : overrides.stock }],
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? stock() : overrides.stock, matchesLevel: false }],
   };
 }
 
@@ -176,8 +177,8 @@ describe("InventoryView: receipts and corrections", () => {
         items: [
           item("Kajak", {
             variants: [
-              { variantId: "v-green", label: "zielony", stock: stock({ physical: 0, reserved: 0, available: 0, level: "out_of_stock", version: 1 }) },
-              { variantId: "v-orange", label: "pomarańczowy", stock: stock({ physical: 3, reserved: 0, available: 3, level: "low_stock", version: 2 }) },
+              { variantId: "v-green", label: "zielony", stock: stock({ physical: 0, reserved: 0, available: 0, level: "out_of_stock", version: 1 }), matchesLevel: false },
+              { variantId: "v-orange", label: "pomarańczowy", stock: stock({ physical: 3, reserved: 0, available: 3, level: "low_stock", version: 2 }), matchesLevel: false },
             ],
           }),
         ],
@@ -358,8 +359,8 @@ describe("InventoryView: receipts and corrections", () => {
         items: [
           item("Kajak", {
             variants: [
-              { variantId: "v-green", label: "zielony", stock: stock({ version: 7 }) },
-              { variantId: "v-orange", label: "pomarańczowy", stock: stock({ version: 2 }) },
+              { variantId: "v-green", label: "zielony", stock: stock({ version: 7 }), matchesLevel: false },
+              { variantId: "v-orange", label: "pomarańczowy", stock: stock({ version: 2 }), matchesLevel: false },
             ],
           }),
         ],
@@ -581,7 +582,7 @@ describe("InventoryView: receipts and corrections", () => {
   });
   describe("the windows", () => {
     it("are dialogs with the title, the name of the variant, labelled number fields and the width of the standard", async () => {
-      serve(() => ({ items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock() }] })], next: null }));
+      serve(() => ({ items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock(), matchesLevel: false }] })], next: null }));
       wrapper = await mountView();
 
       await open("receive-stock");
@@ -688,7 +689,7 @@ describe("InventoryView: receipts and corrections", () => {
 
   describe("after a save", () => {
     it("says so in a toast with the quantity, the product and the variant, and gives the focus back to „Przyjęcie” of the row", async () => {
-      serve(() => ({ items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock() }, { variantId: "v-o", label: "pomarańczowy", stock: stock() }] })], next: null }));
+      serve(() => ({ items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock(), matchesLevel: false }, { variantId: "v-o", label: "pomarańczowy", stock: stock(), matchesLevel: false }] })], next: null }));
       wrapper = await mountView();
       answer(201, state({ variantId: "v-o", physical: 20 }));
 
@@ -702,7 +703,7 @@ describe("InventoryView: receipts and corrections", () => {
     });
 
     it("says a correction in a toast with the product and the variant, and gives the focus back to „Korekta” of the row", async () => {
-      serve(() => ({ items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock() }] })], next: null }));
+      serve(() => ({ items: [item("Namiot", { variants: [{ variantId: "v-g", label: "zielony", stock: stock(), matchesLevel: false }] })], next: null }));
       wrapper = await mountView();
       answer(200, state({ variantId: "v-g", physical: 8 }));
 

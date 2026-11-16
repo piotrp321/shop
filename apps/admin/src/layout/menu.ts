@@ -1,7 +1,8 @@
-import { Activity, LayoutDashboard, Package, Percent, ShoppingCart, Ticket } from "lucide-vue-next";
+import { Activity, LayoutDashboard, Package, Percent, ShoppingCart, Ticket, Users } from "lucide-vue-next";
 import type { Component } from "vue";
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw } from "vue-router";
 import { canViewSystem } from "@/dashboard/permissions";
+import { canViewCustomers } from "@/customers/permissions";
 import { canCompleteRefunds, canViewOrders } from "@/orders/permissions";
 import { canManageProducts } from "@/products/permissions";
 import type { StaffMe } from "@/stores/auth";
@@ -47,7 +48,7 @@ const named =
   (route: CurrentRoute) =>
     typeof route.name === "string" && names.includes(route.name);
 
-const refundsToDo = (route: CurrentRoute) => route.name === "orders" && route.query.refund === "pending";
+const refundsToDo = (route: CurrentRoute) => route.name === "orders" && (route.query.refund === "pending" || route.query.refund === "overdue");
 
 /** The menu of the panel (docs/features/admin-design/spec.md, „Powłoka”). */
 export const MENU: MenuSection[] = [
@@ -75,6 +76,7 @@ export const MENU: MenuSection[] = [
               { kind: "leaf", id: "product-new", label: "Dodaj produkt", to: { name: "product-new" }, matches: named("product-new"), visible: canManageProducts },
             ],
           },
+          { kind: "leaf", id: "categories", label: "Kategorie", to: { name: "categories" }, matches: named("categories") },
           { kind: "leaf", id: "prices", label: "Ceny", to: { name: "prices" }, matches: named("prices") },
           { kind: "leaf", id: "inventory", label: "Stany magazynowe", to: { name: "inventory" }, matches: named("inventory") },
         ],
@@ -98,6 +100,7 @@ export const MENU: MenuSection[] = [
           },
         ],
       },
+      { kind: "leaf", id: "customers", label: "Klienci", to: { name: "customers" }, icon: Users, matches: named("customers", "customer"), visible: canViewCustomers },
     ],
   },
   {

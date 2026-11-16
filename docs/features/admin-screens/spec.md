@@ -77,7 +77,7 @@ jest zabezpieczeniem).
   (`useListUrlState`), w wyborze wariantów przypisanie do zapytania w pamięci. Wpisanie wartości z adresu (wejście,
   Wstecz: `setFromAddress`) ustawia pole bez ponownego `apply`. Testy reguł są raz, w `tests/useNameSearch.test.ts`;
   testy list sprawdzają tylko połączenie z adresem albo zapytaniem. Reguły kodów rabatowych (1–32 znaki, przycinanie
-  `\p{Cf}`) i zamówień (po Enterze, 1–254 znaki) są w ich composables.
+  `\p{Cf}`) i zamówień (po Enterze, 3–254 znaki) są w ich composables.
 - **Fokus po zmianie strony listy, po błędzie i po 403** według standardu: widoki list cen, stanów, promocji, kodów
   i zamówień nie mają własnej obsługi fokusu. Fokus pagera prowadzi `usePagerFocus` (`ListPager`, wybór wariantów
   promocji): zostaje na naciśniętym przycisku, a gdy kolejna strona go wyłącza (ostatnia albo pierwsza), przechodzi na
@@ -202,10 +202,10 @@ wariantów z etykietą wariantu („Wariant domyślny” dla pustej etykiety).
 ## Zamówienia
 
 - **Lista** (`/orders`, H1 „Zamówienia”; na `?refund=pending` H1 „Zwroty do wykonania”; okruszki „Pulpit › Zamówienia”
-  albo „Pulpit › Zamówienia › Zwroty do wykonania”): wyszukiwanie dokładnego numeru albo e-maila po Enterze (1–254 znaki
-  po przycięciu, z podpowiedzią; ponowny Enter z tą samą frazą odświeża listę), filtr statusu (`Select` „Status”),
+  albo „Pulpit › Zamówienia › Zwroty do wykonania”): wyszukiwanie numeru, e-maila albo fragmentu numeru, e-maila lub nazwiska po Enterze (3–254 znaki
+  po przycięciu, z podpowiedzią; pola daty „Od” i „Do”; ponowny Enter z tą samą frazą odświeża listę), filtr statusu (`Select` „Status”),
   przełącznik `Switch` „Zwroty do wykonania” (`refund-pending`), rozmiar strony 10/25/50 (domyślnie 25), stan w adresie
-  (`q`, `status`, `refund`, `perPage`; e-mail w `q` trafia do adresu, przyjęte w ADMIN-DESIGN). Kolumny: Numer (link,
+  (`q`, `status`, `refund`, `placedFrom`, `placedTo`, `perPage`; e-mail w `q` trafia do adresu, przyjęte w ADMIN-DESIGN). Kolumny: Numer (link,
   bez łamania, #261), Data (data i godzina), Klient (imię i nazwisko, pod spodem e-mail obcięty (`truncate`) z pełną
   wartością w podpowiedzi `title`), Pozycje (`itemCount`), Kwota (do prawej), Status (`Badge`); przy zwrotach dodatkowo
   Kwota zwrotu i Termin zwrotu (z etykietą „Po terminie”). Poniżej 1024 px Pozycje i Data jako linie komórki Numer;

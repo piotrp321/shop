@@ -7,8 +7,9 @@ import { Select } from "@/components/ui/select";
 import { SEARCH_DEBOUNCE_MS } from "@/discount-codes/useDiscountCodeList";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import DiscountCodesView from "@/views/DiscountCodesView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type CodeList = components["schemas"]["DiscountCodeListResponse"];
+type CodeList = WithOptionalTotal<components["schemas"]["DiscountCodeListResponse"]>;
 type Code = components["schemas"]["DiscountCodeResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -286,6 +287,17 @@ describe("DiscountCodesView", () => {
   describe("paging", () => {
     const THREE_PAGES = { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: "c2" }, c2: { items: [item("C")], next: null } };
     const pager = (testid: string) => wrapper!.get(`[data-testid=${testid}]`);
+
+    it("says „z N” with the total of the first page on the next page too", async () => {
+      serve({ "": { items: [item("A")], next: "c1", total: { value: 12, capped: false } }, c1: { items: [item("B")], next: null, total: null } });
+      wrapper = await mountView();
+      expect(pager("range").text()).toBe("Pokazano 1–1 z 12");
+
+      await pager("next-page").trigger("click");
+      await flushPromises();
+
+      expect(pager("range").text()).toBe("Pokazano 26–26 z 12");
+    });
 
     it("pages with the cursors of the API and says which codes are shown", async () => {
       serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });

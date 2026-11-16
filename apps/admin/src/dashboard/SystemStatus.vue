@@ -132,10 +132,20 @@ defineProps<{ system: System }>();
         class="text-sm"
       >
         Dokumenty w Elasticsearch: <strong>{{ system.searchIndex.indexedProducts ?? "brak danych" }}</strong>,
-        produkty w bazie: <strong>{{ system.searchIndex.catalogProducts }}</strong>
+        produkty w bazie:
+        <strong v-if="system.searchIndex.catalogProducts !== null">ok. {{ system.searchIndex.catalogProducts }}</strong>
+        <strong v-else>brak danych</strong>
       </p>
       <p
-        v-if="!system.searchIndex.inSync"
+        v-if="system.searchIndex.inSync === null"
+        data-testid="not-comparable"
+        role="status"
+        class="text-sm text-muted-foreground"
+      >
+        Nie można porównać: brak statystyk bazy.
+      </p>
+      <p
+        v-else-if="!system.searchIndex.inSync"
         data-testid="out-of-sync"
         role="status"
         class="rounded-lg border border-status-warning bg-status-warning-soft px-4 py-3 text-sm text-status-warning"

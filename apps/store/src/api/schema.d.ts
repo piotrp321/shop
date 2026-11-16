@@ -232,6 +232,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/categories/redirect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current address of an old category address
+         * @description An address a category or one of its ancestors had before a change of a slug or a move leads to the current address of the category, also after further changes. The current address of a category, an address of a deleted category and an unknown address are 404. Both answers may be kept by a shared cache for 60 seconds.
+         */
+        get: operations["getCategoryRedirect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -1456,6 +1476,14 @@ export interface components {
         ProductOfferListResponse: {
             items: components["schemas"]["ProductOfferResponse"][];
         };
+        /** @description The current address of the category an old address leads to. */
+        CategoryRedirectResponse: {
+            /**
+             * @description The slugs from the root to the category joined with `/`, without slashes at the ends.
+             * @example turystyka/biwak/namioty
+             */
+            path: string;
+        };
         CategoryNode: {
             id: string;
             name: string;
@@ -2314,6 +2342,65 @@ export interface operations {
                 };
             };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCategoryRedirect: {
+        parameters: {
+            query: {
+                /** @description The old address: 1 to 4 category slugs joined with `/`, e.g. `turystyka/namioty`. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current address. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryRedirectResponse"];
+                };
+            };
+            /** @description The `path` parameter is missing or not 1 to 4 slugs joined with `/` (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The address leads to no category (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
                     [name: string]: unknown;

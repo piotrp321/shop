@@ -11,7 +11,9 @@ use App\Catalog\Application\Port\ProductSearchSource;
 
 /**
  * Writes the current state of one product to the search index: Catalog's data and the facts of its offer. Only
- * reads the database, so it runs outside command.bus (no transaction).
+ * reads the database, so a transaction changes nothing in it: it usually runs outside command.bus, and the batch of
+ * the category reindex chain runs it inside the transaction of that bus. Under READ COMMITTED (the default) every read
+ * takes a fresh snapshot, so the argument below holds in both.
  *
  * The version of the document is the time, in microseconds, taken before the reads. Of two concurrent handlings
  * the one with the later timestamp wins, and the index rejects the write of the other (Stale). The one with the

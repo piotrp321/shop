@@ -40,14 +40,16 @@ final class ListBackofficeProductsController
     #[OA\Get(
         operationId: 'listBackofficeProducts',
         summary: 'Product list',
-        description: 'A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. '
+        description: 'A page of products, drafts included, sorted by name (by default) or by `sort`, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. '
             .'The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.',
         tags: ['Catalog'],
         parameters: [
             new OA\Parameter(name: 'q', in: 'query', required: false, description: 'A part of the product name, 2 to 100 characters.', schema: new OA\Schema(type: 'string', minLength: 2, maxLength: 100)),
             new OA\Parameter(name: 'category', in: 'query', required: false, description: 'Category id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only drafts or only published products.', schema: new OA\Schema(type: 'string', enum: ['draft', 'published'])),
-            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeProductsQuery::MAX_CURSOR_LENGTH)),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.', schema: new OA\Schema(type: 'string', enum: BackofficeProductsQuery::SORTS, default: 'name')),
+            new OA\Parameter(name: 'images', in: 'query', required: false, description: '`none`: only the products without images; combines with `q`, `category` and `status`.', schema: new OA\Schema(type: 'string', enum: ['none'])),
+            new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page of the same sort.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: BackofficeProductsQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: 100, default: ListBackofficeProducts::DEFAULT_PER_PAGE)),
         ],
         responses: [
@@ -81,9 +83,12 @@ final class ListBackofficeProductsController
     #[IsGranted(self::VIEW_PRODUCTS)]
     public function __invoke(#[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] BackofficeProductsQuery $query = new BackofficeProductsQuery()): JsonResponse
     {
+        // The validation has accepted only a text here.
+        $sort = \is_string($query->sort) ? $query->sort : null;
+
         try {
             /** @var BackofficeProductList $list */
-            $list = $this->handle(new ListBackofficeProducts($query->q, $query->category, $query->status, $query->after, $query->perPage));
+            $list = $this->handle(new ListBackofficeProducts($query->q, $query->category, $query->status, $query->after, $query->perPage, $sort, 'none' === $query->images));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

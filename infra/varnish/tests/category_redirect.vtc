@@ -1,0 +1,79 @@
+varnishtest "The redirect of an old category address is cached by its full URL and purged with the catalog tag"
+
+server s1 -listen 127.0.0.1:80 {
+	rxreq
+	expect req.url == "/api/v1/categories/redirect?path=sport/bieganie"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog" -body "{\"path\":\"sport/biegi\"}"
+	rxreq
+	expect req.url == "/api/v1/categories/redirect?path=nie-ma"
+	txresp -status 404 -hdr "Content-Type: application/problem+json" -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog" -body "not found"
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/categories/redirects?path=sport"
+		txresp -hdr "Cache-Control: max-age=60, public" -body "another path"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/categories/redirect/x?path=sport"
+		txresp -hdr "Cache-Control: max-age=60, public" -body "under the redirect"
+	}
+	# After the purge of catalog.
+	rxreq
+	expect req.url == "/api/v1/categories/redirect?path=sport/bieganie"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog" -body "{\"path\":\"turystyka/biegi\"}"
+} -start
+
+setenv VARNISH_PURGE_SECRET "s3cret"
+# -t 0: the default TTL of the varnish service in infra/docker-compose.yml.
+varnish v1 -arg "-t 0" -cliok "vcl.load main /etc/varnish/default.vcl" -cliok "vcl.use main" -start
+
+client c1 {
+	txreq -url "/api/v1/categories/redirect?path=sport/bieganie"
+	rxresp
+	expect resp.status == 200
+	expect resp.http.X-Cache == "MISS"
+	expect resp.http.xkey == <undef>
+	txreq -url "/api/v1/categories/redirect?path=sport/bieganie"
+	rxresp
+	expect resp.body == "{\"path\":\"sport/biegi\"}"
+	expect resp.http.X-Cache == "HIT"
+
+	# The 404 of an address without a redirect is kept too.
+	txreq -url "/api/v1/categories/redirect?path=nie-ma"
+	rxresp
+	expect resp.status == 404
+	expect resp.http.X-Cache == "MISS"
+	txreq -url "/api/v1/categories/redirect?path=nie-ma"
+	rxresp
+	expect resp.status == 404
+	expect resp.http.X-Cache == "HIT"
+
+	# Only the exact path of the endpoint is cached.
+	loop 2 {
+		txreq -url "/api/v1/categories/redirects?path=sport"
+		rxresp
+		expect resp.body == "another path"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/api/v1/categories/redirect/x?path=sport"
+		rxresp
+		expect resp.body == "under the redirect"
+		expect resp.http.X-Cache == "MISS"
+	}
+} -run
+
+# A change of the tree purges the tag `catalog`: the next request goes to the API.
+client c2 {
+	txreq -req PURGE -url "/" -hdr "X-Purge-Token: s3cret" -hdr "xkey-purge: catalog"
+	rxresp
+	expect resp.status == 200
+
+	txreq -url "/api/v1/categories/redirect?path=sport/bieganie"
+	rxresp
+	expect resp.body == "{\"path\":\"turystyka/biegi\"}"
+	expect resp.http.X-Cache == "MISS"
+} -run
+
+varnish v1 -expect cache_hit == 2
+varnish v1 -expect backend_req == 7

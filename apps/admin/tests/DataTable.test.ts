@@ -124,6 +124,19 @@ describe("DataTable", () => {
     expect(main.findAll("[data-testid^=line-]")).toHaveLength(2);
   });
 
+  it("says with aria-sort which column the list is sorted by, and in which direction; the other headers have none", () => {
+    const table = mountTable({ columns: columns.map((column) => (column.key === "name" ? { ...column, sort: "descending" } : column.key === "changed" ? { ...column, sort: "ascending" } : column)) });
+
+    const heads = table.findAll("th");
+    expect(heads.map((head) => head.attributes("aria-sort"))).toEqual(["descending", undefined, "ascending", undefined]);
+  });
+
+  it("has no aria-sort on any header of a list that is not sorted by a column", () => {
+    const table = mountTable();
+
+    expect(table.findAll("th[aria-sort]")).toHaveLength(0);
+  });
+
   it("aligns a numeric column to the right", () => {
     const table = mountTable();
 

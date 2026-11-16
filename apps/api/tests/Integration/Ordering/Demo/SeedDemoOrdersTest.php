@@ -19,7 +19,7 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
 
 /**
  * ordering:seed-demo on shop_test (rolled back after the test), after orders were placed through PlaceOrder: the orders
- * with their lines, history and notifications, and the queue of their ExpireUnpaidOrder messages (`scheduled`) go, the other
+ * with their lines, history, notifications and hourly sales, and the queue of their ExpireUnpaidOrder messages (`scheduled`) go, the other
  * queues stay.
  */
 final class SeedDemoOrdersTest extends KernelTestCase
@@ -68,6 +68,28 @@ final class SeedDemoOrdersTest extends KernelTestCase
         self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_notification'));
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order'));
+    }
+
+    public function testRemovesTheHourlySalesOfTheOrders(): void
+    {
+        $this->connection->executeStatement("INSERT INTO ordering_sales_hour (hour_start, shard, order_count, gross) VALUES ('2031-05-04 12:00:00+00', 3, 2, 2460)");
+
+        $tester = new CommandTester(new Application(self::$kernel ?? self::bootKernel())->find('ordering:seed-demo'));
+        $exitCode = $tester->execute([]);
+
+        self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_sales_hour'), 'no orders, no sales');
+    }
+
+    public function testRemovesTheCustomersOfTheOrders(): void
+    {
+        $this->connection->executeStatement("INSERT INTO ordering_customer (customer_id, email, full_name, phone, order_count, paid_count, paid_gross, first_order_at, last_order_at, last_order_id) VALUES ('kc-seed', 'jan@example.com', 'Jan Kowalski', '+48600100200', 1, 0, 0, now(), now(), '01970000-0000-7000-8000-000000000001')");
+
+        $tester = new CommandTester(new Application(self::$kernel ?? self::bootKernel())->find('ordering:seed-demo'));
+        $exitCode = $tester->execute([]);
+
+        self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_customer'), 'no orders, no customers');
     }
 
     public function testRemovesTheScheduledQueueOnlyAndKeepsTheOutboxAndFailed(): void

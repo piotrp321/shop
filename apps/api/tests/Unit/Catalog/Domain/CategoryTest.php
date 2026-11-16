@@ -59,6 +59,31 @@ final class CategoryTest extends TestCase
         new CategoryName("  \t");
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function namesWithoutText(): iterable
+    {
+        yield 'NBSP only' => ["\u{00A0}\u{2003}"];
+        yield 'a NUL' => ["Sport\0"];
+        yield 'a line separator' => ["Sport\u{2028}"];
+        yield 'a new line' => ["Sport\nZima"];
+        yield 'invalid UTF-8' => ["Sport\xC3"];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('namesWithoutText')]
+    public function testANameOfWhitespaceOrWithControlCharactersIsRejected(string $name): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new CategoryName($name);
+    }
+
+    public function testANameIsTrimmedOfUnicodeWhitespace(): void
+    {
+        self::assertSame('Łyżwy', (new CategoryName("\u{00A0} Łyżwy \u{2003}"))->value());
+    }
+
     public function testNameOf100CharactersIsAccepted(): void
     {
         self::assertSame(str_repeat('ą', 100), (new CategoryName(str_repeat('ą', 100)))->value());

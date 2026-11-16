@@ -9,7 +9,7 @@ from support import (
 
 STATEFUL = {"postgres", "elasticsearch", "rabbitmq", "redis", "garage"}
 STATELESS = {"api", "worker", "store", "admin", "imgproxy", "varnish", "keycloak", "mailpit"}
-VERSION_JOBS = {"garage-init", "migrate", "keycloak-config", "initialize", "purge-caches"}
+VERSION_JOBS = {"garage-init", "migrate", "keycloak-config", "initialize", "purge-caches", "backfill"}
 
 
 def compose_services():

@@ -49,8 +49,9 @@ sub vcl_recv {
 
     # Only the public catalog reads are cached; anything else goes to the API as it is. The chunk list of the sitemap
     # is cached by its exact path (a query string would make a new object for every request); the chunks of products
-    # (/api/v1/sitemap/products?chunk=...) are not cached: they are large and the key is free text.
-    if (req.url !~ "^/api/v1/(products(/[^/?]+)?|categories|product-offers)(\?|$)" && req.url !~ "^/api/v1/sitemap/product-chunks$") {
+    # (/api/v1/sitemap/products?chunk=...) are not cached: they are large and the key is free text. The redirect of an
+    # old category address (/api/v1/categories/redirect?path=...) is cached by its full URL, 200 and 404 alike.
+    if (req.url !~ "^/api/v1/(products(/[^/?]+)?|categories(/redirect)?|product-offers)(\?|$)" && req.url !~ "^/api/v1/sitemap/product-chunks$") {
         return (pass);
     }
 

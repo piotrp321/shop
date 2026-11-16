@@ -37,9 +37,15 @@ security:
 
     # First match wins. Everything under /api/v1 needs a token unless it is listed as public here.
     access_control:
+        # A staff member without a staff role (no ROLE_STAFF, see StaffUser) reads only who they are, so the panel can
+        # tell them they have no role; every other panel route needs ROLE_STAFF (spec: docs/features/admin-features/
+        # spec.md, section 0). \z, not $: $ also matches before a trailing new line.
+        - { path: ^/api/v1/admin/me\z, methods: [GET, HEAD], roles: IS_AUTHENTICATED }
         - { path: ^/api/v1/admin(/|$), roles: ROLE_STAFF }
         - { path: ^/api/v1/(products|categories|product-offers)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         - { path: ^/api/v1/products/[^/]+$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
+        # Where an old category address leads (spec: docs/features/admin-features/spec.md, 4 "Przekierowania").
+        - { path: ^/api/v1/categories/redirect$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         # The sitemap of the products (spec: docs/features/seo/spec.md).
         - { path: ^/api/v1/sitemap/(product-chunks|products)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         # Guest carts need no token: the random cart id is the key to the cart (spec: docs/features/cart/spec.md).

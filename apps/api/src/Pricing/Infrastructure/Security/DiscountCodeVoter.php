@@ -10,7 +10,7 @@ use Symfony\Component\Security\Core\Authorization\Voter\Vote;
 use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 
 /**
- * An administrator and marketing create and change discount codes (D1); every staff member reads them (the firewall
+ * An administrator and marketing create and change discount codes (D1); reading them needs any staff role (the firewall
  * of the panel, Q5). Decided on the staff roles of the backoffice token, through the security contract of Backoffice.
  *
  * @extends Voter<string, null>

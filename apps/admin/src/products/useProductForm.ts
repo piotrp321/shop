@@ -121,6 +121,9 @@ function toBody(form: ProductFormData) {
   };
 }
 
+/** The toast after the first save: a product without a price is unavailable in the shop (the price is set on the card „Ceny i stany”). */
+export const CREATED_MESSAGE = "Produkt zapisany. Ustaw cenę, inaczej produkt będzie w sklepie niedostępny.";
+
 function problemField(body: unknown, field: "detail" | "type"): string | null {
   const value = typeof body === "object" && body !== null ? (body as Record<string, unknown>)[field] : undefined;
   return typeof value === "string" && value !== "" ? value : null;
@@ -391,7 +394,7 @@ export function useProductForm(options: ProductFormOptions) {
       if (result.data) {
         const created = view.value === null;
         apply(result.data);
-        message.value = success;
+        message.value = created ? CREATED_MESSAGE : success;
         if (created) {
           options.onCreated(result.data.id);
         }

@@ -23,6 +23,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class VariantStockMigrationTest extends KernelTestCase
 {
     private const string MIGRATION_FILE = __DIR__.'/../../../../migrations/Version20261104140000KeyStockByVariant.php';
+    private const string LATER_PRODUCT_COLUMN_FILE = __DIR__.'/../../../../migrations/Version20261115120000AddStockItemProductId.php';
     private const string CATEGORY_ID = '00000000-0000-4000-8000-000000000001';
     private const string TENT = '11111111-1111-4111-8111-111111111111';
     private const string KAYAK = '22222222-2222-4222-8222-222222222222';
@@ -218,11 +219,16 @@ final class VariantStockMigrationTest extends KernelTestCase
         );
     }
 
-    private function runMigration(string $direction): void
+    private function runMigration(string $direction, string $file = self::MIGRATION_FILE): void
     {
-        self::assertFileExists(self::MIGRATION_FILE);
-        require_once self::MIGRATION_FILE;
-        $class = 'DoctrineMigrations\\'.basename(self::MIGRATION_FILE, '.php');
+        if ('down' === $direction && self::MIGRATION_FILE === $file) {
+            // The later migration added a nullable product_id to the stock (with its indexes); its own down() takes it
+            // away first, so this one meets the tables as they were before it.
+            $this->runMigration('down', self::LATER_PRODUCT_COLUMN_FILE);
+        }
+        self::assertFileExists($file);
+        require_once $file;
+        $class = 'DoctrineMigrations\\'.basename($file, '.php');
         self::assertTrue(class_exists($class), $class);
         $migration = new $class($this->connection, new NullLogger());
         self::assertInstanceOf(AbstractMigration::class, $migration);

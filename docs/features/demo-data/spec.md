@@ -214,7 +214,10 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
   5. zamówienia z liniami, historią statusów, płatnościami i użyciami kodów;
   6. stany, rezerwacje i ruchy stanów: jedno przejście SQL po zamówieniach (sekcja „Stany po zamówieniach”);
   7. sekwencja numerów zamówień (`setval` powyżej najwyższego numeru);
-  8. `demo-data:verify`.
+  8. modele odczytu i statystyki, których kroki 1–6 z pominięciem komend nie wypełniają: `ordering:read-models:rebuild`
+     (sprzedaż godzinowa i klienci panelu z zamówień) i `ANALYZE` wypełnionych tabel (pulpit liczy produkty ze
+     statystyk `catalog_product`);
+  9. `demo-data:verify`.
 - Kroki 1, 3 i 5 dzielą dane na części o stałym rozmiarze z `profiles.yaml` (niezależnym od liczby procesów);
   skrypt uruchamia części równolegle (liczba procesów z opcji, domyślnie 4), czeka na każdy proces osobno, a błąd
   jednej części zatrzymuje pozostałe i kończy krok kodem różnym od 0. Każda część ma własny strumień liczb
@@ -258,7 +261,8 @@ Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastaj�
   i `reserved_after` z sum narastających; bilans otwarcia = stan końcowy + zatwierdzone w oknie; ostatni ruch zgadza
   się ze stanem;
 - warianty bez ruchów w oknie: rekord stanu bez historii (jak `CreateEmptyStock`) albo przyjęcie `seed` przy stanie
-  > 0 (jak `inventory:seed-demo`).
+  > 0 (jak `inventory:seed-demo`), więc rekord stanu (z `product_id`) ma każdy wariant, także bez zamówień: kolejki
+  i filtr poziomu stanów pulpitu czytają tylko rekordy stanów.
 
 ### Spójność (sprawdzenie po załadowaniu)
 

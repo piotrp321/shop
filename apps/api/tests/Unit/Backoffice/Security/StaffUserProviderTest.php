@@ -30,37 +30,40 @@ final class StaffUserProviderTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{mixed, list<string>}>
+     * @return iterable<string, array{mixed, list<string>, list<string>}> realm roles, staff roles, security roles
      */
     public static function roleClaims(): iterable
     {
-        yield 'every known role, in a fixed order' => [['marketing', 'warehouse', 'support', 'admin'], ['admin', 'support', 'warehouse', 'marketing']];
-        yield 'unknown roles dropped' => [['default-roles-backoffice', 'support', 'superuser'], ['support']];
-        yield 'duplicates removed' => [['support', 'support'], ['support']];
-        yield 'case matters' => [['Admin', 'ROLE_ADMIN'], []];
-        yield 'no roles' => [[], []];
-        yield 'roles not a list' => ['admin', []];
-        yield 'non-string roles ignored' => [[['admin'], 1, null, 'warehouse'], ['warehouse']];
+        yield 'every known role, in a fixed order' => [['marketing', 'warehouse', 'support', 'admin'], ['admin', 'support', 'warehouse', 'marketing'], ['ROLE_STAFF']];
+        yield 'unknown roles dropped' => [['default-roles-backoffice', 'support', 'superuser'], ['support'], ['ROLE_STAFF']];
+        yield 'duplicates removed' => [['support', 'support'], ['support'], ['ROLE_STAFF']];
+        yield 'case matters' => [['Admin', 'ROLE_ADMIN'], [], []];
+        yield 'only roles that are not staff roles' => [['offline_access', 'uma_authorization', 'ROLE_STAFF'], [], []];
+        yield 'no roles' => [[], [], []];
+        yield 'roles not a list' => ['admin', [], []];
+        yield 'non-string roles ignored' => [[['admin'], 1, null, 'warehouse'], ['warehouse'], ['ROLE_STAFF']];
+        yield 'only non-string roles' => [[['admin'], 1, null], [], []];
     }
 
     /**
      * @param list<string> $expected
+     * @param list<string> $securityRoles
      */
     #[DataProvider('roleClaims')]
-    public function testKeepsOnlyTheKnownStaffRolesAndAlwaysGrantsRoleStaff(mixed $roles, array $expected): void
+    public function testKeepsOnlyTheKnownStaffRolesAndGrantsRoleStaffOnlyWithOne(mixed $roles, array $expected, array $securityRoles): void
     {
         $user = $this->load(['preferred_username' => 'support', 'realm_access' => ['roles' => $roles]]);
 
         self::assertSame($expected, $user->staffRoles());
-        self::assertSame(['ROLE_STAFF'], $user->getRoles());
+        self::assertSame($securityRoles, $user->getRoles());
     }
 
-    public function testMissingRealmAccessGivesNoStaffRoles(): void
+    public function testMissingRealmAccessGivesNoStaffRolesAndNoRoleStaff(): void
     {
         $user = $this->load(['preferred_username' => 'support']);
 
         self::assertSame([], $user->staffRoles());
-        self::assertSame(['ROLE_STAFF'], $user->getRoles());
+        self::assertSame([], $user->getRoles());
     }
 
     /**

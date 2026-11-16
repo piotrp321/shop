@@ -1090,6 +1090,81 @@
                 }
             }
         },
+        "/api/v1/categories/redirect": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Current address of an old category address",
+                "description": "An address a category or one of its ancestors had before a change of a slug or a move leads to the current address of the category, also after further changes. The current address of a category, an address of a deleted category and an unknown address are 404. Both answers may be kept by a shared cache for 60 seconds.",
+                "operationId": "getCategoryRedirect",
+                "parameters": [
+                    {
+                        "name": "path",
+                        "in": "query",
+                        "description": "The old address: 1 to 4 category slugs joined with `/`, e.g. `turystyka/namioty`.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "turystyka/namioty",
+                            "maxLength": 243
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The current address.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryRedirectResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The `path` parameter is missing or not 1 to 4 slugs joined with `/` (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The address leads to no category (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/categories": {
             "get": {
                 "tags": [
@@ -4522,6 +4597,20 @@
                         "items": {
                             "$ref": "#/components/schemas/ProductOfferResponse"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "CategoryRedirectResponse": {
+                "description": "The current address of the category an old address leads to.",
+                "required": [
+                    "path"
+                ],
+                "properties": {
+                    "path": {
+                        "description": "The slugs from the root to the category joined with `/`, without slashes at the ends.",
+                        "type": "string",
+                        "example": "turystyka/biwak/namioty"
                     }
                 },
                 "type": "object"

@@ -24,7 +24,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (tokeny w pamięci).
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`; ustawia i czyści użytkownika Sentry, patrz „Sentry”).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania. `/orders` i `/orders/:orderId` mają
-  strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`), a `/system` strażnika
+  strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`), `/customers` i `/customers/:customerId`
+  strażnika na ścieżce `customers` (`canViewCustomers` z `src/customers/permissions.ts`: `admin` i `support`), a `/system` strażnika
   `canViewSystem` (`src/dashboard/permissions.ts`: tylko `admin`): rola bez dostępu trafia na
   pulpit z `history.state.denied`, który pokazuje „Nie masz dostępu do tej strony.” (`useAccessDenied`: odczyt i czyszczenie
   znacznika w tym samym wpisie historii, więc przeładowanie komunikatu nie powtarza); gdy `/me` się nie wczyta, trasa jest
@@ -32,7 +33,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/layout/` – powłoka panelu (spec „Powłoka”). `AppLayout`: link „Przejdź do treści” (pierwszy w kolejności Tab,
   przenosi fokus na `<main tabindex="-1">`), sidebar 260 px od 1024 px (`hidden lg:flex`), poniżej tej szerokości szuflada
   (`Sheet` z lewej: pułapka fokusu, `Escape` i wybór pozycji zamykają, fokus wraca na „Menu” przez `close-auto-focus`,
-  powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`), stopka
+  powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`; gdy `/me` zwróci pustą listę ról, czyli konto bez roli
+  personelu, któremu API odpowiada tylko na `/me`, `<main>` na każdej trasie zamiast widoku pokazuje H1 „Brak dostępu do
+  panelu” i `Alert` `no-staff-role` (`role="alert"`) „Twoje konto nie ma roli w panelu. Skontaktuj się z administratorem.”,
+  bez menu w sidebarze, bez szuflady i przycisku „Menu”, a topbar z „Wyloguj” i stopka zostają; wolny fokus trafia na ten
+  H1; do wczytania `/me` i przy jego błędzie panel wygląda jak dotąd), stopka
   („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"` o nazwie
   dokładnie „Powiadomienia”, bez skrótu klawiszowego vue-sonner, który doklejałby się do nazwy; 5 s; `position="top-right"` z odsunięciem
   pod topbar, `TOAST_TOP` w `AppLayout`, więc toast nie zasłania paska zapisu ani topbaru; poniżej 640 px na szerokość ekranu
@@ -41,10 +46,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
   trafia na H1 nowej strony; do czasu pojawienia się H1 (widok ładuje dane) na `<main>`. Fokus, który ma istniejący element
   (przeniesiony przez widok, np. formularz po zapisie przed `router.replace` na trasę utworzonego rekordu tą samą instancją,
   pole, w którym jest pracownik, topbar, menu), zostaje. H1 bez własnego `tabindex` (pulpit) dostaje od powłoki `tabindex="-1"`. Pozycja wybrana w szufladzie,
-  która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
-  Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
+  która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog (Produkty, Kategorie, Ceny, Stany magazynowe),
+  Produkty, Zamówienia, a obok nich pozycja „Klienci” `/customers` dla `admin` i `support`; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
-  szczegóły należą do pozycji listy, `/orders?refund=pending` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
+  szczegóły należą do pozycji listy (`/customers/:customerId` do „Klientów”), `/orders?refund=pending` i `/orders?refund=overdue` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
   „Listy zamówień”, „Pulpit” tylko na `/`). `AppMenu` i `AppMenuItem` renderują ją: grupa to przycisk z `aria-expanded`
   i `aria-controls`, grupa bieżącej pozycji otwiera się przy wejściu i przy każdej zmianie trasy (zamyka ją tylko
   przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Region grupy ma `id`
@@ -70,9 +75,23 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   Drugi argument `alongside` jest wołany przy każdym odświeżeniu (pulpit odświeża nim zamówienia). `FreshnessBar`:
   „Dane z <czas polski przez `formatDateTime`>” (`muted-foreground`, `aria-live="polite"`), „Odśwież” i komunikat błędu
   (`role="alert"`); używają go oba ekrany. Pulpit: `KpiTile` (`title`, `icon`, `tone` z par `kpi-*`, `value`, opcjonalnie
-  `footer` i `to`: z `to` tytuł jest linkiem rozciągniętym na kafel), `CatalogTiles` („Produkty” z linkiem do `/products`
-  i stopką „Bez zdjęć”, „Kategorie” i „Bez zdjęć” bez linku, bo API nie ma dla nich ekranów), `TodoCard` („Do obsługi”:
-  linki bez liczb, wiersze z `todo.ts` według ról z `/me`: każda rola ma co najmniej jeden, rola z kilku widzi każdy
+  `footer`, `to`: z `to` tytuł jest linkiem rozciągniętym na kafel, `estimated`: „ok.” (`abbr` z `title="około"`) przed wartością
+  szacunkową, `description`: wyjaśnienie wartości, której nie ma, połączone z wartością przez `aria-describedby`, `trend`: linia pod
+  wartością z tonem `success` / `danger` / `neutral` w kolorach `status-*` i `muted-foreground`),
+  `CatalogTiles` („Produkty”: `catalog.productCount` to szacunek bazy z „ok.” (od miliona „ok. 10 mln”), a `null` to „—”
+  z opisem „Liczba produktów będzie dostępna po aktualizacji statystyk bazy.”, link do `/products` i stopka „Bez zdjęć”
+  tylko przy kolejce `queues.productsWithoutImages`; „Kategorie” z linkiem do `/categories`; „Bez zdjęć” z linkiem do
+  `/products?images=none`, tylko gdy rola ma tę kolejkę, a jej brak zmienia siatkę na dwie kolumny), `SalesTiles`
+  (sekcja „Sprzedaż”, tylko przy `sales` różnym od `null`, czyli dla `admin`: kafle „Sprzedaż dziś”, „Sprzedaż 7 dni”,
+  „Sprzedaż 30 dni” z przychodem `formatMoney`, stopką „Zamówienia: N” i „śr. <kwota>” (bez średniej „śr. —”) i trendem
+  ze zmiany z API w punktach bazowych: „+12,5% vs wczoraj”, „vs poprzednie 7 dni”, „vs poprzednie 30 dni”, ton `success`
+  przy wzroście, `danger` przy spadku, bez okresu porównawczego „brak danych do porównania”; „Dziś” z opisem „Od północy
+  do pełnej godziny, wg godzin zegara.”, a z miarami `null` (między 0:00 a 1:00) „—” z opisem „Pierwsze dane po 1:00”,
+  bez stopki i trendu; pod kaflami „Dane do <godzina>” z `dataUntil` w czasie polskim; panel niczego nie liczy), `TodoCard` („Do obsługi”:
+  wiersze z `todo.ts` według ról z `/me` i według `queues` z API: wiersz z kolejką `null` jest ukryty, pozostałe pokazują
+  jej liczbę (`todo-count`, `formatCount`: „1000+” przy `capped`, „0” zostaje), do wczytania pulpitu (i po błędzie jego
+  pobrania) wiersze ról są bez liczb; każdy wiersz prowadzi do przefiltrowanej listy, m.in. `/orders?refund=overdue`,
+  `/inventory?level=low_stock`, `/products?images=none`; każda rola ma co najmniej jeden, rola z kilku widzi każdy
   raz; do czasu wczytania `/me` karty nie ma) i `RecentOrders` (`useRecentOrders`: `GET /orders?perPage=5` tylko dla
   ról z `canViewOrders`, ładowane z odświeżeniem pulpitu i gdy `/me` pokaże dostęp; błąd, w tym 403 bez „Spróbuj
   ponownie”, zostaje w karcie z fokusem na jej nagłówku po ponowieniu, a nieudane odświeżenie zostawia pokazane
@@ -80,10 +99,10 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   Wysłane `success`, Dostarczone i Opłacone `info`, Czeka na płatność `warning`, Anulowane `danger`, Zwrócone `neutral`). Pulpit nie pokazuje stanu systemu. „Stan systemu” (`SystemStatus`): usługi z polską etykietą (`labels.ts`:
   `serviceLabel`, nieznana nazwa zostaje jak z API) i stanem „Działa” / „Nie działa” z opóźnieniem, „Zdarzenia czekające
   na wysłanie”, tabela kolejek w regionie `role="region"` z nazwą i `tabindex="0"` (przewijana w poziomie) i porównanie
-  indeksu wyszukiwania z katalogiem; `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
+  indeksu wyszukiwania z szacunkiem liczby produktów (`inSync: null` bez szacunku to „Nie można porównać: brak statystyk bazy.”, `data-testid="not-comparable"`); `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
   danych o stanie systemu”. Pliki bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
-  list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
+  list, bez liczników produktów (`GET /categories` bez `withCounts`; ekran „Kategorie” ma własny odczyt z licznikami); `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
   `useNameSearch({ initial, apply })`: jedyne miejsce reguł wyszukiwania po nazwie listy produktów, listy cen, listy stanów i wyboru wariantów promocji (od 2 do 100 znaków w punktach kodowych po
   przycięciu, 300 ms przerwy w pisaniu, pusta fraza i same spacje to `null`, podpowiedź dla frazy za krótkiej i za długiej);
   zwraca `search`, `tooShort`, `hint`, `reset` (czyści pole i anuluje opóźnienie) i `setFromAddress` (wartość z adresu ustawia
@@ -98,16 +117,19 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   promocji): zostaje na naciśniętym przycisku, a gdy kolejna strona go wyłącza, przechodzi na drugi, chyba że pracownik sam
   przeniósł fokus poza pager (fokus przechodzi tylko z `body` albo z wnętrza pagera i najwyżej raz na naciśnięcie, więc późniejsza odpowiedź, np. wyszukiwania, nie zabiera go z pola); `press(which)` w obsłudze kliknięcia, `onFocusOut` na elemencie z oboma przyciskami.
   `useCursorPager(fetchPage, query, { ready })`: wspólna implementacja stronicowania po kursorach (spec „Standard listy”; używa jej
-  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień i wybór wariantów promocji).
-  `fetchPage({ query, after })` zwraca `{ items, next }` albo `{ error, forbidden? }` (żądanie i komunikaty należą do
+  lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień, lista klientów, zamówienia na karcie klienta i wybór wariantów promocji).
+  `fetchPage({ query, after })` zwraca `{ items, next, total? }` (`total` to `BoundedCountResponse` z pierwszej strony, na kolejnych
+  null) albo `{ error, forbidden? }` (żądanie i komunikaty należą do
   composable listy), `query` to reaktywne zapytanie z `perPage`; każda nowa wartość zapytania (porównanie po JSON, więc
   równa nie wysyła żądania) zaczyna od pierwszej strony i porzuca stos kursorów, a `ready` wstrzymuje żądania. Stan:
   `items`, `loading`, `loaded`, `error`, `forbidden`, `hasPrevious`, `hasNext`, `pageNumber`, `range` (numery pierwszego
-  i ostatniego wiersza strony dla „Pokazano X–Y”, z rozmiaru strony, na której wiersze zostały pobrane), `goNext`,
+  i ostatniego wiersza strony dla „Pokazano X–Y”, z rozmiaru strony, na której wiersze zostały pobrane), `total` (licznik
+  pierwszej strony, trzymany na kolejnych do zmiany zapytania; nowe zapytanie kasuje go od razu, także gdy jego odpowiedź jest
+  błędem; powrót na pierwszą stronę bierze go z nowej odpowiedzi), `goNext`,
   `goPrevious`, `retry` (powtarza nieudane żądanie) i `refresh` (bieżąca strona po zapisie). Trzy przypadki błędu:
   nieudana zmiana zapytania (także pierwsze wczytanie) usuwa wiersze i kursory (`loaded` false, zostaje `error`), bo
   należą do poprzedniego zapytania (#251 F10); nieudana sąsiednia strona albo odświeżenie zostawia wyświetloną stronę.
-  Tylko najnowsze żądanie zmienia stan. `useListUrlState(schema)`: wyszukiwanie, filtry i rozmiar strony w adresie.
+  Tylko najnowsze żądanie zmienia stan. `useListUrlState(schema)`: wyszukiwanie, filtry, kolejność (`sort`) i rozmiar strony w adresie.
   Parametr schematu: `parse(tekst)` (null: wartość pominięta, adres poprawiony), `fallback` (wartość bez parametru, nie jest
   zapisywana do adresu), opcjonalnie `format` i `confirm(wartość)` (true, false albo undefined, gdy źródło jeszcze nie
   odpowiedziało: tak sprawdzana jest kategoria w drzewie; `ready` jest false do rozstrzygnięcia, a odrzucona wartość jest
@@ -118,11 +140,41 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   żądania, a zmiana `route.query` z zewnątrz (menu, wyszukiwarka topbaru, Wstecz i Dalej) ustawia zapytanie jednym
   przypisaniem, czyli jednym żądaniem od pierwszej strony. Zmiany adresu po opuszczeniu trasy widoku są pomijane
   (nazwa trasy). Pusty i powtórzony parametr nie jest wartością.
+- `src/categories/` – ekran „Kategorie” (`/categories`, `CategoriesView`, menu Sklep › Katalog › Kategorie; docs/features/admin-features/spec.md,
+  „Kategorie”). Trasa bez strażnika: drzewo czyta każdy pracownik z rolą, akcje zmieniające drzewo ma tylko `canManageCategories`
+  (`permissions.ts`: `admin` i `marketing`; ukrywa tylko przyciski, uprawnienie sprawdza API). `useCategoryScreen` czyta drzewo z licznikami
+  (`GET /categories?withCounts=true`, osobno od `useCategoryTree` filtrów list, które liczników nie chcą) i daje komendy `create`, `revise`, `move`
+  i `remove`; każda wysyła `version` wiersza, po udanej zmianie przeładowuje drzewo (wersje się zmieniły), a po 409 wersji i 404 też je przeładowuje.
+  Odmowa wraca jako wynik (`{ status: "problem", problem }`), nie wyjątek; jedna zmiana naraz (`busy`), tylko odpowiedź ostatniego odczytu zmienia stan,
+  nieudane przeładowanie zostawia drzewo. Wiadomość udanej zmiany jest tekstem toastu, a przy zmianie sluga albo przeniesieniu pod innego rodzica
+  (zmieniła się `path` z odpowiedzi) kończy się „Stary adres przekierowuje na nowy.”. `problem.ts` (`categoryProblem`) zamienia odpowiedź błędu
+  na miejsce komunikatu: 409 `category-slug-taken` przy polu Slug, `category-modified` „Kategoria została w międzyczasie zmieniona – odśwież”
+  (drzewo się przeładowuje), `category-too-deep`, `category-cycle` i `category-not-empty` z `detail` API w oknie (`blocked`), 422 do pól `name` i `slug`
+  według `violations`, 404, 403, sieć i inne statusy po polsku; nieznany typ 409 to zwykły błąd, nie konflikt wersji. `tree.ts`: wiersze (`CategoryRow`),
+  polecenia przesunięcia (`MoveCommand`: rodzic, pozycja wśród rodzeństwa bez przenoszonej kategorii, jak w API) z jednego miejsca: `moveCommand`
+  („W górę” i „W dół”, brak na brzegu rodzeństwa), `moveToCommand` („Przenieś do…”: koniec dzieci wybranego rodzica albo korzeni) i `dropCommand`
+  (upuszczenie przed, po albo w środku węzła; strefa z `zoneForRatio`: górna i dolna ćwiartka wiersza) oraz `formatProductCount` („ponad 1000” przy
+  `capped`, „—” bez licznika). Panel nie liczy reguł drzewa (głębokość, cykl, pustość, unikalność sluga to API); wyłącza tylko to, co oczywiście niemożliwe: własne
+  poddrzewo w „Przenieś do…” i upuszczenie bez zmiany. `CategoryTree` to Reka UI `Tree` (`role="tree"` o nazwie „Drzewo kategorii”, strzałki przechodzą
+  i otwierają węzły, `aria-level`; węzeł nie ma własnej etykiety, jego nazwą jest treść: nazwa, slug, „Produkty: N” i nazwy przycisków, bo krótsza etykieta
+  łamie „Etykieta w nazwie” (WCAG 2.5.3, axe `label-content-name-mismatch` liczy nazwy zagnieżdżonych przycisków do widocznego tekstu)), w wierszu nazwa, slug, „Produkty: N” i `RowActions` tylko dla
+  `canManage`: „Dodaj podkategorię”, „Edytuj”, „Przenieś do…”, „W górę”, „W dół” (dwa ostatnie pomijane na brzegu rodzeństwa), „Usuń” (klik i klawisze
+  w akcjach nie otwierają ani nie zamykają węzła). Przeciąganie (natywne HTML5, `draggable` tylko dla `canManage`) to skrót: upuszczenie daje to samo
+  `MoveCommand` co menu i idzie tą samą drogą (`change` widoku), więc klawiatura i czytnik ekranu niczego nie tracą; strefa upuszczenia jest w `data-drop`
+  (`before`, `inside`, `after`). Okna: `CategoryFormDialog` („Dodaj kategorię”, „Dodaj podkategorię”, „Edytuj”: pola Nazwa i Slug oba wymagane, podpowiedź formatu pod
+  Slugiem, fokus w Nazwie po otwarciu; odmowa przy polu albo w `Alert` okna z fokusem na komunikacie, zapis zamyka okno) i `CategoryMoveDialog`
+  (`CategoryCombobox` „Nowa kategoria nadrzędna” z „Poziom główny” i wyłączonym poddrzewem; kategoria trafia na koniec dzieci wybranego miejsca); „Usuń” pyta
+  `ConfirmDialog` z `close-on-confirm` wyłączonym, więc odmowę (niepusta kategoria) mówi okno. Zmiany bez okna (W górę, W dół, upuszczenie) kończą się toastem,
+  a odmowa `Alert` `change-error` nad drzewem; po „W górę” i „W dół” fokus wraca na ten sam przycisk (wiersz przesuwa się w DOM), a gdy ten zniknął na brzegu rodzeństwa, na przycisk przeciwnego kierunku,
+  w ostateczności na wiersz; po usunięciu na H1. Węzły z podkategoriami są otwarte przy pierwszym wczytaniu, potem decyduje pracownik; dodanie podkategorii i przeniesienie otwierają rodzica.
+  Wczytywanie to `role="status"` ze szkieletem, pusta lista „Nie ma jeszcze żadnych kategorii.” (z „Dodaj kategorię” dla ról zarządzających), błąd odczytu
+  `Alert` z „Spróbuj ponownie” (nieudane przeładowanie po zmianie zostawia drzewo i pokazuje ten sam alert).
 - `src/prices/` – lista cen (`/prices`, widok `PricesView`). `pricePage.ts`: czyste funkcje `fetchPricePage({ query, after })`
   (`GET /prices`; `perPage` idzie do API zawsze, bo domyślne API to 25, a lista zaczyna od 10; błędy: 403 „Nie masz dostępu do
   cen.” bez ponowienia, 404 kategoria, 400, sieć) i `priceRows(items)` (wiersz na wariant, `first` oznacza pierwszy wariant
   produktu), typ `PriceRow`. `usePriceList({ nodes, loaded })` składa z nich listę jak `useProductList`: `useListUrlState` (`q`,
-  `category`, `perPage`: 10, 25, 50, domyślnie 10, a 10 nie trafia do adresu), `useCursorPager` stronicujący produkty (więc
+  `category`, `sort`, `perPage`: 10, 25, 50, domyślnie 10, a 10 nie trafia do adresu; `sort` jak na liście produktów,
+  `PRODUCT_SORT_OPTIONS` z `src/composables/listSort.ts`, do API idzie tylko, gdy to nie `name`), `useCursorPager` stronicujący produkty (więc
   „Pokazano produkty X–Y” liczy produkty, a zmiana rozmiaru wraca na pierwszą stronę) i `useNameSearch`; `rows` rozbija strony
   na warianty. Zmiana ceny wariantu (`changePrice`): zapisana cena z API jest nakładką w `computed` nad `items` pagera
   (`savedPrices`, nie zapisuje do `items` i nie jest czyszczona na starcie żądania), obowiązuje, dopóki cena z listy nie ma
@@ -130,12 +182,14 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   409 odświeża bieżącą stronę (`refresh`), a 409 po `type` `price-locked-by-promotion`, czyli wariant w aktywnej promocji,
   zwraca `locked` z `detail` z API: widok pokazuje go przy polu ceny, bez komunikatu o zmianie w międzyczasie i bez
   odświeżania. `PricesView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie produktu”, `CategoryCombobox`
-  „Kategoria”, rozmiar strony), `DataTable` z wierszami grup (`groupKey`: wiersz `product-row` z `<th scope="rowgroup">` na
+  „Kategoria”, `Select` „Sortuj”, rozmiar strony), `DataTable` z wierszami grup (`groupKey`: wiersz `product-row` z `<th scope="rowgroup">` na
   całą szerokość: `name` pogrubiona i `tax-class`, czyli polska nazwa klasy z `fetchTaxClasses` (`src/products/taxClasses.ts`,
   wspólne z formularzem produktu; kod spoza listy albo błąd żądania daje sam kod, bez komunikatu), bez akcji), pod nim
   `price-row` z kolumnami Wariant („Wariant domyślny” dla pustej etykiety), Brutto (pogrubione), Netto i VAT (ukryte poniżej
   1024 px jako linie komórki Wariant), Stawka (z `Badge` nieaktualnej stawki) i Akcje (`RowActions` z przyciskami ikon „Zmień
-  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`:
+  cenę” tylko dla roli `admin` i „Historia” dla wszystkich; nazwa „Zmień cenę: <produkt> / <wariant>”). Okna to `Dialog`
+  w `PriceDialogs.vue` (wspólne z kartą „Ceny i stany” formularza produktu: widok daje `rows`, `changePrice` i `fallbackFocus`, a otwiera je
+  przez `openChange` i `openHistory`; żądanie zmiany ceny to `requestPriceChange` z `priceChange.ts`, z haczykami `save` i `refresh` widoku):
   „Zmień cenę” (`change-dialog`, szerokość `min(28rem, 100vw - 2rem)`, fokus w `gross-input` także po otwarciu Enterem,
   „Zapisz cenę” w wariancie `interface`, błędy 422 i `locked` przy polu z fokusem w polu, 403, 404, sieć i `conflict` w
   `Alert` z fokusem; po zapisie okno się zamyka, toast „Cena zapisana: <produkt> / <wariant>” i fokus wraca na „Zmień
@@ -151,32 +205,43 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   i `sourceLabel` (etykiety źródeł zmiany: Pracownik, Dane demo, Uzgodnienie podatkowe).
 - `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `fetchStockPage` i `stockRows`
   (`stockPage.ts`: żądanie `GET /stock` z `perPage` zawsze w żądaniu, domyślne API to 25, panel zaczyna od 10, i rozbicie
-  produktów strony na wiersze wariantów), `useStockList(kategorie)` na `useListUrlState` (`q`, `category`, `perPage`: 10, 25
-  albo 50 produktów, 10 nie trafia do adresu), `useCursorPager` i `useNameSearch` (jak `usePriceList`; kategoria z adresu, której
+  produktów strony na wiersze wariantów), `useStockList(kategorie)` na `useListUrlState` (`q`, `category`, `level`, `sort` jak na liście cen, `perPage`: 10, 25
+  albo 50 produktów, 10 nie trafia do adresu; `level` to `out_of_stock` albo `low_stock`, inna wartość jest pomijana), `useCursorPager` i `useNameSearch` (jak `usePriceList`; kategoria z adresu, której
   nie ma w drzewie, jest pomijana). Strona to produkty z API, więc „Pokazano produkty X–Y” liczy produkty, a `rows` ma wiersz na
   wariant w kolejności produktów i ich wariantów. Stan z odpowiedzi na przyjęcie i korektę jest nakładką `savedStocks` nad
   `items` pagera (nie zapisuje do nich i nie jest czyszczona): wiersz pokazuje go, dopóki wersja stanu z listy nie jest
   nowsza albo stan z listy jest `null`, więc ani trwające żądanie, ani spóźniona odpowiedź listy nie przywracają starego
-  stanu. 403 listy: „Nie masz dostępu do stanów magazynowych.” bez ponowienia, 404: kategoria nie istnieje.
+  stanu. Zapisany stan zdejmuje `matchesLevel` wariantu (znacznik poziomu dotyczył stanu odczytanego przez API, a panel nie
+  liczy poziomu sam). Filtr poziomu wyklucza wyszukiwanie, kategorię i sortowanie (API odmawia ich łącznie z `level`): `selectLevel` czyści `q`,
+  `category` i `sort` w adresie i pole wyszukiwania, a `query` listy ma przy poziomie tylko `level` i `perPage` (adres z `level`
+  i `q` albo `category` daje jedno żądanie z samym poziomem). Wiersz ma `matchesLevel` z API (wariant na poziomie filtra).
+  403 listy: „Nie masz dostępu do stanów magazynowych.” bez ponowienia, 404: kategoria nie istnieje.
   `format.ts` (`levelLabel`: etykieta i wariant `Badge` poziomu z API: Dostępny `success`, Ostatnie sztuki `warning`,
   Niedostępny `danger`; `movementTypeLabel`, `movementReasonLabel`, `movementSourceLabel` i `formatDelta` dla historii stanów).
   `parseCount.ts` (pole liczby okien przyjęcia i korekty: tekst przycięty, także o spacje nierozdzielające, na liczbę
   całkowitą z ASCII cyfr, pusty tekst to komunikat pola, inny „Podaj liczbę całkowitą.”, ponad bezpieczny zakres „Liczba
   jest za duża.”; zakres wartości sprawdza API). `InventoryView`: karta z `ListToolbar` (wyszukiwanie „Szukaj po nazwie
-  produktu”, `CategoryCombobox` „Kategoria”, rozmiar strony), `DataTable` z wierszami grup (`product-row` z `<th
+  produktu”, `CategoryCombobox` „Kategoria”, `Select` „Poziom” (`level-filter`: Wszystkie, Bez stanu, Niski stan; wybór poziomu wyłącza
+  i czyści wyszukiwanie (`ListToolbar` `searchDisabled`) i kategorię, a opis „Filtr poziomu nie łączy się z wyszukiwaniem ani
+  kategorią.” (`level-hint`, `role="status"`) jest jedynym regionem live z tym tekstem, a pole wyszukiwania (`ListToolbar` `searchDescribedBy`) i kategoria wskazują go przez `aria-describedby`; „Sortuj” pokazuje
+  „Wg produktu” z opcjami wyłączonymi z opisem „Filtr poziomu ma własną kolejność.”), `Select` „Sortuj”, rozmiar strony; wariant
+  na poziomie filtra ma w komórce Poziom `data-matches-level="true"`, obrys i ukryty dla czytnika tekst „pasuje do filtra”),
+  `DataTable` z wierszami grup (`product-row` z `<th
   scope="rowgroup">` i pogrubioną `name`, bez akcji), pod nim `stock-row` z kolumnami Wariant („Wariant domyślny” dla pustej
   etykiety), Fizycznie, Zarezerwowane (ukryte poniżej 1024 px jako linia komórki Wariant), Dostępne (pogrubione), Poziom
   (`Badge`) i Akcje (`RowActions`: przyciski ikon „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/me`;
   API sprawdza niezależnie), „Historia” dla każdego pracownika; nazwa „Przyjęcie: <produkt> / <wariant>”). Wariant bez rekordu
   (`stock: null`) pokazuje „—” w liczbach i w komórce poziomu, bez `Badge`; panel nie przypisuje mu poziomu.
-  Okna to `Dialog`: „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
+  Okna to `Dialog` w `StockDialogs.vue` (wspólne z kartą „Ceny i stany” formularza produktu: widok daje `rows`, `receiveStock`, `correctStock`
+  i `fallbackFocus`, a otwiera je przez `openReceipt`, `openCorrection` i `openHistory`; żądania to `requestReceipt` i `requestCorrection`
+  z `stockChange.ts`, z haczykami widoku): „Przyjęcie” (`receive-dialog`) i „Korekta” (`correct-dialog`), szerokość `min(28rem, 100vw - 2rem)`,
   nazwa produktu z wariantem w opisie, pola `Input` z `inputmode="numeric"` („Przyjęta ilość (szt.)”, „Stan policzony
   (szt.)”), powód korekty jako `Select` „Powód” (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka (przy powodzie
   „Inne” wymagana), „Przyjmij” i „Zapisz korektę” w wariancie `interface`. Fokus trafia w pierwsze pole po otwarciu (także
   Enterem), a po zapisie na przycisk, który okno otworzył (`RowActions` podaje go w `select`; gdy zniknął, na H1);
   po błędzie fokus trafia w pole, które API wskazuje (422: `violations[].propertyPath`), a bez pola na komunikat (`Alert`).
   Po zapisie okno się zamyka i pojawia się toast „Przyjęto N szt.: <produkt> / <wariant>” albo „Stan skorygowany: <produkt> /
-  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` w `useStockList`: klucz
+  <wariant>” (sam produkt dla wariantu domyślnego). `receiveStock` i `correctStock` (`useStockList` i karta): klucz
   `Idempotency-Key` (UUID z `crypto.randomUUID()`) powstaje przy otwarciu okna przyjęcia i jest wysyłany ponownie
   przy ponowieniu zapisu; nowe okno to nowy klucz. Korekta wysyła `version` wiersza (null bez rekordu). 422 bez `violations`
   (np. ponad 1 000 000), 403, 404 i sieć pokazują komunikat w oknie. 409 przyjęcia (klucz użyty z inną treścią) pokazuje
@@ -193,15 +258,16 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   poniżej 1024 px, reszta (zarezerwowane, powód, notatka, referencja, źródło, pracownik) jest liniami komórki daty.
 - `src/products/` – produkty (menu „Produkty”, trasy `/products`, `/products/new`, `/products/:id`). `useProductList`
   (widok `ProductsView`, `useProductList({ nodes, loaded })` z drzewem z `useCategoryTree`): na `useListUrlState`
-  (`q`, `category`, `status`, `perPage`) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage` idzie
-  tylko, gdy to nie 25, domyślne API), komunikaty błędów (403: „Nie masz dostępu do produktów.” bez ponowienia, 404:
+  (`q`, `category`, `status`, `images`, `sort`, `perPage`; `images=none` to filtr „Zdjęcia”: `Select` Wszystkie, Bez zdjęć, inna wartość jest
+  pomijana) i `useCursorPager`; własne zostają żądanie `GET /products` (`perPage`
+  i `sort` idą tylko, gdy to nie 25 i nie `name`, domyślne API), komunikaty błędów (403: „Nie masz dostępu do produktów.” bez ponowienia, 404:
   kategoria nie istnieje) i połączenie wyszukiwania z adresem: reguły ma `useNameSearch` (od 2 do 100 znaków w punktach
   kodowych po 300 ms przerwy w pisaniu, przycięte; `apply` zapisuje `q` do adresu); do adresu i zapytania trafia dopiero
   zastosowana fraza, a za krótka albo za długa (też z adresu) zostaje w polu z podpowiedzią (`searchHint`) i nie filtruje. Kategoria z adresu, której nie ma w drzewie (także przy błędzie drzewa),
   jest pomijana, a przy kategorii w adresie lista czeka na drzewo przed pierwszym żądaniem. `clearFilters` czyści
-  wyszukiwanie, filtry i rozmiar strony (adres `/products`). `ProductsView`: karta z `ListToolbar` (wyszukiwanie,
-  `CategoryCombobox` „Kategoria”, Select „Status”, rozmiar strony, „Dodaj produkt” dla `admin` i `marketing`), `DataTable`
-  (kolumny Produkt, Kategoria, Warianty, Status, Ostatnia zmiana, Akcje; Kategoria ukryta poniżej 1024 px, Ostatnia zmiana
+  wyszukiwanie, filtry, kolejność i rozmiar strony (adres `/products`). `ProductsView`: karta z `ListToolbar` (wyszukiwanie,
+  `CategoryCombobox` „Kategoria”, Select „Status”, `Select` „Sortuj”, rozmiar strony, „Dodaj produkt” dla `admin` i `marketing`), `DataTable`
+  (kolumny Produkt, Kategoria, Warianty, Status, Ostatnia zmiana, Akcje; nagłówek „Produkt” albo „Ostatnia zmiana” ma `aria-sort` według `sort`; Kategoria ukryta poniżej 1024 px, Ostatnia zmiana
   poniżej 900 px; miniatura 42 px albo placeholder, slug pod nazwą, data i pod nią godzina z sekundami; w Akcjach
   „Edytuj” tylko dla `admin` i `marketing` (`canManageProducts`; nazwa produktu jest linkiem do formularza dla każdej
   roli, a dla pozostałych formularz jest tylko do odczytu) i dla opublikowanego „Podgląd w sklepie”
@@ -268,18 +334,39 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   (`errorsExactly` zwraca ścieżkę bez zagnieżdżonych). Zmiana kształtu (dodanie, przestawienie, usunięcie) kasuje te
   komunikaty, bo ich ścieżki liczą pozycje. Bez roli do zmiany produktów edytor nie ma kontrolek edycji, a pola są
   wyłączone.
+  `ProductPriceStock.vue` (karta „Ceny i stany”, `FormSection` pod „Warianty” tylko dla zapisanego produktu: `/products/new` nie ma jej, pojawia
+  się po pierwszym zapisie, bo widok ma wtedy `view`): `useProductPriceStock` czyta `GET /prices?productId=` i `GET /stock?productId=` razem i
+  łączy po `variantId` (wiersz na wariant zapisany w API: etykieta, brutto, netto i VAT jak na liście cen, fizycznie, zarezerwowane, dostępne,
+  poziom; warianty niezapisane w edytorze nie mają wierszy, a `hasUnsavedVariants` pokazuje notkę „Zapisz produkt, żeby ustawić cenę i stan.”).
+  Karta czyta dane od nowa po zapisie produktu (`reloadKey` to `version` widoku), po 409 okna i przez „Spróbuj ponownie”; błąd odczytu zostawia
+  wiersze już pokazane, a 403 jest bez ponowienia. Cena i stan z odpowiedzi na zapis są nakładką nad odczytanymi wierszami (jak na listach,
+  z porównaniem wersji). Akcje (`RowActions`) według ról z `/me`: „Zmień cenę” tylko `admin`, „Przyjęcie” i „Korekta” `admin` i `warehouse`,
+  „Historia ceny” i „Historia stanu” każdy; okna to te same `PriceDialogs` i `StockDialogs` co na listach (wersje, `Idempotency-Key`,
+  409, fokus, toasty), a fokus bez przycisku wraca na nagłówek karty. Zapis w oknie nie dotyka `dirty` ani pól formularza produktu.
+  Wariant bez ceny (`price: null`) ma `Badge` „Bez ceny”, a karta `Alert` `warning` (wariant `warning` komponentu `Alert`, tokeny
+  `status-warning`) „Warianty bez ceny są w sklepie niedostępne.”. Toast po utworzeniu produktu to „Produkt zapisany. Ustaw cenę, inaczej
+  produkt będzie w sklepie niedostępny.” (`CREATED_MESSAGE` w `useProductForm`), po kolejnych zapisach „Produkt zapisany.”.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList` (standard
-  listy): na `useListUrlState` (`q`, `status`, `refund=pending`, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
+  listy): na `useListUrlState` (`q`, `status`, `refund` (`pending`: zwroty do wykonania, `overdue`: tylko po terminie; inna wartość jest pomijana), `placedFrom`, `placedTo` (dni `YYYY-MM-DD`), `sort`: `-placedAt` (domyślny), `placedAt`, `-total`, `total`, niewysyłany, gdy domyślny, `perPage`: 10, 25 albo 50, domyślnie 25 i niewysyłane;
   odczyt przy wejściu i przy zmianie z zewnątrz, np. pozycja menu „Zwroty do wykonania” na otwartej liście albo link „Inne
   zamówienia klienta” z `?q=<e-mail>`, zapis przez `replace` bez nowego wpisu historii, nieznana wartość jest pomijana,
   a adres poprawiany; do adresu trafia tylko zastosowane wyszukiwanie) i `useCursorPager` (stos kursorów, spóźnione
   odpowiedzi, ponowienie, skutek błędu: nieudana zmiana filtra usuwa wiersze i kursory, nieudana sąsiednia strona zostawia
   wyświetloną stronę; fokus po zmianie strony, błędzie i 403 daje standard, #260 F7). Własne zostają żądanie `GET /orders`
-  z komunikatami (403: „Nie masz dostępu do zamówień.” bez ponowienia, 400, inne, sieć) i reguła wyszukiwania dokładnego
-  numeru albo e-maila: tylko po Enterze (`submitSearch`; zdarzenie `submit` paska `ListToolbar`), tekst przycięty
-  (`trim()` zna też spację nierozdzielającą i U+2028) ma 1–254 punkty kodowe, ten sam tekst ładuje listę ponownie.
-  `status`, `refundPending` i `filtered` wynikają z zapytania, „Wyczyść filtry” (`clearFilters`) wraca na `/orders`.
+  z komunikatami (403: „Nie masz dostępu do zamówień.” bez ponowienia, 400, inne, sieć) i reguła wyszukiwania numeru, e-maila
+  albo fragmentu: tylko po Enter (`submitSearch`; zdarzenie `submit` paska `ListToolbar`), tekst przycięty
+  (`trim()` zna też spację nierozdzielającą i U+2028) ma 3–254 punkty kodowe (tekst o 1–2 znakach nie zmienia niczego,
+  a `searchHint` mówi, że trzeba 3), ten sam tekst ładuje listę ponownie. Zakres dni: `placedFromField` i `placedToField`
+  to to, co wybrano, `setPlacedFrom` i `setPlacedTo` stosują zakres od razu przez `url.set`; pusty dzień go czyści, a wartość,
+  która nie jest dniem 2000–2999 (Chrome przepuszcza `0002`, `0020`, `0202` przy wpisywaniu roku), nie zmienia zastosowanego
+  dnia ani nie wywołuje żądania; koniec przed początkiem nie jest stosowany (`rangeError`, liczony z dni, które zostałyby wysłane, także gdy jedno pole ma niepełny rok); `dayBounds` daje `min` i `max` pól: lata 2000–2999 i drugi koniec zakresu; przy zwrotach do wykonania
+  dni nie są wysyłane (`rangeDisabled`, `rangeDisabledReason`).
+  `status`, `refundPending` i `filtered` wynikają z zapytania (kolejność nie jest filtrem), „Wyczyść filtry” (`clearFilters`)
+  wraca na `/orders`. Kolejność (`sort`, `sortOptions`, `setSort`): `sort` to kolejność w użyciu, `null` przy zwrotach do
+  wykonania (mają własną, wg terminu zwrotu, i nie dostają `sort` w żądaniu), a kwota przy zastosowanym wyszukiwaniu albo zakresie dat
+  wraca do „Najnowsze” (API odrzuca to połączenie); `sortOptions` wyłącza te opcje z powodem (`disabledReason`), a zatwierdzenie
+  wyszukiwania albo wybór dnia przy sortowaniu po kwocie ustawia „Najnowsze”.
   `useOrderDetail(orderId)`: szczegóły z `GET /api/v1/admin/orders/{id}`;
   przyciski to wyłącznie `allowedTransitions` (`actions`) i `canCompleteRefund` z API, panel nie liczy statusów ani ról.
   `changeStatus` i `completeRefund` wysyłają `version` pokazanego widoku, a zamówienie z odpowiedzi zastępuje widok.
@@ -297,8 +384,9 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   i czas przez `formatMoney` i `formatDateTime` z `src/prices/format.ts`.
   `OrdersView`: `PageHeader` (H1 „Zamówienia” albo „Zwroty do wykonania” przy `refund=pending`, okruszki „Pulpit ›
   Zamówienia” albo „Pulpit › Zamówienia › Zwroty do wykonania” z linkiem do listy), karta z `ListToolbar` (wyszukiwanie
-  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią o Enterze, `Select` „Status”, `Switch` „Zwroty do wykonania”
-  z `id` i `data-testid` `refund-pending` i `label for`, rozmiar strony), `DataTable`, `ListPager` i `ListEmpty` („Nie ma
+  „Szukaj po numerze zamówienia lub e-mailu” z podpowiedzią „Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.” (tekst o 1–2 znakach nie wyszukuje i zmienia podpowiedź na „Wpisz co najmniej 3 znaki, aby wyszukać.”), grupa „Data zamówienia” z polami „Od” i „Do” (`input type="date"`, `placedFrom` i `placedTo` w adresie; zastosowane od razu po wybraniu dnia; koniec przed początkiem nie jest stosowany, komunikat w `role="alert"` i `aria-invalid` na „Do”; przy zwrotach do wykonania pola są wyłączone z opisem, bo API odmawia tego połączenia; kwota przy zakresie dat jest wyłączona w „Sortuj”), `Select` „Status”, `Switch` „Zwroty do wykonania” z `id` i `data-testid` `refund-pending` i `label for`; gdy jest włączony, obok niego `Switch` „Tylko po terminie” (`refund-overdue-only`, `refund=overdue`: wyłączenie wraca do `refund=pending`, wyłączenie zwrotów do wykonania zdejmuje oba), `Select` „Sortuj” (nad tabelą i nad kartami; przy zwrotach do
+  wykonania z napisem „Termin zwrotu”), rozmiar strony), `DataTable` (nagłówki „Data” i „Kwota” mają `aria-sort` według
+  kolejności, a przy zwrotach do wykonania „Termin zwrotu” `ascending`), `ListPager` i `ListEmpty` („Nie ma
   jeszcze zamówień.”, „Brak wyników dla wybranych filtrów.”). Widok renderuje jeden układ według
   `useMediaQuery("(min-width: 640px)")` (`@vueuse/core`, jak `AppLayout`): od 640 px tabela (Numer: link bez łamania, #261, z datą
   i liczbą pozycji jako liniami komórki poniżej 1024 px; Data, Klient: imię i nazwisko, pod nim e-mail obcięty z pełną wartością
@@ -328,6 +416,28 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   wykonany.”, a fokus trafia na nagłówek karty „Akcje” (zestaw przycisków się zmienił), gdy karta zniknęła na „Historia”;
   „Wróć” i `Escape` oddają fokus przyciskowi, który otworzył okno. Zdarzenie `close-auto-focus` okna jest przejęte, żeby fokus nie
   spadł na `body`.
+- `src/customers/` – klienci (menu Sklep › Klienci, trasy `/customers` i `/customers/:customerId`: dwie trasy jednej ścieżki
+  `customers`, więc pozycja menu zostaje aktywna na karcie; strażnik `canViewCustomers` w routerze, wyjątki od niego jak przy
+  zamówieniach: odmowa to pulpit z `history.state.denied`, nieznane `/me` przepuszcza). Klient to konto sklepu z co najmniej jednym
+  zamówieniem (docs/features/admin-features/spec.md, sekcja 5). `useCustomerList` (widok `CustomersView`, standard listy:
+  `ListToolbar` z wyszukiwaniem, `DataTable`, `ListPager` z licznikiem pierwszej strony) na `useListUrlState` (`q`, `sort`:
+  `-lastOrderAt` (domyślny, niewysyłany), `name`, `-orderCount`, `-paidGross`, `perPage`): fraza 3–100 znaków po przycięciu
+  bez znaków sterujących (też U+2028 i U+2029; `trim()` zna NBSP), stosowana po Enterze; krótsza albo z takim znakiem nic nie
+  zmienia, a podpowiedź mówi, że trzeba 3 znaków. API łączy `q` tylko z `-lastOrderAt`, więc przy `q` pozostałe opcje „Sortuj”
+  są wyłączone z opisem „Wyszukiwanie działa tylko z sortowaniem po ostatnim zamówieniu.”, a fraza zastosowana nad innym
+  sortem wraca do ostatniego zamówienia. Kolumny: Klient (imię i nazwisko jako link do karty, pod nim e-mail), Zamówienia,
+  Wartość (`paidGross`), Ostatnie zamówienie (od 1024 px kolumna, niżej linia komórki Klient); `aria-sort` ma kolumna sortu
+  (`name` Klient, `orderCount` Zamówienia, `paidGross` Wartość, `lastOrderAt`). Poniżej 640 px karty. `CustomerDetailView`
+  w układzie szczegółów zamówienia: od 1280 px dwie kolumny, boczna 320 px w DOM przed główną (Tab zaczyna od niej, wyjątek od
+  kolejności zgodnej z układem: `docs/features/admin-design/spec.md`, „Dostępność”). Boczna: „Kontakt” (e-mail `mailto:`, telefon
+  `tel:`), „Podsumowanie” (`useCustomerDetail`: `GET /customers/{customerId}`; zamówienia, opłacone, wartość opłaconych, pierwsze
+  i ostatnie zamówienie, wszystko z odpowiedzi API), „Adresy” (do 10, najnowszy pierwszy, albo „Brak adresów dostawy.”). Główna:
+  „Zamówienia” (`useCustomerOrders`: `GET /orders?customerId=` na `useCursorPager`, bez wyszukiwania, sortu i filtrów, które API
+  odrzuca przy `customerId`; wybór liczby wierszy w `ListToolbar`, niezapisywany w adresie karty; wiersz prowadzi do
+  `/orders/:orderId`). 404 klienta to alert „Nie znaleźliśmy klienta.” z linkiem „Wróć do listy klientów”, błąd karty to alert
+  z „Spróbuj ponownie” (bez niego przy 403), a błąd samych zamówień zostaje w ich tabeli i nie psuje karty. W szczegółach
+  zamówienia karta „Klient” ma link „Karta klienta” (`customer-card`) tylko przy `customerId !== null` i `canViewCustomers`
+  (rola z `useAuthStore`, nieznany pracownik: bez linku).
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
   `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`, standard listy: `PageHeader` z okruszkami „Pulpit › Marketing › Promocje”,
   `ListToolbar` bez wyszukiwania, bo API nie szuka promocji, `DataTable`, `ListPager`) na `useListUrlState` (`status` jako
@@ -437,7 +547,9 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
 - `src/components/` – własne komponenty, gdy `ui/` nie ma odpowiednika. `ConfirmDialog` (na `AlertDialog`): tytuł z nazwą
   obiektu, opis skutku, przycisk skutku (`destructive`: czerwony, inaczej niebieski) i „Wróć” z domyślnym fokusem;
   zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
-  wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
+  wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. Akcja, której odmowę API ma powiedzieć okno, wyłącza `close-on-confirm`:
+  potwierdzenie zostawia okno otwarte (zamyka je widok przez `open`), `busy` blokuje przycisk na czas żądania przez `aria-disabled` (nie `disabled`, który oddałby fokus
+  `body`), a `error` jest w oknie (`role="alert"`, `tabindex="-1"`) i dostaje fokus, gdy się pojawi. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
   zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna; slot `status` stoi tuż za H1, np. `Badge` statusu zamówienia) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
@@ -450,8 +562,10 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   ponowny wybór zaznaczonej kategorii zdejmuje ją (`null`), bo `ComboboxItem` Reki w trybie pojedynczym zawsze ustawia
   wybraną wartość i nie przełącza jej. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
   (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Z prop
-  `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Używa go lista
-  produktów, lista cen, lista stanów i formularz produktu.
+  `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Miejsce, do którego przenosi się kategoria, dodaje `rootLabel` (pierwsza
+  opcja „Poziom główny” o wartości `ROOT_CATEGORY`, eksport z komponentu) i `disabledIds` (kategorie widoczne, ale niewybieralne, z `aria-disabled`: poddrzewo
+  przenoszonej kategorii). Używa go lista
+  produktów, lista cen, lista stanów, formularz produktu i okno „Przenieś do…” kategorii.
   Standard formularza (spec „Standard formularza i okien”; podłączony do formularza produktu, kodu rabatowego i promocji): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
   `FormField` (etykieta nad polem, podpowiedź w slocie `hint` i błędy pod nim z `data-form-error`, slot daje `describedBy`
   i `invalid` do wstawienia na kontrolkę; kontrolka z własną etykietą, jak `CategoryCombobox`, pomija `label`), `SaveBar`
@@ -460,7 +574,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   nie jest pod paskiem; ma ujemne marginesy równe paddingowi `<main>`) i `UnsavedChangesDialog` (`ConfirmDialog` „Masz
   niezapisane zmiany” z „Zostań” i „Opuść bez zapisu”; prop `fallbackFocus`: gdzie trafia fokus, gdy nawigację wywołało coś
   bez elementu, np. Wstecz przeglądarki, formularz podaje swój H1).
-- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji i lista zamówień. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`; `cards` zamiast tabeli pokazuje wiersze jako listę kart: `<ul>` z nazwą z `label`, `<li>` z `rowTestid` i zawartością slotu `card`, a szkielet, błąd i pusty stan zostają te same: widok wybiera jeden układ): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `hideBelow`
+- `src/components/list/` – standard listy (spec „Standard listy”); używa go lista produktów, lista cen, lista stanów, lista kodów rabatowych, lista promocji, lista zamówień, lista klientów i zamówienia na karcie klienta. `DataTable` (na `Table` shadcn-vue; opcjonalnie wiersze grup: `groupKey` łączy kolejne wiersze o tym samym kluczu w grupę, każda w osobnym `<tbody>`, a przed jej wierszami stoi wiersz z `<th scope="rowgroup">` na całą szerokość i slotem `group` (`row` to pierwszy wiersz grupy), z `data-testid` z `groupTestid`; `errorTestid` zmienia `data-testid` komunikatu błędu, domyślnie `list-error`; `cards` zamiast tabeli pokazuje wiersze jako listę kart: `<ul>` z nazwą z `label`, `<li>` z `rowTestid` i zawartością slotu `card`, a szkielet, błąd i pusty stan zostają te same: widok wybiera jeden układ): kolumny `ListColumn` (`key`, `header`, `align`, `main`, `sort` (`ascending` albo `descending`: `aria-sort` na `<th>` kolumny, po której lista jest posortowana), `hideBelow`
   `lg` = 1024 px albo `md` = 900 px i `text`), komórki to sloty `cell-<key>` (`row`), komórka główna ma opcjonalny slot
   `lead` (miniatura) i pod tekstem linie „Nagłówek: wartość” kolumn ukrytych (każda z klasą ukrywającą powyżej progu
   swojej kolumny, więc żadna informacja nie ginie), slot `empty` dla pustej listy. Pokazuje też stan listy: szkielet
@@ -471,9 +585,16 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   komunikat, tabelę (w trybie `cards` listę kart, `tabindex="-1"`) albo pusty stan, nigdy na `body`); błąd listy, która nie wczytała się nigdy, stoi sam, bez tabeli, a
   błąd sąsiedniej strony nad nią. Tabela przewija się w swoim regionie (`role="region"` z nazwą z prop `label`,
   `tabindex="0"`) z cieniem przy krawędzi, za którą jest dalsza treść; strona nie przewija się w poziomie. `ListToolbar`:
-  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
-  `actions`, „Wyczyść filtry” przy `filtered`, rozmiar strony (Select 10, 25, 50, etykieta „Wierszy na stronie”),
-  `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”), przyciski
+  wyszukiwanie (opcjonalne; etykieta dostępna, `searchHint` w `role="status"` połączonym z polem, opcjonalnie `searchDescribedBy` (id innego tekstu, który też opisuje pole), zdarzenie `submit` to Enter w polu dla listy, która szuka po Enterze), sloty `filters` i
+  `actions`, „Wyczyść filtry” przy `filtered`, kolejność (`Select` „Sortuj”, gdy lista ma `sortOptions`: `SortOption`
+  z `src/composables/listSort.ts` to `value` (klucz API), `label` i `disabledReason`; opcja z powodem jest wyłączona, a powody
+  są też w tekście `role="status"` pod polem, połączonym z nim przez `aria-describedby`; `sort` równe `null` pokazuje
+  `sortPlaceholder`; zdarzenie `update:sort`), rozmiar strony (Select 10, 25, 50, etykieta „Wierszy na stronie”),
+  `focusSearch()`. `ListPager`: „Pokazano X–Y” w `role="status"` (prop `noun` dla „Pokazano produkty X–Y”; prop `total` z `useCursorPager`
+  dopisuje „z 1 234” albo „z ponad 10 000” przy `capped`; bez `total` jest tylko zakres; wszystkie liczby stopki, także
+  zakres („Pokazano 10 001–10 025 z ponad 10 000”), mają tysiące oddzielone twardą spacją,
+  `Intl.NumberFormat('pl-PL', { useGrouping: 'always' })`, bo sama reguła polska zostawia cztery cyfry razem; widoki
+  list przekazują `total` z composable listy), przyciski
   „Poprzednia strona” i „Następna strona” z numerem strony; fokus zostaje na naciśniętym przycisku, a gdy kolejna strona go
   wyłącza (ostatnia, pierwsza), przechodzi na drugi, chyba że pracownik sam przeniósł fokus poza pager. `ListEmpty`: „Brak
   wyników dla wybranych filtrów.” z „Wyczyść filtry” (`empty-clear-filters`) przy filtrach, bez filtrów tekst listy
@@ -482,7 +603,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   ikoną i nazwą dostępną „Czasownik: nazwa obiektu” (zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”,
   `target="_blank"` `rel="noopener"`) oraz podpowiedzią z tą samą nazwą (`TooltipProvider` jest w komponencie); zwykły link,
   nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcja bez `to` i `href` to przycisk (`select` z kluczem akcji i przyciskiem, `testid`
-  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje.
+  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje; przyciski są w jednym wierszu (kolumna tabeli listy zachowuje szerokość); prop `wrap` pozwala im zawinąć się do następnego, gdy nie mieszczą się obok nazwy (tylko węzeł drzewa kategorii przy 320 px).
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
@@ -604,7 +725,10 @@ Spec: `docs/features/sentry/spec.md`.
 - Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
   rozmiar strony 10/25/50, domyślnie 25) jest w adresie przez `useListUrlState`, stronicowanie przez `useCursorPager`, a
   pozycja w stronicowaniu tylko w pamięci. Wzorem jest `ProductsView`. Ukrywanie kolumn to klasy CSS na progach 1024 i 900 px
-  (`hideBelow`), bez modelu tabeli; sortowania i zaznaczania nie ma (ADMIN-FEATURES).
+  (`hideBelow`), bez modelu tabeli. Kolejność wybiera `Select` „Sortuj” w `ListToolbar` (lista produktów, cen, stanów,
+  zamówień i klientów; klucze API, `sortParam` i `ariaSortOf` z `src/composables/listSort.ts`), jest w adresie jako `sort`
+  (domyślna nie jest zapisywana ani wysyłana), a jej zmiana wraca na pierwszą stronę. Sortuje API, bez
+  `@tanstack/vue-table`; zaznaczania nie ma.
 - Wygląd, standard listy, formularza i okien: `docs/features/admin-design/spec.md`; biblioteka i licencje:
   `docs/adr/admin-ui-library.md`.
 - Tokeny wyglądu są wyłącznie w `src/styles/tokens.css` (`--color-*: initial`: domyślnej palety Tailwinda nie ma).
@@ -642,7 +766,9 @@ Spec: `docs/features/sentry/spec.md`.
 - Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
   i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list
   rozwijanych trafia do `document.body`, więc testy montują z `attachTo: document.body` i czyszczą je po teście.
-  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne i filtrowanie;
+  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne, filtrowanie, opcję „Poziom główny” i kategorie wyłączone; ekran kategorii: `tests/categoryTree.test.ts`
+  (polecenia przesunięcia i upuszczenia), `tests/categoryProblem.test.ts`, `tests/useCategoryScreen.test.ts`, `tests/CategoriesView.test.ts` (stany, role, okna, odmowy,
+  przenoszenie, usuwanie) i `tests/CategoryTreeInteraction.test.ts` (przeciąganie i klawiatura; jsdom nie ma układu, więc testy podają wymiary wierszy);
   `tests/ProductFormView.test.ts` formularz produktu (pola, błędy, pasek zapisu, okno niezapisanych zmian, toasty i fokus
   po zapisie, publikacji i błędzie, błąd wczytania), `tests/ProductImages.test.ts` i `tests/ProductVariants.test.ts`
   fokus po usunięciu, alert błędu wysyłania i okno usunięcia wariantu, `tests/useUnsavedChangesGuard.test.ts`,

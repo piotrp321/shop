@@ -13,18 +13,20 @@ use App\Pricing\Domain\Price\ProductId;
 interface ProductDirectory
 {
     /**
-     * Products sorted by name, then by id. The cursor is opaque: only a `next` handed out by this port is valid.
+     * Products sorted by name, or by the moment of the last change, then by id. The cursor is opaque: only a `next`
+     * handed out by this port for the same sort is valid.
      *
      * @param string|null $term       a literal part of the name, 2 to 100 characters; null for all names
      * @param string|null $categoryId a category (UUID); the category with its subcategories, as the main or an
      *                                additional category of the product; null for all categories
      * @param string|null $after      the `next` of the previous page, null for the first page
      * @param int         $perPage    1 to 100
+     * @param string|null $sort       `name`, `-name`, `-updatedAt` or `updatedAt`; null for `name`
      *
      * @throws CategoryNotFound
      * @throws InvalidPriceListCursor
      */
-    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage;
+    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage, ?string $sort = null): DirectoryPage;
 
     /**
      * The variants of the products, read with one query.
@@ -35,6 +37,14 @@ interface ProductDirectory
      *                                               does not exist in Catalog is absent
      */
     public function variantsOf(array $productIds): array;
+
+    /**
+     * The name, the tax class and the variants of one product (a draft too), read with one query; the product of the
+     * price list of one product.
+     *
+     * @return DescribedProduct|null null when the product does not exist in Catalog
+     */
+    public function describe(ProductId $productId): ?DescribedProduct;
 
     /**
      * The current tax class of the product and its variants, read with one query.

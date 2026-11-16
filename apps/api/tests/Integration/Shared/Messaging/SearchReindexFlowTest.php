@@ -88,7 +88,7 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
     {
         $categoryId = (string) Uuid::v7();
         $productId = (string) Uuid::v7();
-        $this->commandBus()->dispatch(new CreateCategory($categoryId, 'Kurtki', 'kurtki-'.substr($categoryId, -12), null));
+        $this->commandBus()->dispatch(CreateCategory::bySeed($categoryId, 'Kurtki', 'kurtki-'.substr($categoryId, -12), null));
         $this->commandBus()->dispatch(new CreateProduct(
             $productId,
             'Kurtka puchowa',
@@ -103,7 +103,8 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
             ProductStatus::Draft,
             'staff-sub-1',
         ));
-        $this->consumeOutboxAndEvents(2);
+        // Both ProductCreated (the domain one for the previous version), relayed and handled.
+        $this->consumeOutboxAndEvents(4);
 
         self::assertSame('draft', $this->stored($productId)['status']);
         self::assertSame(0, $this->found()->total);

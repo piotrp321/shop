@@ -1,23 +1,14 @@
 import { computed, shallowRef, watch } from "vue";
-import { getApiClient } from "@/api/client";
 import type { CategoryLookup } from "@/products/useProductList";
 import { useCursorPager } from "@/composables/useCursorPager";
+import { DEFAULT_PRODUCT_SORT, PRODUCT_SORT_OPTIONS, sortParam } from "@/composables/listSort";
 import { type ListParam, useListUrlState } from "@/composables/useListUrlState";
 import { MAX_NAME_SEARCH_LENGTH, NAME_SEARCH_DEBOUNCE_MS, useNameSearch, validNameTerm } from "@/composables/useNameSearch";
+import { type PriceChange, requestPriceChange } from "./priceChange";
 import { fetchPricePage, type ListedPrice, type PriceListItem, priceRows } from "./pricePage";
 
+export { CONFLICT_MESSAGE, type PriceChange } from "./priceChange";
 export type { PriceListItem, PriceRow } from "./pricePage";
-
-/** How a price change ended; the messages are for the staff member. */
-export type PriceChange =
-  | { status: "saved" }
-  | { status: "invalid"; message: string }
-  | { status: "conflict"; message: string }
-  | { status: "locked"; message: string }
-  | { status: "failed"; message: string };
-
-export const CONFLICT_MESSAGE = "Cena została w międzyczasie zmieniona – odśwież";
-const PRICE_LOCKED_TYPE = "tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion";
 
 /** The rules of the search by name are in `useNameSearch`. */
 export const MAX_SEARCH_LENGTH = MAX_NAME_SEARCH_LENGTH;
@@ -29,52 +20,10 @@ export const DEFAULT_PER_PAGE = 10;
 
 export const EMPTY_MESSAGE = "Nie ma jeszcze produktów z wariantami.";
 
-/** The reason of a rejected request from a problem details body (`violations[].title`, else `detail`), if it has one. */
-function problemMessage(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) {
-    return null;
-  }
-  const { violations, detail } = body as { violations?: unknown; detail?: unknown };
-  if (Array.isArray(violations)) {
-    const titles = violations
-      .map((violation) => (violation as { title?: unknown } | null)?.title)
-      .filter((title): title is string => typeof title === "string" && title !== "");
-    if (titles.length > 0) {
-      return titles.join(" ");
-    }
-  }
-  return typeof detail === "string" && detail !== "" ? detail : null;
-}
-
-/** The `detail` of a 409 saying the variant is in an active promotion; null for any other 409. */
-function lockedDetail(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) {
-    return null;
-  }
-  const { type, detail } = body as { type?: unknown; detail?: unknown };
-  if (type !== PRICE_LOCKED_TYPE) {
-    return null;
-  }
-  return typeof detail === "string" && detail !== "" ? detail : "Cena wariantu w aktywnej promocji nie może się zmienić.";
-}
-
-function changeFailure(status: number, body: unknown): PriceChange {
-  switch (status) {
-    case 422:
-      // The rules of the amount are the API's; the panel only shows the reason it gives.
-      return { status: "invalid", message: problemMessage(body) ?? `API odrzuciło cenę (HTTP ${status}).` };
-    case 403:
-      return { status: "failed", message: "Nie masz uprawnień do zmiany cen." };
-    case 404:
-      return { status: "failed", message: "Ten wariant już nie istnieje." };
-    default:
-      return { status: "failed", message: `Nie udało się zapisać ceny (HTTP ${status}).` };
-  }
-}
-
 /**
- * The price list: a search by name, a category filter and a page size (10, 25 or 50 products). The state lives in the
- * address (`useListUrlState`: `q`, `category`, `perPage`) and the paging is `useCursorPager` over products, each with
+ * The price list: a search by name, a category filter, an order of the products (`sort`: by name or by the last change,
+ * either way) and a page size (10, 25 or 50 products). The state lives in the
+ * address (`useListUrlState`: `q`, `category`, `sort`, `perPage`) and the paging is `useCursorPager` over products, each with
  * all its variants, so „Pokazano produkty X–Y” counts products; `rows` has a row per variant (`priceRows`), in the order
  * of the products and of their variants. The request is `fetchPricePage`, the search by name `useNameSearch`.
  * `categories` is the tree of the filter, as in `useProductList`: a category of the address that it does not have is skipped.
@@ -107,6 +56,7 @@ export function usePriceList(categories?: CategoryLookup) {
       fallback: null,
       confirm: categories ? (id) => (categories.loaded.value ? known.value.has(id) : undefined) : undefined,
     } satisfies ListParam<string, null>,
+    sort: sortParam(PRODUCT_SORT_OPTIONS, DEFAULT_PRODUCT_SORT),
     perPage: {
       parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
       fallback: DEFAULT_PER_PAGE,
@@ -141,39 +91,28 @@ export function usePriceList(categories?: CategoryLookup) {
     url.set({ category: id });
   }
 
+  function setSort(sort: string): void {
+    url.set({ sort: PRODUCT_SORT_OPTIONS.find((option) => option.value === sort)?.value ?? DEFAULT_PRODUCT_SORT });
+  }
+
   function setPerPage(size: number): void {
     url.set({ perPage: size });
   }
 
-  /** Drops the search, the category and the page size: the address is `/prices` again. */
+  /** Drops the search, the category, the order and the page size: the address is `/prices` again. */
   function clearFilters(): void {
     name.reset();
     url.clear();
   }
 
-  async function changePrice(variantId: string, gross: number, version: number | null): Promise<PriceChange> {
-    try {
-      const result = await getApiClient().PUT("/api/v1/admin/variants/{variantId}/price", {
-        params: { path: { variantId } },
-        body: { gross, version },
-      });
-      if (result.data) {
-        savedPrices.value = new Map(savedPrices.value).set(variantId, result.data);
-        return { status: "saved" };
-      }
-      if (result.response.status === 409) {
-        // The price did not change meanwhile, it is locked by a promotion: the row is current, nothing to reload.
-        const locked = lockedDetail(result.error);
-        if (locked !== null) {
-          return { status: "locked", message: locked };
-        }
-        await pager.refresh();
-        return { status: "conflict", message: CONFLICT_MESSAGE };
-      }
-      return changeFailure(result.response.status, result.error);
-    } catch {
-      return { status: "failed", message: "Nie udało się zapisać ceny. Sprawdź połączenie z API." };
-    }
+  /** Sends a new gross price (in grosze) of a variant with the version its row shows; see `requestPriceChange`. */
+  function changePrice(variantId: string, gross: number, version: number | null): Promise<PriceChange> {
+    return requestPriceChange(variantId, gross, version, {
+      save: (id, price) => {
+        savedPrices.value = new Map(savedPrices.value).set(id, price);
+      },
+      refresh: pager.refresh,
+    });
   }
 
   return {
@@ -192,7 +131,10 @@ export function usePriceList(categories?: CategoryLookup) {
     hasNext: pager.hasNext,
     pageNumber: pager.pageNumber,
     range: pager.range,
+    total: pager.total,
     selectCategory,
+    sortOptions: PRODUCT_SORT_OPTIONS,
+    setSort,
     setPerPage,
     clearFilters,
     goNext: pager.goNext,

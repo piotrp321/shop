@@ -21,8 +21,8 @@ const UPLOAD = "/api/v1/admin/product-images";
 const PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
 
 const tree: CategoryNode[] = [
-  { id: "c-main", name: "Obuwie", slug: "obuwie", path: "obuwie", children: [] },
-  { id: "c-extra", name: "Sport", slug: "sport", path: "sport", children: [] },
+  { id: "c-main", name: "Obuwie", slug: "obuwie", path: "obuwie", version: 1, productCount: null, children: [] },
+  { id: "c-extra", name: "Sport", slug: "sport", path: "sport", version: 1, productCount: null, children: [] },
 ];
 const preview = { alt: "Zdjęcie", size: "thumbnail", aspectRatio: "1:1", variants: { webp: [{ width: 96, url: "https://img.test/a.webp" }] } };
 
@@ -58,6 +58,9 @@ function serve(product: ProductEditView | number = view()) {
   mocks.get.mockImplementation(async (path: string) => {
     if (path === "/api/v1/admin/categories") {
       return { data: tree, response: { status: 200 } };
+    }
+    if (path === "/api/v1/admin/prices" || path === "/api/v1/admin/stock") {
+      return { data: { items: [], next: null, total: { value: 0, capped: false } }, response: { status: 200 } };
     }
     if (path === "/api/v1/admin/tax-classes") {
       return { data: [{ code: "standard", name: "Standardowa" }], response: { status: 200 } };
@@ -276,7 +279,7 @@ describe("ProductFormView", () => {
       expect(mocks.post).toHaveBeenCalledWith(PRODUCTS, expect.objectContaining({ body: expect.objectContaining({ name: "Buty biegowe", variants: [{ variantId: null, values: [] }] }) }));
       expect(mounted.router.currentRoute.value.name).toBe("product");
       expect(mounted.router.currentRoute.value.params.id).toBe("p-9");
-      expect(successToast).toHaveBeenCalledWith("Produkt zapisany.");
+      expect(successToast).toHaveBeenCalledWith("Produkt zapisany. Ustaw cenę, inaczej produkt będzie w sklepie niedostępny.");
       expect(mounted.wrapper.get("h1").text()).toBe("Buty biegowe");
     });
 
@@ -615,10 +618,10 @@ describe("ProductFormView", () => {
       expect(mounted.wrapper.text()).not.toContain("Wróć do listy");
     });
 
-    it("has the cards „Dane produktu”, „Zdjęcia”, „Warianty”, „Status” and „Organizacja”", async () => {
+    it("has the cards „Dane produktu”, „Zdjęcia”, „Warianty”, „Ceny i stany”, „Status” and „Organizacja”", async () => {
       mounted = await mountForm("/products/p-1");
 
-      expect([...document.body.querySelectorAll("h2")].map((node) => node.textContent?.trim())).toEqual(["Status", "Organizacja", "Dane produktu", "Zdjęcia", "Warianty"]);
+      expect([...document.body.querySelectorAll("h2")].map((node) => node.textContent?.trim())).toEqual(["Status", "Organizacja", "Dane produktu", "Zdjęcia", "Warianty", "Ceny i stany"]);
       expect(heading("h2", "Status")?.getAttribute("tabindex")).toBe("-1");
     });
 

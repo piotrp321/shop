@@ -25,6 +25,7 @@ use App\Pricing\Domain\Promotion\PromotionStatus;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
+use App\Shared\Domain\BoundedCount;
 use App\Tests\Unit\Pricing\FixedPricingClock;
 use App\Tests\Unit\Pricing\InMemoryPromotionReader;
 use App\Tests\Unit\Pricing\InMemoryPromotionRepository;
@@ -86,6 +87,40 @@ final class PromotionQueriesTest extends TestCase
 
         self::assertSame(PromotionStatus::Active, $this->reader->pages[0][0]);
         self::assertEquals($this->clock->now, $this->reader->pages[0][1]);
+    }
+
+    public function testOnlyTheFirstPageCountsThePromotionsOfTheStatusAtNow(): void
+    {
+        $this->reader->total = new BoundedCount(10_000, true);
+        $this->reader->promotions = [
+            $this->listed('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5f21', '2026-11-20T00:00:00Z', '2026-11-30T00:00:00Z'),
+            $this->listed('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5f22', '2026-11-01T00:00:00Z', '2026-11-15T00:00:00Z'),
+        ];
+        $handler = new ListPromotionsHandler($this->reader, $this->clock);
+
+        $first = $handler(new ListPromotions(null, null, 1));
+        self::assertNotNull($first->next);
+        $second = $handler(new ListPromotions(null, $first->next, 1));
+
+        self::assertEquals(new BoundedCount(10_000, true), $first->total);
+        self::assertNull($second->total);
+        self::assertEquals([[null, $this->clock->now]], $this->reader->counts, 'one count, at the moment of the page');
+    }
+
+    public function testTheFirstPageWithoutANextOneIsTheWholeResultAndIsNotCounted(): void
+    {
+        $this->reader->total = new BoundedCount(99, true);
+        $this->reader->promotions = [
+            $this->listed('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5f21', '2026-11-20T00:00:00Z', '2026-11-30T00:00:00Z'),
+            $this->listed('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5f22', '2026-11-01T00:00:00Z', '2026-11-15T00:00:00Z'),
+        ];
+        $handler = new ListPromotionsHandler($this->reader, $this->clock);
+
+        $list = $handler(new ListPromotions(null, null, 2));
+
+        self::assertNull($list->next);
+        self::assertEquals(new BoundedCount(2, false), $list->total, 'the rows of the page are the exact count');
+        self::assertSame([], $this->reader->counts);
     }
 
     public function testACursorNobodyHandedOutIsRefused(): void

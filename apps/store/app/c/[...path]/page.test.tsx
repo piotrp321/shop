@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/catalog/load-catalog", () => ({ loadCatalogForRequest: vi.fn() }));
 vi.mock("@/catalog/category-tree", () => ({ loadCategoryTreeForRequest: vi.fn() }));
+vi.mock("@/catalog/category-redirect", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/catalog/category-redirect")>()),
+  loadCategoryRedirectForRequest: vi.fn(),
+}));
 
+import { loadCategoryRedirectForRequest as loadRedirect } from "@/catalog/category-redirect";
 import { loadCategoryTreeForRequest as loadTree } from "@/catalog/category-tree";
 import { EMPTY_FACETS, TREE, makeOffer, makeProduct, node } from "@/catalog/fixtures";
 import { loadCatalogForRequest as loadCatalog } from "@/catalog/load-catalog";
@@ -27,6 +32,7 @@ const ldOf = (markup: string) => [...markup.matchAll(/<script type="application\
 beforeEach(() => {
   vi.mocked(loadTree).mockReset().mockResolvedValue(TREE);
   vi.mocked(loadCatalog).mockReset().mockResolvedValue(okPage());
+  vi.mocked(loadRedirect).mockReset().mockResolvedValue(null);
   vi.stubEnv("STORE_URL", "http://store.test");
 });
 
@@ -137,6 +143,48 @@ describe("the category page", () => {
     vi.mocked(loadCatalog).mockResolvedValue({ kind: "invalid-filter" });
     const markup = await html(["bieganie", "buty"], { page: "abc", sort: "nazwa", o: ["Kolor:czarne"] });
     expect(markup).toContain('href="/c/bieganie/buty">Pokaż wyniki bez filtrów</a>');
+  });
+});
+
+describe("an old category address", () => {
+  const digestOf = async (path: string[], query: Query = {}) => ((await CategoryPage(props(path, query)).catch((error: unknown) => error)) as { digest?: string }).digest;
+
+  it("redirects permanently (308) to the current address, keeping every parameter in its order", async () => {
+    vi.mocked(loadRedirect).mockResolvedValue("bieganie/buty-sportowe");
+    expect(await digestOf(["bieganie", "buty-stare"], { sort: "cena-rosnaco", o: ["Kolor:czarne", "Kolor:biały"], page: "2", utm: "x" })).toBe(
+      "NEXT_REDIRECT;replace;/c/bieganie/buty-sportowe?sort=cena-rosnaco&o=Kolor%3Aczarne&o=Kolor%3Abia%C5%82y&page=2&utm=x;308;",
+    );
+    expect(loadRedirect).toHaveBeenCalledExactlyOnceWith("bieganie/buty-stare");
+    expect(loadCatalog).not.toHaveBeenCalled();
+  });
+
+  it("redirects to the address without a query when the old one had none", async () => {
+    vi.mocked(loadRedirect).mockResolvedValue("rower");
+    expect(await digestOf(["cykl"])).toBe("NEXT_REDIRECT;replace;/c/rower;308;");
+  });
+
+  it("answers 404 when the API knows no such address", async () => {
+    expect(await digestOf(["nie-ma"], { page: "2" })).toBe("NEXT_HTTP_ERROR_FALLBACK;404");
+    expect(loadRedirect).toHaveBeenCalledExactlyOnceWith("nie-ma");
+  });
+
+  it("fails (the error page) when the redirect cannot be read", async () => {
+    vi.mocked(loadRedirect).mockRejectedValue(new Error("GET /api/v1/categories/redirect failed with status 503."));
+    await expect(CategoryPage(props(["nie-ma"]))).rejects.toThrow(/503/);
+  });
+
+  it("does not ask for a redirect for a path that is in the tree, also when the list is unknown to the API", async () => {
+    await html(["bieganie", "buty"]);
+    vi.mocked(loadCatalog).mockResolvedValue({ kind: "unknown-category" });
+    expect(await digestOf(["bieganie", "buty"])).toBe("NEXT_HTTP_ERROR_FALLBACK;404");
+    expect(loadRedirect).not.toHaveBeenCalled();
+  });
+
+  it("leaves the redirect to the page: the metadata is empty and does not read the products", async () => {
+    vi.mocked(loadRedirect).mockResolvedValue("rower");
+    expect(await generateMetadata(metaProps(["cykl"]))).toEqual({});
+    expect(await generateMetadata(metaProps(["nie-ma"]))).toEqual({});
+    expect(loadCatalog).not.toHaveBeenCalled();
   });
 });
 

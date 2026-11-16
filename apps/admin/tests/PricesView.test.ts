@@ -9,8 +9,9 @@ import { Select } from "@/components/ui/select";
 import { useAuthStore, type StaffMe } from "@/stores/auth";
 import { SEARCH_DEBOUNCE_MS } from "@/prices/usePriceList";
 import PricesView from "@/views/PricesView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type PriceList = components["schemas"]["PriceListResponse"];
+type PriceList = WithOptionalTotal<components["schemas"]["PriceListResponse"]>;
 type PriceListItem = components["schemas"]["PriceListItemResponse"];
 type PriceListVariant = components["schemas"]["PriceListVariantResponse"];
 type ListedPrice = components["schemas"]["ListedPriceResponse"];
@@ -68,8 +69,8 @@ const TAX_CLASS_LIST = [
 ];
 
 const tree: CategoryNode[] = [
-  { id: "c-sport", name: "Sport", slug: "sport", path: "sport", children: [{ id: "c-run", name: "Bieganie", slug: "bieganie", path: "sport/bieganie", children: [] }] },
-  { id: "c-food", name: "Jedzenie", slug: "jedzenie", path: "jedzenie", children: [] },
+  { id: "c-sport", name: "Sport", slug: "sport", path: "sport", version: 1, productCount: null, children: [{ id: "c-run", name: "Bieganie", slug: "bieganie", path: "sport/bieganie", version: 1, productCount: null, children: [] }] },
+  { id: "c-food", name: "Jedzenie", slug: "jedzenie", path: "jedzenie", version: 1, productCount: null, children: [] },
 ];
 
 interface Backend {
@@ -638,12 +639,45 @@ describe("PricesView", () => {
       await page().get("[data-testid=next-page]").trigger("click");
       await settle();
 
-      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "25");
+      wrapper.findAllComponents(Select)[1]!.vm.$emit("update:modelValue", "25");
       await settle();
 
       expect(priceCalls().at(-1)).toEqual({ perPage: 25 });
       expect(page().get("[data-testid=page-number]").text()).toBe("Strona 1");
       expect(wrapper.router.currentRoute.value.query).toEqual({ perPage: "25" });
+    });
+
+
+    it("has a Select „Sortuj” by the name or the last change, which sets the address and asks once from the first page", async () => {
+      serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } } });
+      wrapper = await mountView();
+      const trigger = page().get<HTMLButtonElement>("[data-testid=sort]");
+      expect(trigger.element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(trigger.text()).toBe("Nazwa A–Z");
+      await page().get("[data-testid=next-page]").trigger("click");
+      await settle();
+
+      wrapper.findAllComponents(Select)[0]!.vm.$emit("update:modelValue", "-updatedAt");
+      await settle();
+
+      expect(priceCalls().at(-1)).toEqual({ perPage: 10, sort: "-updatedAt" });
+      expect(priceCalls().filter((query) => query.sort === "-updatedAt")).toHaveLength(1);
+      expect(page().get("[data-testid=page-number]").text()).toBe("Strona 1");
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/prices?sort=-updatedAt");
+      expect(page().get("[data-testid=sort]").text()).toBe("Ostatnio zmienione");
+      expect(page().findAll("th[aria-sort]"), "the name is in the row of the group, not in a column").toHaveLength(0);
+    });
+
+    it("applies a sort that the address brings from outside with one request, over the rows of the groups", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/prices?sort=-name");
+      await settle();
+
+      expect(priceCalls()).toEqual([{ perPage: 10, sort: "-name" }]);
+      expect(page().get("[data-testid=sort]").text()).toBe("Nazwa Z–A");
     });
 
     it("says in the empty state that nothing matches the filters, with the way to clear them", async () => {
@@ -671,6 +705,17 @@ describe("PricesView", () => {
       await settle();
 
       expect(page().get("[data-testid=range]").text()).toBe("Pokazano produkty 11–20");
+    });
+
+    it("says „z N” with the number of products of the filters, not of their variants", async () => {
+      serve({ pages: { "": { ...productsPage("A", "c1"), total: { value: 1234, capped: false } }, c1: productsPage("B", null) } });
+      wrapper = await mountView();
+      expect(page().get("[data-testid=range]").text()).toBe("Pokazano produkty 1–10 z 1\u00a0234");
+
+      await page().get("[data-testid=next-page]").trigger("click");
+      await settle();
+
+      expect(page().get("[data-testid=range]").text()).toBe("Pokazano produkty 11–20 z 1\u00a0234");
     });
   });
 

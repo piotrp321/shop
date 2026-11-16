@@ -41,6 +41,12 @@ doctrine:
                 is_bundle: false
                 dir: '%kernel.project_dir%/src/Payment/Infrastructure/Persistence/Doctrine/Record'
                 prefix: 'App\Payment\Infrastructure\Persistence\Doctrine\Record'
+            # Shared: the completed steps of app:backfill (app_backfill).
+            Shared:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Shared/Infrastructure/Persistence/Doctrine/Record'
+                prefix: 'App\Shared\Infrastructure\Persistence\Doctrine\Record'
             # The flat simulator module: its one entity is mapped in place (it is no domain of the shop).
             PaymentSimulator:
                 type: attribute
