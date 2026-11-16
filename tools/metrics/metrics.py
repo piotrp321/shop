@@ -1132,8 +1132,8 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     datas = [data for _, data, _ in parsed if data is not None]
     in_attempts = in_attempts_of([commands_of(d, config, compiled) for d in datas])
     if not datas:
-        gaps.add('in_attempts', 'brak transcryptów prób')
-        gaps.add('versions', 'brak transcryptów prób')
+        gaps.add('in_attempts', 'brak transkryptów prób')
+        gaps.add('versions', 'brak transkryptów prób')
     return {'by_task': by_task, 'attempts': entries, 'value': value_sections(items), 'in_attempts': in_attempts,
             'versions': versions_of(datas) if datas else None}
 
@@ -1164,12 +1164,30 @@ def value_within(attempts, intervals):
     return total
 
 
-def add_share(subscription, stretches, attempts, records, gaps):
+def other_attempts(epic, records, ao_root, config, busy_timeout_ms):
+    """The attempts (entries of the record) of another epic: from its stored record, else computed (value included)
+    from its run directory `ao-<epic>` under the AO root with the functions of the record of this epic (the database
+    read only, the transcripts; nothing is stored). None without both, or when the run directory is unreadable."""
+    record = records.get(epic)
+    if isinstance(record, dict) and isinstance(record.get('attempts'), list):
+        return record['attempts']
+    if ao_root is None or not epic or os.path.basename(epic) != epic or epic in ('.', '..'):
+        return None
+    home = os.path.join(ao_root, 'ao-%s' % epic)
+    try:
+        run = load_run(home, epic, busy_timeout_ms, Gaps())
+        return transcript_fields(home, run, config, records, epic, Gaps())['attempts']
+    except MetricsError:
+        return None
+
+
+def add_share(subscription, stretches, attempts, lookup, gaps):
     """`share` of the subscription (spec: Rekord epiku): the value of this epic in the common interval (the parts of
     its measurement interval in which another epic ran; the union when there are several) by the value of this epic and
     of the overlapping epics in it (each epic's attempts assigned to the interval evenly over their duration, the other
     epics' only within their own stretches of the overlap); 1 without overlapping epics; None with a gap when the value
-    of this epic or of an overlapping one is not known (no record of it). `stretches`: {epic: [(start, end)]}."""
+    of this epic or of an overlapping one is not known (no record and no run directory of it, or attempts without a
+    value). `stretches`: {epic: [(start, end)]}; `lookup(epic)`: the attempts of another epic or None."""
     subscription['share'], subscription['share_estimated'] = None, False
     if not subscription['overlap']:
         subscription['share'] = 1
@@ -1183,12 +1201,12 @@ def add_share(subscription, stretches, attempts, records, gaps):
         return
     total = mine
     for other in subscription['overlap']:
-        record = records.get(other)
-        theirs = value_within(record['attempts'], clip_merge(stretches.get(other, []), float('-inf'), float('inf'))) \
-            if isinstance(record, dict) and isinstance(record.get('attempts'), list) else None
+        others = lookup(other)
+        theirs = None if others is None else value_within(others, clip_merge(stretches.get(other, []), float('-inf'),
+                                                                              float('inf')))
         if theirs is None:
-            gaps.add('subscription.share', 'brak wartości tokenów epiku %s (brak rekordu albo prób bez wartości)'
-                     % other)
+            gaps.add('subscription.share', 'brak wartości tokenów epiku %s (brak rekordu i katalogu przebiegu albo próby'
+                     ' bez wartości)' % other)
             return
         total += theirs
     if total <= 0:
@@ -1505,11 +1523,14 @@ def read_previous(path):
 
 
 def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fixes, now, run=None, no_gh=True,
-                 repo=None, previous=None, pr=None, records=None):
+                 repo=None, previous=None, pr=None, records=None, ao_root=None):
     """(record, errors): the record of the epic run and the messages of failed GitHub calls (the record is complete
     anyway: a failed source is null and a gap). records: {epic: stored record} of the other epics (the history of the
-    rates of models for attempts without a CLI result, and the overlapping epics of `subscription.share`)."""
+    rates of models for attempts without a CLI result, and the overlapping epics of `subscription.share`); ao_root: the
+    directory of the run directories `ao-<epic>` (the overlapping epics without a record are computed from them;
+    default: the parent of ao_home)."""
     records = records or {}
+    ao_root = os.path.dirname(ao_home) if ao_root is None else ao_root
     gaps = Gaps()
     ao_run = load_run(ao_home, epic_id, busy_timeout_ms, gaps)
     epic = ao_run['epic']
@@ -1534,7 +1555,8 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     subscription, parallel, stretches, span = night_fields(ao_run, epic_id, started, run_end, night_dir, gaps)
     fields = transcript_fields(ao_home, ao_run, config, records, epic_id, gaps)
     if subscription is not None:
-        add_share(subscription, stretches, fields['attempts'], records, gaps)
+        add_share(subscription, stretches, fields['attempts'],
+                  lambda other: other_attempts(other, records, ao_root, config, busy_timeout_ms), gaps)
     retries = retries_of(ao_run, run_ended, gaps)
     retries['sync_prs'] = None if github['sync'] is None else [{'number': p['number'], 'state': p['state']}
                                                                 for p in github['sync']]
@@ -1615,7 +1637,7 @@ def cmd_epic(args, config, run, now):
     path = state_path(_expand(args.state), args.epic)
     record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now, run=run,
                                   no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
-                                  records=read_records(_expand(args.state)))
+                                  records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home))
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
@@ -1674,7 +1696,7 @@ def cmd_backfill(args, config, run, now):
             path = state_path(_expand(args.state), epic_id)
             record, errors = build_record(epic_id, home, config, busy, _expand(args.night), None, now, run=run,
                                           no_gh=False, repo=args.repo, previous=read_previous(path), pr=pr,
-                                          records=records)
+                                          records=records, ao_root=root)
             write_record(path, record)
             records[epic_id] = record
         except MetricsError as e:

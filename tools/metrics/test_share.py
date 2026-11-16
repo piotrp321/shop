@@ -47,18 +47,26 @@ class ShareEnv(Env):
         with open(os.path.join(self.state, 'epics', '%s.json' % epic), 'w') as f:
             json.dump({'epic': epic, 'attempts': attempts}, f)
 
-    def demo(self, attempts, transcripts=True, begin=110, end=5010):
-        """The epic `demo` measured from `begin` to `end` seconds after BASE whose attempts are (start, end, cost)."""
+    def run_home(self, epic, attempts, transcripts=True, begin=110, end=5010, with_result=True):
+        """The run directory of `epic` measured from `begin` to `end` seconds after BASE whose attempts are
+        (start, end, cost), each with a transcript (without a CLI result when `with_result` is false)."""
+        task = '%s-1' % epic.upper()
         home = testkit.synthetic_home(
-            self.root, tasks=[('T-1', 'plan')], created=epoch(begin - 10), events=[(epoch(end - 10), 'epic_done', {})],
-            attempts=[dict(task_id='T-1', number=i, started_at=epoch(s), ended_at=epoch(e))
+            self.root, epic=epic, tasks=[(task, 'plan')], created=epoch(begin - 10),
+            events=[(epoch(end - 10), 'epic_done', {})],
+            attempts=[dict(task_id=task, number=i, started_at=epoch(s), ended_at=epoch(e))
                       for i, (s, e, _) in enumerate(attempts, 1)])
         if transcripts:
             for i, (_, _, cost) in enumerate(attempts, 1):
-                lines = Transcript().init().message(input=10).result(
-                    {OPUS: model_usage(input=10, output=1, cost=cost)}, output=1)
-                testkit.put_transcript(home, 'T-1', i, lines.lines)
+                lines = Transcript().init().message(input=10)
+                if with_result:
+                    lines.result({OPUS: model_usage(input=10, output=1, cost=cost)}, output=1)
+                testkit.put_transcript(home, task, i, lines.lines)
         return home
+
+    def demo(self, attempts, transcripts=True, begin=110, end=5010):
+        """The epic `demo` measured from `begin` to `end` seconds after BASE whose attempts are (start, end, cost)."""
+        return self.run_home('demo', attempts, transcripts, begin, end)
 
     def subscription(self, home):
         record = self.record('demo', home=home)
@@ -135,6 +143,61 @@ class ShareTest(ShareEnv):
         self.assertEqual(sub['windows'], {ALL: 20})
         self.assertTrue(any(g.startswith('subscription.share') and 'other' in g for g in record['gaps']), record['gaps'])
 
+    def test_without_the_record_the_value_of_the_other_epic_comes_from_its_run_directory(self):
+        self.night_file([event('demo', 110, 'start', 10), event('other', 1000, 'start', 12),
+                         event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
+        self.run_home('other', [(1000, 3000, 5.0)], begin=1000, end=3010)
+        sub, record = self.subscription(self.demo([(200, 4000, 10.0)]))
+        mine = 10.0 * 2000.0 / 3800.0
+        self.assertAlmostEqual(sub['share'], mine / (mine + 5.0), places=4)
+        self.assertTrue(sub['share_estimated'])
+        self.assertFalse(any(g.startswith('subscription.share') for g in record['gaps']), record['gaps'])
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'epics', 'other.json')))   # nothing is recorded for it
+
+    def test_the_stored_record_wins_over_the_run_directory(self):
+        self.night_file([event('demo', 110, 'start', 10), event('other', 1000, 'start', 12),
+                         event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
+        self.run_home('other', [(1000, 3000, 99.0)], begin=1000, end=3010)
+        self.stored('other', [attempt_of(1000, 3000, 5.0)])
+        sub, _ = self.subscription(self.demo([(200, 4000, 10.0)]))
+        mine = 10.0 * 2000.0 / 3800.0
+        self.assertAlmostEqual(sub['share'], mine / (mine + 5.0), places=4)
+
+    def test_an_attempt_of_the_run_directory_without_a_cli_result_is_valued_from_the_history_of_rates(self):
+        self.night_file([event('demo', 110, 'start', 10), event('other', 1000, 'start', 12),
+                         event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
+        self.run_home('other', [(1000, 3000, 0.0)], begin=1000, end=3010, with_result=False)
+        self.stored('hist', [{'cli_result': True, 'model_rates': {OPUS: 0.1}, 'started_at': None, 'ended_at': None}])
+        sub, _ = self.subscription(self.demo([(200, 4000, 10.0)]))
+        mine = 10.0 * 2000.0 / 3800.0
+        self.assertAlmostEqual(sub['share'], mine / (mine + 10 * 0.1), places=4)      # 10 input tokens at 0.1 USD
+        self.assertTrue(sub['share_estimated'])
+
+    def test_a_run_directory_without_values_gives_null_with_a_gap(self):
+        self.night_file([event('demo', 110, 'start', 10), event('other', 1000, 'start', 12),
+                         event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
+        self.run_home('other', [(1000, 3000, 5.0)], begin=1000, end=3010, transcripts=False)
+        sub, record = self.subscription(self.demo([(200, 4000, 10.0)]))
+        self.assertIsNone(sub['share'])
+        self.assertTrue(any(g.startswith('subscription.share') and 'other' in g for g in record['gaps']), record['gaps'])
+
+    def test_an_unreadable_run_directory_gives_null_with_a_gap(self):
+        self.night_file([event('demo', 110, 'start', 10), event('other', 1000, 'start', 12),
+                         event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
+        os.makedirs(os.path.join(self.root, 'ao-other'))
+        with open(os.path.join(self.root, 'ao-other', 'orchestrator.db'), 'wb') as f:
+            f.write(b'not a database' * 100)
+        sub, record = self.subscription(self.demo([(200, 4000, 10.0)]))
+        self.assertIsNone(sub['share'])
+        self.assertTrue(any(g.startswith('subscription.share') for g in record['gaps']), record['gaps'])
+
+    def test_the_epic_id_of_a_measurement_cannot_leave_the_ao_root(self):
+        self.night_file([event('demo', 110, 'start', 10), event('../escape', 1000, 'start', 12),
+                         event('../escape', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
+        sub, record = self.subscription(self.demo([(200, 4000, 10.0)]))
+        self.assertIsNone(sub['share'])
+        self.assertTrue(any(g.startswith('subscription.share') for g in record['gaps']), record['gaps'])
+
     def test_a_record_of_the_other_epic_with_an_attempt_without_a_value_gives_null_with_a_gap(self):
         self.night_file([event('demo', 110, 'start', 10), event('other', 1000, 'start', 12),
                          event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
@@ -179,6 +242,40 @@ class ShareTest(ShareEnv):
         self.assertTrue(record['subscription']['overlap'])
         self.assertIsNone(record['subscription']['share'])
         self.assertTrue(any(g.startswith('subscription.share') for g in record['gaps']), record['gaps'])
+
+
+class BackfillShareTest(ShareEnv):
+    """backfill records epics in the order of their names: the epic recorded first has no record of the other one."""
+
+    def backfill(self, big, small):
+        """Backfills the epic `big` (10 USD over 200..4000) and `small` (5 USD over 1000..3000, inside it)."""
+        self.night_file([event(big, 110, 'start', 10), event(small, 1000, 'start', 12),
+                         event(small, 3000, 'done', 14), event(big, 5010, 'done', 30)])
+        self.run_home(big, [(200, 4000, 10.0)])
+        self.run_home(small, [(1000, 3000, 5.0)], begin=1000, end=3010)
+        code, out, err = testkit.run_cli(['backfill', '--ao-root', self.root, '--state', self.state, '--night',
+                                          self.night], testkit.FakeGh(prs={7: testkit.merged_pr()}))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(sorted(json.loads(out)['recorded']), sorted([big, small]))
+        found = {}
+        for name in (big, small):
+            with open(os.path.join(self.state, 'epics', '%s.json' % name), encoding='utf-8') as f:
+                found[name] = json.load(f)
+        return found
+
+    def check_pair(self, big, small):
+        found = self.backfill(big, small)
+        shared = 10.0 * 2000.0 / 3800.0             # the value of the big epic in the common interval
+        self.assertIsNotNone(found[big]['subscription']['share'], found[big]['gaps'])
+        self.assertIsNotNone(found[small]['subscription']['share'], found[small]['gaps'])
+        self.assertAlmostEqual(found[big]['subscription']['share'], shared / (shared + 5.0), places=4)
+        self.assertAlmostEqual(found[small]['subscription']['share'], 5.0 / (5.0 + shared), places=4)
+
+    def test_both_epics_of_a_pair_get_a_share_when_the_overlapped_one_is_recorded_first(self):
+        self.check_pair('aaa', 'bbb')
+
+    def test_both_epics_of_a_pair_get_a_share_when_the_overlapped_one_is_recorded_last(self):
+        self.check_pair('bbb', 'aaa')
 
 
 if __name__ == '__main__':

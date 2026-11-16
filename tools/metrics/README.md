@@ -142,10 +142,13 @@ tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie z
   w `measurements.jsonl`), w której nakładał się z innym epikiem (przy kilku epikach suma ich części wspólnych); wartość
   nakładającego się epiku liczy się w jego własnej części wspólnej. Wartość próby jest przypisana do przedziału
   równomiernie w czasie trwania próby (próba częściowo poza przedziałem wnosi proporcjonalną część); wartość innych
-  epików z ich zapisanych rekordów (`attempts` z `started_at`, `ended_at`, `value`). Epik 10 h z godzinną
-  nakładką w tym samym tempie ma `share` około 0,5. Bez nakładania `1` (`share_estimated: false`); przy nakładaniu
-  `share_estimated: true`, a gdy brak rekordu nakładającego się epiku, jego próby bez wartości albo własna wartość
-  nieznana: `null` z pozycją w `gaps`. Surowy przyrost (`windows`) zostaje obok i obejmuje cały przedział pomiaru.
+  epików z ich zapisanych rekordów (`attempts` z `started_at`, `ended_at`, `value`), a gdy rekordu nie ma, liczona
+  z ich katalogu przebiegu `ao-<epik>` (obok katalogu epiku, w korzeniu AO; baza tylko do odczytu i transkrypty, tymi
+  samymi funkcjami co własna wartość, próba bez wyniku CLI ze stawki historycznej), więc przy `backfill` oba epiki pary
+  dostają `share` niezależnie od kolejności. Epik 10 h z godzinną nakładką w tym samym tempie ma `share` około 0,5.
+  Bez nakładania `1` (`share_estimated: false`); przy nakładaniu `share_estimated: true`, a gdy nakładający się epik nie
+  ma ani rekordu, ani katalogu przebiegu, jego próby nie mają wartości albo własna wartość jest nieznana: `null`
+  z pozycją w `gaps`. Surowy przyrost (`windows`) zostaje obok i obejmuje cały przedział pomiaru.
 
 ### Pola jeszcze nieobecne
 
