@@ -82,6 +82,14 @@ class MetricsError(Exception):
     """A failure that ends the command with exit code 2 and the message on stderr."""
 
 
+class WasteFileError(MetricsError):
+    """waste.json cannot be used; `reason` is the message without the path (the path is in the message)."""
+
+    def __init__(self, path, reason):
+        super().__init__('%s: %s' % (path, reason))
+        self.reason = reason
+
+
 class DatabaseLocked(MetricsError):
     """The AO database stayed locked for longer than busy_timeout (a running AO holds short write locks)."""
 
@@ -1496,7 +1504,7 @@ def _set(record, path, value):
 # Fields of a source that can fail for a moment (gh) or is not given every time (the list of manual fixes): a null
 # from the source never replaces the stored value.
 KEPT_PATHS = (('issue',), ('merged_at',), ('wall', 'to_merge'), ('wall', 'review'), ('retries', 'sync_prs'),
-              ('parallel', 'sync_prs'), ('human', 'manual_fixes'))
+              ('parallel', 'sync_prs'), ('human', 'manual_fixes'), ('waste',))
 
 
 def keep_stored_values(record, previous, gaps):
@@ -1951,12 +1959,12 @@ def read_waste_file(path):
     except FileNotFoundError:
         return None
     except OSError as e:
-        raise MetricsError('nieczytelny plik %s: %s' % (path, e.strerror or e))
+        raise WasteFileError(path, 'nieczytelny plik: %s' % (e.strerror or e))
     except ValueError as e:
-        raise MetricsError('plik %s nie jest poprawnym JSON: %s' % (path, e))
+        raise WasteFileError(path, 'plik nie jest poprawnym JSON: %s' % e)
     if not (isinstance(data, dict) and isinstance(data.get('alarms'), list)
             and all(isinstance(a, dict) and isinstance(a.get('key'), str) for a in data['alarms'])):
-        raise MetricsError('plik %s: oczekiwano {"alarms": [{"key": ...}]}' % path)
+        raise WasteFileError(path, 'zły kształt pliku, oczekiwano {"alarms": [{"key": ...}]}')
     return data['alarms']
 
 
@@ -1965,8 +1973,8 @@ def waste_of_epic(state_dir, epic_id):
     path = os.path.join(state_dir, 'waste.json')
     try:
         stored = read_waste_file(path)
-    except MetricsError as e:
-        return None, 'nieczytelny waste.json: %s' % e
+    except WasteFileError as e:
+        return None, 'nieczytelny waste.json: %s' % e.reason
     if stored is None:
         return None, 'brak pliku waste.json (komenda waste jeszcze nie zapisała alarmów)'
     return [a for a in stored if a.get('epic') == epic_id], None
@@ -1988,13 +1996,16 @@ def store_and_print(state_dir, candidates, now):
             fcntl.flock(fd, fcntl.LOCK_EX)
         except OSError as e:
             raise MetricsError('nie można zablokować %s: %s' % (lock_path, e.strerror or e))
-        stored = read_waste_file(path) or []
+        existing = read_waste_file(path)
+        stored = existing or []
         known = {a['key'] for a in stored}
         new = []
         for alarm in candidates:
             if alarm['key'] not in known:
                 known.add(alarm['key'])
                 new.append(alarm)
+        if existing is None and not new:
+            write_record(path, {'alarms': []})          # the file says that `waste` ran, even with nothing to report
         if new:
             at = iso(now)
             write_record(path, {'alarms': stored + [{**{k: v for k, v in a.items() if k != 'alarm'}, 'rule': a['alarm'],

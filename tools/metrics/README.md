@@ -62,7 +62,7 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `versions` | `cli` (`[{version, attempts}]`, z `system/init`) i `models` (`[{model, attempts}]`, z wiadomości `assistant`); `null` bez transkryptów |
 | `attempts` | lista prób: `task`, `kind`, `number`, `outcome`, `executor_status`, `wall_s`, `started_at`, `ended_at`, `value` (USD), `estimated`, `tokens` (`input`, `output`, `cache_read`, `cache_write`), `estimated_tokens`, `cli_result` (czy próba ma wynik CLI), `model_rates` (USD na ważony token wejścia i cache modelu, tylko próby z wynikiem CLI); próba bez transkryptu ma `null` w polach wartości |
 | `value` | `total`, `by_role`, `by_model`, `by_task`, `by_role_model` (`{rola: {model: komórka}}`); komórka: `usd`, `estimated`, `tokens`, `estimated_tokens` i `incomplete`, gdy część wartości jest nieznana |
-| `waste` | alarmy tego epiku z `<state>/waste.json` (jak w pliku: `key`, `rule`, `epic`, `task`, `attempt`, `at`, `push`, liczby); `[]`, gdy plik jest i nie ma alarmów epiku; `null` z pozycją w `gaps` bez pliku (komenda `waste` jeszcze nie działała) albo gdy plik jest nieczytelny (`epic` nie kończy się wtedy błędem) |
+| `waste` | alarmy tego epiku z `<state>/waste.json` (jak w pliku: `key`, `rule`, `epic`, `task`, `attempt`, `at`, `push`, liczby); `[]`, gdy plik jest i nie ma alarmów epiku; `null` z pozycją w `gaps` (sam powód, bez ścieżki) bez pliku (komenda `waste` jeszcze nie działała) albo gdy plik jest nieczytelny (`epic` nie kończy się wtedy błędem); zapisana wcześniej lista zostaje (zob. „Cache”) |
 | `gaps` | braki danych |
 
 Źródła i ich pierwszeństwo w `breakdown` (każda chwila trafia do pierwszej pasującej kategorii, kolejność w
@@ -190,15 +190,15 @@ a z danych przebiegu tylko identyfikatory epiku i zadania (`[A-Za-z0-9._-]`, do 
 `<state>/waste.lock`: odczyt pliku, wybór nowych kluczy, zapis atomowy (plik tymczasowy i `os.replace`) i wypisanie
 dzieją się pod wyłącznym `flock` na `waste.lock`, więc dwie sesje wypisują każdy alarm raz. Zapis jest przed
 wypisaniem: nieudany zapis nic nie wypisuje, a awaria wypisywania po zapisie gubi alarm, ale go nie duplikuje (alarm nigdy
-dwa razy). Brak `waste.json` to pusty stan; plik nieczytelny albo w innym kształcie kończy komendę kodem `2` bez zmiany
+dwa razy). Brak `waste.json` to pusty stan, a udane wywołanie bez nowych alarmów tworzy `{"alarms": []}` (pod tą samą blokadą), żeby rekord pokazywał `[]`, nie `null`; plik nieczytelny albo w innym kształcie kończy komendę kodem `2` bez zmiany
 pliku (po usunięciu przyczyny wysłane alarmy nie wracają). Zajęta żywa baza: `busy_timeout`, potem ponowienia
 (`DB_RETRIES` = 2, przerwa 0,5 s), na końcu kod `2` i komunikat `zablokowana`; nic nie jest wtedy zapisane.
 
 ### Cache
 
 Rekord zapisuje się w `<state>/epics/<epik>.json`. Przejściowy błąd źródła nigdy nie zastępuje wartości niepustej
-wartością `null`: dla `issue`, `merged_at`, `wall.to_merge`, `wall.review`, `retries.sync_prs`, `parallel.sync_prs`
-i `human.manual_fixes` (błąd `gh`, `--no-gh`, brak `--manual-fixes`) zostaje poprzednia wartość, a w `gaps` jest
+wartością `null`: dla `issue`, `merged_at`, `wall.to_merge`, `wall.review`, `retries.sync_prs`, `parallel.sync_prs`,
+`human.manual_fixes` (błąd `gh`, `--no-gh`, brak `--manual-fixes`) i `waste` (brak albo nieczytelny `waste.json`) zostaje poprzednia wartość, a w `gaps` jest
 `pole: źródło niedostępne: zachowano poprzednią wartość` obok powodu. Pozostałe pola liczą się od nowa. Nieczytelny
 zapisany rekord jest pomijany.
 

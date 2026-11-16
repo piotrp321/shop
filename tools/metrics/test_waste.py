@@ -807,5 +807,78 @@ class RecordFieldTest(WasteEnv):
         self.assertTrue(os.path.exists(os.path.join(self.state, 'epics', 'demo.json')))
 
 
+class RecordFieldCacheTest(WasteEnv):
+    """A failing source of `waste` never replaces the stored alarms with null (spec: Rekord epiku, cache)."""
+
+    def stored_record(self):
+        home = self.home(rounds=3)
+        self.run_ok(home)
+        record = self.record('demo', home=home)
+        self.assertEqual([a['key'] for a in record['waste']], ['W3:demo:qa:3'])
+        return home
+
+    def test_an_unreadable_waste_json_keeps_the_stored_alarms_with_a_gap(self):
+        home = self.stored_record()
+        with open(os.path.join(self.state, 'waste.json'), 'w', encoding='utf-8') as f:
+            f.write('not json')
+        record = self.record('demo', home=home)
+        self.assertEqual([a['key'] for a in record['waste']], ['W3:demo:qa:3'])
+        self.assertTrue(any(g.startswith('waste') and 'zachowano poprzednią wartość' in g for g in record['gaps']),
+                        record['gaps'])
+        self.assertTrue(any(g.startswith('waste') and 'JSON' in g for g in record['gaps']), record['gaps'])
+
+    def test_a_removed_waste_json_keeps_the_stored_alarms_with_a_gap(self):
+        home = self.stored_record()
+        os.unlink(os.path.join(self.state, 'waste.json'))
+        record = self.record('demo', home=home)
+        self.assertEqual([a['key'] for a in record['waste']], ['W3:demo:qa:3'])
+        self.assertTrue(any(g.startswith('waste') and 'zachowano poprzednią wartość' in g for g in record['gaps']),
+                        record['gaps'])
+
+    def test_the_gaps_of_the_record_have_no_path_of_the_state(self):
+        home = self.home()
+        os.makedirs(self.state)
+        cases = {'unreadable json': lambda p: open(p, 'w').write('not json'),
+                 'wrong shape': lambda p: open(p, 'w').write('{"alarms": 1}'),
+                 'a directory': os.makedirs,
+                 'missing': lambda p: None}
+        path = os.path.join(self.state, 'waste.json')
+        for name, make in cases.items():
+            with self.subTest(case=name):
+                if os.path.isdir(path):
+                    os.rmdir(path)
+                elif os.path.exists(path):
+                    os.unlink(path)
+                make(path)
+                record = self.record('demo', home=home)
+                gaps = [g for g in record['gaps'] if g.startswith('waste')]
+                self.assertTrue(gaps, record['gaps'])
+                for gap in gaps:
+                    self.assertNotIn(self.root, gap)
+                    self.assertNotIn(self.state, gap)
+
+
+class EmptyStateTest(WasteEnv):
+    def test_a_successful_call_without_alarms_creates_the_empty_file(self):
+        home = self.home()
+        self.assertEqual(self.run_ok(home), '')
+        self.assertEqual(self.waste_json(), {'alarms': []})
+        self.assertEqual(self.record('demo', home=home)['waste'], [])
+
+    def test_a_call_without_alarms_does_not_touch_an_existing_file(self):
+        home = self.home(rounds=3)
+        self.run_ok(home)
+        with open(os.path.join(self.state, 'waste.json'), 'rb') as f:
+            before = f.read()
+        self.run_ok(self.home())
+        with open(os.path.join(self.state, 'waste.json'), 'rb') as f:
+            self.assertEqual(f.read(), before)
+
+    def test_a_failed_call_does_not_create_the_file(self):
+        code, out, err = self.waste(os.path.join(self.root, 'ao-nope'))
+        self.assertEqual(code, 2)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'waste.json')))
+
+
 if __name__ == '__main__':
     unittest.main()
