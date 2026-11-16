@@ -349,9 +349,11 @@ class ReadOnlyTest(RegressionEnv):
         self.record(gh)
         self.assertTrue([c for c in gh.calls if c[2:3] == ['graphql']])
         for call in gh.calls:
-            self.assertIn(call[1], ('pr', 'run', 'issue', 'api'), call)
+            self.assertIn(call[1], ('pr', 'run', 'issue', 'api', 'repo'), call)
             self.assertFalse({'edit', 'merge', 'close', 'comment', 'create', 'mutation'} & set(call), call)
-            if call[1] != 'api':
+            if call[1] == 'repo':
+                self.assertEqual(call[2], 'view', call)
+            elif call[1] != 'api':
                 self.assertIn(call[2], ('view', 'list'), call)
             elif call[2] == 'graphql':
                 query = next(a for a in call if a.startswith('query='))
@@ -368,6 +370,36 @@ class ReadOnlyTest(RegressionEnv):
             self.assertTrue(forbidden_flag(argument), argument)
         for argument in ('repos/{owner}/{repo}/commits?sha=main', 'graphql'):
             self.assertFalse(forbidden_flag(argument), argument)
+
+
+class TruncationTest(RegressionEnv):
+    """A list cut at its limit may miss entries: the window does not close on it."""
+
+    AFTER = epoch('2026-12-01T10:00:00Z')
+
+    def filler_issues(self, count, label='bug'):
+        return [dict(bug(1000 + n, 'other-epic', 'x'), labels=[{'name': label}]) for n in range(count)]
+
+    def test_a_full_issue_list_leaves_the_window_open(self):
+        record = self.record(self.gh(issues={'bug': self.filler_issues(metrics.ISSUE_LIMIT)}), self.AFTER)
+        self.assertFalse(record['regressions']['complete'])
+        self.assertTrue(record['regressions']['open'])
+        self.assertTrue(any(g.startswith('regressions.issues') and 'obcięta' in g for g in record['gaps']), record['gaps'])
+
+    def test_a_full_sweep_list_leaves_the_window_open(self):
+        record = self.record(self.gh(issues={'agent': self.filler_issues(metrics.ISSUE_LIMIT, 'agent')}), self.AFTER)
+        self.assertFalse(record['regressions']['complete'])
+
+    def test_a_full_commit_list_leaves_the_window_open(self):
+        commits = [commit('%040x' % n, 'chore: x', '2026-11-14T08:00:00Z') for n in range(metrics.COMMIT_LIMIT)]
+        record = self.record(self.gh(commits=commits), self.AFTER)
+        self.assertFalse(record['regressions']['complete'])
+        self.assertTrue(record['regressions']['open'])
+
+    def test_lists_below_the_limits_close_the_window(self):
+        record = self.record(self.gh(issues={'bug': self.filler_issues(metrics.ISSUE_LIMIT - 1)}), self.AFTER)
+        self.assertTrue(record['regressions']['complete'])
+        self.assertFalse(record['regressions']['open'])
 
 
 class EditorTest(RegressionEnv):
@@ -417,11 +449,42 @@ class EditorTest(RegressionEnv):
         self.assertIn('name=shop', call)
         self.assertIn('number=10', call)
         self.assertNotIn('-R', call)
-        placeholders = self.gh_with(editors={10: 'writer'})
-        self.record(placeholders)
-        call = next(c for c in placeholders.calls if c[2:3] == ['graphql'])
-        self.assertIn('owner={owner}', call)
-        self.assertIn('name={repo}', call)
+        self.assertFalse([c for c in gh.calls if c[:3] == ['gh', 'repo', 'view']])
+
+    def test_without_repo_option_the_repository_is_read_once_and_given_to_graphql_as_real_names(self):
+        gh = self.gh(issues={'bug': [bug(10, 'deploy-ops', 'stranger'), bug(11, 'deploy-ops', 'stranger2')]},
+                     permissions={'writer': 'write'}, editors={10: 'writer', 11: 'writer'})
+        self.assertEqual(self.record(gh)['regressions']['issues'], [10, 11])
+        views = [c for c in gh.calls if c[:3] == ['gh', 'repo', 'view']]
+        self.assertEqual(len(views), 1)
+        self.assertEqual(views[0][3:], ['--json', 'owner,name'])
+        queries = [c for c in gh.calls if c[2:3] == ['graphql']]
+        self.assertEqual(len(queries), 2)
+        for call in queries:
+            self.assertIn('owner=acme', call)
+            self.assertIn('name=shop', call)
+            self.assertFalse([a for a in call if '{' in a and a.startswith(('owner=', 'name='))], call)
+
+    def test_the_stub_rejects_a_placeholder_in_a_raw_field(self):
+        result = FakeGh()(['gh', 'api', 'graphql', '-f', 'query=query { x }', '-f', 'owner={owner}', '-f',
+                           'name={repo}', '-F', 'number=1'])
+        self.assertEqual(result.returncode, 1)
+
+    def test_a_repo_view_error_is_a_gh_error_that_keeps_the_stored_value(self):
+        first = self.gh_with(editors={10: 'writer'})
+        self.assertEqual(self.record(first)['regressions']['issues'], [10])
+        code, out, err = self.deploy_ops(self.gh_with(editors={10: 'writer'}, fail_on=[('repo', 'view')]))
+        self.assertEqual(code, 3)
+        record = json.loads(out)
+        self.assertEqual(record['regressions']['issues'], [10])
+        self.assertFalse(record['regressions']['complete'])
+        self.assertTrue(any(g.startswith('regressions.issues') and 'gh' in g for g in record['gaps']), record['gaps'])
+        self.assertIn('gh repo view', err)
+
+    def test_a_repo_view_answer_of_a_wrong_shape_is_a_gh_error(self):
+        code, out, err = self.deploy_ops(self.gh_with(editors={10: 'writer'}, repo_view={'owner': None, 'name': 5}))
+        self.assertEqual(code, 3)
+        self.assertIsNone(json.loads(out)['regressions']['issues'])
 
     def test_a_graphql_error_is_a_gh_error_that_keeps_the_stored_value(self):
         first = self.record(self.gh_with(editors={10: 'writer'}))

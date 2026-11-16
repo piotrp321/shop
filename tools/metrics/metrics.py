@@ -1581,11 +1581,12 @@ def red_ci(run, repo, config, sha):
     return sum(1 for r in runs if isinstance(r, dict) and r.get('event') == 'push' and r.get('conclusion') == 'failure')
 
 
-def reverts_of(run, repo, final_pr, merge_sha, low, high, gaps):
+def reverts_of(run, repo, final_pr, merge_sha, low, high, gaps, truncated):
     commits = gh_api(run, 'commits?sha=main&since=%s&until=%s&per_page=%d' % (iso(low), iso(high), COMMIT_LIMIT), repo)
     if not isinstance(commits, list):
         raise GhError('gh api commits: nieoczekiwany kształt odpowiedzi')
     if len(commits) >= COMMIT_LIMIT:
+        truncated.append('regressions.reverts')
         gaps.add('regressions.reverts', 'lista commitów main obcięta do %d: revert mógł zostać pominięty' % COMMIT_LIMIT)
     mention = re.compile(r'#%d(?!\d)' % final_pr)
     found = []
@@ -1607,11 +1608,26 @@ EDITOR_QUERY = ('query($owner: String!, $name: String!, $number: Int!) { reposit
 REPO_PATTERN = re.compile(r'^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})$')
 
 
-def last_editor(run, repo, number):
-    """The login of the last editor of the issue (`editor` of the GraphQL `Issue`, a query only), or None when it was
-    never edited. Without --repo gh expands the {owner} and {repo} placeholders."""
+def repository_of(run, repo):
+    """(owner, name) of the repository: from --repo, else asked once of `gh repo view` (read only). `gh api` expands
+    the {owner} and {repo} placeholders only in the endpoint and in -F fields, not in the raw -f fields a GraphQL
+    variable needs, so the real names are given."""
     match = REPO_PATTERN.match(repo or '')
-    owner, name = match.groups() if match else ('{owner}', '{repo}')
+    if match:
+        return match.groups()
+    data = gh_json(run, ['repo', 'view', '--json', 'owner,name'], None)
+    try:
+        match = REPO_PATTERN.match('%s/%s' % (data['owner']['login'], data['name']))
+    except (KeyError, TypeError, AttributeError):
+        match = None
+    if not match:
+        raise GhError('gh repo view: nieoczekiwany kształt odpowiedzi')
+    return match.groups()
+
+
+def last_editor(run, owner, name, number):
+    """The login of the last editor of the issue (`editor` of the GraphQL `Issue`, a query only), or None when it was
+    never edited. The values are given as raw -f fields (a numeric-looking name stays a string); the number as -F."""
     data = _gh_call(run, ['gh', 'api', 'graphql', '-f', 'query=%s' % EDITOR_QUERY, '-f', 'owner=%s' % owner, '-f',
                           'name=%s' % name, '-F', 'number=%d' % number], 'gh api graphql')
     try:
@@ -1622,14 +1638,15 @@ def last_editor(run, repo, number):
         raise GhError('gh api graphql: nieoczekiwany kształt odpowiedzi')
 
 
-def bug_issues(run, repo, epic_id, final_pr, low, high, gaps):
+def bug_issues(run, repo, epic_id, final_pr, low, high, gaps, truncated):
     """The numbers of the `bug` issues of the window whose `Wprowadzone przez` names the epic or its PR and that were
     created, or last edited, by someone who may write to the repository (the form is public: a foreign issue that no
     writer touched does not count)."""
-    issues, truncated = _issue_list(run, repo, 'bug', low, high)
-    if truncated:
+    issues, cut = _issue_list(run, repo, 'bug', low, high)
+    if cut:
+        truncated.append('regressions.issues')
         gaps.add('regressions.issues', 'lista issues obcięta do %d' % ISSUE_LIMIT)
-    cache, found = {}, []
+    cache, found, place = {}, [], None
     for issue in issues:
         if 'agent' in _labels(issue):
             continue                # a proposal of /sweep is counted in found_after_merge, not as a regression
@@ -1637,17 +1654,22 @@ def bug_issues(run, repo, epic_id, final_pr, low, high, gaps):
         if value is None or not names_epic(value, epic_id, final_pr):
             continue
         author = issue.get('author')
-        if (has_write_access(run, author.get('login') if isinstance(author, dict) else None, repo, cache)
-                or has_write_access(run, last_editor(run, repo, issue['number']), repo, cache)):
+        if has_write_access(run, author.get('login') if isinstance(author, dict) else None, repo, cache):
+            found.append(issue['number'])
+            continue
+        if place is None:
+            place = repository_of(run, repo)
+        if has_write_access(run, last_editor(run, place[0], place[1], issue['number']), repo, cache):
             found.append(issue['number'])
     return sorted(found)
 
 
-def sweep_issues(run, repo, epic_id, low, high, gaps):
+def sweep_issues(run, repo, epic_id, low, high, gaps, truncated):
     """The numbers of the issues of the `/sweep` proposals of the epic (label `agent`, whose `Źródło` names the review
     of the epic) created in the window. The `agent` label is set by people with write access only."""
-    issues, truncated = _issue_list(run, repo, 'agent', low, high)
-    if truncated:
+    issues, cut = _issue_list(run, repo, 'agent', low, high)
+    if cut:
+        truncated.append('found_after_merge')
         gaps.add('found_after_merge', 'lista issues obcięta do %d' % ISSUE_LIMIT)
     source = re.compile(r'Przebieg\s+`/sweep`\s+\d{4}-\d{2}-\d{2}-[0-9a-f]{7}-%s(?![\w-])' % re.escape(epic_id))
     return sorted(i['number'] for i in issues if isinstance(i.get('body'), str) and source.search(i['body']))
@@ -1661,15 +1683,16 @@ def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now,
     merge_sha = merge_sha if isinstance(merge_sha, str) and SHA_PATTERN.match(merge_sha) else None
     result = {'window_days': config['regression_window_days'], 'until': iso(until), 'open': None,
               'complete': None, 'checked_at': iso(now), 'merge_commit': merge_sha}
+    truncated = []          # the sources whose list was cut at its limit
     sources = (
         ('ci_red', 'regressions.ci_red', ('regressions', 'ci_red'),
          (lambda: red_ci(run, repo, config, merge_sha)) if merge_sha else None),
         ('reverts', 'regressions.reverts', ('regressions', 'reverts'),
-         lambda: reverts_of(run, repo, final_pr, merge_sha, merged, until, gaps)),
+         lambda: reverts_of(run, repo, final_pr, merge_sha, merged, until, gaps, truncated)),
         ('issues', 'regressions.issues', ('regressions', 'issues'),
-         lambda: bug_issues(run, repo, epic_id, final_pr, merged, until, gaps)),
+         lambda: bug_issues(run, repo, epic_id, final_pr, merged, until, gaps, truncated)),
         ('found', 'found_after_merge', ('found_after_merge', 'issues'),
-         lambda: sweep_issues(run, repo, epic_id, merged, until, gaps)),
+         lambda: sweep_issues(run, repo, epic_id, merged, until, gaps, truncated)),
     )
     values, complete = {}, True
     for key, field, path, compute in sources:
@@ -1687,7 +1710,8 @@ def regressions_of(run, repo, config, epic_id, final_pr, merge_sha, merged, now,
             values[key] = _get(previous, path)
             if values[key] is not None:
                 gaps.add(field, 'źródło niedostępne: zachowano poprzednią wartość')
-    # The window closes only after a run in which every source answered: a failed one leaves it open for the next trend.
+    # The window closes only after a run in which every source answered in full: a failed or cut one leaves it open.
+    complete = complete and not truncated
     result.update(ci_red=values['ci_red'], reverts=values['reverts'], issues=values['issues'], complete=complete,
                   open=now < until or not complete)
     counts = [None if values['ci_red'] is None else min(values['ci_red'], 1),

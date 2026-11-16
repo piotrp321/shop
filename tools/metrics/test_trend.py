@@ -250,7 +250,7 @@ class RegressionWindowTest(TrendEnv):
         self.assertTrue(record['regressions']['complete'])
         self.assertEqual(self.table(runner=self.gh(), now=after)['recomputed'], [])
 
-    def test_a_failed_sweep_source_alone_also_keeps_the_record_to_be_recomputed(self):
+    def test_a_failed_issue_list_leaves_the_record_to_be_recomputed(self):
         self.stored()
         after = self.now + 30 * 86400
         self.table(runner=self.gh(fail_on=[('issue', 'list')]), now=after)

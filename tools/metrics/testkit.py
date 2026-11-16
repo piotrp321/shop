@@ -223,13 +223,13 @@ class FakeGh:
 
     prs: {number: {state, mergedAt, closingIssuesReferences, mergeCommit}}; sync: the list answered for `gh pr list`;
     runs: {commit or branch: [run, ...]} for `gh run list --commit/--branch`; jobs: {run id: [job, ...]} for
-    `gh run view`; commits: the list answered for `gh api repos/.../commits`; editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); issues: {label: [issue, ...]} for
+    `gh run view`; commits: the list answered for `gh api repos/.../commits`; editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); repo_view: the answer of `gh repo view --json owner,name`; issues: {label: [issue, ...]} for
     `gh issue list --label`; permissions: {login: role} for `gh api .../collaborators/<login>/permission` (a login
     without an entry is a non-collaborator: HTTP 404); fail: when set, every command ends with exit code 1 and that
     stderr; fail_on: the command prefixes, e.g. ('run', 'list') or ('api',), that end with that error."""
 
     def __init__(self, prs=None, sync=None, fail=None, runs=None, jobs=None, commits=None, issues=None,
-                 permissions=None, fail_on=(), editors=None):
+                 permissions=None, fail_on=(), editors=None, repo_view=None):
         self.prs = prs or {}
         self.sync = sync or []
         self.fail = fail
@@ -239,6 +239,7 @@ class FakeGh:
         self.issues = issues or {}
         self.permissions = permissions or {}
         self.editors = editors or {}
+        self.repo_view = repo_view or {'owner': {'login': 'acme'}, 'name': 'shop'}
         self.fail_on = tuple(fail_on)
         self.calls = []
 
@@ -266,7 +267,13 @@ class FakeGh:
             return result(0, json.dumps({'jobs': self.jobs.get(int(command[3]), [])}))
         if command[:3] == ['gh', 'issue', 'list']:
             return result(0, json.dumps(self.issues.get(self._option(command, '--label'), [])))
+        if command[:3] == ['gh', 'repo', 'view']:
+            return result(0, json.dumps(self.repo_view))
         if command[:3] == ['gh', 'api', 'graphql']:
+            # `gh api` expands the {owner} and {repo} placeholders only in the endpoint and in -F fields, never in -f
+            # (raw) fields: a placeholder in a variable reaches GitHub as it is
+            if any('{' in a for a in command if a.startswith(('owner=', 'name='))):
+                return result(1, '', 'GraphQL: Could not resolve to a Repository with the name \'{owner}/{repo}\'.')
             number = int(next(a.split('=', 1)[1] for a in command if a.startswith('number=')))
             login = self.editors.get(number)
             issue = {'lastEditedAt': None, 'editor': None} if login is None else {
