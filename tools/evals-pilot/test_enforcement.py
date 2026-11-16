@@ -31,7 +31,7 @@ def load(name):
 run, grade = load("run"), load("grade")
 
 FAKE_CLI = r'''#!/usr/bin/env python3
-import json, os, re, subprocess, sys, time
+import json, os, re, signal, subprocess, sys, time
 argv = sys.argv[1:]
 log = os.environ["FAKE_LOG"]
 mode = os.environ.get("FAKE_MODE", "ok")
@@ -55,6 +55,23 @@ elif mode == "no_result":
 elif mode == "error_after_success":
     result(text="partial text", cost=0.2)
     result(subtype="error_during_execution", text=None, cost=0.9, is_error=True)
+elif mode in ("self_term", "self_kill"):  # dies by a signal after an intermediate result
+    result(text="still working", cost=0.05)
+    out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "more"}]}})
+    os.kill(os.getpid(), signal.SIGTERM if mode == "self_term" else signal.SIGKILL)
+    time.sleep(5)
+elif mode == "truncated":  # ends by itself, but work went on after the last result line
+    result(text="partial text", cost=0.05)
+    out({"type": "assistant", "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "more"}]}})
+elif mode == "exit1":
+    result()
+    sys.exit(1)
+elif mode == "budget_exit1":
+    result(subtype="error_max_budget_usd", text=None, cost=3.2, is_error=True)
+    sys.exit(1)
+elif mode == "ok_with_summary":  # how a real session ends: a system line follows the last result
+    result()
+    out({"type": "system", "subtype": "task_summary"})
 elif mode == "sleep":
     child = subprocess.Popen(["sleep", "60"])
     open(log + ".child", "w").write(str(child.pid))
@@ -220,6 +237,51 @@ class CostAccounting(Sandbox):
         self.assertEqual(self.spent(), 0.0)
         self.assertFalse(self.log.exists(), "the CLI must not run after a failed checkout")
         self.assertEqual(self.meta("bad-1")["status"], "infra_error")
+
+
+class AbnormalEnd(Sandbox):
+    """A CLI that did not end properly gets no report and no score; an unreliable final cost is charged as the cap."""
+
+    def check(self, fake, status, charged, exit_code, report=False):
+        self.go(fake=fake)
+        meta = self.meta()
+        self.assertEqual((meta["status"], meta["exit_code"]), (status, exit_code), meta["error"])
+        self.assertEqual((run_dir := self.out / "runs" / "c1-1" / "report.md").exists(), report, run_dir)
+        self.assertEqual(self.spent(), charged)
+        self.assertEqual(meta["cost_charged_usd"], charged)
+        return meta
+
+    def test_sigterm_after_an_intermediate_result(self):
+        meta = self.check("self_term", "infra_error", 3.0, -15)
+        self.assertIn("signal", meta["error"])
+
+    def test_sigkill_after_an_intermediate_result(self):
+        self.check("self_kill", "infra_error", 3.0, -9)
+
+    def test_a_transcript_that_goes_on_after_the_last_result(self):
+        meta = self.check("truncated", "infra_error", 3.0, 0)
+        self.assertIn("transcript", meta["error"])
+
+    def test_a_non_zero_exit_after_a_success_result(self):
+        # the session ended by itself with a final result line, so its total is the real cost; the run is not scored
+        self.check("exit1", "infra_error", 0.7, 1)
+
+    def test_a_budget_stop_stays_a_budget_stop_whatever_the_exit_status(self):
+        self.check("budget_exit1", "budget_stop", 3.2, 1)
+
+    def test_a_proper_success_with_a_trailing_system_line(self):
+        self.assertEqual(self.go(fake="ok_with_summary"), 0)
+        meta = self.meta()
+        self.assertEqual((meta["status"], meta["exit_code"], meta["cost_charged_usd"]), ("ok", 0, 0.7))
+        self.assertEqual((self.out / "runs" / "c1-1" / "report.md").read_text(), "report")
+        self.assertEqual(self.spent(), 0.7)
+
+    def test_ending_a_group_that_is_already_gone_does_not_raise(self):
+        proc = subprocess.Popen(["true"])
+        proc.wait()
+        for error in (ProcessLookupError, PermissionError):  # macOS answers EPERM for a group of one zombie
+            with mock.patch.object(run.os, "killpg", side_effect=error):
+                run._end_group(proc)
 
 
 class SeveralResults(Sandbox):

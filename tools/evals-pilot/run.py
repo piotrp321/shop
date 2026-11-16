@@ -83,7 +83,7 @@ def git(*args, cwd=None):
 
 def parse_result(path):
     init = result = None
-    results = []
+    results, complete = [], False
     try:
         lines = Path(path).read_text(errors="replace").splitlines()
     except OSError:
@@ -99,8 +99,11 @@ def parse_result(path):
             init = obj
         if obj.get("type") == "result":
             results.append(obj)
+            complete = True
+        elif obj.get("type") in ("assistant", "user"):
+            complete = False  # the session went on after its last result line (only system lines may follow it)
     info = {"status": "infra_error", "error": "no result line", "text": "", "cost_usd": None,
-            "duration_ms": None, "num_turns": None, "model_usage": {}, "models": [],
+            "duration_ms": None, "num_turns": None, "model_usage": {}, "models": [], "complete": complete,
             "permission_denials": 0, "cli_version": (init or {}).get("claude_code_version")}
     if not results:
         return info
@@ -313,7 +316,7 @@ def _end_group(proc):
     for sig, grace in ((signal.SIGTERM, 10), (signal.SIGKILL, None)):
         try:
             os.killpg(proc.pid, sig)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):  # already gone (macOS answers EPERM for a group of one zombie)
             pass
         try:
             proc.wait(timeout=grace)
@@ -323,6 +326,7 @@ def _end_group(proc):
 
 
 def run_claude(run_dir, args, prompt=None, extra=None):
+    """Run the CLI in the checkout. Returns (timed out, exit status); a negative status is the signal that ended it."""
     if prompt is None:
         prompt = (run_dir / "prompt.md").read_text()
     cmd = [args.claude_bin, "-p", prompt, *(["--agent", "code-reviewer"] if extra is None else extra),
@@ -335,10 +339,10 @@ def run_claude(run_dir, args, prompt=None, extra=None):
                                 start_new_session=True)
         try:
             proc.wait(timeout=args.timeout_min * 60)
-            return False
+            return False, proc.returncode
         except subprocess.TimeoutExpired:
             _end_group(proc)
-            return True
+            return True, proc.returncode
         except BaseException:  # Ctrl-C or a termination of this script: never leave the CLI running
             _end_group(proc)
             raise
@@ -362,7 +366,7 @@ def run_case(args, case_id):
             "cost_usd": None, "wall_s": None, "duration_ms": None, "num_turns": None, "models": [],
             "model_usage": {}, "permission_denials": 0, "cli_version": None, "base_sha": case.get("base_sha"),
             "head_sha": case.get("head_sha"), "agent_rev": args.agent_rev, "run_cap_usd": args.run_cap,
-            "started_at": started, "mode": args.mode}
+            "started_at": started, "mode": args.mode, "exit_code": None}
     if replay_mode:
         # base_sha and head_sha are the really reviewed commits here, not the squash commit of case.json
         meta.update(parent_model=args.parent_model, task=replay.get("task"), pr=replay.get("pr"),
@@ -374,17 +378,26 @@ def run_case(args, case_id):
             meta.update(build_replay_checkout(run_dir, case_dir, replay, args.agent_rev))
             started_model = True
             order = (run_dir / "prompt.md").read_text()
-            timed_out = run_claude(run_dir, args, PARENT_PROMPT.replace("{order}", order),
-                                   ["--model", args.parent_model])
+            timed_out, code = run_claude(run_dir, args, PARENT_PROMPT.replace("{order}", order),
+                                         ["--model", args.parent_model])
         else:
             meta.update(build_checkout(run_dir, case_dir, case, args.agent_rev))
             started_model = True
-            timed_out = run_claude(run_dir, args)
-        exited = not timed_out
+            timed_out, code = run_claude(run_dir, args)
+        meta["exit_code"] = code
         info = parse_result(run_dir / "stdout.jsonl")
-        meta["cost_usd"] = info["cost_usd"]  # known from here on, also when reading the report fails below
+        meta["cost_usd"] = info["cost_usd"]  # reported; whether it is the real cost is decided below
+        # The reported total is the real cost only when the CLI ended by itself after a last result line.
+        exited = not timed_out and code is not None and code >= 0 and info.pop("complete")
+        info.pop("complete", None)
         if timed_out:
             info.update(status="infra_error", error=f"timeout after {args.timeout_min} min")
+        elif code is None or code < 0:
+            info.update(status="infra_error", error=f"CLI ended by signal {-code if code else '?'}")
+        elif not exited:
+            info.update(status="infra_error", error="transcript does not end with a result line")
+        elif code != 0 and info["status"] == "ok":
+            info.update(status="infra_error", error=f"CLI exit status {code} after a success result")
         if replay_mode and info["status"] == "ok" and not timed_out:
             sub = parse_subagent(run_dir / "stdout.jsonl", order)
             meta.update(subagent_model=sub["subagent_model"], subagent_tokens=sub["subagent_tokens"],

@@ -304,7 +304,7 @@ class ReplayRun(Base):
 
         def fake_claude(run_dir, args, prompt=None, extra=None):
             write_lines(run_dir / "stdout.jsonl", lines)
-            return False
+            return False, 0
 
         with mock.patch.object(run, "CASES", cases), \
                 mock.patch.object(run, "build_replay_checkout", fake_build), \

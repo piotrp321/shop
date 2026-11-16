@@ -91,15 +91,23 @@ Zgłoszenie `IMPORTANT` w czystym przypadku ocenia właściciel; nie jest z gór
   `grade.py judge`) skrypt pod blokadą katalogu wyników dopisuje do `ledger.jsonl` rezerwację pełnego limitu tego
   wywołania albo odmawia startu (kod wyjścia 2), gdy wydane plus limit przekracza limit łączny. Po wywołaniu dopisuje
   rozliczenie, czyli różnicę między kosztem obciążonym a rezerwacją. Suma wierszy to koszt obciążony.
-- **Koszt obciążony.** Rzeczywisty koszt jest znany tylko wtedy, gdy CLI zakończyło się samo i podało sumę. Przebieg
-  przerwany limitem czasu albo sygnałem i przebieg bez linii wyniku są obciążane pełnym limitem przebiegu. Przebieg,
-  który nie uruchomił modelu (błąd budowy checkoutu), nie kosztuje nic. `meta.json` ma oba pola: `cost_usd` (zgłoszony
-  przez CLI) i `cost_charged_usd` (zapisany w rejestrze).
-- **Przerwanie.** Limit czasu, Ctrl-C i SIGTERM kończą całą grupę procesów CLI, razem z subagentem i tym, co uruchomił.
-  SIGKILL samego skryptu zostawia CLI przy życiu; jego wydatek ogranicza wtedy `--max-budget-usd`, a rezerwacja pełnego
-  limitu zostaje w rejestrze.
-- **Równoległe wywołania** na tym samym `--out` nie przekroczą limitu łącznego i nie dostaną tego samego katalogu
-  przebiegu (rezerwacja i przydział katalogu są pod wspólną blokadą).
+- **Koszt obciążony.** Suma zgłoszona przez CLI jest rzeczywistym kosztem tylko wtedy, gdy CLI zakończyło się samo
+  (nie od sygnału i nie przez limit czasu), a po ostatniej linii wyniku w transkrypcie sesja już nie pracowała.
+  W pozostałych przypadkach przebieg jest obciążany pełnym limitem przebiegu. Przebieg, który nie uruchomił modelu
+  (błąd budowy checkoutu), nie kosztuje nic. `meta.json` ma oba pola: `cost_usd` (zgłoszony przez CLI)
+  i `cost_charged_usd` (zapisany w rejestrze).
+- **Nieprawidłowe zakończenie CLI.** Zakończenie sygnałem, transkrypt bez linii wyniku albo z pracą sesji po ostatniej
+  linii wyniku oraz niezerowy kod wyjścia po wyniku sukcesu dają `infra_error`, bez raportu i bez oceny. Kod wyjścia
+  jest w `meta.json` (`exit_code`; wartość ujemna to numer sygnału). Przerwanie limitem kosztu zostaje `budget_stop`
+  niezależnie od kodu wyjścia.
+- **Przerwanie.** Limit czasu, Ctrl-C i SIGTERM skryptu `run.py` wysyłają SIGTERM do całej grupy procesów CLI
+  (z subagentem i tym, co uruchomił), a po 10 s SIGKILL, jeśli CLI nadal działa. Proces z grupy, który ignoruje SIGTERM,
+  może przeżyć, gdy samo CLI zakończy się wcześniej. SIGKILL albo SIGHUP skryptu `run.py` oraz SIGTERM skryptu
+  `grade.py` zostawiają CLI przy życiu; jego wydatek ogranicza wtedy `--max-budget-usd`, a rezerwacja pełnego limitu
+  zostaje w rejestrze.
+- **Równoległe wywołania** na tym samym `--out` nie dostaną tego samego katalogu przebiegu i nie przekroczą limitu
+  łącznego o więcej niż przekroczenia limitu pojedynczych wywołań przez samo CLI (rezerwacja i przydział katalogu są
+  pod wspólną blokadą).
 - **Kilka linii wyniku.** Sesja może wypisać wynik po każdej turze. Przerwanie limitem w dowolnej turze daje
   `budget_stop`, błąd w dowolnej turze daje `infra_error`, także gdy wcześniejsza albo późniejsza tura się udała.
 - Koszt to szacunek CLI według cennika. Przebieg przerwany limitem albo błędem nie dostaje raportu ani oceny, a przebieg
