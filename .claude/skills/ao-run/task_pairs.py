@@ -443,12 +443,20 @@ def _interval(data, low, high):
 
 
 def _clipped(intervals, begin, end):
+    """Count and total of the union of the intervals inside the window: AO writes one event per attempt (host_pause)
+    or per task (cooldown_set), so concurrent attempts record the same wait more than once."""
     parts = [(max(low, begin), min(high, end)) for low, high in intervals]
-    parts = [(low, high) for low, high in parts if high > low]
-    return {'count': len(parts), 'total_s': _s(sum(high - low for low, high in parts))}
+    merged = []
+    for low, high in sorted(part for part in parts if part[1] > part[0]):
+        if merged and low <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], high))
+        else:
+            merged.append((low, high))
+    return {'count': len(merged), 'total_s': _s(sum(high - low for low, high in merged))}
 
 
 def setup_failures(directory, db, begin, end):
+    # Not pairs.setup_failures: it needs the home-prefix filter (ao-<home>-) and epoch-second bounds, not datetimes.
     prefix = 'ao-%s-' % hashlib.sha1(os.path.realpath(db).encode()).hexdigest()[:6]
     try:
         names = os.listdir(os.path.expanduser(directory))

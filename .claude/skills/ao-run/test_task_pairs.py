@@ -483,6 +483,25 @@ class WaitsTest(Base):
         self.assertEqual(w['host_pauses'], {'count': 1, 'total_s': 50})
         self.assertEqual(w['usage_warnings'], 1)
 
+    def test_identical_host_pauses_of_concurrent_attempts_count_once(self):
+        self.add_task('DEMO-1')
+        self.add_task('DEMO-2')
+        self.add_event(-1, 'run_started')
+        self.add_attempt('DEMO-1', 1, 0, 10)
+        self.add_event(700, 'host_pause', 'DEMO-1', {'from': T0 + 650, 'to': T0 + 700, 'seconds': 50})
+        self.add_event(700, 'host_pause', 'DEMO-2', {'from': T0 + 650, 'to': T0 + 700, 'seconds': 50})
+        self.assertEqual(self.waits()['host_pauses'], {'count': 1, 'total_s': 50})
+
+    def test_overlapping_cooldowns_of_two_tasks_are_a_union(self):
+        self.add_task('DEMO-1')
+        self.add_task('DEMO-2')
+        self.add_event(-1, 'run_started')
+        self.add_attempt('DEMO-1', 1, 0, 10)
+        self.add_event(100, 'cooldown_set', 'DEMO-1', {'from': T0 + 100, 'until': T0 + 400})
+        self.add_event(150, 'cooldown_set', 'DEMO-2', {'from': T0 + 150, 'until': T0 + 500})
+        self.add_event(900, 'cooldown_set', 'DEMO-1', {'from': T0 + 900, 'until': T0 + 1000})
+        self.assertEqual(self.waits()['cooldowns'], {'count': 2, 'total_s': 500})
+
     def test_setup_failures_of_this_home_inside_the_epic(self):
         os.makedirs(self.diag)
         home = hashlib.sha1(os.path.realpath(self.db).encode()).hexdigest()[:6]

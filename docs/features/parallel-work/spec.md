@@ -473,11 +473,13 @@ i `declared_conflicts` to `null`, a pozostałe metryki są liczone.
   i `state_file_edited` jego zadań.
 - `waits`: `queue` dla zadań z niepustym `parallel_with`: od wejścia w `PENDING` (`status_changed`) do następnego
   `attempt_started` (`first` z `WAITING_DEPS`, `retry` w innych przypadkach; zadania jeszcze w kolejce w `waiting`),
-  bez zgadywania przyczyny; `cooldowns` i `host_pauses`: liczba i suma przedziałów (`cooldown_set` skrócony przez
-  `cooldown_released`, jak w AO) w oknie epiku; `usage_warnings`: liczba; `resources`: zawsze `null` z notatką „AO nie
-  zapisuje czekania na zasoby” (AO nie sprawdza Dockera); `setup_failures`: logi awarii stosu tego domu AO
-  (`ao-<home>-…-RRRRMMDD-GGMMSS-….log`, `<home>` jak `lifecycle.home_id` bazy) w `--setup-diag` w oknie epiku, bez
-  katalogu 0.
+  bez zgadywania przyczyny; `cooldowns` i `host_pauses`: liczba i suma sumy mnogościowej przedziałów (`cooldown_set`
+  skrócony przez `cooldown_released`, jak w AO) w oknie epiku, bo AO zapisuje zdarzenie na próbę (`host_pause`) albo
+  na zadanie (`cooldown_set`), więc równoległe próby zapisują tę samą przerwę kilka razy, a nakładające się
+  przedziały liczą się raz; `usage_warnings`: liczba zdarzeń (na próbę, nie różnych ostrzeżeń); `resources`: zawsze
+  `null` z notatką „AO nie zapisuje czekania na zasoby” (AO nie sprawdza Dockera); `setup_failures`: logi awarii
+  stosu tego domu AO (`ao-<home>-…-RRRRMMDD-GGMMSS-….log`, `<home>` jak `lifecycle.home_id` bazy) w `--setup-diag`
+  w oknie epiku; starsze logi bez przedrostka `ao-<home>-` nie są liczone; bez katalogu 0.
 - Brak danych to `null`, nie 0. `run_started`, `config_changed`, `state_file_edited`, `cooldown_set`, `host_pause`
   i `usage_warning` AO zapisuje od tego samego wydania. Gdy w bazie nie ma `run_started` najpóźniej przy pierwszej
   próbie epiku (bez prób: przy jego końcu), interwencje operacyjne, `cooldowns`, `host_pauses` i `usage_warnings` są
@@ -555,15 +557,16 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   spoza `paths`, porównanie po segmentach bez wielkości liter, zadanie bez `paths`, squash i merge commit z tym samym
   diffem `^1`, brak commitu w historii i brak `merged_sha` (`gh`), oba źródła zawodzą (`null`), deklaracja z `plan_sha`,
   nie z HEAD, tylko zadania `plan` z PR, para `parallel_with` z `actual_conflicts` mimo pustych `declared_conflicts`,
-  śledzony `CLAUDE.md` przy `plan_sha` w `declared_conflicts`, `null` w parze bez danych, nieczytelny plan i manifest bez bloku (kod 0, `declarations` z powodem, metryki liczone),
+  śledzony `CLAUDE.md` przy `plan_sha` w `declared_conflicts`, `null` w parze bez danych, nieczytelny plan
+  i manifest bez bloku (kod 0, `declarations` z powodem, metryki liczone),
   zadanie spoza manifestu odróżnione od zadania bez `paths`;
-  współbieżność: nakładanie 30 min (`concurrent_s` 1800), trzy próby z jedną parą, próby rozłączne, trzy próby naraz (oszczędność z `busy_s`), próba otwarta (także w epiku zakończonym: do końca
-  epiku),
+  współbieżność: nakładanie 30 min (`concurrent_s` 1800), trzy próby z jedną parą, próby rozłączne, trzy próby
+  naraz (oszczędność z `busy_s`), próba otwarta (także w epiku zakończonym: do końca epiku),
   tylko próby `plan`, brak prób, czas epiku z `epic_done`, do teraz i do `updated_at`; konflikty i rundy z
   `fix_requested`, naprawy, interwencje (także `null` operacyjnych bez `run_started`); `queue`, `resources` zawsze
   `null` z notatką, `null` przy braku `run_started` przed pierwszą próbą, 0 przy zapisującym AO, przedziały cooldown
-  i przerw w oknie epiku, awarie stosu tego domu w oknie i brak katalogu; brak bazy, nieczytelna baza, epik spoza bazy
-  (kod 2), baza bez zmian i bez zapisu, limit czasu komend.
+  i przerw w oknie epiku (te same przerwy z równoległych prób liczone raz), awarie stosu tego domu w oknie i brak
+  katalogu; brak bazy, nieczytelna baza, epik spoza bazy (kod 2), baza bez zmian i bez zapisu, limit czasu komend.
 - Testy skryptów `/delivery` w `.github/scripts/script-tests.sh` (jeśli sprawdzają treść sekcji) dalej przechodzą.
 - Rezerwa `max-parallel`: wolna pamięć na jeden stos, ale nie na dwa → czekanie; na dwa → przejście; rezerwa
   epiku aktywnego bez stosu i zmierzona pamięć AO powyżej rezerwy; `MAX_PARALLEL` równe 2 i każde polecenie startu
