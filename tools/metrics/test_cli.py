@@ -55,7 +55,7 @@ class SkeletonTest(Env):
         self.assertTrue(uris and all('mode=ro' in u for u in uris), uris)
         with open(db, 'rb') as f:
             self.assertEqual(f.read(), before)
-        self.assertEqual(sorted(os.listdir(home)), ['events.jsonl', 'orchestrator.db'])
+        self.assertEqual(sorted(os.listdir(home)), ['events.jsonl', 'orchestrator.db', 'tasks'])
 
 
 class ErrorPathTest(Env):
