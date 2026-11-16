@@ -512,6 +512,30 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
     }
 
     /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badSortKeysOfAString(): iterable
+    {
+        foreach (self::badSortKeys() as $label => [$query]) {
+            if (!str_contains($query, '[]')) {
+                yield $label => [$query];
+            }
+        }
+    }
+
+    #[DataProvider('badSortKeysOfAString')]
+    public function testAKeyOutsideTheClosedListIsRefusedWithAPolishMessage(string $query): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame(['sort'], $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('Sortowanie może mieć tylko wartość -placedAt, placedAt, -total albo total.', $violation['title']);
+    }
+
+    /**
      * @return iterable<string, array{list<string>}>
      */
     public static function viewers(): iterable

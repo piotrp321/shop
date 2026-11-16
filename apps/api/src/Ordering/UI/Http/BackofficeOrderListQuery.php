@@ -25,6 +25,7 @@ final readonly class BackofficeOrderListQuery
     public const array STATUSES = ['new', 'paid', 'shipped', 'delivered', 'cancelled', 'returned'];
     /** The values of BackofficeOrderSort that are keys of the `sort` parameter (the due date of the refunds is not one). */
     public const array SORTS = ['-placedAt', 'placedAt', '-total', 'total'];
+    public const string BAD_SORT = 'Sortowanie może mieć tylko wartość -placedAt, placedAt, -total albo total.';
     /** The values of the `refund` parameter. */
     public const array REFUNDS = ['pending', 'overdue'];
     public const string BAD_REFUND = 'Filtr zwrotów może mieć tylko wartość pending albo overdue.';
@@ -45,7 +46,7 @@ final readonly class BackofficeOrderListQuery
         // among them: the driver would cut the term there and search for something else).
         #[OA\Property(type: 'string', nullable: true, minLength: 3, maxLength: ListBackofficeOrders::MAX_QUERY_LENGTH)]
         public mixed $q = null,
-        #[Assert\Choice(choices: self::SORTS, message: 'The sort must be one of -placedAt, placedAt, -total, total.')]
+        #[Assert\Choice(choices: self::SORTS, message: self::BAD_SORT)]
         public ?string $sort = null,
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]
         public ?string $after = null,
