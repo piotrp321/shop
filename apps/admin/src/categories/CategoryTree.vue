@@ -8,7 +8,9 @@ import { type CategoryRow, dropCommand, type DropZone, formatProductCount, type 
 /**
  * The tree of the categories (docs/features/admin-features/spec.md, „Ekran „Kategorie””) on the Reka UI `Tree`:
  * `role="tree"`, the arrows move between nodes and open and close them, a node is named by its category, slug and count
- * and has the actions of `RowActions` for the staff that may change the tree. Dragging a node (native HTML5 drag and
+ * and has the actions of `RowActions` for the staff that may change the tree. A node has no `aria-label` of its own:
+ * its name is its content (the name, the slug, the count and the names of its buttons), because a shorter name fails
+ * „Label in Name” (WCAG 2.5.3, axe `label-content-name-mismatch`: the names of the buttons count as visible text). Dragging a node (native HTML5 drag and
  * drop) is a shortcut: a drop gives the same command as „Przenieś do…”, „W górę” and „W dół” (`dropCommand`) and
  * emits it as `move`, so the keyboard and the screen reader lose nothing. The rows are the tree of the API; the
  * view reloads it after every change.
@@ -38,7 +40,6 @@ function actionsOf(row: CategoryRow): RowAction[] {
   ];
 }
 
-const labelOf = (row: CategoryRow) => `${row.name}, slug ${row.slug}, produkty: ${formatProductCount(row.productCount)}`;
 
 // Dragging: the id of the node in the hand and the zone of the node it is over (only where a drop would change the tree).
 const dragging = ref<string | null>(null);
@@ -120,7 +121,6 @@ const dropMark = computed(() => over.value);
       v-bind="item.bind"
       :data-category-id="item.value.id"
       :data-drop="dropMark?.id === item.value.id ? dropMark.zone : undefined"
-      :aria-label="labelOf(item.value)"
       :draggable="canManage ? 'true' : undefined"
       :style="{ '--level': String(item.level - 1) }"
       data-testid="category-row"

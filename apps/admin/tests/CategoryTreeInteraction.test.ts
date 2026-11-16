@@ -154,9 +154,14 @@ describe("CategoryTree: the keyboard", () => {
     expect(rowOf(wrapper, "Outlet").attributes("aria-expanded")).toBeUndefined();
   });
 
-  it("names a treeitem by the category, its slug and its count, not by its buttons", async () => {
+  it("names a treeitem by its content (the category, its slug, its count and its buttons) and has no label of its own that would hide a part of it", async () => {
     wrapper = await mountView();
 
-    expect(rowOf(wrapper, "Śpiwory").attributes("aria-label")).toBe("Śpiwory, slug spiwory, produkty: 2");
+    const item = rowOf(wrapper, "Śpiwory");
+    expect(item.attributes("aria-label")).toBeUndefined();
+    expect(item.attributes("aria-labelledby")).toBeUndefined();
+    expect(item.text()).toContain("Śpiwory");
+    expect(item.text()).toContain("spiwory");
+    expect(item.text()).toContain("Produkty: 2");
   });
 });

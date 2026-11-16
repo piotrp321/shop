@@ -155,7 +155,8 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   (upuszczenie przed, po albo w środku węzła; strefa z `zoneForRatio`: górna i dolna ćwiartka wiersza) oraz `formatProductCount` („ponad 1000” przy
   `capped`, „—” bez licznika). Panel nie liczy reguł drzewa (głębokość, cykl, pustość, unikalność sluga to API); wyłącza tylko to, co oczywiście niemożliwe: własne
   poddrzewo w „Przenieś do…” i upuszczenie bez zmiany. `CategoryTree` to Reka UI `Tree` (`role="tree"` o nazwie „Drzewo kategorii”, strzałki przechodzą
-  i otwierają węzły, węzeł z nazwą „<nazwa>, slug <slug>, produkty: <liczba>”, `aria-level`), w wierszu nazwa, slug, „Produkty: N” i `RowActions` tylko dla
+  i otwierają węzły, `aria-level`; węzeł nie ma własnej etykiety, jego nazwą jest treść: nazwa, slug, „Produkty: N” i nazwy przycisków, bo krótsza etykieta
+  łamie „Etykieta w nazwie” (WCAG 2.5.3, axe `label-content-name-mismatch` liczy nazwy zagnieżdżonych przycisków do widocznego tekstu)), w wierszu nazwa, slug, „Produkty: N” i `RowActions` tylko dla
   `canManage`: „Dodaj podkategorię”, „Edytuj”, „Przenieś do…”, „W górę”, „W dół” (dwa ostatnie pomijane na brzegu rodzeństwa), „Usuń” (klik i klawisze
   w akcjach nie otwierają ani nie zamykają węzła). Przeciąganie (natywne HTML5, `draggable` tylko dla `canManage`) to skrót: upuszczenie daje to samo
   `MoveCommand` co menu i idzie tą samą drogą (`change` widoku), więc klawiatura i czytnik ekranu niczego nie tracą; strefa upuszczenia jest w `data-drop`
