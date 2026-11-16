@@ -8,6 +8,7 @@ use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Domain\StaffTransition;
 use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Integration\Ordering\OrderingFixture;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -288,8 +289,9 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
      */
     public static function notesWithTheirMessages(): iterable
     {
-        yield 'only non-breaking spaces' => ["\u{00A0}\u{00A0}", 'Notatka jest wymagana.'];
-        yield 'only Unicode white space' => [" \u{3000}\u{2003}\u{202F}", 'Notatka jest wymagana.'];
+        foreach (InputValues::blankUnicodeTexts() as $name => [$text]) {
+            yield 'only '.$name => [$text, 'Notatka jest wymagana.'];
+        }
         yield 'U+2028' => ["Brak\u{2028}kuriera", 'Notatka zawiera niedozwolone znaki.'];
         yield 'U+2029' => ["Brak\u{2029}kuriera", 'Notatka zawiera niedozwolone znaki.'];
         yield 'U+0085' => ["Brak\u{0085}kuriera", 'Notatka zawiera niedozwolone znaki.'];

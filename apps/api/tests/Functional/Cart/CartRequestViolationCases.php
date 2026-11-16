@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Cart;
 
+use App\Tests\Support\InputConformance\InputValues;
+
 /**
  * The invalid bodies of the cart requests with the violations they must give (spec cart-fixes, section #82): every
  * message is Polish, never carries the input, and one field gives at most one violation. Data providers for the
@@ -37,8 +39,9 @@ trait CartRequestViolationCases
         yield 'variantId not a uuid' => ['{"variantId": "abc", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
         yield 'variantId empty' => ['{"variantId": "", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
         yield 'variantId only spaces' => ['{"variantId": "   ", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
-        yield 'variantId nil' => ['{"variantId": "00000000-0000-0000-0000-000000000000", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
-        yield 'variantId max' => ['{"variantId": "ffffffff-ffff-ffff-ffff-ffffffffffff", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        foreach (InputValues::uuidsOutsideTheVersions() as $name => [$uuid]) {
+            yield 'variantId '.$name => ['{"variantId": "'.$uuid.'", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        }
         yield 'variantId with a wrong version and variant' => ['{"variantId": "12345678-1234-0234-0234-123456789012", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
         yield 'variantId one character too long with a wrong version and variant' => ['{"variantId": "12345678-1234-0234-0234-1234567890123", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
         yield 'no quantity' => ['{"variantId": "'.$variant.'"}', [['quantity', self::QUANTITY_REQUIRED]]];
@@ -89,8 +92,9 @@ trait CartRequestViolationCases
         yield 'guestCartId not a uuid' => ['{"guestCartId": "not-a-uuid"}', [['guestCartId', self::CART_UUID]]];
         yield 'guestCartId empty' => ['{"guestCartId": ""}', [['guestCartId', self::CART_UUID]]];
         yield 'guestCartId only spaces' => ['{"guestCartId": "   "}', [['guestCartId', self::CART_UUID]]];
-        yield 'guestCartId nil' => ['{"guestCartId": "00000000-0000-0000-0000-000000000000"}', [['guestCartId', self::CART_UUID]]];
-        yield 'guestCartId max' => ['{"guestCartId": "ffffffff-ffff-ffff-ffff-ffffffffffff"}', [['guestCartId', self::CART_UUID]]];
+        foreach (InputValues::uuidsOutsideTheVersions() as $name => [$uuid]) {
+            yield 'guestCartId '.$name => ['{"guestCartId": "'.$uuid.'"}', [['guestCartId', self::CART_UUID]]];
+        }
         yield 'guestCartId with a wrong version and variant' => ['{"guestCartId": "12345678-1234-0234-0234-123456789012"}', [['guestCartId', self::CART_UUID]]];
         yield 'guestCartId one character too long with a wrong version and variant' => ['{"guestCartId": "12345678-1234-0234-0234-1234567890123"}', [['guestCartId', self::CART_UUID]]];
     }
