@@ -14,6 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 CASES = Path(__file__).resolve().parent / "cases"
 AGENT_PATH = ".claude/agents/code-reviewer.md"
 GIT_ID = ["-c", "user.name=evals", "-c", "user.email=evals@example.invalid"]
+PARENT_PROMPT = """Wywołaj dokładnie raz narzędzie Agent z `subagent_type` równym `code-reviewer`, bez `run_in_background`, z parametrem `prompt` równym dokładnie tekstowi między znacznikami <order> i </order> (bez zmian, skrótów i dopisków). Nie używaj żadnych innych narzędzi i nie czytaj plików. Gdy agent zwróci wynik, odpowiedz jednym słowem: gotowe.
+
+<order>
+{order}
+</order>"""
 
 
 def ledger_spent(out):
@@ -131,8 +136,131 @@ def build_checkout(run_dir, case_dir, case, agent_rev):
     return {"base": new_base, "head": new_head, "agent_commit": agent_commit, "agent_blob": agent_blob}
 
 
-def run_claude(run_dir, args):
-    cmd = [args.claude_bin, "-p", (run_dir / "prompt.md").read_text(), "--agent", "code-reviewer",
+def build_replay_checkout(run_dir, case_dir, replay, agent_rev):
+    """Check out the really reviewed commit with the current agent definition hidden from git."""
+    repo, inputs, state = run_dir / "repo", run_dir / "inputs", run_dir / "state"
+    inputs.mkdir(parents=True)
+    state.mkdir()
+    evidence = case_dir / "tdd-evidence.jsonl"
+    if evidence.exists():
+        (inputs / evidence.name).write_bytes(evidence.read_bytes())
+    agent_commit = git("rev-parse", f"{agent_rev}^{{commit}}", cwd=ROOT)
+    agent_blob = git("rev-parse", f"{agent_rev}:{AGENT_PATH}", cwd=ROOT)
+    agent_text = subprocess.run(["git", "show", f"{agent_rev}:{AGENT_PATH}"], cwd=ROOT, check=True,
+                                capture_output=True).stdout
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=ROOT)
+    base, head = replay["base_sha"], replay["review_sha"]
+    depth = int(git("rev-list", "--count", f"{base}..{head}", cwd=ROOT)) + 1
+    git("init", "-q", str(repo))
+    git("fetch", "-q", "--no-tags", f"--depth={depth}", f"file://{common}", head, cwd=repo)
+    if subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"], cwd=repo, capture_output=True).returncode:
+        git("fetch", "-q", "--no-tags", f"--depth={depth + 50}", f"file://{common}", head, cwd=repo)
+        if subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"], cwd=repo,
+                          capture_output=True).returncode:
+            raise RuntimeError("base commit not reachable in the replay checkout")
+    git("checkout", "-q", "-B", replay["branch"], head, cwd=repo)
+    git("update-ref", f"refs/remotes/{replay['target_ref']}", base, cwd=repo)
+    if git("diff", "--name-only", base, head, "--", AGENT_PATH, cwd=repo):
+        raise RuntimeError("task diff touches the agent file")
+    (repo / ".claude" / "agents").mkdir(parents=True, exist_ok=True)
+    (repo / AGENT_PATH).write_bytes(agent_text)
+    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", AGENT_PATH], cwd=repo,
+                             capture_output=True).returncode == 0
+    if tracked:
+        git("update-index", "--skip-worktree", AGENT_PATH, cwd=repo)
+    else:
+        with open(repo / ".git" / "info" / "exclude", "a") as f:
+            f.write(AGENT_PATH + "\n")
+    if git("status", "--porcelain", cwd=repo):
+        raise RuntimeError("replay checkout is not clean")
+    order = (case_dir / "replay" / "order.md").read_text()
+    for key, val in (("{{CHECKOUT}}", str(repo.resolve())), ("{{INPUT_DIR}}", str(inputs.resolve()))):
+        order = order.replace(key, val)
+    (run_dir / "prompt.md").write_text(order)
+    settings = subprocess.run(
+        [sys.executable, str(ROOT / "tools/agent-security/render_settings.py"), "--workdir", str(repo),
+         "--read-dir", str(inputs), "--state-dir", str(state), "--no-network", "--no-docker"],
+        check=True, capture_output=True, text=True).stdout
+    (run_dir / "settings.json").write_text(settings)
+    return {"base": base, "head": head, "agent_commit": agent_commit, "agent_blob": agent_blob}
+
+
+def _norm(text):
+    return " ".join(str(text).split())
+
+
+def parse_subagent(path, order):
+    """Extract the code-reviewer subagent report from the parent's stream-json transcript."""
+    def fail(msg):
+        return {"ok": False, "error": msg, "report": "", "subagent_model": None, "subagent_tokens": None,
+                "subagent_tool_uses": None}
+
+    try:
+        lines = Path(path).read_text(errors="replace").splitlines()
+    except OSError:
+        lines = []
+    uses, results, extra = [], {}, {}
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict) or obj.get("parent_tool_use_id"):
+            continue
+        content = (obj.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if obj.get("type") == "assistant" and block.get("type") == "tool_use":
+                uses.append(block)
+            elif obj.get("type") == "user" and block.get("type") == "tool_result":
+                results[block.get("tool_use_id")] = block
+                extra[block.get("tool_use_id")] = obj.get("tool_use_result")
+    agents = [u for u in uses if u.get("name") == "Agent"]
+    if len(agents) != 1:
+        return fail(f"expected exactly one Agent call, found {len(agents)}")
+    others = sorted({str(u.get("name")) for u in uses if u.get("name") != "Agent"})
+    if others:
+        return fail("parent made other tool calls: " + ", ".join(others))
+    call = agents[0]
+    inp = call.get("input") or {}
+    if inp.get("subagent_type") != "code-reviewer":
+        return fail(f"wrong subagent_type: {inp.get('subagent_type')}")
+    if inp.get("run_in_background"):
+        return fail("subagent was run in background")
+    if _norm(inp.get("prompt", "")) != _norm(order):
+        return fail("order was altered")
+    res = results.get(call.get("id"))
+    if res is None:
+        return fail("no tool_result for the Agent call")
+    tur = extra.get(call.get("id"))
+    tur = tur if isinstance(tur, dict) else {}
+    if res.get("is_error"):
+        return fail("Agent tool_result is an error")
+    if tur.get("status") is not None and tur.get("status") != "completed":
+        return fail(f"subagent status {tur.get('status')}")
+    hand = tur.get("handbackReport")
+    report = hand.get("text") if isinstance(hand, dict) else None
+    if not (isinstance(report, str) and report.strip()):
+        c = res.get("content")
+        if isinstance(c, list):
+            report = "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+        else:
+            report = c if isinstance(c, str) else ""
+        if "report was delivered to you" in report:
+            report = ""
+    if not report.strip():
+        return fail("subagent report is empty")
+    return {"ok": True, "error": None, "report": report, "subagent_model": tur.get("resolvedModel"),
+            "subagent_tokens": tur.get("totalTokens"), "subagent_tool_uses": tur.get("totalToolUseCount")}
+
+
+def run_claude(run_dir, args, prompt=None, extra=None):
+    if prompt is None:
+        prompt = (run_dir / "prompt.md").read_text()
+    cmd = [args.claude_bin, "-p", prompt, *(["--agent", "code-reviewer"] if extra is None else extra),
            "--output-format", "stream-json", "--verbose", "--permission-mode", "auto",
            "--permission-prompts", "none", "--max-budget-usd", str(args.run_cap), "--strict-mcp-config",
            "--setting-sources", "project", "--settings", str(run_dir / "settings.json"),
@@ -156,6 +284,8 @@ def run_claude(run_dir, args):
 def run_case(args, case_id):
     case_dir = CASES / case_id
     case = json.loads((case_dir / "case.json").read_text())
+    replay_mode = args.mode == "replay"
+    replay = json.loads((case_dir / "replay" / "replay.json").read_text()) if replay_mode else None
     n, run_dir = next_run_dir(args.out, case_id)
     run_id = f"{case_id}-{n}"
     started = datetime.now(timezone.utc).isoformat()
@@ -164,15 +294,35 @@ def run_case(args, case_id):
             "cost_usd": None, "wall_s": None, "duration_ms": None, "num_turns": None, "models": [],
             "model_usage": {}, "permission_denials": 0, "cli_version": None, "base_sha": case.get("base_sha"),
             "head_sha": case.get("head_sha"), "agent_rev": args.agent_rev, "run_cap_usd": args.run_cap,
-            "started_at": started}
+            "started_at": started, "mode": args.mode}
+    if replay_mode:
+        # base_sha and head_sha are the really reviewed commits here, not the squash commit of case.json
+        meta.update(parent_model=args.parent_model, task=replay.get("task"), pr=replay.get("pr"),
+                    base_sha=replay.get("base_sha"), head_sha=replay.get("review_sha"),
+                    subagent_model=None, subagent_tokens=None, subagent_tool_uses=None)
     started_model = False
     try:
-        meta.update(build_checkout(run_dir, case_dir, case, args.agent_rev))
-        started_model = True
-        timed_out = run_claude(run_dir, args)
+        if replay_mode:
+            meta.update(build_replay_checkout(run_dir, case_dir, replay, args.agent_rev))
+            started_model = True
+            order = (run_dir / "prompt.md").read_text()
+            timed_out = run_claude(run_dir, args, PARENT_PROMPT.replace("{order}", order),
+                                   ["--model", args.parent_model])
+        else:
+            meta.update(build_checkout(run_dir, case_dir, case, args.agent_rev))
+            started_model = True
+            timed_out = run_claude(run_dir, args)
         info = parse_result(run_dir / "stdout.jsonl")
         if timed_out:
             info.update(status="infra_error", error=f"timeout after {args.timeout_min} min")
+        if replay_mode and info["status"] == "ok" and not timed_out:
+            sub = parse_subagent(run_dir / "stdout.jsonl", order)
+            meta.update(subagent_model=sub["subagent_model"], subagent_tokens=sub["subagent_tokens"],
+                        subagent_tool_uses=sub["subagent_tool_uses"])
+            if sub["ok"]:
+                info["text"] = sub["report"]
+            else:
+                info.update(status="infra_error", error=sub["error"])
         if info["status"] == "ok":
             (run_dir / "report.md").write_text(info["text"])
         info.pop("text")
@@ -204,10 +354,15 @@ def main(argv=None):
     ap.add_argument("--timeout-min", type=float, default=25)
     ap.add_argument("--agent-rev", default="origin/main")
     ap.add_argument("--claude-bin", default="claude")
+    ap.add_argument("--mode", choices=["squash", "replay"], default="squash")
+    ap.add_argument("--parent-model", default="sonnet")
     args = ap.parse_args(argv)
     for c in args.case:
         if not (CASES / c / "case.json").exists():
             print(f"unknown case: {c}", file=sys.stderr)
+            return 2
+        if args.mode == "replay" and not (CASES / c / "replay" / "replay.json").exists():
+            print(f"case has no replay/replay.json: {c}", file=sys.stderr)
             return 2
     all_ok = True
     for c in args.case:

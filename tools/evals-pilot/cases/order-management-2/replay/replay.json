@@ -1,0 +1,12 @@
+{
+  "task": "ORDER-MANAGEMENT-2",
+  "pr": 233,
+  "review_sha": "541d06e9c6185b52d16286823b2e0dc7611ff008",
+  "base_sha": "74e25e92127832957982ab0299aa8edeb52cdf52",
+  "branch": "task/ORDER-MANAGEMENT-2",
+  "target_ref": "origin/epic/order-management",
+  "source": "~/.local/state/ao-order-management/tasks/ORDER-MANAGEMENT-2/attempts/1/stdout.jsonl: the first Agent call with subagent_type code-reviewer (FULL first review)",
+  "original_cli": "2.1.311",
+  "reachable_from": "refs/pull/233/head",
+  "gold_in_reviewed_diff": "`apps/api/src/Ordering/Domain/StaffNote.php` is new in the diff: `ControlCharacters::in($note)` with the pattern `/[\\x00-\\x1F\\x7F]/` (no /u), then `trim($note)` and `'' === $trimmed` (checked 2026-11-16 by reading the file at review_sha)."
+}

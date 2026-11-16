@@ -1,0 +1,11 @@
+--- order.orig.md
++++ order.md
+@@ -3 +3 @@
+-Checkout: <home>/Development/claude/shop-CATALOG-ADMIN-3. Zamrożony HEAD: 1c35b5d45ddbbdb916edc610df9276ef0c2a25f3. Diff: `git diff 74b693a5c2fc6386f4100576815f3c0a66c57902..1c35b5d` (merge-base z origin/epic/catalog-admin). Nie modyfikuj plików.
++Checkout: {{CHECKOUT}}. Zamrożony HEAD: 1c35b5d45ddbbdb916edc610df9276ef0c2a25f3. Diff: `git diff 74b693a5c2fc6386f4100576815f3c0a66c57902..1c35b5d` (merge-base z origin/epic/catalog-admin). Nie modyfikuj plików.
+@@ -15 +15 @@
+-tdd.status: verified. Dziennik dowodów: <home>/.local/state/ao-catalog-admin/tasks/CATALOG-ADMIN-3/delivery-state.json.evidence.jsonl.
++tdd.status: verified. Dziennik dowodów: {{INPUT_DIR}}/tdd-evidence.jsonl.
+@@ -19,0 +20,2 @@
++
++Uwaga do tego przebiegu (dopisana przez ewaluację, nie przez orkiestratora): stos Dockera nie działa i nie ma sieci. Nie uruchamiaj testów, `make` ani `docker`; pracuj na odczycie kodu i dziennika dowodów.

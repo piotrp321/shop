@@ -1,0 +1,11 @@
+{
+  "task": "CATALOG-ADMIN-3",
+  "pr": 220,
+  "review_sha": "1c35b5d45ddbbdb916edc610df9276ef0c2a25f3",
+  "base_sha": "74b693a5c2fc6386f4100576815f3c0a66c57902",
+  "branch": "task/CATALOG-ADMIN-3",
+  "target_ref": "origin/epic/catalog-admin",
+  "source": "~/.local/state/ao-catalog-admin/tasks/CATALOG-ADMIN-3/attempts/1/stdout.jsonl: the first Agent call with subagent_type code-reviewer (FULL first review)",
+  "original_cli": "2.1.311",
+  "reachable_from": "refs/pull/220/head"
+}
