@@ -8,7 +8,8 @@ Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
   (30 minutes, renewed with the same token, ClaimConflict for another token), release, owners, claim_to_owner.
   Writers hold state_lock. A missing file is empty; an unreadable or wrong-shaped one is StateFileError.
 - file classification of the gate (is_app_code, is_executable_code, is_allowed, is_claude_md, common_paths),
-  GENERATED and REGISTRATION files, and the rule for tasks of one wave running at once (task_conflicts, used by planner/plan_manifest.py).
+  GENERATED and REGISTRATION files, and the rule for tasks of one wave running at once (task_conflicts, used by
+  planner/plan_manifest.py).
 - MAX_PARALLEL: the `--max-parallel` that /ao-run passes to AO (SKILL.md, section 4); the gate reserves that many
   stacks for every active epic.
 - Docker memory snapshot (docker_snapshot with an injected runner, DockerError) and free_mib.
@@ -233,8 +234,9 @@ def common_paths(a, b):
 def task_conflicts(a, b, claude_md=()):
     """Paths that keep two tasks of one wave from running at once (step 19b), sorted: the common part of their
     manifest `paths` (a file, or a directory with a trailing /) that is executable code (is_executable_code:
-    application code and the tool directories), a CLAUDE.md or a file, and every file of `claude_md` (the tracked CLAUDE.md files of the repository) inside a
-    common path. Two directories outside executable code may overlap (the exceptions of step 5) when they hold no tracked CLAUDE.md.
+    application code and the tool directories), a CLAUDE.md or a file, and every file of `claude_md` (the tracked
+    CLAUDE.md files of the repository) inside a common path. Two directories outside executable code may overlap (the
+    exceptions of step 5) when they hold no tracked CLAUDE.md.
     A common path counts as a directory only when every path of both tasks that contains it is declared as a
     directory. Paths are compared without case (casefold, as the file system of the host does); a found path keeps
     the spelling it was declared or tracked with."""
