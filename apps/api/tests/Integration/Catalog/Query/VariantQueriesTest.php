@@ -180,6 +180,7 @@ final class VariantQueriesTest extends KernelTestCase
         $lists = $this->variantLists([$this->products['hat']->id()->toString(), (string) Uuid::v7(), $this->products['boots']->id()->toString()]);
 
         self::assertCount(2, $lists);
+        self::assertSame(['Czapka', 'Buty Puls'], array_map(static fn (ProductVariantList $l): string => $l->productName, $lists));
         self::assertSame($this->products['hat']->id()->toString(), $lists[0]->productId);
         self::assertSame([], $lists[0]->variantAxes);
         self::assertSame([[self::HAT, '']], array_map(static fn ($v): array => [$v->variantId, $v->label], $lists[0]->variants));

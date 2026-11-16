@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Shared\Messaging;
 
+use App\Catalog\Application\Command\CreateCategory;
+use App\Catalog\Application\Command\MoveCategory;
 use App\Catalog\Application\Event\ProductChanged;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
@@ -20,6 +22,7 @@ use App\Tests\Support\InMemory\SpyStorefrontCache;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
@@ -62,6 +65,22 @@ final class StorefrontInvalidationFlowTest extends MessagingKernelTestCase
         $this->consumeOutboxAndEvents(2);
 
         self::assertSame(['tags:product-'.$productId.' product-slug-kurtka-puchowa'], $this->cache->calls);
+        self::assertSame(0, $this->rows('failed'));
+    }
+
+    /**
+     * A change of the tree reaches the menu, the breadcrumbs and the listings of the whole catalog: one purge and one
+     * revalidation of the tag `catalog` per event (decision of the spec: a rare change, so no tags per category).
+     */
+    public function testACategoryTreeChangeInvalidatesTheCatalogOncePerEvent(): void
+    {
+        $this->commandBus()->dispatch(new CreateCategory('00000000-0000-4000-8000-0000000000c1', 'Zima', 'zima-c1', null));
+        $this->commandBus()->dispatch(new MoveCategory('00000000-0000-4000-8000-0000000000c1', 1, null, 0));
+
+        $this->consumeOutboxAndEvents(4);
+
+        self::assertSame(['tags:catalog', 'tags:catalog'], $this->cache->calls);
+        self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->rows('failed'));
     }
 
@@ -118,6 +137,14 @@ final class StorefrontInvalidationFlowTest extends MessagingKernelTestCase
         new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return [$product->id()->toString(), $product->variants()->toList()[0]->id()->toString()];
+    }
+
+    private function commandBus(): MessageBusInterface
+    {
+        $bus = self::getContainer()->get('command.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $bus);
+
+        return $bus;
     }
 
     private function consumeOutboxAndEvents(int $messages): void

@@ -1,3 +1,8 @@
+<script lang="ts">
+/** The value of the root option (`rootLabel`): not an id of a category, so it cannot be mistaken for one. */
+export const ROOT_CATEGORY = "__root__";
+</script>
+
 <script setup lang="ts">
 import { Check, ChevronDown, X } from "lucide-vue-next";
 import { ComboboxInput } from "reka-ui";
@@ -23,7 +28,9 @@ import { cn } from "@/lib/utils";
  * typing filters by name and path. The input is the Reka primitive rather than the search field of the ui combobox:
  * the bordered anchor of this field already carries the frame and the focus ring. The input is keyed by the number of
  * options: the primitive reads the name of the selected category once, so a value that arrives before the tree (the
- * address of a list) needs the input made again when the tree is there.
+ * address of a list) needs the input made again when the tree is there. A place to move a category to adds `rootLabel`
+ * (a first option for the top level, with the value `ROOT_CATEGORY`) and `disabledIds` (categories that cannot be chosen,
+ * like the subtree of the category that is moved: shown, marked `aria-disabled`, not selectable).
  */
 const props = withDefaults(
   defineProps<{
@@ -46,6 +53,10 @@ const props = withDefaults(
     /** A form field with an error: the input gets `aria-invalid`, and `describedBy` (ids of the hint and the error) points it at them. */
     invalid?: boolean;
     describedBy?: string;
+    /** Single mode: the label of an extra first option for the top level („Poziom główny”); chosen it gives `ROOT_CATEGORY`. */
+    rootLabel?: string;
+    /** Ids of the categories that cannot be chosen. */
+    disabledIds?: string[];
   }>(),
   {
     hideLabel: false,
@@ -57,6 +68,8 @@ const props = withDefaults(
     id: undefined,
     invalid: false,
     describedBy: undefined,
+    rootLabel: undefined,
+    disabledIds: () => [],
   },
 );
 
@@ -72,7 +85,7 @@ interface CategoryOption {
 const PATH_SEPARATOR = " › ";
 
 const options = computed<CategoryOption[]>(() => {
-  const flat: CategoryOption[] = [];
+  const flat: CategoryOption[] = props.rootLabel === undefined ? [] : [{ id: ROOT_CATEGORY, name: props.rootLabel, path: props.rootLabel, depth: 0 }];
   const walk = (level: CategoryTreeNode[], parents: string[]) => {
     for (const node of level) {
       const names = [...parents, node.label];
@@ -209,6 +222,8 @@ async function remove(id: string) {
             v-for="option in visibleOptions"
             :key="option.id"
             :value="option.id"
+            :disabled="disabledIds.includes(option.id)"
+            :aria-disabled="disabledIds.includes(option.id) ? 'true' : undefined"
             :aria-label="option.path"
             :data-depth="option.depth"
             :style="{ paddingLeft: `${0.5 + option.depth * 1.25}rem` }"

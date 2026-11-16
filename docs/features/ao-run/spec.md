@@ -142,8 +142,9 @@ Remote Control skill nie sprawdza.
 2. **Start.** Uruchamia w tle (Bash w tle sesji), w jednym poleceniu, `ao-prepare`, a po jego sukcesie
    `caffeinate -dims` z `ao run --until-idle`, `--claude-bin` równym `AO_CLAUDE_BIN` (wrapper `claude-agent` z kopii
    w `$AO_HOME/agent-security/`), zmiennymi `AGENT_CLAUDE_BIN` i `AGENT_AO_HOME` z wyniku `ao-prepare` i
-   `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami jak przy CART:
-   `--max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3` oraz
+   `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami
+   `--max-budget-usd 30 --timeout 14400 --max-qa-rounds 3`, `--epic-max-attempts` max(24, 2·N + 4) i `--epic-timeout`
+   max(57600, 8640·N) s, gdzie N to liczba zadań planu; te same wartości przy każdym `ao run` epiku; oraz
    `--max-parallel 2` (zadania fali naraz: `docs/features/parallel-work/spec.md`, „19b”).
    Zmienne `CLAUDE*` usuwa ze środowiska AO (jak wrapper z README AO). Tak startuje każde `ao run`: pierwsze,
    ponowne po blokerze, po `ao resume` i `ao epic resume`, w nowej sesji i w nocy; sesja nigdy nie pomija

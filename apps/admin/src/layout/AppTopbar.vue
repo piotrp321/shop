@@ -9,6 +9,8 @@ import { readUrl } from "@/config";
 import { useAuthStore } from "@/stores/auth";
 import { initialsOf, roleLabel } from "./account";
 
+/** `menu`: whether there is a menu to open below 1024 px (an account without a staff role has none). */
+const { menu = true } = defineProps<{ menu?: boolean }>();
 const emit = defineEmits<{ "open-menu": [] }>();
 
 /** The phrase of the product search: 2 to 100 characters once trimmed, counted in code points like the API does. */
@@ -53,6 +55,7 @@ defineExpose({ focusMenuButton: () => (menuButton.value?.$el as HTMLElement | un
 <template>
   <header class="sticky top-0 z-30 flex h-17.5 shrink-0 items-center gap-3 bg-card px-4 shadow-sm lg:px-6">
     <Button
+      v-if="menu"
       ref="menuButton"
       variant="outline"
       size="icon"

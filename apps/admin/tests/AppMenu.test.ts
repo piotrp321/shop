@@ -19,6 +19,7 @@ function createTestRouter() {
       { path: "/products", name: "products", component: empty },
       { path: "/products/new", name: "product-new", component: empty },
       { path: "/products/:id", name: "product", component: empty },
+      { path: "/categories", name: "categories", component: empty },
       { path: "/prices", name: "prices", component: empty },
       {
         path: "/promotions",
@@ -43,6 +44,13 @@ function createTestRouter() {
         children: [
           { path: "", name: "orders", component: empty },
           { path: ":orderId", name: "order-detail", component: empty },
+        ],
+      },
+      {
+        path: "/customers",
+        children: [
+          { path: "", name: "customers", component: empty },
+          { path: ":customerId", name: "customer", component: empty },
         ],
       },
     ],
@@ -85,10 +93,12 @@ const ADMIN_LINKS = [
   ["Pulpit", "/"],
   ["Lista produktów", "/products"],
   ["Dodaj produkt", "/products/new"],
+  ["Kategorie", "/categories"],
   ["Ceny", "/prices"],
   ["Stany magazynowe", "/inventory"],
   ["Lista zamówień", "/orders"],
   ["Zwroty do wykonania", "/orders?refund=pending"],
+  ["Klienci", "/customers"],
   ["Promocje", "/promotions"],
   ["Kody rabatowe", "/discount-codes"],
   ["Stan systemu", "/system"],
@@ -129,7 +139,7 @@ describe("AppMenu: structure and roles", () => {
   it("links the products, the new product and no orders for marketing", async () => {
     const { wrapper: menu } = await mountMenu("/", ["marketing"]);
 
-    expect(links(menu)).toEqual(WITHOUT_SYSTEM.filter(([label]) => label !== "Lista zamówień" && label !== "Zwroty do wykonania"));
+    expect(links(menu)).toEqual(WITHOUT_SYSTEM.filter(([label]) => label !== "Lista zamówień" && label !== "Zwroty do wykonania" && label !== "Klienci"));
     expect(groupButtons(menu).map(([label]) => label)).toEqual(["Katalog", "Produkty"]);
   });
 
@@ -142,7 +152,7 @@ describe("AppMenu: structure and roles", () => {
   it("links the list of the orders but neither the refunds to do nor the new product for warehouse", async () => {
     const { wrapper: menu } = await mountMenu("/", ["warehouse"]);
 
-    expect(links(menu)).toEqual(WITHOUT_SYSTEM.filter(([label]) => label !== "Dodaj produkt" && label !== "Zwroty do wykonania"));
+    expect(links(menu)).toEqual(WITHOUT_SYSTEM.filter(([label]) => label !== "Dodaj produkt" && label !== "Zwroty do wykonania" && label !== "Klienci"));
   });
 
   it("links the refunds to do for a member with the role among others", async () => {
@@ -152,12 +162,26 @@ describe("AppMenu: structure and roles", () => {
     expect(links(menu)).toContainEqual(["Dodaj produkt", "/products/new"]);
   });
 
+  it("links the customers for admin and support, also among other roles, and for no other role", async () => {
+    for (const roles of [["admin"], ["support"], ["marketing", "support"]] as Role[][]) {
+      const { wrapper: menu } = await mountMenu("/", roles);
+      expect(links(menu)).toContainEqual(["Klienci", "/customers"]);
+      menu.unmount();
+    }
+    for (const roles of [["marketing"], ["warehouse"], []] as Role[][]) {
+      const { wrapper: menu } = await mountMenu("/", roles);
+      expect(menu.text()).not.toContain("Klienci");
+      menu.unmount();
+    }
+  });
+
   it("hides what needs a role until the staff member is known, and keeps what every staff member may read", async () => {
     const { wrapper: menu } = await mountMenu("/", null);
 
     expect(links(menu)).toEqual([
       ["Pulpit", "/"],
       ["Lista produktów", "/products"],
+      ["Kategorie", "/categories"],
       ["Ceny", "/prices"],
       ["Stany magazynowe", "/inventory"],
       ["Promocje", "/promotions"],
@@ -182,6 +206,7 @@ describe("AppMenu: the current item", () => {
     ["/products", "Lista produktów"],
     ["/products/0192f0c4", "Lista produktów"],
     ["/products/new", "Dodaj produkt"],
+    ["/categories", "Kategorie"],
     ["/prices", "Ceny"],
     ["/inventory", "Stany magazynowe"],
     ["/promotions", "Promocje"],
@@ -194,6 +219,10 @@ describe("AppMenu: the current item", () => {
     ["/orders?status=paid", "Lista zamówień"],
     ["/orders/0192f0c4", "Lista zamówień"],
     ["/orders?refund=pending", "Zwroty do wykonania"],
+    ["/orders?refund=overdue", "Zwroty do wykonania"],
+    ["/customers", "Klienci"],
+    ["/customers?sort=name", "Klienci"],
+    ["/customers/c-1", "Klienci"],
     ["/system", "Stan systemu"],
   ])("marks only %s as current: %s", async (path, label) => {
     const { wrapper: menu } = await mountMenu(path, ["admin"]);
@@ -207,6 +236,12 @@ describe("AppMenu: the current item", () => {
       expect(current(menu).filter((item) => item.startsWith("Pulpit"))).toEqual([]);
       menu.unmount();
     }
+  });
+
+  it("marks the list of the orders for warehouse, who has no item for the refunds, on /orders?refund=overdue", async () => {
+    const { wrapper: menu } = await mountMenu("/orders?refund=overdue", ["warehouse"]);
+
+    expect(current(menu)).toEqual(["Lista zamówień|page"]);
   });
 
   it("marks the list of the orders for warehouse, who has no item for the refunds, on /orders?refund=pending", async () => {

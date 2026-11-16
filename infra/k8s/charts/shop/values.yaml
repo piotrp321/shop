@@ -28,7 +28,7 @@ image:
 # The images of the services we do not build: name:tag as in infra/docker-compose.yml, pinned by the digest of the
 # multi-arch index of that tag (`docker buildx imagetools inspect <name:tag>`); `make check` compares the tags with
 # compose and requires the digests.
-# `kubectl` is the image of the initContainers of the jobs initialize and purge-caches that wait for the rollout of the
+# `kubectl` is the image of the initContainers of the jobs initialize, purge-caches and backfill that wait for the rollout of the
 # deployments they need (api, varnish, store, worker), and of the one that reads the identifier of the cluster for the backup.
 # `restic` and `rclone` are the tools of the backup.
 images:
@@ -120,6 +120,9 @@ initialize:
 jobs:
   backoffLimit: 3
   activeDeadlineSeconds: 1800
+  # The job `backfill` (app:backfill after the rollout) goes through the whole catalog and the orders in batches, which
+  # at the target scale takes longer than the other jobs; a step stopped by the deadline starts again on a retry.
+  backfillActiveDeadlineSeconds: 21600
 
 cartPurge:
   schedule: "0 * * * *"

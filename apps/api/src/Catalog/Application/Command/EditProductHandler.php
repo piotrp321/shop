@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Command;
 
-use App\Catalog\Application\Event\ProductChanged;
+use App\Catalog\Application\Event\IntegrationEvents;
 use App\Catalog\Application\Port\Clock;
 use App\Catalog\Application\Port\ProductImageStorage;
 use App\Catalog\Application\Port\ProductImageStorageUnavailable;
@@ -100,7 +100,7 @@ final readonly class EditProductHandler
         );
 
         $this->products->save($product, $command->expectedVersion, $command->actorId, $now);
-        $this->events->publish(...ProductChanged::translate($product->releaseEvents()));
+        $this->events->publish(...IntegrationEvents::translate($product->releaseEvents()));
     }
 
     /**

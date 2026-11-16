@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Pricing\Application;
 use App\Pricing\Application\Port\CategoryNotFound;
 use App\Pricing\Application\Port\DirectoryProduct;
 use App\Pricing\Application\Port\InvalidPriceListCursor;
+use App\Pricing\Application\Query\InvalidPriceList;
 use App\Pricing\Application\Query\ListBackofficePrices;
 use App\Pricing\Application\Query\ListBackofficePricesHandler;
 use App\Pricing\Application\Query\PriceListItem;
@@ -50,6 +51,17 @@ final class ListBackofficePricesHandlerTest extends TestCase
         $this->store(self::SHOES_40, 12300, 'standard', 2300, 1);
         // Stored at 8%, while the class is at 23% today.
         $this->store(self::SHOES_42, 10800, 'standard', 800, 2);
+    }
+
+    public function testPassesTheSortOfTheQueryToTheDirectoryAndNullWhenThereIsNone(): void
+    {
+        $directory = new InMemoryProductDirectory();
+
+        $this->handler($directory)(new ListBackofficePrices(null, null, null, 25));
+        $this->handler($directory)(new ListBackofficePrices(null, null, null, 25, '-updatedAt'));
+        $this->handler($directory)(new ListBackofficePrices('buty', null, null, 25, '-name'));
+
+        self::assertSame([null, '-updatedAt', '-name'], $directory->sorts);
     }
 
     public function testListsTheProductsOfThePageWithTheirVariantsInOrderAndTheirPrices(): void
@@ -203,6 +215,35 @@ final class ListBackofficePricesHandlerTest extends TestCase
         $this->expectException(TaxClassWithoutRate::class);
 
         $this->handler($directory)(new ListBackofficePrices(null, null, null, 25));
+    }
+
+    public function testAProductIdReadsOnlyThatProductByItsIdAndNeverThePage(): void
+    {
+        $directory = new InMemoryProductDirectory([$this->product(self::BOOK, 'Przewodnik', 'printed_book')], 'cursor');
+        $directory->withVariants(self::BOOK, [self::BOOK_SOFT => 'miękka', self::BOOK_HARD => 'twarda']);
+
+        $list = $this->handler($directory)(new ListBackofficePrices(null, null, null, 25, null, self::BOOK));
+
+        self::assertSame([self::BOOK], $directory->describeRequests);
+        self::assertSame([], $directory->requests);
+        self::assertSame([self::BOOK], array_column(array_map(static fn (PriceListItem $item): array => ['id' => $item->productId], $list->items), 'id'));
+        self::assertNull($list->next);
+        self::assertSame(1, $list->total?->value);
+    }
+
+    public function testAnUnknownProductIdGivesAnEmptyListWithAZeroTotal(): void
+    {
+        $list = $this->handler(new InMemoryProductDirectory())(new ListBackofficePrices(null, null, null, 25, null, self::BOOK));
+
+        self::assertSame([], $list->items);
+        self::assertSame(0, $list->total?->value);
+    }
+
+    public function testAProductIdWithAFilterIsRefused(): void
+    {
+        $this->expectException(InvalidPriceList::class);
+
+        $this->handler(new InMemoryProductDirectory())(new ListBackofficePrices('plecak', null, null, 25, null, self::BOOK));
     }
 
     private function handler(InMemoryProductDirectory $directory): ListBackofficePricesHandler

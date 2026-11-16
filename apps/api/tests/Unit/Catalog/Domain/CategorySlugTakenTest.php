@@ -13,7 +13,7 @@ use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 /**
- * No endpoint creates categories yet, so the HTTP status of a taken slug is checked on the problem details mapping.
+ * The HTTP status and the type of a taken slug on the problem details mapping.
  */
 final class CategorySlugTakenTest extends TestCase
 {
@@ -28,7 +28,7 @@ final class CategorySlugTakenTest extends TestCase
         self::assertSame(409, $response->getStatusCode());
         $problem = json_decode((string) $response->getContent(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($problem);
-        self::assertSame('about:blank', $problem['type']);
-        self::assertSame('A category with this slug already exists under the same parent.', $problem['detail']);
+        self::assertSame(CategorySlugTaken::TYPE, $problem['type']);
+        self::assertSame('Inna kategoria w tym miejscu drzewa ma już ten slug.', $problem['detail']);
     }
 }

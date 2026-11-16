@@ -12,6 +12,7 @@ use App\Catalog\Application\Query\ProductVariantList;
 use App\Catalog\Application\Query\SearchBackofficeProducts;
 use App\Catalog\Application\Query\VariantOption;
 use App\Inventory\Application\Port\CategoryNotFound;
+use App\Inventory\Application\Port\DescribedProduct;
 use App\Inventory\Application\Port\DirectoryPage;
 use App\Inventory\Application\Port\DirectoryProduct;
 use App\Inventory\Application\Port\DirectoryVariant;
@@ -39,10 +40,10 @@ final class QueryBusProductDirectory implements ProductDirectory
         $this->messageBus = $queryBus;
     }
 
-    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage
+    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage, ?string $sort = null): DirectoryPage
     {
         try {
-            $page = $this->handle(new SearchBackofficeProducts($term, $categoryId, $after, $perPage));
+            $page = $this->handle(new SearchBackofficeProducts($term, $categoryId, $after, $perPage, null, $sort));
         } catch (HandlerFailedException $failure) {
             // The bus wraps what the handler threw.
             $wrapped = $failure->getWrappedExceptions();
@@ -62,10 +63,16 @@ final class QueryBusProductDirectory implements ProductDirectory
                 $page->items,
             ),
             $page->next,
+            $page->total,
         );
     }
 
     public function variantsOf(array $productIds): array
+    {
+        return array_map(static fn (DescribedProduct $product): array => $product->variants, $this->describe($productIds));
+    }
+
+    public function describe(array $productIds): array
     {
         try {
             // The panel lists drafts too: their prices and stock are set before the publication.
@@ -77,15 +84,18 @@ final class QueryBusProductDirectory implements ProductDirectory
         }
         \assert(\is_array($lists));
 
-        $variants = [];
+        $described = [];
         foreach ($lists as $list) {
             \assert($list instanceof ProductVariantList);
-            $variants[$list->productId] = array_map(
-                static fn (VariantOption $variant): DirectoryVariant => new DirectoryVariant(VariantId::fromString($variant->variantId), $variant->label),
-                $list->variants,
+            $described[$list->productId] = new DescribedProduct(
+                new DirectoryProduct(ProductId::fromString($list->productId), $list->productName),
+                array_map(
+                    static fn (VariantOption $variant): DirectoryVariant => new DirectoryVariant(VariantId::fromString($variant->variantId), $variant->label),
+                    $list->variants,
+                ),
             );
         }
 
-        return $variants;
+        return $described;
     }
 }

@@ -7,12 +7,17 @@ namespace App\Tests\Unit\Inventory\Application;
 use App\Inventory\Application\Port\CategoryNotFound;
 use App\Inventory\Application\Port\DirectoryProduct;
 use App\Inventory\Application\Port\InvalidStockListCursor;
+use App\Inventory\Application\Query\InvalidStockList;
 use App\Inventory\Application\Query\ListBackofficeStock;
 use App\Inventory\Application\Query\ListBackofficeStockHandler;
+use App\Inventory\Application\Query\StockLevelCursor;
 use App\Inventory\Application\Query\StockListVariant;
+use App\Inventory\Domain\Stock\AvailabilityLevel;
 use App\Inventory\Domain\Stock\ProductId;
 use App\Tests\Unit\Inventory\InMemoryProductDirectory;
 use App\Tests\Unit\Inventory\InMemoryStockItemRepository;
+use App\Tests\Unit\Inventory\InMemoryStockLevelProducts;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ListBackofficeStockHandlerTest extends TestCase
@@ -35,6 +40,17 @@ final class ListBackofficeStockHandlerTest extends TestCase
         $this->stock->store(self::IN_STOCK, 10, 4, version: 7);
         $this->stock->store(self::LOW_STOCK, 9, 4, version: 2);
         $this->stock->store(self::EMPTY_STORED, 0, 0, version: 0);
+    }
+
+    public function testPassesTheSortOfTheQueryToTheDirectoryAndNullWhenThereIsNone(): void
+    {
+        $directory = new InMemoryProductDirectory();
+
+        $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
+        $this->handler($directory)(new ListBackofficeStock(null, null, null, 25, '-updatedAt'));
+        $this->handler($directory)(new ListBackofficeStock('plecak', null, null, 25, '-name'));
+
+        self::assertSame([null, '-updatedAt', '-name'], $directory->sorts);
     }
 
     public function testListsTheProductsOfThePageWithTheirVariantsInOrderAndTheirStockAndTheCursorOfTheNextPage(): void
@@ -157,9 +173,163 @@ final class ListBackofficeStockHandlerTest extends TestCase
         $this->handler($invalid)(new ListBackofficeStock(null, null, 'garbage', 25));
     }
 
-    private function handler(InMemoryProductDirectory $directory): ListBackofficeStockHandler
+    public function testARowOfAListWithoutALevelNeverMatchesOne(): void
     {
-        return new ListBackofficeStockHandler($directory, $this->stock);
+        $directory = new InMemoryProductDirectory([$this->product(self::BOTTLE, 'Bidon')])->withVariants(self::BOTTLE, [self::EMPTY_STORED => '']);
+
+        $list = $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
+
+        self::assertFalse($list->items[0]->variants[0]->matchesLevel);
+    }
+
+    public function testALevelPagesTheProductsOfTheLevelByTheirIdsAndTakesTheirNamesAndVariantsFromTheDirectory(): void
+    {
+        $directory = new InMemoryProductDirectory([$this->product(self::GEL, 'Żel'), $this->product(self::BACKPACK, 'Plecak'), $this->product(self::BOTTLE, 'Bidon')])
+            ->withVariants(self::BOTTLE, [self::LOW_STOCK => ''])
+            ->withVariants(self::BACKPACK, [self::UNSTORED => 'czarny', self::EMPTY_STORED => 'zielony'])
+            ->withVariants(self::GEL, [self::IN_STOCK => '']);
+        $levels = new InMemoryStockLevelProducts()->with(AvailabilityLevel::OutOfStock, [self::GEL, self::BACKPACK]);
+
+        $list = $this->handler($directory, $levels)(new ListBackofficeStock(null, null, null, 25, null, 'out_of_stock'));
+
+        self::assertSame([[self::BACKPACK, 'Plecak'], [self::GEL, 'Żel']], array_map(static fn ($item): array => [$item->productId, $item->name], $list->items));
+        self::assertSame([[self::UNSTORED, false], [self::EMPTY_STORED, true]], array_map(static fn (StockListVariant $variant): array => [$variant->variantId, $variant->matchesLevel], $list->items[0]->variants));
+        self::assertSame([[self::IN_STOCK, false]], array_map(static fn (StockListVariant $variant): array => [$variant->variantId, $variant->matchesLevel], $list->items[1]->variants));
+        self::assertNull($list->next);
+        self::assertSame([], $directory->requests, 'the directory does not page a level');
+        self::assertSame([[self::BACKPACK, self::GEL]], $directory->variantRequests);
+    }
+
+    public function testALevelMatchesOnTheLevelOfTheStoredStockOfEachVariant(): void
+    {
+        $directory = new InMemoryProductDirectory([$this->product(self::BOTTLE, 'Bidon')])->withVariants(self::BOTTLE, [self::LOW_STOCK => 'a', self::IN_STOCK => 'b', self::UNSTORED => 'c']);
+        $levels = new InMemoryStockLevelProducts()->with(AvailabilityLevel::LowStock, [self::BOTTLE]);
+
+        $list = $this->handler($directory, $levels)(new ListBackofficeStock(null, null, null, 25, null, 'low_stock'));
+
+        self::assertSame([true, false, false], array_map(static fn (StockListVariant $variant): bool => $variant->matchesLevel, $list->items[0]->variants));
+    }
+
+    public function testALevelReadsOneProductMoreThanThePageAndHandsOutTheCursorAfterTheLastOfThePage(): void
+    {
+        $directory = new InMemoryProductDirectory([$this->product(self::BOTTLE, 'A'), $this->product(self::BACKPACK, 'B'), $this->product(self::GEL, 'C')]);
+        $levels = new InMemoryStockLevelProducts()->with(AvailabilityLevel::OutOfStock, [self::BOTTLE, self::BACKPACK, self::GEL]);
+        $handler = $this->handler($directory, $levels);
+
+        $first = $handler(new ListBackofficeStock(null, null, null, 2, null, 'out_of_stock'));
+        self::assertNotNull($first->next);
+        $second = $handler(new ListBackofficeStock(null, null, $first->next, 2, null, 'out_of_stock'));
+
+        self::assertSame(['out_of_stock', null, 3], $levels->pageRequests[0]);
+        self::assertSame([self::BOTTLE, self::BACKPACK], array_map(static fn ($item): string => $item->productId, $first->items));
+        self::assertSame(StockLevelCursor::after(AvailabilityLevel::OutOfStock, ProductId::fromString(self::BACKPACK))->encode(), $first->next);
+        self::assertSame(['out_of_stock', self::BACKPACK, 3], $levels->pageRequests[1]);
+        self::assertSame([self::GEL], array_map(static fn ($item): string => $item->productId, $second->items));
+        self::assertNull($second->next);
+    }
+
+    public function testALevelCountsTheProductsOnTheFirstPageOnlyAndOnlyWhenThereIsANextOne(): void
+    {
+        $directory = new InMemoryProductDirectory([$this->product(self::BOTTLE, 'A'), $this->product(self::BACKPACK, 'B'), $this->product(self::GEL, 'C')]);
+        $levels = new InMemoryStockLevelProducts()->with(AvailabilityLevel::OutOfStock, [self::BOTTLE, self::BACKPACK, self::GEL]);
+        $handler = $this->handler($directory, $levels);
+
+        $first = $handler(new ListBackofficeStock(null, null, null, 2, null, 'out_of_stock'));
+        self::assertNotNull($first->next);
+        $second = $handler(new ListBackofficeStock(null, null, $first->next, 2, null, 'out_of_stock'));
+        $only = $handler(new ListBackofficeStock(null, null, null, 25, null, 'out_of_stock'));
+
+        self::assertSame([3, false], [$first->total?->value, $first->total?->capped]);
+        self::assertNull($second->total);
+        self::assertSame([3, false], [$only->total?->value, $only->total?->capped]);
+        self::assertSame(1, $levels->counts, 'a page that is the last needs no count');
+    }
+
+    public function testALevelWithNoProductsReadsNothingFromTheDirectory(): void
+    {
+        $directory = new InMemoryProductDirectory();
+
+        $list = $this->handler($directory)(new ListBackofficeStock(null, null, null, 25, null, 'low_stock'));
+
+        self::assertSame([], $list->items);
+        self::assertNull($list->next);
+        self::assertSame([0, false], [$list->total?->value, $list->total?->capped]);
+        self::assertSame([], $directory->variantRequests);
+        self::assertSame([], $this->stock->manyReads);
+    }
+
+    public function testAProductCatalogDoesNotHaveIsLeftOutOfTheLevelAndTheCursorStillLeadsOn(): void
+    {
+        $directory = new InMemoryProductDirectory([$this->product(self::GEL, 'Żel')])->withVariants(self::GEL, [self::EMPTY_STORED => '']);
+        $levels = new InMemoryStockLevelProducts()->with(AvailabilityLevel::OutOfStock, [self::BOTTLE, self::BACKPACK, self::GEL]);
+
+        $first = $this->handler($directory, $levels)(new ListBackofficeStock(null, null, null, 2, null, 'out_of_stock'));
+
+        self::assertSame([], $first->items);
+        self::assertSame(StockLevelCursor::after(AvailabilityLevel::OutOfStock, ProductId::fromString(self::BACKPACK))->encode(), $first->next);
+    }
+
+    /**
+     * @return iterable<string, array{ListBackofficeStock}>
+     */
+    public static function rejectedLevelQueries(): iterable
+    {
+        yield 'with a term' => [new ListBackofficeStock('bidon', null, null, 25, null, 'out_of_stock')];
+        yield 'with a category' => [new ListBackofficeStock(null, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5aaa', null, 25, null, 'low_stock')];
+        yield 'with a sort' => [new ListBackofficeStock(null, null, null, 25, '-name', 'out_of_stock')];
+        yield 'an unknown level' => [new ListBackofficeStock(null, null, null, 25, null, 'sold_out')];
+        yield 'the level that is not a filter' => [new ListBackofficeStock(null, null, null, 25, null, 'in_stock')];
+    }
+
+    #[DataProvider('rejectedLevelQueries')]
+    public function testALevelExcludesTheSearchTheCategoryAndTheSortAndKnowsOnlyTheTwoLevels(ListBackofficeStock $query): void
+    {
+        $levels = new InMemoryStockLevelProducts();
+        $directory = new InMemoryProductDirectory();
+
+        try {
+            $this->handler($directory, $levels)($query);
+            self::fail('Expected InvalidStockList.');
+        } catch (InvalidStockList) {
+            self::assertSame([], $levels->pageRequests);
+            self::assertSame([], $directory->requests);
+        }
+    }
+
+    public function testACursorOfAnotherLevelOrOfTheNameListIsInvalid(): void
+    {
+        $levels = new InMemoryStockLevelProducts();
+        $other = StockLevelCursor::after(AvailabilityLevel::LowStock, ProductId::fromString(self::BOTTLE))->encode();
+
+        foreach ([$other, 'eyJzIjoibmFtZSIsInYiOiJQbGVjYWsiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0'] as $cursor) {
+            try {
+                $this->handler(new InMemoryProductDirectory(), $levels)(new ListBackofficeStock(null, null, $cursor, 25, null, 'out_of_stock'));
+                self::fail('Expected InvalidStockListCursor.');
+            } catch (InvalidStockListCursor) {
+                self::assertSame([], $levels->pageRequests);
+            }
+        }
+    }
+
+    public function testAnUnknownProductIdGivesAnEmptyListWithAZeroTotal(): void
+    {
+        $list = $this->handler(new InMemoryProductDirectory())(new ListBackofficeStock(null, null, null, 25, null, null, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60'));
+
+        self::assertSame([], $list->items);
+        self::assertNull($list->next);
+        self::assertSame(0, $list->total?->value);
+    }
+
+    public function testAProductIdWithAFilterIsRefused(): void
+    {
+        $this->expectException(InvalidStockList::class);
+
+        $this->handler(new InMemoryProductDirectory())(new ListBackofficeStock(null, null, null, 25, null, 'low_stock', '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60'));
+    }
+
+    private function handler(InMemoryProductDirectory $directory, ?InMemoryStockLevelProducts $levels = null): ListBackofficeStockHandler
+    {
+        return new ListBackofficeStockHandler($directory, $this->stock, $levels ?? new InMemoryStockLevelProducts());
     }
 
     private function product(string $id, string $name): DirectoryProduct

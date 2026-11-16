@@ -211,6 +211,36 @@ final class PromotionsEndpointTest extends WebTestCase
         }
     }
 
+    public function testTheFirstPageHoldsTheTotalOfThePromotionsOfTheStatusAndLaterPagesNone(): void
+    {
+        $variant = $this->pricedVariant(5999);
+        $this->storedPromotion('-10 days', '-5 days', [$variant]);
+        $this->storedPromotion('-1 day', '+1 day', [$variant]);
+        $this->storedPromotion('+2 days', '+5 days', [$variant]);
+        $this->storedPromotion('+6 days', '+9 days', [$variant]);
+
+        $first = $this->send('GET', '/api/v1/admin/promotions?perPage=2');
+        $second = $this->send('GET', '/api/v1/admin/promotions?perPage=2&after='.self::cursorOf($first));
+
+        self::assertSame(['value' => 4, 'capped' => false], $first['total']);
+        self::assertNull($second['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $this->send('GET', '/api/v1/admin/promotions?status=planned')['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->send('GET', '/api/v1/admin/promotions?status=active&perPage=1')['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->send('GET', '/api/v1/admin/promotions?status=ended')['total']);
+        $this->assertKeysMatchSchema($first, 'PromotionListResponse');
+        $this->assertKeysMatchSchema($first['total'], 'BoundedCountResponse');
+    }
+
+    /**
+     * @param array<mixed> $page
+     */
+    private static function cursorOf(array $page): string
+    {
+        self::assertIsString($page['next']);
+
+        return $page['next'];
+    }
+
     /**
      * @return iterable<string, array{string, string, string|null}>
      */

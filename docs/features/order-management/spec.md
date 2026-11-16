@@ -51,7 +51,7 @@ Decyzje użytkownika:
 | P6 | Podgląd zamówień: `admin`, `support`, `warehouse`. Wysłane i dostarczone: `admin`, `warehouse`. Anulowanie, zwrot i wykonanie zwrotu pieniędzy: `admin`, `support`. `marketing` nie ma dostępu do zamówień. |
 | P7 | Notatka przy zmianie: wymagana przy anulowaniu i zwrocie (1–500 znaków, jedna linia, tylko w panelu), opcjonalna przy wysyłce, dostarczeniu i wykonaniu zwrotu pieniędzy. |
 | P8 | Bez płatności z historii klienta (jak w PAYMENT): historia pokazuje „Czeka na płatność do 14:35” albo „Termin płatności minął”. |
-| P9 | Wyszukiwanie w panelu: dokładny numer (`R-100001`, bez względu na wielkość liter) albo dokładny e-mail (bez względu na wielkość liter); filtr statusu; od najnowszych; stronicowanie po kursorach. Bez wyszukiwania fragmentu. |
+| P9 | Wyszukiwanie w panelu: dokładny numer (`R-100001`, bez względu na wielkość liter), dokładny pełny e-mail (bez względu na wielkość liter) albo fragment (od 3 znaków) numeru, e-maila lub imienia i nazwiska; zakres dni złożenia (dni `Europe/Warsaw`); filtr statusu; od najnowszych albo w innej kolejności z `sort` (data złożenia albo kwota); stronicowanie po kursorach. |
 | P10 | Historia klienta: lista od najnowszych, po 10 z „Pokaż więcej” (numer, data, status, kwota, liczba sztuk); szczegóły: pozycje, sumy, adres, daty kolejnych statusów. |
 | P12 | Strona potwierdzenia płatności w sklepie dla anulowanego zamówienia mówi neutralnie „Zamówienie zostało anulowane.” (A3 daje `cancelled` także po anulowaniu przez pracownika); przyczynę podaje e-mail. Payment nie poznaje przyczyny anulowania. |
 | P13 | Szczegóły zamówienia w panelu pokazują `paymentId` opłacającej płatności (sekcja „Zwrot pieniędzy” i dane płatności), żeby pracownik wiedział, którą płatność zwraca. Dostawca i transakcja: #221. |
@@ -158,15 +158,35 @@ Decyzje użytkownika:
   - zapis zamówienia z historią i zdarzeniem w outboxie.
 - `CompleteRefund(orderId, expectedVersion, note, staffId, staffUsername)` (`command.bus`): blokada, wersja,
   `completeRefund`, zapis → `BackofficeOrderView`.
-- `ListBackofficeOrders(status?, refund?, q?, after?, perPage)` (`query.bus`, DBAL, bez blokad):
-  - `q` (przycięte, 1–254 znaki, inaczej 400): numer, gdy pasuje do `^[Rr]-[0-9]+$`, inaczej e-mail, gdy zawiera
-    `@`; porównanie dokładne bez względu na wielkość liter (P9); inna wartość `q` to pusta lista;
-  - bez `refund`: sort `placed_at DESC, id DESC`; `refund=pending`: tylko zwroty do wykonania, sort
-    `refund_due_at ASC, id ASC` (łączy się ze `status` i `q`);
-  - kursor keyset (base64url JSON pól sortowania), `perPage` 1–100 (domyślnie 25), zły kursor 400;
+- `ListBackofficeOrders(status?, refund?, q?, after?, perPage, sort?, placedFrom?, placedTo?)` (`query.bus`, DBAL, bez blokad):
+  - `q` (przycięte, także o spacje Unicode, najwyżej 254 znaki, dłuższe to 400): numer, gdy pasuje do `^[Rr]-[0-9]+$`; pełny adres e-mail (lokalna część, `@`,
+    domena z kropką i ostatnim członem co najmniej 2 znaki, do 254 znaków); porównanie obu dokładne bez względu na
+    wielkość liter (P9); inny tekst 3–100 znaków (także „jan@gm”) to fragment numeru, e-maila albo imienia i nazwiska
+    bez względu na wielkość liter, `%` i `_` znaczą siebie (jeden indeks GIN trigram na `lower(number || U+001F || email ||
+    U+001F || full_name)`, więc fragment nie przechodzi przez granicę pól); inaczej (krótszy, dłuższy, znak sterujący) 400
+    przy `q`;
+  - `placedFrom`, `placedTo` (`YYYY-MM-DD`, dni `Europe/Warsaw`, oba końce włącznie, zamieniane na chwile UTC; dzień zmiany
+    czasu ma 23 albo 25 godzin); `placedFrom` po `placedTo` to 400 przy `placedTo`; łączą się ze `status`, `q` i sortem po
+    dacie;
+  - bez `refund`: sort z `sort` (zamknięta lista kluczy, `-` to malejąco): `-placedAt` (domyślny: `placed_at DESC,
+    id DESC`), `placedAt`, `-total` i `total` (`total_gross`, potem `id` w tym samym kierunku); `refund=pending`: tylko
+    zwroty do wykonania, własny sort `refund_due_at ASC, id ASC`, bez `sort` (łączy się ze `status` i `q`);
+    `refund=overdue`: podzbiór `refund=pending` ze zwrotami po terminie (`refund_due_at` < chwila odczytu, ścisło), ten
+    sam sort i ten sam kursor (kursor strony `pending` prowadzi dalej `overdue` i odwrotnie), te same łączenia i
+    odrzucenia; czyta ten sam częściowy indeks `(refund_due_at, id)` jako zakres, licznik `total` jak przy `pending`;
+  - połączenia, których nie obsługuje żaden indeks, to 400 z naruszeniem pola `sort`: `sort` z `refund=pending`
+    albo `refund=overdue` i kwota (`-total`, `total`) z `q` albo zakresem dni; `refund=pending` i `refund=overdue`
+    z zakresem dni to 400 przy polach dat; `refund` inny niż `pending` i `overdue` to 400 przy `refund`; klucz
+    spoza listy to 400 przy `sort`;
+  - `customerId` (`sub` konta sklepu, 1–255 znaków bez znaków sterujących, inaczej 400 przy `customerId`): tylko
+    zamówienia tego klienta (`owner_type = 'customer'`), od najnowszego, po częściowym indeksie `(customer_id,
+    placed_at DESC, id DESC)`; łączy się tylko ze `status`, a `q`, `sort`, `placedFrom`, `placedTo` i `refund` z nim to
+    400 przy każdym z tych pól; ten sam kursor i `total` co lista (historia zamówień na karcie klienta panelu);
+  - kursor keyset (base64url JSON `{s: klucz sortu, v: chwila albo kwota, i: id}`), `perPage` 1–100 (domyślnie 25), zły
+    kursor albo kursor innego sortu 400 przy `after`;
   - element: `orderId, number, placedAt, status, email, fullName, totalGross, currency, itemCount, refund:
     {amount, dueAt, completedAt, overdue} | null`.
-- `GetBackofficeOrder(orderId)` → `BackofficeOrderView`: kontakt, adres, pozycje (z `grossBeforeDiscount`,
+- `GetBackofficeOrder(orderId)` → `BackofficeOrderView`: `customerId` (`sub` konta, `null` dla gościa), kontakt, adres, pozycje (z `grossBeforeDiscount`,
   `discountGross`, wartością po rabacie i kopią promocji `promotion {name, percentOff, regularUnitGross} | null`),
   kopia kodu `discount {code, kind, value, amountGross} | null`, sumy po rabacie, daty statusów,
   `paymentDeadline`, `cancellationReason`, `paidAt`, `paymentId` (P13), `version`, `history` (od najstarszego), `refund` (kwota, termin,
@@ -247,7 +267,8 @@ trafia do e-maila.
     `cancellation_reason = 'staff'`); `refund_completed_at`, `refund_completed_by_staff_id`,
     `refund_completed_by_username` razem null albo razem ustawione, tylko przy `refund_amount`; `refund_note` tylko
     przy wykonanym zwrocie.
-- Indeksy: `(placed_at DESC, id DESC)`, `(status, placed_at DESC, id DESC)`, `(lower(email))`,
+- Indeksy: `(placed_at DESC, id DESC)`, `(status, placed_at DESC, id DESC)`, `(total_gross, id)`,
+  `(status, total_gross, id)` (oba kierunki sortu czytają ten sam indeks wprzód albo wstecz), `(lower(email))`,
   `(customer_id, placed_at DESC, id DESC) WHERE owner_type = 'customer'`,
   `(refund_due_at, id) WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL`.
 - `ordering_order_status_change`: `order_id` (FK do `ordering_order`), `position`, `from_status NULL`, `to_status`,
@@ -267,7 +288,7 @@ sklepu się nie zmienia.
 
 | Endpoint | Uprawnienie (`OrderVoter`) | Sukces | Błędy |
 |---|---|---|---|
-| `GET /api/v1/admin/orders?status=&refund=&q=&after=&perPage=` | `VIEW_ORDERS` | 200 `{items, nextCursor}` | 400 parametry, 401, 403, 503 |
+| `GET /api/v1/admin/orders?status=&refund=&q=&placedFrom=&placedTo=&sort=&customerId=&after=&perPage=` | `VIEW_ORDERS` | 200 `{items, nextCursor, total}` | 400 parametry, 401, 403, 503 |
 | `GET /api/v1/admin/orders/{orderId}` | `VIEW_ORDERS` | 200 `BackofficeOrder` | 401, 403, 404, 503 |
 | `POST /api/v1/admin/orders/{orderId}/status-changes`, body `{transition, version, note}` | `VIEW_ORDERS` i `CHANGE_ORDER_STATUS` dla przejścia | 200 `BackofficeOrder` | 400 zły JSON, 401, 403, 404, 409 (przejście, wersja), 415, 422, 503 |
 | `POST /api/v1/admin/orders/{orderId}/refund-completion`, body `{version, note}` | `COMPLETE_REFUND` | 200 `BackofficeOrder` | 400, 401, 403, 404, 409 (`refund-not-pending`, wersja), 415, 422, 503 |
@@ -294,7 +315,14 @@ sklepu się nie zmienia.
 - Menu „Zamówienia” (role z P6, z `/me`), trasa `/orders` (`OrdersView`, standard listy panelu): tabela (numer, data,
   klient z e-mailem, liczba pozycji, kwota, status jako `Badge`), od 640 px; poniżej 640 px lista kart z tych samych
   danych (jeden układ naraz). Filtr statusu (`Select`), przełącznik „Zwroty do wykonania” (kolumny kwoty i terminu
-  zwrotu, `Badge` „Po terminie” według `overdue`), pole wyszukiwania (numer albo e-mail, po Enter), rozmiar strony
+  zwrotu, `Badge` „Po terminie” według `overdue`), pole wyszukiwania (numer, e-mail albo fragment od 3 znaków, po Enter; tekst o 1–2 znakach nie wyszukuje, podpowiedź mówi,
+  że trzeba 3), pola daty „Od” i „Do” (`input type="date"`, grupa „Data zamówienia”; zakres zastosowany od razu po
+  wybraniu dnia; koniec przed początkiem nie jest stosowany i ma komunikat w `role="alert"`; wyłączone przy zwrotach do
+  wykonania z opisem), `Select` „Sortuj”
+  („Najnowsze”, „Najstarsze”, „Najwyższa kwota”, „Najniższa kwota”; także nad kartami poniżej 640 px; nagłówki „Data”
+  i „Kwota” mają `aria-sort` posortowanej kolumny; opcje niedozwolone są wyłączone z opisem: wszystkie dla zwrotów do
+  wykonania, które mają własną kolejność wg terminu zwrotu, kwota przy zastosowanym wyszukiwaniu albo zakresie dat, a zatwierdzenie
+  wyszukiwania albo wybór dnia przy sortowaniu po kwocie wraca do „Najnowsze”), rozmiar strony
   10, 25 albo 50 i stronicowanie po kursorach (`useCursorPager`). Błąd listy: komunikat z „Spróbuj ponownie”; 403
   (zabezpieczenie, gdy API odmówi mimo strażnika trasy): „Nie masz dostępu do zamówień.”. Pusta lista bez filtrów
   i wyszukiwania: „Nie ma jeszcze zamówień.”; z filtrem albo wyszukiwaniem: „Brak wyników dla wybranych filtrów.”.
@@ -303,8 +331,9 @@ sklepu się nie zmienia.
   pokazuje „Nie masz dostępu do tej strony.” (`role="alert"`) i czyści znacznik, więc przeładowanie komunikatu nie
   powtarza. Gdy `/me` się nie wczyta, strażnik przepuszcza trasę, a dostęp sprawdza API (403 widoku). Menu ukrywa
   pozycje tak samo, ale to strażnik i API egzekwują dostęp.
-- Stan listy w adresie (`useListUrlState`): `status` (znany status), `refund=pending`, `q` (zastosowane wyszukiwanie,
-  np. link „Inne zamówienia klienta” `/orders?q=<e-mail>`) i `perPage`; czytane przy wejściu i przy każdej zmianie
+- Stan listy w adresie (`useListUrlState`): `status` (znany status), `refund` (`pending`: zwroty do wykonania, `overdue`: tylko po terminie; przełącznik „Tylko po terminie” pokazuje się przy włączonych zwrotach do wykonania, wyłączenie go wraca do `pending`, wyłączenie zwrotów zdejmuje oba; sort i zakres dat są wtedy wyłączone jak przy `pending`), `q` (zastosowane wyszukiwanie,
+  np. link „Inne zamówienia klienta” `/orders?q=<e-mail>`), `placedFrom` i `placedTo` (dni `YYYY-MM-DD`), `sort` (klucz API; domyślny `-placedAt` nie jest
+  zapisywany ani wysyłany, a zmiana wraca na pierwszą stronę) i `perPage`; czytane przy wejściu i przy każdej zmianie
   `route.query` przy otwartej liście (pozycja menu „Zwroty do wykonania” na `/orders`), zapisywane przez `replace`
   bez nowego wpisu historii. Zmiana z adresu wraca na pierwszą stronę. Nieznana, pusta albo powtórzona wartość jest
   pomijana, a adres poprawiany.
@@ -357,8 +386,9 @@ sklepu się nie zmienia.
    `support` 403 na `ship` i `deliver`; token klienta nie przechodzi przez firewall panelu.
 9. Klient widzi tylko swoje zamówienia (cudze i gościa: 404), od najnowszych, ze stronicowaniem; szczegóły mają
    pozycje, sumy, adres i daty statusów (P10).
-12. Panel: wyszukiwanie po numerze i e-mailu bez względu na wielkość liter, filtr statusu, filtr „Zwroty do
-    wykonania” od najbliższego terminu (także w połączeniu ze statusem), zły kursor i `q` ponad 254 znaki: 400.
+12. Panel: wyszukiwanie po numerze, pełnym e-mailu i fragmencie numeru, e-maila lub nazwiska bez względu na wielkość liter,
+    zakres dni złożenia, filtr statusu, filtr „Zwroty do wykonania” od najbliższego terminu (także w połączeniu ze
+    statusem), zły kursor, `q` krótsze niż 3 znaki albo za długie i odwrócony zakres dni: 400.
 13. Migracja: istniejące zamówienia mają historię z `placed_at`, `paid_at`, `cancelled_at`, a ich znaczniki e-maili
     są w tabeli powiadomień (żaden e-mail nie wychodzi drugi raz).
 10. E-mail nie zmienia wersji zamówienia; dwie równoległe dostawy tego samego zdarzenia wysyłają jeden e-mail;

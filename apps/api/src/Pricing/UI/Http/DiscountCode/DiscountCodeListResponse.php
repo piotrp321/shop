@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Pricing\UI\Http\DiscountCode;
 
 use App\Pricing\Application\Query\DiscountCodeList;
+use App\Shared\UI\Http\BoundedCountResponse;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'A page of the discount codes, newest first.', required: ['items', 'next'])]
+#[OA\Schema(description: 'A page of the discount codes, newest first.', required: ['items', 'next', 'total'])]
 final readonly class DiscountCodeListResponse
 {
     /**
@@ -19,11 +20,17 @@ final readonly class DiscountCodeListResponse
         public array $items,
         #[OA\Property(description: 'Opaque cursor of the next page (send it as `after`), null on the last page.', nullable: true)]
         public ?string $next,
+        #[OA\Property(
+            description: 'How many codes match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.',
+            nullable: true,
+            allOf: [new OA\Schema(ref: new Model(type: BoundedCountResponse::class))],
+        )]
+        public ?BoundedCountResponse $total,
     ) {
     }
 
     public static function of(DiscountCodeList $list): self
     {
-        return new self(array_map(DiscountCodeResponse::of(...), $list->items), $list->next);
+        return new self(array_map(DiscountCodeResponse::of(...), $list->items), $list->next, BoundedCountResponse::ofNullable($list->total));
     }
 }

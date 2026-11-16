@@ -157,7 +157,7 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(404);
         self::assertStringStartsWith('application/problem+json', (string) $this->client->getResponse()->headers->get('Content-Type'));
         self::assertSame(404, $problem['status']);
-        self::assertSame('Category not found.', $problem['detail']);
+        self::assertSame('Kategoria nie istnieje.', $problem['detail']);
         self::assertStringNotContainsString(self::UNKNOWN, (string) $this->client->getResponse()->getContent());
     }
 

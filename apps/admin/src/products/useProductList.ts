@@ -3,6 +3,7 @@ import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { type PageRequest, type PageResult, useCursorPager } from "@/composables/useCursorPager";
+import { DEFAULT_PRODUCT_SORT, PRODUCT_SORT_OPTIONS, type ProductSort, sortParam } from "@/composables/listSort";
 import { type ListParam, useListUrlState } from "@/composables/useListUrlState";
 import { MAX_NAME_SEARCH_LENGTH, NAME_SEARCH_DEBOUNCE_MS, useNameSearch, validNameTerm } from "@/composables/useNameSearch";
 
@@ -30,6 +31,8 @@ interface ProductQuery {
   q?: string;
   category?: string;
   status?: ProductStatus;
+  images?: "none";
+  sort?: ProductSort;
   after?: string;
   perPage?: number;
 }
@@ -61,8 +64,8 @@ function categoryIds(nodes: CategoryTreeNode[]): Set<string> {
 
 /**
  * The product list: a search by name (from two characters, after a pause in typing), a category filter (also its
- * subcategories: the API does that), a status filter (null: all) and a page size (10, 25 or 50). The search, the filters
- * and the page size live in the address (`useListUrlState`: read on entering and on a change from outside, written
+ * subcategories: the API does that), a status filter (null: all), a filter of the images (`images=none`: only the products without images; null: all), an order (`sort`: by name or by the last change, either
+ * way; not a filter) and a page size (10, 25 or 50). The search, the filters, the order and the page size live in the address (`useListUrlState`: read on entering and on a change from outside, written
  * when changed; only the applied search goes there, not what is being typed) and the paging is `useCursorPager`
  * (cursor stack, late answers, retry, what a failure leaves on the screen). What stays here is the request to the API,
  * its messages; the search by name, with its pause and length rules, is `useNameSearch`. `categories` is the tree of the filter: a category of
@@ -83,6 +86,12 @@ export function useProductList(categories?: CategoryLookup) {
       parse: (raw) => (raw === "draft" || raw === "published" ? raw : null),
       fallback: null,
     } satisfies ListParam<ProductStatus, null>,
+    // The filter of the images has one value: only the products without images. The API takes `images=none` and nothing else.
+    images: {
+      parse: (raw) => (raw === "none" ? raw : null),
+      fallback: null,
+    } satisfies ListParam<"none", null>,
+    sort: sortParam(PRODUCT_SORT_OPTIONS, DEFAULT_PRODUCT_SORT),
     perPage: {
       parse: (raw) => PER_PAGE_OPTIONS.find((size) => String(size) === raw) ?? null,
       fallback: DEFAULT_PER_PAGE,
@@ -102,6 +111,12 @@ export function useProductList(categories?: CategoryLookup) {
     if (query.status !== null) {
       apiQuery.status = query.status;
     }
+    if (query.images !== null) {
+      apiQuery.images = query.images;
+    }
+    if (query.sort !== DEFAULT_PRODUCT_SORT) {
+      apiQuery.sort = query.sort;
+    }
     if (query.perPage !== DEFAULT_PER_PAGE) {
       apiQuery.perPage = query.perPage;
     }
@@ -111,7 +126,7 @@ export function useProductList(categories?: CategoryLookup) {
     try {
       const result = await getApiClient().GET("/api/v1/admin/products", { params: { query: apiQuery } });
       if (result.data) {
-        return { items: result.data.items, next: result.data.next };
+        return { items: result.data.items, next: result.data.next, total: result.data.total };
       }
       return { error: failureMessage(result.response.status), forbidden: result.response.status === 403 };
     } catch {
@@ -124,7 +139,7 @@ export function useProductList(categories?: CategoryLookup) {
   // The address changed from outside: it is the new truth, also for what is in the field.
   watch(url.address, (address) => name.setFromAddress(address.q));
 
-  const filtered = computed(() => url.query.value.q !== null || url.query.value.category !== null || url.query.value.status !== null);
+  const filtered = computed(() => url.query.value.q !== null || url.query.value.category !== null || url.query.value.status !== null || url.query.value.images !== null);
 
   function selectCategory(id: string | null): void {
     url.set({ category: id });
@@ -134,11 +149,19 @@ export function useProductList(categories?: CategoryLookup) {
     url.set({ status: value });
   }
 
+  function selectImages(value: "none" | null): void {
+    url.set({ images: value });
+  }
+
+  function setSort(sort: string): void {
+    url.set({ sort: (PRODUCT_SORT_OPTIONS.find((option) => option.value === sort)?.value ?? DEFAULT_PRODUCT_SORT) });
+  }
+
   function setPerPage(size: number): void {
     url.set({ perPage: size });
   }
 
-  /** Drops the search, the filters and the page size: the address is `/products` again. */
+  /** Drops the search, the filters, the order and the page size: the address is `/products` again. */
   function clearFilters(): void {
     name.reset();
     url.clear();
@@ -159,8 +182,12 @@ export function useProductList(categories?: CategoryLookup) {
     hasNext: pager.hasNext,
     pageNumber: pager.pageNumber,
     range: pager.range,
+    total: pager.total,
     selectCategory,
     selectStatus,
+    selectImages,
+    sortOptions: PRODUCT_SORT_OPTIONS,
+    setSort,
     setPerPage,
     clearFilters,
     goNext: pager.goNext,

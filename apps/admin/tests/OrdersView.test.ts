@@ -4,8 +4,9 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { Select } from "@/components/ui/select";
 import OrdersView from "@/views/OrdersView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type OrderList = components["schemas"]["BackofficeOrderList"];
+type OrderList = WithOptionalTotal<components["schemas"]["BackofficeOrderList"]>;
 type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -101,7 +102,8 @@ describe("OrdersView", () => {
   });
 
   const statusSelect = () => wrapper!.findAllComponents(Select)[0]!;
-  const perPageSelect = () => wrapper!.findAllComponents(Select)[1]!;
+  const sortSelect = () => wrapper!.findAllComponents(Select)[1]!;
+  const perPageSelect = () => wrapper!.findAllComponents(Select)[2]!;
   const pager = (testid: string) => wrapper!.get(`[data-testid=${testid}]`);
 
   it("has the H1 „Zamówienia” and the crumbs „Pulpit › Zamówienia”", async () => {
@@ -175,8 +177,137 @@ describe("OrdersView", () => {
     expect(rows[1]!.find("[data-testid=refund-overdue]").exists()).toBe(false);
   });
 
+  describe("the sort", () => {
+    const sortTrigger = () => wrapper!.get<HTMLButtonElement>("[data-testid=sort]");
+    const head = (title: string) => wrapper!.findAll("th").find((th) => th.text() === title)!;
+
+    it("has a Select „Sortuj” with a visible label that shows the newest first and offers every order of the API", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+
+      expect(sortTrigger().element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(sortTrigger().text()).toBe("Najnowsze");
+      sortTrigger().element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await flushPromises();
+      expect([...document.body.querySelectorAll("[role=option]")].map((option) => option.textContent?.trim()).slice(-4)).toEqual([
+        "Najnowsze",
+        "Najstarsze",
+        "Najwyższa kwota",
+        "Najniższa kwota",
+      ]);
+    });
+
+    it("sets the sort in the address with one request from the first page, and marks the sorted column with aria-sort", async () => {
+      serve({ "": { items: [order("R-100002")], nextCursor: "c1" }, c1: { items: [order("R-100001")], nextCursor: null } });
+      wrapper = await mountView();
+      expect(head("Data").attributes("aria-sort")).toBe("descending");
+      await pager("next-page").trigger("click");
+      await flushPromises();
+      expect(pager("page-number").text()).toBe("Strona 2");
+
+      sortSelect().vm.$emit("update:modelValue", "-total");
+      await flushPromises();
+
+      expect(queries().at(-1)).toEqual({ sort: "-total" });
+      expect(queries().filter((query) => query.sort === "-total")).toHaveLength(1);
+      expect(pager("page-number").text()).toBe("Strona 1");
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?sort=-total");
+      expect(sortTrigger().text()).toBe("Najwyższa kwota");
+      expect(head("Kwota").attributes("aria-sort")).toBe("descending");
+      expect(head("Data").attributes("aria-sort")).toBeUndefined();
+
+      sortSelect().vm.$emit("update:modelValue", "placedAt");
+      await flushPromises();
+      expect(head("Data").attributes("aria-sort")).toBe("ascending");
+      expect(head("Kwota").attributes("aria-sort")).toBeUndefined();
+    });
+
+    it("applies a sort that the address brings from outside with one request", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/orders?sort=total");
+      await flushPromises();
+
+      expect(queries()).toEqual([{ sort: "total" }]);
+      expect(sortTrigger().text()).toBe("Najniższa kwota");
+      expect(head("Kwota").attributes("aria-sort")).toBe("ascending");
+    });
+
+    it("disables every sort for the refunds to do, says why, and shows the order of the due date", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView("/orders?refund=pending");
+
+      expect(sortTrigger().text()).toBe("Termin zwrotu");
+      expect(wrapper.get("[data-testid=sort-hint]").text()).toBe("Zwroty do wykonania są w kolejności terminu zwrotu.");
+      sortTrigger().element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await flushPromises();
+      const options = [...document.body.querySelectorAll<HTMLElement>("[role=option]")].slice(-4);
+      expect(options.map((option) => option.getAttribute("aria-disabled"))).toEqual(["true", "true", "true", "true"]);
+      // The order of the due date is the one sort of the list, so its header says so and no other does.
+      const sorted = wrapper.findAll("th[aria-sort]");
+      expect(sorted.map((th) => th.text())).toEqual(["Termin zwrotu"]);
+      expect(sorted[0]!.attributes("aria-sort")).toBe("ascending");
+    });
+
+    it("disables the amount while a search is applied and says why", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView("/orders?q=R-100001");
+
+      expect(wrapper.get("[data-testid=sort-hint]").text()).toBe("Kwoty nie da się sortować przy wyszukiwaniu.");
+      sortTrigger().element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+      await flushPromises();
+      const options = [...document.body.querySelectorAll<HTMLElement>("[role=option]")].slice(-4);
+      expect(options.map((option) => option.getAttribute("aria-disabled") === "true")).toEqual([false, false, true, true]);
+    });
+
+    it("returns to the first page with the newest first when the filters are cleared", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView("/orders?sort=total&status=paid");
+
+      await wrapper.get("[data-testid=clear-filters]").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders");
+      expect(queries().at(-1)).toEqual({});
+      expect(sortTrigger().text()).toBe("Najnowsze");
+    });
+  });
+
   describe("below 640 px", () => {
     beforeEach(() => screen(false));
+
+    it("offers the same sort as the table, which sets the address and asks once", async () => {
+      serve({ items: [order("R-100002"), order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+
+      const trigger = wrapper.get<HTMLButtonElement>("[data-testid=sort]");
+      expect(trigger.element.labels?.[0]?.textContent?.trim()).toBe("Sortuj");
+      expect(trigger.text()).toBe("Najnowsze");
+      expect(wrapper.find("table").exists()).toBe(false);
+
+      wrapper.findAllComponents(Select)[1]!.vm.$emit("update:modelValue", "total");
+      await flushPromises();
+
+      expect(queries().at(-1)).toEqual({ sort: "total" });
+      expect(queries().filter((query) => query.sort === "total")).toHaveLength(1);
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?sort=total");
+      expect(wrapper.get("[data-testid=sort]").text()).toBe("Najniższa kwota");
+      expect(wrapper.findAll("[data-testid=order-row]")).toHaveLength(2);
+    });
+
+    it("applies a sort of the address from outside with one request", async () => {
+      serve({ items: [order("R-100001")], nextCursor: null });
+      wrapper = await mountView();
+      mocks.get.mockClear();
+
+      await wrapper.router.push("/orders?sort=-total");
+      await flushPromises();
+
+      expect(queries()).toEqual([{ sort: "-total" }]);
+      expect(wrapper.get("[data-testid=sort]").text()).toBe("Najwyższa kwota");
+    });
 
     it("lists the orders as cards of a list named „Zamówienia”, with no table, and one row per order", async () => {
       serve({ items: [order("R-100002", { status: "new" }), order("R-100001", { status: "shipped" })], nextCursor: null });
@@ -275,7 +406,7 @@ describe("OrdersView", () => {
 
     expect(queries()).toEqual([{}, { q: "R-100001" }]);
     expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?q=R-100001");
-    expect(wrapper.get("[data-testid=search-hint]").text()).toContain("zatwierdź Enterem");
+    expect(wrapper.get("[data-testid=search-hint]").text()).toBe("Numer, e-mail albo fragment (od 3 znaków) numeru, e-maila lub nazwiska. Enter wyszukuje.");
   });
 
   it("puts the search of the address in the field and asks with it (the link „Inne zamówienia klienta”)", async () => {
@@ -341,6 +472,50 @@ describe("OrdersView", () => {
     expect(wrapper.get("h1").text()).toBe("Zamówienia");
   });
 
+  it("has the switch „Tylko po terminie” only while the refunds to do are on, labelled, and it asks for the overdue ones", async () => {
+    serve({ items: [order("R-100001")], nextCursor: null });
+    wrapper = await mountView();
+    expect(wrapper.find("[data-testid=refund-overdue-only]").exists()).toBe(false);
+
+    await wrapper.get("[data-testid=refund-pending]").trigger("click");
+    await flushPromises();
+
+    const toggle = wrapper.get<HTMLButtonElement>("[data-testid=refund-overdue-only]");
+    expect(toggle.attributes("role")).toBe("switch");
+    expect(toggle.attributes("aria-checked")).toBe("false");
+    expect(document.querySelector(`label[for=${toggle.attributes("id")}]`)?.textContent?.trim()).toBe("Tylko po terminie");
+
+    await toggle.trigger("click");
+    await flushPromises();
+
+    expect(queries().at(-1)).toEqual({ refund: "overdue" });
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?refund=overdue");
+    expect(wrapper.get("[data-testid=refund-overdue-only]").attributes("aria-checked")).toBe("true");
+    expect(wrapper.get("[data-testid=refund-pending]").attributes("aria-checked")).toBe("true");
+    expect(wrapper.get("h1").text()).toBe("Zwroty do wykonania");
+
+    await wrapper.get("[data-testid=refund-overdue-only]").trigger("click");
+    await flushPromises();
+    expect(queries().at(-1)).toEqual({ refund: "pending" });
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders?refund=pending");
+  });
+
+  it("opens the overdue refunds from the address (the link of the dashboard), with „Tylko po terminie” on, and drops it with the refunds to do", async () => {
+    serve({ items: [order("R-100001")], nextCursor: null });
+    wrapper = await mountView("/orders?refund=overdue");
+
+    expect(queries()).toEqual([{ refund: "overdue" }]);
+    expect(wrapper.get("h1").text()).toBe("Zwroty do wykonania");
+    expect(wrapper.get("[data-testid=refund-overdue-only]").attributes("aria-checked")).toBe("true");
+
+    await wrapper.get("[data-testid=refund-pending]").trigger("click");
+    await flushPromises();
+
+    expect(queries().at(-1)).toEqual({});
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/orders");
+    expect(wrapper.find("[data-testid=refund-overdue-only]").exists()).toBe(false);
+  });
+
   it("switches the open list to the refunds when the address changes (the menu item „Zwroty do wykonania”), without a reload", async () => {
     serve({ items: [order("R-100001")], nextCursor: null });
     wrapper = await mountView();
@@ -375,6 +550,17 @@ describe("OrdersView", () => {
     expect(queries()).toEqual([{ status: "paid", perPage: 10 }]);
     expect(wrapper.get("[data-testid=status-filter]").text()).toBe("Opłacone");
     expect(wrapper.get("[data-testid=per-page]").text()).toBe("10");
+  });
+
+  it("says „z N” with the total of the first page on the next page too", async () => {
+    serve({ "": { items: [order("R-2")], nextCursor: "c1", total: { value: 12, capped: false } }, c1: { items: [order("R-1")], nextCursor: null, total: null } });
+    wrapper = await mountView();
+    expect(pager("range").text()).toBe("Pokazano 1–1 z 12");
+
+    await pager("next-page").trigger("click");
+    await flushPromises();
+
+    expect(pager("range").text()).toBe("Pokazano 26–26 z 12");
   });
 
   it("pages with the cursors of the API and says which orders are shown", async () => {

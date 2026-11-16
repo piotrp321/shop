@@ -4,8 +4,9 @@ import { defineComponent } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { EMPTY_MESSAGE, useOrderList } from "@/orders/useOrderList";
+import type { WithOptionalTotal } from "./listPage";
 
-type OrderList = components["schemas"]["BackofficeOrderList"];
+type OrderList = WithOptionalTotal<components["schemas"]["BackofficeOrderList"]>;
 type OrderListItem = components["schemas"]["BackofficeOrderListItem"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -137,6 +138,38 @@ describe("useOrderList", () => {
 
     expect(queries()).toEqual([{}, { refund: "pending" }, {}]);
     expect(list.refundPending.value).toBe(false);
+  });
+
+  it("asks for the overdue refunds when „Tylko po terminie” is on, and for the refunds to do when it is off", async () => {
+    const list = await start({ "": page(["R-100001"]) });
+
+    list.setRefundPending(true);
+    await settle();
+    list.setRefundOverdue(true);
+    await settle();
+    expect(list.refundPending.value).toBe(true);
+    expect(list.refundOverdue.value).toBe(true);
+    list.setRefundOverdue(false);
+    await settle();
+
+    expect(queries()).toEqual([{}, { refund: "pending" }, { refund: "overdue" }, { refund: "pending" }]);
+    expect(list.refundOverdue.value).toBe(false);
+    expect(list.refundPending.value).toBe(true);
+  });
+
+  it("drops the overdue refunds with the refunds to do, and does not turn them on by switching off what is off", async () => {
+    const list = await start({ "": page(["R-100001"]) });
+
+    list.setRefundOverdue(false);
+    await settle();
+    list.setRefundOverdue(true);
+    await settle();
+    list.setRefundPending(false);
+    await settle();
+
+    expect(queries()).toEqual([{}, { refund: "overdue" }, {}]);
+    expect(list.refundPending.value).toBe(false);
+    expect(list.refundOverdue.value).toBe(false);
   });
 
   it("combines the refund switch with the status and the search", async () => {
@@ -323,7 +356,8 @@ describe("useOrderList", () => {
     const list = await start({ "": page(["R-1"]) });
     serve({}, 400);
 
-    list.search.value = "x";
+    // Over 100 characters that are no email: the panel sends it (a 1 or 2 characters long term it does not), the API refuses it.
+    list.search.value = "x".repeat(101);
     list.submitSearch();
     await settle();
 
@@ -373,6 +407,18 @@ describe("useOrderList", () => {
     expect(list.range.value).toEqual({ from: 26, to: 26 });
   });
 
+  it("gives the total of the first page and keeps it on the next pages", async () => {
+    const list = await start({
+      "": { ...page(["R-3", "R-2"], "c1"), total: { value: 3, capped: false } },
+      c1: { ...page(["R-1"]), total: null },
+    });
+    expect(list.total.value).toEqual({ value: 3, capped: false });
+
+    await list.goNext();
+
+    expect(list.total.value).toEqual({ value: 3, capped: false });
+  });
+
   it("searches again for the same term, so that Enter reloads the list", async () => {
     const list = await start({ "": page(["R-1"]) });
     list.search.value = "R-1";
@@ -394,6 +440,158 @@ describe("useOrderList", () => {
     await settle();
 
     expect(queries().at(-1)).toEqual({ q: "R-1" });
+  });
+
+  describe("the sort", () => {
+    const one = { "": page(["R-1"], "c1"), c1: page(["R-0"]) };
+
+    async function startAt(path: string) {
+      serve(one);
+      const mounted = await mountList(path);
+      wrapper = mounted.wrapper;
+      await settle();
+      return mounted;
+    }
+
+    it("lists the newest first without a sort, and does not send the default", async () => {
+      const { list } = await startAt("/orders");
+
+      expect(queries()).toEqual([{}]);
+      expect(list.sort.value).toBe("-placedAt");
+      expect(list.sortOptions.value.map((option) => [option.value, option.label, option.disabledReason])).toEqual([
+        ["-placedAt", "Najnowsze", undefined],
+        ["placedAt", "Najstarsze", undefined],
+        ["-total", "Najwyższa kwota", undefined],
+        ["total", "Najniższa kwota", undefined],
+      ]);
+    });
+
+    it.each(["placedAt", "-total", "total"])("reads the sort %s of the address with one request", async (sort) => {
+      const { list } = await startAt(`/orders?sort=${sort}`);
+
+      expect(queries()).toEqual([{ sort }]);
+      expect(list.sort.value).toBe(sort);
+    });
+
+    it("writes the chosen sort to the address without a new entry, asks once from the first page and drops the default", async () => {
+      const { list, router } = await startAt("/orders?status=paid");
+      await list.goNext();
+      expect(list.pageNumber.value).toBe(2);
+      const push = vi.spyOn(router, "push");
+
+      list.setSort("-total");
+      await settle();
+
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=paid&sort=-total");
+      expect(queries().at(-1)).toEqual({ status: "paid", sort: "-total" });
+      expect(queries().filter((query) => query.sort === "-total")).toHaveLength(1);
+      expect(list.pageNumber.value).toBe(1);
+
+      list.setSort("-placedAt");
+      await settle();
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=paid");
+      expect(queries().at(-1)).toEqual({ status: "paid" });
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it("applies a change of the address from outside with one request", async () => {
+      const { router } = await startAt("/orders");
+      mocks.get.mockClear();
+
+      await router.push({ path: "/orders", query: { sort: "total" } });
+      await settle();
+
+      expect(queries()).toEqual([{ sort: "total" }]);
+    });
+
+    it.each(["/orders?sort=price", "/orders?sort=", "/orders?sort=--total", "/orders?sort=Total", "/orders?sort=refund", "/orders?sort=-name"])(
+      "skips the invalid sort of %s and corrects the address",
+      async (path) => {
+        const { list, router } = await startAt(path);
+
+        expect(queries()).toEqual([{}]);
+        expect(list.sort.value).toBe("-placedAt");
+        expect(router.currentRoute.value.fullPath).toBe("/orders");
+      },
+    );
+
+    it("does not take a parameter of another name (sort[]) as the sort", async () => {
+      const { list } = await startAt("/orders?sort[]=total");
+
+      expect(queries()).toEqual([{}]);
+      expect(list.sort.value).toBe("-placedAt");
+    });
+
+    it("is no filter, and clearing the filters drops it", async () => {
+      const { list, router } = await startAt("/orders?sort=total");
+      expect(list.filtered.value).toBe(false);
+
+      list.clearFilters();
+      await settle();
+
+      expect(list.sort.value).toBe("-placedAt");
+      expect(router.currentRoute.value.fullPath).toBe("/orders");
+    });
+
+    it("disables every sort for the refunds to do, which have an order of their own, says why, and sends none", async () => {
+      const { list } = await startAt("/orders?refund=pending&sort=-total");
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+      expect(list.sort.value).toBeNull();
+      expect(list.sortOptions.value).toHaveLength(4);
+      for (const option of list.sortOptions.value) {
+        expect(option.disabledReason, option.value).toBe("Zwroty do wykonania są w kolejności terminu zwrotu.");
+      }
+
+      list.setRefundPending(false);
+      await settle();
+      expect(queries().at(-1)).toEqual({ sort: "-total" });
+      expect(list.sort.value).toBe("-total");
+      expect(list.sortOptions.value.every((option) => option.disabledReason === undefined)).toBe(true);
+    });
+
+    it("disables the amount while a search is applied, says why, and falls back to the newest first", async () => {
+      const { list } = await startAt("/orders?q=R-100001&sort=-total");
+
+      expect(queries()).toEqual([{ q: "R-100001" }]);
+      expect(list.sort.value).toBe("-placedAt");
+      expect(list.sortOptions.value.map((option) => option.disabledReason)).toEqual([
+        undefined,
+        undefined,
+        "Kwoty nie da się sortować przy wyszukiwaniu.",
+        "Kwoty nie da się sortować przy wyszukiwaniu.",
+      ]);
+
+      list.setSort("placedAt");
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "R-100001", sort: "placedAt" });
+    });
+
+    it("keeps the sort by placement when a search is applied, and drops the one by the amount", async () => {
+      const { list, router } = await startAt("/orders?sort=placedAt");
+      list.search.value = "anna@example.com";
+      list.submitSearch();
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "anna@example.com", sort: "placedAt" });
+
+      list.clearFilters();
+      list.setSort("total");
+      await settle();
+      list.search.value = "anna@example.com";
+      list.submitSearch();
+      await settle();
+
+      expect(queries().at(-1)).toEqual({ q: "anna@example.com" });
+      expect(router.currentRoute.value.fullPath).toBe("/orders?q=anna@example.com");
+      expect(list.sort.value).toBe("-placedAt");
+    });
+
+    it("lets the amount back when the search is cleared, and a typed search that is not applied does not disable it", async () => {
+      const { list } = await startAt("/orders");
+      list.search.value = "anna";
+      await settle();
+      expect(list.sortOptions.value.every((option) => option.disabledReason === undefined)).toBe(true);
+    });
   });
 
   describe("the state in the address", () => {
@@ -422,6 +620,43 @@ describe("useOrderList", () => {
       expect(queries()).toEqual([{ status: "paid" }]);
       expect(list.status.value).toBe("paid");
       expect(list.refundPending.value).toBe(false);
+    });
+
+    it("reads the overdue refunds from the address with one request, and writes them back", async () => {
+      const { list, router } = await startAt("/orders?refund=overdue&status=returned");
+
+      expect(queries()).toEqual([{ status: "returned", refund: "overdue" }]);
+      expect(list.refundPending.value).toBe(true);
+      expect(list.refundOverdue.value).toBe(true);
+      expect(list.filtered.value).toBe(true);
+
+      list.setRefundOverdue(false);
+      await settle();
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=returned&refund=pending");
+
+      list.setRefundOverdue(true);
+      await settle();
+      expect(router.currentRoute.value.fullPath).toBe("/orders?status=returned&refund=overdue");
+    });
+
+    it("gives the overdue refunds the order and the days of the refunds to do: no sort, no range", async () => {
+      const { list } = await startAt("/orders?refund=overdue&sort=-total&placedFrom=2026-11-01");
+
+      expect(queries()).toEqual([{ refund: "overdue" }]);
+      expect(list.sort.value).toBeNull();
+      expect(list.rangeDisabled.value).toBe(true);
+      expect(list.sortOptions.value.every((option) => option.disabledReason === "Zwroty do wykonania są w kolejności terminu zwrotu.")).toBe(true);
+    });
+
+    it("switches the open list to the overdue refunds when the address changes, from the first page with one request", async () => {
+      const { list, router } = await startAt("/orders?refund=pending");
+      mocks.get.mockClear();
+
+      await router.push({ path: "/orders", query: { refund: "overdue" } });
+      await settle();
+
+      expect(queries()).toEqual([{ refund: "overdue" }]);
+      expect(list.refundOverdue.value).toBe(true);
     });
 
     it("reads the refunds to do from the address with one request", async () => {

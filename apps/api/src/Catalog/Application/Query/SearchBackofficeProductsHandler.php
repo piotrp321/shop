@@ -9,6 +9,7 @@ use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\ProductStatus;
+use App\Shared\Domain\BoundedCount;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -21,8 +22,9 @@ final readonly class SearchBackofficeProductsHandler
     }
 
     /**
-     * Reads one more product than the page holds: its presence is the only thing that tells there is a next page, so
-     * the whole result is never counted.
+     * Reads one more product than the page holds: its presence is what tells there is a next page. The first page
+     * (no cursor) also carries the bounded total of the filters: the number of its rows when there is no next page
+     * (nothing to count), otherwise the source counts, never the table whole.
      *
      * @throws InvalidBackofficeProductSearch
      * @throws InvalidProductCursor
@@ -58,15 +60,21 @@ final readonly class SearchBackofficeProductsHandler
             }
             $path = $this->categories->get($categoryId)->path();
         }
-        $after = null === $query->after ? null : ProductCursor::decode($query->after);
+        $sort = ProductSort::Name;
+        if (null !== $query->sort) {
+            $sort = ProductSort::tryFrom($query->sort) ?? throw InvalidBackofficeProductSearch::unknownSort();
+        }
+        $after = null === $query->after ? null : ProductCursor::decode($query->after, $sort);
 
-        $products = $this->source->page($query->term, $path, $status, $after, $query->perPage + 1);
+        $products = $this->source->page($query->term, $path, $status, $after, $sort, $query->perPage + 1, $query->withoutImages);
+        // The total of the filters comes with the first page only; the panel keeps it for the next pages.
         if (\count($products) <= $query->perPage) {
-            return new BackofficeProductPage($products, null);
+            return new BackofficeProductPage($products, null, null === $after ? new BoundedCount(\count($products), false) : null);
         }
 
         $items = \array_slice($products, 0, $query->perPage);
+        $total = null === $after ? $this->source->count($query->term, $path, $status, $query->withoutImages) : null;
 
-        return new BackofficeProductPage($items, ProductCursor::after($items[$query->perPage - 1])->encode());
+        return new BackofficeProductPage($items, ProductCursor::after($items[$query->perPage - 1], $sort)->encode(), $total);
     }
 }

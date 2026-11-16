@@ -5,15 +5,17 @@ declare(strict_types=1);
 namespace App\Catalog\Application\Query;
 
 /**
- * One page of the product list of the panel, by name, then by id, with keyset paging; the filters and their rules are
- * those of {@see SearchBackofficeProducts}.
+ * One page of the product list of the panel, by name (by default) or another key of {@see ProductSort}, then by id, with
+ * keyset paging; the filters and their rules are those of {@see SearchBackofficeProducts}.
  */
 final readonly class ListBackofficeProducts
 {
     public const int DEFAULT_PER_PAGE = 25;
 
     /**
-     * @param string|null $status `draft` or `published`; null for both
+     * @param string|null $status        `draft` or `published`; null for both
+     * @param string|null $sort          a value of {@see ProductSort}; null for `name`
+     * @param bool        $withoutImages only the products that have no image
      */
     public function __construct(
         public ?string $term,
@@ -21,6 +23,8 @@ final readonly class ListBackofficeProducts
         public ?string $status,
         public ?string $after,
         public int $perPage = self::DEFAULT_PER_PAGE,
+        public ?string $sort = null,
+        public bool $withoutImages = false,
     ) {
     }
 }

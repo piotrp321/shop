@@ -9,7 +9,7 @@ E2E_FLAGS ?=
 E2E_BUILD ?= --build
 
 # One part of the suite, e.g. E2E_SHARD=1/3 (Playwright `--shard`: whole spec files, in file order, split by the number of
-# tests). CI runs each part on its own stack. E2E_SHARD_WEIGHTS=125:93:107 (one weight per part, the same in every part)
+# tests). CI runs each part on its own stack. E2E_SHARD_WEIGHTS=110:118:122 (one weight per part, the same in every part)
 # moves the boundary by the share of tests; it is Playwright's PWTEST_SHARD_WEIGHTS, which is not documented: without
 # it the split is even and every test still runs once. Both empty: the whole suite.
 E2E_SHARD ?=

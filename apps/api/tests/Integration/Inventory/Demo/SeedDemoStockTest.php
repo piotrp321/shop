@@ -8,6 +8,7 @@ use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Inventory\Application\Demo\DemoStockSeeder;
+use App\Inventory\Application\StockRecords\StockRecordSync;
 use App\Inventory\Infrastructure\Demo\DbalInventoryReset;
 use App\Inventory\Infrastructure\Demo\YamlDemoStockSource;
 use App\Inventory\UI\Console\SeedDemoStockCommand;
@@ -90,6 +91,12 @@ final class SeedDemoStockTest extends KernelTestCase
         );
         self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM inventory_reservation'));
         self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM inventory_reservation_line'));
+        // Every record knows the product of its variant, also the one of a stock of 0.
+        self::assertSame(
+            [],
+            $this->connection->fetchFirstColumn('SELECT v.id FROM catalog_product_variant v LEFT JOIN inventory_stock_item s ON s.variant_id = v.id WHERE s.product_id IS DISTINCT FROM v.product_id'),
+        );
+        self::assertStringContainsString('stock records written: 4', $tester->getDisplay());
     }
 
     public function testVariantWithoutPatternFailsAndLeavesTheDataUnchanged(): void
@@ -121,8 +128,10 @@ final class SeedDemoStockTest extends KernelTestCase
         $kernel = self::bootKernel();
         $seeder = self::getContainer()->get(DemoStockSeeder::class);
         self::assertInstanceOf(DemoStockSeeder::class, $seeder);
+        $records = self::getContainer()->get(StockRecordSync::class);
+        self::assertInstanceOf(StockRecordSync::class, $records);
         $application = new Application($kernel);
-        $application->addCommand(new SeedDemoStockCommand(new YamlDemoStockSource($this->file), $seeder, new DbalInventoryReset($this->connection), 'test'));
+        $application->addCommand(new SeedDemoStockCommand(new YamlDemoStockSource($this->file), $seeder, $records, new DbalInventoryReset($this->connection), 'test'));
 
         return new CommandTester($application->find('inventory:seed-demo'));
     }

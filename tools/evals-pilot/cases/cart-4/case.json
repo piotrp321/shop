@@ -1,0 +1,7 @@
+{
+  "id": "cart-4",
+  "kind": "defect",
+  "source": "issue #81, task CART-4, PR 76, squash commit on epic/cart",
+  "base_sha": "cd26cacc37540d8d1d51d3d8da7be363874a04a4",
+  "head_sha": "71e4a30eb862733d38d013a27938de050eeaf7b1"
+}

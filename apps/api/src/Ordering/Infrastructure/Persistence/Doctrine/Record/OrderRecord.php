@@ -34,6 +34,12 @@ use Doctrine\ORM\Mapping as ORM;
 // The history of a customer: (customer_id, placed_at DESC, id DESC) of the orders of customers only, written the same way.
 #[ORM\Index(name: 'ordering_order_customer_placed_at_id_idx', columns: ['customer_id', 'placed_at', 'id'], options: ['where' => "((owner_type)::text = 'customer'::text)"])]
 #[ORM\Index(name: 'ordering_order_pending_refund_idx', columns: ['refund_due_at', 'id'], options: ['where' => '((refund_amount IS NOT NULL) AND (refund_completed_at IS NULL))'])]
+// The sort by the amount: (total_gross, id) and (status, total_gross, id), created CONCURRENTLY by the migration, which
+// the mapping cannot express.
+#[ORM\Index(name: 'ordering_order_total_gross_id_idx', columns: ['total_gross', 'id'])]
+#[ORM\Index(name: 'ordering_order_status_total_gross_id_idx', columns: ['status', 'total_gross', 'id'])]
+// The rebuild of the hourly sales: the paid orders by the moment of their payment, created CONCURRENTLY by the migration.
+#[ORM\Index(name: 'ordering_order_paid_at_idx', columns: ['paid_at'], options: ['where' => '(paid_at IS NOT NULL)'])]
 class OrderRecord
 {
     public const string NUMBER_CONSTRAINT = 'ordering_order_number_key';

@@ -92,21 +92,6 @@ final readonly class DoctrineProductRepository implements ProductRepository
         }
     }
 
-    public function count(): int
-    {
-        return $this->entityManager->getRepository(ProductRecord::class)->count();
-    }
-
-    public function countWithoutImages(): int
-    {
-        $count = $this->entityManager->getConnection()->fetchOne(
-            "SELECT COUNT(*) FROM catalog_product WHERE images = '[]'::jsonb",
-        );
-        \assert(\is_int($count));
-
-        return $count;
-    }
-
     /**
      * A variant id that another product of this EntityManager already holds would collide in its identity map before
      * the primary key of the table is reached (the case of a seed that saves many products in one process).

@@ -8,6 +8,7 @@ use App\Catalog\Application\Demo\DemoCatalogLoader;
 use App\Catalog\Application\Port\CatalogReset;
 use App\Catalog\Application\Port\DemoCatalogSource;
 use App\Catalog\Application\Port\ProductIndexer;
+use App\Catalog\Application\Port\ProductTableStatistics;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -28,6 +29,7 @@ final readonly class SeedDemoCatalogCommand
         private DemoCatalogLoader $loader,
         private CatalogReset $reset,
         private ProductIndexer $indexer,
+        private ProductTableStatistics $statistics,
         #[Autowire('%kernel.environment%')]
         private string $environment,
         private float $pollIntervalSeconds = 0.5,
@@ -57,6 +59,8 @@ final readonly class SeedDemoCatalogCommand
 
         $this->reset->reset();
         $this->loader->load($catalog);
+        // The load replaced the products in bulk: the dashboard's estimate of their number is only as good as this.
+        $this->statistics->refresh();
 
         $categories = \count($catalog->categories);
         $products = \count($catalog->products);

@@ -33,7 +33,12 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
 3. Dla każdego zadania:
    - `scope`: aplikacje i moduły, kontrakty (endpointy, schematy OpenAPI, zdarzenia, migracje), czego zadanie nie
      obejmuje, gdy granica nie jest oczywista; z odwołaniem do sekcji specyfikacji.
-   - `acceptance_criteria`: sprawdzalne kryteria wzięte ze specyfikacji, bez nowych wymagań.
+   - `acceptance_criteria`: sprawdzalne kryteria wzięte ze specyfikacji, bez nowych wymagań. Kryterium nie przeczy
+     specyfikacji i nie jest od niej ostrzejsze. Ogólne kryterium regresji („istniejące testy przechodzą bez zmian”,
+     „żaden rekord bez X”) wpisujesz tylko wtedy, gdy zadanie nie zmienia zachowania ani danych, które te testy
+     sprawdzają. Gdy zadanie celowo zmienia istniejące zachowanie (uprawnienia, kontrakt, dane), kryterium nazywa tę
+     zmianę i mówi, że testy tego zachowania zmieniają się razem z nią. Gdy specyfikacja dopuszcza wyjątki (np. dane
+     sprzed wdrożenia, rekordy usuniętych obiektów), kryterium je wymienia.
    - `risk` według `/delivery`: `FAST` (lokalna zmiana niskiego ryzyka), `STANDARD` (funkcjonalność, API,
      integracja), `CRITICAL` (auth, pieniądze, migracje danych, transakcje, współbieżność, bezpieczeństwo).
      To ocena do planu i przeglądu; `/delivery` klasyfikuje ryzyko zadania sam i jego wynik jest wiążący.
@@ -44,7 +49,9 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
      wymaga istniejącego pierwszego segmentu) i idzie szeregowo.
 4. Kontrola przed przedstawieniem: każde kryterium akceptacji i każde zadanie dokumentacji ze specyfikacji jest
    w dokładnie jednym zadaniu (albo jawnie rozdzielone między kilka); żadne zadanie nie wnosi zakresu spoza
-   specyfikacji.
+   specyfikacji; każde kryterium zadania porównujesz z sekcjami specyfikacji wskazanymi w jego `scope`: żadne nie
+   wymaga zachowania, które specyfikacja usuwa albo zmienia, ani nie rozstrzyga inaczej przypadku, który
+   specyfikacja opisuje.
 5. Nie wymyślaj decyzji biznesowych. Gdy podział zależy od decyzji użytkownika (np. co wchodzi w pierwszą falę,
    kolejność wydania), zadaj wszystkie takie pytania w jednej wiadomości, każde z rekomendacją. Odpowiedzi nie są
    akceptacją planu.

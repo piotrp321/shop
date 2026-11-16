@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ariaSortOf } from "@/composables/listSort";
 import { useCategoryTree } from "@/composables/useCategoryTree";
 import { readUrl } from "@/config";
 import { formatDateTime } from "@/prices/format";
@@ -25,7 +26,7 @@ import { useAuthStore } from "@/stores/auth";
 
 const categories = useCategoryTree();
 const list = useProductList({ nodes: categories.nodes, loaded: categories.loaded });
-const { search, searchHint, query, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range } = list;
+const { search, searchHint, query, filtered, items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total } = list;
 
 // Only hides the action: the API checks the permission. The roles come from /api/v1/admin/me.
 const auth = useAuthStore();
@@ -42,14 +43,22 @@ const statusFilters = [
 const statusFilterLabel = computed(() => statusFilters.find((option) => option.value === (query.value.status ?? "all"))?.label);
 const statusFilterId = useId();
 
-const columns: ListColumn<ProductListItem>[] = [
-  { key: "product", header: "Produkt", main: true },
+const imagesFilters = [
+  { value: "all", label: "Wszystkie" },
+  { value: "none", label: "Bez zdjęć" },
+];
+const imagesFilterLabel = computed(() => imagesFilters.find((option) => option.value === (query.value.images ?? "all"))?.label);
+const imagesFilterId = useId();
+
+// The header of the column the list is sorted by says so with aria-sort.
+const columns = computed<ListColumn<ProductListItem>[]>(() => [
+  { key: "product", header: "Produkt", main: true, sort: ariaSortOf(query.value.sort, "name") },
   { key: "category", header: "Kategoria", hideBelow: "lg", text: (product) => product.mainCategory.name },
   { key: "variants", header: "Warianty", align: "right" },
   { key: "status", header: "Status" },
-  { key: "updated", header: "Ostatnia zmiana", hideBelow: "md", text: (product) => formatDateTime(product.updatedAt) },
+  { key: "updated", header: "Ostatnia zmiana", hideBelow: "md", text: (product) => formatDateTime(product.updatedAt), sort: ariaSortOf(query.value.sort, "updatedAt") },
   { key: "actions", header: "Akcje", align: "right" },
-];
+]);
 
 // „Edytuj” only for a role that can change products: the name of the product still opens the form, read-only.
 function actionsOf(product: ProductListItem): RowAction[] {
@@ -93,7 +102,10 @@ async function clearFilters() {
         :search-hint="searchHint"
         :filtered="filtered"
         :per-page="query.perPage"
+        :sort-options="list.sortOptions"
+        :sort="query.sort"
         @update:per-page="list.setPerPage"
+        @update:sort="list.setSort"
         @clear="clearFilters"
       >
         <template #filters>
@@ -126,6 +138,32 @@ async function clearFilters() {
               <SelectContent>
                 <SelectItem
                   v-for="option in statusFilters"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <Label :for="imagesFilterId">
+              Zdjęcia
+            </Label>
+            <Select
+              :model-value="query.images ?? 'all'"
+              @update:model-value="list.selectImages($event === 'none' ? 'none' : null)"
+            >
+              <SelectTrigger
+                :id="imagesFilterId"
+                data-testid="images-filter"
+                class="w-44"
+              >
+                <SelectValue>{{ imagesFilterLabel }}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="option in imagesFilters"
                   :key="option.value"
                   :value="option.value"
                 >
@@ -271,6 +309,7 @@ async function clearFilters() {
           :has-next="hasNext"
           :page-number="pageNumber"
           :range="range"
+          :total="total"
           @previous="list.goPrevious"
           @next="list.goNext"
         />

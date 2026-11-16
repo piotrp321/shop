@@ -8,10 +8,14 @@ use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateCategoryHandler;
 use App\Catalog\Domain\Category\CategoryAlreadyExists;
 use App\Catalog\Domain\Category\CategoryId;
-use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategorySlugTaken;
+use App\Catalog\Domain\Category\ParentCategoryNotFound;
 use App\Shared\Domain\Exception\Conflict;
+use App\Tests\Support\InMemory\FixedCatalogClock;
+use App\Tests\Support\InMemory\InMemoryCategoryRedirectRepository;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
+use App\Tests\Support\InMemory\RecordingCategoryTreeLock;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use PHPUnit\Framework\TestCase;
 
 final class CreateCategoryHandlerTest extends TestCase
@@ -27,7 +31,7 @@ final class CreateCategoryHandlerTest extends TestCase
     protected function setUp(): void
     {
         $this->categories = new InMemoryCategoryRepository();
-        $this->handler = new CreateCategoryHandler($this->categories);
+        $this->handler = new CreateCategoryHandler($this->categories, new InMemoryCategoryRedirectRepository(), new RecordingCategoryTreeLock($this->categories), new RecordingDomainEventPublisher(), new FixedCatalogClock());
     }
 
     public function testRootCategoryIsSaved(): void
@@ -106,12 +110,12 @@ final class CreateCategoryHandlerTest extends TestCase
         self::assertSame(0, $this->categories->count());
     }
 
-    public function testUnknownParentThrowsCategoryNotFoundAndSavesNothing(): void
+    public function testUnknownParentThrowsParentCategoryNotFoundAndSavesNothing(): void
     {
         try {
             ($this->handler)(new CreateCategory(self::CHILD_ID, 'Bieganie', 'bieganie', self::ROOT_ID));
-            self::fail('Expected CategoryNotFound.');
-        } catch (CategoryNotFound) {
+            self::fail('Expected ParentCategoryNotFound.');
+        } catch (ParentCategoryNotFound) {
         }
 
         self::assertSame(0, $this->categories->count());

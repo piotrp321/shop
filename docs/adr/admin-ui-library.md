@@ -20,8 +20,8 @@ mogą dzielić rodzaj komponentów i tokenów. Specyfikacja: `docs/features/admi
   pakiet npm i nie z hosta zewnętrznego.
 - PrimeVue, `@primeuix/themes` i `primeicons` są usunięte z panelu (`package.json`, kod i testy); `no-restricted-imports`
   blokuje ich import w każdym pliku `src/`, więc nie wrócą przypadkiem.
-- `@tanstack/vue-table` nie wchodzi: listy są stronicowane w API, a model tabeli nic nie daje przed pierwszym sortowaniem
-  i zaznaczaniem (ADMIN-FEATURES).
+- `@tanstack/vue-table` nie wchodzi: listy są stronicowane w API, a kolejność wybiera `Select` „Sortuj” w pasku listy
+  (sortuje API, po zamkniętej liście kluczy), więc model tabeli nic nie daje.
 
 ### Pakiety i licencje
 

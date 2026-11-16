@@ -51,7 +51,8 @@ final class ListBackofficeStockTest extends KernelTestCase
 
     public function testTheVariantsAndTheStocksOfAPageAreReadWithAFixedNumberOfStatementsWhateverTheSize(): void
     {
-        $this->products(25, 3);
+        // One product more than the big page, so that both pages have a next one and both count the products.
+        $this->products(26, 3);
         $this->ask(new ListBackofficeStock(null, null, null, 1)); // warms up what is read once per process
 
         $before = $this->counter->count();

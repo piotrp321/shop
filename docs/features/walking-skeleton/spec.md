@@ -53,7 +53,7 @@ są przypięte w pliku compose, a wersja Elasticsearch w `infra/elasticsearch/Do
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
 | `api` | własny obraz FrankenPHP, PHP 8.5, target `dev` (z SPX) | HTTP API | `GET /health` |
-| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events scheduled` | proces konsumenta działa |
+| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events scheduled payment_simulator promotions jobs` | proces konsumenta działa |
 | `store` | Node 24, `next dev` | sklep | `GET /` |
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E i pomiar Lighthouse, uruchamiany tylko przez `make e2e` i `make lighthouse` | — |
@@ -619,7 +619,9 @@ i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTr
 
 ```json
 {
-  "catalog": { "productCount": 412, "categoryCount": 36, "productsWithoutImages": 8 },
+  "catalog": { "productCount": { "value": 412, "estimated": true }, "categoryCount": 36 },
+  "queues": { "paidToShip": { "value": 3, "capped": false }, "awaitingPayment": null, "pendingRefunds": null, "overdueRefunds": null,
+              "outOfStockVariants": null, "lowStockVariants": null, "productsWithoutImages": { "value": 8, "capped": false } },
   "system": {
     "services": [{ "name": "postgres", "status": "up", "latencyMs": 3 }],
     "outbox": { "pending": 0 },
@@ -628,6 +630,10 @@ i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTr
   }
 }
 ```
+
+- `catalog.productCount` to szacunek bazy (`pg_class.reltuples`), `null` przed pierwszymi statystykami; `queues` to liczniki ograniczone
+  do 1000, każdy `null` dla roli bez dostępu do kolejki; `searchIndex.inSync` to zgodność w granicach 1% szacunku (`null` bez
+  szacunku). Szczegóły: `docs/features/admin-features/spec.md`, sekcja 1.
 
 - `system` jest `null`, gdy `DashboardVoter` odmówi atrybutu `VIEW_SYSTEM_STATUS` (wymaga roli `admin`).
 - `services` zawsze w tej kolejności: `postgres`, `redis`, `elasticsearch`, `rabbitmq`, `keycloak`, `garage`,
@@ -662,12 +668,13 @@ w tej kolejności:
 - Klient HTTP API ma limit 2 s na połączenie i odpowiedź oraz 5 s na całe żądanie, więc zawieszony Keycloak nie
   blokuje żądań.
 - `StaffUser`: `sub`, `preferred_username`, role z `realm_access.roles` przycięte do `admin`, `support`,
-  `warehouse`, `marketing` (w tej kolejności); dostaje `ROLE_STAFF`.
+  `warehouse`, `marketing` (w tej kolejności); `ROLE_STAFF` dostaje tylko z co najmniej jedną z nich.
 - `CustomerUser`: `sub`, `email`, `name` (pusty, gdy go nie ma); dostaje `ROLE_CUSTOMER`. Token bez `email` daje 401.
 - `StaffUser` i `CustomerUser` to osobne klasy, bez wspólnej klasy bazowej. Implementują interfejsy z warstwy
   Application swoich modułów (`AuthenticatedStaffMember`, `AuthenticatedCustomer`), a kontrolery dostają je przez
   `#[CurrentUser]`. Dzięki temu UI nie zależy od Infrastructure.
-- `access_control` domyślnie odmawia: `/api/v1/admin` wymaga `ROLE_STAFF`, reszta `/api/v1` `ROLE_CUSTOMER`, poza
+- `access_control` domyślnie odmawia: `/api/v1/admin` wymaga `ROLE_STAFF` (poza `GET /api/v1/admin/me`, które wymaga
+  tylko uwierzytelnienia), reszta `/api/v1` `ROLE_CUSTOMER`, poza
   jawnie publicznymi `GET` (`products`, `categories`) z `PUBLIC_ACCESS`. Nowy endpoint publiczny trzeba tam dopisać.
 - Przesłanie nieprawidłowego tokena do endpointu publicznego też daje 401. Nagłówek `Authorization` z innym
   schematem niż `Bearer` (albo z wartością spoza składni tokena) jest traktowany jak brak tokena.

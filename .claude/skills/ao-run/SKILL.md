@@ -200,6 +200,11 @@ istnieje zarejestrowany `KUBE_DIR` operacji produkcyjnej (przed sondą i po niej
 obejścia z tej kopii (model Haiku, do kilkunastu minut z przygotowaniem). Wykonawcy AO działają potem przez wrapper
 z kopii, w sandboxie z profilu.
 
+Limity epiku zależą od liczby zadań planu `N` (długość listy `tasks` z `python3 "$SKILL_ROOT/.claude/skills/planner/plan_manifest.py"
+validate "$SHOP/docs/features/<epik>/plan.md"`): `EPIC_MAX_ATTEMPTS` = max(24, 2·N + 4), `EPIC_TIMEOUT` = max(57600, 8640·N)
+sekund (2,4 h na zadanie). Każde `ao run` tego epiku (pierwsze, po blokerze, po wznowieniu, w nowej sesji, w nocy)
+dostaje te same wartości w bloku startowym epiku; bez polecenia użytkownika ich nie zmieniasz.
+
 Uruchom Bash z `run_in_background` (po bloku startowym), z wyjściem do `$AO_HOME/run.log`. Wrapper `ao` jest
 funkcją, więc w tle użyj tego samego `env ... python3 -m orchestrator`:
 
@@ -212,7 +217,7 @@ AGENT_AO_HOME="$(printf '%s\n' "$prep" | sed -n 's/^AGENT_AO_HOME=//p')" &&
 caffeinate -dims env $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/-u \1/p') \
   AGENT_CLAUDE_BIN="$AGENT_CLAUDE_BIN" AGENT_AO_HOME="$AGENT_AO_HOME" PYTHONPATH="$AO_DIR" \
   python3 -m orchestrator --home "$AO_HOME" run --until-idle --claude-bin "$AO_CLAUDE_BIN" --max-parallel 2 \
-  --max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3 \
+  --max-budget-usd 30 --timeout 14400 --epic-max-attempts "$EPIC_MAX_ATTEMPTS" --epic-timeout "$EPIC_TIMEOUT" --max-qa-rounds 3 \
   --notify-cmd "python3 $SKILL_ROOT/.claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl" \
   >> "$AO_HOME/run.log" 2>&1
 ```

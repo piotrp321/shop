@@ -120,6 +120,7 @@ describe("SystemView", () => {
 
     expect(wrapper.get("[data-testid=search-index]").text()).toContain("412");
     expect(wrapper.find("[data-testid=out-of-sync]").exists()).toBe(false);
+    expect(wrapper.find("[data-testid=not-comparable]").exists()).toBe(false);
   });
 
   it("warns about a discrepancy with both numbers", async () => {
@@ -130,6 +131,17 @@ describe("SystemView", () => {
     expect(message.attributes("role")).toBe("status");
     expect(message.text()).toContain("400");
     expect(message.text()).toContain("412");
+  });
+
+  it("says that the index cannot be compared without an estimate of the products, and warns of nothing", async () => {
+    serve(dashboard({ system: system({ searchIndex: { indexedProducts: 412, catalogProducts: null, inSync: null } }) }));
+    wrapper = await mountSystem();
+
+    const index = wrapper.get("[data-testid=search-index]");
+    expect(index.text()).toContain("412");
+    expect(wrapper.get("[data-testid=not-comparable]").text()).toBe("Nie można porównać: brak statystyk bazy.");
+    expect(wrapper.get("[data-testid=not-comparable]").attributes("role")).toBe("status");
+    expect(wrapper.find("[data-testid=out-of-sync]").exists()).toBe(false);
   });
 
   it("warns about a discrepancy with an unknown index count when indexedProducts is null", async () => {

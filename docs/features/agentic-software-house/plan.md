@@ -14,14 +14,15 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482); przygotowane do startu: EVALS (#495). Kolejność epików jest na tablicy
-„Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: AGENT-SECURITY (końcowy PR #548; 4 interwencje, 4 czekania
-na użytkownika, razem 26 min, 1 ręczna poprawka). Retro do zrobienia: ADMIN-SCREENS (retro AGENT-SECURITY w tym PR).
+W toku przez `/ao-run`: DEMO-DATA (#482), EVALS (#495); przygotowane do startu: METRICS (#496). Kolejność epików
+jest na tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: ADMIN-FEATURES (końcowy PR #623;
+5 interwencji, 5 czekań na użytkownika, razem 528 min, 1 ręczna poprawka). Retro do zrobienia: brak (retro
+ADMIN-FEATURES w tym PR).
 Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 69, zamkniętych 49.
-Kolejność kroków 16–22: 16 i 19a zrobione (pomiar par trwa), teraz 17, 18 i 19b
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 91, zamkniętych 50.
+Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17, 18 i 19b
 (w toku); 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
 | Krok | Zakres | Status |
@@ -74,7 +75,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Evale agentów i workflowów, benchmark i kryteria regresji | `make evals` | krok 17 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
-| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w Grafana Cloud | krok 18 |
+| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w lokalnym stosie na Macu | krok 18 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues, dyżur i hypercare | agent dyżurny: Sentry i Grafana Cloud przez MCP, tylko odczyt | krok 11 |
 
@@ -349,7 +350,8 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
      bez uruchamiania modelu;
    - każde uruchomienie ma limit kosztu i zużycia limitu subskrypcji ustalony w specyfikacji.
 18. **Pomiar, koszty i optymalizacja.**
-   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w Grafana Cloud.
+   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
+     z retencją ustawianą lokalnie, dłuższą niż 14 dni darmowego planu Grafana Cloud.
    - Pomiar każdego epiku: czas zegarowy (miara główna), czas rzeczywistej pracy, oczekiwania i blokad; koszt
      i tokeny na agenta, model i zadanie; ponowienia, naprawy i konflikty; czas testów, selftestów i integracji;
      interwencje człowieka; regresje i błędy po merge'u.

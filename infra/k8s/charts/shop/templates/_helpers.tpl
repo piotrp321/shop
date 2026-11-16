@@ -347,7 +347,7 @@ ttlSecondsAfterFinished: the finished Job stays; `make -C infra/k8s rerun JOB=<n
 Parameters: root, name, wave, template (YAML of the pod template: metadata and spec).
 */}}
 {{- define "shop.job" -}}
-{{- $settings := dict "backoffLimit" .root.Values.jobs.backoffLimit "activeDeadlineSeconds" .root.Values.jobs.activeDeadlineSeconds -}}
+{{- $settings := dict "backoffLimit" .root.Values.jobs.backoffLimit "activeDeadlineSeconds" (.activeDeadlineSeconds | default .root.Values.jobs.activeDeadlineSeconds) -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -359,8 +359,8 @@ metadata:
   annotations:
     {{- include "shop.wave" .wave | nindent 4 }}
 spec:
-  backoffLimit: {{ .root.Values.jobs.backoffLimit }}
-  activeDeadlineSeconds: {{ .root.Values.jobs.activeDeadlineSeconds }}
+  backoffLimit: {{ $settings.backoffLimit }}
+  activeDeadlineSeconds: {{ $settings.activeDeadlineSeconds }}
   template:
     {{- .template | nindent 4 }}
 {{- end }}

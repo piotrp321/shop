@@ -212,6 +212,28 @@ final class DiscountCodesEndpointTest extends WebTestCase
         self::assertNull($second['next']);
     }
 
+    public function testTheFirstPageHoldsTheTotalOfTheMatchingCodesAndLaterPagesNone(): void
+    {
+        $this->storedCode(['code' => 'ZIMA20', 'enabled' => false]);
+        $this->storedCode(['code' => 'WIOSNA', 'startsAt' => '+1 day']);
+        $this->storedCode(['code' => 'WITAJ10']);
+        $this->storedCode(['code' => 'WITAJ20']);
+        $this->storedCode(['code' => 'LATO15', 'startsAt' => '-60 days', 'endsAt' => '-30 days']);
+
+        $first = $this->send('GET', '/api/v1/admin/discount-codes?perPage=2');
+        self::assertIsString($first['next']);
+        $second = $this->send('GET', '/api/v1/admin/discount-codes?perPage=2&after='.$first['next']);
+
+        self::assertSame(['value' => 5, 'capped' => false], $first['total']);
+        self::assertNull($second['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?status=active')['total']);
+        self::assertSame(['value' => 3, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode(' wi '))['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?status=planned&q=Wi')['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode('wi%'))['total']);
+        $this->assertKeysMatchSchema($first, 'DiscountCodeListResponse');
+        $this->assertKeysMatchSchema($first['total'], 'BoundedCountResponse');
+    }
+
     public function testTheListFiltersByStatusAndByTheBeginningOfTheCode(): void
     {
         $disabled = $this->storedCode(['code' => 'ZIMA20', 'enabled' => false]);
@@ -237,7 +259,7 @@ final class DiscountCodesEndpointTest extends WebTestCase
 
         $none = $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode('wi%'));
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['items' => [], 'next' => null], $none);
+        self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $none);
     }
 
     public function testAPrefixOf32CharactersFollowedByANoBreakSpaceFiltersLikeOneOf32(): void

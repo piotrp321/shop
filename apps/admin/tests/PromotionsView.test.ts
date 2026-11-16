@@ -6,8 +6,9 @@ import type { components } from "@/api/schema";
 import { Select } from "@/components/ui/select";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import PromotionsView from "@/views/PromotionsView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type PromotionList = components["schemas"]["PromotionListResponse"];
+type PromotionList = WithOptionalTotal<components["schemas"]["PromotionListResponse"]>;
 type PromotionListItem = components["schemas"]["PromotionListItemResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -233,6 +234,17 @@ describe("PromotionsView", () => {
 
   describe("paging", () => {
     const pager = (testid: string) => wrapper!.get(`[data-testid=${testid}]`);
+
+    it("says „z N” with the total of the first page on the next page too", async () => {
+      serve({ "": { items: [item("A")], next: "c1", total: { value: 12, capped: false } }, c1: { items: [item("B")], next: null, total: null } });
+      wrapper = await mountView();
+      expect(pager("range").text()).toBe("Pokazano 1–1 z 12");
+
+      await pager("next-page").trigger("click");
+      await flushPromises();
+
+      expect(pager("range").text()).toBe("Pokazano 26–26 z 12");
+    });
 
     it("pages with the cursors of the API and says which promotions are shown", async () => {
       serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });

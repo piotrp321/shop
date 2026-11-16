@@ -130,17 +130,35 @@ final class GetCategoryTreeHandlerTest extends TestCase
         );
     }
 
-    private function root(string $id, string $name, ?string $slug = null): Category
+    /**
+     * The order a staff member set (position) comes first; name and id only order equal positions, so with all
+     * positions 0 (after the migration and the seed) the order is the alphabetical one.
+     */
+    public function testThePositionOrdersTheSiblingsBeforeTheName(): void
     {
-        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id));
+        $this->root('00000000-0000-4000-8000-000000000001', 'Akcesoria', 'akcesoria', 1);
+        $sport = $this->root('00000000-0000-4000-8000-000000000002', 'Sport', 'sport', 0);
+        $this->root('00000000-0000-4000-8000-000000000003', 'Bieganie', 'bieganie', 1);
+        $this->child('00000000-0000-4000-8000-000000000004', 'Zima', $sport, 'zima', 0);
+        $this->child('00000000-0000-4000-8000-000000000005', 'Lato', $sport, 'lato', 3);
+
+        $tree = ($this->handler)(new GetCategoryTree());
+
+        self::assertSame(['sport', 'akcesoria', 'bieganie'], array_map(static fn (CategoryNode $node): string => $node->slug, $tree));
+        self::assertSame(['zima', 'lato'], array_map(static fn (CategoryNode $node): string => $node->slug, $tree[0]->children));
+    }
+
+    private function root(string $id, string $name, ?string $slug = null, int $position = 0): Category
+    {
+        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id), $position);
         $this->categories->save($category);
 
         return $category;
     }
 
-    private function child(string $id, string $name, Category $parent, ?string $slug = null): Category
+    private function child(string $id, string $name, Category $parent, ?string $slug = null, int $position = 0): Category
     {
-        $category = Category::createChild(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id), $parent);
+        $category = Category::createChild(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id), $parent, $position);
         $this->categories->save($category);
 
         return $category;

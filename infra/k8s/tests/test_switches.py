@@ -72,7 +72,7 @@ class OrderMailTest(unittest.TestCase):
         for case, (_, _, order_mail, _) in SWITCHES.items():
             found = self.mailer_containers(case)
             workloads = {key.split("/")[0] for key in found}
-            self.assertLessEqual({"api", "worker", "migrate", "initialize", "purge-caches", "cart-purge-expired"}, workloads, case)
+            self.assertLessEqual({"api", "worker", "migrate", "initialize", "purge-caches", "backfill", "cart-purge-expired"}, workloads, case)
             for key, container in found.items():
                 entries = container["env"]
                 env = env_of(container)
@@ -195,7 +195,7 @@ class SwitchJobNamesTest(unittest.TestCase):
 
     def test_order_mail_runs_the_jobs_of_the_api_image_again_but_not_keycloak_config(self):
         old, new = self.names("prod"), self.names("prod-order-brevo")
-        for job in ("migrate", "initialize", "purge-caches"):
+        for job in ("migrate", "initialize", "purge-caches", "backfill"):
             self.assertNotEqual(old[job], new[job], job)
         self.assertEqual(old["keycloak-config"], new["keycloak-config"])
 

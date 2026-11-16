@@ -28,6 +28,10 @@ final readonly class ProductInput
     }
 
     /**
+     * Every category is locked against its delete until the end of the transaction of the write (a key share lock on
+     * its row), so the delete of a category either counts this product or waits and the write then fails on the
+     * missing category, never on the foreign key.
+     *
      * @param list<string> $additionalCategoryIds
      *
      * @throws UnknownCategory when the main or an additional category does not exist (the position of the additional one)
@@ -49,7 +53,7 @@ final readonly class ProductInput
     private function requireCategory(CategoryId $id, ?int $index): void
     {
         try {
-            $this->categories->get($id);
+            $this->categories->lockForAssignment($id);
         } catch (CategoryNotFound) {
             throw new UnknownCategory($index);
         }

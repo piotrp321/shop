@@ -5,8 +5,9 @@ import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { SEARCH_DEBOUNCE_MS, useProductList } from "@/products/useProductList";
+import type { WithOptionalTotal } from "./listPage";
 
-type ProductList = components["schemas"]["ProductListResponse"];
+type ProductList = WithOptionalTotal<components["schemas"]["ProductListResponse"]>;
 type ProductListItem = components["schemas"]["ProductListItemResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -192,6 +193,31 @@ describe("useProductList", () => {
     expect(queries().at(-1)).toEqual({ q: "baton" });
   });
 
+  it("filters the products without images, together with the search, the category and the status", async () => {
+    const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+    await list.goNext();
+
+    list.selectImages("none");
+    await settle();
+    expect(queries().at(-1)).toEqual({ images: "none" });
+    expect(list.hasPrevious.value).toBe(false);
+    expect(list.filtered.value).toBe(true);
+
+    list.selectCategory("c-run");
+    list.selectStatus("draft");
+    await settle();
+    expect(queries().at(-1)).toEqual({ category: "c-run", status: "draft", images: "none" });
+
+    list.search.value = "baton";
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+    await settle();
+    expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run", status: "draft", images: "none" });
+
+    list.selectImages(null);
+    await settle();
+    expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run", status: "draft" });
+  });
+
   it("does not ask again for a filter that did not change", async () => {
     const list = await start({ "": { items: [item("A")], next: null } });
 
@@ -343,6 +369,44 @@ describe("useProductList", () => {
       expect(router!.currentRoute.value.query).toEqual({ q: "bidon", status: "published", category: "c-run", perPage: "10" });
     });
 
+    it("reads the filter of the products without images from the address with one request and writes it back", async () => {
+      const list = await start(one, undefined, "/products?images=none&status=draft");
+
+      expect(queries()).toEqual([{ status: "draft", images: "none" }]);
+      expect(list.query.value.images).toBe("none");
+
+      list.selectImages(null);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ status: "draft" });
+
+      list.selectImages("none");
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ status: "draft", images: "none" });
+    });
+
+    it.each(["/products?images=all", "/products?images=", "/products?images=NONE", "/products?images=none&images=some"])(
+      "skips a filter of the images that is not „none” (%s), without asking for it",
+      async (address) => {
+        const list = await start(one, undefined, address);
+
+        expect(queries()).toEqual([{}]);
+        expect(list.query.value.images).toBeNull();
+        expect(router!.currentRoute.value.query).toEqual({});
+      },
+    );
+
+    it("clears the filter of the images with the rest of the filters", async () => {
+      const list = await start(one, undefined, "/products?images=none&q=buty");
+      mocks.get.mockClear();
+
+      list.clearFilters();
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries()).toEqual([{}]);
+    });
+
     it("sends the page size only when it is not the default of the API", async () => {
       const list = await start(one);
 
@@ -410,6 +474,99 @@ describe("useProductList", () => {
     });
   });
 
+  describe("the sort", () => {
+    const one = { "": { items: [item("A")], next: null } };
+
+    it("lists by name without a sort, and does not send the default", async () => {
+      const list = await start(one);
+
+      expect(queries()).toEqual([{  }]);
+      expect(list.query.value.sort).toBe("name");
+      expect(list.sortOptions.map((option) => [option.value, option.label])).toEqual([
+        ["name", "Nazwa A–Z"],
+        ["-name", "Nazwa Z–A"],
+        ["-updatedAt", "Ostatnio zmienione"],
+        ["updatedAt", "Najdawniej zmienione"],
+      ]);
+    });
+
+    it.each(["-name", "-updatedAt", "updatedAt"])("reads the sort %s of the address with one request", async (sort) => {
+      const list = await start(one, undefined, "/products?sort=" + sort);
+
+      expect(queries()).toEqual([{ sort }]);
+      expect(list.query.value.sort).toBe(sort);
+    });
+
+    it("writes the chosen sort to the address without a new entry, asks once from the first page and drops the default", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      await list.goNext();
+      expect(list.pageNumber.value).toBe(2);
+      const push = vi.spyOn(router!, "push");
+
+      list.setSort("-updatedAt");
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({ sort: "-updatedAt" });
+      expect(queries().at(-1)).toEqual({ sort: "-updatedAt" });
+      expect(list.pageNumber.value).toBe(1);
+      expect(queries().filter((query) => query.sort === "-updatedAt")).toHaveLength(1);
+
+      list.setSort("name");
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries().at(-1)).toEqual({  });
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it("applies a change of the address from outside with one request", async () => {
+      await start(one);
+      mocks.get.mockClear();
+
+      await router!.push({ path: "/products", query: { sort: "updatedAt" } });
+      await settle();
+
+      expect(queries()).toEqual([{ sort: "updatedAt" }]);
+    });
+
+    it.each(["/products?sort=price", "/products?sort=", "/products?sort=--name", "/products?sort=Name", "/products?sort=-placedAt"])(
+      "skips the invalid sort of %s and corrects the address",
+      async (address) => {
+        const list = await start(one, undefined, address);
+
+        expect(queries()).toEqual([{  }]);
+        expect(list.query.value.sort).toBe("name");
+        expect(router!.currentRoute.value.fullPath).toBe("/products");
+      },
+    );
+
+    it("does not take a parameter of another name (sort[]) as the sort", async () => {
+      const list = await start(one, undefined, "/products?sort[]=-name");
+
+      expect(queries()).toEqual([{}]);
+      expect(list.query.value.sort).toBe("name");
+    });
+
+    it("is no filter: „Wyczyść filtry” does not show for it, but clearing drops it", async () => {
+      const list = await start(one, undefined, "/products?sort=-name");
+      expect(list.filtered.value).toBe(false);
+
+      list.clearFilters();
+      await settle();
+
+      expect(list.query.value.sort).toBe("name");
+      expect(router!.currentRoute.value.query).toEqual({});
+    });
+
+    it("keeps the sort when a filter changes", async () => {
+      const list = await start(one, undefined, "/products?sort=-name");
+
+      list.setPerPage(50);
+      await settle();
+
+      expect(queries().at(-1)).toEqual({ perPage: 50, sort: "-name" });
+    });
+  });
+
   describe("errors", () => {
     it("shows no rows and no pager after a failed change of the query, until a retry succeeds (#251 F10)", async () => {
       const list = await start({ "": { items: [item("A")], next: "c1" } });
@@ -448,5 +605,22 @@ describe("useProductList", () => {
 
     await list.goNext();
     expect(list.range.value).toEqual({ from: 26, to: 50 });
+  });
+
+  it("gives the total of the first page for „z N”, keeps it on the next pages and takes the one of a new query", async () => {
+    const pages: Record<string, ProductList> = {
+      "": { items: [item("A")], next: "c1", total: { value: 1234, capped: false } },
+      c1: { items: [item("B")], next: null, total: null },
+    };
+    const list = await start(pages);
+    expect(list.total.value).toEqual({ value: 1234, capped: false });
+
+    await list.goNext();
+    expect(list.total.value).toEqual({ value: 1234, capped: false });
+
+    pages[""] = { items: [item("Szkic", { status: "draft" })], next: null, total: { value: 5, capped: false } };
+    list.selectStatus("draft");
+    await settle();
+    expect(list.total.value).toEqual({ value: 5, capped: false });
   });
 });
