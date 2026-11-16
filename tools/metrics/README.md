@@ -137,12 +137,15 @@ tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie z
   `system/permission_denied` według `tool_name` (także subagentów i prób bez wyniku).
 - **`versions`:** wersje CLI z `system/init` i modele z wiadomości z liczbą prób; nazwa, która nie jest identyfikatorem
   (`[A-Za-z0-9._+-[]]`, do 64 znaków), nie trafia do rekordu.
-- **`subscription.share`:** wartość tokenów epiku w jego przedziale pomiaru (od `start` do `done` w `measurements.jsonl`)
-  przez łączną wartość tokenów epiku i epików, które się w nim nakładały. Wartość próby jest przypisana do przedziału
+- **`subscription.share`:** wartość tokenów epiku we wspólnym przedziale przez łączną wartość tokenów epiku i epików,
+  które się w nim nakładały, w tym przedziale. Wspólny przedział to część przedziału pomiaru epiku (od `start` do `done`
+  w `measurements.jsonl`), w której nakładał się z innym epikiem (przy kilku epikach suma ich części wspólnych); wartość
+  nakładającego się epiku liczy się w jego własnej części wspólnej. Wartość próby jest przypisana do przedziału
   równomiernie w czasie trwania próby (próba częściowo poza przedziałem wnosi proporcjonalną część); wartość innych
-  epików z ich zapisanych rekordów (`attempts` z `started_at`, `ended_at`, `value`). Bez nakładania `1`
-  (`share_estimated: false`); przy nakładaniu `share_estimated: true`, a gdy brak rekordu nakładającego się epiku, jego
-  próby bez wartości albo własna wartość nieznana: `null` z pozycją w `gaps`. Surowy przyrost (`windows`) zostaje obok.
+  epików z ich zapisanych rekordów (`attempts` z `started_at`, `ended_at`, `value`). Epik 10 h z godzinną
+  nakładką w tym samym tempie ma `share` około 0,5. Bez nakładania `1` (`share_estimated: false`); przy nakładaniu
+  `share_estimated: true`, a gdy brak rekordu nakładającego się epiku, jego próby bez wartości albo własna wartość
+  nieznana: `null` z pozycją w `gaps`. Surowy przyrost (`windows`) zostaje obok i obejmuje cały przedział pomiaru.
 
 ### Pola jeszcze nieobecne
 

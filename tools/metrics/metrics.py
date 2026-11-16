@@ -1140,44 +1140,51 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
 
 # ------------------------------------------------------------------------------------------------- subscription share
 
-def value_within(attempts, low, high):
-    """The value of the attempts (entries of the record) inside [low, high], assigned evenly over the duration of each
-    attempt (an attempt without an end runs to `high`). None when an attempt that touches the interval has no value."""
+def value_within(attempts, intervals):
+    """The value of the attempts (entries of the record) inside the disjoint [low, high] intervals, assigned evenly
+    over the duration of each attempt (an attempt without an end runs to the end of the last interval). None when an
+    attempt that touches an interval has no value."""
     total = 0.0
+    horizon = max((high for _, high in intervals), default=None)
     for attempt in attempts:
         start, end = _timestamp(attempt.get('started_at')), _timestamp(attempt.get('ended_at'))
         if start is None:
             continue
-        end = high if end is None else end
-        if end > start:
-            fraction = max(0.0, min(end, high) - max(start, low)) / (end - start)
-        else:
-            fraction = 1.0 if low <= start <= high else 0.0
-        if fraction <= 0:
-            continue
-        if not _is_number(attempt.get('value')):
-            return None
-        total += attempt['value'] * fraction
+        end = horizon if end is None else end
+        for low, high in intervals:
+            if end > start:
+                fraction = max(0.0, min(end, high) - max(start, low)) / (end - start)
+            else:
+                fraction = 1.0 if low <= start <= high else 0.0
+            if fraction <= 0:
+                continue
+            if not _is_number(attempt.get('value')):
+                return None
+            total += attempt['value'] * fraction
     return total
 
 
-def add_share(subscription, span, attempts, records, gaps):
-    """`share` of the subscription: the value of this epic in its measurement interval by the value of all epics that
-    ran in it (each epic's attempts assigned to the interval evenly over their duration); 1 without overlapping
-    epics; None with a gap when the value of this epic or of an overlapping one is not known (no record of it)."""
+def add_share(subscription, stretches, attempts, records, gaps):
+    """`share` of the subscription (spec: Rekord epiku): the value of this epic in the common interval (the parts of
+    its measurement interval in which another epic ran; the union when there are several) by the value of this epic and
+    of the overlapping epics in it (each epic's attempts assigned to the interval evenly over their duration, the other
+    epics' only within their own stretches of the overlap); 1 without overlapping epics; None with a gap when the value
+    of this epic or of an overlapping one is not known (no record of it). `stretches`: {epic: [(start, end)]}."""
     subscription['share'], subscription['share_estimated'] = None, False
     if not subscription['overlap']:
         subscription['share'] = 1
         return
     subscription['share_estimated'] = True
-    mine = value_within(attempts, span['begin'], span['end'])
+    common = clip_merge([stretch for epic in subscription['overlap'] for stretch in stretches.get(epic, [])],
+                        float('-inf'), float('inf'))
+    mine = value_within(attempts, common)
     if mine is None:
         gaps.add('subscription.share', 'wartość tokenów epiku nieznana (próby bez wartości)')
         return
     total = mine
     for other in subscription['overlap']:
         record = records.get(other)
-        theirs = value_within(record['attempts'], span['begin'], span['end']) \
+        theirs = value_within(record['attempts'], clip_merge(stretches.get(other, []), float('-inf'), float('inf'))) \
             if isinstance(record, dict) and isinstance(record.get('attempts'), list) else None
         if theirs is None:
             gaps.add('subscription.share', 'brak wartości tokenów epiku %s (brak rekordu albo prób bez wartości)'
@@ -1527,7 +1534,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     subscription, parallel, stretches, span = night_fields(ao_run, epic_id, started, run_end, night_dir, gaps)
     fields = transcript_fields(ao_home, ao_run, config, records, epic_id, gaps)
     if subscription is not None:
-        add_share(subscription, span, fields['attempts'], records, gaps)
+        add_share(subscription, stretches, fields['attempts'], records, gaps)
     retries = retries_of(ao_run, run_ended, gaps)
     retries['sync_prs'] = None if github['sync'] is None else [{'number': p['number'], 'state': p['state']}
                                                                 for p in github['sync']]

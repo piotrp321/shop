@@ -72,7 +72,9 @@ class ShareTest(ShareEnv):
         self.stored('other', [attempt_of(1000, 3000, 5.0)])
         sub, record = self.subscription(self.demo([(200, 4000, 10.0)]))
         self.assertEqual(sub['overlap'], ['other'])
-        self.assertAlmostEqual(sub['share'], 10.0 / 15.0, places=4)
+        # the common interval is 1000..3000: demo has 10 * 2000 / 3800, other all of its 5
+        mine = 10.0 * 2000.0 / 3800.0
+        self.assertAlmostEqual(sub['share'], mine / (mine + 5.0), places=4)
         self.assertTrue(sub['share_estimated'])
         self.assertEqual(sub['windows'], {ALL: 20})          # the raw increase stays next to the share
         self.assertFalse(any(g.startswith('subscription.share') for g in record['gaps']), record['gaps'])
@@ -82,9 +84,37 @@ class ShareTest(ShareEnv):
                          event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
         self.stored('other', [attempt_of(1000, 3000, 4.0)])        # half of it lies in the interval of demo
         sub, _ = self.subscription(self.demo([(2000, 4000, 6.0), (4500, 7500, 6.0)], begin=2000))
-        # demo: 6 + the part of 6 USD of an attempt 3000 s long of which 510 s lie before the end of the interval
-        mine = 6.0 + 6.0 * 510.0 / 3000.0
-        self.assertAlmostEqual(sub['share'], mine / (mine + 2.0), places=4)
+        # the common interval is 2000..3000: demo has half of its first attempt (6 USD over 2000 s), other half of its 4
+        self.assertAlmostEqual(sub['share'], 3.0 / (3.0 + 2.0), places=4)
+
+    def test_a_long_epic_with_a_short_overlap_at_the_same_rate_has_a_share_of_one_half(self):
+        hour = 3600
+        self.night_file([event('demo', 0, 'start', 10), event('other', 4 * hour, 'start', 12),
+                         event('other', 5 * hour, 'done', 14), event('demo', 10 * hour, 'done', 40)])
+        self.stored('other', [attempt_of(4 * hour, 5 * hour, 3.6)])
+        sub, _ = self.subscription(self.demo([(0, 10 * hour, 36.0)], begin=0, end=10 * hour))
+        self.assertAlmostEqual(sub['share'], 0.5, places=4)
+        self.assertEqual(sub['windows'], {ALL: 30})           # the raw increase of the whole interval
+
+    def test_the_common_interval_is_the_union_of_the_overlaps_with_several_epics(self):
+        hour = 3600
+        self.night_file([event('demo', 0, 'start', 10), event('early', 0, 'start', 10), event('early', hour, 'done', 11),
+                         event('late', 9 * hour, 'start', 20), event('late', 10 * hour, 'done', 21),
+                         event('demo', 10 * hour, 'done', 40)])
+        self.stored('early', [attempt_of(0, hour, 3.6)])
+        self.stored('late', [attempt_of(9 * hour, 10 * hour, 7.2)])
+        sub, _ = self.subscription(self.demo([(0, 10 * hour, 36.0)], begin=0, end=10 * hour))
+        self.assertEqual(sub['overlap'], ['early', 'late'])
+        # demo has 3.6 USD in each of the two hours that are shared; the others have 3.6 and 7.2 USD in theirs
+        self.assertAlmostEqual(sub['share'], 7.2 / (7.2 + 3.6 + 7.2), places=4)
+
+    def test_the_value_outside_the_common_interval_is_not_counted(self):
+        hour = 3600
+        self.night_file([event('demo', 0, 'start', 10), event('other', 9 * hour, 'start', 12),
+                         event('other', 10 * hour, 'done', 14), event('demo', 10 * hour, 'done', 40)])
+        self.stored('other', [attempt_of(9 * hour, 10 * hour, 3.6)])
+        sub, _ = self.subscription(self.demo([(0, hour, 100.0), (9 * hour, 10 * hour, 3.6)], begin=0, end=10 * hour))
+        self.assertAlmostEqual(sub['share'], 0.5, places=4)
 
     def test_share_is_1_without_overlap_and_the_raw_increase_stays(self):
         self.night_file([event('demo', 110, 'start', 10), event('demo', 5010, 'done', 25)])
