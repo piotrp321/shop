@@ -121,6 +121,20 @@ class RepeatRunsTest(InAttemptsEnv):
                             'make -C apps/api test && echo done')
         self.assertEqual(found['count'], 4)
 
+    def test_a_redirect_of_a_file_descriptor_does_not_change_the_key(self):
+        found = self.run_of('make test 2>&1 | tail -50', 'make test > out.log', 'make test 2> err.log',
+                            'make test 1>out.log 2>&1', 'make test &> all.log')
+        self.assertEqual(found['count'], 4)
+        self.assertEqual(metrics.classify_command('make -C apps/api test 2>&1 | tail -50', metrics.compile_categories(
+            CONFIG)), ('test', 'make -C apps/api test'))
+
+    def test_a_redirect_does_not_hide_a_different_target(self):
+        self.assertEqual(self.run_of('make -C apps/api test 2>&1 | tail', 'make -C apps/store test 2>&1')['count'], 0)
+
+    def test_a_number_that_is_an_argument_stays_in_the_key(self):
+        found = self.run_of('pytest -k 2', 'pytest -k 3', 'pytest -k 2 > out.log')
+        self.assertEqual(found['count'], 1)
+
     def test_a_different_target_of_the_same_category_is_not_a_repeat(self):
         self.assertEqual(self.run_of('make -C apps/api test', 'make -C apps/store test')['count'], 0)
         self.assertEqual(self.run_of('make test # c1', 'make test # c2')['count'], 0)

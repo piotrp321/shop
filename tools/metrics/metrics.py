@@ -937,13 +937,18 @@ def compile_categories(config):
 
 def classify_command(command, compiled):
     """(category, key) of a shell command: the first category of config.json with a pattern that matches; the key is
-    the fragment the pattern matched (up to the nearest shell operator), so an appended `| tail` or a redirect does not
-    change it. A command that matches no category is `other`. The text is only compared, never stored."""
+    the fragment the pattern matched (up to the nearest shell operator, without the file descriptor of a redirect), so
+    an appended `| tail` or a redirect does not change it. A command that matches no category is `other`. The text
+    is only compared, never stored."""
     for name, patterns in compiled:
         for pattern in patterns:
             match = pattern.search(command)
             if match:
-                return name, ' '.join(match.group(0).split())
+                fragment = match.group(0)
+                if command[match.end():match.end() + 1] in ('<', '>'):
+                    # `2>&1`, `2> file`: the digit glued to the operator is a file descriptor, not part of the command
+                    fragment = re.sub(r'(?<=\s)\d+$', '', fragment)
+                return name, ' '.join(fragment.split())
     return 'other', None
 
 
