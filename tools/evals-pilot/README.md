@@ -20,6 +20,8 @@ Nie ma tu progów, werdyktów regresji, joba CI ani testów bezpieczeństwa. Zas
    `wada` (wada wzorcowa), `czesciowe` (tylko jej część), `trafne` (inny prawdziwy problem), `falszywe`, `drobne`,
    `nieznane` (nie da się rozstrzygnąć z danych przypadku; nie liczy się ani jako trafienie, ani jako fałszywy alarm);
    `gold_detected` na przebieg z wadą (`true`, `false`, `"partial"`); `by: "owner"` przy etykiecie właściciela.
+   Etykieta `trafne` niepotwierdzona odtworzeniem dostaje `provisional: true`, a zgłoszenie o procesie `category`
+   (np. „proces TDD”); `summary` ich nie rozdziela, raport liczy je osobno.
    Ponowne `table` zachowuje wpisane etykiety. Każdą ocenę da się zmienić ręcznie w tym pliku.
 5. `grade.py summary` liczy tabelę z etykiet i kosztów. Dopóki `approved_by_owner` jest `false`, wynik jest
    propozycją.

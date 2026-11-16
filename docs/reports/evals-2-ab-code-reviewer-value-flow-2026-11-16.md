@@ -127,7 +127,7 @@ z kryteriów 2–4 ją wyklucza. Kryteria 1 i 3 nie są spełnione.
   #113 i #197. Ogólna instrukcja sposobu pracy nie wystarczyła, żeby trafić w te dwie klasy.
 - W przypadkach czystych werdykt przestał być stabilny: dwa z czterech przebiegów dały `CHANGES_REQUIRED`
   z powodu zgłoszeń niepotwierdzonych albo nierozstrzygniętych.
-- Wykrycie #81 w 2 z 2 przebiegów wobec 0 z 2 to sygnał wart sprawdzenia, ale nie dowód: dwa przebiegi na wariant,
+- Wykrycie #81 w 2 z 2 przebiegów wobec 0 z 2 jest interesujące i warte sprawdzenia, ale to nie dowód poprawy: dwa przebiegi na wariant,
   jeden przypadek, a kryterium sukcesu go nie obejmowało. Nie uzasadnia wdrożenia wbrew kryteriom.
 
 ## Ograniczenia
