@@ -99,7 +99,7 @@ class JobCommandsTest(unittest.TestCase):
 
 class CronJobTest(unittest.TestCase):
     def test_cart_purge(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             crons = by_logical(case, "CronJob")
             self.assertEqual({"cart-purge-expired", "backup", "backup-verify", "restore"}, set(crons), case)
             cron = crons["cart-purge-expired"]

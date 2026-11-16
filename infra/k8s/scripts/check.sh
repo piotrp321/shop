@@ -103,16 +103,17 @@ do_schema() {
     expect_failure "customerAccounts that is not a boolean" "/customerAccounts" $prod --set image.tag=$rev $digests \
       --set-string customerAccounts=false
     expect_failure "demoNotice that is not a boolean" "/demoNotice" $prod --set image.tag=$rev $digests --set-string demoNotice=true
-    # The backup (docs/features/deploy-ops/spec.md, O2): enabled, it needs the repository and the name of the Secret with its keys.
-    expect_failure "backup without the repository" "/backup/repository" $prod --set image.tag=$rev $digests --set backup.repository=
-    expect_failure "backup without the name of its secret" "/backup/secretName" $prod --set image.tag=$rev $digests --set backup.secretName=
+    # The backup (docs/features/deploy-ops/spec.md, O2): enabled, it needs the repository and the name of the Secret with its keys
+    # (prod has it off until both exist, so its cases switch it on).
+    expect_failure "backup without the repository" "/backup/repository" $prod --set image.tag=$rev $digests --set backup.enabled=true --set backup.repository=
+    expect_failure "backup without the name of its secret" "/backup/secretName" $prod --set image.tag=$rev $digests --set backup.enabled=true --set backup.secretName=
     expect_failure "backup without the repository (ci)" "/backup/repository" -f environments/ci/values.yaml --set image.tag=$rev \
       --set backup.repository=
     expect_failure "backup secret created without one key" "backup.secretValues.RESTIC_PASSWORD" -f environments/ci/values.yaml \
       --set image.tag=$rev --set backup.secretValues.RESTIC_PASSWORD=
-    expect_failure "backup retention that restic does not read" "/backup/retention" $prod --set image.tag=$rev $digests \
+    expect_failure "backup retention that restic does not read" "/backup/retention" $prod --set image.tag=$rev $digests --set backup.enabled=true \
       --set backup.retention=week
-    expect_failure "verification that reads neither a subset nor all of the data" "/backup/verifyReadData" $prod --set image.tag=$rev $digests \
+    expect_failure "verification that reads neither a subset nor all of the data" "/backup/verifyReadData" $prod --set image.tag=$rev $digests --set backup.enabled=true \
       --set backup.verifyReadData=most
     expect_failure "backup that is not a boolean" "/backup/enabled" $prod --set image.tag=$rev $digests --set-string backup.enabled=true
     expect_failure "alerts that are not a boolean" "/alerts/enabled" $prod --set image.tag=$rev $digests --set-string alerts.enabled=true
@@ -238,13 +239,14 @@ do_tests() {
   fi
 }
 
-# The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the prod render,
-# which tests/alerts/prepare.py takes from the render (no copy of the rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
+# The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the render of
+# prod with the backup switched on (prod-backup: all seven alerts), which tests/alerts/prepare.py takes from the render (no copy of the
+# rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
 do_alerts() {
-  [ -f "$work/prod.ndjson" ] || do_render
-  step "promtool check rules and promtool test rules on the alert rules of the prod render"
+  [ -f "$work/prod-backup.ndjson" ] || do_render
+  step "promtool check rules and promtool test rules on the alert rules of the prod render with the backup"
   in_cache="/cache/${work##*/}"
-  py tests/alerts/prepare.py "$in_cache/prod.ndjson" "$in_cache/alerts"
+  py tests/alerts/prepare.py "$in_cache/prod-backup.ndjson" "$in_cache/alerts"
   promtool check rules "$in_cache/alerts/rules.yaml"
   promtool test rules "$in_cache/alerts/alerts.test.yml"
 }

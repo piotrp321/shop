@@ -58,9 +58,10 @@ metadata:
     {{- include "shop.labels" (dict "root" . "name" "backup") | nindent 4 }}
   annotations:
     {{- include "shop.wave" "-2" | nindent 4 }}
-    # The claim stays Pending until the first run (local-path binds it to the first pod that uses it): Argo CD must not take
-    # that for an unhealthy application.
-    argocd.argoproj.io/ignore-healthcheck: "true"
+    # The claim stays Pending until the first run (local-path binds it to the first pod that uses it). Argo CD would wait for it
+    # in its wave forever: its health check of claims (argocd/install/argocd.yaml) takes a Pending claim with this annotation
+    # for a healthy one.
+    shop/bound-by-first-pod: "true"
 spec:
   accessModes: ["ReadWriteOnce"]
   storageClassName: {{ .Values.storage.className }}
