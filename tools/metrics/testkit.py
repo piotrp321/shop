@@ -284,6 +284,62 @@ def merged_pr(merged_at='2026-11-13T10:00:00Z', issues=(496,), sha='f' * 40):
             'closingIssuesReferences': [{'number': n} for n in issues]}
 
 
+WEEKLY = 'Weekly \u00b7 all models'
+
+
+def fake_record(epic, merged='2026-11-10T10:00:00Z', tasks=10, to_done=36000.0, work=18000.0, human_wait=3600.0,
+                review=1800.0, gate_wait=0.0, repeat=600.0, value=10.0, share=1, weekly=4, failed=1, repair=0,
+                interventions=1, regressions=0, cli=('2.1.311',), models=('claude-opus-5-5',), final_pr=None,
+                window_open=False, **over):
+    """A stored record with the fields `trend`, `bottlenecks` and `render` read. A parameter given as None is a null
+    source (the field is None). Other top-level fields can be given as keyword arguments."""
+    def maybe(value, make):
+        return None if value is None else make(value)
+
+    record = {
+        'epic': epic, 'issue': 1, 'final_pr': final_pr, 'tasks': tasks, 'started_at': '2026-11-09T10:00:00Z',
+        'done_at': '2026-11-10T08:00:00Z', 'merged_at': merged,
+        'wall': {'to_done': to_done, 'to_merge': maybe(to_done, lambda v: v + (review or 0)), 'review': review},
+        'breakdown': None if to_done is None else {'work': work, 'human_wait': human_wait, 'limit_wait': 0.0,
+                                                    'ci_wait': 0.0, 'host_pause': 0.0, 'github_wait': 0.0,
+                                                    'idle': 0.0},
+        'integration': {'work_s': 0.0, 'attempts': 0, 'rounds': 1},
+        'retries': {'attempts': {'total': 3, 'per_task': {}, 'successful': 3 - (failed or 0), 'blocked': 0,
+                                 'failed': failed, 'usage_limit': 0, 'running': 0, 'unclassified': 0},
+                    'failed_by_outcome': {}, 'repair': {'count': repair, 'final_pr_conflict': 0, 'ci_red': 0,
+                                                        'unknown': 0}, 'fix': 0, 'sync_prs': []},
+        'parallel': None,
+        'subscription': None if weekly is None else {'windows': {WEEKLY: weekly}, 'overlap': [], 'share': share,
+                                                      'share_estimated': False},
+        'gate_wait': None if gate_wait is None else {'wait_s': gate_wait, 'reasons': []},
+        'human': {'interventions': interventions, 'waits': 0, 'wait_s': 0.0, 'open': 0, 'manual_fixes': []},
+        'in_attempts': None if repeat is None else {
+            'categories': {n: {'count': 0, 'background': 0, 'unfinished': 0, 'seconds': 0.0}
+                           for n in ('read', 'test', 'e2e', 'check', 'selftest', 'stack', 'ci_watch', 'other')},
+            'repeat_runs': {'count': 1, 'seconds': repeat, 'by_category': {n: {'count': 0, 'seconds': 0.0}
+                                                                            for n in ('test', 'e2e', 'check')}},
+            'api_retry': {'count': 0, 'delay_ms': 0}, 'permission_denials': {}},
+        'by_task': {}, 'attempts': [],
+        'value': {'total': maybe(value, lambda v: {'usd': v, 'estimated': False, 'tokens': {}, 'estimated_tokens': []}),
+                  'by_role': {}, 'by_model': {}, 'by_task': {}, 'by_role_model': {}},
+        'versions': None if cli is None else {'cli': [{'version': v, 'attempts': 1} for v in cli],
+                                              'models': [{'model': m, 'attempts': 1} for m in (models or ())]},
+        'regressions': None if regressions is None else {
+            'window_days': 14, 'until': '2026-11-24T10:00:00Z', 'open': window_open, 'checked_at': merged,
+            'merge_commit': None, 'ci_red': 0, 'reverts': [], 'issues': list(range(regressions)), 'count': regressions},
+        'found_after_merge': {'issues': [], 'count': 0}, 'ci': None, 'gaps': []}
+    record.update(over)
+    return record
+
+
+def store_records(state, *records):
+    """Writes the records to <state>/epics/<epic>.json."""
+    os.makedirs(os.path.join(state, 'epics'), exist_ok=True)
+    for record in records:
+        with open(os.path.join(state, 'epics', '%s.json' % record['epic']), 'w', encoding='utf-8') as f:
+            json.dump(record, f)
+
+
 def run_cli(argv, runner=None, now=1800000000.0):
     """(exit code, stdout, stderr) of metrics.main."""
     out, err = io.StringIO(), io.StringIO()

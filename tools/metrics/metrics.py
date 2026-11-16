@@ -136,6 +136,7 @@ CONFIG_SCHEMA = {
     'ci_workflow': (lambda v: isinstance(v, str) and bool(v), 'nazwa pliku workflowu CI (np. ci.yml)'),
     'ci_jobs': (_string_list, 'niepusta lista nazw zadań CI (przedrostki grup, np. checks i e2e)'),
     'trend_last': (lambda v: _is_int(v) and v > 0, 'liczba epików (całkowita, dodatnia)'),
+    'weekly_window_label': (lambda v: isinstance(v, str) and bool(v), 'etykieta okna tygodniowego z get_usage'),
 }
 
 
@@ -1873,6 +1874,207 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     return record, errors
 
 
+# ------------------------------------------------------------------------------------------------------- trend
+
+TREND_COLUMNS = ('to_done', 'work', 'human_wait', 'review', 'gate_wait', 'repeat_runs', 'value', 'pp', 'failed',
+                 'repair', 'interventions', 'regressions')
+HOUR = 3600.0
+
+
+def per_task_sources(record, config):
+    """{column: (value, scale)} of a record before the division by the plan tasks: times in seconds (scale: 3600 for
+    hours), the others counts, USD or pp. A value that is not known is None."""
+    windows = _get(record, ('subscription', 'windows'))
+    weekly = windows.get(config['weekly_window_label']) if isinstance(windows, dict) else None
+    share = _get(record, ('subscription', 'share'))
+    return {
+        'to_done': (_get(record, ('wall', 'to_done')), HOUR), 'work': (_get(record, ('breakdown', 'work')), HOUR),
+        'human_wait': (_get(record, ('breakdown', 'human_wait')), HOUR), 'review': (_get(record, ('wall', 'review')), HOUR),
+        'gate_wait': (_get(record, ('gate_wait', 'wait_s')), HOUR),
+        'repeat_runs': (_get(record, ('in_attempts', 'repeat_runs', 'seconds')), HOUR),
+        'value': (_get(record, ('value', 'total', 'usd')), 1.0),
+        'pp': (weekly * share if _is_number(weekly) and _is_number(share) else None, 1.0),
+        'failed': (_get(record, ('retries', 'attempts', 'failed')), 1.0),
+        'repair': (_get(record, ('retries', 'repair', 'count')), 1.0),
+        'interventions': (_get(record, ('human', 'interventions')), 1.0),
+        'regressions': (_get(record, ('regressions', 'count')), 1.0),
+    }
+
+
+def trend_values(record, config):
+    """The columns of `trend` of one record, per plan task (times in hours, rounded to 4 places); None where the source
+    is unknown or the epic has no plan tasks."""
+    tasks = record.get('tasks')
+    values = {}
+    for column, (value, scale) in per_task_sources(record, config).items():
+        usable = _is_number(value) and _is_int(tasks) and tasks > 0
+        values[column] = round(value / tasks / scale, 4) if usable else None
+    return values
+
+
+def median_of(values):
+    known = [v for v in values if v is not None]
+    return round(median(known), 4) if known else None
+
+
+def position_of(values, medians):
+    found = {}
+    for column in TREND_COLUMNS:
+        value, middle = values[column], medians[column]
+        diff = None if value is None or middle is None else round(value - middle, 4)
+        pct = None if diff is None or not middle else round(diff / middle * 100, 1)
+        found[column] = {'value': value, 'median': middle, 'diff': diff, 'diff_pct': pct}
+    return found
+
+
+def merged_records(records):
+    """[(epoch, record)] of the records with a merge time, oldest first (ties by the epic id)."""
+    found = []
+    for record in records.values():
+        try:
+            found.append((night_queue.parse_time(record['merged_at']).timestamp(), record))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+    return [record for _, record in sorted(found, key=lambda item: (item[0], str(item[1].get('epic'))))]
+
+
+def _version_sets(record):
+    versions = record.get('versions')
+    if not isinstance(versions, dict):
+        return None, None
+    return ({v['version'] for v in versions.get('cli') or [] if isinstance(v, dict) and 'version' in v},
+            {m['model'] for m in versions.get('models') or [] if isinstance(m, dict) and 'model' in m})
+
+
+def change_annotations(previous, current):
+    """The notes of a change of the CLI version or of the set of models against the previous epic (the numbers are not
+    corrected)."""
+    old_cli, old_models = _version_sets(previous)
+    new_cli, new_models = _version_sets(current)
+    notes = []
+    if old_cli is not None and new_cli is not None and old_cli != new_cli:
+        notes.append('wersja CLI: %s → %s' % (', '.join(sorted(old_cli)) or 'brak', ', '.join(sorted(new_cli)) or 'brak'))
+    if old_models is not None and new_models is not None and old_models != new_models:
+        parts = []
+        if new_models - old_models:
+            parts.append('+ ' + ', '.join(sorted(new_models - old_models)))
+        if old_models - new_models:
+            parts.append('− ' + ', '.join(sorted(old_models - new_models)))
+        notes.append('modele: ' + ' '.join(parts))
+    return notes
+
+
+def refresh_windows(records, state_dir, config, run, repo, now, errors):
+    """Recomputes the regressions and found_after_merge of the records whose window is open (or never computed, or
+    computed with a failed source): a merge of another epic and the start of a `/ao-run` session call `trend`. Stores
+    the changed records; returns the ids. Values of a source that fails stay (regressions_of)."""
+    done = []
+    for epic in sorted(records):
+        record = records[epic]
+        try:
+            merged = night_queue.parse_time(record['merged_at']).timestamp()
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        final_pr = record.get('final_pr')
+        current = record.get('regressions')
+        if not _is_int(final_pr) or (isinstance(current, dict) and current.get('open') is False
+                                     and current.get('count') is not None):
+            continue
+        sha = current.get('merge_commit') if isinstance(current, dict) else None
+        if not sha:
+            try:
+                sha = fetch_pr(run, final_pr, repo)['merge_sha']
+            except GhError as e:
+                errors.append(str(e))
+                continue
+        gaps = Gaps()
+        record['regressions'], record['found_after_merge'] = regressions_of(
+            run, repo, config, epic, final_pr, sha, merged, now, dict(record), gaps, errors)
+        record['gaps'] = [g for g in record.get('gaps') or [] if not g.startswith(('regressions', 'found_after_merge'))] \
+            + gaps.render()
+        write_record(state_path(state_dir, epic), record)
+        done.append(epic)
+    return done
+
+
+def build_trend(records, config, last, epic):
+    """The trend table: the last `last` merged epics with their columns, the medians of
+    the shown epics (nulls skipped), the position of `epic` (default: the latest; it may be older than the shown ones)
+    against them and the annotations."""
+    ordered = merged_records(records)
+    if not ordered:
+        raise MetricsError('brak zapisanych rekordów zmergowanych epików (uruchom: metrics.py backfill)')
+    by_id = {r.get('epic'): r for r in ordered}
+    chosen = by_id.get(epic) if epic is not None else ordered[-1]
+    if chosen is None:
+        raise MetricsError('brak rekordu zmergowanego epiku %s (zapisane: %s)' % (epic, ', '.join(sorted(by_id))))
+    shown = ordered[-last:]
+    rows = []
+    for record in shown:
+        index = ordered.index(record)
+        rows.append({'epic': record['epic'], 'merged_at': record.get('merged_at'), 'tasks': record.get('tasks'),
+                     'values': trend_values(record, config),
+                     'annotations': change_annotations(ordered[index - 1], record) if index else []})
+    medians = {column: median_of([row['values'][column] for row in rows]) for column in TREND_COLUMNS}
+    values = trend_values(chosen, config)
+    return {'columns': list(TREND_COLUMNS), 'epics': rows, 'median': medians,
+            'position': {'epic': chosen['epic'], 'columns': position_of(values, medians)}, 'recomputed': []}
+
+
+def pl(value, digits=1):
+    """A number with a decimal comma; `-` for an unknown one."""
+    if value is None:
+        return '-'
+    return ('%.*f' % (digits, value)).replace('.', ',')
+
+
+def format_trend(table):
+    heads = {'to_done': 'do_done', 'work': 'work', 'human_wait': 'human', 'review': 'review', 'gate_wait': 'gate',
+             'repeat_runs': 'powt.', 'value': 'USD', 'pp': 'pp', 'failed': 'nieud.', 'repair': 'REPAIR',
+             'interventions': 'interw.', 'regressions': 'regr.'}
+    width = max([len('mediana')] + [len(r['epic']) for r in table['epics']])
+    digits = {'value': 2, 'pp': 2, 'failed': 2, 'repair': 2, 'interventions': 2, 'regressions': 2}
+    lines = ['Trend (na zadanie planu; czasy w godzinach; epików: %d)' % len(table['epics']),
+             ' '.join(['epik'.ljust(width)] + [heads[c].rjust(8) for c in table['columns']])]
+    for row in table['epics']:
+        lines.append(' '.join([row['epic'].ljust(width)] + [pl(row['values'][c], digits.get(c, 2)).rjust(8)
+                                                           for c in table['columns']]))
+    lines.append(' '.join(['mediana'.ljust(width)] + [pl(table['median'][c], digits.get(c, 2)).rjust(8)
+                                                      for c in table['columns']]))
+    position = table['position']
+    lines.append('%s wobec mediany:' % position['epic'])
+    for column in table['columns']:
+        entry = position['columns'][column]
+        if entry['diff'] is None:
+            lines.append('  %s: brak danych' % heads[column])
+            continue
+        pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
+                                                                 pl(abs(entry['diff_pct']), 0))
+        lines.append('  %s: %s (mediana %s%s)' % (heads[column], pl(entry['value'], 2 if column in digits else 1),
+                                                    pl(entry['median'], 2 if column in digits else 1), pct))
+    notes = ['%s: %s' % (row['epic'], note) for row in table['epics'] for note in row['annotations']]
+    if notes:
+        lines.append('Zmiany wersji CLI i modeli (liczby bez korekty):')
+        lines.extend('  ' + note for note in notes)
+    return '\n'.join(lines)
+
+
+def cmd_trend(args, config, run, now):
+    last = config['trend_last'] if args.last is None else args.last
+    if last <= 0:
+        raise MetricsError('--last: oczekiwano dodatniej liczby epików, podano %d' % last)
+    state = _expand(args.state)
+    records = read_records(state)
+    errors = []
+    recomputed = [] if args.no_gh else refresh_windows(records, state, config, run, args.repo, now, errors)
+    table = build_trend(records, config, last, args.epic)
+    table['recomputed'] = recomputed
+    print(json.dumps(table, ensure_ascii=False) if args.json else format_trend(table))
+    for error in errors:
+        print('metrics: błąd gh: %s (okno regresji: zachowano poprzednie wartości)' % error, file=sys.stderr)
+    return EXIT_SOURCE if errors else 0
+
+
 # ------------------------------------------------------------------------------------------------- state and CLI
 
 def state_path(state_dir, epic_id):
@@ -2002,6 +2204,11 @@ def build_parser():
     epic.add_argument('--no-gh', action='store_true')
     backfill = sub.add_parser('backfill', parents=[common])
     backfill.add_argument('--ao-root')
+    trend = sub.add_parser('trend', parents=[common])
+    trend.add_argument('--last', type=int, default=None)
+    trend.add_argument('--epic')
+    trend.add_argument('--json', action='store_true')
+    trend.add_argument('--no-gh', action='store_true')
     return parser
 
 
@@ -2018,6 +2225,8 @@ def main(argv=None, run=None, now=None):
             return cmd_epic(args, config, runner, now)
         if args.command == 'backfill':
             return cmd_backfill(args, config, runner, now)
+        if args.command == 'trend':
+            return cmd_trend(args, config, runner, now)
     except MetricsError as e:
         print('metrics: %s' % e, file=sys.stderr)
         return EXIT_FATAL
