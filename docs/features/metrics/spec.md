@@ -100,7 +100,8 @@ rzeczywiste skrócenie czasu AO):
 ## Pomiar epiku
 
 `tools/metrics/metrics.py` (Python 3.9+, biblioteka standardowa) z `tools/metrics/config.json` (kategorie poleceń,
-wagi tokenów, progi alarmów i reguł decyzji; zmiana progu nie wymaga zmiany kodu). Stan lokalny w
+wagi tokenów, progi alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 dla D1; zmiana progu nie wymaga zmiany
+kodu). Stan lokalny w
 `~/.local/state/shop-metrics/` (poza katalogami `ao-*`, które są `AO_HOME` epików): `epics/<epik>.json` (rekordy),
 `waste.json` (wysłane alarmy), `waste.lock`.
 
@@ -296,15 +297,35 @@ mediany); 3. próba po 2 nieudanych”, i pozycja w sekcji „Pomiar” raportu 
 ### Decyzje optymalizacyjne
 
 `metrics.py decide <epik> [--history]` jest bezstanowy: buduje kandydatów decyzji z rekordu epiku, trendu i wyników
-evali (`tools/evals/history/`, format EVALS; brak katalogu: D1 nie powstaje, pozycja w `gaps`), według reguł
-z `config.json`. Każdy kandydat ma klucz (reguła i przedmiot, np. `D1:code-reviewer`), dane, propozycję, oczekiwany
+EVALS 2.0 (dla D1, opcjonalnie), według reguł z `config.json`. Każdy kandydat ma klucz (reguła i przedmiot, np. `D1:code-reviewer`), dane, propozycję, oczekiwany
 efekt i miarę weryfikacji. `--history` wypisuje kandydatów każdego zmergowanego epiku (wejście `/retro`).
 
-- **D1 model dla roli:** rola agenta z zestawem evali ma ≥ 15% wartości tokenów epiku na modelu droższym niż
-  najtańszy używany w epiku. Propozycja: PR zmieniający model w pliku agenta; EVALS zmierzy zestaw na tym PR
-  i zablokuje merge do `main` przy regresji. Efekt: wartość roli × (1 − stosunek mediany stawki tańszego modelu do
-  droższego z historii). Rola bez zestawu evali (np. `developer` przed EVALS-BENCH) nie dostaje D1; raport wymienia ją
-  jako „bez evali”.
+- **D1 model dla roli:** rola agenta ma ≥ 15% wartości tokenów epiku na modelu droższym niż najtańszy używany
+  w epiku. D1 nigdy sam nie proponuje zmiany modelu: METRICS nie ocenia jakości agenta, a EVALS 2.0 nie zapisuje
+  przyjęcia wariantu w formie do odczytu (decyzja właściciela jest w raporcie `docs/reports/evals-2-…`). Wynik D1
+  zależy od wyników EVALS 2.0 dla tej roli i tańszego modelu:
+  - **rola bez evali** (spoza listy ról EVALS 2.0 w `config.json`; dziś tylko `code-reviewer`, bo `tools/evals-pilot`
+    ocenia wyłącznie `.claude/agents/code-reviewer.md`): bez propozycji, przyczyna „bez evali”;
+  - **brak porównania** (żadnego zaliczanego przebiegu roli na tańszym modelu): propozycja eksperymentu porównania
+    wariantów EVALS 2.0 (`docs/features/evals-2/spec.md`, „Porównanie wariantów agenta”: wariant to commit ze zmianą
+    `model:` w pliku agenta, `--agent-rev`; płatny pomiar wymaga zgody właściciela), nie zmiany modelu;
+  - **porównanie wykonane** (są zaliczane przebiegi roli na tańszym modelu): bez propozycji, przyczyna „porównanie
+    w EVALS 2.0, decyzja w jego raporcie”, w danych katalogi wyników i liczba przebiegów.
+
+  Kandydatem (kolejność, raport odbioru, `--history`) jest tylko wynik z propozycją; pozostałe są w wyniku `decide`
+  na liście pominiętych reguł z przyczyną. Efekt kandydata to potencjalna oszczędność, gdy porównanie wypadnie
+  dobrze: wartość roli × (1 − stosunek mediany stawki tańszego modelu do droższego z historii).
+
+  **Wyniki EVALS 2.0** (format sprawdzony 2026-11-16 na 41 przebiegach): surowe wyniki są poza repozytorium,
+  w katalogu z `config.json` (`evals_results`, domyślnie `~/.local/state/shop-evals-pilot`), po jednym podkatalogu
+  pomiaru. D1 czyta tylko `<katalog>/*/runs/*/meta.json` i z niego tylko pola `status`, `mode` i `subagent_model`
+  (model subagenta rozwiązany przez CLI, np. `claude-opus-5-5`, porównywany dokładnie z identyfikatorami modeli
+  z rekordu). Zaliczany przebieg ma `status` `ok` i `mode` `replay`. Tryb `squash` (`mode` puste, agent jako wątek
+  główny, bez `subagent_model`) różni się od produkcji bardziej i nie jest zaliczany; tak samo `infra_error`
+  i `budget_stop`. `meta.json` nie wskazuje agenta, więc przebieg należy do jedynej roli z listy w `config.json`.
+  Etykiet (`labels.json`) ani raportów D1 nie czyta. Brak katalogu albo brak czytelnego `meta.json`: D1 nie
+  powstaje, przyczyna w `gaps`; nieczytelny plik albo plik bez tych pól jest pomijany i liczony w `gaps`. Brak
+  wyników EVALS 2.0 nigdy nie blokuje METRICS ani innych reguł.
 - **D2 podział planu:** zadanie planu z `work` > 2× mediany zadań planu w historii albo z co najmniej 2 próbami
   nieudanymi. Propozycja: reguła podziału dla `/planner` z cechami zadania (liczba ścieżek `scope`, ryzyko, aplikacje,
   liczba zmienionych plików). Efekt: czas ponad medianę.
@@ -347,7 +368,8 @@ epiku i `trend` jako fakty w `input.json`. Incydenty `optimization` przechodzą 
 próg (co najmniej dwa różne incydenty, czyli reguła zadziałała w dwóch epikach), rejestry `rejected`, `applied`,
 `carried`, `previous_fix` (problem, który wraca po zastosowanej poprawce, oznacza ją jako nieskuteczną) i limity 5
 poprawek i 3 issues. Poprawka instrukcji to pozycja `fix`, zmiana kodu albo modelu agenta to propozycja issue
-`tech-debt` (zmiana modelu agenta z zestawem evali przechodzi EVALS w swoim PR). Raport `/retro` kończy się sekcją
+`tech-debt` (zmiana modelu roli objętej EVALS 2.0 wymaga przed merge'em porównania wariantów EVALS 2.0 i decyzji
+właściciela). Raport `/retro` kończy się sekcją
 „Decyzje optymalizacyjne”: pozycje z incydentów `optimization` w tym przebiegu, obserwacje (reguła w jednym epiku),
 i dla kluczy z `applied.jsonl` efekt z `metrics.py effect` (`--at`: merge PR z poprawką), przepisany bez własnych
 obliczeń agenta: mediana, rozrzut i liczebność przed i po, czas epiku, zmiany wersji albo „za mało danych”.
@@ -429,12 +451,13 @@ procesy użytkownika (ten sam poziom zaufania co stan AO).
   prawdziwym formacie (po AGENT-SECURITY wykonawca w sandboxie nie czyta `~/.local/state` poza katalogiem zadania).
   Źródło: użytkownik: zgoda na sesję przygotowania danych poza sandboxem (lista i reguły z tej sekcji) przed
   `/ao-run metrics`, jak w EVALS (Q9; zgoda udzielona 2026-11-15).
-- Reguła D1 czyta format `tools/evals/history/` z EVALS (#495), gdy jest na `main`; bez katalogu D1 nie powstaje
-  (pozycja w `gaps`), więc METRICS nie czeka na EVALS do startu. `## Zależności` issue #496 nie wymienia ID innego
-  epiku (lista nocy traktuje każde wymienione ID otwartego epiku jako zależność): evale są tam opisane numerem #495,
-  a telemetria numerem #577. Zakresy METRICS i EVALS mają wspólne pliki (`.claude/skills/retro`, dokumentacja
+- Reguła D1 czyta wyniki EVALS 2.0 (`tools/evals-pilot`, surowe wyniki poza repo), gdy są; bez nich D1 nie powstaje
+  (pozycja w `gaps`), więc METRICS nie czeka ani na EVALS, ani na EVALS 2.0. Formatu epiku EVALS (#495,
+  `tools/evals/history/`, wstrzymany, nie na `main`) METRICS nie czyta: EVALS 2.0 jest od niego niezależne.
+  `## Zależności` issue #496 nie wymienia ID innego epiku (lista nocy traktuje każde wymienione ID otwartego epiku jako
+  zależność): evale są tam opisane numerem #495, a telemetria numerem #577. Zakresy METRICS i EVALS mają wspólne pliki (`.claude/skills/retro`, dokumentacja
   procesu), ale nie kod aplikacji, więc bramka pracy równoległej dopuszcza je naraz, a wspólne pliki obsługuje sync
-  pary. Zaczynając po EVALS, epik ma od startu `tools/evals/history/` dla D1.
+  pary.
 
 Sekretów, kont i usług zewnętrznych epik nie potrzebuje: czyta lokalne dane AO i publiczny GitHub przez `gh`
 użytkownika.
@@ -450,7 +473,8 @@ użytkownika.
 - Pomiar `/sweep`, `/retro` i `/prepare-epic` w rekordzie epiku: mają własne sekcje `## Zużycie` (pp i czas).
 - Automatyczne zatrzymywanie prób przy alarmie i zmiany AO (zamrożone).
 - Decyzja o 19b (kryterium w planie, pomiar par `pairs.py`) i liczba zadań naraz po 19b.
-- Benchmark `/delivery` (EVALS-BENCH, #500): D1 obejmie `developer`, gdy będzie jego zestaw.
+- Evale innych ról i zmiany EVALS 2.0 (format wyników, zapis decyzji o wariancie): D1 obejmie rolę po dopisaniu jej
+  do listy ról EVALS 2.0 w `config.json`, gdy EVALS 2.0 będzie ją oceniać.
 - Gotowe narzędzia jako źródło (`ccusage` i podobne czytają sesje z `~/.claude/projects`, nie znają prób i ról AO),
   integracje z zewnętrznymi systemami obserwowalności (Langfuse, Phoenix, własny eksport OTel), dashboardy
   i detektory pętli oparte na LLM.
@@ -468,7 +492,7 @@ użytkownika.
 - `docs/features/retro/spec.md`, `.claude/skills/retro/SKILL.md`, `.claude/agents/retro-analyst.md`: incydenty
   `optimization`, fakty z pomiaru w `input.json`, sekcja „Decyzje optymalizacyjne” raportu z efektem przed i po.
 - `.github/ISSUE_TEMPLATE/bug.yml`: pole „Wprowadzone przez (epik albo PR, jeśli znane)”.
-- `docs/adr/agentic-software-house.md`: komponent „Metryki i evale” wskazuje `tools/metrics` i `tools/evals`.
+- `docs/adr/agentic-software-house.md`: komponent „Metryki i evale” wskazuje `tools/metrics` i `tools/evals-pilot`.
 - `docs/features/agentic-software-house/plan.md`: krok 18 (podział na METRICS i TELEMETRY #577) i rola „Pomiar
   czasu, kosztu i jakości” ze wskazaniem `tools/metrics/README.md`; punkt 5 procesu (komentarz w issue epiku to blok
   „Pomiar epiku”).
@@ -513,8 +537,12 @@ użytkownika.
     nie powstaje przy 3× mediany poniżej 5 USD ani przy 5 USD poniżej 3× mediany; alarm czasowy (W2) nie powstaje
     poniżej 1 h; W3 alarmuje bez względu na koszt i czas; poniżej 5 pomiarów W1, W2 i W4 nie alarmują; próby
     zablokowane i `usage_limit` nie wchodzą do W3.
-11. `decide`: D1–D4 (także D4 dla `review`) na fixture z progami z `config.json`, kolejność, najwyżej 3 w raporcie;
-    bez historii evali D1 nie powstaje.
+11. `decide`: D1–D4 (także D4 dla `review`) na fixture z progami z `config.json`, kolejność, najwyżej 3 w raporcie.
+    D1 na katalogach wyników EVALS 2.0 z polami jak w prawdziwym `meta.json`: brak katalogu albo brak `meta.json`
+    daje pozycję w `gaps` bez D1; same przebiegi na droższym modelu dają propozycję eksperymentu; zaliczany przebieg
+    na tańszym modelu daje „porównanie wykonane” bez propozycji; przebiegi `squash`, `infra_error` i `budget_stop`
+    na tańszym modelu nie są zaliczane; rola spoza listy daje „bez evali”; nieczytelny `meta.json` jest pomijany
+    i liczony w `gaps`; żaden wynik D1 nie proponuje zmiany modelu.
 12. `effect`: na fixture z historią przed i po `--at` miara z tabeli reguł, mediana, p25–p75 i liczebność obu okien,
     różnica w jednostce miary i procentach, czas epiku z 3 epików przed i po, zmiany wersji w oknach; epik rozpoczęty
     przed `--at` i zmergowany po nim nie wchodzi do żadnego okna; poniżej progu liczebności „za mało danych”.
