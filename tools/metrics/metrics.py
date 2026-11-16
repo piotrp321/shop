@@ -384,6 +384,83 @@ def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps):
     return {name: result[name] for name in config['breakdown_order']}
 
 
+# ------------------------------------------------------------------------------------------------------ attempts
+
+FAILED_OUTCOMES = ('timeout', 'invalid_output', 'crash', 'policy_blocked')
+ATTEMPT_CLASSES = ('successful', 'blocked', 'failed', 'usage_limit', 'running', 'unclassified')
+INTEGRATION_KINDS = ('integration', 'fix', 'finalize')
+
+
+def classify_attempt(outcome, executor_status, run_ended):
+    """(class, detail) of an attempt (spec, Pojęcia): `blocked` is executor_status BLOCKED (waiting for a human, not a
+    failure); `successful` is outcome result with another status than FAILED; `failed` is a timeout, invalid_output,
+    crash, policy_blocked, a result with FAILED, or no outcome after the end of the run; `usage_limit` is neither.
+    A missing outcome while the run goes on is `running`; any other outcome is `unclassified`. `detail` is the key of
+    `failed_by_outcome` (or the unknown outcome)."""
+    outcome = outcome or ''
+    if executor_status == 'BLOCKED':
+        return 'blocked', None
+    if outcome == 'usage_limit':
+        return 'usage_limit', None
+    if outcome == 'result':
+        return ('failed', 'result_failed') if executor_status == 'FAILED' else ('successful', None)
+    if outcome in FAILED_OUTCOMES:
+        return 'failed', outcome
+    if outcome == '':
+        return ('failed', 'no_outcome') if run_ended else ('running', None)
+    return 'unclassified', outcome
+
+
+def retries_of(run, run_ended, gaps):
+    attempts = {'total': 0, 'per_task': {}, **{name: 0 for name in ATTEMPT_CLASSES}}
+    failed_by_outcome = {}
+    for attempt in run['attempts']:
+        attempts['total'] += 1
+        attempts['per_task'][attempt['task_id']] = attempts['per_task'].get(attempt['task_id'], 0) + 1
+        name, detail = classify_attempt(attempt['outcome'], attempt['executor_status'], run_ended)
+        attempts[name] += 1
+        if name == 'failed':
+            failed_by_outcome[detail] = failed_by_outcome.get(detail, 0) + 1
+        elif name == 'unclassified':
+            gaps.add('retries.attempts', 'próba %s/%s ma nieznany outcome %r' % (attempt['task_id'],
+                                                                                  attempt['number'], detail))
+    repair = {'count': 0, 'final_pr_conflict': 0, 'ci_red': 0, 'unknown': 0}
+    repairing = {e['data'].get('task_id'): e['data'] for e in run['events'] if e['type'] == 'epic_repairing'}
+    for task in run['tasks']:
+        if task['kind'] != 'repair':
+            continue
+        repair['count'] += 1
+        data = repairing.get(task['task_id'])
+        if data is None:
+            repair['unknown'] += 1
+            gaps.add('retries.repair', 'zadanie %s bez zdarzenia epic_repairing: przyczyna nieznana' % task['task_id'])
+        elif data.get('final_pr') is not None:
+            repair['final_pr_conflict'] += 1
+        else:
+            repair['ci_red'] += 1
+    return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': repair,
+            'fix': sum(1 for t in run['tasks'] if t['kind'] == 'fix')}
+
+
+def integration_of(run, epic, gaps):
+    kinds = {t['task_id']: t['kind'] for t in run['tasks']}
+    work, count = 0.0, 0
+    for attempt in run['attempts']:
+        if kinds.get(attempt['task_id']) not in INTEGRATION_KINDS:
+            continue
+        count += 1
+        seconds = _number(attempt['wall_s'])
+        start, end = _number(attempt['started_at']), _number(attempt['ended_at'])
+        if seconds is None and start is not None and end is not None:
+            seconds = end - start
+        if seconds is None:
+            gaps.add('integration', 'próba %s/%s bez wall_s i końca: pominięta w czasie' % (attempt['task_id'],
+                                                                                         attempt['number']))
+            continue
+        work += seconds
+    return {'work_s': round(work, 3), 'attempts': count, 'rounds': epic['round']}
+
+
 def build_record(epic_id, ao_home, config, busy_timeout_ms):
     gaps = Gaps()
     run = load_run(ao_home, epic_id, busy_timeout_ms, gaps)
@@ -393,6 +470,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms):
     if done is None:
         gaps.add('done_at', 'brak zdarzenia epic_done')
     to_done = round(done - started, 3) if done is not None and started is not None else None
+    run_ended = done is not None or epic['status'] == 'DONE'
     final_pr = epic['final_pr_number']
     if final_pr is None:
         gaps.add('final_pr', 'epik nie ma końcowego PR')
@@ -405,6 +483,8 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms):
         'done_at': iso(done),
         'wall': {'to_done': to_done},
         'breakdown': breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps),
+        'integration': integration_of(run, epic, gaps),
+        'retries': retries_of(run, run_ended, gaps),
     }
     record['gaps'] = gaps.render()
     return record
