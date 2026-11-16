@@ -270,6 +270,23 @@ class ShapeAndOrderTest(DecideEnv):
         self.assertEqual(sorted(os.listdir(os.path.join(self.state, 'epics'))), before)
 
 
+class FixtureTest(DecideEnv):
+    """The whole path on the sanitized DEPLOY-OPS fixture: `epic` writes the record, `decide` and `render` read it."""
+
+    def test_the_record_of_the_fixture_goes_through_decide_and_render(self):
+        home = testkit.fixture_home(self.root, 'deploy-ops')
+        record = self.record('deploy-ops', home=home)
+        self.assertIn('by_task_role', record['value'])
+        code, out, err = run_cli(['decide', 'deploy-ops', '--state', self.state, '--night', self.night])
+        self.assertEqual(code, 0, err)
+        result = json.loads(out)
+        self.assertEqual(result['epic'], 'deploy-ops')
+        for candidate in result['candidates']:
+            self.assertRegex(candidate['key'], r'^D[1-4]:[A-Za-z0-9_.\-]+$')
+        code, out, err = run_cli(['render', 'deploy-ops', '--state', self.state, '--night', self.night])
+        self.assertEqual(code, 0, err)
+
+
 class ErrorPathTest(DecideEnv):
     def test_a_missing_record_ends_with_code_2_a_message_and_no_output(self):
         store_records(self.state, target())
