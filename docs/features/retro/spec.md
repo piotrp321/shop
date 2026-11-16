@@ -145,7 +145,7 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
    poprawek i bez zmiany „Statusu” PR nie powstaje. `retro.py observe` dopisuje do `observations.jsonl` obserwacje
    oraz `key` i incydenty każdej pozycji `fix` i `issue`, w obu przypadkach.
 6. **Wynik.** `report.md` w katalogu przebiegu (poprawki, obserwacje, propozycje issues, nadmiar,
-   `## Decyzje optymalizacyjne`, `## Zużycie`),
+   `## Zużycie`, na samym końcu `## Decyzje optymalizacyjne`),
    worktree usunięty, stan `done`, `retro.py unlock`. Push „Retro `<epik>`: PR #N, k poprawek, m propozycji issues”
    albo „Retro `<epik>`: bez zmian” (do 200 znaków). W rozmowie lista propozycji issues z numerami.
 7. **Decyzje użytkownika** w sesji, bez terminu. Nierozstrzygnięte zostają w `state.json` (`decisions_open`)
@@ -200,8 +200,12 @@ deterministyczne i stabilne między przebiegami; czasy w kluczach to pełne seku
   wersji albo `message` „za mało danych”). Skrypt liczy efekt, agent go tylko przepisuje.
 
 Brak skryptu, kod wyjścia różny od 0, przekroczony czas albo wynik niebędący oczekiwanym JSON-em to fakt
-`<epik>/measurement/missing/<wywołanie>` o treści „brak danych pomiaru: …” (bez ścieżek lokalnych); pozostałe incydenty
-i fakty powstają jak zawsze, a wpis `optimization_effects` ma wtedy `effect` równe `null`.
+`<epik>/measurement/missing/<wywołanie>` o treści „brak danych pomiaru” z samą kategorią błędu po polsku („brak skryptu”,
+„kod wyjścia N”, „przekroczony czas”, „wynik nie jest JSON-em”, „nieoczekiwany kształt JSON”, „brak runnera”, „błąd
+wywołania”). Tekstu, który wypisał skrypt (stderr), fakt nie zawiera: ma ścieżki lokalne i ślady stosu. Pozostałe incydenty
+i fakty powstają jak zawsze, a wpis `optimization_effects` ma wtedy `effect` równe `null`. Nieudane
+`decide <epik> --history` (np. brak rekordu retrospektywowanego epiku) oznacza brak incydentów `optimization` całej historii
+w tym przebiegu i fakt „brak danych pomiaru”.
 
 Incydenty `optimization` przechodzą cykl `/retro` bez zmian: próg (co najmniej dwa różne incydenty, czyli reguła
 zadziałała w dwóch epikach), rejestry `rejected`, `applied`, `carried`, `previous_fix` (problem, który wraca po zastosowanej
@@ -209,7 +213,7 @@ poprawce, oznacza ją jako nieskuteczną) i limity 5 poprawek i 3 issues. Popraw
 albo modelu agenta to propozycja issue `tech-debt` (zmiana modelu roli objętej EVALS 2.0 wymaga przed merge'em porównania
 wariantów EVALS 2.0 i decyzji właściciela).
 
-**Sekcja raportu „Decyzje optymalizacyjne”** kończy `report.md` (przed `## Zużycie`):
+**Sekcja raportu „Decyzje optymalizacyjne”** jest ostatnią sekcją `report.md` (po `## Zużycie`):
 
 - pozycje (`fix` i `issue`) oparte na incydentach `optimization` w tym przebiegu;
 - obserwacje: reguła, która zadziałała w jednym epiku (jeden incydent `optimization`, poniżej progu);

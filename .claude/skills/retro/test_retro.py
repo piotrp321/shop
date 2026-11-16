@@ -1105,7 +1105,8 @@ class CollectTest(CollectCase):
                 '--sweep-home', self.sweep_home]
         printed = io.StringIO()
         with redirect_stdout(printed):
-            self.assertEqual(retro.main(argv, run=self.runner), 0)
+            # no --repo (the default is the current directory), so the measurement is a fake one, never the real script
+            self.assertEqual(retro.main(argv, run=self.runner, metrics=FakeMetrics(fail='all')), 0)
         self.assertEqual(printed.getvalue().strip(), os.path.join(self.retro_home, 'visual-design', 'input.json'))
         self.assertTrue(os.path.isfile(os.path.join(self.retro_home, 'visual-design', 'input.json')))
         self.assertFalse(os.path.exists(out))
@@ -1413,20 +1414,90 @@ class MetricsRunnerTest(TempDirCase):
         self.assertEqual(retro.make_metrics_runner(repo)(['decide', 'e1', '--history']).strip(),
                          "['decide', 'e1', '--history']")
 
-    def test_a_missing_script_is_an_error_without_the_local_path(self):
-        repo = self.repo_with()
-        with self.assertRaises(next_epic_module().CommandError) as caught:
-            retro.make_metrics_runner(repo)(['decide', 'e1'])
-        self.assertIn('brak skryptu tools/metrics/metrics.py', str(caught.exception))
-        self.assertNotIn(self.tmp, str(caught.exception))
+    def failure(self, repo, args=('decide', 'e1')):
+        with self.assertRaises(retro.MeasurementError) as caught:
+            retro.make_metrics_runner(repo)(list(args))
+        return str(caught.exception)
 
-    def test_a_non_zero_exit_code_is_an_error_with_the_message_of_the_script_and_without_the_local_path(self):
-        repo = self.repo_with('import sys; sys.stderr.write("metrics: zły klucz\\n"); sys.exit(2)')
-        with self.assertRaises(next_epic_module().CommandError) as caught:
-            retro.make_metrics_runner(repo)(['effect', 'X', '--at', 'Y'])
-        self.assertIn('zły klucz', str(caught.exception))
-        self.assertNotIn(self.tmp, str(caught.exception))
-        self.assertNotIn(sys.executable, str(caught.exception))
+    def test_a_missing_script_is_the_category_brak_skryptu(self):
+        self.assertEqual(self.failure(self.repo_with()), 'brak skryptu tools/metrics/metrics.py')
+
+    def test_a_non_zero_exit_code_is_only_the_category_kod_wyjscia_and_never_the_stderr(self):
+        repo = self.repo_with('import sys; sys.stderr.write("metrics: brak rekordu w /Users/x/.local/state\\n"); sys.exit(2)')
+        self.assertEqual(self.failure(repo, ('effect', 'X', '--at', 'Y')), 'kod wyjścia 2')
+
+    def test_a_timeout_is_the_category_przekroczony_czas(self):
+        repo = self.repo_with('import time; time.sleep(30)')
+        with mock.patch.object(retro, 'METRICS_TIMEOUT_S', 0.3):
+            self.assertEqual(self.failure(repo), 'przekroczony czas')
+
+
+REAL_STDERR = ('metrics: brak (albo nieczytelny) rekord epiku visual-design w '
+               '/Users/someone/.local/state/shop-metrics/epics: nie ma pliku\n')
+TRACEBACK_STDERR = ('Traceback (most recent call last):\n  File "/Users/someone/shop/tools/metrics/metrics.py", '
+                    'line 9, in <module>\n    raise RuntimeError("/home/someone/x")\nRuntimeError: /private/tmp/x\n')
+
+
+class MeasurementFactsAreCategoriesTest(CollectCase):
+    """A fact about a failed measurement names the category of the failure in Polish and nothing the script wrote:
+    its stderr has local paths and tracebacks (docs/features/retro/spec.md, "Pomiar i decyzje optymalizacyjne")."""
+
+    def write_script(self, source):
+        directory = os.path.join(self.tmp, 'tools', 'metrics')
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, 'metrics.py'), 'w', encoding='utf-8') as f:
+            f.write(source)
+
+    def facts_after(self, source):
+        self.write_script(source)
+        self.assertEqual(self.collect(), 0)
+        with open(os.path.join(self.out, 'input.json'), encoding='utf-8') as f:
+            text = f.read()
+        facts = [f for f in json.loads(text)['facts'] if f['id'].startswith('visual-design/measurement/missing')]
+        return facts, text
+
+    def assert_clean(self, facts, text, category):
+        self.assertTrue(facts)
+        for fact in facts:
+            self.assertTrue(fact['text'].startswith('brak danych pomiaru'), fact)
+            self.assertIn(category, fact['text'])
+            for forbidden in ('/Users/', '/home/', '/private/', os.path.expanduser('~'), 'Traceback', 'File "',
+                              'RuntimeError', 'someone'):
+                self.assertNotIn(forbidden, fact['text'])
+        self.assertNotIn('someone', text)
+
+    def test_the_stderr_of_a_failing_script_with_a_path_is_not_in_the_fact(self):
+        facts, text = self.facts_after('import sys; sys.stderr.write(%r); sys.exit(2)' % REAL_STDERR)
+        self.assert_clean(facts, text, 'kod wyjścia 2')
+
+    def test_a_traceback_is_not_in_the_fact(self):
+        facts, text = self.facts_after('import sys; sys.stderr.write(%r); sys.exit(1)' % TRACEBACK_STDERR)
+        self.assert_clean(facts, text, 'kod wyjścia 1')
+
+    def test_an_output_that_is_not_json_is_the_category_wynik_nie_jest_json(self):
+        facts, text = self.facts_after('print("to nie jest JSON")')
+        self.assert_clean(facts, text, 'wynik nie jest JSON-em')
+
+    def test_an_unexpected_shape_is_the_category_nieoczekiwany_ksztalt_json(self):
+        facts, text = self.facts_after('print("[]")')
+        self.assert_clean(facts, text, 'nieoczekiwany kształt JSON')
+
+    def test_a_missing_script_is_the_category_brak_skryptu(self):
+        self.assertEqual(self.collect(), 0)
+        facts = [f for f in self.load()['facts'] if f['id'].startswith('visual-design/measurement/missing')]
+        self.assert_clean(facts, json.dumps(facts), 'brak skryptu')
+
+    def test_an_injected_runner_that_fails_gives_no_text_of_its_error(self):
+        self.assertEqual(self.collect(metrics=FakeMetrics(fail='all')), 0)
+        facts = [f for f in self.load()['facts'] if f['id'].startswith('visual-design/measurement/missing')]
+        self.assert_clean(facts, json.dumps(facts), 'błąd wywołania')
+        self.assertNotIn('simulated', json.dumps(facts))
+
+    def test_without_a_runner_it_is_the_category_brak_runnera(self):
+        data = retro.collect('visual-design', {'ao_home': self.ao_home, 'retro_home': self.retro_home,
+                                               'sweep_home': self.sweep_home}, self.runner)
+        facts = [f for f in data['facts'] if f['id'].startswith('visual-design/measurement/missing')]
+        self.assert_clean(facts, json.dumps(facts), 'brak runnera')
 
 
 class OptimizationKindTest(unittest.TestCase):
@@ -3028,7 +3099,14 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         report = section(self.skill, '**Sekcja `## Decyzje optymalizacyjne`**', '7. **Decyzje użytkownika**')
         self.assertIn('przepisany', report)
         self.assertIn('Efektu nie liczysz', report)
-        self.assertLess(self.skill.index('## Decyzje optymalizacyjne'), self.skill.index('sekcja `## Zużycie` (krok 8)'))
+        # the section is the last one of report.md: after `## Zużycie`
+        self.assertLess(self.skill.index('sekcja `## Zużycie` (krok 8)'),
+                        self.skill.index('na samym końcu sekcja `## Decyzje optymalizacyjne`'))
+        for where, text in (('SKILL.md', self.skill), ('spec.md', self.retro_spec)):
+            self.assertIn('ostatnią sekcją `report.md` (po `## Zużycie`)', text, where)
+            self.assertNotIn('przed `## Zużycie`', text, where)
+        self.assertLess(self.retro_spec.index('`## Zużycie`, na samym końcu `## Decyzje optymalizacyjne`'),
+                        self.retro_spec.index('7. **Decyzje użytkownika**'))
         self.assertIn('Efektu poprawki nie liczysz', agent)
         self.assertIn('optimization', agent)
 

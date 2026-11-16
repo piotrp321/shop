@@ -19,8 +19,10 @@ that does not exist) and, for `validate`, proposals that do not pass.
       and the decide result of the epic are the facts `<epic>/measurement/{trend,record,decide}` (with `data`), and
       `optimization_effects` [{key, applied_key, pr, merged_at, at, effect}] holds, for every row of applied.jsonl
       with an `optimization` incident, the output of `metrics.py effect KEY --at <merge of the fix>` as it is (null
-      when the call failed). A missing script, a non-zero exit code or an output that is not the expected JSON is
-      the fact `<epic>/measurement/missing/<call>` ("brak danych pomiaru"); the other incidents are collected anyway.
+      when the call failed). A missing script, a non-zero exit code, a timeout or an output that is not the expected
+      JSON is the fact `<epic>/measurement/missing/<call>`: "brak danych pomiaru" and the category of the failure in
+      Polish ("kod wyjścia N", ...), never the stderr of the script (local paths, tracebacks); the other incidents
+      are collected anyway.
       GitHub content (epic issues and
       their comments, PRs into epic/*, the open retro PR, open issues) comes through the origin gate
       tools/agent-security/github_trust.py, AO issues judged by the permission in the AO repository: a measurement
@@ -915,46 +917,64 @@ NO_MEASUREMENT = 'brak danych pomiaru'
 OPTIMIZATION_ID = re.compile(r'^[^/]+/optimization/(.+)$')
 
 
+class MeasurementError(Exception):
+    """A failed call of metrics.py. The message is only the category of the failure, in Polish ("brak skryptu", "kod
+    wyjścia N", "przekroczony czas", "wynik nie jest JSON-em", "nieoczekiwany kształt JSON", "brak runnera"): never
+    what the script wrote, because its stderr has local paths and tracebacks and goes to input.json."""
+
+
 def make_metrics_runner(repo):
     """A runner of `python3 tools/metrics/metrics.py` (path relative to the repository root `repo`): takes the arguments
-    after the script and returns the standard output. A missing script, a non-zero exit code and a timeout are
-    next_epic.CommandError, like for `gh`."""
-    run = next_epic.make_runner(repo, timeout=METRICS_TIMEOUT_S)
+    after the script and returns the standard output. A missing script, a non-zero exit code and a timeout are a
+    MeasurementError with the category only; the stderr of the script is dropped."""
     script = os.path.join(os.path.abspath(repo), METRICS_SCRIPT)
+    run = next_epic.make_runner(repo, timeout=METRICS_TIMEOUT_S)
 
     def metrics(args):
-        shown = ['metrics.py'] + list(args)    # the failure keeps neither the interpreter nor a local path
         if not os.path.isfile(script):
-            raise next_epic.CommandError(shown, 'brak skryptu %s' % METRICS_SCRIPT)
-        command = [sys.executable, script] + list(args)
+            raise MeasurementError('brak skryptu %s' % METRICS_SCRIPT)
+        # The shell drops the stderr of the script (`exec` keeps the timeout aimed at the script itself), so the detail
+        # of a failure is always the plain "exit code N" of the runner and never a path or a traceback.
+        command = ['/bin/sh', '-c', 'exec "$@" 2>/dev/null', 'sh', sys.executable, script] + list(args)
         try:
             return run(command)
         except next_epic.CommandError as e:
-            prefix = '%s: ' % ' '.join(command)
             message = str(e)
-            raise next_epic.CommandError(shown, message[len(prefix):] if message.startswith(prefix) else message)
+            code = re.search(r': exit code (-?\d+)$', message)
+            if ': timed out after ' in message:
+                raise MeasurementError('przekroczony czas')
+            if code:
+                raise MeasurementError('kod wyjścia %s' % code.group(1))
+            raise MeasurementError('nie udało się uruchomić skryptu')
     return metrics
 
 
 def metrics_json(metrics, args, shape):
-    """The JSON object printed by one `metrics.py` call, or raises next_epic.CommandError when there is no runner, the
-    call fails, the output is not JSON or lacks a key of `shape`."""
+    """The JSON object printed by one `metrics.py` call, or raises MeasurementError when there is no runner, the call
+    fails, the output is not JSON or lacks a key of `shape`. An injected runner may raise anything it likes (a
+    next_epic.CommandError): that is "błąd wywołania", without its text."""
     if metrics is None:
-        raise next_epic.CommandError(['metrics.py'] + list(args), 'no runner of metrics.py')
-    out = metrics(args)
+        raise MeasurementError('brak runnera')
+    try:
+        out = metrics(args)
+    except MeasurementError:
+        raise
+    except (next_epic.CommandError, OSError):
+        raise MeasurementError('błąd wywołania')
     try:
         value = json.loads(out)
-    except ValueError:
-        raise next_epic.CommandError(['metrics.py'] + list(args), 'output is not valid JSON')
+    except (TypeError, ValueError):
+        raise MeasurementError('wynik nie jest JSON-em')
     if not isinstance(value, dict) or not all(key in value for key in shape):
-        raise next_epic.CommandError(['metrics.py'] + list(args), 'unexpected JSON shape')
+        raise MeasurementError('nieoczekiwany kształt JSON')
     return value
 
 
-def no_measurement(epic_id, what, error):
-    """The fact that a measurement could not be read (the retrospective goes on without it)."""
+def no_measurement(epic_id, what, reason):
+    """The fact that a measurement could not be read (the retrospective goes on without it): the call and the category
+    of the failure (`reason`, a MeasurementError or a text of this file), never a text of the script."""
     return {'id': '%s/measurement/missing/%s' % (epic_id, what),
-            'text': '%s: metrics.py (%s) nie dał wyniku (%s)' % (NO_MEASUREMENT, what, cut(error, 200))}
+            'text': '%s: metrics.py (%s) nie dał wyniku: %s' % (NO_MEASUREMENT, what, reason)}
 
 
 def optimization_incidents(epic_id, entry, merged_at):
@@ -985,7 +1005,7 @@ def measurement_of(epic_id, metrics):
         facts.append({'id': '%s/measurement/decide' % epic_id,
                       'text': 'reguły pominięte i braki danych decide dla %s' % epic_id,
                       'data': {'skipped': own.get('skipped'), 'gaps': own.get('gaps')}})
-    except next_epic.CommandError as e:
+    except MeasurementError as e:
         facts.append(no_measurement(epic_id, 'decide', e))
     try:
         trend = metrics_json(metrics, ['trend', '--json', '--epic', epic_id, '--no-gh'], ('epics', 'position'))
@@ -995,7 +1015,7 @@ def measurement_of(epic_id, metrics):
         facts.append({'id': '%s/measurement/record' % epic_id,
                       'text': 'miary epiku %s i jego pozycja na tle mediany trendu' % epic_id,
                       'data': {'row': row, 'position': trend['position']}})
-    except next_epic.CommandError as e:
+    except MeasurementError as e:
         facts.append(no_measurement(epic_id, 'trend', e))
     return history, facts
 
@@ -1025,7 +1045,7 @@ def optimization_effects(epic_id, applied, metrics):
             if (key, at) not in asked:
                 try:
                     asked[(key, at)] = metrics_json(metrics, ['effect', key, '--at', at], ())
-                except next_epic.CommandError as e:
+                except MeasurementError as e:
                     asked[(key, at)] = None
                     facts.append(no_measurement(epic_id, 'effect/%s' % key, e))
             entry['effect'] = asked[(key, at)]

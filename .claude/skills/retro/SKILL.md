@@ -190,7 +190,7 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    `external` niezaufanych autorów: tylko numer, autor i link) oraz pomiar z `tools/metrics/metrics.py`: incydenty
    rodzaju `optimization` (kandydaci reguł D1–D4 z `decide --history`), fakty `<epik>/measurement/*`
    i `optimization_effects` (wynik `metrics.py effect` dla kluczy z `applied.jsonl`). Brak pomiaru (brak skryptu, błąd
-   wywołania) to fakt „brak danych pomiaru”, nie błąd `collect`.
+   wywołania) to fakt „brak danych pomiaru” z kategorią błędu (bez tekstu skryptu), nie błąd `collect`.
 3. **Agent `retro-analyst`** (narzędzie Agent, na pierwszym planie). Zlecenie:
 
    ```text
@@ -218,7 +218,8 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
 6. **Wynik.** Wywołaj `get_usage` (koniec pomiaru). Zapisz `$RUN/report.md` (po polsku): poprawki (commit, ID
    pozycji), obserwacje, propozycje issues z numerami (repo, tytuł, `existing_issue` albo nowe, dowody), `overflow`,
    zmiany „Statusu”, PR, ostrzeżenie `warning` z `lock` (jeśli było), nierozstrzygnięte decyzje poprzednich
-   przebiegów (niżej), sekcja `## Decyzje optymalizacyjne` (niżej) i na końcu sekcja `## Zużycie` (krok 8). Numery to
+   przebiegów (niżej), sekcja `## Zużycie` (krok 8) i na samym końcu sekcja `## Decyzje optymalizacyjne` (niżej).
+   Numery to
    `n` z `proposals.json` (wspólna numeracja pozycji `fix`,
    `issue` i `status`, bez przenumerowania); `issues --approve` i decyzje używają tych `n`. Nierozstrzygnięte decyzje
    innych epików wypisz fragmentem z „Uruchamiania” z `"$EPIC"` jako drugim argumentem. Usuń worktree
@@ -227,7 +228,7 @@ Błąd po sprzątaniu opisz w rozmowie i, gdy retro się nie udało, odrocz z po
    (do 200 znaków). W rozmowie: skrót raportu, lista propozycji issues z numerami (i przykład odpowiedzi: „tak”,
    „1, 3”, „odrzuć 2: powód”) oraz lista poprawek w PR (przykład: „bez 2: powód”), nierozstrzygnięte decyzje poprzednich przebiegów (ten sam
    fragment; `/retro` pokaże je ponownie i przyjmie decyzję), skrót `## Zużycie`.
-   **Sekcja `## Decyzje optymalizacyjne`** kończy raport (przed `## Zużycie`), zawsze, także bez treści (wtedy
+   **Sekcja `## Decyzje optymalizacyjne`** jest ostatnią sekcją `report.md` (po `## Zużycie`), zawsze, także bez treści (wtedy
    „brak”). Składasz ją z `proposals.json` i `input.json`, bez własnych obliczeń i bez czytania danych przebiegu:
    - pozycje `fix` i `issue`, których `evidence` zawiera incydent `optimization` (numer `n`, tytuł, klucz reguły,
      epiki z incydentami); poprawka instrukcji to `fix`, zmiana kodu, konfiguracji albo modelu agenta to propozycja
