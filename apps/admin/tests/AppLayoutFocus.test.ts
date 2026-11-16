@@ -31,6 +31,7 @@ const routes = [
       { path: "forms/:id", name: "form", component: form },
       // Targets of the menu that the tests do not visit.
       { path: "products/new", name: "product-new", component: page("Nowy produkt") },
+      { path: "categories", name: "categories", component: page("Kategorie") },
       { path: "prices", name: "prices", component: page("Ceny") },
       { path: "inventory", name: "inventory", component: page("Stany") },
       { path: "discount-codes", name: "discount-codes", component: page("Kody") },

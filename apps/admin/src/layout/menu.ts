@@ -75,6 +75,7 @@ export const MENU: MenuSection[] = [
               { kind: "leaf", id: "product-new", label: "Dodaj produkt", to: { name: "product-new" }, matches: named("product-new"), visible: canManageProducts },
             ],
           },
+          { kind: "leaf", id: "categories", label: "Kategorie", to: { name: "categories" }, matches: named("categories") },
           { kind: "leaf", id: "prices", label: "Ceny", to: { name: "prices" }, matches: named("prices") },
           { kind: "leaf", id: "inventory", label: "Stany magazynowe", to: { name: "inventory" }, matches: named("inventory") },
         ],

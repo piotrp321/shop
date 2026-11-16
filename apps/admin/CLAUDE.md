@@ -45,7 +45,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   trafia na H1 nowej strony; do czasu pojawienia się H1 (widok ładuje dane) na `<main>`. Fokus, który ma istniejący element
   (przeniesiony przez widok, np. formularz po zapisie przed `router.replace` na trasę utworzonego rekordu tą samą instancją,
   pole, w którym jest pracownik, topbar, menu), zostaje. H1 bez własnego `tabindex` (pulpit) dostaje od powłoki `tabindex="-1"`. Pozycja wybrana w szufladzie,
-  która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog,
+  która zmieniła stronę, zabiera fokus bez względu na to, gdzie jest (szuflada nie oddaje go wtedy „Menu”). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing, System; grupy Katalog (Produkty, Kategorie, Ceny, Stany magazynowe),
   Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
   ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
   szczegóły należą do pozycji listy, `/orders?refund=pending` i `/orders?refund=overdue` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
@@ -101,7 +101,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   indeksu wyszukiwania z szacunkiem liczby produktów (`inSync: null` bez szacunku to „Nie można porównać: brak statystyk bazy.”, `data-testid="not-comparable"`); `system: null` (rola bez dostępu, gdy `/me` się nie wczytał) to komunikat „Brak
   danych o stanie systemu”. Pliki bez bloku `<style>`.
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
-  list; `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
+  list, bez liczników produktów (`GET /categories` bez `withCounts`; ekran „Kategorie” ma własny odczyt z licznikami); `loaded` to koniec próby wczytania, także nieudanej, na który czeka lista z kategorią w adresie).
   `useNameSearch({ initial, apply })`: jedyne miejsce reguł wyszukiwania po nazwie listy produktów, listy cen, listy stanów i wyboru wariantów promocji (od 2 do 100 znaków w punktach kodowych po
   przycięciu, 300 ms przerwy w pisaniu, pusta fraza i same spacje to `null`, podpowiedź dla frazy za krótkiej i za długiej);
   zwraca `search`, `tooShort`, `hint`, `reset` (czyści pole i anuluje opóźnienie) i `setFromAddress` (wartość z adresu ustawia
@@ -139,6 +139,35 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   żądania, a zmiana `route.query` z zewnątrz (menu, wyszukiwarka topbaru, Wstecz i Dalej) ustawia zapytanie jednym
   przypisaniem, czyli jednym żądaniem od pierwszej strony. Zmiany adresu po opuszczeniu trasy widoku są pomijane
   (nazwa trasy). Pusty i powtórzony parametr nie jest wartością.
+- `src/categories/` – ekran „Kategorie” (`/categories`, `CategoriesView`, menu Sklep › Katalog › Kategorie; docs/features/admin-features/spec.md,
+  „Kategorie”). Trasa bez strażnika: drzewo czyta każdy pracownik z rolą, akcje zmieniające drzewo ma tylko `canManageCategories`
+  (`permissions.ts`: `admin` i `marketing`; ukrywa tylko przyciski, uprawnienie sprawdza API). `useCategoryScreen` czyta drzewo z licznikami
+  (`GET /categories?withCounts=true`, osobno od `useCategoryTree` filtrów list, które liczników nie chcą) i daje komendy `create`, `revise`, `move`
+  i `remove`; każda wysyła `version` wiersza, po udanej zmianie przeładowuje drzewo (wersje się zmieniły), a po 409 wersji i 404 też je przeładowuje.
+  Odmowa wraca jako wynik (`{ status: "problem", problem }`), nie wyjątek; jedna zmiana naraz (`busy`), tylko odpowiedź ostatniego odczytu zmienia stan,
+  nieudane przeładowanie zostawia drzewo. Wiadomość udanej zmiany jest tekstem toastu, a przy zmianie sluga albo przeniesieniu pod innego rodzica
+  (zmieniła się `path` z odpowiedzi) kończy się „Stary adres przekierowuje na nowy.”. `problem.ts` (`categoryProblem`) zamienia odpowiedź błędu
+  na miejsce komunikatu: 409 `category-slug-taken` przy polu Slug, `category-modified` „Kategoria została w międzyczasie zmieniona – odśwież”
+  (drzewo się przeładowuje), `category-too-deep`, `category-cycle` i `category-not-empty` z `detail` API w oknie (`blocked`), 422 do pól `name` i `slug`
+  według `violations`, 404, 403, sieć i inne statusy po polsku; nieznany typ 409 to zwykły błąd, nie konflikt wersji. `tree.ts`: wiersze (`CategoryRow`),
+  polecenia przesunięcia (`MoveCommand`: rodzic, pozycja wśród rodzeństwa bez przenoszonej kategorii, jak w API) z jednego miejsca: `moveCommand`
+  („W górę” i „W dół”, brak na brzegu rodzeństwa), `moveToCommand` („Przenieś do…”: koniec dzieci wybranego rodzica albo korzeni) i `dropCommand`
+  (upuszczenie przed, po albo w środku węzła; strefa z `zoneForRatio`: górna i dolna ćwiartka wiersza) oraz `formatProductCount` („ponad 1000” przy
+  `capped`, „—” bez licznika). Panel nie liczy reguł drzewa (głębokość, cykl, pustość, unikalność sluga to API); wyłącza tylko to, co oczywiście niemożliwe: własne
+  poddrzewo w „Przenieś do…” i upuszczenie bez zmiany. `CategoryTree` to Reka UI `Tree` (`role="tree"` o nazwie „Drzewo kategorii”, strzałki przechodzą
+  i otwierają węzły, `aria-level`; węzeł nie ma własnej etykiety, jego nazwą jest treść: nazwa, slug, „Produkty: N” i nazwy przycisków, bo krótsza etykieta
+  łamie „Etykieta w nazwie” (WCAG 2.5.3, axe `label-content-name-mismatch` liczy nazwy zagnieżdżonych przycisków do widocznego tekstu)), w wierszu nazwa, slug, „Produkty: N” i `RowActions` tylko dla
+  `canManage`: „Dodaj podkategorię”, „Edytuj”, „Przenieś do…”, „W górę”, „W dół” (dwa ostatnie pomijane na brzegu rodzeństwa), „Usuń” (klik i klawisze
+  w akcjach nie otwierają ani nie zamykają węzła). Przeciąganie (natywne HTML5, `draggable` tylko dla `canManage`) to skrót: upuszczenie daje to samo
+  `MoveCommand` co menu i idzie tą samą drogą (`change` widoku), więc klawiatura i czytnik ekranu niczego nie tracą; strefa upuszczenia jest w `data-drop`
+  (`before`, `inside`, `after`). Okna: `CategoryFormDialog` („Dodaj kategorię”, „Dodaj podkategorię”, „Edytuj”: pola Nazwa i Slug oba wymagane, podpowiedź formatu pod
+  Slugiem, fokus w Nazwie po otwarciu; odmowa przy polu albo w `Alert` okna z fokusem na komunikacie, zapis zamyka okno) i `CategoryMoveDialog`
+  (`CategoryCombobox` „Nowa kategoria nadrzędna” z „Poziom główny” i wyłączonym poddrzewem; kategoria trafia na koniec dzieci wybranego miejsca); „Usuń” pyta
+  `ConfirmDialog` z `close-on-confirm` wyłączonym, więc odmowę (niepusta kategoria) mówi okno. Zmiany bez okna (W górę, W dół, upuszczenie) kończą się toastem,
+  a odmowa `Alert` `change-error` nad drzewem; po „W górę” i „W dół” fokus wraca na ten sam przycisk (wiersz przesuwa się w DOM), a gdy ten zniknął na brzegu rodzeństwa, na przycisk przeciwnego kierunku,
+  w ostateczności na wiersz; po usunięciu na H1. Węzły z podkategoriami są otwarte przy pierwszym wczytaniu, potem decyduje pracownik; dodanie podkategorii i przeniesienie otwierają rodzica.
+  Wczytywanie to `role="status"` ze szkieletem, pusta lista „Nie ma jeszcze żadnych kategorii.” (z „Dodaj kategorię” dla ról zarządzających), błąd odczytu
+  `Alert` z „Spróbuj ponownie” (nieudane przeładowanie po zmianie zostawia drzewo i pokazuje ten sam alert).
 - `src/prices/` – lista cen (`/prices`, widok `PricesView`). `pricePage.ts`: czyste funkcje `fetchPricePage({ query, after })`
   (`GET /prices`; `perPage` idzie do API zawsze, bo domyślne API to 25, a lista zaczyna od 10; błędy: 403 „Nie masz dostępu do
   cen.” bez ponowienia, 404 kategoria, 400, sieć) i `priceRows(items)` (wiersz na wariant, `first` oznacza pierwszy wariant
@@ -495,7 +524,9 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
 - `src/components/` – własne komponenty, gdy `ui/` nie ma odpowiednika. `ConfirmDialog` (na `AlertDialog`): tytuł z nazwą
   obiektu, opis skutku, przycisk skutku (`destructive`: czerwony, inaczej niebieski) i „Wróć” z domyślnym fokusem;
   zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
-  wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
+  wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. Akcja, której odmowę API ma powiedzieć okno, wyłącza `close-on-confirm`:
+  potwierdzenie zostawia okno otwarte (zamyka je widok przez `open`), `busy` blokuje przycisk na czas żądania przez `aria-disabled` (nie `disabled`, który oddałby fokus
+  `body`), a `error` jest w oknie (`role="alert"`, `tabindex="-1"`) i dostaje fokus, gdy się pojawi. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
   to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
   zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, udostępnia `focus()` i element `heading`, np. na `fallback-focus` okna; slot `status` stoi tuż za H1, np. `Badge` statusu zamówienia) i okruszki (`<nav aria-label="Okruszki">`
   zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
@@ -508,8 +539,10 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   ponowny wybór zaznaczonej kategorii zdejmuje ją (`null`), bo `ComboboxItem` Reki w trybie pojedynczym zawsze ustawia
   wybraną wartość i nie przełącza jej. Pole wejściowe jest tworzone na nowo, gdy zmieni się liczba opcji
   (prymityw czyta nazwę wybranej kategorii raz, a wartość z adresu listy bywa wcześniejsza niż drzewo). Z prop
-  `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Używa go lista
-  produktów, lista cen, lista stanów i formularz produktu.
+  `invalid` i `describedBy` pole dostaje `aria-invalid` i `aria-describedby` (pole formularza z błędem). Miejsce, do którego przenosi się kategoria, dodaje `rootLabel` (pierwsza
+  opcja „Poziom główny” o wartości `ROOT_CATEGORY`, eksport z komponentu) i `disabledIds` (kategorie widoczne, ale niewybieralne, z `aria-disabled`: poddrzewo
+  przenoszonej kategorii). Używa go lista
+  produktów, lista cen, lista stanów, formularz produktu i okno „Przenieś do…” kategorii.
   Standard formularza (spec „Standard formularza i okien”; podłączony do formularza produktu, kodu rabatowego i promocji): `FormSection` (biała karta z H2 `tabindex="-1"`, `heading` i `focusHeading()` dla fokusu po akcji),
   `FormField` (etykieta nad polem, podpowiedź w slocie `hint` i błędy pod nim z `data-form-error`, slot daje `describedBy`
   i `invalid` do wstawienia na kontrolkę; kontrolka z własną etykietą, jak `CategoryCombobox`, pomija `label`), `SaveBar`
@@ -547,7 +580,7 @@ szufladę; klik z modyfikatorem albo środkowym przyciskiem zostaje przeglądarc
   ikoną i nazwą dostępną „Czasownik: nazwa obiektu” (zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”,
   `target="_blank"` `rel="noopener"`) oraz podpowiedzią z tą samą nazwą (`TooltipProvider` jest w komponencie); zwykły link,
   nie `RouterLink` (router nie oznacza go `aria-current`), klik z modyfikatorem zostaje przeglądarce; akcja bez `to` i `href` to przycisk (`select` z kluczem akcji i przyciskiem, `testid`
-  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje.
+  nadpisuje `action-<klucz>`); akcję, której rola nie wykona, widok w ogóle nie podaje; przyciski są w jednym wierszu (kolumna tabeli listy zachowuje szerokość); prop `wrap` pozwala im zawinąć się do następnego, gdy nie mieszczą się obok nazwy (tylko węzeł drzewa kategorii przy 320 px).
 - `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
@@ -710,7 +743,9 @@ Spec: `docs/features/sentry/spec.md`.
 - Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
   i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list
   rozwijanych trafia do `document.body`, więc testy montują z `attachTo: document.body` i czyszczą je po teście.
-  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne i filtrowanie;
+  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne, filtrowanie, opcję „Poziom główny” i kategorie wyłączone; ekran kategorii: `tests/categoryTree.test.ts`
+  (polecenia przesunięcia i upuszczenia), `tests/categoryProblem.test.ts`, `tests/useCategoryScreen.test.ts`, `tests/CategoriesView.test.ts` (stany, role, okna, odmowy,
+  przenoszenie, usuwanie) i `tests/CategoryTreeInteraction.test.ts` (przeciąganie i klawiatura; jsdom nie ma układu, więc testy podają wymiary wierszy);
   `tests/ProductFormView.test.ts` formularz produktu (pola, błędy, pasek zapisu, okno niezapisanych zmian, toasty i fokus
   po zapisie, publikacji i błędzie, błąd wczytania), `tests/ProductImages.test.ts` i `tests/ProductVariants.test.ts`
   fokus po usunięciu, alert błędu wysyłania i okno usunięcia wariantu, `tests/useUnsavedChangesGuard.test.ts`,

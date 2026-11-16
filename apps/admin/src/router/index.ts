@@ -10,6 +10,7 @@ import { canManageProducts } from "@/products/permissions";
 import { canManagePromotions } from "@/promotions/permissions";
 import { useAuthStore } from "@/stores/auth";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
+import CategoriesView from "@/views/CategoriesView.vue";
 import DashboardView from "@/views/DashboardView.vue";
 import DiscountCodeFormView from "@/views/DiscountCodeFormView.vue";
 import DiscountCodesView from "@/views/DiscountCodesView.vue";
@@ -51,6 +52,8 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
             },
           },
           { path: "products/:id", name: "product", component: ProductFormView },
+          // Every staff member with a role reads the tree; the actions are hidden for the others and the API checks who changes it.
+          { path: "categories", name: "categories", component: CategoriesView },
           { path: "prices", name: "prices", component: PricesView },
           {
             // One path for the list and the pages, so the menu item of the promotions stays active on a promotion.

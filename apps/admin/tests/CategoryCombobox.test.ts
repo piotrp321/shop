@@ -2,7 +2,7 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { ComboboxRoot } from "reka-ui";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineComponent, h, ref } from "vue";
-import CategoryCombobox from "@/components/CategoryCombobox.vue";
+import CategoryCombobox, { ROOT_CATEGORY } from "@/components/CategoryCombobox.vue";
 import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 
 // The shape of `useCategoryTree().nodes`: Turystyka > (Biwak > (Namioty, Śpiwory), Plecaki), Sport > Bieganie.
@@ -288,5 +288,57 @@ describe("CategoryCombobox in a form", () => {
 
     expect(input().hasAttribute("aria-invalid")).toBe(false);
     expect(input().hasAttribute("aria-describedby")).toBe(false);
+  });
+});
+
+describe("CategoryCombobox: a place to move to (root option and disabled categories)", () => {
+  it("offers the root as the first option under the given label, with the depth 0", async () => {
+    mountCombobox({ rootLabel: "Poziom główny" });
+    await open();
+
+    expect(optionNames()).toEqual(["Poziom główny", ...TREE_ORDER]);
+    expect(options()[0]!.dataset.depth).toBe("0");
+  });
+
+  it("emits the marker of the root when it is chosen, and shows its label when it is the value", async () => {
+    const wrapper = mountCombobox({ rootLabel: "Poziom główny" });
+    await open();
+    options()[0]!.click();
+    await flushPromises();
+
+    expect(wrapper.emitted("update:modelValue")).toEqual([[ROOT_CATEGORY]]);
+    await wrapper.setProps({ modelValue: ROOT_CATEGORY });
+    expect(input().value).toBe("Poziom główny");
+  });
+
+  it("finds the root by typing its label", async () => {
+    mountCombobox({ rootLabel: "Poziom główny" });
+    await open();
+    await type("poziom");
+
+    expect(optionNames()).toEqual(["Poziom główny"]);
+  });
+
+  it("has no root option without the label", async () => {
+    mountCombobox();
+    await open();
+
+    expect(optionNames()).not.toContain("Poziom główny");
+  });
+
+  it("disables the given categories: they are marked, cannot be chosen and keep their place in the list", async () => {
+    const wrapper = mountCombobox({ disabledIds: ["c-camping", "c-tents", "c-sleeping-bags"] });
+    await open();
+
+    expect(optionNames()).toEqual(TREE_ORDER);
+    expect(options().map((option) => option.getAttribute("aria-disabled"))).toEqual([null, "true", "true", "true", null, null, null]);
+    options()[1]!.click();
+    options()[2]!.click();
+    await flushPromises();
+    expect(wrapper.emitted("update:modelValue")).toBeUndefined();
+
+    options()[4]!.click();
+    await flushPromises();
+    expect(wrapper.emitted("update:modelValue")).toEqual([["c-backpacks"]]);
   });
 });

@@ -19,6 +19,7 @@ function createTestRouter() {
       { path: "/products", name: "products", component: empty },
       { path: "/products/new", name: "product-new", component: empty },
       { path: "/products/:id", name: "product", component: empty },
+      { path: "/categories", name: "categories", component: empty },
       { path: "/prices", name: "prices", component: empty },
       {
         path: "/promotions",
@@ -85,6 +86,7 @@ const ADMIN_LINKS = [
   ["Pulpit", "/"],
   ["Lista produktów", "/products"],
   ["Dodaj produkt", "/products/new"],
+  ["Kategorie", "/categories"],
   ["Ceny", "/prices"],
   ["Stany magazynowe", "/inventory"],
   ["Lista zamówień", "/orders"],
@@ -158,6 +160,7 @@ describe("AppMenu: structure and roles", () => {
     expect(links(menu)).toEqual([
       ["Pulpit", "/"],
       ["Lista produktów", "/products"],
+      ["Kategorie", "/categories"],
       ["Ceny", "/prices"],
       ["Stany magazynowe", "/inventory"],
       ["Promocje", "/promotions"],
@@ -182,6 +185,7 @@ describe("AppMenu: the current item", () => {
     ["/products", "Lista produktów"],
     ["/products/0192f0c4", "Lista produktów"],
     ["/products/new", "Dodaj produkt"],
+    ["/categories", "Kategorie"],
     ["/prices", "Ceny"],
     ["/inventory", "Stany magazynowe"],
     ["/promotions", "Promocje"],

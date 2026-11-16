@@ -51,6 +51,8 @@ export async function expectControlsReachable(page: Page, root: Locator | null):
     let n = 0;
     for (const item of element.querySelectorAll<HTMLElement>(selector)) {
       delete item.dataset.reflowN;
+      // The container of a tree is a stop of the roving tabindex that passes the focus to its node at once: its nodes are the controls.
+      if (item.getAttribute("role") === "tree") continue;
       if (item.tabIndex >= 0 && !(item as HTMLButtonElement).disabled && item.checkVisibility({ checkVisibilityCSS: true })) item.dataset.reflowN = String(n++);
     }
     return n;

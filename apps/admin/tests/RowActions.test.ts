@@ -12,11 +12,11 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function mountActions(actions: RowAction[]) {
+async function mountActions(actions: RowAction[], extra: Record<string, unknown> = {}) {
   const empty = { template: "<div />" };
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/products/:id", name: "product", component: empty }, { path: "/", component: empty }] });
   await router.push("/");
-  wrapper = mount(RowActions, { props: { name: "Buty trailowe Norvane Grań 300", actions }, global: { plugins: [router] }, attachTo: document.body });
+  wrapper = mount(RowActions, { props: { name: "Buty trailowe Norvane Grań 300", actions, ...extra }, global: { plugins: [router] }, attachTo: document.body });
   return { wrapper, router };
 }
 
@@ -92,5 +92,20 @@ describe("RowActions", () => {
     await mountActions([]);
 
     expect(document.body.querySelector("a")).toBeNull();
+  });
+
+  it("does not wrap the buttons by default, so that a column of a table keeps its width", async () => {
+    await mountActions([edit]);
+
+    const row = document.body.querySelector("a")!.parentElement!;
+    expect(row.classList.contains("flex")).toBe(true);
+    expect(row.classList.contains("flex-wrap")).toBe(false);
+  });
+
+  it("wraps the buttons to the next line with the prop wrap (the node of the category tree)", async () => {
+    await mountActions([edit], { wrap: true });
+
+    const row = document.body.querySelector("a")!.parentElement!;
+    expect(row.classList.contains("flex-wrap")).toBe(true);
   });
 });
