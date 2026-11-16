@@ -77,10 +77,11 @@ final class BackofficeOrdersController
         $placedFrom = \is_string($query->placedFrom) ? $query->placedFrom : null;
         $placedTo = \is_string($query->placedTo) ? $query->placedTo : null;
         $customerId = \is_string($query->customerId) ? $query->customerId : null;
+        $sort = \is_string($query->sort) ? BackofficeOrderSort::from($query->sort) : null;
 
         try {
             /** @var BackofficeOrderList $list */
-            $list = $this->handle(new ListBackofficeOrders($status, null !== $query->refund, $q, $query->after, $query->perPage, null === $query->sort ? null : BackofficeOrderSort::from($query->sort), $placedFrom, $placedTo, 'overdue' === $query->refund, $customerId));
+            $list = $this->handle(new ListBackofficeOrders($status, null !== $query->refund, $q, $query->after, $query->perPage, $sort, $placedFrom, $placedTo, 'overdue' === $query->refund, $customerId));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued (for this sort) is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

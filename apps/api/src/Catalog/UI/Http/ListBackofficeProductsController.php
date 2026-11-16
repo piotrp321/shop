@@ -83,9 +83,12 @@ final class ListBackofficeProductsController
     #[IsGranted(self::VIEW_PRODUCTS)]
     public function __invoke(#[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] BackofficeProductsQuery $query = new BackofficeProductsQuery()): JsonResponse
     {
+        // The validation has accepted only a text here.
+        $sort = \is_string($query->sort) ? $query->sort : null;
+
         try {
             /** @var BackofficeProductList $list */
-            $list = $this->handle(new ListBackofficeProducts($query->q, $query->category, $query->status, $query->after, $query->perPage, $query->sort, 'none' === $query->images));
+            $list = $this->handle(new ListBackofficeProducts($query->q, $query->category, $query->status, $query->after, $query->perPage, $sort, 'none' === $query->images));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

@@ -264,6 +264,8 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         yield 'unknown' => ['sort=zz'];
         yield 'empty' => ['sort='];
         yield 'another letter case' => ['sort=NAME'];
+        yield 'an array' => ['sort[]=name'];
+        yield 'a keyed array' => ['sort[a]=b'];
     }
 
     #[DataProvider('unknownSorts')]

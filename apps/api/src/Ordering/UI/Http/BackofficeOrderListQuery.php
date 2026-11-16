@@ -15,7 +15,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
- * Query string of GET /api/v1/admin/orders. The violation messages never contain the submitted value. `refund`, `q`,
+ * Query string of GET /api/v1/admin/orders. The violation messages never contain the submitted value. `sort`, `refund`, `q`,
  * `placedFrom` and `placedTo` are taken as they come (`mixed`) and checked here, so a value of the wrong kind (`q[]=…`)
  * gets the same Polish message as a bad text, not the English one of the serializer.
  */
@@ -46,8 +46,9 @@ final readonly class BackofficeOrderListQuery
         // among them: the driver would cut the term there and search for something else).
         #[OA\Property(type: 'string', nullable: true, minLength: 3, maxLength: ListBackofficeOrders::MAX_QUERY_LENGTH)]
         public mixed $q = null,
-        #[Assert\Choice(choices: self::SORTS, message: self::BAD_SORT)]
-        public ?string $sort = null,
+        // A string checked by validateSort.
+        #[OA\Property(type: 'string', enum: self::SORTS, nullable: true)]
+        public mixed $sort = null,
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]
         public ?string $after = null,
         #[Assert\Range(min: 1, max: ListBackofficeOrders::MAX_PER_PAGE)]
@@ -62,6 +63,17 @@ final readonly class BackofficeOrderListQuery
         #[OA\Property(type: 'string', nullable: true, minLength: 1, maxLength: OrderOwner::MAX_CUSTOMER_ID_LENGTH)]
         public mixed $customerId = null,
     ) {
+    }
+
+    /**
+     * The sort is one of SORTS; a value of another kind (`sort[]=…`) is the same violation.
+     */
+    #[Assert\Callback]
+    public function validateSort(ExecutionContextInterface $context): void
+    {
+        if (null !== $this->sort && !\in_array($this->sort, self::SORTS, true)) {
+            $context->buildViolation(self::BAD_SORT)->atPath('sort')->addViolation();
+        }
     }
 
     /**

@@ -32,8 +32,9 @@ final readonly class BackofficeProductsQuery
         public ?string $category = null,
         #[Assert\Choice(choices: ['draft', 'published'], message: 'The status must be draft or published.')]
         public ?string $status = null,
-        #[Assert\Choice(choices: self::SORTS, message: self::BAD_SORT)]
-        public ?string $sort = null,
+        // A string checked by validateSort: a value of another kind (`sort[]=…`) gets the same Polish message.
+        #[OA\Property(type: 'string', enum: self::SORTS, nullable: true)]
+        public mixed $sort = null,
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]
         public ?string $after = null,
         #[Assert\Range(min: 1, max: SearchBackofficeProducts::MAX_PER_PAGE)]
@@ -42,6 +43,17 @@ final readonly class BackofficeProductsQuery
         #[OA\Property(type: 'string', enum: ['none'], nullable: true)]
         public mixed $images = null,
     ) {
+    }
+
+    /**
+     * The sort is one of SORTS; a value of another kind (`sort[]=…`) is the same violation.
+     */
+    #[Assert\Callback]
+    public function validateSort(ExecutionContextInterface $context): void
+    {
+        if (null !== $this->sort && !\in_array($this->sort, self::SORTS, true)) {
+            $context->buildViolation(self::BAD_SORT)->atPath('sort')->addViolation();
+        }
     }
 
     /**
