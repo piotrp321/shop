@@ -11,40 +11,7 @@ from unittest import mock
 
 import metrics
 import testkit
-
-
-def run_cli(argv, runner=None, now=1800000000.0):
-    out, err = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        code = metrics.main(argv, run=runner, now=now)
-    return code, out.getvalue(), err.getvalue()
-
-
-class Env(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.root = self._tmp.name
-        self.state = os.path.join(self.root, 'state')
-        self.night = os.path.join(self.root, 'night')
-        os.makedirs(self.night)
-        # `~` never reaches the real state of the user
-        patcher = mock.patch.dict(os.environ, {'HOME': self.root})
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-    def epic(self, name, *extra, runner=None, home=None, no_gh=True):
-        argv = ['epic', name, '--state', self.state, '--night', self.night]
-        if home is not None:
-            argv += ['--ao-home', home]
-        if no_gh:
-            argv.append('--no-gh')
-        return run_cli(argv + list(extra), runner)
-
-    def record(self, name, *extra, home=None, runner=None, no_gh=True):
-        code, out, err = self.epic(name, *extra, home=home, runner=runner, no_gh=no_gh)
-        self.assertIn(code, (0, 3), err)
-        return json.loads(out)
+from testkit import Env, run_cli
 
 
 class SkeletonTest(Env):

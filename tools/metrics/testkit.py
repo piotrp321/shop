@@ -1,9 +1,16 @@
 """Helpers of the tools/metrics tests: AO run directories from the sanitized fixtures or built synthetically, and a
 stubbed `gh`. Not a test module (no tests are collected from it)."""
+import contextlib
+import io
 import json
 import os
 import sqlite3
+import tempfile
 import types
+import unittest
+from unittest import mock
+
+import metrics
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, 'fixtures', 'ao-data')
@@ -43,6 +50,9 @@ def synthetic_home(root, epic='demo', status='DONE', created=1000.0, final_pr=7,
     [(at, type, data, task_id)]; jsonl: events.jsonl lines (dicts) or None for no file."""
     home = os.path.join(root, 'ao-%s' % epic)
     os.makedirs(home, exist_ok=True)
+    for name in ('orchestrator.db', 'events.jsonl'):
+        if os.path.exists(os.path.join(home, name)):
+            os.unlink(os.path.join(home, name))     # a test may rebuild the same run
     con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
     con.executescript(SCHEMA)
     con.execute('INSERT INTO epics VALUES (?,?,?,?,?,?,?,?,?)',
@@ -102,3 +112,40 @@ class FakeGh:
 def merged_pr(merged_at='2026-11-13T10:00:00Z', issues=(496,)):
     return {'state': 'MERGED', 'mergedAt': merged_at,
             'closingIssuesReferences': [{'number': n} for n in issues]}
+
+
+def run_cli(argv, runner=None, now=1800000000.0):
+    """(exit code, stdout, stderr) of metrics.main."""
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = metrics.main(argv, run=runner, now=now)
+    return code, out.getvalue(), err.getvalue()
+
+
+class Env(unittest.TestCase):
+    """A temporary state, night and AO root; `~` points into it, so no test touches the real state of the user."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = self._tmp.name
+        self.state = os.path.join(self.root, 'state')
+        self.night = os.path.join(self.root, 'night')
+        os.makedirs(self.night)
+        patcher = mock.patch.dict(os.environ, {'HOME': self.root})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def epic(self, name, *extra, runner=None, home=None, no_gh=True):
+        argv = ['epic', name, '--state', self.state, '--night', self.night]
+        if home is not None:
+            argv += ['--ao-home', home]
+        if no_gh:
+            argv.append('--no-gh')
+        return run_cli(argv + list(extra), runner)
+
+    def record(self, name, *extra, home=None, runner=None, no_gh=True):
+        """The record printed by `epic`; the exit code must be 0 (or 3 when a source failed)."""
+        code, out, err = self.epic(name, *extra, home=home, runner=runner, no_gh=no_gh)
+        self.assertIn(code, (0, 3), err)
+        return json.loads(out)

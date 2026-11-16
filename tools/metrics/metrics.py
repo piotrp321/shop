@@ -231,6 +231,159 @@ def load_run(ao_home, epic_id, busy_timeout_ms, gaps):
     return {'epic': epic, 'tasks': tasks, 'attempts': attempts, 'events': events}
 
 
+def read_jsonl_events(path):
+    """(events, None) of events.jsonl, or (None, reason) when the file is missing or unreadable. Lines that are not
+    JSON objects are skipped."""
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return None, 'brak pliku events.jsonl'
+    except OSError as e:
+        return None, 'nieczytelny events.jsonl: %s' % (e.strerror or e)
+    events = []
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events, None
+
+
+# ------------------------------------------------------------------------------------------------------ intervals
+
+def clip_merge(intervals, low, high):
+    """The (start, end) intervals cut to [low, high], sorted and merged into disjoint ones."""
+    cut = sorted((max(s, low), min(e, high)) for s, e in intervals if e > low and s < high and e > s)
+    merged = []
+    for start, end in cut:
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
+def subtract(intervals, taken):
+    """The disjoint `intervals` without the disjoint `taken` ones."""
+    left = []
+    for start, end in intervals:
+        cursor = start
+        for t_start, t_end in taken:
+            if t_end <= cursor or t_start >= end:
+                continue
+            if t_start > cursor:
+                left.append([cursor, t_start])
+            cursor = max(cursor, t_end)
+        if cursor < end:
+            left.append([cursor, end])
+    return left
+
+
+def total(intervals):
+    return sum(end - start for start, end in intervals)
+
+
+CI_END = ('epic_ci_green', 'epic_ci_inherited', 'epic_ci_inherited_red', 'epic_ci_timeout', 'epic_repairing')
+GITHUB_QUIET = ('github_wait', 'gh_call')
+
+
+def _next_at(events, index, kinds, after=None):
+    """The `at` of the first event from `index` on whose type is in `kinds`."""
+    for event in events[index:]:
+        if event['type'] in kinds and (after is None or event['at'] >= after):
+            return event['at']
+    return None
+
+
+def category_intervals(run, done, jsonl, config, gaps):
+    """{category: [(start, end)] or None} for the breakdown categories except idle (before clipping and
+    precedence). None: the source of the category is missing."""
+    events = run['events']
+    found = {'work': [], 'human_wait': None, 'limit_wait': [], 'ci_wait': [], 'host_pause': [], 'github_wait': []}
+    for attempt in run['attempts']:
+        start = _number(attempt['started_at'])
+        if start is None:
+            continue
+        end = _number(attempt['ended_at'])
+        found['work'].append((start, done if end is None else end))
+    if jsonl is not None:
+        found['human_wait'] = [(w['start'], done if w['end'] is None else w['end']) for w in ao_events.waits(jsonl)]
+    for i, event in enumerate(events):
+        kind, data, at = event['type'], event['data'], event['at']
+        if kind == 'cooldown_set':
+            start = _number(data.get('from'))
+            ends = [e for e in (_number(data.get('until')), _next_at(events, i + 1, ('cooldown_released',))) if e]
+            if not ends:
+                gaps.add('breakdown.limit_wait', 'cooldown_set bez until i bez cooldown_released: pominięty')
+                continue
+            found['limit_wait'].append((at if start is None else start, min(ends)))
+        elif kind == 'epic_ci_pending':
+            end = _next_at(events, i + 1, CI_END)
+            found['ci_wait'].append((at, done if end is None else end))
+        elif kind == 'final_pr_created':
+            end = _next_at(events, i + 1, ('final_pr_ci',))
+            found['ci_wait'].append((at, done if end is None else end))
+        elif kind == 'host_pause':
+            start, end = _number(data.get('from')), _number(data.get('to'))
+            seconds = _number(data.get('seconds'))
+            if start is None and seconds is not None:
+                start, end = at - seconds, at
+            if start is None or end is None:
+                gaps.add('breakdown.host_pause', 'host_pause bez from/to i seconds: pominięty')
+                continue
+            found['host_pause'].append((start, end))
+        elif kind == 'github_wait' and not (i and events[i - 1]['type'] in GITHUB_QUIET
+                                            and _run_of_github_waits(events, i)):
+            last, j = at, i + 1
+            while j < len(events) and events[j]['type'] in GITHUB_QUIET:
+                if events[j]['type'] == 'github_wait':
+                    last = events[j]['at']
+                j += 1
+            end = last + config['github_wait_cap_s']
+            if j < len(events):
+                end = min(end, events[j]['at'])
+            found['github_wait'].append((at, end))
+    return found
+
+
+def _run_of_github_waits(events, index):
+    """Whether the event at `index` continues a run of github_wait / gh_call events that a github_wait before it
+    already started (that run is one wait, measured from its first github_wait)."""
+    j = index - 1
+    while j >= 0 and events[j]['type'] in GITHUB_QUIET:
+        if events[j]['type'] == 'github_wait':
+            return True
+        j -= 1
+    return False
+
+
+def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps):
+    """The split of start -> epic_done into disjoint categories: each moment goes to the first category (in the order
+    of config.json) whose interval covers it; the rest is idle. A category without a source is None."""
+    if done is None or started is None:
+        gaps.add('breakdown', 'brak epic_done: rozkład czasu niemożliwy')
+        return None
+    if jsonl is None:
+        gaps.add('breakdown.human_wait', '%s: czas czekania na człowieka jest w idle' % jsonl_gap)
+    found = category_intervals(run, done, jsonl, config, gaps)
+    taken, result = [], {}
+    for name in config['breakdown_order']:
+        if name == 'idle':
+            continue
+        if found[name] is None:
+            result[name] = None
+            continue
+        own = subtract(clip_merge(found[name], started, done), taken)
+        result[name] = round(total(own), 3)
+        taken = clip_merge(taken + [tuple(i) for i in own], started, done)
+    to_done = round(done - started, 3)
+    result['idle'] = round(to_done - sum(v for v in result.values() if v is not None), 3)
+    return {name: result[name] for name in config['breakdown_order']}
+
+
 def build_record(epic_id, ao_home, config, busy_timeout_ms):
     gaps = Gaps()
     run = load_run(ao_home, epic_id, busy_timeout_ms, gaps)
@@ -243,6 +396,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms):
     final_pr = epic['final_pr_number']
     if final_pr is None:
         gaps.add('final_pr', 'epik nie ma końcowego PR')
+    jsonl, jsonl_gap = read_jsonl_events(os.path.join(ao_home, 'events.jsonl'))
     record = {
         'epic': epic_id,
         'final_pr': final_pr,
@@ -250,6 +404,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms):
         'started_at': iso(started),
         'done_at': iso(done),
         'wall': {'to_done': to_done},
+        'breakdown': breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps),
     }
     record['gaps'] = gaps.render()
     return record
@@ -268,7 +423,7 @@ def write_record(path, record):
         fd, temp = tempfile.mkstemp(dir=directory, prefix='.tmp-', suffix='.json')
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                json.dump(record, f, ensure_ascii=False, sort_keys=True)
+                json.dump(record, f, ensure_ascii=False)
                 f.write('\n')
             os.replace(temp, path)
         except BaseException:
@@ -293,7 +448,7 @@ def cmd_epic(args, config, run, now):
     busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
     record = build_record(args.epic, ao_home, config, busy)
     write_record(state_path(_expand(args.state), args.epic), record)
-    print(json.dumps(record, ensure_ascii=False, sort_keys=True))
+    print(json.dumps(record, ensure_ascii=False))
     return 0
 
 
