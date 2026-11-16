@@ -8,6 +8,8 @@ use App\Pricing\Application\Port\ListedPromotion;
 use App\Pricing\Application\Query\PromotionCursor;
 use App\Pricing\Domain\Promotion\PromotionStatus;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DbalPromotionReader;
+use App\Shared\Domain\BoundedCount;
+use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -33,7 +35,7 @@ final class DbalPromotionReaderTest extends TestCase
         $this->connection->beginTransaction();
         // Only the promotions of the test are in the list.
         $this->connection->executeStatement('DELETE FROM pricing_promotion');
-        $this->reader = new DbalPromotionReader($this->connection);
+        $this->reader = new DbalPromotionReader($this->connection, new BoundedCounter($this->connection));
 
         $this->insert(self::PLANNED, '2026-11-20 00:00:00+00', '2026-11-30 00:00:00+00', 1);
         $this->insert(self::ACTIVE, '2026-11-01 00:00:00+00', '2026-11-15 00:00:00+00', 3);
@@ -88,6 +90,40 @@ final class DbalPromotionReaderTest extends TestCase
         self::assertSame([self::PLANNED, self::STARTS_NOW, self::ACTIVE], array_column($first, 'id'));
         self::assertSame([self::ACTIVE_SAME_START, self::ENDS_NOW], array_column($second, 'id'));
         self::assertSame([self::ENDS_NOW], array_column($this->reader->page(PromotionStatus::Ended, $now, PromotionCursor::after($first[2]), 3), 'id'));
+    }
+
+    public function testCountsThePromotionsOfTheStatusAtNowLikeThePagesHoldThem(): void
+    {
+        $now = new \DateTimeImmutable(self::NOW);
+
+        self::assertEquals(new BoundedCount(5, false), $this->reader->count(null, $now));
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(PromotionStatus::Planned, $now));
+        self::assertEquals(new BoundedCount(3, false), $this->reader->count(PromotionStatus::Active, $now));
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(PromotionStatus::Ended, $now));
+    }
+
+    public function testTheCountStopsAtTenThousandAndSaysSo(): void
+    {
+        $now = new \DateTimeImmutable(self::NOW);
+        $this->insertMany(9_995, '2030-01-01 00:00:00+00', '2030-02-01 00:00:00+00');
+
+        self::assertEquals(new BoundedCount(10_000, false), $this->reader->count(null, $now), 'exactly the limit is still exact');
+
+        $this->insertMany(1, '2030-01-01 00:00:00+00', '2030-02-01 00:00:00+00');
+
+        self::assertEquals(new BoundedCount(10_000, true), $this->reader->count(null, $now));
+        self::assertEquals(new BoundedCount(9_997, false), $this->reader->count(PromotionStatus::Planned, $now), '9 996 new ones and the planned one of the setup: under the limit is exact');
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(PromotionStatus::Ended, $now), 'a filter with few matches is exact');
+    }
+
+    private function insertMany(int $count, string $startsAt, string $endsAt): void
+    {
+        $this->connection->executeStatement(
+            "INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version)
+             SELECT gen_random_uuid(), 'Promocja ' || n, 15, CAST(? AS timestamptz), CAST(? AS timestamptz), '2026-09-01 00:00:00+00', '2026-09-01 00:00:00+00', 2
+             FROM generate_series(1, ?) AS s(n)",
+            [$startsAt, $endsAt, $count],
+        );
     }
 
     private function insert(string $id, string $startsAt, string $endsAt, int $variants): void

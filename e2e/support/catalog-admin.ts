@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { openMenuItem } from "./panel-menu";
 
 /** A product the tests create in the panel; the name and slug are unique per run, so a rerun never meets an earlier product. */
@@ -136,15 +136,27 @@ export async function unpublishInPanel(page: Page): Promise<void> {
 }
 
 /**
+ * The row of one variant of a product on the stock list: the list groups the variants under a row of their product
+ * (`product-row`, with the name), so the variant row is one of the `stock-row` rows right after that row.
+ */
+export function stockRowOf(page: Page, productName: string, variantLabel: string): Locator {
+  return page
+    .getByTestId("product-row")
+    .filter({ has: page.getByTestId("name").getByText(productName, { exact: true }) })
+    .locator("xpath=following-sibling::tr[@data-testid='stock-row']")
+    .filter({ has: page.getByTestId("variant-label").getByText(variantLabel, { exact: true }) });
+}
+
+/**
  * Receives stock for one variant of a product in the stock screen of the panel (the staff member is logged in already).
  * Resolves when the panel shows the received quantity as the physical stock.
  */
 export async function receiveStockInPanel(page: Page, productName: string, variantLabel: string, quantity: number): Promise<void> {
   await openMenuItem(page, "Stany magazynowe", "Katalog");
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(productName);
-  // A name shows on the first row of each product: the product as the only name means the (debounced) search is applied.
-  await expect(page.getByTestId("name"), "the search narrows the list to the product").toHaveText([productName]);
-  const row = page.getByTestId("stock-row").filter({ has: page.getByTestId("variant-label").getByText(variantLabel, { exact: true }) });
+  // The row of each product shows its name: the product as the only name means the (debounced) search is applied.
+  await expect(page.getByTestId("product-row").getByTestId("name"), "the search narrows the list to the product").toHaveText([productName]);
+  const row = stockRowOf(page, productName, variantLabel);
   await expect(row).toHaveCount(1);
   await row.getByTestId("receive-stock").click();
   const dialog = page.getByTestId("receive-dialog");

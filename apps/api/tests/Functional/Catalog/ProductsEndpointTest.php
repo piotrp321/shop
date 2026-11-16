@@ -19,6 +19,7 @@ use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductDocumentFactory;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\SwitchableProductSearch;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -123,7 +124,16 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame(['Leaf'], array_column($this->items($this->get('/api/v1/products?category='.self::LEAF)), 'name'));
     }
 
-    public function testCategoryFilterGivesTheSameResultForAnUpperCaseUuid(): void
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function otherNotationsOfTheRootCategory(): iterable
+    {
+        yield from InputValues::equivalentUuidForms(self::ROOT);
+    }
+
+    #[DataProvider('otherNotationsOfTheRootCategory')]
+    public function testCategoryFilterGivesTheSameResultForAnotherNotationOfTheUuid(string $notation): void
     {
         $this->index(
             $this->document('Child', self::CHILD, [self::ROOT, self::CHILD]),
@@ -133,17 +143,26 @@ final class ProductsEndpointTest extends WebTestCase
         );
 
         $lower = $this->get('/api/v1/products?category='.self::ROOT);
-        $upper = $this->get('/api/v1/products?category='.strtoupper(self::ROOT));
+        $other = $this->get('/api/v1/products?category='.$notation);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame(3, $lower['total']);
-        self::assertSame($lower, $upper);
-        self::assertNotSame([], self::object($upper['facets'])['categories']);
+        self::assertSame($lower, $other);
+        self::assertNotSame([], self::object($other['facets'])['categories']);
     }
 
-    public function testAnUnknownCategoryInUpperCaseIsNotFound(): void
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function otherNotationsOfAnUnknownCategory(): iterable
     {
-        $this->get('/api/v1/products?category='.strtoupper(self::UNKNOWN));
+        yield from InputValues::equivalentUuidForms(self::UNKNOWN);
+    }
+
+    #[DataProvider('otherNotationsOfAnUnknownCategory')]
+    public function testAnUnknownCategoryInAnotherNotationIsNotFound(string $notation): void
+    {
+        $this->get('/api/v1/products?category='.$notation);
 
         self::assertResponseStatusCodeSame(404);
     }
@@ -157,7 +176,7 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(404);
         self::assertStringStartsWith('application/problem+json', (string) $this->client->getResponse()->headers->get('Content-Type'));
         self::assertSame(404, $problem['status']);
-        self::assertSame('Category not found.', $problem['detail']);
+        self::assertSame('Kategoria nie istnieje.', $problem['detail']);
         self::assertStringNotContainsString(self::UNKNOWN, (string) $this->client->getResponse()->getContent());
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Ordering;
 
 use App\Tests\Integration\Ordering\BackofficeOrderFixture;
+use App\Tests\Integration\Ordering\OrderingFixture;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -81,29 +82,28 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         $this->order('paid', '-1 day', 'R-100003', email: 'kowalski@example.com');
 
         self::assertSame([$second, $first], $this->ids($this->list('q='.rawurlencode('JAN.KOWALSKI@example.COM'), self::staff(['warehouse']))));
-        self::assertSame([], $this->ids($this->list('q='.rawurlencode('example.com'), self::staff(['warehouse']))), 'no part of an email');
     }
 
     /**
      * @return iterable<string, array{string}>
      */
-    public static function otherSearches(): iterable
+    public static function searchesThatFindNothing(): iterable
     {
-        yield 'a name' => ['Kowalski'];
-        yield 'the digits of a number' => ['100001'];
-        yield 'a part of a number' => ['R-1000'];
-        yield 'the longest term' => [str_repeat('a', 254)];
+        yield 'a surname nobody has' => ['Nowakowski'];
+        yield 'a fragment of an email nobody has' => ['zzz@'];
+        yield 'a number that is not there' => ['R-999999'];
+        yield 'the longest email' => [str_repeat('a', 64).'@'.str_repeat('b', 186).'.pl'];
     }
 
-    #[DataProvider('otherSearches')]
-    public function testAnyOtherSearchIsAnEmptyList(string $q): void
+    #[DataProvider('searchesThatFindNothing')]
+    public function testASearchThatFindsNothingIsAnEmptyList(string $q): void
     {
         $this->order('paid', '-1 day', 'R-100001');
 
         $list = $this->list('q='.$q, self::staff(['admin']));
 
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['items' => [], 'nextCursor' => null], $list);
+        self::assertSame(['items' => [], 'nextCursor' => null, 'total' => ['value' => 0, 'capped' => false]], $list);
     }
 
     public function testTheStatusFilterCombinesWithTheSearch(): void
@@ -132,6 +132,112 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         self::assertSame([true, false, false], array_map(static fn (mixed $item): mixed => \is_array($item) && \is_array($item['refund']) ? $item['refund']['overdue'] : null, $all['items']));
         self::assertSame([$returnedSooner, $returnedLater], $this->ids($this->list('refund=pending&status=returned', self::staff(['support']))));
         self::assertSame([$returnedSooner], $this->ids($this->list('refund=pending&status=returned&q=r-100004', self::staff(['support']))));
+    }
+
+    public function testTheOverdueRefundsAreTheSubsetOfThePendingOnesPastTheirDueDateInTheSameOrder(): void
+    {
+        $this->order('paid', '-10 days', 'R-100001');
+        $returnedLater = $this->order('returned', '-9 days', 'R-100002', refundDueAt: '+5 days');
+        $cancelledOverdue = $this->order('cancelled_by_staff', '-8 days', 'R-100003', refundDueAt: '-1 day');
+        $returnedOverdue = $this->order('returned', '-7 days', 'R-100004', refundDueAt: '-3 days');
+        $this->order('returned', '-6 days', 'R-100005', refundDueAt: '-2 days', refundCompletedAt: '-3 days');
+        $support = self::staff(['support']);
+
+        $overdue = $this->list('refund=overdue', $support);
+        $pending = $this->list('refund=pending', $support);
+
+        self::assertSame([$returnedOverdue, $cancelledOverdue], $this->ids($overdue));
+        self::assertSame([$returnedOverdue, $cancelledOverdue, $returnedLater], $this->ids($pending));
+        self::assertSame(['value' => 2, 'capped' => false], $overdue['total']);
+        self::assertIsArray($overdue['items']);
+        self::assertSame([true, true], array_map(static fn (mixed $item): mixed => \is_array($item) && \is_array($item['refund']) ? $item['refund']['overdue'] : null, $overdue['items']));
+        self::assertSame([$returnedOverdue], $this->ids($this->list('refund=overdue&status=returned', $support)));
+        self::assertSame([$cancelledOverdue], $this->ids($this->list('refund=overdue&q=r-100003', $support)));
+        self::assertSame([], $this->ids($this->list('refund=overdue&status=paid', $support)));
+        self::assertMatchesSchema('BackofficeOrderList', $overdue);
+    }
+
+    public function testTheOverdueRefundsPageWithTheCursorOfThePendingOnes(): void
+    {
+        $first = $this->order('returned', '-9 days', 'R-100001', refundDueAt: '-3 days');
+        $second = $this->order('returned', '-8 days', 'R-100002', refundDueAt: '-2 days');
+        $third = $this->order('returned', '-7 days', 'R-100003', refundDueAt: '-1 day');
+        $this->order('returned', '-6 days', 'R-100004', refundDueAt: '+1 day');
+        $admin = self::staff(['admin']);
+
+        $pending = $this->list('refund=pending&perPage=2', $admin);
+        $overdue = $this->list('refund=overdue&perPage=2', $admin);
+        $overdueLater = $this->list('refund=overdue&perPage=2&after='.self::cursor($overdue), $admin);
+        $pendingCursorUsed = $this->list('refund=overdue&perPage=2&after='.self::cursor($pending), $admin);
+
+        self::assertSame([$first, $second], $this->ids($overdue));
+        self::assertSame(['value' => 3, 'capped' => false], $overdue['total']);
+        self::assertSame([$third], $this->ids($overdueLater));
+        self::assertNull($overdueLater['total']);
+        self::assertSame($this->ids($overdueLater), $this->ids($pendingCursorUsed), 'the cursor of a pending page leads on');
+        self::assertSame(['after'], $this->violationPaths(400, $this->list('refund=overdue&after='.self::cursor($this->list('perPage=1', $admin)), $admin)));
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>}>
+     */
+    public static function overdueWithExcluded(): iterable
+    {
+        yield 'a sort' => ['refund=overdue&sort=-placedAt', ['sort']];
+        yield 'the amount' => ['refund=overdue&sort=total', ['sort']];
+        yield 'a sort and a range' => ['refund=overdue&sort=placedAt&placedFrom=2026-11-01', ['placedFrom', 'sort']];
+        yield 'an unknown filter' => ['refund=late', ['refund']];
+        yield 'capitals' => ['refund=OVERDUE', ['refund']];
+    }
+
+    /**
+     * @param list<string> $paths
+     */
+    #[DataProvider('overdueWithExcluded')]
+    public function testTheOverdueRefundsHaveTheirOwnSortAndRejectWhatTheyDoNotCombineWith(string $query, array $paths): void
+    {
+        $actual = $this->violationPaths(400, $this->list($query, self::staff(['admin'])));
+        sort($actual);
+
+        self::assertSame($paths, $actual);
+    }
+
+    public function testTheFirstPageHoldsTheTotalOfTheMatchingOrdersAndLaterPagesNone(): void
+    {
+        $this->order('returned', '-9 days', 'R-100001', refundDueAt: '+5 days');
+        $this->order('returned', '-8 days', 'R-100002', refundDueAt: '-1 day');
+        $this->order('returned', '-7 days', 'R-100003', refundDueAt: '-2 days', refundCompletedAt: '-3 days');
+        $this->order('shipped', '-6 days', 'R-100004', email: 'anna@example.com');
+        $this->order('paid', '-5 days', 'R-100005');
+        $admin = self::staff(['admin']);
+
+        $all = $this->list('perPage=2', $admin);
+        $later = $this->list('perPage=2&after='.self::cursor($all), $admin);
+        $pending = $this->list('refund=pending&perPage=1', $admin);
+        $pendingLater = $this->list('refund=pending&perPage=1&after='.self::cursor($pending), $admin);
+
+        self::assertSame(['value' => 5, 'capped' => false], $all['total']);
+        self::assertNull($later['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $pending['total']);
+        self::assertNull($pendingLater['total']);
+        self::assertSame(['value' => 3, 'capped' => false], $this->list('status=returned', $admin)['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $this->list('refund=pending&status=returned', $admin)['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->list('q=R-100004', $admin)['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->list('q='.rawurlencode('ANNA@example.com'), $admin)['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $this->list('status=delivered', $admin)['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $this->list('q=R-999999', $admin)['total']);
+        self::assertMatchesSchema('BackofficeOrderList', $all);
+        self::assertMatchesSchema('BoundedCountResponse', $all['total']);
+    }
+
+    /**
+     * @param array<mixed> $list
+     */
+    private static function cursor(array $list): string
+    {
+        self::assertIsString($list['nextCursor']);
+
+        return $list['nextCursor'];
     }
 
     /**
@@ -179,6 +285,7 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         yield 'empty status' => ['status=', 'status'];
         yield 'status as an array' => ['status[]=paid', 'status'];
         yield 'unknown refund filter' => ['refund=done', 'refund'];
+        yield 'the refund filter as an array' => ['refund[]=overdue', 'refund'];
         yield 'empty refund filter' => ['refund=', 'refund'];
         yield 'empty term' => ['q=', 'q'];
         yield 'nothing but spaces' => ['q=%20%20%20', 'q'];
@@ -203,6 +310,28 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         self::assertStringNotContainsString('garbage', (string) $this->response()->getContent());
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badRefundFilters(): iterable
+    {
+        yield 'a value that is no filter' => ['refund=done'];
+        yield 'capitals' => ['refund=PENDING'];
+        yield 'an array' => ['refund[]=pending'];
+    }
+
+    #[DataProvider('badRefundFilters')]
+    public function testTheViolationOfTheRefundFilterIsInPolishAlsoForAnArray(string $query): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame(['refund'], $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('Filtr zwrotów może mieć tylko wartość pending albo overdue.', $violation['title']);
+    }
+
     public function testACursorOfTheOtherSortIsA400(): void
     {
         $this->order('returned', '-2 days', 'R-100001', refundDueAt: '+1 day');
@@ -214,6 +343,194 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
 
         self::assertSame(['after'], $this->violationPaths(400, $this->list('refund=pending&after='.$byDate, self::staff(['admin']))));
         self::assertSame(['after'], $this->violationPaths(400, $this->list('after='.$byRefund, self::staff(['admin']))));
+    }
+
+    private const array SORTS = ['-placedAt', 'placedAt', '-total', 'total'];
+
+    /**
+     * Seven orders with ties in the moment of placement and in the amount (1 000 a unit), so the id has to decide.
+     *
+     * @return list<array{id: string, placedAt: string, total: int, status: string}>
+     */
+    private function seedForSorting(): array
+    {
+        $rows = [];
+        $specs = [
+            [3, '2026-11-05 10:00:00', 'paid'], [1, '2026-11-05 11:00:00', 'new'], [3, '2026-11-05 11:00:00', 'paid'], [2, '2026-11-05 12:00:00', 'shipped'],
+            [3, '2026-11-05 10:00:00', 'new'], [1, '2026-11-05 13:00:00', 'paid'], [5, '2026-11-05 11:00:00', 'paid'],
+        ];
+        foreach ($specs as $n => [$units, $placedAt, $status]) {
+            /** @var 'new'|'paid'|'shipped' $status */
+            $rows[] = ['id' => $this->order($status, $placedAt, 'R-'.(100_001 + $n), quantities: [$units]), 'placedAt' => $placedAt, 'total' => $units * 1_000, 'status' => $status];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array{id: string, placedAt: string, total: int, status: string}> $rows
+     *
+     * @return list<string>
+     */
+    private static function expectedIds(array $rows, string $key): array
+    {
+        $column = str_ends_with($key, 'total') ? 'total' : 'placedAt';
+        usort($rows, static fn (array $a, array $b): int => [$a[$column], $a['id']] <=> [$b[$column], $b['id']]);
+        if (str_starts_with($key, '-')) {
+            $rows = array_reverse($rows);
+        }
+
+        return array_column($rows, 'id');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function sortKeys(): iterable
+    {
+        foreach (self::SORTS as $key) {
+            yield $key => [$key];
+        }
+    }
+
+    #[DataProvider('sortKeys')]
+    public function testEveryKeySortsInItsDirectionWithAStableKeysetAcrossTies(string $key): void
+    {
+        $rows = $this->seedForSorting();
+
+        $seen = [];
+        $query = 'sort='.rawurlencode($key).'&perPage=3';
+        for ($page = 0; $page < 5; ++$page) {
+            $list = $this->list($query, self::staff(['admin']));
+            self::assertResponseStatusCodeSame(200);
+            $seen = [...$seen, ...$this->ids($list)];
+            if (null === $list['nextCursor']) {
+                break;
+            }
+            self::assertIsString($list['nextCursor']);
+            $query = 'sort='.rawurlencode($key).'&perPage=3&after='.$list['nextCursor'];
+        }
+
+        self::assertSame(self::expectedIds($rows, $key), $seen);
+    }
+
+    #[DataProvider('sortKeys')]
+    public function testASortCombinesWithTheStatusFilterAndKeepsTheTotalOfTheFirstPage(string $key): void
+    {
+        $rows = $this->seedForSorting();
+        $paid = array_values(array_filter($rows, static fn (array $row): bool => 'paid' === $row['status']));
+
+        $list = $this->list('status=paid&perPage=2&sort='.rawurlencode($key), self::staff(['admin']));
+
+        self::assertSame(\array_slice(self::expectedIds($paid, $key), 0, 2), $this->ids($list));
+        self::assertSame(['value' => 4, 'capped' => false], $list['total']);
+    }
+
+    public function testWithoutASortTheNewestComeFirst(): void
+    {
+        $this->seedForSorting();
+
+        self::assertSame($this->ids($this->list('sort=-placedAt&perPage=100', self::staff(['admin']))), $this->ids($this->list('perPage=100', self::staff(['admin']))));
+    }
+
+    public function testACursorOfAnotherSortIsA400AtAfter(): void
+    {
+        $this->order('returned', '2026-11-05 10:00:00', 'R-100001', refundDueAt: '+1 day');
+        $this->order('returned', '2026-11-05 11:00:00', 'R-100002', refundDueAt: '+2 days');
+        $cursors = [];
+        foreach (self::SORTS as $key) {
+            $cursors[$key] = $this->list('perPage=1&sort='.$key, self::staff(['admin']))['nextCursor'];
+        }
+        $cursors['refund'] = $this->list('refund=pending&perPage=1', self::staff(['admin']))['nextCursor'];
+
+        foreach ($cursors as $issued => $cursor) {
+            self::assertIsString($cursor);
+            $usedWith = ['' => 'perPage=1', ...array_combine(self::SORTS, array_map(static fn (string $key): string => 'sort='.$key, self::SORTS)), 'refund' => 'refund=pending'];
+            foreach ($usedWith as $used => $query) {
+                if ($used === $issued || ('' === $used && '-placedAt' === $issued)) {
+                    continue;
+                }
+                self::assertSame(['after'], $this->violationPaths(400, $this->list($query.'&after='.$cursor, self::staff(['admin']))), $issued.' used as '.('' === $used ? 'the default' : $used));
+            }
+        }
+    }
+
+    #[DataProvider('sortKeys')]
+    public function testThePendingRefundsHaveTheirOwnSortAndRejectAKey(string $key): void
+    {
+        self::assertSame(['sort'], $this->violationPaths(400, $this->list('refund=pending&sort='.rawurlencode($key), self::staff(['admin']))));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function amountSorts(): iterable
+    {
+        yield 'the highest amount first' => ['-total'];
+        yield 'the lowest amount first' => ['total'];
+    }
+
+    #[DataProvider('amountSorts')]
+    public function testAnAmountSortRejectsTheSearchWhichNoIndexServesWithIt(string $key): void
+    {
+        $this->seedForSorting();
+
+        foreach (['R-100001', 'jan%40example.com'] as $q) {
+            self::assertSame(['sort'], $this->violationPaths(400, $this->list('sort='.$key.'&q='.$q, self::staff(['admin']))), $q);
+        }
+        self::assertSame(['sort'], $this->violationPaths(400, $this->list('refund=pending&sort='.$key.'&q=R-100001', self::staff(['admin']))));
+    }
+
+    public function testThePlacementSortsKeepTheSearch(): void
+    {
+        $this->seedForSorting();
+
+        foreach (['-placedAt', 'placedAt'] as $key) {
+            self::assertCount(7, $this->ids($this->list('sort='.$key.'&q=jan%40example.com', self::staff(['admin']))));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badSortKeys(): iterable
+    {
+        yield 'unknown' => ['sort=amount'];
+        yield 'empty' => ['sort='];
+        yield 'another letter case' => ['sort=Total'];
+        yield 'the key of the refunds' => ['sort=refund'];
+        yield 'a key of the products' => ['sort=-name'];
+        yield 'two directions' => ['sort=--total'];
+        yield 'with a space' => ['sort=-%20total'];
+        yield 'an array' => ['sort[]=total'];
+    }
+
+    #[DataProvider('badSortKeys')]
+    public function testAKeyOutsideTheClosedListIsA400AtSort(string $query): void
+    {
+        self::assertSame(['sort'], $this->violationPaths(400, $this->list($query, self::staff(['admin']))));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badSortKeysInPolish(): iterable
+    {
+        yield from self::badSortKeys();
+        yield 'a keyed array' => ['sort[a]=b'];
+    }
+
+    #[DataProvider('badSortKeysInPolish')]
+    public function testAKeyOutsideTheClosedListIsRefusedWithAPolishMessage(string $query): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame(['sort'], $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        self::assertCount(1, $problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('Sortowanie może mieć tylko wartość -placedAt, placedAt, -total albo total.', $violation['title']);
     }
 
     /**
@@ -259,6 +576,119 @@ final class ListBackofficeOrdersEndpointTest extends WebTestCase
         $this->assertProblem(403, $this->list('', self::staff($roles)));
         self::assertStringNotContainsString('R-100001', (string) $this->response()->getContent());
         $this->assertProblem(403, $this->list('perPage=0&after=garbage!', self::staff($roles)));
+    }
+
+    public function testTheOrdersOfACustomerAreOnlyItsOwnNewestFirstAndCombineWithTheStatus(): void
+    {
+        $older = OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna', placedAt: '2026-11-01 10:00:00+00:00');
+        $newer = OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna', placedAt: '2026-11-02 10:00:00+00:00', paid: true);
+        // Another customer, and a guest with the same email: not the orders of the customer.
+        OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna-2', placedAt: '2026-11-03 10:00:00+00:00');
+        OrderingFixture::order($this->connection, email: 'anna@example.com', placedAt: '2026-11-04 10:00:00+00:00');
+
+        $all = $this->list('customerId=kc-anna', self::staff(['warehouse']));
+
+        self::assertResponseIsSuccessful();
+        $this->assertPrivateAndNotStored();
+        self::assertSame([$newer, $older], self::customerOrderIds($all));
+        self::assertSame(['value' => 2, 'capped' => false], $all['total']);
+        self::assertSame([$older], self::customerOrderIds($this->list('customerId=kc-anna&status=new', self::staff(['support']))));
+        self::assertSame([], self::customerOrderIds($this->list('customerId=kc-nobody', self::staff(['admin']))));
+    }
+
+    public function testTheOrdersOfACustomerPageWithTheCursorAndCountTheFirstPage(): void
+    {
+        $ids = [];
+        for ($day = 1; $day <= 3; ++$day) {
+            $ids[] = OrderingFixture::order($this->connection, customerId: 'kc-anna', placedAt: \sprintf('2026-11-0%d 10:00:00+00:00', $day));
+        }
+
+        $first = $this->list('customerId=kc-anna&perPage=2', self::staff(['admin']));
+        self::assertIsString($first['nextCursor']);
+        $second = $this->list('customerId=kc-anna&perPage=2&after='.$first['nextCursor'], self::staff(['admin']));
+
+        self::assertSame(['value' => 3, 'capped' => false], $first['total']);
+        self::assertSame(array_reverse($ids), [...self::customerOrderIds($first), ...self::customerOrderIds($second)]);
+        self::assertNull($second['total']);
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>}>
+     */
+    public static function excludedWithACustomer(): iterable
+    {
+        yield 'a search' => ['customerId=kc-anna&q=Kowalski', ['q']];
+        yield 'a sort, also the default one' => ['customerId=kc-anna&sort=-placedAt', ['sort']];
+        yield 'the sort by the amount' => ['customerId=kc-anna&sort=-total', ['sort']];
+        yield 'the start of a range' => ['customerId=kc-anna&placedFrom=2026-11-01', ['placedFrom']];
+        yield 'both ends of a range' => ['customerId=kc-anna&placedFrom=2026-11-01&placedTo=2026-11-30', ['placedFrom', 'placedTo']];
+        yield 'the pending refunds' => ['customerId=kc-anna&refund=pending', ['refund']];
+        yield 'the overdue refunds' => ['customerId=kc-anna&refund=overdue', ['refund']];
+    }
+
+    /**
+     * @param list<string> $paths
+     */
+    #[DataProvider('excludedWithACustomer')]
+    public function testTheOrdersOfACustomerRejectTheSearchTheSortTheRangeAndTheRefunds(string $query, array $paths): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame($paths, $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            self::assertSame('Zamówienia klienta łączą się tylko z filtrem statusu: bez wyszukiwania, sortowania, zakresu dat i zwrotów.', $violation['title']);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badCustomerIds(): iterable
+    {
+        yield 'empty' => ['customerId='];
+        yield 'longer than a customer id' => ['customerId='.str_repeat('a', 256)];
+        yield 'with a NUL' => ['customerId=kc%00'];
+        yield 'with a line separator' => ['customerId='.rawurlencode("kc\u{2028}1")];
+        yield 'an array' => ['customerId[]=kc-anna'];
+    }
+
+    #[DataProvider('badCustomerIds')]
+    public function testACustomerIdNoCustomerCanHaveIsA400InPolish(string $query): void
+    {
+        $problem = $this->list($query, self::staff(['admin']));
+
+        self::assertSame(['customerId'], $this->violationPaths(400, $problem));
+        self::assertIsArray($problem['violations']);
+        $violation = $problem['violations'][0];
+        self::assertIsArray($violation);
+        self::assertSame('Identyfikator klienta ma od 1 do 255 znaków bez znaków sterujących.', $violation['title']);
+    }
+
+    public function testMarketingIsForbiddenTheOrdersOfACustomer(): void
+    {
+        OrderingFixture::order($this->connection, email: 'anna@example.com', customerId: 'kc-anna');
+
+        $this->assertProblem(403, $this->list('customerId=kc-anna', self::staff(['marketing'])));
+        self::assertStringNotContainsString('anna@example.com', (string) $this->response()->getContent());
+    }
+
+    /**
+     * @param array<mixed> $list
+     *
+     * @return list<string>
+     */
+    private static function customerOrderIds(array $list): array
+    {
+        self::assertIsArray($list['items'] ?? null);
+
+        return array_map(static function (mixed $item): string {
+            self::assertIsArray($item);
+            self::assertIsString($item['orderId']);
+
+            return $item['orderId'];
+        }, array_values($list['items']));
     }
 
     public function testATokenIsRequiredAndACustomerTokenIsNotAccepted(): void

@@ -2,9 +2,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { type FormImage, useImageUpload } from "./useImageUpload";
+import { fetchTaxClasses, type TaxClass } from "./taxClasses";
 
 export type ProductEditView = components["schemas"]["ProductEditViewResponse"];
-export type TaxClass = components["schemas"]["TaxClassResponse"];
 
 /** A variant row of the form. `variantId` is null for a row that is new. */
 export interface VariantRow {
@@ -120,6 +120,9 @@ function toBody(form: ProductFormData) {
     variants: form.variants.map((variant) => ({ variantId: variant.variantId, values: variant.values })),
   };
 }
+
+/** The toast after the first save: a product without a price is unavailable in the shop (the price is set on the card „Ceny i stany”). */
+export const CREATED_MESSAGE = "Produkt zapisany. Ustaw cenę, inaczej produkt będzie w sklepie niedostępny.";
 
 function problemField(body: unknown, field: "detail" | "type"): string | null {
   const value = typeof body === "object" && body !== null ? (body as Record<string, unknown>)[field] : undefined;
@@ -257,16 +260,12 @@ export function useProductForm(options: ProductFormOptions) {
   }
 
   async function loadTaxClasses(): Promise<void> {
-    try {
-      const result = await getApiClient().GET("/api/v1/admin/tax-classes");
-      if (result.data) {
-        taxClasses.value = result.data;
-        taxClassesError.value = null;
-      } else {
-        taxClassesError.value = `Nie udało się pobrać klas podatkowych (HTTP ${result.response.status}).`;
-      }
-    } catch {
-      taxClassesError.value = "Nie udało się pobrać klas podatkowych. Sprawdź połączenie z API.";
+    const result = await fetchTaxClasses();
+    if ("error" in result) {
+      taxClassesError.value = result.error;
+    } else {
+      taxClasses.value = result.taxClasses;
+      taxClassesError.value = null;
     }
   }
 
@@ -395,7 +394,7 @@ export function useProductForm(options: ProductFormOptions) {
       if (result.data) {
         const created = view.value === null;
         apply(result.data);
-        message.value = success;
+        message.value = created ? CREATED_MESSAGE : success;
         if (created) {
           options.onCreated(result.data.id);
         }

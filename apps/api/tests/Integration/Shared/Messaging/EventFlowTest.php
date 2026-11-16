@@ -7,8 +7,8 @@ namespace App\Tests\Integration\Shared\Messaging;
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Command\CreateProductHandler;
+use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Application\EventHandler\IndexProduct;
-use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchClientFactory;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
@@ -50,7 +50,8 @@ final class EventFlowTest extends MessagingKernelTestCase
     public function testCreatedProductReachesTheIndexThroughTheOutboxAndRabbitMq(): void
     {
         $this->createProduct();
-        self::assertSame(1, $this->rows('outbox'));
+        // Both ProductCreated: the domain one for the previous version and the contract.
+        self::assertSame(2, $this->rows('outbox'));
 
         $this->consumeOutboxAndEvents();
 
@@ -85,8 +86,8 @@ final class EventFlowTest extends MessagingKernelTestCase
 
         $this->consume('events');
 
-        // A failed handler would put the message back through the retry delay (1 s ±10 %), so wait it out.
-        usleep(1_500_000);
+        // A failed handler would put the message back through the retry delay (100 ms ±10 %), so wait it out.
+        usleep(300_000);
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->rows('failed'));
         // The second handling read the product again, later, and wrote it again.
@@ -182,16 +183,17 @@ final class EventFlowTest extends MessagingKernelTestCase
         self::assertSame($requestId, $byMessage['{class} was handled successfully (acknowledging to transport).'] ?? null, 'the identifier of the entry of the worker');
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
 
-        // The retry comes back to the queue after its delay (1 s ±10 %); it must not reach a later test.
-        usleep(1_500_000);
-        self::assertCount(1, $this->drainEvents());
+        // The retries (one per ProductCreated) come back to the queue after their delay (100 ms ±10 %); they must not
+        // reach a later test.
+        $this->awaitEventsInQueue(2);
+        self::assertCount(2, $this->drainEvents());
     }
 
     private function createProduct(): void
     {
         $bus = self::getContainer()->get('command.bus');
         self::assertInstanceOf(MessageBusInterface::class, $bus);
-        $bus->dispatch(new CreateCategory(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
+        $bus->dispatch(CreateCategory::bySeed(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
         $bus->dispatch(new CreateProduct(
             self::PRODUCT_ID,
             'Buty biegowe',
@@ -212,7 +214,8 @@ final class EventFlowTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 2, '--time-limit' => 10]);
+        // The relay of both ProductCreated, then their handling.
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 4, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }

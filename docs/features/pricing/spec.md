@@ -328,11 +328,13 @@ Pricing:
     bez ceny przed startem jest `null`. Wariant bez ceny lub z nieaktualną stawką nie ma ceny i nie może zostać kupiony.
   - Autorytatywny odczyt dla koszyka i zamówienia: wywoływany w procesie przez port Cart/Ordering, z bazy, bez cache
     HTTP. Ordering kopiuje cenę skuteczną do pozycji zamówienia, a `version` (wersja ceny katalogowej) wykrywa zmianę ceny katalogowej, nie ceny skutecznej: start lub koniec promocji zmienia netto, VAT i brutto przy tej samej wersji.
-- `ListBackofficePrices(q, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory`
+- `ListBackofficePrices(q, categoryId, after, perPage, sort, productId)`: strona produktów z portu `ProductDirectory`
   (Catalog `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem
   (Catalog `ListProductVariants` z `includeDrafts: true`) i ich ceny jednym zapytaniem. Wynik: produkty strony, także
   szkice (cenę szkicu ustawia się przed publikacją), a w każdym jego warianty w kolejności pozycji z ceną albo `null`. `applicableVatRate` z `PolishVatRates` dla klasy produktu,
-  `vatRateOutdated` = nie `isCurrent`.
+  `vatRateOutdated` = nie `isCurrent`. Z `productId` strona to ten jeden produkt, odczytany po identyfikatorze przez
+  `ProductDirectory::describe` (nazwa, klasa podatkowa i warianty z `ListProductVariants`, szkic też), bez wyszukiwania
+  i stronicowania.
 - `GetPriceHistory(variantId, after, perPage)`: od najnowszych, stronicowanie keyset. Nieznany wariant: 404; wariant
   bez ceny: pusta lista.
 - `ReconcileTax(apply)`: opis w sekcji „Reconcile”.
@@ -360,7 +362,9 @@ Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
 - `SearchBackofficeProducts(q?, categoryId?, after?, perPage)`: zapytanie do PostgreSQL (DBAL), wynik
   `{id, name, taxClass}`. Nazwa przez `ILIKE` z indeksem trigramowym (`pg_trgm`, GIN na `catalog_product.name`),
   `q` od 2 do 100 znaków. Kategoria z podkategoriami po ścieżce zmaterializowanej, jako kategoria główna lub dodatkowa.
-  Sortowanie `(name, id)`, kursor keyset, bez liczenia wszystkich wyników.
+  Sortowanie `(name, id)` albo, z kluczem `sort`, `(name, id)` malejąco albo `(updated_at, id)` w obu kierunkach (klucze
+  `name`, `-name`, `-updatedAt`, `updatedAt`), kursor keyset z kluczem sortu (kursor innego sortu to błąd kursora), bez
+  liczenia wszystkich wyników.
 
 ## Reconcile
 
@@ -427,23 +431,24 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/prices?q&category&after&perPage` | każdy pracownik | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; 400 złe parametry; 404 nieznana kategoria |
+| `GET /api/v1/admin/prices?q&category&sort&productId&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); `productId=<uuid>`: jeden produkt (także szkic) ze wszystkimi wariantami, `next: null`, `total` `{value: 1, capped: false}` (nieznany produkt: pusta lista, `total` 0), wyklucza `q`, `category`, `sort` i `after` (400 z naruszeniem przy każdym z tych pól, „Filtr produktu nie łączy się z wyszukiwaniem, kategorią, sortowaniem ani kursorem.”); 400 złe parametry (także klucz spoza listy, kursor innego sortu i `productId` bez UUID-a); 404 nieznana kategoria |
 | `PUT /api/v1/admin/variants/{variantId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo `price-locked-by-promotion`; 422 kwota poza zakresem lub zły typ |
-| `GET /api/v1/admin/promotions?status&after&perPage` | każdy pracownik | `200 {items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; `status` `planned`, `active`, `ended`; `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
+| `GET /api/v1/admin/promotions?status&after&perPage` | pracownik z rolą personelu | `200 {items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; `status` `planned`, `active`, `ended`; `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
 | `POST /api/v1/admin/promotions`, body `{name, percentOff, startsAt \| null, endsAt, variantIds}` | `admin`, `marketing` | 201 promocja (`Location`); 403; 409 `promotion-overlap`; 422 |
-| `GET /api/v1/admin/promotions/{id}` | każdy pracownik | 200 `{id, name, percentOff, startsAt, endsAt, status, variantCount, version, updatedAt, updatedByName, variants: [{variantId, productId, productName, label, regularGross, promotionalGross}]}`; 404 |
+| `GET /api/v1/admin/promotions/{id}` | pracownik z rolą personelu | 200 `{id, name, percentOff, startsAt, endsAt, status, variantCount, version, updatedAt, updatedByName, variants: [{variantId, productId, productName, label, regularGross, promotionalGross}]}`; 404 |
 | `PUT /api/v1/admin/promotions/{id}`, body `{name, percentOff, startsAt \| null, endsAt, variantIds, version}` | `admin`, `marketing` | 200 promocja; 403; 404; 409 wersja (`about:blank`), `promotion-not-editable`, `promotion-overlap`; 422 |
 | `DELETE /api/v1/admin/promotions/{id}?version=` | `admin`, `marketing` | 204; 400 brak albo zła wersja; 403; 404; 409 wersja, `promotion-not-editable` |
-| `GET /api/v1/admin/discount-codes?status&q&after&perPage` | każdy pracownik | `200 {items: [DiscountCode], next}`; `status` `disabled`, `planned`, `active`, `expired`; `q` początek kodu (przycięty, bez rozróżniania wielkości liter, 1–32 znaki); `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
+| `GET /api/v1/admin/discount-codes?status&q&after&perPage` | pracownik z rolą personelu | `200 {items: [DiscountCode], next}`; `status` `disabled`, `planned`, `active`, `expired`; `q` początek kodu (przycięty, bez rozróżniania wielkości liter, 1–32 znaki); `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
 | `POST /api/v1/admin/discount-codes`, body `{code, kind, value, minimumOrderGross \| null, startsAt, endsAt \| null, usageLimit \| null, enabled}` | `admin`, `marketing` | 201 kod (`Location`); 403; 409 `discount-code-taken`; 422 |
-| `GET /api/v1/admin/discount-codes/{id}` | każdy pracownik | 200 `DiscountCode`; 404 |
+| `GET /api/v1/admin/discount-codes/{id}` | pracownik z rolą personelu | 200 `DiscountCode`; 404 |
 | `PUT /api/v1/admin/discount-codes/{id}`, body `{kind, value, minimumOrderGross, startsAt, endsAt, usageLimit, enabled, version}` | `admin`, `marketing` | 200 kod; 403; 404; 409 wersja (`about:blank`), `discount-code-not-editable`; 422 |
-| `GET /api/v1/admin/variants/{variantId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany wariant |
-| `GET /api/v1/admin/categories` | każdy pracownik | 200 drzewo kategorii (`GetCategoryTree`) |
+| `GET /api/v1/admin/variants/{variantId}/price-history?after&perPage` | pracownik z rolą personelu | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany wariant |
+| `GET /api/v1/admin/categories` | pracownik z rolą personelu | 200 drzewo kategorii (`GetCategoryTree`) |
 
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403. Zmiany promocji: `PromotionVoter`
-  (`MANAGE_PROMOTIONS`: `admin`, `marketing`), sprawdzany przed treścią; odczyt promocji ma każdy pracownik.
+  (`MANAGE_PROMOTIONS`: `admin`, `marketing`), sprawdzany przed treścią; odczyt promocji ma każdy pracownik z rolą personelu
+  (konto bez roli personelu dostaje 403 na każdej trasie panelu poza `/admin/me`).
 - 409 cen, promocji i kodów mają schemat `PricingConflictProblem`: `type` `…/price-locked-by-promotion`,
   `…/promotion-overlap` (z rozszerzeniem `conflictingVariantIds`, posortowanym), `…/promotion-not-editable`,
   `…/discount-code-taken` („Taki kod już istnieje.”), `…/discount-code-not-editable` („Tej zmiany nie można wprowadzić
@@ -490,20 +495,36 @@ z tokenem realmu `shop`: 401):
 ## Panel (`apps/admin`)
 
 - Pozycja menu „Ceny” i trasa `/prices`. Promocje mają własną pozycję „Promocje” (`docs/features/promotions/spec.md`).
-- Lista: wyszukiwanie po nazwie (od 2 znaków, z opóźnieniem), filtr kategorii (drzewo), stronicowanie
-  „następna/poprzednia” po kursorach (strona to produkty). Wiersz na wariant, warianty pod nazwą swojego produktu
-  (nazwa i klasa w pierwszym wierszu produktu); kolumny nazwa, wariant (etykieta, pusta dla wariantu domyślnego),
-  klasa, brutto, netto, VAT, stawka, oznaczenie nieaktualnej stawki. „Zmień cenę” i „Historia” dotyczą wariantu
-  wiersza.
-- „Zmień cenę” (tylko dla roli `admin`, role z `/api/v1/admin/me`; API sprawdza niezależnie):
+- Lista (H1 „Ceny”, okruszki „Pulpit › Katalog › Ceny”, standard listy panelu: `docs/features/admin-design/spec.md`):
+  wyszukiwanie po nazwie produktu (od 2 do 100 znaków, z opóźnieniem), filtr kategorii `CategoryCombobox` (z
+  podkategoriami), `Select` „Sortuj” produktów („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio zmienione”, „Najdawniej
+  zmienione”; nazwa jest w wierszu grupy, więc nagłówki kolumn nie mają `aria-sort`), rozmiar strony 10, 25 albo 50
+  produktów (domyślnie 10; do API idzie zawsze) i „Wyczyść filtry”.
+  Wyszukiwanie, kategoria, kolejność i rozmiar strony są w adresie (`q`, `category`, `sort`, `perPage`; domyślne `name`
+  i 10 nie są zapisywane, a `sort` do API idzie tylko, gdy to nie `name`). Stronicowanie
+  „następna/poprzednia” po kursorach, strona to produkty, a „Pokazano produkty X–Y” liczy produkty niezależnie od liczby
+  wariantów. Lista jest pogrupowana po produkcie: wiersz produktu (nazwa pogrubiona i polska nazwa klasy podatkowej z
+  `GET /api/v1/admin/tax-classes`, a dla kodu spoza listy albo przy błędzie tego żądania sam kod) bez akcji, a pod nim wiersz
+  na wariant z etykietą wariantu („Wariant domyślny” dla pustej). Kolumny: wariant, brutto (pogrubione), netto, VAT, stawka
+  z oznaczeniem nieaktualnej stawki, akcje. Poniżej 1024 px netto i VAT są liniami komórki wariantu. Błąd przy zmianie
+  zapytania ukrywa tabelę i pager do udanego ponowienia; 403 nie ma ponowienia. Cena zapisana z odpowiedzi API jest
+  nakładką nad stroną z listy, więc odświeżenie, także spóźnione, nie przywraca starej ceny.
+- „Zmień cenę” i „Historia” to przyciski ikon wiersza wariantu z nazwą dostępną „Zmień cenę: <produkt> / <wariant>”.
+- „Zmień cenę” (okno `Dialog`; tylko dla roli `admin`, role z `/api/v1/admin/me`; API sprawdza niezależnie):
+  - fokus w polu ceny po otwarciu, także klawiaturą; przycisk „Zapisz cenę” i „Anuluj”; okno mieści się w 375 px;
   - pole brutto w PLN, zamiana tekstu na grosze bez `float` w osobnym helperze;
   - podgląd stawki z `applicableVatRate`, bez liczenia netto na froncie;
   - 409 po `type`: `price-locked-by-promotion` (wariant w aktywnej promocji) pokazuje `detail` przy polu ceny, bez
     komunikatu o zmianie w międzyczasie i bez odświeżania wiersza; każdy inny 409: „Cena została w międzyczasie zmieniona
-    – odśwież” i odświeżenie wiersza;
+    – odśwież” i odświeżenie bieżącej strony;
   - 422: komunikat naruszenia z API przy polu; kwota poza zakresem daje „Cena brutto musi wynosić od 0,01 zł do
-    999 999,99 zł.” (zakres zdefiniowany tylko w API).
-- „Historia”: wpisy od najnowszych, „Pokaż więcej”, etykiety źródeł (Pracownik, Dane demo, Uzgodnienie podatkowe).
+    999 999,99 zł.” (zakres zdefiniowany tylko w API);
+  - po błędzie fokus trafia na pole z błędem albo na komunikat okna; po zapisie okno się zamyka, toast „Cena zapisana:
+    <produkt> / <wariant>” i fokus wraca na „Zmień cenę” wiersza.
+- „Historia” (okno `Dialog`): wpisy od najnowszych, „Pokaż więcej”, etykiety źródeł (Pracownik, Dane demo, Uzgodnienie
+  podatkowe); poniżej 1024 px zostają Data zmiany, Brutto i Źródło, a reszta jest liniami komórki daty.
+- Wybór wariantów promocji (`docs/features/promotions/spec.md`) czyta tę samą listę z własnym zapytaniem w pamięci: 25
+  produktów na stronę, bez stanu w adresie.
 
 ## Scenariusze błędów
 
@@ -523,7 +544,7 @@ z tokenem realmu `shop`: 401):
 ## Kryteria akceptacji
 
 1. Pracownik wpisuje brutto, API wylicza netto i VAT. Kwoty w groszach bez `float`, HALF_UP, VAT = brutto − netto.
-2. Cenę zmienia tylko `admin`, każdy pracownik ją widzi. Limity 0,01–999 999,99 zł.
+2. Cenę zmienia tylko `admin`, każdy pracownik z rolą personelu ją widzi. Limity 0,01–999 999,99 zł.
 3. Każda faktyczna zmiana kwoty lub stawki tworzy w tej samej transakcji jeden wpis historii z pełnym snapshotem,
    źródłem i aktorem. Identyczny komplet nie tworzy wpisu ani nowej wersji.
 4. Zapis z nieaktualną wersją kończy się 409 bez nadpisania.

@@ -3,6 +3,7 @@ import fcntl
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -206,10 +207,15 @@ class ClaimsTest(unittest.TestCase):
 
 class ClassificationTest(unittest.TestCase):
     def test_is_allowed(self):
-        allowed = list(pg.GENERATED) + ['docs/vision.md', 'docs', 'docs/features/x/spec.md', 'README.md']
-        denied = ['infra/k8s/README.md', 'CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml',
-                  'make/demo-data.mk', 'Makefile', 'apps/admin/src/layout/AppMenu.vue', 'apps/api/src/Cart/Cart.php',
-                  'docsx/a.md', 'apps/api']
+        allowed = list(pg.GENERATED) + list(pg.REGISTRATION) + [
+            'docs/vision.md', 'docs', 'docs/features/x/spec.md', 'README.md', 'infra/k8s/README.md', 'CLAUDE.md',
+            'apps/api/CLAUDE.md', '.github/workflows/ci.yml', '.github', 'make/demo-data.mk', 'Makefile', 'infra',
+            'infra/k8s/tests', 'apps/api/tests/Unit/Cart', 'apps/admin/tests', 'e2e', 'apps/api/config',
+            'apps/api/composer.json', 'apps/store/package-lock.json', 'apps/api/migrations', '.claude/skills/ao-run',
+            '.ao', 'tools', 'apps/api/src/CLAUDE.md', 'apps/store/src/README.md', 'apps/store/public']
+        denied = ['apps/api/src', 'apps/api/src/Cart/Cart.php', 'apps/store/src/components', 'apps/store/app',
+                  'apps/store/app/page.tsx', 'apps/admin/src/main.ts', 'apps/new/src/x.ts', 'apps/api', 'apps/new',
+                  'apps']
         for p in allowed:
             with self.subTest(p=p):
                 self.assertTrue(pg.is_allowed(p))
@@ -217,10 +223,23 @@ class ClassificationTest(unittest.TestCase):
             with self.subTest(p=p):
                 self.assertFalse(pg.is_allowed(p))
 
-    def test_claude_md_never_allowed(self):
-        for p in ['docs/CLAUDE.md', 'docs/features/x/CLAUDE.md', 'CLAUDE.md']:
+    def test_bypass_attempts_are_code(self):
+        # A directory that holds a generated or registration file is still code; prefixes compare by segments.
+        for p in ['apps/store/src/api', 'apps/admin/src/api', 'apps/admin/src/layout', 'apps/admin/src/router',
+                  'apps/store/src/api/schema.d.ts.bak', 'apps/admin/src/layout/AppMenu.vue.orig',
+                  'apps/api/src/Cart/CLAUDE.md.php', 'apps/api/src/READMEx.md']:
             with self.subTest(p=p):
                 self.assertFalse(pg.is_allowed(p))
+        for p in ['apps/api/srcx', 'apps/api/src-old', 'apps/store/application', 'apps/api/tests/src',
+                  'docs/apps/api/src', 'infra/apps/api/src', 'apps/api/config/src']:
+            with self.subTest(p=p):
+                self.assertTrue(pg.is_allowed(p))
+
+    def test_is_app_code(self):
+        self.assertTrue(pg.is_app_code('apps/api/src/Cart/Cart.php'))
+        self.assertFalse(pg.is_app_code('apps/api/tests/Unit/CartTest.php'))
+        self.assertFalse(pg.is_app_code('apps/store/src/api/schema.d.ts'))
+        self.assertTrue(pg.is_app_code('apps'))
 
     def test_is_claude_md(self):
         self.assertTrue(pg.is_claude_md('CLAUDE.md'))
@@ -236,6 +255,85 @@ class ClassificationTest(unittest.TestCase):
         self.assertEqual([], cp(['apps/api/src/Cart'], ['apps/api/src/CartX']))
         self.assertEqual([], cp(['a'], ['b']))
         self.assertEqual(['a/b', 'c/d/e'], cp(['c/d', 'a/b', 'a/b'], ['a', 'c/d/e', 'a/b']))
+
+
+    def test_task_conflicts(self):
+        tc = pg.task_conflicts
+        # Application code, a CLAUDE.md or a file in the common part keeps two tasks apart.
+        self.assertEqual(['apps/api/src/Cart'], tc(['apps/api/src/'], ['apps/api/src/Cart/']))
+        self.assertEqual(['apps/api/src'], tc(['apps/api/'], ['apps/api/src/']))
+        self.assertEqual(['apps/api/src/Cart/Cart.php'], tc(['apps/'], ['apps/api/src/Cart/Cart.php']))
+        self.assertEqual(['CLAUDE.md'], tc(['CLAUDE.md'], ['CLAUDE.md']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/'], ['infra/k8s/CLAUDE.md']))
+        self.assertEqual(['docs/vision.md'], tc(['docs/vision.md'], ['docs/']))
+        self.assertEqual(['apps/api/openapi.json'], tc(['apps/api/openapi.json'], ['apps/api/openapi.json']))
+        self.assertEqual(['apps/admin/src/router/index.ts'],
+                         tc(['apps/admin/src/router/index.ts'], ['apps/admin/src/router/index.ts']))
+        # A path declared as a file on one side is a file, even when the other side names it as a directory.
+        self.assertEqual(['docs/x'], tc(['docs/x'], ['docs/x/']))
+        self.assertEqual(['docs/x/y'], tc(['docs/x'], ['docs/x/y/']))
+        # Two directories outside application code may overlap; disjoint paths never conflict.
+        self.assertEqual([], tc(['docs/'], ['docs/features/cart/']))
+        self.assertEqual([], tc(['apps/api/tests/', 'infra/', '.github/'], ['apps/api/tests/Unit/', 'infra/k8s/',
+                                                                          '.github/']))
+        self.assertEqual([], tc(['apps/api/src/Cart/'], ['apps/api/src/CartX/', 'apps/store/src/cart/']))
+        self.assertEqual([], tc(['docs/a.md'], ['docs/b.md']))
+        self.assertEqual(['CLAUDE.md', 'apps/api/src/Cart', 'docs/x.md'],
+                         tc(['docs/', 'CLAUDE.md', 'apps/api/src/Cart/'], ['apps/api/', 'docs/x.md', 'CLAUDE.md']))
+
+    def test_task_conflicts_with_a_tracked_claude_md_in_a_common_directory(self):
+        tracked = ('CLAUDE.md', 'apps/api/CLAUDE.md', 'e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md')
+
+        def tc(a, b):
+            return pg.task_conflicts(a, b, claude_md=tracked)
+
+        # A common directory that contains a tracked CLAUDE.md blocks the pair with that file, in both directions.
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/k8s/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/'], ['infra/k8s/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/'], ['infra/']))
+        self.assertEqual(['e2e/CLAUDE.md', 'infra/k8s/CLAUDE.md'], tc(['infra/', 'e2e/'], ['e2e/', 'infra/']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'], tc(['infra/k8s/CLAUDE.md'], ['infra/']))
+        self.assertEqual(['apps/api', 'apps/api/CLAUDE.md'], tc(['apps/api/'], ['apps/api/']))
+        # A common directory without a tracked CLAUDE.md stays allowed.
+        self.assertEqual([], tc(['infra/k8s/charts/'], ['infra/k8s/charts/']))
+        self.assertEqual([], tc(['e2e/'], ['e2e/tests/']))
+        self.assertEqual([], tc(['docs/'], ['docs/']))
+        self.assertEqual([], tc(['apps/api/tests/'], ['apps/api/']))
+        # Without the list of tracked files only the declared paths count.
+        self.assertEqual([], pg.task_conflicts(['infra/k8s/'], ['infra/k8s/']))
+
+    def test_task_conflicts_ignore_the_case_of_paths(self):
+        # The file system of the host (APFS) does not tell the case apart: two spellings are one path.
+        self.assertEqual(['apps/API/src'], pg.task_conflicts(['apps/API/src/'], ['apps/api/src/']))
+        self.assertEqual(['apps/api/src/Cart'], pg.task_conflicts(['apps/api/src/Cart/'], ['apps/api/src/cart/']))
+        self.assertEqual(['docs/Vision.md'], pg.task_conflicts(['docs/Vision.md'], ['docs/vision.md']))
+        self.assertEqual(['infra/k8s/CLAUDE.md'],
+                         pg.task_conflicts(['INFRA/k8s/'], ['infra/k8s/'], claude_md=('infra/k8s/CLAUDE.md',)))
+        self.assertEqual(['infra/k8s/claude.md'], pg.task_conflicts(['infra/k8s/claude.md'], ['infra/k8s/CLAUDE.md']))
+
+
+class MaxParallelTest(unittest.TestCase):
+    SKILL = os.path.join(HERE, 'SKILL.md')
+
+    def commands(self):
+        """Every shell command of SKILL.md that starts the orchestrator's `run`, continuation lines joined."""
+        with open(self.SKILL, encoding='utf-8') as f:
+            text = f.read().replace('\\\n', ' ')
+        return [line for line in text.splitlines() if re.search(r'-m orchestrator\b.*\srun(\s|$)', line)]
+
+    def test_max_parallel_is_two(self):
+        self.assertEqual(2, pg.MAX_PARALLEL)
+
+    def test_every_run_of_the_skill_passes_the_gate_value(self):
+        commands = self.commands()
+        self.assertTrue(commands)
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIn('--max-parallel %d ' % pg.MAX_PARALLEL, command + ' ')
+        with open(self.SKILL, encoding='utf-8') as f:
+            values = re.findall(r'--max-parallel\s+([^\s`]+)', f.read())
+        self.assertTrue(values)
+        self.assertEqual({str(pg.MAX_PARALLEL)}, set(values))
 
 
 STATS_OUT = '\n'.join([

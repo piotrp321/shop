@@ -1,6 +1,5 @@
-// Types of eslint.config.js for tests/lint, which read LEGACY_FILES from it.
+// Types of eslint.config.js for tests/lint, which import the config.
 import type { Linter } from "eslint";
 
-export declare const LEGACY_FILES: string[];
 declare const config: Linter.Config[];
 export default config;

@@ -1,4 +1,4 @@
-# Real transports for the tests of the message route: the outbox, `scheduled`, `payment_simulator` and `promotions`
+# Real transports for the tests of the message route: the outbox, `scheduled`, `payment_simulator`, `promotions` and `jobs`
 # in `shop_test` (doctrine.yaml, as configured in messenger.yaml) and `events` on the `test` vhost, so the dev worker
 # (database `shop`, vhost `/`) never sees test messages.
 framework:
@@ -6,3 +6,7 @@ framework:
         transports:
             events:
                 dsn: 'amqp://%env(urlencode:RABBITMQ_USER)%:%env(urlencode:RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/test/events'
+                # The retries of `events` (messenger.yaml: 3 tries after 1, 3 and 9 s) come 10 times sooner, so the tests
+                # of the retries do not wait 13 s for them; the count and the growth of the delays stay the same.
+                retry_strategy:
+                    delay: 100

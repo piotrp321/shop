@@ -6,6 +6,7 @@ namespace App\Backoffice\UI\Http;
 
 use App\Backoffice\Application\Query\Dashboard;
 use App\Backoffice\Application\Query\GetDashboard;
+use App\Backoffice\Application\Query\QueueAccess;
 use Doctrine\DBAL\Exception\ConnectionException;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use Nelmio\ApiDocBundle\Attribute\Security;
@@ -25,6 +26,14 @@ final class DashboardController
 
     /** Attribute of DashboardVoter (Infrastructure): the controller only knows its name. */
     private const string VIEW_SYSTEM_STATUS = 'VIEW_SYSTEM_STATUS';
+    /** Attributes of the voters of the modules that own the queues (Ordering, Inventory, Catalog): the controller only knows their names. */
+    private const string VIEW_ORDERS = 'VIEW_ORDERS';
+    private const string VIEW_PENDING_PAYMENTS = 'VIEW_PENDING_PAYMENTS';
+    private const string COMPLETE_REFUND = 'COMPLETE_REFUND';
+    private const string MANAGE_STOCK = 'MANAGE_STOCK';
+    private const string MANAGE_PRODUCTS = 'MANAGE_PRODUCTS';
+    /** Attribute of OrderVoter (Ordering): the sales only for administrators. */
+    private const string VIEW_SALES = 'VIEW_SALES';
 
     public function __construct(
         #[Autowire(service: 'query.bus')] MessageBusInterface $queryBus,
@@ -38,7 +47,7 @@ final class DashboardController
     #[OA\Get(
         operationId: 'getDashboard',
         summary: 'Dashboard',
-        description: 'Catalogue numbers for every staff member. The system status (services, outbox, queues, search index) '
+        description: 'Catalogue numbers and the queues of work for every staff member: each queue only for the roles that handle it (`queues` fields are null for the others), counted up to 1000. The number of products is an estimate of the database (null before its first statistics). The sales of today, the last 7 and the last 30 days of completed hours only for administrators (`sales` is null for other roles). The system status (services, outbox, queues, search index) '
             .'only for administrators; for other roles `system` is null. A service that is down, a broker whose management API '
             .'does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, '
             .'`inSync` is false) does not fail the request.',
@@ -65,7 +74,11 @@ final class DashboardController
     {
         try {
             /** @var Dashboard $dashboard */
-            $dashboard = $this->handle(new GetDashboard($this->authorization->isGranted(self::VIEW_SYSTEM_STATUS)));
+            $dashboard = $this->handle(new GetDashboard(
+                $this->authorization->isGranted(self::VIEW_SYSTEM_STATUS),
+                $this->queueAccess(),
+                $this->authorization->isGranted(self::VIEW_SALES),
+            ));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a lost database connection is an outage, not a bug.
             $wrapped = $failure->getWrappedExceptions();
@@ -81,5 +94,16 @@ final class DashboardController
         $response->headers->addCacheControlDirective('no-store');
 
         return $response;
+    }
+
+    private function queueAccess(): QueueAccess
+    {
+        return new QueueAccess(
+            $this->authorization->isGranted(self::VIEW_ORDERS),
+            $this->authorization->isGranted(self::VIEW_PENDING_PAYMENTS),
+            $this->authorization->isGranted(self::COMPLETE_REFUND),
+            $this->authorization->isGranted(self::MANAGE_STOCK),
+            $this->authorization->isGranted(self::MANAGE_PRODUCTS),
+        );
     }
 }

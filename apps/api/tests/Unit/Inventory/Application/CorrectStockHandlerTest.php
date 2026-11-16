@@ -101,6 +101,32 @@ final class CorrectStockHandlerTest extends TestCase
     }
 
     /**
+     * The panel showed the variant without a record (version null), and the consumer of the product events or the
+     * backfill stored its empty record (0/0, version 0) since: that equals no stock at all, so it is no conflict.
+     */
+    public function testTheNullVersionTakesAnEmptyRecordStoredSinceTheView(): void
+    {
+        $this->stock->store(self::A, 0, 0, version: 0);
+
+        $view = $this->correct(self::A, 5, null, 'inventory_count', null);
+
+        $this->assertView([self::A, 5, 0, 5, 'low_stock', 1], $view);
+        self::assertSame([5, 0, 1], $this->state(self::A));
+        self::assertSame(5, $this->stock->movements[0]->physicalDelta());
+    }
+
+    public function testCountingNothingWithTheNullVersionKeepsAnEmptyRecordStoredSinceTheView(): void
+    {
+        $this->stock->store(self::A, 0, 0, version: 0);
+
+        $view = $this->correct(self::A, 0, null, 'loss', null);
+
+        $this->assertView([self::A, 0, 0, 0, 'out_of_stock', 0], $view);
+        self::assertSame([0, 0, 0], $this->state(self::A));
+        self::assertSame([], $this->stock->movements);
+    }
+
+    /**
      * @return iterable<string, array{int|null}>
      */
     public static function staleVersions(): iterable
@@ -108,6 +134,22 @@ final class CorrectStockHandlerTest extends TestCase
         yield 'null for a stored stock' => [null];
         yield 'an older version' => [3];
         yield 'a newer version' => [5];
+    }
+
+    /**
+     * A stock corrected down to zero is not the empty record: it has a version and a history.
+     */
+    public function testTheNullVersionForAStockEmptiedByAChangeIsAConflict(): void
+    {
+        $this->stock->store(self::A, 0, 0, version: 3);
+
+        try {
+            $this->correct(self::A, 5, null, 'inventory_count', null);
+            self::fail('Expected StockModifiedConcurrently.');
+        } catch (StockModifiedConcurrently) {
+        }
+
+        self::assertSame([0, 0, 3], $this->state(self::A));
     }
 
     #[DataProvider('staleVersions')]

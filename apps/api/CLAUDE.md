@@ -8,14 +8,17 @@ Zasady wspólne dla całego repo są w głównym `CLAUDE.md`, opis domeny w `doc
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
-  argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`
+  argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`.
+  CI uruchamia suity `unit`, `integration` i `functional` z `phpunit.dist.xml` po nazwie, w osobnych częściach
+  `checks`: nowa suita wymaga też nowej części w macierzy `checks-part` w `ci.yml`, inaczej CI jej nie uruchomi
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
 - dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
-  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog), potem
+  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog razem z przebiegami reindeksacji kategorii `catalog_category_reindex`
+  i kolejkami `outbox` i `jobs`; po załadowaniu produktów woła `ANALYZE catalog_product`, bo pulpit liczy produkty ze statystyk tabeli), potem
   `pricing:seed-demo`, który w jednej transakcji czyści ceny z historią, promocje (`pricing_promotion`,
   `pricing_promotion_variant`), kody rabatowe z użyciami (`pricing_discount_code`, `pricing_discount_code_usage`) i kolejkę promocji (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
   pozostałe kolejki zostają), potem ustawia cenę (źródło `seed`) każdemu wariantowi demo według
@@ -38,20 +41,52 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem
   `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
   i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
-  `outbox`, `scheduled`, `promotions`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
+  `outbox`, `scheduled`, `promotions`, `jobs`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie, historię statusów i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  linie, historię statusów, powiadomienia, sprzedaż godzinową (`ordering_sales_hour`) i klientów (`ordering_customer`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie komendy `*:seed-demo`
+  seed błędem bez zmian w danych), a na końcu wpisuje każdemu rekordowi jego produkt (jak `inventory:stock-records:sync`),
+  więc po seedzie nie ma zamówień ani ich rezerwacji, a każdy wariant demo ma rekord stanu z `product_id`. Wszystkie komendy `*:seed-demo`
   (jest ich sześć) w `prod` wymagają `--force-reset`, więc `bin/seed-demo` dodaje go do nich tylko przy `APP_ENV=prod`.
   Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
-  przebudowuje indeks wyszukiwania z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen
-  i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają). Błąd dowolnego kroku przerywa skrypt
+  przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
+  i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
+  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego kroki `ordering:read-models:rebuild:sales`
+  i `ordering:read-models:rebuild:customers` to przebudowa sprzedaży i klientów po `ordering:seed-demo`, bez osobnego
+  wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
+- `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
+  `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
+  (`Shared\Infrastructure\Backfill\BackfillStep`: `name()`, `run(report)`; implementacja w warstwie Infrastructure
+  modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
+  zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
+  `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
+  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`) i `ordering:read-models:rebuild:customers` (90: część klientów tej komendy; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
+  zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
+  ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
+  uruchomione). Test: `BackfillCommandTest`
+- `inventory:stock-records:sync` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; krok
+  `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
+  partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
+  (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
+- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; obie
+  części to kroki `app:backfill`, więc woła je też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
+  odczytu Ordering z zamówień, najpierw sprzedaż, potem klientów. Sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
+  pierwszej godziny z opłaconym zamówieniem albo wierszem sprzedaży (`nextHour`: po indeksie częściowym
+  `ordering_order (paid_at) WHERE paid_at IS NOT NULL` i kluczu tabeli; godziny bez jednego i drugiego pomija), każda
+  w osobnej transakcji (opis protokołu przy wyjątku DBAL sprzedaży w „Architekturze”). Idempotentna: drugi przebieg
+  zostawia te same wiersze, a wynik to dokładnie tabela zapisu przyrostowego (wiersz godziny i kubełka z zamówieniami,
+  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Klientów
+  (`ordering_customer`, `CustomerRebuild`) partiami po 500 klientów w kolejności `customer_id`: koniec partii to 500.
+  klient po poprzedniej spośród kont z zamówieniami albo z wierszem (`nextBatchEnd`: po indeksie częściowym zamówień
+  klientów `(customer_id, placed_at DESC, id DESC)` i kluczu tabeli), każda partia w osobnej transakcji (opis
+  protokołu przy wyjątku DBAL klientów w „Architekturze”); wiersz klienta bez zamówień usuwa. Wynik to dokładnie tabela
+  zapisu przyrostowego. Wypisuje postęp co 100 partii i podsumowanie (klienci, partie, zamówienia). Kod wyjścia: 0 –
+  gotowe, 1 – przerwane błędem (przebudowane godziny i partie zostają; ponowne uruchomienie zaczyna od początku)
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -89,7 +124,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   mapowane atrybutami, z relacjami między rekordami. Repozytoria mapują agregat ↔ rekord, a agregat odtwarzają
   przez `reconstitute()`, które nie zapisuje zdarzeń.
 - Wyjątek: Inventory. Stan, rezerwacje i historię zapisuje i czyta przez DBAL na połączeniu Doctrine, w transakcji
-  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją). Rekordy Doctrine
+  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją), także rekordy
+  stanów wariantów z produktem (`DbalStockRecords`: `INSERT … ON CONFLICT … DO UPDATE … WHERE product_id IS NULL`
+  i `DELETE` pustych rekordów usuniętych wariantów, bez agregatu i bez zdarzeń; `docs/features/inventory/spec.md`,
+  „Rekord stanu każdego wariantu”). Rekordy Doctrine
   Inventory są tylko definicją schematu dla `doctrine:schema` i migracji, repozytoria ich nie używają. Powody:
   rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
   wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
@@ -120,6 +158,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   promocją „od teraz” jest przed jej startem (`startOfNow`: `now` ucięte do sekundy + 1 s), a cena wariantu w promocji
   aktywnej w chwili zapisu to 409 `PriceLockedByPromotion` przed sprawdzeniem wersji. `ReconcileTax` i przeliczenie
   po zmianie klasy (`reprice`, brutto bez zmian) blokady nie biorą.
+- Wyjątek: drzewo kategorii (Catalog, spec ADMIN-FEATURES, 4 „Reguły”, decyzje P9, P10). Kategorie zapisują się przez
+  rekordy Doctrine według ogólnej zasady. `CreateCategory`, `ReviseCategory`, `MoveCategory` (także nowa kolejność: ten
+  sam rodzic) i `DeleteCategory` (`command.bus`) zaczynają od blokady doradczej transakcji (`PostgresCategoryTreeLock`:
+  `pg_advisory_xact_lock` na stałym kluczu Catalog, poza transakcją adapter odmawia), dopiero potem czytają całe drzewo
+  (`CategoryRepository::all` z odświeżeniem rekordów z identity map), więc dwa przeniesienia nie tworzą cyklu, a głębokość,
+  slugi i pustość są sprawdzane na zatwierdzonych danych (`CategoryMoveConcurrencyTest`, dwa procesy). Reguły ma
+  `CategoryTree` (Domain): kolejność rodzeństwa to `position`, potem nazwa w `pl_PL` (`Collator`), potem `id` (ta sama
+  w `CategoryTreeBuilder` sklepu i panelu, więc przy wszystkich pozycjach 0 kolejność jest alfabetyczna); umieszczenie
+  kategorii (nowej na końcu rodzeństwa, przeniesionej, przestawionej) najpierw numeruje rodzeństwo docelowe 0, 1, 2…
+  w bieżącej kolejności; najwyżej 4 poziomy (`category-too-deep`, przeniesienie liczy głębokość całego poddrzewa), bez
+  cyklu (`category-cycle`), usuwa tylko kategorię bez podkategorii i produktów (`category-not-empty`). `version`
+  (zwykła kolumna, bez `#[ORM\Version]`) rośnie przy każdej zmianie samej kategorii (nazwa, slug, rodzic, miejsce),
+  nie przy przenumerowaniu rodzeństwa. Jedyny zapis DBAL: przeniesienie zmienia zmaterializowaną `path` kategorii
+  i poddrzewa jednym `UPDATE catalog_category … WHERE path LIKE :old || '%'` (indeks `text_pattern_ops`; ścieżka ma tylko
+  cyfry szesnastkowe, myślniki i ukośniki, więc `LIKE` nie wymaga ucieczki), a rekordy poddrzewa obecne w identity map
+  są potem odświeżane, żeby `flush` nie zapisał starych ścieżek. `DeleteCategory` blokuje wiersz kategorii
+  (`SELECT … FOR UPDATE`) przed liczeniem produktów: zapis produktu (`ProductInput`, `CategoryRepository::lockForAssignment`) bierze
+  w swojej transakcji `FOR KEY SHARE` na wierszu każdej swojej kategorii (głównej i dodatkowych) przed zapisem, więc
+  produkt zapisany w tym czasie jest policzony (409 `category-not-empty`) albo czeka na usunięcie i kończy się 422
+  „Kategoria nie istnieje.” (`UnknownCategory`), nigdy 500 z klucza obcego (`CategoryAssignmentLockTest`). Seed (`CreateCategory::bySeed`, `DemoCatalogLoader`) zostawia pozycję
+  0 bez przenumerowania i bez zdarzenia. Przekierowania (`catalog_category_redirect`, `old_path` PK, `category_id` FK
+  `ON DELETE CASCADE`, rekord `CategoryRedirectRecord`) zapisuje ta sama transakcja: zmiana sluga i przeniesienie na
+  innego rodzica zapisują stare ścieżki slugów kategorii i potomków, a każda ścieżka, którą istniejąca kategoria ma po
+  zmianie (także utworzeniu), przestaje być przekierowaniem. `catalog:seed-demo` czyści je razem z kategoriami.
 - Wyjątek: użycie kodu rabatowego (Pricing, decyzje A3, D7 w `docs/features/discount-codes/spec.md`).
   `RedeemDiscountCode(codeId, orderId, subtotalGross)` (`command.bus`, wyłącznie zagnieżdżona w `PlaceOrder`) zapisuje
   użycie przez rekord Doctrine (`DiscountCodeUsageRecord`), a nie przez DBAL jak Inventory: handler złożenia nigdy nie
@@ -133,6 +195,52 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `DiscountCodeRejected(rejection)` (Pricing Application). `ReleaseDiscountCodeUsage(orderId)` (`command.bus`,
   zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
   wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
+- Wyjątek: sprzedaż godzinowa Ordering (spec ADMIN-FEATURES, „Sprzedaż”, decyzja A2). Tabela `ordering_sales_hour`
+  (PK `(hour_start, shard)`: początek godziny w UTC i jeden z 16 kubełków identyfikatora zamówienia; `order_count`,
+  `gross` w groszach) jest zapisywana i czytana przez DBAL (`DbalSalesHours`, port `SalesHours`), a rekord
+  `SalesHourRecord` tylko definiuje schemat. `MarkOrderPaid` po zapisie opłaconego zamówienia (tylko wynik `Paid`;
+  `AlreadyPaid`, inna płatność, płatność po terminie i anulowane zamówienie nic nie dopisują) robi w swojej transakcji
+  jeden `INSERT … ON CONFLICT (hour_start, shard) DO UPDATE SET order_count = order_count + 1, gross = gross + …`, więc
+  wycofany webhook wycofuje też licznik, a równoległe płatności jednej godziny czekają najwyżej na wiersz swojego
+  kubełka. Godzinę (`date_bin` od `paid_at`) i kubełek (dolne 4 bity ostatniego bajtu UUID) liczą wyłącznie wyrażenia
+  SQL `SalesSql`, wspólne dla zapisu przyrostowego i przebudowy, więc obie drogi trafiają w ten sam wiersz.
+  Przebudowa godziny (`SalesHoursRebuild::rebuild`, `READ COMMITTED`) w jednej transakcji: `INSERT` 16 wierszy godziny
+  `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` tych wierszy, dopiero potem liczenie zamówień opłaconych w godzinie
+  (`UPDATE` z agregacją po kubełku) i `DELETE` wierszy z zerem. Płatność godziny dopisuje się do jednego z tych
+  wierszy przed swoim commitem, więc albo zatwierdziła się przed blokadą (liczenie ją widzi, a zapis nadpisuje jej
+  dopisanie), albo czeka na commit przebudowy i dopisuje się do nowego wiersza; żadne zamówienie nie ginie ani nie
+  liczy się dwa razy (test `SalesRebuildConcurrencyTest`, dwa procesy). Odczyt (`GetSalesSummary`) sumuje najwyżej
+  2 × 720 godzin po kluczu tabeli, nigdy zamówień.
+- Wyjątek: klienci panelu w Ordering (spec ADMIN-FEATURES, sekcja 5, decyzja A4). Tabela `ordering_customer`
+  (PK `customer_id` = `sub` konta sklepu; `email`, `full_name`, `phone` najnowszego zamówienia, `order_count`,
+  `paid_count`, `paid_gross` w groszach bez odejmowania zwrotów, `first_order_at`, `last_order_at` i `last_order_id`)
+  jest zapisywana przez DBAL (`DbalCustomerSummaries`, port `CustomerSummaries`), a rekord `CustomerRecord` tylko
+  definiuje schemat. Klient to konto z co najmniej jednym zamówieniem; gość nim nie jest. `PlaceOrder` tylko dla nowego
+  zamówienia klienta (nie dla powtórzenia po `Idempotency-Key`) robi w swojej transakcji jeden `INSERT … ON CONFLICT
+  (customer_id) DO UPDATE SET order_count = order_count + 1, first_order_at = LEAST(…), last_order_at = GREATEST(…)`,
+  a kontakt i `last_order_id` bierze z zamówienia tylko wtedy, gdy `(placed_at, id)` zamówienia nie jest wcześniejsze
+  niż `(last_order_at, last_order_id)` wiersza (`placed_at` ma sekundy, więc remis rozstrzyga identyfikator, tak jak
+  przebudowa `ORDER BY placed_at DESC, id DESC`); starsze zamówienie zatwierdzone po nowszym nie nadpisuje kontaktu (test
+  `CustomerSummariesConcurrencyTest`, dwa procesy). `MarkOrderPaid` przy wyniku `Paid` zamówienia klienta dopisuje
+  `paid_count + 1`, `paid_gross + total_gross`; klient bez wiersza (zamówienia sprzed wdrożenia, przed backfillem)
+  dostaje wiersz z samego opłaconego zamówienia (`INSERT … SELECT` z `ordering_order`: jego kontakt i chwila, jedno
+  zamówienie, opłacone), nigdy wiersz z `NULL`, a przebudowa i tak go nadpisze. Wycofana transakcja wycofuje dopisanie.
+  Przebudowa partii (`CustomerSummariesRebuild::rebuild`, zakres `customer_id`, `READ COMMITTED`) w jednej transakcji:
+  `INSERT` brakujących wierszy klientów zakresu z zatwierdzonymi zamówieniami (wartości zastępcze, `ORDER BY
+  customer_id`) `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` wszystkich widocznych wierszy zakresu (kolejność
+  `customer_id`), dopiero potem liczenie zamówień (`UPDATE` z agregacją i kontaktem najnowszego zamówienia) i `DELETE`
+  wierszy klientów bez zamówień, oba tylko dla zablokowanych wierszy (wiersz klienta, którego wszystkie zamówienia
+  zatwierdziły się po utworzeniu wartości zastępczych, nie jest zablokowany, więc przebudowa go nie rusza: jego
+  dopisania są pełne, a nadpisanie z liczenia po blokadzie zgubiłoby dopisanie równoległej płatności). Złożenie i płatność dopisują się do
+  wiersza swojego klienta przed commitem, więc albo zatwierdziły się przed blokadą (liczenie je widzi, zapis nadpisuje
+  dopisanie), albo czekają na commit przebudowy i dopisują się do nowego wiersza; pierwsze zamówienie klienta bez wiersza
+  jest albo widoczne dla liczenia razem ze swoim wierszem, albo jego wiersz zostaje nietknięty. Żadne zamówienie nie ginie ani
+  nie liczy się dwa razy (test `CustomerSummariesConcurrencyTest`, dwa procesy, oba przeplecenia ze złożeniem
+  i z płatnością oraz pierwsze złożenie nowego klienta w trakcie przebudowy z płatnością po nim).
+  Indeksy (migracje `Version20261116090000CreateCustomers`, `Version20261116090100IndexCustomerSearch`):
+  `(last_order_at DESC, customer_id)`, `(lower(full_name), customer_id)` (mapowany tylko kolumną `customer_id`, bo tyle
+  odczytują narzędzia schematu), `(order_count DESC, customer_id)`, `(paid_gross DESC, customer_id)` i GIN trigram na
+  `lower(email)` i `lower(full_name)` (`CONCURRENTLY`).
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
@@ -231,7 +339,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (szczegóły), `POST …/{orderId}/status-changes` (`{transition, version, note}`) i `POST …/{orderId}/refund-completion`
     (`{version, note}`); każda odpowiedź `private, no-store` (`OrderResponseCacheSubscriber` obejmuje `admin/orders`).
     Reguła ról (P6) jest tylko w `OrderVoter` (`Ordering_Infrastructure`, role z `AuthenticatedStaffMember`):
-    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
+    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `VIEW_CUSTOMERS` (`admin`, `support`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
     subject (`ship`, `deliver`: `admin`, `warehouse`; `cancel`, `return`: `admin`, `support`; bez przejścia voter
     wstrzymuje się, czyli odmowa) i `COMPLETE_REFUND` (`admin`, `support`); `marketing` nie ma dostępu. Kontrolery
     znają tylko nazwy atrybutów (`BackofficeOrderAttributes`) i pytają `isGranted`; Deptrac pozwala `Ordering_UI`
@@ -246,17 +354,60 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `canCompleteRefund` = zwrot do wykonania i `COMPLETE_REFUND`.
   - Zapytania panelu (`query.bus`, bez blokad): `GetBackofficeOrder(orderId)` czyta zamówienie przez
     `OrderRepository::get` i zwraca ten sam `BackofficeOrderView` co komendy pracownika (`overdue` z zegara; nieznane
-    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage)` czyta przez
+    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort, placedFrom, placedTo, overdueRefunds)` czyta przez
     port `BackofficeOrderReader` (adapter DBAL `DbalBackofficeOrderReader`, liczba sztuk z sumy linii): `q` po
-    przycięciu to dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$`, inaczej dokładny e-mail (`lower(email) =
-    lower(:email)`), gdy ma `@`, inaczej pusta lista bez odczytu; sort `placed_at DESC, id DESC`, a przy
-    `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC` (łączy się ze `status` i `q`).
-    Kursor keyset `BackofficeOrderCursor` (base64url JSON sortu, chwili w UTC z mikrosekundami i id); zły kursor
-    i kursor drugiego sortu to 400 przy `after`. Parametry: `q` 1–254 znaki po przycięciu bez NUL, `perPage` 1–100
-    (domyślnie 25), inaczej 400. Indeksy listy (migracja): `(placed_at DESC, id DESC)`,
-    `(status, placed_at DESC, id DESC)`, `(lower(email))` (wyrażenie, mapowanie go nie zna, więc narzędzia schematu
-    go pomijają) i częściowy `(refund_due_at, id) WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL`
-    (warunek w mapowaniu tak, jak zwraca go PostgreSQL); `OrderingSchemaTest` pilnuje zgodności mapowania z migracją.
+    przycięciu (także o spacje Unicode) znaczy (`OrderSearchTerm`): dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$` (cały `q` ma najwyżej 254 znaki, dłuższy to 400);
+    dokładny pełny adres e-mail (`lower(email) = lower(:email)`, do 254 znaków), gdy ma lokalną część, `@` i domenę
+    z kropką z ostatnim członem co najmniej 2 znaki (więc „jan@gm” nim nie jest); inny tekst 3–100 znaków to fragment
+    numeru, e-maila albo imienia i nazwiska; krótszy, dłuższy albo ze znakiem sterującym (w tym U+001F) to 400 przy
+    `q` (polski komunikat). Fragment to warunek `lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE
+    '%' || lower(:fragment) || '%'` z ucieczką `\`, `%` i `_` (znaczą siebie): dokładnie wyrażenie jedynego indeksu GIN
+    trigram `ordering_order_search_trgm_idx` (migracja nietransakcyjna `Version20261115140000`, `CONCURRENTLY`;
+    `number`, `email` i `full_name` są `NOT NULL`, więc konkatenacja nie daje NULL, a separator U+001F nie występuje w polach,
+    więc fragment nie przechodzi przez granicę pól). `placedFrom` i `placedTo` to dni `YYYY-MM-DD` w `Europe/Warsaw`
+    (2000–2999, oba końce włącznie), które `OrderPlacedRange` zamienia na chwile UTC `[początek dnia, początek dnia
+    po ostatnim)` (dzień zmiany czasu ma 23 albo 25 godzin); `placedFrom` po `placedTo` to 400 przy `placedTo`; łączą się
+    ze `status`, `q` i sortem po dacie (indeksy `placed_at`), a z `sort=total|-total` (400 przy `sort`) i `refund=pending`
+    (400 przy polach dat) nie. Sort z `sort` (domyślnie `placed_at DESC, id DESC`,
+    patrz „Sortowanie list panelu”), a przy `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC`
+    (łączy się ze `status` i `q`); `refund=overdue` to podzbiór `pending` z `refund_due_at` < chwila odczytu
+    (`BackofficeOrderFilter::$refundDueBefore`, zakres tego samego częściowego indeksu), z tym samym sortem i kursorem. Kursor keyset `BackofficeOrderCursor` (base64url JSON klucza sortu, chwili w UTC
+    z mikrosekundami albo kwoty i id); zły kursor i kursor innego sortu to 400 przy `after`. Parametry: `perPage` 1–100
+    (domyślnie 25), inaczej 400. `refund`, `q`, `sort`, `placedFrom`, `placedTo` i `customerId` są w DTO typu `mixed` i sprawdzane w callbackach, żeby
+    błąd typu (`q[]=…`) miał ten sam polski komunikat, co zły tekst (tak samo `level` listy stanów, `images` listy produktów, `sort` list produktów, cen i stanów oraz `productId` list cen i stanów). Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
+    `(status, placed_at DESC, id DESC)`, `(total_gross, id)`, `(status, total_gross, id)`, `(lower(email))`, GIN trigram
+    wyszukiwania (wyrażenia, mapowanie ich nie zna, więc narzędzia schematu je pomijają) i częściowy `(refund_due_at, id)
+    WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL` (warunek w mapowaniu tak, jak zwraca go PostgreSQL);
+    `OrderingSchemaTest` pilnuje zgodności mapowania z migracją. `OrderSearchPlanTest` na 100 000 zamówień w tabeli
+    tymczasowej `ordering_order` (kopia definicji z indeksami, po `ANALYZE`; zasłania tabelę w połączeniu testu, więc
+    nie zostawia śmieci po wycofaniu) sprawdza `EXPLAIN` bez wyłączania skanów: `Bitmap Index Scan` na indeksie
+    wyszukiwania i brak `Seq Scan` po `ordering_order` dla fragmentu numeru, e-maila i nazwiska (strona i licznik).
+  - Klienci panelu (`openapi-admin.json`, tag `Customers`, model odczytu `ordering_customer`, wyjątek DBAL wyżej):
+    `GET /api/v1/admin/customers?q=&sort=&after=&perPage=` (`BackofficeCustomersController`) i
+    `GET /api/v1/admin/customers/{customerId}` (`BackofficeCustomerController`), obie z `#[IsGranted('VIEW_CUSTOMERS')]`
+    (`OrderVoter`: `admin`, `support`; `warehouse` i `marketing` 403 przed parametrami) i `private, no-store`
+    (`OrderResponseCacheSubscriber` obejmuje `admin/customers`, także 401, 403 i 404). `ListBackofficeCustomers(q, sort,
+    after, perPage)` czyta przez port `BackofficeCustomerReader` (adapter `DbalCustomerReader`): `q` po przycięciu (także
+    spacji Unicode) to fragment 3–100 znaków e-maila albo imienia i nazwiska (`BackofficeCustomerSearchTerm`; warunek
+    `lower(c.email) LIKE … OR lower(c.full_name) LIKE …` z ucieczką `\`, `%`, `_`, wyrażenia dwóch indeksów GIN
+    trigram), znak sterujący albo inna długość to 400 przy `q`; `sort` z zamkniętej listy `-lastOrderAt` (domyślny),
+    `name` (`lower(full_name)` rosnąco), `-orderCount`, `-paidGross`, remis zawsze `customer_id` rosnąco (kursor
+    malejącego sortu `kolumna <= v AND (kolumna < v OR customer_id > id)`, nazwy porównanie wierszy); `q` łączy się tylko
+    z `-lastOrderAt` (inny sort z `q` to 400 przy `sort`). Kursor keyset `BackofficeCustomerCursor` (base64url JSON
+    klucza sortu, wartości kolumny i `customer_id`); zły kursor i kursor innego sortu to 400 przy `after`. `perPage`
+    1–100 (domyślnie 25). Wszystkie parametry są w DTO typu `mixed` i sprawdzane w callbacku, więc błąd typu ma ten sam
+    polski komunikat. Pierwsza strona ma `total` (`BoundedCount` do 10 000), kolejne `null`. Element: `customerId,
+    email, fullName, orderCount, paidGross, currency, lastOrderAt`. `GetBackofficeCustomer(customerId)`: `contact`
+    (`email`, `fullName`, `phone` najnowszego zamówienia), `summary` (`orderCount`, `paidCount`, `paidGross`, `currency`,
+    `firstOrderAt`, `lastOrderAt`) i `addresses` (do 10 różnych adresów dostawy z ostatnich 50 zamówień klienta, ostatnio
+    użyty pierwszy; po częściowym indeksie zamówień klientów); nieznany klient, gość, konto bez zamówień i id puste,
+    dłuższe niż 255 znaków albo ze znakiem sterującym to 404 `CustomerNotFound` („Klient nie istnieje.”). Zamówienia
+    klienta to lista zamówień z `customerId` (`GET /api/v1/admin/orders?customerId=<sub>`, `VIEW_ORDERS`: tylko
+    `owner_type = 'customer'` i ten `customer_id`, od najnowszego, po częściowym indeksie `(customer_id, placed_at DESC,
+    id DESC)`; łączy się tylko ze `status`, a `q`, `sort`, `placedFrom`, `placedTo` i `refund` z nim to 400 przy każdym
+    z tych pól; `customerId` pusty, dłuższy niż 255 znaków albo ze znakiem sterującym to 400), a szczegóły zamówienia
+    w panelu (`BackofficeOrder`) mają `customerId` (`null` dla gościa). Testy: `BackofficeCustomersEndpointTest`,
+    `DbalCustomerReaderTest`, `ListBackofficeOrdersEndpointTest`.
   - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
     `GET /api/v1/me/orders?after=&perPage=` i `GET /api/v1/me/orders/{orderId}`; każda odpowiedź `private, no-store`
     (`OrderResponseCacheSubscriber` obejmuje `me/orders`), brak tokenu albo token panelu to 401. Klient to `sub` z tokenu
@@ -457,7 +608,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `CartNotOrderable`. Szkice widzą `GetVariant`, `ListVariantIdentities`, `SearchBackofficeProducts`
   i `ListProductVariants(productIds, includeDrafts: true)` (listy cen i stanów panelu, adaptery
   `QueryBusProductDirectory` w `Pricing_Infrastructure` i `Inventory_Infrastructure`). `ProductVariantList` ma klasę
-  podatkową produktu (`taxClass`).
+  podatkową produktu (`taxClass`) i jego nazwę (`productName`: lista stanów z filtrem poziomu nazywa strony produktów przez
+  `ProductDirectory::describe`).
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
@@ -472,14 +624,26 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   przy przeliczeniu po zmianie klasy podatkowej produktu. `PromotionPricesChanged` `{productId, source, occurredAt}`
   (Pricing, źródło `promotion` albo `seed`) publikują handlery wiadomości granic promocji (niżej), nie zapis promocji.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
-  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Jedyne dziś:
-  `Catalog\Application\Event\ProductChanged` `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product`
-  zapisuje wewnętrzne `Catalog\Domain\Product\ProductChanged` przy każdej edycji, publikacji i wycofaniu, a handler
-  komendy tłumaczy je na kontrakt (`ProductChanged::translate`) przed publikacją przez outbox. Seed tworzy produkty
-  bez `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana
-  pól kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (reindeksacja),
-  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, unieważnienie sklepu) i `RepriceOnTaxClassChange`
-  (`Pricing_Infrastructure`, przeliczenie cen po zmianie klasy podatkowej).
+  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Dziś trzy, wszystkie Catalog:
+  `Catalog\Application\Event\ProductCreated` `{productId, occurredAt}`, `Catalog\Application\Event\ProductChanged`
+  `{productId, slug, occurredAt}` (`slug` po zmianie) i `Catalog\Application\Event\CategoryTreeChanged`
+  `{categoryId, kind, occurredAt}` (`kind`: `created`, `revised`, `moved`, `reordered`, `deleted`; publikują go wprost
+  komendy drzewa kategorii przez outbox, seed nie). Agregat `Product` zapisuje wewnętrzne
+  `Catalog\Domain\Product\ProductCreated` przy utworzeniu i `Catalog\Domain\Product\ProductChanged` przy każdej
+  edycji, publikacji i wycofaniu, a handler komendy tłumaczy je na kontrakty (`IntegrationEvents::translate`) przed
+  publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Wyjątek zgodności wersji (do
+  usunięcia w kolejnej wersji): w tej wersji `CreateProduct` publikuje oba `ProductCreated`, domenowe (poprzednia
+  wersja indeksuje produkt tylko z niego) i integracyjne, a `IndexProduct` obsługuje też domenowe z outboxa poprzedniej
+  wersji, więc nowy produkt jest indeksowany dwa razy (reindeksacja to dopuszcza). Inventory subskrybuje tylko
+  integracyjne (Deptrac); rekordy produktów utworzonych w oknie wymiany uzupełnia Job `backfill`. Seed tworzy produkty bez
+  `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana pól
+  kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
+  `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, oba, rekord stanu z produktem dla każdego wariantu),
+  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu),
+  `InvalidateStorefrontOnCategoryTreeChange` (`Catalog_Infrastructure`, `CategoryTreeChanged`, unieważnienie tagu `catalog`),
+  `ReindexSubtreeOnCategoryTreeChange` (`Catalog_Application`, `CategoryTreeChanged` `revised` i `moved`, start łańcucha
+  reindeksacji poddrzewa na transporcie `jobs`, niżej) i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
+  podatkowej).
 - Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
   i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` (port `ProductDirectory::taxClassOf`,
   adapter `QueryBusProductDirectory`), nigdy ze zdarzenia, więc zmiany A → B → A w dowolnej kolejności i powtórzone
@@ -521,7 +685,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   reszta API tylko z realmu `shop` (klienci, `Customer`). Sprawdzany jest wystawca tokena. Token konta demo
   na stosie lokalnym do ręcznych żądań: `.claude/skills/integration/kc_login.py` (opis w skillu `/integration`).
 - Nie twórz wspólnej klasy `User` dla klientów i pracowników. To osobne byty.
-- Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`).
+- Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`; jedyna
+  lista: `StaffUser::STAFF_ROLES`). `ROLE_STAFF` ma tylko pracownik z co najmniej jedną z nich (`StaffUser::getRoles()`),
+  a `access_control` wymaga go na każdej trasie `/api/v1/admin` poza `GET`/`HEAD /api/v1/admin/me` (tylko
+  `IS_AUTHENTICATED`, ścieżka dokładnie `/me`), więc konto bez roli dostaje 403 wszędzie poza `/me`. Pilnuje tego
+  `AdminRouteAccessTest`, który bierze trasy panelu z routera, więc nowa trasa bez `ROLE_STAFF` łamie go bez zmiany testu.
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
@@ -546,11 +714,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
   każdy 5xx: klient może tylko spróbować później, a komunikat wyjątku zostaje w logu. Domena nie zna statusów HTTP,
-  mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
+  mapowanie jest w `Shared\Infrastructure\Http`: jedyne `ExceptionStatus::of()`, z którego biorą status
+  `ProblemDetailsSubscriber` i zgłaszanie błędów do Sentry. Komunikat bez danych wewnętrznych i wejścia użytkownika
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Sześć 409 produktu (`slug-taken`, `slug-locked`, `product-modified`, `product-not-publishable`, `variant-locked`,
-  `variant-in-use`) ma typy w tym formacie i schemat `ProductConflictProblem` w `openapi-admin.json`.
+  `variant-in-use`) ma typy w tym formacie i schemat `ProductConflictProblem` w `openapi-admin.json`. Pięć 409 kategorii
+  (`category-modified`, `category-slug-taken`, `category-too-deep`, `category-cycle`, `category-not-empty`) ma schemat
+  `CategoryConflictProblem`; `CategoryNotEmpty` to `ExtendedProblem` z `subcategoryCount` i `productCount`
+  (`{value, capped}`, liczone do 1000).
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
   `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
   treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
@@ -599,7 +771,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Infrastruktura
 
 - Varnish (`infra/varnish/default.vcl`) stoi tylko przed publicznymi odczytami `GET` katalogu: `/api/v1/products`,
-  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/product-offers` i dokładna ścieżka `/api/v1/sitemap/product-chunks`
+  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/categories/redirect`, `/api/v1/product-offers` i dokładna ścieżka `/api/v1/sitemap/product-chunks`
   (bez query stringu; porcje map `/api/v1/sitemap/products` przechodzą bez cache). Czyta przez niego wyłącznie serwer sklepu
   (`API_CATALOG_URL`); inne ścieżki, żądania z `Authorization` albo `Cookie` i metody inne niż `GET`/`HEAD` Varnish
   przepuszcza do API bez cache. TTL bierze tylko z `Cache-Control` odpowiedzi; bez nagłówka, z `private` albo
@@ -609,8 +781,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Nazwy buduje wyłącznie `CacheTags` (`Shared\Infrastructure\Http\Cache`: stała `CATALOG`, `product(id)`, inny napis
   niż UUID to wyjątek, `productSlug(slug)`, slug spoza formatu `Slug` produktu to wyjątek), a nagłówek
   `xkey: <tag> <tag>` (spacje) ustawia w kontrolerze `CacheTagger::tag()`. Varnish usuwa `xkey` przed wysłaniem
-  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony) i drzewo kategorii
-  (`catalog`) z `Cache-Control: public, max-age=60`; oferty (`catalog` i `product-<id>` każdego żądanego id) z `public,
+  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony), drzewo kategorii
+  (`catalog`) i przekierowanie starego adresu kategorii (`catalog`, 200 i 404) z `Cache-Control: public, max-age=60`; oferty (`catalog` i `product-<id>` każdego żądanego id) z `public,
   max-age=60, s-maxage=3600`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
   max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (szkic, nieznany slug,
   slug niezgodny z formatem `Slug`) z `public, max-age=60` i tagami `catalog` `product-slug-<slug>` (slug niezgodny
@@ -652,7 +824,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `InvalidateStorefrontOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`): `invalidateProduct`
   produktu ze zdarzenia, bez pytania Catalog; źródło `seed` to wiadomość obsłużona bez unieważnienia. `InvalidateStorefrontOnProductChange`
   (`Catalog_Infrastructure`, integracyjne `ProductChanged`): `invalidateTags([product-<id>, product-slug-<slug>])` bez
-  odczytu bazy (id albo slug w złym formacie to `failed`). Błąd `StorefrontCache` idzie dalej (ponowienia transportu
+  odczytu bazy (id albo slug w złym formacie to `failed`). `InvalidateStorefrontOnCategoryTreeChange` (`Catalog_Infrastructure`,
+  integracyjne `CategoryTreeChanged`): `invalidateTags([catalog])` raz na zdarzenie, bez odczytu bazy (zmiana drzewa jest
+  rzadka, więc całe menu, okruszki, listingi i przekierowania zamiast tagów kategorii). Błąd `StorefrontCache` idzie dalej (ponowienia transportu
   `events`, potem `failed`). Bez zdarzenia (np. koniec okresu stawki VAT) odpowiedź
   żyje do `s-maxage`.
 - Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
@@ -672,17 +846,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   do kupienia” i cena „od” są tylko w Cart, a ceny są skuteczne (w aktywnej promocji promocyjne, Pricing
   `GetCurrentPrices`). Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
   Inventory.
-- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, poza `command.bus`): znacznik
+- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, zwykle poza `command.bus`, a w partii łańcucha
+  reindeksacji kategorii w jego transakcji; tylko czyta bazę, a w READ COMMITTED każdy odczyt ma świeży snapshot): znacznik
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
   z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały” (także spóźniony zapis
   opublikowanego stanu po nowszym zapisie szkicu). Zapisuje każdy produkt, szkic jako dokument `draft`; przebudowa
-  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (`ProductCreated` i integracyjne
-  `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
+  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (integracyjne `ProductCreated`
+  i `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
   (`Pricing_Infrastructure`, `VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`,
   `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
   obsłużona bez zapisu; `ReindexProductOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`) tak
   samo, ale produkt jest w zdarzeniu (bez `GetVariant`). `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane,
-  `SearchIndexError` idzie do `failed`. Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
+  `SearchIndexError` idzie do `failed`. Zmiana nazwy i przeniesienie kategorii przepisują dokumenty poddrzewa łańcuchem
+  partii na transporcie `jobs` (niżej). Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
   cen i stanów obsłużone w jej trakcie trafiają do starego indeksu (przebudowa nie jest online).
 
 - `GET /api/v1/products` (`listProducts`) szuka i filtruje w indeksie (`ElasticsearchProductSearch`, zapytanie składa
@@ -727,8 +903,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   powiększania ponad oryginał). Zdjęcie `zoom` ma osobny widok `ZoomImageView` (`alt`, `size`, `variants`, bez
   `aspectRatio`; `SizedImage::zoomView`) i schemat OpenAPI `ZoomImage`; `ImageView` i `ProductImage` zostają dla
   rozmiarów o stałych proporcjach. Nowy rozmiar dopisuje się tylko w `ImageSize`.
-- Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik, `MANAGE_PRODUCTS` `admin`
-  i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `after`, `perPage`; zapytanie
+- Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik z rolą personelu, `MANAGE_PRODUCTS` `admin`
+  i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `images=none`, `sort`, `after`, `perPage`; zapytanie
   `ListBackofficeProducts` składa stronę z `SearchBackofficeProducts` i podsumowań z `BackofficeProductSource::summaries`),
   `GET /products/{id}` (`ProductEditView` z `version`, czytany z DBAL, także szkic), `POST /products` (szkic),
   `PUT /products/{id}`, `POST /products/{id}/publish` i `/unpublish` (wszystkie z `version`), `GET /tax-classes`
@@ -738,14 +914,29 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wskazują miejsce w ciele (`ImageNotFound`, `UnknownVariant`, `UnknownCategory`, `SlugRequired`), `ProductWriteFailures`
   zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
   widok edycji odczytany po zapisie, `private, no-store`.
+- Kategorie w panelu (`/api/v1/admin/categories`, Catalog UI `Category\*`, spec ADMIN-FEATURES, 4): `GET` drzewo dla każdego
+  pracownika z rolą personelu (`version` każdego węzła; z `withCounts=true` `productCount`: bezpośrednie produkty,
+  główna albo dodatkowa kategoria, także szkice, `BoundedCount` do 1000, jedno ograniczone zliczenie na kategorię
+  `DbalCategoryProductCounts`; bez parametru `null` i nic nie jest liczone; inna wartość to 400), `POST` (na końcu
+  rodzeństwa), `PUT /{id}` (nazwa, slug, `version`), `POST /{id}/move` (`parentId`, `position`, `version`) i
+  `DELETE /{id}?version=` dla `admin` i `marketing` (`CategoryVoter`, `MANAGE_CATEGORIES`, przed treścią). Treść czyta
+  `#[RequiredKeysBody]` (wszystkie klucze wymagane, `parentId` `null` dla korzenia); nazwa i slug przez value objecty
+  domeny z polskimi komunikatami (`CategoryBodyRules`), nieznany rodzic to 422 przy `parentId`, nieznana kategoria i id
+  spoza UUID to 404. Odpowiedzi zapisu to `BackofficeCategoryResponse` (`GetBackofficeCategory` po zapisie); każda
+  odpowiedź pod tą ścieżką `private, no-store` (`CategoryResponseCacheSubscriber`). Schemat węzła drzewa panelu ma nazwę
+  `CategoryNode` (alias w `nelmio_api_doc.yaml`). Publiczne `GET /api/v1/categories/redirect?path=` (`PUBLIC_ACCESS`,
+  `CategoryRedirectController`): `path` to 1–4 slugi w formacie `CategorySlug` rozdzielone `/` (`CategorySlugPath`, inaczej
+  400 przy `path`), odpowiedź `{path}` bieżącej ścieżki kategorii, do której prowadzi stary adres, albo 404 „Nie ma
+  przekierowania dla tego adresu.” (także bieżący adres kategorii i adres usuniętej); 200 i 404 `public, max-age=60`
+  z tagiem `catalog`, 400 przez `PublicReadErrorCacheSubscriber`.
 - Promocje w panelu (`/api/v1/admin/promotions`, Pricing UI, `docs/features/pricing/spec.md`): `GET` lista (`status`,
-  `after`, `perPage`) i szczegóły dla każdego pracownika, `POST`, `PUT /{id}` i `DELETE /{id}?version=` dla `admin`
+  `after`, `perPage`) i szczegóły dla każdego pracownika z rolą personelu, `POST`, `PUT /{id}` i `DELETE /{id}?version=` dla `admin`
   i `marketing` (`PromotionVoter`, `MANAGE_PROMOTIONS`, przed treścią). Treść waliduje DTO (typy ścisłe, czasy RFC 3339
   ze strefą, lista UUID), reguły promocji domena; `PromotionWriteFailures` zamienia `InvalidPromotion` na naruszenie
   przy jego polu, a `InvalidPromotionVariants` na naruszenia `variantIds[<indeks>]`. Odpowiedzi zapisu to `GetPromotion`
   odczytane po zapisie, `private, no-store`.
 - Kody rabatowe w panelu (`/api/v1/admin/discount-codes`, Pricing UI, `docs/features/pricing/spec.md`, „Kody
-  rabatowe”): `GET` lista (`status`, `q`, `after`, `perPage`) i szczegóły dla każdego pracownika, `POST` i `PUT /{id}`
+  rabatowe”): `GET` lista (`status`, `q`, `after`, `perPage`) i szczegóły dla każdego pracownika z rolą personelu, `POST` i `PUT /{id}`
   dla `admin` i `marketing` (`DiscountCodeVoter`, `MANAGE_DISCOUNT_CODES`, przed treścią). Wyjątek od
   `#[MapRequestPayload]`: treść czyta w kontrolerze `DiscountCodeBodyReader` (JSON, typy ścisłe, ta sama walidacja DTO),
   bo `PUT` odpowiada 404 przed 422 treści, a brak klucza ma polski komunikat „To pole jest wymagane.” zamiast
@@ -786,13 +977,49 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - Testy: jednostkowe `tests/Unit/Shared/Observability`, funkcjonalny nagłówek
     `tests/Functional/Shared/CorrelationIdTest.php`, integracyjny przez outbox, RabbitMQ i konsumenta
     `EventFlowTest` (kernel `test_messaging`).
+- Sentry (`docs/features/sentry/spec.md`, `config/packages/sentry.yaml`, `sentry/sentry-symfony`): zmienne `SENTRY_DSN`,
+  `SENTRY_ENVIRONMENT` (bez niej środowisko kernela), `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE` (bez niej 0,
+  parametr `app.sentry.traces_sample_rate`) czytane przy starcie (`%env(default:…)%`). Bez DSN SDK nic nie wysyła, zły
+  DSN to błąd konfiguracji. Zdarzenie błędu idzie od razu (limit połączenia i odpowiedzi 2 s), transakcja po odpowiedzi
+  (`kernel.terminate`). `send_default_pii: false`, `max_request_body_size: none`, handler błędów PHP SDK wyłączony,
+  w `prod.ini` `zend.exception_ignore_args = On`. Błąd fatalny PHP w workerze i konsoli (np. OOM, limit czasu) nie jest
+  zdarzeniem Sentry (handler błędów SDK wyłączony, kanał `php` wykluczony): trafia tylko do logów.
+  - Jeden kanał na źródło, jeden błąd to jedno zdarzenie: HTTP zgłasza `ServerErrorReporter`
+    (`Shared\Infrastructure\Observability`, `kernel.exception` z priorytetem -99, tuż przed `ProblemDetailsSubscriber`,
+    który ustawia odpowiedź i zatrzymuje propagację) tylko dla statusu ≥ 500 z `ExceptionStatus`, a listener błędów
+    bundla jest wyłączony; konsolę listener konsoli bundla (`services.yaml` definiuje go z raportowaniem, które bundle
+    wiąże z listenerem błędów); workera listener Messengera bundla tylko po ostatniej próbie (`capture_soft_fails:
+    false`), z osobnym kontekstem Sentry na wiadomość; jawne logi aplikacji od `error` handler `sentry` w
+    `monolog.yaml` (`LogToSentryIssueHandler`: bez kontekstu logu, bez wpisów z `context.exception`) we wszystkich
+    kanałach poza `request`, `console`, `messenger`, `php`, `deprecation` i `cache`. Handlera breadcrumbs nie ma. Nowe
+    zgłaszanie do Sentry idzie jednym z tych kanałów, nie obok.
+  - `SentryEventProcessor` (callbacki `before_send`, `before_send_transaction`, `before_breadcrumb`: serwisy
+    `app.sentry.*`) dodaje tag `correlation_id` z `CorrelationId` w chwili wysyłki i przepuszcza wszystko przez
+    `SentryEventFilter`: z żądania zostają metoda, adres bez query i nagłówki `User-Agent`, `Content-Type`, `Accept`;
+    bez użytkownika, ciasteczek, treści i adresu klienta; `extra` tylko `correlation_id`, wartości kontekstów poza `trace`
+    usunięte; bez query w nazwach transakcji, spanów HTTP i breadcrumbs, bez danych o nagłówkach, ciasteczkach,
+    treści, parametrach zapytań i kliencie; ramki bez `vars`; teksty maskowane wzorcami Alloy i identyfikator koszyka
+    gościa ze ścieżki `/guest-carts/<id>` (klucz dostępu do koszyka, wzorzec spoza Alloy). Spany Doctrine mają SQL
+    z placeholderami (SDK nie zbiera parametrów).
+  - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w `SentryEventFilter::MASKS` i w Alloy
+    (`infra/k8s/argocd/apps/monitoring.yaml`, korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma
+    kopię wierszy korpusu `api.log` i `postgres.log` (kontener api widzi tylko `apps/api`): zmiana korpusu zmienia też
+    kopię.
+  - Trace'y: `/health` nie jest śledzony (`ignore_transactions`), api kontynuuje trace z `sentry-trace` i `baggage`
+    (CORS dopuszcza je z `ADMIN_URL`), ale nie przekazuje trace'a dalej: wywołania wychodzące (Keycloak, Varnish, sklep,
+    płatności) nie niosą `sentry-trace` ani `baggage` (`trace_propagation_targets: []`), także bez DSN. Spany Doctrine,
+    klienta HTTP i pul cache (bundle dekoruje każdą pulę jako `<pula>.traceable`).
+  - Testy: jednostkowe `tests/Unit/Shared/Observability` i `ExceptionStatusTest`, funkcjonalne
+    `tests/Functional/Shared/Sentry*Test.php` na prawdziwym transporcie SDK z klientem HTTP, który zapisuje koperty
+    (`RecordingSentryHttpClient`, `when@test`; wywołania wychodzące: `RecordingOutgoingHttpClient` pod `http_client`), i fałszywym DSN (`SentryEnvironment`: zmienne przed startem kernela,
+    reset statycznego stanu SDK).
 - Transport Messengera `scheduled` (Doctrine,
   `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
   `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
   Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
   pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
-  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled
-  payment_simulator promotions` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
+  `failed`. Worker (`infra/docker-compose.yml` i chart, komenda i healthcheck albo sonda) konsumuje `outbox events scheduled
+  payment_simulator promotions jobs` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
   prawdziwy (Doctrine na `shop_test`).
 - Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
   `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
@@ -816,9 +1043,119 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `GetVariantSummaries` paczkami po 100; wariant nieznany Catalogowi pomija) i publikuje jedno
   `PromotionPricesChanged` (źródło `promotion`) na produkt w outboxie, w jednej transakcji. Handler komendy promocji
   nie czyta Catalog w tym celu ani nie publikuje zdarzeń. Przestój workera opóźnia tylko indeks i cache sklepu.
+- Transport `jobs` (Doctrine, `queue_name=jobs`, ten sam DSN, opcje i ponowienia co `scheduled`: `redeliver_timeout=300`,
+  `use_notify: false`, 5 prób po 1, 3, 9, 27 i 81 s, potem `failed`; w `test` w pamięci, w `test_messaging` prawdziwy)
+  trzyma partie zadań w tle. **Wzorzec łańcucha partii** to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
+  workera (komendy uruchamiane świadomie, jak `catalog:reindex`, `cart:purge-expired` i `pricing:reconcile-tax`, zostają
+  przy swoich wzorcach): odbiorca zdarzenia w jednej transakcji `command.bus` zakłada wiersz przebiegu (`next_batch` 0,
+  `cursor` pusty) i wysyła wiadomość pierwszej partii `{runId, batch}`; handler partii w jednej transakcji `command.bus`
+  najpierw blokuje wiersz przebiegu (`SELECT … FOR UPDATE`), partia inna niż `next_batch` albo przebieg zakończony
+  (albo nieznany) to koniec bez skutku, potem robi partię po `cursor`, zapisuje nowy `cursor` i `next_batch + 1`
+  i wysyła wiadomość następnej partii w tej samej transakcji; pusta partia ustawia `finished_at`. Druga kopia partii
+  (ponowna dostawa po `redeliver_timeout`, ponowienie) czeka na blokadę i widzi nowy `next_batch`, więc partia jest
+  zrobiona raz i następna wiadomość jest jedna (`CategoryReindexConcurrencyTest`, dwa procesy). Partia trwa sekundy,
+  daleko poniżej `redeliver_timeout`. Po wyczerpaniu ponowień wiadomość jest w `failed`, a Messenger zapisuje błąd
+  w logu (`critical`, kanał `messenger`); przebieg zostaje bez `finished_at` i nikt go nie wznawia, a skutek naprawia
+  narzędzie zadania (dla reindeksacji `catalog:reindex`).
+  - Dziś jedyny łańcuch: reindeksacja poddrzewa kategorii (spec ADMIN-FEATURES, 4 „Odświeżenie sklepu i reindeksacja”).
+    `ReindexSubtreeOnCategoryTreeChange` (`event.bus`, transport `events`) po `CategoryTreeChanged` `revised` (nazwa
+    i slug; zdarzenie nie odróżnia samego sluga, którego nie ma w dokumentach, więc taki przebieg przepisuje je bez zmian)
+    i `moved` (nowy rodzic) wysyła `StartCategoryReindex` (handler: przebieg w `catalog_category_reindex (id,
+    category_id, cursor, next_batch, finished_at)` i `ReindexCategoryBatch(runId, 0)` przez port
+    `CategoryReindexBatches`); `created`, `reordered` i `deleted` nie reindeksują. `ReindexCategoryBatchHandler` bierze
+    identyfikatory 500 kolejnych produktów (parametr `app.catalog.category_reindex_batch_size`, w testach 2) z indeksu
+    wyszukiwania (port `SubtreeProductIds`, `ElasticsearchSubtreeProductIds`: `term category_ancestor_ids` = kategoria,
+    także szkice, sort po `id`, `search_after` = `cursor`; dokumenty poddrzewa mają kategorię przed zmianą i po niej,
+    a koszt partii nie zależy od rozmiaru katalogu, bez indeksów SQL) i przepisuje je `ProductIndexing` (wersja
+    zewnętrzna daje idempotencję; produkt, którego nie ma w bazie, pomija). `SearchUnavailable` i `OfferFactsUnavailable`
+    są ponawiane, `SearchIndexError` idzie wprost do `failed`. Pusta partia ustawia `finished_at` i unieważnia tag
+    `catalog` jeszcze raz (port `StorefrontCatalogCache`, `HttpStorefrontCatalogCache`), w tej samej transakcji: błąd
+    Varnisha albo sklepu wycofuje `finished_at`, a ponowienie powtarza pustą partię i unieważnienie. Wyjątek DBAL:
+    przebiegi czyta, blokuje i zapisuje `DbalCategoryReindexRuns` (rekord `CategoryReindexRunRecord` tylko definiuje
+    schemat; bez klucza obcego do kategorii, bo przebieg usuniętej pustej kategorii nic nie znajduje i się kończy).
+    `catalog:seed-demo` czyści przebiegi i kolejkę `jobs`. Do końca łańcucha filtr kategorii w sklepie może pokazywać
+    stare przypisania. Testy: `ReindexCategoryBatchHandlerTest`, `CategoryReindexStartTest`, `DbalCategoryReindexRunsTest`,
+    `SubtreeProductIdsTest`, `CategoryReindexFlowTest` (zmiana nazwy i przeniesienie na Elasticsearchu, kilka partii),
+    `CategoryReindexConcurrencyTest`.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
+- Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
+  danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (sekcja „Komendy”). Indeks na
+  dużej tabeli (`ordering_order`, `catalog_product`, `inventory_stock_item`) powstaje w osobnej migracji
+  nietransakcyjnej (`isTransactional(): false`, bo `CONCURRENTLY` nie działa w transakcji; `all_or_nothing` jest
+  wyłączone): `up()` sprawdza w `pg_index.indisvalid`, czy indeks o tej nazwie jest `INVALID` (zostawia go nieudane albo
+  przerwane `CREATE INDEX CONCURRENTLY`), i tylko wtedy dodaje `DROP INDEX CONCURRENTLY IF EXISTS`, potem zawsze
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
+  zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
+  `StockLevelIndexMigrationTest` (połączenie poza transakcją DAMA, indeks `INVALID` zostawiony przez nieudaną
+  unikalną budowę `CONCURRENTLY`).
+- Sortowanie list panelu (spec ADMIN-FEATURES, „Sortowanie”; produkty, ceny, stany i zamówienia): parametr `sort`
+  z zamkniętą listą kluczy (`-` to malejąco); w DTO zapytania `sort` jest typu `mixed` i sprawdza go callback `validateSort`, więc klucz spoza listy i wartość innego typu (`sort[]=…`) to 400 przy `sort` z tym samym polskim komunikatem.
+  Produkty, ceny i stany stronicują produkty Catalog po `name` (domyślny), `-name`, `-updatedAt` albo `updatedAt`
+  (`ProductSort`); Pricing i Inventory przekazują klucz tekstem przez `ProductDirectory::page(..., $sort)` do
+  `SearchBackofficeProducts`, a Catalog go waliduje. Zamówienia: `-placedAt` (domyślny), `placedAt`, `-total`, `total`
+  (`BackofficeOrderSort`; `RefundDueDate` to sort filtra `refund=pending`, nie klucz API). Kursor keyset niesie klucz
+  sortu (`{"s": klucz, "v": wartość, "i": id}`), więc kursor innego sortu (także `name` użyty jako `-name`) to 400 przy
+  `after`. Id rozstrzyga remisy w kierunku sortu, więc oba kierunki sortu czytają ten sam indeks, wprzód albo wstecz:
+  `(name, id)`, `(updated_at, id)` i częściowe warianty szkiców, `(placed_at DESC, id DESC)`, `(total_gross, id)`
+  i ich wersje z `status`. Połączenia, których żaden indeks nie obsługuje, to 400 z naruszeniem pola `sort`
+  (callback `BackofficeOrderListQuery`; handler dodatkowo rzuca `InvalidBackofficeOrderList`): `sort` z `refund=pending`
+  i kwota (`-total`, `total`) z `q` albo zakresem dni (`placedFrom`, `placedTo`). Nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis
+  `#[ORM\Index]` w rekordzie (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection`
+  (`tests/Support`; wyłączone `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`). Liczniki nie
+  zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`, `DbalCustomerReaderTest` (plan pierwszej strony i strony po kursorze każdego sortu klientów),
+  `ListBackofficeOrdersEndpointTest`, `OrderSearchEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
+  budowa przerwana na timeoucie blokady).
+- Pulpit (`GET /admin/dashboard`, decyzja A1 spec ADMIN-FEATURES): `GetDashboard` (Backoffice) składa sekcje przez porty Backoffice
+  z adapterami na `query.bus` do zapytań modułów właścicieli: `CatalogStatistics` → `GetCatalogStatistics` (Catalog),
+  `OrderQueues` → `GetOrderQueues` (Ordering), `StockQueues` → `GetStockQueues` (Inventory), `SalesSummary` →
+  `GetSalesSummary` (Ordering); Deptrac pozwala
+  `Backoffice_Infrastructure` na `Ordering_Application` i `Inventory_Application` (tylko zapytania i widoki), a
+  `Backoffice_UI` na `Shared_UI` (schemat `BoundedCountResponse`). Uprawnienie kolejki sprawdza voter modułu, który ją
+  posiada: kontroler pyta `isGranted` (`VIEW_ORDERS`, `VIEW_PENDING_PAYMENTS` (admin i support, `OrderVoter`),
+  `COMPLETE_REFUND`, `MANAGE_STOCK`, `MANAGE_PRODUCTS`) i przekazuje wynik w `QueueAccess`; kolejka bez dostępu nie jest
+  liczona i jest `null` w odpowiedzi, a właściciel, od którego nic nie trzeba, nie jest pytany. Każda kolejka to
+  `BoundedCount` z limitem 1000 (`GetOrderQueuesHandler::LIMIT`, `GetStockQueuesHandler::LIMIT`,
+  `GetCatalogStatisticsHandler::LIMIT`), liczony tymi samymi warunkami co lista, do której prowadzi link (zamówienia:
+  `BackofficeOrderReader::count($filter, 1000)` z filtrem statusu, zwrotów do wykonania i po terminie; produkty bez zdjęć:
+  `BackofficeProductSource::count(..., withoutImages: true, limit: 1000)`; stany: `StockLevelProducts::countVariants`, bo
+  kolejka liczy warianty, a lista stanów pokazuje ich produkty), więc zapytania idą po indeksach list
+  (`OrderQueuesPlanTest`, `StockLevelProductsPlanTest`, `ProductsWithoutImagesPlanTest`: plan bez `Seq Scan`). Kolejka
+  zwrotów płatności z części 2 dopisze się tym samym wzorcem (port, zapytanie w module, pole `null` według votera).
+  Sprzedaż (`sales`) tylko dla `admin` (`VIEW_SALES` w `OrderVoter`; kontroler przekazuje wynik jako `includeSales`, bez
+  niego port nie jest pytany, a pole jest `null`): `GetSalesSummary` sumuje `ordering_sales_hour` (wyjątek DBAL wyżej) dla
+  okresów `SalesPeriods` z zakończonych godzin do początku bieżącej (`dataUntil`, UTC): „Dziś” od północy zegara
+  `Europe/Warsaw` z porównaniem z wczoraj do tej samej godziny zegara (między 0:00 a 1:00 wszystkie pola `null`),
+  7 i 30 dni jako 168 i 720 godzin z porównaniem z tyloma godzinami wcześniej (zegar z portu `Clock` Ordering).
+  Miary w groszach (`revenue`, `orderCount`, `averageOrderValue` zaokrąglona do grosza, `null` bez zamówień) i
+  `changeBasisPoints` (`null` bez przychodu w okresie porównawczym), zaokrąglenia połówek od zera (`PeriodSales`). Testy:
+  `SalesPeriodsTest` (granica doby, pierwsza godzina, oba dni zmiany czasu), `GetSalesSummaryHandlerTest`,
+  `DashboardSalesEndpointTest` (role, wartości przy stałym zegarze, schemat).
+  Liczba produktów (`catalog.productCount`) nigdy nie jest `count(*)`: `ProductTableStatistics::estimatedProductCount`
+  czyta `pg_class.reltuples` (jeden wiersz katalogu bazy), odpowiedź to `{value, estimated: true}`, a `null` przed
+  pierwszą analizą tabeli (`reltuples` < 0); odświeża ją `ANALYZE catalog_product` na końcu `catalog:seed-demo`
+  i w kroku `app:backfill` `catalog:analyze-products`, a generator danych demo robi to po masowym wstawieniu produktów.
+  `system.searchIndex.inSync` porównuje dokładny `_count` Elasticsearcha z szacunkiem: różnica najwyżej 1% szacunku,
+  `null` bez szacunku, `false` gdy indeksu nie da się policzyć. Test: `DashboardQueuesEndpointTest` (każda rola widzi swoje
+  kolejki i `null` dla pozostałych, `{1000, capped}` powyżej limitu), `PostgresProductTableStatisticsTest` (brak zapytania
+  o produkty także bez statystyk).
+- Liczniki wyników list panelu są ograniczone (spec ADMIN-FEATURES, „Liczniki wyników”): pierwsza strona (bez `after`)
+  listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
+  strony `total: null`. Liczy `BoundedCounter` (`Shared\Infrastructure\Persistence`): `SELECT count(*) FROM (SELECT 1 FROM
+  <tabela> WHERE <warunki strony bez kursora i bez ORDER BY> LIMIT 10001) t`, więc zapytanie czyta najwyżej 10 001 wierszy
+  po tym samym warunku co strona, bez kursora i sortu (`DEFAULT_LIMIT` 10 000; `capped` mówi, że wierszy jest więcej niż `value`).
+  Nowa lista dopisuje metodę `count(...)` do portu odczytu, składa warunki jednym helperem dla strony i licznika (jak
+  `filter()` w `DbalBackofficeProductSource`), woła licznik tylko na pierwszej stronie (`after === null`), która ma
+  następną: strona bez następnej zawiera cały wynik, więc jej `total` to `BoundedCount(count(items), false)` bez drugiego
+  skanu. Wynik zapytania niesie `BoundedCount` (`Shared\Domain`); odpowiedź mapuje `BoundedCountResponse` (`Shared\UI\Http`, schemat OpenAPI
+  `BoundedCountResponse`, `ofNullable`), a `Catalog_UI` ma w Deptracu `Shared_UI` właśnie po ten schemat. „Wiersz” licznika
+  to wiersz strony: na Cenach i Stanach produkt (strona liczy produkty, nie warianty), więc licznik tych list to licznik
+  `SearchBackofficeProducts` przekazany przez `DirectoryPage`. Lista z filtrem, który nic nie może znaleźć (kody
+  z prefiksem ze znakiem, którego żaden kod nie może mieć, `ListDiscountCodesHandler::prefix`), daje na pierwszej stronie `{value: 0, capped: false}` bez odczytu; poprawny
+  prefiks bez trafień jest liczony w bazie jak każdy inny. Test: `BoundedCounterTest` (plan `EXPLAIN ANALYZE` na
+  prawdziwej tabeli: węzeł `Limit` i skan zatrzymany po limit + 1 wierszach), liczniki czytników, testy handlerów
+  (licznik wołany tylko na pierwszej stronie z następną) i testy funkcjonalne każdej listy.
 - Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
-  (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.
+  (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)` (albo `(updated_at, id)`, zob. „Sortowanie list panelu”).
   Indeks GIN obsługuje frazy od 3 znaków; fraza 2-znakowa (minimum w API) nie ma trigramów, więc idzie skanem indeksu
   `(name, id)` z filtrem `ILIKE`.
   Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
@@ -827,7 +1164,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Obraz Docker (`apps/api/Dockerfile`), etapy po kolei: `runtime` (FrankenPHP, rozszerzenia PHP, `app.ini`, Caddyfile),
   `base` z `runtime` (Composer, git, unzip, entrypoint `composer install` przy zmianie `composer.lock`), `build`
   z `base` (`composer install --no-dev --classmap-authoritative`, kod aplikacji, rozgrzany cache `prod`), `prod`
-  z `runtime` (kod i `vendor` z `build`, `docker/php/conf.d/prod.ini` z opcache bez sprawdzania znaczników czasu,
+  z `runtime` (kod i `vendor` z `build`, `docker/php/conf.d/prod.ini` z opcache bez sprawdzania znaczników czasu i bez argumentów w śladach wyjątków,
   `APP_ENV=prod`, `APP_DEBUG=0`, bez Composera, gita, SPX, pakietów dev i entrypointu instalującego zależności;
   `fixtures/` jest w obrazie, `tests/` nie) i `dev` z `base` jako ostatni etap (compose i CI budują `target: dev`).
   Produkcyjny obraz buduje się `docker build --target prod apps/api` bez stosu i bez sekretów: cache `prod` rozgrzewa
@@ -846,7 +1183,7 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
   zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
   Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator` i `promotions`) są zgodne w obie
+- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator`, `promotions` i `jobs`) są zgodne w obie
   strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
   mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
   z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
@@ -862,6 +1199,16 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
 - Każdy endpoint: co najmniej jeden test funkcjonalny, w tym przypadek bez autoryzacji i z błędnymi danymi.
 - Dane testowe przez fabryki (Foundry), a nie tablice budowane ręcznie w każdym teście.
 - Poprawka błędu zaczyna się od testu, który ten błąd odtwarza i nie przechodzi.
+- Testy współbieżności forkują uczestników (`ConcurrentCommands`, `ParallelProcesses`, webhook w
+  `StartPaymentConcurrencyTest`). Rodzic woła przed forkiem `gc_collect_cycles()`: niezebrane cykle (np. połączenie AMQP po
+  teście z kernelem `test_messaging`) dziecko odziedziczyłoby, a `Kernel::shutdown()` w jego procesie uruchomiłby ich
+  destruktory na gnieździe wspólnym z rodzicem i czekał ~30 s na odpowiedź brokera.
+- Kernel `test_messaging` ma krótsze ponowienia transportu `events`: pierwsze opóźnienie 100 ms zamiast 1 s (liczba prób
+  i mnożnik jak w produkcji, pilnuje tego `EventsRetryStrategyTest`), a testy czekające na ponowienie śpią 300 ms.
+  Worker w testach pyta o wiadomości co 50 ms (`--sleep`). Testy, które dowodzą limitów czasu z produkcji (sonda 1 s w
+  `ProbesTest`, timeouty DSN Redisa, limity w `DashboardTimingTest` i podobne), czekają ich prawdziwy czas; test wolnego
+  sklepu (`HttpStorefrontCacheTest`) używa klienta z pomniejszonymi limitami. Test, który czeka na powrót ponowienia do
+  kolejki, odpytuje ją co 20 ms (`awaitEventsInQueue`, do 3 s) zamiast spać.
 
 ## Czego nie robić
 

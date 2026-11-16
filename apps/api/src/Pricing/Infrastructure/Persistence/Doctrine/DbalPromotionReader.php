@@ -8,6 +8,8 @@ use App\Pricing\Application\Port\ListedPromotion;
 use App\Pricing\Application\Port\PromotionReader;
 use App\Pricing\Application\Query\PromotionCursor;
 use App\Pricing\Domain\Promotion\PromotionStatus;
+use App\Shared\Domain\BoundedCount;
+use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
@@ -19,23 +21,15 @@ final readonly class DbalPromotionReader implements PromotionReader
 {
     private const string MOMENT = 'Y-m-d H:i:s.uP';
 
-    public function __construct(private Connection $connection)
+    public function __construct(private Connection $connection, private BoundedCounter $counter)
     {
     }
 
     public function page(?PromotionStatus $status, \DateTimeImmutable $now, ?PromotionCursor $after, int $limit): array
     {
-        $conditions = [];
-        $parameters = ['limit' => $limit];
+        [$conditions, $parameters] = self::filter($status, $now);
+        $parameters['limit'] = $limit;
         $types = ['limit' => ParameterType::INTEGER];
-        if (null !== $status) {
-            $conditions[] = match ($status) {
-                PromotionStatus::Planned => 'p.starts_at > CAST(:now AS timestamptz)',
-                PromotionStatus::Active => 'p.starts_at <= CAST(:now AS timestamptz) AND p.ends_at > CAST(:now AS timestamptz)',
-                PromotionStatus::Ended => 'p.ends_at <= CAST(:now AS timestamptz)',
-            };
-            $parameters['now'] = $now->format(self::MOMENT);
-        }
         if (null !== $after) {
             $conditions[] = '(p.starts_at < CAST(:afterStartsAt AS timestamptz) OR (p.starts_at = CAST(:afterStartsAt AS timestamptz) AND p.id > CAST(:afterId AS uuid)))';
             $parameters['afterStartsAt'] = $after->startsAt->format(self::MOMENT);
@@ -67,5 +61,33 @@ final readonly class DbalPromotionReader implements PromotionReader
                 $row['version'],
             );
         }, $rows);
+    }
+
+    public function count(?PromotionStatus $status, \DateTimeImmutable $now): BoundedCount
+    {
+        [$conditions, $parameters] = self::filter($status, $now);
+
+        return $this->counter->count('pricing_promotion p', $conditions, $parameters);
+    }
+
+    /**
+     * The condition of the status at now, the same for a page and for the count, without the cursor.
+     *
+     * @return array{list<string>, array<string, mixed>} the conditions and the values they bind
+     */
+    private static function filter(?PromotionStatus $status, \DateTimeImmutable $now): array
+    {
+        if (null === $status) {
+            return [[], []];
+        }
+
+        return [
+            [match ($status) {
+                PromotionStatus::Planned => 'p.starts_at > CAST(:now AS timestamptz)',
+                PromotionStatus::Active => 'p.starts_at <= CAST(:now AS timestamptz) AND p.ends_at > CAST(:now AS timestamptz)',
+                PromotionStatus::Ended => 'p.ends_at <= CAST(:now AS timestamptz)',
+            }],
+            ['now' => $now->format(self::MOMENT)],
+        ];
     }
 }

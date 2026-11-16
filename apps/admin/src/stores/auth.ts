@@ -4,6 +4,7 @@ import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { LOGOUT_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
+import { setSentryUser } from "@/observability";
 
 export type StaffMe = components["schemas"]["StaffMeResponse"];
 
@@ -21,6 +22,7 @@ export const useAuthStore = defineStore("auth", () => {
       const { data } = await getApiClient().GET("/api/v1/admin/me");
       if (data) {
         staff.value = data;
+        setSentryUser(data.id);
       } else {
         error.value = "Nie udało się pobrać danych pracownika.";
       }
@@ -31,6 +33,9 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function logout(): Promise<void> {
     signingOut.value = true;
+    // The identity leaves the events as soon as the sign-out starts, also when it then fails: the session is being ended.
+    // The next successful load of /me sets it again.
+    setSentryUser(null);
     try {
       await getUserManager().signoutRedirect();
       logoutFailed.value = false;

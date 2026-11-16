@@ -1,10 +1,13 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent } from "vue";
+import { defineComponent, ref } from "vue";
+import { createMemoryHistory, createRouter, type Router } from "vue-router";
 import type { components } from "@/api/schema";
+import type { CategoryTreeNode } from "@/composables/useCategoryTree";
 import { SEARCH_DEBOUNCE_MS, useStockList } from "@/inventory/useStockList";
+import type { WithOptionalTotal } from "./listPage";
 
-type StockList = components["schemas"]["StockListResponse"];
+type StockList = WithOptionalTotal<components["schemas"]["StockListResponse"]>;
 type StockListItem = components["schemas"]["StockListItemResponse"];
 type ListedStock = components["schemas"]["ListedStockResponse"];
 type StockState = components["schemas"]["StockStateResponse"];
@@ -15,12 +18,16 @@ vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mo
 
 const STOCK = "/api/v1/admin/stock";
 
+function listed(overrides: Partial<ListedStock> = {}): ListedStock {
+  return { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00", ...overrides };
+}
+
 /** A product with one default variant (empty label) unless `variants` names others; `stock` is that variant's. */
 function item(name: string, overrides: { stock?: ListedStock | null; variants?: StockListItem["variants"] } = {}): StockListItem {
   return {
     productId: `id-${name}`,
     name,
-    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" } : overrides.stock }],
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? listed() : overrides.stock, matchesLevel: false }],
   };
 }
 
@@ -40,21 +47,28 @@ async function settle() {
   await flushPromises();
 }
 
-function mountList() {
+async function mountList(address = "/inventory", tree?: CategoryTreeNode[] | null) {
   let list!: ReturnType<typeof useStockList>;
+  const empty = { template: "<div />" };
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/inventory", name: "inventory", component: empty }] });
+  const nodes = ref<CategoryTreeNode[]>(tree ?? []);
+  const loaded = ref(tree !== undefined && tree !== null);
+  await router.push(address);
   const wrapper = mount(
     defineComponent({
       setup() {
-        list = useStockList();
+        list = useStockList(tree === undefined ? undefined : { nodes, loaded });
         return () => null;
       },
     }),
+    { global: { plugins: [router] } },
   );
-  return { wrapper, list };
+  return { wrapper, list, router };
 }
 
 describe("useStockList", () => {
-  let wrapper: ReturnType<typeof mountList>["wrapper"] | undefined;
+  let wrapper: Awaited<ReturnType<typeof mountList>>["wrapper"] | undefined;
+  let router: Router | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -68,10 +82,11 @@ describe("useStockList", () => {
     vi.useRealTimers();
   });
 
-  async function start(pages: Record<string, StockList>, status?: number) {
+  async function start(pages: Record<string, StockList>, status?: number, address?: string) {
     serve(pages, status);
-    const mounted = mountList();
+    const mounted = await mountList(address);
     wrapper = mounted.wrapper;
+    router = mounted.router;
     await settle();
     return mounted.list;
   }
@@ -80,7 +95,7 @@ describe("useStockList", () => {
     const list = await start({
       "": {
         items: [
-          item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null }, { variantId: "v-orange", label: "pomarańczowy", stock: null }] }),
+          item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null, matchesLevel: false }, { variantId: "v-orange", label: "pomarańczowy", stock: null, matchesLevel: false }] }),
           item("Bidon"),
         ],
         next: null,
@@ -94,14 +109,44 @@ describe("useStockList", () => {
     ]);
   });
 
-  it("loads the first page of the stock list on mount", async () => {
+  it("asks for 10 products on the first page", async () => {
     const list = await start({ "": { items: [item("Bidon")], next: null } });
 
-    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: {} } });
+    expect(mocks.get).toHaveBeenCalledWith(STOCK, { params: { query: { perPage: 10 } } });
     expect(list.items.value.map((row) => row.name)).toEqual(["Bidon"]);
     expect(list.loaded.value).toBe(true);
     expect(list.hasNext.value).toBe(false);
     expect(list.hasPrevious.value).toBe(false);
+  });
+
+  it("numbers the products of a page, not its variants, for „Pokazano produkty X–Y”", async () => {
+    const page = (prefix: string, next: string | null): StockList => ({
+      items: Array.from({ length: 10 }, (_, index) =>
+        item(`${prefix}${index}`, { variants: [{ variantId: `${prefix}${index}-a`, label: "a", stock: null, matchesLevel: false }, { variantId: `${prefix}${index}-b`, label: "b", stock: null, matchesLevel: false }] }),
+      ),
+      next,
+    });
+    const list = await start({ "": page("A", "c1"), c1: page("B", null) });
+    expect(list.range.value).toEqual({ from: 1, to: 10 });
+
+    await list.goNext();
+    await settle();
+
+    expect(list.rows.value).toHaveLength(20);
+    expect(list.range.value).toEqual({ from: 11, to: 20 });
+    expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
+  });
+
+  it("gives the total of products of the first page and keeps it on the next pages", async () => {
+    const list = await start({
+      "": { items: [item("Bidon")], next: "c1", total: { value: 42, capped: false } },
+      c1: { items: [item("Kajak")], next: null, total: null },
+    });
+    expect(list.total.value).toEqual({ value: 42, capped: false });
+
+    await list.goNext();
+    await settle();
+    expect(list.total.value).toEqual({ value: 42, capped: false });
   });
 
   it("pages forward and back with the cursors of the API, keeping the cursor stack", async () => {
@@ -121,128 +166,471 @@ describe("useStockList", () => {
     expect(list.items.value.map((row) => row.name)).toEqual(["B"]);
     await list.goPrevious();
     expect(list.items.value.map((row) => row.name)).toEqual(["A"]);
-    expect(queries()).toEqual([{}, { after: "c1" }, { after: "c2" }, { after: "c1" }, {}]);
+    expect(queries()).toEqual([{ perPage: 10 }, { perPage: 10, after: "c1" }, { perPage: 10, after: "c2" }, { perPage: 10, after: "c1" }, { perPage: 10 }]);
     expect(list.hasPrevious.value).toBe(false);
   });
 
-  it("does not ask for a search shorter than two characters", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
+  describe("the state of the list is in the address", () => {
+    it("starts from the search, the category and the page size of the address, with one request", async () => {
+      const list = await start({ "": { items: [item("Bidon")], next: null } }, undefined, "/inventory?q=bidon&category=c-run&perPage=25");
 
-    list.search.value = "a";
-    await vi.advanceTimersByTimeAsync(1000);
-    await settle();
-
-    expect(queries()).toHaveLength(1);
-    expect(list.searchTooShort.value).toBe(true);
-  });
-
-  it("counts characters, not UTF-16 units", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
-
-    list.search.value = "😀";
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(queries()).toHaveLength(1);
-
-    list.search.value = "😀😀";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries().at(-1)).toEqual({ q: "😀😀" });
-  });
-
-  it("searches once after the typing pauses, with the trimmed term, and goes back to the full list when cleared", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
-
-    list.search.value = "bi";
-    await vi.advanceTimersByTimeAsync(100);
-    list.search.value = "  bidon ";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries()).toEqual([{}, { q: "bidon" }]);
-
-    list.search.value = "";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries().at(-1)).toEqual({});
-  });
-
-  it("starts from the first page when the search or the category changes", async () => {
-    const list = await start({
-      "": { items: [item("A")], next: "c1" },
-      c1: { items: [item("B")], next: null },
+      expect(queries()).toEqual([{ q: "bidon", category: "c-run", perPage: 25 }]);
+      expect(list.search.value).toBe("bidon");
+      expect(list.query.value).toEqual({ q: "bidon", category: "c-run", level: null, perPage: 25, sort: "name" });
+      expect(list.filtered.value).toBe(true);
     });
-    await list.goNext();
 
-    list.selectCategory("c-run");
-    await settle();
-    expect(queries().at(-1)).toEqual({ category: "c-run" });
-    expect(list.hasPrevious.value).toBe(false);
+    it("does not write the default page size (10) to the address, but writes the others, the category and the applied search", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      expect(router!.currentRoute.value.query).toEqual({});
 
-    list.search.value = "baton";
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
-    await settle();
-    expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run" });
+      list.setPerPage(25);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ perPage: "25" });
+      expect(queries().at(-1)).toEqual({ perPage: 25 });
 
-    list.selectCategory(null);
-    await settle();
-    expect(queries().at(-1)).toEqual({ q: "baton" });
+      list.setPerPage(10);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries().at(-1)).toEqual({ perPage: 10 });
+
+      list.selectCategory("c-run");
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ category: "c-run" });
+      expect(queries().at(-1)).toEqual({ category: "c-run", perPage: 10 });
+
+      list.search.value = "  bidon ";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 50);
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({ category: "c-run", q: "bidon" });
+      expect(queries().at(-1)).toEqual({ q: "bidon", category: "c-run", perPage: 10 });
+    });
+
+    it("does not ask for a search shorter than two characters and says so in the hint", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      const calls = queries().length;
+
+      list.search.value = "a";
+      await vi.advanceTimersByTimeAsync(1000);
+      await settle();
+
+      expect(queries()).toHaveLength(calls);
+      expect(list.searchHint.value).toContain("2 znaki");
+    });
+
+    it("searches once after the typing pauses, and goes back to the full list when cleared", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+
+      list.search.value = "bi";
+      await vi.advanceTimersByTimeAsync(100);
+      list.search.value = "  bidon ";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      expect(queries()).toEqual([{ perPage: 10 }, { q: "bidon", perPage: 10 }]);
+
+      list.search.value = "";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      expect(queries().at(-1)).toEqual({ perPage: 10 });
+    });
+
+    it("starts from the first page when the search, the category or the page size changes", async () => {
+      const list = await start({
+        "": { items: [item("A")], next: "c1" },
+        c1: { items: [item("B")], next: null },
+      });
+      await list.goNext();
+      await settle();
+
+      list.selectCategory("c-run");
+      await settle();
+      expect(queries().at(-1)).toEqual({ category: "c-run", perPage: 10 });
+      expect(list.hasPrevious.value).toBe(false);
+
+      list.search.value = "baton";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "baton", category: "c-run", perPage: 10 });
+
+      list.selectCategory(null);
+      await settle();
+      expect(queries().at(-1)).toEqual({ q: "baton", perPage: 10 });
+
+      serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      list.search.value = "";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 100);
+      await settle();
+      await list.goNext();
+      await settle();
+      expect(list.pageNumber.value).toBe(2);
+
+      list.setPerPage(50);
+      await settle();
+      expect(queries().at(-1)).toEqual({ perPage: 50 });
+      expect(list.pageNumber.value).toBe(1);
+    });
+
+    it("clears the search, the category and the page size: one request for the whole list", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } }, undefined, "/inventory?q=bidon&category=c-run&perPage=50");
+      const calls = queries().length;
+
+      list.clearFilters();
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(list.search.value).toBe("");
+      expect(queries().slice(calls)).toEqual([{ perPage: 10 }]);
+      expect(list.filtered.value).toBe(false);
+    });
   });
 
-  it("keeps the page that is shown and explains a failure, then retries", async () => {
-    const list = await start({ "": { items: [item("A")], next: "c1" } });
+  describe("the filter of the level", () => {
+    const one = { "": { items: [item("A")], next: null } };
 
-    serve({}, 500);
-    await list.goNext();
-    expect(list.error.value).toContain("HTTP 500");
-    expect(list.items.value.map((row) => row.name)).toEqual(["A"]);
-    expect(list.pageNumber.value).toBe(1);
+    it("asks for the products at the level, without the search, the category and the sort, and writes the level to the address", async () => {
+      const list = await start(one, undefined, "/inventory?q=buty&category=c-run&sort=-name&perPage=25");
+      mocks.get.mockClear();
 
-    serve({ c1: { items: [item("B")], next: null } });
-    await list.retry();
-    expect(list.error.value).toBeNull();
-    expect(list.items.value.map((row) => row.name)).toEqual(["B"]);
+      list.selectLevel("out_of_stock");
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 25, level: "out_of_stock" }]);
+      expect(router!.currentRoute.value.query).toEqual({ perPage: "25", level: "out_of_stock" });
+      expect(list.search.value).toBe("");
+      expect(list.query.value.q).toBeNull();
+      expect(list.query.value.category).toBeNull();
+      expect(list.filtered.value).toBe(true);
+      expect(list.sortDisabled.value).toBe(true);
+    });
+
+    it("goes back to the whole list when the level is dropped, with the other filters empty", async () => {
+      const list = await start(one, undefined, "/inventory?level=low_stock");
+
+      list.selectLevel(null);
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 10, level: "low_stock" }, { perPage: 10 }]);
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(list.filtered.value).toBe(false);
+      expect(list.sortDisabled.value).toBe(false);
+    });
+
+    it("reads the level of the address with one request and ignores what the level excludes", async () => {
+      const list = await start(one, undefined, "/inventory?level=low_stock&q=buty&category=c-run&sort=-updatedAt");
+
+      expect(queries()).toEqual([{ perPage: 10, level: "low_stock" }]);
+      expect(list.level.value).toBe("low_stock");
+      expect(list.search.value).toBe("");
+    });
+
+    it.each(["/inventory?level=in_stock", "/inventory?level=", "/inventory?level=LOW_STOCK", "/inventory?level=out_of_stock&level=low_stock"])(
+      "skips a level that is none of the two (%s)",
+      async (address) => {
+        const list = await start(one, undefined, address);
+
+        expect(queries()).toEqual([{ perPage: 10 }]);
+        expect(list.level.value).toBeNull();
+        expect(router!.currentRoute.value.query).toEqual({});
+      },
+    );
+
+    it("applies a change of the level in the address from outside, from the first page and with one request", async () => {
+      await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      mocks.get.mockClear();
+
+      await router!.push({ path: "/inventory", query: { level: "out_of_stock" } });
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 10, level: "out_of_stock" }]);
+    });
+
+    it("clears the level with the other filters", async () => {
+      const list = await start(one, undefined, "/inventory?level=out_of_stock&perPage=50");
+      mocks.get.mockClear();
+
+      list.clearFilters();
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries()).toEqual([{ perPage: 10 }]);
+    });
+
+    it("drops the sort of the address when a level is chosen: the level has an order of its own and writes none", async () => {
+      const list = await start(one, undefined, "/inventory?sort=-name");
+
+      list.selectLevel("low_stock");
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({ level: "low_stock" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, level: "low_stock" });
+    });
+
+    it("marks the variants at the level in the rows and not the others", async () => {
+      const list = await start({
+        "": {
+          items: [
+            item("Kajak", {
+              variants: [
+                { variantId: "v-green", label: "zielony", stock: listed({ available: 0, level: "out_of_stock" }), matchesLevel: true },
+                { variantId: "v-orange", label: "pomarańczowy", stock: listed(), matchesLevel: false },
+              ],
+            }),
+          ],
+          next: null,
+        },
+      }, undefined, "/inventory?level=out_of_stock");
+
+      expect(list.rows.value.map((row) => [row.variantId, row.matchesLevel])).toEqual([["v-green", true], ["v-orange", false]]);
+    });
+
+    it("sends no level without one: the rows of a list without the filter match nothing", async () => {
+      const list = await start(one);
+
+      expect(queries()).toEqual([{ perPage: 10 }]);
+      expect(list.rows.value.map((row) => row.matchesLevel)).toEqual([false]);
+    });
   });
 
-  it("tells that the chosen category no longer exists on a 404", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
+  describe("the sort", () => {
+    const one = { "": { items: [item("A")], next: null } };
 
-    serve({}, 404);
-    list.selectCategory("gone");
-    await settle();
+    it("lists by name without a sort, and does not send the default", async () => {
+      const list = await start(one);
 
-    expect(list.error.value).toContain("kategoria");
+      expect(queries()).toEqual([{ perPage: 10,  }]);
+      expect(list.query.value.sort).toBe("name");
+      expect(list.sortOptions.value.map((option) => [option.value, option.label])).toEqual([
+        ["name", "Nazwa A–Z"],
+        ["-name", "Nazwa Z–A"],
+        ["-updatedAt", "Ostatnio zmienione"],
+        ["updatedAt", "Najdawniej zmienione"],
+      ]);
+    });
+
+    it.each(["-name", "-updatedAt", "updatedAt"])("reads the sort %s of the address with one request", async (sort) => {
+      const list = await start(one, undefined, "/inventory?sort=" + sort);
+
+      expect(queries()).toEqual([{ perPage: 10, sort }]);
+      expect(list.query.value.sort).toBe(sort);
+    });
+
+    it("writes the chosen sort to the address without a new entry, asks once from the first page and drops the default", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      await list.goNext();
+      expect(list.pageNumber.value).toBe(2);
+      const push = vi.spyOn(router!, "push");
+
+      list.setSort("-updatedAt");
+      await settle();
+
+      expect(router!.currentRoute.value.query).toEqual({ sort: "-updatedAt" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, sort: "-updatedAt" });
+      expect(list.pageNumber.value).toBe(1);
+      expect(queries().filter((query) => query.sort === "-updatedAt")).toHaveLength(1);
+
+      list.setSort("name");
+      await settle();
+      expect(router!.currentRoute.value.query).toEqual({});
+      expect(queries().at(-1)).toEqual({ perPage: 10,  });
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it("applies a change of the address from outside with one request", async () => {
+      await start(one);
+      mocks.get.mockClear();
+
+      await router!.push({ path: "/inventory", query: { sort: "updatedAt" } });
+      await settle();
+
+      expect(queries()).toEqual([{ perPage: 10, sort: "updatedAt" }]);
+    });
+
+    it.each(["/inventory?sort=price", "/inventory?sort=", "/inventory?sort=--name", "/inventory?sort=Name", "/inventory?sort=-placedAt"])(
+      "skips the invalid sort of %s and corrects the address",
+      async (address) => {
+        const list = await start(one, undefined, address);
+
+        expect(queries()).toEqual([{ perPage: 10,  }]);
+        expect(list.query.value.sort).toBe("name");
+        expect(router!.currentRoute.value.fullPath).toBe("/inventory");
+      },
+    );
+
+    it("does not take a parameter of another name (sort[]) as the sort", async () => {
+      const list = await start(one, undefined, "/inventory?sort[]=-name");
+
+      expect(queries()).toEqual([{ perPage: 10 }]);
+      expect(list.query.value.sort).toBe("name");
+    });
+
+    it("is no filter: „Wyczyść filtry” does not show for it, but clearing drops it", async () => {
+      const list = await start(one, undefined, "/inventory?sort=-name");
+      expect(list.filtered.value).toBe(false);
+
+      list.clearFilters();
+      await settle();
+
+      expect(list.query.value.sort).toBe("name");
+      expect(router!.currentRoute.value.query).toEqual({});
+    });
+
+    it("keeps the sort when a filter changes", async () => {
+      const list = await start(one, undefined, "/inventory?sort=-name");
+
+      list.setPerPage(50);
+      await settle();
+
+      expect(queries().at(-1)).toEqual({ perPage: 50, sort: "-name" });
+    });
   });
 
-  it("reports a network failure", async () => {
-    const list = await start({ "": { items: [item("A")], next: null } });
+  describe("errors", () => {
+    it("keeps the page that is shown and explains a failed change of the page, then retries", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" } });
 
-    mocks.get.mockRejectedValue(new Error("offline"));
-    await list.goNext().catch(() => undefined);
-    list.selectCategory("c1");
-    await settle();
+      serve({}, 500);
+      await list.goNext();
+      expect(list.error.value).toContain("HTTP 500");
+      expect(list.items.value.map((row) => row.name)).toEqual(["A"]);
+      expect(list.pageNumber.value).toBe(1);
 
-    expect(list.error.value).toContain("połączenie");
+      serve({ c1: { items: [item("B")], next: null } });
+      await list.retry();
+      expect(list.error.value).toBeNull();
+      expect(list.items.value.map((row) => row.name)).toEqual(["B"]);
+    });
+
+    it("shows no rows after a failed search, so rows of the old list are not taken for its result (#272)", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      serve({}, 500);
+
+      list.search.value = "bidon";
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 50);
+      await settle();
+
+      expect(list.error.value).toBe("Nie udało się pobrać stanów magazynowych (HTTP 500).");
+      expect(list.rows.value).toEqual([]);
+      expect(list.loaded.value).toBe(false);
+    });
+
+    it("tells that the chosen category no longer exists on a 404", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+
+      serve({}, 404);
+      list.selectCategory("gone");
+      await settle();
+
+      expect(list.error.value).toContain("kategoria");
+    });
+
+    it("reports a 403 as forbidden, without a retry to offer", async () => {
+      const list = await start({}, 403);
+
+      expect(list.error.value).toBe("Nie masz dostępu do stanów magazynowych.");
+      expect(list.forbidden.value).toBe(true);
+    });
+
+    it("reports a network failure", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+
+      mocks.get.mockRejectedValue(new Error("offline"));
+      list.selectCategory("c1");
+      await settle();
+
+      expect(list.error.value).toContain("połączenie");
+    });
+
+    it("ignores an older response that arrives after a newer request", async () => {
+      serve({ "": { items: [item("A")], next: null } });
+      const mounted = await mountList();
+      wrapper = mounted.wrapper;
+      await settle();
+
+      let finishFirst!: (value: unknown) => void;
+      mocks.get.mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)));
+      mocks.get.mockImplementationOnce(async () => ({ data: { items: [item("Nowy")], next: null }, response: { status: 200 } }));
+      mounted.list.selectCategory("c1");
+      await settle();
+      mounted.list.selectCategory("c2");
+      await settle();
+      finishFirst({ data: { items: [item("Stary")], next: null }, response: { status: 200 } });
+      await settle();
+
+      expect(mounted.list.items.value.map((row) => row.name)).toEqual(["Nowy"]);
+    });
   });
 
-  it("ignores an older response that arrives after a newer request", async () => {
-    let finishFirst!: (value: unknown) => void;
-    mocks.get.mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)));
-    mocks.get.mockImplementationOnce(async () => ({ data: { items: [item("Nowy")], next: null }, response: { status: 200 } }));
-    const mounted = mountList();
-    wrapper = mounted.wrapper;
+  describe("the saved stock is an overlay over the items of the pager", () => {
+    const state = (overrides: Partial<StockState> = {}): StockState => ({
+      variantId: "var-A",
+      physical: 15,
+      reserved: 4,
+      available: 11,
+      level: "in_stock",
+      version: 4,
+      updatedAt: "2026-11-02T13:00:00+00:00",
+      ...overrides,
+    });
 
-    mounted.list.selectCategory("c1");
-    await settle();
-    finishFirst({ data: { items: [item("Stary")], next: null }, response: { status: 200 } });
-    await settle();
+    it("does not write to the items of the pager, the rows show the saved stock", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
 
-    expect(mounted.list.items.value.map((row) => row.name)).toEqual(["Nowy"]);
+      await list.receiveStock("var-A", { quantity: 5, note: null, key: "k" });
+
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+      expect(list.items.value[0]!.variants[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops the level mark of a variant whose saved stock wins, and keeps it on the other variants and on a newer stock of the list", async () => {
+      const marked = (name: string, stock: ListedStock) => item(name, { variants: [{ variantId: `var-${name}`, label: "", stock, matchesLevel: true }] });
+      const list = await start(
+        { "": { items: [marked("A", listed({ available: 0, level: "out_of_stock" })), marked("B", listed({ available: 0, level: "out_of_stock" }))], next: null } },
+        undefined,
+        "/inventory?level=out_of_stock",
+      );
+      mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
+
+      await list.receiveStock("var-A", { quantity: 5, note: null, key: "k" });
+
+      expect(list.rows.value.map((row) => [row.variantId, row.stock?.physical, row.matchesLevel])).toEqual([["var-A", 15, false], ["var-B", 10, true]]);
+      expect(list.items.value[0]!.variants[0]!.matchesLevel).toBe(false);
+
+      serve({ "": { items: [marked("A", listed({ available: 0, level: "out_of_stock", version: 5 })), marked("B", listed({ available: 0, level: "out_of_stock" }))], next: null } });
+      await list.retry();
+      await settle();
+      expect(list.rows.value[0]!.matchesLevel, "a newer stock of the list brings the mark of the API back").toBe(true);
+    });
+
+    it("keeps the saved stock while the list is being refreshed, and when the refresh answers with the old one", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      mocks.post.mockResolvedValue({ data: state(), response: { status: 201 } });
+      await list.receiveStock("var-A", { quantity: 5, note: null, key: "k" });
+
+      let respond: (page: StockList) => void = () => undefined;
+      mocks.get.mockImplementation(() => new Promise((resolve) => (respond = (page) => resolve({ data: page, response: { status: 200 } }))));
+      const retrying = list.retry();
+      await settle();
+      expect(list.rows.value[0]!.stock?.physical, "during the request the row does not go back to the old stock").toBe(15);
+
+      respond({ items: [item("A")], next: null });
+      await retrying;
+      await settle();
+      expect(list.rows.value[0]!.stock?.physical).toBe(15);
+
+      serve({ "": { items: [item("A", { stock: listed({ physical: 20, version: 5 }) })], next: null } });
+      await list.retry();
+      await settle();
+      expect(list.rows.value[0]!.stock?.physical, "a newer version from the list wins").toBe(20);
+    });
   });
 });
 
 describe("useStockList: receipts and corrections", () => {
   const RECEIPTS = "/api/v1/admin/variants/{variantId}/stock/receipts";
   const CORRECTIONS = "/api/v1/admin/variants/{variantId}/stock/corrections";
-  let wrapper: ReturnType<typeof mountList>["wrapper"] | undefined;
+  let wrapper: Awaited<ReturnType<typeof mountList>>["wrapper"] | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -258,7 +646,7 @@ describe("useStockList: receipts and corrections", () => {
 
   async function start(pages: Record<string, StockList>) {
     serve(pages);
-    const mounted = mountList();
+    const mounted = await mountList();
     wrapper = mounted.wrapper;
     await settle();
     return mounted.list;
@@ -407,7 +795,7 @@ describe("useStockList: receipts and corrections", () => {
       serve({ c1: { items: [item("A", { stock: { physical: 15, reserved: 4, available: 11, level: "in_stock", version: 4, updatedAt: "2026-11-02T13:00:00+00:00" } })], next: null } });
 
       expect(await list.receiveStock("var-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
-      expect(queries().at(-1)).toEqual({ after: "c1" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
       expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
     });
 
@@ -489,7 +877,7 @@ describe("useStockList: receipts and corrections", () => {
       const result = await list.correctStock("var-A", correction);
 
       expect(result).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
-      expect(queries().at(-1)).toEqual({ after: "c1" });
+      expect(queries().at(-1)).toEqual({ perPage: 10, after: "c1" });
       expect(list.rows.value[0]!.stock).toMatchObject({ physical: 12, version: 4 });
     });
 
@@ -511,12 +899,20 @@ describe("useStockList: receipts and corrections", () => {
       expect(mocks.get).toHaveBeenCalledTimes(2);
     });
 
-    it("on a 409 shows the detail when the reload fails", async () => {
+    it("on a 409 says to reload, in Polish, when the row cannot be reread (the API detail may be English)", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
-      respond(409, { status: 409, detail: "Detail of the API." });
+      respond(409, { type: "about:blank", status: 409, detail: "The stock was modified concurrently. Reload it and try again." });
       serve({}, 500);
 
-      expect(await list.correctStock("var-A", correction)).toEqual({ status: "failed", message: "Detail of the API." });
+      expect(await list.correctStock("var-A", correction)).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
+    });
+
+    it("on a 409 says to reload, in Polish, when the row is no longer on the reread page", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(409, { type: "about:blank", status: 409, detail: "The stock was modified concurrently. Reload it and try again." });
+      serve({ "": { items: [item("B")], next: null } });
+
+      expect(await list.correctStock("var-A", correction)).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
     });
 
     it("on a 409 without a detail still says the correction was rejected", async () => {

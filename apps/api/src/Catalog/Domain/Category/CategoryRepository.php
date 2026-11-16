@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Catalog\Domain\Category;
 
+/**
+ * The writes of the tree run under the lock of the tree (Application port CategoryTreeLock), so a read in a write
+ * sees what the others committed.
+ */
 interface CategoryRepository
 {
     /**
@@ -15,11 +19,22 @@ interface CategoryRepository
     public function save(Category $category): void;
 
     /**
+     * save() of every category, in one write.
+     *
+     * @param list<Category> $categories
+     *
+     * @throws CategorySlugTaken
+     */
+    public function saveAll(array $categories): void;
+
+    /**
      * @throws CategoryNotFound
      */
     public function get(CategoryId $id): Category;
 
     /**
+     * Every category as stored, also when an earlier read of the same process holds an older state.
+     *
      * @return list<Category>
      */
     public function all(): array;
@@ -27,7 +42,27 @@ interface CategoryRepository
     public function count(): int;
 
     /**
-     * Whether a child of the parent (a root when the parent is null) already has the slug.
+     * The path of a moved category and of its descendants: every stored path that starts with $from starts with $to
+     * instead.
      */
-    public function slugTakenAmongSiblings(?CategoryId $parentId, CategorySlug $slug): bool;
+    public function movePaths(CategoryPath $from, CategoryPath $to): void;
+
+    /**
+     * Locks the row of the category until the end of the transaction, so no product is assigned to it meanwhile
+     * (lockForAssignment() of the product writes waits for it).
+     */
+    public function lock(CategoryId $id): void;
+
+    /**
+     * Locks the row of the category against its delete until the end of the transaction (a key share lock: several
+     * product writes do not wait for each other, only a delete of the category waits for them).
+     *
+     * @throws CategoryNotFound when the row does not exist (also one deleted while this write waited for the lock)
+     */
+    public function lockForAssignment(CategoryId $id): void;
+
+    /**
+     * Deletes the category; its redirects go with it.
+     */
+    public function remove(Category $category): void;
 }

@@ -27,6 +27,10 @@ parameters:
     # chunk takes from the database (drafts count).
     app.sitemap.chunk_size: 10000
     app.sitemap.row_limit: 50000
+    # Products per batch of the chain that reindexes a category subtree (ReindexCategoryBatchHandler).
+    app.catalog.category_reindex_batch_size: 500
+    # Sampling of the traces without SENTRY_TRACES_SAMPLE_RATE (config/packages/sentry.yaml).
+    app.sentry.traces_sample_rate: '0'
 
 services:
     _defaults:
@@ -108,6 +112,15 @@ services:
     App\Catalog\Infrastructure\Persistence\Doctrine\DbalSitemapProductSource:
         arguments:
             $rowLimit: '%app.sitemap.row_limit%'
+
+    App\Catalog\Application\Command\ReindexCategoryBatchHandler:
+        arguments:
+            $batchSize: '%app.catalog.category_reindex_batch_size%'
+
+    App\Catalog\Infrastructure\Search\ElasticsearchSubtreeProductIds:
+        arguments:
+            $client: '@app.search.client'
+            $alias: '%app.search.alias%'
 
     App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource:
         arguments:
@@ -194,7 +207,43 @@ services:
     App\Catalog\Application\Port\VariantSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalVariantSource'
     App\Catalog\Application\Port\ProductDetailsSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductDetailsSource'
     App\Catalog\Application\Port\SitemapProductSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource'
+    App\Catalog\Application\Port\CategoryReindexRuns: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalCategoryReindexRuns'
+    App\Catalog\Application\Port\CategoryReindexBatches: '@App\Catalog\Infrastructure\Messaging\MessengerCategoryReindexBatches'
+    App\Catalog\Application\Port\SubtreeProductIds: '@App\Catalog\Infrastructure\Search\ElasticsearchSubtreeProductIds'
+    App\Catalog\Application\Port\StorefrontCatalogCache: '@App\Catalog\Infrastructure\Storefront\HttpStorefrontCatalogCache'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
+
+    # The callbacks of the Sentry SDK (config/packages/sentry.yaml): the correlation tag and the filter of the events.
+    app.sentry.before_send:
+        class: Closure
+        factory: [Closure, fromCallable]
+        arguments: [['@App\Shared\Infrastructure\Observability\SentryEventProcessor', beforeSend]]
+    app.sentry.before_send_transaction:
+        class: Closure
+        factory: [Closure, fromCallable]
+        arguments: [['@App\Shared\Infrastructure\Observability\SentryEventProcessor', beforeSendTransaction]]
+    app.sentry.before_breadcrumb:
+        class: Closure
+        factory: [Closure, fromCallable]
+        arguments: [['@App\Shared\Infrastructure\Observability\SentryEventProcessor', beforeBreadcrumb]]
+
+    # The handler of the explicit logs of the application (config/packages/monolog.yaml): from `error` up, never a log
+    # with an exception in its context (it goes through the channel of its source), and without the context of the log.
+    app.sentry.monolog_handler:
+        class: Sentry\Monolog\LogToSentryIssueHandler
+        arguments:
+            $hub: '@Sentry\State\HubInterface'
+            $level: error
+            $fillExtraContext: false
+
+    # The console listener of the bundle reports the uncaught exceptions of the commands only when the error listener of
+    # the bundle is on, which it is not (ServerErrorReporter reports the HTTP errors): the same definition, reporting.
+    Sentry\SentryBundle\EventListener\ConsoleListener:
+        arguments: ['@Sentry\State\HubInterface', true]
+        tags:
+            - { name: kernel.event_listener, event: console.command, method: handleConsoleCommandEvent, priority: 128 }
+            - { name: kernel.event_listener, event: console.terminate, method: handleConsoleTerminateEvent, priority: -64 }
+            - { name: kernel.event_listener, event: console.error, method: handleConsoleErrorEvent, priority: -64 }
 
 when@test: &test
     parameters:
@@ -209,6 +258,8 @@ when@test: &test
         # Small enough for the tests to cut chunks of a few products and to pass the row limit.
         app.sitemap.chunk_size: 3
         app.sitemap.row_limit: 10
+        # A subtree of a few products takes several batches of the reindexing chain.
+        app.catalog.category_reindex_batch_size: 2
 
     services:
         _defaults:
@@ -269,6 +320,11 @@ when@test: &test
                 $alias: '%app.search.alias%'
         App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource:
             public: true
+        App\Catalog\Infrastructure\Search\ElasticsearchSubtreeProductIds:
+            public: true
+            arguments:
+                $client: '@app.search.client'
+                $alias: '%app.search.alias%'
         App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts:
             public: true
         # Public (and so never inlined), so a test can point it at an HTTP double or replace it with a spy.
@@ -323,5 +379,14 @@ when@test: &test
         # Replaced by the delivery tests with a builder that signs with the secrets of the shared test vector.
         App\PaymentSimulator\SimulatedWebhooks:
             public: true
+        # The HTTP client of the Sentry SDK in the tests (config/packages/sentry.yaml): keeps what would be sent.
+        App\Tests\Functional\Shared\Sentry\RecordingSentryHttpClient:
+            public: true
+        # The transport of the shared HTTP client (below the decorator of Sentry, priority -15): keeps the headers of
+        # the requests that leave the API.
+        App\Tests\Functional\Shared\Sentry\RecordingOutgoingHttpClient:
+            public: true
+            decorates: http_client.transport
+            decoration_priority: 0
 
 when@test_messaging: *test

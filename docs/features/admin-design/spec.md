@@ -2,11 +2,11 @@
 
 Panel `apps/admin` ma wygląd narzędzia marki Worf według zaakceptowanej makiety właściciela, zbudowany na Tailwind CSS 4
 i shadcn-vue (ten sam rodzaj komponentów co sklep), spełnia WCAG 2.2 AA i ma jeden standard powłoki, listy, formularza
-i okna potwierdzenia. To część 1 z dwóch: fundament, powłoka, standardy oraz pulpit, „Stan systemu” i produkty na nich;
-ceny, stany, promocje, kody rabatowe, zamówienia i usunięcie PrimeVue przenosi część 2, ADMIN-SCREENS (#462), więc te
-ekrany są jeszcze na PrimeVue, w nowej powłoce. Standardy z tej specyfikacji obowiązują w całym panelu. Panel pokazuje
+i okna potwierdzenia. Opisuje fundament, powłokę, standardy oraz pulpit, „Stan systemu” i produkty na nich; ceny, stany, promocje, kody
+rabatowe i zamówienia na tych standardach opisuje `docs/features/admin-screens/spec.md`. Standardy z tej specyfikacji
+obowiązują w całym panelu. Panel pokazuje
 wyłącznie dane, które API już zwraca (API i wygenerowany klient się nie zmieniły). Funkcje wymagające API
-(KPI sprzedaży, liczniki, sortowanie, kategorie, klienci, akcje masowe, wyszukiwarka globalna) są w ADMIN-FEATURES (#461).
+(KPI sprzedaży, liczniki, kategorie, klienci, akcje masowe, wyszukiwarka globalna) są w ADMIN-FEATURES (#461).
 
 Issues: #460, #250, #251, #346
 Zakres: `apps/admin`, `infra/docker-compose.yml`, `infra/k8s/charts/shop/templates/admin.yaml`, `infra/k8s/smoke/checks.py`, `infra/k8s/tests/test_workloads.py`, `e2e/support/catalog-admin.ts`, `e2e/support/panel-orders.ts`, `e2e/support/staff-login.ts`, `e2e/support/price-change.ts`, `e2e/support/promotions.ts`, `e2e/support/discount-codes.ts`, `e2e/tests/staff-dashboard.spec.ts`, `e2e/tests/stock-receipt.spec.ts`, `e2e/tests/catalog-admin.spec.ts`, `e2e/tests/order-management.spec.ts`, `e2e/tests/price-change.spec.ts`, `e2e/tests/promotions.spec.ts`, `e2e/tests/discount-codes.spec.ts`, `CLAUDE.md`, `README.md`, `docs/vision.md`, `docs/features/walking-skeleton/spec.md`, `docs/features/dashboard-data-freshness/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/order-management/spec.md`, `docs/features/agent-tester-ux/spec.md`, `.claude/agents/ux-reviewer.md`
@@ -15,17 +15,13 @@ Zakres: `apps/admin`, `infra/docker-compose.yml`, `infra/k8s/charts/shop/templat
 
 Cel: pracownik sklepu ma panel, który wygląda jak spójne, profesjonalne narzędzie Worf i spełnia WCAG 2.2 AA,
 a standardy listy, formularza i okien są gotowe dla wszystkich ekranów. Kryterium: axe (reguły WCAG 2.0–2.2
-A i AA) nie zgłasza naruszeń na ekranach tego epiku przy 1280 i 768 px, a ekrany jeszcze niezmigrowane działają jak
-przed migracją.
+A i AA) nie zgłasza naruszeń na ekranach panelu przy 1280 i 768 px.
 
 W zakresie: fundament (pakiety, tokeny, krój, reguły ESLint, komponenty bazowe), powłoka panelu (wspólna dla
 wszystkich ekranów), pulpit, nowy ekran „Stan systemu”, produkty (lista, nowy produkt, edycja ze zdjęciami
 i wariantami), ekran problemu z logowaniem (`App.vue`) i powrotu z logowania (`AuthCallbackView`), standardy listy,
-formularza i okien (zastosowane do produktów) oraz odczyt filtrów z adresu w listach zamówień, promocji i kodów,
-do których prowadzą menu i pulpit (sekcja „Standard listy”).
-
-Poza tym epikiem, w ADMIN-SCREENS (#462): ekrany cen, stanów, promocji, kodów rabatowych i zamówień w nowym wyglądzie
-i standardach, usunięcie PrimeVue. Do tego czasu te ekrany są na PrimeVue w nowej powłoce.
+formularza i okien. Ekrany cen, stanów, promocji, kodów rabatowych i zamówień stoją na tych standardach
+(`docs/features/admin-screens/spec.md`).
 
 Użytkownicy i uprawnienia bez zmian: role `admin`, `support`, `warehouse`, `marketing` z `GET /api/v1/admin/me`; panel
 tylko ukrywa elementy, uprawnienia egzekwuje API. Wszystkie liczby (ceny, sumy, liczniki, statusy, poziomy) liczy API.
@@ -62,16 +58,15 @@ Układ ekranu przy szerokości od 1024 px:
 
 ## Biblioteka komponentów i zależności
 
-Decyzja właściciela (2026-11-12): PrimeVue znika z panelu. Panel używa Tailwind CSS 4 i komponentów shadcn-vue
+Decyzja właściciela (2026-11-12): panel używa Tailwind CSS 4 i komponentów shadcn-vue
 (kod komponentów w repo, na prymitywach Reka UI) i ikon Lucide. TanStack Table (`@tanstack/vue-table`) nie ma
-w panelu i wejdzie w ADMIN-FEATURES razem z pierwszym sortowaniem i zaznaczaniem (D13): listy są stronicowane w API,
-a ukrywanie kolumn według priorytetu to klasy CSS, więc model tabeli nic nie daje. Uzasadnienie: ten sam
+w panelu (D13): listy są stronicowane i sortowane w API (kolejność wybiera `Select` „Sortuj”), a ukrywanie kolumn
+według priorytetu to klasy CSS, więc model tabeli nic nie daje. Uzasadnienie: ten sam
 rodzaj komponentów i tokenów co sklep (`apps/store`: Tailwind 4 i shadcn/ui), pełna kontrola nad wyglądem
-i dostępnością (defektów nazw dostępnych w wewnętrznych elementach `TreeSelect` i `Dialog` PrimeVue nie da się poprawić
-bez obejść) i brak ryzyka licencyjnego PrimeVue: zakresy z daszkiem wciągnęły `@primeuix/themes` 3.1.0
-i `primeicons` 8.0.2, które nie są już na licencji MIT.
+i dostępnością oraz brak ryzyka licencyjnego pakietów dawnej biblioteki (opis i powody: ADR
+`docs/adr/admin-ui-library.md`).
 
-Zależności dodane do panelu (rozwiązane wersje i licencje: `docs/adr/admin-ui-library.md`):
+Zależności interfejsu panelu (rozwiązane wersje i licencje: `docs/adr/admin-ui-library.md`):
 
 | Pakiet | Rodzaj | Po co |
 |---|---|---|
@@ -84,21 +79,18 @@ Zależności dodane do panelu (rozwiązane wersje i licencje: `docs/adr/admin-ui
 | `lucide-vue-next` | runtime | ikony |
 | `vue-sonner` | runtime | komunikaty sukcesu (toast), komponent „Sonner” shadcn-vue |
 
-`primevue`, `@primeuix/themes` i `primeicons` zostają do ADMIN-SCREENS (#462), które usuwa je, gdy znikną ostatnie
-ekrany na PrimeVue. Krój Nunito jest w repo jako pliki WOFF2 (licencja SIL OFL 1.1, wpis w
+Krój Nunito jest w repo jako pliki WOFF2 (licencja SIL OFL 1.1, wpis w
 `apps/admin/THIRD_PARTY_NOTICES.md`), nie jako pakiet npm. Każdy pakiet z tabeli w rozwiązanej wersji ma
 licencję MIT, ISC albo Apache-2.0 (wersje i licencje w ADR). Komponenty shadcn-vue są skopiowane do
 `apps/admin/src/components/ui/` (Button, Input, Label, Textarea, Select, Combobox, Switch, Checkbox, Dialog,
 AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb; CLI `shadcn-vue`
 uruchamiane w kontenerze, `components.json` w `apps/admin`), więc są naszym kodem, który zmieniamy jak każdy inny.
 
-Na czas migracji PrimeVue i Tailwind działają obok siebie: style PrimeVue są poza warstwami CSS, więc wygrywają
-z preflightem Tailwinda na starych ekranach. PrimeVue, `src/primevue.ts` i ich konfigurację usuwa ADMIN-SCREENS.
-Zasada panelu „własny komponent tylko, gdy biblioteka nie ma odpowiednika” zostaje: najpierw komponent shadcn-vue
+Zasada panelu „własny komponent tylko, gdy biblioteka nie ma odpowiednika”: najpierw komponent shadcn-vue
 z `src/components/ui/`, potem własny w `src/components/`.
 
 Wybór biblioteki opisuje ADR `docs/adr/admin-ui-library.md` (kontekst, decyzja, uzasadnienie, konsekwencje, lista
-pakietów i licencji). Style inline ustawiają komponenty Reka UI (i PrimeVue) przy pozycjonowaniu okien i list, więc
+pakietów i licencji). Style inline ustawiają komponenty Reka UI przy pozycjonowaniu okien i list, więc
 `style-src` w `apps/admin/docker/security-headers.conf` dalej nie jest ograniczony (komentarz w tym pliku).
 
 ## Tokeny i typografia
@@ -119,16 +111,13 @@ Kolor „na sztywno” poza `tokens.css` blokuje ESLint regułami, które widzą
 - bloki `<style>` w plikach `.vue` są zakazane (`vue/no-restricted-block`): style idą przez klasy Tailwinda
   i `tokens.css`.
 
-Import PrimeVue i PrimeIcons poza `LEGACY_FILES` blokuje `no-restricted-imports`.
+Import pakietów dawnej biblioteki komponentów panelu (lista w ADR) blokuje `no-restricted-imports` w każdym pliku `src/`.
 
 Test reguł (`tests/lint/color-rules.test.ts`) sprawdza identyfikator reguły i liczbę błędów dla każdej ścieżki i prób
-obejścia (wielkie litery, `rgba`, `oklch`, `color-mix`, kolor nazwany, `style` statyczny).
+obejścia (wielkie litery, `rgba`, `oklch`, `color-mix`, kolor nazwany, `style` statyczny), importów dawnej biblioteki
+i tego, że reguły obejmują dowolny plik `src/` (także `src/main.ts`).
 
-Reguły działają na każdym nowym i zmigrowanym pliku. Pliki jeszcze niezmigrowane (widoki ekranów ADMIN-SCREENS,
-`PromotionVariantPicker.vue`, `src/main.ts` i `src/primevue.ts`) są wymienione z nazwy na liście `LEGACY_FILES`
-w `eslint.config.js` i tylko te reguły ich nie obejmują; lista nie przyjmuje wzorców ani katalogów. Migracja ekranu
-usuwa z niej jego pliki, nowy plik nie trafia na nią (test reguł sprawdza, że każdy wpis listy istnieje i ma import
-z `primevue`), a ADMIN-SCREENS usuwa listę razem z PrimeVue. Wartości pochodzą z makiety; tam, gdzie
+Reguły działają na każdym pliku `src/`: nie ma listy plików wyłączonych z nich. Wartości pochodzą z makiety; tam, gdzie
 makieta nie spełnia WCAG 2.2 AA, token jest poprawiony (kolumna „Uwagi”). Kontrast liczony wzorem WCAG 2.x.
 
 | Token semantyczny | Wartość | Użycie | Kontrast | Uwagi |
@@ -205,13 +194,14 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   | Główne | Pulpit (`/`) | — | wszyscy |
   | Sklep | Katalog | Produkty (Lista produktów `/products`, Dodaj produkt `/products/new`), Ceny `/prices`, Stany magazynowe `/inventory` | wszyscy; „Dodaj produkt” tylko `admin` i `marketing` |
   | Sklep | Zamówienia | Lista zamówień `/orders` (`admin`, `support`, `warehouse`), Zwroty do wykonania `/orders?refund=pending` (`admin`, `support`: tylko oni wykonują zwroty) | `admin`, `support`, `warehouse` |
+  | Sklep | Klienci `/customers` | — | `admin`, `support` |
   | Marketing | Promocje `/promotions`, Kody rabatowe `/discount-codes` | — | wszyscy |
   | System | Stan systemu `/system` | — | `admin` |
 
   Grupa (Katalog, Zamówienia, Produkty) to przycisk z `aria-expanded` i strzałką; grupa z bieżącą trasą jest rozwinięta
   przy wejściu i przy każdej zmianie trasy (zamyka ją tylko jej przycisk). Bieżąca pozycja ma `aria-current="page"` i tylko ona jest wyróżniona: „Pulpit” jest aktywny wyłącznie
   na `/` (#251 F15). Formularze i szczegóły podświetlają pozycję listy (`/products/:id` → „Lista produktów”,
-  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”); `/orders?refund=pending` podświetla „Zwroty do
+  `/orders/:id` → „Lista zamówień”, `/promotions/:id` → „Promocje”, `/customers/:id` → „Klienci”); `/orders?refund=pending` podświetla „Zwroty do
   wykonania”, a nie „Lista zamówień” (rola bez tej pozycji ma podświetloną „Listę zamówień”). Pozycje do czasu wczytania `/me` wymagające roli są ukryte.
 - **Topbar**: na początku przycisk „Menu” (tylko poniżej 1024 px, otwiera szufladę); pole „Szukaj produktu…”
   (`role="search"`, `searchbox` z etykietą). Enter z frazą, która po przycięciu ma 2–100 znaków (punkty kodowe, jak
@@ -232,10 +222,9 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   (`checks.py`: `/config.js` ma `VITE_STORE_URL` środowiska) i `test_workloads.py`. Compose i chart mają zmienną razem
   (zasada głównego `CLAUDE.md`).
 - **Okruszki** (`PageHeader`, `<nav aria-label="Okruszki">`, ostatnia pozycja `aria-current="page"` bez linku) na
-  każdym ekranie poza pulpitem, który przeszedł na nowy nagłówek (produkty, formularz produktu, „Stan systemu”;
-  pozostałe ekrany do ADMIN-SCREENS mają jeszcze własny nagłówek i „Wróć do listy”), zaczynają się od „Pulpit”.
-  Formularze i szczegóły kończą się nazwą obiektu (np. „Pulpit › Katalog › Produkty › Buty trailowe Norvane Grań 300”;
-  w ekranach docelowych „Pulpit › Zamówienia › R-100002”); „Wróć do listy” znika, bo jego rolę przejmują okruszki.
+  każdym ekranie poza pulpitem, zaczynają się od „Pulpit”. Formularze i szczegóły kończą się nazwą obiektu (np.
+  „Pulpit › Katalog › Produkty › Buty trailowe Norvane Grań 300”, „Pulpit › Zamówienia › R-100002”); nie ma „Wróć do
+  listy”, bo jego rolę przejmują okruszki.
 - **Link „Przejdź do treści”**: pierwszy element w kolejności Tab, widoczny po fokusie, przenosi fokus na `<main>`
   (`tabindex="-1"`).
 - **Fokus po zmianie strony** (`usePageFocus`, w `AppLayout`): po zmianie `path` trasy (inny ekran albo rekord) powłoka
@@ -243,7 +232,7 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   pojawienia się H1 (widok najpierw ładuje dane, czekanie do 10 s) fokus jest na `<main>`. Sama zmiana `query` lub
   `hash` (filtry, pager i wyszukiwanie listy), anulowana nawigacja i pierwsze wczytanie panelu niczego nie ruszają.
   Fokus, który ma istniejący element (przeniesiony przez widok, np. formularz po zapisie, pole, w którym jest
-  pracownik, topbar, menu), zostaje. H1 ekranu niezmigrowanego dostaje od powłoki `tabindex="-1"`.
+  pracownik, topbar, menu), zostaje. H1 bez własnego `tabindex` (pulpit) dostaje od powłoki `tabindex="-1"`.
 - **Szuflada poniżej 1024 px**: sidebar znika z układu, a przycisk „Menu” w topbarze otwiera go jako szufladę z lewej
   (Reka `Dialog`/shadcn-vue `Sheet`: pułapka fokusu, `Escape` i kliknięcie obok zamykają, fokus wraca na „Menu”);
   wybór pozycji zamyka szufladę, a powiększenie okna do 1024 px albo więcej też. Wyjątek: pozycja, która zmieniła
@@ -254,9 +243,16 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
   z `history.state.denied = true`, a pulpit pokazuje komunikat „Nie masz dostępu do tej strony.” (`role="alert"`);
   przeładowanie pulpitu go nie powtarza. Gdy `/me` się nie wczyta, strażnik przepuszcza trasę, a layout pokazuje
   dzisiejszy błąd wczytania pracownika (`staff-error`); dostęp i tak sprawdza API (403 widoku). `/prices` nie dostaje
-  strażnika: API pozwala każdemu pracownikowi czytać ceny, a zmianę ceny ukrywa już widok (tylko `admin`).
+  strażnika: API pozwala czytać ceny każdemu pracownikowi z rolą personelu, a zmianę ceny ukrywa już widok (tylko `admin`).
+- **Konto bez roli personelu** (`/me` z pustą listą ról; API odpowiada mu tylko na `/me`): na każdej trasie, także po
+  wejściu z linku, `<main>` zamiast widoku pokazuje H1 „Brak dostępu do panelu” i komunikat „Twoje konto nie ma roli
+  w panelu. Skontaktuj się z administratorem.” (`role="alert"`). Menu w sidebarze, szuflada i przycisk „Menu” znikają;
+  topbar z kontem i „Wyloguj” oraz stopka zostają. Wolny fokus (na `body` albo `<main>`) trafia na ten H1, fokus
+  w topbarze zostaje. Do wczytania `/me` i przy jego błędzie panel wygląda jak dla pracownika z rolą.
 - **Toast**: jeden kontener `vue-sonner` (`Toaster`) w layoucie, komunikaty sukcesu po polsku, region
-  `aria-live="polite"` o nazwie „Powiadomienia”, znikają po 5 s i zostają, dopóki kursor jest nad nimi. Błędy nie idą
+  `aria-live="polite"` o nazwie dokładnie „Powiadomienia” (bez skrótu klawiszowego w nazwie), znikają po 5 s i zostają,
+  dopóki kursor jest nad nimi. Toasty są w prawym górnym rogu, pod topbarem (poniżej 640 px na szerokość ekranu
+  z marginesem 16 px), więc nie zasłaniają przyklejonego do dołu paska zapisu ani topbaru. Błędy nie idą
   do toastu: zostają przy miejscu, którego dotyczą (`role="alert"`).
 - **Ekrany poza layoutem**: problem z logowaniem (`App.vue`) i powrót z logowania (`AuthCallbackView`) dostają wygląd
   karty na tle aplikacji ze znakiem Worf, komunikatem i przyciskiem „Zaloguj ponownie”. Strona logowania Keycloaka
@@ -266,68 +262,72 @@ Tryb ciemny poza zakresem; tokeny semantyczne są nazwane tak, żeby dało się 
 ## Standard listy
 
 Jeden zestaw komponentów w `src/components/list/` dla wszystkich sześciu list (produkty, ceny, stany, promocje, kody,
-zamówienia; na standardzie stoi lista produktów, pozostałe przejdą na niego w ADMIN-SCREENS): `DataTable` (na komponencie
-`Table` shadcn-vue), `ListToolbar`, `ListPager`, `ListEmpty`, `RowActions` oraz dwa composables w `src/composables/`:
+zamówienia): `DataTable` (na komponencie
+`Table` shadcn-vue), `ListToolbar`, `ListPager`, `ListEmpty`, `RowActions` oraz trzy composables w `src/composables/`:
 
 - `useListUrlState(schema)`: jedyne źródło wyszukiwania, filtrów i rozmiaru strony. Czyta je z query stringu przy
   wejściu, zapisuje zmiany (`router.replace`) i zwraca reaktywne zapytanie. Listy nie trzymają już własnych kopii
   filtrów (`selectCategory`, `selectStatus` i podobne zapisują do adresu), więc wejście z adresu wysyła jedno żądanie.
 - `useCursorPager(fetchPage, query)`: jedyna implementacja stronicowania po kursorach standardu (stos kursorów, `latest`
   dla spóźnionych odpowiedzi, `retry`, `goNext`, `goPrevious`, powrót na pierwszą stronę przy zmianie zapytania),
-  z `perPage`, czyszczeniem wierszy po błędzie i zakresem „Pokazano X–Y”. Używa jej `useProductList`; composables
-  cen, stanów, promocji, kodów i zamówień mają do ADMIN-SCREENS własne kopie stosu kursorów. Każde zachowanie
-  standardu jest testowane raz.
+  z `perPage`, czyszczeniem wierszy po błędzie, zakresem „Pokazano X–Y” i licznikiem `total` pierwszej strony (do zmiany zapytania). Używają jej composables wszystkich sześciu list
+  i wybór wariantów promocji. Każde zachowanie standardu jest testowane raz.
+- `useNameSearch({ initial, apply })`: jedno miejsce reguł wyszukiwania po nazwie: fraza po przycięciu ma od 2 do 100
+  znaków (punkty kodowe), po 300 ms przerwy w pisaniu trafia do `apply` (pusta, także same spacje, to `null`: brak filtra),
+  a za krótka albo za długa nie jest stosowana i dostaje podpowiedź (`hint`). Zwraca pole (`search`), `tooShort`, `hint`,
+  `reset` (czyści pole i anuluje oczekujące opóźnienie) i `setFromAddress` (wartość z adresu, np. Wstecz, ustawia pole bez
+  `apply`); opóźnienie jest anulowane też przy odmontowaniu. Używają go listy produktów, cen i stanów oraz wybór wariantów promocji (w listach `apply` zapisuje `q` do adresu, w wyborze wariantów do zapytania w pamięci);
+  reguły wyszukiwania kodów (od 1 znaku) i zamówień (po Enterze) zostają w ich composables. Reguły są testowane raz,
+  w `tests/useNameSearch.test.ts`.
 
 Composables list (`useProductList` i pozostałe) zostają przy tym, co jest ich własne: budowie zapytania API,
 komunikatach błędów, rozbiciu na wiersze wariantów i logice zapisu (wersje cen i stanów, idempotencja, `ignored`).
-Wyszukiwanie z opóźnieniem i regułami długości (od 2 znaków dla nazw, od 1 znaku dla kodów, po Enterze dla zamówień)
-zostaje w composable listy i dopiero zastosowana fraza trafia do adresu.
+Wyszukiwanie po nazwie ma `useNameSearch`, a reguły kodów (od 1 znaku) i zamówień (po Enterze) zostają w composable listy;
+do adresu trafia dopiero zastosowana fraza.
 
 - **Pasek narzędzi**: wyszukiwarka (gdzie API ją ma, z dzisiejszymi regułami długości i opóźnienia), filtry listy
   (Select albo Combobox z etykietą widoczną albo dostępną), przycisk „Wyczyść filtry” widoczny, gdy jakikolwiek filtr
-  albo wyszukiwanie jest ustawione, wybór liczby wierszy i przycisk główny listy (np. „Dodaj produkt”) po prawej.
-- **Stan w adresie URL**: wyszukiwanie (`q`), filtry (np. `category`, `status`, `refund`) i rozmiar strony (`perPage`)
-  są w query stringu (`router.replace`, bez nowego wpisu historii przy każdym znaku); wartość domyślna (`perPage` 25) nie
+  albo wyszukiwanie jest ustawione (kolejność nie jest filtrem), `Select` „Sortuj” (listy produktów, cen, stanów
+  i zamówień), wybór liczby wierszy i przycisk główny listy (np. „Dodaj produkt”) po prawej. Opcja kolejności
+  niedozwolona przy bieżących filtrach jest wyłączona z opisem powodu przy opcji i w tekście statusu pod polem.
+- **Stan w adresie URL**: wyszukiwanie (`q`), filtry (np. `category`, `status`, `refund`), kolejność (`sort`, klucz
+  API) i rozmiar strony (`perPage`) są w query stringu (`router.replace`, bez nowego wpisu historii przy każdym znaku); wartość domyślna (`perPage` 25) nie
   trafia do adresu, a do żądania API tylko wtedy, gdy to nie 25 (domyślne API). Pozycja w stronicowaniu (kursor)
   nie trafia do adresu: przeładowanie wraca na pierwszą stronę, bo stos kursorów jest tylko w pamięci.
   - `useListUrlState` obserwuje `route.query`: zmiana z zewnątrz przy zamontowanym widoku (pozycja menu
     „Zwroty do wykonania” na `/orders`, wyszukiwarka topbaru na `/products`, link „Do obsługi”, Wstecz i Dalej
     przeglądarki) ustawia filtry, porzuca kursory i zaczyna od pierwszej strony; własny zapis listy przez
     `router.replace` nie wysyła drugiego żądania.
-  - Walidacja parametrów przed pierwszym żądaniem: nieznana wartość `status`, `refund` albo `perPage` jest pomijana
+  - Walidacja parametrów przed pierwszym żądaniem: nieznana wartość `status`, `refund`, `sort` albo `perPage` jest pomijana
     (lista jak bez niej, adres poprawiony); `category` jest sprawdzana w drzewie `useCategoryTree` (nieistniejąca
     pominięta, bo API dałoby 404; przy błędzie drzewa parametr też jest pominięty); `q` przechodzi reguły listy (np.
     produkty 2–100 znaków): tekst za krótki albo za długi jest pokazany w polu z dzisiejszą podpowiedzią, ale nie
     filtruje.
-  - Gdy lista zamówień przejdzie na `useListUrlState` (ADMIN-SCREENS), e-mail w `q` zamówień trafi do adresu, historii
-    przeglądarki i logów dostępu nginx panelu (API i tak dostaje `q` w query). Świadomie przyjęte, do uwzględnienia
-    przy RODO (#119).
-- **Stare listy do czasu ADMIN-SCREENS**: listy zamówień, promocji i kodów są na PrimeVue, ale czytają z adresu
-  filtry, do których prowadzą menu i pulpit: zamówienia `status` i `refund=pending`, promocje i kody `status`. Przy
-  wejściu i przy zmianie `route.query` przy zamontowanym widoku ustawiają filtr i wracają na pierwszą stronę;
-  nieznana wartość jest pomijana. Nie zapisują filtrów do adresu ani nie zmieniają innego zachowania. Ponieważ adres
-  nie śledzi filtrów ustawionych w liście, pozycja menu, której cel jest równy bieżącej lokalizacji (np. „Zwroty do
-  wykonania” po wyłączeniu przełącznika w liście), nawiguje ponownie na ten adres (`force`, `replace`: bez nowego
-  wpisu historii), a lista bierze filtry z adresu; klik z Ctrl, Cmd, Shift, Alt albo środkowym przyciskiem zostaje
+  - E-mail w `q` listy zamówień trafia do adresu, historii przeglądarki i logów dostępu nginx panelu (API i tak dostaje
+    `q` w query). Świadomie przyjęte, do uwzględnienia przy RODO (#119).
+- **Pozycje menu a stan listy**: wybór pozycji menu to zwykła nawigacja routera. Listy zapisują filtry do adresu, więc
+  adres zawsze je odzwierciedla, a pozycja, której cel jest równy bieżącej lokalizacji, nic nie zmienia (router
+  odrzuca duplikat) i tylko zamyka szufladę. Pozycja „Zwroty do wykonania” na otwartej liście zamówień zmienia adres,
+  więc lista przełącza się bez przeładowania. Klik z Ctrl, Cmd, Shift, Alt albo środkowym przyciskiem zostaje
   przeglądarce (nowa karta) i nie zamyka szuflady. Lista rozpoznaje „swój” widok po nazwie trasy, nie po ścieżce.
-  ADMIN-SCREENS zastępuje to `useListUrlState`.
-- **Rozmiar strony** (ma go lista produktów; pozostałe listy dostaną go w ADMIN-SCREENS): 10, 25 albo 50 (`perPage`
+- **Rozmiar strony** (każda z sześciu list): 10, 25 albo 50 (`perPage`
   istniejące w API, maksimum 100). Domyślnie 25; na Cenach i Stanach domyślnie 10, bo tam strona liczy produkty,
-  a każdy ma wiersz na wariant. Zmiana rozmiaru wraca na pierwszą stronę. Wybór wariantów w formularzu promocji (`PromotionVariantPicker`, też na `usePriceList`) zostaje przy 25 produktach
-  na stronę, bez wyboru rozmiaru i bez stanu w adresie.
+  a każdy ma wiersz na wariant. Zmiana rozmiaru wraca na pierwszą stronę. Wybór wariantów w formularzu promocji (`PromotionVariantPicker`) składa listę z `fetchPricePage` i `priceRows` przez
+  `useCursorPager` (bez `usePriceList`): 25 produktów na stronę, bez wyboru rozmiaru i bez stanu w adresie.
 - **Stopka**: „Pokazano X–Y” (`role="status"`, numer pierwszego i ostatniego wiersza strony liczony z numeru strony,
-  rozmiaru i liczby elementów odpowiedzi; na Cenach i Stanach liczy produkty: „Pokazano produkty X–Y”) i pager
+  rozmiaru i liczby elementów odpowiedzi; na Cenach i Stanach liczy produkty: „Pokazano produkty X–Y z N”) i pager
   z przyciskami „Poprzednia strona” / „Następna strona” (ikony ze strzałkami, nazwy dostępne) oraz numerem bieżącej
-  strony. API nie liczy sumy, więc bez „z N” i bez numerów dalszych stron. Fokus po zmianie strony zostaje na
+  strony. Pierwsza strona listy niesie `total` z API (liczony do 10 000, spec ADMIN-FEATURES: „Liczniki wyników”),
+  więc stopka mówi „Pokazano 1–25 z 1 234” (tysiące oddzielone twardą spacją, także w zakresie: „10 001–10 025”) albo „z ponad 10 000”, gdy liczenie
+  doszło do limitu; kolejne strony pokazują licznik pierwszej do zmiany zapytania, a bez licznika (brak w odpowiedzi,
+  nieudane zapytanie) stopka jest bez „z N”. Nie ma numerów dalszych stron. Fokus po zmianie strony zostaje na
   naciśniętym przycisku, a gdy ten zostaje wyłączony, przechodzi na drugi przycisk pagera (standard obejmuje wszystkie
   listy, #260 F7), chyba że pracownik sam przeniósł fokus poza pager.
 - **Puste stany** rozdzielone: bez danych w ogóle (tekst listy, z przyciskiem głównym listy, gdy rola może tworzyć)
   i bez wyników dla filtrów („Brak wyników dla wybranych filtrów.” z „Wyczyść filtry”, wspólny dla wszystkich list).
-  Pager jest wtedy ukryty. Teksty „brak danych” standardu (produkty już je mają, pozostałe listy dostaną je w
-  ADMIN-SCREENS): produkty „Nie ma jeszcze produktów.”, ceny i stany „Nie ma jeszcze produktów z wariantami.”,
-  promocje „Nie ma jeszcze promocji.”, kody „Nie ma jeszcze kodów rabatowych.”, zamówienia „Nie ma jeszcze zamówień.”
-  (lista zamówień do ADMIN-SCREENS mówi jeszcze „Brak zamówień.” i przy filtrach „Nie znaleziono zamówień.”;
-  ADMIN-SCREENS zastąpi je tekstem standardu i wspólnym „Brak wyników dla wybranych filtrów.”). Strona po pierwszej,
+  Pager jest wtedy ukryty. Teksty „brak danych” standardu: produkty „Nie ma jeszcze produktów.”, ceny i stany
+  „Nie ma jeszcze produktów z wariantami.”, promocje „Nie ma jeszcze promocji.”, kody „Nie ma jeszcze kodów
+  rabatowych.”, zamówienia „Nie ma jeszcze zamówień.”. Strona po pierwszej,
   na którą API odpowie bez wierszy (lista zmieniła się od poprzedniej strony), zostawia pager z „Poprzednia strona”, a pusty
   stan mówi „Na tej stronie nie ma już wyników.”.
 - **Błąd**: komunikat `role="alert"` z „Spróbuj ponownie” (403 bez ponowienia). Zależnie od żądania:
@@ -342,8 +342,9 @@ zostaje w composable listy i dopiero zastosowana fraza trafia do adresu.
 - **Akcje wiersza**: kwadratowe przyciski z ikoną, nazwą dostępną zawierającą nazwę obiektu („Edytuj: Buty trailowe
   Norvane Grań 300”; zewnętrzny adres dopisuje „ (otwiera się w nowej karcie)”) i podpowiedzią (tooltip) z tą samą
   nazwą po najechaniu i fokusie. Akcja, której rola nigdy nie wykona, jest ukryta (widok jej nie podaje).
-- **Bez zaznaczania i sortowania**: API nie ma akcji masowych ani sortowania, więc `DataTable` w tym epiku ich nie
-  ma; dodaje je ADMIN-FEATURES razem z pierwszym użyciem. Nagłówki są zwykłym tekstem bez ikon sortowania.
+- **Sortowanie bez przycisków w nagłówkach, bez zaznaczania**: kolejność wybiera `Select` „Sortuj” w pasku listy
+  (sortuje API), a nagłówki są zwykłym tekstem bez ikon sortowania; kolumna, po której lista jest posortowana, ma
+  `aria-sort` na `<th>` (`ListColumn.sort`). Zaznaczania nie ma: API nie ma akcji masowych.
 - **Szerokość**: tabela mieści się w karcie; kolumny mają priorytety, a kolumny niższego priorytetu są ukryte jako
   kolumny poniżej ustalonej szerokości (opis per ekran niżej). Ukrycie kolumny nie ukrywa informacji: jej wartość
   pojawia się wtedy z etykietą jako dodatkowa linia w komórce głównej wiersza (np. „Kategoria: Namioty” i „Ostatnia
@@ -370,58 +371,71 @@ zostaje w composable listy i dopiero zastosowana fraza trafia do adresu.
   przechodzi na H1 formularza (`tabindex="-1"`), bo przycisk „Zapisz” zniknął razem z paskiem. Wyjątek (#250 F16):
   gdy w trakcie żądania pracownik przeniósł fokus do pola, fokus zostaje w tym polu. Po nieudanym zapisie fokus trafia
   na pierwsze pole z błędem albo komunikat formularza, a komunikat jest przewinięty do widoku (#304 F3).
-- **Strażnik niezapisanych zmian** we wszystkich trzech formularzach (dziś w formularzu produktu; promocja i kod
-  rabatowy w ADMIN-SCREENS), jeden composable `useUnsavedChangesGuard` (globalny `router.beforeEach`) z oknem
+- **Strażnik niezapisanych zmian** we wszystkich trzech formularzach (produkt, promocja, kod rabatowy), jeden composable `useUnsavedChangesGuard` (globalny `router.beforeEach`) z oknem
   `UnsavedChangesDialog`: przejście na inną trasę panelu z niezapisanymi zmianami otwiera okno „Masz niezapisane
   zmiany” z „Zostań” (domyślny fokus) i „Opuść bez zapisu” (niszczący); gdy nawigację wywołało coś bez elementu (Wstecz
   przeglądarki), fokus po zamknięciu trafia na H1 formularza. Zamknięcie karty ostrzega przeglądarka
   (`beforeunload`), poza wylogowaniem (`signingOut`). Formularz produktu nie używa `window.confirm`.
 - **Okno potwierdzenia** (`ConfirmDialog` na shadcn-vue `AlertDialog`) dla każdej akcji nieodwracalnej albo
-  zmieniającej stan: tytuł z nazwą obiektu („Anulować zamówienie R-100002?”), opis skutku jednym zdaniem, przycisk
-  akcji z etykietą opisującą skutek („Anuluj zamówienie”, „Usuń promocję”, „Zakończ promocję teraz”, „Usuń wariant
-  czarny / 42”), czerwony przy akcjach niszczących (anulowanie i zwrot zamówienia, usunięcie, zakończenie promocji,
-  usunięcie wariantu), oraz „Wróć” z domyślnym fokusem. `Escape` i „Wróć” zamykają i oddają fokus na wyzwalacz.
-  W produkcie pyta nim usunięcie wariantu i ostatniej osi (#251 F12); pozostałe akcje z listy przejdą na niego
-  w ADMIN-SCREENS (potwierdzenie w treści strony w promocjach, #304 F6).
-- **Fokus, gdy wyzwalacz zniknął**: po akcji, która zmienia zestaw przycisków (w produkcie publikacja i wycofanie,
-  usunięcie wariantu i osi; w ADMIN-SCREENS zakończenie i usunięcie promocji, zmiana statusu zamówienia, wykonanie
-  zwrotu), fokus trafia na nagłówek karty, w której była akcja („Status”, „Akcje”, „Warianty”; nagłówek
+  zmieniającej stan: tytuł z nazwą obiektu („Zakończyć promocję Lato teraz?”), opis skutku jednym zdaniem, przycisk
+  akcji z etykietą opisującą skutek („Usuń promocję”, „Zakończ promocję teraz”, „Usuń wariant czarny / 42”),
+  czerwony przy akcjach niszczących (usunięcie, zakończenie promocji, usunięcie wariantu), oraz „Wróć” z domyślnym
+  fokusem. `Escape` i „Wróć” zamykają i oddają fokus na wyzwalacz.
+  Pytają nim usunięcie wariantu i ostatniej osi produktu (#251 F12) oraz zakończenie i usunięcie promocji (#304 F6).
+  Zmiana statusu zamówienia i wykonanie zwrotu to okna z polami (niżej).
+- **Fokus, gdy wyzwalacz zniknął**: po akcji, która zmienia zestaw przycisków (publikacja i wycofanie produktu,
+  usunięcie wariantu i osi, zakończenie i usunięcie promocji, zmiana statusu zamówienia, wykonanie zwrotu), fokus trafia na nagłówek karty, w której była akcja („Status”, „Akcje”, „Warianty”; nagłówek
   z `tabindex="-1"`; `focusAfterAction` z `src/lib/focus.ts`), a gdy akcja przeniosła na inną trasę (usunięcie
   promocji), na H1 nowej strony. Gdy wyzwalacz nadal istnieje, fokus wraca na niego.
-- **Okna z polami** (zmiana ceny, przyjęcie, korekta, zmiana statusu zamówienia, wykonanie zwrotu; stosuje je
-  ADMIN-SCREENS): fokus po otwarciu
+- **Okna z polami** (zmiana ceny, przyjęcie, korekta, zmiana statusu zamówienia, wykonanie zwrotu): fokus po otwarciu
   w pierwszym polu (#273), przycisk zamykania „Zamknij”, szerokość `min(28rem, 100vw - 2rem)`, więc okno mieści się
   na ekranie 375 px (#393); po błędzie 403 albo innym komunikacie fokus trafia na komunikat, nie na `body` (#260 F8).
+  Przycisk skutku okna zmiany statusu zamówienia jest czerwony przy anulowaniu i zwrocie (przyjęciu zwrotu), a przy
+  pozostałych przejściach i wykonaniu zwrotu pieniędzy niebieski (`interface`).
   Okna historii (ceny, stanu) mają szerokość do `min(56rem, 100vw - 2rem)` i tabelę z priorytetami kolumn.
 - Daty i godziny w polach zostają natywnymi `datetime-local` w `Europe/Warsaw` (`src/promotions/time.ts`), bez
   zmian zachowania.
 
 ## Pulpit i Stan systemu
 
-Pulpit (`/`, H1 „Pulpit”) korzysta z `GET /api/v1/admin/dashboard` (sekcja `catalog`) i, dla ról z dostępem do zamówień,
+Pulpit (`/`, H1 „Pulpit”) korzysta z `GET /api/v1/admin/dashboard` (sekcje `catalog` i `queues`) i, dla ról z dostępem do zamówień,
 z `GET /api/v1/admin/orders?perPage=5`. Świeżość danych opisuje
 `docs/features/dashboard-data-freshness/spec.md`: „Odśwież”, odświeżanie co 30 s wstrzymane w ukrytej karcie,
 „Dane z 01.11.2026, 14:03:12” (pełna data i godzina w czasie polskim przez `formatDateTime`, `FreshnessBar`) i komunikat
 błędu z czasem pokazanych danych; dotyczy kafli katalogu i „Ostatnich zamówień”.
 
 - **Kafle KPI** (komponent `KpiTile`: `title`, `icon`, `tone` z par `kpi-*`, `value` sformatowane z liczby z API,
-  opcjonalnie `footer` z etykietą i wartością oraz `to` dla kafla-linku; etykietę zmiany i oznaczenie wartości
-  szacunkowej doda ADMIN-FEATURES razem z kaflami sprzedaży; `CatalogTiles` składa trzy kafle katalogu):
-  - „Produkty”: `productCount`, link do `/products`, stopka „Bez zdjęć” z `productsWithoutImages`;
-  - „Kategorie”: `categoryCount`, bez linku (panel nie ma ekranu kategorii);
-  - „Bez zdjęć”: `productsWithoutImages`, bez linku (API nie filtruje produktów bez zdjęć); stopka „Uzupełnij zdjęcia
-    w formularzu produktu” tylko przy liczbie większej od zera.
-  Kafle sprzedaży doda ADMIN-FEATURES tym samym komponentem.
-- **„Do obsługi”** (karta z listą linków, bez liczb, bo API ich nie liczy): każdy wiersz to ikona w pastelowym kółku,
-  etykieta, opis i strzałka; widoczny według ról:
+  opcjonalnie `footer` z etykietą i wartością oraz `to` dla kafla-linku, `estimated` (oznaczenie „ok.” przed wartością
+  szacunkową), `description` (wyjaśnienie wartości, połączone z wartością przez `aria-describedby`) i `trend` (linia
+  zmiany pod wartością w tonie `success`, `danger` albo wyciszonym); `CatalogTiles` składa kafle katalogu, `SalesTiles`
+  kafle sprzedaży):
+  - „Produkty”: `catalog.productCount` to szacunek bazy (`{value, estimated: true}`), pokazany z „ok.” (od miliona
+    „ok. 10 mln”), link do `/products`; bez szacunku (`null`, baza jeszcze nie ma statystyk) kafel pokazuje „—”
+    i opis „Liczba produktów będzie dostępna po aktualizacji statystyk bazy.”; stopka „Bez zdjęć” z kolejki
+    `queues.productsWithoutImages` (tylko gdy rola ją widzi);
+  - „Kategorie”: `categoryCount`, link do `/categories` (ekran kategorii dodaje ADMIN-FEATURES);
+  - „Bez zdjęć”: kolejka `queues.productsWithoutImages` (`admin`, `marketing`; dla pozostałych ról kafla nie ma), link do
+    `/products?images=none`; stopka „Uzupełnij zdjęcia w formularzu produktu” tylko przy liczbie większej od zera.
+  Liczba kolejki to `BoundedCount` (do 1000): „1000+” przy `capped`.
+  Kafle sprzedaży (tylko `admin`, przy `sales` różnym od `null`): „Sprzedaż dziś”, „Sprzedaż 7 dni”, „Sprzedaż 30 dni”
+  z przychodem, stopką „Zamówienia: N” i „śr. <kwota>” oraz trendem „+12,5% vs wczoraj” / „vs poprzednie 7 dni” /
+  „vs poprzednie 30 dni” (zielony przy wzroście, czerwony przy spadku, „brak danych do porównania” bez okresu
+  porównawczego); „Dziś” z opisem „Od północy do pełnej godziny, wg godzin zegara.”, a między 0:00 a 1:00 „—” z opisem
+  „Pierwsze dane po 1:00”; pod kaflami „Dane do <godzina>”.
+- **„Do obsługi”** (karta z listą linków z liczbami kolejek): każdy wiersz to ikona w pastelowym kółku, etykieta, opis,
+  liczba kolejki (`todo-count`, „1000+” przy `capped`, „0” zostaje) i strzałka; wiersz bez kolejki (promocje, kody) nie ma
+  liczby; widoczny według ról, a po wczytaniu pulpitu tylko gdy API dało jego kolejkę (nie `null`):
   - „Opłacone do wysłania” → `/orders?status=paid` (`admin`, `support`, `warehouse`);
   - „Czekają na płatność” → `/orders?status=new` (`admin`, `support`);
   - „Zwroty do wykonania” → `/orders?refund=pending` (`admin`, `support`);
-  - „Stany magazynowe” → `/inventory` (`admin`, `warehouse`);
+  - „Zwroty po terminie” → `/orders?refund=overdue` (`admin`, `support`);
+  - „Stany magazynowe” (warianty bez stanu) → `/inventory?level=out_of_stock` (`admin`, `warehouse`);
+  - „Niski stan” → `/inventory?level=low_stock` (`admin`, `warehouse`);
+  - „Produkty bez zdjęć” → `/products?images=none` (`admin`, `marketing`);
   - „Aktywne promocje” → `/promotions?status=active` (`admin`, `marketing`);
   - „Kody rabatowe” → `/discount-codes?status=active` (`admin`, `marketing`).
-  Rola `support` bez innych zadań widzi co najmniej pierwsze trzy; każda rola widzi co najmniej jeden wiersz,
-  a rola z kilku widzi każdy raz. Do czasu wczytania `/me` karty nie ma.
+  Każda rola widzi co najmniej jeden wiersz, a rola z kilku widzi każdy raz. Do czasu wczytania `/me` karty nie ma;
+  do czasu wczytania pulpitu (i po błędzie jego pobrania) wiersze ról pokazują się bez liczb.
 - **„Ostatnie zamówienia”** (role `admin`, `support`, `warehouse`): tabela pięciu najnowszych (numer jako link, klient,
   data, pozycje `itemCount`, kwota, status) i link „Wszystkie zamówienia →”. Błąd tej karty nie psuje reszty pulpitu
   (komunikat w karcie z „Spróbuj ponownie”, a 403 bez ponowienia; nieudane odświeżenie zostawia pokazane zamówienia
@@ -433,7 +447,7 @@ sekcji „Stan systemu” w nowym wyglądzie i po polsku (okruszki „Pulpit ›
 „Baza danych (PostgreSQL)”, `labels.ts`; nieznana nazwa zostaje jak z API), etykietą „Działa” / „Nie działa”
 (status-success / status-danger) i opóźnieniem, „Zdarzenia czekające na wysłanie” zamiast „Outbox”, tabela kolejek
 (nazwa techniczna jak z API, wiadomości, konsumenci) w przewijanym regionie `role="region"`, porównanie indeksu
-wyszukiwarki z katalogiem. Zachowanie świeżości z
+wyszukiwarki z katalogiem (liczba produktów to szacunek bazy, indeks jest „w zgodzie” w granicach 1% szacunku; bez szacunku ekran mówi „Nie można porównać: brak statystyk bazy.”). Zachowanie świeżości z
 `docs/features/dashboard-data-freshness/spec.md` działa na tym ekranie tak samo jak na pulpicie (odświeżanie co 30 s wstrzymane
 w ukrytej karcie, „Dane z 01.11.2026, 14:03:12” (pełna data i godzina polska przez `formatDateTime`), komunikat z czasem
 pokazanych danych), a tekst „Dane z …” ma kontrast `muted-foreground` (#346). Rola inna niż `admin` dostaje z API
@@ -450,8 +464,7 @@ o stanie systemu. Ten ekran jest dla administratorów.”.
   tylko do odczytu, i „Podgląd w sklepie” dla opublikowanego, dla każdej roli: `<VITE_STORE_URL>/p/<slug>` w nowej
   karcie). Poniżej 1024 px ukryta Kategoria, poniżej 900 px także Ostatnia zmiana. Po „Wyczyść filtry” fokus trafia
   na pole wyszukiwania.
-- **Combobox kategorii** (`CategoryCombobox`, zastępuje `TreeSelect` na liście i w formularzu produktu, a w ADMIN-SCREENS
-  na cenach i stanach): pole z listą wyboru (Reka `Combobox`, rola `combobox` z nazwą z etykiety), opcje to kategorie z drzewa
+- **Combobox kategorii** (`CategoryCombobox`: lista i formularz produktu, ceny i stany): pole z listą wyboru (Reka `Combobox`, rola `combobox` z nazwą z etykiety), opcje to kategorie z drzewa
   `useCategoryTree` w kolejności drzewa, każda z wcięciem według poziomu i pełną ścieżką w nazwie dostępnej
   („Turystyka › Biwak › Namioty”); wpisywanie filtruje po nazwie i ścieżce. Tryb wielokrotny (kategorie dodatkowe
   w formularzu) pokazuje wybrane jako etykiety z przyciskiem „Usuń: Namioty”. Brak nienazwanych przycisków (#250 F13).
@@ -472,12 +485,10 @@ o stanie systemu. Ten ekran jest dla administratorów.”.
   („Usunąć wariant czarny / 42?”) i polskim „Zamknij” (#251 F12); nowy, niezapisany wiersz znika bez pytania. Po
   usunięciu wiersza albo osi fokus trafia na nagłówek „Warianty”.
 
-## Ekrany w ADMIN-SCREENS
+## Ekrany cen, stanów, promocji, kodów i zamówień
 
-Ceny i Stany magazynowe, promocje i kody rabatowe, zamówienia (lista i szczegóły z osią czasu) oraz usunięcie PrimeVue
-opisuje zgłoszenie #462 (część 2) we własnej specyfikacji na standardach z tego dokumentu. Do tego czasu te ekrany
-zmieniają się tylko przez wspólną powłokę, preflight Tailwinda i odczyt filtrów z adresu (sekcja „Standard listy”);
-ich testy E2E nawigują przez nowe menu.
+Ceny i Stany magazynowe, promocje i kody rabatowe oraz zamówienia (lista i szczegóły z osią czasu) stoją na standardach
+z tego dokumentu; ich wygląd i zachowanie opisuje `docs/features/admin-screens/spec.md`.
 
 ## Responsywność
 
@@ -486,11 +497,10 @@ ich testy E2E nawigują przez nowe menu.
 - < 1024 px: sidebar jako szuflada, przycisk „Menu” w topbarze.
 - 768 px: lista pokazuje nazwę, status i akcje bez przewijania w poziomie (kolumny niższego priorytetu ukryte według
   sekcji ekranów); pulpit i formularze w jednej kolumnie.
-- 375 px: każde okno mieści się w ekranie; lista i szczegóły zamówienia projektuje pod telefon ADMIN-SCREENS;
+- 375 px: każde okno mieści się w ekranie; lista i szczegóły zamówienia są zaprojektowane pod telefon;
   pozostałe ekrany nie są projektowane pod telefon, ale spełniają regułę 320 px.
-- 320 px (WCAG 1.4.10, reflow): na każdym ekranie tego epiku i w każdym jego oknie przy szerokości 320 px CSS
-  (wysokość 640 px; ekrany ADMIN-SCREENS sprawdza część 2)
-  strona nie przewija się w poziomie, a każda informacja i każda funkcja ekranu jest dostępna: menu przez szufladę,
+- 320 px (WCAG 1.4.10, reflow): na każdym ekranie panelu i w każdym jego oknie przy szerokości 320 px CSS
+  (wysokość 640 px) strona nie przewija się w poziomie, a każda informacja i każda funkcja ekranu jest dostępna: menu przez szufladę,
   pola i przyciski formularzy w jednej kolumnie, pasek zapisu z przyciskami w całości widoczny, ukryte kolumny jako
   linie komórki głównej, tabele szersze od ekranu przewijane w swoim regionie dostępnym z klawiatury (wyjątek tabel
   danych). Tekst nie jest obcinany bez dostępu do pełnej wartości (podpowiedź albo zawijanie).
@@ -498,8 +508,8 @@ ich testy E2E nawigują przez nowe menu.
 ## Dostępność
 
 WCAG 2.2 AA dla całego panelu: kontrasty z tokenów (test Vitest), widoczny fokus, link „Przejdź do treści”, nazwy
-dostępne każdej kontrolki (także ikon, comboboxów i przycisków rozwijania), kolejność fokusu zgodna z układem (wyjątek: w formularzu produktu kolumna boczna stoi w DOM przed główną, więc Tab
-zaczyna od niej), fokus nigdy nie spada na `body` po akcji (zmiana strony: powłoka przenosi go na H1 nowej strony,
+dostępne każdej kontrolki (także ikon, comboboxów i przycisków rozwijania), kolejność fokusu zgodna z układem (wyjątek: w formularzach produktu, promocji i kodu rabatowego oraz na szczegółach
+zamówienia i karcie klienta kolumna boczna stoi w DOM przed główną, więc Tab zaczyna od niej), fokus nigdy nie spada na `body` po akcji (zmiana strony: powłoka przenosi go na H1 nowej strony,
 sekcja „Powłoka”; zamknięcie okna, błąd, usunięcie elementu), cele kliknięcia co
 najmniej 24 × 24 px, komunikaty statusu przez `role="status"`/`aria-live`, błędy przez `role="alert"`, język `pl`
 (`<html lang="pl">`), polskie nazwy wszystkich elementów komponentów (żadnego „Close”).
@@ -511,21 +521,20 @@ Migracja nie usunęła żadnej funkcji ani informacji panelu. Funkcje, które ma
 | Funkcja | Sposób wykonania |
 |---|---|
 | nazwa pulpitu, „Stan systemu” | „Pulpit” w menu i H1; „Stan systemu” na `/system` z treścią, odświeżaniem i świeżością danych |
-| powrót do listy | okruszki z linkiem do listy (ekrany po migracji; pozostałe mają jeszcze „Wróć do listy”) |
-| filtry statusu (produkty; promocje i kody w ADMIN-SCREENS) | Select z wartościami: Wszystkie i statusy |
-| opuszczenie formularza z niezapisanymi zmianami, usunięcie wariantu | okna strażnika zmian i `ConfirmDialog` (produkt; promocje i kody w ADMIN-SCREENS) |
-| wynik zapisu, publikacji i wycofania | toast i fokus według „Standardu formularza” (produkt; reszta w ADMIN-SCREENS) |
+| powrót do listy | okruszki z linkiem do listy |
+| filtry statusu (produkty, promocje, kody) | Select z wartościami: Wszystkie i statusy |
+| opuszczenie formularza z niezapisanymi zmianami, usunięcie wariantu | okna strażnika zmian i `ConfirmDialog` (produkt, promocje, kody) |
+| wynik zapisu, publikacji i wycofania | toast i fokus według „Standardu formularza” (produkt, promocje, kody, ceny, stany, zamówienia) |
 | wejście przez rolę bez dostępu na `/orders` | strażnik trasy i komunikat na pulpicie (403 widoku zostaje jako zabezpieczenie) |
 | role i wylogowanie w topbarze | polskie nazwy ról i „Wyloguj” w menu konta |
-| teksty pustych list | teksty ze „Standardu listy” (produkty; reszta w ADMIN-SCREENS) |
-| kolumny tabel przy każdej szerokości | kolumny niższego priorytetu jako linie komórki głównej na wąskim ekranie (produkty) |
+| teksty pustych list | teksty ze „Standardu listy” (wszystkie listy) |
+| kolumny tabel przy każdej szerokości | kolumny niższego priorytetu jako linie komórki głównej na wąskim ekranie (wszystkie listy) |
 
-Spis funkcji panelu (sprawdza go `/integration`; pozycje „Powłoka”, „Pulpit i Stan systemu”
-i „Produkty” mają testy, a pozostałe ekrany działają jak przed migracją i ich pozycje weryfikuje ADMIN-SCREENS):
+Spis funkcji panelu (sprawdza go `/integration`; każda pozycja ma test, który ją wykonuje):
 
 - **Powłoka**: menu według ról (ukrywanie do wczytania `/me`), nazwa i role pracownika, wylogowanie, wylogowanie po
   15 min bezczynności, błąd wczytania pracownika, problem z logowaniem z „Zaloguj ponownie”.
-- **Pulpit i Stan systemu**: liczniki katalogu (produkty, kategorie, bez zdjęć z ostrzeżeniem), usługi ze stanem
+- **Pulpit i Stan systemu**: liczniki katalogu (szacunkowa liczba produktów, kategorie, bez zdjęć z ostrzeżeniem), kafle sprzedaży z porównaniem (tylko `admin`), kolejki „Do obsługi” z liczbami, usługi ze stanem
   i opóźnieniem, zdarzenia outboxu, kolejki (nazwa, wiadomości, konsumenci), porównanie indeksu, „Odśwież”,
   odświeżanie co 30 s z pauzą w ukrytej karcie, „Dane z …”, błąd z czasem danych.
 - **Produkty**: wyszukiwanie od 2 znaków, filtr kategorii (z podkategoriami) i statusu, stronicowanie, miniatury, link
@@ -566,14 +575,14 @@ otwarte z komentarzem, czego brakuje; właściciel sprawdza tę tabelę przed me
 | #251 | F9 nagłówek błędu produktu, F10 stare wiersze po błędzie, F12 okno usunięcia wariantu, F15 aktywny „Dashboard” | Produkty, Standard listy, Powłoka | testy komponentów F9, F10, F12; E2E F15 (`aria-current` na każdej trasie) |
 | #346 | kontrast „Dane z …” | Pulpit, Stan systemu | E2E: kontrast tekstu „Dane z …” ≥ 4,5:1 i axe bez `color-contrast` |
 
-Zgłoszenia #135, #260, #261, #272, #273, #304, #336, #337, #343, #393 i #446 zamyka ADMIN-SCREENS (#462).
+Zgłoszenia #135, #260, #261, #272, #273, #304, #336, #337, #343, #393, #446, #507 i #508 zamyka ADMIN-SCREENS (#462),
+których specyfikacja (`docs/features/admin-screens/spec.md`) ma ich tabelę weryfikacji.
 
 ## Weryfikacja UX i odbiór
 
 - **Testy automatyczne** (CI): kryteria akceptacji niżej, w tym axe przy 1280 i 768 px, reflow przy 320 px i okna
   przy 375 px.
-- **Agent `ux-reviewer` w `/integration`** ocenia każdy ekran tego epiku przy 1280, 768 i 375 px (a niezmigrowane
-  ekrany tylko pod kątem regresji: działają i są dostępne z nowej powłoki):
+- **Agent `ux-reviewer` w `/integration`** ocenia każdy ekran panelu przy 1280, 768 i 375 px:
   - użyteczność i dostępność;
   - wygląd według tej specyfikacji (tokeny, układ powłoki, karty, kafle, tabela, pasek zapisu, okna) na zrzutach
     ekranu każdego ekranu i otwartego okna;
@@ -587,22 +596,21 @@ Zgłoszenia #135, #260, #261, #272, #273, #304, #336, #337, #343, #393 i #446 za
   - przegląd zrzutów z `/integration` (wygląd po migracji względem makiety);
   - ręczne przejście klawiaturą: logowanie, menu i szuflada, pulpit i „Stan systemu”, lista produktów z filtrem
     i paginacją, edycja produktu z zapisem, publikacją, usunięciem wariantu i opuszczeniem bez zapisu, przejście
-    z menu na każdy niezmigrowany ekran;
+    z menu na każdy ekran panelu;
   - tabela weryfikacji zgłoszeń z raportu `/integration`.
 
 ## Kryteria akceptacji
 
-1. Pakiety dodane do `apps/admin/package.json` to dokładnie te z tabeli „Biblioteka komponentów”, a ich licencje
-   (MIT, ISC albo Apache-2.0) i wersje są w ADR `docs/adr/admin-ui-library.md`; z `primevue`, `@primeuix/themes`
-   i `primeicons` importują wyłącznie pliki z listy `LEGACY_FILES` (żaden plik powłoki, pulpitu, „Stanu systemu”,
-   produktów ani `src/components/`; blokuje to `no-restricted-imports`).
+1. Pakiety interfejsu w `apps/admin/package.json` to dokładnie te z tabeli „Biblioteka komponentów”, a ich licencje
+   (MIT, ISC albo Apache-2.0) i wersje są w ADR `docs/adr/admin-ui-library.md`; pakietów dawnej biblioteki nie ma
+   w `package.json` i żaden plik `src/` ich nie importuje (blokuje to `no-restricted-imports`).
 2. `tests/tokens.test.ts` sprawdza kontrast każdej pary z tabeli tokenów i przechodzi; zmiana `muted-foreground` na
    `#6b7280` albo `input-border` na `#dfe2e8` sprawia, że test nie przechodzi.
 3. ESLint zgłasza błąd dla `bg-[#fff]`, `text-[rgb(0,0,0)]`, `border-[color:red]` i `bg-[oklch(0.5_0.1_50)]`
    w klasie szablonu `.vue` i w łańcuchu w `<script>`/`.ts`, dla `bg-red-500` (nieznana klasa), dla statycznego
-   `style="color: red"` i dla bloku `<style>` w pliku `.vue` spoza `LEGACY_FILES`; nie zgłasza go dla klas z tokenów
-   (`bg-card`, `text-muted-foreground`). Test reguł sprawdza identyfikator reguły i liczbę błędów w każdym przypadku
-   oraz to, że każdy wpis `LEGACY_FILES` istnieje i importuje `primevue`.
+   `style="color: red"` i dla bloku `<style>` w dowolnym pliku `.vue` i dla koloru w dowolnym pliku `src/` (także `src/main.ts`); nie zgłasza go
+   dla klas z tokenów (`bg-card`, `text-muted-foreground`). Test reguł sprawdza identyfikator reguły i liczbę błędów
+   w każdym przypadku oraz to, że `eslint.config.js` nie ma listy plików wyłączonych z reguł.
 4. Nunito ładuje się z plików panelu (`tests/fonts.test.ts`: `@font-face` bez adresów zewnętrznych i z deklaracją
    `font-display: swap`; test E2E w `admin-design.spec.ts`: `body` i H1 mają krój Nunito, a plik jest załadowany),
    a `apps/admin/THIRD_PARTY_NOTICES.md` ma wpis licencji OFL z adresem źródła, wersją i SHA-256 plików.
@@ -610,7 +618,7 @@ Zgłoszenia #135, #260, #261, #272, #273, #304, #336, #337, #343, #393 i #446 za
    `wcag22aa` przy 1280 i 768 px na ekranach: `/` (także z komunikatem braku dostępu), `/system`, `/products`,
    `/products/new`, `/products/<id>` z otwartym oknem usunięcia wariantu i oknem niezapisanych zmian, oraz na otwartej
    szufladzie menu i menu konta, i nie dostaje żadnego naruszenia.
-6. Ten sam test: pierwszy Tab na każdej stronie panelu (także niezmigrowanej) trafia na „Przejdź do treści”, a Enter
+6. Ten sam test: pierwszy Tab na każdej stronie panelu trafia na „Przejdź do treści”, a Enter
    przenosi fokus do `<main>`; na `/orders/<id>` tylko „Lista zamówień” ma `aria-current="page"`, a „Pulpit” nie jest
    wyróżniony na żadnej trasie poza `/`; przy 768 px sidebaru nie ma, „Menu” otwiera szufladę, `Escape` ją zamyka
    i fokus wraca na „Menu”.
@@ -655,22 +663,20 @@ Zgłoszenia #135, #260, #261, #272, #273, #304, #336, #337, #343, #393 i #446 za
     `config.js` z czterema kluczami (test `infra/k8s/tests/test_admin_config.py` uruchamia skrypt w `sh`
     z katalogiem wyjścia w katalogu tymczasowym; biegnie w `make -C infra/k8s check`); `test_workloads.py` i test
     dymny sprawdzają `VITE_STORE_URL` w środowisku kontenera i w `/config.js`.
-19. Stare listy z adresu: `/orders?status=paid` i `/orders?refund=pending` pokazują przefiltrowaną listę zamówień,
+19. Listy z adresu: `/orders?status=paid` i `/orders?refund=pending` pokazują przefiltrowaną listę zamówień,
     `/promotions?status=active` i `/discount-codes?status=active` przefiltrowane listy; wybór w menu „Zwroty do
     wykonania” na otwartej liście zamówień przełącza ją bez przeładowania; nieznana wartość jest pomijana (testy
     komponentów i E2E dla zamówień).
 20. Istniejące testy E2E panelu (`catalog-admin`, `price-change`, `stock-receipt`, `promotions`, `discount-codes`,
-    `order-management`, `staff-dashboard`) przechodzą po dostosowaniu nawigacji do nowego menu; `catalog-admin` nie
-    używa klas PrimeVue; testy jednostkowe niezmigrowanych ekranów przechodzą bez zmian asercji.
+    `order-management`, `staff-dashboard`) przechodzą z nawigacją przez menu.
 21. Reflow (WCAG 1.4.10): test E2E przy 320 × 640 px na każdym ekranie i oknie z kryterium 5 sprawdza, że
     `scrollWidth` dokumentu równa się `clientWidth`, że każdy przycisk, link i pole ekranu (także pasek zapisu
     i akcje wierszy) da się osiągnąć Tabem i jest w całości widoczny po przewinięciu do niego (`scrollIntoView`),
     a menu otwiera się z szuflady.
 22. Zachowane informacje: przy 768 i 320 px kategoria i ostatnia zmiana pierwszego wiersza listy produktów są widoczne
     w komórce głównej (E2E).
-23. Zachowane funkcje: każda pozycja spisu „Powłoka”, „Pulpit i Stan systemu” i „Produkty” z sekcji „Zachowane
-    funkcje” ma test (istniejący albo nowy) albo test E2E, który ją wykonuje; testy composables przechodzą bez zmian
-    asercji poza zmianami opisanymi w tej specyfikacji.
+23. Zachowane funkcje: każda pozycja spisu z sekcji „Zachowane funkcje” (Powłoka, Pulpit i Stan systemu, Produkty, Ceny,
+    Stany, Promocje, Kody rabatowe, Zamówienia) ma test (jednostkowy albo E2E), który ją wykonuje.
 24. Każde zgłoszenie z linii `Issues` (poza #460) ma test z kolumny „Weryfikacja” w sekcji „Zgłoszenia zamykane przez
     epik”, nazwany numerem zgłoszenia (np. `#251` w nazwie testu), więc raport `/integration` może wypisać wynik
     każdego.
@@ -686,8 +692,8 @@ Zgłoszenia #135, #260, #261, #272, #273, #304, #336, #337, #343, #393 i #446 za
 - `apps/admin/CLAUDE.md`: nagłówek ze stosem, „Struktura” (`src/components/ui`, `src/components/list`, `src/styles`,
   `src/layout`, ekran „Stan systemu”, `VITE_STORE_URL`), „Wygląd” (tokeny, reguła koloru, komponenty shadcn-vue,
   ikony Lucide, standard listy, formularza i okien), opisy widoków (strażnik zmian, okna potwierdzenia, stan listy
-  w adresie, czyszczenie wierszy po błędzie, fokus, odczyt filtrów z adresu w starych listach), „Konfiguracja” (cztery
-  adresy), lista ekranów jeszcze na PrimeVue (do ADMIN-SCREENS).
+  w adresie, czyszczenie wierszy po błędzie, fokus, odczyt filtrów z adresu w listach), „Konfiguracja” (cztery
+  adresy).
 - `docs/features/walking-skeleton/spec.md`: „Layout i dashboard” (pulpit i osobny ekran „Stan systemu”) i tabela
   zależności panelu.
 - `docs/features/catalog-admin/spec.md` (wynik akcji: toast i fokus według tej specyfikacji; okno potwierdzenia
@@ -706,57 +712,51 @@ Zgłoszenia #135, #260, #261, #272, #273, #304, #336, #337, #343, #393 i #446 za
 
 ## Decyzje
 
-Podjęte przez właściciela 2026-11-12: dwa epiki (ten bez API, potem ADMIN-FEATURES); PrimeVue zastępują Tailwind
+Podjęte przez właściciela 2026-11-12: dwa epiki (ten bez API, potem ADMIN-FEATURES); panel używa Tailwind
 CSS 4 i shadcn-vue (Reka UI, Lucide); wygląd według makiety (ciemny sidebar z grupami i zagnieżdżonym
 menu, biały topbar, okruszki, pastelowe kafle KPI z kropką w stopce, białe karty z cieniem, niebieski kolor
 interfejsu, pomarańczowy przycisk główny Worf z ciemnym tekstem), WCAG 2.2 AA. Szczegółowe decyzje:
 
-- D1. Lista zależności z sekcji „Biblioteka komponentów” oraz ADR; PrimeVue znika w ADMIN-SCREENS.
+- D1. Lista zależności z sekcji „Biblioteka komponentów” oraz ADR.
 - D2. Krój Nunito z plików w repo (z makiety) zamiast Outfit sklepu albo kroju systemowego.
 - D3. Migracja nie usuwa żadnej istniejącej funkcji (sekcja „Zachowane funkcje”). Elementy makiety bez danych albo
   funkcji w API nie są pokazywane w tym epiku: powiadomienia, liczniki w menu,
   KPI i wykres sprzedaży, „Najczęściej kupowane”, kolumny SKU, Stan, Cena i Zamówienia na liście produktów,
   przełącznik siatka/lista, filtr zakresu cen, menu „Nowy”, pełny ekran, ustawienia, szybkie akcje, pozycje Klienci,
-  Kategorie, Raporty i Dziennik zmian; zaznaczanie i sortowanie list.
+  Kategorie, Raporty i Dziennik zmian; zaznaczanie list.
 - D4. Lista produktów nie ma rzędu kafli KPI; kafle są tylko na pulpicie.
 - D5. Pole wyszukiwania w topbarze szuka produktów (przejście do listy z frazą 2–100 znaków; krótsza nie nawiguje
   i pokazuje podpowiedź).
 - D6. Nowa zmienna `VITE_STORE_URL` (compose i chart) dla linku „Sklep” i akcji „Podgląd w sklepie”.
-- D7. Telefon: lista i szczegóły zamówienia zaprojektowane pod telefon (ADMIN-SCREENS), okna mieszczą się na ekranie,
+- D7. Telefon: lista i szczegóły zamówienia zaprojektowane pod telefon, okna mieszczą się na ekranie,
   a każdy ekran spełnia reflow przy 320 px (WCAG 1.4.10) z dostępem do wszystkich informacji i funkcji.
-- D8. Zawartość pulpitu: kafle katalogu, „Do obsługi” jako linki według ról, „Ostatnie zamówienia”; „Stan systemu” na
+- D8. Zawartość pulpitu: kafle katalogu, kafle sprzedaży (tylko `admin`), „Do obsługi” jako linki według ról, „Ostatnie zamówienia”; „Stan systemu” na
   `/system` tylko dla `admin`.
 - D9. Rozmiary strony 10/25/50, domyślnie 25 (Ceny i Stany: 10 produktów); filtry w adresie, pozycja stronicowania nie.
-- D10. Strażniki tras `/orders` i `/system`; `/prices` bez strażnika, bo API daje ceny każdemu pracownikowi.
+- D10. Strażniki tras `/orders` i `/system`; `/prices` bez strażnika, bo API daje ceny każdemu pracownikowi z rolą personelu.
 - D11. Zgłoszenia z opisu epiku są zamykane w całości (także #250, #260, #304, #337 i #393, w opisie „częściowo”);
   każde zamyka dopiero pozytywny wynik jego weryfikacji (sekcja „Zgłoszenia zamykane przez epik”). Ten epik zamyka
-  #250, #251 i #346, pozostałe ADMIN-SCREENS.
+  #250, #251 i #346, pozostałe zamyka ADMIN-SCREENS.
 - D12. Weryfikacja UX według sekcji „Weryfikacja UX i odbiór”: agent `ux-reviewer` przy 1280, 768 i 375 px (także
   wizualnie i przejściem klawiaturą), zrzuty ekranu każdego ekranu do przeglądu, ręczne sprawdzenie klawiaturą przez
   właściciela przy odbiorze.
-- D13. TanStack Table nie jest w panelu: `DataTable` stoi na komponencie `Table` shadcn-vue, a TanStack Table dojdzie
-  w ADMIN-FEATURES z sortowaniem i zaznaczaniem.
-- D14. Podział na dwie części (2026-11-12): ten epik (fundament, powłoka, pulpit, „Stan systemu”,
-  produkty, standardy) i ADMIN-SCREENS (#462: ceny, stany, promocje, kody, zamówienia, usunięcie PrimeVue). Między
-  częściami panel na `main` ma nowy wygląd powłoki, pulpitu i produktów, a pozostałe ekrany stary.
+- D13. TanStack Table nie jest w panelu: `DataTable` stoi na komponencie `Table` shadcn-vue, a sortowanie to `Select`
+  „Sortuj” z kluczami API, bez modelu tabeli.
+- D14. Podział na dwie części (2026-11-12): ten dokument (fundament, powłoka, pulpit, „Stan systemu”, produkty,
+  standardy) i ekrany cen, stanów, promocji, kodów i zamówień (`docs/features/admin-screens/spec.md`).
 
 ## Poza zakresem
 
-Każda zmiana API i klienta TS (sortowanie, liczniki wyników, KPI sprzedaży, kolejki z liczbami, filtr „bez zdjęć”,
+Każda zmiana API i klienta TS (liczniki wyników, kolejki z liczbami, filtr „bez zdjęć”,
 filtr poziomu stanu, klienci, kategorie, akcje masowe, eksport, wyszukiwarka globalna Ctrl+K, dziennik zmian,
 wyszukiwanie częściowe zamówień): ADMIN-FEATURES (#461). Tryb ciemny. Zwijanie sidebaru na desktopie do ikon. Wygląd
 strony logowania Keycloaka. Ostrzeżenie przed wylogowaniem po bezczynności. Cena i stan w formularzu produktu
-(ADMIN-FEATURES). Pełna wersja na telefon poza listą i szczegółami zamówienia. Ceny, stany, promocje, kody rabatowe
-i zamówienia w nowym wyglądzie oraz usunięcie PrimeVue: ADMIN-SCREENS (#462).
+(ADMIN-FEATURES). Pełna wersja na telefon poza listą i szczegółami zamówienia.
 
 ## Ryzyka
 
-- **Mieszany wygląd na `main`.** Do końca ADMIN-SCREENS działają PrimeVue i Tailwind; ceny, stany, promocje, kody
-  i zamówienia mają stary wygląd w nowej powłoce, a preflight Tailwinda zmienia wygląd ich surowych elementów
-  (nagłówki, listy). Dotyczy też panelu demo (za Cloudflare Access). Ich działanie sprawdzają istniejące testy E2E.
 - **Regresje zachowania.** Widoki mają dużo dopracowanego zachowania (fokus, wersje, 409, idempotencja). Logika zostaje
-  w composables z testami; widoki zmieniają szablon, a testy widoków przechodzą z selektorów PrimeVue na role, etykiety
-  i `data-testid`.
+  w composables z testami; widoki zmieniają szablon, a ich testy używają ról, etykiet i `data-testid`.
 - **Reka UI w jsdom.** Okna i listy wyboru Reka UI używają pozycjonowania i zdarzeń wskaźnika, których jsdom nie ma
   w pełni; testy komponentów używają atrap (`ResizeObserver`, `scrollIntoView`, przechwytywanie wskaźnika)
   w `tests/setup/jsdom-mocks.ts`.

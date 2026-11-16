@@ -69,24 +69,30 @@ final class DbalCatalogResetTest extends KernelTestCase
         parent::tearDown();
     }
 
-    public function testRemovesCatalogRowsOutboxEventsStoredImagesAndIndexedDocuments(): void
+    public function testRemovesCatalogRowsReindexRunsOutboxEventsJobsStoredImagesAndIndexedDocuments(): void
     {
         $this->saveProductWithAdditionalCategory();
         self::assertSame(2, $this->rowCount('catalog_product_variant'));
         $this->storage->store((string) file_get_contents(__DIR__.'/../../../Fixtures/images/sample.jpg'));
         $this->insertMessage('outbox');
+        $this->insertMessage('jobs');
         $this->insertMessage('failed');
+        $this->insertMessage('promotions');
+        $this->connection->executeStatement('INSERT INTO catalog_category_reindex (id, category_id, next_batch) VALUES (gen_random_uuid(), gen_random_uuid(), 0)');
         self::assertSame(1, $this->rebuilder->rebuild(10)->documents);
         self::assertSame(1, $this->indexer->countDocuments());
 
         $this->reset()->reset();
 
-        foreach (['catalog_product_category', 'catalog_product_variant', 'catalog_product', 'catalog_category'] as $table) {
+        foreach (['catalog_product_category', 'catalog_product_variant', 'catalog_product', 'catalog_category', 'catalog_category_reindex'] as $table) {
             self::assertSame(0, $this->rowCount($table), $table);
         }
         self::assertSame(0, $this->rowCount('messenger_messages', 'outbox'));
-        // Events that already failed are left for inspection.
+        // The batches of the reindexing runs go with the runs.
+        self::assertSame(0, $this->rowCount('messenger_messages', 'jobs'));
+        // Events that already failed are left for inspection, the queues of other modules for their seeds.
         self::assertSame(1, $this->rowCount('messenger_messages', 'failed'));
+        self::assertSame(1, $this->rowCount('messenger_messages', 'promotions'));
         self::assertSame([], $this->filesystem->listContents('', true)->toArray());
         self::assertSame(0, $this->indexer->countDocuments());
     }

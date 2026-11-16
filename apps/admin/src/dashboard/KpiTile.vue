@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { ArrowUpRight } from "lucide-vue-next";
-import type { Component } from "vue";
+import { type Component, useId } from "vue";
 import type { RouteLocationRaw } from "vue-router";
 import { RouterLink } from "vue-router";
 import { Card } from "@/components/ui/card";
 
 export type KpiTone = "blue" | "violet" | "green" | "teal" | "amber";
+export type KpiTrend = { label: string; tone: "success" | "danger" | "neutral" };
 
 /**
  * A tile of the dashboard (docs/features/admin-design/spec.md, „Wzorzec wyglądu”): the title, the icon in a pastel
  * circle of the colour pair `kpi-<tone>`, the value (already formatted by the screen) and optionally a footer with a
  * dot of the same colour. With `to` the tile is a link: the title is the link and stretches over the tile.
+ * `estimated` marks a value that is an estimate („ok.” before it); `description` explains a value that is not there
+ * („—”) under it and is tied to the value for assistive technology. `trend` is a line under the value in the colour of
+ * its tone (a change against an earlier period, already formatted by the screen).
  */
 defineProps<{
   title: string;
@@ -19,7 +23,12 @@ defineProps<{
   value: string | number;
   footer?: { label: string; value?: string | number; testId?: string };
   to?: RouteLocationRaw;
+  estimated?: boolean;
+  description?: string;
+  trend?: KpiTrend;
 }>();
+
+const descriptionId = useId();
 
 // Whole class names, so that Tailwind finds them.
 const TONES: Record<KpiTone, { circle: string; dot: string }> = {
@@ -28,6 +37,11 @@ const TONES: Record<KpiTone, { circle: string; dot: string }> = {
   green: { circle: "bg-kpi-green-soft text-kpi-green", dot: "bg-kpi-green" },
   teal: { circle: "bg-kpi-teal-soft text-kpi-teal", dot: "bg-kpi-teal" },
   amber: { circle: "bg-kpi-amber-soft text-kpi-amber", dot: "bg-kpi-amber" },
+};
+const TREND_TONES: Record<KpiTrend["tone"], string> = {
+  success: "text-status-success",
+  danger: "text-status-danger",
+  neutral: "text-muted-foreground",
 };
 </script>
 
@@ -70,11 +84,33 @@ const TONES: Record<KpiTone, { circle: string; dot: string }> = {
       </span>
       <span
         data-testid="kpi-value"
+        :aria-describedby="description ? descriptionId : undefined"
         class="text-2xl font-bold text-heading tabular-nums"
       >
+        <abbr
+          v-if="estimated"
+          data-testid="kpi-estimated"
+          title="około"
+          class="text-base font-normal text-muted-foreground no-underline"
+        >ok.&#32;</abbr>
         <slot name="value">{{ value }}</slot>
       </span>
     </div>
+    <p
+      v-if="trend"
+      data-testid="kpi-trend"
+      :class="['text-sm font-medium tabular-nums', TREND_TONES[trend.tone]]"
+    >
+      {{ trend.label }}
+    </p>
+    <p
+      v-if="description"
+      :id="descriptionId"
+      data-testid="kpi-description"
+      class="text-sm text-muted-foreground"
+    >
+      {{ description }}
+    </p>
     <p
       v-if="footer"
       :data-testid="footer.testId ?? 'kpi-footer'"

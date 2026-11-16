@@ -7,13 +7,29 @@ WORKDIR /app
 
 # Production build: `vue-tsc` and `vite build`. The URLs are not built in: the panel reads them at run time from
 # /config.js (window.__ADMIN_CONFIG__), so one image serves every environment.
+#
+# Source maps (vite.config.ts): the deploy workflow builds with SENTRY_UPLOAD=true when it has the Sentry token, which
+# it passes as the build secret `sentry_auth_token` (a secret mount: never an argument, never in a layer or the log).
+# The arguments are declared right before the build, so their values are part of its cache key: a layer built without
+# an upload is never reused for one. Whatever the flag, no .map file stays in the image.
 FROM node AS build
+
+# The plugin uploads through the Sentry CLI used as a library, which has telemetry of its own (on by default, not covered by
+# `telemetry: false` of the plugin). This variable switches it off, so the build sends nothing but the maps.
+ENV SENTRY_CLI_NO_TELEMETRY=1
 
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
-RUN npm run build
+ARG SENTRY_UPLOAD=false
+ARG SENTRY_ORG=
+ARG SENTRY_PROJECT=
+RUN --mount=type=secret,id=sentry_auth_token \
+    if [ "$SENTRY_UPLOAD" = true ]; then \
+      SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token)" && export SENTRY_AUTH_TOKEN || exit 1; \
+    fi; \
+    npm run build && find dist -name '*.map' -delete
 
 # Production image: nginx (unprivileged, port 8080) serving dist. /config.js is generated at container start from
 # VITE_API_URL, VITE_KEYCLOAK_URL, VITE_ADMIN_URL and VITE_STORE_URL; a missing variable stops the start with its name.

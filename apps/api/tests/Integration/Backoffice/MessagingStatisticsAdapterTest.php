@@ -56,14 +56,14 @@ final class MessagingStatisticsAdapterTest extends MessagingKernelTestCase
 
         // The Management API reports what the broker published at its last statistics interval (5 s by default).
         $messages = null;
-        for ($attempt = 0; $attempt < 30 && 1 !== $messages; ++$attempt) {
+        for ($attempt = 0; $attempt < 150 && 1 !== $messages; ++$attempt) {
             foreach ($this->queues($this->statistics()) ?? [] as $queue) {
                 if ('events' === $queue->name) {
                     $messages = $queue->messages;
                 }
             }
             if (1 !== $messages) {
-                usleep(500_000);
+                usleep(100_000);
             }
         }
 

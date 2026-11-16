@@ -1,12 +1,15 @@
-# Light CI: static analysis and tests of the three apps.
-# Runs without the full stack: app containers start with --no-deps; only the services the tests need are started.
-# The `e2e` job is the exception: it starts the full stack and runs the Playwright tests.
-# Both jobs run for every change, so they can be required status checks. For a pull request the `scope` job says
-# what it changes (.github/scripts/scope.sh): documentation only (docs/** and *.md outside .github/) skips every
+# CI: static analysis and the tests of the three apps, in parallel jobs.
+# The `checks-part` jobs run the checks and the app tests, each part on its own runner with only the images and services
+# it needs (no full stack: app containers start with --no-deps); the `checks` job only reports their joint result.
+# The `e2e-shard` jobs are the exception: each starts the full stack and runs one part of the Playwright tests; the
+# `e2e` job only reports their joint result.
+# `checks` and `e2e` run for every change, so they can be required status checks. For a pull request the `scope` job
+# says what it changes (.github/scripts/scope.sh): documentation only (docs/** and *.md outside .github/) skips every
 # step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with documentation) runs just the script
-# tests in `checks`; the Kubernetes deployment only (infra/k8s/**, possibly with documentation) runs just
-# `make -C infra/k8s check` in `checks`. Skipped steps let the other job pass within seconds. Anything else, and every
-# push, runs it all.
+# tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**, possibly with documentation) runs just
+# `make -C infra/k8s check` (in the `k8s` part). Skipped steps let the other jobs pass within seconds. Anything else,
+# and every push, runs it all. A full run uses 1 + 4 + 3 runners for its work (`scope`, the `checks-part` and
+# `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
 name: CI
 
 on:
@@ -43,7 +46,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
-      selftest: ${{ steps.selftest.outputs.selftest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,62 +67,89 @@ jobs:
           fi
           echo "scope=$scope" | tee -a "$GITHUB_OUTPUT"
 
-      # The self-test of infra/k8s copies infra/, .github/, load/, make/, Makefile, e2e/Dockerfile and .gitignore: a pull
-      # request that touches none of them skips it. Pushes, and any error of git diff, run it.
-      - name: Does the change touch what the self-test of infra/k8s reads
-        id: selftest
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          selftest=true
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] \
-            && git diff --quiet "$BASE_SHA...$HEAD_SHA" -- infra .github load make Makefile e2e/Dockerfile .gitignore; then
-            selftest=false
-          fi
-          echo "selftest=$selftest" | tee -a "$GITHUB_OUTPUT"
-
-  checks:
+  # The checks and the app tests in parts (matrix.include), each on its own runner with only the images and services it
+  # needs, so the parts run side by side:
+  #   k8s              make -C infra/k8s check (the Helm chart, environments, scripts): no images, no services; the
+  #                    longest of the checks, so a part of its own
+  #   apps             make check-code (PHPStan, Deptrac, PHP CS Fixer, ESLint, tsc and the make/*.mk fragments), the api
+  #                    unit suite (a few seconds, no services), the contract freshness, the store and admin suites, the
+  #                    VCL tests and the script tests; Redis for the store integration tests
+  #   api integration  the api `integration` and `functional` suites, one part each, on PostgreSQL, Garage, imgproxy,
+  #   api functional   RabbitMQ, Elasticsearch, Keycloak, Redis and Mailpit
+  # The parts are not named `checks`: the required check of that name is the job below. When the parts end far apart,
+  # move work between them (the api parts by test directory, `phpunit_args`).
+  checks-part:
+    name: checks part ${{ matrix.name }}
     needs: scope
     # Runs even when `scope` failed, so the required check reports a failure instead of being skipped.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      # Every part runs to the end, so one run shows all the failures.
+      fail-fast: false
+      matrix:
+        include:
+          # apps: the CI images the part pulls; stack: `full` starts the services of the api tests, `redis` only Redis;
+          # also: the scope (besides `full`) in which the part still has work.
+          - name: k8s
+            apps: ''
+            stack: none
+            also: k8s
+          - name: apps
+            apps: api store admin
+            stack: redis
+            also: tooling
+          - name: api integration
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite integration
+          - name: api functional
+            apps: api
+            stack: full
+            also: none
+            phpunit_args: --testsuite functional
     env:
       SCOPE: ${{ needs.scope.outputs.scope }}
-      FULL_CI: ${{ needs.scope.outputs.scope == 'full' }}
+      # Whether the part runs the steps with the app images, dependencies and services: in the full CI, and only the
+      # parts that use an app image.
+      FULL_CI: ${{ needs.scope.outputs.scope == 'full' && matrix.apps != '' }}
+      # Whether the part has work for the scope of the change: all parts in the full CI; in a tooling-only change the
+      # script tests (`apps`), in a Kubernetes-only one `make -C infra/k8s check` (`k8s`). The other parts only report
+      # success within seconds; a documentation-only change has no work for any part.
+      PART_ACTIVE: ${{ needs.scope.outputs.scope == 'full' || needs.scope.outputs.scope == matrix.also }}
+      APPS: ${{ matrix.apps }}
     steps:
       - name: Require the scope job
         if: needs.scope.result != 'success'
         run: echo "::error::The scope job did not succeed" && exit 1
 
-      - name: Documentation-only change, skipping the checks
-        if: env.SCOPE == 'docs'
-        run: echo "Only docs/** and *.md changed"
-
-      - name: Tooling-only change, running the script tests only
-        if: env.SCOPE == 'tooling'
-        run: echo "Only .claude/**, .ao/**, tools/** and documentation changed"
+      - name: Nothing to run in this part for the scope of the change
+        if: env.PART_ACTIVE != 'true'
+        run: echo "The change is $SCOPE only"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling' || env.SCOPE == 'k8s'
+        if: env.PART_ACTIVE == 'true'
 
-      # The compose stack of the app tests and E2E does not use infra/k8s: a change limited to it needs only the
-      # checks of the chart, environments, sealed secrets and server scripts (in the full CI they run inside `make check`).
-      - name: Kubernetes-only change, running make -C infra/k8s check only
-        if: env.SCOPE == 'k8s'
+      # The compose stack of the app tests and E2E does not use infra/k8s: a change limited to it needs only these checks
+      # of the chart, environments, sealed secrets and server scripts, and a change that leaves it alone needs no
+      # `make -C infra/k8s check` in `check-code`: the part runs it in the full CI as well.
+      - name: make -C infra/k8s check
+        if: matrix.name == 'k8s' && env.PART_ACTIVE == 'true'
         run: make -C infra/k8s check
 
       # The script test suites (CI scripts, Claude Code skills, AO hooks, rulesets), found by location by
       # script-tests.sh, so a new skill needs no change here. They run in the background next to the steps below;
       # `Wait for the script tests` at the end reports them. A tooling-only change runs only these.
       - name: Skill and CI script tests in the background
-        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
+        if: matrix.name == 'apps' && env.PART_ACTIVE == 'true'
         run: sh .github/scripts/background.sh start script-tests sh .github/scripts/script-tests.sh
 
       # The CI images come prebuilt from GitHub Container Registry, tagged by the content of the files they are built
-      # from, and are pulled in the background next to the steps below. An image the registry does not have yet (its
-      # files changed) is built from the GitHub Actions cache and pushed, so the next run pulls it.
+      # from, and are pulled in the background next to the steps below; each part pulls only the images of its `apps`.
+      # An image the registry does not have yet (its files changed) is built from the GitHub Actions cache and pushed, so
+      # the next run pulls it.
       - name: Pull the prebuilt images in the background
         id: images
         if: env.FULL_CI == 'true'
@@ -129,38 +158,41 @@ jobs:
         run: |
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           prefix="ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/shop"
-          # shellcheck disable=SC2086 # the file lists split on spaces
-          {
-            echo "api=$prefix-api:$(sh .github/scripts/ghcr-image.sh key $API_IMAGE_FILES)"
-            echo "store=$prefix-store:$(sh .github/scripts/ghcr-image.sh key $STORE_IMAGE_FILES)"
-            echo "admin=$prefix-admin:$(sh .github/scripts/ghcr-image.sh key $ADMIN_IMAGE_FILES)"
-            echo "e2e=$prefix-e2e:$(sh .github/scripts/ghcr-image.sh key $E2E_IMAGE_FILES)"
-          } | tee refs >> "$GITHUB_OUTPUT"
-          . ./refs && rm refs
-          sh .github/scripts/background.sh start image-api sh .github/scripts/ghcr-image.sh pull "$api" shop-api shop-worker
-          sh .github/scripts/background.sh start image-store sh .github/scripts/ghcr-image.sh pull "$store" shop-store
-          sh .github/scripts/background.sh start image-admin sh .github/scripts/ghcr-image.sh pull "$admin" shop-admin
+          # shellcheck disable=SC2086 # the file lists and the local tags split on spaces
+          for app in $APPS; do
+            case "$app" in
+              api) ref="$prefix-api:$(sh .github/scripts/ghcr-image.sh key $API_IMAGE_FILES)"; tags='shop-api shop-worker' ;;
+              store) ref="$prefix-store:$(sh .github/scripts/ghcr-image.sh key $STORE_IMAGE_FILES)"; tags=shop-store ;;
+              admin) ref="$prefix-admin:$(sh .github/scripts/ghcr-image.sh key $ADMIN_IMAGE_FILES)"; tags=shop-admin ;;
+            esac
+            echo "$app=$ref" | tee -a "$GITHUB_OUTPUT"
+            sh .github/scripts/background.sh start "image-$app" sh .github/scripts/ghcr-image.sh pull "$ref" $tags
+          done
 
       - name: Generate .env.local
         if: env.FULL_CI == 'true'
         run: sh infra/scripts/init-env.sh
 
-      # The api integration tests need PostgreSQL (database shop_test, created by its init script),
+      # The api integration and functional tests need PostgreSQL (database shop_test, created by its init script),
       # the image services: Garage (buckets created by garage-init) and imgproxy, RabbitMQ with the
       # `test` vhost (created by the one-shot rabbitmq-init), Elasticsearch (the test index is created by
       # init-test, which `make -C apps/api test` runs first) and Keycloak with the imported realms (discovery tests).
-      # The dashboard probes (ProbesTest and the dashboard endpoint test) reach all of them, plus Redis and Mailpit;
-      # the store integration tests (sessions, refresh lock) need Redis too. Mailpit also receives the order
-      # confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from the api service of
-      # docker-compose.yml, which `docker compose run` applies).
-      # They start in the background (pulling their images first, and building the Elasticsearch image with the Polish
-      # analysis plugin from infra/elasticsearch/Dockerfile) while the app images are built; the tests wait for them.
+      # The dashboard probes (ProbesTest and the dashboard endpoint test) reach all of them, plus Redis and Mailpit.
+      # Mailpit also receives the order confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from
+      # the api service of docker-compose.yml, which `docker compose run` applies). They start in the background
+      # (pulling their images first, and building the Elasticsearch image with the Polish analysis plugin from
+      # infra/elasticsearch/Dockerfile) while the app image is pulled; the tests wait for them.
       - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit in the background
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && matrix.stack == 'full'
         run: >-
           sh .github/scripts/background.sh start services sh -c
           'docker compose up -d --wait postgres redis garage imgproxy rabbitmq elasticsearch keycloak mailpit
           && docker compose run --rm rabbitmq-init'
+
+      # The store integration tests (sessions, refresh lock) need Redis; the other front suites need no service.
+      - name: Start Redis in the background
+        if: env.FULL_CI == 'true' && matrix.stack == 'redis'
+        run: sh .github/scripts/background.sh start services docker compose up -d --wait redis
 
       # `missing` lists the images the registry does not have: the steps below build and push them.
       - name: Wait for the prebuilt images
@@ -168,7 +200,7 @@ jobs:
         if: env.FULL_CI == 'true'
         run: |
           missing=
-          for image in api store admin; do
+          for image in $APPS; do
             sh .github/scripts/background.sh wait "image-$image" || missing="$missing $image"
           done
           echo "apps=$missing" | tee -a "$GITHUB_OUTPUT"
@@ -176,6 +208,10 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
 
+      # Parts that need the same missing image all build it (same content tag, so their pushes are the same image). That
+      # happens once per change of the image files and costs no wall time: no part waits for another. Only `apps`,
+      # which needs all three images, writes the cache, because parts exporting the same cache scope at once would race
+      # for its key; `e2e-shard` reads it too.
       - name: Build api image
         if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'api')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -184,10 +220,11 @@ jobs:
           target: dev
           tags: |
             shop-api
+            shop-worker
             ${{ steps.images.outputs.api }}
           load: true
           cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
+          cache-to: ${{ matrix.name == 'apps' && 'type=gha,mode=max,scope=api' || '' }}
 
       - name: Build store image
         if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'store')
@@ -199,7 +236,7 @@ jobs:
             ${{ steps.images.outputs.store }}
           load: true
           cache-from: type=gha,scope=store
-          cache-to: type=gha,mode=max,scope=store
+          cache-to: ${{ matrix.name == 'apps' && 'type=gha,mode=max,scope=store' || '' }}
 
       - name: Build admin image
         if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'admin')
@@ -211,7 +248,7 @@ jobs:
             ${{ steps.images.outputs.admin }}
           load: true
           cache-from: type=gha,scope=admin
-          cache-to: type=gha,mode=max,scope=admin
+          cache-to: ${{ matrix.name == 'apps' && 'type=gha,mode=max,scope=admin' || '' }}
 
       - name: Push the app images built here
         if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
@@ -239,75 +276,118 @@ jobs:
         if: env.FULL_CI == 'true'
         run: |
           # shellcheck disable=SC2086 # CI_RUN is a command with its arguments, split on spaces
-          sh .github/scripts/retry.sh 3 30 $CI_RUN api true
-          $CI_RUN store true
-          $CI_RUN admin true
-
-      # Static analysis needs no services: it runs in the background next to the tests.
-      - name: make check in the background
-        if: env.FULL_CI == 'true'
-        run: sh .github/scripts/background.sh start check make check RUN="$CI_RUN"
+          for app in $APPS; do
+            if [ "$app" = api ]; then
+              sh .github/scripts/retry.sh 3 30 $CI_RUN api true
+            else
+              $CI_RUN "$app" true
+            fi
+          done
 
       - name: Wait for the services
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && matrix.stack != 'none'
         run: sh .github/scripts/background.sh wait services
 
-      # All suites of every app; api `test` migrates shop_test first. The store and admin suites and the VCL tests
-      # (varnishtest in the image of the varnish service, without the stack) run in the background next to the api
-      # suite; every suite runs to the end and any failure fails the step.
-      - name: Tests
-        if: env.FULL_CI == 'true'
+      # The api suite of the part; `test` migrates shop_test and recreates the test index first.
+      - name: api tests
+        if: env.FULL_CI == 'true' && matrix.phpunit_args != ''
+        env:
+          PHPUNIT_ARGS: ${{ matrix.phpunit_args }}
+        run: make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="$PHPUNIT_ARGS"
+
+      # The `apps` part: the static analysis (`check-code` is `make check` without `make -C infra/k8s check`, which the
+      # `k8s` part runs) and the store and admin suites run in the background next to the steps below, the script tests
+      # too (started above). `Wait for ...` reports them all, every one to the end.
+      - name: Start the static analysis and the store and admin suites in the background
+        if: env.FULL_CI == 'true' && matrix.name == 'apps'
         run: |
+          sh .github/scripts/background.sh start check make check-code RUN="$CI_RUN"
           sh .github/scripts/background.sh start store-tests make -C apps/store test RUN="$CI_RUN"
           sh .github/scripts/background.sh start admin-tests make -C apps/admin test RUN="$CI_RUN"
-          sh .github/scripts/background.sh start varnish-tests make varnish-test
-          status=0
-          make -C apps/api test RUN="$CI_RUN" || status=$?
-          for suite in store-tests admin-tests varnish-tests; do
-            echo "::group::$suite"
-            sh .github/scripts/background.sh wait "$suite" || status=$?
-            echo "::endgroup::"
-          done
-          exit "$status"
 
-      - name: Wait for make check
-        if: env.FULL_CI == 'true'
-        run: sh .github/scripts/background.sh wait check
+      # The unit suite needs neither services nor a database: it runs in seconds.
+      - name: api unit tests
+        if: env.FULL_CI == 'true' && matrix.name == 'apps'
+        run: make -C apps/api test-unit RUN="$CI_RUN"
 
       # The committed OpenAPI files and generated clients must equal a fresh export and generation
       # (no services needed, so --no-deps works).
       - name: Contract freshness
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && matrix.name == 'apps'
         run: |
           make -C apps/api openapi RUN="$CI_RUN"
           make api-client RUN="$CI_RUN"
           git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts
 
-      - name: Wait for the script tests
-        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
-        run: sh .github/scripts/background.sh wait script-tests
+      # VCL tests: varnishtest in the image of the varnish service, without the stack.
+      - name: VCL tests
+        if: env.FULL_CI == 'true' && matrix.name == 'apps'
+        run: make varnish-test
 
-  # The self-test of the checks of infra/k8s (make -C infra/k8s selftest): each case injects an error and runs the step of
-  # the check that must catch it, and the unbroken copy passes the whole check. It runs here on every case, so agents run
-  # locally only the cases they add or change. Its own job next to `checks` and `e2e`, so it does not lengthen them; not a
-  # required check, but /delivery waits for every check of a pull request.
-  k8s-selftest:
-    needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.selftest != 'false' }}
+      # Runs also after a failed step above, so that one run shows every failure; any failure fails the step.
+      - name: Wait for the static analysis, the store and admin suites and the script tests
+        if: ${{ !cancelled() && matrix.name == 'apps' && env.PART_ACTIVE == 'true' }}
+        run: |
+          status=0
+          for job in check store-tests admin-tests script-tests; do
+            if [ "$job" = script-tests ] || [ "$FULL_CI" = true ]; then
+              echo "::group::$job"
+              sh .github/scripts/background.sh wait "$job" || status=$?
+              echo "::endgroup::"
+            fi
+          done
+          exit "$status"
+
+      - name: Service logs
+        if: failure() && env.FULL_CI == 'true' && matrix.stack == 'full'
+        run: docker compose logs --tail=200
+
+  # The required check `checks`: green only when the scope job and every part succeeded. Runs even when one of them
+  # failed or was cancelled (not when the whole run is cancelled), so that the check reports a failure instead of being
+  # skipped. When the change needs no checks the parts succeed within seconds.
+  checks:
+    needs: [scope, checks-part]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require the scope job and every part of the checks
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          PARTS_RESULT: ${{ needs.checks-part.result }}
+        run: |
+          status=0
+          if [ "$SCOPE_RESULT" != success ]; then
+            echo "::error::The scope job did not succeed ($SCOPE_RESULT)"
+            status=1
+          fi
+          if [ "$PARTS_RESULT" != success ]; then
+            echo "::error::The checks did not succeed in every part ($PARTS_RESULT)"
+            status=1
+          fi
+          exit "$status"
 
-      - name: Self-test of the checks of infra/k8s
-        run: make -C infra/k8s selftest
-
-  # End-to-end tests on the full stack: Playwright drives the store and the panel in a browser.
-  e2e:
+  # End-to-end tests on the full stack: Playwright drives the store and the panel in a browser. The suite runs in
+  # matrix.include parts (`make e2e E2E_SHARD`), each on its own runner with its own stack, so the parts run side by
+  # side. The part with `after_e2e` also runs the checks on the stack after the tests (`make ci-after-e2e`). The parts are
+  # not named `e2e`: the required check of that name is the job below.
+  e2e-shard:
+    name: e2e shard ${{ matrix.index }}
     needs: scope
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      # Every part runs to the end, so one run shows all the failing tests.
+      fail-fast: false
+      matrix:
+        include:
+          - index: 1
+            after_e2e: false
+          - index: 2
+            after_e2e: false
+          - index: 3
+            after_e2e: true
     env:
       SCOPE: ${{ needs.scope.outputs.scope }}
       FULL_CI: ${{ needs.scope.outputs.scope == 'full' }}
@@ -360,7 +440,7 @@ jobs:
           sh .github/scripts/background.sh start pull sh -c \
           'docker compose pull --quiet --ignore-buildable && docker compose build --quiet elasticsearch'
 
-      # An app image the registry does not have is built from the GitHub Actions cache that the `checks` job writes
+      # An app image the registry does not have is built from the GitHub Actions cache that the `apps` part of `checks-part` writes
       # (same contexts, targets and scopes), so this job only reads it. `make up` then finds the images and builds only
       # garage-init. The worker runs the api image (same context and target), hence the second tag.
       # `missing` lists the images the registry does not have: the steps below build and push them.
@@ -455,7 +535,8 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing' && steps.missing.outputs.apps == ''
 
-      # Only this job builds the Playwright image, so it also writes its cache.
+      # Only the e2e parts build the Playwright image. Both build it when the registry lacks it (same content tag, so the
+      # push below is the same image twice), as both do for a missing app image next to the `checks-part` parts.
       - name: Build e2e image
         if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -466,7 +547,8 @@ jobs:
             ${{ steps.images.outputs.e2e }}
           load: true
           cache-from: type=gha,scope=e2e
-          cache-to: type=gha,mode=max,scope=e2e
+          # One part writes the cache: two parts exporting the same cache scope at once would race for its key.
+          cache-to: ${{ matrix.index == 1 && 'type=gha,mode=max,scope=e2e' || '' }}
 
       - name: Push the e2e image built here
         if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing'
@@ -487,28 +569,38 @@ jobs:
         if: env.FULL_CI == 'true'
         run: make seed RUN="docker compose exec -T"
 
+      # This part of the suite: `--shard=<index>/<number of parts>` runs whole spec files in file order. The weights (one
+      # per part, 110:118:122 of 350 tests) put the boundaries after 110 tests (inside admin-screens-orders, so the first
+      # part runs admin-customers to admin-screens-orders: 120 slow panel tests) and after 228 (inside home, so the
+      # second runs admin-screens-prices to home: 114 tests); the last part (listing-filters to
+      # visual-screens, 116 faster tests) also runs the checks after the tests, which take ~2 min. A spec file belongs to
+      # the part in which its first test starts before the boundary. When tests are added, move the boundaries so that
+      # the parts end about together.
       - name: make e2e
         if: env.FULL_CI == 'true'
+        env:
+          E2E_SHARD: ${{ matrix.index }}/${{ strategy.job-total }}
+          E2E_SHARD_WEIGHTS: '110:118:122'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
-      # The checks on the running stack after the E2E tests: every target a make/*.mk fragment adds to CI_AFTER_E2E
-      # (Lighthouse on the production build, the robots and sitemap routes, the k6 smoke run, the init-env.sh tests).
-      # A new check goes to its fragment, not here. Only the Lighthouse SEO score fails the measurement; its medians are
-      # in the step summary and the reports in the artifact below.
+      # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk
+      # fragment adds to CI_AFTER_E2E (Lighthouse on the production build, the robots and sitemap routes, the k6 smoke
+      # run, the init-env.sh tests). A new check goes to its fragment, not here. Only the Lighthouse SEO score fails the
+      # measurement; its medians are in the step summary and the reports in the artifact below.
       - name: make ci-after-e2e
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && matrix.after_e2e
         run: make ci-after-e2e RUN="docker compose exec -T" E2E_FLAGS=-T E2E_BUILD=
 
       # Also after a failed assertion (always), so that the medians and the reports are never lost.
       - name: Lighthouse medians in the step summary
-        if: always() && env.FULL_CI == 'true'
+        if: always() && env.FULL_CI == 'true' && matrix.after_e2e
         run: |
           if [ -f e2e/lighthouse-results/medians.md ]; then
             cat e2e/lighthouse-results/medians.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload Lighthouse results
-        if: always() && env.FULL_CI == 'true'
+        if: always() && env.FULL_CI == 'true' && matrix.after_e2e
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lighthouse-results
@@ -523,6 +615,31 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-test-results
+          name: playwright-test-results-${{ matrix.index }}
           path: e2e/test-results
           if-no-files-found: ignore
+
+  # The required check `e2e`: green only when the scope job and every part of the end-to-end tests succeeded. Runs even
+  # when one of them failed or was cancelled (not when the whole run is cancelled), so that the check reports a failure
+  # instead of being skipped. When the change needs no end-to-end tests the parts succeed within seconds.
+  e2e:
+    needs: [scope, e2e-shard]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the scope job and every part of the end-to-end tests
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          SHARDS_RESULT: ${{ needs.e2e-shard.result }}
+        run: |
+          status=0
+          if [ "$SCOPE_RESULT" != success ]; then
+            echo "::error::The scope job did not succeed ($SCOPE_RESULT)"
+            status=1
+          fi
+          if [ "$SHARDS_RESULT" != success ]; then
+            echo "::error::The end-to-end tests did not succeed in every part ($SHARDS_RESULT)"
+            status=1
+          fi
+          exit "$status"

@@ -10,6 +10,7 @@ final readonly class BackofficeProduct
         public string $id,
         public string $name,
         public string $taxClass,
+        public \DateTimeImmutable $updatedAt,
     ) {
     }
 }

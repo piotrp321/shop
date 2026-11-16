@@ -6,10 +6,11 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import { mocks } from "./dashboardMocks";
+import type { WithOptionalTotal } from "./listPage";
 
 export type Dashboard = components["schemas"]["DashboardResponse"];
 export type System = NonNullable<Dashboard["system"]>;
-export type OrderList = components["schemas"]["BackofficeOrderList"];
+export type OrderList = WithOptionalTotal<components["schemas"]["BackofficeOrderList"]>;
 export type OrderItem = components["schemas"]["BackofficeOrderListItem"];
 
 export const DASHBOARD = "/api/v1/admin/dashboard";
@@ -27,9 +28,32 @@ export function system(overrides: Partial<System> = {}): System {
   };
 }
 
+export type Queues = Dashboard["queues"];
+export type Count = NonNullable<Queues["paidToShip"]>;
+
+export function count(value: number, capped = false): Count {
+  return { value, capped };
+}
+
+/** The queues of a role that sees none; a test gives the ones its role sees. */
+export function queues(overrides: Partial<Queues> = {}): Queues {
+  return {
+    paidToShip: null,
+    awaitingPayment: null,
+    pendingRefunds: null,
+    overdueRefunds: null,
+    outOfStockVariants: null,
+    lowStockVariants: null,
+    productsWithoutImages: null,
+    ...overrides,
+  };
+}
+
 export function dashboard(overrides: Partial<Dashboard> = {}): Dashboard {
   return {
-    catalog: { productCount: 412, categoryCount: 36, productsWithoutImages: 0 },
+    catalog: { productCount: { value: 412, estimated: true }, categoryCount: 36 },
+    queues: queues(),
+    sales: null,
     system: system(),
     ...overrides,
   };

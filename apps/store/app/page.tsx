@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
+import { categoryRedirectHref } from "@/catalog/category-redirect";
 import { loadCategoryTreeForRequest, loadMenuCategories } from "@/catalog/category-tree";
 import { findCategoryPath } from "@/catalog/category-path";
 import { CatalogListing } from "@/catalog/CatalogListing";
@@ -45,17 +46,6 @@ async function readHome(query: SearchParams): Promise<Home & { state: ListingSta
   return listing.kind === "ok" ? { kind: "unknown-category", state } : { ...listing, state };
 }
 
-/** `/c/<path>` with the other parameters of the old address (every value of a repeated one) and without `category`. */
-function categoryRedirectUrl(path: string, query: SearchParams): string {
-  const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(query)) {
-    if (name === "category" || value === undefined) continue;
-    for (const item of Array.isArray(value) ? value : [value]) params.append(name, item);
-  }
-  const search = params.toString();
-  return search ? `/c/${path}?${search}` : `/c/${path}`;
-}
-
 /**
  * The default state of the listing, the one that gets the hero and the department tiles: no filter, the default sort
  * (`sort` absent or the one `/` has without it, `nazwa`; a filter form without JavaScript always sends it) and the
@@ -84,7 +74,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     notFound();
   }
   if (home.kind === "redirect") {
-    permanentRedirect(categoryRedirectUrl(home.path, query));
+    permanentRedirect(categoryRedirectHref(home.path, query, ["category"]));
   }
   if (home.kind === "invalid-filter") {
     return <InvalidFilter exit={invalidFilterExit("/", home.state)} />;

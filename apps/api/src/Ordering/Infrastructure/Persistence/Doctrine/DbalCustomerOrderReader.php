@@ -7,6 +7,7 @@ namespace App\Ordering\Infrastructure\Persistence\Doctrine;
 use App\Ordering\Application\Port\CustomerListedOrder;
 use App\Ordering\Application\Port\CustomerOrderReader;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
+use App\Ordering\Application\Query\BackofficeOrderSort;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
@@ -34,7 +35,7 @@ final readonly class DbalCustomerOrderReader implements CustomerOrderReader
         if ($limit < 1) {
             throw new \InvalidArgumentException('The page limit must be at least 1.');
         }
-        if (null !== $after && $after->byRefundDueDate) {
+        if (null !== $after && BackofficeOrderSort::PlacedDescending !== $after->sort) {
             throw new \InvalidArgumentException('The cursor is of the other sort.');
         }
         // The driver cuts a parameter at a NUL, which would silently look for another customer.
@@ -47,7 +48,8 @@ final readonly class DbalCustomerOrderReader implements CustomerOrderReader
         $types = ['limit' => ParameterType::INTEGER];
         if (null !== $after) {
             $conditions[] = self::AFTER;
-            $parameters['after_at'] = $after->at->format('Y-m-d H:i:s.uP');
+            \assert($after->value instanceof \DateTimeImmutable);
+            $parameters['after_at'] = $after->value->format('Y-m-d H:i:s.uP');
             $parameters['after_id'] = $after->id;
         }
 

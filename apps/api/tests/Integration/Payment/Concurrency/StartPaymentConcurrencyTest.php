@@ -177,6 +177,7 @@ final class StartPaymentConcurrencyTest extends KernelTestCase
         if (!mkdir($directory, 0o700)) {
             throw new \RuntimeException('Cannot create the directory of the webhook.');
         }
+        gc_collect_cycles(); // see ConcurrentCommands::run
         $pid = pcntl_fork();
         if (-1 === $pid) {
             throw new \RuntimeException('Cannot fork the webhook.');

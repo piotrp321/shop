@@ -53,6 +53,22 @@ final class OrderingSchemaTest extends KernelTestCase
         );
     }
 
+    public function testTheCustomerListHasItsSortAndSearchIndexes(): void
+    {
+        $indexes = $this->entityManager()->getConnection()->fetchAllKeyValue(
+            "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'ordering_customer' AND indexname <> 'ordering_customer_pkey' ORDER BY indexname",
+        );
+
+        self::assertSame([
+            'ordering_customer_email_trgm_idx' => 'CREATE INDEX ordering_customer_email_trgm_idx ON public.ordering_customer USING gin (lower((email)::text) gin_trgm_ops)',
+            'ordering_customer_last_order_at_idx' => 'CREATE INDEX ordering_customer_last_order_at_idx ON public.ordering_customer USING btree (last_order_at DESC, customer_id)',
+            'ordering_customer_name_idx' => 'CREATE INDEX ordering_customer_name_idx ON public.ordering_customer USING btree (lower((full_name)::text), customer_id)',
+            'ordering_customer_name_trgm_idx' => 'CREATE INDEX ordering_customer_name_trgm_idx ON public.ordering_customer USING gin (lower((full_name)::text) gin_trgm_ops)',
+            'ordering_customer_order_count_idx' => 'CREATE INDEX ordering_customer_order_count_idx ON public.ordering_customer USING btree (order_count DESC, customer_id)',
+            'ordering_customer_paid_gross_idx' => 'CREATE INDEX ordering_customer_paid_gross_idx ON public.ordering_customer USING btree (paid_gross DESC, customer_id)',
+        ], $indexes);
+    }
+
     private function entityManager(): EntityManagerInterface
     {
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');

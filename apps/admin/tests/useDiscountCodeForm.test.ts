@@ -615,4 +615,38 @@ describe("useDiscountCodeForm", () => {
       expect(form.dirty.value).toBe(false);
     });
   });
+  describe("discarding", () => {
+    it("throws away the unsaved changes and the messages without a request to the API", async () => {
+      const { form } = await open(code({ usageLimit: 10 }));
+      form.form.value.enabled = false;
+      form.form.value.usageLimit = "20";
+      form.form.value.value = "x";
+      await form.save();
+      expect(form.errorsAt("value")).toEqual(["Podaj procent jako liczbę całkowitą."]);
+      mocks.get.mockClear();
+
+      form.discard();
+
+      expect(form.form.value.enabled).toBe(true);
+      expect(form.form.value.usageLimit).toBe("10");
+      expect(form.form.value.value).toBe("10");
+      expect(form.dirty.value).toBe(false);
+      expect(form.errorsAt("value")).toEqual([]);
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("does nothing while a save is running", async () => {
+      const { form } = await open();
+      form.form.value.enabled = false;
+      let release!: (value: unknown) => void;
+      mocks.put.mockReturnValue(new Promise((resolve) => (release = resolve)));
+      const saving = form.save();
+
+      form.discard();
+
+      expect(form.form.value.enabled).toBe(false);
+      release(ok(code({ enabled: false, status: "disabled", version: 4 })));
+      await saving;
+    });
+  });
 });

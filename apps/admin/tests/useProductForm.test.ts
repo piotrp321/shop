@@ -302,7 +302,7 @@ describe("useProductForm", () => {
       expect(onCreated).toHaveBeenCalledWith("p-1");
       expect(form.view.value?.version).toBe(3);
       expect(form.dirty.value).toBe(false);
-      expect(form.message.value).toContain("zapisany");
+      expect(form.message.value).toBe("Produkt zapisany. Ustaw cenę, inaczej produkt będzie w sklepie niedostępny.");
     });
 
     it("ignores the answer of a post that finishes after the form was left", async () => {
@@ -375,7 +375,7 @@ describe("useProductForm", () => {
       });
       expect(form.view.value?.version).toBe(4);
       expect(form.dirty.value).toBe(false);
-      expect(form.message.value).toContain("zapisany");
+      expect(form.message.value).toBe("Produkt zapisany.");
     });
 
     it("sends the new version on the next save", async () => {

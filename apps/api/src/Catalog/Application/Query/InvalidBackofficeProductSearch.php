@@ -7,7 +7,7 @@ namespace App\Catalog\Application\Query;
 use App\Shared\Domain\Exception\InvalidInput;
 
 /**
- * The search term, the page size or the category id is out of range. The message never contains the submitted value.
+ * The search term, the page size, the sort or the category id is out of range. The message never contains the submitted value.
  */
 final class InvalidBackofficeProductSearch extends \DomainException implements InvalidInput
 {
@@ -33,6 +33,11 @@ final class InvalidBackofficeProductSearch extends \DomainException implements I
     public static function unknownStatus(): self
     {
         return new self('The status must be draft or published.');
+    }
+
+    public static function unknownSort(): self
+    {
+        return new self('The sort must be one of name, -name, -updatedAt, updatedAt.');
     }
 
     public static function notACategoryId(): self

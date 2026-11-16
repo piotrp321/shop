@@ -15,6 +15,8 @@ use App\Pricing\Domain\DiscountCode\OrderId;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DbalDiscountCodeReader;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeRepository;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeUsageRepository;
+use App\Shared\Domain\BoundedCount;
+use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use App\Tests\Factory\DiscountCodeFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,7 +45,7 @@ final class DbalDiscountCodeReaderTest extends KernelTestCase
         $this->connection = $entityManager->getConnection();
         $this->connection->executeStatement('DELETE FROM pricing_discount_code_usage');
         $this->connection->executeStatement('DELETE FROM pricing_discount_code');
-        $this->reader = new DbalDiscountCodeReader($this->connection);
+        $this->reader = new DbalDiscountCodeReader($this->connection, new BoundedCounter($this->connection));
     }
 
     public function testACodeIsListedWithItsValuesAndActiveUses(): void
@@ -115,6 +117,53 @@ final class DbalDiscountCodeReaderTest extends KernelTestCase
         self::assertSame(self::sorted([$witaj->id()->toString(), $wit->id()->toString()]), self::sorted(self::ids($this->reader->page(null, 'WIT', $now, null, 10))));
         self::assertSame([$wit->id()->toString()], self::ids($this->reader->page(null, 'WIT-', $now, null, 10)));
         self::assertSame([$witaj->id()->toString()], self::ids($this->reader->page(DiscountCodeStatus::Active, 'WITAJ10', $now, null, 10)));
+    }
+
+    public function testCountsTheCodesOfTheStatusAtNowAndThePrefixLikeThePagesHoldThem(): void
+    {
+        $this->stored(['enabled' => false, 'code' => 'ZIMA20', 'startsAt' => '2030-05-01T00:00:00Z']);
+        $this->stored(['code' => 'WIOSNA', 'startsAt' => '2030-06-01T12:00:01Z']);
+        $this->stored(['code' => 'WITAJ10', 'startsAt' => '2030-05-01T00:00:00Z']);
+        $this->stored(['code' => 'WIT-1', 'startsAt' => '2030-05-01T00:00:00Z']);
+        $this->stored(['code' => 'LATO15', 'startsAt' => '2030-05-01T00:00:00Z', 'endsAt' => '2030-06-01T12:00:00Z']);
+        $now = new \DateTimeImmutable(self::NOW);
+
+        self::assertEquals(new BoundedCount(5, false), $this->reader->count(null, null, $now));
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(DiscountCodeStatus::Disabled, null, $now));
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(DiscountCodeStatus::Planned, null, $now));
+        self::assertEquals(new BoundedCount(2, false), $this->reader->count(DiscountCodeStatus::Active, null, $now));
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(DiscountCodeStatus::Expired, null, $now));
+        self::assertEquals(new BoundedCount(3, false), $this->reader->count(null, 'WI', $now));
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(DiscountCodeStatus::Active, 'WIT-', $now));
+        self::assertSame(2, \count($this->reader->page(DiscountCodeStatus::Active, null, $now, null, 10)), 'the count is what the pages hold');
+    }
+
+    public function testTheCountStopsAtTenThousandAndSaysSo(): void
+    {
+        $now = new \DateTimeImmutable(self::NOW);
+        $this->insertMany(9_999);
+
+        self::assertEquals(new BoundedCount(9_999, false), $this->reader->count(null, null, $now));
+
+        $this->insertMany(1, 'B');
+        self::assertEquals(new BoundedCount(10_000, false), $this->reader->count(null, null, $now), 'exactly the limit is still exact');
+
+        $this->insertMany(1, 'C');
+
+        self::assertEquals(new BoundedCount(10_000, true), $this->reader->count(null, null, $now));
+        self::assertEquals(new BoundedCount(10_000, true), $this->reader->count(DiscountCodeStatus::Active, null, $now));
+        self::assertEquals(new BoundedCount(9_999, false), $this->reader->count(DiscountCodeStatus::Active, 'A', $now));
+        self::assertEquals(new BoundedCount(1, false), $this->reader->count(null, 'C', $now), 'a filter with few matches is exact');
+    }
+
+    private function insertMany(int $count, string $prefix = 'A'): void
+    {
+        $this->connection->executeStatement(
+            "INSERT INTO pricing_discount_code (id, code, kind, percent_off, starts_at, enabled, created_at, updated_at, version)
+             SELECT gen_random_uuid(), ? || n, 'percent', 10, '2030-05-01 00:00:00+00', true, '2030-04-01 00:00:00+00', '2030-04-01 00:00:00+00', 1
+             FROM generate_series(1, ?) AS s(n)",
+            [$prefix, $count],
+        );
     }
 
     /**

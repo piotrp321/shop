@@ -14,16 +14,16 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482); przygotowane do startu: SENTRY (#180), AGENT-SECURITY (#494) i EVALS
-(#495). Kolejność epików jest na tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: ADMIN-DESIGN
-(końcowy PR #503; 1 interwencja, 1 czekanie na użytkownika, razem 20 min, 2 ręczne poprawki). Retro do zrobienia:
-brak (retro ADMIN-DESIGN w tym PR).
+W toku przez `/ao-run`: DEMO-DATA (#482), EVALS (#495); przygotowane do startu: METRICS (#496). Kolejność epików
+jest na tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: ADMIN-FEATURES (końcowy PR #623;
+5 interwencji, 5 czekań na użytkownika, razem 528 min, 1 ręczna poprawka). Retro do zrobienia: brak (retro
+ADMIN-FEATURES w tym PR).
 Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 77, zamkniętych 36.
-Kolejność kroków 16–22: 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 16, 17 i 18; 19b po
-dwóch parach epików 19a; 11 po epiku SENTRY; na końcu 20, 21 i 22.
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 91, zamkniętych 50.
+Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17, 18 i 19b
+(w toku); 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -37,15 +37,15 @@ dwóch parach epików 19a; 11 po epiku SENTRY; na końcu 20, 21 i 22.
 | 8 | Nocna kolejka kilku epików | zrobione (sprawdzenie: pierwsza noc) |
 | 9 | Agent tester i agent UX | zrobione |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | zrobione (epik HARDENING #267, końcowy PR #402 zmergowany) |
-| 11 | Po MVP: release, monitoring i dyżur agenta | do zrobienia (dyżur i hypercare po epiku SENTRY) |
+| 11 | Po MVP: release, monitoring i dyżur agenta | do zrobienia (warunek spełniony: epik SENTRY zmergowany, końcowy PR #539; dyżur i hypercare do zrobienia) |
 | 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione; kryterium 7 potwierdzone: `/sweep` po merge'u LIGHTHOUSE i HARDENING (raporty z nazwą epiku); kryteria 8–9 bez dowodu w przebiegach |
 | 13 | Agent porządkujący backlog (`/groom`) | zrobione (zadanie zaplanowane o 8:00 w aplikacji Claude; pierwsza lista z 2026-11-09 wykonana po decyzji użytkownika) |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
-| 16 | Bezpieczeństwo agentów | do zrobienia |
+| 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | do zrobienia |
 | 18 | Pomiar, koszty i optymalizacja | do zrobienia |
-| 19 | Praca równoległa | 19a: zrobione, pomiar dwóch pierwszych par epików do zrobienia; 19b: po dwóch parach epików 19a |
+| 19 | Praca równoległa | 19a: zrobione, pomiar par trwa; 19b: w toku (AO `--max-parallel`, piotrp321/agentic-orchestrator#50; w `shop` pola `paths` i `parallel_with` manifestu, `--max-parallel 2` w `/ao-run`, rezerwa pamięci bramki na dwa stosy na epik) |
 | 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
 | 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
 | 22 | Porównanie Claude Code i OpenAI Codex | do zrobienia |
@@ -65,7 +65,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
 | | Kolejka epików: następny epik po merge'u i lista na noc | `/ao-run` w sesji z Remote Control | działa, lista na noc do sprawdzenia w pierwszej nocy |
-| | Praca równoległa: epiki naraz i zadania fali naraz, bramka ryzyka | `/ao-run` z bramką `night_queue.py gate` (19a), AO `--max-parallel` (19b) | 19a działa, pomiar dwóch par do zrobienia; 19b: krok 19 |
+| | Praca równoległa: epiki naraz i zadania fali naraz, bramka ryzyka | `/ao-run` z bramką `night_queue.py gate` (19a), AO `--max-parallel` (19b) | 19a działa, pomiar par trwa; 19b w toku |
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
@@ -75,7 +75,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Evale agentów i workflowów, benchmark i kryteria regresji | `make evals` | krok 17 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
-| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w Grafana Cloud | krok 18 |
+| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w lokalnym stosie na Macu | krok 18 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues, dyżur i hypercare | agent dyżurny: Sentry i Grafana Cloud przez MCP, tylko odczyt | krok 11 |
 
@@ -170,8 +170,8 @@ flowchart TB
      i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku, na
      prośbę użytkownika, a w dzień także po starcie epiku i po jego `epic_done` (bramka proponuje wtedy epik
      równoległy).
-   - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, bez wspólnych
-     plików wymuszających kolejkę (reguła plików bramki), bez zależności od otwartych epików i, przy pomiarze czasu,
+   - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, bez wspólnego
+     kodu aplikacji (reguła plików bramki), bez zależności od otwartych epików i, przy pomiarze czasu,
      mieszczące się do rana. Użytkownik zatwierdza ją jednym „tak”. Każdy epik listy rusza przez bramkę: równolegle
      z trwającym albo po `epic_done` poprzedniego, bez czekania na merge, tylko gdy jego szacunek mieści się do rana
      i w limitach subskrypcji. Gdy bramka nie przechodzi przy trwającym epiku, kolejny czeka; inaczej noc się kończy.
@@ -275,8 +275,8 @@ flowchart TB
    (`/ao-run --noc`, punkt 3 procesu). Każdy epik listy rusza przez bramkę: równolegle z trwającym albo po `epic_done`
    poprzedniego, bez czekania na merge. Rano użytkownik odbiera kilka raportów. Opis jest
    w `docs/features/ao-run/spec.md` (sekcja „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
-   - na jedną noc trafiają tylko epiki bez wspólnych plików wymuszających kolejkę (reguła plików bramki, krok 19a),
-     bo każdy startuje z `main` bez poprzednich; `/prepare-epic` zapisuje zakres epiku w linii `Zakres:`
+   - na jedną noc trafiają tylko epiki bez wspólnego kodu aplikacji (reguła plików bramki, krok 19a), bo każdy
+     startuje z `main` bez poprzednich, a pozostałe wspólne pliki łączy REPAIR; `/prepare-epic` zapisuje zakres epiku w linii `Zakres:`
      specyfikacji, a lista porównuje z niej pliki epików;
    - `/prepare-epic` przygotowuje tyle epików do przodu, ile mieści noc (`night_queue.py ahead`, punkt 2 procesu);
    - następny epik nie rusza, gdy jego szacunek nie mieści się do rana albo limit subskrypcji nie wystarczy na cały
@@ -337,7 +337,8 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    - izolacja uprawnień i ochrona sekretów na poziomie systemu (sandbox), bo reguła narzędzia Read nie zatrzymuje
      `cat` w Bash;
    - testy prób obejścia w prawdziwych procesach AO, także przez Bash i procesy potomne;
-   - agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych.
+   - agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych;
+   - nikt, także użytkownik, nie zmerguje do `main` ani `epic/*` bez zielonego CI (rulesety bez aktora bypass).
 17. **Evale agentów i workflowów.** Realizuje komponent „Metryki i evale” z ADR:
    - evale pojedynczych agentów (`code-reviewer`, `spec-critic`, `backlog-groomer`, `retro-analyst`, próby prompt
      injection) przy każdej zmianie agenta albo skilla;
@@ -349,7 +350,8 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
      bez uruchamiania modelu;
    - każde uruchomienie ma limit kosztu i zużycia limitu subskrypcji ustalony w specyfikacji.
 18. **Pomiar, koszty i optymalizacja.**
-   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w Grafana Cloud.
+   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
+     z retencją ustawianą lokalnie, dłuższą niż 14 dni darmowego planu Grafana Cloud.
    - Pomiar każdego epiku: czas zegarowy (miara główna), czas rzeczywistej pracy, oczekiwania i blokad; koszt
      i tokeny na agenta, model i zadanie; ponowienia, naprawy i konflikty; czas testów, selftestów i integracji;
      interwencje człowieka; regresje i błędy po merge'u.
@@ -362,19 +364,23 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    z ADR. Symulacja na 20 epikach z bazy AO: dwa zadania naraz skracają czas pracy wykonawców o 18%, DEPLOY-OPS o 26%,
    epiki poprawek o 35–37%; w DEPLOY-OPS szeregowa kolejka przesunęła bloker na noc (6,7 h postoju).
    - **19a, bez zmian w AO: zrobione.** Epiki trwają naraz (najwyżej dwa aktywne), gdy kandydat przejdzie bramkę
-     ryzyka `night_queue.py gate` (`docs/features/parallel-work/spec.md`): wspólne pliki edytowane ręcznie (CI,
-     `CLAUDE.md`, `make/*.mk`, kod) wymuszają kolejkę, wspólne pliki generowane i dokumentacja są dopuszczalne;
-     wolna pamięć Dockera na kolejny stos; zapas limitu subskrypcji. Bramka korzysta z `Zakres:`, sync i REPAIR, bez
+     ryzyka `night_queue.py gate` (`docs/features/parallel-work/spec.md`): kolejkę wymusza tylko wspólny kod
+     aplikacji (`apps/*/src`, `apps/*/app`), a wspólne CI, `CLAUDE.md`, `Makefile`, testy, konfiguracja,
+     infrastruktura i dokumentacja nie; wolna pamięć Dockera na `max-parallel` stosów na epik (`MAX_PARALLEL`
+     w `parallel_gate.py`); zapas limitu subskrypcji. Bramka korzysta z `Zakres:`, sync i REPAIR, bez
      ich dublowania; rezerwacja pod blokadą nie pozwala dwóm sesjom ruszyć jednego epiku. Konflikt, który sync
-     i REPAIR rozwiązują automatycznie (także sync spójności dokumentów w parze), nie blokuje startu. Pierwsze dwie
-     pary epików mierzymy (`pairs.py`, blok pary w issue epiku): czas zegarowy, konflikty, interwencje, zużycie
-     zasobów i koszt.
-   - **19b, zmiana w AO (piotrp321/agentic-orchestrator#50), po walidacji 19a.** `ao run --max-parallel 2`:
-     niezależne zadania jednej fali równolegle, każde we własnym worktree i stosie; integracja i merge'e po kolei;
-     kontrola zasobów i limitów; awaria jednego zadania nie zatrzymuje drugiego. Gdy dwie pierwsze pary 19a nie
-     pokażą krytycznego problemu, 19b rusza bez kolejnej akceptacji użytkownika. Krytyczny problem: zepsuty `main`,
+     i REPAIR rozwiązują automatycznie (także sync spójności dokumentów w parze), nie blokuje startu. Scalenie kończą
+     testy na połączonym stanie. Każdą parę mierzymy (`pairs.py`, zapis `pairs.py record`, blok pary w issue epiku):
+     czas zegarowy, pary dopuszczone, konflikty (rozwiązane automatycznie i wymagające człowieka), regresje,
+     interwencje, wspólne `CLAUDE.md` i kod, zużycie zasobów i koszt. Wstrzymanie tylko przy krytycznym problemie.
+   - **19b, zmiana w AO (piotrp321/agentic-orchestrator#50): w toku.** Start zaakceptowany przez użytkownika
+     2026-11-15 (decyzje D1–D4 w `docs/features/ao-speedup/plan.md`). `ao run --max-parallel 2`: niezależne zadania
+     jednej fali równolegle (pary dopuszczone przez `parallel_with` manifestu, `docs/features/parallel-work/spec.md`,
+     „19b”), każde we własnym worktree i stosie; integracja i merge'e po kolei; kontrola zasobów i limitów; awaria
+     jednego zadania nie zatrzymuje drugiego. Pomiar par 19a trwa dalej; krytyczny problem pary (zepsuty `main`,
      konflikt, którego sync i REPAIR nie rozwiązały bez ręcznej poprawki, przebieg przerwany przez brak zasobów albo
-     limitu, albo więcej napraw lub interwencji niż w porównywalnych epikach szeregowych.
+     limitu, albo więcej ręcznych poprawek lub interwencji niż w porównywalnych epikach szeregowych; REPAIR i sync
+     automatyczny się nie liczą) wstrzymuje równoległe epiki do decyzji użytkownika.
 20. **Asystent zakupowy i serwer MCP katalogu.** Osobny, niezależny epik przez `/prepare-epic`, poza „Zakresem MVP”,
    który nie blokuje MVP (zmianę `docs/vision.md` robi przygotowanie epiku). Asystent w sklepie sięga do wyszukiwarki
    i karty produktu przez tool calling i nasz serwer MCP katalogu (tylko odczyt); serwer jest jedyną drogą asystenta
@@ -435,11 +441,10 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
   skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie
   autonomii wymaga jego jawnej zgody.
 - **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika. Wyjątek: równoległe zadania
-  (krok 19b), zatwierdzone przez użytkownika, z warunkiem startu z kroku 19.
+  (krok 19b), zatwierdzone przez użytkownika.
 - **Produkcja:** rollback i inne operacje produkcyjne wykonuje wyłącznie użytkownik; agenci mają do produkcji dostęp
   tylko do odczytu.
 - **Krok 4:** issues epików powstają dopiero po akceptacji listy.
-- **Kroki 8–22:** specyfikacja każdego kroku zaakceptowana przed implementacją. 19b rusza bez kolejnej akceptacji
-  po dwóch parach epików 19a bez krytycznego problemu.
+- **Kroki 8–22:** specyfikacja każdego kroku zaakceptowana przed implementacją.
 - **`/groom`:** zamknięcie issue, nowe issue epiku i zmiana tablicy dopiero po „tak” użytkownika na listę propozycji.
 - **Zgłoszenia agentów:** trafiają do backlogu dopiero po triage użytkownika.

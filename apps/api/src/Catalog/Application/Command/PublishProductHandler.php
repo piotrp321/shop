@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Command;
 
-use App\Catalog\Application\Event\ProductChanged;
+use App\Catalog\Application\Event\IntegrationEvents;
 use App\Catalog\Application\Port\Clock;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductModifiedConcurrently;
@@ -47,6 +47,6 @@ final readonly class PublishProductHandler
         }
 
         $this->products->save($product, $command->expectedVersion, $command->actorId, $now);
-        $this->events->publish(...ProductChanged::translate($events));
+        $this->events->publish(...IntegrationEvents::translate($events));
     }
 }

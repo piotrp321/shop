@@ -10,6 +10,6 @@ final class CategoryNotFound extends \DomainException implements NotFound
 {
     public function __construct()
     {
-        parent::__construct('Category not found.');
+        parent::__construct('Kategoria nie istnieje.');
     }
 }

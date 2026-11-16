@@ -362,7 +362,7 @@ sekund, także gdy nic nie sprawdza (zawsze raportuje status, więc może być w
 z nieaktualnym wynikiem albo regresją zmienionego zestawu z pomiarem nie zmerguje się bez nowego pomiaru albo
 wyjątku. AO tego nie widzi i nie uruchamia naprawy: jego wymagane checki to stała lista `checks`, `e2e`
 (`--required-checks`, `orchestrator/cli.py`), a gotowość końcowego PR ocenia po `mergeable`, nie po stanie blokady.
-Zadania `/delivery` w epikach mają bazę `epic/<epik>` (ruleset `epic`, bez `evals`). Końcowy PR epiku zmieniającego
+Zadania `/delivery` w epikach mają bazę `epic/<epik>` (ruleset `epic-merge`, bez `evals`). Końcowy PR epiku zmieniającego
 agenta z pomiarem czeka na `/evals` (PR `evals/<epik>-<data>` do `epic/<epik>`) albo wyjątek, a merge przez `/ao-run`
 (`gh pr checks --required`) i ręczny są do tego czasu zablokowane. Ruleset zmienia użytkownik po merge'u EVALS (sekcja
 „Po merge'u”): wcześniej wymagany check bez joba na `main` zablokowałby każdy PR.
@@ -477,8 +477,8 @@ Poza zakresem:
 
 ## Po merge'u
 
-1. Użytkownik dodaje `evals` do wymaganych checków rulesetu `main` (komenda w `tools/evals/README.md`; wymaga
-   uprawnień admina).
+1. Użytkownik dodaje `evals` do wymaganych checków rulesetu `main-merge` (`tools/rulesets/main-merge.json` i komenda
+   w `tools/evals/README.md`; wymaga uprawnień admina).
 2. Pierwszy pomiar bazowy (`/evals agents`, prognoza i potwierdzenie przed startem) uruchamia użytkownik w sesji, PR
    z wynikami do `main`. Do tego czasu zestawy nie mają pomiaru (ostrzeżenie, bez blokady). Szacunek: 40–80 USD
    szacunku CLI.
@@ -519,7 +519,7 @@ Epik nie uruchamia modelu w CI ani w zadaniach (testy runnera używają atrapy C
 - `docs/features/retro/spec.md` i `.claude/skills/retro/SKILL.md`: sekcja o przypadku z incydentu, stopka
   `Retro-eval:`, kontrola plików PR retro i zdanie, że PR retro z plikami evali ma w CI zakres „tooling”.
 - `tools/evals/README.md`: użycie, format rejestru, przypadku i wyniku, interfejs wykonawcy, prognoza i limity,
-  komenda dodania `evals` do rulesetu `main`, wdrożenie w innym repozytorium.
+  komenda dodania `evals` do rulesetu `main-merge`, wdrożenie w innym repozytorium.
 
 ## Kryteria akceptacji
 

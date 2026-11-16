@@ -12,6 +12,8 @@ export interface ListColumn<Row> {
   align?: "right";
   /** The column of the main cell (the first one when none says so): it carries the lines of the hidden columns. */
   main?: boolean;
+  /** The direction the list is sorted by this column in; the header says so with `aria-sort`. A column the list is not sorted by has none. */
+  sort?: "ascending" | "descending";
 }
 </script>
 
@@ -33,6 +35,10 @@ import { focusAfterAction } from "@/lib/focus";
  * of a neighbouring page stands over the page that is shown. A retry ends with the focus where it can be: on
  * the button while it is still there, otherwise on the alert, the table or the empty state, never on the body (#337).
  *
+ * `cards` shows the rows as a list of cards (`<ul>` named by `label`, a `<li>` per row with `rowTestid`, the content is the
+ * slot `card`) instead of the table, for a narrow screen: the view picks one layout, never both. The states around it
+ * (skeleton, error, empty) are the same.
+ *
  * A table wider than its card scrolls in its own region (`role="region"` named by the list, `tabindex="0"`), with a
  * shadow at the edge that has more behind it (WCAG 1.4.10); the page itself never scrolls sideways.
  */
@@ -44,14 +50,50 @@ const props = withDefaults(
     rows: Row[];
     rowKey: (row: Row) => string;
     rowTestid?: string;
+    /**
+     * Groups the rows (a list of variants under their product): consecutive rows with the same key are one group, and a
+     * row of the group comes before them, with the slot `group` (`row` is the first row of the group) in one header cell
+     * (`<th scope="rowgroup">`) over the whole width. A group is a `<tbody>` of its own. The row of a group has no cells of the columns.
+     */
+    groupKey?: (row: Row) => string;
+    groupTestid?: string;
+    /** Shows the rows as cards (slot `card`) instead of a table. */
+    cards?: boolean;
+    /** The `data-testid` of the error message; a list that keeps the identifier of its old view passes it. */
+    errorTestid?: string;
     loading: boolean;
     loaded: boolean;
     error: string | null;
     forbidden: boolean;
     retry: () => Promise<void>;
   }>(),
-  { rowTestid: "row" },
+  { rowTestid: "row", groupKey: undefined, groupTestid: "group-row", cards: false, errorTestid: "list-error" },
 );
+
+interface Section {
+  key: string;
+  /** The first row of the group; null when the rows are not grouped. */
+  head: Row | null;
+  rows: Row[];
+}
+
+const sections = computed<Section[]>(() => {
+  const groupKey = props.groupKey;
+  if (groupKey === undefined) {
+    return [{ key: "", head: null, rows: props.rows }];
+  }
+  const result: Section[] = [];
+  for (const row of props.rows) {
+    const key = groupKey(row);
+    const last = result[result.length - 1];
+    if (last !== undefined && last.key === key) {
+      last.rows.push(row);
+    } else {
+      result.push({ key, head: row, rows: [row] });
+    }
+  }
+  return result;
+});
 
 // The hide classes are written out in full so that Tailwind finds them.
 const HIDDEN_CELL = { lg: "hidden lg:table-cell", md: "hidden min-[900px]:table-cell" } as const;
@@ -68,12 +110,13 @@ const retryButton = ref<InstanceType<typeof Button> | null>(null);
 const region = ref<HTMLElement | null>(null);
 const table = ref<HTMLElement | null>(null);
 const emptyRegion = ref<HTMLElement | null>(null);
+const cardList = ref<HTMLElement | null>(null);
 
 async function retryAndRefocus() {
   const trigger = (retryButton.value?.$el as HTMLElement | undefined) ?? null;
   await props.retry();
   await nextTick();
-  focusAfterAction(trigger, alertElement.value ?? region.value ?? emptyRegion.value);
+  focusAfterAction(trigger, alertElement.value ?? region.value ?? cardList.value ?? emptyRegion.value);
 }
 
 // Which edges of the scrolling region have more behind them.
@@ -100,7 +143,7 @@ onMounted(measure);
       ref="alertElement"
       role="alert"
       tabindex="-1"
-      data-testid="list-error"
+      :data-testid="errorTestid"
       class="m-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive px-4 py-3 text-sm text-destructive"
     >
       <span>{{ error }}</span>
@@ -127,6 +170,26 @@ onMounted(measure);
       >
         <slot name="empty" />
       </div>
+      <ul
+        v-else-if="cards"
+        ref="cardList"
+        :aria-label="label"
+        :aria-busy="loading"
+        tabindex="-1"
+        class="flex flex-col divide-y divide-separator focus:outline-none"
+      >
+        <li
+          v-for="row in rows"
+          :key="rowKey(row)"
+          :data-testid="rowTestid"
+          class="px-4 py-3"
+        >
+          <slot
+            name="card"
+            :row="row"
+          />
+        </li>
+      </ul>
       <div
         v-else
         class="relative"
@@ -150,6 +213,7 @@ onMounted(measure);
                   v-for="column in columns"
                   :key="column.key"
                   scope="col"
+                  :aria-sort="column.sort"
                   :class="
                     cn(
                       'px-2.5 text-xs font-bold whitespace-normal text-heading uppercase',
@@ -162,9 +226,29 @@ onMounted(measure);
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody
+              v-for="(section, index) in sections"
+              :key="`${index}-${section.key}`"
+              :class="section.head !== null && 'border-b last:border-b-0'"
+            >
               <TableRow
-                v-for="row in rows"
+                v-if="section.head !== null"
+                :data-testid="groupTestid"
+                class="bg-muted/40 hover:bg-muted/40"
+              >
+                <th
+                  scope="rowgroup"
+                  :colspan="columns.length"
+                  class="px-2.5 py-2 text-left align-middle text-sm font-normal"
+                >
+                  <slot
+                    name="group"
+                    :row="section.head"
+                  />
+                </th>
+              </TableRow>
+              <TableRow
+                v-for="row in section.rows"
                 :key="rowKey(row)"
                 :data-testid="rowTestid"
               >

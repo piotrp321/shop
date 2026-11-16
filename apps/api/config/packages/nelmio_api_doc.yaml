@@ -1,5 +1,9 @@
 # Two OpenAPI documents, exported by `make -C apps/api openapi`. No Swagger UI or JSON routes are exposed.
 nelmio_api_doc:
+    models:
+        names:
+            # The tree of the panel keeps the schema name of the tree it extends, so the panel's types stay the same.
+            - { alias: CategoryNode, type: App\Catalog\UI\Http\Category\BackofficeCategoryNodeResponse, areas: [admin] }
     areas:
         default:
             path_patterns:
@@ -949,7 +953,7 @@ nelmio_api_doc:
                         BackofficeOrderList:
                             type: object
                             description: A page of the order list.
-                            required: [items, nextCursor]
+                            required: [items, nextCursor, total]
                             properties:
                                 items:
                                     type: array
@@ -960,6 +964,11 @@ nelmio_api_doc:
                                     nullable: true
                                     description: Opaque cursor of the next page (send it as `after` with the same filters), null on the last page.
                                     example: eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
+                                total:
+                                    nullable: true
+                                    description: How many orders match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.
+                                    allOf:
+                                        - $ref: '#/components/schemas/BoundedCountResponse'
                         BackofficeOrderListItem:
                             type: object
                             description: An order in the list. Amounts in grosze.
@@ -1033,11 +1042,16 @@ nelmio_api_doc:
                             description: >-
                                 An order with everything the panel shows of it, copies of the names and prices of its placement included.
                                 Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to.
-                            required: [orderId, number, status, version, email, fullName, phone, shippingAddress, lines, discount, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
+                            required: [orderId, number, status, version, customerId, email, fullName, phone, shippingAddress, lines, discount, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
                             properties:
                                 orderId:
                                     type: string
                                     format: uuid
+                                customerId:
+                                    type: string
+                                    nullable: true
+                                    description: The id of the account of the store that placed the order (`sub` of its token), the key of the customer card and of `customerId` of the order list; null for a guest.
+                                    example: 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
                                 number:
                                     type: string
                                     example: R-100001
@@ -1365,6 +1379,41 @@ nelmio_api_doc:
                                     items:
                                         type: string
                                         format: uuid
+                        CategoryConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text
+                                for people and may change): the category changed since the `version` sent, a sibling has the
+                                slug, the tree would have more than 4 levels, the new parent is the category or one of its
+                                descendants, or the category has subcategories or products (counted in `subcategoryCount` and
+                                `productCount`). Nothing is changed.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-modified'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-slug-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-too-deep'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-cycle'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/category-not-empty'
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the staff member.
+                                subcategoryCount:
+                                    description: Only with `category-not-empty`. The direct subcategories.
+                                    allOf:
+                                        - $ref: '#/components/schemas/BoundedCountResponse'
+                                productCount:
+                                    description: Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000.
+                                    allOf:
+                                        - $ref: '#/components/schemas/BoundedCountResponse'
                         ProductConflictProblem:
                             type: object
                             description: >-
