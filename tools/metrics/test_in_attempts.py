@@ -332,6 +332,21 @@ class SyntheticSystemEventsTest(InAttemptsEnv):
         self.assertEqual(found['permission_denials'], {'Bash': 2, 'Write': 1})
         self.assertEqual(found['api_retry'], {'count': 2, 'delay_ms': 1250})
 
+    def test_a_tool_name_that_is_not_an_identifier_is_counted_as_unknown(self):
+        t = Transcript().init().message(input=1)
+        t.denied('Bash').denied('/Users/someone/secret tool').denied('x' * 65).denied('mcp__ok__tool')
+        found = self.in_attempts(t)
+        self.assertEqual(found['permission_denials'], {'Bash': 1, 'mcp__ok__tool': 1, 'unknown': 2})
+        self.assertNotIn('someone', json.dumps(found))
+
+    def test_a_role_that_is_not_an_identifier_is_not_stored(self):
+        t = Transcript().init().message(input=1)
+        t.message(role='see /Users/someone/x', parent='toolu_1', input=2)
+        t.message(role='ok-role', parent='toolu_1', input=3)
+        record = self.attempt_record(t)
+        self.assertEqual(sorted(record['value']['by_role']), ['delivery', 'ok-role', 'subagent'])
+        self.assertNotIn('someone', json.dumps(record))
+
 
 class VersionsTest(InAttemptsEnv):
     def test_cli_versions_and_models_with_attempt_counts_on_the_deploy_ops_run(self):

@@ -134,7 +134,7 @@ tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie z
   `repeat_runs`, gdy pomiędzy trwało polecenie w tle, wywołanie narzędzia bez `tool_result` (także niezakończony
   subagent) albo gdy samo nie ma wyniku; takie wywołanie zeruje też pamięć uruchomień.
 - **`api_retry`:** liczba zdarzeń `system/api_retry` i suma `retry_delay_ms`; **`permission_denials`:** zdarzenia
-  `system/permission_denied` według `tool_name` (także subagentów i prób bez wyniku).
+  `system/permission_denied` według `tool_name` (także subagentów i prób bez wyniku). `tool_name`, który nie jest identyfikatorem (reguła jak w `versions`), liczy się jako `unknown`; `subagent_type`, który nie jest identyfikatorem, jest traktowany jak brak roli (rola `subagent`).
 - **`versions`:** wersje CLI z `system/init` i modele z wiadomości z liczbą prób; nazwa, która nie jest identyfikatorem
   (`[A-Za-z0-9._+-[]]`, do 64 znaków), nie trafia do rekordu.
 - **`subscription.share`:** wartość tokenów epiku we wspólnym przedziale przez łączną wartość tokenów epiku i epików,

@@ -505,6 +505,9 @@ RAW_KINDS = ('input', 'cache_read', 'cw5', 'cw1')       # the input side; the ca
 ZERO_TOKENS = {'input': 0, 'cache_read': 0, 'cw5': 0, 'cw1': 0, 'output': 0}
 SUBAGENT = 'subagent'                                   # a message of a subagent without `subagent_type`
 OTHER_ROLE = 'other'
+# A CLI version, a model in `versions`, a role (subagent_type) and a denied tool name are stored only when they are
+# identifiers (a role as `subagent`, a tool as `unknown` otherwise): the record holds no free text from the transcripts.
+SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+\-\[\]]{0,63}$')
 ORCHESTRATOR_ROLE = {'integration': 'integration'}      # task kind -> orchestrator role; the rest is `delivery`
 
 
@@ -551,9 +554,9 @@ def _model_tokens(used):
 def read_transcript(path):
     """(data, None) of a `stdout.jsonl` of an attempt, or (None, reason) when it is missing or unreadable. Lines that
     are not JSON objects (the last line of a killed run) are skipped. data:
-      messages  {id: {role (subagent_type or None), orchestrator (no parent), model, tokens}} (first line of an id)
+      messages  {id: {role (subagent_type that is an identifier, or None), orchestrator (no parent), model, tokens}} (first line of an id)
       inits     [{version, model}]               results  [{output, cost, models}] (every `result`)
-      retries   [retry_delay_ms]                 denials  {tool_name: count}
+      retries   [retry_delay_ms]                 denials  {tool_name (or `unknown`): count}
       tools     [(`use`, id, name, command, background, at) | (`result`, id, at)] in file order (command only of a
                 shell tool, and only in memory: it is never stored in the record)."""
     data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': []}
@@ -581,7 +584,7 @@ def _read_line(line, data, seen_tools):
         if isinstance(message.get('id'), str) and message['id'] not in data['messages']:
             role = line.get('subagent_type')
             data['messages'][message['id']] = {
-                'role': role if isinstance(role, str) and role else None,
+                'role': role if isinstance(role, str) and SAFE_NAME.match(role) else None,
                 'orchestrator': line.get('parent_tool_use_id') is None,
                 'model': message['model'] if isinstance(message.get('model'), str) else None,
                 'tokens': _message_tokens(message.get('usage'))}
@@ -602,7 +605,8 @@ def _read_line(line, data, seen_tools):
     elif kind == 'system' and subtype == 'api_retry':
         data['retries'].append(_int(line.get('retry_delay_ms')))
     elif kind == 'system' and subtype == 'permission_denied':
-        name = line.get('tool_name') if isinstance(line.get('tool_name'), str) and line.get('tool_name') else 'unknown'
+        name = line.get('tool_name') if isinstance(line.get('tool_name'), str) and SAFE_NAME.match(
+            line.get('tool_name')) else 'unknown'
         data['denials'][name] = data['denials'].get(name, 0) + 1
     elif kind == 'result':
         usage = line.get('usage') if isinstance(line.get('usage'), dict) else {}
@@ -1025,9 +1029,6 @@ def in_attempts_of(parts):
         entry['seconds'] = round(entry['seconds'], 3)
     total['permission_denials'] = {tool: total['permission_denials'][tool] for tool in sorted(total['permission_denials'])}
     return total
-
-
-SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+\-\[\]]{0,63}$')
 
 
 def versions_of(datas):
