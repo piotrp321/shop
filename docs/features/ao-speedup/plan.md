@@ -38,6 +38,6 @@ zegarowy epiku przy tej samej jakości. Plan usuwamy po pomiarze na dwóch epika
 ## Status
 
 - Zadanie 1: zrobione (PR #595), działa w epikach zaczętych po 2026-11-15.
-- Zadanie 2: w toku (PR w AO i ten PR w `shop`, merge po PR w AO).
+- Zadanie 2: zrobione (AO #53, PR #597), działa w epikach z planem z polami `paths` i `parallel_with`.
 - Zadanie 3: do zrobienia (czeka na wolne zasoby).
 - Zadanie 4: do zrobienia (po zadaniach 1 i 2).
