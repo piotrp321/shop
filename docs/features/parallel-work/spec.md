@@ -515,8 +515,8 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   `.github/workflows/`, `.claude/agents/`, `docs/` i `infra/k8s/` dozwolone, `toolsx/` z `tools/` dozwolone,
   `Tools/metrics/` z `tools/metrics/` odrzucone, `tools/README.md` nie jest kodem wykonywanym, `is_app_code` i
   `is_allowed` bez zmian dla `tools/`; `CLAUDE.md`, ten sam plik, plik w katalogu drugiej strony, pliki generowane
-  i rejestracji, nakładające się katalogi poza kodem dozwolone, wspólny katalog ze śledzonym `CLAUDE.md` w obu kierunkach odrzucony, bez niego
-  dozwolony).
+  i rejestracji, nakładające się katalogi poza kodem dozwolone, wspólny katalog ze śledzonym `CLAUDE.md`
+  w obu kierunkach odrzucony, bez niego dozwolony).
 - Obecny plan METRICS (`docs/features/metrics/plan.md`) przechodzi `validate` z nową regułą pary.
 - `python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'`: manifest bez nowych pól poprawny; zły
   typ `paths` i `parallel_with`, ścieżka absolutna, `..`, `.`, pusty segment, znak sterujący, znak globa, `~` na
