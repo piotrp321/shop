@@ -2170,11 +2170,12 @@ def add_effects(items, record, history, config):
 # the stored history and, for D1, the EVALS 2.0 results. A candidate is a rule that fired and has a proposal; a rule
 # that ran without a proposal or could not run for lack of data is in `skipped` with its reason.
 
-# The reasons of the gate (night_queue.py, steps 4-5) that come from the file rule: `wspólne pliki z <epik>: <ścieżki>`
-# (candidates of the same files), `zakres wspólny z <epik>: ...` (night list) and `<epik> w toku bez zakresu: ...`
-# (the scope of an epic in progress is not readable). The other reasons (`dwa epiki aktywne`, `pamięć Dockera`, `stan
-# limitów`, `równoległość wstrzymana`, ...) are not the file rule.
-FILE_RULE_REASON = re.compile(r'^(?:wspólne pliki z |zakres wspólny z )|\sw toku bez zakresu(?::|$)')
+# The reason of a wait of the gate that comes from the file rule (night_queue.check_files, steps 4-5): only a WAIT
+# writes `waiting` (so a reason in `gate_wait.reasons`), and the file rule waits only when the scope of an epic in
+# progress is not readable: `<epik> w toku bez zakresu: ...` (MissingScope). A SKIP for common files (`wspólne pliki z
+# <epik>: ...`) has `waiting: null`: it is no wait of the epic, so no reason of `gate_wait` and no D3. The other
+# reasons (`dwa epiki aktywne`, `pamięć Dockera`, `stan limitów`, `równoległość wstrzymana`, ...) are not the file rule.
+FILE_RULE_REASON = re.compile(r'\sw toku bez zakresu(?::|$)')
 MEASURES = {'D1': 'wartość roli na zadanie (USD)', 'D2': '`work` zadania planu (h)', 'D3': '`gate_wait` epiku (h)',
             'D4': 'udział kategorii czekania w jej mianowniku (pp)'}
 D2_KEY = 'D2:plan_split'

@@ -266,11 +266,14 @@ Kolejność: `wall_h` malejąco, potem `value_usd` malejąco (nieznane to 0), po
   z `attempts` rekordu). Klucz jest jeden na epik, `D2:plan_split` (zadanie ma w każdym epiku inne ID, więc przedmiotem
   klucza jest sama reguła; zadania są w `data.tasks`). `wall_h` = suma czasu zadań ponad medianę (zadanie z samymi
   nieudanymi próbami dodaje 0). Bez historii kryterium czasu jest pominięte z pozycją w `gaps`.
-- **D3 kolejka pracy równoległej:** `gate_wait.wait_s` ≥ `d3_gate_wait_h` (1 h) z powodu reguły plików bramki. `gate_wait.reasons`
-  to powody wpisów `waiting` z `gate.jsonl` (`night_queue.append_gate_log`); regułę plików rozpoznaje wyrażenie
-  `FILE_RULE_REASON`: powód zaczynający się od `wspólne pliki z ` albo `zakres wspólny z ` albo zawierający ` w toku bez
-  zakresu` (zakres epiku w toku nieczytelny; kroki 4 i 5 bramki). Inne powody (`dwa epiki aktywne`, `pamięć Dockera`, `stan
-  limitów`, `równoległość wstrzymana`, `brak pomiaru`, okna limitów) to nie reguła plików: wtedy `skipped`. `wall_h` = `wait_s`.
+- **D3 kolejka pracy równoległej:** `gate_wait.wait_s` ≥ `d3_gate_wait_h` (1 h) z powodu reguły plików bramki. `gate_wait`
+  liczy się od pierwszego wpisu `waiting` epiku w `gate.jsonl` (`night_queue.append_gate_log`), a `reasons` to powody tych
+  wpisów. Reguła plików (`night_queue.check_files`, kroki 4 i 5) zapisuje wpis `waiting` tylko jako WAIT, gdy zakres epiku
+  w toku jest nieczytelny: powód `<epik> w toku bez zakresu: …` (`MissingScope`); to jedyny powód, który `FILE_RULE_REASON`
+  uznaje za regułę plików. Pominięcie (SKIP) przez wspólne pliki (`wspólne pliki z <epik>: …`) ma `waiting: null`, więc nie
+  jest czekaniem epiku w rozumieniu specyfikacji, nie trafia do `gate_wait.reasons` i D3 go nie widzi. Inne powody WAIT
+  (`dwa epiki aktywne`, `pamięć Dockera`, `stan limitów`, `równoległość wstrzymana`, `brak pomiaru`, okna limitów) to nie reguła
+  plików: wtedy `skipped`. `wall_h` = `wait_s`.
 - **D4 czekanie:** `human_wait` ≥ `d4_human_wait_share` (20%) `to_done`, `ci_wait` + `in_attempts.ci_watch` ≥ `d4_ci_share`
   (20%) `work`, `limit_wait` ≥ `d4_limit_wait_share` (10%) `to_done`, `review` ≥ `d4_review_share` (20%) `to_merge`
   (tylko po merge'u; przed nim `skipped`). `wall_h` = udział × mianownik (dla `human_wait` i `limit_wait` udział × `to_done`, dla
@@ -298,7 +301,7 @@ Katalog wyników EVALS 2.0 jest czytany raz na wywołanie.
 
 W oknach są tylko epiki zmergowane. Okno „po” to epiki z `started_at` > `CZAS` (ściśle), uporządkowane po starcie. Okno „przed” to
 tyle samo epików zmergowanych najpóźniej w `CZAS` (włącznie), najbliższych tej chwili. Epik rozpoczęty w `CZAS` lub przed
-nim i zmergowany po nim jest w żadnym oknie (`spanning`); epik rozpoczęty po `CZAS`, a niezmergowany, też (`unmerged_after`).
+nim i zmergowany po nim nie jest w żadnym oknie (`spanning`); epik rozpoczęty po `CZAS`, a niezmergowany, też (`unmerged_after`).
 Dla D1 poziom to `kind` zadań (`level_kind`), w którym rola ma największą łączną wartość w obu oknach (rozstrzygnięcie
 wykonawcy: spec mówi „zadania tego `kind`” bez wskazania, który; bez wartości roli `level_kind` to `null`); rekord bez
 `value.by_task_role` jest pomijany z pozycją w `gaps`, nie liczony jako zero.
@@ -309,8 +312,8 @@ median; `pct` `null` przy medianie „przed” równej 0), `message` (`za mało 
 dlaczego), `epic_time` (czas do `epic_done` na zadanie planu w godzinach: mediana trzech epików zmergowanych najbliżej
 przed `CZAS`, niezależnie od liczebności okna, i trzech pierwszych epików okna po), `versions` (`cli` i `models`:
 `added` i `removed` między oknami; okno bez `versions` to brak porównania z pozycją w `gaps`), `spanning`, `unmerged_after`,
-`gaps`. „Za mało danych”: miary zadań (D1, D2) przy mniej niż `effect_min_tasks` (15) zadaniach z mniej niż
-`effect_min_task_epics` (3) epików po zmianie; miary epiku (D3, D4) przy mniej niż `effect_min_epics` (3) epikach po zmianie;
+`gaps`. „Za mało danych”: miary zadań (D1, D2) przy mniej niż `effect_min_tasks` (15) zadaniach albo mniej niż
+`effect_min_task_epics` (3) epikach po zmianie; miary epiku (D3, D4) przy mniej niż `effect_min_epics` (3) epikach po zmianie;
 także gdy okno „przed” nie ma pomiarów. Liczby okien są wtedy wypisane, bez wniosku. Zły klucz, zły `--at` (bez przesunięcia UTC,
 zły format), brak zapisanych rekordów zmergowanych epików albo zły `config.json` kończą komendę kodem `2` z komunikatem.
 

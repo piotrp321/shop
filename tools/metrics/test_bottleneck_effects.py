@@ -31,7 +31,7 @@ class EffectTest(unittest.TestCase):
 
     def test_gate_wait_with_the_file_rule_gets_the_whole_wait_from_d3(self):
         record = target(gate_wait=5 * H)
-        record['gate_wait']['reasons'] = ['wspólne pliki z X-1: apps/api/a.php']
+        record['gate_wait']['reasons'] = ['X-1 w toku bez zakresu: brak plan.md na main']
         item = named(compute(record)[0], 'gate_wait')
         self.assertEqual((item['effect_h'], item['effect_rule']), (5.0, 'D3:gate_wait'))
 

@@ -5,10 +5,11 @@ import os
 import unittest
 
 import testkit
+from test_context import NightEnv, at, epoch
 from testkit import Env, fake_record, run_cli, store_records
 
 H = 3600.0
-FILES = 'wspólne pliki z OTHER-1: apps/api/src/Order.php'
+FILES = 'OTHER-1 w toku bez zakresu: brak plan.md na main'
 
 
 class DecideEnv(Env):
@@ -165,6 +166,57 @@ class D3Test(DecideEnv):
         result = self.gate(None, [])
         self.assertNotIn('D3:gate_wait', self.keys(result))
         self.assertIn('gate_wait', self.skipped(result, 'D3:gate_wait')['reason'])
+
+
+class D3RealFlowTest(NightEnv):
+    """D3 on a gate.jsonl as night_queue.append_gate_log writes it (at, dir_arg, epic, reason, waiting, skipped), through
+    `epic` and `decide`: only a WAIT of the file rule (`<epik> w toku bez zakresu: ...`) is a wait of the epic and a
+    reason of it; a SKIP for common files has `waiting: null`, so it is no wait."""
+
+    def entry(self, seconds, waiting=None, epic=None, reason=None, skipped=()):
+        return {'at': at(seconds), 'dir_arg': 'demo', 'epic': epic, 'reason': reason, 'waiting': waiting,
+                'skipped': list(skipped)}
+
+    def decide_with(self, gate):
+        with open(os.path.join(self.night, 'gate.jsonl'), 'w', encoding='utf-8') as f:
+            for line in gate:
+                f.write(json.dumps(line) + '\n')
+        self.record('demo', home=self.demo(begin=8000, end=20000))
+        code, out, err = run_cli(['decide', 'demo', '--state', self.state, '--night', self.night])
+        self.assertEqual(code, 0, err)
+        return json.loads(out)
+
+    def test_a_wait_for_the_scope_of_an_epic_in_progress_fires_d3(self):
+        result = self.decide_with([
+            self.entry(600, waiting='demo', reason='OTHER-1 w toku bez zakresu: brak plan.md na main'),
+            self.entry(8000, epic='demo')])
+        candidate = next(c for c in result['candidates'] if c['key'] == 'D3:gate_wait')
+        self.assertEqual(candidate['data']['wait_s'], 7400.0)
+        self.assertEqual(candidate['data']['file_rule_reasons'], 1)
+
+    def test_the_same_wait_for_another_reason_is_a_skipped_rule(self):
+        result = self.decide_with([
+            self.entry(600, waiting='demo', reason='stan limitów: exhausted'), self.entry(8000, epic='demo')])
+        self.assertNotIn('D3:gate_wait', [c['key'] for c in result['candidates']])
+        self.assertIn('reguł', next(s for s in result['skipped'] if s['key'] == 'D3:gate_wait')['reason'])
+
+    def test_a_skip_for_common_files_is_no_wait_and_d3_does_not_see_it(self):
+        result = self.decide_with([
+            self.entry(600, reason='wspólne pliki z OTHER-1: apps/api/src/Order.php',
+                       skipped=[{'id': 'DEMO', 'reason': 'wspólne pliki z OTHER-1: apps/api/src/Order.php',
+                                 'paths': ['apps/api/src/Order.php']}]),
+            self.entry(8000, epic='demo')])
+        self.assertEqual(result['candidates'], [])
+        self.assertFalse(any(s['key'] == 'D3:gate_wait' for s in result['skipped']))
+
+    def test_common_files_are_not_a_reason_of_the_file_rule_in_gate_wait(self):
+        # a reason that only a SKIP carries (the wait of the epic never has it) does not make a D3 candidate
+        record = fake_record('demo')
+        record['gate_wait'] = {'wait_s': 2 * H, 'reasons': ['wspólne pliki z OTHER-1: apps/api/src/Order.php']}
+        store_records(self.state, record)
+        code, out, err = run_cli(['decide', 'demo', '--state', self.state, '--night', self.night])
+        self.assertEqual(code, 0, err)
+        self.assertNotIn('D3:gate_wait', [c['key'] for c in json.loads(out)['candidates']])
 
 
 class D2Test(DecideEnv):
