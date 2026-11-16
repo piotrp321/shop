@@ -289,6 +289,8 @@ final class ListStockEndpointTest extends WebTestCase
         yield 'unknown' => ['sort=zz'];
         yield 'empty' => ['sort='];
         yield 'another letter case' => ['sort=NAME'];
+        yield 'an array' => ['sort[]=name'];
+        yield 'a keyed array' => ['sort[a]=b'];
     }
 
     #[DataProvider('unknownSorts')]
@@ -307,6 +309,8 @@ final class ListStockEndpointTest extends WebTestCase
     {
         yield 'not a uuid' => ['productId=kajak'];
         yield 'empty' => ['productId='];
+        yield 'an array' => ['productId[]=2c9d1f3e-5b7a-4c8d-9e0f-1a2b3c4d5e6f'];
+        yield 'a keyed array' => ['productId[a]=b'];
     }
 
     #[DataProvider('badProductIdsInPolish')]

@@ -84,10 +84,12 @@ final class BackofficeStockController
     {
         // The validation has accepted only a text here.
         $level = \is_string($query->level) ? $query->level : null;
+        $sort = \is_string($query->sort) ? $query->sort : null;
+        $productId = \is_string($query->productId) ? $query->productId : null;
 
         try {
             /** @var StockList $list */
-            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $query->sort, $level, $query->productId));
+            $list = $this->handle(new ListBackofficeStock($query->q, $query->category, $query->after, $query->perPage, $sort, $level, $productId));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

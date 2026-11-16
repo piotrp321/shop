@@ -35,8 +35,9 @@ final readonly class BackofficeStockQuery
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
         public ?string $category = null,
-        #[Assert\Choice(choices: self::SORTS, message: self::BAD_SORT)]
-        public ?string $sort = null,
+        // A string checked by validateSort: a value of another kind (`sort[]=…`) gets the same Polish message.
+        #[OA\Property(type: 'string', enum: self::SORTS, nullable: true)]
+        public mixed $sort = null,
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]
         public ?string $after = null,
         #[Assert\Range(min: 1, max: ListBackofficeStock::MAX_PER_PAGE)]
@@ -44,10 +45,38 @@ final readonly class BackofficeStockQuery
         // A string checked by validateLevel: a value of another kind (`level[]=…`) gets the same Polish message.
         #[OA\Property(type: 'string', enum: self::LEVELS, nullable: true)]
         public mixed $level = null,
-        #[Assert\NotBlank(allowNull: true, message: self::BAD_PRODUCT_ID)]
-        #[Assert\Uuid(message: self::BAD_PRODUCT_ID)]
-        public ?string $productId = null,
+        // A UUID checked by validateProductId: a value of another kind (`productId[]=…`) gets the same Polish message.
+        #[OA\Property(type: 'string', nullable: true)]
+        public mixed $productId = null,
     ) {
+    }
+
+    /**
+     * The sort is one of SORTS; a value of another kind (`sort[]=…`) is the same violation.
+     */
+    #[Assert\Callback]
+    public function validateSort(ExecutionContextInterface $context): void
+    {
+        if (null !== $this->sort && !\in_array($this->sort, self::SORTS, true)) {
+            $context->buildViolation(self::BAD_SORT)->atPath('sort')->addViolation();
+        }
+    }
+
+    /**
+     * The product is a UUID: not empty, and a text.
+     */
+    #[Assert\Callback]
+    public function validateProductId(ExecutionContextInterface $context): void
+    {
+        if (null === $this->productId) {
+            return;
+        }
+        if (!\is_string($this->productId) || '' === $this->productId) {
+            $context->buildViolation(self::BAD_PRODUCT_ID)->atPath('productId')->addViolation();
+
+            return;
+        }
+        $context->getValidator()->inContext($context)->atPath('productId')->validate($this->productId, new Assert\Uuid(message: self::BAD_PRODUCT_ID));
     }
 
     /**
