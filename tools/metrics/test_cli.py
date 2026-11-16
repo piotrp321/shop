@@ -1,11 +1,8 @@
 """Tests of metrics.py: command line, record skeleton and error paths.
 python3 -m unittest discover -s tools/metrics -p 'test_*.py'"""
-import contextlib
-import io
 import json
 import os
 import sqlite3
-import tempfile
 import unittest
 from unittest import mock
 

@@ -517,8 +517,8 @@ def overlaps_of(intervals, epic_id, begin, end):
         if item['end'] is None:
             stretch = (item['begin'], end) if begin <= item['begin'] < end else None
         else:
-            stretch = (max(begin, item['begin']), min(end, item['end'])) if begin < item['end'] and item['begin'] < end \
-                else None
+            crosses = begin < item['end'] and item['begin'] < end
+            stretch = (max(begin, item['begin']), min(end, item['end'])) if crosses else None
         if stretch:
             found.setdefault(item['epic'], []).append(stretch)
     return found
@@ -550,7 +550,7 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
         return None, None, {}
     span = own_span(measurement_intervals(events), epic_id, started, run_end) if started is not None else None
     if span is None or span['end'] is None:
-        why = 'epik bez pomiaru start w measurements.jsonl' if span is None else 'epik bez pomiaru done w measurements.jsonl'
+        why = 'epik bez pomiaru %s w measurements.jsonl' % ('start' if span is None else 'done')
         gaps.add('subscription', why)
         gaps.add('parallel', why)
         return None, None, {}
@@ -845,7 +845,7 @@ def cmd_epic(args, config, run, now):
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
-        print('metrics: błąd gh: %s (pola z GitHuba są null, zachowano poprzednie wartości)' % error, file=sys.stderr)
+        print('metrics: błąd gh: %s (pola z GitHuba: null albo poprzednia wartość)' % error, file=sys.stderr)
     return EXIT_SOURCE if errors else 0
 
 
