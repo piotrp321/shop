@@ -1,0 +1,7 @@
+{
+  "id": "order-management-2",
+  "kind": "defect",
+  "source": "issue #256, task ORDER-MANAGEMENT-2, PR 233, squash commit on epic/order-management",
+  "base_sha": "74e25e92127832957982ab0299aa8edeb52cdf52",
+  "head_sha": "405a368bb8fc4310af7f5e65794364737be09e17"
+}
