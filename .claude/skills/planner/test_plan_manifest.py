@@ -24,7 +24,7 @@ class PlanManifestTest(unittest.TestCase):
         subprocess.run(['git', '-C', self.repo, 'init', '-q'], check=True)
         os.makedirs(os.path.join(self.repo, 'docs', 'features', 'cart'))
         self.write('docs/features/cart/spec.md', '# Cart\n')
-        for top in ('apps', 'infra', 'e2e', '.github'):
+        for top in ('apps', 'infra', 'e2e', '.github', 'tools', '.claude', '.ao', 'toolsx'):
             os.makedirs(os.path.join(self.repo, top))
         self.write('CLAUDE.md', '# Rules\n')
         self.plan = os.path.join(self.repo, 'docs', 'features', 'cart', 'plan.md')
@@ -373,10 +373,10 @@ class PlanManifestTest(unittest.TestCase):
 
     def test_common_directory_without_a_tracked_claude_md_is_allowed(self):
         self.track('infra/k8s/CLAUDE.md', 'e2e/CLAUDE.md')
-        os.makedirs(os.path.join(self.repo, 'infra', 'scripts'))
-        self.write('infra/scripts/CLAUDE.md', 'untracked\n')
+        os.makedirs(os.path.join(self.repo, 'e2e', 'lib'))
+        self.write('e2e/lib/CLAUDE.md', 'untracked\n')
         for first, second in ((['infra/k8s/charts/'], ['infra/k8s/charts/']), (['e2e/'], ['e2e/tests/']),
-                              (['docs/'], ['docs/']), (['infra/scripts/'], ['infra/scripts/'])):
+                              (['docs/'], ['docs/']), (['e2e/lib/'], ['e2e/lib/'])):
             with self.subTest(first=first, second=second):
                 self.pair(first, second)
                 r = self.validate()
@@ -405,6 +405,27 @@ class PlanManifestTest(unittest.TestCase):
         r = self.validate()
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_parallel_pair_sharing_executable_tool_code_is_refused(self):
+        for first, second, shared in ((['tools/metrics/'], ['tools/metrics/'], 'tools/metrics'),
+                                      (['tools/metrics/'], ['tools/'], 'tools/metrics'),
+                                      (['.claude/'], ['.claude/skills/x/'], '.claude/skills/x'),
+                                      (['.ao/'], ['.ao/'], '.ao'),
+                                      (['.github/scripts/'], ['.github/scripts/'], '.github/scripts'),
+                                      (['infra/scripts/'], ['infra/'], 'infra/scripts')):
+            with self.subTest(first=first, second=second):
+                os.makedirs(os.path.join(self.repo, 'infra', 'scripts'), exist_ok=True)
+                self.pair(first, second)
+                self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
+
+    def test_the_current_metrics_plan_stays_valid(self):
+        plan = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'features',
+                            'metrics', 'plan.md')
+        if not os.path.exists(plan):
+            self.skipTest('no metrics plan')
+        r = subprocess.run([sys.executable, SCRIPT, 'validate', plan], capture_output=True, text=True,
+                           cwd=os.path.abspath(os.path.join(os.path.dirname(plan), '..', '..', '..')))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_parallel_pair_lists_every_blocking_path(self):
         self.pair(['apps/api/src/Cart/', 'CLAUDE.md', 'docs/'], ['apps/api/src/Cart/Cart.php', 'CLAUDE.md', 'docs/'])
         self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths CLAUDE.md, '
@@ -413,7 +434,10 @@ class PlanManifestTest(unittest.TestCase):
     def test_overlapping_directories_outside_application_code_are_allowed(self):
         for first, second in ((['docs/'], ['docs/features/cart/']), (['docs/features/'], ['docs/features/']),
                               (['apps/api/tests/', 'infra/k8s/'], ['apps/api/tests/Unit/', 'infra/']),
-                              (['.github/', 'e2e/'], ['.github/scripts/', 'e2e/'])):
+                              (['.github/workflows/', 'e2e/'], ['.github/workflows/', 'e2e/']),
+                              (['.claude/skills/ao-run/'], ['.claude/skills/retro/']),
+                              (['.claude/agents/'], ['.claude/agents/']), (['toolsx/'], ['tools/']),
+                              (['infra/k8s/'], ['infra/k8s/'])):
             with self.subTest(first=first, second=second):
                 self.pair(first, second)
                 r = self.validate()

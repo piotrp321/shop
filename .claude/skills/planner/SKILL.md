@@ -130,9 +130,11 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
 - `parallel_with` (opcjonalne): ID zadań, które AO może prowadzić naraz z tym (`ao run --max-parallel`, spec
   `docs/features/parallel-work/spec.md`, „19b”). Para jest symetryczna (każde z dwóch zadań wymienia drugie), oba
   zadania mają `paths`, żadne nie zależy od drugiego (także przez `depends_on` innych zadań), a ich `paths` nie
-  mają wspólnego kodu aplikacji (`apps/<aplikacja>/src`, `apps/<aplikacja>/app` i katalogi, które je zawierają),
-  wspólnego `CLAUDE.md` ani wspólnego pliku. Dwa nakładające się katalogi poza kodem aplikacji (dokumentacja, testy,
-  CI, konfiguracja, infrastruktura) są dozwolone, o ile część wspólna nie zawiera `CLAUDE.md` śledzonego w repo
+  mają wspólnego kodu wykonywanego (kod aplikacji: `apps/<aplikacja>/src`, `apps/<aplikacja>/app`; kod narzędzi:
+  `tools`, `.claude/skills`, `.ao`, `.github/scripts`, `infra/scripts`; oraz katalogi, które je zawierają, np.
+  `.claude`, `.github`, `infra`), wspólnego `CLAUDE.md` ani wspólnego pliku. Dwa nakładające się katalogi poza kodem
+  wykonywanym (dokumentacja, testy, workflowy CI, konfiguracja, `infra/k8s`) są dozwolone, o ile część wspólna nie
+  zawiera `CLAUDE.md` śledzonego w repo
   (np. `infra/k8s/`, `e2e/`). Gdy git nie poda listy śledzonych `CLAUDE.md`, każda para jest odrzucana. Regułę
   sprawdza `parallel_gate.task_conflicts`
   (`.claude/skills/ao-run/parallel_gate.py`), jedyne jej miejsce. Zadanie bez `parallel_with` (także cały manifest

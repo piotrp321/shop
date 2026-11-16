@@ -408,11 +408,17 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
   zostaje 1.
 - **Reguła pary** (`plan_manifest.py validate` odrzuca manifest, który ją łamie): relacja jest symetryczna (każde
   zadanie pary wymienia drugie), oba zadania mają `paths`, żadne nie zależy od drugiego bezpośrednio ani przez
-  `depends_on` innych zadań, a część wspólna ich `paths` (jak w „Pojęciach” 19a) nie zawiera kodu aplikacji
-  (`parallel_gate.is_app_code`, jak w kroku 5 bramki), `CLAUDE.md` ani pliku. Ścieżka części wspólnej jest katalogiem
+  `depends_on` innych zadań, a część wspólna ich `paths` (jak w „Pojęciach” 19a) nie zawiera kodu wykonywanego
+  (`parallel_gate.is_executable_code`), `CLAUDE.md` ani pliku. Kod wykonywany to kod aplikacji (`is_app_code`, jak
+  w kroku 5 bramki) oraz ścieżki w katalogach `tools`, `.claude/skills`, `.ao`, `.github/scripts` i `infra/scripts`
+  (po segmentach, bez rozróżniania wielkości liter) i ścieżki, które taki katalog zawierają (`.claude`, `.github`,
+  `infra`; tak jak `apps` zawiera kod aplikacji); pliki generowane i rejestracji, `CLAUDE.md` i `README.md`
+  kodem nie są.
+  Bramka 19a (`is_app_code`, `is_allowed`) nie zmienia się. Ścieżka części wspólnej jest katalogiem
   tylko wtedy, gdy obie strony deklarują ją i każdą ścieżkę, która ją zawiera, jako katalog. Wyjątki kroku 5 zostają
-  dla katalogów: dwa nakładające się katalogi poza kodem aplikacji (CI, testy, konfiguracja, infrastruktura,
-  dokumentacja) nie blokują, chyba że wspólny katalog zawiera `CLAUDE.md` śledzony w repo (`git ls-files`, np.
+  dla katalogów: dwa nakładające się katalogi poza kodem wykonywanym (workflowy CI, testy, konfiguracja,
+  `infra/k8s`, dokumentacja, `.claude/agents`) nie blokują, chyba że wspólny katalog zawiera `CLAUDE.md` śledzony
+  w repo (`git ls-files`, np.
   `infra/k8s/` albo `e2e/`); wtedy ten plik blokuje parę. Gdy git nie poda listy śledzonych `CLAUDE.md`, `validate`
   odrzuca każdą parę z `parallel_with`, a `parallel` kończy się kodem 2. Brak danych albo niepewność oznacza pracę
   szeregową. Regułę ma jedno miejsce: `parallel_gate.task_conflicts`.
@@ -437,7 +443,8 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
 ## Pliki
 
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada, zapis atomowy, rezerwacje z tokenem,
-  pomiar pamięci Dockera i klasyfikacja plików (kod aplikacji blokuje, reszta nie); bez zależności od `night_queue.py`.
+  pomiar pamięci Dockera i kod aplikacji blokuje (19a i 19b), kod narzędzi tylko w 19b (`is_executable_code`); bez
+  zależności od `night_queue.py`.
 - `.claude/skills/ao-run/night_queue.py` i `test_night_queue.py`: komendy `gate`, `release`, `hold` i `unhold`
   (algorytm bramki na tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`,
   szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
@@ -504,9 +511,14 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
 - Rezerwa `max-parallel`: wolna pamięć na jeden stos, ale nie na dwa → czekanie; na dwa → przejście; rezerwa
   epiku aktywnego bez stosu i zmierzona pamięć AO powyżej rezerwy; `MAX_PARALLEL` równe 2 i każde polecenie startu
   AO w `SKILL.md` `/ao-run` z `--max-parallel` o tej wartości; `task_conflicts` (kod aplikacji, także przez szerszy
-  katalog, `CLAUDE.md`, ten sam plik, plik w katalogu drugiej strony, pliki generowane i rejestracji, nakładające się
-  katalogi poza kodem dozwolone, wspólny katalog ze śledzonym `CLAUDE.md` w obu kierunkach odrzucony, bez niego
-  dozwolony).
+  katalog, kod narzędzi: `tools/` z `tools/` i z `tools/metrics/`, `.claude/` z `.claude/skills/x/`, `.ao/`,
+  `.github/scripts/`, `infra/` z `infra/scripts/` odrzucone, a `.claude/skills/ao-run/` z `.claude/skills/retro/`,
+  `.github/workflows/`, `.claude/agents/`, `docs/` i `infra/k8s/` dozwolone, `toolsx/` z `tools/` dozwolone,
+  `Tools/metrics/` z `tools/metrics/` odrzucone, `tools/README.md` nie jest kodem wykonywanym, `is_app_code` i
+  `is_allowed` bez zmian dla `tools/`; `CLAUDE.md`, ten sam plik, plik w katalogu drugiej strony, pliki generowane
+  i rejestracji, nakładające się katalogi poza kodem dozwolone, wspólny katalog ze śledzonym `CLAUDE.md`
+  w obu kierunkach odrzucony, bez niego dozwolony).
+- Obecny plan METRICS (`docs/features/metrics/plan.md`) przechodzi `validate` z nową regułą pary.
 - `python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'`: manifest bez nowych pól poprawny; zły
   typ `paths` i `parallel_with`, ścieżka absolutna, `..`, `.`, pusty segment, znak sterujący, znak globa, `~` na
   początku, pierwszy segment spoza katalogu głównego (także inna wielkość liter i `.git`), powtórzenie; nieznane ID,
