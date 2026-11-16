@@ -2,6 +2,7 @@ import type { UserManager } from "oidc-client-ts";
 import { createRouter, createWebHistory, type RouterHistory } from "vue-router";
 import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
+import { canViewCustomers } from "@/customers/permissions";
 import { canViewSystem } from "@/dashboard/permissions";
 import { canManageDiscountCodes } from "@/discount-codes/permissions";
 import AppLayout from "@/layout/AppLayout.vue";
@@ -11,6 +12,8 @@ import { canManagePromotions } from "@/promotions/permissions";
 import { useAuthStore } from "@/stores/auth";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 import CategoriesView from "@/views/CategoriesView.vue";
+import CustomerDetailView from "@/views/CustomerDetailView.vue";
+import CustomersView from "@/views/CustomersView.vue";
 import DashboardView from "@/views/DashboardView.vue";
 import DiscountCodeFormView from "@/views/DiscountCodeFormView.vue";
 import DiscountCodesView from "@/views/DiscountCodesView.vue";
@@ -127,6 +130,23 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
             children: [
               { path: "", name: "orders", component: OrdersView },
               { path: ":orderId", name: "order-detail", component: OrderDetailView },
+            ],
+          },
+          {
+            // One path for the list and the card, so the menu item of the customers stays active on a card.
+            path: "customers",
+            // Only admin and support open the customers; the others land on the dashboard with a message. When /me cannot
+            // be read the route is let through: the API checks the access and the view shows the 403.
+            beforeEnter: async () => {
+              const auth = useAuthStore();
+              if (auth.staff === null) {
+                await auth.load();
+              }
+              return auth.staff === null || canViewCustomers(auth.staff) ? true : { name: "dashboard", state: { denied: true } };
+            },
+            children: [
+              { path: "", name: "customers", component: CustomersView },
+              { path: ":customerId", name: "customer", component: CustomerDetailView },
             ],
           },
           { path: ":pathMatch(.*)*", redirect: "/" },

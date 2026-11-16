@@ -37,6 +37,7 @@ const routes = [
       { path: "discount-codes", name: "discount-codes", component: page("Kody") },
       // A screen whose H1 has no tabindex of its own.
       { path: "orders", name: "orders", component: { template: "<div><h1>Zamówienia</h1></div>" } },
+      { path: "customers", name: "customers", component: { template: "<div><h1>Klienci</h1></div>" } },
       // The H1 shows only after the data has loaded.
       {
         path: "promotions",

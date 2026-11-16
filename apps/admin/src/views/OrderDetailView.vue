@@ -14,13 +14,18 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { focusAfterAction } from "@/lib/focus";
+import { canViewCustomers } from "@/customers/permissions";
 import { cancellationReasonLabel, noteRequired, type OrderTransition, statusLabel, transitionLabel } from "@/orders/format";
 import OrderTimeline from "@/orders/OrderTimeline.vue";
 import { type OrderChange, useOrderDetail } from "@/orders/useOrderDetail";
 import { formatDateTime, formatMoney } from "@/prices/format";
+import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
+const auth = useAuthStore();
 const { order, loading, error, forbidden, notFound, notFoundMessage, saving, actions, canCompleteRefund, retry, changeStatus, completeRefund } = useOrderDetail(() => String(route.params.orderId));
+// The link to the card of the customer: only for an order of a store account (a guest has no card) and for the staff who may open it.
+const showCustomerCard = computed(() => order.value?.customerId != null && canViewCustomers(auth.staff));
 
 const header = ref<InstanceType<typeof PageHeader> | null>(null);
 const actionsCard = ref<InstanceType<typeof FormSection> | null>(null);
@@ -403,13 +408,23 @@ function statusName(status: string | undefined): string {
               {{ order.phone }}
             </dd>
           </dl>
-          <RouterLink
-            data-testid="other-orders"
-            class="w-fit rounded-sm text-sm text-interface underline underline-offset-4"
-            :to="{ name: 'orders', query: { q: order.email } }"
-          >
-            Inne zamówienia klienta
-          </RouterLink>
+          <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+            <RouterLink
+              v-if="showCustomerCard && order.customerId"
+              data-testid="customer-card"
+              class="w-fit rounded-sm text-sm text-interface underline underline-offset-4"
+              :to="{ name: 'customer', params: { customerId: order.customerId } }"
+            >
+              Karta klienta
+            </RouterLink>
+            <RouterLink
+              data-testid="other-orders"
+              class="w-fit rounded-sm text-sm text-interface underline underline-offset-4"
+              :to="{ name: 'orders', query: { q: order.email } }"
+            >
+              Inne zamówienia klienta
+            </RouterLink>
+          </div>
         </FormSection>
 
         <FormSection title="Adres dostawy">

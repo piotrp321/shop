@@ -1,8 +1,10 @@
 import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import type { components } from "@/api/schema";
+import { type StaffMe, useAuthStore } from "@/stores/auth";
 import OrderDetailView from "@/views/OrderDetailView.vue";
 
 type BackofficeOrder = components["schemas"]["BackofficeOrder"];
@@ -55,7 +57,7 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
 /** The windows are teleported to <body>, so a query through the whole document finds them. */
 const page = () => new DOMWrapper(document.body);
 
-async function mountView(orderId = "o-1") {
+async function mountView(orderId = "o-1", roles: StaffMe["roles"] | null = ["admin"]) {
   const empty = { template: "<div />" };
   const router = createRouter({
     history: createMemoryHistory(),
@@ -63,10 +65,16 @@ async function mountView(orderId = "o-1") {
       { path: "/", name: "dashboard", component: empty },
       { path: "/orders", name: "orders", component: empty },
       { path: "/orders/:orderId", name: "order-detail", component: OrderDetailView },
+      { path: "/customers/:customerId", name: "customer", component: empty },
     ],
   });
   await router.push(`/orders/${orderId}`);
-  const wrapper = mount(OrderDetailView, { attachTo: document.body, global: { plugins: [router] } });
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  if (roles !== null) {
+    useAuthStore().staff = { id: "u1", username: "anna", roles };
+  }
+  const wrapper = mount(OrderDetailView, { attachTo: document.body, global: { plugins: [pinia, router] } });
   await flushPromises();
   return Object.assign(wrapper, { router });
 }
@@ -113,6 +121,39 @@ describe("OrderDetailView", () => {
     expect(crumbs.get("a[href='/orders']").text()).toBe("Zamówienia");
     expect(crumbs.get("[aria-current=page]").text()).toBe("R-100001");
     expect(wrapper.find("[data-testid=back]").exists()).toBe(false);
+  });
+
+  describe("the link „Karta klienta”", () => {
+    it.each(["admin", "support"] as const)("leads to the card of the customer of the order for %s", async (role) => {
+      serve(order({ customerId: "c-1" }));
+      wrapper = await mountView("o-1", [role]);
+
+      const link = wrapper.get("[data-testid=customer-card]");
+      expect(link.text()).toBe("Karta klienta");
+      expect(link.attributes("href")).toBe("/customers/c-1");
+      expect(wrapper.find("[data-testid=other-orders]").exists()).toBe(true);
+    });
+
+    it("is not there for the order of a guest, who has no customer card", async () => {
+      serve(order({ customerId: null }));
+      wrapper = await mountView("o-1", ["admin"]);
+
+      expect(wrapper.find("[data-testid=customer-card]").exists()).toBe(false);
+    });
+
+    it.each([["warehouse"], ["marketing"]] as [StaffMe["roles"][number]][])("is not there for %s, who may not see customers", async (role) => {
+      serve(order({ customerId: "c-1" }));
+      wrapper = await mountView("o-1", [role]);
+
+      expect(wrapper.find("[data-testid=customer-card]").exists()).toBe(false);
+    });
+
+    it("is not there while the staff member is unknown", async () => {
+      serve(order({ customerId: "c-1" }));
+      wrapper = await mountView("o-1", null);
+
+      expect(wrapper.find("[data-testid=customer-card]").exists()).toBe(false);
+    });
   });
 
   it("puts the side column before the main one in the source, so that Tab starts there", async () => {
