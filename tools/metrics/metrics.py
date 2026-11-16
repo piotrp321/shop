@@ -2172,6 +2172,434 @@ def cmd_trend(args, config, run, now):
     return EXIT_SOURCE if errors else 0
 
 
+# ------------------------------------------------------------------------------------------------------- render
+#
+# `render` writes only what it can check: numbers (booleans and text are no numbers), identifiers (task ids, roles,
+# models, CLI versions, tool names, epic ids: SAFE_NAME), PR numbers and fixed words of this file. Any other text of the
+# record (the reasons of `gaps`, messages of errors, commands, paths) is dropped: the comment goes to a public issue
+# (spec: Model zagrożeń, droga 1). The only free text is the list of manual fixes the /ao-run session wrote itself.
+
+NO_DATA = 'brak danych'
+BOTTLENECK_KINDS = ('breakdown', 'task', 'in_attempts', 'gate_wait', 'review')
+SHARE_OF = {'to_done': 'czasu', 'gate_wait+to_done': 'czasu z oczekiwaniem w bramce', 'to_merge': "czasu do merge'u"}
+LABEL_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9 \u00b7.\-]{0,39}$')
+STATE_PATTERN = re.compile(r'^[A-Z_]{1,16}$')
+RULE_PATTERN = re.compile(r'^D[1-9]$')
+FIELD_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_.\-]{0,59}$')
+MANUAL_FIX_LIMIT = 200
+
+
+def _dict(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value):
+    return value if isinstance(value, list) else []
+
+
+SECRET_LIKE = re.compile(r'ghp_|gho_|github_pat_|(?<![A-Za-z0-9])sk-|[A-Za-z0-9+/]{32,}')
+
+
+def _safe(name):
+    """The identifier (task id, role, model, CLI version, tool, epic) or None: an identifier that looks like a secret is
+    not one."""
+    return name if isinstance(name, str) and SAFE_NAME.match(name) and not SECRET_LIKE.search(name) else None
+
+
+def _count(value):
+    return value if _is_int(value) and value >= 0 else None
+
+
+def hours_text(seconds):
+    return NO_DATA if not _is_number(seconds) else '%s h' % pl(seconds / HOUR)
+
+
+def percent_of(part, whole):
+    return None if not _is_number(part) or not _is_number(whole) or whole <= 0 else int(round(part / whole * 100))
+
+
+def usd_text(cell):
+    """`12,34 USD`, `≈ 12,34 USD` for an estimated value, `brak danych` for an unknown one."""
+    cell = _dict(cell)
+    usd = cell.get('usd')
+    if not _is_number(usd):
+        return NO_DATA
+    text = '%s%s USD' % ('≈ ' if cell.get('estimated') is True else '', pl(usd, 2))
+    return text + (' (suma niepełna)' if cell.get('incomplete') is True else '')
+
+
+def plural(number, one, few, many):
+    if number == 1:
+        return one
+    return few if number % 10 in (2, 3, 4) and number % 100 not in (12, 13, 14) else many
+
+
+def bottleneck_lines(items):
+    """The numbered lines of the bottlenecks: kind, name, rule and the share come only from the known words."""
+    lines = []
+    for item in _list(items):
+        item = _dict(item)
+        name, excess = _safe(item.get('name')), item.get('excess_h')
+        if item.get('kind') not in BOTTLENECK_KINDS or name is None or not _is_number(excess):
+            continue
+        share = percent_of(item.get('share'), 1)
+        text = '%d. `%s`: +%s h ponad medianę' % (len(lines) + 1, name, pl(excess))
+        if share is not None and item.get('share_of') in SHARE_OF:
+            text += ' (%d%% %s)' % (share, SHARE_OF[item['share_of']])
+        if isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
+            text += ', reguła %s' % item['rule']
+        if _is_number(item.get('repeat_h')) and item['repeat_h'] > 0:
+            text += ', w tym możliwe powtórzenia: %s h' % pl(item['repeat_h'])
+        lines.append(text)
+    return lines
+
+
+def time_topic(record, comment):
+    to_done = _dict(record.get('wall')).get('to_done')
+    tasks = record.get('tasks')
+    if not _is_number(to_done):
+        lines = ['Czas do epic_done: %s' % NO_DATA]
+    else:
+        text = 'Czas do epic_done: %s' % hours_text(to_done)
+        if _is_int(tasks) and tasks > 0:
+            text += ' (%s na zadanie planu)' % hours_text(to_done / tasks)
+        breakdown = record.get('breakdown')
+        if isinstance(breakdown, dict):
+            parts = []
+            for name in BREAKDOWN_CATEGORIES:
+                value = breakdown.get(name)
+                if not _is_number(value):
+                    parts.append('%s %s' % (name, NO_DATA))
+                elif value > 0:
+                    parts.append('%s %s (%d%%)' % (name, hours_text(value), percent_of(value, to_done) or 0))
+            text += '; rozkład: ' + ', '.join(parts)
+        lines = [text]
+    if comment:
+        wall = _dict(record.get('wall'))
+        lines.append("Czas do merge'u: %s, odbiór (review): %s" % (hours_text(wall.get('to_merge')),
+                                                                  hours_text(wall.get('review'))))
+    return [lines[0]] + ['  ' + line for line in lines[1:]]
+
+
+def attempts_time_topic(record):
+    data = record.get('in_attempts')
+    if not isinstance(data, dict):
+        return ['Czas w próbach (polecenia powłoki): %s (brak transkryptów)' % NO_DATA]
+    parts = []
+    for name, entry in _dict(data.get('categories')).items():
+        entry = _dict(entry)
+        if _safe(name) and _count(entry.get('count')) and _is_number(entry.get('seconds')):
+            parts.append('%s %s (%d)' % (name, hours_text(entry['seconds']), entry['count']))
+    lines = ['Czas w próbach (polecenia powłoki): ' + (', '.join(parts) if parts else 'brak poleceń')]
+    repeat = _dict(data.get('repeat_runs'))
+    if _count(repeat.get('count')) is not None and _is_number(repeat.get('seconds')):
+        lines.append('możliwe powtórzenia testów: %d (%s), dolna granica' % (repeat['count'], hours_text(repeat['seconds'])))
+    retry = _dict(data.get('api_retry'))
+    if _count(retry.get('count')) is not None and _is_number(retry.get('delay_ms')):
+        lines.append('ponowienia API: %d (łącznie %s s)' % (retry['count'], pl(retry['delay_ms'] / 1000.0, 0)))
+    denied = ', '.join('%s %d' % (tool, n) for tool, n in sorted(_dict(data.get('permission_denials')).items())
+                       if _safe(tool) and _count(n))
+    lines.append('odmowy uprawnień: %s' % (denied or 'brak'))
+    return [lines[0]] + ['  ' + line for line in lines[1:]]
+
+
+def integration_topic(record):
+    data = _dict(record.get('integration'))
+    if not _is_number(data.get('work_s')):
+        return ['Integracja: %s' % NO_DATA]
+    text = 'Integracja: %s' % hours_text(data['work_s'])
+    if _count(data.get('attempts')) is not None:
+        text += ' w %d %s' % (data['attempts'], plural(data['attempts'], 'próbie', 'próbach', 'próbach'))
+    if _count(data.get('rounds')) is not None:
+        text += ', rund: %d' % data['rounds']
+    return [text]
+
+
+def value_topic(record):
+    value = _dict(record.get('value'))
+    head = 'Wartość tokenów (szacunek CLI według cen API, nie koszt subskrypcji): '
+    if not isinstance(value.get('total'), dict):
+        return [head + NO_DATA]
+    lines = [head + 'razem ' + usd_text(value['total'])]
+
+    def ranked(section):
+        found = [(key, cell) for key, cell in _dict(value.get(section)).items() if _safe(key) and isinstance(cell, dict)]
+        return sorted(found, key=lambda pair: (-(pair[1].get('usd') if _is_number(pair[1].get('usd')) else -1), pair[0]))
+
+    roles = ranked('by_role')
+    if roles:
+        lines.append('role: %s (podział między subagentów szacowany)' % ', '.join('%s %s' % (k, usd_text(c)) for k, c in roles))
+    models = ranked('by_model')
+    if models:
+        lines.append('modele: %s' % ', '.join('%s %s' % (k, usd_text(c)) for k, c in models))
+    tasks = [(k, c) for k, c in ranked('by_task') if _is_number(c.get('usd'))]
+    if tasks:
+        lines.append('najdroższe zadanie: %s %s' % (tasks[0][0], usd_text(tasks[0][1])))
+    return [lines[0]] + ['  ' + line for line in lines[1:]]
+
+
+def subscription_topic(record):
+    head = 'Subskrypcja (punkty procentowe okien limitu, osobno od wartości tokenów): '
+    data = record.get('subscription')
+    if not isinstance(data, dict):
+        return [head + NO_DATA]
+    windows = data.get('windows')
+    if not isinstance(windows, dict):
+        parts = ['okna: ' + NO_DATA]
+    else:
+        parts = []
+        for label, delta in windows.items():
+            if isinstance(label, str) and LABEL_PATTERN.match(label):
+                parts.append('%s %s' % (label, '+%s pp' % pl(delta, 0 if float(delta).is_integer() else 1)
+                                        if _is_number(delta) else NO_DATA))
+    text = head + ', '.join(parts)
+    overlap = [e for e in _list(data.get('overlap')) if _safe(e)]
+    if overlap:
+        share = data.get('share')
+        shown = '%s%s' % ('≈ ' if data.get('share_estimated') is True else '', pl(share, 2)) if _is_number(share) \
+            else NO_DATA
+        text += '; share %s (nakładanie z: %s)' % (shown, ', '.join(overlap))
+    return [text]
+
+
+def retries_topics(record):
+    data = _dict(record.get('retries'))
+    attempts = _dict(data.get('attempts'))
+    lines = []
+    if _count(attempts.get('total')) is None:
+        lines.append('Próby: %s' % NO_DATA)
+    else:
+        def number(name):
+            return _count(attempts.get(name)) or 0
+        failed = ', '.join('%s %d' % (k, n) for k, n in sorted(_dict(data.get('failed_by_outcome')).items())
+                           if _safe(k) and _count(n))
+        text = 'Próby: %d (udane %d, nieudane %d%s, zablokowane %d' % (
+            attempts['total'], number('successful'), number('failed'), ' [%s]' % failed if failed else '',
+            number('blocked'))
+        if number('usage_limit'):
+            text += ', limit subskrypcji %d' % number('usage_limit')
+        lines.append(text + ')')
+    repair = _dict(data.get('repair'))
+    if _count(repair.get('count')) is None:
+        lines.append('REPAIR: %s' % NO_DATA)
+    else:
+        lines.append('REPAIR: %d (konflikt końcowego PR %d, czerwone CI %d)' % (
+            repair['count'], _count(repair.get('final_pr_conflict')) or 0, _count(repair.get('ci_red')) or 0))
+    lines.append('FIX: %s' % (_count(data.get('fix')) if _count(data.get('fix')) is not None else NO_DATA))
+    if not isinstance(data.get('sync_prs'), list):
+        lines.append('Sync: %s' % NO_DATA)
+    else:
+        prs = ['#%d%s' % (p['number'], ' (%s)' % p['state'] if isinstance(p.get('state'), str)
+                          and STATE_PATTERN.match(p['state']) else '')
+               for p in data['sync_prs'] if isinstance(p, dict) and _count(p.get('number')) is not None]
+        lines.append('Sync: %s' % (', '.join(prs) if prs else 'brak PR synchronizacji'))
+    return lines
+
+
+def gate_topic(record):
+    gate = record.get('gate_wait')
+    if not isinstance(gate, dict) or not _is_number(gate.get('wait_s')):
+        return ['Czekanie w bramce: %s' % NO_DATA]
+    if gate['wait_s'] == 0:
+        return ['Czekanie w bramce: bez czekania']
+    reasons = [r for r in _list(gate.get('reasons')) if isinstance(r, str) and re.match(r'^[A-Za-z0-9_.\-]{1,40}$', r)]
+    return ['Czekanie w bramce: %s%s' % (hours_text(gate['wait_s']), ' (powód: %s)' % ', '.join(reasons)
+                                         if reasons else '')]
+
+
+def human_topic(record):
+    human = _dict(record.get('human'))
+    interventions = _count(human.get('interventions'))
+    text = 'Interwencje człowieka: %s' % (interventions if interventions is not None else NO_DATA)
+    waits, seconds = _count(human.get('waits')), human.get('wait_s')
+    if waits is not None and _is_number(seconds):
+        text += '; czekania na użytkownika: %d, razem %d min' % (waits, int(round(seconds / 60.0)))
+    return [text]
+
+
+def waste_topic(record):
+    alarms = record.get('waste')
+    if not isinstance(alarms, list):
+        return ['Alarmy (waste): %s' % NO_DATA]
+    names = ['%s %s' % (a['rule'], a['task']) for a in alarms if isinstance(a, dict) and isinstance(a.get('rule'), str)
+             and re.match(r'^W[1-9]$', a['rule']) and _safe(a.get('task'))]
+    return ['Alarmy (waste): %d%s' % (len(alarms), ' (%s)' % ', '.join(names) if names else '')]
+
+
+def versions_topic(record):
+    versions = record.get('versions')
+    if not isinstance(versions, dict):
+        return ['Wersje CLI i modele: %s' % NO_DATA]
+
+    def listed(key, name):
+        return ', '.join('%s (%d)' % (e[name], e['attempts']) for e in _list(versions.get(key))
+                         if isinstance(e, dict) and _safe(e.get(name)) and _count(e.get('attempts')) is not None)
+    return ['Wersje CLI: %s; modele: %s' % (listed('cli', 'version') or 'brak', listed('models', 'model') or 'brak')]
+
+
+def ci_topic(record):
+    ci = record.get('ci')
+    if not isinstance(ci, dict):
+        return ['CI: %s' % NO_DATA]
+
+    def minutes(entry, name):
+        value = _dict(entry).get('%s_s' % name)
+        return '%s min' % pl(value / 60.0) if _is_number(value) else NO_DATA
+
+    final = _dict(ci.get('final'))
+    parts = []
+    if _count(final.get('pr')) is not None:
+        parts.append('końcowy PR #%d: checks %s, e2e %s, przebiegów %s' % (
+            final['pr'], minutes(final, 'checks'), minutes(final, 'e2e'), _count(final.get('runs'))
+            if _count(final.get('runs')) is not None else NO_DATA))
+    tasks = {k: v for k, v in _dict(ci.get('tasks')).items() if _safe(k) and _count(_dict(v).get('runs')) is not None}
+    if tasks:
+        repeated = ['%s (%d)' % (k, v['runs']) for k, v in sorted(tasks.items()) if v['runs'] > 1]
+        parts.append('PR zadań: przebiegów łącznie %d%s' % (sum(v['runs'] for v in tasks.values()),
+                                                             ', więcej niż jeden: %s' % ', '.join(repeated)
+                                                             if repeated else ''))
+    return ['CI: %s' % ('; '.join(parts) if parts else NO_DATA)]
+
+
+def regressions_topic(record):
+    data, found = record.get('regressions'), record.get('found_after_merge')
+    if not isinstance(data, dict):
+        text = "Regresje po merge'u: %s" % NO_DATA
+    else:
+        parts = []
+        for name, label in (('ci_red', "czerwone CI na commicie merge'u"), ('reverts', 'revert'),
+                            ('issues', 'issues bug')):
+            value = data.get(name)
+            value = len(value) if isinstance(value, list) else value
+            parts.append('%s: %s' % (label, value if _count(value) is not None else NO_DATA))
+        count = _count(data.get('count'))
+        text = "Regresje po merge'u (okno %s dni%s): %s (%s)" % (
+            data.get('window_days') if _count(data.get('window_days')) is not None else '?',
+            ', otwarte' if data.get('open') is True else '', count if count is not None else NO_DATA, '; '.join(parts))
+    count = _count(_dict(found).get('count'))
+    return [text, "znalezione po merge'u: %s (propozycje /sweep, osobno od regresji)" % (
+        count if count is not None else NO_DATA)]
+
+
+def position_topic(record, history, config, comment):
+    if not history:
+        return ['Pozycja na tle mediany: brak historii (zmergowanych epików przed tym: 0)']
+    values = [trend_values(h, config) for h in history]
+    medians = {c: median_of([v[c] for v in values]) for c in TREND_COLUMNS}
+    position = position_of(trend_values(record, config), medians)
+    parts = []
+    for column in TREND_COLUMNS:
+        entry = position[column]
+        if entry['diff'] is None or (column == 'review' and not comment):
+            continue            # the review is known only after the merge
+        pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
+                                                                 pl(abs(entry['diff_pct']), 0))
+        parts.append('%s %s (mediana %s%s)' % (column, pl(entry['value'], 2), pl(entry['median'], 2), pct))
+    return ['Pozycja na tle mediany (%d %s, na zadanie planu; czasy w godzinach): %s' % (
+        len(history), plural(len(history), 'epik', 'epiki', 'epików'), '; '.join(parts) or NO_DATA)]
+
+
+def gaps_topic(record, comment):
+    gaps = [g for g in _list(record.get('gaps')) if isinstance(g, str)]
+    if not gaps:
+        return ['Braki danych: brak']
+    if not comment:
+        return ['Braki danych (%d): %s' % (len(gaps), '; '.join(g[:160] for g in gaps))]
+    fields = []
+    for gap in gaps:
+        field = gap.split(': ', 1)[0]
+        if FIELD_PATTERN.match(field) and field not in fields:
+            fields.append(field)
+    return ['Braki danych: %d (pola: %s)' % (len(gaps), ', '.join(fields[:12]) or NO_DATA)]
+
+
+def manual_fix_text(text):
+    """One line of a manual fix: control characters dropped, whitespace collapsed, at most 200 characters, and for an
+    item without a PR no colon and a lower case first letter (retro.py reads `Capital: ` as the next label)."""
+    text = ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]', ' ', str(text)).split())
+    return text if len(text) <= MANUAL_FIX_LIMIT else text[:MANUAL_FIX_LIMIT - 1] + '…'
+
+
+def manual_fix_lines(fixes):
+    """`Ręczne poprawki: N` and one `- PR #<nr>: <text>` or `- <text>` line each (the format retro.py collect reads)."""
+    if not isinstance(fixes, list):
+        return ['Ręczne poprawki: %s' % NO_DATA]
+    items = []
+    for fix in fixes:
+        fix = _dict(fix)
+        text = manual_fix_text(fix.get('text') or '')
+        if _count(fix.get('pr')) is not None:
+            items.append('- PR #%d: %s' % (fix['pr'], text) if text else '- PR #%d' % fix['pr'])
+        elif text:
+            text = text.replace(':', ' -')
+            if len(text) > 1 and text[0].isupper() and text[1].islower():
+                text = text[0].lower() + text[1:]
+            items.append('- ' + text)
+    return ['Ręczne poprawki: %d' % len(items)] + items
+
+
+def comment_head(record):
+    human = _dict(record.get('human'))
+    interventions, waits, seconds = _count(human.get('interventions')), _count(human.get('waits')), human.get('wait_s')
+    lines = ['Interwencje człowieka: %s' % (interventions if interventions is not None else NO_DATA)]
+    if waits is None or not _is_number(seconds):
+        lines.append('Czekanie na użytkownika: %s' % NO_DATA)
+    else:
+        lines.append('Czekanie na użytkownika: %d %s, razem %d min%s' % (
+            waits, plural(waits, 'czekanie', 'czekania', 'czekań'), int(round(seconds / 60.0)),
+            ', otwarte: %d' % human['open'] if _count(human.get('open')) else ''))
+    return lines + manual_fix_lines(human.get('manual_fixes'))
+
+
+def render_measurement(record, records, config, comment):
+    """The text of `render`: the report of the acceptance (bottlenecks first, without `review`, which is known only
+    after the merge) or the comment after the merge (the lines retro.py reads, then the block `Pomiar epiku`)."""
+    history = history_of(record, records)
+    if comment:
+        items = record.get('bottlenecks')
+        if not isinstance(items, list):
+            items = bottlenecks_of(record, history, config, Gaps())
+    else:
+        items = bottlenecks_of(record, history, config, Gaps(), include_review=False)
+    head = 'Wąskie gardła (mediana z %d %s)' % (len(history), plural(len(history), 'epiku', 'epików', 'epików'))
+    numbered = bottleneck_lines(items)
+    topics = [[head + ':'] + numbered if numbered else
+              [head + ': brak pozycji z nadwyżką co najmniej %s h ponad medianę' % pl(config['bottlenecks']['min_excess_h'])]]
+    topics += [time_topic(record, comment), attempts_time_topic(record), integration_topic(record),
+               value_topic(record), subscription_topic(record)]
+    topics += [[line] for line in retries_topics(record)]
+    topics += [gate_topic(record)]
+    if not comment:
+        topics += [human_topic(record)]
+    topics += [waste_topic(record), versions_topic(record), ci_topic(record)]
+    if comment:
+        topics += [[line] for line in regressions_topic(record)]
+    topics += [position_topic(record, history, config, comment), gaps_topic(record, comment)]
+    lines = []
+    for topic in topics:
+        if comment:
+            lines.append('- ' + topic[0])
+            lines.extend('  - ' + line.strip() for line in topic[1:])
+        else:
+            lines.extend(topic[:1] + ['  ' + line.strip() for line in topic[1:]])
+    if comment:
+        return '\n'.join(comment_head(record) + ['', '### Pomiar epiku'] + lines) + '\n'
+    return '\n'.join(lines) + '\n'
+
+
+def cmd_render(args, config, run, now):
+    if os.path.basename(args.epic) != args.epic or args.epic in ('.', '..'):
+        raise MetricsError('niepoprawny identyfikator epiku %r' % args.epic)
+    state = _expand(args.state)
+    records = read_records(state)
+    record = records.get(args.epic)
+    if record is None:
+        raise MetricsError('brak (albo nieczytelny) rekord epiku %s w %s: uruchom `metrics.py epic %s`'
+                           % (args.epic, os.path.join(state, 'epics'), args.epic))
+    sys.stdout.write(render_measurement(record, records, config, args.format == 'comment'))
+    return 0
+
+
 # ------------------------------------------------------------------------------------------------- state and CLI
 
 def state_path(state_dir, epic_id):
@@ -2301,6 +2729,9 @@ def build_parser():
     epic.add_argument('--no-gh', action='store_true')
     backfill = sub.add_parser('backfill', parents=[common])
     backfill.add_argument('--ao-root')
+    render = sub.add_parser('render', parents=[common])
+    render.add_argument('epic')
+    render.add_argument('--format', choices=('report', 'comment'), default='report')
     trend = sub.add_parser('trend', parents=[common])
     trend.add_argument('--last', type=int, default=None)
     trend.add_argument('--epic')
@@ -2324,6 +2755,8 @@ def main(argv=None, run=None, now=None):
             return cmd_backfill(args, config, runner, now)
         if args.command == 'trend':
             return cmd_trend(args, config, runner, now)
+        if args.command == 'render':
+            return cmd_render(args, config, runner, now)
     except MetricsError as e:
         print('metrics: %s' % e, file=sys.stderr)
         return EXIT_FATAL
