@@ -5,6 +5,7 @@ import os
 import unittest
 from datetime import datetime, timezone
 
+import metrics
 import testkit
 from testkit import Env, FakeGh, merged_pr, run_cli
 
@@ -310,6 +311,28 @@ class CiTest(RegressionEnv):
         again = self.record(self.gh(fail_on=[('run', 'view'), ('run', 'list')]))
         self.assertEqual(again['ci']['final']['runs'], 2)
         self.assertTrue(any(g.startswith('ci') and 'zachowano' in g for g in again['gaps']), again['gaps'])
+
+
+class BugFormTest(unittest.TestCase):
+    """The `bug` issue form has the field that `regressions` reads (the heading is the label of the field)."""
+
+    def form(self):
+        path = os.path.join(testkit.HERE, '..', '..', '.github', 'ISSUE_TEMPLATE', 'bug.yml')
+        with open(path, encoding='utf-8') as f:
+            return f.read()
+
+    def test_the_form_has_an_optional_field_introduced_by(self):
+        text = self.form()
+        self.assertIn('label: Wprowadzone przez (epik albo PR, jeśli znane)', text)
+        block = text[text.index('label: Wprowadzone przez'):]
+        block = block[:block.index('\n  - type:')] if '\n  - type:' in block else block
+        self.assertIn('required: false', block)
+
+    def test_the_rendered_field_is_read_by_field_value(self):
+        body = '### Wprowadzone przez (epik albo PR, jeśli znane)\n\ndeploy-ops\n\n### Niewiadome\n\nBrak'
+        self.assertEqual(metrics.field_value(body, 'Wprowadzone przez'), 'deploy-ops')
+        self.assertIsNone(metrics.field_value('### Wprowadzone przez (epik albo PR, jeśli znane)\n\n_No response_',
+                                              'Wprowadzone przez'))
 
 
 class ReadOnlyTest(RegressionEnv):
