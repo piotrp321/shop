@@ -256,6 +256,25 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         self::assertSame('Filtr zdjęć może mieć tylko wartość none.', $violation['title']);
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unknownSorts(): iterable
+    {
+        yield 'unknown' => ['sort=zz'];
+        yield 'empty' => ['sort='];
+        yield 'another letter case' => ['sort=NAME'];
+    }
+
+    #[DataProvider('unknownSorts')]
+    public function testAnUnknownSortIsRefusedWithAPolishMessage(string $query): void
+    {
+        $this->api('GET', '/api/v1/admin/products?'.$query);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([['propertyPath' => 'sort', 'title' => 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.']], $this->violations(400));
+    }
+
     public function testTheListSearchesByNameAndFiltersByCategory(): void
     {
         $other = CategoryFactory::createOne();

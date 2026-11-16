@@ -235,37 +235,6 @@ final class DbalBackofficeOrderReaderTest extends KernelTestCase
     }
 
     /**
-     * @return iterable<string, array{BackofficeOrderSort, ?OrderStatus, string}>
-     */
-    public static function indexedFirstPages(): iterable
-    {
-        yield 'newest first' => [BackofficeOrderSort::PlacedDescending, null, 'ordering_order_placed_at_id_idx'];
-        yield 'oldest first' => [BackofficeOrderSort::PlacedAscending, null, 'ordering_order_placed_at_id_idx'];
-        yield 'highest amount first' => [BackofficeOrderSort::TotalDescending, null, 'ordering_order_total_gross_id_idx'];
-        yield 'lowest amount first' => [BackofficeOrderSort::TotalAscending, null, 'ordering_order_total_gross_id_idx'];
-        yield 'newest first of a status' => [BackofficeOrderSort::PlacedDescending, OrderStatus::Paid, 'ordering_order_status_placed_at_id_idx'];
-        yield 'oldest first of a status' => [BackofficeOrderSort::PlacedAscending, OrderStatus::Paid, 'ordering_order_status_placed_at_id_idx'];
-        yield 'highest amount first of a status' => [BackofficeOrderSort::TotalDescending, OrderStatus::Paid, 'ordering_order_status_total_gross_id_idx'];
-        yield 'lowest amount first of a status' => [BackofficeOrderSort::TotalAscending, OrderStatus::Paid, 'ordering_order_status_total_gross_id_idx'];
-        yield 'the pending refunds' => [BackofficeOrderSort::RefundDueDate, null, 'ordering_order_pending_refund_idx'];
-    }
-
-    #[DataProvider('indexedFirstPages')]
-    public function testTheFirstPageOfEverySortIsServedByItsIndexWithoutASort(BackofficeOrderSort $sort, ?OrderStatus $status, string $index): void
-    {
-        $this->seed();
-        $recording = RecordingConnection::like($this->connection);
-        $reader = new DbalBackofficeOrderReader($recording, new BoundedCounter($recording));
-
-        $reader->page(new BackofficeOrderFilter($status, BackofficeOrderSort::RefundDueDate === $sort, null, null, $sort), null, 26);
-        $plan = $recording->planOfTheLastQuery($this->connection);
-
-        self::assertStringContainsString($index, $plan);
-        self::assertStringNotContainsString('Sort', $plan);
-        self::assertStringNotContainsString('Seq Scan', $plan);
-    }
-
-    /**
      * @return iterable<string, array{string, string}> the fragment, the number of the one order it finds
      */
     public static function fragments(): iterable

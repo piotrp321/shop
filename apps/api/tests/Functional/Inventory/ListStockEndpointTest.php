@@ -281,6 +281,62 @@ final class ListStockEndpointTest extends WebTestCase
         $this->assertProblem(400);
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unknownSorts(): iterable
+    {
+        yield 'unknown' => ['sort=zz'];
+        yield 'empty' => ['sort='];
+        yield 'another letter case' => ['sort=NAME'];
+    }
+
+    #[DataProvider('unknownSorts')]
+    public function testAnUnknownSortIsRefusedWithAPolishMessage(string $query): void
+    {
+        $problem = $this->get($query);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([['sort', 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.']], $this->violationTitles($problem));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badProductIdsInPolish(): iterable
+    {
+        yield 'not a uuid' => ['productId=kajak'];
+        yield 'empty' => ['productId='];
+    }
+
+    #[DataProvider('badProductIdsInPolish')]
+    public function testABadProductIdIsRefusedWithAPolishMessage(string $query): void
+    {
+        $problem = $this->get($query);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([['productId', 'Identyfikator produktu musi być poprawnym UUID.']], $this->violationTitles($problem));
+    }
+
+    /**
+     * @param array<mixed> $problem
+     *
+     * @return list<array{string, string}> the path and the title of every violation
+     */
+    private function violationTitles(array $problem): array
+    {
+        self::assertIsArray($problem['violations'] ?? null);
+        $titles = [];
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            self::assertIsString($violation['propertyPath']);
+            self::assertIsString($violation['title']);
+            $titles[] = [$violation['propertyPath'], $violation['title']];
+        }
+
+        return $titles;
+    }
+
     public function testALevelListsExactlyTheProductsWithAVariantAtThatLevelWithAllTheirVariants(): void
     {
         $kayak = $this->saveProduct('Kajak', variants: [

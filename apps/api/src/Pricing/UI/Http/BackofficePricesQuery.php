@@ -18,6 +18,8 @@ final readonly class BackofficePricesQuery
     /** The values of ProductSort of Catalog, which the list pages through. */
     public const array SORTS = ['name', '-name', '-updatedAt', 'updatedAt'];
 
+    public const string BAD_SORT = 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.';
+    public const string BAD_PRODUCT_ID = 'Identyfikator produktu musi być poprawnym UUID.';
     public const string PRODUCT_EXCLUDES = 'Filtr produktu nie łączy się z wyszukiwaniem, kategorią, sortowaniem ani kursorem.';
 
     public function __construct(
@@ -28,14 +30,14 @@ final readonly class BackofficePricesQuery
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
         public ?string $category = null,
-        #[Assert\Choice(choices: self::SORTS, message: 'The sort must be one of name, -name, -updatedAt, updatedAt.')]
+        #[Assert\Choice(choices: self::SORTS, message: self::BAD_SORT)]
         public ?string $sort = null,
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]
         public ?string $after = null,
         #[Assert\Range(min: 1, max: ListBackofficePrices::MAX_PER_PAGE)]
         public int $perPage = ListBackofficePrices::DEFAULT_PER_PAGE,
-        #[Assert\NotBlank(allowNull: true)]
-        #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true, message: self::BAD_PRODUCT_ID)]
+        #[Assert\Uuid(message: self::BAD_PRODUCT_ID)]
         public ?string $productId = null,
     ) {
     }

@@ -19,6 +19,7 @@ final readonly class BackofficeProductsQuery
     public const int MAX_CURSOR_LENGTH = 2048;
     /** The values of ProductSort. */
     public const array SORTS = ['name', '-name', '-updatedAt', 'updatedAt'];
+    public const string BAD_SORT = 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.';
     public const string BAD_IMAGES = 'Filtr zdjęć może mieć tylko wartość none.';
 
     public function __construct(
@@ -31,7 +32,7 @@ final readonly class BackofficeProductsQuery
         public ?string $category = null,
         #[Assert\Choice(choices: ['draft', 'published'], message: 'The status must be draft or published.')]
         public ?string $status = null,
-        #[Assert\Choice(choices: self::SORTS, message: 'The sort must be one of name, -name, -updatedAt, updatedAt.')]
+        #[Assert\Choice(choices: self::SORTS, message: self::BAD_SORT)]
         public ?string $sort = null,
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]
         public ?string $after = null,

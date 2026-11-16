@@ -23,6 +23,8 @@ final readonly class BackofficeStockQuery
     public const string BAD_LEVEL = 'Poziom stanu musi być jednym z: out_of_stock, low_stock.';
     public const string LEVEL_EXCLUDES = 'Filtr poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.';
 
+    public const string BAD_SORT = 'Sortowanie może mieć tylko wartość name, -name, -updatedAt albo updatedAt.';
+    public const string BAD_PRODUCT_ID = 'Identyfikator produktu musi być poprawnym UUID.';
     public const string PRODUCT_EXCLUDES = 'Filtr produktu nie łączy się z wyszukiwaniem, kategorią, poziomem, sortowaniem ani kursorem.';
 
     public function __construct(
@@ -33,7 +35,7 @@ final readonly class BackofficeStockQuery
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]
         public ?string $category = null,
-        #[Assert\Choice(choices: self::SORTS, message: 'The sort must be one of name, -name, -updatedAt, updatedAt.')]
+        #[Assert\Choice(choices: self::SORTS, message: self::BAD_SORT)]
         public ?string $sort = null,
         #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH)]
         public ?string $after = null,
@@ -42,8 +44,8 @@ final readonly class BackofficeStockQuery
         // A string checked by validateLevel: a value of another kind (`level[]=…`) gets the same Polish message.
         #[OA\Property(type: 'string', enum: self::LEVELS, nullable: true)]
         public mixed $level = null,
-        #[Assert\NotBlank(allowNull: true)]
-        #[Assert\Uuid]
+        #[Assert\NotBlank(allowNull: true, message: self::BAD_PRODUCT_ID)]
+        #[Assert\Uuid(message: self::BAD_PRODUCT_ID)]
         public ?string $productId = null,
     ) {
     }
