@@ -22,7 +22,8 @@ Zlecenie podaje:
   (`<epik>/<rodzaj>/<klucz>`) i faktami, fakty „Statusu” (`status/*`), rejestry (odrzucone, zastosowane, przeniesione,
   obserwacje), pozycje otwartego PR retro, otwarte issues AO i otwarte issues `tech-debt` z etykietą `agent`,
   `external` (issues epików, komentarze i PR zadań od autorów bez prawa zapisu: tylko `source`, `number`, `author`,
-  `url`), `commit` (SHA `origin/main`);
+  `url`), pomiar z `tools/metrics/metrics.py` (incydenty rodzaju `optimization`, fakty `<epik>/measurement/*`,
+  `optimization_effects`; brak pomiaru to fakt „brak danych pomiaru”), `commit` (SHA `origin/main`);
 - `<worktree>`: checkout `origin/main` tylko do czytania: instrukcje procesu (`CLAUDE.md`, `.claude/skills/*/SKILL.md`,
   `.claude/agents/*.md`), specyfikacje funkcji (`docs/features/`);
 - `<run_dir>`: katalog przebiegu; tam zapisujesz `proposals.json`.
@@ -64,6 +65,16 @@ którego nie przeczytałeś, nie wpisujesz do `duplicate_check`. Bez zmian w wor
    napisz, dlaczego nie jest już potrzebna (zmieniona instrukcja, zdezaktualizowany incydent).
 6. **Kod i konfiguracja.** Poprawka tylko w instrukcjach tekstowych. Problem wymagający zmiany skryptu, kodu,
    konfiguracji albo AO to pozycja `issue`, nie `fix`.
+7. **Incydenty `optimization`** (`<epik>/optimization/<klucz>`, np. `D4:human_wait`: reguła D1–D4 z pomiaru zadziałała
+   w tym epiku; dane i propozycja pochodzą z `metrics.py decide`). Przechodzą ten sam próg, rejestry i limity co
+   pozostałe: pozycja wymaga dwóch różnych incydentów (ta sama reguła w dwóch epikach), reguła, która zadziałała w jednym
+   epiku, to obserwacja (`observations`, w `incidents` ID incydentu `optimization`). Przyczynę źródłową znajdź w
+   instrukcjach procesu w worktree, a nie w liczbach: poprawka instrukcji to `fix`; zmiana kodu, konfiguracji,
+   `tools/metrics` albo modelu agenta to `issue` z `repo: "shop"` (etykieta `tech-debt` nadawana po „tak”). Nie
+   proponuj zmiany modelu roli wprost: dla roli objętej EVALS 2.0 propozycja `issue` to porównanie wariantów w EVALS 2.0 i
+   decyzja właściciela przed merge'em. Efektu poprawki nie liczysz i nie oceniasz: `optimization_effects` (wynik
+   `metrics.py effect`) przepisuje do raportu sesja (sekcja „Decyzje optymalizacyjne”). Pozycja `fix`, której `key`
+   jest w `applied.jsonl` (poprawka z tego samego klucza reguły), wraca tylko według zasad „Skuteczność”.
 
 ## Reguły walidacji (`retro.py validate`)
 
