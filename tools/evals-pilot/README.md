@@ -76,6 +76,7 @@ a dla przypadku z wadą `gold.md` (opis wady ze zgłoszenia).
 | `cart-fixes-3` | wada | zgłoszenie #113 | `bbabb283`, PR 107 |
 | `search-4` | wada | zgłoszenie #197 | `78ddc299`, PR 184 |
 | `order-management-2` | wada | zgłoszenie #256 | `541d06e9`, PR 233 |
+| `cart-4` | wada (tylko tryb `replay`) | zgłoszenie #81 | `cdc63bf7`, PR 76 |
 | `catalog-admin-3` | czysty warunkowo (`known.md`: udokumentowany wyścig pierwszej ceny ze zmianą klasy podatkowej) | zadanie CATALOG-ADMIN-3 | `1c35b5d4`, PR 220 |
 | `order-management-1` | czysty (niepotwierdzony przez właściciela) | zadanie ORDER-MANAGEMENT-1 | `8803554a`, PR 231 |
 
