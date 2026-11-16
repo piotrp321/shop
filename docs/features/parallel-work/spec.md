@@ -443,7 +443,8 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
 ## Pliki
 
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada, zapis atomowy, rezerwacje z tokenem,
-  pomiar pamięci Dockera i klasyfikacja plików (kod aplikacji blokuje, reszta nie); bez zależności od `night_queue.py`.
+  pomiar pamięci Dockera i kod aplikacji blokuje (19a i 19b), kod narzędzi tylko w 19b (`is_executable_code`); bez
+  zależności od `night_queue.py`.
 - `.claude/skills/ao-run/night_queue.py` i `test_night_queue.py`: komendy `gate`, `release`, `hold` i `unhold`
   (algorytm bramki na tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`,
   szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
