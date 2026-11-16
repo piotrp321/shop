@@ -44,6 +44,8 @@ Odtwarza pierwsze review FULL zadania tak, jak zrobił je `/delivery`:
   zlecenia albo subagent nie oddał raportu.
 
 `replay.json` przypadku z wadą ma pole `gold_in_reviewed_diff`: dowód, że wada wzorcowa jest w recenzowanym diffie.
+`replay/extra-targets.md` wymienia zgłoszenia oryginalnego pierwszego review jako dodatkowe cele pomiarowe. Liczy się je
+osobno: nie zmieniają wady wzorcowej ani jej kryteriów.
 
 ### `--mode squash` (domyślny): tryb pilota
 
