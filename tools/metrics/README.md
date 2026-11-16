@@ -199,5 +199,9 @@ polecenia powłoki zastąpione kanonicznym poleceniem kategorii z numerem `# c<n
 `fixture_scan.py` (test: `test_fixture_scan.py`) sprawdza każdy plik pod `fixtures/`: brak ścieżek bezwzględnych
 (`/Users/`, `/private/`, `~`), adresów e-mail, wzorców tokenów (`ghp_`, `gho_`, `github_pat_`, `sk-`, `Bearer`,
 `Basic`), ciągów base64 od 32 znaków (poza SHA i UUID; ciąg musi mieć cyfrę albo mieszane litery, a ścieżka ze samych
-słów jest dozwolona) i wartości tekstowych dłuższych niż 120 znaków. Nowe fixture'y (np. transkrypty METRICS-2) muszą
+słów jest dozwolona) i wartości tekstowych dłuższych niż 120 znaków. Jedyny wyjątek, tylko od reguły base64: nazwy kluczy
+`cacheCreationEphemeral1hInputTokens` i `cacheCreationEphemeral5mInputTokens` w obiekcie modelu najwyższego poziomu
+`modelUsage` linii JSON (`modelUsage.<model>.<klucz>`, kształt wyniku CLI w transkrypcie). Ta sama nazwa jako wartość, jako
+klucz gdzie indziej, w pliku nie-JSON albo w surowym tekście SQL jest wykrywana, tak samo jak base64 będący wartością tych
+kluczy; pozostałe reguły działają na nich jak na każdym kluczu. Nowe fixture'y (np. transkrypty METRICS-2) muszą
 przejść ten skan.

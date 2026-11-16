@@ -13,6 +13,8 @@ SHA1 = 'a' * 40
 SHA256 = '0123456789abcdef' * 4
 UUID = '123e4567-e89b-12d3-a456-426614174000'
 BASE64 = 'QWxhZGRpbjpvcGVuIHNlc2FtZVRoaXNJc0Jhc2U2NA'          # 42 characters
+# the key names of `modelUsage` of the CLI result that look like base64 (the only exception of the base64 rule)
+USAGE_KEYS = ['cacheCreationEphemeral1hInputTokens', 'cacheCreationEphemeral5mInputTokens']
 
 # rule -> a value that the scan must reject
 PLANTED = {
@@ -108,6 +110,71 @@ class PlantedExamplesTest(unittest.TestCase):
     def test_missing_directory_is_an_error(self):
         with self.assertRaises(OSError):
             fixture_scan.scan_directory(os.path.join(self.root, 'absent'))
+
+
+class ModelUsageKeysTest(unittest.TestCase):
+    """The base64 rule skips the two key names `cacheCreationEphemeral{1h,5m}InputTokens` of an object that is a model
+    entry of the top-level `modelUsage` of a JSON line, and nothing else."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = self._tmp.name
+
+    def scan(self, name, content):
+        with open(os.path.join(self.root, name), 'w', encoding='utf-8') as f:
+            f.write(content)
+        try:
+            return fixture_scan.scan_directory(self.root)
+        finally:
+            os.unlink(os.path.join(self.root, name))
+
+    def usage_line(self, entry, top=None):
+        record = {'type': 'result', 'modelUsage': {'claude-opus-5-5': entry}}
+        record.update(top or {})
+        return json.dumps({'type': 'x'}) + '\n' + json.dumps(record) + '\n'
+
+    def test_the_two_keys_in_model_usage_pass(self):
+        entry = {USAGE_KEYS[0]: 139477, USAGE_KEYS[1]: 0, 'cacheReadInputTokens': 1, 'costUSD': 1.5}
+        self.assertEqual(self.scan('f.jsonl', self.usage_line(entry)), [])
+        self.assertEqual(self.scan('f.json', json.dumps({'modelUsage': {'m': entry}})), [])
+
+    def test_a_real_base64_token_as_the_value_of_those_keys_is_found(self):
+        for key in USAGE_KEYS:
+            with self.subTest(key=key):
+                findings = self.scan('f.jsonl', self.usage_line({key: BASE64}))
+                self.assertEqual([(f['line'], f['rule']) for f in findings], [(2, 'base64')])
+
+    def test_the_same_name_as_a_value_is_found(self):
+        for key in USAGE_KEYS:
+            with self.subTest(key=key):
+                self.assertIn('base64', rules(self.scan('f.jsonl', self.usage_line({'note': key}))))
+                self.assertIn('base64', rules(self.scan('f.jsonl', json.dumps({'text': key}) + '\n')))
+                self.assertIn('base64', rules(self.scan('f.jsonl', json.dumps({'modelUsage': {'m': [key]}}) + '\n')))
+
+    def test_the_same_name_as_a_key_outside_model_usage_is_found(self):
+        for key in USAGE_KEYS:
+            for record in ({key: 1}, {'usage': {key: 1}}, {'modelUsage': {key: 1}}, {'modelUsage': {'m': {'o': {key: 1}}}},
+                           {'a': {'modelUsage': {'m': {key: 1}}}}, {'modelUsage': [{key: 1}]}):
+                with self.subTest(key=key, record=record):
+                    self.assertIn('base64', rules(self.scan('f.jsonl', json.dumps(record) + '\n')))
+
+    def test_the_same_name_in_a_file_that_is_not_json_is_found(self):
+        for key in USAGE_KEYS:
+            with self.subTest(key=key):
+                self.assertIn('base64', rules(self.scan('f.txt', 'line\n%s: 1\n' % key)))
+                self.assertIn('base64', rules(self.scan('f.sql', "INSERT INTO t VALUES(1,'%s');\n" % key)))
+                raw = json.dumps({'modelUsage': {'m': {key: 1}}}).replace("'", "''")
+                self.assertIn('base64', rules(self.scan('f.sql', "INSERT INTO t VALUES(1,'%s');\n" % raw)))
+
+    def test_another_key_that_looks_like_base64_in_model_usage_is_found(self):
+        for key in (BASE64, USAGE_KEYS[0] + 'X', 'x' + USAGE_KEYS[1], USAGE_KEYS[0].upper()):
+            with self.subTest(key=key):
+                self.assertIn('base64', rules(self.scan('f.jsonl', self.usage_line({key: 1}))))
+
+    def test_the_other_rules_still_run_on_the_model_usage_entry(self):
+        findings = self.scan('f.jsonl', self.usage_line({USAGE_KEYS[0]: 1, 'a@example.com': 1, 'p': '/Users/x'}))
+        self.assertEqual(rules(findings), {'email', 'absolute-path'})
 
 
 if __name__ == '__main__':
