@@ -72,9 +72,13 @@ final class GenerateDemoScriptTest extends TestCase
         $workers = \array_slice($calls, 3, 2);
         sort($workers);
         self::assertSame(['demo-data:products '.$common.' --worker=0 --workers=2', 'demo-data:products '.$common.' --worker=1 --workers=2'], $workers);
+        self::assertSame('demo-data:photos '.$common, $calls[5]);
+        $priceWorkers = \array_slice($calls, 6, 2);
+        sort($priceWorkers);
+        self::assertSame(['demo-data:prices '.$common.' --worker=0 --workers=2', 'demo-data:prices '.$common.' --worker=1 --workers=2'], $priceWorkers);
         self::assertSame(
-            ['demo-data:photos '.$common, 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
-            \array_slice($calls, 5),
+            ['demo-data:promotions '.$common, 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
+            \array_slice($calls, 8),
         );
     }
 
@@ -155,8 +159,8 @@ final class GenerateDemoScriptTest extends TestCase
      */
     public static function failingSteps(): iterable
     {
-        $steps = ['check', 'seed-demo', 'demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'];
-        foreach (['seed-demo', 'demo-data:categories', 'demo-data:photos', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'] as $failing) {
+        $steps = ['check', 'seed-demo', 'demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'];
+        foreach (['seed-demo', 'demo-data:categories', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'] as $failing) {
             yield $failing => [$failing, \array_slice($steps, 0, array_search($failing, $steps, true) + 1)];
         }
         // The check of the options, which has no name of its own: it is the products command asked for the parts.
@@ -195,6 +199,33 @@ final class GenerateDemoScriptTest extends TestCase
         $names = $this->names();
         self::assertNotContains('demo-data:photos', $names);
         self::assertNotContains('catalog:reindex', $names);
+        self::assertNotContains('demo-data:verify', $names);
+
+        $hung = file_exists($this->dir.'/bin/hung.log') ? array_filter(explode("\n", trim((string) file_get_contents($this->dir.'/bin/hung.log')))) : [];
+        self::assertCount(2, $hung, 'Both other parts had started.');
+        foreach ($hung as $pid) {
+            self::assertFalse(posix_kill((int) $pid, 0), 'The part with process id '.$pid.' is still running.');
+        }
+    }
+
+    public function testAFailingPriceStepPartStopsTheOtherPartsAndTheFollowingSteps(): void
+    {
+        $started = microtime(true);
+        $prices = 'demo-data:prices --demo-profile=small --anchor=2026-11-17T00:00:00Z --worker=';
+
+        [$code, $stderr] = $this->runScript(
+            ['--processes=3', '--anchor=2026-11-17T00:00:00Z'],
+            ['APP_ENV' => 'dev', 'FAKE_FAIL_ON' => $prices.'1', 'FAKE_FAIL_CODE' => '7'],
+            hang: $prices.'0|'.$prices.'2',
+        );
+
+        self::assertSame(7, $code);
+        self::assertStringContainsString('boom in demo-data:prices', $stderr);
+        self::assertLessThan(20.0, microtime(true) - $started, 'The script waited for the other parts.');
+        $names = $this->names();
+        self::assertContains('demo-data:photos', $names, 'The steps before the prices ran.');
+        self::assertNotContains('demo-data:promotions', $names);
+        self::assertNotContains('demo-data:analyze', $names);
         self::assertNotContains('demo-data:verify', $names);
 
         $hung = file_exists($this->dir.'/bin/hung.log') ? array_filter(explode("\n", trim((string) file_get_contents($this->dir.'/bin/hung.log')))) : [];
