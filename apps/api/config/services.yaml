@@ -55,6 +55,17 @@ services:
                 accessKeyId: '%env(GARAGE_ACCESS_KEY_ID)%'
                 accessKeySecret: '%env(GARAGE_SECRET_ACCESS_KEY)%'
 
+    # The private R2 bucket of the demo photo pool (DemoData, read only): the region is not used by R2, the bucket is in the path.
+    app.demo_photos_s3_client:
+        class: AsyncAws\S3\S3Client
+        arguments:
+            -
+                endpoint: '%env(DEMO_PHOTOS_ENDPOINT)%'
+                region: auto
+                pathStyleEndpoint: 'true'
+                accessKeyId: '%env(DEMO_PHOTOS_ACCESS_KEY_ID)%'
+                accessKeySecret: '%env(DEMO_PHOTOS_SECRET_ACCESS_KEY)%'
+
     App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
         arguments:
             $filesystem: '@product_images.storage'
@@ -293,6 +304,9 @@ when@test: &test
             public: true
         # Public, so a test can set the identifier like the request subscriber does and read it back.
         App\Shared\Infrastructure\Observability\CorrelationId:
+            public: true
+        # Public, so a test can read the limits the photo pool is checked with (the ones of the Catalog upload).
+        App\DemoData\Photo\PhotoRules:
             public: true
         # Public (and so never inlined), so a functional test can replace the image storage with a stub that is down.
         App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:

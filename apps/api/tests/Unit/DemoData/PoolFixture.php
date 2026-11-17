@@ -8,7 +8,8 @@ use App\DemoData\Catalog\Dictionaries;
 
 /**
  * A small pool for the tests of the photo steps: the 37 photos of fixtures/images spread over the photo groups (every
- * group gets one, the first 17 groups a second one), written to a directory, with the manifest that describes them.
+ * group gets one, the first 17 groups a second one), written to a directory, with the manifest that describes them. A
+ * salt is appended to every file (a JPEG stays a JPEG), so the files have sums no other test has stored.
  */
 final class PoolFixture
 {
@@ -19,7 +20,7 @@ final class PoolFixture
     /**
      * @return array{version: int, key: string, files: list<array<string, string>>}
      */
-    public static function write(string $directory, Dictionaries $dictionaries, int $version = 1): array
+    public static function write(string $directory, Dictionaries $dictionaries, int $version = 1, string $salt = ''): array
     {
         $images = glob(\dirname(__DIR__, 3).'/fixtures/images/*.jpg') ?: [];
         sort($images);
@@ -31,10 +32,11 @@ final class PoolFixture
                     continue;
                 }
                 $name = \sprintf('%s-%d.jpg', $group, $number + 1);
-                copy($images[$image], $directory.'/'.$name);
+                $contents = file_get_contents($images[$image]).$salt;
+                file_put_contents($directory.'/'.$name, $contents);
                 $files[] = [
                     'file' => $name,
-                    'sha256' => hash_file('sha256', $images[$image]) ?: '',
+                    'sha256' => hash('sha256', $contents),
                     'group' => $group,
                     'alt' => 'Zdjęcie grupy '.$group.' nr '.($number + 1),
                     'unsplashId' => \sprintf('pool%02d%02d', $index, $number),

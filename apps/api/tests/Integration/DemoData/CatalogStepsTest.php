@@ -188,7 +188,7 @@ final class CatalogStepsTest extends KernelTestCase
         self::assertNotSame(Command::SUCCESS, $tester->getStatusCode());
     }
 
-    public function testAProfileOtherThanSmallNeedsThePoolOfPhotosOfALaterStep(): void
+    public function testAProfileOtherThanSmallNeedsTheVariablesOfThePhotoPoolAndChangesNothingWithoutThem(): void
     {
         $this->succeeds('demo-data:categories');
         $this->succeeds('demo-data:products');
@@ -197,7 +197,7 @@ final class CatalogStepsTest extends KernelTestCase
         $tester = $this->step('demo-data:photos', ['--demo-profile' => 'medium']);
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertStringContainsString('DEMO-DATA-6', $tester->getDisplay());
+        self::assertStringContainsString('DEMO_PHOTOS_ENDPOINT', $tester->getDisplay());
         self::assertSame($before, $this->checksums($this->connection()));
     }
 
