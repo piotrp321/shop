@@ -15,6 +15,8 @@ ALERT_METRICS = [
     "kube_statefulset_status_replicas_ready", "kube_statefulset_replicas",
 ]
 SECRET_OF_ALLOY = "grafana-cloud"
+# The Grafana of the stack: the alert rules are imported there (AlertRules).
+GRAFANA = "https://cosmiccinnamon1835.grafana.net"
 # The service accounts of the Alloy Operator and of the Alloy it runs (the collector), in the namespace of the application.
 OPERATOR = {"kind": "ServiceAccount", "name": "monitoring-alloy-operator", "namespace": "monitoring"}
 COLLECTOR = {"kind": "ServiceAccount", "name": "monitoring-alloy", "namespace": "monitoring"}
@@ -353,10 +355,15 @@ class Rbac(unittest.TestCase):
             self.assertFalse(reads_secrets(rule), rule)
 
     def test_the_destinations_read_the_token_from_the_secret_of_the_shop_and_nothing_else_is_created(self):
-        for destination in values()["destinations"].values():
+        destinations = values()["destinations"]
+        self.assertEqual({"grafana-metrics", "grafana-logs", "grafana-alerting"}, set(destinations))
+        for destination in destinations.values():
             self.assertFalse(destination["secret"]["create"])
             self.assertEqual({"name": SECRET_OF_ALLOY, "namespace": "shop", "create": False}, destination["secret"])
-            self.assertEqual("GRAFANA_CLOUD_TOKEN", destination["auth"]["passwordKey"])
+        for name in ("grafana-metrics", "grafana-logs"):
+            self.assertEqual("GRAFANA_CLOUD_TOKEN", destinations[name]["auth"]["passwordKey"])
+        alerting = destinations["grafana-alerting"]["auth"]
+        self.assertEqual({"type": "bearerToken", "bearerTokenKey": "GRAFANA_ALERTING_TOKEN"}, alerting)
         self.assertEqual([], of_kind("monitoring", "Secret"), "the render creates a Secret")
 
     def test_the_render_names_the_secret_in_the_shop_in_the_configuration_of_alloy(self):
@@ -598,6 +605,42 @@ class AllowedMetrics(unittest.TestCase):
                 self.assertNotIn(expression, (".*", ".+"), component)
 
 
+class AlertRules(unittest.TestCase):
+    """The PrometheusRule objects become Grafana-managed alert rules (spec, O6): Alloy syncs them to the import API of Grafana
+    (/api/convert, compatible with the ruler API), so that their alerts go through the Alertmanager of Grafana and its email contact
+    point. The ruler of the metrics would evaluate them without any Alertmanager to send them to (issue #594)."""
+
+    def rules_blocks(self):
+        config = (RENDER / "monitoring-config.alloy").read_text()
+        return re.findall(r'mimir\.rules\.kubernetes "([^"]+)" \{(.*?)\} // mimir\.rules\.kubernetes', config, re.S)
+
+    def test_only_the_alerting_destination_syncs_the_rules(self):
+        enabled = [name for name, d in values()["destinations"].items() if d.get("rules", {}).get("enabled")]
+        self.assertEqual(["grafana-alerting"], enabled)
+        self.assertEqual(["grafana_alerting"], [name for name, _ in self.rules_blocks()])
+
+    def test_the_rules_go_to_the_import_api_of_grafana_with_the_token_and_the_data_source_of_the_queries(self):
+        (_, block), = self.rules_blocks()
+        self.assertIn(f'address = "{GRAFANA}/api/convert"', block)
+        self.assertIn('tenant_id = "1"', block)
+        # The default prefix /prometheus gives the paths of the API: /api/convert/prometheus/config/v1/rules/<namespace>.
+        self.assertNotIn("prometheus_http_prefix", block)
+        self.assertNotIn("use_legacy_routes", block)
+        self.assertRegex(block, r'authorization \{\s*type = "Bearer"\s*credentials = remote\.kubernetes\.secret\.grafana_alerting\.data\["GRAFANA_ALERTING_TOKEN"\]')
+        self.assertNotIn("basic_auth", block)
+        self.assertRegex(block, r'http_headers = \{\s*"X-Grafana-Alerting-Datasource-UID" = \["grafanacloud-prom"\],?\s*\}')
+
+    def test_no_metric_and_no_log_goes_to_the_alerting_destination(self):
+        for feature, settings in values().items():
+            if isinstance(settings, dict) and "destinations" in settings and feature != "destinations":
+                self.assertNotIn("grafana-alerting", settings["destinations"], feature)
+        config = (RENDER / "monitoring-config.alloy").read_text()
+        # The chart gives every prometheus destination an exporter that forwards to its remote_write; nothing forwards to either.
+        forwards = re.findall(r"forward_to = \[([^\]]*)\]", config)
+        self.assertEqual([], [f for f in forwards if "otelcol.exporter.prometheus.grafana_alerting" in f])
+        self.assertEqual(1, len([f for f in forwards if "prometheus.remote_write.grafana_alerting" in f]))
+
+
 class AlloyResource(unittest.TestCase):
     def test_one_alloy_of_one_replica_with_the_image_of_the_test_and_explicit_resources(self):
         alloys = of_kind("monitoring", "Alloy")
@@ -626,7 +669,8 @@ class MonitoringSmoke(unittest.TestCase):
             stack[indent:] = [key]
             if value.strip():
                 paths.add(".".join(stack))
-        self.assertEqual({"destinations.grafana-metrics.url", "destinations.grafana-metrics.rules.address", "destinations.grafana-logs.url"}, paths)
+        self.assertEqual({"destinations.grafana-metrics.url", "destinations.grafana-logs.url", "destinations.grafana-alerting.url",
+                          "destinations.grafana-alerting.rules.address"}, paths)
 
     def test_the_chart_is_installed_with_the_values_of_the_manifest_and_the_overlay_only(self):
         script = self.script()
