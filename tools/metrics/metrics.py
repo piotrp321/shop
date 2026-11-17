@@ -2712,10 +2712,29 @@ def role_samples(record, role, kind):
     return found
 
 
-def window_stats(records, samples_of, gaps, label, missing='brak miary'):
-    """{epics, n, n_epics, median, p25, p75} of the samples of the records of a window; a record whose samples are
-    unknown (None) is left out with a gap."""
-    values, epics = [], []
+def role_estimated(record, role, kind):
+    """Whether a value `role_samples` takes from the record is estimated (or incomplete, as in `decide`): the role
+    cell of a task of `kind` that has a known value."""
+    by_role = _get(record, ('value', 'by_task_role'))
+    by_task = record.get('by_task')
+    if not isinstance(by_role, dict) or not isinstance(by_task, dict):
+        return False
+    for task, entry in by_task.items():
+        if not isinstance(entry, dict) or entry.get('kind') != kind:
+            continue
+        if not _is_number(_get(record, ('value', 'by_task', task, 'usd'))):
+            continue
+        cell = _get(by_role, (task, role))
+        if _is_number(_get(cell, ('usd',))) and (cell.get('estimated') is True or cell.get('incomplete') is True):
+            return True
+    return False
+
+
+def window_stats(records, samples_of, gaps, label, missing='brak miary', estimated_of=None):
+    """{epics, n, n_epics, median, p25, p75, estimated} of the samples of the records of a window; a record whose
+    samples are unknown (None) is left out with a gap. `estimated`: a record that has samples is estimated by
+    `estimated_of` (the measures that are not computed from estimated values have none)."""
+    values, epics, estimated = [], [], False
     for record in records:
         found = samples_of(record)
         if found is None:
@@ -2723,10 +2742,12 @@ def window_stats(records, samples_of, gaps, label, missing='brak miary'):
         elif found:
             values.extend(found)
             epics.append(str(record.get('epic')))
+            estimated = estimated or bool(estimated_of and estimated_of(record))
     ordered = sorted(values)
     stat = lambda f: round(percentile(ordered, f), 4) if ordered else None
     return {'epics': epics, 'n': len(values), 'n_epics': len(epics),
-            'median': round(median(ordered), 4) if ordered else None, 'p25': stat(0.25), 'p75': stat(0.75)}
+            'median': round(median(ordered), 4) if ordered else None, 'p25': stat(0.25), 'p75': stat(0.75),
+            'estimated': estimated}
 
 
 def epic_time(records, config):
@@ -2761,17 +2782,18 @@ def build_effect(records, key, at, config):
     gaps = Gaps()
     before, after, pool, spanning, unmerged = effect_windows(records, at, gaps)
     settings = config['decisions']
-    level_kind = None
+    level_kind, estimated_of = None, None
     if rule == 'D1':
         level_kind = role_kind(before + after, subject)
         samples_of = (lambda r: role_samples(r, subject, level_kind)) if level_kind else (lambda r: [])
+        estimated_of = lambda r: role_estimated(r, subject, level_kind)
     elif rule == 'D2':
         samples_of = plan_work_samples
     else:
         samples_of = lambda r: [v] if (v := epic_value(r, rule, subject)) is not None else None
     missing = 'rekord bez value.by_task_role (starszy niż pole)' if rule == 'D1' else 'brak miary'
-    stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing),
-             'after': window_stats(after, samples_of, gaps, 'po', missing)}
+    stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing, estimated_of),
+             'after': window_stats(after, samples_of, gaps, 'po', missing, estimated_of)}
     task_level = rule in ('D1', 'D2')
     reasons = []
     if task_level:
@@ -2790,7 +2812,8 @@ def build_effect(records, key, at, config):
                 'pct': round(change / stats['before']['median'] * 100, 1) if stats['before']['median'] else None}
     return {'key': key, 'rule': rule, 'at': iso(at), 'measure': MEASURES[rule], 'unit': EFFECT_UNITS[rule],
             'level': 'task' if task_level else 'epic', 'level_kind': level_kind, 'before': stats['before'],
-            'after': stats['after'], 'message': NOT_ENOUGH if reasons else None, 'reasons': reasons, 'diff': diff,
+            'after': stats['after'], 'estimated': stats['before']['estimated'] or stats['after']['estimated'],
+            'message': NOT_ENOUGH if reasons else None, 'reasons': reasons, 'diff': diff,
             'epic_time': {'unit': 'h na zadanie planu', 'before': epic_time(pool[-EPIC_TIME_COUNT:], config),
                           'after': epic_time(after[:EPIC_TIME_COUNT], config)},
             'versions': version_change(before, after, gaps), 'spanning': spanning, 'unmerged_after': unmerged,

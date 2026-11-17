@@ -356,7 +356,10 @@ wykonawcy: spec mówi „zadania tego `kind`” bez wskazania, który; bez warto
 `value.by_task_role` jest pomijany z pozycją w `gaps`, nie liczony jako zero.
 
 Wynik (JSON): `before` i `after` (`epics`: epiki z pomiarem, `n`: próbki (zadania albo epiki), `n_epics`, `median`, `p25`,
-`p75`; kwartyle metodą interpolacji liniowej między rangami), `diff` (`value` w jednostce miary i `pct` w procentach różnicy
+`p75`; kwartyle metodą interpolacji liniowej między rangami; `estimated`: `true`, gdy któraś użyta próbka pochodzi
+z komórki `value.by_task_role` z `estimated: true` albo `incomplete: true`, co w `decide` też oznacza wartość szacowaną; tylko
+D1, pozostałe miary są dokładne i mają `false`), `estimated` (na poziomie wyniku: `true`, gdy szacowane jest któreś okno;
+dotyczy wtedy też `diff`; liczby szacowane są pokazywane z „≈”), `diff` (`value` w jednostce miary i `pct` w procentach różnicy
 median; `pct` `null` przy medianie „przed” równej 0), `message` (`za mało danych` i wtedy `diff` `null`, a `reasons` mówi
 dlaczego), `epic_time` (czas do `epic_done` na zadanie planu w godzinach: mediana trzech epików zmergowanych najbliżej
 przed `CZAS`, niezależnie od liczebności okna, i trzech pierwszych epików okna po), `versions` (`cli` i `models`:
