@@ -1,0 +1,158 @@
+#!/bin/sh
+# Generates the demo data of a profile on top of the seed (docs/features/demo-data/spec.md). `make seed-scale` runs it.
+#
+# Usage: bin/generate-demo [--profile=NAME] [--anchor=DATE] [--processes=N] [--force-reset]
+#   --profile    profile of fixtures/demo-data/profiles.yaml (default small)
+#   --anchor     reference moment of every generated time (default: the start of the current UTC day, taken once, so
+#                every step gets the same one)
+#   --processes  processes that write the parts of the products at the same time (default 4); the rows do not depend on it
+#   --force-reset  required in prod, where the run starts with bin/seed-demo, which deletes the data of every module
+#
+# The steps, in order: a check of the options (nothing is changed), bin/seed-demo (reset and the seed catalog), the
+# categories of the tail, the parts of the products (one process per part group, run in parallel, each awaited), the
+# photos, ANALYZE of the filled tables, the search index, the caches of the store and the consistency check. The first
+# failing step stops the script with its exit code, so the later steps do not run; a failing part stops the other parts
+# first.
+set -eu
+
+here="$(dirname "$0")"
+console="$here/console"
+seed_demo="$here/seed-demo"
+
+usage() {
+  echo "Usage: $0 [--profile=NAME] [--anchor=DATE] [--processes=N] [--force-reset]" >&2
+}
+
+profile="small"
+anchor=""
+processes="4"
+force_reset=""
+for argument in "$@"; do
+  case "$argument" in
+    --profile=*) profile="${argument#--profile=}" ;;
+    --anchor=*) anchor="${argument#--anchor=}" ;;
+    --processes=*) processes="${argument#--processes=}" ;;
+    --force-reset) force_reset="yes" ;;
+    *)
+      echo "Unknown argument: $argument" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+case "$profile" in
+  "" | *[!a-z0-9_-]*)
+    echo "--profile has to be a name made of lower-case letters, digits, - and _." >&2
+    exit 2
+    ;;
+esac
+case "$processes" in
+  "" | *[!0-9]* | 0 | 0[0-9]*)
+    echo "--processes has to be a positive whole number." >&2
+    exit 2
+    ;;
+esac
+
+if [ "${APP_ENV:-}" = "prod" ] && [ -z "$force_reset" ]; then
+  echo "The run deletes the data of every module (bin/seed-demo). In prod it needs --force-reset; nothing was changed." >&2
+  exit 1
+fi
+
+if [ -z "$anchor" ]; then
+  anchor="$(date -u +%Y-%m-%dT00:00:00Z)"
+fi
+
+common="--demo-profile=$profile --anchor=$anchor"
+
+workdir="$(mktemp -d)"
+parts_running=""
+
+# Stops the parts that are still running (their process ids are in files of the work directory).
+stop_parts() {
+  for pid_file in "$workdir"/pid.*; do
+    [ -e "$pid_file" ] || continue
+    index="${pid_file##*/pid.}"
+    if [ ! -e "$workdir/status.$index" ]; then
+      kill "$(cat "$pid_file")" 2>/dev/null || true
+    fi
+  done
+  wait || true
+}
+
+cleanup() {
+  if [ -n "$parts_running" ]; then
+    stop_parts
+  fi
+  rm -rf "$workdir"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+# The parts of the products: one process per worker, each in a subshell of its own that records the process id of the
+# command and, when it ends, its exit code. The script polls those records, so it notices a failing part at once instead
+# of when the parts before it have finished, and then stops the others.
+run_parts() {
+  index=0
+  while [ "$index" -lt "$processes" ]; do
+    (
+      # shellcheck disable=SC2086 # common is a list of options
+      "$console" demo-data:products $common --worker="$index" --workers="$processes" &
+      child=$!
+      echo "$child" >"$workdir/pid.$index"
+      code=0
+      wait "$child" || code=$?
+      echo "$code" >"$workdir/status.$index"
+    ) &
+    index=$((index + 1))
+  done
+  parts_running="yes"
+
+  while :; do
+    finished=0
+    index=0
+    while [ "$index" -lt "$processes" ]; do
+      if [ -s "$workdir/status.$index" ]; then
+        finished=$((finished + 1))
+        code="$(cat "$workdir/status.$index")"
+        if [ "$code" != "0" ]; then
+          echo "Part group $index of $processes failed with code $code; stopping the others." >&2
+          stop_parts
+          parts_running=""
+          return "$code"
+        fi
+      fi
+      index=$((index + 1))
+    done
+    if [ "$finished" -ge "$processes" ]; then
+      break
+    fi
+    sleep 0.2 2>/dev/null || sleep 1
+  done
+  wait || true
+  parts_running=""
+}
+
+# The options are checked before anything is deleted: an unknown profile or a bad anchor stops the script here (the
+# command prints the number of parts of the profile and touches no data).
+# shellcheck disable=SC2086 # common is a list of options
+"$console" demo-data:products $common --list-parts
+
+"$seed_demo"
+
+# shellcheck disable=SC2086
+"$console" demo-data:categories $common
+
+run_parts || exit "$?"
+
+# shellcheck disable=SC2086
+"$console" demo-data:photos $common
+
+"$console" demo-data:analyze
+
+# The seed's own events do not index the generated products: the index and the caches are rebuilt at the end.
+"$console" catalog:reindex
+"$console" storefront:cache:purge-all
+
+# shellcheck disable=SC2086
+"$console" demo-data:verify $common

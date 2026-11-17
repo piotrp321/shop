@@ -1,0 +1,35 @@
+# The profiles of the demo data generator (docs/features/demo-data/spec.md, "Profile").
+#
+# `namespace` is the seed: the UUID namespace of every name-based identifier and of every pseudo-random stream. It
+# differs from the namespace of fixtures/catalog.yaml. `partSize` is the number of items of one part of a step that is
+# split into parts (products, orders); it is the same for every profile and does not depend on the number of
+# processes, so one run gives the same rows with one process and with many.
+# `diskPeakGb` is the estimate of the peak disk use of the whole stack (Postgres, Elasticsearch, Keycloak, WAL,
+# images, cluster), the base of the free space check before a run on k3d.
+namespace: "8d3b6f1e-5a27-4c90-b1e4-7f02a96c35d8"
+partSize: 500
+profiles:
+  small:
+    staff: 20
+    customers: 1000
+    products: 2000
+    orders: 5000
+    diskPeakGb: 5
+  medium:
+    staff: 50
+    customers: 100000
+    products: 1000000
+    orders: 1000000
+    diskPeakGb: 25
+  server:
+    staff: 500
+    customers: 1000000
+    products: 10000000
+    orders: 5000000
+    diskPeakGb: 100
+  full:
+    staff: 500
+    customers: 1000000
+    products: 10000000
+    orders: 50000000
+    diskPeakGb: 225

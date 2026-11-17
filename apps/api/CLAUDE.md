@@ -59,6 +59,36 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i `ordering:read-models:rebuild:customers` to przebudowa sprzedaży i klientów po `ordering:seed-demo`, bez osobnego
   wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
+- `make seed-scale` (główny `Makefile`, fragment `make/demo-data.mk`; `PROFILE`: `small` domyślnie, `medium`, `server`
+  albo `full`, oraz opcjonalne `ANCHOR` i `PROCESSES`) uruchamia `bin/generate-demo`: generator danych demo na seedzie
+  (`docs/features/demo-data/spec.md`; po nim `make seed` przywraca dane E2E). Skrypt `sh`, `set -eu`, konsolę i
+  `bin/seed-demo` woła względem własnego katalogu (test: `tests/Unit/Bin/GenerateDemoScriptTest.php`, podstawiona
+  konsola i podstawiony `seed-demo`, jak test `bin/seed-demo`). Argumenty: `--profile=` (nazwa z `profiles.yaml`),
+  `--anchor=` (chwila odniesienia; domyślnie początek bieżącej doby UTC, liczony raz i przekazany każdemu krokowi),
+  `--processes=` (procesy kroku produktów, domyślnie 4; zła wartość to kod 2) i `--force-reset`: w `prod` bez niego
+  skrypt odmawia (kod 1, nic nie jest zmienione), bo zaczyna od `bin/seed-demo`, który kasuje dane wszystkich modułów
+  (`seed-demo` dodaje własny `--force-reset` seedom w `prod`, kroki generatora go nie mają). Kolejność: sprawdzenie opcji
+  (`demo-data:products --list-parts`: nieznany profil albo zła chwila odniesienia zatrzymują skrypt, zanim cokolwiek
+  zostanie skasowane), `bin/seed-demo`, `demo-data:categories`, części `demo-data:products` (jeden proces na grupę części, uruchomione równolegle; skrypt
+  zapisuje identyfikator i kod wyjścia każdego procesu osobno, więc błąd jednej części zauważa od razu, zatrzymuje
+  pozostałe i kończy krok jej kodem), `demo-data:photos`, `demo-data:analyze`, `catalog:reindex`,
+  `storefront:cache:purge-all`, `demo-data:verify`. Pierwszy błąd przerywa skrypt z kodem tego kroku, kolejne kroki się
+  nie wykonują; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`). Poza `small` krok zdjęć kończy
+  się dziś błędem (pula zdjęć: DEMO-DATA-6), więc skrypt też
+- Komendy `demo-data:*` (moduł `DemoData`, opcje wspólne: `--demo-profile` (nie `--profile`: tę opcję rezerwuje konsola
+  Symfony), `--anchor`, `--seed` (UUID przestrzeni nazw zamiast tego z `profiles.yaml`) i `--products` (liczba produktów
+  zamiast liczby profilu)): `demo-data:categories` (krok 1: kategorie ogona w działach z `catalog.yaml`; dział znaleziony
+  po slugu wśród kategorii głównych jest używany, nie zapisywany; ponowne uruchomienie niczego nie zmienia),
+  `demo-data:products [--worker=N --workers=M] [--list-parts]` (krok 1: produkty, warianty i powiązania kategorii w
+  częściach o stałym rozmiarze z `profiles.yaml`, każda w osobnej transakcji; proces `N` z `M` zapisuje części `N`,
+  `N + M`, …, więc wiersze nie zależą od liczby procesów; `--list-parts` tylko wypisuje liczbę części; bez kategorii
+  kończy się błędem), `demo-data:photos` (krok 2, tylko `small`: 37 plików z `fixtures/images` raz do Garage pod
+  `originals/<sha256>.<rozszerzenie>` i klucze zdjęć produktów według grupy zdjęć typu, co 50. produkt bez zdjęć; inny
+  profil to kod 1 bez zmian), `demo-data:analyze` (`ANALYZE` wypełnionych tabel: pulpit liczy produkty ze statystyk
+  `catalog_product`) i `demo-data:verify` (kontrole katalogu: opublikowany produkt bez wariantu, liczby w tabelach
+  różne od profilu, kategorie ogona niekompletne, slug produktu z ogona bez numeru, z powtórzonym numerem albo numerem
+  powyżej liczby produktów profilu, slug produktu z `catalog.yaml` należący do innego produktu;
+  kod 1 i lista naruszeń, kod 0 na poprawnych danych). Kody: 0 gotowe, 1 odmowa (zła opcja) albo naruszenia
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
   (`Shared\Infrastructure\Backfill\BackfillStep`: `name()`, `run(report)`; implementacja w warstwie Infrastructure
@@ -241,6 +271,50 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `(last_order_at DESC, customer_id)`, `(lower(full_name), customer_id)` (mapowany tylko kolumną `customer_id`, bo tyle
   odczytują narzędzia schematu), `(order_count DESC, customer_id)`, `(paid_gross DESC, customer_id)` i GIN trigram na
   `lower(email)` i `lower(full_name)` (`CONCURRENTLY`).
+- Moduł `DemoData` (`src/DemoData`, spec `docs/features/demo-data/spec.md`, P1 i P1a): generator danych demo to płaski moduł
+  poza contextami (jak `PaymentSimulator`) z jedną warstwą Deptrac, która zależy tylko od `Native`, `Vendor`,
+  `Shared_Infrastructure` i warstw Domain Catalog, Pricing i Ordering (reguły i value objecty wartości, które zapisuje:
+  `Slug`, `VariantKey`, `VariantValues`, `CategoryPath`, `TaxClassCode`, a w dalszych krokach `PriceBreakdown`,
+  `LineAmounts`, `OrderNumber`); żaden context ani inny moduł nie zależy od `DemoData`, a on nie używa agregatu ani
+  repozytorium (pilnuje tego Deptrac i `DemoDataBoundaryTest`, który wyłapuje agregat i repozytorium wewnątrz warstwy
+  Domain). Reguły spoza Domain, które generator powtarza, pilnują testy kontraktu (`CatalogStepsTest`): klucz wartości
+  wariantu `values_key` i ścieżka kategorii `path` równe temu, co zapisuje kod Catalog, klucz zdjęcia równy kluczowi
+  `FlysystemProductImageStorage`. Słowniki, profile i ziarno: `fixtures/demo-data/` (`profiles.yaml`: liczby i
+  `diskPeakGb` profili, jedna przestrzeń nazw ziarna, inna niż w `catalog.yaml`, i jeden stały rozmiar części wspólny
+  dla wszystkich profili; `categories.yaml` około 100 kategorii końcowych w działach z `catalog.yaml`, `product-types.yaml`
+  około 120 typów produktów z osiami wariantów, klasą podatkową, przedziałem cen, grupą zdjęć i cechami do opisów,
+  `brands.yaml` około 300 fikcyjnych marek, `models.yaml`, `descriptions.yaml`, `photo-groups.yaml`, `CREDITS.md`).
+  Determinizm: każda część ma własny strumień liczb pseudolosowych (`Prng`: xoshiro256** z ziarna, nazwy strumienia i
+  numeru części, nigdy `mt_rand` ani zegar), identyfikatory nazwanych encji to UUID v5 w przestrzeni ziarna
+  (`category:<ścieżka slugów>`, `product:<i>`, `variant:<i>:<k>`; `DemoUuid`), zdarzeń UUID v7 z czasem zdarzenia i bitami
+  ze strumienia (`DemoUuid::v7`, dla kolejnych kroków), a wszystkie czasy liczą się od `--anchor` (`Anchor`). Produkt ma
+  globalny indeks `i`: jego slug to slug Catalog z nazwy `<typ> <marka> <model>` i `-<i + 1>`, więc jest unikalny z
+  konstrukcji, niezależnie od części i liczby procesów, i rozłączny ze slugami `catalog.yaml` (sprawdza to `verify`);
+  opublikowanie rozkłada się na 1140 dni kończących się 16 dni przed chwilą odniesienia, w kolejności indeksów (kolejne
+  kroki biorą do zamówień tylko produkty opublikowane przed złożeniem); około 40% produktów ma jeden wariant, pozostałe 2–8
+  (średnio około 3), około 2% to szkice, co 50. produkt nie ma zdjęć, około 20% ma dodatkową kategorię z tego samego działu.
+- Wyjątek: `DemoData` zapisuje tabele przez `COPY FROM STDIN` i SQL, nie przez rekordy Doctrine ani agregaty
+  (`CopyWriter`: natywne `Pdo\Pgsql::copyFromArray` na połączeniu DBAL, paczkami po 5000 wierszy, w transakcji
+  wywołującego, do tabel z indeksami z migracji, bez zmiany schematu; sesja ładowania ustawia `SET synchronous_commit =
+  off`, którego przy wycofaniu transakcji nie zostaje). Naruszenie `NOT NULL`, `CHECK` albo klucza obcego odrzuca
+  `COPY`, więc brak wartości kolumny wykrywają już same testy kroków. Tabele, które generator wypełnia: `catalog_category`,
+  `catalog_product`, `catalog_product_variant`, `catalog_product_category` (krok 1) i kolumnę `images`
+  `catalog_product` (krok 2, `UPDATE` z tabeli tymczasowej); kolejne kroki dopisują tu swoje tabele. Generator nie
+  zapisuje do `catalog_category_redirect`, outboxu ani kolejek.
+- Wyjątek od outboxu: generator nie publikuje zdarzeń ani nie planuje wiadomości Messengera (nie ma `ProductCreated`
+  ani `CategoryTreeChanged`, outbox i kolejki zostają, jakie były), więc nie obowiązuje go zasada „zdarzenie w tej samej
+  transakcji co agregat”; indeks wyszukiwarki i cache sklepu odświeża koniec `bin/generate-demo` (`catalog:reindex`,
+  `storefront:cache:purge-all`). Dotyczy tylko danych demo.
+- Testy generatora (`tests/Unit/DemoData`, `tests/Integration/DemoData`, `tests/Functional/DemoData`): kroki `demo-data:*`
+  z profilem `small` biegną na `shop_test` w procesie testu i w jego transakcji (wycofanej po teście), bez
+  `bin/seed-demo` i bez czyszczenia cache sklepu (worker i Varnish nie obsługują `shop_test`); `CatalogStepsTest` liczy
+  sumę kontrolną każdej tabeli katalogu po dwóch przebiegach z tą samą chwilą odniesienia i po podziale na procesy
+  (`--worker`), `VerifyStepTest` wstrzykuje naruszenia, `GeneratedProductsOnTheRealPathsTest` czyta produkt z ogona
+  przez stronę produktu sklepu, listing kategorii, wyszukiwarkę (po `catalog:reindex` na indeksie testowym) i listę
+  produktów panelu. `ProcessCountDeterminismTest` (grupa `demo-data-processes`, w suicie `integration`) uruchamia
+  części w osobnych procesach `bin/console` (`APP_ENV=test`) z 1, 3 i 4 procesami, więc dane są zatwierdzone: czyta i
+  czyści tabele katalogu własnym połączeniem, przed testem i po nim. Nowy krok generatora dopisuje swoje tabele do sum
+  kontrolnych i kontroli `verify`.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
