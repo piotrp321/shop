@@ -83,7 +83,7 @@ elif mode.startswith('telemetry_'):
     cases += [export, content]
     if mode in ('telemetry_warn', 'telemetry_warn_fail1'):
         export.update(status='no_export', reason='odbiornik sondy nie dostał żądania /v1/logs')
-        content.update(status='unverifiable', reason="ciało /v1/logs nie do sprawdzenia: nieznane Content-Encoding 'br'")
+        content.update(status='unverifiable', reason='ciało /v1/logs nie do sprawdzenia: nieznane Content-Encoding')
     if mode == 'telemetry_warn_fail1':
         cases[0]['status'] = 'fail'
         payload.update(reason='przypadek bash_cat_canary nie przeszedł')
@@ -397,8 +397,8 @@ class AoPrepareTest(unittest.TestCase):
         self.assertEqual(self.binary, self.values(out)['AGENT_CLAUDE_BIN'])
         self.assertEqual(['ao-prepare: telemetria: sonda telemetry_export no_export (odbiornik sondy nie dostał '
                           'żądania /v1/logs)',
-                          "ao-prepare: telemetria: sonda telemetry_no_content unverifiable (ciało /v1/logs nie do "
-                          "sprawdzenia: nieznane Content-Encoding 'br')"], self.lines(err)[:-1])
+                          'ao-prepare: telemetria: sonda telemetry_no_content unverifiable (ciało /v1/logs nie do '
+                          'sprawdzenia: nieznane Content-Encoding)'], self.lines(err)[:-1])
         self.assertTrue(self.lines(err)[-1].startswith('ao-prepare: sonda przeszła'), err)
 
     def test_every_telemetry_line_comes_before_the_last_line(self):

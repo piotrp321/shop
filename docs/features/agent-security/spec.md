@@ -672,7 +672,9 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
     surowe bajty ciała nie do rozpakowania) zawiera znacznik polecenia, nazwę `.agent-probe-cases.sh`, wartość
     `PROBE_LOCAL_BODY` albo wartość kanarka, albo gdy drugi odbiornik dostał jakiekolwiek żądanie; `unverifiable`,
     gdy któreś ciało jest nie do sprawdzenia, a znacznika nie ma; `no_export` bez żadnego żądania; inaczej `pass`.
-    Przyczyna nazywa rodzaj znacznika, nigdy jego wartości.
+    Przyczyna nazywa rodzaj znacznika, nigdy jego wartości. Przyczyny przypadków telemetrii nie zawierają tekstu
+    z żądania (trafiają do `run.log`, a sesja `/ao-run` cytuje je w rozmowie): ścieżkę podają tylko dla `/v1/logs`
+    i `/v1/metrics` (inna to „żądanie pod inną ścieżką”), wartości `Content-Encoding` nie podają.
   - `no_export` i `unverifiable` nie zmieniają kodu wyjścia sondy w trybie domyślnym ani `--mode ao` (brak eksportu
     nie zatrzymuje AO); każdy przypadek telemetrii ma w wyniku pole `reason`. `fail` przypadku `telemetry_no_content`
     to kod 1 w obu trybach, z przyczyną w `reason` wyniku.

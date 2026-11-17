@@ -258,7 +258,9 @@ Poza zakresem (świadomie otwarte, założenia):
       ma znacznika. Prywatności nie da się wtedy sprawdzić, a wycieku nie wykryto.
 - Co blokuje (wyjątek od reguły sondy, że każdy przypadek ma przejść):
   - Statusy `no_export` i `unverifiable` nigdy nie blokują: ani kod wyjścia sondy w żadnym trybie, ani `ao-prepare`.
-    Sonda zapisuje je w wyniku z przyczyną, a `ao-prepare` wypisuje dla nich linię ostrzeżenia (R5).
+    Sonda zapisuje je w wyniku z przyczyną, a `ao-prepare` wypisuje dla nich linię ostrzeżenia (R5). Przyczyna nie
+    zawiera tekstu z żądania, bo sesja `/ao-run` cytuje tę linię w rozmowie: ścieżkę podaje tylko dla `/v1/logs`
+    i `/v1/metrics`, wartości `Content-Encoding` nie podaje.
   - Start AO blokuje tylko `fail` przypadku `telemetry_no_content`, jak `fail` każdego przypadku `bypass`.
   - Odbiór (R7) wymaga `pass` obu przypadków, sprawdzanego w JSON wyniku, nie tylko kodu wyjścia.
 - Sonda startuje wykonawcę w środowisku z `OTEL_LOG_USER_PROMPTS=1`, `OTEL_LOG_TOOL_DETAILS=1` i

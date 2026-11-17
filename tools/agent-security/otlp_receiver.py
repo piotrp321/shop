@@ -16,6 +16,7 @@ tools/telemetry/telemetry.py; ao-prepare copies it next to probe.py.
   decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
                                    (None, problem) for any other encoding, a body that does not decompress (also
                                    bytes after a member that are not a whole member) or one larger than MAX_BODY.
+                                   A problem is a fixed text with at most numbers, never text of the request.
   find_markers(body, markers)      the names of `markers` ({name: value}) whose value is in the raw bytes of body.
   key_values(body)                 the (key, string value) pairs of every KeyValue with a string AnyValue anywhere
                                    in a protobuf message (ExportMetricsServiceRequest, ExportLogsServiceRequest): a
@@ -71,7 +72,7 @@ def decompress(raw, encoding):
     if not name:
         return raw, None
     if name.lower() != 'gzip':
-        return None, 'nieznane Content-Encoding %r' % name
+        return None, 'nieznane Content-Encoding'   # never the value: the problem reaches the /ao-run session
     # Every member, like gzip.decompress: a later member must not carry what the check never sees.
     parts, total, rest = [], 0, raw
     while True:

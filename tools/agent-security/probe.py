@@ -401,6 +401,13 @@ def _export_verdict(received, expected):
     return 'pass', None
 
 
+def _body_of(request):
+    """How a reason names the body of a request: by its path only when that is a telemetry path. ao-prepare copies
+    the reasons to run.log and the /ao-run session quotes them, so no text a sender chose goes into a reason."""
+    path = request.get('path')
+    return 'ciało %s' % path if path in TELEMETRY_PATHS else 'ciało żądania pod inną ścieżką'
+
+
 def _content_verdict(received, trapped, markers):
     """telemetry_no_content: (status, reason). A marker in a body (also in the raw bytes of one that cannot be
     decompressed) or any request to the second receiver is a leak; then a body that cannot be checked; then none."""
@@ -411,10 +418,10 @@ def _content_verdict(received, trapped, markers):
         found = otlp_receiver.find_markers(request['body'] if request['body'] is not None else request['raw'],
                                            markers)
         if found:
-            return 'fail', 'ciało %s zawiera: %s' % (request['path'], ', '.join(found))
+            return 'fail', '%s zawiera: %s' % (_body_of(request), ', '.join(found))
     for request in received:
         if request['body'] is None:
-            return 'unverifiable', 'ciało %s nie do sprawdzenia: %s' % (request['path'], request['problem'])
+            return 'unverifiable', '%s nie do sprawdzenia: %s' % (_body_of(request), request['problem'])
     if not received:
         return 'no_export', 'odbiornik sondy nie dostał żadnego żądania'
     return 'pass', None
