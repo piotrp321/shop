@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\DemoData;
 
 use App\DemoData\Copy\Sql;
+use App\DemoData\Verify\PricingVerifier;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
 
@@ -167,13 +168,24 @@ final class VerifyStepTest extends KernelTestCase
         self::assertStringContainsString('The current price of a variant is not the last entry of its history', $tester->getDisplay());
     }
 
+    public function testTheSampleConditionDoesNotOverflowOnTheSmallestHash(): void
+    {
+        // hashtext() can return -2147483648, whose abs() does not fit an integer.
+        $smallest = '(-2147483648)::int';
+        $connection = $this->connection();
+
+        self::assertSame(1, $this->int($connection->fetchOne('SELECT 1 WHERE '.PricingVerifier::inSample($smallest, 2))));
+        self::assertFalse($connection->fetchOne('SELECT 1 WHERE '.PricingVerifier::inSample($smallest, 3)));
+        self::assertSame(1, $this->int($connection->fetchOne('SELECT 1 WHERE '.PricingVerifier::inSample('(2147483647)::int', 2147483647))));
+    }
+
     public function testALargeProfileChecksTheLastEntryOfASampleOfTheVariants(): void
     {
         $this->generatedSteps();
         $connection = $this->connection();
         // --products 600000 makes the sample one variant in two; the counts of the profile then differ, which is not what is looked at.
-        $inSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE abs(hashtext(variant_id::text)) % 2 = 0 ORDER BY variant_id LIMIT 1');
-        $outOfSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE abs(hashtext(variant_id::text)) % 2 = 1 ORDER BY variant_id LIMIT 1');
+        $inSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE '.PricingVerifier::inSample('hashtext(variant_id::text)', 2).' ORDER BY variant_id LIMIT 1');
+        $outOfSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE NOT '.PricingVerifier::inSample('hashtext(variant_id::text)', 2).' ORDER BY variant_id LIMIT 1');
         $connection->executeStatement('UPDATE pricing_variant_price SET gross_amount = gross_amount + 100, net_amount = net_amount + 81, vat_amount = vat_amount + 19 WHERE variant_id = ?', [$outOfSample]);
         self::assertStringNotContainsString('is not the last entry of its history', $this->step('demo-data:verify', ['--products' => 600_000])->getDisplay());
 

@@ -82,6 +82,15 @@ final readonly class PricingVerifier
     }
 
     /**
+     * The condition that a row is in the sample of one in `every`: its hash (an integer expression such as hashtext())
+     * divides by `every`. The hash is widened first, because abs() of the smallest integer does not fit an integer.
+     */
+    public static function inSample(string $hash, int $every): string
+    {
+        return \sprintf('abs((%s)::bigint) %% %d = 0', $hash, $every);
+    }
+
+    /**
      * @param int $every one variant in this many is checked (1: all), a deterministic sample by the id of the variant
      *
      * @return list<string>
@@ -90,7 +99,7 @@ final readonly class PricingVerifier
     {
         // The sample is part of the text of the statement, not a parameter: a statement that PostgreSQL has prepared
         // and planned generically cannot tell that most variants are left out, and then joins the tables badly.
-        $sample = $every > 1 ? \sprintf(' AND abs(hashtext(pr.variant_id::text)) %% %d = 0', $every) : '';
+        $sample = $every > 1 ? ' AND '.self::inSample('hashtext(pr.variant_id::text)', $every) : '';
         /** @var list<string> $slugs */
         $slugs = $this->connection->fetchFirstColumn(
             'SELECT DISTINCT p.slug FROM pricing_variant_price pr JOIN catalog_product_variant v ON v.id = pr.variant_id JOIN catalog_product p ON p.id = v.product_id
