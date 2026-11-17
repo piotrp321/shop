@@ -3,6 +3,7 @@
 No model, no telemetry stack and no network beyond 127.0.0.1: the OTLP endpoint, Grafana and the `claude` binary are
 test doubles (local HTTP servers and a stub script). The CLI runs as a subprocess with HOME in a temporary directory.
 """
+import gzip
 import http.server
 import importlib.util
 import json
@@ -14,6 +15,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -39,7 +41,7 @@ INVALID_ENDPOINTS = ('http://localhost.evil:4318', 'http://127.0.0.1.nip.io:4318
 def cli(*args, env=None, cwd=None, home=None):
     """(exit code, stdout, stderr) of telemetry.py with HOME in `home` (a temporary directory by default)."""
     with tempfile.TemporaryDirectory() as fallback:
-        run_env = {'PATH': os.environ.get('PATH', ''), 'HOME': home or fallback}
+        run_env = {'PATH': os.environ.get('PATH', ''), 'HOME': home or fallback, 'TMPDIR': tempfile.gettempdir()}
         run_env.update(env or {})
         result = subprocess.run([sys.executable, TELEMETRY] + list(args), capture_output=True, text=True,
                                 env=run_env, cwd=cwd, timeout=120)
@@ -71,6 +73,7 @@ class FakeServer:
 
         self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.server.daemon_threads = True
+        self.server.handle_error = lambda request, client_address: None   # a client that timed out and left
         self.url = 'http://127.0.0.1:%d' % self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True).start()
 
@@ -271,6 +274,308 @@ class CheckCliTest(unittest.TestCase):
                     self.assertEqual((code, out), (2, ''))
                     self.assertEqual(len(err.strip().splitlines()), 1, err)
         self.assertEqual(cli('check', '--claude-bin', '/bin/true')[0], 2)   # only with --project-override
+
+# A stand-in for `claude -p`: it behaves like Claude Code as far as the override check can tell (it reads the OTLP
+# endpoint and the resource attributes from the --settings block and exports OTLP protobuf there), and SHOP_STUB_MODE
+# makes it misbehave. It records how it was started in SHOP_STUB_RECORD.
+STUB = r"""#!%(python)s
+import gzip, http.client, json, os, sys, time
+
+def varint(value):
+    out = bytearray()
+    while True:
+        byte = value & 0x7f
+        value >>= 7
+        out.append(byte | 0x80 if value else byte)
+        if not value:
+            return bytes(out)
+
+def delimited(number, payload):
+    return varint(number << 3 | 2) + varint(len(payload)) + payload
+
+def string(number, text):
+    return delimited(number, text.encode('utf-8'))
+
+def key_value(key, value):
+    return string(1, key) + delimited(2, string(1, value))
+
+def resource(attributes):
+    return b''.join(delimited(1, key_value(k, v)) for k, v in attributes.items())
+
+def metrics(attributes):
+    metric = string(1, 'claude_code.cost.usage') + delimited(7, delimited(1, b''))
+    return delimited(1, delimited(1, resource(attributes)) + delimited(2, delimited(2, metric)))
+
+def logs(attributes, record_attributes):
+    record = string(5, 'claude_code.user_prompt') + b''.join(delimited(6, key_value(k, v))
+                                                             for k, v in record_attributes.items())
+    return delimited(1, delimited(1, resource(attributes)) + delimited(2, delimited(2, record)))
+
+def post(endpoint, path, body, encoding=None):
+    headers = {'Content-Type': 'application/x-protobuf'}
+    if encoding == 'gzip':
+        body = gzip.compress(body)
+    if encoding:
+        headers['Content-Encoding'] = encoding
+    connection = http.client.HTTPConnection('127.0.0.1', int(endpoint.rsplit(':', 1)[1]), timeout=10)
+    connection.request('POST', path, body=body, headers=headers)
+    connection.getresponse().read()
+    connection.close()
+
+def pairs(text):
+    return dict(item.split('=', 1) for item in text.split(',') if item)
+
+argv = sys.argv[1:]
+if argv == ['--version']:
+    print(os.environ.get('SHOP_STUB_VERSION', '2.1.311') + ' (Claude Code)')
+    sys.exit(0)
+mode = os.environ.get('SHOP_STUB_MODE', 'ok')
+prompt = argv[argv.index('-p') + 1]
+settings = json.loads(argv[argv.index('--settings') + 1])['env']
+project = json.load(open('.claude/settings.json'))['env']
+with open(os.environ['SHOP_STUB_RECORD'], 'w') as f:
+    json.dump({'argv': argv, 'cwd': os.getcwd(), 'project': project, 'settings': settings,
+               'forbidden_env': sorted(k for k in os.environ if k.startswith(('CLAUDE', 'OTEL_'))),
+               'git': os.path.isdir('.git')}, f)
+second = settings['OTEL_EXPORTER_OTLP_ENDPOINT']
+first = project['OTEL_EXPORTER_OTLP_ENDPOINT']
+attributes = pairs(settings['OTEL_RESOURCE_ATTRIBUTES'])
+attributes['service.name'] = 'claude-code'
+target, encoding, record = second, None, {'prompt_length': str(len(prompt))}
+if mode == 'fail':
+    sys.stderr.write('boom: the stub failed\n')
+    sys.exit(3)
+if mode == 'hang':
+    time.sleep(60)
+if mode == 'no_export':
+    sys.exit(0)
+if mode == 'project_endpoint':
+    target = first
+if mode == 'project_attributes':
+    attributes.update(pairs(project['OTEL_RESOURCE_ATTRIBUTES']))
+if mode == 'leak':
+    record['prompt'] = prompt
+if mode == 'leak_gzip':
+    record['prompt'] = prompt
+    encoding = 'gzip'
+if mode == 'unknown_encoding':
+    encoding = 'br'
+if mode != 'only_logs':
+    post(target, '/v1/metrics', metrics(attributes), encoding if mode != 'leak_gzip' else None)
+if mode != 'only_metrics':
+    post(target, '/v1/logs', logs(attributes, record), encoding)
+if mode == 'both':
+    post(first, '/v1/metrics', metrics(attributes))
+"""
+
+LIFECYCLE = 'class LifecycleConfig:\n    claude_version: str = "9.9.9"\n'
+
+
+class OverrideCheckTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.record_path = os.path.join(self.dir.name, 'record.json')
+        self.binary = self.write_binary('claude-stub', STUB % {'python': sys.executable})
+
+    def write_binary(self, name, text):
+        path = os.path.join(self.dir.name, name)
+        with open(path, 'w') as f:
+            f.write(text)
+        os.chmod(path, 0o755)
+        return path
+
+    def run_check(self, mode='ok', binary=None, timeout=20, extra_env=None, **kwargs):
+        env = {'SHOP_STUB_MODE': mode, 'SHOP_STUB_RECORD': self.record_path}
+        env.update(extra_env or {})
+        kwargs.setdefault('settle', 0.05)
+        with unittest.mock.patch.dict(os.environ, env):
+            return telemetry.check_override(binary or self.binary, timeout=timeout, **kwargs)
+
+    def record(self):
+        with open(self.record_path) as f:
+            return json.load(f)
+
+    def assert_failure(self, result, *fragments):
+        ok, message = result
+        self.assertFalse(ok, message)
+        self.assertEqual(len(message.strip().splitlines()), 1, message)
+        for fragment in fragments:
+            self.assertIn(fragment, message)
+
+    def assert_cleaned_up(self):
+        record = self.record()
+        self.assertFalse(os.path.exists(record['cwd']), 'the temporary repository is still there')
+        for endpoint in (record['project']['OTEL_EXPORTER_OTLP_ENDPOINT'],
+                         record['settings']['OTEL_EXPORTER_OTLP_ENDPOINT']):
+            with socket.socket() as s:
+                self.assertNotEqual(s.connect_ex(('127.0.0.1', int(endpoint.rsplit(':', 1)[1]))), 0,
+                                    'a receiver still listens on ' + endpoint)
+
+    def test_success_when_only_the_flag_settings_receiver_gets_metrics_and_logs(self):
+        ok, message = self.run_check()
+        self.assertTrue(ok, message)
+        self.assert_cleaned_up()
+
+    def test_binary_is_started_as_a_haiku_print_run_with_flag_settings_only(self):
+        self.run_check()
+        record = self.record()
+        argv = record['argv']
+        self.assertEqual(argv[0], '-p')
+        for flag, value in (('--model', 'haiku'), ('--max-budget-usd', '0.1'), ('--setting-sources', 'project')):
+            self.assertEqual(argv[argv.index(flag) + 1], value, flag)
+        self.assertIn('--strict-mcp-config', argv)
+        block = json.loads(argv[argv.index('--settings') + 1])
+        self.assertEqual(list(block), ['env'])
+        expected = render_settings.telemetry_env('http://127.0.0.1:1', {'shop.source': 'ao', 'shop.task': 'check'})
+        self.assertEqual(list(block['env']), list(expected))   # the R1 block, in its order, with its intervals
+        self.assertEqual(block['env']['OTEL_LOG_USER_PROMPTS'], '0')
+        self.assertEqual(block['env']['OTEL_EXPORTER_OTLP_PROTOCOL'], 'http/protobuf')
+
+    def test_project_settings_point_at_another_receiver_and_ask_for_prompts(self):
+        self.run_check()
+        record = self.record()
+        self.assertEqual(sorted(record['project']), ['OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_LOG_USER_PROMPTS',
+                                                     'OTEL_RESOURCE_ATTRIBUTES'])
+        self.assertEqual(record['project']['OTEL_LOG_USER_PROMPTS'], '1')
+        self.assertEqual(record['project']['OTEL_RESOURCE_ATTRIBUTES'], 'shop.task=override')
+        first = render_settings.telemetry_endpoint(record['project']['OTEL_EXPORTER_OTLP_ENDPOINT'])
+        second = render_settings.telemetry_endpoint(record['settings']['OTEL_EXPORTER_OTLP_ENDPOINT'])
+        self.assertNotEqual(first, second)
+
+    def test_runs_in_a_temporary_git_repository_with_a_random_marker_in_the_prompt(self):
+        self.run_check()
+        first = self.record()
+        self.assertTrue(first['git'])
+        self.assertTrue(first['cwd'].startswith(os.path.realpath(tempfile.gettempdir())), first['cwd'])
+        self.run_check()
+        second = self.record()
+        self.assertNotEqual(first['cwd'], second['cwd'])
+        self.assertNotEqual(first['argv'][1], second['argv'][1])   # the prompt carries a new marker every run
+
+    def test_environment_has_no_claude_and_no_otel_variables(self):
+        extra = {'CLAUDE_CODE_ENABLE_TELEMETRY': '1', 'CLAUDECODE': '1', 'CLAUDE_CONFIG_DIR': '/nowhere',
+                 'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://127.0.0.1:1', 'OTEL_LOG_TOOL_DETAILS': '1'}
+        ok, message = self.run_check(extra_env=extra)
+        self.assertTrue(ok, message)
+        self.assertEqual(self.record()['forbidden_env'], [])
+
+    def test_a_request_to_the_receiver_of_the_project_settings_is_a_failure(self):
+        self.assert_failure(self.run_check('project_endpoint'), 'ustawienia projektu')
+        self.assert_cleaned_up()
+        self.assert_failure(self.run_check('both'), 'ustawienia projektu')
+
+    def test_prompt_marker_in_a_body_is_a_failure_also_after_gzip(self):
+        for mode in ('leak', 'leak_gzip'):
+            with self.subTest(mode=mode):
+                self.assert_failure(self.run_check(mode), 'znacznik')
+                self.assert_cleaned_up()
+
+    def test_shop_task_override_from_the_project_settings_is_a_failure(self):
+        self.assert_failure(self.run_check('project_attributes'), 'shop.task=override')
+
+    def test_no_export_is_a_failure(self):
+        self.assert_failure(self.run_check('no_export'), 'brak eksportu')
+        self.assert_cleaned_up()
+
+    def test_missing_metrics_or_logs_is_a_failure_that_names_the_path(self):
+        self.assert_failure(self.run_check('only_logs'), '/v1/metrics')
+        self.assert_failure(self.run_check('only_metrics'), '/v1/logs')
+
+    def test_a_body_that_cannot_be_unpacked_is_a_failure_not_a_pass(self):
+        self.assert_failure(self.run_check('unknown_encoding'), 'nie da się')
+
+    def test_binary_that_fails_is_a_failure_with_its_exit_code(self):
+        self.assert_failure(self.run_check('fail'), 'kodem 3', 'boom')
+        self.assert_cleaned_up()
+
+    def test_binary_that_hangs_is_killed_at_the_time_limit(self):
+        started = time.monotonic()
+        self.assert_failure(self.run_check('hang', timeout=0.5), 'limit czasu')
+        self.assertLess(time.monotonic() - started, 15)
+        self.assert_cleaned_up()
+
+    def test_binary_that_cannot_start_is_a_failure(self):
+        broken = self.write_binary('broken', 'not a program\n')   # no shebang: exec format error
+        self.assert_failure(self.run_check(binary=broken), broken)
+
+    def test_missing_git_is_a_failure_with_the_reason(self):
+        self.assert_failure(self.run_check(extra_env={'PATH': self.dir.name}), 'git')
+
+
+class OverrideCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.home = os.path.join(self.dir.name, 'home')
+        os.makedirs(self.home)
+        self.binary = os.path.join(self.dir.name, 'claude-stub')
+        with open(self.binary, 'w') as f:
+            f.write(STUB % {'python': sys.executable})
+        os.chmod(self.binary, 0o755)
+        self.env = {'SHOP_STUB_RECORD': os.path.join(self.dir.name, 'record.json')}
+
+    def git(self, *args, cwd):
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t'] + list(args), cwd=cwd, check=True,
+                       capture_output=True)
+
+    def install_pinned_binary(self, version='9.9.9', reported=None):
+        """A fake AO checkout with LifecycleConfig.claude_version on origin/main and the stub as the binary of the
+        native installer; claude_pin.py finds both through HOME."""
+        ao = os.path.join(self.home, 'Development', 'claude', 'agentic-orchestrator')
+        os.makedirs(os.path.join(ao, 'orchestrator'))
+        self.git('init', '-q', cwd=ao)
+        with open(os.path.join(ao, 'orchestrator', 'lifecycle.py'), 'w') as f:
+            f.write(LIFECYCLE.replace('9.9.9', version))
+        self.git('add', '.', cwd=ao)
+        self.git('commit', '-q', '-m', 'pin', cwd=ao)
+        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD', cwd=ao)
+        versions = os.path.join(self.home, '.local', 'share', 'claude', 'versions')
+        os.makedirs(versions)
+        os.replace(self.binary, os.path.join(versions, version))
+        self.env['SHOP_STUB_VERSION'] = reported or version
+
+    def test_explicit_binary_exit_0_with_one_line(self):
+        code, out, err = cli('check', '--project-override', '--claude-bin', self.binary, env=self.env, home=self.home)
+        self.assertEqual((code, err), (0, ''))
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+
+    def test_default_binary_is_the_pinned_one_of_claude_pin(self):
+        self.install_pinned_binary()
+        code, out, err = cli('check', '--project-override', env=self.env, home=self.home)
+        self.assertEqual((code, err), (0, ''))
+
+    def test_failed_check_is_exit_1_with_one_line_on_stderr(self):
+        self.env['SHOP_STUB_MODE'] = 'no_export'
+        code, out, err = cli('check', '--project-override', '--claude-bin', self.binary, env=self.env, home=self.home)
+        self.assertEqual((code, out), (1, ''))
+        self.assertEqual(len(err.strip().splitlines()), 1, err)
+        self.assertIn('brak eksportu', err)
+
+    def test_no_pinned_binary_is_exit_2_with_the_reason(self):
+        code, out, err = cli('check', '--project-override', env=self.env, home=self.home)   # no AO checkout in HOME
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('agentic-orchestrator', err)
+        self.install_pinned_binary(reported='1.0.0')   # the binary reports another version than the pin
+        code, out, err = cli('check', '--project-override', env=self.env, home=self.home)
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('9.9.9', err)
+
+    def test_explicit_binary_that_is_missing_or_not_executable_is_exit_2(self):
+        plain = os.path.join(self.dir.name, 'plain')
+        open(plain, 'w').close()
+        for path in (os.path.join(self.dir.name, 'missing'), plain, self.dir.name):
+            with self.subTest(path=path):
+                code, out, err = cli('check', '--project-override', '--claude-bin', path, env=self.env,
+                                     home=self.home)
+                self.assertEqual((code, out), (2, ''))
+                self.assertIn(path, err)
+
+    def test_project_override_does_not_touch_the_stack(self):
+        # The stack options are not needed (and a closed port would be exit 1 of the other check).
+        code, _, _ = cli('check', '--project-override', '--claude-bin', self.binary, '--endpoint',
+                         closed_port_url(), '--grafana', closed_port_url(), env=self.env, home=self.home)
+        self.assertEqual(code, 0)
 
 
 class SnippetTest(unittest.TestCase):
