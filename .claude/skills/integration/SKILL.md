@@ -312,9 +312,12 @@ JSON i AO powtarza rundę. Dlatego:
    zachowanie, to znalezisko `Important` do naprawy według specyfikacji, nie bloker: w opisie podaj fragment
    specyfikacji i zmiany, których wymaga naprawa (np. kontrakt API, eksport OpenAPI, klient TS, testy).
    Gdy znalezisko narusza zasadę przekrojową specyfikacji, przed zgłoszeniem sprawdź wszystkie wyjścia tego rodzaju
-   w diffie epiku, także wartości z nich wyprowadzone, i zgłoś jedno znalezisko na zasadę i zadanie z listą
-   wszystkich miejsc w `detail`; sugerowana naprawa obejmuje całą listę i test każdego wyjścia. Tytuł nazywa zasadę,
-   nie miejsce, więc niezmieniony problem wraca w kolejnej rundzie z tym samym odciskiem (krok 7).
+   w całym diffie epiku (`origin/main...HEAD`, także w trybie `DELTA`), także wartości z nich wyprowadzone, oraz ich
+   konsumentów poza diffem (kod, który te wartości wyświetla, przelicza, zapisuje albo wysyła). Zgłoś jedno
+   znalezisko na zasadę dla całego epiku: `title` nazywa zasadę, nie miejsce ani zadanie; `detail` wymienia wszystkie
+   miejsca z zadaniem każdego; `files` to wszystkie pliki do poprawy; `task_id` to zadanie, gdy wszystkie miejsca są
+   w jednym, inaczej `task_id` to `null`. Sugerowana naprawa obejmuje całą listę i test każdego wyjścia. Po rundzie
+   naprawczej sprawdź całą zasadę od nowa tak samo, nie tylko miejsca z poprzedniej listy ani zmiany rundy.
    Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (specyfikacja
    niejednoznaczna albo milczy, naprawa wymaga zmiany specyfikacji, nowa zależność, zmiana granic modułów, świadome
    odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne naruszenie jest znaleziskiem.
@@ -347,7 +350,9 @@ JSON i AO powtarza rundę. Dlatego:
    `files`, i przerywa pętlę napraw, gdy ten sam odcisk wraca po rundzie naprawczej. Dlatego: `title` opisuje problem,
    nie szczegół przebiegu (bez SHA, numerów linii i liczb); `files` to pliki, w których trzeba poprawić; ten sam
    niezmieniony problem zgłaszaj w kolejnych rundach z identycznym `title`, `severity` i `files`; nie przemianowuj
-   ani nie dziel problemu, żeby uniknąć odcisku. Naprawiony problem znika z wyniku.
+   ani nie dziel problemu, żeby uniknąć odcisku. Naprawiony problem znika z wyniku. Znalezisko zasady przekrojowej
+   (krok 5) ma w `files` pełną listę z ponownej kontroli całej zasady w tej rundzie: odcisk się zmienia, gdy runda
+   naprawi część miejsc albo kontrola znajdzie nowe, więc nie zawężaj kontroli do poprzedniej listy.
 8. **Raport.** Zapisz Markdown po polsku do `<report_path>` (tworząc katalog, jeśli trzeba; ścieżka leży poza repo,
    nie dodawaj jej do Git). Pierwsze linie: `Epik:`, `Gałąź:`, `Przegląd HEAD: <sha>`, `Tryb:`, `Zakres:` (w DELTA
    z poprzednim HEAD, a po syncu z dopiskiem „DELTA po syncu”, merge'ami i plikami `conflicts` z `delta.py sync`). Dalej: werdykt, sekcja
