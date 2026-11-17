@@ -85,6 +85,30 @@ expect "tooling plus docs" tooling
 new_repo tooling-app; change .ao/setup apps/api/src/A.php
 expect "tooling plus app code" full
 
+new_repo issue-templates; change .github/ISSUE_TEMPLATE/bug.yml .github/ISSUE_TEMPLATE/config.yml
+expect "issue templates only" docs
+
+new_repo issue-templates-docs; change .github/ISSUE_TEMPLATE/ux.yml docs/features/x/spec.md
+expect "issue templates plus docs" docs
+
+new_repo issue-templates-tooling; change .github/ISSUE_TEMPLATE/bug.yml tools/rulesets/epic.json
+expect "issue templates plus tooling" tooling
+
+new_repo issue-templates-app; change .github/ISSUE_TEMPLATE/bug.yml apps/api/src/A.php
+expect "issue templates plus app code" full
+
+new_repo issue-templates-ci; change .github/ISSUE_TEMPLATE/bug.yml .github/workflows/ci.yml
+expect "issue templates plus a workflow" full
+
+new_repo issue-templates-prefix; change .github/ISSUE_TEMPLATE_evil/x.yml
+expect "a directory named like the issue templates" full
+
+new_repo issue-templates-nested; change x/.github/ISSUE_TEMPLATE/y.yml
+expect "issue templates path nested in another directory" full
+
+new_repo issue-templates-rename; mkdir -p "$repo/.github/ISSUE_TEMPLATE"; git -C "$repo" mv apps/api/src/A.php .github/ISSUE_TEMPLATE/A.php; change
+expect "code file renamed into the issue templates" full
+
 new_repo ci-script; change .github/scripts/background.sh
 expect "a CI script" full
 
