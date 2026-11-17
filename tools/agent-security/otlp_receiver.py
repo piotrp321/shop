@@ -50,13 +50,14 @@ copies it next to probe.py.
                                    stop() ends the server, then waits for every connection it accepted, counted from
                                    its accept (the request line, the headers, the body and its decompression, the
                                    forward, the answer, the bytes after the body), STOP_TIMEOUT seconds in all, so a
-                                   caller judges the requests after stop(). A connection still without a record then
-                                   is recorded with method and path (once its request line was read, else ''), raw
-                                   b'', body None and the problem "żądanie w toku przy zatrzymaniu odbiornika" (never
-                                   a header value), and its connection is shut. Nothing is recorded after stop(), so
-                                   no request has two records. A request recorded before whose forward still runs has
-                                   no such record: its `forwarded` is None in a copy taken then, and its bytes after
-                                   the body, not read by then, are not recorded.
+                                   caller judges the requests after stop(). Every connection still open then (also
+                                   one whose request is recorded but whose forward, answer or read of the bytes after
+                                   the body still runs: those bytes are not read) gets a record with method and path
+                                   (once its request line was read, else ''), raw b'', body None and the problem
+                                   "żądanie w toku przy zatrzymaniu odbiornika" (never a header value), and is shut.
+                                   Nothing is recorded after stop(), so a request whose record stop() wrote never gets
+                                   a second one from its handler. The `forwarded` of a forward still running is None
+                                   in a copy taken then.
   decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
                                    (None, problem) for any other encoding, a body that does not decompress (also
                                    bytes after a member that are not a whole member) or one larger than MAX_BODY.
@@ -89,7 +90,8 @@ FORWARD_TIMEOUT = 5
 TRAILING_TIMEOUT = 1               # seconds the receiver reads the bytes after a body, in all
 # Seconds stop() waits for the connections in progress: a request recorded just before stop() whose forward runs
 # into one FORWARD_TIMEOUT (a target that accepts and never answers), then the read of the bytes after its body
-# (TRAILING_TIMEOUT), and a second for the answer. A connection still open after it is held by its sender.
+# (TRAILING_TIMEOUT), and a second for the answer. A connection still open after it (held by its sender, or with a
+# slower forward) gets the record IN_PROGRESS.
 STOP_TIMEOUT = FORWARD_TIMEOUT + TRAILING_TIMEOUT + 1
 IN_PROGRESS = 'żądanie w toku przy zatrzymaniu odbiornika'
 LINE_LIMIT = 1024                  # bytes of a chunk size line and of the trailer line, with the line end
@@ -293,9 +295,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             pass
 
     def _record(self, request):
-        """The record of this connection: from then on stop() does not write it as a request in progress."""
         self._recorded = True
-        self.receiver._record(request, getattr(self, 'request', None))
+        self.receiver._record(request)
 
     def __getattr__(self, name):
         """Every method goes through _handle (http.server answers 501 to one without do_<METHOD>, unrecorded)."""
@@ -484,7 +485,7 @@ class Receiver:
         self._requests = []
         self._lock = threading.Lock()
         self._idle = threading.Condition(self._lock)
-        self._connections = {}            # socket of each connection in progress -> its handler and whether recorded
+        self._connections = {}            # socket of each connection in progress -> its handler (None before setup)
         self._stopped = False             # after stop(): no record is added any more
         self._server = None
 
@@ -499,12 +500,12 @@ class Receiver:
 
     def stop(self):
         """Ends the server, then waits up to STOP_TIMEOUT for every connection it accepted (reading, decompressing,
-        forwarding, answering, reading the bytes after the body). A connection without a record by then gets the
-        record IN_PROGRESS (method and path once its request line was read, else ''; raw b'', body None, never a
-        header value) and its socket is shut, so its handler ends; no record is added after stop(), so the handler
-        never records that request a second time. A request recorded before (its record comes before its forward)
-        whose forward still runs has no second record; its `forwarded` stays None in a copy of `requests` taken
-        then, and its bytes after the body not read by then are not recorded."""
+        forwarding, answering, reading the bytes after the body). Every connection still open by then gets the record
+        IN_PROGRESS (method and path once its request line was read, else ''; raw b'', body None, never a header
+        value), also one already recorded: what it still holds (bytes after the body, a second request) is never
+        read, so the run is not a pass. Its socket is shut, so its handler ends; no record is added after stop(), so
+        a handler never records a request a second time. The `forwarded` of a forward still running stays None in a
+        copy of `requests` taken then."""
         server, self._server = self._server, None
         if server is None:
             return
@@ -512,14 +513,11 @@ class Receiver:
         server.server_close()
         with self._idle:
             self._idle.wait_for(lambda: not self._connections, STOP_TIMEOUT)
-            for connection, state in self._connections.items():
-                if not state['recorded']:
-                    handler = state['handler']
-                    self._requests.append({
-                        'method': getattr(handler, 'command', None) or '',
-                        'path': _path_of(getattr(handler, 'path', None) or ''), 'content_type': None,
-                        'content_encoding': None, 'raw': b'', 'body': None, 'problem': IN_PROGRESS,
-                        'forwarded': None})
+            for connection, handler in self._connections.items():
+                self._requests.append({
+                    'method': getattr(handler, 'command', None) or '',
+                    'path': _path_of(getattr(handler, 'path', None) or ''), 'content_type': None,
+                    'content_encoding': None, 'raw': b'', 'body': None, 'problem': IN_PROGRESS, 'forwarded': None})
                 try:
                     connection.shutdown(socket.SHUT_RDWR)
                 except OSError:
@@ -537,13 +535,11 @@ class Receiver:
         with self._lock:
             return [dict(r) for r in self._requests]
 
-    def _record(self, request, connection=None):
+    def _record(self, request):
         with self._lock:
-            if self._stopped:   # stop() recorded this connection as in progress, or gave up on it
+            if self._stopped:   # stop() wrote the record IN_PROGRESS of every connection still open
                 return
             self._requests.append(request)
-            if connection in self._connections:
-                self._connections[connection]['recorded'] = True
 
     def _forwarded(self, request, result):
         with self._lock:   # `requests` copies under the same lock
@@ -551,12 +547,12 @@ class Receiver:
 
     def _opened(self, connection):
         with self._lock:
-            self._connections[connection] = {'handler': None, 'recorded': False}
+            self._connections[connection] = None
 
     def _handling(self, connection, handler):
         with self._lock:
             if connection in self._connections:
-                self._connections[connection]['handler'] = handler
+                self._connections[connection] = handler
 
     def _closed(self, connection):
         with self._idle:
@@ -567,7 +563,7 @@ class Receiver:
         """The status of the forwarded request, or the error text; the handler puts it in `forwarded` of the record
         written before the forward. Whatever fails (a path http.client cannot send too), the answer to the sender and
         the rest of the record do not change; a forward still running when stop() ends leaves `forwarded` None in the
-        copy taken then."""
+        copy taken then, and stop() adds the record IN_PROGRESS of its connection."""
         connection = None
         try:
             port = int(self.forward.rsplit(':', 1)[1])

@@ -669,10 +669,12 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   sprawdzenia, także gdy odpowiedzi nie dało się wysłać. Odbiornik czyta je do 1 s od odpowiedzi, a bajtów dosłanych
   później nie czyta. Sonda ocenia żądania dopiero po zatrzymaniu odbiorników. Zatrzymanie czeka do 7 s na każde
   przyjęte połączenie (linia żądania, nagłówki, ciało i jego rozpakowanie, przekazanie, odpowiedź, bajty po ciele),
-  a połączenie, które do tego czasu nie ma zapisu, jest zapisem nie do sprawdzenia bez ciała („żądanie w toku przy
-  zatrzymaniu odbiornika”). Żądanie, które odrzuca sam serwer HTTP (także pusta linia żądania), jest zapisem nie do
-  sprawdzenia bez ciała. Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem
-  protobufa (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością tekstową).
+  a każde połączenie wciąż otwarte po tym czasie, także z już zapisanym żądaniem, daje dodatkowy zapis nie do
+  sprawdzenia bez ciała („żądanie w toku przy zatrzymaniu odbiornika”) i zostaje zamknięte; bajtów, które jeszcze
+  w nim czekały, odbiornik nie czyta. Żądanie, które odrzuca sam serwer HTTP (także pusta linia żądania), jest zapisem
+  nie do sprawdzenia bez ciała. Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym
+  dekoderem protobufa (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością
+  tekstową).
   - `telemetry_export`: `pass`, gdy pierwszy odbiornik dostał żądania `/v1/logs` i `/v1/metrics`, a w parach logów
     i metryk są `shop.source=ao`, `shop.task=<zadanie sondy>`, `shop.epic=<nazwa atrapy $AO_HOME po ao->`
     i `shop.task_kind=plan` (zadanie sondy to `<NAZWA>-1`, jak liczy wrapper); inaczej `no_export` (brak żądań, brak
@@ -691,7 +693,9 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
     z innym hostem, `https`, ścieżką albo portem spoza 1–65535, to błąd użycia, kod 2) przekazuje każde żądanie
     pierwszego odbiornika bez zmian (metoda, ścieżka, `Content-Type`, `Content-Encoding`, ciało) także pod ten adres.
     Odbiornik zapisuje żądanie przed przekazaniem, więc wolne przekazanie nie opóźnia zapisu. Ocena przypadków jest
-    taka sama; nieudane przekazanie niczego nie zmienia. Używa go tylko odbiór TELEMETRY ze
+    taka sama, a nieudane przekazanie niczego w niej nie zmienia. Przekazanie dłuższe niż czas zatrzymania odbiornika
+    (7 s) daje zapis „żądanie w toku przy zatrzymaniu odbiornika”, więc `telemetry_no_content` nie jest wtedy `pass`
+    (`unverifiable`, a przy znaczniku w ciele `fail`). Używa go tylko odbiór TELEMETRY ze
     stosem (`.claude/skills/ao-run/SKILL.md`).
 - Sonda czyści środowisko z `CLAUDE*` przed uruchomieniem zagnieżdżonego `claude` (jak `ao()` w `/ao-run`).
 - Kto uruchamia sondę z modelem: przed startem AO `ao-prepare` (sesja `/ao-run`, poza wykonawcą). Przy odbiorze

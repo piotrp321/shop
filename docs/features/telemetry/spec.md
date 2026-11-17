@@ -265,8 +265,8 @@ Poza zakresem (świadomie otwarte, założenia):
       albo drugi odbiornik (droga 2) dostał jakiekolwiek żądanie;
     - `no_export`: nie dostarczono żadnego ciała, więc nie ma czego sprawdzić. To nie jest potwierdzenie wycieku;
     - `unverifiable`: któreś ciało ma nieznane `Content-Encoding`, nie daje się rozpakować albo odczytać
-      (niejednoznaczne ramowanie żądania, bajty wysłane w połączeniu po ciele, żądanie wciąż w toku, gdy sonda
-      zatrzymuje odbiornik), a w pozostałych nie ma znacznika.
+      (niejednoznaczne ramowanie żądania, bajty wysłane w połączeniu po ciele, połączenie wciąż w toku, gdy sonda
+      zatrzymuje odbiornik, także z powodu wolnego przekazania `--otel-forward`), a w pozostałych nie ma znacznika.
       Prywatności nie da się wtedy sprawdzić, a wycieku nie wykryto.
 - Co blokuje (wyjątek od reguły sondy, że każdy przypadek ma przejść):
   - Statusy `no_export` i `unverifiable` nigdy nie blokują: ani kod wyjścia sondy w żadnym trybie, ani `ao-prepare`.

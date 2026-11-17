@@ -840,13 +840,13 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         receiver = self.receiver()
         seen, record = [], receiver._record
 
-        def counting(request, connection=None):
-            seen.append((request['method'], connection in receiver._connections))
-            record(request, connection)
+        def counting(request):
+            seen.append((request['method'], len(receiver._connections)))
+            record(request)
         receiver._record = counting
         self.send_lines(receiver, [b'Content-Length: 3'], b'abc')
         receiver.stop()
-        self.assertEqual([('POST', True)], seen)
+        self.assertEqual([('POST', 1)], seen)
 
     def test_a_blank_request_line_is_recorded_and_never_a_pass(self):
         # http.server drops a request line without words silently, and the request after it with the connection.
@@ -1017,8 +1017,32 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         started = time.monotonic()
         receiver.stop()
         self.assertLess(time.monotonic() - started, 3)
-        self.assertEqual([(body, None)], [(r['body'], r['forwarded']) for r in receiver.requests])
+        requests = receiver.requests
+        self.assertEqual([(body, None)], [(r['body'], r['forwarded']) for r in requests[:1]])
+        self.assertEqual([self.in_progress('POST', '/v1/logs')], requests[1:])   # its connection was still open
         self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_bytes_after_a_recorded_body_whose_forward_outlasts_stop_are_in_progress_and_never_a_pass(self):
+        # The clean request is recorded, its forward hangs past the deadline, and the second request with the marker
+        # waits in the connection for the read after the body: stop() must not leave the clean record alone.
+        self.short_stop(0.3)
+        receiver = self.receiver(forward=self.silent_target(), forward_timeout=5)
+        forwarding = threading.Event()
+        forward = receiver._forward
+
+        def watched(*args):
+            forwarding.set()
+            return forward(*args)
+        receiver._forward = watched
+        second = b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 15\r\n\r\n' + self.LEAK
+        self.connect(receiver).sendall(b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n\r\nclean'
+                                       + second)
+        self.assertTrue(forwarding.wait(5))
+        receiver.stop()
+        requests = receiver.requests
+        self.assertEqual([(b'clean', None)], [(r['body'], r['problem']) for r in requests[:1]])
+        self.assertEqual([self.in_progress('POST', '/v1/logs')], requests[1:])
+        self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
 
     def test_a_connection_reset_while_its_body_is_read_is_one_record_and_never_a_pass(self):
         self.short_stop(30)
