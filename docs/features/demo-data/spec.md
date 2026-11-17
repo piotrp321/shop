@@ -10,7 +10,7 @@ to generator i jego testy, część 2 (#486, DEMO-LOAD) to integracja z k3d, k6 
 opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”, a jej plan powstaje w przygotowaniu #486.
 
 Issues: #482
-Zakres: `apps/api/src/DemoData`, `apps/api/tests/Unit/DemoData`, `apps/api/tests/Integration/DemoData`, `apps/api/tests/Functional/DemoData`, `apps/api/fixtures/demo-data`, `apps/api/bin/generate-demo`, `apps/api/bin/upload-demo-photos`, `apps/api/config/packages/flysystem.yaml`, `apps/api/phpunit.dist.xml`, `apps/api/tests/Unit/Bin`, `make/demo-data.mk`, `apps/api/deptrac.yaml`, `apps/api/config/services.yaml`, `apps/api/CLAUDE.md`, `apps/api/src/Catalog/Application/Search`, `apps/api/src/Catalog/Infrastructure/Search`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Integration/Catalog`, `docs/vision.md`, `docs/features/search/spec.md`
+Zakres: `apps/api/src/DemoData`, `apps/api/tests/Unit/DemoData`, `apps/api/tests/Integration/DemoData`, `apps/api/tests/Functional/DemoData`, `apps/api/fixtures/demo-data`, `apps/api/bin/generate-demo`, `apps/api/bin/upload-demo-photos`, `apps/api/config/packages/flysystem.yaml`, `apps/api/.env`, `apps/api/phpunit.dist.xml`, `apps/api/tests/Unit/Bin`, `make/demo-data.mk`, `apps/api/deptrac.yaml`, `apps/api/config/services.yaml`, `apps/api/CLAUDE.md`, `apps/api/src/Catalog/Application/Search`, `apps/api/src/Catalog/Infrastructure/Search`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Integration/Catalog`, `docs/vision.md`, `docs/features/search/spec.md`
 
 ## Cel i zakres
 
