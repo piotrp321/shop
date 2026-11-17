@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -187,6 +188,18 @@ class OverlapTest(NightEnv):
             attempts=[dict(task_id='R-1', started_at=epoch(2500), ended_at=epoch(2600)),
                       dict(task_id='R-2', started_at=epoch(3500), ended_at=epoch(3600))])
         self.assertEqual(parallel['repairs'], ['R-1'])
+
+    def test_repairs_are_null_without_the_task_kind(self):
+        self.write_night([start('demo', 110), start('other', 2000), done('other', 3000), done('demo', 5010)])
+        home = self.demo(tasks=[('T-1', 'plan'), ('R-1', 'repair')],
+                         attempts=[dict(task_id='R-1', started_at=epoch(2500), ended_at=epoch(2600))])
+        con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
+        con.execute('ALTER TABLE tasks DROP COLUMN kind')
+        con.commit()
+        con.close()
+        parallel = self.record('demo', home=home)['parallel']
+        self.assertEqual(parallel['epics'], ['other'])
+        self.assertIsNone(parallel['repairs'])
 
     def test_catalog_admin_fixture_has_its_repair_in_the_overlap(self):
         shutil.copy(testkit.fixture('measurements.jsonl'), self.night)

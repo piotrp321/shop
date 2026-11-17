@@ -267,12 +267,14 @@ def _database_error(path, error):
 
 
 def select(con, table, columns, gaps):
-    """Rows of `table` as dicts of the wanted columns; a missing column is None in every row and a gap."""
+    """Rows of `table` as dicts of the wanted columns; a missing column is None in every row, a gap and an entry of
+    `gaps.lacks` (a field derived from it is null: None in an existing column is just a missing value)."""
     present = [row[1] for row in con.execute('PRAGMA table_info("%s")' % table)]
     use = [c for c in columns if c in present]
     for column in columns:
         if column not in present:
             gaps.add('%s.%s' % (table, column), 'brak kolumny albo tabeli w bazie AO')
+            gaps.absent.add('%s.%s' % (table, column))
     if not use:
         return []
     cursor = con.execute('SELECT %s FROM "%s"' % (', '.join('"%s"' % c for c in use), table))
@@ -284,6 +286,11 @@ class Gaps:
 
     def __init__(self):
         self.items = []
+        self.absent = set()         # `table.column` of the AO database that is not there (see `select`)
+
+    def lacks(self, *columns):
+        """True when any of the `table.column` names is missing in the AO database."""
+        return any(column in self.absent for column in columns)
 
     def add(self, field, reason):
         if (field, reason) not in self.items:
@@ -531,11 +538,17 @@ def classify_attempt(outcome, executor_status, run_ended):
 
 
 def retries_of(run, run_ended, gaps):
-    attempts = {'total': 0, 'per_task': {}, **{name: 0 for name in ATTEMPT_CLASSES}}
-    failed_by_outcome = {}
+    """The `retries` of the record. A column missing in the AO database makes the fields derived from it null (never
+    zero): without attempts.outcome or attempts.executor_status the classes of attempts and `failed_by_outcome`,
+    without tasks.kind `repair` and `fix`."""
+    unclassified = gaps.lacks('attempts.outcome', 'attempts.executor_status')
+    attempts = {'total': 0, 'per_task': {}, **{name: None if unclassified else 0 for name in ATTEMPT_CLASSES}}
+    failed_by_outcome = None if unclassified else {}
     for attempt in run['attempts']:
         attempts['total'] += 1
         attempts['per_task'][attempt['task_id']] = attempts['per_task'].get(attempt['task_id'], 0) + 1
+        if unclassified:
+            continue
         name, detail = classify_attempt(attempt['outcome'], attempt['executor_status'], run_ended)
         attempts[name] += 1
         if name == 'failed':
@@ -543,6 +556,8 @@ def retries_of(run, run_ended, gaps):
         elif name == 'unclassified':
             gaps.add('retries.attempts', 'próba %s/%s ma nieznany outcome %r' % (attempt['task_id'],
                                                                                   attempt['number'], detail))
+    if gaps.lacks('tasks.kind'):
+        return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': None, 'fix': None}
     repair = {'count': 0, 'final_pr_conflict': 0, 'ci_red': 0, 'unknown': 0}
     repairing = {e['data'].get('task_id'): e['data'] for e in run['events'] if e['type'] == 'epic_repairing'}
     for task in run['tasks']:
@@ -562,6 +577,8 @@ def retries_of(run, run_ended, gaps):
 
 
 def integration_of(run, epic, gaps):
+    if gaps.lacks('tasks.kind'):        # which attempts are integration ones is unknown
+        return {'work_s': None, 'attempts': None, 'rounds': epic['round']}
     kinds = {t['task_id']: t['kind'] for t in run['tasks']}
     work, count = 0.0, 0
     for attempt in run['attempts']:
@@ -1410,7 +1427,8 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
         if any(start < s_end and s_start < end for stretch in stretches.values() for s_start, s_end in stretch):
             in_overlap.add(attempt['task_id'])
     return (subscription_of(span, stretches, gaps),
-            {'epics': sorted(stretches), 'repairs': sorted(in_overlap)}, stretches, span)
+            {'epics': sorted(stretches), 'repairs': None if gaps.lacks('tasks.kind') else sorted(in_overlap)},
+            stretches, span)
 
 
 def gate_wait_of(night_dir, epic_id, started, gaps):
@@ -2007,7 +2025,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'epic': epic_id,
         'issue': github['pr']['issue'] if github['pr'] else None,
         'final_pr': final_pr,
-        'tasks': sum(1 for t in ao_run['tasks'] if t['kind'] == 'plan'),
+        'tasks': None if gaps.lacks('tasks.kind') else sum(1 for t in ao_run['tasks'] if t['kind'] == 'plan'),
         'started_at': iso(started),
         'done_at': iso(done),
         'merged_at': iso(merged),
@@ -3121,6 +3139,8 @@ def retries_topics(record):
     lines = []
     if _count(attempts.get('total')) is None:
         lines.append('Próby: %s' % NO_DATA)
+    elif any(_count(attempts.get(name)) is None for name in ATTEMPT_CLASSES):      # the classes are unknown
+        lines.append('Próby: %d (podział: %s)' % (attempts['total'], NO_DATA))
     else:
         def number(name):
             return _count(attempts.get(name)) or 0
