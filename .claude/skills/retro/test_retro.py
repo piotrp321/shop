@@ -394,6 +394,22 @@ class AoIncidentsTest(TempDirCase):
         self.assertEqual(sorted(i['id'] for i in incidents if i['kind'] == 'wait'),
                          ['sep/wait/T-1@1794000000', 'sep/wait/sep@1794000000'])
 
+    def test_a_wait_closed_by_an_automatic_extension_is_not_a_human_action(self):
+        events = [
+            {'type': 'epic_blocked', 'task_id': None, 'epic_id': 'aut', 'at': 100.0,
+             'data': {'reason': 'max_qa_rounds: F1 [Important] x'}},
+            {'type': 'auto_action', 'task_id': None, 'at': 160.0, 'data': {'action': 'qa-round'}}]
+        build_run(self.ao_home, 'aut', 'cart.sql', '\n'.join(json.dumps(e) for e in events) + '\n',
+                  extra_sql="UPDATE epics SET epic_id='aut';")
+        incidents, _ = retro.ao_incidents(self.epic(self.ao_home, 'aut'))
+        wait = {i['id']: i for i in incidents}['aut/wait/aut@100']
+        self.assertEqual(wait['data']['action'], 'auto:qa-round')
+        self.assertFalse(wait['data']['human_action'])
+        self.assertFalse(wait['data']['can_be_corrective'])
+        texts = [f['text'] for f in wait['facts']]
+        self.assertIn('auto_action qa-round', texts)
+        self.assertFalse([t for t in texts if t.startswith('human_action')], texts)
+
     def test_a_start_inside_an_open_window_of_the_same_key_is_a_fact_of_that_wait(self):
         events = [
             {'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'abs', 'at': 100.0,

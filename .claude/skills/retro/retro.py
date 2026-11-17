@@ -353,15 +353,20 @@ def ao_incidents(epic):
         start = int(window['start'])
         end = int(window['end']) if window['end'] is not None else None
         data = window['data']
+        # an automatic extension of /ao-run (ao_events.py auto) closes the wait, but is no decision of the user
+        automatic = str(window['action'] or '').startswith('auto:')
+        human = window['action'] is not None and not automatic
         wait_data = {
             'event': window['type'], 'task_id': window['key'] or data.get('task_id') or None,
             'reason': data.get('reason') or data.get('kind'), 'blockers': _text_list(data.get('blockers')),
             'reasons': _text_list(data.get('reasons')), 'start': start, 'end': end, 'open': end is None,
             'action': window['action'], 'also_actions': [], 'absorbed': [], 'failed_attempts': [],
-            'human_action': window['action'] is not None, 'can_be_corrective': window['action'] is not None,
+            'human_action': human, 'can_be_corrective': human,
         }
         facts_w = _start_facts(window['type'], window['task_id'], data, start)
-        if window['action']:
+        if automatic:
+            facts_w.append({'source': 'events.jsonl', 'at': end, 'text': 'auto_action %s' % window['action'][5:]})
+        elif window['action']:
             facts_w.append({'source': 'events.jsonl', 'at': end, 'text': 'human_action %s' % window['action']})
         incident = _incident(epic_id, 'wait', '%s@%d' % (key_owner, start), start, wait_data, facts_w)
         wait_incidents.append((window, incident))
