@@ -53,7 +53,10 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
    w dokładnie jednym zadaniu (albo jawnie rozdzielone między kilka); żadne zadanie nie wnosi zakresu spoza
    specyfikacji; każde kryterium zadania porównujesz z sekcjami specyfikacji wskazanymi w jego `scope`: żadne nie
    wymaga zachowania, które specyfikacja usuwa albo zmienia, ani nie rozstrzyga inaczej przypadku, który
-   specyfikacja opisuje.
+   specyfikacja opisuje. Wyjątek: zasada przekrojowa specyfikacji (wymaganie dla każdego wyjścia albo miejsca danego
+   rodzaju, np. oznaczanie liczb szacowanych, komunikaty po polsku, maskowanie danych) jest kryterium każdego
+   zadania, które tworzy takie wyjście, z nazwą tych wyjść w tym zadaniu (np. „alarm W4 i tekst pushu pokazują
+   wartość z prób szacowanych z „≈””), także dla wartości z nich wyprowadzonych (mediana, iloraz, próg).
 5. Nie wymyślaj decyzji biznesowych. Gdy podział zależy od decyzji użytkownika (np. co wchodzi w pierwszą falę,
    kolejność wydania), zadaj wszystkie takie pytania w jednej wiadomości, każde z rekomendacją. Odpowiedzi nie są
    akceptacją planu.

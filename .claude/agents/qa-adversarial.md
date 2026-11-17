@@ -34,6 +34,9 @@ niesprawdzony z powodem):
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - Stany: loading, empty i error dla każdego zapytania; ekran 375 px.
 - Przypadki brzegowe: wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
+- Zasady przekrojowe specyfikacji (wymaganie dla każdego wyjścia albo miejsca danego rodzaju): sprawdź każde takie
+  wyjście w diffie, także wartości z niego wyprowadzone, i podaj w raporcie wszystkie naruszenia razem, nie pierwsze
+  znalezione.
 
 Wagi (wagę wyznacza wpływ, nie ostrożność):
 - Critical — utrata danych lub poważna luka bezpieczeństwa.

@@ -311,6 +311,10 @@ JSON i AO powtarza rundę. Dlatego:
    Kod (także kontrakt API i zachowanie frontu) niezgodny ze specyfikacją, która jednoznacznie określa oczekiwane
    zachowanie, to znalezisko `Important` do naprawy według specyfikacji, nie bloker: w opisie podaj fragment
    specyfikacji i zmiany, których wymaga naprawa (np. kontrakt API, eksport OpenAPI, klient TS, testy).
+   Gdy znalezisko narusza zasadę przekrojową specyfikacji, przed zgłoszeniem sprawdź wszystkie wyjścia tego rodzaju
+   w diffie epiku, także wartości z nich wyprowadzone, i zgłoś jedno znalezisko na zasadę i zadanie z listą
+   wszystkich miejsc w `detail`; sugerowana naprawa obejmuje całą listę i test każdego wyjścia. Tytuł nazywa zasadę,
+   nie miejsce, więc niezmieniony problem wraca w kolejnej rundzie z tym samym odciskiem (krok 7).
    Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (specyfikacja
    niejednoznaczna albo milczy, naprawa wymaga zmiany specyfikacji, nowa zależność, zmiana granic modułów, świadome
    odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne naruszenie jest znaleziskiem.
