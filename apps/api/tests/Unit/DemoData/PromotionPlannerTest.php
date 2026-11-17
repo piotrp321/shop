@@ -65,7 +65,7 @@ final class PromotionPlannerTest extends TestCase
 
     public function testTheLimitOfVariantsIsThatOfThePromotionAggregate(): void
     {
-        self::assertSame(Promotion::MAX_VARIANTS, PromotionPlanner::MAX_VARIANTS);
+        self::assertSame(Promotion::MAX_VARIANTS, new \ReflectionClassConstant(PromotionPlanner::class, 'MAX_VARIANTS')->getValue());
     }
 
     public function testEveryPromotionHasAtMostAThousandDistinctVariantsAndAtLeastOne(): void
