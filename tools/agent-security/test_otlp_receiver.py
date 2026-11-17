@@ -118,7 +118,8 @@ def post(endpoint, path, body, headers=None, chunked=False):
 
 def send_raw(endpoint, data):
     """The status of the answer to the bytes `data` sent as they are, or None when the receiver closed the connection
-    with a reset before the answer could be read (it answers before it read a body it refuses)."""
+    with a reset before the answer could be read (it answers before it read a body it refuses), or when the answer is
+    no status line (the HTTP/0.9 answer to a request line that is not HTTP)."""
     host, port = endpoint[len('http://'):].split(':')
     with socket.create_connection((host, int(port)), timeout=10) as connection:
         try:
@@ -131,7 +132,10 @@ def send_raw(endpoint, data):
                 answer += piece
         except ConnectionError:
             return None
-    return int(answer.split(b' ', 2)[1]) if answer else None
+    try:
+        return int(answer.split(b' ', 2)[1])
+    except (IndexError, ValueError):
+        return None
 
 
 # -- tests ------------------------------------------------------------------------------------------------------------
@@ -486,6 +490,83 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         for key in ('content_encoding', 'body', 'problem'):
             self.assertEqual(one_line[key], two_lines[key], key)
         self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_every_method_with_a_body_is_recorded_read_and_judged(self):
+        body = self.leaking_body()
+        for method in (b'DELETE', b'PATCH', b'HEAD', b'OPTIONS', b'TRACE', b'CONNECT', b'FOO'):
+            with self.subTest(method=method):
+                receiver = self.receiver()
+                status = send_raw(receiver.endpoint, method + b' /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: %d'
+                                  b'\r\n\r\n' % len(body) + body)
+                self.assertIsNotNone(status)
+                requests = receiver.requests
+                self.assertEqual(1, len(requests))
+                self.assertEqual(method.decode(), requests[0]['method'])
+                self.assertEqual(body, requests[0]['body'])
+                self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_head_is_answered_without_a_body(self):
+        receiver = self.receiver()
+        host, port = receiver.endpoint[len('http://'):].split(':')
+        connection = http.client.HTTPConnection(host, int(port), timeout=10)
+        self.addCleanup(connection.close)
+        connection.request('HEAD', '/v1/logs', headers={'Content-Type': 'application/json'})
+        response = connection.getresponse()
+        self.assertEqual(200, response.status)
+        self.assertEqual(b'', response.read())
+        self.assertEqual('HEAD', receiver.requests[0]['method'])
+
+    REJECTED = {
+        'http2 preface': (b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n', 505),
+        'tls client hello': (b'\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03' + bytes(range(32)) + b'\r\n\r\n', 400),
+        'request line of 70 kB': (b'GET /' + b'a' * 70000 + b' HTTP/1.1\r\n\r\n', 414),
+        '150 headers': (b'GET /v1/logs HTTP/1.1\r\n' + b''.join(b'X-%d: y\r\n' % i for i in range(150)) + b'\r\n', 431),
+        'header line of 70 kB': (b'GET /v1/logs HTTP/1.1\r\nX: ' + b'a' * 70000 + b'\r\n\r\n', 431),
+    }
+
+    def test_a_request_the_http_server_rejects_is_recorded_with_a_fixed_problem(self):
+        for name, (data, code) in self.REJECTED.items():
+            with self.subTest(name):
+                receiver = self.receiver()
+                send_raw(receiver.endpoint, data)
+                requests = receiver.requests
+                self.assertEqual(1, len(requests))
+                request = requests[0]
+                self.assertEqual(b'', request['raw'])
+                self.assertIsNone(request['body'])
+                self.assertIsNone(request['forwarded'])
+                self.assertEqual('żądanie odrzucone przez serwer HTTP: %d' % code, request['problem'])
+                self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_rejected_request_never_puts_text_of_the_request_in_the_record(self):
+        receiver = self.receiver()
+        send_raw(receiver.endpoint, b'FOO-SECRET-TEXT /SECRET-PATH-TEXT HTTP/9.9\r\n\r\n')
+        self.assertEqual(1, len(receiver.requests))
+        self.assertNotIn('SECRET', receiver.requests[0]['problem'])
+
+    def test_a_rejected_request_to_the_second_receiver_is_a_leak(self):
+        for name, (data, code) in self.REJECTED.items():
+            with self.subTest(name):
+                receiver, trap = self.receiver(), self.receiver()
+                send_raw(trap.endpoint, data)
+                verdicts = probe.telemetry_verdicts(receiver.requests, trap.requests, self.MARKERS, self.EXPECTED)
+                self.assertEqual('fail', verdicts['telemetry_no_content']['status'])
+
+    def test_a_handled_request_is_recorded_once_even_when_the_server_answers_an_error_later(self):
+        receiver = self.receiver()
+        handler = type('H', (otlp_receiver._Handler,), {'receiver': receiver})
+        sent = []
+        handler.send_response = lambda self, code, message=None: sent.append(code)
+        handler.send_header = handler.end_headers = lambda self, *a: None
+        handler.wfile = type('W', (), {'write': lambda self, data: None})()
+        instance = handler.__new__(handler)
+        instance.command, instance.path = 'POST', '/v1/logs'
+        instance.headers = http.client.HTTPMessage()
+        instance.rfile = type('R', (), {'read': lambda self, n: b'', 'readline': lambda self, n: b''})()
+        instance.wfile = handler.wfile
+        instance._handle()
+        instance.send_error(400)
+        self.assertEqual(1, len(receiver.requests))
 
     def test_without_the_header_content_encoding_is_none(self):
         receiver = self.receiver()

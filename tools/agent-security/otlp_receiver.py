@@ -4,7 +4,7 @@ copies it next to probe.py.
 
   Receiver(forward=None).start()   an HTTP server on 127.0.0.1 with a random port; `endpoint` is its address
                                    http://127.0.0.1:<port>, `requests` a copy of what it got, stop() ends it
-                                   (idempotent). Every request, on any path, is recorded before the answer (200, an
+                                   (idempotent). Every request, on any method and path, is recorded before the answer (200, an
                                    empty Export*ServiceResponse; 400 for a body that cannot be read; 500 for an
                                    error in the processing), as a dict:
                                      method, path (without the query), content_type, content_encoding (None without
@@ -16,7 +16,11 @@ copies it next to probe.py.
                                    request goes on (method, path, Content-Type, Content-Encoding, raw body) to that
                                    address; its failure, whatever it is, changes nothing else. An error in the
                                    processing of a request (a path or a body it cannot handle) still records it: raw
-                                   as far as it was read, body None, a fixed problem.
+                                   as far as it was read, body None, a fixed problem. A request http.server rejects
+                                   itself (an HTTP/2 preface, TLS bytes, a line or a header too long, too many
+                                   headers, a malformed request line) is recorded with raw b'', body None and the
+                                   problem "żądanie odrzucone przez serwer HTTP: <code>"; a HEAD request is answered
+                                   without a body.
   decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
                                    (None, problem) for any other encoding, a body that does not decompress (also
                                    bytes after a member that are not a whole member) or one larger than MAX_BODY.
@@ -207,6 +211,28 @@ def _path_of(target):
 
 class _Handler(http.server.BaseHTTPRequestHandler):
     receiver = None
+    _recorded = False   # the request being handled is in receiver.requests (set per request, see handle_one_request)
+
+    def handle_one_request(self):
+        self._recorded = False
+        super().handle_one_request()
+
+    def send_error(self, code, message=None, explain=None):
+        """A request http.server rejects itself (an HTTP/2 preface, TLS bytes, a line or a header too long, too many
+        headers, a malformed request line) is recorded too: body None, the fixed problem and the code only."""
+        if not self._recorded:
+            self._recorded = True
+            self.receiver._record({'method': getattr(self, 'command', None) or '',
+                                   'path': _path_of(getattr(self, 'path', None) or ''), 'content_type': None,
+                                   'content_encoding': None, 'raw': b'', 'body': None,
+                                   'problem': 'żądanie odrzucone przez serwer HTTP: %d' % code, 'forwarded': None})
+        super().send_error(code, message, explain)
+
+    def __getattr__(self, name):
+        """Every method goes through _handle (http.server answers 501 to one without do_<METHOD>, unrecorded)."""
+        if name.startswith('do_'):
+            return self._handle
+        raise AttributeError(name)
 
     def _read_body(self):
         if 'chunked' in self.headers.get('Transfer-Encoding', '').lower():
@@ -264,6 +290,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 request['forwarded'] = self.receiver._forward(self.command, self.path, request['content_type'],
                                                               request['content_encoding'], request['raw'])
         finally:
+            self._recorded = True
             self.receiver._record(request)
         json_body = 'json' in (request['content_type'] or '')
         answer = b'{}' if json_body else b''
@@ -272,9 +299,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(answer)))
         self.send_header('Connection', 'close')
         self.end_headers()
-        self.wfile.write(answer)
-
-    do_POST = do_PUT = do_GET = _handle   # noqa: N815 (http.server API)
+        if self.command != 'HEAD':
+            self.wfile.write(answer)
 
     def log_message(self, *args):
         pass
