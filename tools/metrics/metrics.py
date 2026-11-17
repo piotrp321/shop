@@ -2697,8 +2697,8 @@ def role_kind(records, role):
 
 def role_samples(record, role, kind):
     """The value of the role in each task of `kind` (0 where it did not act, i.e. has no cell); a task is left out
-    when its own value is unknown or the role acted in it with an unknown value (`usd` null): not a zero. None for
-    a record without value.by_task_role (older than the field)."""
+    when its own value is unknown or the role acted in it with an unknown value (`usd` null): not a zero (the window
+    is then estimated: `role_estimated`). None for a record without value.by_task_role (older than the field)."""
     by_role, by_task = _get(record, ('value', 'by_task_role')), record.get('by_task')
     if not isinstance(by_role, dict) or not isinstance(by_task, dict):
         return None
@@ -2718,8 +2718,9 @@ def role_samples(record, role, kind):
 
 
 def role_estimated(record, role, kind):
-    """Whether a value `role_samples` takes from the record is estimated (or incomplete, as in `decide`): the role
-    cell of a task of `kind` that has a known value."""
+    """Whether the samples of `role_samples` are not exact (estimated or incomplete, as in `decide`): a role cell of
+    a task of `kind` that has a known value is not an exact number, i.e. it is estimated or incomplete, or its `usd`
+    is unknown (the task is then left out of the samples, so the window is incomplete)."""
     by_role = _get(record, ('value', 'by_task_role'))
     by_task = record.get('by_task')
     if not isinstance(by_role, dict) or not isinstance(by_task, dict):
@@ -2730,7 +2731,10 @@ def role_estimated(record, role, kind):
         if not _is_number(_get(record, ('value', 'by_task', task, 'usd'))):
             continue
         cell = _get(by_role, (task, role))
-        if _is_number(_get(cell, ('usd',))) and (cell.get('estimated') is True or cell.get('incomplete') is True):
+        if cell is None:
+            continue                                    # the role did not act in the task: an exact zero
+        if (not _is_number(_get(cell, ('usd',))) or _get(cell, ('estimated',)) is True
+                or _get(cell, ('incomplete',)) is True):
             return True
     return False
 

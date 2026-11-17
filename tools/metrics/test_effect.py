@@ -283,6 +283,22 @@ class D1Test(EffectEnv):
         self.assertEqual(after['n'], 4)                  # P-0 is not a sample; P-3 and P-4 (no entry) still give 0
         self.assertEqual(after['median'], 0.25)          # 0.5, 0.5, 0, 0: the unknown value is not a fifth sample
 
+    def test_a_window_with_a_task_left_out_for_an_unknown_role_value_is_estimated_not_exact(self):
+        def unknown_role(record):
+            for n in range(3):
+                record['value']['by_task_role']['P-%d' % n]['code-reviewer'] = {
+                    'usd': None, 'estimated': True, 'tokens': {}, 'estimated_tokens': []}
+            return record
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0) for i in range(1, 9)],
+                      *[unknown_role(self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5)) for i in range(1, 9)])
+        result = self.result('D1:code-reviewer')
+        self.assertGreaterEqual(result['after']['n'], 15)          # enough tasks and epics for a conclusion
+        self.assertGreaterEqual(result['after']['n_epics'], 3)
+        self.assertIsNotNone(result['diff'])
+        self.assertIs(result['before']['estimated'], False)
+        self.assertIs(result['after']['estimated'], True)
+        self.assertIs(result['estimated'], True)
+
     def test_a_role_that_never_acted_has_no_level_and_not_enough_data(self):
         store_records(self.state, *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5) for i in range(1, 4)])
         result = self.result('D1:qa-adversarial')
