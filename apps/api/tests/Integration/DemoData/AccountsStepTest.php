@@ -326,6 +326,34 @@ final class AccountsStepTest extends KernelTestCase
     }
 
     /**
+     * @return iterable<string, array{array<string, mixed>, string}>
+     */
+    public static function refusals(): iterable
+    {
+        yield 'Keycloak does not answer' => [['--keycloak-url' => 'http://127.0.0.1:9'], 'Keycloak at http://127.0.0.1:9 does not answer'];
+        yield 'a wrong password' => [['--keycloak-password' => 'not-the-password'], 'refused the login of the administrator admin (HTTP 4'];
+        yield 'an empty password' => [['--keycloak-password' => ''], 'No password of the Keycloak administrator'];
+        yield 'no batch' => [['--batch-size' => 0], '--batch-size and --streams have to be at least 1'];
+        yield 'one realm for both' => [['--backoffice-realm' => 'same', '--shop-realm' => 'same'], 'two different names'];
+        yield 'negative count' => [['--customers' => -1], 'cannot be negative'];
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('refusals')]
+    public function testTheStepFailsWithoutChangesOnABadOptionOrWithoutKeycloak(array $options, string $message): void
+    {
+        $tester = $this->step(3, 2, null, $options);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertStringContainsString($message, (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
+        self::assertStringNotContainsString('not-the-password', $tester->getDisplay());
+        self::assertSame([], $this->memberIds($this->realms->shop));
+        self::assertSame([], $this->memberIds($this->realms->backoffice));
+    }
+
+    /**
      * The accounts outside the group of the threat model: one with a username in the format of the generator and the id
      * the seed gives customer 9, an ordinary one and one created like create-admin (role admin, e-mail, no password).
      *
