@@ -94,15 +94,15 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 
 | Pole | Treść |
 |---|---|
-| `epic`, `issue`, `final_pr`, `tasks` | ID epiku; pierwszy issue zamykany przez końcowy PR (`gh pr view`, `closingIssuesReferences`); numer końcowego PR (`epics.final_pr_number`); liczba zadań planu (`tasks.kind = plan`) |
+| `epic`, `issue`, `final_pr`, `tasks` | ID epiku; pierwszy issue zamykany przez końcowy PR (`gh pr view`, `closingIssuesReferences`); numer końcowego PR (`epics.final_pr_number`; gdy pusty, jedyny zmergowany PR `epic/<epik>` → `main` z `gh pr list`, z pozycją `final_pr` w `gaps`; brak albo kilka takich PR: `null`); liczba zadań planu (`tasks.kind = plan`) |
 | `started_at`, `done_at`, `merged_at` | `epics.created_at`; pierwsze zdarzenie `epic_done` (bez niego `null`); `mergedAt` końcowego PR z `gh` |
 | `wall` | `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge) |
-| `breakdown` | rozkład `to_done` na `work`, `human_wait`, `limit_wait`, `ci_wait`, `host_pause`, `github_wait`, `idle`; suma kategorii z wartością równa się `to_done`; bez `epic_done` całość `null` |
+| `breakdown` | rozkład `to_done` na `work`, `human_wait`, `limit_wait`, `ci_wait`, `host_pause`, `github_wait`, `idle`; suma kategorii z wartością równa się `to_done`; bez `epic_done` całość `null`, chyba że końcowy PR jest zmergowany (epik zamknięty ręcznie, np. AO w `BLOCKED`): wtedy rozkład `to_merge` do merge'u z `breakdown_end: "merged_at"` i `breakdown_estimated: true` (każda kategoria szacowana, „≈”, pozycja `breakdown` w `gaps`) |
 | `integration` | `work_s` (suma `wall_s` prób zadań `integration`, `fix`, `finalize`), `attempts`, `rounds` (`epics.round`); `incomplete: true`, gdy część prób nie ma czasu (suma to dolna granica, pozycja w `gaps`) |
 | `retries` | `attempts` (`total`, `per_task`, klasy prób), `failed_by_outcome`, `repair` (`count`, `final_pr_conflict`, `ci_red`, `unknown`), `fix` (liczba zadań FIX), `sync_prs` (PR `sync/<epik>-main`: `number`, `state`) |
 | `parallel` | `epics` (epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem), `repairs` (zadania REPAIR z próbą w czasie nakładania), `sync_prs` (numery PR sync utworzonych w czasie nakładania) |
 | `subscription` | `share` i `share_estimated` (niżej), `windows`: surowy przyrost procentu każdego okna limitu w pp (`null` gdy okno odnowione w trakcie albo stan jednego z pomiarów inny niż `ok`, wtedy `{etykieta: null}`; gdy żaden pomiar nie ma stanu `ok`, nie da się ustalić etykiet okien i całe `windows` to `null`, z pozycją w `gaps`; reguły `night_queue._window_deltas`), `overlap`: epiki z nakładającym się przedziałem |
-| `gate_wait` | `wait_s`: od pierwszego wpisu `waiting` epiku w `gate.jsonl` do `started_at` (0 bez czekania; `null`, gdy brak pliku albo wpisów epiku), `reasons`: różne powody czekania |
+| `gate_wait` | `wait_s`: od decyzji o starcie (pierwszy wpis `gate --dir <epik>`, czyli `dir_arg` epiku, w `gate.jsonl` przed startem: `/ao-run` po prośbie albo „tak” użytkownika, w nocy `next`) do `started_at`; czekania z przeglądu tablicy (`gate` bez `--dir`) przed decyzją się nie liczą (0 bez wpisu `waiting` epiku między decyzją a startem; `null`, gdy brak pliku, wpisów epiku albo, przy czekaniu, wpisu decyzji), `reasons`: różne powody czekań po decyzji |
 | `human` | `interventions` (`human_action`), `waits`, `wait_s` (suma zakończonych czekań, nakładające się liczone raz), `open` (czekania otwarte), `manual_fixes` (`[{pr, text}]` z `--manual-fixes` albo `null`); z `ao_events.summarize` |
 | `in_attempts` | czas poleceń powłoki w próbach z transkryptów: `categories` (`read`, `test`, `e2e`, `check`, `selftest`, `stack`, `ci_watch`, `other`: `count`, `background`, `unfinished`, `seconds`), `repeat_runs` (`count`, `seconds`, `by_category`), `api_retry` (`count`, `delay_ms`), `permission_denials` (`{narzędzie: liczba}`); `null` bez żadnego transkryptu. Gdy część prób nie ma transkryptu: `incomplete: true`, `attempts_without_transcript` i `attempts` (sumy obejmują tylko próby z transkryptem, to dolne granice; pozycja w `gaps`) |
 | `by_task` | `{zadanie: {kind, work, attempts}}`: `work` to suma `wall_s` prób zadania, także prób po `epic_done`; `incomplete: true` przy zadaniu, którego próba nie ma `wall_s` ani końca (pominięta w sumie: `work` to dolna granica, pozycja w `gaps`) |
@@ -274,7 +274,9 @@ Brak źródła nie zatrzymuje pomiaru, a pole bez danych jest `null` z powodem w
   (dolne granice) i `breakdown_upper_bound` (górne; listy kategorii, brak pól, gdy rozkład jest pełny). `render` pokazuje je
   jako `limit_wait ≈ 1,0 h (≈ 10%, dolna granica)` i `ci_wait ≈ 2,0 h (≈ 20%, górna granica)`. Oznaczenie dziedziczą
   wąskie gardła kategorii (`estimated`), kolumny `work` i `human_wait` w `trend`, D4 `human_wait`, `limit_wait` i `ci`
-  (`ci_wait` i mianownik `work`) oraz okna `effect` `D4:human_wait`, `D4:limit_wait` i `D4:ci`.
+  (`ci_wait` i mianownik `work`) oraz okna `effect` `D4:human_wait`, `D4:limit_wait` i `D4:ci`. Tak samo dziedziczą
+  oznaczenie `breakdown_estimated` (rozkład epiku zamkniętego ręcznie, do merge'u), które `render` pokazuje jako
+  `Czas do epic_done: brak danych (epik zamknięty ręcznie); rozkład do merge'u (16,7 h): work ≈ 8,4 h (≈ 51%), …`.
 
   Komenda `waste` pomija reguły, którym brakuje kolumny, z pozycją w `gaps` wyjścia (`W1`–`W4`, osobno części
   `W3`): W1 i W4 potrzebują `attempts.ended_at`, `attempts.task_id`, `attempts.number`, `tasks.kind` i `tasks.task_id`;
@@ -337,8 +339,8 @@ Kolejność: `wall_h` malejąco, potem `value_usd` malejąco (nieznane to 0), po
   `by_task` albo mediana z historii z takim zadaniem planu daje `estimated: true` zadania w `data.tasks`, w `data.estimated`
   (`["work"]`) i w `expected_effect.estimated`.
 - **D3 kolejka pracy równoległej:** `gate_wait.wait_s` ≥ `d3_gate_wait_h` (1 h) z powodu reguły plików bramki. `gate_wait`
-  liczy się od pierwszego wpisu `waiting` epiku w `gate.jsonl` (`night_queue.append_gate_log`), a `reasons` to powody tych
-  wpisów. Reguła plików (`night_queue.check_files`, kroki 4 i 5) zapisuje wpis `waiting` tylko jako WAIT, gdy zakres epiku
+  liczy się od decyzji o starcie (pierwszy wpis `gate --dir <epik>` w `gate.jsonl`, `night_queue.append_gate_log`),
+  a `reasons` to powody wpisów `waiting` epiku po niej. Reguła plików (`night_queue.check_files`, kroki 4 i 5) zapisuje wpis `waiting` tylko jako WAIT, gdy zakres epiku
   w toku jest nieczytelny: powód `<epik> w toku bez zakresu: …` (`MissingScope`); to jedyny powód, który `FILE_RULE_REASON`
   uznaje za regułę plików. Pominięcie (SKIP) przez wspólne pliki (`wspólne pliki z <epik>: …`) ma `waiting: null`, więc nie
   jest czekaniem epiku w rozumieniu specyfikacji, nie trafia do `gate_wait.reasons` i D3 go nie widzi. Inne powody WAIT

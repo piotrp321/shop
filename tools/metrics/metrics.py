@@ -19,7 +19,8 @@ directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/
 and events (`orchestrator.db` is opened read only, `ao` is never run), from measurements.jsonl and gate.jsonl, and
 from GitHub (`gh`, read only, also for `ci`, `regressions` and `found_after_merge`; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
 zero. A value from GitHub or from --manual-fixes that is `null` now but not in the stored record is kept (a transient
-error never replaces it); the gap says so.
+error never replaces it); the gap says so. An epic closed by hand (no epic_done, the final PR merged) has its breakdown
+until the merge, marked `breakdown_estimated`; a final PR unknown to AO is the only merged PR epic/<EPIC> -> main.
 
 Transcripts (`<ao-home>/tasks/<task>/attempts/<n>/stdout.jsonl`, read line by line, a killed run's last line skipped)
 give `attempts`, `value`, `by_task`, `in_attempts`, `versions` and `subscription.share` (spec: Pojęcia, Dokładność
@@ -175,6 +176,8 @@ def upper_bounds_of(lower, order):
 def breakdown_inexact(record, name):
     """Whether the category `name` of `breakdown` is a lower bound (skipped time) or an upper bound (it may hold skipped
     time); `idle` is an upper bound whenever there is a lower bound."""
+    if isinstance(record, dict) and record.get('breakdown_estimated') is True:
+        return True
     found = lower_bounds(record)
     return name in found or name in upper_bounds(record) or (name == 'idle' and bool(found))
 
@@ -1571,8 +1574,12 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
 
 
 def gate_wait_of(night_dir, epic_id, started, gaps):
-    """{wait_s, reasons}: from the first `waiting` entry of the epic in gate.jsonl to the start of the epic; 0 when
-    the gate let it through without waiting; None (and a gap) without the file or any entry of the epic."""
+    """{wait_s, reasons}: from the decision to start the epic to its start, when the gate made it wait. The decision is
+    the first entry of `gate --dir <epic>` (`dir_arg`) in gate.jsonl at or before the start: /ao-run calls it right
+    after the user's start request or "yes" (section 1), at night `next` writes it for the candidate of the approved
+    night. Waits of the board scan before it (`gate` without --dir, section 8: a proposal, not a decision) do not count.
+    0 when no `waiting` entry of the epic comes between the decision and the start; None (and a gap) without the file,
+    without any entry of the epic, or with waits but no recorded decision."""
     path = os.path.join(night_dir, 'gate.jsonl')
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
@@ -1595,14 +1602,20 @@ def gate_wait_of(night_dir, epic_id, started, gaps):
     if not mine or started is None:
         gaps.add('gate_wait', 'brak wpisów epiku w gate.jsonl')
         return None
-    waiting = sorted((at, e) for at, e in mine if e.get('waiting') == epic_id and at <= started)
+    before = sorted(((at, e) for at, e in mine if at <= started), key=lambda pair: pair[0])
+    decision = next((at for at, e in before if e.get('dir_arg') == epic_id), None)
+    waiting = [(at, e) for at, e in before if e.get('waiting') == epic_id and (decision is None or at >= decision)]
     if not waiting:
         return {'wait_s': 0.0, 'reasons': []}
+    if decision is None:
+        gaps.add('gate_wait', 'czekanie w bramce bez wpisu gate --dir epiku przed startem: moment decyzji o starcie '
+                              'nieznany')
+        return None
     reasons = []
     for _, entry in waiting:
         if isinstance(entry.get('reason'), str) and entry['reason'] not in reasons:
             reasons.append(entry['reason'])
-    return {'wait_s': round(started - waiting[0][0], 3), 'reasons': reasons}
+    return {'wait_s': round(started - decision, 3), 'reasons': reasons}
 
 
 PR_ITEM = re.compile(r'^PR\s*#(\d+)\s*[:\-\u2013\u2014]?\s*(.*)$')
@@ -1704,6 +1717,36 @@ def fetch_sync_prs(run, epic_id, repo):
                  'created': night_queue.parse_time(p['createdAt']).timestamp()} for p in data]
     except (KeyError, TypeError, ValueError, AttributeError):
         raise GhError('gh pr list: nieoczekiwany kształt odpowiedzi')
+
+
+def final_pr_of_branch(run, no_gh, epic_id, repo, gaps, errors):
+    """The final PR of an epic whose AO row has none (an epic closed by hand, e.g. AO in BLOCKED and the user merged
+    epic/<epic> -> main): the only merged PR of that branch into main, else None. Every outcome leaves a gap."""
+    if no_gh:
+        gaps.add('final_pr', 'epik nie ma końcowego PR')
+        return None
+    try:
+        data = gh_json(run, ['pr', 'list', '--head', 'epic/%s' % epic_id, '--base', 'main', '--state', 'merged',
+                             '--json', 'number', '--limit', '10'], repo)
+        numbers = sorted(p['number'] for p in data)
+    except GhError as e:
+        errors.append(str(e))
+        gaps.add('final_pr', 'epik nie ma końcowego PR w AO, błąd gh: %s' % e)
+        return None
+    except (KeyError, TypeError):
+        errors.append('gh pr list: nieoczekiwany kształt odpowiedzi')
+        gaps.add('final_pr', 'epik nie ma końcowego PR w AO, błąd gh: nieoczekiwany kształt odpowiedzi')
+        return None
+    if not numbers:
+        gaps.add('final_pr', 'epik nie ma końcowego PR')
+        return None
+    if len(numbers) > 1:
+        gaps.add('final_pr', 'epik nie ma końcowego PR w AO, a epic/%s ma kilka zmergowanych PR do main: %s'
+                 % (epic_id, ', '.join('#%d' % n for n in numbers)))
+        return None
+    gaps.add('final_pr', 'epik nie ma końcowego PR w AO (zamknięty ręcznie): #%d to zmergowany PR epic/%s -> main'
+             % (numbers[0], epic_id))
+    return numbers[0]
 
 
 def github_data(run, no_gh, final_pr, epic_id, repo, gaps, pr=None):
@@ -2132,10 +2175,11 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     done = next((e['at'] for e in ao_run['events'] if e['type'] == 'epic_done'), None)
     if done is None:
         gaps.add('done_at', 'brak zdarzenia epic_done')
-    final_pr = epic['final_pr_number']
+    final_pr, lookup_errors = epic['final_pr_number'], []
     if final_pr is None:
-        gaps.add('final_pr', 'epik nie ma końcowego PR')
+        final_pr = final_pr_of_branch(run, no_gh, epic_id, repo, gaps, lookup_errors)
     github = github_data(run, no_gh, final_pr, epic_id, repo, gaps, pr)
+    github['errors'] = lookup_errors + github['errors']
     merged = github['pr']['merged_at'] if github['pr'] else None
     if github['pr'] is not None:
         if merged is None:
@@ -2146,6 +2190,10 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     run_ended = done is not None or epic['status'] == 'DONE' or known_merge is not None
     jsonl, jsonl_gap = read_jsonl_events(os.path.join(ao_home, 'events.jsonl'))
     run_end = done if done is not None else (_number(epic['updated_at']) or now)
+    # An epic closed by hand (no epic_done, the final PR merged) has its breakdown until the merge, as an estimate.
+    breakdown_end = done if done is not None or known_merge is None or started is None else known_merge
+    if done is None and breakdown_end is not None:
+        gaps.add('breakdown', "brak epic_done: koniec rozkładu to merge końcowego PR (szacunek, epik zamknięty ręcznie)")
     subscription, parallel, stretches, span = night_fields(ao_run, epic_id, started, run_end, night_dir, gaps)
     fields = transcript_fields(ao_home, ao_run, config, records, epic_id, gaps)
     if subscription is not None:
@@ -2175,7 +2223,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
             'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
             'review': round(merged - done, 3) if merged is not None and done is not None else None,
         },
-        'breakdown': breakdown_of(ao_run, started, done, jsonl, jsonl_gap, config, gaps, lower),
+        'breakdown': breakdown_of(ao_run, started, breakdown_end, jsonl, jsonl_gap, config, gaps, lower),
         'integration': integration_of(ao_run, epic, gaps),
         'retries': retries,
         'parallel': parallel,
@@ -2189,6 +2237,9 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'value': fields['value'],
         'waste': waste[0],
     }
+    if done is None and breakdown_end is not None:
+        record['breakdown_end'] = 'merged_at'
+        record['breakdown_estimated'] = True
     if lower:
         record['breakdown_incomplete'] = [c for c in config['breakdown_order'] if c in lower]
         upper = upper_bounds_of(lower, config['breakdown_order'])
@@ -3309,35 +3360,45 @@ def bottleneck_lines(items):
 def _bound_note(record, name):
     """The note of a marked category of the breakdown: a lower bound, an upper bound or both."""
     lower = name in lower_bounds(record)
-    upper = name == 'idle' or name in upper_bounds(record)
+    upper = name in upper_bounds(record) or (name == 'idle' and bool(lower_bounds(record)))
+    if not lower and not upper:
+        return ''                   # estimated only because the breakdown ends at the merge (breakdown_estimated)
     return ', ' + ('dolna i górna granica' if lower and upper else 'górna granica' if upper else 'dolna granica')
 
 
+def _breakdown_text(record, whole):
+    parts = []
+    for name in BREAKDOWN_CATEGORIES:
+        value = record['breakdown'].get(name)
+        if not _is_number(value):
+            parts.append('%s %s' % (name, NO_DATA))
+        elif value > 0:
+            marked = breakdown_inexact(record, name)
+            parts.append('%s %s (%s%d%%%s)' % (
+                name, hours_text(value, marked), approx(marked), percent_of(value, whole) or 0,
+                _bound_note(record, name) if marked else ''))
+    return ', '.join(parts)
+
+
 def time_topic(record, comment):
-    to_done = _dict(record.get('wall')).get('to_done')
+    wall = _dict(record.get('wall'))
+    to_done, to_merge = wall.get('to_done'), wall.get('to_merge')
     tasks = record.get('tasks')
+    breakdown = record.get('breakdown')
     if not _is_number(to_done):
-        lines = ['Czas do epic_done: %s' % NO_DATA]
+        text = 'Czas do epic_done: %s' % NO_DATA
+        if record.get('breakdown_end') == 'merged_at' and isinstance(breakdown, dict) and _is_number(to_merge):
+            text += " (epik zamknięty ręcznie); rozkład do merge'u (%s): %s" % (
+                hours_text(to_merge), _breakdown_text(record, to_merge))
+        lines = [text]
     else:
         text = 'Czas do epic_done: %s' % hours_text(to_done)
         if _is_int(tasks) and tasks > 0:
             text += ' (%s na zadanie planu)' % hours_text(to_done / tasks)
-        breakdown = record.get('breakdown')
         if isinstance(breakdown, dict):
-            parts = []
-            for name in BREAKDOWN_CATEGORIES:
-                value = breakdown.get(name)
-                if not _is_number(value):
-                    parts.append('%s %s' % (name, NO_DATA))
-                elif value > 0:
-                    marked = breakdown_inexact(record, name)
-                    parts.append('%s %s (%s%d%%%s)' % (
-                        name, hours_text(value, marked), approx(marked), percent_of(value, to_done) or 0,
-                        _bound_note(record, name) if marked else ''))
-            text += '; rozkład: ' + ', '.join(parts)
+            text += '; rozkład: ' + _breakdown_text(record, to_done)
         lines = [text]
     if comment:
-        wall = _dict(record.get('wall'))
         lines.append("Czas do merge'u: %s, odbiór (review): %s" % (hours_text(wall.get('to_merge')),
                                                                   hours_text(wall.get('review'))))
     return [lines[0]] + ['  ' + line for line in lines[1:]]

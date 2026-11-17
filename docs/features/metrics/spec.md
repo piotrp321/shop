@@ -135,7 +135,7 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
 - `wall` (miara główna): `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge,
   odbiór użytkownika);
 - `breakdown`: podział `to_done` na rozłączne kategorie, które sumują się do `to_done`; każda chwila trafia do
-  pierwszej pasującej (bez `done_at` cały `breakdown` to `null`):
+  pierwszej pasującej (bez `done_at` cały `breakdown` to `null`, poza epikiem zamkniętym ręcznie, niżej):
 
   | Kategoria | Przedział |
   |---|---|
@@ -156,6 +156,13 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   `breakdown_upper_bound`, pozycję w `gaps`, a render pokazuje je z „≈” i dopiskiem „dolna granica” albo „górna granica”.
   Oznaczenie przechodzi do wąskich gardeł, `trend` (`work`, `human_wait`), D4 (`human_wait`, `limit_wait`, `ci`
   z `ci_wait` i mianownikiem `work`) i okien `effect` tych miar.
+
+  Epik zamknięty ręcznie (AO bez `epic_done`, np. w `BLOCKED`, a końcowy PR zmergowany) ma rozkład od startu do
+  merge'u końcowego PR (`to_merge`), z `breakdown_end: "merged_at"`, `breakdown_estimated: true` i pozycją
+  `breakdown` w `gaps`: koniec jest przyjęty, więc każda kategoria jest szacunkiem z „≈” (w render „rozkład do
+  merge'u”) i oznaczenie przechodzi dalej jak wyżej. `done_at`, `to_done` i `review` zostają `null`. Gdy AO nie zna
+  końcowego PR (`epics.final_pr_number` pusty), `final_pr` to jedyny zmergowany PR `epic/<epik>` → `main` według `gh`,
+  z pozycją `final_pr` w `gaps`; brak takiego PR albo kilka dają `null`.
 - `in_attempts`: czas poleceń powłoki w próbach (nazwy narzędzi powłoki w `config.json`: `Bash`, `bash`) według
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
   `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
@@ -194,7 +201,12 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   `sync/<epik>-main`;
 - `parallel`: epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem, i REPAIR oraz sync
   w czasie nakładania (konflikty pary);
-- `gate_wait`: czas od pierwszego wpisu `waiting` tego epiku w `gate.jsonl` do jego startu i powody czekania;
+- `gate_wait`: czas od decyzji o starcie epiku do jego startu, gdy bramka kazała mu czekać, i powody czekania.
+  Decyzja to pierwszy wpis `gate --dir <epik>` (`dir_arg`) w `gate.jsonl` przed startem: `/ao-run` wywołuje go
+  zaraz po prośbie użytkownika o start albo jego „tak” (sekcja 1), a w nocy zapisuje go `next` dla kandydata
+  zatwierdzonej nocy. Czekania z przeglądu tablicy przed decyzją (`gate` bez `--dir`, propozycja „Zacząć epik?”) się
+  nie liczą. Bez wpisu `waiting` epiku między decyzją a startem 0; czekania bez wpisu decyzji dają `null` z pozycją
+  w `gaps`;
 - `human`: liczba decyzji (`human_action`), liczba czekań i ich suma, czekania otwarte, ręczne poprawki;
 - `waste`: alarmy z przebiegu (`waste.json`);
 - `regressions`, `found_after_merge`: sekcja „Regresje po merge'u”;
@@ -263,7 +275,7 @@ uszeregowane malejąco; pozycja wchodzi, gdy nadwyżka jest co najmniej 0,5 h (p
 - każda kategoria `in_attempts`: jak kategorie `breakdown`, na zadanie planu; pozycja pokazuje obok, ile z nadwyżki
   to `repeat_runs` tej kategorii („w tym możliwe powtórzenia: X h”), bez osobnej pozycji dla powtórzeń;
 - `gate_wait` i `review`: jak kategorie `breakdown`, na zadanie planu. Przejście bramki bez czekania daje 0, brak
-  wpisów epiku w `gate.jsonl` daje `null` z pozycją w `gaps` (kandydat pominięty). `review` jest znany dopiero po
+  wpisów epiku w `gate.jsonl` (albo wpisu decyzji o starcie przy czekaniu) daje `null` z pozycją w `gaps` (kandydat pominięty). `review` jest znany dopiero po
   merge'u, więc wchodzi do bloku po merge'u, `trend` i `/retro`, nie do raportu odbioru.
 
 Każda pozycja ma:
