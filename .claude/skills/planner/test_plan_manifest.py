@@ -337,6 +337,21 @@ class PlanManifestTest(unittest.TestCase):
                 self.pair(first, second)
                 self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
 
+    def test_parallel_pair_cannot_hide_shared_paths_behind_spelling(self):
+        for first, second, shared in ((['tools/metrics/metrics.py'], ['tools/metrics/metrics.py'],
+                                       'tools/metrics/metrics.py'),
+                                      (['apps/api/src/Cart'], ['apps/api/src/Cart/'], 'apps/api/src/Cart'),
+                                      (['docs/x'], ['docs/x/'], 'docs/x'),
+                                      (['docs/x'], ['docs/x/y.md'], 'docs/x/y.md'),
+                                      (['docs/a.md'], ['docs/A.md'], 'docs/a.md'),
+                                      (['apps/api/src/Cart/'], ['apps/api/src/cart/a.php'], 'apps/api/src/cart/a.php')):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
+        self.pair(['apps/api/src/Cart/'], ['apps/api/src/CartItem/'])
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_parallel_pair_sharing_a_claude_md_is_refused(self):
         for first, second in ((['CLAUDE.md'], ['CLAUDE.md']),
                               (['apps/api/CLAUDE.md'], ['apps/api/tests/', 'apps/api/CLAUDE.md']),
