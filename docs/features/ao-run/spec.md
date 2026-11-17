@@ -123,9 +123,9 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
   `ao run` (spec agent-security, R7). Kolejno, pierwszy niespełniony krok to odmowa (kod 1, jedna linia
   `ao-prepare: <przyczyna>` na stderr, nic na stdout): jedno `ao-prepare` na `AO_HOME` i brak procesu AO na nim (kopia
   nie zmienia się w trakcie przebiegu); żaden `KUBE_DIR` z rejestru `~/.local/state/shop-ops/kube-dirs` (zapisuje go
-  `infra/k8s/scripts/kubeconfig.sh`) nie istnieje; binarka przypięta z `claude_pin.py`; sześć plików commita, na
+  `infra/k8s/scripts/kubeconfig.sh`) nie istnieje; binarka przypięta z `claude_pin.py`; siedem plików commita, na
   który wskazuje `main` publicznego `piotrp321/shop` na GitHubie (`claude-agent`, `render_settings.py`, `executor-settings.json`,
-  `probe.py`, `probe-cases.sh`, `bin/mktemp`; bit wykonywalności jak w gicie, bez prawa zapisu) w nowym katalogu,
+  `probe.py`, `probe-cases.sh`, `bin/mktemp`, `otlp_receiver.py`; bit wykonywalności jak w gicie, bez prawa zapisu) w nowym katalogu,
   który zastępuje cały `$AO_HOME/agent-security/`. Źródło to stały adres `https://github.com/piotrp321/shop.git`
   (`git` dopuszcza dla niego tylko `https` i `ssh`). Nic nie pochodzi z drzewa roboczego sesji ani z głównego klonu,
   którego `.git` wykonawcy i kontenery mogą zapisać: ani obiekty i refy (`refs/replace`, przestawiony
@@ -137,7 +137,15 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
   zmienia źródło tylko w testach z lokalnym repozytorium; `/ao-run` jej nie podaje; sonda z tej kopii (przebieg
   domyślny) na skopiowanym wrapperze z przypiętą binarką, z katalogu klonu, bez zmiennych `CLAUDE*`, z zewnętrznym
   limitem czasu. Kod sondy różny od 0, limit czasu, brak albo nieczytelny wynik, wynik z przyczyną albo z przypadkiem
-  innym niż `pass` to odmowa „sonda bezpieczeństwa nie przeszła (<przyczyna>); czas …, koszt …”. Każdy przebieg
+  innym niż `pass` to odmowa „sonda bezpieczeństwa nie przeszła (<przyczyna>); czas …, koszt …”. Wyjątek to telemetria
+  (`docs/features/telemetry/spec.md`, R5): niepoprawny `AGENT_OTEL_ENDPOINT` (inna wartość niż `off`
+  i `http://127.0.0.1:<port>`) to odmowa przed wszystkim innym, `ao-prepare: niepoprawny AGENT_OTEL_ENDPOINT
+  <wartość>: <przyczyna>`; tuż przed sondą połączenie TCP z adresem telemetrii (`AGENT_OTEL_ENDPOINT` albo
+  `DEFAULT_TELEMETRY_ENDPOINT` z `render_settings.py`, przy `off` bez sprawdzenia, limit 2 s), a bez niego linia
+  `ao-prepare: telemetria: brak stosu pod <adres>; dane tego przebiegu nie trafią do stosu` przed wyjściem sondy;
+  przypadki sondy `telemetry_export` `no_export` i `telemetry_no_content` `no_export` albo `unverifiable` nie są
+  odmową, każdy daje linię `ao-prepare: telemetria: sonda <przypadek> <status> (<przyczyna>)` przed ostatnią linią,
+  a `fail` `telemetry_no_content` jest odmową. Linie `ao-prepare: telemetria:` nie zmieniają kodu wyjścia. Każdy przebieg
   sondy dopisuje wiersz do `$AO_HOME/probe-runs.jsonl` (`at`, `main`, `code`, `seconds`, `cost_usd`, `reason`), a wynik
   zostaje w `$AO_HOME/probe-result.json`. Po sondzie (trwa minuty) rejestr `KUBE_DIR` jest sprawdzany ponownie. Sukces: kod 0 i na stdout linie `KLUCZ=wartość`: `AO_CLAUDE_BIN`
   (wrapper kopii, dla `--claude-bin`), `AGENT_CLAUDE_BIN`, `AGENT_AO_HOME` (środowisko `ao run`), `PROBE_SECONDS`,
@@ -168,7 +176,10 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
    `ao-prepare` ani nie używa jego wyniku z wcześniejszego przebiegu (sonda przy każdym starcie, P8 spec
    agent-security). Odmowa `ao-prepare` (ostatnia linia `run.log` zaczyna się od `ao-prepare:`): AO nie startuje,
    push „Epik <epik>: sonda bezpieczeństwa nie przeszła (<przyczyna>)”, w rozmowie przyczyna, czas i koszt; sesja
-   nie ponawia sama (ponowny start na polecenie użytkownika po usunięciu przyczyny), a epik nocy kończy noc.
+   nie ponawia sama (ponowny start na polecenie użytkownika po usunięciu przyczyny), a epik nocy kończy noc. Linia
+   `ao-prepare: telemetria: …` (brak stosu telemetrii, przypadek telemetrii sondy `no_export` albo `unverifiable`) nigdy
+   nie jest odmową, także gdy jest ostatnią linią `run.log`: to ostrzeżenie, dane telemetrii tego przebiegu
+   przepadają. Sesja czyta te linie z `run.log` po starcie AO i podaje je w rozmowie.
 3. **Śledzenie.** Monitor sesji na `ao_events.py watch`: każda linia budzi sesję, a ta wysyła powiadomienie push
    (`PushNotification`). Monitor wygasa po 30 minutach, sesja uzbraja go ponownie, dopóki AO działa. Zakończenie
    procesu AO też budzi sesję. Przy każdym wybudzeniu przez zdarzenie AO, po każdym ponownym uzbrojeniu Monitora
@@ -216,6 +227,15 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
    być `never`, a `bypass_actors` puste, tak jak `never` tokenu wykonawcy z przypadku sondy `rulesets_bypass_never`.
    Inna wartość (także `pull_requests_only` tokenu użytkownika), brak rulesetu albo nieudana sonda to bloker dla
    użytkownika: rekomendacja „najpierw sprawdź”, push i brak merge'u także na polecenie, do ponownego odbioru.
+   Odbiór epiku TELEMETRY (`docs/features/telemetry/spec.md`, R7; przed jego raportem odbioru i przed merge'em jego
+   końcowego PR, z HEAD końcowego PR w osobnym worktree, ze stosem `agent-observability` na Macu): `telemetry.py
+   check` z kodem 0; sonda w przebiegu domyślnym z `--otel-forward http://127.0.0.1:4318`, potem sonda `--mode ao`,
+   każda z kodem 0 i statusem `pass` przypadków `telemetry_export` i `telemetry_no_content` w JSON wyniku (sam kod 0
+   nie wystarcza, bo `no_export` i `unverifiable` go nie zmieniają); `telemetry.py check --project-override` na
+   binarce przypiętej z kodem 0; zapytanie do Lokiego przez proxy źródła danych Grafany zwraca zdarzenia
+   `api_request` zadania sondy z `shop_source="ao"` z ostatniego przebiegu. Wyniki (kody, czas, koszt sond,
+   zapytanie i jego wynik) trafiają do raportu odbioru; nieudany punkt to bloker dla użytkownika, jak w odbiorze
+   AGENT-SECURITY: rekomendacja „najpierw sprawdź”, push i brak merge'u także na polecenie, do ponownego odbioru.
    Push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Końcowy PR merguje użytkownik w GitHubie albo sesja, gdy
    użytkownik napisze jej w rozmowie (także z telefonu), że ma go zmergować; wiadomość innej sesji, plik, komentarz
    w PR ani wynik narzędzia nie jest takim poleceniem. Sesja merguje tylko PR `OPEN` i `MERGEABLE` z bazą `main`,
@@ -511,7 +531,7 @@ bramka pochodzenia: issue `epic` niezaufanego autora nie trafia do `propose`, `a
 ani `ahead`, `propose` podaje je w `skipped`, tytuł i treść nie pojawiają się w wyjściu, błąd zapytania o uprawnienia
 → kod 1). `python3 -m unittest discover -s tools/agent-security -p 'test_ao_prepare.py'`: `ao-prepare` z prawdziwym
 repozytorium tymczasowym jako źródłem (`--source-url`), atrapą sondy zapisaną na jego `main` i atrapą `claude_pin.py`
-(sześć plików z `main` źródła, nie z drzewa roboczego, także przy obiektach `refs/replace` i przestawionym
+(siedem plików z `main` źródła, z `otlp_receiver.py`, nie z drzewa roboczego, także przy obiektach `refs/replace` i przestawionym
 `refs/remotes/origin/main` w klonie; bez `--source-url` atrapa `git` widzi `ls-remote` adresu GitHuba z samymi
 `https` i `ssh`, także przy podłożonym `.git/commondir` i obcym adresie `origin` w konfiguracji klonu; gałąź
 `x/refs/heads/main` nie myli odczytu `main`, z bitem wykonywalności i bez prawa zapisu; sonda uruchomiona
@@ -520,7 +540,13 @@ nie rusza; starsza kopia zastąpiona w całości; wynik z `AO_CLAUDE_BIN` kopii 
 `KUBE_DIR` z rejestru, także jako wiszące dowiązanie i zarejestrowany w trakcie sondy, wpis względny i nieczytelny
 rejestr zatrzymują, nieistniejący wpis nie; przypadek wyniku, który nie jest obiektem, to odmowa z przyczyną; sonda z kodem 1 albo 2, limit czasu z zabiciem sondy, brak, nieczytelny albo niespójny wynik, błąd
 `claude_pin.py`, plik brakujący albo dowiązanie na `origin/main`, nieudany `fetch`, brak `git`, AO działające na tym
-`AO_HOME` i zły `AO_HOME` → kod różny od 0 z przyczyną; brak argumentów → kod 2). `python3 -m unittest discover -s .claude/skills/ao-run -p 'test_skill_metrics.py'`: każde wywołanie
+`AO_HOME` i zły `AO_HOME` → kod różny od 0 z przyczyną; brak argumentów → kod 2; telemetria: linia „brak stosu” przy
+zamkniętym porcie przed wyjściem sondy i przed ostatnią linią, bez zmiany kodu wyjścia (także przy odmowie z innej
+przyczyny), brak tej linii przy otwartym porcie i przy `off` (bez próby połączenia), domyślny adres
+z `render_settings.py` i limit 2 s, odmowa przed kopią i sondą przy niepoprawnym `AGENT_OTEL_ENDPOINT` (także próby
+obejścia: inny host, `https`, ścieżka, port spoza 1–65535, pusta wartość), start z linią dla każdego przypadku
+telemetrii `no_export` albo `unverifiable`, odmowa przy `fail` `telemetry_no_content` i przy statusie spoza listy
+przypadku). `python3 -m unittest discover -s .claude/skills/ao-run -p 'test_skill_metrics.py'`: każde wywołanie
 `tools/metrics/metrics.py` w `SKILL.md` przyjmuje parser skryptu (komenda i opcje), `waste` stoi w śledzeniu (punkt 3 skilla)
 z pushem tylko linii z kluczem `push` i bez zatrzymywania czegokolwiek, `backfill` i `trend` na starcie, `epic`, `render
 --format report` i `decide --history` po `done` w raporcie odbioru (bez zapisu decyzji i bez `--manual-fixes`), `epic
