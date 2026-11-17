@@ -51,7 +51,8 @@ final readonly class AccountReconciler
     /**
      * @param \Closure(string, int): void|null $progress called with `deleted` or `imported` and the running total
      *
-     * @throws \RuntimeException when the directory fails or rejects an account for a reason no account explains
+     * @throws \RuntimeException         when the directory fails or rejects an account for a reason no account explains
+     * @throws \InvalidArgumentException when a dictionary of the people is invalid (read when the first account is generated)
      */
     public function reconcile(AccountDirectory $directory, TargetAccounts $target, ?\Closure $progress = null): ReconcileReport
     {
@@ -113,6 +114,9 @@ final readonly class AccountReconciler
      * demo-data:verify): a missing group, members outside the target set, accounts of the target missing or not current.
      *
      * @return list<string>
+     *
+     * @throws \RuntimeException         when the directory fails
+     * @throws \InvalidArgumentException when a dictionary of the people is invalid
      */
     public function differences(AccountDirectory $directory, TargetAccounts $target): array
     {
