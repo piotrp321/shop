@@ -222,7 +222,8 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
     a atrybuty `shop.*` ustala wrapper poza sandboxem z `AO_TASK_ID` i nazwy `AGENT_AO_HOME` (R2); wykonawca nie zmienia
     środowiska ani ustawień własnego procesu Claude Code. `OTEL_*` w ustawieniach projektu zatrzymuje P12 (droga 5).
     Sprawdzenie: testy `render_settings.py` (także próby obejścia adresu: `localhost.evil`, `127.0.0.1.nip.io`,
-    `127.0.0.1@host`, `https://`, `[::1]`, port spoza 1–65535, ścieżka) i testy wrappera z atrapą binarki.
+    `127.0.0.1@host`, `https://`, `[::1]`, port spoza 1–65535, ścieżka), testy wrappera z atrapą binarki i przypadki
+    sondy `telemetry_export` i `telemetry_no_content` (R6) na prawdziwym procesie wykonawcy.
 
 **Luki, które epik świadomie zostawia** (każda z powodem; propozycje osobnych zgłoszeń):
 
@@ -557,11 +558,13 @@ wykonawcy, nie konfigurację.
 
 Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (binarka przypięta, wymagana),
 `--ao-home-name`, `--timeout`, `--cost-limit`, `--canary-root`, `--result` (plik wyniku zamiast stdout), `--transcript`
-(zdarzenia `stream-json` bez wartości kanarka, do diagnozy).
+(zdarzenia `stream-json` bez wartości kanarka, do diagnozy), `--otel-forward` (przekazanie telemetrii, niżej).
 
 - Fail-closed: kod 0 tylko wtedy, gdy wszystkie przypadki z listy mają wynik i przeszły. Błąd procesu, przypadek bez
   wyniku (model go nie wykonał, wyjście urwane), przekroczony limit kosztu (`--max-budget-usd 1`, zabezpieczenie,
   nie zakładany koszt) albo limit czasu (`--timeout`, domyślnie 10 min; po nim sonda zabija grupę procesów) to odmowa.
+  Jedyny wyjątek to statusy `no_export` i `unverifiable` przypadków telemetrii (niżej): nie zmieniają kodu wyjścia
+  w żadnym trybie.
 - Sprzątanie: po każdym wyjściu (także błędzie, limicie czasu i przerwaniu sygnałem `INT`, `TERM`, `HUP`) sonda
   wysyła wykonawcy `TERM` i czeka na niego do 15 s (wrapper przekazuje sygnał i w pułapce `EXIT` usuwa
   `.agent-tmp/run.*` i katalog tymczasowy Claude Code w `/private/tmp`, czego `KILL` by nie zrobił), potem
@@ -651,13 +654,42 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   `curl` do nasłuchu sondy na wolnym porcie `127.0.0.1` (przechodzi tylko odpowiedź z losową treścią sondy).
   `docker compose build` działa z `~/.docker` czytelnym w profilu (`allowRead`) i stanem buildx w `BUILDX_CONFIG`
   zadania; wrapper nie zmienia `DOCKER_CONFIG`.
+- Przypadki telemetrii, warstwa `telemetry` (`docs/features/telemetry/spec.md`, R3). Ocenia je odbiornik, nie tekst
+  modelu. Sonda uruchamia dwa odbiorniki OTLP/HTTP (`tools/agent-security/otlp_receiver.py`, biblioteka standardowa)
+  na `127.0.0.1` z losowymi portami, więc dane sondy nie trafiają do stosu. Wykonawca dostaje `AGENT_OTEL_ENDPOINT`
+  na pierwszy odbiornik, a do tego `OTEL_LOG_USER_PROMPTS=1`, `OTEL_LOG_TOOL_DETAILS=1`
+  i `OTEL_EXPORTER_OTLP_ENDPOINT` na drugi: wrapper musi je usunąć (R2). Polecenie sondy kończy losowy znacznik
+  (`PROMPT-<losowe>`). Odbiornik zapisuje każde żądanie (także z ciałem `chunked`) i rozpakowuje je według
+  `Content-Encoding` (`gzip` albo brak; `gzip` rozpakowuje wszystkie człony, z łącznym limitem rozmiaru; inne
+  kodowanie albo ciało, którego nie da się rozpakować, także z bajtami po członie, które nie są całym członem, jest
+  nie do sprawdzenia). Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem protobufa
+  (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością tekstową).
+  - `telemetry_export`: `pass`, gdy pierwszy odbiornik dostał żądania `/v1/logs` i `/v1/metrics`, a w parach logów
+    i metryk są `shop.source=ao`, `shop.task=<zadanie sondy>`, `shop.epic=<nazwa atrapy $AO_HOME po ao->`
+    i `shop.task_kind=plan` (zadanie sondy to `<NAZWA>-1`, jak liczy wrapper); inaczej `no_export` (brak żądań, brak
+    atrybutów albo ciało, którego nie da się rozpakować lub zdekodować).
+  - `telemetry_no_content`: `fail` (wykryty wyciek albo przekierowanie), gdy któreś ciało pierwszego odbiornika (także
+    surowe bajty ciała nie do rozpakowania) zawiera znacznik polecenia, nazwę `.agent-probe-cases.sh`, wartość
+    `PROBE_LOCAL_BODY` albo wartość kanarka, albo gdy drugi odbiornik dostał jakiekolwiek żądanie; `unverifiable`,
+    gdy któreś ciało jest nie do sprawdzenia, a znacznika nie ma; `no_export` bez żadnego żądania; inaczej `pass`.
+    Przyczyna nazywa rodzaj znacznika, nigdy jego wartości. Przyczyny przypadków telemetrii nie zawierają tekstu
+    z żądania (trafiają do `run.log`, a sesja `/ao-run` cytuje je w rozmowie): ścieżkę podają tylko dla `/v1/logs`
+    i `/v1/metrics` (inna to „żądanie pod inną ścieżką”), wartości `Content-Encoding` nie podają.
+  - `no_export` i `unverifiable` nie zmieniają kodu wyjścia sondy w trybie domyślnym ani `--mode ao` (brak eksportu
+    nie zatrzymuje AO); każdy przypadek telemetrii ma w wyniku pole `reason`. `fail` przypadku `telemetry_no_content`
+    to kod 1 w obu trybach, z przyczyną w `reason` wyniku.
+  - `--otel-forward URL` (tylko `http://127.0.0.1:<port>`, reguła adresu z `render_settings.py`; inny adres, także
+    z innym hostem, `https`, ścieżką albo portem spoza 1–65535, to błąd użycia, kod 2) przekazuje każde żądanie
+    pierwszego odbiornika bez zmian (metoda, ścieżka, `Content-Type`, `Content-Encoding`, ciało) także pod ten adres.
+    Ocena przypadków jest taka sama; nieudane przekazanie niczego nie zmienia. Używa go tylko odbiór TELEMETRY ze
+    stosem (`.claude/skills/ao-run/SKILL.md`).
 - Sonda czyści środowisko z `CLAUDE*` przed uruchomieniem zagnieżdżonego `claude` (jak `ao()` w `/ao-run`).
 - Kto uruchamia sondę z modelem: przed startem AO `ao-prepare` (sesja `/ao-run`, poza wykonawcą). Przy odbiorze
   epiku AGENT-SECURITY przebieg domyślny i `--mode ao` wykonuje sesja `/ao-run` przed merge'em końcowego PR (sekcja
   „Odbiór AGENT-SECURITY” w `.claude/skills/ao-run/SKILL.md`): z HEAD końcowego PR, w osobnym worktree, z wynikiem
   w `$AO_HOME/acceptance-probe-<tryb>.json` i w raporcie odbioru.
-- Wynik: JSON z listą przypadków (`pass`/`fail`/`missing`, warstwa: `sandbox`, `permissions`, `docker`, `token`,
-  `wrapper`), czasem (`elapsed_s`), kosztem (`total_cost_usd` przebiegu) i przyczyną odmowy (`reason`: pierwszy przypadek, który
+- Wynik: JSON z listą przypadków (`pass`/`fail`/`missing`, dla przypadków telemetrii także `no_export`
+  i `unverifiable` z polem `reason`; warstwa: `sandbox`, `permissions`, `docker`, `token`, `wrapper`, `telemetry`), czasem (`elapsed_s`), kosztem (`total_cost_usd` przebiegu) i przyczyną odmowy (`reason`: pierwszy przypadek, który
   nie przeszedł, przy wycieku przypadek narzędzia albo miejsce, w którym pojawił się kanarek, limit czasu albo
   kosztu, błąd startu); kod 0 (wszystko przechodzi), 1 (przypadek nie przeszedł albo
   nie ma wyniku, limit czasu albo kosztu, także gdy binarka sama zakończyła się po przekroczeniu
@@ -685,7 +717,11 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   nie są pomijane: niedostępne `/tmp` to tam `FAIL`. Żadna zmienna nie przenosi katalogu `CLAUDE_CODE_TMPDIR` wrappera,
   więc profil ani walidacja ścieżki się nie zmieniają.
 - Testy bez modelu (CI przez `script-tests.sh`): ocena wyniku `stream-json` z atrapami (wyciek kanarka w wyniku
-  narzędzia, próba niewykonana, brak przypadku, przekroczony koszt, urwane wyjście), limit czasu z atrapą binarki,
+  narzędzia, próba niewykonana, brak przypadku, przekroczony koszt, urwane wyjście), odbiornik i dekoder na ciałach
+  protobuf zbudowanych w teście (zwykłych, `gzip` i `chunked`; nieznane `Content-Encoding`, uszkodzony `gzip`,
+  `gzip` z wieloma członami, bajty po członie, ciało nie do zdekodowania), każdy status przypadków telemetrii w obu trybach z kodem wyjścia, każdy znacznik w ciele,
+  żądanie do drugiego odbiornika, `--otel-forward` (przekazanie bez zmian, ta sama ocena, próby obejścia adresu),
+  atrybuty oczekiwane przez sondę równe tym, które ustawia wrapper, limit czasu z atrapą binarki,
   która nie kończy pracy, sprzątanie po błędzie i po sygnale, kody wyjścia; wrapper z atrapą binarki,
   `git` i `security` (argumenty, `--version`, brak tokenu, brak albo zły `AO_TASK_ID`, katalogi zadania i integracji
   w ustawieniach, różnica `.claude/settings*.json` lub `.mcp.json`, zmienne `git`, `SSH_AUTH_SOCK`); profil (`allowUnsandboxedCommands: false`, `failIfUnavailable: true`, `denyRead`
@@ -695,8 +731,9 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
 
 `tools/agent-security/ao-prepare` (skrypt z testami) wywoływany przez `/ao-run` w sekcji „Start” przed `ao run`:
 
-- kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json`, `probe.py`, `probe-cases.sh`
-  i `bin/mktemp` (nakładka z R2, do `$AO_HOME/agent-security/bin/mktemp`, wykonywalna) z `main` na GitHubie do
+- kopiuje `claude-agent`, `render_settings.py`, `executor-settings.json`, `probe.py`, `probe-cases.sh`,
+  `otlp_receiver.py` (odbiornik przypadków telemetrii sondy) i `bin/mktemp` (nakładka z R2, do
+  `$AO_HOME/agent-security/bin/mktemp`, wykonywalna) z `main` na GitHubie do
   `$AO_HOME/agent-security/` (poza zapisem wykonawcy i katalogami Dockera; kopia nie zmienia się w trakcie
   przebiegu). Źródło to stały adres `https://github.com/piotrp321/shop.git` (tylko `https` i `ssh`), nie drzewo
   robocze sesji ani główny klon, którego `.git` wykonawcy i kontenery mogą zapisać (`refs/replace`, przestawiony
@@ -708,6 +745,17 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
 - uruchamia sondę z kopii (`$AO_HOME/agent-security/probe.py`, nigdy z drzewa roboczego sesji) na wrapperze i profilu
   z tej samej kopii, z binarką przypiętą (`claude_pin.py`); kod różny od 0: AO nie
   startuje, push „Epik <x>: sonda bezpieczeństwa nie przeszła (<reason>)”, w rozmowie czas, koszt i przyczyna;
+- telemetria (`docs/features/telemetry/spec.md`, R5): niepoprawny `AGENT_OTEL_ENDPOINT` w jego środowisku (inna
+  wartość niż `off` i `http://127.0.0.1:<port>`, także pusta) to odmowa przed wszystkim innym:
+  `ao-prepare: niepoprawny AGENT_OTEL_ENDPOINT <wartość>: <przyczyna>`. Tuż przed sondą sprawdza połączenie TCP
+  z adresem telemetrii (`AGENT_OTEL_ENDPOINT`, bez niej `DEFAULT_TELEMETRY_ENDPOINT` z `render_settings.py`; przy
+  `off` nie sprawdza) z limitem 2 s; bez połączenia wypisuje na stderr przed wyjściem sondy
+  `ao-prepare: telemetria: brak stosu pod <adres>; dane tego przebiegu nie trafią do stosu`, a kod wyjścia i start
+  się nie zmieniają. Wynik sondy z `telemetry_export` `no_export` albo `telemetry_no_content` `no_export` lub
+  `unverifiable` nie jest odmową (wyjątek od reguły „przypadek, który nie przeszedł, to odmowa”): dla każdego
+  wypisuje `ao-prepare: telemetria: sonda <przypadek> <status> (<przyczyna>)` przed ostatnią linią. `fail`
+  `telemetry_no_content` to odmowa jak każdy inny przypadek. Linie `ao-prepare: telemetria:` są ostrzeżeniami
+  i nigdy nie są ostatnią linią stderr;
 - wypisuje na stdout linie `KEY=VALUE`: `AO_CLAUDE_BIN` (`$AO_HOME/agent-security/claude-agent`, dla `--claude-bin`),
   `AGENT_CLAUDE_BIN`, `AGENT_AO_HOME` (środowisko `ao run`, czyta je wrapper), `PROBE_SECONDS`, `PROBE_COST_USD`
   i `MAIN_SHA`. Sonda działa przy każdym `ao run` i każdym wznowieniu, bez pomijania (P8). Kody wyjścia: 0 AO może
@@ -769,7 +817,10 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 | Wykonawca bez `AO_TASK_ID` albo z nieznanym zadaniem | wrapper odmawia startu; AO notuje nieudaną próbę |
 | `AGENT_OTEL_ENDPOINT` niepoprawny (także pusty) | wrapper odmawia startu (kod 2) z przyczyną na stderr |
 | `AO_TASK_ID` albo nazwa `AGENT_AO_HOME` spoza wzorca atrybutów telemetrii | atrybut `unknown`, start bez zmian |
-| Stos telemetrii wyłączony albo port zamknięty | wykonawca działa bez zmian, dane telemetrii tego przebiegu przepadają |
+| Stos telemetrii wyłączony albo port zamknięty | wykonawca działa bez zmian, dane telemetrii tego przebiegu przepadają; `ao-prepare` wypisuje ostrzeżenie `ao-prepare: telemetria: brak stosu pod <adres>…`, start AO bez zmian |
+| `AGENT_OTEL_ENDPOINT` niepoprawny w środowisku `ao-prepare` | odmowa przed sondą z przyczyną; AO nie startuje |
+| Wykonawca sondy nie eksportuje telemetrii albo ciało ma nieznane `Content-Encoding` | przypadki telemetrii `no_export` albo `unverifiable` z przyczyną, kod sondy bez zmian; `ao-prepare` wypisuje ostrzeżenie dla każdego, start AO bez zmian; odbiór TELEMETRY nie przechodzi |
+| Eksport sondy zawiera treść (znacznik polecenia, nazwę skryptu przypadków, wynik narzędzia, kanarek) albo trafia pod odziedziczony `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry_no_content` `fail`, sonda kod 1 w obu trybach; AO nie startuje |
 | Ruleset `main-merge` albo `epic-merge` nie jest założony | sonda: przypadek bypassu `fail` z przyczyną „brak rulesetu”, kod 1; AO nie startuje; użytkownik zakłada rulesety (R8) |
 | Token wykonawcy ma bypass (`current_user_can_bypass` inne niż `never`, np. ruleset w GitHubie nadal ma aktora) | sonda kod 1 z przyczyną; AO nie startuje; użytkownik usuwa aktora bypass w GitHubie (R8) |
 | PR do `main` albo `epic/*` z czerwonym CI | GitHub odmawia merge'a każdemu; naprawa kolejnym commitem w PR |
