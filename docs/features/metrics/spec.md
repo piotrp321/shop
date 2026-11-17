@@ -147,7 +147,12 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   | `github_wait` | `github_wait` → następne zdarzenie epiku inne niż `github_wait` i `gh_call`, najwyżej 30 min od ostatniego `github_wait` |
   | `idle` | reszta (AO nie działa, brak gotowych zadań) |
 
-  Brak źródła kategorii (np. `events.jsonl`) przenosi jej czas do `idle` z pozycją w `gaps`.
+  Brak źródła kategorii (np. `events.jsonl`) przenosi jej czas do `idle` z pozycją w `gaps`. Pominięty jest też
+  przedział, któremu brakuje danych: `cooldown_set` bez `until` i bez `cooldown_released` (`limit_wait`), `host_pause`
+  bez `from`/`to` i `seconds` (`host_pause`) i próba bez `started_at` (`work`). Taka kategoria jest dolną granicą, a
+  `idle` górną: rekord ma ich listę w `breakdown_incomplete`, pozycję w `gaps`, a render pokazuje je z „≈” i dopiskiem
+  „dolna granica” albo „górna granica”. Oznaczenie przechodzi do wąskich gardeł, `trend` (`work`), D4 (`limit_wait`,
+  `ci` z mianownikiem `work`) i okien `effect` tych miar.
 - `in_attempts`: czas poleceń powłoki w próbach (nazwy narzędzi powłoki w `config.json`: `Bash`, `bash`) według
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
   `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
@@ -220,15 +225,16 @@ w `gaps`. Wiadomości i `modelUsage` czasem się rozchodzą (kompakcja, wywołan
 par próba–model): nadwyżka `modelUsage` nad wiadomościami trafia do roli `other`, a niedobór oznacza role tego
 modelu jako szacowane, z pozycją w `gaps`.
 
-Reguła zachowawcza: liczba szacowana, niepełna albo wyprowadzona z takich danych (średnia, mediana, iloraz, różnica, udział,
-próg) ma `estimated: true`, a gdy brakuje jej części, także `incomplete: true` albo pozycję w `gaps`, i każde jej
-przedstawienie (JSON, raport, komentarz, push, `/retro`) pokazuje ją z „≈” (suma niepełna: „≈” i dopisek „suma niepełna”
-albo „dolna granica”). Próba bez transkryptu może należeć do każdej roli i modelu, więc oznacza niepełne wszystkie przekroje
-`value`, do których mogła należeć (role zadania w `by_task_role` tylko jej zadania). Czas zadania, czas integracji i czas
-poleceń w próbach (`in_attempts`) bez części prób (brak czasu albo transkryptu) to dolna granica: `incomplete: true` i
-pozycja w `gaps`. Wąskie gardło, kandydat `decide`, okno `effect` i alarm `waste` (`estimated` albo `median_estimated`) zbudowane z takiej liczby (także z mediany
-historii, w której jest choć jedna) mają `estimated: true`; prognoza `expected_effect` jest szacowana tylko wtedy, gdy
-dane, z których wynika, są szacowane lub niepełne.
+Reguła zachowawcza: liczba szacowana, niepełna albo wyprowadzona z takich danych (średnia, mediana, iloraz, różnica,
+udział, próg) ma `estimated: true`, a gdy brakuje jej części, także `incomplete: true` albo pozycję w `gaps`, i każde
+jej przedstawienie (JSON, raport, komentarz, push, `/retro`) pokazuje ją z „≈” (suma niepełna: „≈” i dopisek „suma
+niepełna” albo „dolna granica”). Próba bez transkryptu może należeć do każdej roli i modelu, więc oznacza niepełne
+wszystkie przekroje `value`, do których mogła należeć (role zadania w `by_task_role` tylko jej zadania). Czas zadania,
+czas integracji i czas poleceń w próbach (`in_attempts`) bez części prób (brak czasu albo transkryptu) to dolna granica:
+`incomplete: true` i pozycja w `gaps`; render dopisuje „dolna granica”, a przy `in_attempts` „transkrypty tylko N z M
+prób” i „≈” przy każdej liczbie. Wąskie gardło, kandydat `decide`, okno `effect` i alarm `waste` (`estimated` albo
+`median_estimated`) zbudowane z takiej liczby (także z mediany historii, w której jest choć jedna) są oznaczone jako
+szacowane; prognoza `expected_effect` jest szacowana tylko wtedy, gdy dane, z których wynika, są szacowane lub niepełne.
 
 ### Historia i trend
 
@@ -299,6 +305,8 @@ i > 1 h:
 - **W3 pętla prób (niezależna od progów mediany i kwoty):** zadanie zaczyna trzecią próbę po dwóch nieudanych
   (zablokowane się nie liczą), drugi REPAIR epiku z rzędu albo runda QA równa `--max-qa-rounds`;
 - **W4 koszt zadania (kosztowy):** łączna wartość prób zadania > 3× mediana wartości zadań tego `kind` i ≥ 5 USD.
+  Zadanie z trwającą próbą ma sumę zakończonych prób, czyli dolną granicę: alarm ma `incomplete: true`, a push mówi
+  „zakończone próby kosztują”. Zadanie historii z próbą bez `ended_at` nie jest pomiarem W4 (suma byłaby częściowa).
 
 Mediana wymaga co najmniej 5 pomiarów w historii; bez nich W1, W2 i W4 nie alarmują (pozycja w `gaps`). Sesja
 `/ao-run` wywołuje `waste` przy każdym wybudzeniu przez zdarzenie AO i przy każdym ponownym uzbrojeniu Monitora
