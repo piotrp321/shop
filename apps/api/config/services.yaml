@@ -90,6 +90,12 @@ services:
             $client: '@app.search.client'
             $longRequestClient: '@app.search.long_request_client'
             $alias: '%app.search.alias%'
+            $logger: '@monolog.logger.search_rebuild'
+
+    # Logs the progress of the rebuild on the same channel as the retries of ElasticsearchSearchIndexMaintenance.
+    App\Catalog\Application\Search\ProductSearchIndexRebuilder:
+        arguments:
+            $logger: '@monolog.logger.search_rebuild'
 
     App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer:
         arguments:

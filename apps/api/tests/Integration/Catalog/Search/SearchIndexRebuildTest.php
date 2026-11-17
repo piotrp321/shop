@@ -177,16 +177,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $factory = $this->clientFactory();
         // The alias switch is executed, its response is lost and the cluster stays unreachable afterwards.
         $http = ResponseDroppingHttpClient::aliasSwitches($factory->httpClient(2.0), dropEverythingAfter: true);
-        $maintenance = new ElasticsearchSearchIndexMaintenance($factory->createWith($http), $factory->create(30.0), new ProductIndexDefinition(1, 0), $this->alias);
-        $lock = self::getContainer()->get(SearchIndexRebuildLock::class);
-        self::assertInstanceOf(SearchIndexRebuildLock::class, $lock);
-        $source = self::getContainer()->get(ProductSearchSource::class);
-        self::assertInstanceOf(ProductSearchSource::class, $source);
-        $application = new Application();
-        $queryBus = self::getContainer()->get('query.bus');
-        self::assertInstanceOf(MessageBusInterface::class, $queryBus);
-        $application->addCommand(new ReindexCommand(new ProductSearchIndexRebuilder($source, $maintenance, $lock, new ProductDocumentBuilder(), new QueryBusProductOfferFacts($queryBus), new SystemClock()), 500));
-        $tester = new CommandTester($application->find('catalog:reindex'));
+        $tester = $this->reindexCommandOver(new ElasticsearchSearchIndexMaintenance($factory->createWith($http), $factory->create(30.0), new ProductIndexDefinition(1, 0), $this->alias));
 
         self::assertSame(2, $tester->execute([]));
 
@@ -197,6 +188,60 @@ final class SearchIndexRebuildTest extends KernelTestCase
         self::assertStringContainsString($current, $tester->getDisplay());
         // The lock is free again: the next rebuild runs.
         self::assertSame(Command::SUCCESS, $this->reindexCommand()->execute([]));
+    }
+
+    public function testARebuildSurvivesTransientWriteFailuresAndFillsTheNewIndexWithoutRefreshing(): void
+    {
+        $ids = $this->createProducts(7);
+        $previous = $this->maintenance->activeIndex();
+        // Batches of 3: all four faults hit the first batch: a rejected item (3 documents, then 1), an overloaded
+        // cluster (503), a timeout and a rejected item (429); the fifth attempt succeeds.
+        $http = $this->faultyBulks([['transient' => [1]], 'unavailable', 'timeout', ['transient' => [0, 2]]]);
+        $refreshIntervals = [];
+        $http->onBulk = function () use (&$refreshIntervals, $previous): void {
+            $filled = array_values(array_diff($this->aliasIndexes(), [$previous]));
+            self::assertCount(1, $filled);
+            $refreshIntervals[] = $this->refreshInterval($filled[0]);
+        };
+
+        $tester = $this->reindexCommandWith($http);
+        self::assertSame(Command::SUCCESS, $tester->execute(['--batch-size' => '3']), $tester->getDisplay());
+
+        self::assertSame(array_fill(0, $http->bulkRequests, '-1'), $refreshIntervals);
+        self::assertGreaterThan(3, $http->bulkRequests);
+        self::assertSame($ids, array_keys($this->indexedVersions()));
+        self::assertNull($this->refreshInterval($this->maintenance->activeIndex()), 'The default refresh interval was not restored.');
+        self::assertFalse($this->indexExists($previous));
+    }
+
+    public function testARebuildThatKeepsFailingTransientlyDiscardsTheNewIndexAndKeepsTheAlias(): void
+    {
+        $this->createProducts(4);
+        $previous = $this->maintenance->activeIndex();
+        $indexesBefore = $this->aliasIndexes();
+        $http = $this->faultyBulks(array_fill(0, 5, 'unavailable'));
+
+        $tester = $this->reindexCommandWith($http);
+        self::assertSame(Command::FAILURE, $tester->execute([]));
+
+        self::assertSame(5, $http->bulkRequests);
+        self::assertSame($previous, $this->maintenance->activeIndex());
+        self::assertSame($indexesBefore, $this->aliasIndexes());
+    }
+
+    public function testARebuildWithAPermanentItemErrorDiscardsTheNewIndexAndKeepsTheAlias(): void
+    {
+        $this->createProducts(4);
+        $previous = $this->maintenance->activeIndex();
+        $indexesBefore = $this->aliasIndexes();
+        $http = $this->faultyBulks([['permanent' => [2]]]);
+
+        $tester = $this->reindexCommandWith($http);
+        self::assertSame(Command::FAILURE, $tester->execute([]));
+
+        self::assertSame(1, $http->bulkRequests);
+        self::assertSame($previous, $this->maintenance->activeIndex());
+        self::assertSame($indexesBefore, $this->aliasIndexes());
     }
 
     public function testInvalidBatchSizeExitsWithOne(): void
@@ -316,6 +361,57 @@ final class SearchIndexRebuildTest extends KernelTestCase
         self::assertNotNull(self::$kernel);
 
         return new CommandTester(new FrameworkApplication(self::$kernel)->find('catalog:reindex'));
+    }
+
+    /**
+     * @param list<'unavailable'|'timeout'|array{transient?: list<int>, permanent?: list<int>}> $script
+     */
+    private function faultyBulks(array $script): ScriptedBulkFaultsHttpClient
+    {
+        return new ScriptedBulkFaultsHttpClient($this->clientFactory()->httpClient(30.0), $script);
+    }
+
+    private function reindexCommandWith(ScriptedBulkFaultsHttpClient $bulkTransport): CommandTester
+    {
+        $factory = $this->clientFactory();
+
+        return $this->reindexCommandOver(new ElasticsearchSearchIndexMaintenance(
+            $factory->create(2.0),
+            $factory->createWith($bulkTransport),
+            new ProductIndexDefinition(1, 0),
+            $this->alias,
+            static function (int $milliseconds): void {
+            },
+        ));
+    }
+
+    private function reindexCommandOver(ElasticsearchSearchIndexMaintenance $maintenance): CommandTester
+    {
+        $lock = self::getContainer()->get(SearchIndexRebuildLock::class);
+        self::assertInstanceOf(SearchIndexRebuildLock::class, $lock);
+        $source = self::getContainer()->get(ProductSearchSource::class);
+        self::assertInstanceOf(ProductSearchSource::class, $source);
+        $queryBus = self::getContainer()->get('query.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $queryBus);
+        $application = new Application();
+        $application->addCommand(new ReindexCommand(new ProductSearchIndexRebuilder($source, $maintenance, $lock, new ProductDocumentBuilder(), new QueryBusProductOfferFacts($queryBus), new SystemClock()), 500));
+
+        return new CommandTester($application->find('catalog:reindex'));
+    }
+
+    /**
+     * @return string|null the explicitly set index.refresh_interval, null when it is not set (the default applies)
+     */
+    private function refreshInterval(string $index): ?string
+    {
+        $response = $this->client()->indices()->getSettings(['index' => $index]);
+        \assert($response instanceof Elasticsearch);
+        $settings = $response->asArray();
+        \assert(\is_array($settings[$index]) && \is_array($settings[$index]['settings']) && \is_array($settings[$index]['settings']['index']));
+        $value = $settings[$index]['settings']['index']['refresh_interval'] ?? null;
+        \assert(null === $value || \is_string($value));
+
+        return $value;
     }
 
     private function independentConnection(): Connection
