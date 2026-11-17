@@ -1,0 +1,171 @@
+#!/bin/sh
+# Uploads the photo pool of the demo data to the private R2 bucket (docs/features/demo-data/spec.md, "Zdjęcia").
+# `make upload-demo-photos DIR=…` runs it. It runs on the host, from the repository: it is the only place that has both docker
+# and the credentials file of the user; PHP (the check of the photos) runs only in the api container.
+#
+# Usage: bin/upload-demo-photos DIRECTORY [--manifest=PATH] [--env-file=PATH]
+#        bin/upload-demo-photos --print-image   (prints the rclone image it would use and exits)
+#   DIRECTORY    the photos of the pool, flat, exactly the files of the manifest; has to be inside apps/api (the api container
+#                sees only that), e.g. apps/api/var/demo-photos (ignored by git)
+#   --manifest   the manifest of the pool, inside apps/api (default fixtures/demo-data/photos.yaml)
+#   --env-file   the file with the access to the bucket (default ~/.config/shop/demo-photos.env)
+#
+# 1. The credentials file is read as data (only lines NAME=value of the four variables below, nothing is evaluated):
+#    DEMO_PHOTOS_ENDPOINT, DEMO_PHOTOS_BUCKET, DEMO_PHOTOS_WRITE_ACCESS_KEY_ID, DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY. The
+#    token of the generator only reads, so the read variables are not used here.
+# 2. `demo-data:photos:check` in the api container checks the manifest and the directory (the complete set of files, the
+#    SHA-256 of each, the rules of the upload of Catalog: type by the contents, size, dimensions) and builds the tar archive.
+#    A failure stops the script before anything is sent.
+# 3. The archive goes to <bucket>/demo-photos/v<N>/photos.tar with the rclone image pinned by digest in the chart
+#    (infra/k8s/charts/shop/values.yaml, images.rclone), `rclone copyto --immutable`: a version that exists is never
+#    overwritten, a new pool is a new version of the manifest. The endpoint and the keys reach the container as environment
+#    variables passed by name (`docker run -e NAME`), never in an argument, and are never printed.
+# Exit codes: 0 uploaded, 1 refused or failed, 2 bad usage.
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd -P)"
+api_root="$(cd "$here/.." && pwd -P)"
+repo_root="$(cd "$api_root/../.." && pwd -P)"
+values_file="$repo_root/infra/k8s/charts/shop/values.yaml"
+archive="var/demo-photos-upload.tar"
+
+usage() {
+  echo "Usage: $0 DIRECTORY [--manifest=PATH] [--env-file=PATH]" >&2
+}
+
+fail() {
+  echo "$*" >&2
+  exit 1
+}
+
+print_image=""
+directory=""
+manifest=""
+env_file="${HOME:-}/.config/shop/demo-photos.env"
+for argument in "$@"; do
+  case "$argument" in
+    --manifest=*) manifest="${argument#--manifest=}" ;;
+    --env-file=*) env_file="${argument#--env-file=}" ;;
+    --print-image) print_image="yes" ;;
+    -*)
+      echo "Unknown option: $argument" >&2
+      usage
+      exit 2
+      ;;
+    *)
+      if [ -n "$directory" ]; then
+        usage
+        exit 2
+      fi
+      directory="$argument"
+      ;;
+  esac
+done
+if [ -z "$directory" ] && [ -z "$print_image" ]; then
+  usage
+  exit 2
+fi
+
+# The image of rclone is the one of the chart, with its digest: the line `rclone: <image>@sha256:<digest>` of values.yaml.
+[ -f "$values_file" ] || fail "The chart values \"$values_file\" are missing: the rclone image is taken from images.rclone there."
+image="$(sed -n 's/^[[:space:]]*rclone:[[:space:]]*\([^[:space:]#]*\).*$/\1/p' "$values_file")"
+if [ "$(printf '%s\n' "$image" | grep -Ec '^[A-Za-z0-9./_-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$')" != "1" ]; then
+  fail "images.rclone in $values_file has to be exactly one image pinned by digest (name:tag@sha256:<64 hex digits>)."
+fi
+
+if [ -n "$print_image" ]; then
+  printf '%s\n' "$image"
+  exit 0
+fi
+
+# The path inside apps/api, as the api container sees it (its working directory is apps/api): the directory has to exist
+# and, once its links and dots are resolved, to lie inside apps/api.
+inside_api() {
+  case "$1" in
+    "$api_root"/*) printf '%s\n' "${1#"$api_root"/}" ;;
+    *) return 1 ;;
+  esac
+}
+
+directory_path="$(cd "$directory" 2>/dev/null && pwd -P)" || fail "The directory of the photos \"$directory\" does not exist."
+directory_in_api="$(inside_api "$directory_path")" || fail "The directory of the photos has to be inside apps/api (the api container sees only that), e.g. apps/api/var/demo-photos."
+
+manifest_args=""
+if [ -n "$manifest" ]; then
+  [ -f "$manifest" ] || fail "The manifest \"$manifest\" does not exist."
+  manifest_directory="$(cd "$(dirname "$manifest")" && pwd -P)"
+  manifest_in_api="$(inside_api "$manifest_directory/$(basename "$manifest")")" || fail "The manifest has to be inside apps/api."
+  manifest_args="--manifest=$manifest_in_api"
+fi
+
+# The credentials: data, not shell. Quotes around a value are removed, a trailing carriage return too.
+[ -r "$env_file" ] || fail "The credentials file \"$env_file\" does not exist or cannot be read (the variables are described in docs/features/demo-data/spec.md, \"Wymagane przed startem\")."
+endpoint=""
+bucket=""
+write_key_id=""
+write_secret=""
+while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%"$(printf '\r')"}"
+  case "$line" in
+    DEMO_PHOTOS_ENDPOINT=* | DEMO_PHOTOS_BUCKET=* | DEMO_PHOTOS_WRITE_ACCESS_KEY_ID=* | DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY=*)
+      name="${line%%=*}"
+      value="${line#*=}"
+      case "$value" in
+        \"*\") value="${value#\"}"; value="${value%\"}" ;;
+        \'*\') value="${value#\'}"; value="${value%\'}" ;;
+      esac
+      case "$name" in
+        DEMO_PHOTOS_ENDPOINT) endpoint="$value" ;;
+        DEMO_PHOTOS_BUCKET) bucket="$value" ;;
+        DEMO_PHOTOS_WRITE_ACCESS_KEY_ID) write_key_id="$value" ;;
+        DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY) write_secret="$value" ;;
+      esac
+      ;;
+  esac
+done <"$env_file"
+missing=""
+[ -n "$endpoint" ] || missing="$missing DEMO_PHOTOS_ENDPOINT"
+[ -n "$bucket" ] || missing="$missing DEMO_PHOTOS_BUCKET"
+[ -n "$write_key_id" ] || missing="$missing DEMO_PHOTOS_WRITE_ACCESS_KEY_ID"
+[ -n "$write_secret" ] || missing="$missing DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY"
+[ -z "$missing" ] || fail "The credentials file \"$env_file\" lacks a value for:$missing."
+case "$bucket" in
+  */* | *[[:space:]]*) fail "DEMO_PHOTOS_BUCKET has to be a bucket name (no slash, no space)." ;;
+esac
+
+cd "$repo_root"
+
+# Removes the archive of the check from apps/api/var, whatever happens next (best effort: the stack may be down).
+cleanup() {
+  docker compose exec -T api rm -f "$archive" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+# The check and the archive. Its output holds file names and reasons, never a credential.
+# shellcheck disable=SC2086 # manifest_args is empty or one option
+if ! output="$(docker compose exec -T api bin/console demo-data:photos:check "$directory_in_api" $manifest_args --archive="$archive" 2>&1)"; then
+  printf '%s\n' "$output" >&2
+  fail "The photos did not pass the check; nothing was uploaded."
+fi
+printf '%s\n' "$output"
+key="$(printf '%s\n' "$output" | tr -d '\r' | sed -n 's/^OBJECT_KEY=//p' | tail -n 1)"
+if [ "$(printf '%s\n' "$key" | grep -Ec '^demo-photos/v[1-9][0-9]*/photos\.tar$')" != "1" ]; then
+  fail "The check did not give the key of the archive; nothing was uploaded."
+fi
+
+# The upload. The remote is defined by RCLONE_CONFIG_R2_* variables of this process, passed to the container by name.
+export RCLONE_CONFIG_R2_TYPE="s3"
+export RCLONE_CONFIG_R2_PROVIDER="Cloudflare"
+export RCLONE_CONFIG_R2_ENDPOINT="$endpoint"
+export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$write_key_id"
+export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$write_secret"
+echo "Uploading $key to the bucket (rclone copyto --immutable)."
+if ! docker run --rm \
+  -e RCLONE_CONFIG_R2_TYPE -e RCLONE_CONFIG_R2_PROVIDER -e RCLONE_CONFIG_R2_ENDPOINT \
+  -e RCLONE_CONFIG_R2_ACCESS_KEY_ID -e RCLONE_CONFIG_R2_SECRET_ACCESS_KEY \
+  -v "$api_root/$archive:/data/photos.tar:ro" \
+  "$image" copyto --immutable --s3-no-check-bucket /data/photos.tar "r2:$bucket/$key"; then
+  fail "The upload failed (rclone). If the version already exists, the pool changed: use a new version in the manifest."
+fi
+echo "Uploaded $key."

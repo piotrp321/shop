@@ -51,13 +51,14 @@ final class PoolFixture
     }
 
     /**
-     * Removes the files of a directory and the directory itself.
+     * Removes a directory with everything in it (a link is removed, never followed).
      */
     public static function remove(string $directory): void
     {
-        foreach (glob($directory.'/*') ?: [] as $path) {
-            is_dir($path) ? self::remove($path) : unlink($path);
+        foreach (array_diff(scandir($directory) ?: [], ['.', '..']) as $name) {
+            $path = $directory.'/'.$name;
+            is_dir($path) && !is_link($path) ? self::remove($path) : unlink($path);
         }
-        is_dir($directory) && rmdir($directory);
+        rmdir($directory);
     }
 }
