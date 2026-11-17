@@ -234,7 +234,10 @@ class CacheTest(Env):
         con.close()
         record = json.loads(self.run_once(FakeGh(fail='x'))[1])
         self.assertIsNone(record['done_at'])
-        self.assertIsNone(record['breakdown'])
+        # recomputed, not the stored one: without epic_done it ends at the merge kept from the stored record
+        self.assertEqual(record['breakdown_end'], 'merged_at')
+        self.assertIs(record['breakdown_estimated'], True)
+        self.assertAlmostEqual(sum(record['breakdown'].values()), record['wall']['to_merge'], places=2)
 
     def test_unreadable_stored_record_is_ignored(self):
         os.makedirs(os.path.join(self.state, 'epics'))

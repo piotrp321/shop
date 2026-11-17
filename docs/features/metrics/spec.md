@@ -135,7 +135,7 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
 - `wall` (miara główna): `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge,
   odbiór użytkownika);
 - `breakdown`: podział `to_done` na rozłączne kategorie, które sumują się do `to_done`; każda chwila trafia do
-  pierwszej pasującej (bez `done_at` cały `breakdown` to `null`):
+  pierwszej pasującej (bez `done_at` cały `breakdown` to `null`, poza epikiem zamkniętym ręcznie, niżej):
 
   | Kategoria | Przedział |
   |---|---|
@@ -156,6 +156,13 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   `breakdown_upper_bound`, pozycję w `gaps`, a render pokazuje je z „≈” i dopiskiem „dolna granica” albo „górna granica”.
   Oznaczenie przechodzi do wąskich gardeł, `trend` (`work`, `human_wait`), D4 (`human_wait`, `limit_wait`, `ci`
   z `ci_wait` i mianownikiem `work`) i okien `effect` tych miar.
+
+  Epik zamknięty ręcznie (AO bez `epic_done`, np. w `BLOCKED`, a końcowy PR zmergowany) ma rozkład od startu do
+  merge'u końcowego PR (`to_merge`), z `breakdown_end: "merged_at"`, `breakdown_estimated: true` i pozycją
+  `breakdown` w `gaps`: koniec jest przyjęty, więc każda kategoria jest szacunkiem z „≈” (w render „rozkład do
+  merge'u”) i oznaczenie przechodzi dalej jak wyżej. `done_at`, `to_done` i `review` zostają `null`. Gdy AO nie zna
+  końcowego PR (`epics.final_pr_number` pusty), `final_pr` to jedyny zmergowany PR `epic/<epik>` → `main` według `gh`,
+  z pozycją `final_pr` w `gaps`; brak takiego PR albo kilka dają `null`.
 - `in_attempts`: czas poleceń powłoki w próbach (nazwy narzędzi powłoki w `config.json`: `Bash`, `bash`) według
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
   `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do

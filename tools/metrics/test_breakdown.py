@@ -1,9 +1,10 @@
 """Tests of the `breakdown` of the epic record: the categories of the spec table, their precedence and sources."""
 import os
 import unittest
+from datetime import datetime
 
 import testkit
-from testkit import Env
+from testkit import Env, FakeGh, merged_pr, run_cli
 
 CATEGORIES = ('work', 'human_wait', 'limit_wait', 'ci_wait', 'host_pause', 'github_wait', 'idle')
 
@@ -245,6 +246,95 @@ class BreakdownTest(Env):
         first = self.record('deploy-ops', home=home)
         self.assertEqual(first, self.record('deploy-ops', home=home))
         self.assertTrue(os.path.exists(os.path.join(self.state, 'epics', 'deploy-ops.json')))
+
+
+STARTED = datetime.fromisoformat('2026-11-13T08:00:00+00:00').timestamp()
+MERGED_AT = '2026-11-13T10:00:00Z'          # 7200 s after STARTED
+
+
+class ManualCloseTest(Env):
+    """An epic closed by hand: AO stopped in BLOCKED without `epic_done`, the user merged the final PR."""
+
+    def manual(self, final_pr=None, gh=None, events=(), jsonl=()):
+        home = testkit.synthetic_home(
+            self.root, status='BLOCKED', created=STARTED, final_pr=final_pr, tasks=[('T-1', 'plan')],
+            attempts=[dict(task_id='T-1', number=1, started_at=STARTED + 600, ended_at=STARTED + 1800)],
+            events=list(events) + [(STARTED + 3600, 'epic_blocked', {'epic_id': 'demo', 'reason': 'max_qa_rounds'})],
+            jsonl=list(jsonl) or [blocked(STARTED + 3600)])
+        gh = gh or FakeGh(prs={674: merged_pr(MERGED_AT)}, final=[{'number': 674}])
+        return self.record('demo', home=home, runner=gh, no_gh=False), gh
+
+    def test_the_breakdown_of_an_epic_closed_by_hand_ends_at_the_merge_of_the_final_pr(self):
+        record, gh = self.manual(final_pr=674)
+        breakdown = record['breakdown']
+        self.assertEqual(tuple(breakdown), CATEGORIES)
+        self.assertAlmostEqual(sum(v for v in breakdown.values() if v is not None), record['wall']['to_merge'], places=2)
+        self.assertAlmostEqual(record['wall']['to_merge'], 7200)
+        self.assertAlmostEqual(breakdown['work'], 1200)
+        self.assertAlmostEqual(breakdown['human_wait'], 3600)      # epic_blocked until the merge
+        self.assertIsNone(record['done_at'])
+        self.assertIsNone(record['wall']['to_done'])
+        self.assertEqual(record['breakdown_end'], 'merged_at')
+
+    def test_the_breakdown_ended_by_the_merge_is_marked_estimated_with_a_gap(self):
+        record, gh = self.manual(final_pr=674)
+        self.assertIs(record['breakdown_estimated'], True)
+        self.assertTrue(any(g.startswith('breakdown:') and 'merge' in g for g in record['gaps']), record['gaps'])
+        import metrics
+        self.assertTrue(all(metrics.breakdown_inexact(record, name) for name in CATEGORIES))
+
+    def test_the_final_pr_unknown_to_ao_is_the_merged_pr_of_the_epic_branch(self):
+        record, gh = self.manual()
+        self.assertEqual(record['final_pr'], 674)
+        self.assertEqual(record['merged_at'], MERGED_AT)
+        self.assertTrue(any(c[:3] == ['gh', 'pr', 'list'] and 'epic/demo' in c and 'main' in c for c in gh.calls),
+                        gh.calls)
+        self.assertTrue(any(g.startswith('final_pr') and 'epic/demo' in g for g in record['gaps']), record['gaps'])
+        self.assertAlmostEqual(record['breakdown']['work'], 1200)
+
+    def test_without_a_merged_pr_of_the_epic_branch_there_is_no_final_pr_and_no_breakdown(self):
+        record, gh = self.manual(gh=FakeGh(final=[]))
+        self.assertIsNone(record['final_pr'])
+        self.assertIsNone(record['breakdown'])
+        self.assertNotIn('breakdown_estimated', record)
+
+    def test_several_merged_prs_of_the_epic_branch_are_ambiguous(self):
+        record, gh = self.manual(gh=FakeGh(prs={674: merged_pr(MERGED_AT)}, final=[{'number': 674}, {'number': 675}]))
+        self.assertIsNone(record['final_pr'])
+        self.assertIsNone(record['breakdown'])
+        self.assertTrue(any(g.startswith('final_pr') and '674' in g and '675' in g for g in record['gaps']),
+                        record['gaps'])
+
+    def test_a_gh_error_of_the_lookup_is_a_gap_and_exit_code_3(self):
+        home = testkit.synthetic_home(self.root, status='BLOCKED', created=STARTED, final_pr=None, jsonl=[])
+        code, out, err = self.epic('demo', home=home, runner=FakeGh(fail_on=(('pr', 'list'),)), no_gh=False)
+        self.assertEqual(code, 3, err)
+        import json
+        record = json.loads(out)
+        self.assertIsNone(record['final_pr'])
+        self.assertTrue(any(g.startswith('final_pr') and 'gh' in g for g in record['gaps']), record['gaps'])
+
+    def test_no_lookup_with_no_gh(self):
+        home = testkit.synthetic_home(self.root, status='BLOCKED', created=STARTED, final_pr=None, jsonl=[])
+        record = self.record('demo', home=home)
+        self.assertIsNone(record['final_pr'])
+        self.assertIsNone(record['breakdown'])
+
+    def test_an_epic_with_epic_done_keeps_its_exact_breakdown(self):
+        home = testkit.synthetic_home(self.root, created=STARTED, final_pr=674, jsonl=[],
+                                      events=[(STARTED + 3600, 'epic_done', {})])
+        record = self.record('demo', home=home, runner=FakeGh(prs={674: merged_pr(MERGED_AT)}), no_gh=False)
+        self.assertAlmostEqual(sum(record['breakdown'].values()), 3600, places=2)
+        self.assertNotIn('breakdown_estimated', record)
+        self.assertNotIn('breakdown_end', record)
+
+    def test_render_shows_the_breakdown_until_the_merge_as_estimated(self):
+        self.manual(final_pr=674)
+        code, out, err = run_cli(['render', 'demo', '--format', 'report', '--state', self.state])
+        self.assertEqual(code, 0, err)
+        line = next(l for l in out.splitlines() if 'epic_done' in l)
+        self.assertIn("rozkład do merge'u", line)
+        self.assertIn('work \u2248 ', line)
 
 
 if __name__ == '__main__':

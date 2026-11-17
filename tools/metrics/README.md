@@ -94,10 +94,10 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 
 | Pole | Treść |
 |---|---|
-| `epic`, `issue`, `final_pr`, `tasks` | ID epiku; pierwszy issue zamykany przez końcowy PR (`gh pr view`, `closingIssuesReferences`); numer końcowego PR (`epics.final_pr_number`); liczba zadań planu (`tasks.kind = plan`) |
+| `epic`, `issue`, `final_pr`, `tasks` | ID epiku; pierwszy issue zamykany przez końcowy PR (`gh pr view`, `closingIssuesReferences`); numer końcowego PR (`epics.final_pr_number`; gdy pusty, jedyny zmergowany PR `epic/<epik>` → `main` z `gh pr list`, z pozycją `final_pr` w `gaps`; brak albo kilka takich PR: `null`); liczba zadań planu (`tasks.kind = plan`) |
 | `started_at`, `done_at`, `merged_at` | `epics.created_at`; pierwsze zdarzenie `epic_done` (bez niego `null`); `mergedAt` końcowego PR z `gh` |
 | `wall` | `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge) |
-| `breakdown` | rozkład `to_done` na `work`, `human_wait`, `limit_wait`, `ci_wait`, `host_pause`, `github_wait`, `idle`; suma kategorii z wartością równa się `to_done`; bez `epic_done` całość `null` |
+| `breakdown` | rozkład `to_done` na `work`, `human_wait`, `limit_wait`, `ci_wait`, `host_pause`, `github_wait`, `idle`; suma kategorii z wartością równa się `to_done`; bez `epic_done` całość `null`, chyba że końcowy PR jest zmergowany (epik zamknięty ręcznie, np. AO w `BLOCKED`): wtedy rozkład `to_merge` do merge'u z `breakdown_end: "merged_at"` i `breakdown_estimated: true` (każda kategoria szacowana, „≈”, pozycja `breakdown` w `gaps`) |
 | `integration` | `work_s` (suma `wall_s` prób zadań `integration`, `fix`, `finalize`), `attempts`, `rounds` (`epics.round`); `incomplete: true`, gdy część prób nie ma czasu (suma to dolna granica, pozycja w `gaps`) |
 | `retries` | `attempts` (`total`, `per_task`, klasy prób), `failed_by_outcome`, `repair` (`count`, `final_pr_conflict`, `ci_red`, `unknown`), `fix` (liczba zadań FIX), `sync_prs` (PR `sync/<epik>-main`: `number`, `state`) |
 | `parallel` | `epics` (epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem), `repairs` (zadania REPAIR z próbą w czasie nakładania), `sync_prs` (numery PR sync utworzonych w czasie nakładania) |
@@ -274,7 +274,9 @@ Brak źródła nie zatrzymuje pomiaru, a pole bez danych jest `null` z powodem w
   (dolne granice) i `breakdown_upper_bound` (górne; listy kategorii, brak pól, gdy rozkład jest pełny). `render` pokazuje je
   jako `limit_wait ≈ 1,0 h (≈ 10%, dolna granica)` i `ci_wait ≈ 2,0 h (≈ 20%, górna granica)`. Oznaczenie dziedziczą
   wąskie gardła kategorii (`estimated`), kolumny `work` i `human_wait` w `trend`, D4 `human_wait`, `limit_wait` i `ci`
-  (`ci_wait` i mianownik `work`) oraz okna `effect` `D4:human_wait`, `D4:limit_wait` i `D4:ci`.
+  (`ci_wait` i mianownik `work`) oraz okna `effect` `D4:human_wait`, `D4:limit_wait` i `D4:ci`. Tak samo dziedziczą
+  oznaczenie `breakdown_estimated` (rozkład epiku zamkniętego ręcznie, do merge'u), które `render` pokazuje jako
+  `Czas do epic_done: brak danych (epik zamknięty ręcznie); rozkład do merge'u (16,7 h): work ≈ 8,4 h (≈ 51%), …`.
 
   Komenda `waste` pomija reguły, którym brakuje kolumny, z pozycją w `gaps` wyjścia (`W1`–`W4`, osobno części
   `W3`): W1 i W4 potrzebują `attempts.ended_at`, `attempts.task_id`, `attempts.number`, `tasks.kind` i `tasks.task_id`;

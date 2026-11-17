@@ -222,6 +222,7 @@ class FakeGh:
     """A stub of the command runner: records every command and answers the read only `gh` calls of metrics.py.
 
     prs: {number: {state, mergedAt, closingIssuesReferences, mergeCommit}}; sync: the list answered for `gh pr list`;
+    final: the list answered for `gh pr list --head epic/<epic>` (the final PR when AO does not know it);
     runs: {commit or branch: [run, ...]} for `gh run list --commit/--branch`; jobs: {run id: [job, ...]} for
     `gh run view`; commits: the list answered for `gh api repos/.../commits` (cut to the `page` and `per_page` of the query); editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); repo_view: the answer of `gh repo view --json owner,name`; issues: {label: [issue, ...]} for
     `gh issue list --label`; permissions: {login: role} for `gh api .../collaborators/<login>/permission` (a login
@@ -229,8 +230,9 @@ class FakeGh:
     stderr; fail_on: the command prefixes, e.g. ('run', 'list') or ('api',), that end with that error."""
 
     def __init__(self, prs=None, sync=None, fail=None, runs=None, jobs=None, commits=None, issues=None,
-                 permissions=None, fail_on=(), editors=None, repo_view=None):
+                 permissions=None, fail_on=(), editors=None, repo_view=None, final=None):
         self.prs = prs or {}
+        self.final = final or []
         self.sync = sync or []
         self.fail = fail
         self.runs = runs or {}
@@ -259,6 +261,8 @@ class FakeGh:
                 return result(1, '', 'no pull requests found for %d' % number)
             return result(0, json.dumps(self.prs[number]))
         if command[:3] == ['gh', 'pr', 'list']:
+            if (self._option(command, '--head') or '').startswith('epic/'):
+                return result(0, json.dumps(self.final))
             return result(0, json.dumps(self.sync))
         if command[:3] == ['gh', 'run', 'list']:
             key = self._option(command, '--commit') or self._option(command, '--branch')
