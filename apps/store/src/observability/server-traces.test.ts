@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer, get, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gunzipSync } from "node:zlib";
 import * as Sentry from "@sentry/nextjs";
@@ -29,6 +29,7 @@ async function listen(handler: Parameters<typeof createServer>[1]): Promise<stri
 
 let apiUrl: string;
 let storeUrl: string;
+let probeUrl: string;
 
 beforeAll(async () => {
   const collector = await listen((request, response) => {
@@ -55,6 +56,14 @@ beforeAll(async () => {
         response.writeHead(200, { "content-type": "application/json" }).end("{}");
       },
     );
+  });
+
+  // The readiness probe of Kubernetes (infra/k8s/charts/shop/templates/store.yaml) and the healthcheck of compose: the
+  // root span Next.js gives a request of the static file.
+  probeUrl = await listen((request, response) => {
+    Sentry.startSpan({ name: "GET /favicon.ico", op: "http.server", attributes: { "http.target": request.url } }, () => {
+      response.writeHead(200, { "content-type": "image/x-icon" }).end("");
+    });
   });
 
   vi.stubEnv("NEXT_RUNTIME", "nodejs");
@@ -94,5 +103,20 @@ describe("a sampled request of the server", () => {
     for (const value of PLANTED) {
       expect(sent, `${value} was sent to Sentry`).not.toContain(value);
     }
+  });
+});
+
+describe("the health probe of the store", () => {
+  it("sends no transaction: the probe every 5 s would use up the traces of the plan", async () => {
+    for (let index = 0; index < 3; index += 1) {
+      const status = await new Promise<number | undefined>((resolve, reject) => {
+        get(`${probeUrl}/favicon.ico`, (response) => resolve(response.resume().statusCode)).on("error", reject);
+      });
+      expect(status).toBe(200);
+    }
+    await Sentry.flush(2000);
+
+    const names = items.filter((item) => item.type === "transaction").map((item) => (item.payload as Sentry.Event).transaction);
+    expect(names).not.toContain("GET /favicon.ico");
   });
 });
