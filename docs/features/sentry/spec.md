@@ -75,7 +75,8 @@ wiadomościami Messengera (D6), limity Sentry w runbooku (P8), rozwiązanie pros
   `https://<klucz>@<host>/<id projektu>`); poza chartem aplikacje przyjmują zachowanie SDK przy złym DSN (sklep
   i panel działają bez wysyłki, api zgłasza błąd konfiguracji).
 - **D2. Konfiguracja przez zmienne środowiska**, wspólne nazwy: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`,
-  `SENTRY_TRACES_SAMPLE_RATE` (domyślnie 0). Api: `%env(default::…)%` (wzorzec `CLIENT_IP_HEADER`). Sklep: odczyt
+  `SENTRY_TRACES_SAMPLE_RATE` (domyślnie 0; w każdej aplikacji wartość inna niż liczba od 0 do 1 zapisana cyframi,
+  np. `0,1` albo pusty napis, to też 0, więc zła wartość nie zatrzymuje startu). Api: `%env(default::…)%` (wzorzec `CLIENT_IP_HEADER`). Sklep: odczyt
   w `instrumentation.ts` przy starcie serwera, a dla przeglądarki pole `sentry` w odpowiedzi `/api/site`
   (`{dsn, environment, release}` albo `null`), żeby HTML ISR nie zależał od środowiska. Panel: opcjonalne klucze
   `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE` w `/config.js` pisane przez

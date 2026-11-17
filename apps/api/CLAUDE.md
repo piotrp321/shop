@@ -979,7 +979,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `EventFlowTest` (kernel `test_messaging`).
 - Sentry (`docs/features/sentry/spec.md`, `config/packages/sentry.yaml`, `sentry/sentry-symfony`): zmienne `SENTRY_DSN`,
   `SENTRY_ENVIRONMENT` (bez niej środowisko kernela), `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE` (bez niej 0,
-  parametr `app.sentry.traces_sample_rate`) czytane przy starcie (`%env(default:…)%`). Bez DSN SDK nic nie wysyła, zły
+  parametr `app.sentry.traces_sample_rate`; wartość inna niż liczba od 0 do 1 zapisana cyframi to też 0,
+  `SentrySampleRateEnvVarProcessor`, jak w sklepie i panelu, więc nie zatrzymuje startu) czytane przy starcie (`%env(default:…)%`). Bez DSN SDK nic nie wysyła, zły
   DSN to błąd konfiguracji. Zdarzenie błędu idzie od razu (limit połączenia i odpowiedzi 2 s), transakcja po odpowiedzi
   (`kernel.terminate`). `send_default_pii: false`, `max_request_body_size: none`, handler błędów PHP SDK wyłączony,
   w `prod.ini` `zend.exception_ignore_args = On`. Błąd fatalny PHP w workerze i konsoli (np. OOM, limit czasu) nie jest
