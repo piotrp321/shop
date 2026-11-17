@@ -72,7 +72,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zostanie skasowane), `bin/seed-demo`, `demo-data:categories`, części `demo-data:products` (jeden proces na grupę części, uruchomione równolegle; skrypt
   zapisuje identyfikator i kod wyjścia każdego procesu osobno, więc błąd jednej części zauważa od razu, zatrzymuje
   pozostałe i kończy krok jej kodem), `demo-data:photos`, części `demo-data:prices` (tak samo jak produkty),
-  `demo-data:promotions`, `demo-data:analyze`, `catalog:reindex`,
+  `demo-data:promotions`, `demo-data:accounts` (konta w Keycloak stosu: administrator z `KC_BOOTSTRAP_ADMIN_PASSWORD`
+  kontenera `api`, czyli z `.env.local`), `demo-data:analyze`, `catalog:reindex`,
   `storefront:cache:purge-all`, `demo-data:verify`. Pierwszy błąd przerywa skrypt z kodem tego kroku, kolejne kroki się
   nie wykonują; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`). Poza `small` krok zdjęć kończy
   się dziś błędem (pula zdjęć: DEMO-DATA-6), więc skrypt też
@@ -89,14 +90,24 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `catalog_product`), `demo-data:prices [--worker=N --workers=M] [--list-parts]` (krok 3: cena bieżąca i historia cen każdego
   wygenerowanego wariantu, w tych samych częściach co produkty; potrzebuje produktów danej części, inaczej kod 1 bez
   zmian) i `demo-data:promotions` (krok 3: zakończone promocje z wariantami i zakończone historyczne kody rabatowe, jeden
-  proces, po cenach) oraz `demo-data:verify` (kontrole katalogu: opublikowany produkt bez wariantu, liczby w tabelach
+  proces, po cenach), `demo-data:accounts` (krok 4: pracownicy w realmie `backoffice` z rolą numeru i klienci w realmie
+  `shop` w Keycloak, wyłączeni i bez poświadczeń; opcje kont, wspólne z `verify` (`AccountsInput`): `--keycloak-url`
+  (domyślnie `DEMO_DATA_KEYCLOAK_URL`, bez niej `http://keycloak:8080`, parametr `app.demo_data.keycloak_url`),
+  `--keycloak-user` (domyślnie `admin`), `--keycloak-password` (domyślnie `KC_BOOTSTRAP_ADMIN_PASSWORD`; bez hasła kod 1),
+  `--shop-realm` i `--backoffice-realm` (domyślnie `shop` i `backoffice`), `--staff` i `--customers` (liczby kont zamiast
+  liczb profilu), `--page-size` (członkowie grupy czytani na żądanie, domyślnie 1000); własne: `--batch-size` (konta na
+  żądanie importu, domyślnie 2000) i `--streams` (żądania importu naraz, domyślnie 4); `--anchor` przyjmuje jak każdy
+  krok, konta od niego nie zależą; konflikty kończą krok kodem 1 z listą, bez zmiany cudzego konta) oraz
+  `demo-data:verify` (kontrole katalogu: opublikowany produkt bez wariantu, liczby w tabelach
   różne od profilu, kategorie ogona niekompletne, slug produktu z ogona bez numeru, z powtórzonym numerem albo numerem
   powyżej liczby produktów profilu, slug produktu z `catalog.yaml` należący do innego produktu; kontrole cen: wariant
   bez ceny bieżącej albo bez wpisu historii, cena bieżąca różna od ostatniego wpisu historii (w `small` wszystkie warianty, w większych profilach deterministyczna próbka co 1 na `products / 300000`), cena bez wariantu, netto,
   VAT i stawka próbki cen różne od reguły Pricing, liczba wygenerowanych promocji i kodów różna od planu, promocja
   niezakończona przed chwilą odniesienia, z więcej niż 1000 wariantów albo nakładająca się na innej na wariancie,
   wariant promocji bez ceny w chwili jej startu albo ze zmianą ceny w jej trakcie, kod niezakończony;
-  kod 1 i lista naruszeń, kod 0 na poprawnych danych). Kody: 0 gotowe, 1 odmowa (zła opcja) albo naruszenia
+  kontrole kont (opcje kont jak w `demo-data:accounts`, `--no-accounts` je pomija): w każdym realmie grupa
+  `demo-data-generated` istnieje, a jej członkowie to dokładnie zbiór docelowy z bieżącymi danymi; Keycloak, który nie
+  odpowiada, to kod 1; kod 1 i lista naruszeń, kod 0 na poprawnych danych). Kody: 0 gotowe, 1 odmowa (zła opcja) albo naruszenia
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
   (`Shared\Infrastructure\Backfill\BackfillStep`: `name()`, `run(report)`; implementacja w warstwie Infrastructure
@@ -291,7 +302,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `diskPeakGb` profili, jedna przestrzeń nazw ziarna, inna niż w `catalog.yaml`, i jeden stały rozmiar części wspólny
   dla wszystkich profili; `categories.yaml` około 100 kategorii końcowych w działach z `catalog.yaml`, `product-types.yaml`
   około 120 typów produktów z osiami wariantów, klasą podatkową, przedziałem cen, grupą zdjęć i cechami do opisów,
-  `brands.yaml` około 300 fikcyjnych marek, `models.yaml`, `descriptions.yaml`, `photo-groups.yaml`, `CREDITS.md`).
+  `brands.yaml` około 300 fikcyjnych marek, `models.yaml`, `descriptions.yaml`, `photo-groups.yaml`, słowniki osób
+  `first-names.yaml` i `surnames.yaml` (imiona i nazwiska według płci z wagami, w formacie list GUS z rejestru PESEL;
+  dziś przybliżone, do podmiany na listy GUS samą treścią plików) i `places.yaml` (miasta z wagą i kodami pocztowymi,
+  ulice), `CREDITS.md`).
   Determinizm: każda część ma własny strumień liczb pseudolosowych (`Prng`: xoshiro256** z ziarna, nazwy strumienia i
   numeru części, nigdy `mt_rand` ani zegar), identyfikatory nazwanych encji to UUID v5 w przestrzeni ziarna
   (`category:<ścieżka slugów>`, `product:<i>`, `variant:<i>:<k>`; `DemoUuid`), zdarzeń UUID v7 z czasem zdarzenia i bitami
@@ -323,6 +337,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   daje oś czasu wariantu bez bazy. Pracownicy: numery kont od 1, rola to funkcja samego numeru (`StaffRoles::roleOf`,
   cykl 500: 10 `admin`, 200 `support`, 200 `warehouse`, 90 `marketing`), id i nazwa aktora historii to id i imię
   z nazwiskiem wygenerowanego konta pracownika o tym numerze (`AccountGenerator::staff`, krok 4).
+  Konta (krok 4, `src/DemoData/Accounts`): osoba to czysta funkcja ziarna, słowników i klucza (strumień
+  `person:<rodzaj>` na numer; `AccountGenerator::person('customer'|'staff'|'guest', n)`): płeć z udziału wag imion
+  żeńskich, imię i nazwisko ze słowników płci z wagami (`WeightedNames`, wyszukiwanie binarne po sumach), domena
+  `example.com|net|org`, telefon `+48` z prefiksem komórkowym i 9 cyframi, miasto z wagą, kod pocztowy miasta, ulica
+  i numer (połowa z lokalem). Login bez polskich znaków (`Transliteration::login`: małe litery a–z i pojedyncze `-`):
+  klient ma nazwę użytkownika = e-mail `<imię>.<nazwisko>.<n>@example.(com|net|org)`, pracownik `<imię>.<nazwisko>.<n>`,
+  bez e-maila, z rolą `StaffRoles::roleOf(n)`. Id konta to UUID v5 `customer:<odcisk>:<n>` albo `staff:<odcisk>:<n>`
+  w przestrzeni ziarna; odcisk (`PersonDictionaries::fingerprint`, 16 znaków szesnastkowych) to skrót treści
+  `first-names.yaml`, `surnames.yaml`, `places.yaml` (bez komentarzy), reguły ról (`StaffRoles::rule`) i wersji sposobu
+  losowania (`GENERATOR_VERSION`, podbijana przy zmianie losowania osoby albo konta). Reconciliacja realmu
+  (`AccountReconciler`, port `AccountDirectory`, adapter `KeycloakRealmDirectory`): zapewnia grupę `demo-data-generated`
+  (atrybut `description`), czyta całą listę członków stronami (w pamięci binarne id i 64-bitowy skrót danych, około
+  80 B na członka), członek z id zbioru docelowego i bieżącymi danymi (nazwa, e-mail, imię, nazwisko, wyłączony,
+  u pracowników role cyklu z list członków ról) zostaje, pozostali są usuwani po kolei dopiero po odczycie ich grup
+  i potwierdzeniu członkostwa (spoza grupy: pominięty i zgłoszony, 404: pominięty), potem import brakujących
+  (`partialImport`, `SKIP`) i sprawdzenie każdego pominiętego (inne id albo konto spoza grupy to konflikt). Keycloak 26.6
+  odrzuca całą paczkę przy zajętym id (409) i przy koncie pominiętym tylko przez e-mail (500), więc odrzuconą paczkę
+  reconciliacja importuje ponownie po jednym koncie, a odrzucone konto to konflikt, gdy tłumaczy go nazwa, e-mail albo
+  id; inaczej krok kończy się błędem. `differences()` to te same porównania bez zmian (kontrole kont `verify`).
+- Wyjątek: `DemoData` zapisuje konta w Keycloak przez REST administratora (`KeycloakAdmin`: token realmu `master`
+  klienta `admin-cli`, brany od nowa przed wygaśnięciem; `partialImport` z kontami wyłączonymi, bez poświadczeń i bez
+  atrybutów użytkownika, z grupą w `groups` i rolą w `realmRoles` w tej samej reprezentacji, paczkami po 2000, do
+  4 żądań naraz, oczekiwanych w kolejności wysłania), nie przez realmy z repo ani Job `keycloak-config`; zmienia tylko
+  konta grupy `demo-data-generated` (spec, „Konta w Keycloak”, W1).
 - Wyjątek: `DemoData` zapisuje tabele przez `COPY FROM STDIN` i SQL, nie przez rekordy Doctrine ani agregaty
   (`CopyWriter`: natywne `Pdo\Pgsql::copyFromArray` na połączeniu DBAL, paczkami po 5000 wierszy, w transakcji
   wywołującego, do tabel z indeksami z migracji, bez zmiany schematu; sesja ładowania ustawia `SET synchronous_commit =
@@ -349,7 +387,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (grupa `demo-data-processes`, w suicie `integration`) uruchamia części w osobnych procesach `bin/console`
   (`APP_ENV=test`) z 1, 3 i 4 procesami, więc dane są zatwierdzone: czyta i czyści tabele katalogu i cen własnym
   połączeniem, przed testem i po nim. Nowy krok generatora dopisuje swoje tabele do sum
-  kontrolnych i kontroli `verify`.
+  kontrolnych i kontroli `verify`. Konta: `AccountGeneratorTest`, `PersonDictionariesTest` i `AccountReconcilerTest`
+  (Keycloak w pamięci, `InMemoryAccountDirectory`, z zachowaniem zmierzonym na 26.6) jednostkowo, a `AccountsStepTest`
+  i `AccountsVerifyTest` na Keycloaku stosu, na dwóch tymczasowych realmach na test (`KeycloakTestRealms`: nazwy
+  `demo-data-test-*`, usuwane po teście; nigdy realmy `shop` i `backoffice`) i z ziarnem losowanym na test (id kont są
+  globalne w Keycloaku); brak logowania i e-maila resetu hasła sprawdza Mailpit stosu z kontem kontrolnym, które e-mail
+  dostaje. Testy kroków bazy wołają `verify` z `--no-accounts` (`RunsDemoDataSteps::verify`).
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
   kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
