@@ -32,6 +32,8 @@ final class AccountsVerifyTest extends KernelTestCase
     protected function tearDown(): void
     {
         $this->realms->delete();
+        // PHPUnit keeps every test object to the end of the run: the session and its HTTP client go now.
+        unset($this->realms);
         parent::tearDown();
     }
 

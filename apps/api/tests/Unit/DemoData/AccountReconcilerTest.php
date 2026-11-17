@@ -28,6 +28,11 @@ final class AccountReconcilerTest extends TestCase
         $this->directory = new InMemoryAccountDirectory();
     }
 
+    protected function tearDown(): void
+    {
+        unset($this->directory);
+    }
+
     private static function generator(string $namespace = self::NAMESPACE, ?PersonDictionaries $people = null): AccountGenerator
     {
         return new AccountGenerator($namespace, $people ?? new PersonDictionaries(self::FIXTURES));
