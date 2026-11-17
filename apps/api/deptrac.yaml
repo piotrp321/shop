@@ -193,6 +193,8 @@ deptrac:
       - Catalog_Domain
       - Shared_Domain
       - Shared_Infrastructure
+      # The `total` of the panel's lists is the schema BoundedCountResponse (Shared_UI), as in the other panel modules.
+      - Shared_UI
       - Vendor
       # The controllers of product writes take the actor from AuthenticatedStaffMember, the security contract of
       # Backoffice. Catalog_Domain and Catalog_Application stay free of Backoffice.
@@ -238,12 +240,18 @@ deptrac:
       - Vendor
       - Catalog_Application
       - Customer_Application
+      # The dashboard composes the queues of the owners through the query bus (decision A1 of
+      # docs/features/admin-features/spec.md): the queries and the views of Ordering and Inventory, nothing else.
+      - Ordering_Application
+      - Inventory_Application
     Backoffice_UI:
       - Native
       - Backoffice_Application
       - Backoffice_Domain
       - Shared_Domain
       - Shared_Infrastructure
+      # The queues of the dashboard are the schema BoundedCountResponse (Shared_UI), as in the panel's lists.
+      - Shared_UI
       - Vendor
     Pricing_Domain:
       - Native

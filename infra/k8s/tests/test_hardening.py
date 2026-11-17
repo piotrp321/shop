@@ -17,7 +17,7 @@ class RolloutWaitTest(unittest.TestCase):
     def test_jobs_wait_for_the_rollout_of_what_they_need(self):
         for case in ("prod", "ci"):
             jobs = by_logical(case, "Job")
-            for job, needs in (("initialize", ("api", "varnish", "store", "worker")), ("purge-caches", ("api", "varnish", "store"))):
+            for job, needs in (("initialize", ("api", "varnish", "store", "worker")), ("purge-caches", ("api", "varnish", "store")), ("backfill", ("api", "worker"))):
                 waits = init_containers(jobs[job])
                 for need in needs:
                     container = waits[f"wait-for-{need}"]
@@ -26,7 +26,7 @@ class RolloutWaitTest(unittest.TestCase):
 
     def test_the_jobs_that_ask_the_cluster_run_as_the_service_account_that_may_read_deployments(self):
         jobs = by_logical("prod", "Job")
-        for job in ("initialize", "purge-caches"):
+        for job in ("initialize", "purge-caches", "backfill"):
             self.assertEqual("shop-wait", pod_spec(jobs[job])["serviceAccountName"], job)
 
 

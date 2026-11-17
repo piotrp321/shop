@@ -1,833 +1,277 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import Column from "primevue/column";
-import DataTable from "primevue/datatable";
-import Dialog from "primevue/dialog";
-import InputNumber from "primevue/inputnumber";
-import InputText from "primevue/inputtext";
-import Message from "primevue/message";
-import Select from "primevue/select";
-import Skeleton from "primevue/skeleton";
-import Tag from "primevue/tag";
-import Textarea from "primevue/textarea";
-import TreeSelect from "primevue/treeselect";
-import { computed, ref, watch } from "vue";
+import { ClipboardPen, History, PackagePlus } from "lucide-vue-next";
+import { computed, nextTick, ref, useId } from "vue";
+import CategoryCombobox from "@/components/CategoryCombobox.vue";
+import DataTable, { type ListColumn } from "@/components/list/DataTable.vue";
+import ListEmpty from "@/components/list/ListEmpty.vue";
+import ListPager from "@/components/list/ListPager.vue";
+import ListToolbar from "@/components/list/ListToolbar.vue";
+import RowActions, { type RowAction } from "@/components/list/RowActions.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCategoryTree } from "@/composables/useCategoryTree";
-import { formatDelta, levelLabel, movementReasonLabel, movementSourceLabel, movementTypeLabel } from "@/inventory/format";
-import { useStockHistory } from "@/inventory/useStockHistory";
-import { MAX_SEARCH_LENGTH, type StockChange, type StockRow, useStockList } from "@/inventory/useStockList";
-import { formatDateTime } from "@/prices/format";
+import { variantName } from "@/lib/variantName";
+import { levelLabel } from "@/inventory/format";
+import StockDialogs from "@/inventory/StockDialogs.vue";
+import { EMPTY_MESSAGE, LEVEL_EXCLUDES_MESSAGE, LEVEL_FILTERS, MAX_SEARCH_LENGTH, type StockRow, useStockList } from "@/inventory/useStockList";
 import { useAuthStore } from "@/stores/auth";
 
-const {
-  search,
-  searchTooShort,
-  rows,
-  loading,
-  loaded,
-  error,
-  hasPrevious,
-  hasNext,
-  pageNumber,
-  selectCategory,
-  goNext,
-  goPrevious,
-  retry,
-  receiveStock,
-  correctStock,
-} = useStockList();
-const { nodes: categories, error: categoriesError } = useCategoryTree();
+const categories = useCategoryTree();
+const list = useStockList({ nodes: categories.nodes, loaded: categories.loaded });
+const { search, searchHint, query, filtered, items, rows, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total, receiveStock, correctStock } = list;
 
-// TreeSelect (single selection) holds the chosen node as { [key]: true }, or null when nothing is chosen.
-const selection = ref<Record<string, boolean> | null>(null);
-watch(selection, (value) => selectCategory(value ? (Object.keys(value)[0] ?? null) : null));
+// The filter „Poziom”: while a level is on, the search and the category are off and the description says why.
+const levelFilterId = useId();
+const levelHintId = useId();
+const ALL_LEVELS = "all";
+const levelFilterLabel = computed(() => (list.level.value === null ? "Wszystkie" : LEVEL_FILTERS.find((filter) => filter.value === list.level.value)?.label));
+const levelHint = computed(() => (list.level.value === null ? null : LEVEL_EXCLUDES_MESSAGE));
 
 // Only hides the actions: the API checks the permission on every change. The roles come from /api/v1/admin/me.
 const auth = useAuthStore();
 const canChangeStock = computed(() => auth.staff?.roles.some((role) => role === "admin" || role === "warehouse") ?? false);
 
-const REASONS = [
-  { label: "Inwentaryzacja", value: "inventory_count" },
-  { label: "Uszkodzenie", value: "damage" },
-  { label: "Zaginięcie", value: "loss" },
-  { label: "Inne", value: "other" },
-] as const;
-type Reason = (typeof REASONS)[number]["value"];
+const header = ref<InstanceType<typeof PageHeader> | null>(null);
+const toolbar = ref<InstanceType<typeof ListToolbar> | null>(null);
+const dialogs = ref<InstanceType<typeof StockDialogs> | null>(null);
 
-// The name of a variant in the dialogs: the product, and the label unless it is the default variant.
-function variantName(row: StockRow): string {
-  return row.label === "" ? row.name : `${row.name} – ${row.label}`;
+// „Wyczyść filtry” goes away with the filters, so the focus goes to the search field.
+async function clearFilters() {
+  list.clearFilters();
+  await nextTick();
+  toolbar.value?.focusSearch();
 }
 
-// History. The dialog keeps the name it was opened with, so the title stays while the list moves to another page.
-const history = useStockHistory();
-const historyName = ref("");
-const historyVisible = computed({
-  get: () => history.variantId.value !== null,
-  set: (visible: boolean) => {
-    if (!visible) {
-      history.close();
-    }
-  },
-});
+const columns: ListColumn<StockRow>[] = [
+  { key: "variant", header: "Wariant", main: true },
+  { key: "physical", header: "Fizycznie", align: "right" },
+  { key: "reserved", header: "Zarezerwowane", align: "right", hideBelow: "lg", text: (row) => number(row.stock?.reserved) },
+  { key: "available", header: "Dostępne", align: "right" },
+  { key: "level", header: "Poziom" },
+  { key: "actions", header: "Akcje", align: "right" },
+];
 
-function openHistory(row: StockRow): void {
-  historyName.value = variantName(row);
-  void history.open(row.variantId);
-}
+// A variant without a stock record has no numbers: the panel shows a dash and does not make up a level for it.
+const number = (value: number | undefined) => (value === undefined ? "—" : String(value));
 
-// Each dialog counts its openings and closings. A save answers only the dialog it was sent from: when the dialog was
-// closed or opened again meanwhile (even for the same variant), the answer must not touch the new one.
-let receiptSession = 0;
-let correctionSession = 0;
 
-// Receipt. The dialog follows the row by variant id, so a reload shows the current stock in it.
-const receivingId = ref<string | null>(null);
-const receivingName = ref("");
-const receiving = computed(() => rows.value.find((row) => row.variantId === receivingId.value) ?? null);
-const quantity = ref<number | null>(null);
-const receiptNote = ref("");
-// The idempotency key of the receipt, made when the dialog opens: repeating the same receipt (e.g. after the answer was
-// lost) sends the same key, so the API adds the units once. A new dialog is a new receipt and gets a new key.
-let receiptKey = "";
-const quantityError = ref<string | null>(null);
-const receiptNoteError = ref<string | null>(null);
-const receiptMessage = ref<string | null>(null);
-const receiptSaving = ref(false);
-const receiptVisible = computed({
-  get: () => receivingId.value !== null,
-  set: (visible: boolean) => {
-    if (!visible) {
-      closeReceipt();
-    }
-  },
-});
+const rowActions = computed<RowAction[]>(() => [
+  ...(canChangeStock.value
+    ? [
+        { key: "receive", label: "Przyjęcie", icon: PackagePlus, testid: "receive-stock" },
+        { key: "correct", label: "Korekta", icon: ClipboardPen, testid: "correct-stock" },
+      ]
+    : []),
+  { key: "history", label: "Historia", icon: History, testid: "show-history" },
+]);
 
-function closeReceipt(): void {
-  receiptSession++;
-  receivingId.value = null;
-  receiptSaving.value = false;
-}
-
-function openReceipt(row: StockRow): void {
-  receiptSession++;
-  receiptSaving.value = false;
-  receiptKey = crypto.randomUUID();
-  receivingId.value = row.variantId;
-  receivingName.value = variantName(row);
-  quantity.value = null;
-  receiptNote.value = "";
-  quantityError.value = null;
-  receiptNoteError.value = null;
-  receiptMessage.value = null;
-}
-
-async function saveReceipt(): Promise<void> {
-  const item = receiving.value;
-  if (item === null || receiptSaving.value) {
-    return;
-  }
-  quantityError.value = null;
-  receiptNoteError.value = null;
-  receiptMessage.value = null;
-  if (quantity.value === null) {
-    quantityError.value = "Podaj ilość przyjętych sztuk.";
-    return;
-  }
-  receiptSaving.value = true;
-  const session = receiptSession;
-  const result = await receiveStock(item.variantId, { quantity: quantity.value, note: receiptNote.value, key: receiptKey });
-  if (session !== receiptSession) {
-    // The list has taken the outcome (the saved stock); this dialog is not the one that asked.
-    return;
-  }
-  receiptSaving.value = false;
-  if (result.status === "saved") {
-    closeReceipt();
-    return;
-  }
-  quantityError.value = result.status === "invalid" ? (result.fields.quantity ?? null) : null;
-  receiptNoteError.value = result.status === "invalid" ? (result.fields.note ?? null) : null;
-  receiptMessage.value = result.message;
-}
-
-// Correction. The version sent is the one of the row at the moment of saving, so after a conflict reloads the row the
-// next attempt is based on the current stock.
-const correctingId = ref<string | null>(null);
-const correctingName = ref("");
-const correcting = computed(() => rows.value.find((row) => row.variantId === correctingId.value) ?? null);
-const counted = ref<number | null>(null);
-const reason = ref<Reason>("inventory_count");
-const correctionNote = ref("");
-const countedError = ref<string | null>(null);
-const reasonError = ref<string | null>(null);
-const correctionNoteError = ref<string | null>(null);
-const correctionConflict = ref<string | null>(null);
-const correctionMessage = ref<string | null>(null);
-const correctionSaving = ref(false);
-const correctionVisible = computed({
-  get: () => correctingId.value !== null,
-  set: (visible: boolean) => {
-    if (!visible) {
-      closeCorrection();
-    }
-  },
-});
-
-function closeCorrection(): void {
-  correctionSession++;
-  correctingId.value = null;
-  correctionSaving.value = false;
-}
-
-function openCorrection(row: StockRow): void {
-  correctionSession++;
-  correctionSaving.value = false;
-  correctingId.value = row.variantId;
-  correctingName.value = variantName(row);
-  counted.value = null;
-  reason.value = "inventory_count";
-  correctionNote.value = "";
-  countedError.value = null;
-  reasonError.value = null;
-  correctionNoteError.value = null;
-  correctionConflict.value = null;
-  correctionMessage.value = null;
-}
-
-async function saveCorrection(): Promise<void> {
-  const item = correcting.value;
-  if (item === null || correctionSaving.value) {
-    return;
-  }
-  countedError.value = null;
-  reasonError.value = null;
-  correctionNoteError.value = null;
-  correctionConflict.value = null;
-  correctionMessage.value = null;
-  if (counted.value === null) {
-    countedError.value = "Podaj stan policzony.";
-    return;
-  }
-  // The API requires the note for "Inne" too; checking it here only saves a round trip.
-  if (reason.value === "other" && correctionNote.value.trim() === "") {
-    correctionNoteError.value = "Przy powodzie „Inne” podaj notatkę.";
-    return;
-  }
-  correctionSaving.value = true;
-  const session = correctionSession;
-  const result = await correctStock(item.variantId, {
-    physical: counted.value,
-    reason: reason.value,
-    note: correctionNote.value,
-    version: item.stock?.version ?? null,
-  });
-  if (session !== correctionSession) {
-    return;
-  }
-  correctionSaving.value = false;
-  applyCorrectionResult(result);
-}
-
-function applyCorrectionResult(result: StockChange): void {
-  switch (result.status) {
-    case "saved":
-      closeCorrection();
-      break;
-    case "invalid":
-      countedError.value = result.fields.physical ?? null;
-      reasonError.value = result.fields.reason ?? null;
-      correctionNoteError.value = result.fields.note ?? null;
-      correctionMessage.value = result.message;
-      break;
-    case "conflict":
-      correctionConflict.value = result.message;
-      break;
-    case "failed":
-      correctionMessage.value = result.message;
-      break;
+function onAction(key: string, row: StockRow, trigger: HTMLElement): void {
+  if (key === "receive") {
+    dialogs.value?.openReceipt(row, trigger);
+  } else if (key === "correct") {
+    dialogs.value?.openCorrection(row, trigger);
+  } else {
+    dialogs.value?.openHistory(row, trigger);
   }
 }
 </script>
 
 <template>
-  <div class="inventory">
-    <h1>Stany magazynowe</h1>
+  <div class="flex flex-col gap-6">
+    <PageHeader
+      ref="header"
+      title="Stany magazynowe"
+      :crumbs="[{ label: 'Katalog' }, { label: 'Stany magazynowe' }]"
+    />
 
-    <div class="filters">
-      <div class="field">
-        <InputText
-          v-model="search"
-          data-testid="search"
-          type="search"
-          :maxlength="MAX_SEARCH_LENGTH"
-          placeholder="Szukaj po nazwie"
-          aria-label="Szukaj po nazwie produktu"
-        />
-        <small
-          v-if="searchTooShort"
-          data-testid="search-hint"
-          class="hint"
-        >
-          Wpisz co najmniej 2 znaki, aby wyszukać.
-        </small>
-      </div>
-      <TreeSelect
-        v-model="selection"
-        data-testid="category-filter"
-        class="category-filter"
-        :options="categories"
-        selection-mode="single"
-        placeholder="Wszystkie kategorie"
-        show-clear
-        filter
-        :disabled="categories.length === 0"
-        aria-label="Filtr kategorii"
-      />
-    </div>
-
-    <Message
-      v-if="categoriesError"
-      data-testid="categories-error"
-      severity="warn"
-    >
-      {{ categoriesError }}
-    </Message>
-
-    <Message
-      v-if="error"
-      data-testid="stock-error"
-      severity="error"
-    >
-      {{ error }}
-      <Button
-        data-testid="retry"
-        label="Spróbuj ponownie"
-        icon="pi pi-refresh"
-        severity="secondary"
-        size="small"
-        :loading="loading"
-        @click="retry()"
-      />
-    </Message>
-
-    <DataTable
-      v-if="loaded"
-      :value="rows"
-      :loading="loading"
-      data-key="variantId"
-      :pt="{ bodyRow: { 'data-testid': 'stock-row' } }"
-    >
-      <template #empty>
-        <span data-testid="empty">Brak produktów spełniających kryteria.</span>
-      </template>
-      <Column header="Nazwa">
-        <template #body="{ data }">
-          <span
-            v-if="data.first"
-            data-testid="name"
-          >{{ data.name }}</span>
-        </template>
-      </Column>
-      <Column header="Wariant">
-        <template #body="{ data }">
-          <span data-testid="variant-label">{{ data.label }}</span>
-        </template>
-      </Column>
-      <Column
-        header="Fizyczny"
-        class="amount"
+    <Card class="gap-0 py-0">
+      <ListToolbar
+        ref="toolbar"
+        v-model:search="search"
+        search-label="Szukaj po nazwie produktu"
+        search-placeholder="Szukaj po nazwie"
+        :search-max="MAX_SEARCH_LENGTH"
+        :search-hint="searchHint"
+        :search-disabled="list.level.value !== null"
+        :search-described-by="levelHint === null ? undefined : levelHintId"
+        :filtered="filtered"
+        :per-page="query.perPage"
+        :sort-options="list.sortOptions.value"
+        :sort="list.sort.value"
+        sort-placeholder="Wg produktu"
+        @update:per-page="list.setPerPage"
+        @update:sort="list.setSort"
+        @clear="clearFilters"
       >
-        <template #body="{ data }">
-          <span data-testid="physical">{{ data.stock?.physical ?? 0 }}</span>
-        </template>
-      </Column>
-      <Column
-        header="Zarezerwowany"
-        class="amount"
-      >
-        <template #body="{ data }">
-          <span data-testid="reserved">{{ data.stock?.reserved ?? 0 }}</span>
-        </template>
-      </Column>
-      <Column
-        header="Dostępny"
-        class="amount"
-      >
-        <template #body="{ data }">
-          <span data-testid="available">{{ data.stock?.available ?? 0 }}</span>
-        </template>
-      </Column>
-      <Column header="Poziom">
-        <template #body="{ data }">
-          <Tag
-            v-if="data.stock"
-            data-testid="level"
-            :value="levelLabel(data.stock.level).label"
-            :severity="levelLabel(data.stock.level).severity"
+        <template #filters>
+          <CategoryCombobox
+            data-testid="category-filter"
+            class="w-full sm:w-64"
+            label="Kategoria"
+            placeholder="Wszystkie kategorie"
+            :nodes="categories.nodes.value"
+            :model-value="query.category"
+            deselectable
+            :disabled="categories.nodes.value.length === 0 || list.level.value !== null"
+            :described-by="levelHint === null ? undefined : levelHintId"
+            @update:model-value="list.selectCategory(($event as string | null) ?? null)"
           />
+          <div class="flex flex-col gap-1.5">
+            <Label :for="levelFilterId">
+              Poziom
+            </Label>
+            <Select
+              :model-value="list.level.value ?? ALL_LEVELS"
+              @update:model-value="list.selectLevel(LEVEL_FILTERS.find((filter) => filter.value === $event)?.value ?? null)"
+            >
+              <SelectTrigger
+                :id="levelFilterId"
+                data-testid="level-filter"
+                class="w-44"
+              >
+                <SelectValue>{{ levelFilterLabel }}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="ALL_LEVELS">
+                  Wszystkie
+                </SelectItem>
+                <SelectItem
+                  v-for="filter in LEVEL_FILTERS"
+                  :key="filter.value"
+                  :value="filter.value"
+                >
+                  {{ filter.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p
+              :id="levelHintId"
+              role="status"
+              data-testid="level-hint"
+              class="max-w-52 text-xs text-muted-foreground empty:hidden"
+            >
+              {{ levelHint }}
+            </p>
+          </div>
+        </template>
+      </ListToolbar>
+
+      <Alert
+        v-if="categories.error.value"
+        data-testid="categories-error"
+        class="m-4 w-auto"
+      >
+        {{ categories.error.value }}
+      </Alert>
+
+      <DataTable
+        label="Lista stanów magazynowych"
+        :columns="columns"
+        :rows="rows"
+        :row-key="(row: StockRow) => row.variantId"
+        row-testid="stock-row"
+        :group-key="(row: StockRow) => row.productId"
+        group-testid="product-row"
+        error-testid="stock-error"
+        :loading="loading"
+        :loaded="loaded"
+        :error="error"
+        :forbidden="forbidden"
+        :retry="list.retry"
+      >
+        <template #group="{ row }">
+          <span
+            data-testid="name"
+            class="font-bold text-heading"
+          >{{ row.name }}</span>
+        </template>
+        <template #cell-variant="{ row }">
+          <span
+            data-testid="variant-label"
+            class="break-words"
+          >{{ row.label === "" ? "Wariant domyślny" : row.label }}</span>
+        </template>
+        <template #cell-physical="{ row }">
+          <span
+            data-testid="physical"
+            class="whitespace-nowrap"
+          >{{ number(row.stock?.physical) }}</span>
+        </template>
+        <template #cell-reserved="{ row }">
+          <span
+            data-testid="reserved"
+            class="whitespace-nowrap"
+          >{{ number(row.stock?.reserved) }}</span>
+        </template>
+        <template #cell-available="{ row }">
+          <span
+            data-testid="available"
+            class="font-bold whitespace-nowrap text-heading"
+          >{{ number(row.stock?.available) }}</span>
+        </template>
+        <template #cell-level="{ row }">
+          <Badge
+            v-if="row.stock"
+            data-testid="level"
+            :data-matches-level="row.matchesLevel"
+            :class="row.matchesLevel ? 'ring-2 ring-ring ring-offset-1' : undefined"
+            :variant="levelLabel(row.stock.level).variant"
+          >
+            {{ levelLabel(row.stock.level).label }}<span
+              v-if="row.matchesLevel"
+              class="sr-only"
+            >, pasuje do filtra</span>
+          </Badge>
           <span
             v-else
             data-testid="level"
+            :data-matches-level="row.matchesLevel"
           >—</span>
         </template>
-      </Column>
-      <Column header="Akcje">
-        <template #body="{ data }">
-          <div class="row-actions">
-            <Button
-              data-testid="show-history"
-              label="Historia"
-              icon="pi pi-history"
-              severity="secondary"
-              size="small"
-              @click="openHistory(data)"
-            />
-            <Button
-              v-if="canChangeStock"
-              data-testid="receive-stock"
-              label="Przyjęcie"
-              icon="pi pi-plus"
-              severity="secondary"
-              size="small"
-              @click="openReceipt(data)"
-            />
-            <Button
-              v-if="canChangeStock"
-              data-testid="correct-stock"
-              label="Korekta"
-              icon="pi pi-pencil"
-              severity="secondary"
-              size="small"
-              @click="openCorrection(data)"
-            />
-          </div>
+        <template #cell-actions="{ row }">
+          <RowActions
+            :name="variantName(row)"
+            :actions="rowActions"
+            @select="(key, trigger) => onAction(key, row, trigger)"
+          />
         </template>
-      </Column>
-    </DataTable>
-    <Skeleton
-      v-else-if="loading"
-      height="16rem"
-    />
+        <template #empty>
+          <ListEmpty
+            :filtered="filtered"
+            :later-page="hasPrevious"
+            :empty-text="EMPTY_MESSAGE"
+            @clear="clearFilters"
+          />
+        </template>
+      </DataTable>
 
-    <Dialog
-      v-model:visible="receiptVisible"
-      modal
-      header="Przyjęcie"
-      :style="{ width: '28rem' }"
-    >
       <div
-        data-testid="receive-dialog"
-        class="change"
+        v-if="loaded && (items.length > 0 || hasPrevious)"
+        class="border-t border-separator px-4 py-3"
       >
-        <strong>{{ receiving ? variantName(receiving) : receivingName }}</strong>
-        <span
-          v-if="receiving"
-          class="hint"
-        >
-          Stan fizyczny: {{ receiving.stock?.physical ?? 0 }}. Nowy stan wyliczy API.
-        </span>
-        <Message
-          v-if="receiptMessage"
-          data-testid="receive-error"
-          severity="error"
-        >
-          {{ receiptMessage }}
-        </Message>
-        <div class="field">
-          <label for="receive-quantity">Przyjęta ilość (szt.)</label>
-          <InputNumber
-            v-model="quantity"
-            input-id="receive-quantity"
-            :use-grouping="false"
-            :max-fraction-digits="0"
-            :invalid="quantityError !== null"
-            aria-describedby="receive-quantity-error"
-            @keydown.enter.prevent="saveReceipt()"
-          />
-          <Message
-            v-if="quantityError"
-            id="receive-quantity-error"
-            data-testid="receive-quantity-error"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ quantityError }}
-          </Message>
-        </div>
-        <div class="field">
-          <label for="receive-note">Notatka (opcjonalnie)</label>
-          <Textarea
-            id="receive-note"
-            v-model="receiptNote"
-            data-testid="receive-note"
-            rows="3"
-            :invalid="receiptNoteError !== null"
-            aria-describedby="receive-note-error"
-          />
-          <Message
-            v-if="receiptNoteError"
-            id="receive-note-error"
-            data-testid="receive-note-error"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ receiptNoteError }}
-          </Message>
-        </div>
-        <div class="actions">
-          <Button
-            data-testid="receive-cancel"
-            label="Anuluj"
-            severity="secondary"
-            @click="receiptVisible = false"
-          />
-          <Button
-            data-testid="receive-submit"
-            label="Przyjmij"
-            icon="pi pi-check"
-            :loading="receiptSaving"
-            :disabled="receiving === null"
-            @click="saveReceipt()"
-          />
-        </div>
-      </div>
-    </Dialog>
-
-    <Dialog
-      v-model:visible="correctionVisible"
-      modal
-      header="Korekta"
-      :style="{ width: '28rem' }"
-    >
-      <div
-        data-testid="correct-dialog"
-        class="change"
-      >
-        <strong>{{ correcting ? variantName(correcting) : correctingName }}</strong>
-        <span
-          v-if="correcting"
-          class="hint"
-        >
-          Stan fizyczny: {{ correcting.stock?.physical ?? 0 }}, zarezerwowany: {{ correcting.stock?.reserved ?? 0 }}.
-        </span>
-        <Message
-          v-if="correctionConflict"
-          data-testid="correct-conflict"
-          severity="warn"
-        >
-          {{ correctionConflict }}
-        </Message>
-        <Message
-          v-if="correctionMessage"
-          data-testid="correct-error"
-          severity="error"
-        >
-          {{ correctionMessage }}
-        </Message>
-        <div class="field">
-          <label for="correct-physical">Stan policzony (szt.)</label>
-          <InputNumber
-            v-model="counted"
-            input-id="correct-physical"
-            :use-grouping="false"
-            :max-fraction-digits="0"
-            :invalid="countedError !== null"
-            aria-describedby="correct-physical-error"
-            @keydown.enter.prevent="saveCorrection()"
-          />
-          <Message
-            v-if="countedError"
-            id="correct-physical-error"
-            data-testid="correct-physical-error"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ countedError }}
-          </Message>
-        </div>
-        <div class="field">
-          <label for="correct-reason">Powód</label>
-          <Select
-            v-model="reason"
-            input-id="correct-reason"
-            :options="[...REASONS]"
-            option-label="label"
-            option-value="value"
-            :invalid="reasonError !== null"
-          />
-          <Message
-            v-if="reasonError"
-            data-testid="correct-reason-error"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ reasonError }}
-          </Message>
-        </div>
-        <div class="field">
-          <label for="correct-note">{{ reason === "other" ? "Notatka (wymagana)" : "Notatka (opcjonalnie)" }}</label>
-          <Textarea
-            id="correct-note"
-            v-model="correctionNote"
-            data-testid="correct-note"
-            rows="3"
-            :invalid="correctionNoteError !== null"
-            aria-describedby="correct-note-error"
-          />
-          <Message
-            v-if="correctionNoteError"
-            id="correct-note-error"
-            data-testid="correct-note-error"
-            severity="error"
-            size="small"
-            variant="simple"
-          >
-            {{ correctionNoteError }}
-          </Message>
-        </div>
-        <div class="actions">
-          <Button
-            data-testid="correct-cancel"
-            label="Anuluj"
-            severity="secondary"
-            @click="correctionVisible = false"
-          />
-          <Button
-            data-testid="correct-submit"
-            label="Zapisz korektę"
-            icon="pi pi-check"
-            :loading="correctionSaving"
-            :disabled="correcting === null"
-            @click="saveCorrection()"
-          />
-        </div>
-      </div>
-    </Dialog>
-
-    <Dialog
-      v-model:visible="historyVisible"
-      modal
-      header="Historia stanów"
-      :style="{ width: '80rem', maxWidth: '95vw' }"
-    >
-      <div
-        data-testid="history-dialog"
-        class="change"
-      >
-        <strong>{{ historyName }}</strong>
-        <Message
-          v-if="history.error.value"
-          data-testid="history-error"
-          severity="error"
-        >
-          {{ history.error.value }}
-          <Button
-            data-testid="history-retry"
-            label="Spróbuj ponownie"
-            icon="pi pi-refresh"
-            severity="secondary"
-            size="small"
-            :loading="history.loading.value"
-            @click="history.retry()"
-          />
-        </Message>
-        <DataTable
-          v-if="history.loaded.value"
-          :value="history.items.value"
-          :pt="{ bodyRow: { 'data-testid': 'history-row' } }"
-        >
-          <template #empty>
-            <span data-testid="history-empty">Produkt nie ma jeszcze zmian stanu.</span>
-          </template>
-          <Column header="Data">
-            <template #body="{ data }">
-              <span data-testid="history-occurred-at">{{ formatDateTime(data.occurredAt) }}</span>
-            </template>
-          </Column>
-          <Column header="Typ">
-            <template #body="{ data }">
-              <span data-testid="history-type">{{ movementTypeLabel(data.type) }}</span>
-            </template>
-          </Column>
-          <Column
-            header="Fizyczny (zmiana)"
-            class="amount"
-          >
-            <template #body="{ data }">
-              <span data-testid="history-physical-delta">{{ formatDelta(data.physicalDelta) }}</span>
-            </template>
-          </Column>
-          <Column
-            header="Fizyczny (po)"
-            class="amount"
-          >
-            <template #body="{ data }">
-              <span data-testid="history-physical-after">{{ data.physicalAfter }}</span>
-            </template>
-          </Column>
-          <Column
-            header="Zarezerwowany (zmiana)"
-            class="amount"
-          >
-            <template #body="{ data }">
-              <span data-testid="history-reserved-delta">{{ formatDelta(data.reservedDelta) }}</span>
-            </template>
-          </Column>
-          <Column
-            header="Zarezerwowany (po)"
-            class="amount"
-          >
-            <template #body="{ data }">
-              <span data-testid="history-reserved-after">{{ data.reservedAfter }}</span>
-            </template>
-          </Column>
-          <Column header="Powód">
-            <template #body="{ data }">
-              <span data-testid="history-reason">{{ movementReasonLabel(data.reason) }}</span>
-            </template>
-          </Column>
-          <Column header="Notatka">
-            <template #body="{ data }">
-              <span data-testid="history-note">{{ data.note ?? "—" }}</span>
-            </template>
-          </Column>
-          <Column header="Referencja">
-            <template #body="{ data }">
-              <span data-testid="history-reference">{{ data.reference ?? "—" }}</span>
-            </template>
-          </Column>
-          <Column header="Źródło">
-            <template #body="{ data }">
-              <span data-testid="history-source">{{ movementSourceLabel(data.source) }}</span>
-            </template>
-          </Column>
-          <Column header="Pracownik">
-            <template #body="{ data }">
-              <span data-testid="history-actor">{{ data.actorName ?? "—" }}</span>
-            </template>
-          </Column>
-        </DataTable>
-        <Skeleton
-          v-else-if="history.loading.value"
-          height="8rem"
+        <ListPager
+          noun="produkty"
+          :has-previous="hasPrevious"
+          :has-next="hasNext"
+          :page-number="pageNumber"
+          :range="range"
+          :total="total"
+          @previous="list.goPrevious"
+          @next="list.goNext"
         />
-        <div class="actions">
-          <Button
-            v-if="history.hasMore.value"
-            data-testid="history-more"
-            label="Pokaż więcej"
-            icon="pi pi-angle-down"
-            severity="secondary"
-            :loading="history.loading.value"
-            @click="history.loadMore()"
-          />
-          <Button
-            data-testid="close-history"
-            label="Zamknij"
-            @click="historyVisible = false"
-          />
-        </div>
       </div>
-    </Dialog>
+    </Card>
 
-    <div
-      v-if="loaded"
-      class="pager"
-    >
-      <Button
-        data-testid="previous-page"
-        label="Poprzednia"
-        icon="pi pi-chevron-left"
-        severity="secondary"
-        :disabled="!hasPrevious || loading"
-        @click="goPrevious()"
-      />
-      <span
-        data-testid="page-number"
-        class="page-number"
-      >Strona {{ pageNumber }}</span>
-      <Button
-        data-testid="next-page"
-        label="Następna"
-        icon="pi pi-chevron-right"
-        icon-pos="right"
-        severity="secondary"
-        :disabled="!hasNext || loading"
-        @click="goNext()"
-      />
-    </div>
+    <StockDialogs
+      ref="dialogs"
+      :rows="rows"
+      :receive-stock="receiveStock"
+      :correct-stock="correctStock"
+      :fallback-focus="() => header?.heading ?? null"
+    />
   </div>
 </template>
-
-<style scoped>
-.inventory {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 1rem;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 18rem;
-}
-
-.hint {
-  color: var(--p-text-muted-color);
-}
-
-.category-filter {
-  min-width: 18rem;
-}
-
-.amount {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.pager {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 1rem;
-}
-
-.page-number {
-  color: var(--p-text-muted-color);
-}
-
-.row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.change {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.change .field {
-  min-width: 0;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-</style>

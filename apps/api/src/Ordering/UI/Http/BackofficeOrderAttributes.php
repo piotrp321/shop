@@ -14,4 +14,5 @@ final class BackofficeOrderAttributes
     /** Asked with the StaffTransition as the subject. */
     public const string CHANGE_ORDER_STATUS = 'CHANGE_ORDER_STATUS';
     public const string COMPLETE_REFUND = 'COMPLETE_REFUND';
+    public const string VIEW_CUSTOMERS = 'VIEW_CUSTOMERS';
 }

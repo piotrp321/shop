@@ -1,0 +1,12 @@
+{
+  "task": "SEARCH-4",
+  "pr": 184,
+  "review_sha": "78ddc299117301d42d048ba71a57fa30b047cd2e",
+  "base_sha": "07524862d7a208b446b522d5266d675b3a4efbf3",
+  "branch": "task/SEARCH-4",
+  "target_ref": "origin/epic/search",
+  "source": "~/.local/state/ao-search/tasks/SEARCH-4/attempts/1/stdout.jsonl: the first Agent call with subagent_type code-reviewer (FULL first review)",
+  "original_cli": "2.1.311",
+  "reachable_from": "refs/pull/184/head",
+  "gold_in_reviewed_diff": "`git diff base..review -- apps/api/src/Catalog/Application/Query/ListProductsHandler.php` adds `facetCategories($query->categoryId)`, `find()` comparing `$node->id === $id` and the raw `$query->categoryId` in the search criteria, while only `CategoryId::fromString($query->categoryId)` normalises it for the existence check (checked 2026-11-16 by reading the diff)."
+}

@@ -36,6 +36,14 @@ class CategoryRecord
     #[ORM\Column(type: 'text')]
     public string $path;
 
+    /** The place among the siblings; 0 until a staff member orders them. */
+    #[ORM\Column(options: ['default' => 0])]
+    public int $position = 0;
+
+    /** Set by the domain (no #[ORM\Version]): renumbering the siblings must not raise theirs. */
+    #[ORM\Column(options: ['default' => 1])]
+    public int $version = 1;
+
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]

@@ -24,6 +24,9 @@ class PlanManifestTest(unittest.TestCase):
         subprocess.run(['git', '-C', self.repo, 'init', '-q'], check=True)
         os.makedirs(os.path.join(self.repo, 'docs', 'features', 'cart'))
         self.write('docs/features/cart/spec.md', '# Cart\n')
+        for top in ('apps', 'infra', 'e2e', '.github', 'tools', '.claude', '.ao', 'toolsx'):
+            os.makedirs(os.path.join(self.repo, top))
+        self.write('CLAUDE.md', '# Rules\n')
         self.plan = os.path.join(self.repo, 'docs', 'features', 'cart', 'plan.md')
 
     def tearDown(self):
@@ -212,6 +215,333 @@ class PlanManifestTest(unittest.TestCase):
     def test_reports_all_problems_at_once(self):
         self.write_plan(self.manifest([task('CART-1', risk='LOW'), task('ORDER-2', title='')]))
         self.assertInvalid('risk must be one of', 'id must start with CART-', 'title must be a non-empty string')
+
+    # Parallel tasks of a wave (step 19b): optional `paths` and `parallel_with`.
+
+    def parallel(self, *extra):
+        return subprocess.run([sys.executable, SCRIPT, 'parallel', self.plan, *extra], capture_output=True,
+                              text=True, cwd=self.repo)
+
+    def test_manifest_without_paths_and_parallel_with_stays_valid(self):
+        self.write_plan(self.manifest([task('CART-1'), task('CART-2')]))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(set(json.loads(r.stdout)['tasks'][0]), {'id', 'title', 'scope', 'acceptance_criteria',
+                                                                  'risk', 'depends_on'})
+
+    def test_valid_paths_and_parallel_with_are_printed(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['apps/api/src/Cart/', 'docs/'], parallel_with=['CART-2']),
+                                       task('CART-2', paths=['apps/store/src/cart/', 'docs/features/cart/'],
+                                            parallel_with=['CART-1'])]))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        self.assertEqual(['apps/api/src/Cart/', 'docs/'], out['tasks'][0]['paths'])
+        self.assertEqual(['CART-1'], out['tasks'][1]['parallel_with'])
+
+    def test_paths_must_be_a_non_empty_list_of_relative_repository_paths(self):
+        for paths in ('apps/api/', [], [3], [''], ['   '], ['/etc/hosts'], ['../x'], ['docs/../x'], ['docs/..'],
+                      ['a//b'], ['./a'], ['a/./b'], ['a\\b'], ['/'], ['a\nb'], ['a\x00b'], ['docs/a\u2028b.md'],
+                      ['\u00a0'], ['docs/\u00a0/'], ['docs/*.md'], ['docs/*'], ['docs/?.md'], ['docs/[ab].md'],
+                      ['docs/a]'], ['docs/{a,b}.md'], ['docs/a}'], ['~'], ['~/docs/'], ['~docs/']):
+            with self.subTest(paths=paths):
+                self.write_plan(self.manifest([task('CART-1', paths=paths)]))
+                self.assertInvalid('tasks[0] (CART-1): paths must be a non-empty list of relative paths')
+
+    def test_paths_must_start_in_an_existing_entry_of_the_repository_root(self):
+        for path in ('Apps/api/src/', 'Docs/', 'DOCS/features/', 'missing/x.md', 'claude.md', '.git/config',
+                     '.git/'):
+            with self.subTest(path=path):
+                self.write_plan(self.manifest([task('CART-1', paths=['docs/', path])]))
+                self.assertInvalid('tasks[0] (CART-1): paths %s: %s does not exist in the repository root'
+                                   % (path, path.split('/')[0]))
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/new/', 'apps/api/src/New.php', 'CLAUDE.md',
+                                                             '.github/', 'e2e/x.spec.ts'])]))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_paths_with_polish_letters_are_valid(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/features/cart/zażółć.md'])]))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_paths_must_not_repeat(self):
+        for paths in (['docs/x.md', 'docs/x.md'], ['docs/', 'docs']):
+            with self.subTest(paths=paths):
+                self.write_plan(self.manifest([task('CART-1', paths=paths)]))
+                self.assertInvalid('tasks[0] (CART-1): paths lists docs')
+
+    def test_parallel_with_must_be_a_list_of_task_ids(self):
+        for value in ('CART-2', [2], None):
+            with self.subTest(value=value):
+                self.write_plan(self.manifest([task('CART-1', paths=['docs/'], parallel_with=value),
+                                               task('CART-2', paths=['infra/'])]))
+                self.assertInvalid('tasks[0] (CART-1): parallel_with must be a list of task ids')
+
+    def test_parallel_with_itself_twice_or_unknown(self):
+        for value, message in ((['CART-1'], 'CART-1 lists itself in parallel_with'),
+                               (['CART-2', 'CART-2'], 'CART-1 lists CART-2 twice in parallel_with'),
+                               (['CART-9'], 'CART-1 is parallel with unknown task CART-9')):
+            with self.subTest(value=value):
+                self.write_plan(self.manifest([task('CART-1', paths=['docs/'], parallel_with=value),
+                                               task('CART-2', paths=['infra/'], parallel_with=['CART-1'])]))
+                self.assertInvalid(message)
+
+    def test_parallel_with_must_be_symmetric(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/'], parallel_with=['CART-2']),
+                                       task('CART-2', paths=['infra/'])]))
+        self.assertInvalid('CART-1 is parallel with CART-2, but CART-2 does not list CART-1')
+
+    def test_parallel_with_needs_paths_on_both_sides(self):
+        for first, second in ((None, ['infra/']), (['docs/'], None)):
+            with self.subTest(first=first, second=second):
+                a = task('CART-1', parallel_with=['CART-2'])
+                b = task('CART-2', parallel_with=['CART-1'])
+                if first:
+                    a['paths'] = first
+                if second:
+                    b['paths'] = second
+                self.write_plan(self.manifest([a, b]))
+                self.assertInvalid('CART-1 and CART-2 are parallel without paths in both')
+
+    def test_parallel_pair_with_a_dependency_is_refused(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/a.md'], parallel_with=['CART-3']),
+                                       task('CART-2', ['CART-1'], paths=['docs/b.md']),
+                                       task('CART-3', ['CART-2'], paths=['docs/c.md'], parallel_with=['CART-1'])]))
+        self.assertInvalid('CART-1 and CART-3 cannot run in parallel: CART-3 depends on CART-1')
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/a.md'], parallel_with=['CART-2']),
+                                       task('CART-2', ['CART-1'], paths=['docs/b.md'], parallel_with=['CART-1'])]))
+        self.assertInvalid('CART-1 and CART-2 cannot run in parallel: CART-2 depends on CART-1')
+
+    def pair(self, first, second):
+        self.write_plan(self.manifest([task('CART-1', paths=first, parallel_with=['CART-2']),
+                                       task('CART-2', paths=second, parallel_with=['CART-1'])]))
+
+    def test_parallel_pair_sharing_application_code_is_refused(self):
+        for first, second, shared in ((['apps/api/src/Cart/'], ['apps/api/src/'], 'apps/api/src/Cart'),
+                                      (['apps/api/'], ['apps/api/src/Order/Order.php', 'docs/x.md'],
+                                       'apps/api/src/Order/Order.php'),
+                                      (['apps/store/app/'], ['apps/store/app/'], 'apps/store/app')):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
+
+    def test_parallel_pair_sharing_a_file_is_refused(self):
+        for first, second, shared in ((['docs/features/cart/spec.md'], ['docs/features/cart/spec.md'],
+                                       'docs/features/cart/spec.md'),
+                                      (['docs/'], ['docs/vision.md'], 'docs/vision.md'),
+                                      (['.github/workflows/ci.yml', 'infra/'], ['.github/'],
+                                       '.github/workflows/ci.yml'),
+                                      (['apps/api/openapi.json'], ['apps/api/openapi.json'], 'apps/api/openapi.json')):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
+
+    def test_parallel_pair_sharing_a_claude_md_is_refused(self):
+        for first, second in ((['CLAUDE.md'], ['CLAUDE.md']),
+                              (['apps/api/CLAUDE.md'], ['apps/api/tests/', 'apps/api/CLAUDE.md']),
+                              (['infra/k8s/'], ['infra/k8s/CLAUDE.md'])):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                self.assertInvalid('cannot run in parallel: shared paths')
+        self.pair(['apps/api/tests/', 'docs/'], ['apps/api/CLAUDE.md', 'apps/admin/src/x.ts'])
+        self.assertEqual(self.validate().returncode, 0)
+
+    def track(self, *paths):
+        for path in paths:
+            os.makedirs(os.path.dirname(os.path.join(self.repo, path)), exist_ok=True)
+            self.write(path, '# Rules\n')
+        subprocess.run(['git', '-C', self.repo, 'add', '--', *paths], check=True)
+
+    def test_parallel_pair_sharing_a_directory_with_a_tracked_claude_md_is_refused(self):
+        self.track('infra/k8s/CLAUDE.md', 'e2e/CLAUDE.md')
+        for first, second, shared in ((['infra/k8s/'], ['infra/k8s/'], 'infra/k8s/CLAUDE.md'),
+                                      (['infra/'], ['infra/k8s/'], 'infra/k8s/CLAUDE.md'),
+                                      (['infra/k8s/'], ['infra/'], 'infra/k8s/CLAUDE.md'),
+                                      (['e2e/', 'docs/'], ['e2e/'], 'e2e/CLAUDE.md')):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
+
+    def test_tracked_claude_md_is_found_whatever_the_pathspec_settings_of_git(self):
+        self.track('infra/k8s/CLAUDE.md')
+        self.pair(['infra/k8s/'], ['infra/k8s/'])
+        r = subprocess.run([sys.executable, SCRIPT, 'validate', self.plan], capture_output=True, text=True,
+                           cwd=self.repo, env=dict(os.environ, GIT_LITERAL_PATHSPECS='1'))
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('shared paths infra/k8s/CLAUDE.md', r.stderr)
+
+    def test_common_directory_without_a_tracked_claude_md_is_allowed(self):
+        self.track('infra/k8s/CLAUDE.md', 'e2e/CLAUDE.md')
+        os.makedirs(os.path.join(self.repo, 'e2e', 'lib'))
+        self.write('e2e/lib/CLAUDE.md', 'untracked\n')
+        for first, second in ((['infra/k8s/charts/'], ['infra/k8s/charts/']), (['e2e/'], ['e2e/tests/']),
+                              (['docs/'], ['docs/']), (['e2e/lib/'], ['e2e/lib/'])):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                r = self.validate()
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_parallel_skips_a_common_directory_with_a_tracked_claude_md(self):
+        self.track('infra/k8s/CLAUDE.md')
+        self.write_plan(self.manifest([task('CART-1', paths=['infra/k8s/']), task('CART-2', paths=['infra/']),
+                                       task('CART-3', paths=['docs/', 'infra/k8s/charts/'])]))
+        r = self.parallel()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual({'CART-1': ['CART-3'], 'CART-2': ['CART-3'], 'CART-3': ['CART-1', 'CART-2']},
+                         json.loads(r.stdout))
+
+    def test_git_error_listing_claude_md_runs_every_pair_alone(self):
+        self.track('docs/features/cart/spec.md')
+        with open(os.path.join(self.repo, '.git', 'index'), 'w') as f:
+            f.write('broken')
+        self.pair(['docs/a.md'], ['docs/b.md'])
+        self.assertInvalid('CART-1 and CART-2 cannot run in parallel: tracked CLAUDE.md files are unknown '
+                           '(git ls-files failed: ')
+        r = self.parallel()
+        self.assertEqual((2, ''), (r.returncode, r.stdout))
+        self.assertIn('tracked CLAUDE.md files are unknown (git ls-files failed: ', r.stderr)
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/a.md']), task('CART-2', paths=['docs/b.md'])]))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_parallel_pair_sharing_executable_tool_code_is_refused(self):
+        for first, second, shared in ((['tools/metrics/'], ['tools/metrics/'], 'tools/metrics'),
+                                      (['tools/metrics/'], ['tools/'], 'tools/metrics'),
+                                      (['.claude/'], ['.claude/skills/x/'], '.claude/skills/x'),
+                                      (['.ao/'], ['.ao/'], '.ao'),
+                                      (['.github/scripts/'], ['.github/scripts/'], '.github/scripts'),
+                                      (['infra/scripts/'], ['infra/'], 'infra/scripts')):
+            with self.subTest(first=first, second=second):
+                os.makedirs(os.path.join(self.repo, 'infra', 'scripts'), exist_ok=True)
+                self.pair(first, second)
+                self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths %s' % shared)
+
+    def test_the_current_metrics_plan_stays_valid(self):
+        plan = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'features',
+                            'metrics', 'plan.md')
+        if not os.path.exists(plan):
+            self.skipTest('no metrics plan')
+        r = subprocess.run([sys.executable, SCRIPT, 'validate', plan], capture_output=True, text=True,
+                           cwd=os.path.abspath(os.path.join(os.path.dirname(plan), '..', '..', '..')))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_parallel_pair_lists_every_blocking_path(self):
+        self.pair(['apps/api/src/Cart/', 'CLAUDE.md', 'docs/'], ['apps/api/src/Cart/Cart.php', 'CLAUDE.md', 'docs/'])
+        self.assertInvalid('CART-1 and CART-2 cannot run in parallel: shared paths CLAUDE.md, '
+                           'apps/api/src/Cart/Cart.php')
+
+    def test_overlapping_directories_outside_application_code_are_allowed(self):
+        for first, second in ((['docs/'], ['docs/features/cart/']), (['docs/features/'], ['docs/features/']),
+                              (['apps/api/tests/', 'infra/k8s/'], ['apps/api/tests/Unit/', 'infra/']),
+                              (['.github/workflows/', 'e2e/'], ['.github/workflows/', 'e2e/']),
+                              (['.claude/skills/ao-run/'], ['.claude/skills/retro/']),
+                              (['.claude/agents/'], ['.claude/agents/']), (['toolsx/'], ['tools/']),
+                              (['infra/k8s/'], ['infra/k8s/'])):
+            with self.subTest(first=first, second=second):
+                self.pair(first, second)
+                r = self.validate()
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_parallel_prints_the_maximal_symmetric_lists(self):
+        self.write_plan(self.manifest([
+            task('CART-1', paths=['apps/api/src/Cart/', 'docs/']),
+            task('CART-2', paths=['apps/store/src/cart/', 'docs/features/cart/']),
+            task('CART-3', ['CART-1'], paths=['apps/admin/src/cart/']),
+            task('CART-4'),
+            task('CART-5', paths=['apps/api/src/']),
+            task('CART-6', ['CART-3'], paths=['docs/features/cart/spec.md'])]))
+        r = self.parallel()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual({'CART-1': ['CART-2'], 'CART-2': ['CART-1', 'CART-3', 'CART-5'],
+                          'CART-3': ['CART-2', 'CART-5'], 'CART-4': [], 'CART-5': ['CART-2', 'CART-3', 'CART-6'],
+                          'CART-6': ['CART-5']}, json.loads(r.stdout))
+        self.assertEqual(['CART-1', 'CART-2', 'CART-3', 'CART-4', 'CART-5', 'CART-6'], list(json.loads(r.stdout)))
+
+    def test_parallel_output_written_back_validates(self):
+        tasks = [task('CART-1', paths=['apps/api/src/Cart/', 'docs/']), task('CART-2', paths=['docs/x.md']),
+                 task('CART-3', paths=['apps/store/src/']), task('CART-4')]
+        self.write_plan(self.manifest(tasks))
+        lists = json.loads(self.parallel().stdout)
+        for t in tasks:
+            t['parallel_with'] = lists[t['id']]
+        self.write_plan(self.manifest(tasks))
+        r = self.validate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_parallel_ignores_the_current_parallel_with(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['apps/api/src/'], parallel_with=['CART-2', 'CART-9']),
+                                       task('CART-2', paths=['apps/api/src/Cart/'])]))
+        r = self.parallel()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual({'CART-1': [], 'CART-2': []}, json.loads(r.stdout))
+
+    def test_parallel_refuses_an_otherwise_invalid_manifest(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['/etc/']), task('CART-2', risk='LOW')]))
+        r = self.parallel()
+        self.assertEqual((2, ''), (r.returncode, r.stdout))
+        self.assertIn('paths must be a non-empty list of relative paths', r.stderr)
+        self.assertIn('risk must be one of', r.stderr)
+
+    def test_parallel_error_paths(self):
+        r = self.parallel()
+        self.assertEqual((2, ''), (r.returncode, r.stdout))
+        self.assertIn('cannot read', r.stderr)
+        self.write_plan('{"schema_version": 1,')
+        r = self.parallel()
+        self.assertEqual((2, ''), (r.returncode, r.stdout))
+        self.assertIn('not valid JSON', r.stderr)
+
+    def blocked(self, tasks):
+        self.write_plan(self.manifest(tasks))
+        r = self.parallel('--blocked')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_parallel_blocked_reports_a_shared_file_of_one_wave(self):
+        out = self.blocked([task('CART-1', paths=['docs/a.md', 'docs/shared.md']),
+                            task('CART-2', paths=['docs/shared.md'])])
+        self.assertEqual([{'tasks': ['CART-1', 'CART-2'], 'paths': ['docs/shared.md']}], out['blocked'])
+        self.assertEqual([], out['parallel_with']['CART-1'])
+
+    def test_parallel_blocked_reports_shared_application_code(self):
+        out = self.blocked([task('CART-1', paths=['apps/api/src/Cart/']),
+                            task('CART-2', paths=['apps/api/src/Cart/Cart.php'])])
+        self.assertEqual([{'tasks': ['CART-1', 'CART-2'], 'paths': ['apps/api/src/Cart/Cart.php']}], out['blocked'])
+
+    def test_parallel_blocked_skips_allowed_dependent_other_wave_and_pathless_pairs(self):
+        out = self.blocked([
+            task('CART-1', paths=['apps/api/src/Cart/']), task('CART-2', paths=['apps/store/src/cart/']),
+            task('CART-3', ['CART-1'], paths=['apps/api/src/Cart/']),
+            task('CART-4', ['CART-3'], paths=['apps/api/src/Cart/']),
+            task('CART-5', paths=['apps/api/src/Cart/']), task('CART-6')])
+        self.assertEqual([{'tasks': ['CART-1', 'CART-5'], 'paths': ['apps/api/src/Cart']}], out['blocked'])
+        self.assertEqual(['CART-2'], out['parallel_with']['CART-1'])
+        self.assertEqual([], out['parallel_with']['CART-6'])
+
+    def test_parallel_blocked_skips_dependent_tasks_of_different_waves(self):
+        out = self.blocked([task('CART-1', paths=['docs/a.md']), task('CART-2', ['CART-1'], paths=['docs/a.md']),
+                            task('CART-3', ['CART-2'], paths=['docs/a.md'])])
+        self.assertEqual([], out['blocked'])
+
+    def test_parallel_blocked_is_ordered_by_wave_then_plan_order(self):
+        out = self.blocked([task('CART-1', paths=['docs/a.md']), task('CART-2', ['CART-1'], paths=['docs/b.md']),
+                            task('CART-3', ['CART-1'], paths=['docs/b.md']), task('CART-4', paths=['docs/a.md'])])
+        self.assertEqual([['CART-1', 'CART-4'], ['CART-2', 'CART-3']], [b['tasks'] for b in out['blocked']])
+
+    def test_parallel_blocked_is_empty_without_pairs(self):
+        self.assertEqual([], self.blocked([task('CART-1', paths=['docs/a.md'])])['blocked'])
+
+    def test_parallel_blocked_output_keeps_tasks_named_blocked_apart(self):
+        self.write_plan(self.manifest([task('blocked-1', paths=['docs/a.md']),
+                                       task('blocked-2', paths=['docs/b.md'])], epic='blocked'))
+        out = json.loads(self.parallel('--blocked').stdout)
+        self.assertEqual({'parallel_with': {'blocked-1': ['blocked-2'], 'blocked-2': ['blocked-1']}, 'blocked': []}, out)
+
+    def test_parallel_without_the_flag_keeps_the_plain_map(self):
+        self.write_plan(self.manifest([task('CART-1', paths=['docs/a.md']), task('CART-2', paths=['docs/a.md'])]))
+        r = self.parallel()
+        self.assertEqual({'CART-1': [], 'CART-2': []}, json.loads(r.stdout))
 
     def test_usage_error(self):
         r = subprocess.run([sys.executable, SCRIPT], capture_output=True, text=True)

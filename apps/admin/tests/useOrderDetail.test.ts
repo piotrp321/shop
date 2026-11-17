@@ -17,6 +17,7 @@ const REFUND_COMPLETION = "/api/v1/admin/orders/{orderId}/refund-completion";
 function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
   return {
     orderId: "o-1",
+    customerId: null,
     number: "R-100001",
     status: "paid",
     version: 2,

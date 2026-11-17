@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Inventory\Demo;
 
 use App\Inventory\Application\Demo\DemoStockSeeder;
+use App\Inventory\Application\StockRecords\StockRecordSync;
 use App\Inventory\Infrastructure\Demo\YamlDemoStockSource;
 use App\Inventory\UI\Console\SeedDemoStockCommand;
 use App\Tests\Support\InMemory\RecordingMessageBus;
+use App\Tests\Unit\Inventory\InMemoryProductDirectory;
 use App\Tests\Unit\Inventory\InMemoryVariantsForInventory;
 use App\Tests\Unit\Inventory\SpyInventoryReset;
 use PHPUnit\Framework\TestCase;
@@ -98,6 +100,7 @@ final class SeedDemoStockCommandTest extends TestCase
         $application->addCommand(new SeedDemoStockCommand(
             new YamlDemoStockSource('/nonexistent/stock.yaml'),
             new DemoStockSeeder(new InMemoryVariantsForInventory(self::STOCKED), $this->bus),
+            new StockRecordSync(new InMemoryProductDirectory(), $this->bus),
             $this->reset,
             'test',
         ));
@@ -141,6 +144,7 @@ final class SeedDemoStockCommandTest extends TestCase
         $application->addCommand(new SeedDemoStockCommand(
             new YamlDemoStockSource($this->file),
             new DemoStockSeeder(new InMemoryVariantsForInventory($variants), $this->bus),
+            new StockRecordSync(new InMemoryProductDirectory(), $this->bus),
             $this->reset,
             $environment,
         ));

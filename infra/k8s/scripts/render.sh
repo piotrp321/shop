@@ -39,9 +39,11 @@ render() {
   render prod-domain prod --set image.tag=$rev1 $digests --set global.domain=other.example.net
   render prod-indexable prod --set image.tag=$rev1 $digests --set noindex=false
   render prod-noinit prod --set image.tag=$rev1 $digests --set initialize.enabled=false
+  # The backup is off in prod until its repository and secret exist (README.md, section 2): its tests render it switched on.
+  render prod-backup prod --set image.tag=$rev1 $digests --set backup.enabled=true
   render prod-nobackup prod --set image.tag=$rev1 $digests --set backup.enabled=false
   render prod-noalerts prod --set image.tag=$rev1 $digests --set alerts.enabled=false
-  render prod-verify-schedule prod --set image.tag=$rev1 $digests --set backup.verifySchedule='30 6 * * 1'
+  render prod-verify-schedule prod --set image.tag=$rev1 $digests --set backup.enabled=true --set backup.verifySchedule='30 6 * * 1'
   # The switches of D10, one at a time against the profile (tests/test_switches.py).
   render prod-accounts prod --set image.tag=$rev1 $digests --set customerAccounts=true
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
@@ -64,6 +66,25 @@ render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
 render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo
 # The header of the client address without the allow list, confirmed (the profile of the measurement, tests/test_client_ip.py).
 render ci-client-ip ci --set image.tag=$rev1 --set clientIpHeader=CF-Connecting-IP --set clientIpHeaderWithoutAllowList=true
+# Sentry (tests/test_sentry.py): one application with a DSN at a time, all three, prod with all three, a rate and an environment
+# without a DSN, and the default rate. The DSNs differ in the key and the project, so the test sees which one went where.
+sentry_api=https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@o1.ingest.de.sentry.io/1
+sentry_store=https://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb@o1.ingest.de.sentry.io/2
+sentry_admin=https://cccccccccccccccccccccccccccccccc@o1.ingest.de.sentry.io/3
+sentry_values="--set sentry.environment=smoke --set-json sentry.tracesSampleRate=0.25"
+# shellcheck disable=SC2086 # $sentry_values and $digests are lists of arguments
+{
+  render ci-sentry-api ci --set image.tag=$rev1 $sentry_values --set sentry.dsn.api=$sentry_api
+  render ci-sentry-store ci --set image.tag=$rev1 $sentry_values --set sentry.dsn.store=$sentry_store
+  render ci-sentry-admin ci --set image.tag=$rev1 $sentry_values --set sentry.dsn.admin=$sentry_admin
+  render ci-sentry ci --set image.tag=$rev1 $sentry_values --set sentry.dsn.api=$sentry_api --set sentry.dsn.store=$sentry_store \
+    --set sentry.dsn.admin=$sentry_admin
+  render ci-sentry-nodsn ci --set image.tag=$rev1 $sentry_values
+  render ci-sentry-default-rate ci --set image.tag=$rev1 --set sentry.environment=smoke --set sentry.dsn.api=$sentry_api \
+    --set sentry.dsn.store=$sentry_store --set sentry.dsn.admin=$sentry_admin
+  render prod-sentry prod --set image.tag=$rev1 $digests --set sentry.dsn.api=$sentry_api --set sentry.dsn.store=$sentry_store \
+    --set sentry.dsn.admin=$sentry_admin
+}
 # The profile of the load measurement: ci with environments/load/values.yaml on top, as scripts/load.sh installs it
 # (tests/test_load_profile.py).
 render load ci -f environments/load/values.yaml --set image.tag=$rev1
@@ -85,9 +106,15 @@ if [ -n "$sealed_files" ]; then
 else
   : > "$out/sealed.ndjson"
 fi
-# The deployment workflow as JSON, for tests/test_deploy_workflow.py.
+# The deployment workflow as JSON, for tests/test_deploy_workflow.py, and every workflow of the repository (workflows/<file>.json,
+# both extensions GitHub reads) for its rule on secrets.
 [ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "render: .github/workflows/deploy.yml is missing" >&2; exit 1; }
 yq -o=json '.' < "$TOOLS_REPO/.github/workflows/deploy.yml" > "$out/deploy-workflow.json"
+mkdir -p "$out/workflows"
+for workflow in "$TOOLS_REPO"/.github/workflows/*.yml "$TOOLS_REPO"/.github/workflows/*.yaml; do
+  [ -f "$workflow" ] || continue
+  yq -o=json '.' < "$workflow" > "$out/workflows/${workflow##*/}.json"
+done
 # The charts of the applications prometheus-crds and monitoring with the values of their manifests (monitoring.yaml,
 # monitoring.ndjson, prometheus-crds.yaml, ... for kubeconform and tests/test_monitoring.py) and the log masking run in a real
 # Alloy (masking-output.log for tests/test_log_masking.py).

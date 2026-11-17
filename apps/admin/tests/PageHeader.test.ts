@@ -1,4 +1,5 @@
 import { mount, type VueWrapper } from "@vue/test-utils";
+import { h } from "vue";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import PageHeader from "@/components/PageHeader.vue";
@@ -62,5 +63,22 @@ describe("PageHeader", () => {
 
     expect(document.activeElement).toBe(header.get("h1").element);
     expect(header.get("h1").attributes("tabindex")).toBe("-1");
+  });
+
+  it("shows the slot „status” right after the H1, for the status of the object", async () => {
+    const empty = { template: "<div />" };
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/", name: "dashboard", component: empty }] });
+    await router.push("/");
+    wrapper = mount(PageHeader, {
+      props: { title: "Zamówienie R-100001", crumbs: [{ label: "R-100001" }] },
+      slots: { status: () => h("span", { "data-testid": "status" }, "Opłacone") },
+      global: { plugins: [router] },
+      attachTo: document.body,
+    });
+
+    const h1 = wrapper.get("h1").element;
+    const status = wrapper.get("[data-testid=status]").element;
+    expect(h1.nextElementSibling).toBe(status);
+    expect(h1.parentElement).toBe(status.parentElement);
   });
 });

@@ -1,0 +1,66 @@
+{"at": "2026-11-13T23:42:40.625828+01:00", "dir_arg": "demo-data", "epic": "demo-data", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-13T23:43:00.006164+01:00", "dir_arg": "demo-data", "epic": "demo-data", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-13T23:43:42.567531+01:00", "dir_arg": null, "epic": "agent-security", "reason": null, "skipped": [{"id": "SENTRY", "paths": ["apps/api/CLAUDE.md", "apps/api/config/packages/flysystem.yaml", "apps/api/config/services.yaml", "apps/api/phpunit.dist.xml"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T08:59:59.556122+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "SENTRY", "paths": ["apps/api/CLAUDE.md", "apps/api/config/packages/flysystem.yaml", "apps/api/config/services.yaml", "apps/api/phpunit.dist.xml"], "reason": "redacted"}, {"id": "AGENT-SECURITY", "paths": ["infra/k8s/scripts/selftest.sh"], "reason": "redacted"}, {"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T09:54:34.319846+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "SENTRY", "paths": ["apps/api/CLAUDE.md", "apps/api/config/packages/flysystem.yaml", "apps/api/config/services.yaml", "apps/api/phpunit.dist.xml"], "reason": "redacted"}, {"id": "AGENT-SECURITY", "paths": ["infra/k8s/scripts/selftest.sh"], "reason": "redacted"}, {"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T10:49:56.105159+01:00", "dir_arg": "sentry", "epic": null, "reason": "redacted", "skipped": [{"id": "SENTRY", "paths": ["apps/api/CLAUDE.md", "apps/api/config/packages/flysystem.yaml", "apps/api/config/services.yaml", "apps/api/phpunit.dist.xml"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T10:51:49.320973+01:00", "dir_arg": "sentry", "epic": "sentry", "reason": "redacted", "skipped": [{"id": "SENTRY", "paths": ["apps/api/CLAUDE.md", "apps/api/config/packages/flysystem.yaml", "apps/api/config/services.yaml", "apps/api/phpunit.dist.xml"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T10:52:13.399401+01:00", "dir_arg": "sentry", "epic": "sentry", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-14T10:53:17.087715+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "AGENT-SECURITY", "paths": [".github/workflows/deploy.yml", "infra/k8s/CLAUDE.md", "infra/k8s/README.md", "infra/k8s/scripts/selftest.sh", "infra/k8s/tests"], "reason": "redacted"}, {"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T11:01:31.599741+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "AGENT-SECURITY", "paths": [".github/workflows/deploy.yml", "infra/k8s/CLAUDE.md", "infra/k8s/README.md", "infra/k8s/scripts/selftest.sh", "infra/k8s/tests"], "reason": "redacted"}, {"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T11:04:45.610631+01:00", "dir_arg": "agent-security", "epic": null, "reason": "redacted", "skipped": [{"id": "AGENT-SECURITY", "paths": [".github/workflows/deploy.yml", "infra/k8s/CLAUDE.md", "infra/k8s/README.md", "infra/k8s/scripts/selftest.sh", "infra/k8s/tests"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T11:05:03.779261+01:00", "dir_arg": "agent-security", "epic": "agent-security", "reason": "redacted", "skipped": [{"id": "AGENT-SECURITY", "paths": [".github/workflows/deploy.yml", "infra/k8s/CLAUDE.md", "infra/k8s/README.md", "infra/k8s/scripts/selftest.sh", "infra/k8s/tests"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T11:05:35.468033+01:00", "dir_arg": "agent-security", "epic": "agent-security", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-14T13:31:12.383689+01:00", "dir_arg": "admin-screens", "epic": null, "reason": "redacted", "skipped": [], "waiting": null}
+{"at": "2026-11-14T13:32:43.856848+01:00", "dir_arg": "admin-screens", "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T14:03:04.490528+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T14:33:19.859321+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T15:03:35.606609+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T15:33:50.572095+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T16:04:05.851139+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T16:34:21.106099+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T17:04:35.919098+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T17:34:51.373956+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T18:05:05.966177+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T18:35:21.251774+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T19:05:35.915171+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "admin-screens"}
+{"at": "2026-11-14T19:30:43.473636+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "ADMIN-SCREENS", "paths": ["CLAUDE.md", "apps/admin/CLAUDE.md", "apps/admin/Dockerfile", "apps/admin/docker", "apps/admin/docker/40-admin-config.sh", "apps/admin/package-lock.json", "apps/admin/package.json", "apps/admin/src/auth", "apps/admin/src/composables", "apps/admin/src/config", "apps/admin/src/config/index.ts", "apps/admin/src/env.d.ts", "apps/admin/src/main.ts", "apps/admin/src/observability", "apps/admin/src/observability/filter.ts", "apps/admin/src/observability/index.ts", "apps/admin/src/observability/options.ts", "apps/admin/src/stores", "apps/admin/src/stores/auth.ts", "apps/admin/tests", "apps/admin/tests/config.test.ts", "apps/admin/tests/sentry.test.ts", "apps/admin/tests/sentryFilter.test.ts", "apps/admin/tests/sentryTracing.test.ts", "apps/admin/tests/vite-config.test.ts", "apps/admin/vite.config.ts"], "reason": "redacted"}, {"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T19:30:58.155913+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "ADMIN-SCREENS", "paths": ["CLAUDE.md", "apps/admin/CLAUDE.md", "apps/admin/Dockerfile", "apps/admin/docker", "apps/admin/docker/40-admin-config.sh", "apps/admin/package-lock.json", "apps/admin/package.json", "apps/admin/src/auth", "apps/admin/src/composables", "apps/admin/src/config", "apps/admin/src/config/index.ts", "apps/admin/src/env.d.ts", "apps/admin/src/main.ts", "apps/admin/src/observability", "apps/admin/src/observability/filter.ts", "apps/admin/src/observability/index.ts", "apps/admin/src/observability/options.ts", "apps/admin/src/stores", "apps/admin/src/stores/auth.ts", "apps/admin/tests", "apps/admin/tests/config.test.ts", "apps/admin/tests/sentry.test.ts", "apps/admin/tests/sentryFilter.test.ts", "apps/admin/tests/sentryTracing.test.ts", "apps/admin/tests/vite-config.test.ts", "apps/admin/vite.config.ts"], "reason": "redacted"}, {"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T19:33:05.671999+01:00", "dir_arg": "admin-screens", "epic": null, "reason": "redacted", "skipped": [{"id": "ADMIN-SCREENS", "paths": ["CLAUDE.md"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T19:34:02.799919+01:00", "dir_arg": "admin-screens", "epic": "admin-screens", "reason": "redacted", "skipped": [{"id": "ADMIN-SCREENS", "paths": ["CLAUDE.md"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-14T19:34:25.427106+01:00", "dir_arg": "admin-screens", "epic": "admin-screens", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-14T19:35:22.277564+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T20:05:57.963107+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T20:36:14.882609+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T21:06:28.876881+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T21:36:45.456378+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T22:07:02.259131+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T22:37:17.781808+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T23:07:34.502853+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-14T23:37:51.313727+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-15T00:08:07.720841+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-15T00:38:23.503943+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-15T01:08:38.656523+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "evals"}
+{"at": "2026-11-15T01:09:49.746646+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-15T01:09:54.192908+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-15T08:22:13.129879+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [{"id": "EVALS", "paths": [], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-15T08:24:22.526752+01:00", "dir_arg": null, "epic": "evals", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-15T09:10:21.918670+01:00", "dir_arg": "evals", "epic": "evals", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-15T09:10:53.658392+01:00", "dir_arg": "evals", "epic": "evals", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-15T09:11:44.781524+01:00", "dir_arg": null, "epic": null, "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-15T10:20:57.305132+01:00", "dir_arg": "admin-features", "epic": null, "reason": "redacted", "skipped": [{"id": "ADMIN-FEATURES", "paths": ["apps/api/src/Catalog/Application/Search", "apps/api/src/Catalog/Infrastructure/Search"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-15T10:21:36.168632+01:00", "dir_arg": "admin-features", "epic": "admin-features", "reason": "redacted", "skipped": [{"id": "ADMIN-FEATURES", "paths": ["apps/api/src/Catalog/Application/Search", "apps/api/src/Catalog/Infrastructure/Search"], "reason": "redacted"}], "waiting": null}
+{"at": "2026-11-15T10:22:06.538897+01:00", "dir_arg": "admin-features", "epic": "admin-features", "reason": null, "skipped": [], "waiting": null}
+{"at": "2026-11-15T10:22:43.359377+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T10:53:02.650741+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T11:23:24.993075+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T11:53:40.992701+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T11:54:17.309978+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T12:23:56.757369+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T12:54:17.756264+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T13:24:37.980731+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T13:54:54.353354+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T14:25:10.953197+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T14:55:29.613378+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T15:25:45.235202+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}
+{"at": "2026-11-15T15:56:02.910747+01:00", "dir_arg": null, "epic": null, "reason": "redacted", "skipped": [], "waiting": "metrics"}

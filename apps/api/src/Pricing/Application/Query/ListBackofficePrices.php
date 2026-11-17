@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Pricing\Application\Query;
 
 /**
- * One page of the price list of the panel: products sorted by name, then by id, each with its variants and their
- * prices.
+ * One page of the price list of the panel: products sorted by name (by default) or by the moment of the last change,
+ * then by id, each with its variants and their prices.
  */
 final readonly class ListBackofficePrices
 {
@@ -18,12 +18,17 @@ final readonly class ListBackofficePrices
      * @param string|null $categoryId a category id (UUID), including its subcategories
      * @param string|null $after      the `next` of the previous page
      * @param int         $perPage    1 to 100
+     * @param string|null $sort       `name`, `-name`, `-updatedAt` or `updatedAt`; null for `name`
+     * @param string|null $productId  a product id (UUID): only that product (a draft too) with all its variants; excludes
+     *                                the term, the category, the sort and the cursor
      */
     public function __construct(
         public ?string $term,
         public ?string $categoryId,
         public ?string $after,
         public int $perPage,
+        public ?string $sort = null,
+        public ?string $productId = null,
     ) {
     }
 }

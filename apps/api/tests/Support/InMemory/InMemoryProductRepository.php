@@ -73,11 +73,6 @@ final class InMemoryProductRepository implements ProductRepository
         return \count($this->products);
     }
 
-    public function countWithoutImages(): int
-    {
-        return \count(array_filter($this->products, static fn (Product $product): bool => $product->images()->isEmpty()));
-    }
-
     public function version(ProductId $id): ?int
     {
         return $this->versions[$id->toString()] ?? null;

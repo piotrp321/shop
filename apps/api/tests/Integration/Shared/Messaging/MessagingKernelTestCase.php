@@ -71,6 +71,18 @@ abstract class MessagingKernelTestCase extends KernelTestCase
     }
 
     /**
+     * Waits until the `events` queue holds the number of messages (a retry comes back after its delay), polling every
+     * 20 ms for at most $timeout seconds; the caller asserts the count afterwards.
+     */
+    protected function awaitEventsInQueue(int $expected, float $timeout = 3.0): void
+    {
+        $deadline = microtime(true) + $timeout;
+        while ($this->eventsInQueue() !== $expected && microtime(true) < $deadline) {
+            usleep(20_000);
+        }
+    }
+
+    /**
      * Takes every message off the `events` queue and acks it.
      *
      * @return list<object>
@@ -96,7 +108,7 @@ abstract class MessagingKernelTestCase extends KernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => [$transport], '--limit' => 1, '--time-limit' => $timeLimit]);
+        $tester->execute(['receivers' => [$transport], '--limit' => 1, '--time-limit' => $timeLimit, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }

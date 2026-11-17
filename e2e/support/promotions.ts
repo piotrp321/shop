@@ -18,6 +18,9 @@ type PromotionDetails = PromotionItem & {
 };
 type PromotionList = { items: PromotionItem[]; next: string | null };
 
+/** The region of the toasts of the panel: the result of a save of a promotion is said there (a toast, not a message in the page). */
+export const toasts = (page: Page) => page.getByRole("region", { name: "Powiadomienia", exact: true });
+
 /** The offer of a product as `GET /api/v1/product-offers` has it, the part the test compares the store with. */
 export type Offer = {
   fromGross: number | null;

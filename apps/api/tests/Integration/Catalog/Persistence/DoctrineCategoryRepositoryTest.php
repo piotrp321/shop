@@ -7,7 +7,6 @@ namespace App\Tests\Integration\Catalog\Persistence;
 use App\Catalog\Domain\Category\CategoryAlreadyExists;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryNotFound;
-use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Category\CategorySlugTaken;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -119,21 +118,6 @@ final class DoctrineCategoryRepositoryTest extends KernelTestCase
         }
 
         self::assertSame('Competing', $this->committedValue($this->entityManager, 'SELECT name FROM catalog_category WHERE id = ?', $category->id()->toString()));
-    }
-
-    public function testSlugTakenAmongSiblingsLooksOnlyAtTheChildrenOfTheParent(): void
-    {
-        $sport = CategoryFactory::createOne(['slug' => 'sport']);
-        $other = CategoryFactory::createOne(['slug' => 'turystyka']);
-        $this->repository->save($sport);
-        $this->repository->save($other);
-        $this->repository->save(CategoryFactory::createOne(['parent' => $sport, 'slug' => 'buty']));
-
-        self::assertTrue($this->repository->slugTakenAmongSiblings(null, new CategorySlug('sport')));
-        self::assertFalse($this->repository->slugTakenAmongSiblings(null, new CategorySlug('buty')));
-        self::assertTrue($this->repository->slugTakenAmongSiblings($sport->id(), new CategorySlug('buty')));
-        self::assertFalse($this->repository->slugTakenAmongSiblings($sport->id(), new CategorySlug('sport')));
-        self::assertFalse($this->repository->slugTakenAmongSiblings($other->id(), new CategorySlug('buty')));
     }
 
     public function testSiblingSlugViolationOnInsertThrowsCategorySlugTaken(): void

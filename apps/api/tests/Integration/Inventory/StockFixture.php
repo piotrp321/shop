@@ -18,12 +18,12 @@ final class StockFixture
     /**
      * @return string the variant id
      */
-    public static function stock(Connection $connection, int $physical, int $reserved = 0, int $version = 1, ?string $variantId = null): string
+    public static function stock(Connection $connection, int $physical, int $reserved = 0, int $version = 1, ?string $variantId = null, ?string $productId = null): string
     {
         $variantId ??= (string) Uuid::v7();
         $connection->executeStatement(
-            'INSERT INTO inventory_stock_item (variant_id, physical, reserved, version, updated_at) VALUES (?, ?, ?, ?, now())',
-            [$variantId, $physical, $reserved, $version],
+            'INSERT INTO inventory_stock_item (variant_id, product_id, physical, reserved, version, updated_at) VALUES (?, ?, ?, ?, ?, now())',
+            [$variantId, $productId, $physical, $reserved, $version],
         );
         $connection->executeStatement(
             "INSERT INTO inventory_stock_movement (id, variant_id, type, physical_delta, reserved_delta, physical_after, reserved_after, reference, source, occurred_at) VALUES (?, ?, 'receipt', ?, 0, ?, 0, ?, 'seed', now())",

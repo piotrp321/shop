@@ -3,7 +3,7 @@ import { customers, staff } from "../support/accounts";
 import { waitForOrderEmail } from "../support/mailpit";
 import { historyEntry, openOrderHistory, placeAndPayOrder } from "../support/orders";
 import { openMenuItem } from "../support/panel-menu";
-import { confirmWithNote, openOrderDetail, openOrderList, openPanelAs, searchOrder } from "../support/panel-orders";
+import { backToOrders, confirmWithNote, openOrderDetail, openOrderList, openPanelAs, searchOrder } from "../support/panel-orders";
 import { WEBHOOK_TIMEOUT_MS } from "../support/payment";
 import { logInAs } from "../support/shop";
 
@@ -53,6 +53,9 @@ test("Jan pays an order and finds it in his history, warehouse ships it in the p
     await panel.page.getByTestId("action-ship").click();
     await confirmWithNote(panel.page, "E2E: paczka u kuriera");
     await expect(panel.page.getByTestId("status")).toHaveText("Wysłane");
+    // The toast names the status of the answer, and the focus is on the card whose buttons changed.
+    await expect(panel.page.getByRole("region", { name: "Powiadomienia", exact: true })).toContainText("Status zamówienia zmieniony: Wysłane.");
+    await expect(panel.page.getByRole("heading", { level: 2, name: "Akcje" })).toBeFocused();
     const lastChange = panel.page.getByTestId("history-row").last();
     await expect(lastChange.getByTestId("history-change")).toHaveText("Opłacone → Wysłane");
     await expect(lastChange.getByTestId("history-actor")).toHaveText(staff.warehouse.username);
@@ -110,9 +113,11 @@ test("support cancels Anna's paid order with a note, the panel shows the refund 
     await expect(refund.getByTestId("refund-payment-id")).not.toHaveText("");
     await expect(refund.getByTestId("refund-overdue")).toHaveCount(0);
     await expect(admin.getByTestId("action-cancel")).toHaveCount(0);
+    await expect(admin.getByRole("region", { name: "Powiadomienia", exact: true })).toContainText("Status zamówienia zmieniony: Anulowane.");
+    await expect(admin.getByRole("heading", { level: 2, name: "Akcje" }), "the refund can still be completed, so the card stays").toBeFocused();
 
     // "Zwroty do wykonania" lists the order (found by its number among the refunds of earlier runs) with the amount.
-    await admin.getByTestId("back").click();
+    await backToOrders(admin);
     await openMenuItem(admin, "Zwroty do wykonania", "Zamówienia");
     const row = await searchOrder(admin, number);
     await expect(row.getByTestId("status")).toHaveText("Anulowane");
@@ -127,14 +132,16 @@ test("support cancels Anna's paid order with a note, the panel shows the refund 
     await expect(admin.getByTestId("refund-completed")).toContainText(staff.support.username);
     await expect(admin.getByTestId("refund-note")).toHaveText("E2E: przelew zwrotny wykonany");
     await expect(admin.getByTestId("complete-refund")).toHaveCount(0);
+    await expect(admin.getByRole("region", { name: "Powiadomienia", exact: true })).toContainText("Zwrot oznaczony jako wykonany.");
+    await expect(admin.getByRole("heading", { level: 2, name: "Historia" }), "the card Akcje is gone").toBeFocused();
     await expect(admin.getByTestId("status"), "completing the refund does not change the status").toHaveText("Anulowane");
 
     // It is gone from the refunds to do (the menu item opens the list with the switch on, from the address).
-    await admin.getByTestId("back").click();
+    await backToOrders(admin);
     await openMenuItem(admin, "Zwroty do wykonania", "Zamówienia");
     await admin.getByRole("searchbox", { name: "Szukaj po numerze zamówienia lub e-mailu" }).fill(number);
     await admin.getByRole("searchbox", { name: "Szukaj po numerze zamówienia lub e-mailu" }).press("Enter");
-    await expect(admin.getByTestId("empty")).toHaveText("Nie znaleziono zamówień.");
+    await expect(admin.getByTestId("empty")).toContainText("Brak wyników dla wybranych filtrów.");
     await expect(admin.getByTestId("order-row")).toHaveCount(0);
   } finally {
     await panel.close();

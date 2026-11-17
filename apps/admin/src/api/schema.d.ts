@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Dashboard
-         * @description Catalogue numbers for every staff member. The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.
+         * @description Catalogue numbers and the queues of work for every staff member: each queue only for the roles that handle it (`queues` fields are null for the others), counted up to 1000. The number of products is an estimate of the database (null before its first statistics). The sales of today, the last 7 and the last 30 days of completed hours only for administrators (`sales` is null for other roles). The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.
          */
         get: operations["getDashboard"];
         put?: never;
@@ -53,11 +53,59 @@ export interface paths {
         };
         /**
          * Category tree
-         * @description The whole category tree, for every staff member. Siblings at every level are sorted by name (Polish collation).
+         * @description The whole category tree, for every staff member. Siblings at every level are in the order of the store: the order set by the staff, then by name (Polish collation).
          */
         get: operations["getBackofficeCategoryTree"];
         put?: never;
+        /**
+         * Create a category
+         * @description Creates a category at the end of the children of its parent (of the roots for `parentId` null). Administrators and marketing only. The tree has at most 4 levels. An address that redirected to another category becomes the address of the new one.
+         */
+        post: operations["createCategory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the name and the slug of a category
+         * @description Based on the `version` seen. Administrators and marketing only. A new slug changes the address of the category and of its descendants in the store; their old addresses redirect to the current ones (`GET /api/v1/categories/redirect`).
+         */
+        put: operations["reviseCategory"];
         post?: never;
+        /**
+         * Delete an empty category
+         * @description Deletes a category without subcategories and without products (main or additional, drafts too), based on the `version` seen. Administrators and marketing only. Its old addresses stop redirecting.
+         */
+        delete: operations["deleteCategory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/categories/{id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a category or change its place among its siblings
+         * @description Moves the category with its subcategories under a parent (null: among the roots) at a position among the children of that parent, based on the `version` seen; the current parent changes only the order. Administrators and marketing only. The children of the parent are numbered in their current order first, so the others keep their relative order. A new parent changes the addresses of the subtree; the old ones redirect to the current ones.
+         */
+        post: operations["moveCategory"];
         delete?: never;
         options?: never;
         head?: never;
@@ -73,7 +121,7 @@ export interface paths {
         };
         /**
          * Product list
-         * @description A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products, drafts included, sorted by name (by default) or by `sort`, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listBackofficeProducts"];
         put?: never;
@@ -201,7 +249,7 @@ export interface paths {
         };
         /**
          * Stock list
-         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive. With `level` the page is of the products at that stock level and the first page has the `total` of them.
          */
         get: operations["listStock"];
         put?: never;
@@ -272,6 +320,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/customers/{customerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Customer card
+         * @description The contact of the newest order of the customer, the summary of its orders (all, the paid ones and their gross value without the refunds taken off, the first and the last one) and up to 10 distinct shipping addresses of its last 50 orders, the one used last first. Its orders are the order list with `customerId`. Administrators and support only.
+         */
+        get: operations["getCustomer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Customer list
+         * @description A page of the customers: the accounts of the store with at least one order (guests are no customers), the newest last order first (then by id) or in the order of `sort`. The search `q` is a fragment of 3 to 100 characters of the email or the name (any letter case, `%` and `_` mean themselves), only with the sort by the last order. Page with the opaque `nextCursor` as `after`, with the same `q` and `sort` (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching customers, counted up to 10 000. Administrators and support only.
+         */
+        get: operations["listCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/orders/{orderId}": {
         parameters: {
             query?: never;
@@ -301,7 +389,7 @@ export interface paths {
         };
         /**
          * Order list
-         * @description A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.
+         * @description A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `refund=overdue` only those past their due date (a subset of the pending ones in the same order, so the cursor of one leads the other); both take no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. With `customerId` only the orders of that customer, newest first, with the status filter only (its history on the card of the customer). Administrators, support and the warehouse only.
          */
         get: operations["listOrders"];
         put?: never;
@@ -361,7 +449,7 @@ export interface paths {
         };
         /**
          * Price list
-         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listPrices"];
         put?: never;
@@ -401,7 +489,7 @@ export interface paths {
         };
         /**
          * Discount code list
-         * @description A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the total is not counted.
+         * @description A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching codes, counted up to 10 000.
          */
         get: operations["listDiscountCodes"];
         put?: never;
@@ -497,7 +585,7 @@ export interface paths {
         };
         /**
          * Promotion list
-         * @description A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the total is not counted.
+         * @description A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the first page (without `after`) also has the `total` of the matching promotions, counted up to 10 000.
          */
         get: operations["listPromotions"];
         put?: never;
@@ -516,6 +604,41 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact. */
+        BoundedCountResponse: {
+            /** @example 1234 */
+            value: number;
+            /**
+             * @description True when there are more matching rows than `value`.
+             * @example false
+             */
+            capped: boolean;
+        };
+        /** @description A category with its descendants, siblings in the order of the store. */
+        CategoryNode: {
+            /** Format: uuid */
+            id: string;
+            /** @example Namioty */
+            name: string;
+            /**
+             * @description Unique among the siblings.
+             * @example namioty
+             */
+            slug: string;
+            /**
+             * @description The slugs from the root to the node joined with `/`.
+             * @example turystyka/biwak/namioty
+             */
+            path: string;
+            /**
+             * @description Send it with a change of the category.
+             * @example 1
+             */
+            version: number;
+            /** @description The products directly in the category (main or additional, drafts too), up to 1000; null unless asked for with `withCounts=true`. */
+            productCount: components["schemas"]["BoundedCountResponse"] | null;
+            children: components["schemas"]["CategoryNode"][];
+        };
         /** @description Problem details (RFC 9457), `application/problem+json`. */
         Problem: {
             /** @example about:blank */
@@ -542,6 +665,8 @@ export interface components {
              * @example eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
              */
             nextCursor: string | null;
+            /** @description How many orders match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description An order in the list. Amounts in grosze. */
         BackofficeOrderListItem: {
@@ -606,6 +731,11 @@ export interface components {
         BackofficeOrder: {
             /** Format: uuid */
             orderId: string;
+            /**
+             * @description The id of the account of the store that placed the order (`sub` of its token), the key of the customer card and of `customerId` of the order list; null for a guest.
+             * @example 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
+             */
+            customerId: string | null;
             /** @example R-100001 */
             number: string;
             status: components["schemas"]["BackofficeOrderStatus"];
@@ -832,6 +962,21 @@ export interface components {
             /** @description Only with `promotion-overlap`. The variants of the request that are in another promotion of an overlapping period, ordered by id. */
             conflictingVariantIds?: string[];
         };
+        /** @description A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the category changed since the `version` sent, a sibling has the slug, the tree would have more than 4 levels, the new parent is the category or one of its descendants, or the category has subcategories or products (counted in `subcategoryCount` and `productCount`). Nothing is changed. */
+        CategoryConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/category-modified" | "tag:piotrp321.github.io,2026:shop/problems/category-slug-taken" | "tag:piotrp321.github.io,2026:shop/problems/category-too-deep" | "tag:piotrp321.github.io,2026:shop/problems/category-cycle" | "tag:piotrp321.github.io,2026:shop/problems/category-not-empty";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
+            /** @description Only with `category-not-empty`. The direct subcategories. */
+            subcategoryCount?: components["schemas"]["BoundedCountResponse"];
+            /** @description Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000. */
+            productCount?: components["schemas"]["BoundedCountResponse"];
+        };
         /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations. */
         ProductConflictProblem: {
             /** @enum {string} */
@@ -842,6 +987,60 @@ export interface components {
             status: 409;
             /** @description Polish text for the staff member. */
             detail: string;
+        };
+        /** @description A new category, placed at the end of its siblings. */
+        CreateCategoryRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @example Namioty
+             */
+            name: string;
+            /**
+             * @description The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.
+             * @example namioty
+             */
+            slug: string;
+            /**
+             * Format: uuid
+             * @description The parent category; null for a root.
+             */
+            parentId: string | null;
+        };
+        /** @description Where the category (with its subcategories) goes: under a parent (null: among the roots), at a position among its children. */
+        MoveCategoryRequest: {
+            /**
+             * Format: uuid
+             * @description The new parent, the current one for a new order; null for a root.
+             */
+            parentId: string | null;
+            /**
+             * @description The place among the children of the parent, without the category itself: 0 is the first; a position past the last child is the end.
+             * @example 0
+             */
+            position: number;
+            /**
+             * @description The `version` of the category the move is based on.
+             * @example 1
+             */
+            version: number;
+        };
+        /** @description The name and the slug of a category. A new slug changes the address of the category and its descendants; the old addresses redirect to the new ones. */
+        ReviseCategoryRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed of whitespace, without control characters.
+             * @example Namioty
+             */
+            name: string;
+            /**
+             * @description The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.
+             * @example namioty
+             */
+            slug: string;
+            /**
+             * @description The `version` of the category the change is based on.
+             * @example 1
+             */
+            version: number;
         };
         /** @description The data of a new product. The product is a draft. */
         CreateProductRequest: {
@@ -987,10 +1186,20 @@ export interface components {
              * @enum {string|null}
              */
             status: "draft" | "published" | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "name" | "-name" | "-updatedAt" | "updatedAt" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            images: "none" | null;
         };
         /** @description The version of the product the action is based on. */
         PublicationRequest: {
@@ -1006,10 +1215,22 @@ export interface components {
             q: string | null;
             /** @default null */
             category: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "name" | "-name" | "-updatedAt" | "updatedAt" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            level: "out_of_stock" | "low_stock" | null;
+            /** @default null */
+            productId: string | null;
         };
         /** @description The counted physical stock of a product variant, based on the version of the stock the staff member saw. */
         CorrectStockRequest: {
@@ -1054,6 +1275,19 @@ export interface components {
             /** @default 25 */
             perPage: number;
         };
+        BackofficeCustomerListQuery: {
+            /** @default null */
+            q: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "-lastOrderAt" | "name" | "-orderCount" | "-paidGross" | null;
+            /** @default null */
+            after: string | null;
+            /** @default null */
+            perPage: number | null;
+        };
         BackofficeOrderListQuery: {
             /**
              * @default null
@@ -1064,13 +1298,30 @@ export interface components {
              * @default null
              * @enum {string|null}
              */
-            refund: "pending" | null;
+            refund: "pending" | "overdue" | null;
             /** @default null */
             q: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "-placedAt" | "placedAt" | "-total" | "total" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /**
+             * Format: date
+             * @default null
+             */
+            placedFrom: string | null;
+            /**
+             * Format: date
+             * @default null
+             */
+            placedTo: string | null;
+            /** @default null */
+            customerId: string | null;
         };
         /** @description A change of the status of an order, based on the version of the order the staff member saw. */
         ChangeOrderStatusRequest: {
@@ -1109,10 +1360,17 @@ export interface components {
             q: string | null;
             /** @default null */
             category: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "name" | "-name" | "-updatedAt" | "updatedAt" | null;
             /** @default null */
             after: string | null;
             /** @default 25 */
             perPage: number;
+            /** @default null */
+            productId: string | null;
         };
         /** @description A new gross price, based on the version of the price the staff member saw. */
         ChangePriceRequest: {
@@ -1216,17 +1474,80 @@ export interface components {
              */
             version: number;
         };
+        /** @description The number of products as the statistics of the database estimate it; the products are never counted for the dashboard. */
+        DashboardProductCountResponse: {
+            /** @example 10000000 */
+            value: number;
+            /**
+             * @description Always true: the number is an estimate.
+             * @default true
+             * @example true
+             */
+            estimated: boolean;
+        };
         /** @description Catalogue numbers, from the database. */
         DashboardCatalogResponse: {
-            /** @example 412 */
-            productCount: number;
+            /** @description The estimated number of products. Null while the database has no statistics of the products yet (they are refreshed after a mass change and by the autovacuum). */
+            productCount: components["schemas"]["DashboardProductCountResponse"] | null;
             /** @example 36 */
             categoryCount: number;
+        };
+        /** @description The work waiting for the staff member. Every queue is counted up to 1000 (`capped`: more than that) by the module that owns it, and is null when the staff member has no access to the queue: the roles are listed with each field. */
+        DashboardQueuesResponse: {
+            /** @description Paid orders waiting for shipping (`/orders?status=paid`). Administrators, support, warehouse. */
+            paidToShip: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Orders not paid yet (`/orders?status=new`). Administrators and support. */
+            awaitingPayment: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Refunds to do (`/orders?refund=pending`). Administrators and support. */
+            pendingRefunds: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Refunds past their due date (`/orders?refund=overdue`). Administrators and support. */
+            overdueRefunds: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Variants with nothing available (`/inventory?level=out_of_stock`). Administrators and warehouse. */
+            outOfStockVariants: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Variants with 1 to 5 available (`/inventory?level=low_stock`). Administrators and warehouse. */
+            lowStockVariants: components["schemas"]["BoundedCountResponse"] | null;
+            /** @description Products with no image (`/products?images=none`). Administrators and marketing. */
+            productsWithoutImages: components["schemas"]["BoundedCountResponse"] | null;
+        };
+        /** @description The sales of one period. Amounts in grosze. Every field is null for a period without a completed hour (today between 0:00 and 1:00). */
+        DashboardSalesPeriodResponse: {
             /**
-             * @description Products with no image.
-             * @example 8
+             * @description The gross revenue in grosze.
+             * @example 1234500
              */
-            productsWithoutImages: number;
+            revenue: number | null;
+            /**
+             * @description The number of orders paid in the period.
+             * @example 42
+             */
+            orderCount: number | null;
+            /**
+             * @description Revenue per order in grosze, rounded half up; null without orders.
+             * @example 29393
+             */
+            averageOrderValue: number | null;
+            /**
+             * @description The change of the revenue against the period before in basis points (1250 is +12.5%), rounded half away from zero; null when the period before had no revenue.
+             * @example 1250
+             */
+            changeBasisPoints: number | null;
+        };
+        /** @description The sales of completed hours, summed from an hourly pre-aggregation by Ordering: revenue is the gross total (after discounts) of the orders paid in the period by the moment of their payment; a later cancellation or refund does not lower it. `today` runs from midnight of the Polish clock to `dataUntil` and is compared with yesterday from midnight to the same hour of the clock (on the days the clock changes the two may differ by an hour of real time); between 0:00 and 1:00 every field of `today` is null. `last7Days` and `last30Days` are the last 168 and 720 hours, compared with as many hours before them. */
+        DashboardSalesResponse: {
+            /**
+             * Format: date-time
+             * @description The end of every period: the start of the current hour (UTC). The current hour is not counted.
+             * @example 2026-11-15T13:00:00+00:00
+             */
+            dataUntil: string;
+            /**
+             * @description The currency of the amounts.
+             * @example PLN
+             */
+            currency: string;
+            today: components["schemas"]["DashboardSalesPeriodResponse"];
+            last7Days: components["schemas"]["DashboardSalesPeriodResponse"];
+            last30Days: components["schemas"]["DashboardSalesPeriodResponse"];
         };
         /** @description The state of one service of the stack. */
         DashboardServiceResponse: {
@@ -1274,15 +1595,15 @@ export interface components {
              */
             indexedProducts: number | null;
             /**
-             * @description Products in the database.
+             * @description The estimated number of products in the database. Null while the database has no statistics of the products yet.
              * @example 412
              */
-            catalogProducts: number;
+            catalogProducts: number | null;
             /**
-             * @description Whether both numbers are equal. False when the index cannot be counted.
+             * @description Whether the index is within 1% of the estimated number of products. False when the index cannot be counted, null without an estimate to compare with.
              * @example true
              */
-            inSync: boolean;
+            inSync: boolean | null;
         };
         /** @description The state of the system, for administrators. */
         DashboardSystemResponse: {
@@ -1296,6 +1617,9 @@ export interface components {
         /** @description What the admin dashboard shows. */
         DashboardResponse: {
             catalog: components["schemas"]["DashboardCatalogResponse"];
+            queues: components["schemas"]["DashboardQueuesResponse"];
+            /** @description Null unless the staff member is an administrator. */
+            sales: components["schemas"]["DashboardSalesResponse"] | null;
             /** @description Null unless the staff member is an administrator. */
             system: components["schemas"]["DashboardSystemResponse"] | null;
         };
@@ -1316,12 +1640,29 @@ export interface components {
              */
             roles: ("admin" | "support" | "warehouse" | "marketing")[];
         };
-        CategoryNode: {
+        /** @description A category as the change saved it. */
+        BackofficeCategoryResponse: {
+            /** Format: uuid */
             id: string;
+            /** @example Namioty */
             name: string;
+            /** @example namioty */
             slug: string;
+            /**
+             * @description The address in the store: the slugs from the root joined with `/`.
+             * @example turystyka/biwak/namioty
+             */
             path: string;
-            children: components["schemas"]["CategoryNode"][];
+            /**
+             * Format: uuid
+             * @description Null for a root.
+             */
+            parentId: string | null;
+            /**
+             * @description Send it with the next change of the category.
+             * @example 2
+             */
+            version: number;
         };
         /** @description A category of a product. */
         ProductCategoryResponse: {
@@ -1389,6 +1730,8 @@ export interface components {
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+            /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description An image of a product in the edit view. */
         ProductEditImageResponse: {
@@ -1546,6 +1889,8 @@ export interface components {
             label: string;
             /** @description The stored stock, null when the variant has no stock record (nothing on the shelf, nothing reserved). */
             stock: components["schemas"]["ListedStockResponse"] | null;
+            /** @description The stock of the variant is at the level the list is filtered by (`level`); false when the list is not filtered by one. */
+            matchesLevel: boolean;
         };
         /** @description A product with its variants and their stock. */
         StockListItemResponse: {
@@ -1564,6 +1909,8 @@ export interface components {
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+            /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description The stock of a product variant after a receipt or a correction, in whole units; all computed by the API. */
         StockStateResponse: {
@@ -1674,6 +2021,112 @@ export interface components {
              */
             next: string | null;
         };
+        /** @description The contact of the newest order of the customer. */
+        BackofficeCustomerContactResponse: {
+            /** @example anna.nowak@example.com */
+            email: string;
+            /** @example Anna Nowak */
+            fullName: string;
+            /**
+             * @description +48 and 9 digits.
+             * @example +48600100200
+             */
+            phone: string;
+        };
+        /** @description The orders of the customer: all, the paid ones and their gross value (refunds not taken off), the first and the last one. Amounts in grosze, moments RFC 3339 in UTC. */
+        BackofficeCustomerSummaryResponse: {
+            /** @example 3 */
+            orderCount: number;
+            /** @example 2 */
+            paidCount: number;
+            /** @example 24600 */
+            paidGross: number;
+            /** @example PLN */
+            currency: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-01T10:00:00+00:00
+             */
+            firstOrderAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            lastOrderAt: string;
+        };
+        /** @description A shipping address of the orders of the customer. */
+        BackofficeCustomerAddressResponse: {
+            /** @example Długa 1 */
+            street: string;
+            /** @example 00-950 */
+            postalCode: string;
+            /** @example Warszawa */
+            city: string;
+            /**
+             * @description ISO 3166-1 alpha-2.
+             * @example PL
+             */
+            country: string;
+        };
+        /** @description The card of a customer. */
+        BackofficeCustomerResponse: {
+            /**
+             * @description The id of the account of the store (`sub` of its token).
+             * @example 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
+             */
+            customerId: string;
+            contact: components["schemas"]["BackofficeCustomerContactResponse"];
+            summary: components["schemas"]["BackofficeCustomerSummaryResponse"];
+            /** @description Up to 10 distinct shipping addresses of the last 50 orders, the one used last first. */
+            addresses: components["schemas"]["BackofficeCustomerAddressResponse"][];
+        };
+        /** @description A customer in the list: an account of the store with at least one order. Amounts in grosze. */
+        BackofficeCustomerListItemResponse: {
+            /**
+             * @description The id of the account of the store (`sub` of its token).
+             * @example 5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b
+             */
+            customerId: string;
+            /**
+             * @description The email of the newest order.
+             * @example anna.nowak@example.com
+             */
+            email: string;
+            /**
+             * @description The name of the newest order.
+             * @example Anna Nowak
+             */
+            fullName: string;
+            /**
+             * @description All orders of the customer.
+             * @example 3
+             */
+            orderCount: number;
+            /**
+             * @description The gross total of the paid orders, refunds not taken off.
+             * @example 24600
+             */
+            paidGross: number;
+            /** @example PLN */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description The moment of the newest order, RFC 3339 in UTC.
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            lastOrderAt: string;
+        };
+        /** @description A page of the customer list. */
+        BackofficeCustomerListResponse: {
+            items: components["schemas"]["BackofficeCustomerListItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after` with the same `q` and `sort`), null on the last page.
+             * @example eyJzIjoibmFtZSIsInYiOiJhbm5hIG5vd2FrIiwiaSI6ImtjLTEifQ
+             */
+            nextCursor: string | null;
+            /** @description How many customers match the search, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
+        };
         /** @description The stored price of a product variant. Amounts are in grosze, the rate in basis points; all computed by the API. */
         ListedPriceResponse: {
             /**
@@ -1756,6 +2209,8 @@ export interface components {
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+            /** @description How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description A discount code. Times in UTC (RFC 3339), whole seconds; the code is valid in [startsAt, endsAt). */
         DiscountCodeResponse: {
@@ -1820,6 +2275,8 @@ export interface components {
             items: components["schemas"]["DiscountCodeResponse"][];
             /** @description Opaque cursor of the next page (send it as `after`), null on the last page. */
             next: string | null;
+            /** @description How many codes match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
         /** @description A new discount code. */
         CreateDiscountCodeRequest: {
@@ -2074,6 +2531,8 @@ export interface components {
             items: components["schemas"]["PromotionListItemResponse"][];
             /** @description Opaque cursor of the next page (send it as `after`), null on the last page. */
             next: string | null;
+            /** @description How many promotions match the filter, up to 10 000; on the first page (no `after`) only, null on the next ones. */
+            total: components["schemas"]["BoundedCountResponse"] | null;
         };
     };
     responses: never;
@@ -2162,14 +2621,17 @@ export interface operations {
     };
     getBackofficeCategoryTree: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description With `true` every node has the number of its direct products (`productCount`, up to 1000); without it `productCount` is null and nothing is counted. */
+                withCounts?: "true";
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array. */
+            /** @description Root categories with their descendants. Every node has its `slug` (unique among its siblings), `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`) and `version`. An empty catalogue gives an empty array. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2178,8 +2640,380 @@ export interface operations {
                     "application/json": components["schemas"]["CategoryNode"][];
                 };
             };
+            /** @description `withCounts` has another value than `true` (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description The created category. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCategoryResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A sibling has the slug (`category-slug-taken`) or the parent is on the fourth level (`category-too-deep`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reviseCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Category id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description The category as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCategoryResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such category, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The category changed since the given version (`category-modified`) or a sibling has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteCategory: {
+        parameters: {
+            query: {
+                /** @description The `version` of the category the deletion is based on. */
+                version: number;
+            };
+            header?: never;
+            path: {
+                /** @description Category id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is missing or not a positive integer (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such category, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The category changed since the given version (`category-modified`) or has subcategories or products (`category-not-empty`, with `subcategoryCount` and `productCount`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    moveCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Category id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveCategoryRequest"];
+            };
+        };
+        responses: {
+            /** @description The category as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCategoryResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change the category tree (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such category, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The category changed since the given version (`category-modified`), the parent is the category or one of its descendants (`category-cycle`), the subtree would end below the fourth level (`category-too-deep`) or a child of the parent has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CategoryConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2207,7 +3041,11 @@ export interface operations {
                 category?: string;
                 /** @description Only drafts or only published products. */
                 status?: "draft" | "published";
-                /** @description The `next` cursor of the previous page. */
+                /** @description The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
+                sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description `none`: only the products without images; combines with `q`, `category` and `status`. */
+                images?: "none";
+                /** @description The `next` cursor of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
@@ -2810,7 +3648,13 @@ export interface operations {
                 q?: string;
                 /** @description Category id (UUID). */
                 category?: string;
-                /** @description The `next` cursor of the previous page. */
+                /** @description The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
+                sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description Only the products with at least one variant at the level: `out_of_stock` (nothing available) or `low_stock` (1 to 5 available), in ascending order of the product ids, each with all its variants; the variants at the level have `matchesLevel`. Not with `q`, `category` or `sort` (a 400). */
+                level?: "out_of_stock" | "low_stock";
+                /** @description Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `level`, `sort` or `after` (a 400). */
+                productId?: string;
+                /** @description The `next` cursor of the previous page of the same sort (of the same level with `level`). */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
@@ -3142,6 +3986,130 @@ export interface operations {
             };
         };
     };
+    getCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of the account of the store (`sub` of its token), as in `customerId` of the list. */
+                customerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCustomerResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see customers (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No customer with this id: no account with an order (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listCustomers: {
+        parameters: {
+            query?: {
+                /** @description A fragment of the email or the name, 3 to 100 characters once trimmed, without control characters. Only with `sort=-lastOrderAt`. */
+                q?: string;
+                /** @description The order: `-lastOrderAt` (the newest last order first, the default), `name` (A to Z, any letter case), `-orderCount` (the most orders first) or `-paidGross` (the highest paid value first); the customer id breaks the ties. */
+                sort?: "-lastOrderAt" | "name" | "-orderCount" | "-paidGross";
+                /** @description The `nextCursor` of the previous page of the same sort. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeCustomerListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor, also a cursor of another sort or the search with another sort (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see customers (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getOrder: {
         parameters: {
             query?: never;
@@ -3206,11 +4174,19 @@ export interface operations {
             query?: {
                 /** @description Only the orders in this status. */
                 status?: components["schemas"]["BackofficeOrderStatus"];
-                /** @description `pending`: only the orders with a refund to do, nearest due date first. */
-                refund?: "pending";
-                /** @description An order number or an email, exact, any letter case; 1 to 254 characters once trimmed. */
+                /** @description `pending`: only the orders with a refund to do, nearest due date first; `overdue`: only those past their due date (a subset of `pending`, with the same order and cursor). Neither takes `sort`, `placedFrom` or `placedTo`. */
+                refund?: "pending" | "overdue";
+                /** @description An order number or a complete email address (exact, any letter case; the email up to 254 characters), otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` literal); without control characters, trimmed. Not with `sort` by the amount. */
                 q?: string;
-                /** @description The `nextCursor` of the previous page. */
+                /** @description The first day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included. Not with `refund=pending` or `sort` by the amount. */
+                placedFrom?: string;
+                /** @description The last day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included; not before `placedFrom`. Not with `refund=pending` or `sort` by the amount. */
+                placedTo?: string;
+                /** @description The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q` or the range of days. */
+                sort?: "-placedAt" | "placedAt" | "-total" | "total";
+                /** @description Only the orders of this customer (the `customerId` of the customer list and of an order), newest first; with `status` only, not with `q`, `sort`, `placedFrom`, `placedTo` or `refund` (a 400 at each). */
+                customerId?: string;
+                /** @description The `nextCursor` of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;
@@ -3473,7 +4449,11 @@ export interface operations {
                 q?: string;
                 /** @description Category id (UUID). */
                 category?: string;
-                /** @description The `next` cursor of the previous page. */
+                /** @description The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties. */
+                sort?: "name" | "-name" | "-updatedAt" | "updatedAt";
+                /** @description Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `sort` or `after` (a 400). */
+                productId?: string;
+                /** @description The `next` cursor of the previous page of the same sort. */
                 after?: string;
                 /** @description Page size. */
                 perPage?: number;

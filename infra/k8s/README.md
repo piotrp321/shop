@@ -5,7 +5,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
 - **agent** – wykonuje go Claude Code celem Makefile albo zmianą w repo (PR), gdy użytkownik zlecił uruchomienie środowiska;
 - **zgoda użytkownika** – agent opisuje, co zrobi, pyta w rozmowie i czeka na odpowiedź; dopiero potem uruchamia (firewall,
   operacje kasujące dane, zakładanie kont);
-- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset i deploy key,
+- **użytkownik** – robi to użytkownik sam (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare, ruleset, środowiska `production` i `sentry`, deploy key,
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
@@ -24,14 +24,16 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
    serwera to root albo konto z `sudo` bez hasła (`sudo -n`).
 3. **agent** – ustawia domenę w `infra/k8s/environments/prod/values.yaml` (`global.domain`) i nadawcę poczty (`mailer.from`,
    `keycloak.mailFrom`, jeśli ma być inny niż domyślny `zamowienia@`/`konto@<domena>`), PR do `main`; merge robi
-   **użytkownik**. Na tym etapie pipeline `deploy.yml` buduje i testuje obrazy, ale bez sekretu `DEPLOY_KEY` kończy się po
-   smoke teście z ostrzeżeniem (nic nie publikuje).
+   **użytkownik**. Wdrożenie (`deploy.yml`) startuje tylko na życzenie użytkownika (sekcja 7), nie po merge'u. Po
+   merge'u **zgoda użytkownika** i `gh workflow run deploy.yml --ref main`; na tym etapie workflow
+   buduje i testuje obrazy, a job `deploy` czeka na zatwierdzenie w środowisku `production` (1.3); bez sekretu `DEPLOY_KEY`
+   tego środowiska kończy się po nim z ostrzeżeniem (nic nie publikuje).
 
-## 1. GitHub: obrazy, ruleset, deploy key
+## 1. GitHub: obrazy, ruleset, środowiska `production` i `sentry`, deploy key
 
 Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
-1. Widoczność pakietów GHCR: po pierwszym udanym runie `deploy.yml` na `main` pakiety `shop/api`, `shop/store`, `shop/admin`
+1. Widoczność pakietów GHCR: po pierwszym udanym wdrożeniu (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`, sekcja 7) pakiety `shop/api`, `shop/store`, `shop/admin`
    i `shop/elasticsearch` ustaw na **publiczne** (Packages → pakiet → Package settings → Change visibility), żeby k3s
    pobierało je bez `imagePullSecret`. Nie włączaj żadnej retencji ani czyszczenia wersji pakietów: obrazy z digestami, do
    których odwołują się snapshoty `deploy-images`, są potrzebne do cofnięcia wersji (workflow też niczego nie usuwa).
@@ -42,19 +44,44 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/deploy-push.json
    ```
 
-3. Deploy key z prawem zapisu i sekret repo `DEPLOY_KEY` (repo ma mieć **tylko jeden** deploy key, bo aktor `DeployKey`
-   obejmuje każdy):
+3. Środowisko `production` i deploy key z prawem zapisu. Job `deploy` workflowu (jedyny, który używa `DEPLOY_KEY`) działa
+   w środowisku `production`, a każdy sekret Actions poza `GITHUB_TOKEN` leży wyłącznie w środowisku, które przyjmuje tylko
+   gałąź `main` (workflow z gałęzi zadania nie dostaje wtedy ani sekretu, ani zatwierdzenia). Środowisko trzeba skonfigurować
+   **przed pierwszym przebiegiem** workflowu z `environment: production`: GitHub zakłada brakujące środowisko sam i bez żadnych
+   zabezpieczeń. Settings → Environments → New environment `production`:
+   - **Required reviewers**: użytkownik (zatwierdza wdrożenie; agenci nie mają uprawnienia, a token wykonawców AO nie ma
+     Deployments: write). **Prevent self-review** wyłączone: użytkownik uruchamia wdrożenie i sam je zatwierdza, a przy
+     włączonej opcji nikt nie mógłby go zatwierdzić.
+   - **Deployment branches and tags** → Selected branches and tags → reguła `main` (nazwa gałęzi, bez wzorców i tagów).
+   - **Environment secrets**: `DEPLOY_KEY` (poniżej). Sekret repozytorium o tej nazwie nie może istnieć: sekrety repozytorium
+     są widoczne w każdym workflowu, także z gałęzi zadania.
+
+   Repo ma mieć **tylko jeden** deploy key, bo aktor `DeployKey` obejmuje każdy:
 
    ```sh
    ssh-keygen -t ed25519 -N '' -C shop-deploy -f /tmp/shop-deploy-key
    gh repo deploy-key list                      # powinno być puste
    gh repo deploy-key add /tmp/shop-deploy-key.pub --allow-write --title shop-deploy
-   gh secret set DEPLOY_KEY < /tmp/shop-deploy-key
+   gh secret set DEPLOY_KEY --env production < /tmp/shop-deploy-key
    rm -f /tmp/shop-deploy-key /tmp/shop-deploy-key.pub
    ```
 
-4. Uruchom ponownie ostatni run `Deploy` na `main` (Actions → Re-run all jobs; obrazy z tym tagiem zostają, nie są
-   przebudowywane). Krok `Publish deploy and deploy-images` tworzy gałęzie `deploy` i `deploy-images`.
+   Sekret repozytorium `DEPLOY_KEY` założony wcześniej (zanim workflow dostał środowisko) **użytkownik** usuwa po merge'u końcowego
+   PR epiku AGENT-SECURITY: `gh secret delete DEPLOY_KEY`. Wartości sekretu GitHub nie zwraca, więc klucz do środowiska bierze
+   z menedżera haseł albo generuje nowy (stary deploy key wtedy usuwa: `gh repo deploy-key delete <id>`).
+
+   Środowisko `sentry` (sekret `SENTRY_AUTH_TOKEN` map źródeł, sekcja 10, krok 4): **użytkownik** zakłada je przed pierwszym
+   wdrożeniem z workflowem, który ma `environment: sentry` w jobie `images`. Settings → Environments → New environment
+   `sentry`, **bez** Required reviewers (job `images` ma działać bez zatwierdzenia), **Deployment branches and tags** → Selected
+   branches and tags → reguła `main`. Brakujące środowisko GitHub zakłada sam i bez zabezpieczeń, więc kolejność ma znaczenie.
+   Sekret repozytorium `SENTRY_AUTH_TOKEN`, jeśli istnieje, **użytkownik** usuwa po merge'u końcowego PR epiku AGENT-SECURITY:
+   `gh secret delete SENTRY_AUTH_TOKEN` (wartości GitHub nie zwraca, więc token bierze z menedżera haseł albo tworzy nowy w
+   Sentry). Kolejny sekret Actions dostaje środowisko tylko dla `main` (bez zatwierdzenia, jeśli ma działać bez niego) i trafia
+   do listy `MAIN_ONLY_ENVIRONMENTS` w `infra/k8s/tests/test_deploy_workflow.py` razem z opisem tutaj; test czyta pliki
+   workflowów, ale ustawień środowisk w GitHubie nie widzi, więc te kroki **użytkownik** sprawdza sam.
+
+4. **zgoda użytkownika** – uruchom wdrożenie ponownie: `gh workflow run deploy.yml --ref main` (obrazy z tagiem tego
+   samego commita zostają, nie są przebudowywane). Krok `Publish deploy and deploy-images` tworzy gałęzie `deploy` i `deploy-images`.
 5. Próby rulesetów, osobno dla `deploy` i dla `deploy-images` (zapisz wyniki w komentarzu do zgłoszenia #175):
 
    | Próba | Oczekiwany wynik |
@@ -103,8 +130,28 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    ```
 
 5. **agent** – commituje certyfikat (jest publiczny) w PR do `main`; merge robi **użytkownik**.
-6. **agent** – `make -C infra/k8s kubeconfig HOST=<user>@<adres> KUBE_DIR=<katalog poza repo>` (kubeconfig jest potrzebny do
-   `rerun` i `create-admin`; zawiera dane administratora klastra, nie trafia do repo).
+6. **agent** – `kubeconfig` pobiera kubeconfig klastra (dane administratora klastra, nie trafia do repo) do katalogu, z
+   którego korzystają `rerun`, `create-admin`, `restore` i `backups` (`KUBE_DIR`). Katalog powstaje na jedną operację i znika
+   po niej:
+
+   ```sh
+   KUBE_DIR="$(mktemp -d)"                      # katalog udostępniony Dockerowi (cele montują go w kontenerze)
+   make -C infra/k8s kubeconfig HOST=<user>@<adres> KUBE_DIR="$KUBE_DIR"
+   make -C infra/k8s backups KUBE_DIR="$KUBE_DIR"   # albo rerun, create-admin, restore
+   rm -rf "$KUBE_DIR"
+   ```
+
+   - Trwałych kubeconfigów produkcji nie trzyma się w katalogach udostępnionych Dockerowi ani w katalogu domowym: kontener
+     wykonawcy AO i jego Docker widzą te katalogi, a kubeconfig daje administratora klastra. Przy każdej operacji pobiera się go
+     od nowa.
+   - `kubeconfig` zapisuje bezwzględną ścieżkę `KUBE_DIR` w rejestrze `~/.local/state/shop-ops/kube-dirs` (prywatny plik, jedna
+     ścieżka w wierszu). `ao-prepare` (start AO przez `/ao-run`) odmawia, dopóki któryś zapisany katalog istnieje, więc
+     zapomniany `KUBE_DIR` zatrzymuje start AO, aż go usuniesz.
+   - `kubeconfig`, `rerun`, `create-admin`, `restore` i `backups` odmawiają pracy (kod różny od 0, bez żadnych zmian), gdy
+     działa AO (`python3 -m orchestrator … run`) albo jego wykonawca (proces `claude-agent` albo runner AO): zatrzymaj AO albo
+     poczekaj na koniec przebiegu (wykonawca przeżywa śmierć AO, więc samo zatrzymanie AO nie zawsze wystarcza: poczekaj, aż
+     skończą się jego procesy). Błąd `ps` też jest odmową. Test dymny (`smoke`) tych odmów nie dotyczy. Słowo `tak` w
+     `create-admin` i `restore` podaje się na standardowym wejściu tego celu.
 
 ## 3. Sekrety
 
@@ -119,7 +166,10 @@ Wymaga certyfikatu w repo (2.5).
    stos i token dla Alloy (9.).
 3. **agent** – wpisuje adres repozytorium (`s3:https://<id konta>.r2.cloudflarestorage.com/<bucket>`, id konta podaje
    użytkownik) w `backup.repository` i region `auto` w `environments/prod/values.yaml` (PR) oraz adresy i identyfikatory instancji
-   Grafana Cloud w `argocd/apps/monitoring.yaml` (9.).
+   Grafana Cloud w `argocd/apps/monitoring.yaml` (9.). Kopie są w `prod` wyłączone (`backup.enabled: false`), dopóki nie ma
+   bucketu i sekretu `shop-backup` (krok 4); `backup.enabled: true` trafia do tego samego PR co zaszyfrowany `shop-backup` (krok 5).
+   Wcześniej trzeba przynajmniej raz uruchomić `bootstrap` z wersją `argocd/install/argocd.yaml`, która ma customizację zdrowia
+   PVC (inaczej synchronizacja `shop` czeka bez końca na PVC `backup-work`, który do pierwszej kopii jest `Pending`).
 4. **użytkownik** – wpisuje wartości w terminalu (bez echa, nigdy w argumentach, zmiennych ani rozmowie z agentem):
 
    ```sh
@@ -155,7 +205,8 @@ Wszystko **użytkownik**.
 
 ## 5. Pierwsze wdrożenie
 
-1. Po merge'ach z 2.5 i 3.5 workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
+1. **zgoda użytkownika** – po merge'ach z 2.5 i 3.5 agent uruchamia wdrożenie (`gh workflow run deploy.yml --ref main`, sekcja 7).
+   Workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
    `secrets` i `shop` (fale: kontroler, sekrety, sklep). Pierwsza synchronizacja na pustym klastrze trwa kilkanaście minut
    (Elasticsearch, migracje, wczytanie danych demo).
 2. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`/`Healthy`, pody `Running`, Joby `Complete`.
@@ -216,21 +267,30 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
-| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, punkt kontaktowy: użytkownik | siedem reguł w rulerze; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
+| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, punkt kontaktowy: użytkownik | siedem reguł w rulerze (trzy przy wyłączonych kopiach); `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
+| Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
 
 ## 7. Eksploatacja
 
-- **Nowa wersja**: merge PR do `main`; pipeline sam publikuje snapshot, a Argo CD synchronizuje klaster. Błąd renderu albo
-  migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej (aplikacja `Degraded`).
-- **Cofnięcie wersji**: revert na `main` (nowe wdrożenie). Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;
+- **Nowa wersja**: merge PR do `main` niczego nie wdraża. Wdrożenie startuje tylko na życzenie: **zgoda użytkownika**, potem
+  `gh workflow run deploy.yml --ref main` (obrazy, smoke test, publikacja snapshotu; postęp: `gh run list --workflow deploy.yml`,
+  `gh run watch`), a Argo CD synchronizuje klaster. Job `deploy` czeka na zatwierdzenie w środowisku `production`: **użytkownik**
+  zatwierdza je na stronie przebiegu (Review deployments), z powiadomienia albo w aplikacji mobilnej GitHuba; agent tego nie robi.
+  Wdraża się bieżący commit `main`; przebieg czekający na zatwierdzenie zajmuje grupę `concurrency` dla `main`, więc nowsze
+  przebiegi czekają za nim (najwyżej jeden, najnowszy: trzecie uruchomienie zastępuje drugie). Odrzucenie starszego
+  (Reject) przepuszcza najnowszy, który wdraża bieżący commit `main`, a przebieg niezatwierdzony w ciągu 30 dni wygasa. Błąd renderu albo migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej
+  (aplikacja `Degraded`). Uruchomienie na innej gałęzi (`--ref <gałąź>`) to tylko próba: smoke test, nic nie jest
+  wypychane i `deploy` się nie przesuwa.
+- **Cofnięcie wersji**: revert na `main` i nowe uruchomienie wdrożenia. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;
   cofnięcie o więcej wersji to synchronizacja `shop` ze starszym snapshotem `deploy-images` (jak niżej) i odtworzenie kopii
   z czasu tej wersji (8.; `restore` odmawia kopii nowszej niż wdrożony kod) albo `reinitialize`. Awaryjnie **użytkownik** wyłącza w Argo CD
   automatyczną synchronizację aplikacji `root`, a potem aplikacji `shop` (kolejność ma znaczenie: `root` z `selfHeal`
   przywraca z gita `syncPolicy` aplikacji `shop`, a Argo CD nie synchronizuje do innej rewizji aplikacji z automatyczną
   synchronizacją) i synchronizuje `shop` z poprzednim snapshotem `deploy-images` (jego obrazy są w GHCR). Potem robi revert
-  na `main`, a po opublikowaniu nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
+  na `main`, uruchamia wdrożenie (**zgoda użytkownika**, `gh workflow run deploy.yml --ref main`), a po opublikowaniu
+  nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
   `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
   port-forward svc/argocd-server 8080:80'`, hasło w sekrecie `argocd-initial-admin-secret` (**użytkownik**).
@@ -356,8 +416,8 @@ wtedy, gdy serwer albo Alloy nie żyje. Alerty z treści logów (np. ostrzeżeni
    tokenu) z portalu stosu: adres zapisu metryk (Prometheus, kończy się `/api/prom/push`) i bazowy adres rulera (ten sam host bez
    `/api/prom/push`), adres zapisu logów (Loki) i identyfikatory instancji (nazwa użytkownika Prometheusa i Lokiego).
 2. **agent** – wpisuje je w `argocd/apps/monitoring.yaml` (`destinations.grafana-metrics`: `url`, `rules.address`,
-   `auth.usernameFrom` i `tenantIdFrom`; `destinations.grafana-logs`: `url`, `auth.usernameFrom` i `tenantIdFrom`; wartości w
-   pliku to przykłady) i, jeśli ruler stosu ma inny prefiks niż `/api/prom`, `rules.prometheusHttpPrefix` (PR). Merge robi
+   `auth.usernameFrom` i `tenantIdFrom`; `destinations.grafana-logs`: `url`, `auth.usernameFrom` i `tenantIdFrom`; przy zmianie
+   stosu) i, jeśli ruler stosu ma inny prefiks niż `/api/prom`, `rules.prometheusHttpPrefix` (PR). Merge robi
    **użytkownik**.
 3. **użytkownik** – token wpisuje w terminalu: `make -C infra/k8s seal-secrets WHAT=grafana` (3.4); **agent** dodaje powstały
    `grafana-cloud.yaml` do PR z sekretami.
@@ -376,6 +436,7 @@ wtedy, gdy serwer albo Alloy nie żyje. Alerty z treści logów (np. ostrzeżeni
    powiadomień. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; czy reguły z rulera trafiają do tego punktu
    kontaktowego, potwierdza dopiero krok 8.
 8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać siedem reguł grupy `shop-backup` i `shop-cluster`
+   (przy kopiach wyłączonych w `prod`, 3.: trzy reguły `shop-cluster`)
    (źródło: `PrometheusRule` `shop-alerts` w przestrzeni `shop`, synchronizowany przez Alloy do rulera). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
    `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.
@@ -401,3 +462,46 @@ manifestu: błąd `forbidden` w logu operatora albo Alloy to reguła do dopisani
 obiektów RBAC), nie powrót do RBAC chartu. Pod nowej wersji odrzucony przez politykę dopuszczania (zdarzenie `FailedCreate`
 z `ValidatingAdmissionPolicy` w przestrzeni `monitoring`, wypisuje je `monitoring-smoke`) to zmiana do przeglądu, nie powód do
 poszerzenia wyjątku node-exportera albo usunięcia polityki.
+
+## 10. Błędy i trace'y: Sentry
+
+Błędy i trace'y api (z workerem i Jobami), serwera i przeglądarki sklepu oraz przeglądarki panelu idą do Sentry SaaS
+(`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Każda aplikacja włącza SDK tylko przy swoim DSN: chart
+przekazuje go jako `SENTRY_DSN` razem z `SENTRY_ENVIRONMENT` (`sentry.environment`, w `prod` `demo`), `SENTRY_RELEASE` (rewizja
+obrazów, `image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` (`sentry.tracesSampleRate`, w `prod` 0,1). `prod` ma DSN-y trzech projektów
+organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem (jest w przeglądarce), więc leży w
+`environments/prod/values.yaml`, nie w Sealed Secrets; `make -C infra/k8s check` sprawdza jego format
+(`https://<klucz>@<host>/<id projektu>`) i `tracesSampleRate` (0 do 1).
+
+1. **użytkownik** – zakłada konto Sentry (darmowy plan) i organizację w regionie UE (adresy `*.ingest.de.sentry.io`) oraz trzy projekty:
+   `api` (PHP/Symfony; obejmuje api, worker i Joby), `store` (Next.js) i `admin` (Vue). Z każdego bierze DSN (Settings → Client Keys)
+   i podaje go agentowi (DSN nie jest tajny).
+2. **użytkownik** – w ustawieniach Sentry (limity darmowego planu są małe, a DSN jawny, więc każdy może wysyłać zdarzenia do
+   projektu): włącza ochronę przed skokami (Spike Protection) dla organizacji i ustawia limit zdarzeń na każdym projekcie
+   (Client Keys → Configure → Rate Limiting), tak żeby jeden projekt nie zużył miesięcznego limitu. „Data Scrubber” (Security & Privacy)
+   zostaje włączony: filtr aplikacji nie zna każdego formatu danych, a Data Scrubber jest drugą warstwą po stronie Sentry.
+3. **agent** – wpisuje trzy DSN-y w `sentry.dsn.api`, `sentry.dsn.store` i `sentry.dsn.admin` w
+   `infra/k8s/environments/prod/values.yaml` (osobny mały PR, `make -C infra/k8s check`); merge robi **użytkownik**. Zdarzenia zaczynają
+   płynąć po następnym wdrożeniu (sekcja 7).
+4. **użytkownik** – dla map źródeł sklepu i panelu (wysyłane z budowania obrazów w workflowie `deploy.yml`, tylko przy wdrożeniu z
+   `main`) tworzy w Sentry token (Organization Auth Token; wysyłka map nie tworzy wydań) i zapisuje go w GitHub jako sekret
+   środowiska `sentry` (sekcja 1, krok 3; job `images` działa w tym środowisku, bez zatwierdzenia, tylko z `main`):
+   `gh secret set SENTRY_AUTH_TOKEN --env sentry` (wartość tylko w tym miejscu, nigdy w rozmowie z agentem; sekret repozytorium
+   o tej nazwie nie może istnieć), a w zmiennych repozytorium (Actions variables) `SENTRY_ORG` (slug organizacji), `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` (slugi projektów). Bez sekretu
+   workflow działa, a obrazy powstają bez map (w podsumowaniu runu jest wpis o pominięciu); z sekretem błąd wysyłki kończy
+   budowanie błędem, a brak którejś z trzech zmiennych kończy job `images` błędem z jej nazwą, przed budowaniem. Mapy
+   nie zostają w obrazach (etapy `prod` nie mają plików `.map`).
+5. **agent** – po pierwszym wdrożeniu z DSN-ami (`make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`, `Healthy`) sprawdza, że
+   kontenery `api`, `worker`, `store` i `admin` mają `SENTRY_*` (`SENTRY_DSN`, `SENTRY_ENVIRONMENT=demo`, `SENTRY_RELEASE` równe
+   rewizji `image.tag`), a **użytkownik** w Sentry, że w trzech projektach pojawiają się zdarzenia z tą wersją i środowiskiem `demo`
+   oraz trace'y (próbkowanie 0,1, więc widać je po pewnym ruchu).
+6. **użytkownik** (z agentem) – po wdrożeniu przegląd próbki zdarzeń w Sentry (Issues i Performance każdego z trzech projektów,
+   także zdarzenie z przeglądarki) pod kątem danych osobowych i tajnych: adresów e-mail, imion i adresów w treści wyjątków,
+   tokenów, ciasteczek, nagłówków, treści formularzy, query stringów w adresach, parametrów SQL i identyfikatora koszyka gościa.
+   Znalezisko to nowy wzorzec w filtrze zdarzeń aplikacji i w maskowaniu Alloy (`extraLogProcessingStages`) w jednym PR (agent) albo
+   wyłączenie źródła (usunięcie DSN z `values.yaml` aplikacji); do czasu poprawki zdarzenia z tym formatem usuwa się w Sentry.
+7. **użytkownik** – po pierwszym miesiącu sprawdza zużycie limitów darmowego planu (Usage Stats); przy przekroczeniu Sentry gubi zdarzenia do
+   końca okresu rozliczeniowego (aplikacje działają dalej). Powiadomienia i reguły alertów Sentry ustawia w jego ustawieniach, poza
+   repozytorium.
+
+Gdy klaster dostanie NetworkPolicy dla ruchu wychodzącego, trzeba dopuścić ruch do `*.ingest.de.sentry.io`.

@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import CatalogTiles from "@/dashboard/CatalogTiles.vue";
 import FreshnessBar from "@/dashboard/FreshnessBar.vue";
 import RecentOrders from "@/dashboard/RecentOrders.vue";
+import SalesTiles from "@/dashboard/SalesTiles.vue";
 import TodoCard from "@/dashboard/TodoCard.vue";
 import { todoFor } from "@/dashboard/todo";
 import { useDashboard } from "@/dashboard/useDashboard";
@@ -17,11 +18,11 @@ const accessDenied = useAccessDenied();
 
 // The roles come from /me, which the layout loads; the card and the rows only hide what the API would refuse anyway.
 const auth = useAuthStore();
-const rows = computed(() => todoFor(auth.staff));
 const ordersAllowed = computed(() => canViewOrders(auth.staff));
 
 const orders = useRecentOrders(ordersAllowed);
 const { data, error, loading, updatedAt, refresh } = useDashboard(30000, () => void orders.reload());
+const rows = computed(() => todoFor(auth.staff, data.value?.queues ?? null));
 </script>
 
 <template>
@@ -47,6 +48,7 @@ const { data, error, loading, updatedAt, refresh } = useDashboard(30000, () => v
     <CatalogTiles
       v-if="data"
       :catalog="data.catalog"
+      :queues="data.queues"
     />
     <div
       v-else-if="loading"
@@ -57,6 +59,11 @@ const { data, error, loading, updatedAt, refresh } = useDashboard(30000, () => v
       <Skeleton class="h-40" />
       <Skeleton class="h-40" />
     </div>
+
+    <SalesTiles
+      v-if="data?.sales"
+      :sales="data.sales"
+    />
 
     <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
       <TodoCard

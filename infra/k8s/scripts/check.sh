@@ -103,16 +103,17 @@ do_schema() {
     expect_failure "customerAccounts that is not a boolean" "/customerAccounts" $prod --set image.tag=$rev $digests \
       --set-string customerAccounts=false
     expect_failure "demoNotice that is not a boolean" "/demoNotice" $prod --set image.tag=$rev $digests --set-string demoNotice=true
-    # The backup (docs/features/deploy-ops/spec.md, O2): enabled, it needs the repository and the name of the Secret with its keys.
-    expect_failure "backup without the repository" "/backup/repository" $prod --set image.tag=$rev $digests --set backup.repository=
-    expect_failure "backup without the name of its secret" "/backup/secretName" $prod --set image.tag=$rev $digests --set backup.secretName=
+    # The backup (docs/features/deploy-ops/spec.md, O2): enabled, it needs the repository and the name of the Secret with its keys
+    # (prod has it off until both exist, so its cases switch it on).
+    expect_failure "backup without the repository" "/backup/repository" $prod --set image.tag=$rev $digests --set backup.enabled=true --set backup.repository=
+    expect_failure "backup without the name of its secret" "/backup/secretName" $prod --set image.tag=$rev $digests --set backup.enabled=true --set backup.secretName=
     expect_failure "backup without the repository (ci)" "/backup/repository" -f environments/ci/values.yaml --set image.tag=$rev \
       --set backup.repository=
     expect_failure "backup secret created without one key" "backup.secretValues.RESTIC_PASSWORD" -f environments/ci/values.yaml \
       --set image.tag=$rev --set backup.secretValues.RESTIC_PASSWORD=
-    expect_failure "backup retention that restic does not read" "/backup/retention" $prod --set image.tag=$rev $digests \
+    expect_failure "backup retention that restic does not read" "/backup/retention" $prod --set image.tag=$rev $digests --set backup.enabled=true \
       --set backup.retention=week
-    expect_failure "verification that reads neither a subset nor all of the data" "/backup/verifyReadData" $prod --set image.tag=$rev $digests \
+    expect_failure "verification that reads neither a subset nor all of the data" "/backup/verifyReadData" $prod --set image.tag=$rev $digests --set backup.enabled=true \
       --set backup.verifyReadData=most
     expect_failure "backup that is not a boolean" "/backup/enabled" $prod --set image.tag=$rev $digests --set-string backup.enabled=true
     expect_failure "alerts that are not a boolean" "/alerts/enabled" $prod --set image.tag=$rev $digests --set-string alerts.enabled=true
@@ -131,6 +132,29 @@ do_schema() {
       --set 'clientIpHeader=CF Connecting IP'
     expect_failure "clientIpHeaderWithoutAllowList that is not a boolean" "/clientIpHeaderWithoutAllowList" \
       -f environments/ci/values.yaml --set image.tag=$rev --set-string clientIpHeaderWithoutAllowList=true
+    # Sentry (docs/features/sentry/spec.md, D1 and D3): the sample rate is a fraction, a DSN has the shape https://<key>@<host>/<project>.
+    expect_failure "sentry.tracesSampleRate above 1" "maximum: got 1.5, want 1" $prod --set image.tag=$rev $digests \
+      --set-json sentry.tracesSampleRate=1.5
+    expect_failure "sentry.tracesSampleRate below 0" "minimum: got -0.1, want 0" $prod --set image.tag=$rev $digests \
+      --set-json sentry.tracesSampleRate=-0.1
+    expect_failure "sentry.tracesSampleRate that is a string" "/sentry/tracesSampleRate" $prod --set image.tag=$rev $digests \
+      --set-string sentry.tracesSampleRate=0.1
+    expect_failure "a value of sentry that does not exist" "'tracing' not allowed" $prod --set image.tag=$rev $digests \
+      --set sentry.tracing=true
+    expect_failure "a DSN of an application that does not exist" "'worker' not allowed" $prod --set image.tag=$rev $digests \
+      --set sentry.dsn.worker=https://key@o1.ingest.de.sentry.io/1
+    for app in api store admin; do
+      expect_failure "sentry.dsn.$app with http" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=http://key@o1.ingest.de.sentry.io/1"
+      expect_failure "sentry.dsn.$app without the key" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://o1.ingest.de.sentry.io/1"
+      expect_failure "sentry.dsn.$app without the project" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://key@o1.ingest.de.sentry.io"
+      expect_failure "sentry.dsn.$app with a project that is no number" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://key@o1.ingest.de.sentry.io/api"
+      expect_failure "sentry.dsn.$app with whitespace" "/sentry/dsn/$app" $prod --set image.tag=$rev $digests \
+        --set "sentry.dsn.$app=https://key@o1.ingest.de.sentry.io/1 "
+    done
   }
 }
 
@@ -215,13 +239,14 @@ do_tests() {
   fi
 }
 
-# The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the prod render,
-# which tests/alerts/prepare.py takes from the render (no copy of the rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
+# The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the render of
+# prod with the backup switched on (prod-backup: all seven alerts), which tests/alerts/prepare.py takes from the render (no copy of the
+# rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
 do_alerts() {
-  [ -f "$work/prod.ndjson" ] || do_render
-  step "promtool check rules and promtool test rules on the alert rules of the prod render"
+  [ -f "$work/prod-backup.ndjson" ] || do_render
+  step "promtool check rules and promtool test rules on the alert rules of the prod render with the backup"
   in_cache="/cache/${work##*/}"
-  py tests/alerts/prepare.py "$in_cache/prod.ndjson" "$in_cache/alerts"
+  py tests/alerts/prepare.py "$in_cache/prod-backup.ndjson" "$in_cache/alerts"
   promtool check rules "$in_cache/alerts/rules.yaml"
   promtool test rules "$in_cache/alerts/alerts.test.yml"
 }

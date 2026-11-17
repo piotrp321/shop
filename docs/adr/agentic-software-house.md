@@ -71,9 +71,9 @@ w [planie](../features/agentic-software-house/plan.md).
 | `/groom` | Codzienne propozycje porządków w backlogu (duplikaty, nieaktualne, braki, etykiety, epik poprawek), wykonywane dopiero po decyzji człowieka; zatwierdzony epik poprawek przygotowuje według `/prepare-epic` aż do jednej akceptacji człowieka |
 | Skrzynka decyzji | Jedno miejsce na decyzje człowieka, z rekomendacją agenta i powiadomieniem |
 | Budżet i limity | Limity subskrypcji, budżet na funkcję, priorytety kolejki |
-| Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie; bramka ryzyka równoległych epików i zadań (wspólne pliki edytowane ręcznie, pamięć Dockera, zapas limitu) |
-| Metryki i evale | Pomiar czasu zegarowego, kosztu i jakości na agenta, model i zadanie, z decyzjami optymalizacyjnymi; evale agentów i workflowów z historią wyników i kryteriami regresji |
-| Bezpieczeństwo agentów | Niezaufane wejścia spoza repozytorium, izolacja uprawnień i sekretów na poziomie systemu, testy prób obejścia |
+| Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie; bramka ryzyka równoległych epików i zadań (wspólny kod aplikacji, pamięć Dockera, zapas limitu) |
+| Metryki i evale | Pomiar czasu zegarowego, kosztu i jakości na agenta, model i zadanie, z decyzjami optymalizacyjnymi (`tools/metrics`, opis w `tools/metrics/README.md`; `/ao-run` pokazuje go w raporcie odbioru i w komentarzu po merge'u, alarmy bezproduktywnego zużycia wysyła pushem); evale agentów i workflowów z historią wyników i kryteriami regresji (`tools/evals-pilot`) |
+| Bezpieczeństwo agentów | Niezaufane wejścia spoza repozytorium, izolacja uprawnień i sekretów na poziomie systemu, testy prób obejścia; model zagrożeń, decyzje i luki: [`agent-security.md`](agent-security.md) |
 | Pętla uczenia | `/retro` po merge'u epiku: poprawki procesu w skillach, agentach i `CLAUDE.md` w PR z dowodami z przebiegów, który merguje człowiek |
 
 Zasady:
@@ -83,9 +83,9 @@ Zasady:
   zamiast tworzyć nowe frameworki.
 - AO odpowiada za orkiestrację, stan i wykonywanie, a nie za decyzje architektoniczne. Decyzje spoza granic
   zadania wracają jako blokery do skrzynki decyzji.
-- Równoległość jest domyślna: epiki, które przejdą bramkę ryzyka (wspólne tylko pliki generowane i dokumentacja,
-  wolna pamięć Dockera na kolejny stos, zapas limitu), i niezależne zadania jednej fali wykonują się naraz, każde
-  we własnym worktree i stosie, a integracja i merge'e po kolei. Wykonanie szeregowe jest rozwiązaniem awaryjnym,
+- Równoległość jest domyślna: epiki, które przejdą bramkę ryzyka (bez wspólnego kodu aplikacji,
+  wolna pamięć Dockera na `max-parallel` stosów na epik, zapas limitu), i niezależne zadania jednej fali wykonują
+  się naraz, każde we własnym worktree i stosie, a integracja i merge'e po kolei. Wykonanie szeregowe jest rozwiązaniem awaryjnym,
   gdy bramka wykryje realne ryzyko.
 - Optymalizujemy czas zegarowy epiku, mierząc jednocześnie jakość, naprawy, interwencje człowieka i zużycie limitów.
 - Zabezpieczenia agentów są techniczne i wynikają z modelu zagrożeń, nie tylko z instrukcji w promptach.
@@ -117,7 +117,8 @@ Zasady:
 - Zadania wykonywane równolegle potrzebują osobnych stosów Docker. Zasoby jednego hosta ograniczają
   liczbę zadań naraz.
 - Równoległe przebiegi szybciej zużywają okno limitu subskrypcji, więc bramka sprawdza zapas limitu przed startem.
-  Wspólne pliki edytowane ręcznie wymuszają kolejkę, a wspólne pliki generowane powstają od nowa przy REPAIR.
+  Kolejkę wymusza tylko wspólny kod aplikacji; pozostałe wspólne pliki łączą sync i REPAIR (pliki generowane powstają
+  od nowa), a scalenie kończą testy na połączonym stanie.
 - Równoległe zadania fali wymagają zmiany w AO (`ao run --max-parallel`).
 - Autonomiczny merge bez człowieka jest dozwolony wyłącznie w granicach polityki autonomii zatwierdzonej
   przez użytkownika. Jedyny autonomiczny merge do `main` to PR ze specyfikacją i planem z `/prepare-epic`,

@@ -62,6 +62,7 @@ final readonly class ListProductVariantsHandler
                     $row['variants'],
                 ),
                 $row['taxClass'],
+                $row['name'],
             );
         }
 

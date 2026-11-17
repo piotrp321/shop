@@ -6,6 +6,7 @@ namespace App\Ordering\Application\Command;
 
 use App\Ordering\Application\Port\CartLineToOrder;
 use App\Ordering\Application\Port\Clock;
+use App\Ordering\Application\Port\CustomerSummaries;
 use App\Ordering\Application\Port\DiscountCodeRedemptions;
 use App\Ordering\Application\Port\OrderCart;
 use App\Ordering\Application\Port\OrderCatalog;
@@ -42,9 +43,10 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * Places an order in the one transaction of command.bus: the cart lock, the copies of the quote and the names, the
- * usage of the discount code, the reservation, the order with its OrderPlaced in the outbox and its delayed
- * ExpireUnpaidOrder (due five minutes after the payment deadline) are written together or not at all. A replay
- * schedules nothing and records no second usage. The commands of Cart, Pricing and Inventory run nested in this
+ * usage of the discount code, the reservation, the order with its OrderPlaced in the outbox, its delayed
+ * ExpireUnpaidOrder (due five minutes after the payment deadline) and, for an order of a customer, its addition to the
+ * customer summary are written together or not at all. A replay schedules nothing, records no second usage and adds
+ * nothing to the customer. The commands of Cart, Pricing and Inventory run nested in this
  * transaction (through the ports); their exceptions are never caught to go on writing: Inventory's shortage becomes
  * InsufficientStockForOrder and a rejection of the code DiscountCodeRejected of Ordering, both thrown on, every other
  * one is thrown as is.
@@ -71,6 +73,7 @@ final readonly class PlaceOrderHandler
         private UnpaidOrderExpiry $expiry,
         private DomainEventPublisher $events,
         private Clock $clock,
+        private CustomerSummaries $customers,
     ) {
     }
 
@@ -134,6 +137,10 @@ final readonly class PlaceOrderHandler
         $this->orders->add($order);
         $this->events->publish(...$order->releaseEvents());
         $this->expiry->schedule($order->id(), $order->expiryDueAt());
+        $customerId = $owner->customerId();
+        if (null !== $customerId) {
+            $this->customers->addOrder($customerId, $order->id(), $order->contact(), $order->placedAt());
+        }
 
         return new PlacedOrder(OrderView::of($order), false);
     }

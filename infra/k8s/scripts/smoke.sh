@@ -270,11 +270,13 @@ check_failures() {
   fi
 }
 
-# All jobs complete (there must be five), all deployments and statefulsets rolled out with the new pods ready.
+# Every version job complete (there must be six, backfill among them; a running job has no succeeded, and its line must
+# count), all deployments and statefulsets rolled out with the new pods ready.
 all_ready() {
-  jobs="$(kc get jobs -l shop/job-kind=version -o jsonpath='{range .items[*]}{.status.succeeded}{"\n"}{end}')"
-  [ "$(echo "$jobs" | grep -c .)" -ge 5 ] || return 1
-  [ -z "$(echo "$jobs" | grep -vx 1 | grep . || true)" ] || return 1
+  # name=succeeded per job: a job that still runs is "name=" and is not ready.
+  jobs="$(kc get jobs -l shop/job-kind=version -o jsonpath='{range .items[*]}{.metadata.name}={.status.succeeded}{"\n"}{end}')"
+  [ "$(echo "$jobs" | grep -c .)" -ge 6 ] || return 1
+  [ -z "$(echo "$jobs" | grep . | grep -v '=1$' || true)" ] || return 1
   # name generation observedGeneration replicas updatedReplicas readyReplicas availableReplicas
   not_ready="$(kc get deployments -o jsonpath='{range .items[*]}{.metadata.generation}{" "}{.status.observedGeneration}{" "}{.status.replicas}{" "}{.status.updatedReplicas}{" "}{.status.readyReplicas}{" "}{.status.availableReplicas}{"\n"}{end}' \
     | awk 'NF != 6 || $1 != $2 || $3 != 1 || $4 != 1 || $5 != 1 || $6 != 1 {print}')"

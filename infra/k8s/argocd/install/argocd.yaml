@@ -37,3 +37,28 @@ spec:
             end
           end
           return hs
+        # The health of a claim. Argo CD takes a Pending claim for a resource that is still progressing and waits for it in its
+        # wave; a claim on local-path (WaitForFirstConsumer) stays Pending until its first pod, so a claim that only a CronJob
+        # uses (backup-work of the shop) would hold back the sync for good. Pending is healthy only with the annotation the
+        # chart puts on such a claim; any other Pending claim is still progressing, a Lost one is degraded.
+        resource.customizations.health.PersistentVolumeClaim: |
+          hs = {}
+          if obj.status ~= nil and obj.status.phase == "Bound" then
+            hs.status = "Healthy"
+            hs.message = "the claim is bound"
+            return hs
+          end
+          if obj.status ~= nil and obj.status.phase == "Lost" then
+            hs.status = "Degraded"
+            hs.message = "the volume of the claim is lost"
+            return hs
+          end
+          local annotations = obj.metadata.annotations
+          if obj.status ~= nil and obj.status.phase == "Pending" and annotations ~= nil and annotations["shop/bound-by-first-pod"] == "true" then
+            hs.status = "Healthy"
+            hs.message = "the claim is bound when its first pod starts"
+            return hs
+          end
+          hs.status = "Progressing"
+          hs.message = "waiting for the claim to be bound"
+          return hs

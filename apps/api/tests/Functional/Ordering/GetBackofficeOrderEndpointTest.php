@@ -7,6 +7,7 @@ namespace App\Tests\Functional\Ordering;
 use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Application\Command\CompleteRefund;
 use App\Ordering\Domain\StaffTransition;
+use App\Tests\Integration\Ordering\OrderingFixture;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -54,6 +55,18 @@ final class GetBackofficeOrderEndpointTest extends WebTestCase
         self::assertNull($order['refund']);
         self::assertSame(['ship', 'cancel'], $order['allowedTransitions']);
         self::assertFalse($order['canCompleteRefund']);
+        self::assertNull($order['customerId'], 'a guest is no customer');
+    }
+
+    public function testAnOrderOfACustomerHasItsCustomerId(): void
+    {
+        $orderId = OrderingFixture::order($this->connection, customerId: 'kc-anna');
+
+        $order = $this->getJson($this->path($orderId), self::staff(['warehouse']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertMatchesSchema('BackofficeOrder', $order);
+        self::assertSame('kc-anna', $order['customerId']);
     }
 
     public function testAnIdInUpperCaseIsTheSameOrder(): void

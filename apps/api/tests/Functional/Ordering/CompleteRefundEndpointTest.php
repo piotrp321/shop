@@ -7,6 +7,7 @@ namespace App\Tests\Functional\Ordering;
 use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Domain\StaffTransition;
 use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -107,6 +108,20 @@ final class CompleteRefundEndpointTest extends WebTestCase
     {
         yield 'an unknown order' => [self::UNKNOWN_ORDER];
         yield 'an id that is no UUID' => ['R-100001'];
+        yield from InputValues::uuidsOutsideTheVersions();
+    }
+
+    public function testAnotherNotationOfTheOrderIdCompletesTheRefundOfTheSameOrder(): void
+    {
+        $orderId = $this->cancelledOrder();
+
+        foreach (InputValues::equivalentUuidForms($orderId) as [$notation]) {
+            $order = $this->complete($notation, ['version' => 3, 'note' => null], self::staff(['admin']));
+
+            self::assertResponseStatusCodeSame(200);
+            self::assertIsArray($order['refund']);
+            self::assertSame($orderId, $order['orderId']);
+        }
     }
 
     #[DataProvider('unknownOrders')]

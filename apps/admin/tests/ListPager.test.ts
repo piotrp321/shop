@@ -43,6 +43,63 @@ describe("ListPager", () => {
     expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano produkty 1–25");
   });
 
+  it("adds the total of the list: „Pokazano 1–25 z 1 234”, with the thousands separated as in Polish", () => {
+    mountPager({ total: { value: 1234, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25 z 1\u00a0234");
+  });
+
+  it("separates the thousands of a bigger total", () => {
+    mountPager({ range: { from: 26, to: 50 }, total: { value: 1_234_567, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 26–50 z 1\u00a0234\u00a0567");
+  });
+
+  it("writes a small total as it is", () => {
+    mountPager({ range: { from: 1, to: 7 }, total: { value: 7, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–7 z 7");
+  });
+
+  it("says „z ponad 10 000” when the count stopped at its limit", () => {
+    mountPager({ total: { value: 10_000, capped: true } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25 z ponad 10\u00a0000");
+  });
+
+  it("groups the thousands of the range like those of the total: „Pokazano 10 001–10 025 z ponad 10 000”", () => {
+    mountPager({ hasPrevious: true, pageNumber: 401, range: { from: 10_001, to: 10_025 }, total: { value: 10_000, capped: true } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 10\u00a0001–10\u00a0025 z ponad 10\u00a0000");
+  });
+
+  it("groups the thousands of the range when there is no total", () => {
+    mountPager({ hasPrevious: true, pageNumber: 41, range: { from: 1_001, to: 1_025 } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1\u00a0001–1\u00a0025");
+  });
+
+  it("shows the total after the noun of the numbers", () => {
+    mountPager({ noun: "produkty", total: { value: 1234, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano produkty 1–25 z 1\u00a0234");
+  });
+
+  it("has no „z N” when the total is not known", () => {
+    mountPager({ total: null });
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25");
+
+    wrapper?.unmount();
+    mountPager();
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("Pokazano 1–25");
+  });
+
+  it("keeps the status region, empty, when there are no rows, even with a total", () => {
+    mountPager({ range: null, total: { value: 0, capped: false } });
+
+    expect(document.body.querySelector("[role=status]")!.textContent).toBe("");
+  });
+
   it("keeps the status region, empty, when there are no rows to number", () => {
     mountPager({ range: null });
 
@@ -107,5 +164,38 @@ describe("ListPager", () => {
     await pager.setProps({ hasNext: false, pageNumber: 3 });
 
     expect(document.activeElement).toBe(outside);
+  });
+
+  it("keeps the focus in the search field when a response enables „Następna strona” after the staff member left the pager by a click on nothing", async () => {
+    const search = document.createElement("input");
+    document.body.append(search);
+    const pager = mountPager({ hasPrevious: true, hasNext: true, pageNumber: 2 });
+    previous().focus();
+    previous().click();
+    await pager.setProps({ hasPrevious: false, pageNumber: 1 });
+    expect(document.activeElement).toBe(next());
+
+    // A click on a spot that cannot take the focus: `focusout` without a `relatedTarget`, then typing in the search field.
+    next().blur();
+    search.focus();
+    await pager.setProps({ hasNext: false });
+    await pager.setProps({ hasNext: true });
+
+    expect(document.activeElement).toBe(search);
+  });
+
+  it("moves the focus only once for a press: a later change of the buttons leaves it where it is", async () => {
+    const pager = mountPager({ hasPrevious: true, hasNext: true, pageNumber: 2 });
+    previous().focus();
+    previous().click();
+    await pager.setProps({ hasPrevious: false, pageNumber: 1 });
+    expect(document.activeElement).toBe(next());
+
+    next().blur();
+    expect(document.activeElement).toBe(document.body);
+    await pager.setProps({ hasNext: false });
+    await pager.setProps({ hasNext: true });
+
+    expect(document.activeElement).toBe(document.body);
   });
 });

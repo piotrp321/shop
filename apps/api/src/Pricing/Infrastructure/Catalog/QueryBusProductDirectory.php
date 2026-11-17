@@ -12,6 +12,7 @@ use App\Catalog\Application\Query\ProductVariantList;
 use App\Catalog\Application\Query\SearchBackofficeProducts;
 use App\Catalog\Application\Query\VariantOption;
 use App\Pricing\Application\Port\CategoryNotFound;
+use App\Pricing\Application\Port\DescribedProduct;
 use App\Pricing\Application\Port\DirectoryPage;
 use App\Pricing\Application\Port\DirectoryProduct;
 use App\Pricing\Application\Port\DirectoryVariant;
@@ -41,10 +42,10 @@ final class QueryBusProductDirectory implements ProductDirectory
         $this->messageBus = $queryBus;
     }
 
-    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage
+    public function page(?string $term, ?string $categoryId, ?string $after, int $perPage, ?string $sort = null): DirectoryPage
     {
         try {
-            $page = $this->handle(new SearchBackofficeProducts($term, $categoryId, $after, $perPage));
+            $page = $this->handle(new SearchBackofficeProducts($term, $categoryId, $after, $perPage, null, $sort));
         } catch (HandlerFailedException $failure) {
             // The bus wraps what the handler threw.
             $wrapped = $failure->getWrappedExceptions();
@@ -64,6 +65,7 @@ final class QueryBusProductDirectory implements ProductDirectory
                 $page->items,
             ),
             $page->next,
+            $page->total,
         );
     }
 
@@ -78,6 +80,19 @@ final class QueryBusProductDirectory implements ProductDirectory
         }
 
         return $variants;
+    }
+
+    public function describe(ProductId $productId): ?DescribedProduct
+    {
+        $list = $this->variantLists([$productId])[0] ?? null;
+
+        return null === $list ? null : new DescribedProduct(
+            new DirectoryProduct($productId, $list->productName, TaxClass::fromString($list->taxClass)),
+            array_map(
+                static fn (VariantOption $variant): DirectoryVariant => new DirectoryVariant(VariantId::fromString($variant->variantId), $variant->label),
+                $list->variants,
+            ),
+        );
     }
 
     public function taxClassOf(ProductId $productId): ?ProductTaxClass

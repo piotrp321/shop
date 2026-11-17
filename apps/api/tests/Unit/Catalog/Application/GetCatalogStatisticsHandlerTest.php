@@ -32,6 +32,8 @@ use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Domain\Product\VariantId;
 use App\Catalog\Domain\Product\VariantValues;
+use App\Shared\Domain\BoundedCount;
+use App\Tests\Support\InMemory\FixedProductTableStatistics;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use PHPUnit\Framework\TestCase;
@@ -40,31 +42,65 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
 {
     private InMemoryProductRepository $products;
     private InMemoryCategoryRepository $categories;
+    private InMemoryBackofficeProductSource $withoutImages;
+    private FixedProductTableStatistics $statistics;
 
     protected function setUp(): void
     {
         $this->products = new InMemoryProductRepository();
         $this->categories = new InMemoryCategoryRepository();
+        $this->withoutImages = new InMemoryBackofficeProductSource();
+        $this->statistics = new FixedProductTableStatistics(0);
     }
 
     public function testEmptyCatalogue(): void
     {
-        $view = $this->handler($this->indexer(0))(new GetCatalogStatistics());
+        $view = $this->handler($this->indexer(0))(new GetCatalogStatistics(true));
 
-        self::assertEquals(new CatalogStatisticsView(0, 0, 0, 0), $view);
+        self::assertEquals(new CatalogStatisticsView(0, 0, new BoundedCount(0, false), 0), $view);
     }
 
-    public function testCountsProductsCategoriesProductsWithoutImagesAndIndexedDocuments(): void
+    public function testTheProductCountIsTheEstimateOfTheDatabaseNotACountOfTheProducts(): void
     {
         $root = $this->category('00000000-0000-4000-8000-000000000001');
         $this->category('00000000-0000-4000-8000-000000000002');
         $this->product('10000000-0000-4000-8000-000000000001', $root, withImage: true);
-        $this->product('10000000-0000-4000-8000-000000000002', $root, withImage: false);
-        $this->product('10000000-0000-4000-8000-000000000003', $root, withImage: false);
+        $this->statistics = new FixedProductTableStatistics(10_000_000);
+        $this->withoutImages->total = new BoundedCount(1000, true);
 
-        $view = $this->handler($this->indexer(2))(new GetCatalogStatistics());
+        $view = $this->handler($this->indexer(2))(new GetCatalogStatistics(true));
 
-        self::assertEquals(new CatalogStatisticsView(3, 2, 2, 2), $view);
+        self::assertEquals(new CatalogStatisticsView(10_000_000, 2, new BoundedCount(1000, true), 2), $view);
+        self::assertSame(1, $this->statistics->estimates);
+    }
+
+    public function testTheProductsWithoutImagesAreCountedWithTheFilterOfTheProductListUpToTheLimitOfTheDashboard(): void
+    {
+        $this->handler($this->indexer(0))(new GetCatalogStatistics(true));
+
+        self::assertSame([true], $this->withoutImages->withoutImagesOfCounts);
+        self::assertSame([[null, null, null]], $this->withoutImages->counts);
+        self::assertSame([1000], $this->withoutImages->countLimits);
+    }
+
+    public function testWithoutThePermissionTheProductsWithoutImagesAreNotCounted(): void
+    {
+        $view = $this->handler($this->indexer(0))(new GetCatalogStatistics(false));
+
+        self::assertNull($view->productsWithoutImages);
+        self::assertSame([], $this->withoutImages->counts);
+    }
+
+    public function testWithoutAnEstimateTheProductCountIsNullAndNothingIsCounted(): void
+    {
+        $this->statistics = new FixedProductTableStatistics(null);
+        $this->product('10000000-0000-4000-8000-000000000001', $this->category('00000000-0000-4000-8000-000000000001'), withImage: true);
+
+        $view = $this->handler($this->indexer(1))(new GetCatalogStatistics(false));
+
+        self::assertNull($view->productCount);
+        self::assertSame(1, $view->indexedProducts);
+        self::assertSame([], $this->withoutImages->counts);
     }
 
     public function testIndexedProductsIsNullWhenTheSearchServiceIsUnavailable(): void
@@ -72,21 +108,21 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
         $root = $this->category('00000000-0000-4000-8000-000000000001');
         $this->product('10000000-0000-4000-8000-000000000001', $root, withImage: true);
 
-        $view = $this->handler($this->indexer(new SearchUnavailable('down')))(new GetCatalogStatistics());
+        $view = $this->handler($this->indexer(new SearchUnavailable('down')))(new GetCatalogStatistics(false));
 
-        self::assertEquals(new CatalogStatisticsView(1, 1, 0, null), $view);
+        self::assertEquals(new CatalogStatisticsView(0, 1, null, null), $view);
     }
 
     public function testIndexedProductsIsNullWhenTheIndexCannotBeCounted(): void
     {
-        $view = $this->handler($this->indexer(new SearchIndexError('no alias')))(new GetCatalogStatistics());
+        $view = $this->handler($this->indexer(new SearchIndexError('no alias')))(new GetCatalogStatistics(false));
 
         self::assertNull($view->indexedProducts);
     }
 
     private function handler(ProductIndexer $indexer): GetCatalogStatisticsHandler
     {
-        return new GetCatalogStatisticsHandler($this->products, $this->categories, $indexer);
+        return new GetCatalogStatisticsHandler($this->withoutImages, $this->categories, $indexer, $this->statistics);
     }
 
     private function indexer(int|\Throwable $result): ProductIndexer

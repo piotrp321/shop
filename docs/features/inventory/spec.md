@@ -17,7 +17,7 @@ Poza zakresem: wiele magazynów, lokalizacje, kompletacja. Nie powstają endpoin
 | Context | Odpowiada za |
 |---|---|
 | Inventory | stany, przyjęcia, korekty, rezerwacje i historia wariantu, poziom dostępności |
-| Catalog | warianty produktów, zapytania dla Inventory: `GetVariant`, `ListVariantIdentities`, `ListProductVariants`, `SearchBackofficeProducts`; port `VariantStockFacts` (blokada usunięcia wariantu ze stanem) |
+| Catalog | warianty produktów, zapytania dla Inventory: `GetVariant`, `ListVariantIdentities`, `ListProductVariants`, `SearchBackofficeProducts`; port `VariantStockFacts` (blokada usunięcia wariantu ze stanem); integracyjne zdarzenia `ProductCreated` i `ProductChanged` (rekordy stanów wariantów) |
 | Ordering | rezerwacja stanów zamówienia przez `ReserveStock` w transakcji `PlaceOrder` |
 | Sklep, panel | wyświetlanie wartości z API; żadnego liczenia dostępności ani poziomów |
 
@@ -29,6 +29,8 @@ Poza zakresem: wiele magazynów, lokalizacje, kompletacja. Nie powstają endpoin
 - `QueryBusVariantStockFacts` (`Inventory_Infrastructure`) to adapter portu Catalog `VariantStockFacts`: Inventory
   `GetStockLevels` na `query.bus`, odczyt bez blokady; wariant ze stanem fizycznym > 0 albo zarezerwowanym > 0 jest
   „w użyciu”, a jego usunięcie w panelu Catalog odrzuca (`VariantInUse`). Wariant bez rekordu stanu nie jest w użyciu.
+- `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, transport `events`) subskrybuje integracyjne
+  `ProductCreated` i `ProductChanged` Catalog (sekcja „Rekord stanu każdego wariantu”).
 - Catalog i Pricing nie zależą od Inventory w żadnej warstwie. Inventory nie zależy od Pricing ani od Ordering.
 - `Ordering_Infrastructure → Inventory_Application`: adapter portu `StockReservations` Ordering
   (`CommandBusStockReservations`) wysyła `ReserveStock` przez `command.bus`; Ordering zna tylko warstwę Application
@@ -69,8 +71,49 @@ Niezmiennik: `0 ≤ reserved ≤ physical ≤ 1 000 000`.
 - `correct` z wartością równą bieżącemu `physical` zwraca `false`: bez wpisu historii i bez zmiany wersji.
 - Każda faktyczna zmiana dopisuje jeden `StockMovement` ze stanem po operacji i podnosi `version` przy zapisie.
 - Wariant bez rekordu stanu ma `physical = reserved = 0`. Rekord powstaje przy pierwszym przyjęciu, przy korekcie
-  zmieniającej stan (korekta do 0 nie zapisuje rekordu) albo jako pusty rekord danych demo (wersja 0, bez wpisu
-  historii).
+  zmieniającej stan (korekta do 0 nie zapisuje rekordu), jako pusty rekord danych demo (wersja 0, bez wpisu
+  historii) albo jako pusty rekord wariantu po zdarzeniu Catalog (niżej). Do czasu obsłużenia zdarzenia wariant może
+  nie mieć rekordu.
+
+### Rekord stanu każdego wariantu
+
+Każdy wariant Catalog ma rekord `inventory_stock_item` z `product_id` (decyzja A9 w
+`docs/features/admin-features/spec.md`), więc listy i liczniki poziomów stanu liczą się w Inventory bez złączeń
+z tabelami Catalog.
+
+- `SyncStockRecordsOnProductChange` (integracyjne `ProductCreated` i `ProductChanged`) woła
+  `StockRecordSync::ofProducts([productId])`, czyli komendę `SyncStockRecords(productIds)` (`command.bus`, jedna
+  transakcja na partię do 100 produktów, port `StockRecords`, adapter `DbalStockRecords`). W tej transakcji handler
+  najpierw bierze blokadę każdego produktu (`pg_advisory_xact_lock` z kluczem z id produktu, rosnąco po kluczu, więc
+  partie o wspólnych produktach się nie zakleszczają), potem czyta warianty z portu `ProductDirectory::variantsOf`
+  (Catalog `ListProductVariants` ze szkicami) i zapisuje:
+  - `INSERT … ON CONFLICT (variant_id) DO UPDATE SET product_id = excluded.product_id WHERE
+    inventory_stock_item.product_id IS NULL`: pusty rekord (0/0, wersja 0, bez wpisu historii) dla wariantu bez
+    rekordu, `product_id` w rekordzie założonym wcześniej przez przyjęcie albo korektę (`lockOrCreate` nie zna
+    produktu). Stan, wersja i `updated_at` istniejącego rekordu się nie zmieniają. Wiersze idą rosnąco po
+    `variant_id`, jak blokady `lockMany`;
+  - `DELETE` rekordów produktu (`product_id`) o wariantach, których produkt już nie ma, tylko z `physical = 0 AND
+    reserved = 0` (rekord ze stanem, który pojawił się równolegle z usunięciem wariantu, zostaje; historia zostaje
+    zawsze). Warunek `physical - reserved = 0` pozwala użyć indeksu częściowego braków.
+  Powtórzone zdarzenie nic nie zmienia; produkt nieznany Catalogowi to wiadomość obsłużona bez zmian; zdarzenie bez
+  poprawnego UUID produktu idzie do `failed`. Synchronizacje jednego produktu (zdarzenia w kilku workerach, backfill)
+  idą po kolei, a każda czyta warianty pod blokadą, więc późniejsza widzi to, co Catalog zatwierdził przed końcem
+  wcześniejszej: starszy odczyt nigdy nie nadpisuje nowszego (nie usuwa pustego rekordu nowego wariantu ani nie
+  zakłada rekordu usuniętemu). Edycja zatwierdzona po odczycie publikuje własne `ProductChanged`, którego
+  synchronizacja czyta warianty od nowa, więc rekordy kończą tak, jak warianty w Catalog.
+- Rekord bez `product_id` (przyjęcie przed zdarzeniem albo dane sprzed kolumny) nie należy do list ani liczników
+  poziomów. Rekord wariantu usuniętego przed wprowadzeniem kolumny zostaje bez `product_id`.
+- `inventory:stock-records:sync` (krok `app:backfill` o nazwie `inventory:stock-records:sync`, `apps/api/CLAUDE.md`)
+  przechodzi wszystkie produkty Catalog (szkice też) stronami po 100 z `ProductDirectory::page` (Catalog
+  `SearchBackofficeProducts`, kursor po `(name, id)`) i każdą stronę synchronizuje jak zdarzenie (`ofCatalog`), w osobnej
+  transakcji. Idempotentna: drugi przebieg zapisuje 0 rekordów. Produkt przemianowany w trakcie może zostać pominięty
+  albo odwiedzony dwa razy; jego `ProductChanged` i tak go synchronizuje. Wypisuje liczbę produktów, zapisanych
+  rekordów i usuniętych pustych rekordów (`-v`: postęp po każdej stronie). Kod wyjścia: 0 – gotowe, 1 – przerwane
+  błędem (zapisane wcześniej partie zostają).
+- Indeksy częściowe po produkcie na wyrażeniu `physical - reserved`: `inventory_stock_item_out_of_stock_idx
+  (product_id) WHERE physical - reserved = 0` i `inventory_stock_item_low_stock_idx (product_id) WHERE physical -
+  reserved BETWEEN 1 AND 5` (5 to `AvailabilityLevel::LOW_STOCK_THRESHOLD`; `InventorySchemaTest` nie przechodzi,
+  gdy stała zmieni się bez migracji indeksu). Migracja buduje je `CONCURRENTLY` (zasada w `apps/api/CLAUDE.md`).
 
 ### Agregat `Reservation`
 
@@ -154,8 +197,9 @@ wiersz, a stan nie zmienia się dwa razy.
 
 ## Persystencja i transakcje
 
-- `inventory_stock_item`: `variant_id uuid` (PK), `physical int`, `reserved int`, `version int`, `updated_at`;
-  `CHECK (reserved >= 0 AND physical >= reserved AND physical <= 1000000)`.
+- `inventory_stock_item`: `variant_id uuid` (PK), `product_id uuid` (null do czasu synchronizacji), `physical int`,
+  `reserved int`, `version int`, `updated_at`; `CHECK (reserved >= 0 AND physical >= reserved AND physical <= 1000000)`;
+  indeksy częściowe poziomów po `product_id` (sekcja „Rekord stanu każdego wariantu”).
 - `inventory_reservation`: `reservation_key varchar(100)` (PK), `status`, `created_at`, `updated_at`.
 - `inventory_reservation_line`: `reservation_key`, `variant_id`, `quantity`; PK `(reservation_key, variant_id)`;
   klucz obcy `reservation_key` → `inventory_reservation` (`inventory_reservation_line_reservation_fk`, bez
@@ -180,7 +224,8 @@ wiersz, a stan nie zmienia się dwa razy.
 - Stan, rezerwacja i wpisy historii zapisują się w jednej transakcji `command.bus` (`doctrine_transaction`).
   Nie ma zmiany stanu bez wpisu ani wpisu bez zmiany.
 - Repozytoria nie mają operacji zmiany ani usuwania wpisów historii. Tabele Inventory czyści wyłącznie
-  `inventory:seed-demo` (`DbalInventoryReset`), jednym `TRUNCATE` wszystkich czterech tabel.
+  `inventory:seed-demo` (`DbalInventoryReset`), jednym `TRUNCATE` wszystkich czterech tabel. Poza nim usuwane są tylko
+  puste rekordy stanów wariantów, których produkt już nie ma (`SyncStockRecords`), nigdy wpisy historii.
 
 ## Warstwa aplikacji
 
@@ -191,8 +236,9 @@ Komendy (`command.bus`):
   w panelu): `VariantNotFound` (404, „Wariant produktu nie istnieje.”). Wariant szkicu jest znany (`GetVariant` widzi
   szkice).
 - `CorrectStock(variantId, countedPhysical, expectedVersion|null, reason, note, actorId, actorName)` → `StockView`.
-  Nieznany wariant: 404. Wariant bez rekordu wymaga `expectedVersion = null`; rekord istnieje, a wersja jest inna
-  (także `null`): 409.
+  Nieznany wariant: 404. Wariant bez rekordu wymaga `expectedVersion = null`; `null` przyjmuje też pusty rekord
+  (0/0, wersja 0) zapisany w międzyczasie (np. przez synchronizację rekordów po zdarzeniu produktu), bo jest
+  równoważny brakowi stanu. Rekord istnieje, a wersja jest inna (także `null` przy wersji powyżej 0): 409.
 - `CreateEmptyStock(variantId)`: pusty rekord (0/0) w wersji 0 bez wpisu historii; idempotentna (istniejący rekord
   zostaje bez zmian). Nieznany wariant: `VariantNotFound` (404). Używa jej tylko seed.
 - Port dla Ordering:
@@ -235,6 +281,8 @@ Dane demo: `inventory:seed-demo`
   stan > 0, a niektóre inne produkty mają warianty o stanie 0 i > 0 (używa ich E2E; komentarze w pliku nazywają produkty).
 - Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<variantId>`. Stan 0: pusty rekord przez
   `CreateEmptyStock`, bez przyjęcia i wpisu historii.
+- Na końcu `StockRecordSync::ofCatalog` (jak `inventory:stock-records:sync`) wpisuje `product_id` każdemu rekordowi,
+  więc po seedzie każdy wariant demo ma rekord z produktem.
 - Wariant demo bez dopasowanego wzorca kończy seed błędem bez zmian w danych.
 - `make seed` uruchamia go po `pricing:seed-demo` i `ordering:seed-demo` (ten usuwa zamówienia, więc po seedzie nie
   ma zamówienia bez rezerwacji ani rezerwacji zamówienia bez zamówienia). W `prod` wymaga `--force-reset`.
@@ -253,11 +301,37 @@ z tokenem realmu `shop`: 401):
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /api/v1/admin/stock?q&category&after&perPage` | każdy pracownik | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null}]}], next}` (warianty w kolejności pozycji, `perPage` liczy produkty); 400 złe parametry; 404 nieznana kategoria |
+| `GET /api/v1/admin/stock?q&category&sort&level&productId&after&perPage` | pracownik z rolą personelu | `200 {items: [{productId, name, variants: [{variantId, label, stock: {physical, reserved, available, level, version, updatedAt} \| null, matchesLevel}]}], next, total}` (warianty w kolejności pozycji, `perPage` liczy produkty); `level` (`out_of_stock` albo `low_stock`, opis niżej); `productId` (opis niżej); `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (kolejność produktów jak w Catalog, kursor z kluczem sortu); 400 złe parametry (także klucz spoza listy i kursor innego sortu); 404 nieznana kategoria |
 | `POST /api/v1/admin/variants/{variantId}/stock/receipts`, nagłówek `Idempotency-Key`, body `{quantity: int, note: string \| null}` | `admin`, `warehouse` | 201 stan po przyjęciu (`{variantId, physical, reserved, available, level, version, updatedAt}`); 200 powtórzenie z tym samym kluczem i treścią (stan bieżący); 400 brak lub zły klucz; 403; 404 nieznany wariant; 409 klucz użyty z inną treścią; 422 ilość, limit 1 000 000, notatka |
 | `POST /api/v1/admin/variants/{variantId}/stock/corrections`, body `{physical: int, version: int \| null, reason: string, note: string \| null}` | `admin`, `warehouse` | 200 stan (ta sama wartość: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo poniżej zarezerwowanego (różne `detail`); 422 zakres, powód, brak notatki przy `other` |
-| `GET /api/v1/admin/variants/{variantId}/stock-history?after&perPage` | każdy pracownik | `200 {items: [{occurredAt, type, physicalDelta, reservedDelta, physicalAfter, reservedAfter, reason, note, reference, source, actorName}], next}`; 400 zły kursor lub parametr; 404 nieznany wariant |
+| `GET /api/v1/admin/variants/{variantId}/stock-history?after&perPage` | pracownik z rolą personelu | `200 {items: [{occurredAt, type, physicalDelta, reservedDelta, physicalAfter, reservedAfter, reason, note, reference, source, actorName}], next}`; 400 zły kursor lub parametr; 404 nieznany wariant |
 
+- Filtr poziomu `level=out_of_stock|low_stock` (kolejki pulpitu, `docs/features/admin-features/spec.md`): odpowiada
+  produktami z co najmniej jednym wariantem na tym poziomie, każdy z wszystkimi swoimi wariantami; pasujące warianty
+  (stan zapisany i `level` równy filtrowi) mają `matchesLevel: true`, pozostałe i wszystkie wiersze listy bez `level`
+  `false`. Stronicuje Inventory, nie Catalog: port `StockLevelProducts` (adapter `DbalStockLevelProducts`) czyta
+  identyfikatory produktów z rekordów stanów rosnąco (`GROUP BY product_id ORDER BY product_id LIMIT`) z częściowych
+  indeksów poziomów (warunek `physical - reserved = 0` albo `BETWEEN 1 AND` stała `AvailabilityLevel::LOW_STOCK_THRESHOLD`
+  jako literał, bez parametru, żeby planista mógł dowieść predykatu) z własnym kursorem keyset
+  (`StockLevelCursor`: base64url JSON `{l: poziom, p: identyfikator produktu}`; kursor innego poziomu i kursor listy po
+  nazwie to 400 przy `after`, jak kursor innego sortu). Nazwy produktów i etykiety wariantów strony podaje Catalog przez
+  istniejący port `ProductDirectory` (`describe`: `ListProductVariants` z nazwą produktu, szkice też), stany wariantów
+  jedno `findMany`. Rekord bez `product_id` nie należy do filtra; produkt, którego Catalog już nie ma, jest pomijany
+  na stronie (kursor prowadzi dalej, strona może być krótsza albo pusta). `total` (limit 10 000) liczy produkty poziomu na
+  pierwszej stronie, gdy jest następna. `level` wyklucza `q`, `category` i `sort` (400 z naruszeniem przy każdym z tych pól, „Filtr
+  poziomu nie łączy się z wyszukiwaniem, kategorią ani sortowaniem.”) i `productId` (400 przy `level` z komunikatem
+  filtra produktu); inna wartość `level` to 400 przy `level`. Test planu: `StockLevelProductsPlanTest` (100 000 rekordów w tabeli tymczasowej, plan bez wyłączania skanów:
+  strona, kolejna strona i licznik czytają indeks poziomu, bez `Seq Scan`).
+  Panel (`/inventory?level=`): `Select` „Poziom” (Wszystkie, Bez stanu, Niski stan) wyłącza i czyści wyszukiwanie oraz kategorię
+  z opisem „Filtr poziomu nie łączy się z wyszukiwaniem ani kategorią.”, wysyła tylko `level` i `perPage`, a wiersze wariantów
+  na poziomie filtra oznacza z `matchesLevel`.
+- Filtr `productId=<uuid>` (karta „Ceny i stany” w formularzu produktu, `docs/features/admin-features/spec.md`):
+  odpowiada jednym produktem (także szkicem) ze wszystkimi wariantami i ich stanami (`matchesLevel: false`), przez
+  `ProductDirectory::describe` (Catalog `ListProductVariants` z `includeDrafts`), bez stronicowania: `next: null`, a
+  `total` pierwszej strony to `{value: 1, capped: false}`. Nieznany produkt to pusta lista z `total` 0. `productId`
+  wyklucza `q`, `category`, `level`, `sort` i `after` (400 z naruszeniem przy każdym z tych pól, „Filtr produktu nie
+  łączy się z wyszukiwaniem, kategorią, poziomem, sortowaniem ani kursorem.”); `productId`, który nie jest UUID-em, to
+  400 przy `productId`.
 - Uprawnienie `MANAGE_STOCK` sprawdza `StockVoter` w `Inventory_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `support` i `marketing` dostają 403.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.
@@ -279,20 +353,36 @@ z tokenem realmu `shop`: 401):
 ## Panel (`apps/admin`)
 
 - Pozycja menu „Stany magazynowe” i trasa `/inventory`.
-- Lista: wyszukiwanie po nazwie (od 2 znaków, z opóźnieniem), filtr kategorii (drzewo), stronicowanie
-  „następna/poprzednia” po kursorach (po produktach). Wiersz na wariant, warianty pod nazwą swojego produktu (nazwa
-  w pierwszym wierszu produktu); kolumny nazwa, wariant (etykieta, pusta dla wariantu domyślnego), fizyczny,
-  zarezerwowany, dostępny, poziom. Wariant bez rekordu: zera. Przyjęcie, korekta i historia dotyczą wariantu wiersza;
-  dialogi pokazują nazwę produktu z etykietą wariantu.
+- Lista (H1 „Stany magazynowe”, okruszki „Pulpit › Katalog › Stany magazynowe”, standard listy panelu:
+  `docs/features/admin-design/spec.md`): wyszukiwanie po nazwie produktu (od 2 do 100 znaków, z opóźnieniem), filtr
+  kategorii `CategoryCombobox` (z podkategoriami), `Select` „Sortuj” produktów („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio
+  zmienione”, „Najdawniej zmienione”; nazwa jest w wierszu grupy, więc nagłówki kolumn nie mają `aria-sort`), rozmiar
+  strony 10, 25 albo 50 produktów (domyślnie 10; do API idzie zawsze) i „Wyczyść filtry”. Wyszukiwanie, kategoria,
+  kolejność i rozmiar strony są w adresie (`q`, `category`, `sort`, `perPage`; domyślne `name` i 10 nie są zapisywane,
+  a `sort` do API idzie tylko, gdy to nie `name`). Stronicowanie „następna/poprzednia” po kursorach, strona to produkty, a „Pokazano produkty X–Y” liczy
+  produkty niezależnie od liczby wariantów. Lista jest pogrupowana po produkcie: wiersz produktu (nazwa pogrubiona) bez
+  akcji, a pod nim wiersz na wariant z etykietą wariantu („Wariant domyślny” dla pustej). Kolumny: wariant, fizycznie,
+  zarezerwowane, dostępne, poziom (etykieta `Badge`: Dostępny, Ostatnie sztuki, Niedostępny), akcje. Wariant bez rekordu
+  stanu: „—” w liczbach i w komórce poziomu, bez etykiety poziomu. Poniżej 1024 px zarezerwowane jest linią komórki wariantu.
+  Błąd przy zmianie zapytania ukrywa tabelę i pager do udanego ponowienia; 403 nie ma ponowienia. Stan zapisany z odpowiedzi
+  API jest nakładką nad stroną z listy, więc odświeżenie, także spóźnione, nie przywraca starego stanu.
+- „Przyjęcie”, „Korekta” i „Historia” to przyciski ikon wiersza wariantu z nazwą dostępną „Przyjęcie: <produkt> / <wariant>”;
+  okna (`Dialog`) pokazują nazwę produktu z etykietą wariantu i mieszczą się w 375 px.
 - „Przyjęcie” i „Korekta” tylko dla ról `admin` i `warehouse` (role z `/api/v1/admin/me`; API sprawdza niezależnie).
-  - Przyjęcie: ilość i notatka. Klucz (UUID) powstaje przy otwarciu dialogu i jest używany ponownie przy ponowieniu
-    tego samego zapisu po błędzie sieci; nowy dialog to nowy klucz.
-  - Korekta: stan policzony, powód z listy (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka (wymagana przy
-    „Inne”), wersja z wiersza.
-  - 409 wersji: „Stan został w międzyczasie zmieniony – odśwież” i odświeżenie wiersza; 409 poniżej zarezerwowanego
-    i 409 klucza: `detail` z API; 422: komunikat naruszenia przy polu.
-- „Historia” (przycisk w wierszu, dla każdego pracownika): wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie, Korekta, Rezerwacja, Zwolnienie,
-  Zatwierdzenie), powodów i źródeł (Pracownik, Dane demo, System).
+  Fokus trafia w pierwsze pole po otwarciu okna (także klawiaturą), po błędzie w pole z błędem albo na komunikat okna, a po
+  zapisie okno się zamyka, pojawia się toast i fokus wraca na przycisk wiersza.
+  - Przyjęcie: ilość całkowita i notatka; przycisk „Przyjmij”; toast „Przyjęto N szt.: <produkt> / <wariant>”. Klucz (UUID)
+    powstaje przy otwarciu okna i jest używany ponownie przy ponowieniu tego samego zapisu po błędzie sieci; nowe okno to
+    nowy klucz.
+  - Korekta: stan policzony (liczba całkowita), powód z listy (Inwentaryzacja, Uszkodzenie, Zaginięcie, Inne), notatka
+    (wymagana przy „Inne”), wersja z wiersza; przycisk „Zapisz korektę”; toast „Stan skorygowany: <produkt> / <wariant>”.
+  - 409 korekty: panel odświeża bieżącą stronę; inna wersja wiersza (409 wersji) albo wiersza nie da się odczytać (odświeżenie
+    nieudane, wiersza nie ma na stronie): „Stan został w międzyczasie zmieniony – odśwież”; ta sama wersja (409 poniżej
+    zarezerwowanego): `detail` z API. 409 klucza przyjęcia: `detail` z API (409 klucza też odświeża bieżącą stronę); 422: komunikat naruszenia przy polu.
+- „Historia” (okno `Dialog`, dla każdego pracownika): wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie,
+  Korekta, Rezerwacja, Zwolnienie, Zatwierdzenie), powodów i źródeł (Pracownik, Dane demo, System). Tabela ma 11 kolumn
+  w przewijanym regionie dostępnym z klawiatury; poniżej 1024 px zostają Data, Rodzaj, Zmiana fizycznego i Stan fizyczny
+  po zmianie, a reszta jest liniami komórki daty.
 
 ## Scenariusze błędów
 
@@ -323,10 +413,11 @@ z tokenem realmu `shop`: 401):
 4. Rezerwacja jest „wszystko albo nic”, nie wygasa i jest idempotentna po kluczu; ponowienie zwraca aktualny status
    bez zmiany stanów. Zwolnienie i zatwierdzenie są idempotentne, niedozwolone przejścia dają 409.
 5. Każda zmiana stanu tworzy w tej samej transakcji wpis historii ze stanem po operacji, źródłem i aktorem.
-6. Przyjęcia i korekty wykonują tylko `admin` i `warehouse`; stany i historię widzi każdy pracownik.
+6. Przyjęcia i korekty wykonują tylko `admin` i `warehouse`; stany i historię widzi każdy pracownik z rolą personelu.
 7. Sklep pokazuje poziom dostępności (próg „Ostatnie sztuki” 1–5 w API), nigdy liczby sztuk.
 8. Kryteria współbieżności C1–C6 przechodzą na prawdziwym PostgreSQL w CI.
-9. Po `make seed` każdy wariant demo ma rekord stanu.
+9. Po `make seed` każdy wariant demo ma rekord stanu z `product_id`; po zdarzeniu Catalog i po
+   `inventory:stock-records:sync` każdy wariant produktu ma rekord z `product_id`.
 10. Catalog i Pricing nie zależą od Inventory; Deptrac odrzuca zależności spoza reguł Inventory.
 11. Przechodzą `make -C apps/api check`, `make -C apps/api test`, `check` i `test` sklepu i panelu oraz `make e2e`.
 

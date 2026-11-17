@@ -51,6 +51,8 @@ export async function expectControlsReachable(page: Page, root: Locator | null):
     let n = 0;
     for (const item of element.querySelectorAll<HTMLElement>(selector)) {
       delete item.dataset.reflowN;
+      // The container of a tree is a stop of the roving tabindex that passes the focus to its node at once: its nodes are the controls.
+      if (item.getAttribute("role") === "tree") continue;
       if (item.tabIndex >= 0 && !(item as HTMLButtonElement).disabled && item.checkVisibility({ checkVisibilityCSS: true })) item.dataset.reflowN = String(n++);
     }
     return n;
@@ -67,28 +69,38 @@ export async function expectControlsReachable(page: Page, root: Locator | null):
     await expect.poll(() => root.evaluate((element) => element.contains(document.activeElement))).toBe(true);
   }
 
+  // A date and time field is a control of several stops of the Tab key (its parts and the button of the calendar: 7 in Chromium).
+  const dateFields = await container.evaluate((element) => element.querySelectorAll('input[type^="date"], input[type="time"]').length);
   const visited = new Set<number>();
   const problems: string[] = [];
-  for (let step = 0; step < total + 12 && visited.size < total; step++) {
+  for (let step = 0; step < total + 12 + 6 * dateFields && visited.size < total; step++) {
     await page.keyboard.press("Tab");
     const state = await page.evaluate(() => {
       const item = document.activeElement as HTMLElement | null;
-      if (item === null || item.dataset.reflowN === undefined) return null;
+      // A group of radio buttons hands the focus to the item it contains (its roving focus: the group is a stop of the Tab
+      // key, the browser lands on its current item, which was not a stop before): it is reached with that item.
+      const owner = (item?.parentElement?.closest("[role=radiogroup][data-reflow-n]") as HTMLElement | null)?.dataset.reflowN;
+      if (item === null || (item.dataset.reflowN === undefined && owner === undefined)) return null;
       item.scrollIntoView({ block: "center", inline: "center" });
       const rect = item.getBoundingClientRect();
       const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      // The tooltip of the focused button is placed before the scroll moved the button (it follows a frame later) and goes
+      // away with the focus (WCAG 1.4.13), so it is not another element that covers the control.
+      const tooltip = hit?.closest("[data-reka-popper-content-wrapper]")?.querySelector("[role=tooltip]") != null;
       const label = `${item.tagName.toLowerCase()}:${(item.getAttribute("aria-label") || item.innerText || item.getAttribute("name") || "").trim().replace(/\s+/g, " ").slice(0, 40)}`;
       return {
-        n: Number(item.dataset.reflowN),
+        n: Number(item.dataset.reflowN ?? owner),
+        ownerN: owner === undefined ? null : Number(owner),
         label,
         // A scrolling region (a table in its card) is taller than the window by design: it is checked from side to side only.
         inWindow: rect.left >= -0.5 && rect.right <= innerWidth + 0.5 && (rect.height > innerHeight || (rect.top >= -0.5 && rect.bottom <= innerHeight + 0.5)),
         rect: `${Math.round(rect.left)}..${Math.round(rect.right)} x ${Math.round(rect.top)}..${Math.round(rect.bottom)}`,
-        covered: rect.height > innerHeight ? false : hit === null || !(item.contains(hit) || hit.contains(item)),
+        covered: rect.height > innerHeight || tooltip ? false : hit === null || !(item.contains(hit) || hit.contains(item)),
       };
     });
     if (state === null || visited.has(state.n)) continue;
     visited.add(state.n);
+    if (state.ownerN !== null) visited.add(state.ownerN);
     if (!state.inWindow) problems.push(`${state.label} is not wholly in the window (${state.rect})`);
     if (state.covered) problems.push(`${state.label} is covered by another element`);
   }

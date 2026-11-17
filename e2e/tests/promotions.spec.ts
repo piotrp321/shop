@@ -3,7 +3,7 @@ import { staff } from "../support/accounts";
 import { gridTiles } from "../support/listing";
 import { openMenuItem } from "../support/panel-menu";
 import { formatPln, normalize } from "../support/price-change";
-import { endActivePromotionsOf, offerOf, PanelToken, promotionDetails, warsawLocal } from "../support/promotions";
+import { endActivePromotionsOf, offerOf, PanelToken, promotionDetails, toasts, warsawLocal } from "../support/promotions";
 import { loginStaff, waitForBearerToken } from "../support/staff-login";
 import { urls } from "../support/urls";
 
@@ -77,10 +77,11 @@ test("a promotion created in the panel shows on the product page and on the list
     await page.getByTestId("add-product").click();
     await expect(page.getByTestId("variant-row")).toHaveCount(2);
     await page.getByTestId("save").click();
-    await expect(page.getByTestId("success-message"), "the promotion was rejected (conflict, validation or API error)").toHaveText("Promocja zapisana.");
+    await expect(toasts(page).getByText("Promocja zapisana."), "the promotion was rejected (conflict, validation or API error)").toBeVisible();
     const savedAt = Date.now();
 
-    // The panel moves to the page of the new promotion after the save (the route is replaced without waiting).
+    // The panel moves to the page of the new promotion after the save (the route is replaced without waiting), and the
+    // toast is in the region of the live announcements.
     await expect(page).toHaveURL(/\/promotions\/[0-9a-f-]{36}$/);
     const id = new URL(page.url()).pathname.split("/").pop() ?? "";
     const promotion = await promotionDetails(request, await token.fresh(page), id);

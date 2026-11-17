@@ -217,6 +217,21 @@ class Install(unittest.TestCase):
         self.assertIn("hs.status = obj.status.health.status", values)
         self.assertIn('hs.status = "Progressing"', values)
 
+    def test_a_claim_that_waits_for_its_first_pod_does_not_hold_back_a_wave(self):
+        """Argo CD takes a Pending claim for a resource that is still progressing and waits for it in its wave: backup-work of the
+        shop (local-path, WaitForFirstConsumer) stays Pending until the first backup, so the sync of the shop never ended. The
+        health check of claims takes Pending for healthy only with the annotation of the chart; Bound is healthy, Lost degraded."""
+        values = install["argocd"]["spec"]["valuesContent"]
+        self.assertIn("resource.customizations.health.PersistentVolumeClaim: |", values)
+        script = values.split("resource.customizations.health.PersistentVolumeClaim: |", 1)[1]
+        script = script.split("resource.customizations.", 1)[0]
+        self.assertIn('obj.status.phase == "Bound"', script)
+        self.assertIn('obj.status.phase == "Lost"', script)
+        self.assertIn('hs.status = "Degraded"', script)
+        self.assertIn('["shop/bound-by-first-pod"] == "true"', script)
+        self.assertIn('obj.status.phase == "Pending"', script)
+        self.assertEqual(1, script.count('hs.status = "Progressing"'))
+
     def test_traefik_keeps_the_address_of_the_client(self):
         config = install["traefik"]
         self.assertEqual("HelmChartConfig", config["kind"])

@@ -17,6 +17,7 @@ use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -211,6 +212,36 @@ final class PromotionsEndpointTest extends WebTestCase
         }
     }
 
+    public function testTheFirstPageHoldsTheTotalOfThePromotionsOfTheStatusAndLaterPagesNone(): void
+    {
+        $variant = $this->pricedVariant(5999);
+        $this->storedPromotion('-10 days', '-5 days', [$variant]);
+        $this->storedPromotion('-1 day', '+1 day', [$variant]);
+        $this->storedPromotion('+2 days', '+5 days', [$variant]);
+        $this->storedPromotion('+6 days', '+9 days', [$variant]);
+
+        $first = $this->send('GET', '/api/v1/admin/promotions?perPage=2');
+        $second = $this->send('GET', '/api/v1/admin/promotions?perPage=2&after='.self::cursorOf($first));
+
+        self::assertSame(['value' => 4, 'capped' => false], $first['total']);
+        self::assertNull($second['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $this->send('GET', '/api/v1/admin/promotions?status=planned')['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->send('GET', '/api/v1/admin/promotions?status=active&perPage=1')['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->send('GET', '/api/v1/admin/promotions?status=ended')['total']);
+        $this->assertKeysMatchSchema($first, 'PromotionListResponse');
+        $this->assertKeysMatchSchema($first['total'], 'BoundedCountResponse');
+    }
+
+    /**
+     * @param array<mixed> $page
+     */
+    private static function cursorOf(array $page): string
+    {
+        self::assertIsString($page['next']);
+
+        return $page['next'];
+    }
+
     /**
      * @return iterable<string, array{string, string, string|null}>
      */
@@ -274,6 +305,35 @@ final class PromotionsEndpointTest extends WebTestCase
     {
         yield 'an unknown id' => ['/api/v1/admin/promotions/'.self::UNKNOWN];
         yield 'an id that is no UUID' => ['/api/v1/admin/promotions/promotion-1'];
+        foreach (InputValues::uuidsOutsideTheVersions() as $name => [$uuid]) {
+            yield $name => ['/api/v1/admin/promotions/'.$uuid];
+        }
+    }
+
+    public function testAnotherNotationOfThePromotionIdReadsTheSamePromotion(): void
+    {
+        $id = $this->storedPromotion('+1 day', '+5 days', [$this->pricedVariant(5999)]);
+        $canonical = $this->send('GET', '/api/v1/admin/promotions/'.$id);
+        self::assertResponseStatusCodeSame(200);
+
+        foreach (InputValues::equivalentUuidForms($id) as [$notation]) {
+            self::assertSame($canonical, $this->send('GET', '/api/v1/admin/promotions/'.$notation));
+            self::assertResponseStatusCodeSame(200);
+        }
+    }
+
+    public function testAVariantInAnotherNotationIsTheSameVariantTwice(): void
+    {
+        $a = $this->pricedVariant(5999);
+
+        foreach (InputValues::equivalentUuidForms($a) as [$notation]) {
+            $this->send('POST', '/api/v1/admin/promotions', $this->body([$a, $notation]));
+
+            $problem = $this->assertProblem(422);
+            self::assertIsArray($problem['violations']);
+            self::assertContains('variantIds', array_column($problem['violations'], 'propertyPath'));
+            self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_promotion'));
+        }
     }
 
     #[DataProvider('unknownPromotions')]
@@ -321,6 +381,9 @@ final class PromotionsEndpointTest extends WebTestCase
         yield 'variants as an object' => [['variantIds' => ['a' => '$a']], 'variantIds'];
         yield 'a variant twice' => [['variantIds' => ['$a', '$a']], 'variantIds'];
         yield 'a variant id that is no UUID' => [['variantIds' => ['$a', 'shoes']], 'variantIds[1]'];
+        foreach (InputValues::uuidsOutsideTheVersions() as $name => [$uuid]) {
+            yield 'a variant id that is the '.$name => [['variantIds' => ['$a', $uuid]], 'variantIds[1]'];
+        }
         yield 'a variant id that is no string' => [['variantIds' => [12]], 'variantIds[0]'];
         yield 'variants that are no list' => [['variantIds' => '$a'], 'variantIds'];
         yield 'a list body' => ['[1, 2]', ''];

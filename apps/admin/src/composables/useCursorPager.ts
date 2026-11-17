@@ -1,4 +1,5 @@
 import { computed, onUnmounted, type Ref, ref, shallowRef, watch } from "vue";
+import type { components } from "@/api/schema";
 
 /** What a list asks of its page source: the query it shows and the cursor of the page (`after`, null for the first). */
 export interface PageRequest<Q> {
@@ -6,12 +7,15 @@ export interface PageRequest<Q> {
   after: string | null;
 }
 
+/** How many rows a list matches, counted by the API up to a limit: with `capped` there are more than `value`. */
+export type ListTotal = components["schemas"]["BoundedCountResponse"];
+
 /**
- * The answer of the page source: the rows and the cursor of the next page (null on the last page), or the message of a
- * failure. A failure with `forbidden` (a 403) is not worth a retry. The list composable owns the requests and the
- * messages; the pager only paces them.
+ * The answer of the page source: the rows, the cursor of the next page (null on the last page) and the `total` the API
+ * gives with the first page only (null on the others), or the message of a failure. A failure with `forbidden` (a 403)
+ * is not worth a retry. The list composable owns the requests and the messages; the pager only paces them.
  */
-export type PageResult<Row> = { items: Row[]; next: string | null } | { error: string; forbidden?: boolean };
+export type PageResult<Row> = { items: Row[]; next: string | null; total?: ListTotal | null } | { error: string; forbidden?: boolean };
 
 export interface CursorPagerOptions {
   /** The pager asks for nothing while this is false (e.g. until an address parameter is confirmed); true when omitted. */
@@ -34,6 +38,9 @@ type Kind = "query" | "page";
  *   error of the old query is gone (a retry keeps its error until the answer) and there is no `range`, as the rows on
  *   the screen are not a page of the new query. `loading` is also true while the pager waits for `ready` before its
  *   first answer, so that the view shows its skeleton.
+ * - The `total` comes with the first page only: the pager keeps it while the user pages on, and takes it again when the
+ *   first page is loaded again. A new query drops it at once, so the total of another query is never shown beside its
+ *   rows, and a failed answer to the new query leaves none.
  * - A failed change of the page, or of a refresh of the current page, keeps the page that is shown and its pager.
  * - Only the newest request may change the state; an older one that finishes late is ignored (`latest`).
  * - `retry` repeats the request that failed; `refresh` loads the current page again (after a write that moved it).
@@ -53,6 +60,8 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
   const forbidden = ref(false);
   // The page and the page size of the rows on the screen, for „Pokazano X–Y”.
   const shown = ref<{ page: number; perPage: number } | null>(null);
+  // The total of the query, from its first page.
+  const total = ref<ListTotal | null>(null);
 
   let attempted: { stack: (string | null)[]; kind: Kind } = { stack: [null], kind: "query" };
   let latest = 0;
@@ -80,6 +89,7 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
       cursors.value = [null];
       next.value = null;
       shown.value = null;
+      total.value = null;
     }
     if (fresh) {
       // A new query is not a retry: the failure of the old one is not its state.
@@ -109,6 +119,12 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
     }
     items.value = result.items;
     next.value = result.next;
+    if (result.total) {
+      total.value = result.total;
+    } else if (stack.length === 1) {
+      // The first page of the query without a total (the API gave none): there is nothing to keep.
+      total.value = null;
+    }
     cursors.value = stack;
     shown.value = { page: stack.length, perPage: current.perPage };
     loaded.value = true;
@@ -146,5 +162,5 @@ export function useCursorPager<Row, Q extends { perPage: number }>(
     latest++;
   });
 
-  return { items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, goNext, goPrevious, retry, refresh };
+  return { items, loading, loaded, error, forbidden, hasPrevious, hasNext, pageNumber, range, total, goNext, goPrevious, retry, refresh };
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The scope of a DELTA round of the /integration skill (SKILL.md, step 2 and 4). Python 3.9+, standard library only.
+"""The scope and the test source of an /integration round (SKILL.md, steps 2, 3a and 4). Python 3.9+, standard library only.
 
   sync --previous SHA --head SHA [--main origin/main]
       Whether the commits from the previous head to HEAD are only a sync with main. Prints JSON:
@@ -18,26 +18,79 @@
       Exit code 0 for both kinds; 2 when Git fails, a commit or ref is unknown or the previous head is not an
       ancestor of HEAD.
 
-  ci --head SHA
-      Whether the required CI jobs `checks` and `e2e` are green for exactly HEAD in the latest push run of the CI
-      workflow (`gh run list --commit`, `gh run view`). Pull request runs do not count: they skip the work for
-      documentation and tooling changes. Prints JSON: use_ci, reason, sha, run and the `checks` entries for the
-      result (ci:checks@<sha>, ci:e2e@<sha>). Exit code 0 when CI replaces the local `make test` and `make e2e`,
-      1 when the local gates run (another commit, no run, a run in progress, a red or missing job, gh failing),
-      2 for a head that is not a full SHA.
+  ci --head SHA [--budget SECONDS --wait-file PATH]
+      The state of the required CI jobs `checks` and `e2e` for exactly HEAD in the latest push run of the CI workflow
+      (`gh run list --commit`, `gh run view`). Pull request runs do not count: they skip the work for documentation
+      and tooling changes. The state is
+      green     both jobs completed with success: CI replaces the local `make test` and `make e2e`
+      red       every required job finished and one of them with failure, timed_out or startup_failure: red CI is
+                never replaced by a local result
+      local     the local gates run: a finished run with a job cancelled, skipped, neutral or missing, a run of another
+                commit, gh failing without a budget or until the end of it, or CI still pending without a budget or
+                after it
+      pending   no run yet, or the run or a required job not completed
+      A red job decides as soon as the other required job finished. A red job next to an unfinished one is red when
+      the look is the last one: without --budget at once (red, exit code 3), with a budget at its end.
+      The entries ci:checks@<sha> and ci:e2e@<sha> state the result of each required job, not of a gate: passed
+      (success), failed (failure, timed_out, startup_failure) or skipped (unknown: cancelled, missing or unfinished).
+      The required jobs aggregate more than `make test` and `make e2e`, so red CI also lists what made it red:
+      failed_parts are the job `scope`, the parts (`checks part <name>`, `e2e shard <i>`) and the required jobs that
+      finished without success, each {job, conclusion, failed_steps} with the names of its steps that ended in
+      failure; a part that failed only in its step `Require the scope job` is left out (the job `scope` stands for
+      it). failure_kind is `tests` when the job `scope` or a part ended in failure with a failed step and `ci` when CI
+      is red only through jobs that timed out, did not start, were cancelled or failed without a failed step (a
+      failure of CI, not of the code).
+      Without --budget it looks once. With --budget and --wait-file it polls every 30 s while the state is pending or
+      gh fails (a failing gh is waited out like pending CI, its message in reason), for at most min(the budget left,
+      500 s) per call; the wait file keeps the time of the first call for this head, so the budget spans repeated
+      calls (a file of another head, a broken one, or one whose start is not a finite time within one wait,
+      now - budget - 500 s <= started <= now, like the file of an earlier round on the same head, starts a new wait).
+      A red job seen while the other required job runs is kept in the wait file too, with its failed parts: from then
+      on no answer (pending at the end of the budget, gh failing, a later look that means local gates) gives local, it
+      gives red with that job, in this call and in later ones (kept failed parts that cannot be read leave red CI with
+      failure_kind `ci`). Pending at the end of a call with budget left asks for another call; pending after the
+      budget means the local gates unless a red job was seen. Prints JSON: state, use_ci (green or red), reason, sha,
+      run, checks (the two entries, for green and red), failed_jobs (the red required jobs), failed_parts and
+      failure_kind (null unless red) and waited_s (seconds since the first call of the wait file, 0 without a budget).
+      Exit code 0 green, 3 red, 1 local, 4 still pending with budget left (call again), 2 for a head that is not a
+      full SHA, a missing or negative budget or wait file, a wait file that cannot be written, or any unexpected
+      error (gh output of an odd shape, a wrong DELTA_CI_* setting), always with a message on stderr.
+
+  e2e-parts [--workflow PATH]
+      The parts of the local E2E run, taken from the CI workflow (default .github/workflows/ci.yml): prints JSON
+      {"parts": <number of weights>, "weights": "<E2E_SHARD_WEIGHTS>"}, the only source of the split. Exit code 0, or
+      2 when the workflow cannot be read or has no single E2E_SHARD_WEIGHTS of positive whole numbers joined by ":".
 """
 import argparse
 import json
+import math
+import os
 import re
 import subprocess
 import sys
+import time
 
 GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store/src/api/schema.d.ts',
              'apps/admin/src/api/schema.d.ts')
 CI_JOBS = ('checks', 'e2e')
+# The parts that the required jobs aggregate (`checks part <name>`, `e2e shard <i>` in ci.yml).
+CI_PARTS = ('checks part ', 'e2e shard ')
+# The job that every part and required job needs, and the first step of a part, which fails when that job did not
+# succeed.
+CI_SCOPE = 'scope'
+REQUIRE_SCOPE = 'Require the scope job'
 CI_WORKFLOW = 'ci.yml'
 SHA = re.compile(r'^[0-9a-f]{40}$')
 TIMEOUT_S = 60
+# A gh call of `ci` stays short, so that the last poll of a call ends well within the 600 s of one Bash call.
+GH_TIMEOUT_S = 20
+POLL_S = 30
+CALL_S = 500
+# Conclusions of a finished job that make CI red; any other one but success means the local gates.
+RED = ('failure', 'timed_out', 'startup_failure')
+DEFAULT_WORKFLOW = '.github/workflows/ci.yml'
+WEIGHTS_LINE = re.compile(r'^[ \t]*E2E_SHARD_WEIGHTS:[ \t]*(.*?)[ \t]*$', re.MULTILINE)
+WEIGHTS = re.compile(r'^[1-9][0-9]*(:[1-9][0-9]*)*$')
 
 
 class Failure(Exception):
@@ -133,7 +186,7 @@ def sync(previous, head, main):
 
 def gh(*args):
     try:
-        r = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=TIMEOUT_S)
+        r = subprocess.run(['gh', *args], capture_output=True, text=True, timeout=GH_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Failure('gh cannot run: %s' % e)
     if r.returncode != 0:
@@ -144,33 +197,224 @@ def gh(*args):
         raise Failure('gh %s printed no JSON' % ' '.join(args[:2]))
 
 
-def ci(head):
-    def local(reason):
-        return {'use_ci': False, 'reason': reason, 'sha': head, 'run': None, 'checks': []}
+def red_statuses(passed, failed):
+    """The statuses of the entries ci:<job>@<sha> of red CI: passed, failed for a red job, and skipped (the result is
+    unknown) for a required job that is cancelled, missing or unfinished."""
+    return {name: 'passed' if name in passed else 'failed' if name in failed else 'skipped' for name in CI_JOBS}
+
+
+def failed_parts(jobs):
+    """The scope job, the parts and the required jobs that finished without success, each with the names of its
+    failed steps. A part that failed only in its step that requires the scope job is left out: the scope job is the
+    one entry for it."""
+    parts = [{'job': j['name'], 'conclusion': j.get('conclusion') or '-',
+              'failed_steps': [s['name'] for s in j.get('steps') or []
+                               if isinstance(s, dict) and s.get('conclusion') == 'failure' and isinstance(s.get('name'), str)]}
+             for j in jobs if isinstance(j.get('name'), str)
+             and (j['name'] in CI_JOBS + (CI_SCOPE,) or j['name'].startswith(CI_PARTS))
+             and j.get('status') == 'completed' and j.get('conclusion') != 'success']
+    return [p for p in parts if not (p['job'].startswith(CI_PARTS) and p['failed_steps'] == [REQUIRE_SCOPE])]
+
+
+def failure_kind(parts):
+    """`tests` when the scope job or a part ended in failure with a failed step, `ci` when CI is red only through jobs
+    that timed out, did not start, were cancelled or failed without a failed step (a failure of CI, not of the code)."""
+    return 'tests' if any((p['job'] == CI_SCOPE or p['job'].startswith(CI_PARTS)) and p['conclusion'] == 'failure'
+                          and p['failed_steps'] for p in parts) else 'ci'
+
+
+def ci_state(head):
+    """One look at the latest push run of the CI workflow for head: green, red, local or pending (see the docstring).
+    A red job decides only when every required job has finished; `unfinished` names the jobs still running then.
+    `gh_error` marks a local state that comes from gh failing, which `ci` waits out while it has a budget."""
+    def out(state, reason, run=None, statuses=None, failed=(), unfinished=(), passed=(), parts=(), gh_error=False):
+        return {'state': state, 'reason': reason, 'sha': head, 'run': run, 'statuses': statuses,
+                'failed_jobs': list(failed), 'unfinished': list(unfinished), 'passed': list(passed),
+                'failed_parts': list(parts), 'gh_error': gh_error}
     try:
         runs = gh('run', 'list', '--commit', head, '--event', 'push', '--workflow', CI_WORKFLOW, '--limit', '20',
                   '--json', 'databaseId,headSha,status,conclusion,event,createdAt')
+        if not isinstance(runs, list):
+            raise Failure('gh run list printed no list')
         runs = [r for r in runs if isinstance(r, dict) and r.get('headSha') == head and r.get('event') == 'push'
                 and isinstance(r.get('databaseId'), int)]
         if not runs:
-            return local('no push run of the CI workflow for %s' % head)
+            return out('pending', 'no push run of the CI workflow for %s' % head)
         run = max(runs, key=lambda r: r['databaseId'])
-        view = gh('run', 'view', str(run['databaseId']), '--json', 'headSha,jobs')
+        number = run['databaseId']
+        view = gh('run', 'view', str(number), '--json', 'headSha,jobs')
     except Failure as e:
-        return local(str(e))
+        return out('local', str(e), gh_error=True)
     if not isinstance(view, dict) or view.get('headSha') != head:
-        return local('run %d is not for head %s' % (run['databaseId'], head))
-    jobs = {j.get('name'): j for j in view.get('jobs') or [] if isinstance(j, dict)}
+        return out('local', 'run %d is not for head %s' % (number, head), number)
+    run_done = run.get('status') == 'completed'
+    listed = [j for j in view.get('jobs') or [] if isinstance(j, dict)]
+    jobs = {j.get('name'): j for j in listed}
+    parts = failed_parts(listed)
+    states, passed, failed, unfinished, other, missing = {}, [], [], [], [], []
     for name in CI_JOBS:
         job = jobs.get(name)
         if job is None:
-            return local('run %d has no job %s' % (run['databaseId'], name))
-        if job.get('status') != 'completed' or job.get('conclusion') != 'success':
-            return local('job %s of run %d is %s/%s' % (name, run['databaseId'], job.get('status'),
-                                                        job.get('conclusion') or '-'))
-    return {'use_ci': True, 'reason': 'jobs %s green in push run %d' % (' and '.join(CI_JOBS), run['databaseId']),
-            'sha': head, 'run': run['databaseId'],
-            'checks': [{'name': 'ci:%s@%s' % (name, head), 'status': 'passed'} for name in CI_JOBS]}
+            (missing if run_done else unfinished).append(name)
+            states[name] = 'missing' if run_done else 'not started'
+            continue
+        status, conclusion = job.get('status'), job.get('conclusion') or '-'
+        states[name] = '%s/%s' % (status, conclusion)
+        if status != 'completed':
+            unfinished.append(name)
+        elif conclusion == 'success':
+            passed.append(name)
+        elif conclusion in RED:
+            failed.append(name)
+        else:
+            other.append(name)
+    described = ', '.join('%s %s' % (name, states[name]) for name in CI_JOBS)
+    if unfinished and not run_done:
+        return out('pending', 'run %d is still running: %s' % (number, described), number, failed=failed,
+                   unfinished=unfinished, passed=passed, parts=parts)
+    if failed:
+        return out('red', 'red job(s) %s in push run %d: %s' % (', '.join(failed), number, described), number,
+                   red_statuses(passed, failed), failed, passed=passed, parts=parts)
+    if missing:
+        return out('local', 'run %d has no job %s' % (number, ', '.join(missing)), number)
+    if other or unfinished:
+        return out('local', 'job(s) %s of the finished run %d did not pass or fail: %s' % (
+            ', '.join(other + unfinished), number, described), number)
+    return out('green', 'jobs %s green in push run %d' % (' and '.join(CI_JOBS), number), number,
+               {name: 'passed' for name in CI_JOBS})
+
+
+def kept_parts(parts):
+    """The failed parts kept in the wait file, or [] when broken (red CI stays red, as a failure of CI)."""
+    def valid(p):
+        return isinstance(p, dict) and set(p) == {'job', 'conclusion', 'failed_steps'} \
+            and isinstance(p['job'], str) and isinstance(p['conclusion'], str) \
+            and isinstance(p['failed_steps'], list) and all(isinstance(s, str) for s in p['failed_steps'])
+    return parts if isinstance(parts, list) and all(valid(p) for p in parts) else []
+
+
+def kept_red(red):
+    """The red jobs kept in the wait file ({run, failed_jobs, passed, reason, failed_parts}), or None when missing or
+    broken."""
+    if not isinstance(red, dict):
+        return None
+    failed, passed = red.get('failed_jobs'), red.get('passed')
+    if not (isinstance(failed, list) and failed and isinstance(passed, list)
+            and all(isinstance(n, str) and n in CI_JOBS for n in failed + passed) and not set(failed) & set(passed)):
+        return None
+    run = red.get('run')
+    return {'run': run if isinstance(run, int) and not isinstance(run, bool) else None,
+            'failed_jobs': [n for n in CI_JOBS if n in failed], 'passed': [n for n in CI_JOBS if n in passed],
+            'reason': red['reason'] if isinstance(red.get('reason'), str) else 'red job(s) seen in an earlier call',
+            'failed_parts': kept_parts(red.get('failed_parts'))}
+
+
+def write_wait(path, head, started, red=None):
+    data = {'head': head, 'started': started}
+    if red:
+        data['red'] = red
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+    except OSError as e:
+        raise Failure('cannot write the wait file %s: %s' % (path, e))
+
+
+def wait_start(path, head, now, budget):
+    """(started, red) of the wait for head kept in the wait file: the time of the first call and the red jobs seen
+    by an earlier call (or None). A file of another head, a broken one or one whose start is not a finite time within
+    one wait (now - budget - CALL_S <= started <= now; an older file is left by an earlier round) starts anew."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            kept = json.load(f)
+    except (OSError, ValueError):
+        kept = None
+    started = kept.get('started') if isinstance(kept, dict) else None
+    if isinstance(kept, dict) and kept.get('head') == head and isinstance(started, (int, float)) \
+            and not isinstance(started, bool) and not (isinstance(started, float) and not math.isfinite(started)) \
+            and now - budget - CALL_S <= started <= now:
+        return started, kept_red(kept.get('red'))
+    write_wait(path, head, now)
+    return now, None
+
+
+def ci(head, budget=None, wait_file=None, clock=time.time, sleep=time.sleep):
+    """`ci_state` polled every POLL_S seconds for at most min(the budget left, CALL_S) while it is pending, and with a
+    budget also while gh fails. A red job seen while the other required job runs is kept in the wait file, so that no
+    later call and no end of the budget turns red CI into local gates. Returns (exit code, JSON result)."""
+    poll = float(os.environ.get('DELTA_CI_POLL_S', POLL_S))  # shortened by the tests only
+    call = float(os.environ.get('DELTA_CI_CALL_S', CALL_S))
+    waiting = budget is not None
+    begin = clock()
+    started, red = wait_start(wait_file, head, begin, budget) if waiting else (begin, None)
+    end = begin + max(0.0, min(budget - (begin - started), call)) if waiting else begin
+    polls = 0
+    while True:
+        state = ci_state(head)
+        polls += 1
+        now = clock()
+        if state['state'] == 'pending' and state['failed_jobs']:
+            seen = {'run': state['run'], 'failed_jobs': state['failed_jobs'], 'passed': state['passed'],
+                    'reason': state['reason'], 'failed_parts': state['failed_parts']}
+            if waiting and seen != red:
+                write_wait(wait_file, head, started, seen)
+            red = seen
+        if waiting and state['gh_error']:
+            state.update(state='pending', reason='gh failed while waiting for CI: %s' % state['reason'])
+        if state['state'] != 'pending' or now >= end:
+            break
+        # Polls start every `poll` seconds from the start of the call, the last one at its end.
+        sleep(max(0.0, min(begin + polls * poll, end) - now))
+    elapsed = now - started if waiting else 0
+    code = {'green': 0, 'red': 3, 'local': 1}.get(state['state'])
+    if state['state'] == 'pending' and waiting and elapsed < budget:
+        code = 4
+    elif state['state'] in ('pending', 'local') and red:
+        # Red CI is never replaced by local gates: not when the other required job did not finish in time, not when
+        # gh failed after the red job was seen, not when a later look ended without an answer.
+        code = 3
+        unfinished = [name for name in CI_JOBS if name not in red['failed_jobs'] + red['passed']]
+        reason = '%s; job(s) %s did not finish in time' % (red['reason'], ', '.join(unfinished))
+        if state['reason'] != red['reason']:
+            reason += '; the last look: %s' % state['reason']
+        state.update(state='red', reason=reason, run=red['run'], failed_jobs=red['failed_jobs'],
+                     failed_parts=red['failed_parts'], statuses=red_statuses(red['passed'], red['failed_jobs']))
+    elif state['state'] == 'pending':
+        code = 1
+        if not waiting:
+            why = 'no --budget to wait for CI'
+        elif state['gh_error']:
+            why = 'no answer from gh by the end of the budget'
+        else:
+            why = 'CI still running after the budget'
+        state.update(state='local', reason='%s: %s' % (why, state['reason']))
+    statuses = state['statuses'] if state['state'] in ('green', 'red') else None
+    red_ci = state['state'] == 'red'
+    return code, {
+        'state': state['state'], 'use_ci': statuses is not None, 'reason': state['reason'], 'sha': head,
+        'run': state['run'],
+        'checks': [{'name': 'ci:%s@%s' % (name, head), 'status': statuses[name]} for name in CI_JOBS] if statuses else [],
+        'failed_jobs': state['failed_jobs'] if red_ci else [],
+        'failed_parts': state['failed_parts'] if red_ci else [],
+        'failure_kind': failure_kind(state['failed_parts']) if red_ci else None, 'waited_s': round(elapsed, 1)}
+
+
+def e2e_parts(workflow):
+    """The E2E parts of the CI workflow: the number of weights of E2E_SHARD_WEIGHTS and the weights."""
+    try:
+        with open(workflow, encoding='utf-8') as f:
+            text = f.read()
+    except OSError as e:
+        raise Failure('cannot read the workflow %s: %s' % (workflow, e))
+    values = {m.group(1).strip().strip('\'"') for m in WEIGHTS_LINE.finditer(text)}
+    if not values:
+        raise Failure('no E2E_SHARD_WEIGHTS in %s' % workflow)
+    if len(values) > 1:
+        raise Failure('more than one E2E_SHARD_WEIGHTS in %s: %s' % (workflow, ', '.join(sorted(values))))
+    weights = values.pop()
+    if not WEIGHTS.match(weights):
+        raise Failure('E2E_SHARD_WEIGHTS in %s is %r, not positive whole numbers joined by ":"' % (workflow, weights))
+    return {'parts': len(weights.split(':')), 'weights': weights}
 
 
 def main(argv):
@@ -182,21 +426,40 @@ def main(argv):
     p.add_argument('--main', default='origin/main')
     p = sub.add_parser('ci')
     p.add_argument('--head', required=True)
+    p.add_argument('--budget')
+    p.add_argument('--wait-file')
+    p = sub.add_parser('e2e-parts')
+    p.add_argument('--workflow', default=DEFAULT_WORKFLOW)
     args = parser.parse_args(argv)
-    if args.command == 'sync':
-        try:
+    try:
+        if args.command == 'sync':
             out = sync(args.previous, args.head, args.main)
-        except Failure as e:
-            print('delta: %s' % e, file=sys.stderr)
-            return 2
-        print(json.dumps(out, indent=2))
-        return 0
-    if not SHA.match(args.head):
-        print('delta: --head must be the full 40 hex SHA of HEAD, got %r' % args.head, file=sys.stderr)
+        elif args.command == 'e2e-parts':
+            out = e2e_parts(args.workflow)
+        else:
+            if not SHA.match(args.head):
+                raise Failure('--head must be the full 40 hex SHA of HEAD, got %r' % args.head)
+            if (args.budget is None) != (args.wait_file is None):
+                raise Failure('--budget and --wait-file go together')
+            budget = None
+            if args.budget is not None:
+                try:
+                    budget = float(args.budget)
+                except ValueError:
+                    budget = -1
+                if not budget >= 0 or budget == float('inf'):
+                    raise Failure('--budget must be a number of seconds >= 0, got %r' % args.budget)
+            code, out = ci(args.head, budget, args.wait_file)
+            print(json.dumps(out, indent=2))
+            return code
+    except Failure as e:
+        print('delta: %s' % e, file=sys.stderr)
         return 2
-    out = ci(args.head)
+    except Exception as e:  # odd gh output or settings end with exit code 2 and a message, never a traceback
+        print('delta: unexpected error: %s: %s' % (type(e).__name__, e), file=sys.stderr)
+        return 2
     print(json.dumps(out, indent=2))
-    return 0 if out['use_ci'] else 1
+    return 0
 
 
 if __name__ == '__main__':

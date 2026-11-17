@@ -56,7 +56,7 @@ final class SeedDemoScriptTest extends TestCase
         [$code] = $this->runScript(['APP_ENV' => 'dev']);
 
         self::assertSame(0, $code);
-        self::assertSame([...self::SEEDS, 'catalog:reindex', 'storefront:cache:purge-all'], $this->calls());
+        self::assertSame([...self::SEEDS, 'catalog:reindex', 'storefront:cache:purge-all', 'app:backfill --force'], $this->calls());
     }
 
     public function testPassesForceResetToTheSeedsOnlyInProd(): void
@@ -69,6 +69,7 @@ final class SeedDemoScriptTest extends TestCase
                 ...array_map(static fn (string $seed): string => $seed.' --force-reset', self::SEEDS),
                 'catalog:reindex',
                 'storefront:cache:purge-all',
+                'app:backfill --force',
             ],
             $this->calls(),
         );
@@ -98,6 +99,22 @@ final class SeedDemoScriptTest extends TestCase
             ['catalog:seed-demo --force-reset', 'pricing:seed-demo --force-reset', 'payment-simulator:seed-demo --force-reset', 'payment:seed-demo --force-reset'],
             $this->calls(),
         );
+    }
+
+    public function testAFailingPurgeStopsTheScriptBeforeTheBackfill(): void
+    {
+        [$code] = $this->runScript(['APP_ENV' => 'dev', 'FAKE_FAIL_ON' => 'storefront:cache:purge-all']);
+
+        self::assertSame(3, $code);
+        self::assertSame([...self::SEEDS, 'catalog:reindex', 'storefront:cache:purge-all'], $this->calls());
+    }
+
+    public function testAFailingBackfillFailsTheScript(): void
+    {
+        [$code, $stderr] = $this->runScript(['APP_ENV' => 'prod', 'FAKE_FAIL_ON' => 'app:backfill']);
+
+        self::assertSame(3, $code);
+        self::assertStringContainsString('boom in app:backfill', $stderr);
     }
 
     public function testAFailingReindexStopsTheScriptBeforeThePurge(): void

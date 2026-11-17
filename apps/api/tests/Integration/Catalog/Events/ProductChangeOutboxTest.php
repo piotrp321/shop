@@ -10,7 +10,8 @@ use App\Catalog\Application\Command\EditProduct;
 use App\Catalog\Application\Command\PublishProduct;
 use App\Catalog\Application\Command\UnpublishProduct;
 use App\Catalog\Application\Event\ProductChanged;
-use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Application\Event\ProductCreated;
+use App\Catalog\Domain\Product\ProductCreated as ProductCreatedInCatalog;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\VariantInUse;
 use App\Tests\Integration\Inventory\StockFixture;
@@ -37,7 +38,7 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
     {
         parent::setUp();
         OriginalImages::exist(self::getContainer(), self::IMAGE);
-        $this->commandBus()->dispatch(new CreateCategory(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
+        $this->commandBus()->dispatch(CreateCategory::bySeed(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
         $this->commandBus()->dispatch(new CreateProduct(
             self::PRODUCT_ID,
             'Buty biegowe',
@@ -54,12 +55,16 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
         ));
     }
 
-    public function testCreationLeavesOnlyProductCreatedAndADraftAtVersionOne(): void
+    /**
+     * The domain ProductCreated is for the previous version, which may still run while the pods are replaced.
+     */
+    public function testCreationLeavesBothProductCreatedAndADraftAtVersionOne(): void
     {
         $events = $this->outboxEvents();
 
-        self::assertCount(1, $events);
-        self::assertInstanceOf(ProductCreated::class, $events[0]);
+        self::assertCount(2, $events);
+        self::assertInstanceOf(ProductCreatedInCatalog::class, $events[0]);
+        self::assertInstanceOf(ProductCreated::class, $events[1]);
         self::assertSame(['draft', 1, self::ACTOR, 'buty-biegowe'], $this->row());
     }
 
@@ -119,12 +124,14 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
         $this->commandBus()->dispatch(new PublishProduct(self::PRODUCT_ID, 1, self::ACTOR));
         $this->consume('outbox');
         $this->consume('outbox');
+        $this->consume('outbox');
 
         $messages = $this->drainEvents();
 
-        self::assertCount(2, $messages);
-        self::assertInstanceOf(ProductCreated::class, $messages[0]);
-        $changed = $messages[1];
+        self::assertCount(3, $messages);
+        self::assertInstanceOf(ProductCreatedInCatalog::class, $messages[0]);
+        self::assertInstanceOf(ProductCreated::class, $messages[1]);
+        $changed = $messages[2];
         self::assertInstanceOf(ProductChanged::class, $changed);
         self::assertSame([self::PRODUCT_ID, 'buty-biegowe'], [$changed->productId, $changed->slug]);
         self::assertGreaterThanOrEqual($before, $changed->occurredAt->getTimestamp());

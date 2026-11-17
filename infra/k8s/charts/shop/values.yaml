@@ -28,7 +28,7 @@ image:
 # The images of the services we do not build: name:tag as in infra/docker-compose.yml, pinned by the digest of the
 # multi-arch index of that tag (`docker buildx imagetools inspect <name:tag>`); `make check` compares the tags with
 # compose and requires the digests.
-# `kubectl` is the image of the initContainers of the jobs initialize and purge-caches that wait for the rollout of the
+# `kubectl` is the image of the initContainers of the jobs initialize, purge-caches and backfill that wait for the rollout of the
 # deployments they need (api, varnish, store, worker), and of the one that reads the identifier of the cluster for the backup.
 # `restic` and `rclone` are the tools of the backup.
 images:
@@ -80,6 +80,19 @@ ipAllowList:
 clientIpHeader: ""
 clientIpHeaderWithoutAllowList: false
 
+# Sentry (docs/features/sentry/spec.md, D1 and D3). An application gets SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE (image.tag) and
+# SENTRY_TRACES_SAMPLE_RATE only when its DSN is not empty; without one its SDK stays off. The DSN is public (it is in the browser), so it is
+# a plain value of environments/<env>/values.yaml, not a secret. dsn.api serves the api, the worker and the jobs, dsn.store the server of
+# the store (and its browser), dsn.admin the panel. Format: https://<key>@<host>/<project id>.
+sentry:
+  environment: ""
+  # The share of the transactions that are traced (0 to 1).
+  tracesSampleRate: 0
+  dsn:
+    api: ""
+    store: ""
+    admin: ""
+
 secrets:
   # true: the chart renders the Secret from `values` (the ci profile). false: the Secret `name` is created outside the
   # chart (a SealedSecret in prod).
@@ -107,6 +120,9 @@ initialize:
 jobs:
   backoffLimit: 3
   activeDeadlineSeconds: 1800
+  # The job `backfill` (app:backfill after the rollout) goes through the whole catalog and the orders in batches, which
+  # at the target scale takes longer than the other jobs; a step stopped by the deadline starts again on a retry.
+  backfillActiveDeadlineSeconds: 21600
 
 cartPurge:
   schedule: "0 * * * *"

@@ -9,7 +9,7 @@ use App\Ordering\Domain\OrderStatusChange;
 use App\Ordering\Domain\StaffTransition;
 
 /**
- * An order as the panel shows it: the contact, the address, the lines and totals, the moments of the statuses, the
+ * An order as the panel shows it: the customer (null for a guest), the contact, the address, the lines and totals, the moments of the statuses, the
  * payment, the version the next change of staff refers to, the history (oldest first), the refund and the transitions
  * the status allows (statusTransitions, OrderStatus::allowedStaffTransitions(); which of them the staff member may
  * make is for the voter). Amounts are in grosze.
@@ -45,6 +45,7 @@ final readonly class BackofficeOrderView
         public array $history,
         public ?RefundView $refund,
         public array $statusTransitions,
+        public ?string $customerId,
     ) {
     }
 
@@ -100,6 +101,7 @@ final readonly class BackofficeOrderView
                 $refund->note(),
             ),
             array_map(static fn (StaffTransition $transition): string => $transition->value, $order->status()->allowedStaffTransitions()),
+            $order->owner()->customerId(),
         );
     }
 }

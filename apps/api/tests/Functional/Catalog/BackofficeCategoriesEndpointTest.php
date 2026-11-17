@@ -39,16 +39,19 @@ final class BackofficeCategoriesEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
-        self::assertSame([
-            ['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Łaźnia', 'slug' => 'laznia', 'path' => 'laznia', 'children' => []],
+        // Equal, not identical: the order of the keys of a node is not part of the contract.
+        self::assertEquals([
+            ['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Łaźnia', 'slug' => 'laznia', 'path' => 'laznia', 'children' => [], 'version' => 1, 'productCount' => null],
             [
                 'id' => '00000000-0000-4000-8000-000000000001',
                 'name' => 'Sport',
                 'slug' => 'sport',
                 'path' => 'sport',
+                'version' => 1,
+                'productCount' => null,
                 'children' => [
-                    ['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'slug' => 'lody', 'path' => 'sport/lody', 'children' => []],
-                    ['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'slug' => 'lyzwy', 'path' => 'sport/lyzwy', 'children' => []],
+                    ['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'slug' => 'lody', 'path' => 'sport/lody', 'children' => [], 'version' => 1, 'productCount' => null],
+                    ['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'slug' => 'lyzwy', 'path' => 'sport/lyzwy', 'children' => [], 'version' => 1, 'productCount' => null],
                 ],
             ],
         ], json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR));

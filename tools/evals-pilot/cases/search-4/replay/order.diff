@@ -1,0 +1,11 @@
+--- order.orig.md
++++ order.md
+@@ -1 +1 @@
+-Zrecenzuj task SEARCH-4 (FULL review) na zamrożonym HEAD `78ddc299117301d42d048ba71a57fa30b047cd2e` w checkoutcie <home>/Development/claude/shop-SEARCH-4 (gałąź `task/SEARCH-4`). Diff taska: `git diff 07524862d7a208b446b522d5266d675b3a4efbf3..78ddc299117301d42d048ba71a57fa30b047cd2e` (merge-base z `origin/epic/search`). Nie zmieniaj kodu ani drzewa roboczego.
++Zrecenzuj task SEARCH-4 (FULL review) na zamrożonym HEAD `78ddc299117301d42d048ba71a57fa30b047cd2e` w checkoutcie {{CHECKOUT}} (gałąź `task/SEARCH-4`). Diff taska: `git diff 07524862d7a208b446b522d5266d675b3a4efbf3..78ddc299117301d42d048ba71a57fa30b047cd2e` (merge-base z `origin/epic/search`). Nie zmieniaj kodu ani drzewa roboczego.
+@@ -17 +17 @@
+-TDD: `tdd.status: lost_verified_on_base`. Dziennik dowodów: `<home>/.local/state/ao-search/tasks/SEARCH-4/delivery-state.json.evidence.jsonl`. Testy jednostkowe i integracyjny ES mają RED przed implementacją. Funkcjonalne `ProductsEndpointTest` i `testNumericAxisAndValueNamesWork` napisano bez RED. Orkiestrator sprawdził je na kodzie bazowym: padają z asercji. Zostanie to ujawnione w PR, nie odtwarzaj RED.
++TDD: `tdd.status: lost_verified_on_base`. Dziennik dowodów: `{{INPUT_DIR}}/tdd-evidence.jsonl`. Testy jednostkowe i integracyjny ES mają RED przed implementacją. Funkcjonalne `ProductsEndpointTest` i `testNumericAxisAndValueNamesWork` napisano bez RED. Orkiestrator sprawdził je na kodzie bazowym: padają z asercji. Zostanie to ujawnione w PR, nie odtwarzaj RED.
+@@ -25,0 +26,2 @@
++
++Uwaga do tego przebiegu (dopisana przez ewaluację, nie przez orkiestratora): stos Dockera nie działa i nie ma sieci. Nie uruchamiaj testów, `make` ani `docker`; pracuj na odczycie kodu i dziennika dowodów.

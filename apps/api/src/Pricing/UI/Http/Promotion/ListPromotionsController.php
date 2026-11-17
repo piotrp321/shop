@@ -38,7 +38,7 @@ final class ListPromotionsController
         operationId: 'listPromotions',
         summary: 'Promotion list',
         description: 'A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff '
-            .'member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the total is not counted.',
+            .'member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the first page (without `after`) also has the `total` of the matching promotions, counted up to 10 000.',
         tags: ['Pricing'],
         parameters: [
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Only the promotions in this status now.', schema: new OA\Schema(type: 'string', enum: PromotionListQuery::STATUSES)),

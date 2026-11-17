@@ -34,6 +34,10 @@ niesprawdzony z powodem):
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - Stany: loading, empty i error dla każdego zapytania; ekran 375 px.
 - Przypadki brzegowe: wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
+- Zasady przekrojowe specyfikacji (wymaganie dla każdego wyjścia albo miejsca danego rodzaju): sprawdź każde takie
+  wyjście w całej zmianie (w `/integration` w całym diffie epiku, także w rundzie po poprawkach), także wartości
+  z niego wyprowadzone, oraz konsumentów poza diffem (kod, który te wartości wyświetla, przelicza, zapisuje albo
+  wysyła); podaj wszystkie naruszenia razem jako jedno znalezisko na zasadę z listą miejsc, nie pierwsze znalezione.
 
 Wagi (wagę wyznacza wpływ, nie ostrożność):
 - Critical — utrata danych lub poważna luka bezpieczeństwa.
@@ -46,6 +50,23 @@ Wagi (wagę wyznacza wpływ, nie ostrożność):
   przypadku brzegowego. Przykłady błędów, które przeszły jako Minor, a są Important: 500 na NUL w nazwie produktu
   (#247), 500 przy duplikacie wariantu różniącym się wielkością liter (#248), notatka z samego NBSP przyjęta mimo
   wymogu specyfikacji (#256), angielski komunikat 422 (#257).
+
+Walidacja wejścia, błędna odpowiedź i integralność danych (ta sama treść w `/integration` i agencie `qa-adversarial`;
+uzupełnia listę `Important`):
+- Zdanie „Wpływ: …” odpowiada na trzy pytania: co zostaje zapisane albo zwrócone (dane, których specyfikacja nie
+  dopuszcza, wynik inny niż dla równoważnego wejścia, wartość zmieniona bez komunikatu); kto to widzi i czy dowie się,
+  że coś poszło źle; czy da się to cofnąć bez ręcznej poprawki danych.
+- `Critical`: zapisane dane są błędne i nie da się ich odtworzyć ani naprawić bez ręcznej ingerencji w bazę.
+- `Important`: walidacja przepuszcza dane, które specyfikacja odrzuca; odpowiedź 2xx niesie wynik niezgodny
+  z kontraktem endpointu (pusta lista dla UUID kategorii zapisanego wielkimi literami, #197); zapis zmienia wartość
+  bez komunikatu (przycinanie nazwy promocji, #305); odpowiedź błędu nie pozwala odbiorcy stwierdzić, co poprawić
+  (zły kod, brak pola, komunikat nie po polsku).
+- `Minor`: tylko gdy nic błędnego nie zostaje zapisane, a odpowiedź jest zgodna z kontraktem co do kodu i pola,
+  z usterką w szczegółach (422 na właściwym polu, ale dwa naruszenia zamiast jednego, #113). „Wpływ” bez
+  odpowiedzi na pierwsze pytanie nie uzasadnia wagi `Minor`.
+- Klasa znaleziska nie przesądza wagi: nie jest automatycznie ani `Minor`, ani `Important`.
+- Potwierdzony problem tej klasy poza zakresem zmiany idzie do raportu jako uwaga z tym samym zdaniem „Wpływ: …”,
+  wagą, jaką miałby według tych reguł, i proponowanym tytułem zgłoszenia (etykiety `agent`, `bug`).
 
 Każdy potwierdzony błąd musi zawierać:
 - Wagę i jedno zdanie uzasadnienia (wpływ na użytkownika, dane albo system).
