@@ -175,7 +175,7 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   jego gałęzi (ponowienia);
 - `attempts`: lista prób (`task`, `kind`, `number`, `outcome`, `executor_status`, `wall_s`, `value`, `estimated`,
   tokeny), z której liczy się historia median;
-- `value`: wartość tokenów razem i w przekrojach `by_role`, `by_model`, `by_task`, `by_role_model`; tokeny (`input`,
+- `value`: wartość tokenów razem i w przekrojach `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`; tokeny (`input`,
   `output`, `cache_read`, `cache_write`) w tych samych przekrojach;
 - `subscription`: przyrost pp każdego okna (reguły `night_queue._window_deltas`: okno odnowione w trakcie albo stan
   inny niż `ok` daje `null`), `overlap` (epiki, z którymi przedział się przecinał) i `share`: szacunek udziału tego
@@ -220,6 +220,16 @@ w `gaps`. Wiadomości i `modelUsage` czasem się rozchodzą (kompakcja, wywołan
 par próba–model): nadwyżka `modelUsage` nad wiadomościami trafia do roli `other`, a niedobór oznacza role tego
 modelu jako szacowane, z pozycją w `gaps`.
 
+Reguła zachowawcza: liczba szacowana, niepełna albo wyprowadzona z takich danych (średnia, mediana, iloraz, różnica, udział,
+próg) ma `estimated: true`, a gdy brakuje jej części, także `incomplete: true` albo pozycję w `gaps`, i każde jej
+przedstawienie (JSON, raport, komentarz, push, `/retro`) pokazuje ją z „≈” (suma niepełna: „≈” i dopisek „suma niepełna”
+albo „dolna granica”). Próba bez transkryptu może należeć do każdej roli i modelu, więc oznacza niepełne wszystkie przekroje
+`value`, do których mogła należeć (role zadania w `by_task_role` tylko jej zadania). Czas zadania, czas integracji i czas
+poleceń w próbach (`in_attempts`) bez części prób (brak czasu albo transkryptu) to dolna granica: `incomplete: true` i
+pozycja w `gaps`. Wąskie gardło, kandydat `decide`, okno `effect` i alarm `waste` (`estimated` albo `median_estimated`) zbudowane z takiej liczby (także z mediany
+historii, w której jest choć jedna) mają `estimated: true`; prognoza `expected_effect` jest szacowana tylko wtedy, gdy
+dane, z których wynika, są szacowane lub niepełne.
+
 ### Historia i trend
 
 - `metrics.py backfill`: rekord każdego przebiegu epiku w `~/.local/state/ao-*` z końcowym PR `MERGED`; braki
@@ -227,8 +237,9 @@ modelu jako szacowane, z pozycją w `gaps`.
 - `metrics.py trend [--last N]`: tabela zmergowanych epików (domyślnie 10 ostatnich) z wartościami na zadanie planu:
   czas do `epic_done`, `work`, `human_wait`, `review`, `gate_wait`, `repeat_runs`, wartość tokenów, pp okna tygodniowego (`share`), próby nieudane, REPAIR,
   interwencje, regresje; mediana każdej kolumny (z pominięciem `null`) i pozycja wskazanego epiku względem niej.
-  Wartość tokenów i pp z szacowanego źródła (`estimated`, `share_estimated`) mają „≈” w tabeli, w pozycji względem
-  mediany (także w raporcie odbioru) i znacznik w `--json`, tak samo jak w `render`.
+  Wartość tokenów, pp i `repeat_runs` z szacowanego albo niepełnego źródła (`estimated`, `share_estimated`,
+  `in_attempts.incomplete`) mają „≈” w tabeli, w pozycji względem mediany razem z procentem różnicy (także w raporcie odbioru)
+  i znacznik w `--json`, tak samo jak w `render`.
 - Rekordy z otwartym oknem regresji przelicza każde `trend` (merge kolejnego epiku, start `/ao-run`).
 - Epik z inną wersją CLI albo innym zestawem modeli niż poprzedni ma w `trend` adnotację zmiany (bez korekty liczb).
 
