@@ -122,6 +122,16 @@ final readonly class PhotoManifest
     }
 
     /**
+     * @param list<string> $groups the photo groups of photo-groups.yaml
+     *
+     * @return list<string> the groups that no file of the manifest belongs to
+     */
+    public function groupsWithoutFiles(array $groups): array
+    {
+        return array_values(array_diff($groups, array_keys($this->fileNamesByGroup())));
+    }
+
+    /**
      * @param list<string>                                                                                   $groups
      * @param array{file: array<string, true>, sha256: array<string, true>, unsplashId: array<string, true>} $seen
      * @param list<string>                                                                                   $violations
