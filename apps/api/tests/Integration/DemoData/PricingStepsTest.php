@@ -234,6 +234,66 @@ final class PricingStepsTest extends KernelTestCase
         self::assertSame(\count($first->variantIds), $this->int($this->connection()->fetchOne('SELECT count(*) FROM pricing_promotion_variant WHERE promotion_id = ?', [$first->id])));
     }
 
+    public function testTwoRunsWithTheSameAnchorGiveTheSameRowsInThePricingTables(): void
+    {
+        $this->catalogSteps();
+        $this->pricingSteps();
+        $first = $this->pricingChecksums();
+        self::assertNotContains('empty', $first);
+
+        $this->emptyPricing();
+        $this->pricingSteps();
+
+        self::assertSame($first, $this->pricingChecksums());
+    }
+
+    public function testThePriceStepSplitIntoWorkersGivesTheSameRowsAsOneProcess(): void
+    {
+        $this->catalogSteps();
+        $this->pricingSteps();
+        $whole = $this->pricingChecksums();
+
+        $this->emptyPricing();
+        $this->succeeds('demo-data:prices', ['--worker' => 0, '--workers' => 3]);
+        $this->succeeds('demo-data:prices', ['--worker' => 2, '--workers' => 3]);
+        $this->succeeds('demo-data:prices', ['--worker' => 1, '--workers' => 3]);
+        $this->succeeds('demo-data:promotions');
+
+        self::assertSame($whole, $this->pricingChecksums());
+    }
+
+    public function testAnotherAnchorMovesTheTimes(): void
+    {
+        $this->catalogSteps();
+        $this->pricingSteps();
+        $first = $this->text($this->connection()->fetchOne('SELECT max(changed_at) FROM pricing_price_history'));
+
+        $this->emptyPricing();
+        $this->succeeds('demo-data:prices', ['--anchor' => '2026-12-17T00:00:00Z']);
+        $this->succeeds('demo-data:promotions', ['--anchor' => '2026-12-17T00:00:00Z']);
+
+        self::assertNotSame($first, $this->text($this->connection()->fetchOne('SELECT max(changed_at) FROM pricing_price_history')));
+    }
+
+    private function emptyPricing(): void
+    {
+        $this->connection()->executeStatement('TRUNCATE pricing_variant_price, pricing_price_history, pricing_promotion_variant, pricing_promotion, pricing_discount_code_usage, pricing_discount_code');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function pricingChecksums(): array
+    {
+        $sums = [];
+        $orders = ['pricing_variant_price' => 't.variant_id', 'pricing_price_history' => 't.id', 'pricing_promotion' => 't.id', 'pricing_promotion_variant' => 't.promotion_id, t.variant_id', 'pricing_discount_code' => 't.id'];
+        foreach ($orders as $table => $order) {
+            $sums[$table] = $this->text($this->connection()->fetchOne(\sprintf("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY %s)), 'empty') FROM %s t", $order, $table)));
+        }
+
+        return $sums;
+    }
+
     public function testThePricesNeedTheProducts(): void
     {
         $tester = $this->step('demo-data:prices');
