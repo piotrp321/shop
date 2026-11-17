@@ -88,14 +88,17 @@ final readonly class PricingVerifier
      */
     private function currentPriceNotLastEntry(string $seedSlugs, int $every): array
     {
+        // The sample is part of the text of the statement, not a parameter: a statement that PostgreSQL has prepared
+        // and planned generically cannot tell that most variants are left out, and then joins the tables badly.
+        $sample = $every > 1 ? \sprintf(' AND abs(hashtext(pr.variant_id::text)) %% %d = 0', $every) : '';
         /** @var list<string> $slugs */
         $slugs = $this->connection->fetchFirstColumn(
             'SELECT DISTINCT p.slug FROM pricing_variant_price pr JOIN catalog_product_variant v ON v.id = pr.variant_id JOIN catalog_product p ON p.id = v.product_id
              JOIN LATERAL (SELECT * FROM pricing_price_history h WHERE h.variant_id = pr.variant_id ORDER BY h.changed_at DESC, h.id DESC LIMIT 1) l ON true
-             WHERE NOT (p.slug = ANY(?::text[])) AND (1 = ? OR abs(hashtext(pr.variant_id::text)) % ? = 0)
+             WHERE NOT (p.slug = ANY(?::text[]))'.$sample.'
                AND (l.gross_amount, l.net_amount, l.vat_amount, l.vat_rate_bp, l.tax_class, l.currency, l.changed_at) IS DISTINCT FROM (pr.gross_amount, pr.net_amount, pr.vat_amount, pr.vat_rate_bp, pr.tax_class, pr.currency, pr.updated_at)
              ORDER BY p.slug LIMIT '.(Listing::SHOWN + 1),
-            [$seedSlugs, $every, $every],
+            [$seedSlugs],
         );
 
         return Listing::of('The current price of a variant is not the last entry of its history (products)', $slugs);

@@ -54,12 +54,15 @@ trait RunsDemoDataSteps
 
     /**
      * The steps of the catalog and of the prices (step 3: the prices with their history, then the promotions and the
-     * discount codes); the checks of demo-data:verify need both.
+     * discount codes) and the ANALYZE that bin/generate-demo runs before demo-data:verify: the checks of the prices join
+     * the big tables, and PostgreSQL plans those joins well only with the statistics of a loaded table (the tables of
+     * a test are loaded and rolled back, so their statistics are not those of the rows the test sees).
      */
     private function generatedSteps(): void
     {
         $this->catalogSteps();
         $this->pricingSteps();
+        $this->succeeds('demo-data:analyze', [], false);
     }
 
     private function pricingSteps(): void
