@@ -55,6 +55,7 @@ final class DiscountCodePlanTest extends TestCase
     public function testEveryCodeHasEndedBeforeTheAnchorWithinTheThreeYearsOfOrders(): void
     {
         $starts = [];
+        $lastEnd = 0;
         foreach (self::codes() as $code) {
             $ends = $code->period->endsAt();
             self::assertNotNull($ends, $code->code->toString());
@@ -63,11 +64,12 @@ final class DiscountCodePlanTest extends TestCase
             self::assertLessThan($code->period->startsAt(), $code->createdAt);
             self::assertTrue($code->enabled);
             $starts[] = $code->period->startsAt()->getTimestamp();
+            $lastEnd = max($lastEnd, $ends->getTimestamp());
         }
         $sorted = $starts;
         sort($sorted);
         self::assertSame($sorted, $starts, 'The codes go in the order of their start.');
-        self::assertGreaterThan(self::anchor()->modify('-120 days')->getTimestamp(), max(array_map(static fn (DiscountCodeSpec $code): int => $code->period->endsAt()?->getTimestamp() ?? 0, self::codes())), 'A code is recent.');
+        self::assertGreaterThan(self::anchor()->modify('-120 days')->getTimestamp(), $lastEnd, 'A code is recent.');
     }
 
     public function testTheCodesAreOfBothKindsAndAnAmountCodeNeedsAMinimumAboveIt(): void

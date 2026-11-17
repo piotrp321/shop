@@ -63,6 +63,11 @@ final class PromotionPlannerTest extends TestCase
         self::assertLessThanOrEqual(PromotionPlanner::COUNT, \count(self::promotions()));
     }
 
+    public function testTheLimitOfVariantsIsThatOfThePromotionAggregate(): void
+    {
+        self::assertSame(Promotion::MAX_VARIANTS, PromotionPlanner::MAX_VARIANTS);
+    }
+
     public function testEveryPromotionHasAtMostAThousandDistinctVariantsAndAtLeastOne(): void
     {
         foreach (self::promotions() as $promotion) {
@@ -71,8 +76,8 @@ final class PromotionPlannerTest extends TestCase
             self::assertCount(\count($promotion->variantIds), array_unique($promotion->variantIds), $promotion->name);
         }
         $sizes = array_map(static fn (PromotionSpec $promotion): int => \count($promotion->variantIds), self::promotions());
-        self::assertGreaterThan(100, max($sizes), 'Some promotions are big.');
-        self::assertLessThan(100, min($sizes), 'Some promotions are small.');
+        self::assertNotEmpty(array_filter($sizes, static fn (int $size): bool => $size > 100), 'Some promotions are big.');
+        self::assertNotEmpty(array_filter($sizes, static fn (int $size): bool => $size < 100), 'Some promotions are small.');
     }
 
     public function testEveryPromotionHasEndedBeforeTheAnchorAndStartedInTheThreeYearsOfOrders(): void

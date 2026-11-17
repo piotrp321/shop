@@ -12,7 +12,6 @@ use App\DemoData\Identity\DemoUuid;
 use App\DemoData\Profile\RunContext;
 use App\DemoData\Random\Prng;
 use App\Pricing\Domain\Promotion\PercentOff;
-use App\Pricing\Domain\Promotion\Promotion;
 use App\Pricing\Domain\Promotion\PromotionPeriod;
 
 /**
@@ -31,6 +30,8 @@ final class PromotionPlanner
 {
     public const string STREAM = 'promotion';
     public const int COUNT = 40;
+    /** The most variants of a promotion; the aggregate of Pricing has the same limit (a test compares them), and an aggregate is not named here. */
+    public const int MAX_VARIANTS = 1_000;
     private const int HISTORY_DAYS = 1_095;
     private const int RECENT_DAYS = 100;
     private const int RECENT_EVERY = 8;
@@ -225,6 +226,6 @@ final class PromotionPlanner
             $chosen = [$prng->pick($free)];
         }
 
-        return \array_slice($chosen, 0, Promotion::MAX_VARIANTS);
+        return \array_slice($chosen, 0, self::MAX_VARIANTS);
     }
 }

@@ -6,6 +6,7 @@ namespace App\Tests\Functional\DemoData;
 
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
+use App\DemoData\Copy\Sql;
 use App\DemoData\Pricing\PriceGenerator;
 use App\DemoData\Pricing\PriceTimeline;
 use App\DemoData\Pricing\PromotionPlanner;
@@ -56,10 +57,10 @@ final class GeneratedPricesOnTheRealPathsTest extends WebTestCase
         [$variantId, $timeline] = $this->variantWithARecentChangeAndEndedPromotions();
 
         $promotion = $this->planPromotionFromNow($variantId);
-        $snapshot = $this->currentPriceOnceTheStartIsReached($variantId, new \DateTimeImmutable($promotion['startsAt']));
+        $start = new \DateTimeImmutable(Sql::string($promotion['startsAt']));
+        $snapshot = $this->currentPriceOnceTheStartIsReached($variantId, $start);
 
         self::assertNotNull($snapshot->promotion, 'The promotion is running.');
-        $start = new \DateTimeImmutable($promotion['startsAt']);
         $expected = $this->lowestPriorByTheTimeline($timeline, $start);
         // The window holds a promotional price, so there is a lowest price and it is below the catalog price before the change.
         self::assertNotNull($expected);

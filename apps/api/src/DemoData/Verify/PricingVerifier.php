@@ -13,7 +13,6 @@ use App\DemoData\Pricing\PromotionSpec;
 use App\DemoData\Profile\RunContext;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
-use App\Pricing\Domain\Promotion\Promotion;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
@@ -176,11 +175,11 @@ final readonly class PricingVerifier
     {
         /** @var list<string> $names */
         $names = $this->connection->fetchFirstColumn(
-            'SELECT p.name FROM pricing_promotion p JOIN pricing_promotion_variant v ON v.promotion_id = p.id WHERE p.id = ANY(?::uuid[]) GROUP BY p.id, p.name HAVING count(*) > '.Promotion::MAX_VARIANTS.' ORDER BY p.name LIMIT '.(Listing::SHOWN + 1),
+            'SELECT p.name FROM pricing_promotion p JOIN pricing_promotion_variant v ON v.promotion_id = p.id WHERE p.id = ANY(?::uuid[]) GROUP BY p.id, p.name HAVING count(*) > '.PromotionPlanner::MAX_VARIANTS.' ORDER BY p.name LIMIT '.(Listing::SHOWN + 1),
             [$ids],
         );
 
-        return Listing::of('A generated promotion has more than '.Promotion::MAX_VARIANTS.' variants', $names);
+        return Listing::of('A generated promotion has more than '.PromotionPlanner::MAX_VARIANTS.' variants', $names);
     }
 
     /**
