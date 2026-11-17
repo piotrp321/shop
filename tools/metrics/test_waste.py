@@ -447,6 +447,24 @@ class W4Test(WasteEnv):
         self.setup_median(1.0)
         self.assertEqual([a['key'] for a in self.run_sum(5.0)[0]], ['W4:demo:T-1'])
 
+    def test_an_exact_sum_is_not_marked_as_estimated(self):
+        self.setup_median(2.0)
+        alarm = self.run_sum(7.0)[0][0]
+        self.assertIs(alarm['estimated'], False)
+        self.assertNotIn('≈', alarm['push'])
+
+    def test_a_sum_with_an_estimated_attempt_is_marked_in_the_push_and_the_field(self):
+        rate = 1e-5
+        self.history(5, [hist('H', 'plan', value=2.0, cli_result=True, model_rates={OPUS: rate})])
+        home = self.home(attempts=[self.ended(number=1), self.ended(number=2, start=NOW - 60000)])
+        self.cost(home, 'T-1', 1, 1.0)                                  # exact: a CLI result
+        t = Transcript().init().message(input=1000000, output=10)       # no result: killed run, estimated
+        testkit.put_transcript(home, 'T-1', 2, t.lines)
+        alarms = [a for a in self.alarms(self.run_ok(home)) if a['alarm'] == 'W4']
+        self.assertEqual([a['key'] for a in alarms], ['W4:demo:T-1'])
+        self.assertIs(alarms[0]['estimated'], True)
+        self.assertIn('≈', alarms[0]['push'])
+
     def test_the_running_attempt_is_not_counted(self):
         self.setup_median(2.0)
         alarms, _ = self.run_sum(5.0, extra=[self.running(number=3, seconds=100)])

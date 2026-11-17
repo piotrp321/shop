@@ -2696,8 +2696,9 @@ def role_kind(records, role):
 
 
 def role_samples(record, role, kind):
-    """The value of the role in each task of `kind` (0 where it did not act); None for a record without
-    value.by_task_role (older than the field)."""
+    """The value of the role in each task of `kind` (0 where it did not act, i.e. has no cell); a task is left out
+    when its own value is unknown or the role acted in it with an unknown value (`usd` null): not a zero (the window
+    is then estimated: `role_estimated`). None for a record without value.by_task_role (older than the field)."""
     by_role, by_task = _get(record, ('value', 'by_task_role')), record.get('by_task')
     if not isinstance(by_role, dict) or not isinstance(by_task, dict):
         return None
@@ -2707,15 +2708,43 @@ def role_samples(record, role, kind):
             continue
         if not _is_number(_get(record, ('value', 'by_task', task, 'usd'))):
             continue                                    # the value of the task is unknown: not a zero
-        usd = _get(by_role, (task, role, 'usd'))
-        found.append(usd if _is_number(usd) else 0.0)
+        cell = _get(by_role, (task, role))
+        if cell is None:
+            found.append(0.0)                           # the role did not act in the task
+        elif _is_number(_get(cell, ('usd',))):
+            found.append(cell['usd'])
+        # else: the role acted but its value is unknown: not a zero
     return found
 
 
-def window_stats(records, samples_of, gaps, label, missing='brak miary'):
-    """{epics, n, n_epics, median, p25, p75} of the samples of the records of a window; a record whose samples are
-    unknown (None) is left out with a gap."""
-    values, epics = [], []
+def role_estimated(record, role, kind):
+    """Whether the samples of `role_samples` are not exact (estimated or incomplete, as in `decide`): a role cell of
+    a task of `kind` that has a known value is not an exact number, i.e. it is estimated or incomplete, or its `usd`
+    is unknown (the task is then left out of the samples, so the window is incomplete)."""
+    by_role = _get(record, ('value', 'by_task_role'))
+    by_task = record.get('by_task')
+    if not isinstance(by_role, dict) or not isinstance(by_task, dict):
+        return False
+    for task, entry in by_task.items():
+        if not isinstance(entry, dict) or entry.get('kind') != kind:
+            continue
+        if not _is_number(_get(record, ('value', 'by_task', task, 'usd'))):
+            continue
+        cell = _get(by_role, (task, role))
+        if cell is None:
+            continue                                    # the role did not act in the task: an exact zero
+        if (not _is_number(_get(cell, ('usd',))) or _get(cell, ('estimated',)) is True
+                or _get(cell, ('incomplete',)) is True):
+            return True
+    return False
+
+
+def window_stats(records, samples_of, gaps, label, missing='brak miary', estimated_of=None):
+    """{epics, n, n_epics, median, p25, p75, estimated} of the samples of the records of a window; a record whose
+    samples are unknown (None) is left out with a gap. `estimated`: a record is estimated by `estimated_of` (the
+    measures that are not computed from estimated values have none); a record with no samples left because the role
+    value is unknown is left out with a gap and makes the window estimated."""
+    values, epics, estimated = [], [], False
     for record in records:
         found = samples_of(record)
         if found is None:
@@ -2723,10 +2752,15 @@ def window_stats(records, samples_of, gaps, label, missing='brak miary'):
         elif found:
             values.extend(found)
             epics.append(str(record.get('epic')))
+            estimated = estimated or bool(estimated_of and estimated_of(record))
+        elif estimated_of and estimated_of(record):
+            estimated = True                            # left out for an unknown value: the window is incomplete
+            gaps.add('effect', 'epik %s (okno %s): wartość roli nieznana, pominięty' % (record.get('epic'), label))
     ordered = sorted(values)
     stat = lambda f: round(percentile(ordered, f), 4) if ordered else None
     return {'epics': epics, 'n': len(values), 'n_epics': len(epics),
-            'median': round(median(ordered), 4) if ordered else None, 'p25': stat(0.25), 'p75': stat(0.75)}
+            'median': round(median(ordered), 4) if ordered else None, 'p25': stat(0.25), 'p75': stat(0.75),
+            'estimated': estimated}
 
 
 def epic_time(records, config):
@@ -2761,17 +2795,18 @@ def build_effect(records, key, at, config):
     gaps = Gaps()
     before, after, pool, spanning, unmerged = effect_windows(records, at, gaps)
     settings = config['decisions']
-    level_kind = None
+    level_kind, estimated_of = None, None
     if rule == 'D1':
         level_kind = role_kind(before + after, subject)
         samples_of = (lambda r: role_samples(r, subject, level_kind)) if level_kind else (lambda r: [])
+        estimated_of = (lambda r: role_estimated(r, subject, level_kind)) if level_kind else None
     elif rule == 'D2':
         samples_of = plan_work_samples
     else:
         samples_of = lambda r: [v] if (v := epic_value(r, rule, subject)) is not None else None
     missing = 'rekord bez value.by_task_role (starszy niż pole)' if rule == 'D1' else 'brak miary'
-    stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing),
-             'after': window_stats(after, samples_of, gaps, 'po', missing)}
+    stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing, estimated_of),
+             'after': window_stats(after, samples_of, gaps, 'po', missing, estimated_of)}
     task_level = rule in ('D1', 'D2')
     reasons = []
     if task_level:
@@ -2790,7 +2825,8 @@ def build_effect(records, key, at, config):
                 'pct': round(change / stats['before']['median'] * 100, 1) if stats['before']['median'] else None}
     return {'key': key, 'rule': rule, 'at': iso(at), 'measure': MEASURES[rule], 'unit': EFFECT_UNITS[rule],
             'level': 'task' if task_level else 'epic', 'level_kind': level_kind, 'before': stats['before'],
-            'after': stats['after'], 'message': NOT_ENOUGH if reasons else None, 'reasons': reasons, 'diff': diff,
+            'after': stats['after'], 'estimated': stats['before']['estimated'] or stats['after']['estimated'],
+            'message': NOT_ENOUGH if reasons else None, 'reasons': reasons, 'diff': diff,
             'epic_time': {'unit': 'h na zadanie planu', 'before': epic_time(pool[-EPIC_TIME_COUNT:], config),
                           'after': epic_time(after[:EPIC_TIME_COUNT], config)},
             'versions': version_change(before, after, gaps), 'spanning': spanning, 'unmerged_after': unmerged,
@@ -3781,11 +3817,13 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
         hit = over_median('W4', kind, history['task'].get(kind, []), amount, rules['cost_multiple'],
                           rules['cost_min_usd'], False, rules['min_history'], gaps)
         if hit:
+            estimated = any(e['estimated'] for e in task_entries)
             found.append(make_alarm(
                 'W4', 'W4:%s:%s' % (epic_id, task), epic_id, task, None,
-                '%s: %s kosztuje łącznie %s USD%s' % (name, _id(task), _decimal(amount, 2),
-                                                     _of_median(hit[1], 'mediany zadań')),
-                value=round(amount, 8), median=hit[0], ratio=hit[1], attempts=len(task_entries)))
+                '%s: %s kosztuje łącznie %s%s USD%s' % (name, _id(task), '≈' if estimated else '',
+                                                       _decimal(amount, 2), _of_median(hit[1], 'mediany zadań')),
+                value=round(amount, 8), median=hit[0], ratio=hit[1], attempts=len(task_entries),
+                estimated=estimated))
     if no_value:
         gaps.add('W4', '%d zadań z zakończoną próbą bez wartości: nie sprawdzone' % no_value)
     return found

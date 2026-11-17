@@ -343,7 +343,7 @@ Katalog wyników EVALS 2.0 jest czytany raz na wywołanie.
 
 | Reguła | Miara | Poziom | Jednostka |
 |---|---|---|---|
-| `D1:<rola>` | wartość roli w zadaniu (`value.by_task_role`; 0, gdy rola w zadaniu nie działała; zadanie bez znanej wartości pominięte) | zadania `kind` roli | USD |
+| `D1:<rola>` | wartość roli w zadaniu (`value.by_task_role`; 0, gdy rola w zadaniu nie działała; pominięte jest zadanie bez znanej wartości oraz zadanie, w którym rola działała, ale jej wartość jest nieznana, `usd` `null`) | zadania `kind` roli | USD |
 | `D2:plan_split` | `work` zadania planu | zadania `plan` | h |
 | `D3:gate_wait` | `gate_wait.wait_s` | epik | h |
 | `D4:<human_wait\|ci\|limit_wait\|review>` | udział kategorii w jej mianowniku (jak w `decide`) | epik | pp |
@@ -356,7 +356,11 @@ wykonawcy: spec mówi „zadania tego `kind`” bez wskazania, który; bez warto
 `value.by_task_role` jest pomijany z pozycją w `gaps`, nie liczony jako zero.
 
 Wynik (JSON): `before` i `after` (`epics`: epiki z pomiarem, `n`: próbki (zadania albo epiki), `n_epics`, `median`, `p25`,
-`p75`; kwartyle metodą interpolacji liniowej między rangami), `diff` (`value` w jednostce miary i `pct` w procentach różnicy
+`p75`; kwartyle metodą interpolacji liniowej między rangami; `estimated`: `true`, gdy któraś użyta próbka pochodzi
+z komórki `value.by_task_role` z `estimated: true` albo `incomplete: true`, co w `decide` też oznacza wartość szacowaną, albo gdy
+pominięto zadanie, w którym rola działała z nieznaną wartością (`usd` `null`), także gdy przez to epik nie ma żadnej próbki (jest pominięty, z pozycją w `gaps`): okno jest wtedy niepełne; tylko
+D1, pozostałe miary są dokładne i mają `false`), `estimated` (na poziomie wyniku: `true`, gdy szacowane jest któreś okno;
+dotyczy wtedy też `diff`; liczby szacowane są pokazywane z „≈”), `diff` (`value` w jednostce miary i `pct` w procentach różnicy
 median; `pct` `null` przy medianie „przed” równej 0), `message` (`za mało danych` i wtedy `diff` `null`, a `reasons` mówi
 dlaczego), `epic_time` (czas do `epic_done` na zadanie planu w godzinach: mediana trzech epików zmergowanych najbliżej
 przed `CZAS`, niezależnie od liczebności okna, i trzech pierwszych epików okna po), `versions` (`cli` i `models`:
@@ -381,7 +385,7 @@ historii niczego nie zmienia). Linia `gaps` nie ma klucza `push`: sesja `/ao-run
 | W1 koszt próby | próba zakończona: `value` > `cost_multiple` (3) × mediana `value` zakończonych prób tego `kind` z wartością **i** `value` ≥ `cost_min_usd` (5 USD); próba bez wartości nie alarmuje (pozycja w `gaps`); wartość szacowana (próba bez wyniku CLI) może alarmować i ma w `push` „≈” | `W1:<epik>:<zadanie>:<próba>` |
 | W2 trwająca próba | próba bez `ended_at` i bez `outcome` w epiku, który się nie skończył: `now − started_at` > `time_multiple` (3) × mediana `wall_s` zakończonych prób tego `kind` **i** > `time_min_h` (1) h; bez szacowania kosztu trwającej próby | `W2:<epik>:<zadanie>:<próba>` |
 | W3 pętla prób (bez mediany i bez kwoty) | (a) próba zadania rozpoczęta po co najmniej `loop_failed_attempts` (2) nieudanych próbach tego samego zadania (klasa `failed`; `blocked` i `usage_limit` się nie liczą); alarmuje każda kolejna próba z własnym kluczem; (b) kolejny REPAIR epiku z rzędu: zadanie `repair` rozpoczęte, gdy od startu poprzedniego zadania `repair` (kolejność pierwszych prób) nie było zdarzenia `epic_ci_green` ani `epic_ci_inherited` epiku; trzeci REPAIR bez zielonego CI alarmuje też; (c) `epics.round` równe `--max-qa-rounds` | (a) `W3:<epik>:<zadanie>:<próba>`, (b) `W3:<epik>:repair:<zadanie>`, (c) `W3:<epik>:qa:<runda>` |
-| W4 koszt zadania | suma `value` **zakończonych** prób zadania (trwającej się nie dolicza; zadanie, w którym zakończona próba nie ma wartości, jest pomijane z pozycją w `gaps`) > `cost_multiple` × mediana tej sumy po zadaniach tego `kind` w historii (zadania, w których wszystkie zakończone próby mają wartość) **i** ≥ `cost_min_usd`; raz na zadanie | `W4:<epik>:<zadanie>` |
+| W4 koszt zadania | suma `value` **zakończonych** prób zadania (trwającej się nie dolicza; zadanie, w którym zakończona próba nie ma wartości, jest pomijane z pozycją w `gaps`) > `cost_multiple` × mediana tej sumy po zadaniach tego `kind` w historii (zadania, w których wszystkie zakończone próby mają wartość) **i** ≥ `cost_min_usd`; raz na zadanie; suma z próbą szacowaną (bez wyniku CLI) ma w `push` „≈”, a w alarmie `estimated: true` | `W4:<epik>:<zadanie>` |
 
 Alarm kosztowy wymaga obu warunków (dokładnie 3× mediany nie alarmuje, dokładnie 5 USD alarmuje), czasowy też (dokładnie
 3× mediany i dokładnie 1 h nie alarmują). Mediana zerowa nie ma ilorazu (`ratio: null`, `push` bez „×”).

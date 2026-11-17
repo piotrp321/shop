@@ -191,16 +191,18 @@ class D4Test(EffectEnv):
 
 
 class D1Test(EffectEnv):
-    def role_epic(self, name, started, merged, plan_value, repair_value=0.5, role='code-reviewer'):
+    def role_epic(self, name, started, merged, plan_value, repair_value=0.5, role='code-reviewer', estimated=False,
+                  repair_estimated=False):
         record = epic(name, started, merged)
         record['by_task'] = {'P-%d' % n: {'kind': 'plan', 'work': H, 'attempts': 1} for n in range(5)}
         record['by_task']['R-1'] = {'kind': 'repair', 'work': H, 'attempts': 1}
         cell = lambda usd: {'usd': usd, 'estimated': False, 'tokens': {}, 'estimated_tokens': []}
         record['value']['by_task'] = {t: cell(3.0) for t in record['by_task']}
-        by_task_role = {'P-%d' % n: {'delivery': cell(2.0), role: cell(plan_value)} for n in range(3)}
+        by_task_role = {'P-%d' % n: {'delivery': cell(2.0), role: dict(cell(plan_value), estimated=estimated)}
+                        for n in range(3)}
         by_task_role['P-3'] = {'delivery': cell(3.0)}                       # the role did not act in two tasks: 0
         by_task_role['P-4'] = {'delivery': cell(3.0)}
-        by_task_role['R-1'] = {'delivery': cell(2.0), role: cell(repair_value)}
+        by_task_role['R-1'] = {'delivery': cell(2.0), role: dict(cell(repair_value), estimated=repair_estimated)}
         record['value']['by_task_role'] = by_task_role
         return record
 
@@ -213,6 +215,50 @@ class D1Test(EffectEnv):
         self.assertEqual((result['before']['median'], result['after']['median']), (1.0, 0.5))
         self.assertEqual(result['diff'], {'value': -0.5, 'pct': -50.0})
         self.assertEqual(result['after']['p25'], 0.0)                                      # P-4 has 0
+
+    def test_an_estimated_value_of_the_role_marks_the_windows_and_the_result(self):
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0, estimated=True) for i in range(1, 4)],
+                      *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5, estimated=True) for i in range(1, 4)])
+        result = self.result('D1:code-reviewer')
+        self.assertIs(result['before']['estimated'], True)
+        self.assertIs(result['after']['estimated'], True)
+        self.assertIs(result['estimated'], True)
+
+    def test_exact_values_of_the_role_are_not_marked(self):
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0) for i in range(1, 4)],
+                      *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5) for i in range(1, 4)])
+        result = self.result('D1:code-reviewer')
+        self.assertIs(result['before']['estimated'], False)
+        self.assertIs(result['after']['estimated'], False)
+        self.assertIs(result['estimated'], False)
+
+    def test_one_estimated_window_marks_the_result_and_only_that_window(self):
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0) for i in range(1, 4)],
+                      *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5, estimated=(i == 2)) for i in range(1, 4)])
+        result = self.result('D1:code-reviewer')
+        self.assertIs(result['before']['estimated'], False)
+        self.assertIs(result['after']['estimated'], True)
+        self.assertIs(result['estimated'], True)
+
+    def test_an_estimated_cell_outside_the_level_kind_does_not_mark_the_window(self):
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0) for i in range(1, 4)],
+                      *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5, repair_estimated=True) for i in range(1, 4)])
+        result = self.result('D1:code-reviewer')
+        self.assertEqual(result['level_kind'], 'plan')
+        self.assertIs(result['estimated'], False)
+
+    def test_an_incomplete_cell_of_the_role_counts_as_estimated(self):
+        record = self.role_epic('a1', 11, 12, 0.5)
+        record['value']['by_task_role']['P-0']['code-reviewer']['incomplete'] = True
+        store_records(self.state, record)
+        self.assertIs(self.result('D1:code-reviewer')['after']['estimated'], True)
+
+    def test_measures_other_than_d1_are_exact(self):
+        records = [epic('b%d' % i, i, i + 1) for i in range(1, 4)] + [epic('a%d' % i, 10 + i, 12 + i) for i in range(1, 4)]
+        store_records(self.state, *records)
+        result = self.result('D3:gate_wait')
+        self.assertEqual((result['before']['estimated'], result['after']['estimated'], result['estimated']),
+                         (False, False, False))
 
     def test_records_without_value_by_task_role_are_left_out_with_a_gap(self):
         old = self.role_epic('a1', 11, 12, 0.5)
@@ -227,6 +273,49 @@ class D1Test(EffectEnv):
         record['value']['by_task']['P-0'] = {'usd': None, 'estimated': True, 'tokens': {}, 'estimated_tokens': []}
         store_records(self.state, record)
         self.assertEqual(self.result('D1:code-reviewer')['after']['n'], 4)
+
+    def test_a_task_in_which_the_role_acted_with_an_unknown_value_is_left_out_not_counted_as_zero(self):
+        record = self.role_epic('a1', 11, 12, 0.5)
+        record['value']['by_task_role']['P-0']['code-reviewer'] = {'usd': None, 'estimated': True, 'tokens': {},
+                                                                   'estimated_tokens': []}
+        store_records(self.state, record)
+        after = self.result('D1:code-reviewer')['after']
+        self.assertEqual(after['n'], 4)                  # P-0 is not a sample; P-3 and P-4 (no entry) still give 0
+        self.assertEqual(after['median'], 0.25)          # 0.5, 0.5, 0, 0: the unknown value is not a fifth sample
+
+    def test_a_window_with_a_task_left_out_for_an_unknown_role_value_is_estimated_not_exact(self):
+        def unknown_role(record):
+            for n in range(3):
+                record['value']['by_task_role']['P-%d' % n]['code-reviewer'] = {
+                    'usd': None, 'estimated': True, 'tokens': {}, 'estimated_tokens': []}
+            return record
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0) for i in range(1, 9)],
+                      *[unknown_role(self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5)) for i in range(1, 9)])
+        result = self.result('D1:code-reviewer')
+        self.assertGreaterEqual(result['after']['n'], 15)          # enough tasks and epics for a conclusion
+        self.assertGreaterEqual(result['after']['n_epics'], 3)
+        self.assertIsNotNone(result['diff'])
+        self.assertIs(result['before']['estimated'], False)
+        self.assertIs(result['after']['estimated'], True)
+        self.assertIs(result['estimated'], True)
+
+    def test_an_epic_left_out_entirely_for_an_unknown_role_value_marks_the_window_estimated_with_a_gap(self):
+        def unknown_role_everywhere(record):
+            for n in range(5):
+                record['value']['by_task_role']['P-%d' % n]['code-reviewer'] = {
+                    'usd': None, 'estimated': True, 'tokens': {}, 'estimated_tokens': []}
+            return record
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0) for i in range(1, 9)],
+                      *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5) for i in range(1, 6)],
+                      *[unknown_role_everywhere(self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5)) for i in (6, 7, 8)])
+        result = self.result('D1:code-reviewer')
+        self.assertEqual(result['after']['epics'], ['a1', 'a2', 'a3', 'a4', 'a5'])     # a6-a8 have no sample at all
+        self.assertIsNotNone(result['diff'])
+        self.assertIs(result['before']['estimated'], False)
+        self.assertIs(result['after']['estimated'], True)
+        self.assertIs(result['estimated'], True)
+        for epic_name in ('a6', 'a7', 'a8'):
+            self.assertTrue(any(epic_name in g and 'okno po' in g for g in result['gaps']), result['gaps'])
 
     def test_a_role_that_never_acted_has_no_level_and_not_enough_data(self):
         store_records(self.state, *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5) for i in range(1, 4)])
