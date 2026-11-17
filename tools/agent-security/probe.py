@@ -1044,6 +1044,10 @@ class Probe:
                 started = time.time()
                 events, timed_out, code = self._stream(executor_env, stderr)
                 elapsed = round(time.time() - started, 3)
+                # stop() waits for the reads of the bytes after a body (they end TRAILING_TIMEOUT after the answer):
+                # a verdict before it would miss an excess the executor sent late. cleanup() stops them again.
+                self._otel.stop()
+                self._otel_trap.stop()
                 telemetry = telemetry_verdicts(self._otel.requests, self._otel_trap.requests, self.telemetry_markers(),
                                                self.expected_telemetry_attributes())
                 context = {'canary_file': self.canary_paths[0], 'canary_dir': self.canary_dir, 'wrapper': wrapper,

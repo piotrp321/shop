@@ -958,6 +958,24 @@ import base64, http.client
 for item in json.loads(os.environ.get('FAKE_OTEL_BODIES', '[]')):
     endpoint = os.environ['AGENT_OTEL_ENDPOINT' if item['to'] == 'agent' else 'OTEL_EXPORTER_OTLP_ENDPOINT']
     host, port = endpoint[len('http://'):].split(':')
+    if 'later' in item:
+        # The raw request, then after its answer and a pause the bytes `later` in the same connection, which a
+        # sleeping process keeps open after the executor ends: the receiver reads them until its TRAILING_TIMEOUT.
+        import socket, subprocess
+        raw = socket.create_connection((host, int(port)), timeout=10)
+        raw.sendall(base64.b64decode(item['body']))
+        answer = b''
+        while b'\\r\\n\\r\\n' not in answer:
+            piece = raw.recv(4096)
+            if not piece:
+                break
+            answer += piece
+        time.sleep(item['pause'])
+        raw.sendall(base64.b64decode(item['later']))
+        subprocess.Popen(['sleep', '3'], pass_fds=[raw.fileno()], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        raw.close()
+        continue
     connection = http.client.HTTPConnection(host, int(port), timeout=10)
     headers = {'Content-Type': 'application/x-protobuf'}
     if item.get('encoding'):
@@ -1392,6 +1410,21 @@ class ProbeRunTest(ProbeRunTestCase):
             self.assertEqual(1, code, mode)
             self.assertEqual('fail', status_of(result, 'telemetry_no_content'))
             self.assertIn('OTEL_EXPORTER_OTLP_ENDPOINT', result['reason'])
+
+    def test_bytes_sent_after_the_answer_are_judged_before_the_verdict(self):
+        # The receiver reads the bytes after a body for TRAILING_TIMEOUT after its answer; the verdict must wait for
+        # that read, or an excess sent late in the connection of a clean export is a pass.
+        p = self.make_probe()
+        items = json.loads(self.otel_bodies(p))
+        request = b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Type: application/x-protobuf\r\nContent-Length: 3' \
+                  b'\r\n\r\nabc'
+        items.append({'to': 'agent', 'path': '/v1/logs', 'pause': 0.3,
+                      'body': base64.b64encode(request).decode('ascii'),
+                      'later': base64.b64encode(p.prompt_marker.encode('ascii')).decode('ascii')})
+        code, result = p.run(env=self.env(FAKE_OTEL_BODIES=json.dumps(items)))
+        self.assertEqual('fail', status_of(result, 'telemetry_no_content'))
+        self.assertEqual(1, code)
+        self.assert_cleaned(p)
 
     def test_otel_forward_sends_every_request_unchanged_and_the_verdict_is_the_same(self):
         stack = otlp.otlp_receiver.Receiver().start()

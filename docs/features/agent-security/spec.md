@@ -662,8 +662,15 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   (`PROMPT-<losowe>`). Odbiornik zapisuje każde żądanie (także z ciałem `chunked`) i rozpakowuje je według
   `Content-Encoding` (`gzip` albo brak; `gzip` rozpakowuje wszystkie człony, z łącznym limitem rozmiaru; inne
   kodowanie albo ciało, którego nie da się rozpakować, także z bajtami po członie, które nie są całym członem, jest
-  nie do sprawdzenia). Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem protobufa
-  (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością tekstową).
+  nie do sprawdzenia). Ciało o niejednoznacznym ramowaniu (nagłówki, których parser nie odczytuje w całości,
+  `Transfer-Encoding` inny niż dokładnie `chunked`, sprzeczne albo nieczytelne `Content-Length`, `chunked` niezgodny
+  z RFC 9112 §7.1, także z niepustym trailerem) też jest nie do sprawdzenia, z bajtami przeczytanymi do błędu, a bajty,
+  które nadawca wysłał w połączeniu po ramowanym ciele (nadmiar, kolejne żądanie), są osobnym zapisem nie do
+  sprawdzenia, także gdy odpowiedzi nie dało się wysłać. Odbiornik czyta je do 1 s od odpowiedzi, a bajtów dosłanych
+  później nie czyta; sonda ocenia żądania dopiero po zatrzymaniu odbiorników, które czeka na ten odczyt. Żądanie, które
+  odrzuca sam serwer HTTP (także pusta linia żądania), jest zapisem nie do sprawdzenia bez ciała. Znaczników szuka
+  w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem protobufa (varint, pola stałej
+  długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością tekstową).
   - `telemetry_export`: `pass`, gdy pierwszy odbiornik dostał żądania `/v1/logs` i `/v1/metrics`, a w parach logów
     i metryk są `shop.source=ao`, `shop.task=<zadanie sondy>`, `shop.epic=<nazwa atrapy $AO_HOME po ao->`
     i `shop.task_kind=plan` (zadanie sondy to `<NAZWA>-1`, jak liczy wrapper); inaczej `no_export` (brak żądań, brak
