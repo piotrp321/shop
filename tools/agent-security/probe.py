@@ -1044,8 +1044,9 @@ class Probe:
                 started = time.time()
                 events, timed_out, code = self._stream(executor_env, stderr)
                 elapsed = round(time.time() - started, 3)
-                # stop() waits for the reads of the bytes after a body (they end TRAILING_TIMEOUT after the answer):
-                # a verdict before it would miss an excess the executor sent late. cleanup() stops them again.
+                # stop() waits for every connection in progress (up to STOP_TIMEOUT; one still open then is a record
+                # in progress): a verdict before it would miss a request still read, decompressed or forwarded, or
+                # the bytes after its body. cleanup() stops them again.
                 self._otel.stop()
                 self._otel_trap.stop()
                 telemetry = telemetry_verdicts(self._otel.requests, self._otel_trap.requests, self.telemetry_markers(),
