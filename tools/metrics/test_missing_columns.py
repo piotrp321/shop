@@ -19,7 +19,10 @@ class MissingColumnTest(Env):
                       dict(task_id='I-1', started_at=2000, ended_at=2100),
                       dict(task_id='R-1', started_at=2700, ended_at=3000, outcome=None)])
         con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
-        con.execute('ALTER TABLE %s DROP COLUMN %s' % (table, column))
+        if column is None:
+            con.execute('DROP TABLE %s' % table)
+        else:
+            con.execute('ALTER TABLE %s DROP COLUMN %s' % (table, column))
         con.commit()
         con.close()
         return home
@@ -59,6 +62,36 @@ class MissingColumnTest(Env):
         self.assertEqual(attempts['total'], 4)
         self.assert_gap(record, 'attempts.executor_status')
 
+    def test_without_the_attempts_table_everything_counted_from_attempts_is_null(self):
+        record = self.record('demo', home=self.home_without('attempts', None))
+        attempts = record['retries']['attempts']
+        for name in ('total', 'per_task', 'successful', 'blocked', 'failed', 'usage_limit', 'running', 'unclassified'):
+            self.assertIsNone(attempts[name], name)
+        self.assertIsNone(record['retries']['failed_by_outcome'])
+        self.assertIsNone(record['integration']['work_s'])
+        self.assertIsNone(record['integration']['attempts'])
+        self.assertEqual(record['integration']['rounds'], 2)
+        self.assertEqual(record['retries']['fix'], 1)                      # the kind is there
+        self.assertEqual(record['retries']['repair']['count'], 1)
+        self.assertEqual(record['tasks'], 2)
+        self.assert_gap(record, 'attempts.task_id')
+
+    def test_without_attempts_task_id_the_integration_and_per_task_are_null(self):
+        record = self.record('demo', home=self.home_without('attempts', 'task_id'))
+        attempts = record['retries']['attempts']
+        self.assertIsNone(attempts['per_task'])
+        self.assertEqual(attempts['total'], 4)                             # the rows are there
+        self.assertEqual(attempts['failed'], 2)
+        self.assertIsNone(record['integration']['work_s'])
+        self.assertIsNone(record['integration']['attempts'])
+        self.assertEqual(record['integration']['rounds'], 2)
+        self.assert_gap(record, 'attempts.task_id')
+
+    def test_without_attempts_started_at_the_work_of_the_breakdown_is_null(self):
+        record = self.record('demo', home=self.home_without('attempts', 'started_at'))
+        self.assertIsNone(record['breakdown']['work'])
+        self.assert_gap(record, 'attempts.started_at')
+
     def test_a_null_value_in_an_existing_column_is_still_counted(self):
         record = self.record('demo', home=testkit.synthetic_home(
             self.root, created=1000.0, jsonl=[], events=[(9000, 'epic_done', {})], tasks=[('T-1', 'plan')],
@@ -71,10 +104,13 @@ class MissingColumnTest(Env):
 
     def test_a_record_with_the_nulls_renders_as_no_data(self):
         expected_lines = {'kind': ('REPAIR: brak danych', 'FIX: brak danych', 'Integracja: brak danych'),
-                          'outcome': ('Próby: 4 (podział: brak danych)',)}
-        for table, column in (('tasks', 'kind'), ('attempts', 'outcome')):
+                          'outcome': ('Próby: 4 (podział: brak danych)',),
+                          None: ('Próby: brak danych', 'Integracja: brak danych')}
+        for table, column in (('tasks', 'kind'), ('attempts', 'outcome'), ('attempts', None)):
             with self.subTest(column=column):
                 self.record('demo', home=self.home_without(table, column))
+                code, _, err = run_cli(['decide', 'demo', '--state', self.state])
+                self.assertEqual(code, 0, err)
                 for fmt in ('report', 'comment'):
                     code, out, err = self.render(fmt)
                     self.assertEqual(code, 0, err)

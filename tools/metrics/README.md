@@ -226,14 +226,22 @@ decyzji)`; render wypisuje tylko liczbę i nazwę reguły z kodu (`D1`–`D9`), 
 
 Brak źródła nie zatrzymuje pomiaru, a pole bez danych jest `null` z powodem w `gaps`, nigdy zerem:
 
-- Kolumna, której nie ma w bazie AO (albo tabela), daje pozycję `tabela.kolumna: brak kolumny albo tabeli w bazie AO`,
-  a pola od niej zależne są `null`. Bez `tasks.kind`: `tasks`, `retries.repair`, `retries.fix`, `integration.work_s`,
-  `integration.attempts` i `parallel.repairs` (`integration.rounds` zostaje). Bez `attempts.outcome` albo
-  `attempts.executor_status`: klasy prób w `retries.attempts` (`successful`, `blocked`, `failed`, `usage_limit`,
-  `running`, `unclassified`) i `retries.failed_by_outcome` (`total` i `per_task` zostają). `null` w istniejącej kolumnie
-  to zwykły brak wartości, np. próba bez `outcome` po końcu przebiegu jest nieudana (`no_outcome`). Render pisze
-  „brak danych” (`REPAIR`, `FIX`, `Integracja`, podział prób), `decide` pomija w D2 kryterium nieudanych prób
-  z pozycją w `gaps`, a `trend` ma `null` w kolumnach `repair` i `failed`.
+- Kolumna, której nie ma w bazie AO (albo tabela), daje pozycję `tabela.kolumna: brak kolumny albo tabeli w bazie AO`
+  (brak tabeli to brak wszystkich jej kolumn), a pola od niej zależne są `null`:
+  - bez `tasks.kind`: `tasks`, `retries.repair`, `retries.fix`, `integration.work_s`, `integration.attempts`
+    i `parallel.repairs`;
+  - bez `attempts.task_id`: `retries.attempts.per_task`, `integration.work_s` i `integration.attempts`;
+  - bez `attempts.started_at`: `breakdown.work`;
+  - bez `attempts.outcome` albo `attempts.executor_status`: klasy prób w `retries.attempts` (`successful`, `blocked`,
+    `failed`, `usage_limit`, `running`, `unclassified`) i `retries.failed_by_outcome`;
+  - bez tabeli `attempts`: wszystko powyższe z `attempts.*` oraz `retries.attempts.total`;
+  - zostają zawsze `integration.rounds` (z `epics.round`), a przy braku samej kolumny też `retries.attempts.total`
+    (liczy wiersze tabeli).
+
+  `null` w istniejącej kolumnie to zwykły brak wartości,
+  np. próba bez `outcome` po końcu przebiegu jest nieudana (`no_outcome`). Render pisze „brak danych” (`REPAIR`,
+  `FIX`, `Integracja`, `Próby`, podział prób), `decide` pomija w D2 kryterium nieudanych prób z pozycją w `gaps`,
+  a `trend` ma `null` w kolumnach `repair` i `failed`.
 - Rekord bez `waste` albo bez `waste.json` ma `waste: null` z pozycją w `gaps`, a render pokazuje „Alarmy (waste):
   brak danych”.
 - Rekord bez `value.by_task_role` albo bez `effect_h` w `bottlenecks` (zapisany w innej wersji skryptu): `effect` pomija

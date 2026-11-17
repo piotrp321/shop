@@ -275,6 +275,8 @@ def select(con, table, columns, gaps):
         if column not in present:
             gaps.add('%s.%s' % (table, column), 'brak kolumny albo tabeli w bazie AO')
             gaps.absent.add('%s.%s' % (table, column))
+    if not present:
+        gaps.tables.add(table)
     if not use:
         return []
     cursor = con.execute('SELECT %s FROM "%s"' % (', '.join('"%s"' % c for c in use), table))
@@ -287,10 +289,15 @@ class Gaps:
     def __init__(self):
         self.items = []
         self.absent = set()         # `table.column` of the AO database that is not there (see `select`)
+        self.tables = set()         # the tables of the AO database that are not there (all their columns are absent)
 
     def lacks(self, *columns):
         """True when any of the `table.column` names is missing in the AO database."""
         return any(column in self.absent for column in columns)
+
+    def lacks_table(self, table):
+        """True when the table is missing in the AO database."""
+        return table in self.tables
 
     def add(self, field, reason):
         if (field, reason) not in self.items:
@@ -341,7 +348,7 @@ def load_run(ao_home, epic_id, busy_timeout_ms, gaps):
         con.close()
     events = [e for e in events if e['at'] is not None]
     events.sort(key=lambda e: e['at'])
-    return {'epic': epic, 'tasks': tasks, 'attempts': attempts, 'events': events}
+    return {'epic': epic, 'tasks': tasks, 'attempts': attempts, 'events': events, 'absent': set(gaps.absent)}
 
 
 def read_jsonl_events(path):
@@ -428,8 +435,8 @@ def category_intervals(run, done, jsonl, config, gaps):
     events = run['events']
     epic_id = run['epic']['epic_id']
     task_ids = {t['task_id'] for t in run['tasks']}
-    found = {'work': [], 'human_wait': None, 'limit_wait': [], 'ci_wait': [], 'host_pause': [], 'github_wait': []}
-    for attempt in run['attempts']:
+    found = {'work': None if gaps.lacks('attempts.started_at') else [], 'human_wait': None, 'limit_wait': [], 'ci_wait': [], 'host_pause': [], 'github_wait': []}
+    for attempt in run['attempts'] if found['work'] is not None else []:
         start = _number(attempt['started_at'])
         if start is None:
             continue
@@ -539,14 +546,18 @@ def classify_attempt(outcome, executor_status, run_ended):
 
 def retries_of(run, run_ended, gaps):
     """The `retries` of the record. A column missing in the AO database makes the fields derived from it null (never
-    zero): without attempts.outcome or attempts.executor_status the classes of attempts and `failed_by_outcome`,
-    without tasks.kind `repair` and `fix`."""
-    unclassified = gaps.lacks('attempts.outcome', 'attempts.executor_status')
-    attempts = {'total': 0, 'per_task': {}, **{name: None if unclassified else 0 for name in ATTEMPT_CLASSES}}
+    zero): without the attempts table `total` too, without attempts.task_id `per_task`, without attempts.outcome or
+    attempts.executor_status the classes of attempts and `failed_by_outcome`, without tasks.kind `repair` and `fix`."""
+    no_table = gaps.lacks_table('attempts')
+    unclassified = no_table or gaps.lacks('attempts.outcome', 'attempts.executor_status')
+    no_task = gaps.lacks('attempts.task_id')
+    attempts = {'total': None if no_table else 0, 'per_task': None if no_task else {},
+                **{name: None if unclassified else 0 for name in ATTEMPT_CLASSES}}
     failed_by_outcome = None if unclassified else {}
     for attempt in run['attempts']:
         attempts['total'] += 1
-        attempts['per_task'][attempt['task_id']] = attempts['per_task'].get(attempt['task_id'], 0) + 1
+        if not no_task:
+            attempts['per_task'][attempt['task_id']] = attempts['per_task'].get(attempt['task_id'], 0) + 1
         if unclassified:
             continue
         name, detail = classify_attempt(attempt['outcome'], attempt['executor_status'], run_ended)
@@ -577,7 +588,7 @@ def retries_of(run, run_ended, gaps):
 
 
 def integration_of(run, epic, gaps):
-    if gaps.lacks('tasks.kind'):        # which attempts are integration ones is unknown
+    if gaps.lacks('tasks.kind', 'attempts.task_id'):        # which attempts are integration ones is unknown
         return {'work_s': None, 'attempts': None, 'rounds': epic['round']}
     kinds = {t['task_id']: t['kind'] for t in run['tasks']}
     work, count = 0.0, 0
