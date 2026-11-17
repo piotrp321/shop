@@ -37,7 +37,8 @@ final class PhotosCheckCommandTest extends TestCase
 
     public function testACompletePoolPassesAndTheKeyIsPrinted(): void
     {
-        $tester = $this->tester($this->manifest());
+        $this->manifest();
+        $tester = $this->tester();
 
         self::assertSame(0, $tester->execute(['directory' => $this->dir.'/photos', '--manifest' => $this->dir.'/photos.yaml']), $tester->getDisplay());
         self::assertStringContainsString('37 files', $tester->getDisplay());
@@ -73,7 +74,7 @@ final class PhotosCheckCommandTest extends TestCase
     public function testAFileOfAnotherSumIsRefusedByNameAndNoArchiveIsBuilt(): void
     {
         $this->manifest();
-        file_put_contents(glob($this->dir.'/photos/*')[0], 'changed');
+        file_put_contents($this->firstPhoto(), 'changed');
         $tester = $this->tester();
 
         self::assertSame(1, $tester->execute(['directory' => $this->dir.'/photos', '--manifest' => $this->dir.'/photos.yaml', '--archive' => $this->dir.'/photos.tar']));
@@ -84,7 +85,7 @@ final class PhotosCheckCommandTest extends TestCase
     public function testAMissingFileIsRefused(): void
     {
         $this->manifest();
-        unlink(glob($this->dir.'/photos/*')[0]);
+        unlink($this->firstPhoto());
         $tester = $this->tester();
 
         self::assertSame(1, $tester->execute(['directory' => $this->dir.'/photos', '--manifest' => $this->dir.'/photos.yaml']));
@@ -173,6 +174,14 @@ final class PhotosCheckCommandTest extends TestCase
         file_put_contents($this->dir.'/photos.yaml', Yaml::dump($manifest, 4));
 
         return $manifest;
+    }
+
+    private function firstPhoto(): string
+    {
+        $files = glob($this->dir.'/photos/*') ?: [];
+        self::assertNotSame([], $files);
+
+        return $files[0];
     }
 
     private function tester(): CommandTester
