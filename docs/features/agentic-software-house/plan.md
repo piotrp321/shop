@@ -14,14 +14,13 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482), EVALS (#495); przygotowane do startu: METRICS (#496). Kolejność epików
-jest na tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: ADMIN-FEATURES (końcowy PR #623;
-5 interwencji, 5 czekań na użytkownika, razem 528 min, 1 ręczna poprawka). Retro do zrobienia: brak (retro
-ADMIN-FEATURES w tym PR).
+W toku przez `/ao-run`: DEMO-DATA (#482), EVALS (#495). Kolejność epików jest na tablicy „Backlog sklepu”.
+Blokery: brak. Ostatni zmergowany epik: METRICS (końcowy PR #674; 5 interwencji, 6 czekań na użytkownika, razem
+400 min, 4 ręczne poprawki). Retro do zrobienia: brak (retro METRICS w tym PR).
 Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 91, zamkniętych 50.
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 111, zamkniętych 52.
 Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17, 18 i 19b
 (w toku); 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
@@ -44,7 +43,7 @@ Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epi
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | do zrobienia |
-| 18 | Pomiar, koszty i optymalizacja | do zrobienia (epik METRICS #496: pomiar epiku, `tools/metrics`; epik TELEMETRY #577: telemetria Claude Code) |
+| 18 | Pomiar, koszty i optymalizacja | w toku (epik METRICS #496 zrobiony, końcowy PR #674 zmergowany: pomiar epiku, `tools/metrics`; pomiar w `/retro` bez dowodu z przebiegu; epik TELEMETRY #577: telemetria Claude Code do zrobienia) |
 | 19 | Praca równoległa | 19a: zrobione, pomiar par trwa; 19b: w toku (AO `--max-parallel`, piotrp321/agentic-orchestrator#50; w `shop` pola `paths` i `parallel_with` manifestu, `--max-parallel 2` w `/ao-run`, rezerwa pamięci bramki na dwa stosy na epik) |
 | 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
 | 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
