@@ -44,7 +44,7 @@ Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epi
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | do zrobienia |
-| 18 | Pomiar, koszty i optymalizacja | do zrobienia |
+| 18 | Pomiar, koszty i optymalizacja | do zrobienia (epik METRICS #496: pomiar epiku, `tools/metrics`; epik TELEMETRY #577: telemetria Claude Code) |
 | 19 | Praca równoległa | 19a: zrobione, pomiar par trwa; 19b: w toku (AO `--max-parallel`, piotrp321/agentic-orchestrator#50; w `shop` pola `paths` i `parallel_with` manifestu, `--max-parallel 2` w `/ao-run`, rezerwa pamięci bramki na dwa stosy na epik) |
 | 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
 | 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
@@ -75,7 +75,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Evale agentów i workflowów, benchmark i kryteria regresji | `make evals` | krok 17 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
-| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w lokalnym stosie na Macu | krok 18 |
+| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | `tools/metrics` (`tools/metrics/README.md`), uruchamiany przez `/ao-run`; telemetria Claude Code w lokalnym stosie na Macu (TELEMETRY #577) | krok 18 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues, dyżur i hypercare | agent dyżurny: Sentry i Grafana Cloud przez MCP, tylko odczyt | krok 11 |
 
@@ -215,9 +215,14 @@ flowchart TB
      issues.
    - `/ao-run` dopisuje do opisu końcowego PR `Closes #N` każdego issue z linii `Issues:` specyfikacji. Użytkownik
      sprawdza je i merguje PR (squash). Issue zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
-   - Po każdym epiku trzy liczby w komentarzu do issue epiku: liczba interwencji (z `ao report`), czas czekania na
-     decyzje użytkownika (z `events.jsonl`, `ao_events.py summary`) i liczba ręcznych poprawek. Minut pracy
-     użytkownika nie szacujemy. Pełny pomiar z trendem i decyzjami optymalizacyjnymi: krok 18.
+   - Raport odbioru ma sekcje „Pomiar” (wąskie gardła, czas, wartość tokenów, próby, alarmy, pozycja na tle mediany;
+     `metrics.py render --format report`) i, jako ostatnia sekcja raportu, „Decyzje optymalizacyjne” (najwyżej 3
+     kandydatów z rekomendacją, efektem i liczbą epików, w których reguła zadziałała; `metrics.py decide`, decyzji nie
+     zapisuje) (krok 18).
+   - Po każdym epiku komentarz do issue epiku to blok „Pomiar epiku” (`metrics.py render --format comment`): trzy liczby
+     (interwencje człowieka, czas czekania na decyzje użytkownika, liczba ręcznych poprawek) i pomiar po merge'u. Minut
+     pracy użytkownika nie szacujemy. `/ao-run` pokazuje też trend (`metrics.py trend`) na starcie i po każdym merge'u,
+     a w trakcie przebiegu wysyła pushem alarmy bezproduktywnego zużycia (`metrics.py waste`).
 6. **Po merge'u (`/sweep [epik]`).** Sesja `/ao-run` uruchamia przegląd sama po merge'u końcowego PR: kolejka
    przeglądów, jeden naraz, nigdy równolegle z epikiem (następny epik rusza po kolejce), pominięcie przy oknie limitu
    ≥ 95% (`docs/features/ao-run/spec.md`). Użytkownik może go też uruchomić ręcznie.
@@ -349,15 +354,16 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    - PR zmieniający agenta, skill albo pin CLI ma aktualny wynik; CI sprawdza tylko jego zgodność z wersją plików,
      bez uruchamiania modelu;
    - każde uruchomienie ma limit kosztu i zużycia limitu subskrypcji ustalony w specyfikacji.
-18. **Pomiar, koszty i optymalizacja.**
-   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
+18. **Pomiar, koszty i optymalizacja.** Dwa epiki: METRICS (#496: pomiar epiku z danych AO, transkryptów prób i GitHuba,
+   `tools/metrics`, opis w `tools/metrics/README.md`) i TELEMETRY (#577: telemetria Claude Code).
+   - TELEMETRY: telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
      z retencją ustawianą lokalnie, dłuższą niż 14 dni darmowego planu Grafana Cloud.
-   - Pomiar każdego epiku: czas zegarowy (miara główna), czas rzeczywistej pracy, oczekiwania i blokad; koszt
+   - METRICS: pomiar każdego epiku: czas zegarowy (miara główna), czas rzeczywistej pracy, oczekiwania i blokad; koszt
      i tokeny na agenta, model i zadanie; ponowienia, naprawy i konflikty; czas testów, selftestów i integracji;
      interwencje człowieka; regresje i błędy po merge'u.
-   - Szacunkowa wartość tokenów (ceny API z CLI) osobno od faktycznego kosztu subskrypcji (punkty procentowe limitu).
-   - Wykrywanie bezproduktywnego zużycia zasobów (zadanie zużywa wielokrotność mediany, pętla prób) z pushem.
-   - Raport odbioru i `/retro` kończą się konkretnymi decyzjami optymalizacyjnymi (model dla roli z evali kroku 17
+   - METRICS: szacunkowa wartość tokenów (ceny API z CLI) osobno od faktycznego kosztu subskrypcji (punkty procentowe limitu).
+   - METRICS: wykrywanie bezproduktywnego zużycia zasobów (zadanie zużywa wielokrotność mediany, pętla prób) z pushem.
+   - METRICS: raport odbioru i `/retro` kończą się konkretnymi decyzjami optymalizacyjnymi (model dla roli z evali kroku 17
      i kosztu, podział planu, równoległość), a nie samym zestawieniem.
 19. **Praca równoległa.** Równoległość jest domyślną możliwością: epiki i zadania ruszają naraz, a wykonanie
    szeregowe jest rozwiązaniem awaryjnym, gdy bramka wykryje realne ryzyko. Realizuje komponent „Pula środowisk”

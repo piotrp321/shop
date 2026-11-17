@@ -147,7 +147,15 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   | `github_wait` | `github_wait` → następne zdarzenie epiku inne niż `github_wait` i `gh_call`, najwyżej 30 min od ostatniego `github_wait` |
   | `idle` | reszta (AO nie działa, brak gotowych zadań) |
 
-  Brak źródła kategorii (np. `events.jsonl`) przenosi jej czas do `idle` z pozycją w `gaps`.
+  Brak źródła kategorii (np. `events.jsonl`) przenosi jej czas do `idle` z pozycją w `gaps`. Pominięty jest też
+  przedział, któremu brakuje danych: `cooldown_set` bez `until` i bez `cooldown_released` (`limit_wait`), `host_pause`
+  bez `from`/`to` i `seconds` (`host_pause`) i próba bez `started_at` (`work`). Taka kategoria jest dolną granicą, a
+  pominięty czas trafia do kategorii, która stoi dalej w `breakdown_order` i pokrywa ten przedział (każda chwila należy do
+  pierwszej pokrywającej kategorii), albo do `idle`. Górną granicą jest więc każda kategoria po najwcześniejszej
+  pominiętej w `breakdown_order` i `idle`. Rekord ma dolne granice w `breakdown_incomplete`, górne w
+  `breakdown_upper_bound`, pozycję w `gaps`, a render pokazuje je z „≈” i dopiskiem „dolna granica” albo „górna granica”.
+  Oznaczenie przechodzi do wąskich gardeł, `trend` (`work`, `human_wait`), D4 (`human_wait`, `limit_wait`, `ci`
+  z `ci_wait` i mianownikiem `work`) i okien `effect` tych miar.
 - `in_attempts`: czas poleceń powłoki w próbach (nazwy narzędzi powłoki w `config.json`: `Bash`, `bash`) według
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
   `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do
@@ -175,7 +183,7 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   jego gałęzi (ponowienia);
 - `attempts`: lista prób (`task`, `kind`, `number`, `outcome`, `executor_status`, `wall_s`, `value`, `estimated`,
   tokeny), z której liczy się historia median;
-- `value`: wartość tokenów razem i w przekrojach `by_role`, `by_model`, `by_task`, `by_role_model`; tokeny (`input`,
+- `value`: wartość tokenów razem i w przekrojach `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`; tokeny (`input`,
   `output`, `cache_read`, `cache_write`) w tych samych przekrojach;
 - `subscription`: przyrost pp każdego okna (reguły `night_queue._window_deltas`: okno odnowione w trakcie albo stan
   inny niż `ok` daje `null`), `overlap` (epiki, z którymi przedział się przecinał) i `share`: szacunek udziału tego
@@ -220,6 +228,17 @@ w `gaps`. Wiadomości i `modelUsage` czasem się rozchodzą (kompakcja, wywołan
 par próba–model): nadwyżka `modelUsage` nad wiadomościami trafia do roli `other`, a niedobór oznacza role tego
 modelu jako szacowane, z pozycją w `gaps`.
 
+Reguła zachowawcza: liczba szacowana, niepełna albo wyprowadzona z takich danych (średnia, mediana, iloraz, różnica,
+udział, próg) ma `estimated: true`, a gdy brakuje jej części, także `incomplete: true` albo pozycję w `gaps`, i każde
+jej przedstawienie (JSON, raport, komentarz, push, `/retro`) pokazuje ją z „≈” (suma niepełna: „≈” i dopisek „suma
+niepełna” albo „dolna granica”). Próba bez transkryptu może należeć do każdej roli i modelu, więc oznacza niepełne
+wszystkie przekroje `value`, do których mogła należeć (role zadania w `by_task_role` tylko jej zadania). Czas zadania,
+czas integracji i czas poleceń w próbach (`in_attempts`) bez części prób (brak czasu albo transkryptu) to dolna granica:
+`incomplete: true` i pozycja w `gaps`; render dopisuje „dolna granica”, a przy `in_attempts` „transkrypty tylko N z M
+prób” i „≈” przy każdej liczbie. Wąskie gardło, kandydat `decide`, okno `effect` i alarm `waste` (`estimated` albo
+`median_estimated`) zbudowane z takiej liczby (także z mediany historii, w której jest choć jedna) są oznaczone jako
+szacowane; prognoza `expected_effect` jest szacowana tylko wtedy, gdy dane, z których wynika, są szacowane lub niepełne.
+
 ### Historia i trend
 
 - `metrics.py backfill`: rekord każdego przebiegu epiku w `~/.local/state/ao-*` z końcowym PR `MERGED`; braki
@@ -227,6 +246,9 @@ modelu jako szacowane, z pozycją w `gaps`.
 - `metrics.py trend [--last N]`: tabela zmergowanych epików (domyślnie 10 ostatnich) z wartościami na zadanie planu:
   czas do `epic_done`, `work`, `human_wait`, `review`, `gate_wait`, `repeat_runs`, wartość tokenów, pp okna tygodniowego (`share`), próby nieudane, REPAIR,
   interwencje, regresje; mediana każdej kolumny (z pominięciem `null`) i pozycja wskazanego epiku względem niej.
+  Wartość tokenów, pp i `repeat_runs` z szacowanego albo niepełnego źródła (`estimated`, `share_estimated`,
+  `in_attempts.incomplete`) mają „≈” w tabeli, w pozycji względem mediany razem z procentem różnicy (także w raporcie odbioru)
+  i znacznik w `--json`, tak samo jak w `render`.
 - Rekordy z otwartym oknem regresji przelicza każde `trend` (merge kolejnego epiku, start `/ao-run`).
 - Epik z inną wersją CLI albo innym zestawem modeli niż poprzedni ma w `trend` adnotację zmiany (bez korekty liczb).
 
@@ -286,6 +308,8 @@ i > 1 h:
 - **W3 pętla prób (niezależna od progów mediany i kwoty):** zadanie zaczyna trzecią próbę po dwóch nieudanych
   (zablokowane się nie liczą), drugi REPAIR epiku z rzędu albo runda QA równa `--max-qa-rounds`;
 - **W4 koszt zadania (kosztowy):** łączna wartość prób zadania > 3× mediana wartości zadań tego `kind` i ≥ 5 USD.
+  Zadanie z trwającą próbą ma sumę zakończonych prób, czyli dolną granicę: alarm ma `incomplete: true`, a push mówi
+  „zakończone próby kosztują”. Zadanie historii z próbą bez `ended_at` nie jest pomiarem W4 (suma byłaby częściowa).
 
 Mediana wymaga co najmniej 5 pomiarów w historii; bez nich W1, W2 i W4 nie alarmują (pozycja w `gaps`). Sesja
 `/ao-run` wywołuje `waste` przy każdym wybudzeniu przez zdarzenie AO i przy każdym ponownym uzbrojeniu Monitora
@@ -351,7 +375,8 @@ w danych kandydata mają oznaczenie; D1 na wartości roli szacowanej podaje to w
 
 Okno „po” to epiki rozpoczęte po `--at` (`started_at > --at`); epiki rozpoczęte przed `--at` i zmergowane po nim
 pomijamy, bo pracowały na gałęzi sprzed poprawki. Okno „przed” to tyle samo epików zmergowanych przed `--at`,
-najbliższych tej chwili. Wynik: mediana, p25–p75 i liczebność obu okien, różnica median w jednostce miary
+najbliższych tej chwili; gdy zmergowanych przed `--at` jest mniej niż w oknie „po”, okno „przed” ma wszystkie, jest
+szacowane (`estimated`, „≈”) i ma pozycję w `gaps`. Wynik: mediana, p25–p75 i liczebność obu okien, różnica median w jednostce miary
 i w procentach. Obok zawsze czas do `epic_done` na zadanie planu jako mediana 3 epików przed i 3 po. „Za mało danych”
 (bez wniosku): dla miar zadań mniej niż 15 zadań z co najmniej 3 epików po zmianie, dla miar epiku mniej niż 3 epiki
 po zmianie. Wersje CLI i modele, które różnią okno przed od okna po (z `versions`), są wypisane obok efektu, bez
