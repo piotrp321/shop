@@ -38,8 +38,9 @@ The result also names the probe's task and epic (`task`, `epic`: shop.task and s
 Exit codes: 0 every case has a result and passed (--mode ao: no leak and no protection that failed to hold, see
 evaluate); 1 a case failed or has no result, a canary leaked, the cost or the time limit was hit, the output was
 truncated; 2 the probe could not run (missing binary, token refused, wrapper refused to start, no worktree).
-The canary value is never printed. The result JSON (cases with pass/fail/missing and a layer, time, total cost and
-the reason of the first failure) goes to --result or stdout.
+The canary value is never printed. The result JSON (cases with pass/fail/missing and a layer, the telemetry cases also
+no_export/unverifiable and each with its own reason; time, total cost, the reason of the first failure, the task and
+epic) goes to --result or stdout. A reason never carries text of a received request.
 
 Error path of the read protection: a copy of this directory whose executor-settings.json has neither of the two
 independent read layers (sandbox.filesystem.denyRead emptied and permissions.blockReadsOutsideWorkingDirectories
