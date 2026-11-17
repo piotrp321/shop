@@ -26,14 +26,15 @@ copies it next to probe.py.
                                    a line end (CRLF or LF) right after the data of each chunk and an empty trailer;
                                    anything else is a 400 with the chunks read until then in raw.
                                    The answer says Connection: close, one request per connection. After the answer
-                                   to a request whose body was read the receiver shuts its write side and reads what
-                                   the sender still put in the connection (an excess after the body, a second
-                                   request), until its end, TRAILING_TIMEOUT seconds in all or MAX_BODY bytes; any
-                                   such bytes are a record of their own: method and path '', raw the bytes (cut to
-                                   MAX_BODY), body None, the problem "bajty po ciele żądania" (", ponad <MAX_BODY>
-                                   bajtów" when cut), never forwarded. stop() waits for those reads. Bytes after a
-                                   body that cannot be read, and bytes sent later than TRAILING_TIMEOUT, are not
-                                   read.
+                                   to a request whose body was read (also when the answer cannot be written: a reset,
+                                   a sender gone) the receiver shuts its write side and reads what the sender still
+                                   put in the connection (an excess after the body, a second request), until its end,
+                                   TRAILING_TIMEOUT seconds in all or MAX_BODY bytes; any such bytes are a record of
+                                   their own: method and path '', raw the bytes (cut to MAX_BODY), body None, the
+                                   problem "bajty po ciele żądania" (", ponad <MAX_BODY> bajtów" when cut), never
+                                   forwarded. stop() waits for those reads, so a caller judges the requests after
+                                   stop(). Bytes after a body that cannot be read, and bytes sent later than
+                                   TRAILING_TIMEOUT, are not read.
                                    With `forward` (only http://127.0.0.1:<port>, validated by render_settings.py) each
                                    request goes on (method, path, Content-Type, Content-Encoding, raw body) to that
                                    address; its failure, whatever it is, changes nothing else. An error in the
@@ -42,7 +43,10 @@ copies it next to probe.py.
                                    request http.server rejects itself (an HTTP/2 preface, TLS bytes, a line or a
                                    header too long, too many headers, a malformed request line) is recorded with raw
                                    b'', body None and the problem "żądanie odrzucone przez serwer HTTP: <code>"; a
-                                   HEAD request is answered without a body.
+                                   request line without words (b'\\r\\n', b' \\r\\n'), which it drops without an
+                                   answer and closes the connection with what follows, is recorded the same way with
+                                   the problem "żądanie odrzucone przez serwer HTTP: pusta linia żądania" and method
+                                   and path ''. A HEAD request is answered without a body.
   decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
                                    (None, problem) for any other encoding, a body that does not decompress (also
                                    bytes after a member that are not a whole member) or one larger than MAX_BODY.
@@ -247,7 +251,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def handle_one_request(self):
         self._recorded = False
+        self.raw_requestline = b''
         super().handle_one_request()
+        if self.raw_requestline and not self._recorded:
+            # parse_request drops a request line without words (b'\r\n', b' \r\n') without an answer and closes the
+            # connection, with whatever the sender put after it: recorded, so the run is never a pass.
+            self._recorded = True
+            self.receiver._record({'method': '', 'path': '', 'content_type': None, 'content_encoding': None,
+                                   'raw': b'', 'body': None, 'forwarded': None,
+                                   'problem': 'żądanie odrzucone przez serwer HTTP: pusta linia żądania'})
 
     def send_error(self, code, message=None, explain=None):
         """A request http.server rejects itself (an HTTP/2 preface, TLS bytes, a line or a header too long, too many
@@ -336,8 +348,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def _read_after_body(self):
         """The bytes the sender put in the connection after the framed body (an excess, a second request): the answer
-        said Connection: close and is whole, so the write side is shut and the rest is read until the end, the
-        TRAILING_TIMEOUT or MAX_BODY. Any bytes are a record of their own (no method nor path: they belong to no
+        said Connection: close (or could not be written), so the write side is shut and the rest, the read buffer
+        first, is read until the end, the TRAILING_TIMEOUT or MAX_BODY. Any bytes are a record of their own (no method nor path: they belong to no
         request read here), never forwarded. Whatever fails, what was read is recorded."""
         pieces, total = [], 0
         try:
@@ -386,28 +398,32 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         except Exception:   # whatever it is, the request is still recorded and answered; raw stays for the markers
             request['body'], request['problem'] = None, 'nieoczekiwany błąd przy przetwarzaniu żądania'
             status = 500
-        try:
-            if read and self.receiver.forward:
-                request['forwarded'] = self.receiver._forward(self.command, self.path, request['content_type'],
-                                                              request['content_encoding'], request['raw'])
-        finally:
-            self._recorded = True
-            self.receiver._record(request)
-        json_body = 'json' in (request['content_type'] or '')
-        answer = b'{}' if json_body else b''
-        if read:   # before the answer: stop() waits for the read of the bytes after the body from here on
+        if read:   # before the record: stop() never sees the record without waiting for the bytes after the body
             self.receiver._after_body_started()
         try:
-            self.send_response(status)
-            self.send_header('Content-Type', 'application/json' if json_body else 'application/x-protobuf')
-            self.send_header('Content-Length', str(len(answer)))
-            self.send_header('Connection', 'close')
-            self.end_headers()
-            if self.command != 'HEAD':
-                self.wfile.write(answer)
+            try:
+                if read and self.receiver.forward:
+                    request['forwarded'] = self.receiver._forward(self.command, self.path, request['content_type'],
+                                                                  request['content_encoding'], request['raw'])
+            finally:
+                self._recorded = True
+                self.receiver._record(request)
+            json_body = 'json' in (request['content_type'] or '')
+            answer = b'{}' if json_body else b''
+            try:
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/json' if json_body else 'application/x-protobuf')
+                self.send_header('Content-Length', str(len(answer)))
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                if self.command != 'HEAD':
+                    self.wfile.write(answer)
+            except OSError:   # a reset or a closed connection: the bytes after the body may be in the buffer already
+                pass
             if read:
                 self._read_after_body()
         finally:
+            self.close_connection = True
             if read:
                 self.receiver._after_body_done()
 

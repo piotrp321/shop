@@ -820,6 +820,51 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), self.LEAK)
         self.assertLess(time.monotonic() - started, 5)
 
+    def test_bytes_after_the_body_are_read_when_the_answer_cannot_be_written(self):
+        # A sender that resets the connection (or went away during a slow forward) makes the answer fail; what it put
+        # in the connection after the body is already in the read buffer and must still be a record.
+        def broken(self, code, message=None):
+            raise BrokenPipeError('the sender went away')
+        original = otlp_receiver._Handler.send_response
+        otlp_receiver._Handler.send_response = broken
+        self.addCleanup(setattr, otlp_receiver._Handler, 'send_response', original)
+        receiver = self.receiver()
+        self.send_lines(receiver, [b'Content-Length: 3'], b'abc' + self.LEAK)
+        self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), self.LEAK)
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_the_read_after_the_body_is_counted_before_the_request_is_recorded(self):
+        # stop() between the record and the count would return without the bytes after the body.
+        receiver = self.receiver()
+        seen, record = [], receiver._record
+
+        def counting(request):
+            seen.append((request['method'], receiver._reading))
+            record(request)
+        receiver._record = counting
+        self.send_lines(receiver, [b'Content-Length: 3'], b'abc')
+        receiver.stop()
+        self.assertEqual([('POST', 1)], seen)
+
+    def test_a_blank_request_line_is_recorded_and_never_a_pass(self):
+        # http.server drops a request line without words silently, and the request after it with the connection.
+        second = b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 15\r\n\r\n' + self.LEAK
+        for blank in (b'\r\n', b'\n', b' \r\n'):
+            with self.subTest(blank=blank):
+                receiver = self.receiver()
+                send_raw(receiver.endpoint, blank + second, half_close=True)
+                requests = self.recorded_after_stop(receiver)
+                self.assertEqual([{'method': '', 'path': '', 'content_type': None, 'content_encoding': None,
+                                   'raw': b'', 'body': None, 'forwarded': None,
+                                   'problem': 'żądanie odrzucone przez serwer HTTP: pusta linia żądania'}], requests)
+                self.assert_not_a_pass(receiver)
+
+    def test_a_connection_closed_without_bytes_is_not_a_record(self):
+        receiver = self.receiver()
+        host, port = receiver.endpoint[len('http://'):].split(':')
+        socket.create_connection((host, int(port)), timeout=10).close()
+        self.assertEqual([], self.recorded_after_stop(receiver))
+
     def test_without_the_header_content_encoding_is_none(self):
         receiver = self.receiver()
         post(receiver.endpoint, '/v1/logs', b'')
