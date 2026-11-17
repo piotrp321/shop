@@ -292,15 +292,58 @@ Zaraz po starcie zadania tła sprawdź, czy kolejny epik może ruszyć równoleg
   )"
   ```
 
-  Nie odpowiadaj sam, nie parafrazuj, nie uzupełniaj. Jeśli `run` się zakończył, uruchom go ponownie (krok 4, zawsze
+  Nie odpowiadaj sam, nie parafrazuj, nie uzupełniaj (jedyny wyjątek: „Automatyczne przedłużenia” niżej). Jeśli
+  `run` się zakończył, uruchom go ponownie (krok 4, zawsze
   całym poleceniem z `ao-prepare`, więc z nową sondą), uzbrój Monitor, jeśli wygasł, i zrób `ao status` (krok 3).
   Ponowne `run` epiku, który prowadzisz, nie woła bramki: AO sam odmawia, gdy na tym `AO_HOME` działa już inny proces
   (a `ao-prepare` odmawia wcześniej, bez zmiany kopii wrappera).
 - **Dwa epiki:** gdy czekają blokery obu, odpowiedź użytkownika musi wskazać epik (np. „CART: …”); bez tego dopytaj,
   którego dotyczy. `ao answer` i zapis decyzji wykonuj z blokiem startowym wskazanego epiku.
 - **Inne zatrzymania** (`FAILED`, `epic_blocked`, `queue_held`): zdiagnozuj przez `ao status --epic <epik>`, opisz
-  przyczynę w pushu. `ao resume`, `ao release` i `ao epic resume` wykonuj wyłącznie na wyraźne polecenie użytkownika.
-  Gdy po nich proces AO już nie działa, wznowienie to krok 4 (z `ao-prepare`).
+  przyczynę w pushu. `ao resume`, `ao release` i `ao epic resume` wykonuj wyłącznie na wyraźne polecenie użytkownika
+  (jedyny wyjątek: „Automatyczne przedłużenia” niżej). Gdy po nich proces AO już nie działa, wznowienie to krok 4
+  (z `ao-prepare`).
+- **Limit sesji i czekanie na reset.** Zanim zaczniesz albo przedłużysz czekanie na odnowienie limitu (także czekanie
+  zlecone przez użytkownika „do resetu”), wywołaj świeże `get_usage`. Gdy okno, na które czekasz, ma już inne
+  `resetsAt` albo jest poniżej 100%, albo gdy twoje wywołania modelu znowu przechodzą, limit jest dostępny: wznów pracę
+  od razu, bez czekania na zapowiedzianą godzinę, i powiedz o tym w rozmowie. Nie zakładasz stanu limitu z wcześniejszej
+  wiadomości ani z pamięci.
+- **Zgoda z góry.** Gdy polecenie użytkownika w rozmowie już wprost zgadza się na krok, o który skill każe zapytać
+  (np. „uruchom mimo bramki” dla tego epiku i tego powodu, „+1 runda QA” dla tego epiku), wykonaj go bez ponownego
+  pytania i zacytuj tę zgodę w rozmowie. Zgoda dotyczy tylko kroku, epiku i powodu, które wskazuje.
+- **Restart AO.** Gdy trzeba zatrzymać proces AO (np. zmiana limitów na polecenie użytkownika), nie zabijaj zadania
+  tła w trakcie próby: poczekaj, aż `ao status --epic <epik>` nie pokazuje zadania `RUNNING` ani `INTEGRATING`
+  w toku, i dopiero wtedy zatrzymaj zadanie tła (`TaskStop`) i uruchom krok 4. Przerwanie trwającej próby tylko na
+  wyraźne polecenie użytkownika.
+- **Automatyczne przedłużenia** (dzień i noc; zasady: spec `ao-run`, „Automatyczne przedłużenia”). Zamiast pytania,
+  na które odpowiedź byłaby mechanicznym „tak”, sesja sama daje jedną dodatkową rundę, gdy skrypt
+  `auto_extend.py` zwraca `"decision": "extend"`. Każdy inny wynik, kod wyjścia różny od 0 albo wątpliwość sesji
+  oznacza zwykłe pytanie do użytkownika (jak wyżej), z powodami ze skryptu w pushu.
+  - **Limit rund QA:** epik `BLOCKED` z powodem `max_qa_rounds` (nigdy `repeated_finding` ani inny):
+
+    ```bash
+    python3 "$SKILL_ROOT/.claude/skills/ao-run/auto_extend.py" qa "$AO_HOME" --epic <epik>
+    ```
+
+    Przy `extend` przeczytaj jeszcze raporty rund (`$AO_HOME/epics/<epik>/integration/round-N.md`): gdy znalezisko
+    Important ostatniej rundy dotyczy tej samej zasady albo kryterium specyfikacji co znalezisko wcześniejszej rundy
+    (np. ta sama reguła w innym miejscu), to powtórzenie i pytasz użytkownika. Sesja może tylko zamienić `extend`
+    na pytanie, nigdy odwrotnie. Bez powtórzenia: `ao epic resume <epik> --add-qa-rounds 1`, potem
+    `ao_events.py auto "$AO_HOME/events.jsonl" --action qa-round`, push „Epik <epik>: automatycznie +1 runda QA
+    (koszt <cost_usd>/<max_usd> USD)” i krok 4, jeśli AO już nie działa.
+  - **Trzecia runda poprawek zadania:** zadanie `BLOCKED` z jedynym blokerem `EXTRA-FIX-ROUND` (`/delivery`, krok 7):
+
+    ```bash
+    python3 "$SKILL_ROOT/.claude/skills/ao-run/auto_extend.py" fix "$AO_HOME" --task <ID>
+    ```
+
+    Przy `extend`: `ao answer <ID>` z tekstem z pola `answer` wyniku (dosłownie, w cytowanym heredoc), potem
+    `ao_events.py auto "$AO_HOME/events.jsonl" --action fix-round --task <ID>`, push „<ID>: automatycznie trzecia
+    runda poprawek (koszt <cost_usd>/<max_usd> USD)” i krok 4, jeśli AO już nie działa.
+  - Kod wyjścia `ao_events.py auto` różny od 0: powiedz o tym użytkownikowi (pomiar pokaże czekanie do końca epiku)
+    i prowadź epik dalej. Automatycznej decyzji nie zapisujesz przez `ao_events.py human`.
+  - **Próg kosztu** epiku to 150 USD. Inny próg dla epiku ustawiasz tylko na polecenie użytkownika w rozmowie,
+    zapisem `{"max_usd": <liczba>}` do `$AO_HOME/auto-extend.json` (przed startem albo w trakcie epiku).
 - **Zapis decyzji.** Zaraz po udanym `ao answer <ID>`, `ao resume <ID>`, `ao release` albo `ao epic resume <epik>`
   zapisz decyzję w `events.jsonl` (to koniec czekania na użytkownika w pomiarze, sekcje 6 i 7):
 
@@ -1005,7 +1048,7 @@ Wyjście: `epic` (`dir`, `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`
 czekanie), `ao-prepare` epiku nocy odmawia (sekcja 4), `next` kończy się kodem różnym od 0, epik nocy kończy się bez `DONE` albo `start` lub `done` tego epiku
 zakończył się kodem różnym od 0 (wtedy nie uruchamiaj `next`). Bloker zadania czekający na odpowiedź użytkownika nie
 kończy nocy (sekcja 5: czekasz na odpowiedź). Zatrzymanie na poziomie epiku (`epic_blocked`, `queue_held`, `FAILED`)
-kończy ją. Najpierw zapisz koniec nocy, potem push:
+kończy ją, chyba że sekcja 5 („Automatyczne przedłużenia”) wznowiła epik. Najpierw zapisz koniec nocy, potem push:
 
 ```bash
 python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" close --reason "$(cat <<'REASON'
@@ -1040,7 +1083,8 @@ epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, kt
 - Nie mergujesz do `main` bez polecenia użytkownika w rozmowie. Merge'e, które robisz: końcowy PR epiku na jego
   polecenie (sekcja 6, „Merge na polecenie”, squash) i PR `sync/<epik>-main` do `epic/<epik>` (sekcja 6a): po zgodzie
   użytkownika (w parze: akceptacja specyfikacji pracy równoległej), po zielonym CI i wyłącznie merge commitem.
-- Nie odpowiadasz na blokery sam: przekazujesz słowa użytkownika.
+- Nie odpowiadasz na blokery sam: przekazujesz słowa użytkownika. Jedyny wyjątek to jedno automatyczne przedłużenie
+  z sekcji 5 przy wyniku `extend` z `auto_extend.py`; nie zmieniasz progu kosztu bez polecenia użytkownika.
 - Nie zatrzymujesz prób, epiku ani AO z powodu alarmu `waste` i nie zapisujesz decyzji optymalizacyjnych (sekcje 3
   i 6): alarm to push, decyzja zapada w `/retro` z użytkownikiem.
 - Nie zaczynasz epiku z pominięciem bramki: naraz trwają najwyżej dwa aktywne epiki (razem z epikami innych sesji),
