@@ -267,12 +267,16 @@ def _database_error(path, error):
 
 
 def select(con, table, columns, gaps):
-    """Rows of `table` as dicts of the wanted columns; a missing column is None in every row and a gap."""
+    """Rows of `table` as dicts of the wanted columns; a missing column is None in every row, a gap and an entry of
+    `gaps.lacks` (a field derived from it is null: None in an existing column is just a missing value)."""
     present = [row[1] for row in con.execute('PRAGMA table_info("%s")' % table)]
     use = [c for c in columns if c in present]
     for column in columns:
         if column not in present:
             gaps.add('%s.%s' % (table, column), 'brak kolumny albo tabeli w bazie AO')
+            gaps.absent.add('%s.%s' % (table, column))
+    if not present:
+        gaps.tables.add(table)
     if not use:
         return []
     cursor = con.execute('SELECT %s FROM "%s"' % (', '.join('"%s"' % c for c in use), table))
@@ -284,6 +288,16 @@ class Gaps:
 
     def __init__(self):
         self.items = []
+        self.absent = set()         # `table.column` of the AO database that is not there (see `select`)
+        self.tables = set()         # the tables of the AO database that are not there (all their columns are absent)
+
+    def lacks(self, *columns):
+        """True when any of the `table.column` names is missing in the AO database."""
+        return any(column in self.absent for column in columns)
+
+    def lacks_table(self, table):
+        """True when the table is missing in the AO database."""
+        return table in self.tables
 
     def add(self, field, reason):
         if (field, reason) not in self.items:
@@ -294,6 +308,11 @@ class Gaps:
 
 
 # ------------------------------------------------------------------------------------------------------ the record
+
+def lacks(run, *columns):
+    """True when any of the `table.column` names is missing in the AO database of the run (`load_run`)."""
+    return any(column in run['absent'] for column in columns)
+
 
 def iso(epoch):
     if epoch is None:
@@ -334,7 +353,7 @@ def load_run(ao_home, epic_id, busy_timeout_ms, gaps):
         con.close()
     events = [e for e in events if e['at'] is not None]
     events.sort(key=lambda e: e['at'])
-    return {'epic': epic, 'tasks': tasks, 'attempts': attempts, 'events': events}
+    return {'epic': epic, 'tasks': tasks, 'attempts': attempts, 'events': events, 'absent': set(gaps.absent)}
 
 
 def read_jsonl_events(path):
@@ -415,14 +434,21 @@ def _next_at(events, index, kinds, after=None):
     return None
 
 
+EVENT_CATEGORY = {'cooldown_set': 'limit_wait', 'host_pause': 'host_pause', 'github_wait': 'github_wait'}
+
+
 def category_intervals(run, done, jsonl, config, gaps):
     """{category: [(start, end)] or None} for the breakdown categories except idle (before clipping and
     precedence). None: the source of the category is missing."""
     events = run['events']
     epic_id = run['epic']['epic_id']
     task_ids = {t['task_id'] for t in run['tasks']}
-    found = {'work': [], 'human_wait': None, 'limit_wait': [], 'ci_wait': [], 'host_pause': [], 'github_wait': []}
-    for attempt in run['attempts']:
+    def source(*columns):
+        return None if lacks(run, *columns) else []         # None: the AO database cannot tell this category
+    found = {'work': source('attempts.started_at', 'attempts.ended_at'), 'human_wait': None,
+             'limit_wait': source('events.data'), 'ci_wait': [], 'host_pause': source('events.data'),
+             'github_wait': source('events.data', 'events.task_id', 'tasks.task_id')}
+    for attempt in run['attempts'] if found['work'] is not None else []:
         start = _number(attempt['started_at'])
         if start is None:
             continue
@@ -432,6 +458,8 @@ def category_intervals(run, done, jsonl, config, gaps):
         found['human_wait'] = [(w['start'], done if w['end'] is None else w['end']) for w in ao_events.waits(jsonl)]
     for i, event in enumerate(events):
         kind, data, at = event['type'], event['data'], event['at']
+        if found.get(EVENT_CATEGORY.get(kind), []) is None:     # the category has no source: its events are not read
+            continue
         if kind == 'cooldown_set':
             start = _number(data.get('from'))
             ends = [e for e in (_number(data.get('until')), _next_at(events, i + 1, ('cooldown_released',))) if e]
@@ -488,6 +516,10 @@ def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps):
     if jsonl is None:
         gaps.add('breakdown.human_wait', '%s: czas czekania na człowieka jest w idle' % jsonl_gap)
     found = category_intervals(run, done, jsonl, config, gaps)
+    for name in found:
+        if found[name] is None and name != 'human_wait':
+            gaps.add('breakdown.%s' % name, 'brak kolumny źródła w bazie AO: czas tej kategorii jest w innych '
+                                            'kategoriach i w idle')
     taken, result = [], {}
     for name in config['breakdown_order']:
         if name == 'idle':
@@ -531,11 +563,21 @@ def classify_attempt(outcome, executor_status, run_ended):
 
 
 def retries_of(run, run_ended, gaps):
-    attempts = {'total': 0, 'per_task': {}, **{name: 0 for name in ATTEMPT_CLASSES}}
-    failed_by_outcome = {}
+    """The `retries` of the record. A column missing in the AO database makes the fields derived from it null (never
+    zero): without the attempts table `total` too, without attempts.task_id `per_task`, without attempts.outcome or
+    attempts.executor_status the classes of attempts and `failed_by_outcome`, without tasks.kind `repair` and `fix`."""
+    no_table = gaps.lacks_table('attempts')
+    unclassified = no_table or gaps.lacks('attempts.outcome', 'attempts.executor_status')
+    no_task = gaps.lacks('attempts.task_id')
+    attempts = {'total': None if no_table else 0, 'per_task': None if no_task else {},
+                **{name: None if unclassified else 0 for name in ATTEMPT_CLASSES}}
+    failed_by_outcome = None if unclassified else {}
     for attempt in run['attempts']:
         attempts['total'] += 1
-        attempts['per_task'][attempt['task_id']] = attempts['per_task'].get(attempt['task_id'], 0) + 1
+        if not no_task:
+            attempts['per_task'][attempt['task_id']] = attempts['per_task'].get(attempt['task_id'], 0) + 1
+        if unclassified:
+            continue
         name, detail = classify_attempt(attempt['outcome'], attempt['executor_status'], run_ended)
         attempts[name] += 1
         if name == 'failed':
@@ -543,31 +585,50 @@ def retries_of(run, run_ended, gaps):
         elif name == 'unclassified':
             gaps.add('retries.attempts', 'próba %s/%s ma nieznany outcome %r' % (attempt['task_id'],
                                                                                   attempt['number'], detail))
-    repair = {'count': 0, 'final_pr_conflict': 0, 'ci_red': 0, 'unknown': 0}
+    fix = None if lacks(run, 'tasks.kind') else sum(1 for t in run['tasks'] if t['kind'] == 'fix')
+    if lacks(run, 'tasks.kind', 'tasks.task_id'):
+        return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': None, 'fix': fix}
+    no_events = lacks(run, 'events.type', 'events.data', 'events.at')     # the cause of a repair is in its event
+    repair = {'count': 0, 'final_pr_conflict': None if no_events else 0, 'ci_red': None if no_events else 0,
+              'unknown': 0}
     repairing = {e['data'].get('task_id'): e['data'] for e in run['events'] if e['type'] == 'epic_repairing'}
     for task in run['tasks']:
         if task['kind'] != 'repair':
             continue
         repair['count'] += 1
         data = repairing.get(task['task_id'])
-        if data is None:
+        if no_events:
+            repair['unknown'] += 1
+        elif data is None:
             repair['unknown'] += 1
             gaps.add('retries.repair', 'zadanie %s bez zdarzenia epic_repairing: przyczyna nieznana' % task['task_id'])
         elif data.get('final_pr') is not None:
             repair['final_pr_conflict'] += 1
         else:
             repair['ci_red'] += 1
-    return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': repair,
-            'fix': sum(1 for t in run['tasks'] if t['kind'] == 'fix')}
+    return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': repair, 'fix': fix}
+
+
+def wall_unknown(run):
+    """True when no attempt has a time: the AO database has neither wall_s nor both the start and the end."""
+    return lacks(run, 'attempts.wall_s') and lacks(run, 'attempts.started_at', 'attempts.ended_at')
+
+
+WALL_UNKNOWN = 'brak kolumny wall_s i początku albo końca prób w bazie AO: czas nieznany'
 
 
 def integration_of(run, epic, gaps):
+    if lacks(run, 'tasks.kind', 'tasks.task_id', 'attempts.task_id'):    # which attempts are integration ones is unknown
+        return {'work_s': None, 'attempts': None, 'rounds': epic['round']}
     kinds = {t['task_id']: t['kind'] for t in run['tasks']}
     work, count = 0.0, 0
     for attempt in run['attempts']:
         if kinds.get(attempt['task_id']) not in INTEGRATION_KINDS:
             continue
         count += 1
+        if wall_unknown(run):
+            gaps.add('integration', WALL_UNKNOWN)
+            continue
         seconds = _number(attempt['wall_s'])
         start, end = _number(attempt['started_at']), _number(attempt['ended_at'])
         if seconds is None and start is not None and end is not None:
@@ -577,7 +638,7 @@ def integration_of(run, epic, gaps):
                                                                                          attempt['number']))
             continue
         work += seconds
-    return {'work_s': round(work, 3), 'attempts': count, 'rounds': epic['round']}
+    return {'work_s': None if wall_unknown(run) else round(work, 3), 'attempts': count, 'rounds': epic['round']}
 
 
 # --------------------------------------------------------------------------------------------- transcripts: reading
@@ -985,29 +1046,33 @@ def render_cell(cell):
     return out
 
 
-def value_sections(items):
+def value_sections(items, with_tasks=True):
     """The `value` of the record from items [(task, {role: {model: cell}} or None)]: total, by_role, by_model, by_task,
     by_role_model and by_task_role ({task: {role: cell}}, the value of a role in one task). An attempt without cells
-    (no transcript) is an unknown part of its sections."""
+    (no transcript) is an unknown part of its sections. Without `with_tasks` (the AO database does not say which task
+    an attempt belongs to) by_task and by_task_role are None."""
     sections = {name: Section(name in ('by_role', 'by_role_model', 'by_task_role'))
                 for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model', 'by_task_role')}
     nothing = {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'shared': False, 'no_cli': False}
     for task, cells in items:
         if cells is None:
             sections['total'].mark_unknown('all')
-            sections['by_task'].mark_unknown(task)
+            if with_tasks:
+                sections['by_task'].mark_unknown(task)
             continue
         if not cells:                       # a CLI result without any usage: a real zero
             sections['total'].add('all', nothing)
-            sections['by_task'].add(task, nothing)
+            if with_tasks:
+                sections['by_task'].add(task, nothing)
         for role, models in cells.items():
             for model, cell in models.items():
                 sections['total'].add('all', cell)
                 sections['by_role'].add(role, cell)
                 sections['by_model'].add(model, cell)
-                sections['by_task'].add(task, cell)
                 sections['by_role_model'].add((role, model), cell)
-                sections['by_task_role'].add((task, role), cell)
+                if with_tasks:
+                    sections['by_task'].add(task, cell)
+                    sections['by_task_role'].add((task, role), cell)
     value = {'total': sections['total'].render('all') if sections['total'].cells else None}
     for name in ('by_role', 'by_model', 'by_task'):
         value[name] = {key: sections[name].render(key) for key in sorted(sections[name].cells)}
@@ -1019,6 +1084,8 @@ def value_sections(items):
     for task, role in sorted(sections['by_task_role'].cells):
         by_task_role.setdefault(task, {})[role] = sections['by_task_role'].render((task, role))
     value['by_task_role'] = by_task_role
+    if not with_tasks:
+        value['by_task'] = value['by_task_role'] = None
     return value
 
 # ------------------------------------------------------------------------------------- transcripts: shell commands
@@ -1164,13 +1231,19 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     attempts = sorted(run['attempts'], key=lambda a: (_number(a['started_at']) is None, _number(a['started_at']) or 0,
                                                        str(a['task_id']), a['number'] or 0))
     weights, compiled = config['token_weights'], compile_categories(config)
-    by_task = {}
-    for attempt in attempts:
+    no_task = lacks(run, 'attempts.task_id')            # which task an attempt belongs to is unknown
+    no_path = ', '.join(c for c in ('attempts.task_id', 'attempts.number') if lacks(run, c))
+    no_path = 'brak kolumny %s w bazie AO: nie wiadomo, do której próby należy transkrypt' % no_path if no_path else ''
+    by_task = None if no_task else {}
+    for attempt in [] if no_task else attempts:
         task = by_task.setdefault(attempt['task_id'], {'kind': kinds.get(attempt['task_id']), 'work': 0.0,
                                                        'attempts': 0})
         task['attempts'] += 1
         seconds = _wall(attempt)
-        if seconds is None:
+        if wall_unknown(run):
+            task['work'] = None
+            gaps.add('by_task', WALL_UNKNOWN)
+        elif seconds is None:
             gaps.add('by_task', 'próba %s/%s bez wall_s i końca: pominięta w czasie' % (attempt['task_id'],
                                                                                     attempt['number']))
         else:
@@ -1179,7 +1252,7 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     for attempt in attempts:
         label = '%s/%s' % (attempt['task_id'], attempt['number'])
         path = transcript_path(ao_home, attempt)
-        data, reason = read_transcript(path) if path else (None, 'nieprawidłowy identyfikator próby')
+        data, reason = read_transcript(path) if path else (None, no_path or 'nieprawidłowy identyfikator próby')
         seconds = _wall(attempt)
         entry = {'task': attempt['task_id'], 'kind': kinds.get(attempt['task_id']), 'number': attempt['number'],
                  'outcome': attempt['outcome'], 'executor_status': attempt['executor_status'],
@@ -1223,7 +1296,7 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     if not datas:
         gaps.add('in_attempts', 'brak transkryptów prób')
         gaps.add('versions', 'brak transkryptów prób')
-    return {'by_task': by_task, 'attempts': entries, 'value': value_sections(items), 'in_attempts': in_attempts,
+    return {'by_task': by_task, 'attempts': entries, 'value': value_sections(items, not no_task), 'in_attempts': in_attempts,
             'versions': versions_of(datas) if datas else None}
 
 
@@ -1270,7 +1343,7 @@ def other_attempts(epic, records, ao_root, config, busy_timeout_ms):
         return None
 
 
-def add_share(subscription, stretches, attempts, lookup, gaps):
+def add_share(subscription, stretches, attempts, lookup, gaps, missing_times=()):
     """`share` of the subscription (spec: Rekord epiku): the value of this epic in the common interval (the parts of
     its measurement interval in which another epic ran; the union when there are several) by the value of this epic and
     of the overlapping epics in it (each epic's attempts assigned to the interval evenly over their duration, the other
@@ -1282,6 +1355,9 @@ def add_share(subscription, stretches, attempts, lookup, gaps):
         subscription['share'] = 1
         return
     subscription['share_estimated'] = True
+    if missing_times:           # which part of an attempt lies in the common interval is unknown
+        gaps.add('subscription.share', 'brak kolumny %s w bazie AO: czasy prób nieznane' % ', '.join(missing_times))
+        return
     common = clip_merge([stretch for epic in subscription['overlap'] for stretch in stretches.get(epic, [])],
                         float('-inf'), float('inf'))
     mine = value_within(attempts, common)
@@ -1291,11 +1367,13 @@ def add_share(subscription, stretches, attempts, lookup, gaps):
     total = mine
     for other in subscription['overlap']:
         others = lookup(other)
-        theirs = None if others is None else value_within(others, clip_merge(stretches.get(other, []), float('-inf'),
-                                                                              float('inf')))
+        known = others is not None and (not others or any(_timestamp(a.get('started_at')) is not None
+                                                          for a in others if isinstance(a, dict)))
+        theirs = value_within(others, clip_merge(stretches.get(other, []), float('-inf'), float('inf'))) if known \
+            else None
         if theirs is None:
             gaps.add('subscription.share', 'brak wartości tokenów epiku %s (brak rekordu i katalogu przebiegu albo próby'
-                     ' bez wartości)' % other)
+                     ' bez wartości albo bez początku)' % other)
             return
         total += theirs
     if total <= 0:
@@ -1410,7 +1488,10 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
         if any(start < s_end and s_start < end for stretch in stretches.values() for s_start, s_end in stretch):
             in_overlap.add(attempt['task_id'])
     return (subscription_of(span, stretches, gaps),
-            {'epics': sorted(stretches), 'repairs': sorted(in_overlap)}, stretches, span)
+            {'epics': sorted(stretches),
+             'repairs': None if lacks(run, 'tasks.kind', 'tasks.task_id', 'attempts.task_id', 'attempts.started_at',
+                                      'attempts.ended_at') else sorted(in_overlap)},
+            stretches, span)
 
 
 def gate_wait_of(night_dir, epic_id, started, gaps):
@@ -1993,7 +2074,8 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     fields = transcript_fields(ao_home, ao_run, config, records, epic_id, gaps)
     if subscription is not None:
         add_share(subscription, stretches, fields['attempts'],
-                  lambda other: other_attempts(other, records, ao_root, config, busy_timeout_ms), gaps)
+                  lambda other: other_attempts(other, records, ao_root, config, busy_timeout_ms), gaps,
+                  [c for c in ('attempts.started_at', 'attempts.ended_at') if lacks(ao_run, c)])
     retries = retries_of(ao_run, run_ended, gaps)
     retries['sync_prs'] = None if github['sync'] is None else [{'number': p['number'], 'state': p['state']}
                                                                 for p in github['sync']]
@@ -2007,7 +2089,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'epic': epic_id,
         'issue': github['pr']['issue'] if github['pr'] else None,
         'final_pr': final_pr,
-        'tasks': sum(1 for t in ao_run['tasks'] if t['kind'] == 'plan'),
+        'tasks': None if gaps.lacks('tasks.kind') else sum(1 for t in ao_run['tasks'] if t['kind'] == 'plan'),
         'started_at': iso(started),
         'done_at': iso(done),
         'merged_at': iso(merged),
@@ -2277,6 +2359,8 @@ def d2_candidates(record, history, config, skipped, gaps):
     by_task = record.get('by_task')
     if not isinstance(by_task, dict):
         return skip_rule(skipped, D2_KEY, 'brak danych: by_task')
+    if by_task and all(isinstance(e, dict) and e.get('kind') is None for e in by_task.values()):
+        return skip_rule(skipped, D2_KEY, 'brak danych: tasks.kind (rodzaje zadań nieznane)')
     works = [e['work'] for h in history for e in (h.get('by_task') or {}).values()
              if isinstance(e, dict) and e.get('kind') == 'plan' and _is_number(e.get('work'))]
     middle = median(works) if works else None
@@ -2284,7 +2368,11 @@ def d2_candidates(record, history, config, skipped, gaps):
         gaps.add('decide.D2', 'brak historii mediany work zadań planu: kryterium czasu pominięte')
     ended = record.get('done_at') is not None or record.get('merged_at') is not None
     failed = {}
-    for attempt in record.get('attempts') or []:
+    counted = _get(record, ('retries', 'attempts'))
+    classes_unknown = isinstance(counted, dict) and 'failed' in counted and counted['failed'] is None
+    if classes_unknown:         # the AO database had no outcome or executor_status: no attempt is failed or not
+        gaps.add('decide.D2', 'klasy prób nieznane (retries.attempts.failed null): kryterium nieudanych prób pominięte')
+    for attempt in [] if classes_unknown else record.get('attempts') or []:
         if isinstance(attempt, dict) and classify_attempt(attempt.get('outcome'), attempt.get('executor_status'),
                                                           ended)[0] == 'failed':
             failed[attempt.get('task')] = failed.get(attempt.get('task'), 0) + 1
@@ -2729,7 +2817,8 @@ HOUR = 3600.0
 
 def per_task_sources(record, config):
     """{column: (value, scale)} of a record before the division by the plan tasks: times in seconds (scale: 3600 for
-    hours), the others counts, USD or pp. A value that is not known is None."""
+    hours), the others counts, USD or pp. A value that is not known is None (also the `value` of a record whose total is
+    incomplete)."""
     windows = _get(record, ('subscription', 'windows'))
     weekly = windows.get(config['weekly_window_label']) if isinstance(windows, dict) else None
     share = _get(record, ('subscription', 'share'))
@@ -2738,7 +2827,8 @@ def per_task_sources(record, config):
         'human_wait': (_get(record, ('breakdown', 'human_wait')), HOUR), 'review': (_get(record, ('wall', 'review')), HOUR),
         'gate_wait': (_get(record, ('gate_wait', 'wait_s')), HOUR),
         'repeat_runs': (_get(record, ('in_attempts', 'repeat_runs', 'seconds')), HOUR),
-        'value': (_get(record, ('value', 'total', 'usd')), 1.0),
+        'value': (None if _get(record, ('value', 'total', 'incomplete')) is True       # a partial sum is not a value
+                  else _get(record, ('value', 'total', 'usd')), 1.0),
         'pp': (weekly * share if _is_number(weekly) and _is_number(share) else None, 1.0),
         'failed': (_get(record, ('retries', 'attempts', 'failed')), 1.0),
         'repair': (_get(record, ('retries', 'repair', 'count')), 1.0),
@@ -3121,6 +3211,8 @@ def retries_topics(record):
     lines = []
     if _count(attempts.get('total')) is None:
         lines.append('Próby: %s' % NO_DATA)
+    elif any(_count(attempts.get(name)) is None for name in ATTEMPT_CLASSES):      # the classes are unknown
+        lines.append('Próby: %d (podział: %s)' % (attempts['total'], NO_DATA))
     else:
         def number(name):
             return _count(attempts.get(name)) or 0
@@ -3136,8 +3228,9 @@ def retries_topics(record):
     if _count(repair.get('count')) is None:
         lines.append('REPAIR: %s' % NO_DATA)
     else:
-        lines.append('REPAIR: %d (konflikt końcowego PR %d, czerwone CI %d)' % (
-            repair['count'], _count(repair.get('final_pr_conflict')) or 0, _count(repair.get('ci_red')) or 0))
+        causes = [_count(repair.get('final_pr_conflict')), _count(repair.get('ci_red'))]
+        lines.append('REPAIR: %d (%s)' % (repair['count'], 'przyczyna nieznana' if None in causes else
+                                           'konflikt końcowego PR %d, czerwone CI %d' % tuple(causes)))
     lines.append('FIX: %s' % (_count(data.get('fix')) if _count(data.get('fix')) is not None else NO_DATA))
     if not isinstance(data.get('sync_prs'), list):
         lines.append('Sync: %s' % NO_DATA)
@@ -3525,7 +3618,8 @@ def waste_history(records, skip):
                 found['value'].setdefault(kind, []).append(attempt['value'])
             if _is_number(attempt.get('wall_s')):
                 found['wall'].setdefault(kind, []).append(attempt['wall_s'])
-            tasks.setdefault((str(attempt.get('task')), kind), []).append(attempt.get('value'))
+            if attempt.get('task') is not None:         # a record made without task ids has no tasks to total
+                tasks.setdefault((str(attempt['task']), kind), []).append(attempt.get('value'))
         for (_, kind), values in tasks.items():
             if all(_is_number(v) for v in values):
                 found['task'].setdefault(kind, []).append(sum(values))
@@ -3566,6 +3660,35 @@ def make_alarm(rule, key, epic, task, attempt, push, **numbers):
             **numbers}
 
 
+ATTEMPT_ID = ('attempts.ended_at', 'attempts.task_id', 'attempts.number')      # an ended attempt of a task, numbered
+KIND_OF_TASK = ('tasks.kind', 'tasks.task_id')
+# The columns of the AO database each rule needs: without one the rule cannot tell what it measures (an attempt of a
+# task, its kind, whether it ended), so it is skipped with a gap instead of alarming on a guess.
+WASTE_NEEDS = {
+    'W1': ATTEMPT_ID + KIND_OF_TASK,
+    'W2': ATTEMPT_ID + ('attempts.started_at',) + KIND_OF_TASK,
+    'W3 (a)': ATTEMPT_ID + ('attempts.outcome', 'attempts.executor_status'),
+    'W3 (b)': KIND_OF_TASK + ('attempts.task_id', 'attempts.started_at', 'events.type', 'events.at', 'events.task_id',
+                              'events.data'),
+    'W3 (c)': ('epics.round',),
+    'W4': ATTEMPT_ID + KIND_OF_TASK,
+}
+WASTE_SKIPPED = {'W1': 'koszt próby nie sprawdzony', 'W2': 'trwająca próba nie sprawdzona',
+                 'W3 (a)': 'pętla prób nieudanych nie sprawdzona',
+                 'W3 (b)': 'kolejny REPAIR bez zielonego CI nie sprawdzony', 'W3 (c)': 'runda QA nie sprawdzona',
+                 'W4': 'koszt zadania nie sprawdzony'}
+
+
+def waste_unknown(run, rule, gaps):
+    """True (and a gap of the rule, `W3` for its parts) when a column that `rule` needs is missing in the AO database."""
+    missing = [c for c in WASTE_NEEDS[rule] if c in run['absent']]
+    if rule == 'W2' and lacks(run, 'epics.status') and lacks(run, 'events.type'):
+        missing += ['epics.status', 'events.type']          # whether the run is over is not known
+    if missing:
+        gaps.add(rule[:2], 'brak kolumny %s w bazie AO: %s' % (', '.join(sorted(set(missing))), WASTE_SKIPPED[rule]))
+    return bool(missing)
+
+
 def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
     """The alarms (W1-W4) the current state of the run raises, whether or not they were sent before. Ended attempts
     only for the cost rules (a running attempt has no cost estimate), running ones only for W2."""
@@ -3579,7 +3702,7 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
     entries = transcript_fields(ao_home, dict(run, attempts=ended), config, records, epic_id, Gaps())['attempts']
     # W1: the value of an ended attempt
     unknown = 0
-    for entry in entries:
+    for entry in [] if waste_unknown(run, 'W1', gaps) else entries:
         if entry['value'] is None:
             unknown += 1
             continue
@@ -3598,7 +3721,7 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
                  % (unknown, len(entries)))
     # W2: a running attempt of a run that is not over
     over = epic['status'] == 'DONE' or any(e['type'] == 'epic_done' for e in run['events'])
-    for attempt in run['attempts']:
+    for attempt in [] if waste_unknown(run, 'W2', gaps) else run['attempts']:
         start = _number(attempt['started_at'])
         if over or attempt['ended_at'] is not None or attempt['outcome'] or start is None or not _is_int(
                 attempt['number']):
@@ -3612,10 +3735,10 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
                 attempt['number'], '%s: %s próba %s trwa %s h%s' % (name, _id(attempt['task_id']), attempt['number'],
                                                                     _decimal(seconds / 3600.0), _of_median(hit[1])),
                 seconds=round(seconds, 3), median=hit[0], ratio=hit[1]))
-    found.extend(loop_alarms(run, name, task_ids, rules, max_rounds))
+    found.extend(loop_alarms(run, name, task_ids, rules, max_rounds, gaps))
     # W4: the value of the ended attempts of a task
     by_task, no_value = {}, 0
-    for entry in entries:
+    for entry in [] if waste_unknown(run, 'W4', gaps) else entries:
         by_task.setdefault(entry['task'], []).append(entry)
     for task, task_entries in by_task.items():
         if any(e['value'] is None for e in task_entries):
@@ -3635,16 +3758,18 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
     return found
 
 
-def loop_alarms(run, name, task_ids, rules, max_rounds):
+def loop_alarms(run, name, task_ids, rules, max_rounds, gaps):
     """W3: loops of attempts, independent of the median and the cost. (a) an attempt that starts after at least
     `loop_failed_attempts` failed attempts of its task (blocked and usage_limit attempts are not failures); (b) a REPAIR
     task that starts with no green CI of the epic (epic_ci_green, epic_ci_inherited) since the previous REPAIR started;
-    (c) the QA round of the epic equal to `max_rounds`."""
+    (c) the QA round of the epic equal to `max_rounds`. A part whose columns (WASTE_NEEDS) are missing in the AO
+    database is skipped and `gaps` says so."""
     epic, epic_id = run['epic'], run['epic']['epic_id']
     found, per_task = [], {}
+    skip_loop, skip_repair = waste_unknown(run, 'W3 (a)', gaps), waste_unknown(run, 'W3 (b)', gaps)
     for attempt in run['attempts']:
         per_task.setdefault(attempt['task_id'], []).append(attempt)
-    for task, attempts in per_task.items():
+    for task, attempts in {} if skip_loop else per_task.items():
         failed = 0
         for attempt in sorted(attempts, key=lambda a: (_number(a['started_at']) is None, _number(a['started_at']) or 0,
                                                        a['number'] or 0)):
@@ -3658,7 +3783,7 @@ def loop_alarms(run, name, task_ids, rules, max_rounds):
                 failed += 1
     greens = [e['at'] for e in run['events'] if e['type'] in CI_GREEN and _of_epic(e, epic_id, task_ids)]
     starts = []
-    for task in run['tasks']:
+    for task in [] if skip_repair else run['tasks']:
         begun = [_number(a['started_at']) for a in per_task.get(task['task_id'], [])
                  if _number(a['started_at']) is not None]
         if task['kind'] == 'repair' and begun:
@@ -3668,7 +3793,7 @@ def loop_alarms(run, name, task_ids, rules, max_rounds):
         if not any(before <= g <= start for g in greens):
             found.append(make_alarm('W3', 'W3:%s:repair:%s' % (epic_id, task), epic_id, task, None,
                                     '%s: %s: kolejny REPAIR z rzędu bez zielonego CI epiku' % (name, _id(task))))
-    if _is_int(epic['round']) and epic['round'] == max_rounds:
+    if not waste_unknown(run, 'W3 (c)', gaps) and _is_int(epic['round']) and epic['round'] == max_rounds:
         found.append(make_alarm('W3', 'W3:%s:qa:%s' % (epic_id, epic['round']), epic_id, None, None,
                                 '%s: runda QA %s (limit %s)' % (name, epic['round'], max_rounds), round=epic['round'],
                                 max_rounds=max_rounds))

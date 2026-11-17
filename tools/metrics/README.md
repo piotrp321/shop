@@ -4,10 +4,10 @@ Pomiar przebiegów epików AO (specyfikacja: `docs/features/metrics/spec.md`). P
 Skrypt czyta dane AO, miary limitów nocnej kolejki i GitHub (`gh`, tylko odczyt), nie czyta sklepu. Baza AO jest
 otwierana tylko do odczytu (`mode=ro`, `busy_timeout`), a `ao` nie jest nigdy uruchamiane.
 
-Stan tego zakresu (METRICS-1 do METRICS-5): komendy `epic`, `backfill`, `trend` i `render` z rekordem z danych AO,
-transkryptów prób i GitHuba, `waste` (alarmy bezproduktywnego zużycia w trakcie przebiegu) oraz `decide` i `effect`
-(decyzje optymalizacyjne i ich efekt). Pozostałe komendy i pola rekordu dodają kolejne zadania epiku (zob. „Pola jeszcze
-nieobecne”).
+Komendy: `epic` (rekord przebiegu z danych AO, transkryptów prób i GitHuba), `backfill` (rekordy zmergowanych
+przebiegów), `render` (raport odbioru i komentarz w issue), `trend` (tabela i mediany ostatnich epików), `decide`
+(decyzje optymalizacyjne), `effect` (zmierzony efekt decyzji) i `waste` (alarmy bezproduktywnego zużycia w trakcie
+przebiegu).
 
 ## Komendy
 
@@ -39,7 +39,8 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   z kolumnami na zadanie planu: `to_done`, `work`, `human_wait`, `review`, `gate_wait`, `repeat_runs` (godziny),
   `value` (USD wartości tokenów), `pp` (przyrost okna tygodniowego z `weekly_window_label` razy `share`, w pp),
   `failed` (próby nieudane), `repair`, `interventions`, `regressions` (liczby). Wartość nieznana (`null` w rekordzie albo
-  epik bez zadań planu) jest `null`, nie zero. Pod tabelą: mediana każdej kolumny z pominięciem `null`, pozycja epiku
+  epik bez zadań planu) jest `null`, nie zero; `value` jest `null` także dla epiku z niepełną sumą wartości tokenów
+  (`value.total.incomplete`: część prób bez wartości), bo zaniżona suma nie jest wartością. Pod tabelą: mediana każdej kolumny z pominięciem `null`, pozycja epiku
   `--epic` (domyślnie ostatniego; może być starszy niż tabela) względem tej mediany (różnica i procent) i adnotacje
   „wersja CLI: a → b” oraz „modele: + x − y”, gdy wersje CLI albo zestaw modeli różnią się od poprzedniego zmergowanego
   epiku (liczby bez korekty). Przed tabelą `trend` przelicza `regressions` i `found_after_merge` rekordów z otwartym oknem
@@ -98,12 +99,12 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `by_task` | `{zadanie: {kind, work, attempts}}`: `work` to suma `wall_s` prób zadania, także prób po `epic_done` |
 | `versions` | `cli` (`[{version, attempts}]`, z `system/init`) i `models` (`[{model, attempts}]`, z wiadomości `assistant`); `null` bez transkryptów |
 | `attempts` | lista prób: `task`, `kind`, `number`, `outcome`, `executor_status`, `wall_s`, `started_at`, `ended_at`, `value` (USD), `estimated`, `tokens` (`input`, `output`, `cache_read`, `cache_write`), `estimated_tokens`, `cli_result` (czy próba ma wynik CLI), `model_rates` (USD na ważony token wejścia i cache modelu, tylko próby z wynikiem CLI); próba bez transkryptu ma `null` w polach wartości |
-| `value` | `total`, `by_role`, `by_model`, `by_task`, `by_role_model` (`{rola: {model: komórka}}`), `by_task_role` (`{zadanie: {rola: komórka}}`: wartość roli w zadaniu; rola, która w zadaniu nie działała, nie ma wpisu; wejście miary D1 w `effect`; starszy rekord go nie ma); komórka: `usd`, `estimated`, `tokens`, `estimated_tokens` i `incomplete`, gdy część wartości jest nieznana |
+| `value` | `total`, `by_role`, `by_model`, `by_task`, `by_role_model` (`{rola: {model: komórka}}`), `by_task_role` (`{zadanie: {rola: komórka}}`: wartość roli w zadaniu; rola, która w zadaniu nie działała, nie ma wpisu; wejście miary D1 w `effect`; zob. „Brakujące źródła i pola rekordu”); komórka: `usd`, `estimated`, `tokens`, `estimated_tokens` i `incomplete`, gdy część wartości jest nieznana |
 | `ci` | `final` i `tasks` (`{zadanie: ...}`): `pr`, `runs` (liczba przebiegów `ci_workflow` gałęzi `epic/<epik>` albo `task/<zadanie>` dla zdarzenia `pull_request`, czyli ponowienia), `checks_s` i `e2e_s` (czas ostatniego przebiegu: od pierwszego startu do ostatniego końca zadań o nazwie z `ci_jobs` albo z jej przedrostkiem i spacją, np. `checks part 1/3`; `null` bez takich zadań). Zadania bez numeru PR nie wchodzą. `null` z `gaps` bez `gh` albo przy błędzie |
 | `regressions` | okno `window_days` (14) od merge'u końcowego PR: `until`, `open` (czas okna nie minął albo ostatni przebieg miał zawiedzione źródło), `complete` (wszystkie źródła, także `found_after_merge`, odpowiedziały; okno zamyka się, `open: false`, dopiero po takim przebiegu; lista obcięta do limitu 200 issues albo 10 stron po 100 commitów (`reverts`: strony `page=1, 2, …` do pierwszej krótszej albo pustej; obcięta tylko przy dziesięciu pełnych stronach) też daje `complete: false`, a `trend` do tego czasu przelicza rekord), `checked_at`, `merge_commit`, `ci_red` (liczba czerwonych przebiegów `ci_workflow` ze zdarzeniem `push` na commicie merge'u; 0 przy zielonym), `reverts` (SHA commitów `main` w oknie, których pierwsza linia zaczyna się od `Revert`, a treść wymienia `#<numer końcowego PR>`), `issues` (numery issues `bug` z okna, których pole „Wprowadzone przez (epik albo PR, jeśli znane)” wskazuje ID epiku albo numer końcowego PR, założone albo ostatnio zmienione przez osobę z prawem zapisu: autor, a gdy go nie ma, ostatni edytor treści (`editor` z zapytania `gh api graphql`, tylko `query`, po jednym na issue, które wskazuje epik; bez `--repo` owner i nazwę ustala raz na proces `gh repo view --json owner,name` (błąd nie jest zapamiętany; podane `--repo` niepasujące do `OWNER/NAZWA` to błąd źródła z pozycją w `gaps`, nie pytanie o katalog roboczy), bo `gh api` nie podstawia `{owner}` i `{repo}` w polach `-f`) sprawdzani tym samym `gh api repos/{owner}/{repo}/collaborators/{login}/permission` (`write`, `maintain` albo `admin`); 404 to brak prawa, login niepasujący do wzorca loginu GitHuba nie jest sprawdzany; issues z etykietą `agent` nie liczą się tu), `count` (czerwone CI jako 1, plus reverty i issues; `null`, gdy któryś składnik nieznany). Składnik, którego źródło zawiodło, ma poprzednią zapisaną wartość albo `null`, z `gaps` |
 | `found_after_merge` | `issues` i `count`: issues z etykietą `agent` utworzone w oknie, których sekcja „Źródło” ma linię `Przebieg `/sweep` <data>-<sha7>-<epik>` tego epiku (propozycje `/sweep`, osobno od regresji; etykietę `agent` ustawiają tylko osoby z prawem zapisu, więc bez sprawdzania autora) |
 | `bottlenecks` | do `max_items` (3) pozycji o największej nadwyżce czasu ponad medianę historii, malejąco, nadwyżka co najmniej `min_excess_h` (0,5 h): `kind` (`breakdown`, `task`, `in_attempts`, `gate_wait`, `review`), `name`, `value_s`, `median_s`, `excess_h`, `share` i `share_of` (`to_done`, `gate_wait+to_done` albo `to_merge`), `rule` (klucz reguły decyzji: D2 dla zadania planu, D3 dla `gate_wait`, D4 dla `human_wait`, `ci_wait`, `limit_wait`, `in_attempts.ci_watch` i `review`, inaczej `null`), `repeat_h` (tylko `in_attempts`: ile z nadwyżki to `repeat_runs` tej kategorii, nie więcej niż nadwyżka). `effect_h` i `effect_rule`: potencjalny efekt optymalizacji (niżej, „Potencjalny efekt wąskich gardeł”) |
-| `waste` | alarmy tego epiku z `<state>/waste.json` (jak w pliku: `key`, `rule`, `epic`, `task`, `attempt`, `at`, `push`, liczby); `[]`, gdy plik jest i nie ma alarmów epiku; `null` z pozycją w `gaps` (sam powód, bez ścieżki) bez pliku (komenda `waste` jeszcze nie działała) albo gdy plik jest nieczytelny (`epic` nie kończy się wtedy błędem); zapisana wcześniej lista zostaje (zob. „Cache”) |
+| `waste` | alarmy tego epiku z `<state>/waste.json` (jak w pliku: `key`, `rule`, `epic`, `task`, `attempt`, `at`, `push`, liczby); `[]`, gdy plik jest i nie ma alarmów epiku; `null` z pozycją w `gaps` (sam powód, bez ścieżki) bez pliku (komenda `waste` nie zapisała alarmów) albo gdy plik jest nieczytelny (`epic` nie kończy się wtedy błędem); zapisana wcześniej lista zostaje (zob. „Cache”) |
 | `gaps` | braki danych |
 
 Źródła i ich pierwszeństwo w `breakdown` (każda chwila trafia do pierwszej pasującej kategorii, kolejność w
@@ -218,14 +219,57 @@ medianę). Bez takiego kandydata (reguła nie zadziałała, przedmiot bez reguł
 a `effect_rule` to `null`, czyli „bez reguły decyzji”. `ci_wait` i `ci_watch` mają ten sam efekt (czas czekania na CI
 łącznie), więc efektów pozycji nie należy sumować. `render --format report` pokazuje to obok kosztu czasowego:
 `1. `human_wait`: +6,2 h ponad medianę (22% czasu), potencjalnie −4,1 h (D4)` albo `… potencjalnie −X h (bez reguły
-decyzji)`; render wypisuje tylko liczbę i nazwę reguły z kodu (`D1`–`D9`), a rekord zapisany przed METRICS-5 (bez
-`effect_h`) ma jak dotąd `, reguła D4`.
+decyzji)`; render wypisuje tylko liczbę i nazwę reguły z kodu (`D1`–`D9`), a rekord bez `effect_h` w `bottlenecks` ma
+`, reguła D4`.
 
-### Pola jeszcze nieobecne
+### Brakujące źródła i pola rekordu
 
-Rekord zapisany przed komendą `waste` albo bez `waste.json` ma `waste: null` z pozycją w `gaps`, a render
-pokazuje wtedy „Alarmy (waste): brak danych”. Rekord zapisany przed METRICS-5 nie ma `value.by_task_role` ani
-`effect_h` w `bottlenecks`; `effect` pomija go w mierze D1 z pozycją w `gaps`, a przelicza go `epic <epik>`.
+Brak źródła nie zatrzymuje pomiaru, a pole bez danych jest `null` z powodem w `gaps`, nigdy zerem:
+
+- Kolumna, której nie ma w bazie AO (albo tabela), daje pozycję `tabela.kolumna: brak kolumny albo tabeli w bazie AO`
+  (brak tabeli to brak wszystkich jej kolumn), a pola od niej zależne są `null` (pusta kolekcja jest tylko tam, gdzie
+  lista po prostu nie ma elementów), nie zero ani klucz `null`:
+  - bez `tasks.kind`: `tasks`, `retries.repair`, `retries.fix`, `integration.work_s`, `integration.attempts`
+    i `parallel.repairs`; `decide` pomija D2 (rodzaje zadań nieznane);
+  - bez `tasks.task_id`: `retries.repair`, `integration.work_s`, `integration.attempts`, `parallel.repairs`
+    i `breakdown.github_wait`;
+  - bez `attempts.task_id`: `by_task`, `value.by_task`, `value.by_task_role` (`decide` pomija D2 z powodem
+    `brak danych: by_task`), `retries.attempts.per_task`, `integration.work_s`, `integration.attempts`
+    i `parallel.repairs`; próby w `attempts` mają `task: null`, a bez zadania i numeru próby nie wiadomo, gdzie leży
+    jej transkrypt (pozycja `attempts.transcript`, wartość prób `null`);
+  - bez `attempts.number`: tylko transkrypty prób nie są znajdowane (jak wyżej);
+  - bez `attempts.started_at` albo `attempts.ended_at`: `breakdown.work`, `parallel.repairs` i `subscription.share`
+    (przy epiku nakładającym się z innym; `share` bez nakładania to nadal 1);
+  - bez `attempts.wall_s` i bez początku albo końca prób: czas prób, czyli `by_task.<zadanie>.work` i
+    `integration.work_s` (`integration.attempts` zostaje); sam brak `wall_s` nie przeszkadza, bo czas to koniec minus
+    początek;
+  - bez `attempts.outcome` albo `attempts.executor_status`: klasy prób w `retries.attempts` (`successful`, `blocked`,
+    `failed`, `usage_limit`, `running`, `unclassified`) i `retries.failed_by_outcome`;
+  - bez `events.data`: `breakdown.limit_wait`, `breakdown.host_pause` i `breakdown.github_wait`; bez `events.task_id`:
+    `breakdown.github_wait`; bez `events.type`, `events.at` albo `events.data`: przyczyny REPAIR w `retries.repair`
+    (`final_pr_conflict` i `ci_red` to `null`, `unknown` to wszystkie), a bez `events.type` albo `events.at` także
+    cały `breakdown` (brak `epic_done`);
+  - bez `epics.round`: `integration.rounds`;
+  - bez tabeli `attempts`: wszystko powyższe z `attempts.*` oraz `retries.attempts.total`; przy braku samej kolumny
+    `retries.attempts.total` zostaje (liczy wiersze tabeli).
+
+  Kategoria rozkładu czasu bez źródła ma w `gaps` pozycję `breakdown.<kategoria>`: jej czas jest w innych kategoriach
+  i w `idle` (tak samo `human_wait` bez `events.jsonl`).
+
+  Komenda `waste` pomija reguły, którym brakuje kolumny, z pozycją w `gaps` wyjścia (`W1`–`W4`, osobno części
+  `W3`): W1 i W4 potrzebują `attempts.ended_at`, `attempts.task_id`, `attempts.number`, `tasks.kind` i `tasks.task_id`;
+  W2 do tego `attempts.started_at` (oraz `epics.status` albo `events.type`, żeby wiedzieć, czy przebieg trwa); W3 (pętla
+  prób nieudanych) `attempts.outcome`, `attempts.executor_status`, `attempts.ended_at`, `attempts.task_id`,
+  `attempts.number`; W3 (REPAIR bez zielonego CI)
+  `tasks.kind`, `tasks.task_id`, `attempts.task_id`, `attempts.started_at` i `events.type`, `events.at`,
+  `events.task_id`, `events.data`; W3 (runda QA) `epics.round`. `null` w istniejącej kolumnie to zwykły brak wartości,
+  np. próba bez `outcome` po końcu przebiegu jest nieudana (`no_outcome`). Render pisze „brak danych” (`REPAIR`,
+  `FIX`, `Integracja`, `Próby`, podział prób; przy nieznanych przyczynach `REPAIR: N (przyczyna nieznana)`), `decide`
+  pomija w D2 kryterium nieudanych prób z pozycją w `gaps`, a `trend` ma `null` w kolumnach `repair` i `failed`.
+- Rekord bez `waste` albo bez `waste.json` ma `waste: null` z pozycją w `gaps`, a render pokazuje „Alarmy (waste):
+  brak danych”.
+- Rekord bez `value.by_task_role` albo bez `effect_h` w `bottlenecks` (zapisany w innej wersji skryptu): `effect` pomija
+  go w mierze D1 z pozycją w `gaps`, a przelicza go `epic <epik>`.
 
 ### Decyzje optymalizacyjne (`decide`)
 
@@ -391,9 +435,9 @@ podstawiany funkcją `run`, a test procesu używa atrapy na `PATH`) i nie dotyka
 
 `fixtures/ao-data/` to oczyszczony pakiet danych przebiegów DEPLOY-OPS i CATALOG-ADMIN (zrzuty SQL tabel `epics`,
 `tasks`, `attempts`, `events`, `events.jsonl`, `measurements.jsonl`, `gate.jsonl`): pola z listy dozwolonych, bez
-tekstów, ścieżek bezwzględnych i poleceń. Pliki są skopiowane bez zmian z pakietu przygotowanego przed startem epiku.
-`fixtures/transcripts/<epik>/tasks/<zadanie>/attempts/<n>/stdout.jsonl` to oczyszczone transkrypty prób (pakiet METRICS-2:
-wszystkie próby DEPLOY-OPS, CATALOG-ADMIN-INTEGRATION-1 i -2, CATALOG-ADMIN-4, ADMIN-DESIGN-3): pola z listy dozwolonych,
+tekstów, ścieżek bezwzględnych i poleceń.
+`fixtures/transcripts/<epik>/tasks/<zadanie>/attempts/<n>/stdout.jsonl` to oczyszczone transkrypty prób (wszystkie próby
+DEPLOY-OPS, CATALOG-ADMIN-INTEGRATION-1 i -2, CATALOG-ADMIN-4, ADMIN-DESIGN-3): pola z listy dozwolonych,
 polecenia powłoki zastąpione kanonicznym poleceniem kategorii z numerem `# c<n>` (taki sam numer = ten sam klucz
 `repeat_runs`). `testkit.py` ma też `Transcript`, który buduje syntetyczny transkrypt.
 `fixture_scan.py` (test: `test_fixture_scan.py`) sprawdza każdy plik pod `fixtures/`: brak ścieżek bezwzględnych
@@ -403,5 +447,5 @@ słów jest dozwolona) i wartości tekstowych dłuższych niż 120 znaków. Jedy
 `cacheCreationEphemeral1hInputTokens` i `cacheCreationEphemeral5mInputTokens` w obiekcie modelu najwyższego poziomu
 `modelUsage` linii JSON (`modelUsage.<model>.<klucz>`, kształt wyniku CLI w transkrypcie). Ta sama nazwa jako wartość, jako
 klucz gdzie indziej, w pliku nie-JSON albo w surowym tekście SQL jest wykrywana, tak samo jak base64 będący wartością tych
-kluczy; pozostałe reguły działają na nich jak na każdym kluczu. Nowe fixture'y (np. transkrypty METRICS-2) muszą
+kluczy; pozostałe reguły działają na nich jak na każdym kluczu. Nowe fixture'y (np. transkrypty) muszą
 przejść ten skan.

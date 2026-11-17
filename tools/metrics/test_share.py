@@ -3,6 +3,7 @@ measurement interval when other epics ran in it, 1 without overlap, with the raw
 import json
 import os
 import shutil
+import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -86,6 +87,31 @@ class ShareTest(ShareEnv):
         self.assertTrue(sub['share_estimated'])
         self.assertEqual(sub['windows'], {ALL: 20})          # the raw increase stays next to the share
         self.assertFalse(any(g.startswith('subscription.share') for g in record['gaps']), record['gaps'])
+
+    def overlap_with(self, other_attempts, column=None):
+        self.night_file([event('demo', 110, 'start', 10), event('other', 1000, 'start', 12),
+                         event('other', 3000, 'done', 14), event('demo', 5010, 'done', 30)])
+        self.stored('other', other_attempts)
+        home = self.demo([(200, 4000, 10.0)])
+        if column:
+            con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
+            con.execute('ALTER TABLE attempts DROP COLUMN %s' % column)
+            con.commit()
+            con.close()
+        return self.subscription(home)
+
+    def test_without_the_times_of_the_attempts_the_share_is_null_with_a_gap_never_zero(self):
+        for column in ('started_at', 'ended_at'):
+            with self.subTest(column=column):
+                sub, record = self.overlap_with([attempt_of(1000, 3000, 5.0)], column)
+                self.assertIsNone(sub['share'])
+                self.assertTrue(any(g.startswith('subscription.share') and 'attempts.%s' % column in g
+                                    for g in record['gaps']), record['gaps'])
+
+    def test_an_overlapping_epic_whose_attempts_have_no_start_leaves_the_share_null(self):
+        sub, record = self.overlap_with([dict(attempt_of(1000, 3000, 5.0), started_at=None)])
+        self.assertIsNone(sub['share'])
+        self.assertTrue(any(g.startswith('subscription.share') for g in record['gaps']), record['gaps'])
 
     def test_value_is_assigned_to_the_interval_evenly_over_the_duration_of_an_attempt(self):
         self.night_file([event('demo', 2000, 'start', 10), event('other', 1000, 'start', 12),
