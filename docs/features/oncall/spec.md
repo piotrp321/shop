@@ -70,9 +70,9 @@ wyjątek.
 3. **Wersja i odcinki tagu.** Zapytanie zakresowe (ostatnie 26 h, krok 1 min) daje historię tagów obrazu kontenera
    `api` we wszystkich podach należących do ReplicaSetu Deploymentu `api`, gotowych i niegotowych:
    `kube_pod_container_info` złączone z `kube_pod_owner`. Pody Jobów z obrazem `api` się nie liczą.
-   - Tag pochodzi z etykiety ustalonej w eksperymencie (`image_spec` albo `image`). Obrazy są wdrażane jako
-     `<rejestr>/api:<sha>@<digest>`, a tag to SHA commita `main`. Release z Sentry, który może utworzyć każdy, kto
-     zna DSN, nie ma tu znaczenia.
+   - Tag pochodzi z etykiety `image_spec` (`<rejestr>/api:<sha>@sha256:<digest>`, wyrażenie
+     `.*:([0-9a-f]{40})(@.*)?`), a tag to SHA commita `main`. Etykieta `image` zawiera sam digest obrazu i nie niesie
+     tagu. Release z Sentry, który może utworzyć każdy, kto zna DSN, nie ma tu znaczenia.
    - **Nowy tag** to tag najnowszej próbki różny od `state.json.current`. Hypercare otwiera samo pojawienie się
      nowego tagu w dowolnym podzie `api`, także niegotowym, więc wdrożenie, którego pod nigdy nie staje się gotowy,
      też dostaje hypercare.
@@ -298,22 +298,33 @@ i krótkie ID issues Sentry. Nie zawiera tytułów ani treści zdarzeń:
   hypercare.
   - PR przygotowuje sesja po akceptacji, na polecenie użytkownika.
   - Merge i wdrożenie (`deploy.yml`, zatwierdzenie w środowisku `production`) wykonuje **użytkownik**.
-  - Bez wdrożonych metryk nie da się ustalić formatu tagu przed implementacją.
 - Token access policy Grafana Cloud z samym `metrics:read` (stos `cosmiccinnamon1835`) w
   `~/.config/shop/oncall/prometheus.token`, identyfikator instancji metryk w `prometheus.user`, adres w
   `prometheus.url`: **użytkownik**.
 - Token Sentry tylko do odczytu (Internal Integration organizacji `worf`: `org:read`, `project:read`, `event:read`)
   w `~/.config/shop/oncall/sentry.token`: **użytkownik**.
-- **Eksperyment na rzeczywistych API po wdrożeniu metryk, przed `/ao-run`** (decyzja D7). Sprawdza:
-  - etykietę z tagiem w `kube_pod_container_info` (`image_spec` czy `image`), jej format przy obrazie z digestem
-    i złączenie z `kube_pod_owner`;
-  - zapytania `query_range` metod `GET` tokenem `metrics:read` (K1–K6 na bieżących danych);
-  - Sentry REST na hoście regionu UE: issues po `firstRelease`, regresje, liczby zdarzeń w oknie, `stats_v2`,
-    paginację kursorem;
-  - zapis oboma tokenami kończy się odmową API.
+- **Eksperyment na rzeczywistych API** (decyzja D7), `istnieje: 2026-11-17`, Python `urllib` bez podążania za
+  przekierowaniami, tokeny z `~/.config/shop/oncall/`:
+  - metryki (`https://prometheus-prod-72-prod-eu-west-4.grafana.net/api/prom`, Basic z identyfikatorem instancji
+    i tokenem `metrics:read`, `GET /api/v1/query` i `/api/v1/query_range`):
+    - cztery metryki hypercare są zbierane już przez domyślną listę chartu `k8s-monitoring` (PR #711 je utrwala);
+    - `image` to `sha256:<digest>`, a tag niesie `image_spec`; wszystkie pięć workloadów wdrażanych ma ten sam tag;
+    - `query_range` z zakresem 26 h i krokiem 60 s zwraca rozłączne odcinki tagu `api` (5 wdrożeń w dobie);
+    - `kube_pod_owner` ma `owner_kind` `ReplicaSet` z `owner_name` `api-<hash>` oraz `StatefulSet` `elasticsearch`,
+      a złączenie `on(pod)` z `kube_pod_container_info` działa;
+    - `count(ALERTS)` nie zwraca serii;
+    - wyrażenia K1, K2 i K4 odpowiadają 200 bez serii przy zdrowym klastrze;
+    - `POST /push` i `POST /rules/<przestrzeń>` kończą się 401 „invalid scope requested”;
+  - Sentry (`https://de.sentry.io/api/0/organizations/worf/`, token Internal Integration):
+    - projekty `api`, `store` i `admin`, jedno środowisko `demo`, release to SHA commita (ten sam co tag obrazu);
+    - `issues/?project=-1&environment=demo&query=firstRelease:<sha>` i `query=is:regressed` zwracają `shortId`,
+      `count`, `level` i `firstSeen`;
+    - `events/?dataset=errors&field=count()&start=…&end=…` zwraca liczbę zdarzeń w oknie;
+    - `stats_v2/?field=sum(quantity)&groupBy=outcome&category=error` zwraca liczby według `outcome`;
+    - paginacja przez nagłówek `Link` z `cursor`. Odpowiedź `events/` na `de.sentry.io` ma w `Link` host
+      `sentry.io`, więc skrypt buduje następną stronę sam z kursora (O3);
+    - `POST releases/` i `PUT issues/` kończą się 403.
 
-  Wynik (polecenia, wersje, odpowiedzi bez tokenów) wpisuje się tutaj PR-em przed `/ao-run`. Przypadek, który nie
-  przechodzi, to decyzja użytkownika przed startem: **użytkownik** (tokeny) i sesja z nim.
 - **Eksperyment z zadaniem zaplanowanym** w bieżącej wersji aplikacji Claude, przed `/ao-run`, z poleceniem, wersją
   aplikacji i wynikiem. Sprawdza:
   - harmonogram co godzinę w godzinach 7–23 albo wariant zapasowy;
