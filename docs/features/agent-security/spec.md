@@ -667,10 +667,12 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   z RFC 9112 §7.1, także z niepustym trailerem) też jest nie do sprawdzenia, z bajtami przeczytanymi do błędu, a bajty,
   które nadawca wysłał w połączeniu po ramowanym ciele (nadmiar, kolejne żądanie), są osobnym zapisem nie do
   sprawdzenia, także gdy odpowiedzi nie dało się wysłać. Odbiornik czyta je do 1 s od odpowiedzi, a bajtów dosłanych
-  później nie czyta; sonda ocenia żądania dopiero po zatrzymaniu odbiorników, które czeka na ten odczyt. Żądanie, które
-  odrzuca sam serwer HTTP (także pusta linia żądania), jest zapisem nie do sprawdzenia bez ciała. Znaczników szuka
-  w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem protobufa (varint, pola stałej
-  długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością tekstową).
+  później nie czyta. Sonda ocenia żądania dopiero po zatrzymaniu odbiorników. Zatrzymanie czeka do 7 s na każde
+  przyjęte połączenie (linia żądania, nagłówki, ciało i jego rozpakowanie, przekazanie, odpowiedź, bajty po ciele),
+  a połączenie, które do tego czasu nie ma zapisu, jest zapisem nie do sprawdzenia bez ciała („żądanie w toku przy
+  zatrzymaniu odbiornika”). Żądanie, które odrzuca sam serwer HTTP (także pusta linia żądania), jest zapisem nie do
+  sprawdzenia bez ciała. Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem
+  protobufa (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością tekstową).
   - `telemetry_export`: `pass`, gdy pierwszy odbiornik dostał żądania `/v1/logs` i `/v1/metrics`, a w parach logów
     i metryk są `shop.source=ao`, `shop.task=<zadanie sondy>`, `shop.epic=<nazwa atrapy $AO_HOME po ao->`
     i `shop.task_kind=plan` (zadanie sondy to `<NAZWA>-1`, jak liczy wrapper); inaczej `no_export` (brak żądań, brak
@@ -688,7 +690,8 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   - `--otel-forward URL` (tylko `http://127.0.0.1:<port>`, reguła adresu z `render_settings.py`; inny adres, także
     z innym hostem, `https`, ścieżką albo portem spoza 1–65535, to błąd użycia, kod 2) przekazuje każde żądanie
     pierwszego odbiornika bez zmian (metoda, ścieżka, `Content-Type`, `Content-Encoding`, ciało) także pod ten adres.
-    Ocena przypadków jest taka sama; nieudane przekazanie niczego nie zmienia. Używa go tylko odbiór TELEMETRY ze
+    Odbiornik zapisuje żądanie przed przekazaniem, więc wolne przekazanie nie opóźnia zapisu. Ocena przypadków jest
+    taka sama; nieudane przekazanie niczego nie zmienia. Używa go tylko odbiór TELEMETRY ze
     stosem (`.claude/skills/ao-run/SKILL.md`).
 - Sonda czyści środowisko z `CLAUDE*` przed uruchomieniem zagnieżdżonego `claude` (jak `ao()` w `/ao-run`).
 - Kto uruchamia sondę z modelem: przed startem AO `ao-prepare` (sesja `/ao-run`, poza wykonawcą). Przy odbiorze

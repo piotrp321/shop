@@ -11,6 +11,8 @@ import http.client
 import importlib.util
 import os
 import socket
+import struct
+import threading
 import time
 import unittest
 
@@ -833,18 +835,18 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), self.LEAK)
         self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
 
-    def test_the_read_after_the_body_is_counted_before_the_request_is_recorded(self):
-        # stop() between the record and the count would return without the bytes after the body.
+    def test_the_connection_is_counted_when_its_request_is_recorded(self):
+        # stop() waits for the connection, so it never sees the record without the bytes after the body.
         receiver = self.receiver()
         seen, record = [], receiver._record
 
-        def counting(request):
-            seen.append((request['method'], receiver._reading))
-            record(request)
+        def counting(request, connection=None):
+            seen.append((request['method'], connection in receiver._connections))
+            record(request, connection)
         receiver._record = counting
         self.send_lines(receiver, [b'Content-Length: 3'], b'abc')
         receiver.stop()
-        self.assertEqual([('POST', 1)], seen)
+        self.assertEqual([('POST', True)], seen)
 
     def test_a_blank_request_line_is_recorded_and_never_a_pass(self):
         # http.server drops a request line without words silently, and the request after it with the connection.
@@ -864,6 +866,175 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         host, port = receiver.endpoint[len('http://'):].split(':')
         socket.create_connection((host, int(port)), timeout=10).close()
         self.assertEqual([], self.recorded_after_stop(receiver))
+
+    # -- stop() and the requests in progress ------------------------------------------------------------------------
+
+    IN_PROGRESS = 'żądanie w toku przy zatrzymaniu odbiornika'
+
+    def short_stop(self, seconds):
+        """stop() waits `seconds` for the connections in progress (STOP_TIMEOUT)."""
+        original = getattr(otlp_receiver, 'STOP_TIMEOUT', None)
+        otlp_receiver.STOP_TIMEOUT = seconds
+        self.addCleanup(setattr, otlp_receiver, 'STOP_TIMEOUT', original)
+
+    def patch(self, owner, name, replacement):
+        original = getattr(owner, name)
+        setattr(owner, name, replacement)
+        self.addCleanup(setattr, owner, name, original)
+        return original
+
+    def signal_on(self, name):
+        """An event set when a handler enters _Handler.<name> (and a second one when it leaves it)."""
+        entered, left = threading.Event(), threading.Event()
+        original = getattr(otlp_receiver._Handler, name)
+
+        def watched(handler, *args):
+            entered.set()
+            try:
+                return original(handler, *args)
+            finally:
+                left.set()
+        self.patch(otlp_receiver._Handler, name, watched)
+        return entered, left
+
+    def connect(self, receiver):
+        host, port = receiver.endpoint[len('http://'):].split(':')
+        connection = socket.create_connection((host, int(port)), timeout=10)
+        self.addCleanup(connection.close)
+        return connection
+
+    def stop_in_background(self, receiver):
+        """A thread that stops the receiver and keeps the requests it has right when stop() returns, once the server
+        closed its port (stop() is then past the shutdown of the server, in the wait for the connections)."""
+        closed, returned = threading.Event(), []
+        server = receiver._server
+        close = server.server_close
+
+        def closing():
+            close()
+            closed.set()
+        server.server_close = closing
+
+        def stopping():
+            receiver.stop()
+            returned.append(receiver.requests)
+        stopper = threading.Thread(target=stopping, daemon=True)
+        stopper.start()
+        self.assertTrue(closed.wait(5))
+        stopper.join(0.2)   # an implementation that does not wait for the connection returns by now
+        return stopper, returned
+
+    def in_progress(self, method='', path=''):
+        return {'method': method, 'path': path, 'content_type': None, 'content_encoding': None, 'raw': b'',
+                'body': None, 'problem': self.IN_PROGRESS, 'forwarded': None}
+
+    def test_a_body_still_read_at_the_deadline_of_stop_is_recorded_in_progress_and_never_a_pass(self):
+        self.short_stop(0.3)
+        reading, handled = self.signal_on('_read_body')[0], self.signal_on('_handle')[1]
+        receiver = self.receiver()
+        connection = self.connect(receiver)
+        connection.sendall(b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\n' + self.LEAK[:12])
+        self.assertTrue(reading.wait(5))
+        started = time.monotonic()
+        receiver.stop()
+        self.assertLess(time.monotonic() - started, 3)
+        requests = receiver.requests
+        self.assertEqual([self.in_progress('POST', '/v1/logs')], requests)
+        self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+        # stop() closed the connection: the handler ends without a second record of the same request.
+        self.assertTrue(handled.wait(5))
+        self.assertEqual(requests, receiver.requests)
+
+    def test_a_connection_without_a_request_line_at_the_deadline_of_stop_is_recorded_in_progress(self):
+        self.short_stop(0.3)
+        waiting = self.signal_on('handle_one_request')[0]
+        receiver = self.receiver()
+        connection = self.connect(receiver)
+        connection.sendall(b'POST /v1/lo')
+        self.assertTrue(waiting.wait(5))
+        receiver.stop()
+        self.assertEqual([self.in_progress()], receiver.requests)
+        self.assert_not_a_pass(receiver)
+
+    def test_stop_waits_for_a_connection_whose_request_line_has_not_come_whole(self):
+        self.short_stop(30)
+        waiting = self.signal_on('handle_one_request')[0]
+        receiver = self.receiver()
+        connection = self.connect(receiver)
+        connection.sendall(b'POST /v1/lo')
+        self.assertTrue(waiting.wait(5))
+        stopper, returned = self.stop_in_background(receiver)
+        connection.sendall(b'gs HTTP/1.1\r\nHost: x\r\nContent-Length: 15\r\n\r\n' + self.LEAK)
+        stopper.join(10)
+        self.assertEqual([('POST', '/v1/logs', self.LEAK)], [(r['method'], r['path'], r['body']) for r in returned[0]])
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_stop_waits_for_a_body_that_is_still_decompressed(self):
+        self.short_stop(30)
+        entered, release = threading.Event(), threading.Event()
+        original = otlp_receiver.decompress
+
+        def slow(raw, encoding):
+            entered.set()
+            release.wait(10)
+            return original(raw, encoding)
+        self.patch(otlp_receiver, 'decompress', slow)
+        receiver = self.receiver()
+        body = self.leaking_body()
+        threading.Thread(target=post, args=(receiver.endpoint, '/v1/logs', gzip.compress(body),
+                                            {'Content-Encoding': 'gzip'}), daemon=True).start()
+        self.assertTrue(entered.wait(5))
+        stopper, returned = self.stop_in_background(receiver)
+        release.set()
+        stopper.join(10)
+        self.assertEqual([body], [r['body'] for r in returned[0]])
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def silent_target(self):
+        """A forward address that accepts the connection (in the backlog) and never answers."""
+        listener = socket.socket()
+        self.addCleanup(listener.close)
+        listener.bind(('127.0.0.1', 0))
+        listener.listen(8)
+        return 'http://127.0.0.1:%d' % listener.getsockname()[1]
+
+    def test_a_request_is_recorded_before_its_forward_so_a_slow_forward_never_hides_it_from_stop(self):
+        self.short_stop(0.3)
+        receiver = self.receiver(forward=self.silent_target(), forward_timeout=5)
+        forwarding, during = threading.Event(), []
+        forward = receiver._forward
+
+        def watched(*args):
+            during.append(receiver.requests)
+            forwarding.set()
+            return forward(*args)
+        receiver._forward = watched
+        body = self.leaking_body()
+        self.connect(receiver).sendall(b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\n\r\n'
+                                       % len(body) + body)
+        self.assertTrue(forwarding.wait(5))
+        self.assertEqual([(body, None)], [(r['body'], r['forwarded']) for r in during[0]])
+        started = time.monotonic()
+        receiver.stop()
+        self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual([(body, None)], [(r['body'], r['forwarded']) for r in receiver.requests])
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_connection_reset_while_its_body_is_read_is_one_record_and_never_a_pass(self):
+        self.short_stop(30)
+        reading = self.signal_on('_read_body')[0]
+        receiver = self.receiver()
+        connection = self.connect(receiver)
+        connection.sendall(b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 40\r\n\r\n' + self.LEAK)
+        self.assertTrue(reading.wait(5))
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+        connection.close()   # a reset
+        started = time.monotonic()
+        requests = self.recorded_after_stop(receiver)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(1, len(requests))
+        self.assertIsNone(requests[0]['body'])
+        self.assert_not_a_pass(receiver)
 
     def test_without_the_header_content_encoding_is_none(self):
         receiver = self.receiver()

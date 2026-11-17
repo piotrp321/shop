@@ -32,12 +32,12 @@ copies it next to probe.py.
                                    TRAILING_TIMEOUT seconds in all or MAX_BODY bytes; any such bytes are a record of
                                    their own: method and path '', raw the bytes (cut to MAX_BODY), body None, the
                                    problem "bajty po ciele żądania" (", ponad <MAX_BODY> bajtów" when cut), never
-                                   forwarded. stop() waits for those reads, so a caller judges the requests after
-                                   stop(). Bytes after a body that cannot be read, and bytes sent later than
+                                   forwarded. Bytes after a body that cannot be read, and bytes sent later than
                                    TRAILING_TIMEOUT, are not read.
                                    With `forward` (only http://127.0.0.1:<port>, validated by render_settings.py) each
-                                   request goes on (method, path, Content-Type, Content-Encoding, raw body) to that
-                                   address; its failure, whatever it is, changes nothing else. An error in the
+                                   request, once recorded, goes on (method, path, Content-Type, Content-Encoding, raw
+                                   body) to that address and `forwarded` is set when that ends; its failure, whatever
+                                   it is, changes nothing else. An error in the
                                    processing of a request (a path or a body it cannot handle) still records it: raw
                                    as far as it was read, body None, a fixed problem (never a header value). A
                                    request http.server rejects itself (an HTTP/2 preface, TLS bytes, a line or a
@@ -47,6 +47,16 @@ copies it next to probe.py.
                                    answer and closes the connection with what follows, is recorded the same way with
                                    the problem "żądanie odrzucone przez serwer HTTP: pusta linia żądania" and method
                                    and path ''. A HEAD request is answered without a body.
+                                   stop() ends the server, then waits for every connection it accepted, counted from
+                                   its accept (the request line, the headers, the body and its decompression, the
+                                   forward, the answer, the bytes after the body), STOP_TIMEOUT seconds in all, so a
+                                   caller judges the requests after stop(). A connection still without a record then
+                                   is recorded with method and path (once its request line was read, else ''), raw
+                                   b'', body None and the problem "żądanie w toku przy zatrzymaniu odbiornika" (never
+                                   a header value), and its connection is shut. Nothing is recorded after stop(), so
+                                   no request has two records. A request recorded before whose forward still runs has
+                                   no such record: its `forwarded` is None in a copy taken then, and its bytes after
+                                   the body, not read by then, are not recorded.
   decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
                                    (None, problem) for any other encoding, a body that does not decompress (also
                                    bytes after a member that are not a whole member) or one larger than MAX_BODY.
@@ -77,6 +87,11 @@ MAX_BODY = 32 * 1024 * 1024        # bytes of a request body, before and after d
 MAX_DEPTH = 32                     # nesting of messages the decoder follows (OTLP needs about 10)
 FORWARD_TIMEOUT = 5
 TRAILING_TIMEOUT = 1               # seconds the receiver reads the bytes after a body, in all
+# Seconds stop() waits for the connections in progress: a request recorded just before stop() whose forward runs
+# into one FORWARD_TIMEOUT (a target that accepts and never answers), then the read of the bytes after its body
+# (TRAILING_TIMEOUT), and a second for the answer. A connection still open after it is held by its sender.
+STOP_TIMEOUT = FORWARD_TIMEOUT + TRAILING_TIMEOUT + 1
+IN_PROGRESS = 'żądanie w toku przy zatrzymaniu odbiornika'
 LINE_LIMIT = 1024                  # bytes of a chunk size line and of the trailer line, with the line end
 _CHUNK_SIZE = re.compile(rb'([0-9A-Fa-f]+)[ \t]*(?:;[^\r\n]*)?\r?\n\Z')
 
@@ -249,6 +264,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     receiver = None
     _recorded = False   # the request being handled is in receiver.requests (set per request, see handle_one_request)
 
+    def setup(self):
+        super().setup()
+        self.receiver._handling(self.request, self)   # stop() takes the method and path of a request in progress
+
     def handle_one_request(self):
         self._recorded = False
         self.raw_requestline = b''
@@ -256,21 +275,27 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if self.raw_requestline and not self._recorded:
             # parse_request drops a request line without words (b'\r\n', b' \r\n') without an answer and closes the
             # connection, with whatever the sender put after it: recorded, so the run is never a pass.
-            self._recorded = True
-            self.receiver._record({'method': '', 'path': '', 'content_type': None, 'content_encoding': None,
-                                   'raw': b'', 'body': None, 'forwarded': None,
-                                   'problem': 'żądanie odrzucone przez serwer HTTP: pusta linia żądania'})
+            self._record({'method': '', 'path': '', 'content_type': None, 'content_encoding': None, 'raw': b'',
+                          'body': None, 'forwarded': None,
+                          'problem': 'żądanie odrzucone przez serwer HTTP: pusta linia żądania'})
 
     def send_error(self, code, message=None, explain=None):
         """A request http.server rejects itself (an HTTP/2 preface, TLS bytes, a line or a header too long, too many
         headers, a malformed request line) is recorded too: body None, the fixed problem and the code only."""
         if not self._recorded:
-            self._recorded = True
-            self.receiver._record({'method': getattr(self, 'command', None) or '',
-                                   'path': _path_of(getattr(self, 'path', None) or ''), 'content_type': None,
-                                   'content_encoding': None, 'raw': b'', 'body': None,
-                                   'problem': 'żądanie odrzucone przez serwer HTTP: %d' % code, 'forwarded': None})
-        super().send_error(code, message, explain)
+            self._record({'method': getattr(self, 'command', None) or '',
+                          'path': _path_of(getattr(self, 'path', None) or ''), 'content_type': None,
+                          'content_encoding': None, 'raw': b'', 'body': None,
+                          'problem': 'żądanie odrzucone przez serwer HTTP: %d' % code, 'forwarded': None})
+        try:
+            super().send_error(code, message, explain)
+        except OSError:   # the sender went away, or stop() shut the connection: there is no one to answer
+            pass
+
+    def _record(self, request):
+        """The record of this connection: from then on stop() does not write it as a request in progress."""
+        self._recorded = True
+        self.receiver._record(request, getattr(self, 'request', None))
 
     def __getattr__(self, name):
         """Every method goes through _handle (http.server answers 501 to one without do_<METHOD>, unrecorded)."""
@@ -375,8 +400,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             problem = 'bajty po ciele żądania'
             if len(raw) > MAX_BODY:
                 raw, problem = raw[:MAX_BODY], 'bajty po ciele żądania, ponad %d bajtów' % MAX_BODY
-            self.receiver._record({'method': '', 'path': '', 'content_type': None, 'content_encoding': None,
-                                   'raw': raw, 'body': None, 'problem': problem, 'forwarded': None})
+            self._record({'method': '', 'path': '', 'content_type': None, 'content_encoding': None, 'raw': raw,
+                          'body': None, 'problem': problem, 'forwarded': None})
 
     def _handle(self):
         request = {'method': self.command, 'path': _path_of(self.path), 'content_type': None,
@@ -398,16 +423,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         except Exception:   # whatever it is, the request is still recorded and answered; raw stays for the markers
             request['body'], request['problem'] = None, 'nieoczekiwany błąd przy przetwarzaniu żądania'
             status = 500
-        if read:   # before the record: stop() never sees the record without waiting for the bytes after the body
-            self.receiver._after_body_started()
+        # Recorded before the forward: a slow forward never keeps the request from a verdict after stop().
+        self._record(request)
         try:
-            try:
-                if read and self.receiver.forward:
-                    request['forwarded'] = self.receiver._forward(self.command, self.path, request['content_type'],
-                                                                  request['content_encoding'], request['raw'])
-            finally:
-                self._recorded = True
-                self.receiver._record(request)
+            if read and self.receiver.forward:
+                self.receiver._forwarded(request, self.receiver._forward(
+                    self.command, self.path, request['content_type'], request['content_encoding'], request['raw']))
             json_body = 'json' in (request['content_type'] or '')
             answer = b'{}' if json_body else b''
             try:
@@ -424,11 +445,33 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 self._read_after_body()
         finally:
             self.close_connection = True
-            if read:
-                self.receiver._after_body_done()
 
     def log_message(self, *args):
         pass
+
+
+class _Server(http.server.ThreadingHTTPServer):
+    """Counts a connection from its accept, in the thread of serve_forever, before its handler thread exists: once
+    shutdown() returned (serve_forever ended), every connection accepted is counted."""
+    daemon_threads = True
+    receiver = None
+
+    def process_request(self, request, client_address):
+        self.receiver._opened(request)
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.receiver._closed(request)
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            self.finish_request(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            self.receiver._closed(request)   # before the socket is closed: stop() shuts only open sockets
+            self.shutdown_request(request)
 
 
 class Receiver:
@@ -440,25 +483,48 @@ class Receiver:
         self.endpoint = None
         self._requests = []
         self._lock = threading.Lock()
-        self._after_body = threading.Condition(self._lock)
-        self._reading = 0                 # handlers reading the bytes after a body
+        self._idle = threading.Condition(self._lock)
+        self._connections = {}            # socket of each connection in progress -> its handler and whether recorded
+        self._stopped = False             # after stop(): no record is added any more
         self._server = None
 
     def start(self):
         handler = type('OtlpHandler', (_Handler,), {'receiver': self})
-        self._server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
-        self._server.daemon_threads = True
+        server = type('OtlpServer', (_Server,), {'receiver': self})
+        self._stopped = False
+        self._server = server(('127.0.0.1', 0), handler)
         self.endpoint = 'http://127.0.0.1:%d' % self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         return self
 
     def stop(self):
+        """Ends the server, then waits up to STOP_TIMEOUT for every connection it accepted (reading, decompressing,
+        forwarding, answering, reading the bytes after the body). A connection without a record by then gets the
+        record IN_PROGRESS (method and path once its request line was read, else ''; raw b'', body None, never a
+        header value) and its socket is shut, so its handler ends; no record is added after stop(), so the handler
+        never records that request a second time. A request recorded before (its record comes before its forward)
+        whose forward still runs has no second record; its `forwarded` stays None in a copy of `requests` taken
+        then, and its bytes after the body not read by then are not recorded."""
         server, self._server = self._server, None
-        if server is not None:
-            server.shutdown()
-            server.server_close()
-            with self._after_body:   # their records come after the answer; each read ends by TRAILING_TIMEOUT
-                self._after_body.wait_for(lambda: not self._reading, TRAILING_TIMEOUT + 1)
+        if server is None:
+            return
+        server.shutdown()
+        server.server_close()
+        with self._idle:
+            self._idle.wait_for(lambda: not self._connections, STOP_TIMEOUT)
+            for connection, state in self._connections.items():
+                if not state['recorded']:
+                    handler = state['handler']
+                    self._requests.append({
+                        'method': getattr(handler, 'command', None) or '',
+                        'path': _path_of(getattr(handler, 'path', None) or ''), 'content_type': None,
+                        'content_encoding': None, 'raw': b'', 'body': None, 'problem': IN_PROGRESS,
+                        'forwarded': None})
+                try:
+                    connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+            self._stopped = True
 
     def __enter__(self):
         return self.start()
@@ -471,22 +537,37 @@ class Receiver:
         with self._lock:
             return [dict(r) for r in self._requests]
 
-    def _record(self, request):
+    def _record(self, request, connection=None):
         with self._lock:
+            if self._stopped:   # stop() recorded this connection as in progress, or gave up on it
+                return
             self._requests.append(request)
+            if connection in self._connections:
+                self._connections[connection]['recorded'] = True
 
-    def _after_body_started(self):
+    def _forwarded(self, request, result):
+        with self._lock:   # `requests` copies under the same lock
+            request['forwarded'] = result
+
+    def _opened(self, connection):
         with self._lock:
-            self._reading += 1
+            self._connections[connection] = {'handler': None, 'recorded': False}
 
-    def _after_body_done(self):
-        with self._after_body:
-            self._reading -= 1
-            self._after_body.notify_all()
+    def _handling(self, connection, handler):
+        with self._lock:
+            if connection in self._connections:
+                self._connections[connection]['handler'] = handler
+
+    def _closed(self, connection):
+        with self._idle:
+            self._connections.pop(connection, None)
+            self._idle.notify_all()
 
     def _forward(self, method, path, content_type, content_encoding, raw):
-        """The status of the forwarded request, or the error text. Whatever fails (a path http.client cannot send
-        too), the answer to the sender and the record do not change."""
+        """The status of the forwarded request, or the error text; the handler puts it in `forwarded` of the record
+        written before the forward. Whatever fails (a path http.client cannot send too), the answer to the sender and
+        the rest of the record do not change; a forward still running when stop() ends leaves `forwarded` None in the
+        copy taken then."""
         connection = None
         try:
             port = int(self.forward.rsplit(':', 1)[1])
