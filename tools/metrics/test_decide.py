@@ -248,6 +248,16 @@ class D2Test(DecideEnv):
         self.assertEqual((task['task'], task['failed_attempts']), ('P-4', 2))
         self.assertEqual(candidate['expected_effect']['wall_h'], 0.0)
 
+    def test_unknown_attempt_classes_do_not_count_as_failed_attempts(self):
+        record = target()
+        record['retries']['attempts'].update({n: None for n in ('successful', 'blocked', 'failed', 'usage_limit',
+                                                                  'running', 'unclassified')})
+        record['attempts'] = [{'task': 'P-4', 'kind': 'plan', 'number': n, 'outcome': None, 'executor_status': None}
+                              for n in (1, 2)]
+        result = self.run_with(record)
+        self.assertNotIn('D2:plan_split', self.keys(result))
+        self.assertTrue(any('decide.D2' in g and 'klasy prób' in g for g in result['gaps']), result['gaps'])
+
     def test_one_failed_attempt_and_blocked_or_limit_attempts_are_silent(self):
         record = target()
         record['attempts'] = [{'task': 'P-4', 'kind': 'plan', 'number': 1, 'outcome': 'timeout', 'executor_status': None},

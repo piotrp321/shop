@@ -2302,7 +2302,11 @@ def d2_candidates(record, history, config, skipped, gaps):
         gaps.add('decide.D2', 'brak historii mediany work zadań planu: kryterium czasu pominięte')
     ended = record.get('done_at') is not None or record.get('merged_at') is not None
     failed = {}
-    for attempt in record.get('attempts') or []:
+    counted = _get(record, ('retries', 'attempts'))
+    classes_unknown = isinstance(counted, dict) and 'failed' in counted and counted['failed'] is None
+    if classes_unknown:         # the AO database had no outcome or executor_status: no attempt is failed or not
+        gaps.add('decide.D2', 'klasy prób nieznane (retries.attempts.failed null): kryterium nieudanych prób pominięte')
+    for attempt in [] if classes_unknown else record.get('attempts') or []:
         if isinstance(attempt, dict) and classify_attempt(attempt.get('outcome'), attempt.get('executor_status'),
                                                           ended)[0] == 'failed':
             failed[attempt.get('task')] = failed.get(attempt.get('task'), 0) + 1
