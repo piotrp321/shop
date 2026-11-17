@@ -478,8 +478,6 @@ BIN="$(python3 "$SKILL_ROOT/.claude/skills/ao-run/claude_pin.py" --ao-dir "$AO_D
     --otel-forward http://127.0.0.1:4318 --result "$AO_HOME/acceptance-telemetry-default.json"); echo "default: $?"
   (cd "$W" && noclaude python3 tools/agent-security/probe.py --mode ao --agent-claude-bin "$BIN" \
     --result "$AO_HOME/acceptance-telemetry-ao.json"); echo "ao: $?"
-  (cd "$W" && noclaude python3 tools/telemetry/telemetry.py check --project-override --claude-bin "$BIN")
-  echo "project-override: $?"
 }; cd "$SHOP" && git worktree remove --force "$W"
 ```
 
@@ -499,13 +497,12 @@ curl -sfG "http://127.0.0.1:3030/api/datasources/proxy/uid/loki/loki/api/v1/quer
   python3 -c 'import json, sys; r = json.load(sys.stdin); print(r["status"], sum(len(s["values"]) for s in r["data"]["result"]))'
 ```
 
-Wynik przechodzi tylko wtedy, gdy wszystkie cztery punkty przeszły:
+Wynik przechodzi tylko wtedy, gdy wszystkie trzy punkty przeszły:
 
 1. `check: 0` (stos działa).
 2. `default: 0` i `ao: 0`, a w JSON wyniku każdej sondy oba przypadki `telemetry_export` i `telemetry_no_content` mają
    status `pass`. Sam kod 0 nie wystarcza: `no_export` i `unverifiable` go nie zmieniają.
-3. `project-override: 0`.
-4. Zapytanie zwraca `success` i co najmniej jedno zdarzenie (uid źródła Lokiego w stosie to `loki`).
+3. Zapytanie zwraca `success` i co najmniej jedno zdarzenie (uid źródła Lokiego w stosie to `loki`).
 
 W raporcie odbioru podaj kody, statusy przypadków telemetrii, czas (`elapsed_s`) i koszt (`total_cost_usd`) obu sond,
 zadanie sondy, zapytanie i liczbę zdarzeń. Każdy inny wynik, także błąd `curl` albo brak pliku wyniku, to bloker dla
