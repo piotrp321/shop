@@ -362,18 +362,18 @@ class EstimatedColumnsTest(TrendEnv):
     def test_position_marks_an_estimated_value_with_the_approximation_sign(self):
         record = estimate(fake_record('x', value=30), value=True)
         line = self.position_line(record)
-        self.assertIn('value \u2248 3,00 (mediana 1,00, +200%)', line)
+        self.assertIn('value \u2248 3,00 (mediana 1,00, \u2248 +200%)', line)
         self.assertNotIn('pp \u2248', line)
 
     def test_position_marks_pp_of_an_estimated_share(self):
         line = self.position_line(estimate(fake_record('x', share=2), share=True))
-        self.assertIn('pp \u2248 0,80 (mediana 0,40, +100%)', line)
+        self.assertIn('pp \u2248 0,80 (mediana 0,40, \u2248 +100%)', line)
         self.assertNotIn('value \u2248', line)
 
     def test_position_marks_a_median_built_from_an_estimated_history_value(self):
         history = [estimate(h, value=True) if h['epic'] == 'b' else h for h in self.history]
         line = self.position_line(fake_record('x', value=30), history)
-        self.assertIn('value 3,00 (mediana \u2248 1,00, +200%)', line)
+        self.assertIn('value 3,00 (mediana \u2248 1,00, \u2248 +200%)', line)
 
     def test_position_of_exact_values_has_no_approximation_sign(self):
         self.assertNotIn('\u2248', self.position_line(fake_record('x', value=30, share=2)))
@@ -424,8 +424,8 @@ class EstimatedColumnsTest(TrendEnv):
         self.assertNotIn('\u2248', next(l for l in lines if l.startswith('a ')))
         table = [l for l in lines[1:6]]      # the header, the three epics and the median
         self.assertEqual(len({len(l) for l in table}), 1, table)
-        self.assertIn('  USD: \u2248 2,00 (mediana \u2248 2,00, +0%)', lines)
-        self.assertIn('  pp: \u2248 0,80 (mediana \u2248 0,40, +100%)', lines)
+        self.assertIn('  USD: \u2248 2,00 (mediana \u2248 2,00, \u2248 +0%)', lines)
+        self.assertIn('  pp: \u2248 0,80 (mediana \u2248 0,40, \u2248 +100%)', lines)
 
     def test_text_table_of_exact_records_has_no_approximation_sign(self):
         store_records(self.state, fake_record('a'), fake_record('b', merged='2026-11-11T10:00:00Z'))

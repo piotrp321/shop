@@ -72,9 +72,13 @@ którego nie przeczytałeś, nie wpisujesz do `duplicate_check`. Bez zmian w wor
    instrukcjach procesu w worktree, a nie w liczbach: poprawka instrukcji to `fix`; zmiana kodu, konfiguracji,
    `tools/metrics` albo modelu agenta to `issue` z `repo: "shop"` (etykieta `tech-debt` nadawana po „tak”). Nie
    proponuj zmiany modelu roli wprost: dla roli objętej EVALS 2.0 propozycja `issue` to porównanie wariantów w EVALS 2.0 i
-   decyzja właściciela przed merge'em. Efektu poprawki nie liczysz i nie oceniasz: `optimization_effects` (wynik
-   `metrics.py effect`) przepisuje do raportu sesja (sekcja „Decyzje optymalizacyjne”). Pozycja `fix`, której `key`
-   jest w `applied.jsonl` (poprawka z tego samego klucza reguły), wraca tylko według zasad „Skuteczność”.
+   decyzja właściciela przed merge'em. Liczby z pomiaru (kandydaci `optimization` i fakty `measurement`) cytujesz w
+   `fix`, `issue` i `observations` z „≈” przed liczbą, gdy rekord oznacza je jako szacowane albo niepełne
+   (`data.estimated`, `expected_effect.estimated`, listy `estimated` i `median_estimated` trendu, `estimated` albo
+   `incomplete` przy wartości); nigdy nie podajesz takiej liczby jak dokładnej. Efektu poprawki nie liczysz i nie
+   oceniasz: `optimization_effects` (wynik `metrics.py effect`) przepisuje do raportu sesja (sekcja „Decyzje
+   optymalizacyjne”). Pozycja `fix`, której `key` jest w `applied.jsonl` (poprawka z tego samego klucza reguły), wraca
+   tylko według zasad „Skuteczność”.
 
 ## Reguły walidacji (`retro.py validate`)
 

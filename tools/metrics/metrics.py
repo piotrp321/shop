@@ -134,6 +134,37 @@ def _is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+# The rule of the spec (Dokładność): a number that is estimated, incomplete or derived from such data is marked
+# `estimated: true` (and `incomplete: true` where a part is missing) and shown with `≈`. The conservative rule of the
+# medians and ratios: any marked input marks the output. One test and one prefix serve every place.
+APPROX = '\u2248'
+
+
+def inexact(cell):
+    """Whether a cell of a record (a value cell, a `by_task` entry, `in_attempts`, `integration`, ...) is marked as
+    estimated or incomplete."""
+    return isinstance(cell, dict) and (cell.get('estimated') is True or cell.get('incomplete') is True)
+
+
+def lower_bounds(record):
+    """The categories of `breakdown` of the record that are lower bounds (`breakdown_incomplete`): part of their time
+    was skipped for lack of data and is in the other categories and in `idle`."""
+    found = record.get('breakdown_incomplete') if isinstance(record, dict) else None
+    return {c for c in found if isinstance(c, str)} if isinstance(found, list) else set()
+
+
+def breakdown_inexact(record, name):
+    """Whether the category `name` of `breakdown` is a lower bound, or `idle` an upper bound (the skipped time is in
+    it)."""
+    found = lower_bounds(record)
+    return name in found or (name == 'idle' and bool(found))
+
+
+def approx(flag, space=' '):
+    """`≈ ` (with `space` after the sign) for a marked number, else an empty string."""
+    return APPROX + space if flag else ''
+
+
 def _number_map(keys=None):
     def check(value):
         if not isinstance(value, dict) or not value or not all(_is_number(v) for v in value.values()):
@@ -437,9 +468,11 @@ def _next_at(events, index, kinds, after=None):
 EVENT_CATEGORY = {'cooldown_set': 'limit_wait', 'host_pause': 'host_pause', 'github_wait': 'github_wait'}
 
 
-def category_intervals(run, done, jsonl, config, gaps):
+def category_intervals(run, done, jsonl, config, gaps, lower=None):
     """{category: [(start, end)] or None} for the breakdown categories except idle (before clipping and
-    precedence). None: the source of the category is missing."""
+    precedence). None: the source of the category is missing. `lower`: a set that gets the categories whose time was
+    skipped for lack of data (lower bounds)."""
+    lower = set() if lower is None else lower
     events = run['events']
     epic_id = run['epic']['epic_id']
     task_ids = {t['task_id'] for t in run['tasks']}
@@ -451,6 +484,9 @@ def category_intervals(run, done, jsonl, config, gaps):
     for attempt in run['attempts'] if found['work'] is not None else []:
         start = _number(attempt['started_at'])
         if start is None:
+            lower.add('work')
+            gaps.add('breakdown.work', 'próba %s/%s bez started_at: pominięta w czasie work' % (attempt['task_id'],
+                                                                                              attempt['number']))
             continue
         end = _number(attempt['ended_at'])
         found['work'].append((start, done if end is None else end))
@@ -465,6 +501,7 @@ def category_intervals(run, done, jsonl, config, gaps):
             ends = [e for e in (_number(data.get('until')), _next_at(events, i + 1, ('cooldown_released',))) if e]
             if not ends:
                 gaps.add('breakdown.limit_wait', 'cooldown_set bez until i bez cooldown_released: pominięty')
+                lower.add('limit_wait')
                 continue
             found['limit_wait'].append((at if start is None else start, min(ends)))
         elif kind == 'epic_ci_pending':
@@ -480,6 +517,7 @@ def category_intervals(run, done, jsonl, config, gaps):
                 start, end = at - seconds, at
             if start is None or end is None:
                 gaps.add('breakdown.host_pause', 'host_pause bez from/to i seconds: pominięty')
+                lower.add('host_pause')
                 continue
             found['host_pause'].append((start, end))
         elif kind == 'github_wait' and not (i and _quiet(events[i - 1], epic_id, task_ids)
@@ -507,15 +545,16 @@ def _run_of_github_waits(events, index, epic_id, task_ids):
     return False
 
 
-def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps):
+def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps, lower=None):
     """The split of start -> epic_done into disjoint categories: each moment goes to the first category (in the order
-    of config.json) whose interval covers it; the rest is idle. A category without a source is None."""
+    of config.json) whose interval covers it; the rest is idle. A category without a source is None. `lower`: a set that
+    gets the categories that are lower bounds (time skipped for lack of data; `idle` is then an upper bound)."""
     if done is None or started is None:
         gaps.add('breakdown', 'brak epic_done: rozkład czasu niemożliwy')
         return None
     if jsonl is None:
         gaps.add('breakdown.human_wait', '%s: czas czekania na człowieka jest w idle' % jsonl_gap)
-    found = category_intervals(run, done, jsonl, config, gaps)
+    found = category_intervals(run, done, jsonl, config, gaps, lower)
     for name in found:
         if found[name] is None and name != 'human_wait':
             gaps.add('breakdown.%s' % name, 'brak kolumny źródła w bazie AO: czas tej kategorii jest w innych '
@@ -621,7 +660,7 @@ def integration_of(run, epic, gaps):
     if lacks(run, 'tasks.kind', 'tasks.task_id', 'attempts.task_id'):    # which attempts are integration ones is unknown
         return {'work_s': None, 'attempts': None, 'rounds': epic['round']}
     kinds = {t['task_id']: t['kind'] for t in run['tasks']}
-    work, count = 0.0, 0
+    work, count, incomplete = 0.0, 0, False
     for attempt in run['attempts']:
         if kinds.get(attempt['task_id']) not in INTEGRATION_KINDS:
             continue
@@ -634,11 +673,15 @@ def integration_of(run, epic, gaps):
         if seconds is None and start is not None and end is not None:
             seconds = end - start
         if seconds is None:
+            incomplete = True                           # the sum is a lower bound
             gaps.add('integration', 'próba %s/%s bez wall_s i końca: pominięta w czasie' % (attempt['task_id'],
                                                                                          attempt['number']))
             continue
         work += seconds
-    return {'work_s': None if wall_unknown(run) else round(work, 3), 'attempts': count, 'rounds': epic['round']}
+    found = {'work_s': None if wall_unknown(run) else round(work, 3), 'attempts': count, 'rounds': epic['round']}
+    if incomplete:
+        found['incomplete'] = True
+    return found
 
 
 # --------------------------------------------------------------------------------------------- transcripts: reading
@@ -1054,11 +1097,13 @@ def value_sections(items, with_tasks=True):
     sections = {name: Section(name in ('by_role', 'by_role_model', 'by_task_role'))
                 for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model', 'by_task_role')}
     nothing = {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'shared': False, 'no_cli': False}
+    unknown_tasks = []
     for task, cells in items:
         if cells is None:
             sections['total'].mark_unknown('all')
             if with_tasks:
                 sections['by_task'].mark_unknown(task)
+            unknown_tasks.append(task)
             continue
         if not cells:                       # a CLI result without any usage: a real zero
             sections['total'].add('all', nothing)
@@ -1073,6 +1118,13 @@ def value_sections(items, with_tasks=True):
                 if with_tasks:
                     sections['by_task'].add(task, cell)
                     sections['by_task_role'].add((task, role), cell)
+    if unknown_tasks:       # the role and the model of an attempt without cells are unknown: every one may be short
+        for name in ('by_role', 'by_model', 'by_role_model'):
+            for key in list(sections[name].cells):
+                sections[name].mark_unknown(key)
+        for task, role in list(sections['by_task_role'].cells):
+            if task in unknown_tasks:
+                sections['by_task_role'].mark_unknown((task, role))
     value = {'total': sections['total'].render('all') if sections['total'].cells else None}
     for name in ('by_role', 'by_model', 'by_task'):
         value[name] = {key: sections[name].render(key) for key in sorted(sections[name].cells)}
@@ -1244,6 +1296,7 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
             task['work'] = None
             gaps.add('by_task', WALL_UNKNOWN)
         elif seconds is None:
+            task['incomplete'] = True                   # the sum is a lower bound
             gaps.add('by_task', 'próba %s/%s bez wall_s i końca: pominięta w czasie' % (attempt['task_id'],
                                                                                     attempt['number']))
         else:
@@ -1296,6 +1349,10 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     if not datas:
         gaps.add('in_attempts', 'brak transkryptów prób')
         gaps.add('versions', 'brak transkryptów prób')
+    elif len(datas) < len(parsed):      # the sums cover only the attempts with a transcript: lower bounds
+        in_attempts.update(incomplete=True, attempts_without_transcript=len(parsed) - len(datas), attempts=len(parsed))
+        gaps.add('in_attempts', 'czasy w próbach z %d z %d prób (reszta bez transkryptu): dolna granica'
+                 % (len(datas), len(parsed)))
     return {'by_task': by_task, 'attempts': entries, 'value': value_sections(items, not no_task), 'in_attempts': in_attempts,
             'versions': versions_of(datas) if datas else None}
 
@@ -2085,6 +2142,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
             if any(s_start <= p['created'] < s_end for stretch in stretches.values() for s_start, s_end in stretch))
         if github['sync'] is None:
             gaps.add('parallel.sync_prs', 'brak listy PR sync')
+    lower = set()
     record = {
         'epic': epic_id,
         'issue': github['pr']['issue'] if github['pr'] else None,
@@ -2098,7 +2156,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
             'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
             'review': round(merged - done, 3) if merged is not None and done is not None else None,
         },
-        'breakdown': breakdown_of(ao_run, started, done, jsonl, jsonl_gap, config, gaps),
+        'breakdown': breakdown_of(ao_run, started, done, jsonl, jsonl_gap, config, gaps, lower),
         'integration': integration_of(ao_run, epic, gaps),
         'retries': retries,
         'parallel': parallel,
@@ -2112,6 +2170,8 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'value': fields['value'],
         'waste': waste[0],
     }
+    if lower:
+        record['breakdown_incomplete'] = [c for c in config['breakdown_order'] if c in lower]
     errors = github['errors']
     record.update(github_derived(run, no_gh, repo, config, epic_id, ao_run['tasks'], final_pr, github['pr'], known_merge,
                                  now, previous, gaps, errors))
@@ -2169,12 +2229,12 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
         gaps.add('bottlenecks', 'mediana z %d zmergowanych epików (mniej niż %d)' % (len(history), settings['min_history']))
     candidates = []
 
-    def add(kind, name, value, median_s, denominator, share_of, repeat_s=None):
+    def add(kind, name, value, median_s, denominator, share_of, repeat_s=None, estimated=False):
         excess = value - median_s
         item = {'kind': kind, 'name': name, 'value_s': round(value, 3), 'median_s': round(median_s, 3),
                 'excess_h': round(excess / HOUR, 3),
                 'share': round(excess / denominator, 4) if _is_number(denominator) and denominator > 0 else None,
-                'share_of': share_of, 'rule': CATEGORY_RULES.get((kind, name))}
+                'share_of': share_of, 'rule': CATEGORY_RULES.get((kind, name)), 'estimated': bool(estimated)}
         if kind == 'in_attempts':
             item['repeat_h'] = None if repeat_s is None else round(min(repeat_s, max(excess, 0.0)) / HOUR, 3)
         candidates.append((excess, item))
@@ -2187,30 +2247,36 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
     to_done = _get(record, ('wall', 'to_done'))
     scaled = _is_int(tasks) and tasks > 0
 
-    def category(kind, name, value, getter, denominator, share_of, repeat_s=None):
+    def category(kind, name, value, getter, denominator, share_of, repeat_s=None, estimated=False):
         if not scaled or not _is_number(value):
             return
         middle = per_task_median(getter)
         if middle is not None:
-            add(kind, name, value, middle, denominator, share_of, repeat_s)
+            add(kind, name, value, middle, denominator, share_of, repeat_s, estimated)
 
     for name in config['breakdown_order']:
         if name != 'work':
             category('breakdown', name, _get(record, ('breakdown', name)), lambda r, n=name: _get(r, ('breakdown', n)),
-                     to_done, 'to_done')
-    kinds = {}
+                     to_done, 'to_done',
+                     estimated=breakdown_inexact(record, name) or any(breakdown_inexact(h, name) for h in history))
+    kinds, kinds_inexact = {}, set()
     for other in history:
         for entry in (other.get('by_task') or {}).values():
             if isinstance(entry, dict) and entry.get('kind') and _is_number(entry.get('work')):
                 kinds.setdefault(entry['kind'], []).append(entry['work'])
+                if inexact(entry):
+                    kinds_inexact.add(entry['kind'])
     for task, entry in sorted((record.get('by_task') or {}).items()):
         if isinstance(entry, dict) and _is_number(entry.get('work')) and kinds.get(entry.get('kind')):
-            add('task', task, entry['work'], median(kinds[entry['kind']]), to_done, 'to_done')
+            add('task', task, entry['work'], median(kinds[entry['kind']]), to_done, 'to_done',
+                estimated=inexact(entry) or entry['kind'] in kinds_inexact)
             candidates[-1][1]['rule'] = 'D2' if entry['kind'] == 'plan' else None
+    attempts_inexact = inexact(record.get('in_attempts')) or any(inexact(h.get('in_attempts')) for h in history)
     for name in (record.get('in_attempts') or {}).get('categories', {}):
         category('in_attempts', 'in_attempts.%s' % name, _get(record, ('in_attempts', 'categories', name, 'seconds')),
                  lambda r, n=name: _get(r, ('in_attempts', 'categories', n, 'seconds')), to_done, 'to_done',
-                 _get(record, ('in_attempts', 'repeat_runs', 'by_category', name, 'seconds')))
+                 _get(record, ('in_attempts', 'repeat_runs', 'by_category', name, 'seconds')),
+                 estimated=attempts_inexact)
     gate = _get(record, ('gate_wait', 'wait_s'))
     if gate is None:
         gaps.add('bottlenecks.gate_wait', 'brak wpisów epiku w gate.jsonl: kandydat pominięty')
@@ -2238,10 +2304,12 @@ def add_effects(items, record, history, config):
         key = D2_KEY if item['kind'] == 'task' and item['rule'] == 'D2' else BOTTLENECK_SUBJECTS.get(
             (item['kind'], item['name']))
         candidate, saving = found.get(key), None
+        item['effect_estimated'] = item['estimated']        # the effect of a plan task is its own time over the median
         if candidate is not None and key == D2_KEY:
             saving = next((t['excess_h'] for t in candidate['data']['tasks'] if t['task'] == item['name']), None)
         elif candidate is not None:
             saving = candidate['expected_effect']['wall_h']
+            item['effect_estimated'] = item['estimated'] or candidate['expected_effect']['estimated']
         item['effect_rule'] = key if saving is not None else None
         item['effect_h'] = round(saving if saving is not None else item['excess_h'], 3)
 
@@ -2294,7 +2362,7 @@ def d4_candidates(record, config, skipped):
     settings = config['decisions']
     found = []
 
-    def check(subject, parts, denominator, denominator_name, threshold, proposal):
+    def check(subject, parts, denominator, denominator_name, threshold, proposal, marked=()):
         key = 'D4:%s' % subject
         if not all(_is_number(p) for p in parts) or not _is_number(denominator) or denominator <= 0:
             return skip_rule(skipped, key, 'brak danych: %s' % ', '.join(
@@ -2306,7 +2374,8 @@ def d4_candidates(record, config, skipped):
             return
         data = {'seconds': round(seconds, 3), 'share': round(share, 4), '%s_s' % denominator_name: round(denominator, 3),
                 'threshold': threshold}
-        found.append(make_candidate(key, data, proposal, share * denominator / HOUR))
+        data['estimated'] = list(marked)    # the names of the parts that are estimated or incomplete
+        found.append(make_candidate(key, data, proposal, share * denominator / HOUR, estimated=bool(marked)))
         return data
 
     parts_names = {'human_wait': ['human_wait'], 'limit_wait': ['limit_wait'], 'ci': ['ci_wait', 'in_attempts.ci_watch'],
@@ -2317,11 +2386,13 @@ def d4_candidates(record, config, skipped):
           'w której użytkownik odpowiada.')
     check('limit_wait', [_get(record, ('breakdown', 'limit_wait'))], to_done, 'to_done',
           settings['d4_limit_wait_share'],
-          'Zaplanować start epiku (planowanie nocy) tak, żeby mieścił się w oknie limitów bez przerwy na cooldown.')
+          'Zaplanować start epiku (planowanie nocy) tak, żeby mieścił się w oknie limitów bez przerwy na cooldown.',
+          ['limit_wait'] if 'limit_wait' in lower_bounds(record) else [])
     ci = [_get(record, ('breakdown', 'ci_wait')), _get(record, ('in_attempts', 'categories', 'ci_watch', 'seconds'))]
     data = check('ci', ci, work, 'work', settings['d4_ci_share'],
                  'Skrócić czekanie na CI: sprawdzić, które przebiegi CI zadań i końcowego PR trwają najdłużej '
-                 'i ile jest ponowień.')
+                 'i ile jest ponowień.', (['in_attempts.ci_watch'] if inexact(record.get('in_attempts')) else [])
+                 + (['work'] if 'work' in lower_bounds(record) else []))
     if data is not None:
         data['ci_wait_s'], data['ci_watch_s'] = round(ci[0], 3), round(ci[1], 3)
     if _get(record, ('merged_at',)) is None or _get(record, ('wall', 'review')) is None:
@@ -2346,7 +2417,7 @@ def d3_candidates(record, config, skipped):
     if not files:
         return skip_rule(skipped, D3_KEY, 'czekanie w bramce z innego powodu niż reguła plików')
     return [make_candidate(D3_KEY, {'wait_s': round(wait, 3), 'file_rule_reasons': len(files),
-                                    'reasons': len(reasons)},
+                                    'reasons': len(reasons), 'estimated': []},
                            'Zmienić linię `Zakres:` epiku przy przygotowaniu albo regułę plików bramki '
                            '(docs/features/parallel-work/spec.md, „Bramka”).', wait / HOUR)]
 
@@ -2361,9 +2432,11 @@ def d2_candidates(record, history, config, skipped, gaps):
         return skip_rule(skipped, D2_KEY, 'brak danych: by_task')
     if by_task and all(isinstance(e, dict) and e.get('kind') is None for e in by_task.values()):
         return skip_rule(skipped, D2_KEY, 'brak danych: tasks.kind (rodzaje zadań nieznane)')
-    works = [e['work'] for h in history for e in (h.get('by_task') or {}).values()
-             if isinstance(e, dict) and e.get('kind') == 'plan' and _is_number(e.get('work'))]
+    plan_entries = [e for h in history for e in (h.get('by_task') or {}).values()
+                    if isinstance(e, dict) and e.get('kind') == 'plan' and _is_number(e.get('work'))]
+    works = [e['work'] for e in plan_entries]
     middle = median(works) if works else None
+    middle_inexact = any(inexact(e) for e in plan_entries)      # a lower bound in the history lowers the median
     if middle is None:
         gaps.add('decide.D2', 'brak historii mediany work zadań planu: kryterium czasu pominięte')
     ended = record.get('done_at') is not None or record.get('merged_at') is not None
@@ -2390,14 +2463,16 @@ def d2_candidates(record, history, config, skipped, gaps):
             over = max(work - middle, 0.0) if middle is not None and _is_number(work) else None
             tasks.append({'task': task, 'work_h': None if not _is_number(work) else round(work / HOUR, 3),
                           'excess_h': None if over is None else round(over / HOUR, 3),
-                          'failed_attempts': failed.get(task, 0), 'reasons': reasons})
+                          'failed_attempts': failed.get(task, 0), 'reasons': reasons,
+                          'estimated': inexact(entry) or (middle_inexact and over is not None)})
     if not tasks:
         return []
     wall = sum(t['excess_h'] for t in tasks if t['excess_h'] is not None)
+    estimated = any(t['estimated'] for t in tasks)
     return [make_candidate(D2_KEY, {'tasks': tasks, 'median_h': None if middle is None else round(middle / HOUR, 3),
-                                    'history_epics': len(history)},
+                                    'history_epics': len(history), 'estimated': ['work'] if estimated else []},
                            'Dodać do /planner regułę podziału zadania z cechami: liczba ścieżek `scope`, ryzyko, '
-                           'aplikacje, liczba zmienionych plików.', wall)]
+                           'aplikacje, liczba zmienionych plików.', wall, estimated=estimated)]
 
 
 AGENT_EXCLUDED_ROLES = ('delivery', 'integration', OTHER_ROLE, SUBAGENT)    # the orchestrators and what is no agent
@@ -2503,8 +2578,8 @@ def d1_candidates(record, rates, evals, config, skipped, gaps):
     for role, cells in sorted(by_role_model.items()):
         if role in AGENT_EXCLUDED_ROLES or not isinstance(cells, dict):
             continue
-        costly = {m: c for m, c in cells.items() if m in ranked and ranked[m] > ranked[cheapest]
-                  and isinstance(c, dict) and _is_number(c.get('usd'))}
+        dearer = {m: c for m, c in cells.items() if m in ranked and ranked[m] > ranked[cheapest] and isinstance(c, dict)}
+        costly = {m: c for m, c in dearer.items() if _is_number(c.get('usd'))}
         value = sum(c['usd'] for c in costly.values())
         share = value / total
         if not costly or share < config['decisions']['d1_role_share']:
@@ -2526,15 +2601,21 @@ def d1_candidates(record, rates, evals, config, skipped, gaps):
             skipped.append({'key': key, 'reason': 'porównanie w EVALS 2.0, decyzja w jego raporcie',
                             'data': {'runs': len(done), 'measurements': sorted({r['measurement'] for r in done})}})
             continue
-        estimated = any(c.get('estimated') is True or c.get('incomplete') is True for c in costly.values())
+        # the value of the role is a lower bound when a cell of it on a dearer model has no value (`usd` null); the share
+        # is made of the value of the whole epic, so it is as exact as that
+        marked = (['role_value'] if any(inexact(c) for c in costly.values()) or len(dearer) > len(costly) else []) \
+            + (['epic_total'] if inexact(_get(record, ('value', 'total'))) else [])
+        estimated = 'role_value' in marked      # the saving is made of the role cells only; the share only decides
         saving = sum(c['usd'] * (1 - ranked[cheapest] / ranked[m]) for m, c in costly.items())
         data = {'role': role, 'share': round(share, 4), 'models': {m: c['usd'] for m, c in sorted(costly.items())},
-                'cheaper_model': cheapest, 'rates': {m: ranked[m] for m in sorted(ranked)},
-                'estimated': ['role_value'] if estimated else []}
+                'cheaper_model': cheapest, 'rates': {m: ranked[m] for m in sorted(ranked)}, 'estimated': marked}
         found.append(make_candidate(key, data, (
             'Eksperyment porównania wariantów agenta %s w EVALS 2.0 na modelu %s (wariant to commit ze zmianą `model:` '
             'w pliku agenta, `--agent-rev`; płatny pomiar wymaga zgody właściciela), nie zmiany modelu.%s'
-            % (role, cheapest, ' Wartość roli jest szacowana.' if estimated else '')), None, saving, estimated))
+            % (role, cheapest, (' Wartość roli jest szacowana.' if estimated else '')
+               + (' Udział roli liczony z szacowanej albo niepełnej wartości epiku.'
+               if 'epic_total' in marked else ''))),
+            None, saving, estimated))
     return found
 
 
@@ -2718,9 +2799,10 @@ def role_samples(record, role, kind):
 
 
 def role_estimated(record, role, kind):
-    """Whether the samples of `role_samples` are not exact (estimated or incomplete, as in `decide`): a role cell of
-    a task of `kind` that has a known value is not an exact number, i.e. it is estimated or incomplete, or its `usd`
-    is unknown (the task is then left out of the samples, so the window is incomplete)."""
+    """Whether the samples of `role_samples` are not exact (estimated or incomplete, as in `decide`): a task of `kind`
+    whose own value is unknown (it is left out of the samples) or incomplete (the role may have had the missing part),
+    or a role cell of it that is estimated or incomplete or whose `usd` is unknown (left out, so the window is
+    incomplete)."""
     by_role = _get(record, ('value', 'by_task_role'))
     by_task = record.get('by_task')
     if not isinstance(by_role, dict) or not isinstance(by_task, dict):
@@ -2729,7 +2811,9 @@ def role_estimated(record, role, kind):
         if not isinstance(entry, dict) or entry.get('kind') != kind:
             continue
         if not _is_number(_get(record, ('value', 'by_task', task, 'usd'))):
-            continue
+            return True                                 # left out of the samples for an unknown value: incomplete
+        if _get(record, ('value', 'by_task', task, 'incomplete')) is True:
+            return True                                 # a part of the task is unknown: the role may have had it
         cell = _get(by_role, (task, role))
         if cell is None:
             continue                                    # the role did not act in the task: an exact zero
@@ -2761,6 +2845,23 @@ def window_stats(records, samples_of, gaps, label, missing='brak miary', estimat
     return {'epics': epics, 'n': len(values), 'n_epics': len(epics),
             'median': round(median(ordered), 4) if ordered else None, 'p25': stat(0.25), 'p75': stat(0.75),
             'estimated': estimated}
+
+
+def plan_work_inexact(record):
+    """Whether a plan task of the record has a `work` that is a lower bound (an attempt without a time)."""
+    tasks = record.get('by_task')
+    return isinstance(tasks, dict) and any(isinstance(e, dict) and e.get('kind') == 'plan' and inexact(e)
+                                           for e in tasks.values())
+
+
+def d4_inexact(subject):
+    """The test of a record for the measure of `D4:<subject>`: the category is a lower bound (limit_wait), or so is a
+    part of `ci` (`in_attempts.ci_watch`, an attempt without a transcript) or its denominator `work`."""
+    if subject == 'limit_wait':
+        return lambda record: 'limit_wait' in lower_bounds(record)
+    if subject == 'ci':
+        return lambda record: inexact(record.get('in_attempts')) or 'work' in lower_bounds(record)
+    return None
 
 
 def epic_time(records, config):
@@ -2801,9 +2902,10 @@ def build_effect(records, key, at, config):
         samples_of = (lambda r: role_samples(r, subject, level_kind)) if level_kind else (lambda r: [])
         estimated_of = (lambda r: role_estimated(r, subject, level_kind)) if level_kind else None
     elif rule == 'D2':
-        samples_of = plan_work_samples
+        samples_of, estimated_of = plan_work_samples, plan_work_inexact
     else:
         samples_of = lambda r: [v] if (v := epic_value(r, rule, subject)) is not None else None
+        estimated_of = d4_inexact(subject) if rule == 'D4' else None
     missing = 'rekord bez value.by_task_role (starszy niż pole)' if rule == 'D1' else 'brak miary'
     stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing, estimated_of),
              'after': window_stats(after, samples_of, gaps, 'po', missing, estimated_of)}
@@ -2885,11 +2987,13 @@ def trend_values(record, config):
 
 
 def trend_estimated(record, config):
-    """The columns of `trend_values` of one record that come from an estimated source (`value.total.estimated`,
-    `subscription.share_estimated`) and have a value: an unknown column is not an estimate."""
+    """The columns of `trend_values` of one record that come from an estimated or incomplete source
+    (`value.total.estimated`, `subscription.share_estimated`, `in_attempts.incomplete` for `repeat_runs`) and have a
+    value: an unknown column is not an estimate."""
     values = trend_values(record, config)
     flags = {'value': _get(record, ('value', 'total', 'estimated')) is True,
-             'pp': _get(record, ('subscription', 'share_estimated')) is True}
+             'pp': _get(record, ('subscription', 'share_estimated')) is True,
+             'repeat_runs': inexact(record.get('in_attempts')), 'work': 'work' in lower_bounds(record)}
     return {column for column, flag in flags.items() if flag and values[column] is not None}
 
 
@@ -2902,7 +3006,7 @@ def estimated_list(sets):
 
 def cell_text(value, estimated):
     """A number with two places, `≈ ` before an estimated one (as `usd_text`); `-` for an unknown one."""
-    return ('≈ ' if estimated and value is not None else '') + pl(value, 2)
+    return approx(estimated and value is not None) + pl(value, 2)
 
 
 def median_of(values):
@@ -2918,6 +3022,14 @@ def position_of(values, medians):
         pct = None if diff is None or not middle else round(diff / middle * 100, 1)
         found[column] = {'value': value, 'median': middle, 'diff': diff, 'diff_pct': pct}
     return found
+
+
+def percent_text(entry, estimated):
+    """`, +50%` (`, ≈ +50%` when the value or the median of the column is estimated: so is the percent), empty for an
+    unknown percent."""
+    if entry['diff_pct'] is None:
+        return ''
+    return ', %s%s%s%%' % (approx(estimated), '+' if entry['diff_pct'] >= 0 else '−', pl(abs(entry['diff_pct']), 0))
 
 
 def merged_records(records):
@@ -3049,11 +3161,10 @@ def format_trend(table):
         if entry['diff'] is None:
             lines.append('  %s: brak danych' % heads[column])
             continue
-        pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
-                                                                 pl(abs(entry['diff_pct']), 0))
         lines.append('  %s: %s (mediana %s%s)' % (
             heads[column], cell_text(entry['value'], column in position['estimated']),
-            cell_text(entry['median'], column in position['median_estimated']), pct))
+            cell_text(entry['median'], column in position['median_estimated']),
+            percent_text(entry, column in position['estimated'] or column in position['median_estimated'])))
     notes = ['%s: %s' % (row['epic'], note) for row in table['epics'] for note in row['annotations']]
     if notes:
         lines.append('Zmiany wersji CLI i modeli (liczby bez korekty):')
@@ -3115,8 +3226,8 @@ def _count(value):
     return value if _is_int(value) and value >= 0 else None
 
 
-def hours_text(seconds):
-    return NO_DATA if not _is_number(seconds) else '%s h' % pl(seconds / HOUR)
+def hours_text(seconds, estimated=False):
+    return NO_DATA if not _is_number(seconds) else '%s%s h' % (approx(estimated), pl(seconds / HOUR))
 
 
 def percent_of(part, whole):
@@ -3129,7 +3240,7 @@ def usd_text(cell):
     usd = cell.get('usd')
     if not _is_number(usd):
         return NO_DATA
-    text = '%s%s USD' % ('≈ ' if cell.get('estimated') is True else '', pl(usd, 2))
+    text = '%s%s USD' % (approx(cell.get('estimated') is True), pl(usd, 2))
     return text + (' (suma niepełna)' if cell.get('incomplete') is True else '')
 
 
@@ -3147,18 +3258,20 @@ def bottleneck_lines(items):
         name, excess = _safe(item.get('name')), item.get('excess_h')
         if item.get('kind') not in BOTTLENECK_KINDS or name is None or not _is_number(excess):
             continue
-        share = percent_of(item.get('share'), 1)
-        text = '%d. `%s`: +%s h ponad medianę' % (len(lines) + 1, name, pl(excess))
+        share, mark = percent_of(item.get('share'), 1), approx(item.get('estimated') is True)
+        text = '%d. `%s`: %s+%s h ponad medianę' % (len(lines) + 1, name, mark, pl(excess))
         if share is not None and item.get('share_of') in SHARE_OF:
-            text += ' (%d%% %s)' % (share, SHARE_OF[item['share_of']])
+            text += ' (%s%d%% %s)' % (mark, share, SHARE_OF[item['share_of']])
         effect = item.get('effect_h')
         if _is_number(effect):
             rule = str(item.get('effect_rule') or '').split(':')[0]
-            text += ', potencjalnie −%s h (%s)' % (pl(effect), rule if RULE_PATTERN.match(rule) else 'bez reguły decyzji')
+            shaky = item.get('effect_estimated') is True or item.get('estimated') is True
+            text += ', potencjalnie %s−%s h (%s)' % (approx(shaky), pl(effect),
+                                                      rule if RULE_PATTERN.match(rule) else 'bez reguły decyzji')
         elif isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
             text += ', reguła %s' % item['rule']
         if _is_number(item.get('repeat_h')) and item['repeat_h'] > 0:
-            text += ', w tym możliwe powtórzenia: %s h' % pl(item['repeat_h'])
+            text += ', w tym możliwe powtórzenia: %s%s h' % (mark, pl(item['repeat_h']))
         lines.append(text)
     return lines
 
@@ -3180,7 +3293,10 @@ def time_topic(record, comment):
                 if not _is_number(value):
                     parts.append('%s %s' % (name, NO_DATA))
                 elif value > 0:
-                    parts.append('%s %s (%d%%)' % (name, hours_text(value), percent_of(value, to_done) or 0))
+                    marked = breakdown_inexact(record, name)
+                    parts.append('%s %s (%s%d%%%s)' % (
+                        name, hours_text(value, marked), approx(marked), percent_of(value, to_done) or 0,
+                        (', górna granica' if name == 'idle' else ', dolna granica') if marked else ''))
             text += '; rozkład: ' + ', '.join(parts)
         lines = [text]
     if comment:
@@ -3194,19 +3310,27 @@ def attempts_time_topic(record):
     data = record.get('in_attempts')
     if not isinstance(data, dict):
         return ['Czas w próbach (polecenia powłoki): %s (brak transkryptów)' % NO_DATA]
+    lower = inexact(data)               # the sums cover only the attempts with a transcript: lower bounds
+    covered = ''
+    if lower and _count(data.get('attempts')) is not None and _count(data.get('attempts_without_transcript')) is not None:
+        covered = '; transkrypty tylko %d z %d prób' % (data['attempts'] - data['attempts_without_transcript'],
+                                                      data['attempts'])
     parts = []
     for name, entry in _dict(data.get('categories')).items():
         entry = _dict(entry)
         if _safe(name) and _count(entry.get('count')) and _is_number(entry.get('seconds')):
-            parts.append('%s %s (%d)' % (name, hours_text(entry['seconds']), entry['count']))
-    lines = ['Czas w próbach (polecenia powłoki): ' + (', '.join(parts) if parts else 'brak poleceń')]
+            parts.append('%s %s (%s%d)' % (name, hours_text(entry['seconds'], lower), approx(lower), entry['count']))
+    lines = ['Czas w próbach (polecenia powłoki%s): ' % covered + (', '.join(parts) if parts else 'brak poleceń')]
     repeat = _dict(data.get('repeat_runs'))
     if _count(repeat.get('count')) is not None and _is_number(repeat.get('seconds')):
-        lines.append('możliwe powtórzenia testów: %d (%s), dolna granica' % (repeat['count'], hours_text(repeat['seconds'])))
+        lines.append('możliwe powtórzenia testów: %s%d (%s), dolna granica' % (
+            approx(lower), repeat['count'], hours_text(repeat['seconds'], lower)))
     retry = _dict(data.get('api_retry'))
     if _count(retry.get('count')) is not None and _is_number(retry.get('delay_ms')):
-        lines.append('ponowienia API: %d (łącznie %s s)' % (retry['count'], pl(retry['delay_ms'] / 1000.0, 0)))
-    denied = ', '.join('%s %d' % (tool, n) for tool, n in sorted(_dict(data.get('permission_denials')).items())
+        lines.append('ponowienia API: %s%d (łącznie %s%s s)' % (approx(lower), retry['count'], approx(lower),
+                                                            pl(retry['delay_ms'] / 1000.0, 0)))
+    denied = ', '.join('%s %s%d' % (tool, approx(lower), n)
+                       for tool, n in sorted(_dict(data.get('permission_denials')).items())
                        if _safe(tool) and _count(n))
     lines.append('odmowy uprawnień: %s' % (denied or 'brak'))
     return [lines[0]] + ['  ' + line for line in lines[1:]]
@@ -3216,7 +3340,8 @@ def integration_topic(record):
     data = _dict(record.get('integration'))
     if not _is_number(data.get('work_s')):
         return ['Integracja: %s' % NO_DATA]
-    text = 'Integracja: %s' % hours_text(data['work_s'])
+    lower = data.get('incomplete') is True
+    text = 'Integracja: %s%s' % (hours_text(data['work_s'], lower), ' (dolna granica)' if lower else '')
     if _count(data.get('attempts')) is not None:
         text += ' w %d %s' % (data['attempts'], plural(data['attempts'], 'próbie', 'próbach', 'próbach'))
     if _count(data.get('rounds')) is not None:
@@ -3241,9 +3366,12 @@ def value_topic(record):
     models = ranked('by_model')
     if models:
         lines.append('modele: %s' % ', '.join('%s %s' % (k, usd_text(c)) for k, c in models))
-    tasks = [(k, c) for k, c in ranked('by_task') if _is_number(c.get('usd'))]
+    every = ranked('by_task')
+    tasks = [(k, c) for k, c in every if _is_number(c.get('usd'))]
     if tasks:
-        lines.append('najdroższe zadanie: %s %s' % (tasks[0][0], usd_text(tasks[0][1])))
+        partial = any(not _is_number(c.get('usd')) or c.get('incomplete') is True for _, c in every)
+        lines.append('najdroższe zadanie: %s %s%s' % (tasks[0][0], usd_text(tasks[0][1]),
+                                                    ' (wśród zadań ze znaną wartością)' if partial else ''))
     return [lines[0]] + ['  ' + line for line in lines[1:]]
 
 
@@ -3398,18 +3526,17 @@ def position_topic(record, history, config, comment):
         return ['Pozycja na tle mediany: brak historii (zmergowanych epików przed tym: 0)']
     values = [trend_values(h, config) for h in history]
     medians = {c: median_of([v[c] for v in values]) for c in TREND_COLUMNS}
-    position = position_of(trend_values(record, config), medians)
     estimated = trend_estimated(record, config)
     median_estimated = set(estimated_list([trend_estimated(h, config) for h in history]))
+    position = position_of(trend_values(record, config), medians)
     parts = []
     for column in TREND_COLUMNS:
         entry = position[column]
         if entry['diff'] is None or (column == 'review' and not comment):
             continue            # the review is known only after the merge
-        pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
-                                                                 pl(abs(entry['diff_pct']), 0))
         parts.append('%s %s (mediana %s%s)' % (column, cell_text(entry['value'], column in estimated),
-                                               cell_text(entry['median'], column in median_estimated), pct))
+                                               cell_text(entry['median'], column in median_estimated),
+                                               percent_text(entry, column in estimated or column in median_estimated)))
     return ['Pozycja na tle mediany (%d %s, na zadanie planu; czasy w godzinach): %s' % (
         len(history), plural(len(history), 'epik', 'epiki', 'epików'), '; '.join(parts) or NO_DATA)]
 
@@ -3673,25 +3800,35 @@ def epic_ids(ao_home, busy_timeout_ms):
 def waste_history(records, skip):
     """The measurements of the stored records (of other epics than `skip`) the median rules compare with, per kind:
     `value` (of an ended attempt that has one), `wall` (wall_s of an ended attempt), `task` (the sum of the values of a
-    task whose ended attempts all have one)."""
-    found = {'value': {}, 'wall': {}, 'task': {}}
+    task whose attempts all ended and all have a value), and `estimated` ({'value': kinds, 'task': kinds}: the kinds
+    whose measurements include an estimated value, so their median is estimated)."""
+    found = {'value': {}, 'wall': {}, 'task': {}, 'estimated': {'value': set(), 'task': set()}}
     for epic, record in records.items():
         if epic in skip:
             continue
-        tasks = {}
+        tasks, open_tasks = {}, set()
         for attempt in record.get('attempts') or []:
-            if not isinstance(attempt, dict) or attempt.get('ended_at') is None:
+            if not isinstance(attempt, dict):
                 continue
             kind = attempt.get('kind') if isinstance(attempt.get('kind'), str) else None
+            if attempt.get('task') is not None and attempt.get('ended_at') is None:
+                open_tasks.add((str(attempt['task']), kind))    # the sum of the task would be partial: no measurement
+            if attempt.get('ended_at') is None:
+                continue
+            estimated = attempt.get('estimated') is True
             if _is_number(attempt.get('value')):
                 found['value'].setdefault(kind, []).append(attempt['value'])
+                if estimated:
+                    found['estimated']['value'].add(kind)
             if _is_number(attempt.get('wall_s')):
                 found['wall'].setdefault(kind, []).append(attempt['wall_s'])
             if attempt.get('task') is not None:         # a record made without task ids has no tasks to total
-                tasks.setdefault((str(attempt['task']), kind), []).append(attempt.get('value'))
-        for (_, kind), values in tasks.items():
-            if all(_is_number(v) for v in values):
-                found['task'].setdefault(kind, []).append(sum(values))
+                tasks.setdefault((str(attempt['task']), kind), []).append((attempt.get('value'), estimated))
+        for (task, kind), entries in tasks.items():
+            if (task, kind) not in open_tasks and all(_is_number(v) for v, _ in entries):
+                found['task'].setdefault(kind, []).append(sum(v for v, _ in entries))
+                if any(e for _, e in entries):
+                    found['estimated']['task'].add(kind)
     return found
 
 
@@ -3719,8 +3856,14 @@ def _decimal(value, digits=1):
     return ('%.*f' % (digits, value)).replace('.', ',')
 
 
-def _of_median(ratio, what='mediany'):
-    return '' if ratio is None else ' (%s× %s)' % (_decimal(ratio), what)
+def _of_median(ratio, what='mediany', estimated=False):
+    """` (3,5× mediany)`, `≈` before the ratio when the amount or the median it is made of is estimated."""
+    return '' if ratio is None else ' (%s%s× %s)' % (approx(estimated, ''), _decimal(ratio), what)
+
+
+def estimated_history(history, measure, kind):
+    """Whether the median of `kind` in the `measure` ('value' or 'task') of the history has an estimated value."""
+    return kind in _dict(history.get('estimated')).get(measure, ())
 
 
 def make_alarm(rule, key, epic, task, attempt, push, **numbers):
@@ -3778,13 +3921,15 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
         hit = over_median('W1', entry['kind'], history['value'].get(entry['kind'], []), entry['value'],
                           rules['cost_multiple'], rules['cost_min_usd'], False, rules['min_history'], gaps)
         if hit:
+            in_median = estimated_history(history, 'value', entry['kind'])
             found.append(make_alarm(
                 'W1', 'W1:%s:%s:%s' % (epic_id, entry['task'], entry['number']), epic_id, entry['task'],
                 entry['number'],
                 '%s: %s próba %s kosztowała %s%s USD%s' % (name, _id(entry['task']), entry['number'],
-                                                           '≈' if entry['estimated'] else '',
-                                                           _decimal(entry['value'], 2), _of_median(hit[1])),
-                value=entry['value'], median=hit[0], ratio=hit[1], estimated=bool(entry['estimated'])))
+                                                           approx(entry['estimated'], ''), _decimal(entry['value'], 2),
+                                                           _of_median(hit[1], estimated=bool(entry['estimated'] or in_median))),
+                value=entry['value'], median=hit[0], ratio=hit[1], estimated=bool(entry['estimated']),
+                median_estimated=in_median))
     if unknown:
         gaps.add('W1', '%d z %d zakończonych prób bez wartości (brak transkryptu albo stawki): nie sprawdzone'
                  % (unknown, len(entries)))
@@ -3818,12 +3963,15 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
                           rules['cost_min_usd'], False, rules['min_history'], gaps)
         if hit:
             estimated = any(e['estimated'] for e in task_entries)
+            in_median = estimated_history(history, 'task', kind)
+            running = any(a['task_id'] == task and a['ended_at'] is None for a in run['attempts'])
             found.append(make_alarm(
                 'W4', 'W4:%s:%s' % (epic_id, task), epic_id, task, None,
-                '%s: %s kosztuje łącznie %s%s USD%s' % (name, _id(task), '≈' if estimated else '',
-                                                       _decimal(amount, 2), _of_median(hit[1], 'mediany zadań')),
+                '%s: %s %s %s%s USD%s' % (name, _id(task), 'zakończone próby kosztują' if running else 'kosztuje łącznie',
+                                          approx(estimated, ''), _decimal(amount, 2),
+                                          _of_median(hit[1], 'mediany zadań', estimated or in_median)),
                 value=round(amount, 8), median=hit[0], ratio=hit[1], attempts=len(task_entries),
-                estimated=estimated))
+                estimated=estimated, median_estimated=in_median, incomplete=running))
     if no_value:
         gaps.add('W4', '%d zadań z zakończoną próbą bez wartości: nie sprawdzone' % no_value)
     return found
