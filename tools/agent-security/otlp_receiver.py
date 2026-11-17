@@ -4,19 +4,29 @@ copies it next to probe.py.
 
   Receiver(forward=None).start()   an HTTP server on 127.0.0.1 with a random port; `endpoint` is its address
                                    http://127.0.0.1:<port>, `requests` a copy of what it got, stop() ends it
-                                   (idempotent). Every request, on any path, is recorded before the answer (200, an
-                                   empty Export*ServiceResponse; 400 for a body that cannot be read; 500 for an
-                                   error in the processing), as a dict:
+                                   (idempotent). Every request, on any method and path, is recorded before the answer
+                                   (200, an empty Export*ServiceResponse; 400 for a body that cannot be read; 500 for
+                                   an error in the processing), as a dict:
                                      method, path (without the query), content_type, content_encoding (None without
                                      the header; several lines of it joined by ", ", as one line), raw (the body as
-                                     received, chunked transfer decoded), body (raw after Content-Encoding, or None),
-                                     problem (why body is None, or None), forwarded (None without forward; the status
-                                     of the forward or the error text).
+                                     received, chunked transfer decoded; when the body cannot be read, the bytes
+                                     read until the error), body (raw after Content-Encoding, or None), problem (why
+                                     body is None, or None), forwarded (None without forward; the status of the
+                                     forward or the error text).
+                                   The body is framed by RFC 9112 §6: Transfer-Encoding (all its lines and
+                                   comma-separated values) must be exactly chunked and then no Content-Length is
+                                   allowed; Content-Length (all lines and values) must be one number, several equal
+                                   ones count as that one. Anything else is a 400 with nothing read, except different
+                                   Content-Length values: the shortest length is read as the prefix kept in raw.
                                    With `forward` (only http://127.0.0.1:<port>, validated by render_settings.py) each
                                    request goes on (method, path, Content-Type, Content-Encoding, raw body) to that
                                    address; its failure, whatever it is, changes nothing else. An error in the
                                    processing of a request (a path or a body it cannot handle) still records it: raw
-                                   as far as it was read, body None, a fixed problem.
+                                   as far as it was read, body None, a fixed problem (never a header value). A
+                                   request http.server rejects itself (an HTTP/2 preface, TLS bytes, a line or a
+                                   header too long, too many headers, a malformed request line) is recorded with raw
+                                   b'', body None and the problem "żądanie odrzucone przez serwer HTTP: <code>"; a
+                                   HEAD request is answered without a body.
   decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
                                    (None, problem) for any other encoding, a body that does not decompress (also
                                    bytes after a member that are not a whole member) or one larger than MAX_BODY.
@@ -193,7 +203,11 @@ def key_values(body):
 # -- receiver ------------------------------------------------------------------------------------------------------
 
 class _BodyError(Exception):
-    pass
+    """The body cannot be read; `raw` is what was read until then (a prefix of the message)."""
+
+    def __init__(self, reason, raw=b''):
+        super().__init__(reason)
+        self.raw = raw
 
 
 def _path_of(target):
@@ -207,38 +221,83 @@ def _path_of(target):
 
 class _Handler(http.server.BaseHTTPRequestHandler):
     receiver = None
+    _recorded = False   # the request being handled is in receiver.requests (set per request, see handle_one_request)
+
+    def handle_one_request(self):
+        self._recorded = False
+        super().handle_one_request()
+
+    def send_error(self, code, message=None, explain=None):
+        """A request http.server rejects itself (an HTTP/2 preface, TLS bytes, a line or a header too long, too many
+        headers, a malformed request line) is recorded too: body None, the fixed problem and the code only."""
+        if not self._recorded:
+            self._recorded = True
+            self.receiver._record({'method': getattr(self, 'command', None) or '',
+                                   'path': _path_of(getattr(self, 'path', None) or ''), 'content_type': None,
+                                   'content_encoding': None, 'raw': b'', 'body': None,
+                                   'problem': 'żądanie odrzucone przez serwer HTTP: %d' % code, 'forwarded': None})
+        super().send_error(code, message, explain)
+
+    def __getattr__(self, name):
+        """Every method goes through _handle (http.server answers 501 to one without do_<METHOD>, unrecorded)."""
+        if name.startswith('do_'):
+            return self._handle
+        raise AttributeError(name)
+
+    def _values(self, name):
+        """The values of every line of the header, split at commas (RFC 9110 §5.3: several lines are one list)."""
+        return [value.strip() for line in self.headers.get_all(name, []) for value in line.split(',')]
 
     def _read_body(self):
-        if 'chunked' in self.headers.get('Transfer-Encoding', '').lower():
-            chunks, total = [], 0
-            while True:
-                line = self.rfile.readline(1024)
-                try:
-                    size = int(line.split(b';', 1)[0].strip(), 16)
-                except ValueError:
-                    raise _BodyError('nieczytelny rozmiar fragmentu')
-                if size == 0:
-                    while self.rfile.readline(1024) not in (b'\r\n', b'\n', b''):
-                        pass
-                    return b''.join(chunks)
-                total += size
-                if size < 0 or total > MAX_BODY:
-                    raise _BodyError('ciało większe niż %d bajtów' % MAX_BODY)
-                chunk = self.rfile.read(size)
-                if len(chunk) != size:
-                    raise _BodyError('urwany fragment ciała')
-                chunks.append(chunk)
-                self.rfile.readline(1024)
+        """The body by its framing (RFC 9112 §6): exactly `chunked`, or the one Content-Length of all its lines and
+        values, or none. Anything else is ambiguous (a request smuggler's, the message is not read as one): _BodyError
+        with nothing read, except conflicting Content-Length values, whose shortest length is part of the message at
+        any reading, so those bytes are kept as the prefix. Problems are fixed texts, never a header value."""
+        codings, lengths = self._values('Transfer-Encoding'), self._values('Content-Length')
+        if codings:
+            if [coding.lower() for coding in codings] != ['chunked']:
+                raise _BodyError('niedozwolone Transfer-Encoding')
+            if lengths:
+                raise _BodyError('Transfer-Encoding razem z Content-Length')
+            return self._read_chunked()
         try:
-            length = int(self.headers.get('Content-Length') or 0)
+            sizes = {int(length) if length.isascii() and length.isdigit() else -1 for length in lengths}
         except ValueError:
+            sizes = {-1}
+        if -1 in sizes:
             raise _BodyError('nieczytelny Content-Length')
-        if length < 0 or length > MAX_BODY:
+        return self._read_exactly(min(sizes, default=0), len(sizes) > 1)
+
+    def _read_exactly(self, length, conflict):
+        if length > MAX_BODY:
             raise _BodyError('ciało większe niż %d bajtów' % MAX_BODY)
         raw = self.rfile.read(length)
         if len(raw) != length:
-            raise _BodyError('urwane ciało')
+            raise _BodyError('urwane ciało', raw)
+        if conflict:
+            raise _BodyError('sprzeczne Content-Length', raw)
         return raw
+
+    def _read_chunked(self):
+        chunks, total = [], 0
+        while True:
+            line = self.rfile.readline(1024)
+            try:
+                size = int(line.split(b';', 1)[0].strip(), 16)
+            except ValueError:
+                raise _BodyError('nieczytelny rozmiar fragmentu', b''.join(chunks))
+            if size == 0:
+                while self.rfile.readline(1024) not in (b'\r\n', b'\n', b''):
+                    pass
+                return b''.join(chunks)
+            total += size
+            if size < 0 or total > MAX_BODY:
+                raise _BodyError('ciało większe niż %d bajtów' % MAX_BODY, b''.join(chunks))
+            chunk = self.rfile.read(size)
+            chunks.append(chunk)
+            if len(chunk) != size:
+                raise _BodyError('urwany fragment ciała', b''.join(chunks))
+            self.rfile.readline(1024)
 
     def _handle(self):
         request = {'method': self.command, 'path': _path_of(self.path), 'content_type': None,
@@ -252,6 +311,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 request['raw'] = self._read_body()
                 read = True
             except _BodyError as e:
+                request['raw'] = e.raw
                 request['problem'] = 'nieczytelne ciało żądania: %s' % e
                 status = 400
             else:
@@ -264,6 +324,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 request['forwarded'] = self.receiver._forward(self.command, self.path, request['content_type'],
                                                               request['content_encoding'], request['raw'])
         finally:
+            self._recorded = True
             self.receiver._record(request)
         json_body = 'json' in (request['content_type'] or '')
         answer = b'{}' if json_body else b''
@@ -272,9 +333,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(answer)))
         self.send_header('Connection', 'close')
         self.end_headers()
-        self.wfile.write(answer)
-
-    do_POST = do_PUT = do_GET = _handle   # noqa: N815 (http.server API)
+        if self.command != 'HEAD':
+            self.wfile.write(answer)
 
     def log_message(self, *args):
         pass

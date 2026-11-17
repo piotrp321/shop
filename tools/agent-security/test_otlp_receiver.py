@@ -116,13 +116,16 @@ def post(endpoint, path, body, headers=None, chunked=False):
         connection.close()
 
 
-def send_raw(endpoint, data):
+def send_raw(endpoint, data, half_close=False):
     """The status of the answer to the bytes `data` sent as they are, or None when the receiver closed the connection
-    with a reset before the answer could be read (it answers before it read a body it refuses)."""
+    with a reset before the answer could be read (it answers before it read a body it refuses), or when the answer is
+    no status line (the HTTP/0.9 answer to a request line that is not HTTP)."""
     host, port = endpoint[len('http://'):].split(':')
     with socket.create_connection((host, int(port)), timeout=10) as connection:
         try:
             connection.sendall(data)
+            if half_close:   # the sender went away: the receiver reads the end of the body
+                connection.shutdown(socket.SHUT_WR)
             answer = b''
             while b'\r\n' not in answer:
                 piece = connection.recv(4096)
@@ -131,7 +134,10 @@ def send_raw(endpoint, data):
                 answer += piece
         except ConnectionError:
             return None
-    return int(answer.split(b' ', 2)[1]) if answer else None
+    try:
+        return int(answer.split(b' ', 2)[1])
+    except (IndexError, ValueError):
+        return None
 
 
 # -- tests ------------------------------------------------------------------------------------------------------------
@@ -307,10 +313,10 @@ class ReceiverTest(unittest.TestCase):
         original, otlp_receiver.MAX_BODY = otlp_receiver.MAX_BODY, limit
         self.addCleanup(setattr, otlp_receiver, 'MAX_BODY', original)
 
-    def assert_unreadable(self, receiver, status, reason):
+    def assert_unreadable(self, receiver, status, reason, raw=b''):
         self.assertIn(status, (400, None))
         request = receiver.requests[0]
-        self.assertEqual(('/v1/logs', None, b''), (request['path'], request['body'], request['raw']))
+        self.assertEqual(('/v1/logs', None, raw), (request['path'], request['body'], request['raw']))
         self.assertEqual('nieczytelne ciało żądania: %s' % reason, request['problem'])
 
     def test_a_content_length_over_the_limit_is_recorded_unreadable_and_answered_400(self):
@@ -331,7 +337,7 @@ class ReceiverTest(unittest.TestCase):
         receiver = self.receiver()
         status = send_raw(receiver.endpoint, b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n'
                           b'\r\n8\r\naaaaaaaa\r\n8\r\naaaaaaaa\r\n1\r\na\r\n0\r\n\r\n')
-        self.assert_unreadable(receiver, status, 'ciało większe niż 16 bajtów')
+        self.assert_unreadable(receiver, status, 'ciało większe niż 16 bajtów', raw=b'a' * 16)
 
     def test_chunks_up_to_the_limit_are_read(self):
         self.small_limit()
@@ -486,6 +492,185 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         for key in ('content_encoding', 'body', 'problem'):
             self.assertEqual(one_line[key], two_lines[key], key)
         self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_every_method_with_a_body_is_recorded_read_and_judged(self):
+        body = self.leaking_body()
+        for method in (b'DELETE', b'PATCH', b'HEAD', b'OPTIONS', b'TRACE', b'CONNECT', b'FOO'):
+            with self.subTest(method=method):
+                receiver = self.receiver()
+                status = send_raw(receiver.endpoint, method + b' /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: %d'
+                                  b'\r\n\r\n' % len(body) + body)
+                self.assertIsNotNone(status)
+                requests = receiver.requests
+                self.assertEqual(1, len(requests))
+                self.assertEqual(method.decode(), requests[0]['method'])
+                self.assertEqual(body, requests[0]['body'])
+                self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_head_is_answered_without_a_body(self):
+        receiver = self.receiver()
+        host, port = receiver.endpoint[len('http://'):].split(':')
+        connection = http.client.HTTPConnection(host, int(port), timeout=10)
+        self.addCleanup(connection.close)
+        connection.request('HEAD', '/v1/logs', headers={'Content-Type': 'application/json'})
+        response = connection.getresponse()
+        self.assertEqual(200, response.status)
+        self.assertEqual(b'', response.read())
+        self.assertEqual('HEAD', receiver.requests[0]['method'])
+
+    REJECTED = {
+        'http2 preface': (b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n', 505),
+        'tls client hello': (b'\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03' + bytes(range(32)) + b'\r\n\r\n', 400),
+        'request line of 70 kB': (b'GET /' + b'a' * 70000 + b' HTTP/1.1\r\n\r\n', 414),
+        '150 headers': (b'GET /v1/logs HTTP/1.1\r\n' + b''.join(b'X-%d: y\r\n' % i for i in range(150)) + b'\r\n', 431),
+        'header line of 70 kB': (b'GET /v1/logs HTTP/1.1\r\nX: ' + b'a' * 70000 + b'\r\n\r\n', 431),
+    }
+
+    def test_a_request_the_http_server_rejects_is_recorded_with_a_fixed_problem(self):
+        for name, (data, code) in self.REJECTED.items():
+            with self.subTest(name):
+                receiver = self.receiver()
+                send_raw(receiver.endpoint, data)
+                requests = receiver.requests
+                self.assertEqual(1, len(requests))
+                request = requests[0]
+                self.assertEqual(b'', request['raw'])
+                self.assertIsNone(request['body'])
+                self.assertIsNone(request['forwarded'])
+                self.assertEqual('żądanie odrzucone przez serwer HTTP: %d' % code, request['problem'])
+                self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_rejected_request_never_puts_text_of_the_request_in_the_record(self):
+        receiver = self.receiver()
+        send_raw(receiver.endpoint, b'FOO-SECRET-TEXT /SECRET-PATH-TEXT HTTP/9.9\r\n\r\n')
+        self.assertEqual(1, len(receiver.requests))
+        self.assertNotIn('SECRET', receiver.requests[0]['problem'])
+
+    def test_a_rejected_request_to_the_second_receiver_is_a_leak(self):
+        for name, (data, code) in self.REJECTED.items():
+            with self.subTest(name):
+                receiver, trap = self.receiver(), self.receiver()
+                send_raw(trap.endpoint, data)
+                verdicts = probe.telemetry_verdicts(receiver.requests, trap.requests, self.MARKERS, self.EXPECTED)
+                self.assertEqual('fail', verdicts['telemetry_no_content']['status'])
+
+    def test_a_handled_request_is_recorded_once_even_when_the_server_answers_an_error_later(self):
+        receiver = self.receiver()
+        handler = type('H', (otlp_receiver._Handler,), {'receiver': receiver})
+        sent = []
+        handler.send_response = lambda self, code, message=None: sent.append(code)
+        handler.send_header = handler.end_headers = lambda self, *a: None
+        handler.wfile = type('W', (), {'write': lambda self, data: None})()
+        instance = handler.__new__(handler)
+        instance.command, instance.path = 'POST', '/v1/logs'
+        instance.headers = http.client.HTTPMessage()
+        instance.rfile = type('R', (), {'read': lambda self, n: b'', 'readline': lambda self, n: b''})()
+        instance.wfile = handler.wfile
+        instance._handle()
+        instance.send_error(400)
+        self.assertEqual(1, len(receiver.requests))
+
+    LEAK = b'PROMPT-feed1234'   # 15 bytes with the marker, as a body without a protobuf
+
+    def send_lines(self, receiver, lines, payload=b'', half_close=False):
+        return send_raw(receiver.endpoint, b'POST /v1/logs HTTP/1.1\r\nHost: x\r\n'
+                        + b''.join(line + b'\r\n' for line in lines) + b'\r\n' + payload, half_close)
+
+    def assert_unframed(self, receiver, status, raw=b''):
+        """400, the body not taken (None) with the bytes read until the error, a problem without any header value."""
+        self.assertIn(status, (400, None))
+        request = receiver.requests[0]
+        self.assertEqual((None, raw), (request['body'], request['raw']))
+        self.assertTrue(request['problem'].startswith('nieczytelne ciało żądania: '))
+        self.assertNotRegex(request['problem'], r'\d|gzip|chunked|identity')
+
+    def test_two_different_content_length_lines_keep_the_shorter_prefix_and_are_not_a_pass(self):
+        receiver = self.receiver()
+        status = self.send_lines(receiver, [b'Content-Length: 2', b'Content-Length: 15'], self.LEAK)
+        self.assert_unframed(receiver, status, raw=b'PR')
+        self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_marker_in_the_prefix_of_conflicting_content_lengths_is_a_fail(self):
+        for lengths in ((15, 40), (40, 15), (15, 40, 15)):
+            with self.subTest(lengths=lengths):
+                receiver = self.receiver()
+                status = self.send_lines(receiver, [b'Content-Length: %d' % n for n in lengths], self.LEAK)
+                self.assert_unframed(receiver, status, raw=self.LEAK)
+                self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_conflicting_content_lengths_in_one_line_are_judged_as_in_two_lines(self):
+        receiver = self.receiver()
+        status = self.send_lines(receiver, [b'Content-Length: 2, 15'], self.LEAK)
+        self.assert_unframed(receiver, status, raw=b'PR')
+
+    def test_the_same_content_length_twice_is_that_length(self):
+        for lines in ([b'Content-Length: 15', b'Content-Length: 15'], [b'Content-Length: 15, 15'],
+                      [b'Content-Length: 15 , 15', b'Content-Length: 15']):
+            with self.subTest(lines=lines):
+                receiver = self.receiver()
+                self.assertEqual(200, self.send_lines(receiver, lines, self.LEAK))
+                request = receiver.requests[0]
+                self.assertEqual((self.LEAK, self.LEAK, None), (request['raw'], request['body'], request['problem']))
+                self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_an_unreadable_content_length_among_several_is_unreadable_without_a_prefix(self):
+        for value in (b'15, x', b'15,', b'-1', b'+15', b'1_5', b'0x0f'):
+            with self.subTest(value=value):
+                receiver = self.receiver()
+                status = self.send_lines(receiver, [b'Content-Length: ' + value], self.LEAK)
+                self.assert_unframed(receiver, status)
+
+    def test_a_transfer_encoding_other_than_exactly_chunked_is_unreadable_and_nothing_is_read(self):
+        chunked = b'f\r\n' + self.LEAK + b'\r\n0\r\n\r\n'
+        for lines in ([b'Transfer-Encoding: gzip', b'Transfer-Encoding: chunked'],
+                      [b'Transfer-Encoding: gzip, chunked'], [b'Transfer-Encoding: chunked, chunked'],
+                      [b'Transfer-Encoding: chunked', b'Transfer-Encoding: chunked'],
+                      [b'Transfer-Encoding: chunked, gzip'], [b'Transfer-Encoding: identity'],
+                      [b'Transfer-Encoding: x-chunked'], [b'Transfer-Encoding:']):
+            with self.subTest(lines=lines):
+                receiver = self.receiver()
+                status = self.send_lines(receiver, lines, chunked)
+                self.assert_unframed(receiver, status)
+                self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_chunked_in_any_case_and_with_spaces_is_read(self):
+        chunked = b'f\r\n' + self.LEAK + b'\r\n0\r\n\r\n'
+        for line in (b'Transfer-Encoding: chunked', b'Transfer-Encoding: Chunked', b'Transfer-Encoding:   CHUNKED  '):
+            with self.subTest(line=line):
+                receiver = self.receiver()
+                self.assertEqual(200, self.send_lines(receiver, [line], chunked))
+                self.assertEqual(self.LEAK, receiver.requests[0]['body'])
+
+    def test_transfer_encoding_with_content_length_is_unreadable(self):
+        chunked = b'f\r\n' + self.LEAK + b'\r\n0\r\n\r\n'
+        receiver = self.receiver()
+        status = self.send_lines(receiver, [b'Transfer-Encoding: chunked', b'Content-Length: 15'], chunked)
+        self.assert_unframed(receiver, status)
+        self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_body_cut_short_keeps_what_was_read(self):
+        receiver = self.receiver()
+        status = self.send_lines(receiver, [b'Content-Length: 40'], self.LEAK, half_close=True)
+        self.assertEqual('nieczytelne ciało żądania: urwane ciało', receiver.requests[0]['problem'])
+        self.assertIn(status, (400, None))
+        self.assertEqual((None, self.LEAK), (receiver.requests[0]['body'], receiver.requests[0]['raw']))
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_chunk_cut_short_keeps_what_was_read(self):
+        receiver = self.receiver()
+        self.send_lines(receiver, [b'Transfer-Encoding: chunked'], b'20\r\n' + self.LEAK, half_close=True)
+        request = receiver.requests[0]
+        self.assertEqual('nieczytelne ciało żądania: urwany fragment ciała', request['problem'])
+        self.assertEqual((None, self.LEAK), (request['body'], request['raw']))
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_the_chunks_before_an_unreadable_chunk_size_are_kept(self):
+        receiver = self.receiver()
+        self.send_lines(receiver, [b'Transfer-Encoding: chunked'], b'f\r\n' + self.LEAK + b'\r\nzz\r\n')
+        request = receiver.requests[0]
+        self.assertEqual('nieczytelne ciało żądania: nieczytelny rozmiar fragmentu', request['problem'])
+        self.assertEqual((None, self.LEAK), (request['body'], request['raw']))
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
 
     def test_without_the_header_content_encoding_is_none(self):
         receiver = self.receiver()
