@@ -14,6 +14,11 @@ ALERT_METRICS = [
     "node_filesystem_size_bytes", "kube_node_info", "kube_deployment_status_replicas_available", "kube_deployment_spec_replicas",
     "kube_statefulset_status_replicas_ready", "kube_statefulset_replicas",
 ]
+# The metrics that hypercare of /oncall reads (docs/features/oncall/spec.md: Przebieg, Hypercare): the image tag and the owner
+# of a pod, its readiness and the restarts of its containers.
+ONCALL_METRICS = [
+    "kube_pod_container_info", "kube_pod_owner", "kube_pod_status_ready", "kube_pod_container_status_restarts_total",
+]
 SECRET_OF_ALLOY = "grafana-cloud"
 # The Grafana of the stack: the alert rules are imported there (AlertRules).
 GRAFANA = "https://cosmiccinnamon1835.grafana.net"
@@ -581,16 +586,16 @@ class AllowedMetrics(unittest.TestCase):
         block = config.split(f'prometheus.relabel "{component}" {{', 1)[1].split(f'}} // prometheus.relabel "{component}"', 1)[0]
         return re.findall(r'source_labels = \["__name__"\]\s*regex = "([^"]+)"\s*action = "keep"', block)
 
-    def test_the_list_is_not_empty_and_names_the_metrics_of_the_alerts(self):
+    def test_the_list_is_not_empty_and_names_the_metrics_of_the_alerts_and_of_hypercare(self):
         listed = (values()["clusterMetrics"]["kube-state-metrics"]["metricsTuning"]["includeMetrics"]
                   + values()["hostMetrics"]["linuxHosts"]["metricsTuning"]["includeMetrics"])
         self.assertTrue(listed)
-        for metric in ALERT_METRICS:
+        for metric in ALERT_METRICS + ONCALL_METRICS:
             self.assertIn(metric, listed)
 
     def test_alloy_keeps_every_metric_of_the_alerts_and_only_a_list(self):
         for component, wanted in (
-            ("kube_state_metrics", [m for m in ALERT_METRICS if m.startswith("kube_")]),
+            ("kube_state_metrics", [m for m in ALERT_METRICS + ONCALL_METRICS if m.startswith("kube_")]),
             ("node_exporter", [m for m in ALERT_METRICS if m.startswith("node_")]),
         ):
             expressions = self.keep_expressions(component)
