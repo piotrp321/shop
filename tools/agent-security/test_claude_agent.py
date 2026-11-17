@@ -780,10 +780,15 @@ class TelemetryTest(WrapperTestCase):
 
     def test_odd_names_and_bytes_do_not_stop_the_removal(self):
         # A name sh cannot unset (not an identifier) is left as it is; bytes that are not UTF-8 in a value do not
-        # stop the names from being read (the C locale); the real OTEL_* variables are removed either way.
-        record = self.passed_through('--version', **{'OTEL_A.B': '1', 'WRAPPER_TEST_BYTES': b'\xff\xfe\nOTEL_X=1',
-                                                     'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://evil.example:4318',
-                                                     'CLAUDE_CODE_ENABLE_TELEMETRY': '1'})
+        # stop the names from being read; the real OTEL_* variables are removed either way. The environment has a
+        # UTF-8 locale, as a user's shell does: the BSD sed of macOS then fails on such bytes with "illegal byte
+        # sequence" (and the wrapper refuses to start) unless the wrapper runs sed in the C locale (LC_ALL=C). Without
+        # the locale the test would pass in the C locale of the harness even without that safeguard. GNU sed has no
+        # such error, so on Linux this test does not catch a missing LC_ALL=C.
+        record = self.passed_through('--version', LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8',
+                                     **{'OTEL_A.B': '1', 'WRAPPER_TEST_BYTES': b'\xff\xfe\nOTEL_X=1',
+                                        'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://evil.example:4318',
+                                        'CLAUDE_CODE_ENABLE_TELEMETRY': '1'})
         self.assertNotIn('OTEL_EXPORTER_OTLP_ENDPOINT', record['env'])
         self.assertNotIn('CLAUDE_CODE_ENABLE_TELEMETRY', record['env'])
 
