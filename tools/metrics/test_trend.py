@@ -337,5 +337,100 @@ class RegressionWindowTest(TrendEnv):
         self.assertEqual(self.stored_record()['regressions']['issues'], [5])
 
 
+def estimate(record, value=False, share=False):
+    """The record with the value total and/or the subscription share marked as estimated."""
+    if value:
+        record['value']['total']['estimated'] = True
+    if share:
+        record['subscription']['share_estimated'] = True
+    return record
+
+
+class EstimatedColumnsTest(TrendEnv):
+    """A column that comes from an estimated source is never shown like an exact one (spec: Dokładność)."""
+
+    def setUp(self):
+        super().setUp()
+        self.config = metrics.load_config(os.path.join(testkit.HERE, 'config.json'))
+        self.history = [fake_record(name, merged='2026-11-0%dT10:00:00Z' % number, value=10, share=1)
+                        for number, name in enumerate('abc', 1)]
+
+    def position_line(self, record, history=None):
+        line, = metrics.position_topic(record, self.history if history is None else history, self.config, True)
+        return line
+
+    def test_position_marks_an_estimated_value_with_the_approximation_sign(self):
+        record = estimate(fake_record('x', value=30), value=True)
+        line = self.position_line(record)
+        self.assertIn('value \u2248 3,00 (mediana 1,00, +200%)', line)
+        self.assertNotIn('pp \u2248', line)
+
+    def test_position_marks_pp_of_an_estimated_share(self):
+        line = self.position_line(estimate(fake_record('x', share=2), share=True))
+        self.assertIn('pp \u2248 0,80 (mediana 0,40, +100%)', line)
+        self.assertNotIn('value \u2248', line)
+
+    def test_position_marks_a_median_built_from_an_estimated_history_value(self):
+        history = [estimate(h, value=True) if h['epic'] == 'b' else h for h in self.history]
+        line = self.position_line(fake_record('x', value=30), history)
+        self.assertIn('value 3,00 (mediana \u2248 1,00, +200%)', line)
+
+    def test_position_of_exact_values_has_no_approximation_sign(self):
+        self.assertNotIn('\u2248', self.position_line(fake_record('x', value=30, share=2)))
+
+    def test_an_unknown_value_is_not_marked_estimated(self):
+        record = fake_record('x', value=10)
+        record['value']['total'] = {'usd': None, 'estimated': True}
+        self.assertEqual(metrics.trend_estimated(record, self.config), set())
+
+    def test_trend_values_keep_the_numbers_and_the_estimated_columns_are_separate(self):
+        record = estimate(fake_record('x', value=30, share=2), value=True, share=True)
+        self.assertEqual(metrics.trend_values(record, self.config)['value'], 3.0)
+        self.assertEqual(metrics.trend_estimated(record, self.config), {'value', 'pp'})
+        self.assertEqual(metrics.trend_estimated(fake_record('y'), self.config), set())
+
+    def store(self):
+        store_records(self.state,
+                      fake_record('a', merged='2026-11-01T10:00:00Z', value=10),
+                      estimate(fake_record('b', merged='2026-11-02T10:00:00Z', value=20, share=2), value=True,
+                               share=True),
+                      fake_record('c', merged='2026-11-03T10:00:00Z', value=30))
+
+    def test_json_lists_the_estimated_columns_of_the_rows_the_median_and_the_position(self):
+        self.store()
+        table = self.table('--no-gh')
+        self.assertEqual([r['estimated'] for r in table['epics']], [[], ['value', 'pp'], []])
+        self.assertEqual(table['median_estimated'], ['value', 'pp'])
+        self.assertEqual(table['position']['estimated'], [])
+        self.assertEqual(table['position']['median_estimated'], ['value', 'pp'])
+        self.assertEqual(self.table('--no-gh', '--epic', 'b')['position']['estimated'], ['value', 'pp'])
+        self.assertEqual(table['median']['value'], 2.0)         # the numbers are not changed
+
+    def test_json_of_exact_records_has_empty_estimated_lists(self):
+        store_records(self.state, fake_record('a'), fake_record('b', merged='2026-11-11T10:00:00Z'))
+        table = self.table('--no-gh')
+        self.assertEqual([r['estimated'] for r in table['epics']], [[], []])
+        self.assertEqual((table['median_estimated'], table['position']['estimated'],
+                          table['position']['median_estimated']), ([], [], []))
+
+    def test_text_table_marks_estimated_cells_and_medians_and_keeps_the_columns_aligned(self):
+        self.store()
+        code, out, err = self.trend('--no-gh', '--epic', 'b')
+        self.assertEqual(code, 0, err)
+        lines = out.splitlines()
+        row = next(l for l in lines if l.startswith('b '))
+        self.assertIn('\u2248 2,00', row)
+        self.assertIn('\u2248 0,80', row)
+        self.assertNotIn('\u2248', next(l for l in lines if l.startswith('a ')))
+        table = [l for l in lines[1:6]]      # the header, the three epics and the median
+        self.assertEqual(len({len(l) for l in table}), 1, table)
+        self.assertIn('  USD: \u2248 2,00 (mediana \u2248 2,00, +0%)', lines)
+        self.assertIn('  pp: \u2248 0,80 (mediana \u2248 0,40, +100%)', lines)
+
+    def test_text_table_of_exact_records_has_no_approximation_sign(self):
+        store_records(self.state, fake_record('a'), fake_record('b', merged='2026-11-11T10:00:00Z'))
+        self.assertNotIn('\u2248', self.trend('--no-gh')[1])
+
+
 if __name__ == '__main__':
     unittest.main()

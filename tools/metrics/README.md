@@ -45,8 +45,13 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   „wersja CLI: a → b” oraz „modele: + x − y”, gdy wersje CLI albo zestaw modeli różnią się od poprzedniego zmergowanego
   epiku (liczby bez korekty). Przed tabelą `trend` przelicza `regressions` i `found_after_merge` rekordów z otwartym oknem
   (`regressions.open`), bez tych pól albo z nieznanym składnikiem (`gh`; zapisuje rekordy; `--no-gh` pomija). Błąd `gh`
-  zostawia zapisane wartości, tabela się wypisuje, kod wyjścia `3`. `--json` wypisuje tabelę jako JSON (`columns`, `epics`,
-  `median`, `position`, `recomputed`). Bez rekordów kod `2` z podpowiedzią `backfill`.
+  zostawia zapisane wartości, tabela się wypisuje, kod wyjścia `3`. Kolumny `value` (gdy `value.total.estimated`) i `pp`
+  (gdy `subscription.share_estimated`) są szacowane: tabela i linie „wobec mediany” (jak „Pozycja na tle mediany” w
+  `render`) pokazują je z „≈ ” przed liczbą, także medianę, w której jest choć jedna wartość szacowana; kolumna bez
+  wartości nie jest szacowana. `--json` wypisuje tabelę jako JSON (`columns`, `epics`, `median`, `position`,
+  `recomputed`) i listy kolumn szacowanych: `epics[].estimated` (wartości epiku), `median_estimated` (mediany tabeli),
+  `position.estimated` (wartości epiku z `position.epic`) i `position.median_estimated`; liczby są te same co bez
+  oznaczenia. Bez rekordów kod `2` z podpowiedzią `backfill`.
 - `render EPIK --format report|comment`: tekst z zapisanego rekordu i historii (`<state>/epics`), bez `gh`.
   `report` (raport odbioru, przed merge'em) zaczyna się od wąskich gardeł liczonych od nowa bez `review`, potem: czas do
   `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami), integracja, wartość
