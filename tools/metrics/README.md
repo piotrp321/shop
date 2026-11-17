@@ -384,7 +384,9 @@ Wynik (JSON): `before` i `after` (`epics`: epiki z pomiarem, `n`: próbki (zadan
 z komórki `value.by_task_role` z `estimated: true` albo `incomplete: true`, co w `decide` też oznacza wartość szacowaną, albo
 z zadania, którego `value.by_task` jest `incomplete` albo nieznane (rola mogła mieć brakującą część), albo gdy
 pominięto zadanie, w którym rola działała z nieznaną wartością (`usd` `null`), także gdy przez to epik nie ma żadnej próbki (jest pominięty, z pozycją w `gaps`): okno jest wtedy niepełne; tylko
-D1, D2 (`work` zadania planu z `incomplete`) i `D4:ci` (`in_attempts.incomplete`), pozostałe miary są dokładne i mają `false`), `estimated` (na poziomie wyniku: `true`, gdy szacowane jest któreś okno;
+D1, D2 (`work` zadania planu z `incomplete`), `D4:ci` (`in_attempts.incomplete` albo granica rozkładu czasu),
+`D4:human_wait` i `D4:limit_wait` (granica rozkładu czasu) oraz okno „przed” krótsze niż „po”; pozostałe miary są
+dokładne i mają `false`), `estimated` (na poziomie wyniku: `true`, gdy szacowane jest któreś okno;
 dotyczy wtedy też `diff`; liczby szacowane są pokazywane z „≈”), `diff` (`value` w jednostce miary i `pct` w procentach różnicy
 median; `pct` `null` przy medianie „przed” równej 0), `message` (`za mało danych` i wtedy `diff` `null`, a `reasons` mówi
 dlaczego), `epic_time` (czas do `epic_done` na zadanie planu w godzinach: mediana trzech epików zmergowanych najbliżej
