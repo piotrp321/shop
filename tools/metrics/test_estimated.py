@@ -33,6 +33,13 @@ def bare_numbers(text):
     return re.findall(r'\d+,\d+', re.sub(r'≈ [+−]?\d+(?:,\d+)?', '', text))
 
 
+def unmarked_numbers(text):
+    """The numbers of `text` (decimals and integers) without `≈ ` in front, ignoring the cover note „transkrypty tylko N
+    z M prób”."""
+    text = re.sub(r'transkrypty tylko \d+ z \d+ prób', '', text)
+    return re.findall(r'\b\d+(?:,\d+)?\b', re.sub(r'≈ [+−]?\d+(?:,\d+)?', '', text))
+
+
 class ValueSectionsTest(unittest.TestCase):
     """`value_sections` marks every section a lost, estimated or unknown attempt may be part of."""
 
@@ -201,6 +208,20 @@ class RecordTest(RunEnv):
 
 
 class RenderTest(RunEnv):
+    def test_the_role_and_model_lines_of_a_run_whose_only_gap_is_an_attempt_without_a_transcript_are_marked(self):
+        self.history()
+        home = testkit.synthetic_home(
+            self.root, tasks=[('P-1', 'plan')], created=1000.0,
+            attempts=[dict(task_id='P-1', number=1, started_at=1100.0, ended_at=1300.0),
+                      dict(task_id='P-1', number=2, started_at=1400.0, ended_at=1500.0)],      # timed, no transcript
+            events=[(2000.0, 'epic_done', {})])
+        testkit.put_transcript(home, 'P-1', 1, self.exact_result().lines)
+        self.record('demo', home=home)
+        out = self.render('report')
+        for prefix in ('role: delivery', 'modele: %s' % OPUS):
+            line = next(l for l in out.splitlines() if l.strip().startswith(prefix))
+            self.assertIn('≈ 2,00 USD (suma niepełna)', line)
+
     def test_every_value_line_of_a_run_with_missing_parts_shows_its_numbers_with_the_approximation_sign(self):
         self.mixed_record()
         for fmt in ('report', 'comment'):
@@ -239,9 +260,13 @@ class RenderTest(RunEnv):
         record['in_attempts']['incomplete'] = True
         record['in_attempts']['attempts_without_transcript'], record['in_attempts']['attempts'] = 1, 3
         record['in_attempts']['categories']['test'] = {'count': 2, 'background': 0, 'unfinished': 0, 'seconds': 0.5 * H}
+        record['in_attempts']['api_retry'] = {'count': 4, 'delay_ms': 12500}
+        record['in_attempts']['permission_denials'] = {'Bash': 2}
         text = '\n'.join(metrics.attempts_time_topic(record))
-        self.assertIn('test ≈ 0,5 h (2)', text)
-        self.assertEqual(bare_numbers(text.replace('0,5 h', '')), [])
+        self.assertIn('test ≈ 0,5 h (≈ 2)', text)
+        self.assertIn('ponowienia API: ≈ 4 (łącznie ≈ 12 s)', text)
+        self.assertIn('Bash ≈ 2', text)
+        self.assertEqual(unmarked_numbers(text), [])
         exact = fake_record('demo')
         exact['in_attempts']['categories']['test'] = {'count': 2, 'background': 0, 'unfinished': 0, 'seconds': 0.5 * H}
         self.assertNotIn(APPROX, '\n'.join(metrics.attempts_time_topic(exact)).replace('dolna granica', ''))
@@ -334,6 +359,38 @@ class DecideTest(test_decide.DecideEnv):
         self.assertIs(candidate['expected_effect']['estimated'], False)
         self.assertEqual(candidate['data']['estimated'], [])
 
+    def test_every_candidate_has_a_list_of_estimated_parts_that_is_empty_when_exact(self):
+        record = test_decide.target(human_wait=25 * H, review=30 * H)
+        record['breakdown']['limit_wait'] = 20 * H
+        record['gate_wait'] = {'wait_s': 2 * H, 'reasons': [test_decide.FILES]}
+        store_records(self.state, record)
+        found = {c['key']: c for c in self.result()['candidates']}
+        self.assertEqual(sorted(found), ['D3:gate_wait', 'D4:human_wait', 'D4:limit_wait', 'D4:review'])
+        for key, candidate in found.items():
+            self.assertEqual(candidate['data']['estimated'], [], key)
+            self.assertIs(candidate['expected_effect']['estimated'], False, key)
+
+    def test_a_lower_bound_limit_wait_makes_only_that_d4_candidate_estimated(self):
+        record = test_decide.target(human_wait=25 * H)
+        record['breakdown']['limit_wait'] = 20 * H
+        record['breakdown_incomplete'] = ['limit_wait']
+        store_records(self.state, record)
+        found = {c['key']: c for c in self.result()['candidates']}
+        self.assertEqual(found['D4:limit_wait']['data']['estimated'], ['limit_wait'])
+        self.assertIs(found['D4:limit_wait']['expected_effect']['estimated'], True)
+        self.assertEqual(found['D4:human_wait']['data']['estimated'], [])
+        self.assertIs(found['D4:human_wait']['expected_effect']['estimated'], False)
+
+    def test_a_lower_bound_work_makes_the_d4_ci_share_estimated(self):
+        record = test_decide.target()
+        record['breakdown']['ci_wait'] = 4 * H
+        record['in_attempts']['categories']['ci_watch']['seconds'] = 6 * H
+        record['breakdown_incomplete'] = ['work']
+        store_records(self.state, record)
+        candidate = self.candidate(self.result(), 'D4:ci')
+        self.assertEqual(candidate['data']['estimated'], ['work'])
+        self.assertIs(candidate['expected_effect']['estimated'], True)
+
     def ci(self, incomplete):
         record = test_decide.target()
         record['breakdown']['ci_wait'] = 4 * H
@@ -363,16 +420,26 @@ class D1Test(test_decide_models.D1Env):
         self.meta()
         return self.d1(self.decide()[1])
 
-    def test_an_estimated_total_makes_the_share_and_the_effect_estimated(self):
+    def test_an_estimated_total_marks_the_share_and_not_the_effect_that_comes_from_the_role_cells(self):
         found = self.candidate(lambda r: r['value']['total'].update(estimated=True))
-        self.assertIs(found['expected_effect']['estimated'], True)
+        self.assertIs(found['expected_effect']['estimated'], False)
         self.assertEqual(found['data']['estimated'], ['epic_total'])
-        self.assertIn('szacowana', found['proposal'])
+        self.assertIn('Udział roli liczony z szacowanej albo niepełnej wartości epiku.', found['proposal'])
+        self.assertNotIn('Wartość roli jest szacowana', found['proposal'])
 
-    def test_an_incomplete_total_makes_the_share_and_the_effect_estimated(self):
+    def test_an_incomplete_total_marks_the_share_and_not_the_effect(self):
         found = self.candidate(lambda r: r['value']['total'].update(incomplete=True))
-        self.assertIs(found['expected_effect']['estimated'], True)
+        self.assertIs(found['expected_effect']['estimated'], False)
         self.assertEqual(found['data']['estimated'], ['epic_total'])
+        self.assertIn('Udział roli liczony z szacowanej albo niepełnej wartości epiku.', found['proposal'])
+
+    def test_an_estimated_total_and_an_estimated_role_cell_mark_both(self):
+        def both(record):
+            record['value']['total']['estimated'] = True
+            record['value']['by_role_model']['code-reviewer'][OPUS]['estimated'] = True
+        found = self.candidate(both)
+        self.assertIs(found['expected_effect']['estimated'], True)
+        self.assertEqual(found['data']['estimated'], ['role_value', 'epic_total'])
 
     def test_a_cell_of_the_role_without_a_value_on_a_more_expensive_model_makes_the_effect_estimated(self):
         roles = {'code-reviewer': {OPUS: 30.0, testkit.HAIKU: None, SONNET: 2.0}, 'delivery': {OPUS: 68.0}}
@@ -414,6 +481,49 @@ class BottleneckTest(RunEnv):
         past[1]['by_task']['P-1']['incomplete'] = True
         self.assertIs(self.items(past=past)['P-0']['estimated'], True)
 
+    def ci_items(self, mutate=None, past=None):
+        record = test_decide.target()
+        record['breakdown']['ci_wait'] = 12 * H
+        record['in_attempts']['categories']['ci_watch']['seconds'] = 1.0
+        record['in_attempts']['incomplete'] = True
+        if mutate:
+            mutate(record)
+        found = metrics.bottlenecks_of(record, test_decide.history() if past is None else past, self.config, metrics.Gaps())
+        return {item['name']: item for item in found}
+
+    def test_an_exact_ci_wait_item_keeps_its_numbers_exact_and_only_the_effect_is_marked(self):
+        item = self.ci_items()['ci_wait']
+        self.assertIs(item['estimated'], False)
+        self.assertIs(item['effect_estimated'], True)         # the effect is the one of D4:ci, which has ci_watch
+        head, effect = metrics.bottleneck_lines([item])[0].split(', potencjalnie')
+        self.assertNotIn(APPROX, head)
+        self.assertIn(APPROX, effect)
+        self.assertEqual(bare_numbers(effect), [])
+
+    def test_the_effect_of_an_exact_item_is_not_marked(self):
+        item = self.ci_items(lambda r: r['in_attempts'].pop('incomplete'))['ci_wait']
+        self.assertEqual((item['estimated'], item['effect_estimated']), (False, False))
+        self.assertNotIn(APPROX, metrics.bottleneck_lines([item])[0])
+
+    def limit_items(self, mutate=None, past=None):
+        record = test_decide.target()
+        record['breakdown']['limit_wait'] = 20 * H
+        if mutate:
+            mutate(record)
+        found = metrics.bottlenecks_of(record, test_decide.history() if past is None else past, self.config, metrics.Gaps())
+        return {item['name']: item for item in found}
+
+    def test_a_lower_bound_category_of_the_breakdown_is_an_estimated_item_and_the_others_are_not(self):
+        items = self.limit_items(lambda r: r.update(breakdown_incomplete=['limit_wait']))
+        self.assertIs(items['limit_wait']['estimated'], True)
+        self.assertIs(items['limit_wait']['effect_estimated'], True)
+        self.assertEqual(self.limit_items()['limit_wait']['estimated'], False)
+
+    def test_a_history_with_a_lower_bound_category_makes_the_median_and_the_item_estimated(self):
+        past = test_decide.history()
+        past[1]['breakdown_incomplete'] = ['limit_wait']
+        self.assertIs(self.limit_items(past=past)['limit_wait']['estimated'], True)
+
     def test_exact_times_give_unmarked_items(self):
         items = self.items()
         self.assertTrue(items)
@@ -422,6 +532,72 @@ class BottleneckTest(RunEnv):
 
 def role_epic(case, name, started, merged, plan_value, **kwargs):
     return test_effect.D1Test.role_epic(case, name, started, merged, plan_value, **kwargs)
+
+
+def event(at, kind, data):
+    return {'at': at, 'type': kind, 'data': data, 'task_id': None, 'epic_id': 'demo'}
+
+
+def attempt(number=1, start=1000.0, end=2000.0):
+    return {'task_id': 'P-1', 'number': number, 'started_at': start, 'ended_at': end, 'wall_s': None}
+
+
+class BreakdownTest(RunEnv):
+    """The categories whose time is skipped for lack of data are lower bounds (and `idle` an upper bound)."""
+
+    def breakdown(self, attempts, events):
+        run = {'epic': {'epic_id': 'demo'}, 'tasks': [{'task_id': 'P-1', 'kind': 'plan'}], 'attempts': attempts,
+               'events': events, 'absent': set()}
+        gaps, lower = metrics.Gaps(), set()
+        metrics.breakdown_of(run, 0.0, 10000.0, [], None, self.config, gaps, lower)
+        return lower, gaps.render()
+
+    def test_a_cooldown_without_an_end_makes_limit_wait_a_lower_bound(self):
+        lower, gaps = self.breakdown([attempt()], [event(3000.0, 'cooldown_set', {'from': 3000.0})])
+        self.assertEqual(lower, {'limit_wait'})
+        self.assertTrue(any(g.startswith('breakdown.limit_wait') for g in gaps), gaps)
+
+    def test_a_host_pause_without_a_span_makes_host_pause_a_lower_bound(self):
+        lower, gaps = self.breakdown([attempt()], [event(3000.0, 'host_pause', {})])
+        self.assertEqual(lower, {'host_pause'})
+        self.assertTrue(any(g.startswith('breakdown.host_pause') for g in gaps), gaps)
+
+    def test_an_attempt_without_a_start_makes_work_a_lower_bound_with_a_gap(self):
+        lower, gaps = self.breakdown([attempt(), attempt(2, None, None)], [])
+        self.assertEqual(lower, {'work'})
+        self.assertTrue(any(g.startswith('breakdown.work') and 'started_at' in g for g in gaps), gaps)
+
+    def test_a_complete_breakdown_has_no_lower_bounds(self):
+        lower, gaps = self.breakdown([attempt()], [event(3000.0, 'cooldown_set', {'from': 3000.0, 'until': 3500.0})])
+        self.assertEqual((lower, gaps), (set(), []))
+
+    def test_the_record_lists_the_lower_bound_categories_only_when_there_are_some(self):
+        self.history()
+        home = testkit.synthetic_home(
+            self.root, tasks=[('P-1', 'plan')], created=1000.0,
+            attempts=[dict(task_id='P-1', number=1, started_at=1100.0, ended_at=1300.0)],
+            events=[(1500.0, 'cooldown_set', {'from': 1500.0}), (2000.0, 'epic_done', {})])
+        testkit.put_transcript(home, 'P-1', 1, self.exact_result().lines)
+        self.assertEqual(self.record('demo', home=home)['breakdown_incomplete'], ['limit_wait'])
+        self.assertNotIn('breakdown_incomplete', self.exact_record())
+
+    def test_the_time_lines_mark_a_lower_bound_category_and_idle_as_an_upper_bound(self):
+        record = fake_record('demo', tasks=5, to_done=10 * H, work=5 * H, human_wait=0.0)
+        record['breakdown'].update(limit_wait=1 * H, idle=2 * H)
+        record['breakdown_incomplete'] = ['limit_wait']
+        line = metrics.time_topic(record, False)[0]
+        self.assertIn('limit_wait ≈ 1,0 h (≈ 10%, dolna granica)', line)
+        self.assertIn('idle ≈ 2,0 h (≈ 20%, górna granica)', line)
+        self.assertIn('work 5,0 h (50%)', line)
+        del record['breakdown_incomplete']
+        self.assertNotIn(APPROX, metrics.time_topic(record, False)[0])
+
+    def test_the_trend_work_column_of_a_lower_bound_work_is_estimated(self):
+        record = fake_record('x')
+        record['breakdown_incomplete'] = ['work']
+        self.assertEqual(metrics.trend_estimated(record, self.config), {'work'})
+        record['breakdown_incomplete'] = ['limit_wait']
+        self.assertEqual(metrics.trend_estimated(record, self.config), set())
 
 
 class EffectTest(test_effect.EffectEnv):
@@ -498,6 +674,20 @@ class EffectTest(test_effect.EffectEnv):
         self.assertIs(result['after']['estimated'], True)
         self.assertIs(result['before']['estimated'], False)
         self.assertIs(result['estimated'], True)
+        self.assertIs(self.result('D4:human_wait')['estimated'], False)
+
+    def test_a_lower_bound_limit_wait_makes_the_d4_limit_wait_window_estimated_and_work_the_d4_ci_one(self):
+        records = []
+        for i in range(1, 4):
+            for record in (test_effect.epic('b%d' % i, i, i + 1), test_effect.epic('a%d' % i, 10 + i, 12 + i)):
+                if record['epic'].startswith('a'):
+                    record['breakdown_incomplete'] = ['limit_wait', 'work']
+                records.append(record)
+        store_records(self.state, *records)
+        for key in ('D4:limit_wait', 'D4:ci'):
+            result = self.result(key)
+            self.assertEqual((result['before']['estimated'], result['after']['estimated'], result['estimated']),
+                             (False, True, True), key)
         self.assertIs(self.result('D4:human_wait')['estimated'], False)
 
     def test_exact_in_attempts_leave_the_d4_ci_window_unmarked(self):

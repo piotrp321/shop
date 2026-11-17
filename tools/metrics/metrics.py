@@ -146,6 +146,20 @@ def inexact(cell):
     return isinstance(cell, dict) and (cell.get('estimated') is True or cell.get('incomplete') is True)
 
 
+def lower_bounds(record):
+    """The categories of `breakdown` of the record that are lower bounds (`breakdown_incomplete`): part of their time
+    was skipped for lack of data and is in the other categories and in `idle`."""
+    found = record.get('breakdown_incomplete') if isinstance(record, dict) else None
+    return {c for c in found if isinstance(c, str)} if isinstance(found, list) else set()
+
+
+def breakdown_inexact(record, name):
+    """Whether the category `name` of `breakdown` is a lower bound, or `idle` an upper bound (the skipped time is in
+    it)."""
+    found = lower_bounds(record)
+    return name in found or (name == 'idle' and bool(found))
+
+
 def approx(flag, space=' '):
     """`≈ ` (with `space` after the sign) for a marked number, else an empty string."""
     return APPROX + space if flag else ''
@@ -454,9 +468,11 @@ def _next_at(events, index, kinds, after=None):
 EVENT_CATEGORY = {'cooldown_set': 'limit_wait', 'host_pause': 'host_pause', 'github_wait': 'github_wait'}
 
 
-def category_intervals(run, done, jsonl, config, gaps):
+def category_intervals(run, done, jsonl, config, gaps, lower=None):
     """{category: [(start, end)] or None} for the breakdown categories except idle (before clipping and
-    precedence). None: the source of the category is missing."""
+    precedence). None: the source of the category is missing. `lower`: a set that gets the categories whose time was
+    skipped for lack of data (lower bounds)."""
+    lower = set() if lower is None else lower
     events = run['events']
     epic_id = run['epic']['epic_id']
     task_ids = {t['task_id'] for t in run['tasks']}
@@ -468,6 +484,9 @@ def category_intervals(run, done, jsonl, config, gaps):
     for attempt in run['attempts'] if found['work'] is not None else []:
         start = _number(attempt['started_at'])
         if start is None:
+            lower.add('work')
+            gaps.add('breakdown.work', 'próba %s/%s bez started_at: pominięta w czasie work' % (attempt['task_id'],
+                                                                                              attempt['number']))
             continue
         end = _number(attempt['ended_at'])
         found['work'].append((start, done if end is None else end))
@@ -482,6 +501,7 @@ def category_intervals(run, done, jsonl, config, gaps):
             ends = [e for e in (_number(data.get('until')), _next_at(events, i + 1, ('cooldown_released',))) if e]
             if not ends:
                 gaps.add('breakdown.limit_wait', 'cooldown_set bez until i bez cooldown_released: pominięty')
+                lower.add('limit_wait')
                 continue
             found['limit_wait'].append((at if start is None else start, min(ends)))
         elif kind == 'epic_ci_pending':
@@ -497,6 +517,7 @@ def category_intervals(run, done, jsonl, config, gaps):
                 start, end = at - seconds, at
             if start is None or end is None:
                 gaps.add('breakdown.host_pause', 'host_pause bez from/to i seconds: pominięty')
+                lower.add('host_pause')
                 continue
             found['host_pause'].append((start, end))
         elif kind == 'github_wait' and not (i and _quiet(events[i - 1], epic_id, task_ids)
@@ -524,15 +545,16 @@ def _run_of_github_waits(events, index, epic_id, task_ids):
     return False
 
 
-def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps):
+def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps, lower=None):
     """The split of start -> epic_done into disjoint categories: each moment goes to the first category (in the order
-    of config.json) whose interval covers it; the rest is idle. A category without a source is None."""
+    of config.json) whose interval covers it; the rest is idle. A category without a source is None. `lower`: a set that
+    gets the categories that are lower bounds (time skipped for lack of data; `idle` is then an upper bound)."""
     if done is None or started is None:
         gaps.add('breakdown', 'brak epic_done: rozkład czasu niemożliwy')
         return None
     if jsonl is None:
         gaps.add('breakdown.human_wait', '%s: czas czekania na człowieka jest w idle' % jsonl_gap)
-    found = category_intervals(run, done, jsonl, config, gaps)
+    found = category_intervals(run, done, jsonl, config, gaps, lower)
     for name in found:
         if found[name] is None and name != 'human_wait':
             gaps.add('breakdown.%s' % name, 'brak kolumny źródła w bazie AO: czas tej kategorii jest w innych '
@@ -2120,6 +2142,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
             if any(s_start <= p['created'] < s_end for stretch in stretches.values() for s_start, s_end in stretch))
         if github['sync'] is None:
             gaps.add('parallel.sync_prs', 'brak listy PR sync')
+    lower = set()
     record = {
         'epic': epic_id,
         'issue': github['pr']['issue'] if github['pr'] else None,
@@ -2133,7 +2156,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
             'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
             'review': round(merged - done, 3) if merged is not None and done is not None else None,
         },
-        'breakdown': breakdown_of(ao_run, started, done, jsonl, jsonl_gap, config, gaps),
+        'breakdown': breakdown_of(ao_run, started, done, jsonl, jsonl_gap, config, gaps, lower),
         'integration': integration_of(ao_run, epic, gaps),
         'retries': retries,
         'parallel': parallel,
@@ -2147,6 +2170,8 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
         'value': fields['value'],
         'waste': waste[0],
     }
+    if lower:
+        record['breakdown_incomplete'] = [c for c in config['breakdown_order'] if c in lower]
     errors = github['errors']
     record.update(github_derived(run, no_gh, repo, config, epic_id, ao_run['tasks'], final_pr, github['pr'], known_merge,
                                  now, previous, gaps, errors))
@@ -2232,7 +2257,8 @@ def bottlenecks_of(record, history, config, gaps, include_review=True):
     for name in config['breakdown_order']:
         if name != 'work':
             category('breakdown', name, _get(record, ('breakdown', name)), lambda r, n=name: _get(r, ('breakdown', n)),
-                     to_done, 'to_done')
+                     to_done, 'to_done',
+                     estimated=breakdown_inexact(record, name) or any(breakdown_inexact(h, name) for h in history))
     kinds, kinds_inexact = {}, set()
     for other in history:
         for entry in (other.get('by_task') or {}).values():
@@ -2278,11 +2304,12 @@ def add_effects(items, record, history, config):
         key = D2_KEY if item['kind'] == 'task' and item['rule'] == 'D2' else BOTTLENECK_SUBJECTS.get(
             (item['kind'], item['name']))
         candidate, saving = found.get(key), None
+        item['effect_estimated'] = item['estimated']        # the effect of a plan task is its own time over the median
         if candidate is not None and key == D2_KEY:
             saving = next((t['excess_h'] for t in candidate['data']['tasks'] if t['task'] == item['name']), None)
         elif candidate is not None:
             saving = candidate['expected_effect']['wall_h']
-            item['estimated'] = item['estimated'] or candidate['expected_effect']['estimated']
+            item['effect_estimated'] = item['estimated'] or candidate['expected_effect']['estimated']
         item['effect_rule'] = key if saving is not None else None
         item['effect_h'] = round(saving if saving is not None else item['excess_h'], 3)
 
@@ -2335,7 +2362,7 @@ def d4_candidates(record, config, skipped):
     settings = config['decisions']
     found = []
 
-    def check(subject, parts, denominator, denominator_name, threshold, proposal, marked=None):
+    def check(subject, parts, denominator, denominator_name, threshold, proposal, marked=()):
         key = 'D4:%s' % subject
         if not all(_is_number(p) for p in parts) or not _is_number(denominator) or denominator <= 0:
             return skip_rule(skipped, key, 'brak danych: %s' % ', '.join(
@@ -2347,8 +2374,7 @@ def d4_candidates(record, config, skipped):
             return
         data = {'seconds': round(seconds, 3), 'share': round(share, 4), '%s_s' % denominator_name: round(denominator, 3),
                 'threshold': threshold}
-        if marked is not None:          # the names of the parts that are estimated or incomplete
-            data['estimated'] = marked
+        data['estimated'] = list(marked)    # the names of the parts that are estimated or incomplete
         found.append(make_candidate(key, data, proposal, share * denominator / HOUR, estimated=bool(marked)))
         return data
 
@@ -2360,11 +2386,13 @@ def d4_candidates(record, config, skipped):
           'w której użytkownik odpowiada.')
     check('limit_wait', [_get(record, ('breakdown', 'limit_wait'))], to_done, 'to_done',
           settings['d4_limit_wait_share'],
-          'Zaplanować start epiku (planowanie nocy) tak, żeby mieścił się w oknie limitów bez przerwy na cooldown.')
+          'Zaplanować start epiku (planowanie nocy) tak, żeby mieścił się w oknie limitów bez przerwy na cooldown.',
+          ['limit_wait'] if 'limit_wait' in lower_bounds(record) else [])
     ci = [_get(record, ('breakdown', 'ci_wait')), _get(record, ('in_attempts', 'categories', 'ci_watch', 'seconds'))]
     data = check('ci', ci, work, 'work', settings['d4_ci_share'],
                  'Skrócić czekanie na CI: sprawdzić, które przebiegi CI zadań i końcowego PR trwają najdłużej '
-                 'i ile jest ponowień.', ['in_attempts.ci_watch'] if inexact(record.get('in_attempts')) else [])
+                 'i ile jest ponowień.', (['in_attempts.ci_watch'] if inexact(record.get('in_attempts')) else [])
+                 + (['work'] if 'work' in lower_bounds(record) else []))
     if data is not None:
         data['ci_wait_s'], data['ci_watch_s'] = round(ci[0], 3), round(ci[1], 3)
     if _get(record, ('merged_at',)) is None or _get(record, ('wall', 'review')) is None:
@@ -2389,7 +2417,7 @@ def d3_candidates(record, config, skipped):
     if not files:
         return skip_rule(skipped, D3_KEY, 'czekanie w bramce z innego powodu niż reguła plików')
     return [make_candidate(D3_KEY, {'wait_s': round(wait, 3), 'file_rule_reasons': len(files),
-                                    'reasons': len(reasons)},
+                                    'reasons': len(reasons), 'estimated': []},
                            'Zmienić linię `Zakres:` epiku przy przygotowaniu albo regułę plików bramki '
                            '(docs/features/parallel-work/spec.md, „Bramka”).', wait / HOUR)]
 
@@ -2577,14 +2605,17 @@ def d1_candidates(record, rates, evals, config, skipped, gaps):
         # is made of the value of the whole epic, so it is as exact as that
         marked = (['role_value'] if any(inexact(c) for c in costly.values()) or len(dearer) > len(costly) else []) \
             + (['epic_total'] if inexact(_get(record, ('value', 'total'))) else [])
-        estimated = bool(marked)
+        estimated = 'role_value' in marked      # the saving is made of the role cells only; the share only decides
         saving = sum(c['usd'] * (1 - ranked[cheapest] / ranked[m]) for m, c in costly.items())
         data = {'role': role, 'share': round(share, 4), 'models': {m: c['usd'] for m, c in sorted(costly.items())},
                 'cheaper_model': cheapest, 'rates': {m: ranked[m] for m in sorted(ranked)}, 'estimated': marked}
         found.append(make_candidate(key, data, (
             'Eksperyment porównania wariantów agenta %s w EVALS 2.0 na modelu %s (wariant to commit ze zmianą `model:` '
             'w pliku agenta, `--agent-rev`; płatny pomiar wymaga zgody właściciela), nie zmiany modelu.%s'
-            % (role, cheapest, ' Wartość roli jest szacowana.' if estimated else '')), None, saving, estimated))
+            % (role, cheapest, (' Wartość roli jest szacowana.' if estimated else '')
+               + (' Udział roli liczony z szacowanej albo niepełnej wartości epiku.'
+               if 'epic_total' in marked else ''))),
+            None, saving, estimated))
     return found
 
 
@@ -2823,9 +2854,14 @@ def plan_work_inexact(record):
                                            for e in tasks.values())
 
 
-def ci_inexact(record):
-    """Whether `in_attempts.ci_watch` of the record is a lower bound (an attempt without a transcript)."""
-    return inexact(record.get('in_attempts'))
+def d4_inexact(subject):
+    """The test of a record for the measure of `D4:<subject>`: the category is a lower bound (limit_wait), or so is a
+    part of `ci` (`in_attempts.ci_watch`, an attempt without a transcript) or its denominator `work`."""
+    if subject == 'limit_wait':
+        return lambda record: 'limit_wait' in lower_bounds(record)
+    if subject == 'ci':
+        return lambda record: inexact(record.get('in_attempts')) or 'work' in lower_bounds(record)
+    return None
 
 
 def epic_time(records, config):
@@ -2869,7 +2905,7 @@ def build_effect(records, key, at, config):
         samples_of, estimated_of = plan_work_samples, plan_work_inexact
     else:
         samples_of = lambda r: [v] if (v := epic_value(r, rule, subject)) is not None else None
-        estimated_of = ci_inexact if subject == 'ci' else None
+        estimated_of = d4_inexact(subject) if rule == 'D4' else None
     missing = 'rekord bez value.by_task_role (starszy niż pole)' if rule == 'D1' else 'brak miary'
     stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing, estimated_of),
              'after': window_stats(after, samples_of, gaps, 'po', missing, estimated_of)}
@@ -2957,7 +2993,7 @@ def trend_estimated(record, config):
     values = trend_values(record, config)
     flags = {'value': _get(record, ('value', 'total', 'estimated')) is True,
              'pp': _get(record, ('subscription', 'share_estimated')) is True,
-             'repeat_runs': inexact(record.get('in_attempts'))}
+             'repeat_runs': inexact(record.get('in_attempts')), 'work': 'work' in lower_bounds(record)}
     return {column for column, flag in flags.items() if flag and values[column] is not None}
 
 
@@ -3229,7 +3265,8 @@ def bottleneck_lines(items):
         effect = item.get('effect_h')
         if _is_number(effect):
             rule = str(item.get('effect_rule') or '').split(':')[0]
-            text += ', potencjalnie %s−%s h (%s)' % (mark, pl(effect),
+            shaky = item.get('effect_estimated') is True or item.get('estimated') is True
+            text += ', potencjalnie %s−%s h (%s)' % (approx(shaky), pl(effect),
                                                       rule if RULE_PATTERN.match(rule) else 'bez reguły decyzji')
         elif isinstance(item.get('rule'), str) and RULE_PATTERN.match(item['rule']):
             text += ', reguła %s' % item['rule']
@@ -3256,7 +3293,10 @@ def time_topic(record, comment):
                 if not _is_number(value):
                     parts.append('%s %s' % (name, NO_DATA))
                 elif value > 0:
-                    parts.append('%s %s (%d%%)' % (name, hours_text(value), percent_of(value, to_done) or 0))
+                    marked = breakdown_inexact(record, name)
+                    parts.append('%s %s (%s%d%%%s)' % (
+                        name, hours_text(value, marked), approx(marked), percent_of(value, to_done) or 0,
+                        (', górna granica' if name == 'idle' else ', dolna granica') if marked else ''))
             text += '; rozkład: ' + ', '.join(parts)
         lines = [text]
     if comment:
@@ -3279,16 +3319,18 @@ def attempts_time_topic(record):
     for name, entry in _dict(data.get('categories')).items():
         entry = _dict(entry)
         if _safe(name) and _count(entry.get('count')) and _is_number(entry.get('seconds')):
-            parts.append('%s %s (%d)' % (name, hours_text(entry['seconds'], lower), entry['count']))
+            parts.append('%s %s (%s%d)' % (name, hours_text(entry['seconds'], lower), approx(lower), entry['count']))
     lines = ['Czas w próbach (polecenia powłoki%s): ' % covered + (', '.join(parts) if parts else 'brak poleceń')]
     repeat = _dict(data.get('repeat_runs'))
     if _count(repeat.get('count')) is not None and _is_number(repeat.get('seconds')):
-        lines.append('możliwe powtórzenia testów: %d (%s), dolna granica' % (repeat['count'],
-                                                                              hours_text(repeat['seconds'], lower)))
+        lines.append('możliwe powtórzenia testów: %s%d (%s), dolna granica' % (
+            approx(lower), repeat['count'], hours_text(repeat['seconds'], lower)))
     retry = _dict(data.get('api_retry'))
     if _count(retry.get('count')) is not None and _is_number(retry.get('delay_ms')):
-        lines.append('ponowienia API: %d (łącznie %s s)' % (retry['count'], pl(retry['delay_ms'] / 1000.0, 0)))
-    denied = ', '.join('%s %d' % (tool, n) for tool, n in sorted(_dict(data.get('permission_denials')).items())
+        lines.append('ponowienia API: %s%d (łącznie %s%s s)' % (approx(lower), retry['count'], approx(lower),
+                                                            pl(retry['delay_ms'] / 1000.0, 0)))
+    denied = ', '.join('%s %s%d' % (tool, approx(lower), n)
+                       for tool, n in sorted(_dict(data.get('permission_denials')).items())
                        if _safe(tool) and _count(n))
     lines.append('odmowy uprawnień: %s' % (denied or 'brak'))
     return [lines[0]] + ['  ' + line for line in lines[1:]]

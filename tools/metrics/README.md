@@ -55,8 +55,9 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   oznaczenia. Bez rekordów kod `2` z podpowiedzią `backfill`.
 - `render EPIK --format report|comment`: tekst z zapisanego rekordu i historii (`<state>/epics`), bez `gh`.
   `report` (raport odbioru, przed merge'em) zaczyna się od wąskich gardeł liczonych od nowa bez `review`, potem: czas do
-  `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami; przy `in_attempts.incomplete` godziny z „≈”
-  i dopiskiem „transkrypty tylko N z M prób”), integracja (przy `integration.incomplete` z „≈” i „(dolna granica)”), wartość
+  `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami; przy
+  `in_attempts.incomplete` godziny z „≈” i dopiskiem „transkrypty tylko N z M prób”, także przy liczbach poleceń,
+  ponowień i odmów), integracja (przy `integration.incomplete` z „≈” i „(dolna granica)”), wartość
   tokenów (razem, role z dopiskiem „podział między subagentów szacowany”, modele, najdroższe zadanie z dopiskiem „(wśród
   zadań ze znaną wartością)”, gdy któreś zadanie ma wartość nieznaną albo niepełną; liczby szacowane z „≈”),
   subskrypcja w pp (osobno, nigdy w sumie z wartością tokenów; `share` przy nakładaniu), próby, REPAIR, FIX, sync, czekanie
@@ -111,7 +112,7 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `ci` | `final` i `tasks` (`{zadanie: ...}`): `pr`, `runs` (liczba przebiegów `ci_workflow` gałęzi `epic/<epik>` albo `task/<zadanie>` dla zdarzenia `pull_request`, czyli ponowienia), `checks_s` i `e2e_s` (czas ostatniego przebiegu: od pierwszego startu do ostatniego końca zadań o nazwie z `ci_jobs` albo z jej przedrostkiem i spacją, np. `checks part 1/3`; `null` bez takich zadań). Zadania bez numeru PR nie wchodzą. `null` z `gaps` bez `gh` albo przy błędzie |
 | `regressions` | okno `window_days` (14) od merge'u końcowego PR: `until`, `open` (czas okna nie minął albo ostatni przebieg miał zawiedzione źródło), `complete` (wszystkie źródła, także `found_after_merge`, odpowiedziały; okno zamyka się, `open: false`, dopiero po takim przebiegu; lista obcięta do limitu 200 issues albo 10 stron po 100 commitów (`reverts`: strony `page=1, 2, …` do pierwszej krótszej albo pustej; obcięta tylko przy dziesięciu pełnych stronach) też daje `complete: false`, a `trend` do tego czasu przelicza rekord), `checked_at`, `merge_commit`, `ci_red` (liczba czerwonych przebiegów `ci_workflow` ze zdarzeniem `push` na commicie merge'u; 0 przy zielonym), `reverts` (SHA commitów `main` w oknie, których pierwsza linia zaczyna się od `Revert`, a treść wymienia `#<numer końcowego PR>`), `issues` (numery issues `bug` z okna, których pole „Wprowadzone przez (epik albo PR, jeśli znane)” wskazuje ID epiku albo numer końcowego PR, założone albo ostatnio zmienione przez osobę z prawem zapisu: autor, a gdy go nie ma, ostatni edytor treści (`editor` z zapytania `gh api graphql`, tylko `query`, po jednym na issue, które wskazuje epik; bez `--repo` owner i nazwę ustala raz na proces `gh repo view --json owner,name` (błąd nie jest zapamiętany; podane `--repo` niepasujące do `OWNER/NAZWA` to błąd źródła z pozycją w `gaps`, nie pytanie o katalog roboczy), bo `gh api` nie podstawia `{owner}` i `{repo}` w polach `-f`) sprawdzani tym samym `gh api repos/{owner}/{repo}/collaborators/{login}/permission` (`write`, `maintain` albo `admin`); 404 to brak prawa, login niepasujący do wzorca loginu GitHuba nie jest sprawdzany; issues z etykietą `agent` nie liczą się tu), `count` (czerwone CI jako 1, plus reverty i issues; `null`, gdy któryś składnik nieznany). Składnik, którego źródło zawiodło, ma poprzednią zapisaną wartość albo `null`, z `gaps` |
 | `found_after_merge` | `issues` i `count`: issues z etykietą `agent` utworzone w oknie, których sekcja „Źródło” ma linię `Przebieg `/sweep` <data>-<sha7>-<epik>` tego epiku (propozycje `/sweep`, osobno od regresji; etykietę `agent` ustawiają tylko osoby z prawem zapisu, więc bez sprawdzania autora) |
-| `bottlenecks` | do `max_items` (3) pozycji o największej nadwyżce czasu ponad medianę historii, malejąco, nadwyżka co najmniej `min_excess_h` (0,5 h): `kind` (`breakdown`, `task`, `in_attempts`, `gate_wait`, `review`), `name`, `value_s`, `median_s`, `excess_h`, `share` i `share_of` (`to_done`, `gate_wait+to_done` albo `to_merge`), `rule` (klucz reguły decyzji: D2 dla zadania planu, D3 dla `gate_wait`, D4 dla `human_wait`, `ci_wait`, `limit_wait`, `in_attempts.ci_watch` i `review`, inaczej `null`), `estimated` (`true`, gdy wartość pozycji albo mediana, z której powstała nadwyżka, pochodzi z czasu niepełnego: `by_task.<zadanie>.incomplete` albo `in_attempts.incomplete` w epiku lub w historii; efekt z kandydata `decide` dziedziczy jego `estimated`), `repeat_h` (tylko `in_attempts`: ile z nadwyżki to `repeat_runs` tej kategorii, nie więcej niż nadwyżka). `effect_h` i `effect_rule`: potencjalny efekt optymalizacji (niżej, „Potencjalny efekt wąskich gardeł”) |
+| `bottlenecks` | do `max_items` (3) pozycji o największej nadwyżce czasu ponad medianę historii, malejąco, nadwyżka co najmniej `min_excess_h` (0,5 h): `kind` (`breakdown`, `task`, `in_attempts`, `gate_wait`, `review`), `name`, `value_s`, `median_s`, `excess_h`, `share` i `share_of` (`to_done`, `gate_wait+to_done` albo `to_merge`), `rule` (klucz reguły decyzji: D2 dla zadania planu, D3 dla `gate_wait`, D4 dla `human_wait`, `ci_wait`, `limit_wait`, `in_attempts.ci_watch` i `review`, inaczej `null`), `estimated` (`true`, gdy wartość pozycji albo mediana, z której powstała nadwyżka, pochodzi z czasu niepełnego: `by_task.<zadanie>.incomplete`, `in_attempts.incomplete` albo `breakdown_incomplete` w epiku lub w historii), `effect_estimated` (efekt: `estimated` pozycji albo `expected_effect.estimated` kandydata `decide`, z którego pochodzi `effect_h`), `repeat_h` (tylko `in_attempts`: ile z nadwyżki to `repeat_runs` tej kategorii, nie więcej niż nadwyżka). `effect_h` i `effect_rule`: potencjalny efekt optymalizacji (niżej, „Potencjalny efekt wąskich gardeł”) |
 | `waste` | alarmy tego epiku z `<state>/waste.json` (jak w pliku: `key`, `rule`, `epic`, `task`, `attempt`, `at`, `push`, liczby); `[]`, gdy plik jest i nie ma alarmów epiku; `null` z pozycją w `gaps` (sam powód, bez ścieżki) bez pliku (komenda `waste` nie zapisała alarmów) albo gdy plik jest nieczytelny (`epic` nie kończy się wtedy błędem); zapisana wcześniej lista zostaje (zob. „Cache”) |
 | `gaps` | braki danych |
 
@@ -230,7 +231,8 @@ a `effect_rule` to `null`, czyli „bez reguły decyzji”. `ci_wait` i `ci_watc
 łącznie), więc efektów pozycji nie należy sumować. `render --format report` pokazuje to obok kosztu czasowego:
 `1. `human_wait`: +6,2 h ponad medianę (22% czasu), potencjalnie −4,1 h (D4)` albo `… potencjalnie −X h (bez reguły
 decyzji)`; render wypisuje tylko liczbę i nazwę reguły z kodu (`D1`–`D9`), a rekord bez `effect_h` w `bottlenecks` ma
-`, reguła D4`. Pozycja z `estimated: true` ma w renderze „≈ ” przed każdą liczbą (`1. `P-3`: ≈ +4,5 h ponad medianę (≈ 12% czasu), potencjalnie ≈ −4,5 h (D2)`).
+`, reguła D4`. Pozycja z `estimated: true` ma w renderze „≈ ” przed każdą liczbą (`1. `P-3`: ≈ +4,5 h ponad medianę (≈
+12% czasu), potencjalnie ≈ −4,5 h (D2)`); przy samym `effect_estimated` „≈ ” ma tylko część „potencjalnie”.
 
 ### Brakujące źródła i pola rekordu
 
@@ -265,6 +267,12 @@ Brak źródła nie zatrzymuje pomiaru, a pole bez danych jest `null` z powodem w
 
   Kategoria rozkładu czasu bez źródła ma w `gaps` pozycję `breakdown.<kategoria>`: jej czas jest w innych kategoriach
   i w `idle` (tak samo `human_wait` bez `events.jsonl`).
+  Przedział pominięty dla braku danych (`cooldown_set` bez `until` i `cooldown_released`, `host_pause` bez `from`/`to` i
+  `seconds`, próba bez `started_at`; pozycja `breakdown.limit_wait`, `breakdown.host_pause`, `breakdown.work` w `gaps`)
+  czyni kategorię dolną granicą, a `idle` górną: rekord ma `breakdown_incomplete` (lista kategorii; brak pola, gdy
+  rozkład jest pełny). `render` pokazuje je jako `limit_wait ≈ 1,0 h (≈ 10%, dolna granica)` i `idle ≈ 2,0 h (≈ 20%,
+  górna granica)`. Oznaczenie dziedziczą wąskie gardła kategorii (`estimated`), kolumna `work` w `trend`, D4
+  `limit_wait` i `ci` (mianownik `work`) oraz okna `effect` `D4:limit_wait` i `D4:ci`.
 
   Komenda `waste` pomija reguły, którym brakuje kolumny, z pozycją w `gaps` wyjścia (`W1`–`W4`, osobno części
   `W3`): W1 i W4 potrzebują `attempts.ended_at`, `attempts.task_id`, `attempts.number`, `tasks.kind` i `tasks.task_id`;
@@ -291,7 +299,7 @@ nigdy kandydaci) i `gaps`. Kandydat to reguła, która zadziałała i ma propozy
 | Pole | Treść |
 |---|---|
 | `key` | reguła i przedmiot, ten sam dla tej samej reguły i przedmiotu w każdym epiku: `D1:<rola>`, `D2:plan_split`, `D3:gate_wait`, `D4:human_wait`, `D4:ci`, `D4:limit_wait`, `D4:review` |
-| `rule`, `data` | `D1`–`D4` i liczby reguły (sekundy, udziały, progi); wartości szacowane lub niepełne są w `data.estimated` (D1: `role_value`, `epic_total`; D2: `work`; D4 `ci`: `in_attempts.ci_watch`; pusta lista, gdy dokładne) |
+| `rule`, `data` | `D1`–`D4` i liczby reguły (sekundy, udziały, progi); wartości szacowane lub niepełne są w `data.estimated` (D1: `role_value`, `epic_total`; D2: `work`; D4 `limit_wait`: `limit_wait`; D4 `ci`: `in_attempts.ci_watch`, `work`; każdy kandydat ma listę, pustą gdy dokładne) |
 | `proposal` | propozycja po polsku; D1 to tylko eksperyment porównania wariantów w EVALS 2.0, nigdy zmiana modelu |
 | `expected_effect` | `wall_h` (skrócenie czasu zegarowego w godzinach albo `null`), `value_usd` (wartość tokenów w USD albo `null`), `estimated` |
 | `verification` | miara reguły i komenda `effect` z kluczem |
@@ -313,10 +321,12 @@ Kolejność: `wall_h` malejąco, potem `value_usd` malejąco (nieznane to 0), po
   `skipped` z przyczyną „porównanie w EVALS 2.0, decyzja w jego raporcie” i `data` (`runs`, `measurements`). Brak katalogu
   albo czytelnego `meta.json` to `gaps` i `skipped` („brak wyników EVALS 2.0”); nieczytelny plik, plik bez `status` i `mode`
   albo przebieg `ok` w trybie `replay` bez `subagent_model` jest pomijany i liczony w `gaps`. Efekt: `value_usd` = wartość
-  roli na każdym droższym modelu × (1 − stawka najtańszego / stawka tego modelu); wartość szacowana jest zaznaczona w `data.estimated`, w `expected_effect.estimated` i w propozycji, gdy szacowana
-  albo niepełna jest komórka roli na droższym modelu (`role_value`), gdy komórka roli na droższym modelu nie ma wartości
-  (`usd` `null`: wartość roli to dolna granica; też `role_value`) albo gdy szacowana lub niepełna jest suma epiku
-  (`value.total`: z niej liczy się `share`; `epic_total`).
+  roli na każdym droższym modelu × (1 − stawka najtańszego / stawka tego modelu); wartość szacowana jest zaznaczona w
+  `data.estimated`, w `expected_effect.estimated` i w propozycji, gdy szacowana albo niepełna jest komórka roli na
+  droższym modelu albo gdy taka komórka nie ma wartości (`usd` `null`: wartość roli to dolna granica); w
+  `data.estimated` jest wtedy `role_value`. Szacowana lub niepełna suma epiku (`value.total`, z której liczy się
+  `share`) daje `epic_total` w `data.estimated` i zdanie w propozycji, ale nie `expected_effect.estimated`: `value_usd`
+  powstaje tylko z komórek roli.
 - **D2 podział planu:** zadanie planu z `work` > `d2_work_multiple` (2) × mediana `work` zadań planu w historii albo z co
   najmniej `d2_failed_attempts` (2) próbami nieudanymi (klasa `failed`, `blocked` i `usage_limit` się nie liczą; próby
   z `attempts` rekordu). Klucz jest jeden na epik, `D2:plan_split` (zadanie ma w każdym epiku inne ID, więc przedmiotem
