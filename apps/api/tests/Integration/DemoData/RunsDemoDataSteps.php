@@ -26,9 +26,9 @@ trait RunsDemoDataSteps
      */
     private function step(string $name, array $input = [], bool $options = true): CommandTester
     {
-        self::bootKernel();
-        self::assertNotNull(self::$kernel);
-        $tester = new CommandTester(new Application(self::$kernel)->find($name));
+        // The kernel of the test when it has one (a functional test keeps the one of its client), else a booted one.
+        $kernel = self::$kernel ?? self::bootKernel();
+        $tester = new CommandTester(new Application($kernel)->find($name));
         $tester->execute($options ? $input + ['--demo-profile' => 'small', '--anchor' => self::ANCHOR] : $input);
 
         return $tester;
@@ -37,9 +37,9 @@ trait RunsDemoDataSteps
     /**
      * @param array<string, mixed> $input
      */
-    private function succeeds(string $name, array $input = []): CommandTester
+    private function succeeds(string $name, array $input = [], bool $options = true): CommandTester
     {
-        $tester = $this->step($name, $input);
+        $tester = $this->step($name, $input, $options);
         self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $name.': '.$tester->getDisplay());
 
         return $tester;

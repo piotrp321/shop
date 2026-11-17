@@ -31,6 +31,7 @@ use App\DemoData\Photo\ImageKeys;
 use App\DemoData\Profile\Profiles;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\FilesystemOperator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -208,6 +209,52 @@ final class CatalogStepsTest extends KernelTestCase
         self::assertStringContainsString('small, medium, server, full', $tester->getDisplay());
     }
 
+    /**
+     * @return iterable<string, array{array<string, string>, string}>
+     */
+    public static function badOptions(): iterable
+    {
+        yield 'a seed that is not a UUID' => [['--seed' => 'not-a-uuid'], 'not a UUID'];
+        yield 'an anchor that is not a date' => [['--anchor' => 'sometime soon'], 'not a date'];
+        yield 'zero products' => [['--products' => '0'], 'at least 1'];
+        yield 'a negative number of products' => [['--products' => '-5'], 'at least 1'];
+    }
+
+    /**
+     * @param array<string, string> $options
+     */
+    #[DataProvider('badOptions')]
+    public function testABadOptionIsRefusedWithAMessageAndWritesNothing(array $options, string $message): void
+    {
+        $tester = $this->step('demo-data:categories', $options);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertStringContainsString($message, $tester->getDisplay());
+        self::assertSame(0, $this->int($this->connection()->fetchOne('SELECT count(*) FROM catalog_category')));
+    }
+
+    public function testTheWorkerOptionsAreChecked(): void
+    {
+        $this->succeeds('demo-data:categories');
+
+        foreach ([['--worker' => '3', '--workers' => '3'], ['--worker' => '-1', '--workers' => '2'], ['--worker' => '0', '--workers' => '0']] as $options) {
+            $tester = $this->step('demo-data:products', $options);
+
+            self::assertSame(Command::FAILURE, $tester->getStatusCode());
+            self::assertStringContainsString('--worker', $tester->getDisplay());
+        }
+        self::assertSame(0, $this->int($this->connection()->fetchOne('SELECT count(*) FROM catalog_product')));
+    }
+
+    public function testListPartsOnlyPrintsTheNumberOfParts(): void
+    {
+        $tester = $this->step('demo-data:products', ['--list-parts' => true]);
+
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode());
+        self::assertSame('4', trim($tester->getDisplay()));
+        self::assertSame(0, $this->int($this->connection()->fetchOne('SELECT count(*) FROM catalog_product')));
+    }
+
     public function testAProductsOverrideChangesTheNumberOfProductsOnly(): void
     {
         $this->succeeds('demo-data:categories');
@@ -258,6 +305,8 @@ final class CatalogStepsTest extends KernelTestCase
         new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         $stored = $this->connection()->fetchAllKeyValue('SELECT id, values_key FROM catalog_product_variant WHERE product_id = ?', ['00000000-0000-4000-8000-0000000000aa']);
+        ksort($expected);
+        ksort($stored);
         self::assertSame($expected, $stored);
     }
 

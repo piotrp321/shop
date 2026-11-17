@@ -28,6 +28,13 @@ final class ProductGeneratorTest extends TestCase
     /** @var list<ProductSpec>|null */
     private static ?array $small = null;
 
+    public static function tearDownAfterClass(): void
+    {
+        // The 2000 products and the dictionaries are not needed by the tests that run after this class.
+        self::$small = null;
+        self::$dictionaries = null;
+    }
+
     private static function dictionaries(): Dictionaries
     {
         return self::$dictionaries ??= new Dictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data');
