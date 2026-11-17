@@ -48,6 +48,8 @@ STOP_STATUSES = ('BLOCKED', 'FAILED')
 MIN_WORD = 4
 SIMILAR = 0.5
 SIMILAR_SAME_TASK = 0.25
+STEM = 5
+SHARED_STEMS = 2
 WORD = re.compile(r'\w+')
 
 
@@ -74,17 +76,34 @@ def jaccard(a, b):
     return len(left & right) / len(union) if union else 0.0
 
 
+def stems(title):
+    """Rough stems of the words of a title, so that inflected Polish forms match: a leading negation `nie` of a longer
+    word is dropped, and each word of at least MIN_WORD characters is cut to STEM characters."""
+    found = set()
+    for word in WORD.findall(str(title).lower()):
+        if word.startswith('nie') and len(word) > 6:
+            word = word[3:]
+        if len(word) >= MIN_WORD:
+            found.add(word[:STEM])
+    return found
+
+
 def is_repeat(new, old):
-    """Whether two blocking findings name the same problem: equal fingerprints, similar titles, or the same task with
-    a common file and partly similar titles. Files alone never make a repeat."""
+    """Whether two blocking findings name the same problem: equal fingerprints, similar titles, the same task with
+    a common file and partly similar titles, or a common file with at least SHARED_STEMS common word stems (the same
+    rule broken in another place). Files alone never make a repeat."""
     if fingerprint(new) == fingerprint(old):
         return True
     similarity = jaccard(new.get('title', ''), old.get('title', ''))
     if similarity >= SIMILAR:
         return True
-    same_task = new.get('task_id') is not None and new.get('task_id') == old.get('task_id')
     common_file = bool(set(new.get('files') or []) & set(old.get('files') or []))
-    return same_task and common_file and similarity >= SIMILAR_SAME_TASK
+    if not common_file:
+        return False
+    same_task = new.get('task_id') is not None and new.get('task_id') == old.get('task_id')
+    if same_task and similarity >= SIMILAR_SAME_TASK:
+        return True
+    return len(stems(new.get('title', '')) & stems(old.get('title', ''))) >= SHARED_STEMS
 
 
 # ------------------------------------------------------------------------------------------------------- sources

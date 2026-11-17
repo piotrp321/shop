@@ -211,11 +211,18 @@ class QaTest(Base):
         self.assertEqual(got['round'], 4)
         self.assertAsk(got, 'Q4')
 
-    def test_partly_similar_title_in_another_task_is_not_a_repeat(self):
+    def test_same_rule_in_another_task_with_a_common_file_is_a_repeat(self):
         self.findings(3, [finding('F1', 'waste: alarm pokazuje sumę z szacowanych prób bez oznaczenia',
                                   ['tools/metrics/metrics.py'], 'METRICS-4')])
         self.findings(4, [finding('F2', 'waste: iloraz do mediany z szacowanych prób pokazany w pushu bez oznaczenia',
                                   ['tools/metrics/metrics.py'], 'METRICS-5')])
+        self.assertAsk(self.qa(), 'Q4')
+
+    def test_shared_word_stems_in_another_file_are_not_a_repeat(self):
+        self.findings(3, [finding('F1', 'waste: alarm pokazuje sumę z szacowanych prób bez oznaczenia',
+                                  ['tools/metrics/metrics.py'], 'METRICS-4')])
+        self.findings(4, [finding('F2', 'panel pokazuje szacowany stan magazynu bez oznaczenia',
+                                  ['apps/admin/src/stock.ts'], 'METRICS-5')])
         self.assertEqual(self.qa()['decision'], 'extend')
 
     def test_same_file_with_unrelated_title_is_not_a_repeat(self):
@@ -511,6 +518,34 @@ class SimilarityTest(unittest.TestCase):
     def test_jaccard(self):
         self.assertEqual(self.mod.jaccard('alfa beta gamma', 'alfa beta delta'), 0.5)
         self.assertEqual(self.mod.jaccard('a b c', 'a b c'), 0.0)
+
+    def test_real_metrics_round_3_repeats_the_rule_of_rounds_1_and_2(self):
+        # Titles of the METRICS run (2026-11-16/17): rounds 2-5 named one rule (estimated values shown as exact).
+        f = 'tools/metrics/metrics.py'
+        earlier = [finding('F2', 'trend pokazuje niepełną sumę wartości tokenów jak pełną', [f], 'METRICS-3'),
+                   finding('F3', 'brakująca kolumna bazy AO daje zera zamiast null w polach rekordu', [f], 'METRICS-1'),
+                   finding('F2', 'Wartości szacowane w trend i pozycji na tle mediany bez oznaczenia', [f], 'METRICS-3')]
+        round_3 = [finding('F1', 'waste: alarm W4 pokazuje sumę z szacowanych prób bez „≈” i bez pola estimated', [f],
+                           'METRICS-4'),
+                   finding('F2', 'effect D1: wartość roli szacowana pokazana bez oznaczenia szacunku', [f], 'METRICS-5')]
+        for new in round_3:
+            self.assertTrue(any(self.mod.is_repeat(new, old) for old in earlier), new['title'])
+
+    def test_real_admin_features_round_2_repeats_round_1(self):
+        files = ['apps/api/src/Catalog/UI/Http/BackofficeProductsQuery.php']
+        old = finding('F2', 'Komunikaty walidacji parametrów sort i productId list panelu po angielsku', files)
+        new = finding('F7', 'Komunikat błędu typu tablicowej wartości sort i productId list panelu po angielsku', files)
+        self.assertTrue(self.mod.is_repeat(new, old))
+
+    def test_real_unrelated_titles_in_one_file_are_not_a_repeat(self):
+        f = 'tools/metrics/metrics.py'
+        old = finding('F3', 'brakująca kolumna bazy AO daje zera zamiast null w polach rekordu', [f], 'METRICS-1')
+        new = finding('F1', 'Okno „przed” w effect jest obcięte, gdy zmergowanych epików przed --at jest mniej niż '
+                            'w oknie „po”', [f], 'METRICS-5')
+        self.assertFalse(self.mod.is_repeat(new, old))
+
+    def test_stems_strip_negation_and_inflection(self):
+        self.assertEqual(self.mod.stems('nieoznaczone oznaczenia szacowana szacowanych'), {'oznac', 'szaco'})
 
     def test_files_alone_never_make_a_repeat(self):
         old = finding('F1', 'trend nadpisuje rekord zapisany równolegle', ['tools/metrics/metrics.py'], 'METRICS-1')
