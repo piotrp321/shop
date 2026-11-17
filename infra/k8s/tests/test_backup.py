@@ -9,11 +9,14 @@ TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount"
 SECRET = "shop-backup"
 
 
-def backup(case="prod"):
+# The annotation of a claim that local-path binds only for its first pod (the health check of claims in argocd/install/argocd.yaml).
+BOUND_BY_FIRST_POD = "shop/bound-by-first-pod"
+
+def backup(case="prod-backup"):
     return by_logical(case, "CronJob")["backup"]
 
 
-def all_containers(case="prod"):
+def all_containers(case="prod-backup"):
     spec = pod_spec(backup(case))
     return spec.get("initContainers", []) + spec["containers"]
 
@@ -33,7 +36,7 @@ def secret_refs(container):
 
 class CronJobTest(unittest.TestCase):
     def test_it_runs_every_night_at_three_in_warsaw_and_never_twice_at_once(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = backup(case)["spec"]
             self.assertEqual("0 3 * * *", spec["schedule"], case)
             self.assertEqual("Europe/Warsaw", spec["timeZone"], case)
@@ -44,7 +47,7 @@ class CronJobTest(unittest.TestCase):
             self.assertNotIn("suspend", spec, case)
 
     def test_a_job_is_retried_once_and_stopped_after_two_hours(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             job = backup(case)["spec"]["jobTemplate"]["spec"]
             self.assertEqual(1, job["backoffLimit"], case)
             self.assertEqual(7200, job["activeDeadlineSeconds"], case)
@@ -60,20 +63,20 @@ class CronJobTest(unittest.TestCase):
             self.assertEqual(["sh", "/scripts/backup.sh", stage], by_name[container]["command"], container)
 
     def test_every_image_has_a_digest_and_none_is_ours(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container in all_containers(case):
                 self.assertRegex(container["image"], DIGEST + "$", f"{case} {container['name']}")
                 self.assertNotIn("piotrp321", container["image"])
 
     def test_the_postgres_image_is_the_one_of_the_server(self):
-        from_chart = containers(by_logical("prod", "StatefulSet")["postgres"])[0]["image"]
+        from_chart = containers(by_logical("prod-backup", "StatefulSet")["postgres"])[0]["image"]
         dump = next(c for c in all_containers() if c["name"] == "dump")
         self.assertEqual(from_chart, dump["image"])
 
     def test_the_script_comes_from_the_scripts_of_the_chart(self):
         volumes = {v["name"]: v for v in pod_spec(backup())["volumes"]}
         self.assertEqual("shop-scripts", volumes["scripts"]["configMap"]["name"])
-        configs = [d for d in of_kind("prod", "ConfigMap") if name(d) == "shop-scripts"]
+        configs = [d for d in of_kind("prod-backup", "ConfigMap") if name(d) == "shop-scripts"]
         self.assertIn("backup.sh", configs[0]["data"])
 
     def test_the_revision_and_the_retention_are_passed_to_the_script(self):
@@ -82,22 +85,28 @@ class CronJobTest(unittest.TestCase):
         self.assertEqual("7d", env_of(snapshot)["BACKUP_RETENTION"])
 
     def test_every_container_has_resources(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container in all_containers(case):
                 self.assertIn("resources", container, f"{case} {container['name']}")
 
     def test_it_is_in_the_wave_of_the_other_cron_job(self):
-        self.assertEqual(wave(by_logical("prod", "CronJob")["cart-purge-expired"]), wave(backup()))
+        self.assertEqual(wave(by_logical("prod-backup", "CronJob")["cart-purge-expired"]), wave(backup()))
 
     def test_without_backup_enabled_nothing_of_it_is_rendered(self):
         for doc in of_kind("prod-nobackup", "CronJob", "PersistentVolumeClaim", "ServiceAccount", "ClusterRole", "ClusterRoleBinding", "Secret"):
             self.assertNotIn("backup", name(doc))
         self.assertEqual(["cart-purge-expired"], [logical(d) for d in of_kind("prod-nobackup", "CronJob")])
 
+    def test_it_is_off_in_prod_until_its_repository_and_secret_exist(self):
+        """environments/prod/secrets has no shop-backup and the repository is an example: switched on, the backup would fail
+        every night and fire its alerts (README.md, section 2, step 3 switches it on)."""
+        self.assertEqual(["cart-purge-expired"], [logical(d) for d in of_kind("prod", "CronJob")])
+        self.assertEqual([], [name(d) for d in of_kind("prod", "PersistentVolumeClaim")])
+
 
 class TokenTest(unittest.TestCase):
     def test_the_pod_has_no_token_but_the_container_that_reads_the_id_of_the_cluster(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = pod_spec(backup(case))
             self.assertIs(False, spec["automountServiceAccountToken"], case)
             self.assertEqual("shop-backup", spec["serviceAccountName"], case)
@@ -105,7 +114,7 @@ class TokenTest(unittest.TestCase):
             self.assertEqual(["cluster-id"], mounting, case)
 
     def test_no_container_with_the_secret_of_the_backup_has_the_token(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container in all_containers(case):
                 with_token = TOKEN_PATH in [m["mountPath"] for m in container.get("volumeMounts", [])]
                 with_secret = any(secret == SECRET for _, secret, _ in secret_refs(container))
@@ -127,19 +136,19 @@ class TokenTest(unittest.TestCase):
         self.assertEqual({"cluster-id", "backup"}, mounted)
 
     def test_the_service_account_may_only_get_the_namespace_kube_system(self):
-        roles = [d for d in of_kind("prod", "ClusterRole") if "backup" in name(d)]
+        roles = [d for d in of_kind("prod-backup", "ClusterRole") if "backup" in name(d)]
         self.assertEqual(1, len(roles))
         self.assertEqual([{"apiGroups": [""], "resources": ["namespaces"], "resourceNames": ["kube-system"], "verbs": ["get"]}], roles[0]["rules"])
-        (binding,) = [d for d in of_kind("prod", "ClusterRoleBinding") if "backup" in name(d)]
+        (binding,) = [d for d in of_kind("prod-backup", "ClusterRoleBinding") if "backup" in name(d)]
         self.assertEqual(name(roles[0]), binding["roleRef"]["name"])
         self.assertEqual("ClusterRole", binding["roleRef"]["kind"])
         self.assertEqual([{"kind": "ServiceAccount", "name": "shop-backup", "namespace": "shop"}], binding["subjects"])
-        self.assertIn("shop-backup", [name(d) for d in of_kind("prod", "ServiceAccount")])
+        self.assertIn("shop-backup", [name(d) for d in of_kind("prod-backup", "ServiceAccount")])
 
 
 class SecretTest(unittest.TestCase):
     def test_the_repository_always_comes_with_its_password(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             restic = [c for c in all_containers(case) if "RESTIC_REPOSITORY" in env_of(c)]
             self.assertTrue(restic, case)
             for container in restic:
@@ -173,21 +182,21 @@ class SecretTest(unittest.TestCase):
         self.assertEqual("garage", env_of(next(c for c in all_containers() if c["name"] == "objects"))["RCLONE_CONFIG_GARAGE_REGION"])
 
     def test_the_secret_of_prod_is_created_outside_the_chart_and_that_of_ci_by_it(self):
-        self.assertEqual([], [d for d in of_kind("prod", "Secret") if name(d) == SECRET])
+        self.assertEqual([], [d for d in of_kind("prod-backup", "Secret") if name(d) == SECRET])
         (secret,) = [d for d in of_kind("ci", "Secret") if name(d) == SECRET]
         self.assertEqual({"RESTIC_PASSWORD", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"}, set(secret["stringData"]))
         for key, value in secret["stringData"].items():
             self.assertTrue(value, key)
 
     def test_the_secret_name_is_the_value_of_the_chart(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             names = {secret for c in all_containers(case) for _, secret, _ in secret_refs(c)}
             self.assertIn(SECRET, names)
 
 
 class VolumeTest(unittest.TestCase):
     def test_the_work_volume_is_a_claim_on_local_path_that_the_three_stages_share(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             (claim,) = [d for d in of_kind(case, "PersistentVolumeClaim") if name(d) == "backup-work"]
             self.assertEqual("local-path", claim["spec"]["storageClassName"])
             self.assertEqual(["ReadWriteOnce"], claim["spec"]["accessModes"])
@@ -199,15 +208,18 @@ class VolumeTest(unittest.TestCase):
 
     def test_argo_cd_does_not_wait_for_the_claim_to_be_bound(self):
         """local-path binds a claim only when a pod uses it (WaitForFirstConsumer): until the first run the claim is Pending, and
-        Argo CD would take that for an application that is not healthy (and hold back the waves after it)."""
-        (claim,) = [d for d in of_kind("prod", "PersistentVolumeClaim") if name(d) == "backup-work"]
-        self.assertEqual("true", claim["metadata"]["annotations"]["argocd.argoproj.io/ignore-healthcheck"])
+        Argo CD takes that for a resource that is not healthy and waits for it in its wave forever. The health check of claims in
+        argocd/install/argocd.yaml (tests/test_argocd.py) takes a Pending claim with this annotation for a healthy one."""
+        (claim,) = [d for d in of_kind("prod-backup", "PersistentVolumeClaim") if name(d) == "backup-work"]
+        annotations = claim["metadata"]["annotations"]
+        self.assertEqual("true", annotations[BOUND_BY_FIRST_POD])
+        self.assertNotIn("argocd.argoproj.io/ignore-healthcheck", annotations)
 
     def test_the_work_volume_is_bigger_than_the_data_of_the_images(self):
         from support import quantity_bytes
 
-        (claim,) = [d for d in of_kind("prod", "PersistentVolumeClaim") if name(d) == "backup-work"]
-        garage = by_logical("prod", "StatefulSet")["garage"]["spec"]["volumeClaimTemplates"]
+        (claim,) = [d for d in of_kind("prod-backup", "PersistentVolumeClaim") if name(d) == "backup-work"]
+        garage = by_logical("prod-backup", "StatefulSet")["garage"]["spec"]["volumeClaimTemplates"]
         data = next(c for c in garage if c["metadata"]["name"] == "data")
         self.assertGreater(quantity_bytes(claim["spec"]["resources"]["requests"]["storage"]), quantity_bytes(data["spec"]["resources"]["requests"]["storage"]))
 

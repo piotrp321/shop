@@ -20,16 +20,16 @@ STAGES = (
 )
 
 
-def restore(case="prod"):
+def restore(case="prod-backup"):
     return by_logical(case, "CronJob")["restore"]
 
 
-def all_containers(case="prod"):
+def all_containers(case="prod-backup"):
     spec = pod_spec(restore(case))
     return spec.get("initContainers", []) + spec["containers"]
 
 
-def container(name_, case="prod"):
+def container(name_, case="prod-backup"):
     return next(c for c in all_containers(case) if c["name"] == name_)
 
 
@@ -51,14 +51,14 @@ def mounts(container_):
 
 class CronJobTest(unittest.TestCase):
     def test_it_is_suspended_so_that_it_never_runs_by_itself(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = restore(case)["spec"]
             self.assertIs(True, spec["suspend"], case)
             self.assertEqual("Forbid", spec["concurrencyPolicy"], case)
             self.assertNotIn("startingDeadlineSeconds", spec, case)
 
     def test_a_job_runs_at_most_three_hours_and_is_never_retried(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             job = restore(case)["spec"]["jobTemplate"]["spec"]
             self.assertEqual(10800, job["activeDeadlineSeconds"], case)
             self.assertEqual(0, job["backoffLimit"], case)
@@ -68,10 +68,10 @@ class CronJobTest(unittest.TestCase):
         self.assertNotIn("restore", by_logical("prod-nobackup", "CronJob"))
 
     def test_it_is_in_the_wave_of_the_backup(self):
-        self.assertEqual(wave(by_logical("prod", "CronJob")["backup"]), wave(restore()))
+        self.assertEqual(wave(by_logical("prod-backup", "CronJob")["backup"]), wave(restore()))
 
     def test_every_container_has_resources(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container_ in all_containers(case):
                 self.assertIn("resources", container_, f"{case} {container_['name']}")
 
@@ -87,26 +87,26 @@ class StagesTest(unittest.TestCase):
 
     def test_every_container_starts_in_the_mode_list_and_without_a_snapshot(self):
         """make restore sets the mode and the snapshot of a Job with kubectl set env; the template alone only lists."""
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container_ in all_containers(case):
                 env = env_of(container_)
                 self.assertEqual("list", env["RESTORE_MODE"], f"{case} {container_['name']}")
                 self.assertEqual("", env["RESTORE_SNAPSHOT"], f"{case} {container_['name']}")
 
     def test_every_image_has_a_digest_and_the_api_is_the_one_of_the_revision(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container_ in all_containers(case):
-                if case == "prod":
+                if case == "prod-backup":
                     self.assertRegex(container_["image"], DIGEST + "$", f"{case} {container_['name']}")
         for stage in ("migrations", "api"):
             self.assertEqual(f"ghcr.io/piotrp321/shop/api:{REVISION}@{DIGESTS['api']}", container(stage)["image"])
             self.assertEqual(f"shop-smoke/api:{REVISION}", container(stage, "ci")["image"])
 
     def test_the_tools_are_the_images_of_the_services(self):
-        statefulsets = by_logical("prod", "StatefulSet")
+        statefulsets = by_logical("prod-backup", "StatefulSet")
         for stage, service in (("databases", "postgres"), ("redis", "redis"), ("rabbitmq", "rabbitmq")):
             self.assertEqual(containers(statefulsets[service])[0]["image"], container(stage)["image"], stage)
-        backup = pod_spec(by_logical("prod", "CronJob")["backup"])
+        backup = pod_spec(by_logical("prod-backup", "CronJob")["backup"])
         backup_images = {c["name"]: c["image"] for c in backup["initContainers"] + backup["containers"]}
         self.assertEqual(backup_images["backup"], container("restic")["image"])
         self.assertEqual(backup_images["objects"], container("objects")["image"])
@@ -114,11 +114,11 @@ class StagesTest(unittest.TestCase):
     def test_the_script_comes_from_the_scripts_of_the_chart(self):
         volumes = {v["name"]: v for v in pod_spec(restore())["volumes"]}
         self.assertEqual("shop-scripts", volumes["scripts"]["configMap"]["name"])
-        (config,) = [d for d in of_kind("prod", "ConfigMap") if name(d) == "shop-scripts"]
+        (config,) = [d for d in of_kind("prod-backup", "ConfigMap") if name(d) == "shop-scripts"]
         self.assertIn("restore-job.sh", config["data"])
 
     def test_the_restore_works_on_the_volume_of_the_backup(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             volumes = {v["name"]: v for v in pod_spec(restore(case))["volumes"]}
             self.assertEqual("backup-work", volumes["work"]["persistentVolumeClaim"]["claimName"], case)
             self.assertEqual({}, volumes["meta"]["emptyDir"], case)
@@ -140,12 +140,12 @@ class StagesTest(unittest.TestCase):
         rabbitmq = env_of(container("rabbitmq"))
         self.assertEqual(("rabbitmq", "15672", "shop", "/"), (rabbitmq["RABBITMQADMIN_TARGET_HOST"], rabbitmq["RABBITMQADMIN_TARGET_PORT"],
                                                             rabbitmq["RABBITMQADMIN_USERNAME"], rabbitmq["RABBITMQADMIN_TARGET_VHOST"]))
-        self.assertEqual(env_of(containers(by_logical("prod", "Deployment")["api"])[0])["ELASTICSEARCH_URL"], env_of(container("api"))["ELASTICSEARCH_URL"])
+        self.assertEqual(env_of(containers(by_logical("prod-backup", "Deployment")["api"])[0])["ELASTICSEARCH_URL"], env_of(container("api"))["ELASTICSEARCH_URL"])
 
 
 class AccessTest(unittest.TestCase):
     def test_no_container_has_a_token_of_the_api(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             spec = pod_spec(restore(case))
             self.assertIs(False, spec["automountServiceAccountToken"], case)
             self.assertNotIn("serviceAccountName", spec, case)
@@ -154,7 +154,7 @@ class AccessTest(unittest.TestCase):
             self.assertNotIn("kube-api-access", [v["name"] for v in spec["volumes"]], case)
 
     def test_only_the_restic_container_reads_the_secret_of_the_backup_and_always_with_the_repository(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             for container_ in all_containers(case):
                 uses = any(secret == SECRET for _, secret, _ in secret_refs(container_))
                 self.assertEqual(container_["name"] == "restic", uses, f"{case} {container_['name']}")

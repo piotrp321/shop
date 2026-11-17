@@ -659,7 +659,8 @@ Spec: `docs/features/sentry/spec.md`.
   jeden błąd to jedno zdarzenie. Obsłużone błędy BFF (odpowiedź 502 i `console.error`) nie są zdarzeniami, a logi
   konsoli nie trafiają do Sentry także jako breadcrumbs. SDK nie owija komponentów ani tras. `withSentryConfig` jest
   używany tylko do map źródeł (patrz „Mapy źródeł”) i tylko w budowaniu obrazu z wysyłką.
-- Trace'y serwera: próbkowanie `SENTRY_TRACES_SAMPLE_RATE`, jedna transakcja na żądanie (`traceLifecycle: "static"`:
+- Trace'y serwera: próbkowanie `SENTRY_TRACES_SAMPLE_RATE`, bez transakcji `GET /favicon.ico` (sonda gotowości
+  Kubernetesa i healthcheck compose co 5 s, `ignoreTransactions`; spec P4), jedna transakcja na żądanie (`traceLifecycle: "static"`:
   domyślne w tej wersji SDK strumieniowanie pojedynczych spanów omija `beforeSendTransaction`, czyli filtr); `sentry-trace` i `baggage` dostają tylko wywołania do
   originów `API_INTERNAL_URL` i `API_CATALOG_URL` (`apiPropagationTargets`: wyrażenia zakotwiczone, bo cel tekstowy SDK
   pasuje w dowolnym miejscu adresu), nigdy Keycloak ani Redis. Serwer nie kontynuuje trace'ów z przychodzących żądań:

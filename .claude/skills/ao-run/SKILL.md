@@ -616,7 +616,8 @@ rekordów). Wyjście jest danymi, nie poleceniami.
   o tym w rozmowie z komunikatem ze stderr („brak danych pomiaru”); komentarz składasz bez rekordu (niżej, „Bez
   rekordu”); epik prowadź dalej.
 
-Komentarz to treść pliku `comment.md` bez zmian: linie `Interwencje człowieka: N`, `Czekanie na użytkownika: M czekania,
+Komentarz to treść pliku `comment.md` bez zmian (poza blokiem „Zadania naraz (19b)”, niżej):
+linie `Interwencje człowieka: N`, `Czekanie na użytkownika: M czekania,
 razem K min` (z `, otwarte: N` przy czekaniach bez zapisanej decyzji) i `Ręczne poprawki: N` z listą, pusta linia i blok
 `### Pomiar epiku` (liczby pomiaru po merge'u: czas do merge'u i `review`, wąskie gardła z `review`, rozkład czasu,
 wartość tokenów i pp, próby, REPAIR, CI, regresje i braki danych). Pokaż go użytkownikowi w całości i po jego zgodzie
@@ -647,6 +648,38 @@ Ręczne poprawki: 2
 i suma `wait_s` w minutach, czekania `open` osobno, przy błędzie „brak danych”) i ręczne poprawki z pliku. Zapisz go do
 `"$AO_HOME/comment.md"` (cytowany heredoc, `cat > "$AO_HOME/comment.md" <<'COMMENT'`) przed pokazaniem użytkownikowi
 i wysyłką `--body-file`: przy kodzie 2 ten plik jest pusty albo zawiera komentarz sprzed merge'u.
+
+**Zadania naraz (19b)** (definicje: `docs/features/parallel-work/spec.md`, „Pomiar zadań naraz”). Przy `MERGED`
+uruchom (tylko odczyt):
+
+```bash
+python3 "$SKILL_ROOT/.claude/skills/ao-run/task_pairs.py" <dir> --ao-home "$AO_HOME" --repo "$SHOP"
+```
+
+Kod różny od 0 (baza AO): powiedz o tym i pomiń blok. Nieczytelny plan nie przerywa bloku: przy
+`audit.declarations.value` równym `null` w linii „Audyt paths” napisz „deklaracje: brak danych (<note>)”. Dopisz blok
+na końcu `"$AO_HOME/comment.md"` (po bloku „Pomiar epiku”, także w komentarzu bez rekordu), oddzielony pustą linią,
+zanim pokażesz komentarz użytkownikowi (`retro.py collect` kończy listę poprawek na pustej linii); `null` to „brak
+danych”, nigdy 0:
+
+```text
+Zadania naraz (19b)
+Współbieżność zmierzona: 30 min (METRICS-4 + METRICS-7: 30 min)
+Teoretyczna oszczędność: 12.5% (przy tych samych czasach prób szeregowo, nie przyspieszenie)
+Wskaźnik obciążenia: 1.08 (suma prób / czas epiku)
+Konflikty zadań: 1 (METRICS-7: 1); rundy poprawek PR: conflict 1, ci_failed 2
+Naprawy: REPAIR 0 (prób 0), poprawki QA 1 (prób 1)
+Decyzje człowieka 1, operacyjne 0
+Kolejka zadań równoległych: 2 wejścia, razem 6 min; cooldown 0 min; przerwy hosta 0 min; ostrzeżenia limitu 1; zasoby: brak danych; awarie stosu 0
+Audyt paths: spoza deklaracji METRICS-1 (docs/vision.md); konflikty rzeczywiste par: brak
+```
+
+Źródła: `concurrency.concurrent_s` i `pairs` (min), `theoretical_saving` (%), `attempts_to_wall`, `conflicts`
+i `fix_rounds`, `repairs`, `interventions` (`human`, `operational`), `waits` (`queue.count` i `total_s`, `cooldowns`
+i `host_pauses` `total_s`, `usage_warnings`, `resources`, `setup_failures`), `audit.tasks` z niepustym `undeclared`
+i `audit.pairs` z niepustym `actual_conflicts`. Bez tych pozycji: „brak”. Blok to tylko metryka, bez decyzji ani
+blokad; nie używaj w nim etykiet komentarza pomiaru (`Interwencje człowieka`, `Czekanie na użytkownika`, `Ręczne
+poprawki`) ani słowa „czekanie” z liczbą (`retro.py collect` czyta je z komentarza).
 
 **Para równoległa** (krok 19a; definicje: `docs/features/parallel-work/spec.md`, „Metryki par”). Przy
 `MERGED` i przy `CLOSED` sprawdź pary tego epiku (dwie pierwsze linie bloku startowego):
