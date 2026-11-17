@@ -65,13 +65,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `bin/seed-demo` woła względem własnego katalogu (test: `tests/Unit/Bin/GenerateDemoScriptTest.php`, podstawiona
   konsola i podstawiony `seed-demo`, jak test `bin/seed-demo`). Argumenty: `--profile=` (nazwa z `profiles.yaml`),
   `--anchor=` (chwila odniesienia; domyślnie początek bieżącej doby UTC, liczony raz i przekazany każdemu krokowi),
-  `--processes=` (procesy kroku produktów, domyślnie 4; zła wartość to kod 2) i `--force-reset`: w `prod` bez niego
+  `--processes=` (procesy kroków produktów i cen, domyślnie 4; zła wartość to kod 2) i `--force-reset`: w `prod` bez niego
   skrypt odmawia (kod 1, nic nie jest zmienione), bo zaczyna od `bin/seed-demo`, który kasuje dane wszystkich modułów
   (`seed-demo` dodaje własny `--force-reset` seedom w `prod`, kroki generatora go nie mają). Kolejność: sprawdzenie opcji
   (`demo-data:products --list-parts`: nieznany profil albo zła chwila odniesienia zatrzymują skrypt, zanim cokolwiek
   zostanie skasowane), `bin/seed-demo`, `demo-data:categories`, części `demo-data:products` (jeden proces na grupę części, uruchomione równolegle; skrypt
   zapisuje identyfikator i kod wyjścia każdego procesu osobno, więc błąd jednej części zauważa od razu, zatrzymuje
-  pozostałe i kończy krok jej kodem), `demo-data:photos`, `demo-data:analyze`, `catalog:reindex`,
+  pozostałe i kończy krok jej kodem), `demo-data:photos`, części `demo-data:prices` (tak samo jak produkty),
+  `demo-data:promotions`, `demo-data:analyze`, `catalog:reindex`,
   `storefront:cache:purge-all`, `demo-data:verify`. Pierwszy błąd przerywa skrypt z kodem tego kroku, kolejne kroki się
   nie wykonują; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`). Poza `small` krok zdjęć kończy
   się dziś błędem (pula zdjęć: DEMO-DATA-6), więc skrypt też
@@ -85,9 +86,16 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   kończy się błędem), `demo-data:photos` (krok 2, tylko `small`: 37 plików z `fixtures/images` raz do Garage pod
   `originals/<sha256>.<rozszerzenie>` i klucze zdjęć produktów według grupy zdjęć typu, co 50. produkt bez zdjęć; inny
   profil to kod 1 bez zmian), `demo-data:analyze` (`ANALYZE` wypełnionych tabel: pulpit liczy produkty ze statystyk
-  `catalog_product`) i `demo-data:verify` (kontrole katalogu: opublikowany produkt bez wariantu, liczby w tabelach
+  `catalog_product`), `demo-data:prices [--worker=N --workers=M] [--list-parts]` (krok 3: cena bieżąca i historia cen każdego
+  wygenerowanego wariantu, w tych samych częściach co produkty; potrzebuje produktów danej części, inaczej kod 1 bez
+  zmian) i `demo-data:promotions` (krok 3: zakończone promocje z wariantami i zakończone historyczne kody rabatowe, jeden
+  proces, po cenach) oraz `demo-data:verify` (kontrole katalogu: opublikowany produkt bez wariantu, liczby w tabelach
   różne od profilu, kategorie ogona niekompletne, slug produktu z ogona bez numeru, z powtórzonym numerem albo numerem
-  powyżej liczby produktów profilu, slug produktu z `catalog.yaml` należący do innego produktu;
+  powyżej liczby produktów profilu, slug produktu z `catalog.yaml` należący do innego produktu; kontrole cen: wariant
+  bez ceny bieżącej albo bez wpisu historii, cena bieżąca różna od ostatniego wpisu historii (w `small` wszystkie warianty, w większych profilach deterministyczna próbka co 1 na `products / 300000`), cena bez wariantu, netto,
+  VAT i stawka próbki cen różne od reguły Pricing, liczba wygenerowanych promocji i kodów różna od planu, promocja
+  niezakończona przed chwilą odniesienia, z więcej niż 1000 wariantów albo nakładająca się na innej na wariancie,
+  wariant promocji bez ceny w chwili jej startu albo ze zmianą ceny w jej trakcie, kod niezakończony;
   kod 1 i lista naruszeń, kod 0 na poprawnych danych). Kody: 0 gotowe, 1 odmowa (zła opcja) albo naruszenia
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
@@ -293,13 +301,37 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   opublikowanie rozkłada się na 1140 dni kończących się 16 dni przed chwilą odniesienia, w kolejności indeksów (kolejne
   kroki biorą do zamówień tylko produkty opublikowane przed złożeniem); około 40% produktów ma jeden wariant, pozostałe 2–8
   (średnio około 3), około 2% to szkice, co 50. produkt nie ma zdjęć, około 20% ma dodatkową kategorię z tego samego działu.
+  Ceny (krok 3, `src/DemoData/Pricing`): `PriceGenerator::forProduct(ProductSpec, promocje wariantów)` to czysta funkcja
+  produktu (strumień `pricing` na indeks produktu, więc cena nie zależy od innych produktów, części ani liczby
+  procesów): szczebel drabinki cen typu (`PriceLadder`: okrągłe ceny, odstęp 5 zł poniżej 50, 10 poniżej 200, 25 poniżej
+  500, 50 poniżej 1000, 100 powyżej; tańsze szczeble częstsze) z końcówką `,99` (3 produkty na 4) albo `,00`, warianty w tej
+  samej cenie albo (1/3 produktów z osią „Rozmiar”) z dopłatą szczebla za każde 3 rozmiary w górę; netto, VAT i stawka to
+  `PriceBreakdown` ze stawką klasy podatkowej (`PolishVatRates`), źródło i aktor wpisu to `PriceChangeOrigin`. Historia:
+  wpis `seed` godzinę przed opublikowaniem produktu (szkic: przed ostatnią zmianą), u około 30% wariantów jedna zmiana
+  `staff` w ostatnich 90 dniach (szczebel lub dwa w górę albo w dół, aktor to `admin` z `StaffRoles`), nigdy w trakcie
+  promocji wariantu (cena promowanego wariantu jest zablokowana, jak w aplikacji: zmiana czeka do końca promocji).
+  Wiersz ceny bieżącej to ostatni wpis (wersja 1, po zmianie 2, `updated_at` = jego czas). `PromotionPlanner::plan()`
+  planuje 40 zakończonych promocji (3–30 dni, 10–50%, do 1000 wariantów; próbka wariantów jednego działu z produktów
+  opublikowanych dwa dni przed startem, z okna 1–3 części katalogu, bez wariantów w promocji o nakładającym się okresie; co 8. promocja z ostatnich 100 dni, reszta w 3
+  latach zamówień; żadna nie trwa po chwili odniesienia, P8; id to UUID v5 `promotion:<i>`, bez aktora, nazwa
+  „Promocja <dział> -<n>% (<mm.rrrr>)”), `DiscountCodePlan` 14 zakończonych kodów kolejno w 3 latach (`ZIMA-24`, UUID v5
+  `code:<n>` od 1, co 3. kod kwotowy z minimum 5 razy wyższym, co 4. z limitem, bez użyć; kody z `discount-codes.yaml` bez
+  zmian). Plan to czysta funkcja profilu, ziarna i chwili odniesienia (koszt kilkudziesięciu części katalogu, więc
+  liczy go każdy proces). Cena skuteczna: `PriceTimeline::effectiveAt(t)` (ostatni wpis historii nie późniejszy niż `t`,
+  obniżony o promocję trwającą w `t`, `[start, koniec)`, regułą `PromotionalPrice`; wynik `UnitPrice`: cena katalogowa,
+  skuteczna, stawka i promocja) dla zamówień: `PriceGenerator::forProduct(spec, PromotionPlanner::byVariant(plan))[pozycja]`
+  daje oś czasu wariantu bez bazy. Pracownicy: numery kont od 1, rola to funkcja samego numeru (`StaffRoles::roleOf`,
+  cykl 500: 10 `admin`, 200 `support`, 200 `warehouse`, 90 `marketing`), id aktora to UUID v5 `staff:<n>` w przestrzeni
+  profilu (`StaffRoles::actorId`), nazwa aktora to zastępnik `Pracownik demo <n>` (`StaffRoles::actorName`).
 - Wyjątek: `DemoData` zapisuje tabele przez `COPY FROM STDIN` i SQL, nie przez rekordy Doctrine ani agregaty
   (`CopyWriter`: natywne `Pdo\Pgsql::copyFromArray` na połączeniu DBAL, paczkami po 5000 wierszy, w transakcji
   wywołującego, do tabel z indeksami z migracji, bez zmiany schematu; sesja ładowania ustawia `SET synchronous_commit =
   off`, którego przy wycofaniu transakcji nie zostaje). Naruszenie `NOT NULL`, `CHECK` albo klucza obcego odrzuca
   `COPY`, więc brak wartości kolumny wykrywają już same testy kroków. Tabele, które generator wypełnia: `catalog_category`,
-  `catalog_product`, `catalog_product_variant`, `catalog_product_category` (krok 1) i kolumnę `images`
-  `catalog_product` (krok 2, `UPDATE` z tabeli tymczasowej); kolejne kroki dopisują tu swoje tabele. Generator nie
+  `catalog_product`, `catalog_product_variant`, `catalog_product_category` (krok 1), kolumnę `images`
+  `catalog_product` (krok 2, `UPDATE` z tabeli tymczasowej), `pricing_variant_price`, `pricing_price_history` (krok 3,
+  części), `pricing_promotion`, `pricing_promotion_variant` i `pricing_discount_code` (krok 3, jeden proces; nie
+  `pricing_discount_code_usage`, użycia robią zamówienia); kolejne kroki dopisują tu swoje tabele. Generator nie
   zapisuje do `catalog_category_redirect`, outboxu ani kolejek.
 - Wyjątek od outboxu: generator nie publikuje zdarzeń ani nie planuje wiadomości Messengera (nie ma `ProductCreated`
   ani `CategoryTreeChanged`, outbox i kolejki zostają, jakie były), więc nie obowiązuje go zasada „zdarzenie w tej samej
@@ -309,11 +341,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   z profilem `small` biegną na `shop_test` w procesie testu i w jego transakcji (wycofanej po teście), bez
   `bin/seed-demo` i bez czyszczenia cache sklepu (worker i Varnish nie obsługują `shop_test`); `CatalogStepsTest` liczy
   sumę kontrolną każdej tabeli katalogu po dwóch przebiegach z tą samą chwilą odniesienia i po podziale na procesy
-  (`--worker`), `VerifyStepTest` wstrzykuje naruszenia, `GeneratedProductsOnTheRealPathsTest` czyta produkt z ogona
+  (`--worker`), `PricingStepsTest` to samo dla tabel cen i odtwarza ceny, promocje i kody przez repozytoria Pricing,
+  `VerifyStepTest` wstrzykuje naruszenia (katalogu i cen), `GeneratedProductsOnTheRealPathsTest` czyta produkt z ogona
   przez stronę produktu sklepu, listing kategorii, wyszukiwarkę (po `catalog:reindex` na indeksie testowym) i listę
-  produktów panelu. `ProcessCountDeterminismTest` (grupa `demo-data-processes`, w suicie `integration`) uruchamia
-  części w osobnych procesach `bin/console` (`APP_ENV=test`) z 1, 3 i 4 procesami, więc dane są zatwierdzone: czyta i
-  czyści tabele katalogu własnym połączeniem, przed testem i po nim. Nowy krok generatora dopisuje swoje tabele do sum
+  produktów panelu, a `GeneratedPricesOnTheRealPathsTest` cenę Omnibus wariantu z ogona po zaplanowaniu promocji przez
+  API panelu (chwila odniesienia to początek dzisiejszej doby, bo API czyta prawdziwy zegar). `ProcessCountDeterminismTest`
+  (grupa `demo-data-processes`, w suicie `integration`) uruchamia części w osobnych procesach `bin/console`
+  (`APP_ENV=test`) z 1, 3 i 4 procesami, więc dane są zatwierdzone: czyta i czyści tabele katalogu i cen własnym
+  połączeniem, przed testem i po nim. Nowy krok generatora dopisuje swoje tabele do sum
   kontrolnych i kontroli `verify`.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała

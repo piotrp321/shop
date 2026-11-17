@@ -5,14 +5,14 @@
 #   --profile    profile of fixtures/demo-data/profiles.yaml (default small)
 #   --anchor     reference moment of every generated time (default: the start of the current UTC day, taken once, so
 #                every step gets the same one)
-#   --processes  processes that write the parts of the products at the same time (default 4); the rows do not depend on it
+#   --processes  processes that write the parts of the products and of the prices at the same time (default 4); the rows do not depend on it
 #   --force-reset  required in prod, where the run starts with bin/seed-demo, which deletes the data of every module
 #
 # The steps, in order: a check of the options (nothing is changed), bin/seed-demo (reset and the seed catalog), the
-# categories of the tail, the parts of the products (one process per part group, run in parallel, each awaited), the
-# photos, ANALYZE of the filled tables, the search index, the caches of the store and the consistency check. The first
-# failing step stops the script with its exit code, so the later steps do not run; a failing part stops the other parts
-# first.
+# categories of the tail, the parts of the products and, after the photos, the parts of the prices (one process per part
+# group, run in parallel, each awaited), the promotions and discount codes, ANALYZE of the filled tables, the search index,
+# the caches of the store and the consistency check. The first failing step stops the script with its exit code, so the
+# later steps do not run; a failing part stops the other parts first.
 set -eu
 
 here="$(dirname "$0")"
@@ -89,15 +89,18 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-# The parts of the products: one process per worker, each in a subshell of its own that records the process id of the
-# command and, when it ends, its exit code. The script polls those records, so it notices a failing part at once instead
-# of when the parts before it have finished, and then stops the others.
+# The parts of a step (the products, the prices): one process per worker, each in a subshell of its own that records the
+# process id of the command and, when it ends, its exit code. The script polls those records, so it notices a failing part
+# at once instead of when the parts before it have finished, and then stops the others. The step is the name of the
+# command.
 run_parts() {
+  step="$1"
+  rm -f "$workdir"/pid.* "$workdir"/status.*
   index=0
   while [ "$index" -lt "$processes" ]; do
     (
       # shellcheck disable=SC2086 # common is a list of options
-      "$console" demo-data:products $common --worker="$index" --workers="$processes" &
+      "$console" "$step" $common --worker="$index" --workers="$processes" &
       child=$!
       echo "$child" >"$workdir/pid.$index"
       code=0
@@ -143,10 +146,15 @@ run_parts() {
 # shellcheck disable=SC2086
 "$console" demo-data:categories $common
 
-run_parts || exit "$?"
+run_parts demo-data:products || exit "$?"
 
 # shellcheck disable=SC2086
 "$console" demo-data:photos $common
+
+run_parts demo-data:prices || exit "$?"
+
+# shellcheck disable=SC2086
+"$console" demo-data:promotions $common
 
 "$console" demo-data:analyze
 

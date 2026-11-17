@@ -12,8 +12,9 @@ use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
- * The rows of the catalog steps do not depend on the number of processes: bin/console processes (APP_ENV=test) write
- * the parts of the products with 1, 3 and 4 workers, and the checksum of every table is the same. The processes commit,
+ * The rows of the catalog and price steps do not depend on the number of processes: bin/console processes (APP_ENV=test)
+ * write the parts of the products and of the prices with 1, 3 and 4 workers, and the checksum of every table is the
+ * same. The processes commit,
  * so the test reads and cleans the tables through a connection of its own, outside the transaction of the test; it
  * empties the tables before and after every run. Its own group, so a run that cannot start processes can leave it out.
  */
@@ -21,7 +22,18 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class ProcessCountDeterminismTest extends KernelTestCase
 {
     private const string ANCHOR = '2026-11-17T00:00:00Z';
-    private const array TABLES = ['catalog_category', 'catalog_product', 'catalog_product_variant', 'catalog_product_category'];
+    /** The tables and the columns their rows are ordered by in the checksum. */
+    private const array TABLES = [
+        'catalog_category' => 't.id',
+        'catalog_product' => 't.id',
+        'catalog_product_variant' => 't.id',
+        'catalog_product_category' => 't.product_id, t.category_id',
+        'pricing_variant_price' => 't.variant_id',
+        'pricing_price_history' => 't.id',
+        'pricing_promotion' => 't.id',
+        'pricing_promotion_variant' => 't.promotion_id, t.variant_id',
+        'pricing_discount_code' => 't.id',
+    ];
 
     private Connection $control;
 
@@ -43,17 +55,19 @@ final class ProcessCountDeterminismTest extends KernelTestCase
         parent::tearDown();
     }
 
-    public function testTheCatalogRowsAreTheSameWithOneThreeAndFourProcesses(): void
+    public function testTheCatalogAndPriceRowsAreTheSameWithOneThreeAndFourProcesses(): void
     {
         $sums = [];
         foreach ([1, 3, 4] as $processes) {
             $this->generate($processes);
             $sums[$processes] = $this->checksums();
             self::assertSame(2_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM catalog_product')), $processes.' processes');
+            self::assertGreaterThan(5_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM pricing_variant_price')), $processes.' processes');
             $this->empty();
         }
 
         self::assertNotContains('empty', $sums[1]);
+        self::assertSame(array_keys(self::TABLES), array_keys($sums[1]));
         self::assertSame($sums[1], $sums[3]);
         self::assertSame($sums[1], $sums[4]);
     }
@@ -66,10 +80,25 @@ final class ProcessCountDeterminismTest extends KernelTestCase
         for ($worker = 0; $worker < $processes; ++$worker) {
             $running[$worker] = $this->start(['demo-data:products', '--worker='.$worker, '--workers='.$processes]);
         }
+        $this->await($running, $processes, 'products');
+
+        $running = [];
+        for ($worker = 0; $worker < $processes; ++$worker) {
+            $running[$worker] = $this->start(['demo-data:prices', '--worker='.$worker, '--workers='.$processes]);
+        }
+        $this->await($running, $processes, 'prices');
+        $this->runConsole(['demo-data:promotions']);
+    }
+
+    /**
+     * @param array<int, array{resource, array<int, resource>}> $running
+     */
+    private function await(array $running, int $processes, string $step): void
+    {
         foreach ($running as $worker => [$process, $pipes]) {
             $output = (string) stream_get_contents($pipes[1]).(string) stream_get_contents($pipes[2]);
             $code = proc_close($process);
-            self::assertSame(0, $code, \sprintf('worker %d of %d: %s', $worker, $processes, $output));
+            self::assertSame(0, $code, \sprintf('%s, worker %d of %d: %s', $step, $worker, $processes, $output));
         }
     }
 
@@ -99,7 +128,7 @@ final class ProcessCountDeterminismTest extends KernelTestCase
 
     private function empty(): void
     {
-        $this->control->executeStatement('TRUNCATE catalog_product_category, catalog_product_variant, catalog_product, catalog_category_redirect, catalog_category');
+        $this->control->executeStatement('TRUNCATE catalog_product_category, catalog_product_variant, catalog_product, catalog_category_redirect, catalog_category, pricing_variant_price, pricing_price_history, pricing_promotion_variant, pricing_promotion, pricing_discount_code_usage, pricing_discount_code');
     }
 
     /**
@@ -108,8 +137,7 @@ final class ProcessCountDeterminismTest extends KernelTestCase
     private function checksums(): array
     {
         $sums = [];
-        foreach (self::TABLES as $table) {
-            $order = 'catalog_product_category' === $table ? 't.product_id, t.category_id' : 't.id';
+        foreach (self::TABLES as $table => $order) {
             $sums[$table] = Sql::string($this->control->fetchOne(\sprintf("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY %s)), 'empty') FROM %s t", $order, $table)));
         }
 

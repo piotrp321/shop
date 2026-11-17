@@ -18,7 +18,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final readonly class AnalyzeCommand
 {
     /** The tables of the steps; a later step adds its tables here. */
-    private const array TABLES = ['catalog_category', 'catalog_product', 'catalog_product_variant', 'catalog_product_category'];
+    private const array TABLES = [
+        'catalog_category', 'catalog_product', 'catalog_product_variant', 'catalog_product_category',
+        'pricing_variant_price', 'pricing_price_history', 'pricing_promotion', 'pricing_promotion_variant', 'pricing_discount_code',
+    ];
 
     public function __construct(private Connection $connection)
     {
