@@ -325,15 +325,18 @@ i krótkie ID issues Sentry. Nie zawiera tytułów ani treści zdarzeń:
       `sentry.io`, więc skrypt buduje następną stronę sam z kursora (O3);
     - `POST releases/` i `PUT issues/` kończą się 403.
 
-- **Eksperyment z zadaniem zaplanowanym** w bieżącej wersji aplikacji Claude, przed `/ao-run`, z poleceniem, wersją
-  aplikacji i wynikiem. Sprawdza:
-  - harmonogram co godzinę w godzinach 7–23 albo wariant zapasowy;
-  - model Haiku w sesji;
-  - dostępność `PushNotification` i `get_usage`;
-  - uruchomienie `python3 .claude/skills/oncall/...` bez pytania o zgodę.
-
-  Wykonują go sesja i **użytkownik** (zadanie zakłada użytkownik).
-- Zadanie zaplanowane z poleceniem `/oncall` w głównym klonie, według D3: **użytkownik**, po merge'u.
+- **Eksperyment z zadaniem zaplanowanym**, `istnieje: 2026-11-17`, aplikacja Claude (zadanie testowe uruchomione
+  ręcznie, potem usunięte):
+  - harmonogram `0 7-23 * * *` jest przyjmowany jako „co godzinę 7:00–23:00”;
+  - folder roboczy to główny klon, zadanie zapisane w trybie auto: `python3 -I -c …` przechodzi bez pytania o zgodę
+    (Python 3.9.6);
+  - `get_usage` działa; plan zwraca tylko okna tygodniowe, więc `finish` zapisuje przyrost okien tygodniowych;
+  - sesja startuje na modelu domyślnym (Opus) i nie może sama zmienić modelu (`set_session_model` dla `self` jest
+    odrzucane). Model Haiku wybiera użytkownik w edycji zadania w aplikacji;
+  - `PushNotification` nie wysyła pushu, gdy aplikacja jest aktywna („Not sent”); wynik widać wtedy jako sesję
+    przebiegu na pasku bocznym. Push na telefon wychodzi, gdy aplikacja nie jest aktywna.
+- Zadanie zaplanowane z poleceniem `/oncall` w głównym klonie, według D3, z modelem Haiku wybranym w edycji zadania:
+  **użytkownik**, po merge'u.
 
 ## Decyzje użytkownika
 
