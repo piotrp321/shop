@@ -1,0 +1,38 @@
+# The short descriptions of the products: "<name>: <feature>, <feature> i <feature>. <closing>", where the features come
+# from the product type and the closing from the department of the product.
+closings:
+  bieganie:
+    - "Sprawdzi się na treningach i w zawodach."
+    - "Dobrze znosi regularne pranie i długie dystanse."
+    - "Wybór biegaczy, którzy liczą na stały poziom komfortu."
+    - "Pasuje do każdego planu treningowego."
+  rower:
+    - "Dobrze sprawdza się na szosie, szutrze i leśnych ścieżkach."
+    - "Do codziennych dojazdów i weekendowych wypraw."
+    - "Prosty w montażu i przygotowany na zmienną pogodę."
+    - "Dla rowerzystów, którzy cenią niezawodność."
+  turystyka:
+    - "Przygotowany na zmienną pogodę w górach."
+    - "Na weekendowe wyjścia i wielodniowe wyprawy."
+    - "Lekki, a przy tym wytrzymały w trudnym terenie."
+    - "Dobry towarzysz na szlaku o każdej porze roku."
+  sporty-zimowe:
+    - "Zaprojektowany na mroźne dni i długie zjazdy."
+    - "Dobrze trzyma ciepło przy intensywnym wysiłku."
+    - "Na stok, na skitury i na zimowy spacer."
+    - "Sprawdzony w niskich temperaturach."
+  fitness:
+    - "Do treningów w domu i na siłowni."
+    - "Pasuje do ćwiczeń dla początkujących i zaawansowanych."
+    - "Trwały, łatwy w utrzymaniu w czystości."
+    - "Pomaga utrzymać regularność treningów."
+  sporty-wodne:
+    - "Odporny na wodę słodką i słoną."
+    - "Na jezioro, rzekę i basen."
+    - "Szybko schnie i łatwo się go pakuje."
+    - "Dla wodniaków, którzy lubią mieć sprzęt pod kontrolą."
+  sporty-druzynowe:
+    - "Do gry na treningach i w meczach."
+    - "Wytrzymuje intensywne użytkowanie przez cały sezon."
+    - "Dobry wybór dla drużyn szkolnych i klubowych."
+    - "Prosty w użyciu, gotowy do gry od razu."
