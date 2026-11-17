@@ -372,7 +372,8 @@ w danych kandydata mają oznaczenie; D1 na wartości roli szacowanej podaje to w
 
 Okno „po” to epiki rozpoczęte po `--at` (`started_at > --at`); epiki rozpoczęte przed `--at` i zmergowane po nim
 pomijamy, bo pracowały na gałęzi sprzed poprawki. Okno „przed” to tyle samo epików zmergowanych przed `--at`,
-najbliższych tej chwili. Wynik: mediana, p25–p75 i liczebność obu okien, różnica median w jednostce miary
+najbliższych tej chwili; gdy zmergowanych przed `--at` jest mniej niż w oknie „po”, okno „przed” ma wszystkie, jest
+szacowane (`estimated`, „≈”) i ma pozycję w `gaps`. Wynik: mediana, p25–p75 i liczebność obu okien, różnica median w jednostce miary
 i w procentach. Obok zawsze czas do `epic_done` na zadanie planu jako mediana 3 epików przed i 3 po. „Za mało danych”
 (bez wniosku): dla miar zadań mniej niż 15 zadań z co najmniej 3 epików po zmianie, dla miar epiku mniej niż 3 epiki
 po zmianie. Wersje CLI i modele, które różnią okno przed od okna po (z `versions`), są wypisane obok efektu, bez

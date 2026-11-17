@@ -75,6 +75,34 @@ class WindowTest(EffectEnv):
         self.assertEqual(len(result['before']['epics']), 3)
         self.assertEqual(result['before']['epics'], ['b6', 'b7', 'b8'])
 
+    def before_epics(self, merged, after):
+        self.gate_epics(list(range(1, merged + 1)), [1] * after)
+        return self.result('D3:gate_wait')['before']
+
+    def test_four_merged_epics_and_five_after_give_a_before_window_of_all_four(self):
+        before = self.before_epics(4, 5)
+        self.assertEqual((before['epics'], before['n']), (['b1', 'b2', 'b3', 'b4'], 4))
+
+    def test_three_merged_epics_and_five_after_give_a_before_window_of_all_three(self):
+        before = self.before_epics(3, 5)
+        self.assertEqual((before['epics'], before['n']), (['b1', 'b2', 'b3'], 3))
+
+    def test_a_before_window_shorter_than_the_after_window_is_marked_with_a_gap_and_estimated(self):
+        self.gate_epics([1, 2, 3, 4], [1] * 5)
+        result = self.result('D3:gate_wait')
+        self.assertTrue(any('okno przed' in g and '4' in g and '5' in g for g in result['gaps']), result['gaps'])
+        self.assertIs(result['before']['estimated'], True)
+        self.assertIs(result['after']['estimated'], False)
+        self.assertIs(result['estimated'], True)
+
+    def test_a_before_window_as_long_as_the_after_window_is_exact_and_has_no_gap(self):
+        self.gate_epics([1, 2, 3, 4], [1] * 4)
+        result = self.result('D3:gate_wait')
+        self.assertEqual(result['before']['epics'], ['b1', 'b2', 'b3', 'b4'])
+        self.assertEqual(result['before']['median'], 2.5)
+        self.assertEqual(result['gaps'], [])
+        self.assertIs(result['estimated'], False)
+
     def test_an_epic_started_after_at_but_not_merged_is_not_in_the_after_window(self):
         self.gate_epics([4, 5, 6], [1, 0, 2])
         store_records(self.state, epic('open', 20, None, gate_wait=50 * H))

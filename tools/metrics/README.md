@@ -369,7 +369,8 @@ Katalog wyników EVALS 2.0 jest czytany raz na wywołanie.
 | `D4:<human_wait\|ci\|limit_wait\|review>` | udział kategorii w jej mianowniku (jak w `decide`) | epik | pp |
 
 W oknach są tylko epiki zmergowane. Okno „po” to epiki z `started_at` > `CZAS` (ściśle), uporządkowane po starcie. Okno „przed” to
-tyle samo epików zmergowanych najpóźniej w `CZAS` (włącznie), najbliższych tej chwili. Epik rozpoczęty w `CZAS` lub przed
+tyle samo epików zmergowanych najpóźniej w `CZAS` (włącznie), najbliższych tej chwili; gdy takich epików jest mniej niż w oknie „po”, okno „przed” ma
+wszystkie, ma `estimated: true` i pozycję w `gaps` („okna nie są w pełni porównywalne”). Epik rozpoczęty w `CZAS` lub przed
 nim i zmergowany po nim nie jest w żadnym oknie (`spanning`); epik rozpoczęty po `CZAS`, a niezmergowany, też (`unmerged_after`).
 Dla D1 poziom to `kind` zadań (`level_kind`), w którym rola ma największą łączną wartość w obu oknach (rozstrzygnięcie
 wykonawcy: spec mówi „zadania tego `kind`” bez wskazania, który; bez wartości roli `level_kind` to `null`); rekord bez

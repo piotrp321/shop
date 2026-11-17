@@ -2730,7 +2730,7 @@ def effect_windows(records, at, gaps):
     order = lambda pair: (pair[0], str(pair[1].get('epic')))
     after = [r for _, r in sorted(after, key=order)]
     pool = [r for _, r in sorted(pool, key=order)]
-    before = pool[len(pool) - len(after):] if after else []
+    before = pool[max(0, len(pool) - len(after)):] if after else []
     names = lambda items: sorted(str(r.get('epic')) for r in items)
     return before, after, pool, names(spanning), names([r for _, r in unmerged])
 
@@ -2895,6 +2895,10 @@ def build_effect(records, key, at, config):
     rule, subject = parse_effect_key(key)
     gaps = Gaps()
     before, after, pool, spanning, unmerged = effect_windows(records, at, gaps)
+    short_before = len(before) < len(after)     # fewer epics merged before `at` than started after it
+    if short_before:
+        gaps.add('effect', 'okno przed ma %d epików, okno po %d: za mało zmergowanych epików przed --at, okna nie są '
+                           'w pełni porównywalne' % (len(before), len(after)))
     settings = config['decisions']
     level_kind, estimated_of = None, None
     if rule == 'D1':
@@ -2909,6 +2913,7 @@ def build_effect(records, key, at, config):
     missing = 'rekord bez value.by_task_role (starszy niż pole)' if rule == 'D1' else 'brak miary'
     stats = {'before': window_stats(before, samples_of, gaps, 'przed', missing, estimated_of),
              'after': window_stats(after, samples_of, gaps, 'po', missing, estimated_of)}
+    stats['before']['estimated'] = stats['before']['estimated'] or short_before
     task_level = rule in ('D1', 'D2')
     reasons = []
     if task_level:
