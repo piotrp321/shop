@@ -8,14 +8,12 @@ use App\Ordering\Application\Port\BackofficeOrderFilter;
 use App\Ordering\Application\Port\BackofficeOrderReader;
 use App\Ordering\Application\Port\Clock;
 use App\Ordering\Application\Port\ListedOrder;
+use App\Shared\Domain\BoundedCount;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
 final readonly class ListBackofficeOrdersHandler
 {
-    /** An order number as staff type it: R- and digits, in any letter case (P9). */
-    private const string NUMBER = '/^[Rr]-[0-9]+$/D';
-
     public function __construct(
         private BackofficeOrderReader $orders,
         private Clock $clock,
@@ -23,39 +21,72 @@ final readonly class ListBackofficeOrdersHandler
     }
 
     /**
-     * The search term, trimmed, is an exact number when it looks like one, otherwise an exact email when it has an @;
-     * anything else finds nothing, without a read. One order more than the page is read: its presence is the only
-     * thing that tells there is a next page, so the whole result is never counted.
+     * The search term is an exact number, a fragment of the number, the email and the name, or an exact email too long
+     * for a fragment (see OrderSearchTerm); anything else is refused. One order more than the page is read: its
+     * presence is what tells there is a next page. The first page (no cursor) also carries the bounded total of the
+     * filter: the number of its rows when there is no next page (nothing to count), otherwise the reader counts,
+     * never the table whole. The overdue refunds are the pending ones due before the moment of the read, in the same
+     * order and with the same cursor.
      *
      * @throws InvalidBackofficeOrderCursor
+     * @throws InvalidBackofficeOrderList   a sort with the pending refunds, the amount with a search or a range of days,
+     *                                      the pending refunds with a range of days, a search term or a day that is
+     *                                      refused, a range that ends before it starts, the orders of a customer
+     *                                      with a search, a sort, a range of days or the refunds
      */
     public function __invoke(ListBackofficeOrders $query): BackofficeOrderList
     {
-        $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, $query->pendingRefunds);
-
-        $number = null;
-        $email = null;
-        if (null !== $query->q) {
-            $term = trim($query->q);
-            if (1 === preg_match(self::NUMBER, $term)) {
-                $number = 'R-'.substr($term, 2);
-            } elseif (str_contains($term, '@') && !str_contains($term, "\0")) {
-                // The database driver cuts a parameter at a NUL, which would silently search for something else.
-                $email = $term;
-            } else {
-                return new BackofficeOrderList([], null);
-            }
+        $now = $this->clock->now();
+        $pendingRefunds = $query->pendingRefunds || $query->overdueRefunds;
+        // The history of a customer is read on its partial index (customer_id, placed_at DESC, id DESC) only.
+        if (null !== $query->customerId && ($pendingRefunds || null !== $query->q || null !== $query->sort || null !== $query->placedFrom || null !== $query->placedTo)) {
+            throw InvalidBackofficeOrderList::customerWithOtherFilters();
+        }
+        $sort = self::sortOf($query, $pendingRefunds);
+        $after = null === $query->after ? null : BackofficeOrderCursor::decode($query->after, $sort);
+        $term = null === $query->q ? null : OrderSearchTerm::parse($query->q);
+        $range = OrderPlacedRange::fromDays($query->placedFrom, $query->placedTo);
+        if ($pendingRefunds && !$range->isEmpty()) {
+            throw InvalidBackofficeOrderList::pendingRefundsWithDateRange();
         }
 
-        $orders = $this->orders->page(new BackofficeOrderFilter($query->status, $query->pendingRefunds, $number, $email), $after, $query->perPage + 1);
+        $filter = new BackofficeOrderFilter($query->status, $pendingRefunds, $term?->number, $term?->email, $sort, $term?->fragment, $range->from, $range->before, $query->overdueRefunds ? $now : null, $query->customerId);
+        $orders = $this->orders->page($filter, $after, $query->perPage + 1);
         $next = null;
         if (\count($orders) > $query->perPage) {
             $orders = \array_slice($orders, 0, $query->perPage);
-            $next = BackofficeOrderCursor::after($orders[$query->perPage - 1], $query->pendingRefunds)->encode();
+            $next = BackofficeOrderCursor::after($orders[$query->perPage - 1], $sort)->encode();
+            $total = null === $after ? $this->orders->count($filter) : null;
+        } else {
+            $total = null === $after ? new BoundedCount(\count($orders), false) : null;
         }
-        $now = $this->clock->now();
 
-        return new BackofficeOrderList(array_map(static fn (ListedOrder $order): BackofficeOrderListItem => self::item($order, $now), $orders), $next);
+        return new BackofficeOrderList(array_map(static fn (ListedOrder $order): BackofficeOrderListItem => self::item($order, $now), $orders), $next, $total);
+    }
+
+    /**
+     * @throws InvalidBackofficeOrderList
+     */
+    private static function sortOf(ListBackofficeOrders $query, bool $pendingRefunds): BackofficeOrderSort
+    {
+        if ($pendingRefunds) {
+            return null === $query->sort ? BackofficeOrderSort::RefundDueDate : throw InvalidBackofficeOrderList::sortWithPendingRefunds();
+        }
+        if (BackofficeOrderSort::RefundDueDate === $query->sort) {
+            throw InvalidBackofficeOrderList::dueDateAsASort();
+        }
+        $sort = $query->sort ?? BackofficeOrderSort::PlacedDescending;
+        // No index serves the amount together with the search or the range of days: the list would read every order of them first.
+        if ($sort->byTotal()) {
+            if (null !== $query->q) {
+                throw InvalidBackofficeOrderList::totalWithSearch();
+            }
+            if (null !== $query->placedFrom || null !== $query->placedTo) {
+                throw InvalidBackofficeOrderList::totalWithDateRange();
+            }
+        }
+
+        return $sort;
     }
 
     private static function item(ListedOrder $order, \DateTimeImmutable $now): BackofficeOrderListItem

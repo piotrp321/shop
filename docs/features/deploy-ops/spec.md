@@ -77,7 +77,10 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   w `images.*` wartości chartu z tagiem i digestem, jak inne obrazy usług (bez odpowiednika w compose; test obrazów zna
   je jak `alpine` i `kubectl`). Bez własnego obrazu kopii i bez zmian w `deploy.yml`. PVC `backup-work` (`local-path`,
   `storage.backupWork: 25Gi`, więcej niż `storage.garageData`) trzyma lustro obiektów i cache restic: `rclone sync`
-  przenosi tylko zmienione obiekty, więc nocny koszt rośnie ze zmianami, nie z rozmiarem bucketu.
+  przenosi tylko zmienione obiekty, więc nocny koszt rośnie ze zmianami, nie z rozmiarem bucketu. `local-path` wiąże PVC
+  dopiero z pierwszym podem, więc do pierwszej kopii PVC jest `Pending`; ma adnotację `shop/bound-by-first-pod: "true"`, którą
+  czyta customizacja zdrowia PVC w `argocd-cm` (`argocd/install/argocd.yaml`): taki PVC jest zdrowy, a synchronizacja nie czeka
+  na niego w swojej fali.
 - **O2. Repozytorium i dostęp z wartości i jednego sekretu.** Adres repozytorium restic (`backup.repository`, w `prod`
   bucket Cloudflare R2: `s3:https://<id konta>.r2.cloudflarestorage.com/<bucket>`) i region (`backup.s3Region`, dla R2
   `auto`) są wartościami `environments/prod/values.yaml`. Sekret `shop-backup` (SealedSecret w
@@ -269,9 +272,9 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   *"`, `backup.timeZone: Europe/Warsaw`, `backup.retention: 7d`, `backup.repository: ""`, `backup.s3Region: ""`,
   `backup.secretName: ""`, `backup.secretValues: {}`, `backup.verifyReadData: subset`, `storage.backupWork: 25Gi`, zasoby
   `backup`, `alerts.enabled: false`.
-- `environments/prod/values.yaml`: `backup.enabled: true`, adres repozytorium i region (wartość przykładowa jak
-  `global.domain`; przed pierwszym wdrożeniem z kopiami agent wpisuje adres bucketu według runbooka, identyfikator konta
-  podaje użytkownik),
+- `environments/prod/values.yaml`: `backup.enabled: false`, dopóki nie ma bucketu R2 i sekretu `shop-backup` (bez nich kopia
+  padałaby co noc i włączała alerty); adres repozytorium i region (wartość przykładowa jak `global.domain`; przed włączeniem
+  kopii agent wpisuje adres bucketu według runbooka, identyfikator konta podaje użytkownik),
   `backup.secretName: shop-backup`, `alerts.enabled: true`.
 - `environments/ci/values.yaml`: `backup.enabled: true`, repozytorium w osobnej instancji S3 smoke testu (poza
   przestrzenią `shop`), sekret z `backup.secretValues` (`secrets.create`), `backup.verifyReadData: all`, mniejsze

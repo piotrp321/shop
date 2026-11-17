@@ -4,7 +4,7 @@ Krok 19 planu [Agentic Software House](../agentic-software-house/plan.md), kompo
 [ADR](../../adr/agentic-software-house.md). Równoległość jest domyślna: kolejny przygotowany epik rusza naraz
 z trwającym, gdy przejdzie bramkę ryzyka; wykonanie szeregowe zostaje rozwiązaniem awaryjnym, gdy bramka wykryje
 realne ryzyko. 19a działa w `shop` (skille `/ao-run` i `/delivery`, bez zmian w AO). 19b to zmiana w AO
-(piotrp321/agentic-orchestrator#50); tu jest tylko jej kontrakt i warunek startu.
+(piotrp321/agentic-orchestrator#50) z kontraktem i częścią w `shop` opisanymi w sekcji „19b”.
 
 Miara główna: czas zegarowy epiku. Pilnujemy przy tym jakości, liczby napraw, interwencji człowieka i zużycia limitów.
 
@@ -41,20 +41,32 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
    Inaczej: kandydat pominięty.
 4. **Zakres**: kandydat i każdy epik w toku mają czytelną linię `Zakres:`. Brak u kandydata: kandydat pominięty;
    brak u epiku w toku: czekanie (nie wiadomo, co zmienia).
-5. **Pliki**: każda ścieżka części wspólnej kandydata z każdym epikiem w toku jest plikiem dopuszczalnym. Inaczej:
-   kandydat pominięty z powodem „wspólne pliki z X: <ścieżki>” i polem `paths` ze ścieżkami blokującymi ze wszystkich
-   epików w toku (nie tylko z pierwszego).
-   - **Dopuszczalne:** pliki generowane `apps/api/openapi.json`, `apps/api/openapi-admin.json`,
-     `apps/store/src/api/schema.d.ts`, `apps/admin/src/api/schema.d.ts` (sync i REPAIR generują je od nowa) oraz
-     dokumentacja `docs/**` i `README.md` w katalogu głównym (sync i REPAIR sprawdzają spójność treści, sekcja
-     „Spójność dokumentów”).
-   - **Wymuszają kolejkę:** wspólne pliki edytowane ręcznie: CI (`.github/**`), każdy `CLAUDE.md`, `make/*.mk` i główny
-     `Makefile`, menu panelu (`apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`), inne `README.md`
-     (np. runbook `infra/k8s/README.md`) oraz każda inna wspólna ścieżka kodu, testów i konfiguracji (porównanie po
-     segmentach: `docs/features/ao-run/spec.md`, „Zakres epiku”). Czy dopuścić `CLAUDE.md`, rozstrzyga użytkownik po
-     dwóch pierwszych parach (sekcja „Ocena `CLAUDE.md`”).
-6. **Pamięć Dockera**: `wolna = MemTotal − pamięć kontenerów spoza AO − max(pamięć kontenerów AO, rezerwa × liczba
-   epików aktywnych)` jest co najmniej rezerwą jednego stosu. Rezerwa: 6 GiB (`--stack-gib`, pomiar: stos ok. 4,9 GB).
+5. **Pliki**: część wspólna kandydata z każdym epikiem w toku nie zawiera kodu aplikacji. Inaczej: kandydat pominięty
+   z powodem „wspólne pliki z X: <ścieżki>” i polem `paths` ze ścieżkami blokującymi ze wszystkich epików w toku (nie
+   tylko z pierwszego). Wspólny plik sam w sobie nie jest ryzykiem: Git łączy zmiany w różnych miejscach jednego
+   pliku, a konflikt tekstowy i niespójność dokumentów rozwiązują sync i REPAIR (sekcje „Spójność dokumentów”
+   i „Testy po scaleniu”).
+   - **Kod aplikacji (blokuje):** ścieżka w `apps/<aplikacja>/src` albo `apps/<aplikacja>/app` (po segmentach:
+     `docs/features/ao-run/spec.md`, „Zakres epiku”) i ścieżka, która taki katalog zawiera (`apps`,
+     `apps/<aplikacja>`), bo deklaracja szersza niż kod obejmuje kod. Dwa epiki zmieniające ten sam kod aplikacji
+     mogą zmienić to samo zachowanie, a merge bez konfliktu tekstowego i zielone CI tego nie wykluczają. Tej oceny
+     bramka nie umie zrobić wiarygodnie z deklaracji, więc reguła dla kodu zostaje konserwatywna; jej koszt mierzy
+     `code_blocked` w `pairs.py` (sekcja „Metryki par”).
+   - **Wyjątki w kodzie aplikacji (nie blokują):** pliki generowane `apps/store/src/api/schema.d.ts`,
+     `apps/admin/src/api/schema.d.ts` (sync i REPAIR generują je od nowa), pliki rejestracji, do których epiki
+     dopisują pozycje (menu panelu `apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`), i każdy
+     `CLAUDE.md` oraz `README.md`.
+   - **Wszystko inne (nie blokuje):** CI (`.github/**`), `CLAUDE.md`, `README.md` (także runbook
+     `infra/k8s/README.md`), `make/*.mk`, główny `Makefile`, dokumentacja `docs/**`, testy (`apps/*/tests`, `e2e`,
+     `infra/k8s/tests`), konfiguracja aplikacji (`apps/api/config`, `composer.json`, `package.json`, lockfile'y),
+     infrastruktura (`infra/**`), narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`), pliki generowane
+     `apps/api/openapi.json` i `apps/api/openapi-admin.json`.
+   - Rzeczywista zależność epików to krok 3, nie reguła plików. Użytkownik może uruchomić kandydata mimo wspólnego
+     kodu (`--force`, „Uruchomić mimo bramki?”).
+6. **Pamięć Dockera**: `wolna = MemTotal − pamięć kontenerów spoza AO − max(pamięć kontenerów AO, rezerwa epiku ×
+   liczba epików aktywnych)` jest co najmniej rezerwą epiku. Rezerwa epiku to `max-parallel` stosów (AO prowadzi do
+   tylu prób zadań epiku naraz, sekcja „19b”; stała `MAX_PARALLEL = 2` w `parallel_gate.py`, ta sama wartość, którą
+   `/ao-run` przekazuje AO), czyli 2 × 6 GiB. Rezerwa stosu: 6 GiB (`--stack-gib`, pomiar: stos ok. 4,9 GB).
    Kontenery AO to kontenery projektów Compose o nazwie `ao-*` (etykieta `com.docker.compose.project` z `docker ps`,
    pamięć z `docker stats --no-stream`, `MemTotal` z `docker info`). Rezerwa na epik aktywny działa także wtedy, gdy
    ten epik jest akurat między zadaniami i nie ma stosu. Błąd albo nieczytelne wyjście `docker`: czekanie z powodem.
@@ -66,7 +78,7 @@ Bramka sprawdza kandydata względem wszystkich epików w toku; pierwszy niespeł
    równoległego zawiera zużycie drugiego); bez takich pomiarów ze wszystkich. Szacunek czasu: ze wszystkich pomiarów.
    Inaczej: czekanie.
 
-**Wstrzymanie równoległości**: gdy istnieje `parallel-hold.json` (sekcja „Pomiar pierwszych dwóch par”), zaraz po
+**Wstrzymanie równoległości**: gdy istnieje `parallel-hold.json` (sekcja „Metryki par”), zaraz po
 kroku 2 każdy kandydat obok epiku w toku (także czekającego na merge) czeka z powodem `równoległość wstrzymana:
 <powód>`. Krok 1 działa dalej, więc praca szeregowa trwa. Odnowienie rezerwacji założonej przed wstrzymaniem go nie
 sprawdza (odnowienie nie uruchamia kroków bramki), więc taki epik może ruszyć jeszcze w ciągu 30 minut od rezerwacji
@@ -149,14 +161,15 @@ sprzed zmiany drugiego epiku. Dlatego:
   zgadzają się z obu zmianami. Niespójność naprawia ten sam merge commit; niespójność wymagająca decyzji o zachowaniu:
   `BLOCKED` jak przy konflikcie. Pliki generowane zmienione po obu stronach powstają od nowa także bez konfliktu.
   Wynik („Spójność dokumentów: <plik>: zgodne / poprawione: …”) trafia do opisu PR i `integration_notes`.
-- **Sync spójności w parze.** Para: epik P zmergowany pierwszy i epik Q z otwartym końcowym PR. Sesja Q uruchamia
-  procedurę `sync/<epik>-main` (sekcja 6a skilla) dla Q, gdy jednocześnie:
+- **Sync spójności w parze.** Para: epik P zmergowany pierwszy i epik Q z otwartym końcowym PR. Rulesety nie wymagają gałęzi
+  „up to date”, więc bez syncu CI końcowego PR Q nie widziało zmian P, także gdy oba epiki zmieniły różne pliki tej
+  samej aplikacji albo konfiguracji. Sesja Q uruchamia procedurę `sync/<epik>-main` (sekcja 6a skilla) dla Q, gdy
+  jednocześnie:
   - Q ma `epic_done` (wcześniej zmiany `main` wprowadza AO: REPAIR przy konflikcie końcowego PR);
   - commit merge'u P nie jest przodkiem `origin/epic/<Q>` (`git merge-base --is-ancestor`), więc sync wykonany raz się
-    nie powtarza, także po rundzie `DELTA` i ponownym `epic_done`;
-  - faktyczne zmiany obu stron mają wspólny plik dopuszczalny (dokument albo plik generowany):
-    `git diff --name-only <merge-base>..origin/main` i `git diff --name-only origin/main...origin/epic/<Q>`. Wspólny
-    plik niedopuszczalny (spoza deklaracji): sync też, bo to ryzyko konfliktu znaczeniowego.
+    nie powtarza, także po rundzie `DELTA` i ponownym `epic_done`.
+  Wspólny plik nie jest warunkiem: sync bez konfliktu też kończy się testami na połączonym stanie (sekcja „Testy po
+  scaleniu”), a o kontroli spójności decyduje lista plików zmienionych po obu stronach.
   Gdy końcowy PR Q ma konflikt, a AO nie działa, ta sama procedura rozwiązuje konflikt. Zgodą na procedurę dla par
   (także przy konflikcie) jest akceptacja tej specyfikacji (`CLAUDE.md`: PR `sync/<epik>-main` merguje skill po zgodzie
   użytkownika na procedurę i zielonym CI). Końcowy PR Q `MERGED` albo `CLOSED` w trakcie syncu: sesja przerywa,
@@ -166,6 +179,39 @@ sprzed zmiany drugiego epiku. Dlatego:
 - **Wykrycie merge'u P** (także z innej sesji): pętla w tle z sekcji 6 skilla, która co 5 minut sprawdza stan
   końcowego PR Q, kończy się też przy zmianie `origin/main` (`git ls-remote origin main`); sesja sprawdza wtedy
   warunki syncu i uruchamia pętlę ponownie.
+
+### Testy po scaleniu
+
+Merge bez konfliktu tekstowego nie dowodzi, że połączony kod działa. Dlatego każde scalenie zmian drugiego epiku
+(REPAIR, sync spójności, tryb poprawki) sprawdza zintegrowany stan epiku, czyli epik razem ze zmianami z `main`,
+a nie tylko poprawność samego merge'u Git:
+
+- lokalnie, przed wypchnięciem merge commitu (`/delivery`, „Konflikt z gałęzią docelową lub z `main`”): `make check`
+  i testy każdej aplikacji, którą zmienia epik od merge-base (`git diff --name-only <merge-base> HEAD` sprzed merge'u),
+  oraz każdej aplikacji z plikiem zmienionym po obu stronach, nie tylko pliki w konflikcie; do tego kontrola migracji
+  (niżej);
+- w CI: PR REPAIR i `sync/<epik>-main` trafia do `epic/<epik>` dopiero po zielonych wymaganych checkach `checks`
+  (`make check` i testy wszystkich aplikacji na świeżym stosie) i `e2e` (ruleset `epic-merge`), potem CI biegnie
+  jeszcze raz na HEAD gałęzi epiku, a końcowy PR do `main` wymaga tych samych checków.
+
+**Migracje.** Wspólne migracje nie blokują startu (reguła plików). Kolizję wykrywa scalenie:
+
+- wykrycie: migracje dodane albo zmienione po obu stronach od merge-base (`git diff --name-only "$b" origin/<gałąź>
+  -- apps/api/migrations` i `git diff --name-only "$b" HEAD -- apps/api/migrations` przed merge'em, obie niepuste);
+- kolizja: migracje obu stron zmieniają tę samą tabelę (nazwy tabel z ich SQL), mają tę samą wersję albo strona
+  epiku zmienia migrację, która jest już na `main` (migracja z `main` jest niezmienna, bo mogła być wdrożona). Przy
+  tej samej tabeli wynik nie może zależeć od kolejności: na produkcji migracje epiku wykonają się po migracjach
+  z `main`, na świeżej bazie po wersjach, więc migracja epiku starsza od migracji z `main` wykona się w innej
+  kolejności niż od zera. Kolizję usuwa poprawka migracji epiku w tym samym merge commicie; kolizja wymagająca decyzji
+  o schemacie: `BLOCKED` jak przy konflikcie;
+- weryfikacja na połączonym kodzie, w obu kolejnościach: lokalnie `make -C apps/api test` (`init-test` wykonuje na
+  bazie testowej stosu migracje jeszcze niewykonane, jak na produkcji) i w CI `checks` (świeża baza, wszystkie
+  migracje od zera, testy zgodności schematu z mapowaniem `*SchemaTest`);
+- wynik w opisie PR i `integration_notes`: linia `Migracje: <pliki z main> / <pliki epiku>; kolizje: brak / <tabela>:
+  <rozstrzygnięcie>` albo `Migracje: brak migracji po obu stronach`.
+
+Czerwony check na połączonym stanie to regresja w metrykach par (sekcja „Metryki par”), także gdy REPAIR ją naprawił.
+Regresja naprawiona automatycznie nie zatrzymuje innych epików; krytyczny problem to dopiero czerwone CI na `main`.
 
 ### Gdzie działa
 
@@ -213,8 +259,8 @@ sprzed zmiany drugiego epiku. Dlatego:
       aktywny: po sprawdzeniach szeregowych (szacunek czasu do `until`, stan limitów `ok`, okna do 80%, jak w spec
       `/ao-run`, „Kolejny epik”);
     - (c) w pozostałych przypadkach, także gdy epik innej sesji jest aktywny: gdy przechodzi bramkę (kroki 2–7
-      i wstrzymanie równoległości, rezerwa 6 GiB) i teraz + szacunek czasu nie przekracza `until` (inaczej powód
-      `X nie zdąży do HH:MM`).
+      i wstrzymanie równoległości, rezerwa 2 × 6 GiB na epik) i teraz + szacunek czasu nie przekracza `until`
+      (inaczej powód `X nie zdąży do HH:MM`).
     Odmowa w (c) (czekanie albo pominięcie w bramce, `nie zdąży`) przy czymkolwiek aktywnym to `epic: null`
     i `wait: true` z powodem: noc trwa, `next` niczego nie zapisuje. Bez aktywnego epiku ta sama odmowa kończy noc.
     Gdy wszystkie epiki listy ruszyły, a któryś jeszcze trwa, `next` czeka z powodem `wszystkie epiki listy ruszyły,
@@ -247,59 +293,97 @@ sprzed zmiany drugiego epiku. Dlatego:
   przedziału go nie oznacza, więc porzucony `start` nie psuje późniejszych szacunków. Linie bez `docker` są
   poprawne.
 
-### Pomiar pierwszych dwóch par
+### Metryki par
 
 Para to dwa epiki, których przedziały w `measurements.jsonl` się nakładają, a późniejszy `start` z tych dwóch ma pole
 `docker` (zapis 19a, także `null`); epik bez `done` ma przedział otwarty (do teraz, `open: true`). Nakładania sprzed
 19a nie są parami, a otwarty przedział, którego `start` nie ma pola `docker` (epik sprzed 19a bez zapisanego `done`),
-jest pomijany w całości.
+jest pomijany w całości. Metryki zbieramy dla każdej pary, nie tylko dla dwóch pierwszych.
 
-- **`pairs.py [--state DIR] [--setup-diag DIR]`** (osobny skrypt w `.claude/skills/ao-run/`, do usunięcia po decyzji
-  o 19b i `CLAUDE.md`; JSON, kod 0; brak par: pusta lista): `pairs` w kolejności startu, dla każdej: oba epiki
-  z czasem w minutach i `open`, część wspólna, rozpiętość (pierwszy `start` → ostatni `done`), suma czasów (wariant
-  szeregowy), oszczędność `1 − rozpiętość/suma` (`null` przy parze otwartej), przyrost każdego okna limitu
-  w rozpiętości (okno odnowione w trakcie: bez przyrostu), `docker` ze `start` drugiego epiku i liczba awarii stosu
-  w rozpiętości (pliki `ao-*-<RRRRMMDD-GGMMSS>-*.log` w `--setup-diag`, domyślnie `~/.local/state/ao-setup`); oraz
-  `claude_md_only`: epiki, które `gate.jsonl` pominął wyłącznie z powodu wspólnych plików `CLAUDE.md` (ID, pierwsze
-  i ostatnie pominięcie, liczba). Kod 2: nieczytelny plik stanu.
-- **Blok pary.** Gdy oba końcowe PR pary są `MERGED` albo `CLOSED`, sesja pokazuje w rozmowie i po zgodzie
-  użytkownika dopisuje do issue epiku zamkniętego później (komentarz z pomiarem z sekcji 7 skilla albo, przy `CLOSED`,
-  osobny komentarz z samym blokiem) blok `Para równoległa`: epiki, czas zegarowy pary i szeregowo, oszczędność;
-  konflikty (zadania REPAIR obu epików z `ao report`, sync spójności i inne PR `sync/<epik>-main`) i niespójności
-  dokumentów naprawione w nich („Spójność dokumentów” z opisów PR); interwencje obu epików; zasoby (`docker` przy
-  starcie drugiego, awarie stosu); koszt (USD z `ao report` obu epików i przyrost okien z `pairs.py`); werdykt
-  „Krytyczny problem: brak” albo lista.
+- **`pairs.py [--state DIR] [--setup-diag DIR]`** (skrypt w `.claude/skills/ao-run/`; JSON, kod 0; brak par: pusta
+  lista): `pairs` w kolejności startu, dla każdej: oba epiki z czasem w minutach i `open`, część wspólna, rozpiętość
+  (pierwszy `start` → ostatni `done`), suma czasów (wariant szeregowy), oszczędność `1 − rozpiętość/suma` (`null` przy
+  parze otwartej), przyrost każdego okna limitu w rozpiętości (okno odnowione w trakcie: bez przyrostu), `docker` ze
+  `start` drugiego epiku, liczba awarii stosu w rozpiętości (pliki `ao-*-<RRRRMMDD-GGMMSS>-*.log` w `--setup-diag`,
+  domyślnie `~/.local/state/ao-setup`) i `record`: ostatni zapis werdyktu tej pary z `pairs.jsonl` (kolejność epików
+  bez znaczenia) albo `null`. Dalej `claude_md_only`: epiki, które `gate.jsonl` pominął wyłącznie z powodu wspólnych
+  plików `CLAUDE.md` (ID, pierwsze i ostatnie pominięcie, liczba; z linii sprzed obecnej reguły plików);
+  `code_blocked`: epiki, które `gate.jsonl` pominął z powodu ścieżki blokującej według obecnej reguły (kod aplikacji;
+  te same pola), czyli koszt konserwatywnej reguły dla kodu; oraz `summary` (niżej). Kod 2: nieczytelny plik stanu.
+- **`pairs.py record <A> <B> [--state DIR]`** (`record` jako pierwszy argument; stdin: obiekt JSON werdyktu)
+  odmawia, gdy katalogi `A` i `B` nie są parą raportu (w dowolnej kolejności), i dopisuje do `<state>/pairs.jsonl` linię
+  `{at, epics: [A, B], …werdykt}` pod blokadą bramki i wypisuje ją (kod 0). Werdykt ma dokładnie pola:
+  - `shared`: pliki zmienione przez oba epiki (`git diff --name-only <merge>^1 <merge>` dla commitu merge'u końcowego
+    PR każdego epiku, część wspólna list) albo `null`, gdy któryś końcowy PR jest `CLOSED`;
+  - `conflicts`: scalenia z konfliktem tekstowym w epikach pary (zadania REPAIR i PR `sync/<epik>-main`, których
+    opis wymienia plik w konflikcie);
+  - `auto_resolved`: ile z nich REPAIR albo sync rozwiązał bez ręcznej poprawki i bez odpowiedzi człowieka
+    (najwyżej `conflicts`);
+  - `doc_fixes`: niespójności dokumentów naprawione automatycznie (pozycje „poprawione” w liniach „Spójność
+    dokumentów” opisów PR obu epików);
+  - `interventions`: interwencje obu epików (`ao report`);
+  - `regressions`: czerwone checki `checks` albo `e2e` na połączonym stanie (sekcja „Testy po scaleniu”): run CI na
+    merge commicie każdego PR REPAIR i `sync/<epik>-main` (pierwszy run po scaleniu, przed poprawkami), run na
+    commicie jego merge'u do gałęzi epiku i run na `main` na commicie merge'u końcowego PR;
+  - `critical`: numery krytycznych problemów (niżej), pusta lista przy braku.
+  Liczby to nieujemne całkowite. Brak lub nadmiar pola, zła wartość, `A` równe `B`, nieczytelny JSON albo zajęta
+  blokada: kod 2 bez zapisu. Ponowny zapis tej samej pary jest poprawką: liczy się ostatni.
+- **`summary`**: `admitted` (liczba par, czyli epików dopuszczonych obok innego), `recorded` (par z zapisem),
+  sumy `conflicts`, `auto_resolved`, `needed_intervention` (`conflicts − auto_resolved`), `doc_fixes`,
+  `interventions`, `regressions`, `critical_pairs` (par z niepustym `critical`) z zapisów par; oraz te same sumy
+  osobno dla par, których `shared` zawiera `CLAUDE.md` (`claude_md`), i dla par, których `shared` zawiera kod
+  aplikacji według reguły plików (`code`; kod spoza deklaracji, bo deklarowany wspólny kod blokuje start), każda
+  z polem `pairs`.
+- **Blok pary.** Gdy oba końcowe PR pary są `MERGED` albo `CLOSED`, sesja zbiera werdykt, pokazuje w rozmowie blok
+  `Para równoległa`: epiki, czas zegarowy pary i szeregowo, oszczędność; konflikty (wystąpiło, rozwiązane
+  automatycznie, wymagały człowieka) i niespójności dokumentów naprawione automatycznie; regresje; interwencje obu
+  epików; wspólne pliki (liczba, w tym `CLAUDE.md` i kod aplikacji); zasoby (`docker` przy starcie drugiego, awarie
+  stosu); koszt (USD z `ao report` obu epików i przyrost okien z `pairs.py`); werdykt „Krytyczny problem: brak” albo
+  lista. Zapis `pairs.py record` nie wymaga zgody (stan lokalny); po zgodzie użytkownika sesja dopisuje blok do issue
+  epiku zamkniętego później (komentarz z pomiarem z sekcji 7 skilla albo, przy `CLOSED`, osobny komentarz z samym
+  blokiem).
 - **Krytyczny problem** (definicja z planu, krok 19):
   1. CI workflowu `ci` na `main` czerwone dla commita merge'u końcowego PR któregoś epiku pary;
   2. konflikt między epikami pary, którego sync i REPAIR nie rozwiązały bez ręcznej poprawki (pozycja „Ręczne
      poprawki” z powodu konfliktu albo niespójności dokumentów wykrytej po merge'u);
   3. AO zatrzymało epik pary (`FAILED`, `epic_blocked`, `queue_held`, epik bez `DONE`) z powodu stosu, pamięci,
      portów albo limitu (`ao status --epic` w `~/.local/state/ao-<epik>`);
-  4. epik pary ma więcej napraw (zadania REPAIR z `ao report` i ręczne poprawki z komentarza pomiaru) albo interwencji
-     (`ao report`) na zadanie (liczba zadań ze `start`) niż każdy z trzech ostatnich epików szeregowych z komentarzem
-     pomiaru, liczonych tak samo.
-- Push „Krok 19b może ruszyć: dwie pary bez krytycznego problemu” sesja wysyła po werdykcie drugiej pary, gdy obie
-  pierwsze pary są zamknięte (żaden epik nie ma `open`) i żadna nie ma krytycznego problemu. Krytyczny problem: push
-  z problemem i `night_queue.py hold --reason "<para i problem>"`, więc epiki dalej ruszają równolegle dopiero po
-  decyzji użytkownika o zmianie bramki (w rozmowie albo w PR do tej specyfikacji); `unhold` sesja uruchamia tylko po
-  wyraźnej decyzji użytkownika w rozmowie.
+  4. epik pary ma więcej ręcznych poprawek (z komentarza pomiaru) albo interwencji (`ao report`) na zadanie (liczba
+     zadań ze `start`) niż każdy z trzech ostatnich epików szeregowych z komentarzem pomiaru, liczonych tak samo.
+     Zadania REPAIR i sync automatyczny się nie liczą: konflikt albo regresja naprawione automatycznie nie są
+     problemem.
+- Krytyczny problem to jedyny powód wstrzymania: push z problemem i `night_queue.py hold --reason "<para
+  i problem>"`, więc epiki dalej ruszają równolegle dopiero po decyzji użytkownika o zmianie bramki (w rozmowie albo
+  w PR do tej specyfikacji); `unhold` sesja uruchamia tylko po wyraźnej decyzji użytkownika w rozmowie. Konflikt,
+  niespójność albo regresja rozwiązane automatycznie trafiają tylko do metryk.
 
-### Ocena `CLAUDE.md`
+### Ocena reguły plików
 
-Po werdykcie drugiej pary sesja przedstawia użytkownikowi dane do decyzji, czy dopuścić wspólne `CLAUDE.md`
-w kroku 5: korzyść (`claude_md_only` z `pairs.py`: epiki, które czekały tylko przez `CLAUDE.md`) i ryzyko
-(niespójności dokumentów znalezione w sync i REPAIR obu par oraz ewentualne krytyczne problemy). Decyzja należy do
-użytkownika; zmiana reguły to PR do tej specyfikacji i `parallel_gate.py`.
+Po werdykcie każdej pary sesja pokazuje `summary` i `code_blocked` z `pairs.py`. Dane do decyzji użytkownika:
+
+- **`CLAUDE.md` i inne wspólne pliki poza kodem** (dopuszczone): czy równoległe zmiany powodują problemy. Wiersz
+  `claude_md` pokazuje, ile par zmieniało wspólny `CLAUDE.md` i ile z nich miało niespójności naprawione
+  automatycznie, konflikty wymagające człowieka, regresje albo krytyczny problem; `claude_md_only` pokazuje, ile
+  czekania kosztowała poprzednia reguła.
+- **Kod aplikacji** (blokowany): korzyść ze złagodzenia to `code_blocked` (epiki, które czekały przez wspólny kod),
+  ryzyko to wiersz `code` (pary, które zmieniły wspólny kod spoza deklaracji, i ich problemy).
+
+Decyzja należy do użytkownika; zmiana reguły to PR do tej specyfikacji i `parallel_gate.py`.
 
 ### Ograniczenia
 
 - Zakres to deklaracja. Epik, który zmieni plik spoza niej, może skonfliktować z drugim; naprawia to REPAIR albo
-  sync (sekcja „Spójność dokumentów”, warunek z faktycznych zmian).
-- CI końcowego PR drugiego epiku przeszło bez pierwszego. Reguła plików i sync spójności zmniejszają, ale nie
-  wykluczają konfliktu znaczeniowego w kodzie.
+  sync spójności w parze (sekcja „Spójność dokumentów”).
+- Reguła dla kodu aplikacji, sync spójności w parze i testy po scaleniu zmniejszają, ale nie wykluczają konfliktu
+  znaczeniowego: testy łapią tylko to, co sprawdzają. Konfliktu znaczeniowego w konfiguracji, infrastrukturze albo CI
+  bramka nie blokuje; łapią go testy syncu spójności w parze (lokalne i CI PR syncu), a gdy ich nie ma, CI na `main`
+  (krytyczny problem 1).
+- Epik zmergowany pierwszy w parze nie jest synchronizowany: jego CI przeszło bez zmian drugiego, które jeszcze nie
+  były na `main`. Drugi epik przechodzi sync spójności w parze, więc połączony stan sprawdza CI PR syncu.
 - Rezerwacja i blokada działają między sesjami na jednym komputerze. Epik uruchomiony poza `/ao-run` widać dopiero po
   wypchnięciu jego gałęzi `epic/*`.
-- Rezerwa pamięci jest stała (6 GiB na stos); pamięć szczytowa nie jest mierzona. REPAIR i sync epiku po `done` nie
+- Rezerwa pamięci jest stała (6 GiB na stos, `max-parallel` stosów na epik, także gdy epik nie ma zadań do
+  prowadzenia naraz); pamięć szczytowa nie jest mierzona. REPAIR i sync epiku po `done` nie
   mają rezerwy pamięci ani limitu: widać je tylko w bieżącym pomiarze `docker`.
 - AO wybiera blok portów tylko spośród stosów własnego `AO_HOME`; dwa procesy AO mogą rzadko trafić w ten sam blok
   przed startem stosu. `.ao/setup` sprawdza porty i kończy się błędem, który AO ponawia; powtarzające się awarie
@@ -308,39 +392,128 @@ użytkownika; zmiana reguły to PR do tej specyfikacji i `parallel_gate.py`.
 
 ## 19b: zadania fali naraz (kontrakt AO)
 
-Implementacja to osobna praca w repozytorium AO (piotrp321/agentic-orchestrator#50). Kontrakt:
+AO prowadzi naraz zadania jednej fali, które plan dopuścił do pracy równoległej. Implementacja w AO to osobna praca
+w repozytorium AO (piotrp321/agentic-orchestrator#50); w `shop` są pola manifestu, reguła ich dopuszczenia, start AO
+z `/ao-run` i rezerwa pamięci bramki 19a.
 
-- `ao run --max-parallel N` (domyślnie 1, bez zmiany dzisiejszego zachowania). Przy N > 1 AO uruchamia naraz do N
-  prób zadań jednej fali z zielonymi zależnościami i rozłącznym `scope` w manifeście, każdą we własnym worktree
-  i stosie (własny `AO_PORT_BASE`; blok portów sprawdzany względem stosów wszystkich prób tego procesu).
+- **Manifest planu** (`/planner`, `plan_manifest.py`) ma dwa opcjonalne pola zadania:
+  - `paths`: niepusta lista ścieżek względem katalogu głównego repo, które zadanie zmieni: plik albo katalog
+    zakończony `/` (bez ścieżek absolutnych, segmentów `.` i `..`, znaków globa `*?[]{}`, `~` na początku
+    i powtórzeń; pierwszy segment istnieje w katalogu głównym repo, z tą samą wielkością liter, bez `.git`). Plik,
+    który zadanie na pewno zmieni (np. `spec.md` epiku, `CLAUDE.md`), `/planner` wpisuje jako plik; katalog tylko dla
+    plików nieznanych z góry, a przy niepewności szerszy katalog.
+  - `parallel_with`: ID zadań, z którymi zadanie może trwać naraz. `/planner` wpisuje tu wynik `plan_manifest.py
+    parallel --blocked`: wszystkie pary dopuszczone przez regułę niżej. Wynik z `--blocked` to
+    `{"parallel_with": {ID: [ID]}, "blocked": [...]}`; `blocked` (`{"tasks": [A, B], "paths": [...]}`)
+    wymienia pary zadań jednej fali, które obie mają `paths`, a nie mogą iść naraz, bo reguła poniżej zwraca niepustą
+    część wspólną (`paths`); kolejność: fala, potem plan; brak par to `[]`.
+    Bez `--blocked` wynik to sama mapa `{ID: [ID]}`. `/planner` preferuje w jednej fali rozłączne pliki
+    (`.claude/skills/planner/SKILL.md`).
+  Zadanie bez `parallel_with` (także cały manifest bez tych pól, np. sprzed 19b) idzie szeregowo; `schema_version`
+  zostaje 1.
+- **Reguła pary** (`plan_manifest.py validate` odrzuca manifest, który ją łamie): relacja jest symetryczna (każde
+  zadanie pary wymienia drugie), oba zadania mają `paths`, żadne nie zależy od drugiego bezpośrednio ani przez
+  `depends_on` innych zadań, a część wspólna ich `paths` (jak w „Pojęciach” 19a) nie zawiera kodu wykonywanego
+  (`parallel_gate.is_executable_code`), `CLAUDE.md` ani pliku. Kod wykonywany to kod aplikacji (`is_app_code`, jak
+  w kroku 5 bramki) oraz ścieżki w katalogach `tools`, `.claude/skills`, `.ao`, `.github/scripts` i `infra/scripts`
+  (po segmentach, bez rozróżniania wielkości liter) i ścieżki, które taki katalog zawierają (`.claude`, `.github`,
+  `infra`; tak jak `apps` zawiera kod aplikacji); pliki generowane i rejestracji, `CLAUDE.md` i `README.md`
+  kodem nie są.
+  Bramka 19a (`is_app_code`, `is_allowed`) nie zmienia się. Ścieżka części wspólnej jest katalogiem
+  tylko wtedy, gdy obie strony deklarują ją i każdą ścieżkę, która ją zawiera, jako katalog. Wyjątki kroku 5 zostają
+  dla katalogów: dwa nakładające się katalogi poza kodem wykonywanym (workflowy CI, testy, konfiguracja,
+  `infra/k8s`, dokumentacja, `.claude/agents`) nie blokują, chyba że wspólny katalog zawiera `CLAUDE.md` śledzony
+  w repo (`git ls-files`, np.
+  `infra/k8s/` albo `e2e/`); wtedy ten plik blokuje parę. Gdy git nie poda listy śledzonych `CLAUDE.md`, `validate`
+  odrzuca każdą parę z `parallel_with`, a `parallel` kończy się kodem 2. Brak danych albo niepewność oznacza pracę
+  szeregową. Regułę ma jedno miejsce: `parallel_gate.task_conflicts`.
+- `ao run --max-parallel N` (domyślnie 1, bez zmiany zachowania). Przy N > 1 AO uruchamia drugą próbę tylko dla
+  zadania typu `plan`, którego zależności są zielone, gdy kandydat i każde trwające zadanie mają się nawzajem na
+  listach `parallel_with`. AO sprawdza w `parallel_with` tylko typ i znane ID; reguły plików nie powtarza. Każda próba
+  ma własny worktree i stos (własny `AO_PORT_BASE`; blok portów sprawdzany względem stosów wszystkich prób tego
+  procesu).
 - Merge'e do `epic/<epik>` po kolei; PR zadania w konflikcie z gałęzią epiku po merge'u innego rozwiązuje istniejąca
   ścieżka `/delivery` („Konflikt z gałęzią docelową lub z `main`”). Integracja (`/integration`) po wszystkich
-  zadaniach, jak dziś.
-- Przed każdą kolejną próbą AO sprawdza tylko, czy wolna pamięć Dockera mieści jeden stos (rezerwa jak w kroku 6
-  bramki), i cooldown limitu, jak dziś dla jednej próby. Rezerwacje innych epików zna tylko bramka 19a.
+  zadaniach, jak dla zadań szeregowych.
+- AO nie sprawdza pamięci Dockera przed kolejną próbą. Pamięć na `max-parallel` stosów rezerwuje bramka 19a: krok 6
+  liczy tyle stosów na każdy epik aktywny i wymaga tylu wolnych dla kandydata. Cooldown limitu AO stosuje jak dla
+  jednej próby.
 - Awaria jednej próby (`FAILED`, `BLOCKED`, awaria stosu) nie zatrzymuje drugiej.
-- Po wydaniu AO z tą opcją `/ao-run` przekazuje `--max-parallel 2` (osobny, mały PR w `shop`), a bramka 19a rezerwuje
-  `max-parallel` stosów na każdy epik aktywny i wymaga tylu wolnych dla kandydata.
-- Pomiar pierwszych dwóch epików z `--max-parallel 2`: czas zegarowy epiku wobec sumy czasów prób (`ao report`)
-  i wobec epików szeregowych o podobnej liczbie zadań; konflikty zadań, interwencje, awarie stosu i koszt jak w bloku
-  pary.
+- `/ao-run` przekazuje `--max-parallel 2` w każdym starcie AO (sekcja 4 skilla); wymaga to AO z tą opcją w `AO_DIR`.
+  Wartość równa się `MAX_PARALLEL` w `parallel_gate.py`, co sprawdza test.
+- Pomiar każdego epiku po merge'u: `task_pairs.py` (niżej, „Pomiar zadań naraz”), blok „Zadania naraz (19b)”
+  w komentarzu pomiaru (`/ao-run`, sekcja 7).
 
-Warunek startu: dwie pierwsze pary epików 19a zamknięte i bez krytycznego problemu (sekcja „Pomiar pierwszych dwóch
-par”). Wtedy 19b rusza bez kolejnej akceptacji użytkownika.
+### Pomiar zadań naraz
+
+`python3 .claude/skills/ao-run/task_pairs.py <epik> [--ao-home DIR] [--repo DIR] [--setup-diag DIR]` tylko raportuje:
+niczego nie blokuje ani nie zapisuje. Bazę AO (`*.db` w `--ao-home`, domyślnie `~/.local/state/ao-<epik>`, pierwsza
+z wierszem epiku w `epics`) otwiera tylko do odczytu (`sqlite3` z URI `mode=ro`). `git` i `gh` uruchamia w `--repo`
+z limitem czasu 60 s. Wynik to jeden wiersz JSON, kod 0; brak bazy, baza nieczytelna albo bez epiku → kod 2. Błąd
+`git`/`gh` przy odczycie PR daje `null` w tej pozycji, nie błąd. Plan nieczytelny przy `plan_sha` (błąd `git show`,
+np. commit spoza `--repo`, albo brak bloku manifestu) też daje kod 0: `audit.declarations` to `{"value": null,
+"note": "<powód>"}` (przy czytelnym planie `{"value": "<plan_sha>", "note": null}`), każde `declared`, `undeclared`
+i `declared_conflicts` to `null`, a pozostałe metryki są liczone.
+
+- `audit.tasks`, dla każdego zadania typu `plan` z PR: `declared` to `paths` zadania z manifestu przy `plan_sha` epiku
+  w bazie AO (`git show <plan_sha>:<plan_path>`, deklaracja obowiązująca w trakcie wykonania, nie bieżący plan),
+  inaczej `null` z `declared_note`: zadanie bez `paths`, zadania nie ma w manifeście przy `plan_sha` albo plan
+  nieczytelny; `changed` to rzeczywisty diff PR: `git diff --name-only <merged_sha>^1 <merged_sha>`, gdy commit
+  jest w historii (pierwszy rodzic to gałąź epiku przed merge'em, przy squashu i merge commicie), inaczej
+  `gh pr view <nr> --json files`, a gdy oba zawiodą `null`; `source` to `squash` (1 rodzic), `merge_commit`
+  (2 i więcej), `gh` albo `null`; `undeclared` to pliki `changed` poza każdą ścieżką `declared` (po segmentach, bez
+  wielkości liter), `null` przy braku jednej ze stron. Przy zmianie nazwy pliku oba źródła podają tylko nową ścieżkę,
+  a lista z `gh pr view --json files` może być obcięta przy bardzo dużym PR.
+- `audit.pairs`: zadania, które w bazie AO mają się nawzajem w `parallel_with`: `declared_conflicts` to
+  `parallel_gate.task_conflicts` na deklaracjach (ze śledzonymi `CLAUDE.md` przy `plan_sha`, `git ls-tree`),
+  `actual_conflicts` to ta sama funkcja na `changed` obu stron (każdy plik jako plik); `null` bez danych.
+- `concurrency`, z prób zadań typu `plan` (próba bez `ended_at`, `open: true`, trwa do teraz, a w epiku już
+  zakończonym do końca epiku): `attempts_sum_s` (suma czasów prób), `busy_s` (czas z co najmniej jedną próbą),
+  `concurrent_s` (zmierzony czas z co najmniej dwiema próbami naraz: rzeczywista współbieżność), `pairs` (pary zadań
+  z nakładającymi się próbami i `overlap_s`; przy trzech próbach naraz suma `overlap_s` par przekracza
+  `concurrent_s`), `theoretical_saving` = `(attempts_sum_s - busy_s) / attempts_sum_s` (dokładne przy każdej liczbie
+  prób naraz): teoretyczna oszczędność przy założeniu, że szeregowo próby trwałyby tyle samo, nie przyspieszenie;
+  `epic_wall_s` od `created_at` epiku do ostatniego `epic_done`, a bez niego do `updated_at` epiku `DONE` albo
+  `BLOCKED` lub do teraz (`epic_open: true`); `attempts_to_wall` = `attempts_sum_s / epic_wall_s` to wskaźnik
+  obciążenia (średnia liczba prób naraz w całym czasie epiku, także bez prób), nie przyspieszenie.
+- `conflicts`: zdarzenia `fix_requested` z `reason: conflict` zadań epiku, na zadanie i razem; `fix_rounds`: wszystkie
+  `fix_requested` według `reason`.
+- `repairs`: liczba zadań `repair` i `fix` (QA) i ich prób.
+- `interventions`: `human` jak `ao report` (w zadaniach `answer_recorded`, `status_changed` z `reason: resumed`,
+  `hold_released` przez operatora, oraz `epic_resumed` epiku); `operational`: `config_changed` w oknie epiku
+  i `state_file_edited` jego zadań.
+- `waits`: `queue` dla zadań z niepustym `parallel_with`: od wejścia w `PENDING` (`status_changed`) do następnego
+  `attempt_started` (`first` z `WAITING_DEPS`, `retry` w innych przypadkach; zadania jeszcze w kolejce w `waiting`),
+  bez zgadywania przyczyny; `cooldowns` i `host_pauses`: liczba i suma sumy mnogościowej przedziałów (`cooldown_set`
+  skrócony przez `cooldown_released`, jak w AO) w oknie epiku, bo AO zapisuje zdarzenie na próbę (`host_pause`) albo
+  na zadanie (`cooldown_set`), więc równoległe próby zapisują tę samą przerwę kilka razy, a nakładające się
+  przedziały liczą się raz; `usage_warnings`: liczba zdarzeń (na próbę, nie różnych ostrzeżeń); `resources`: zawsze
+  `null` z notatką „AO nie zapisuje czekania na zasoby” (AO nie sprawdza Dockera); `setup_failures`: logi awarii
+  stosu tego domu AO (`ao-<home>-…-RRRRMMDD-GGMMSS-….log`, `<home>` jak `lifecycle.home_id` bazy) w `--setup-diag`
+  w oknie epiku; starsze logi bez przedrostka `ao-<home>-` nie są liczone; bez katalogu 0.
+- Brak danych to `null`, nie 0. `run_started`, `config_changed`, `state_file_edited`, `cooldown_set`, `host_pause`
+  i `usage_warning` AO zapisuje od tego samego wydania. Gdy w bazie nie ma `run_started` najpóźniej przy pierwszej
+  próbie epiku (bez prób: przy jego końcu), interwencje operacyjne, `cooldowns`, `host_pauses` i `usage_warnings` są
+  `null`; z takim zdarzeniem brak zdarzeń danego typu oznacza 0.
 
 ## Pliki
 
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada, zapis atomowy, rezerwacje z tokenem,
-  pomiar pamięci Dockera i klasyfikacja plików (dopuszczalne, blokujące); bez zależności od `night_queue.py`.
+  pomiar pamięci Dockera i kod aplikacji blokuje (19a i 19b), kod narzędzi tylko w 19b (`is_executable_code`); bez
+  zależności od `night_queue.py`.
 - `.claude/skills/ao-run/night_queue.py` i `test_night_queue.py`: komendy `gate`, `release`, `hold` i `unhold`
   (algorytm bramki na tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`,
   szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
-- `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: pomiar par, usuwany po decyzjach z sekcji „Pomiar…”
-  i „Ocena `CLAUDE.md`”.
+- `.claude/skills/ao-run/pairs.py` i `test_pairs.py`: metryki par i zapis werdyktu (`record`).
+- `.claude/skills/ao-run/task_pairs.py` i `test_task_pairs.py`: audyt `paths` i pomiar zadań naraz jednego epiku
+  (19b), z bazy AO tylko do odczytu.
 - `.claude/skills/ao-run/next_epic.py`: bez zmiany zachowania; wspólny odczyt tablicy zostaje w nim.
-- `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4, 5, 6, 6a, 7, 7a, 8, „Noc” i „Czego nie robisz”.
-- `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów i pliki generowane bez konfliktu w sekcji
-  „Konflikt z gałęzią docelową lub z `main`”.
+- `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4 (także `--max-parallel 2`), 5, 6, 6a, 7, 7a, 8, „Noc”
+  i „Czego nie robisz”.
+- `.claude/skills/planner/plan_manifest.py`, `test_plan_manifest.py` i `SKILL.md`: pola `paths` i `parallel_with`,
+  reguła pary (z `parallel_gate.task_conflicts`) i komenda `parallel` (z `--blocked`: także pary zablokowane).
+- `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów, pliki generowane bez konfliktu, kontrola migracji
+  i testy stanu zintegrowanego w sekcji „Konflikt z gałęzią docelową lub z `main`”.
 - Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: wskazują
   tę specyfikację), plan Agentic Software House (status kroku 19, rola „Praca równoległa”, punkt 3 procesu).
 
@@ -351,9 +524,10 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
 
 - `gate`: brak epików w toku (start szeregowy), dwa epiki aktywne, epik po `done` nie zajmuje miejsca, epik w toku
   bez pomiaru liczony jako aktywny, epik ze zmergowanym końcowym PR i otwartym issue (`merged_open`, nie w toku),
-  zależność, brak `Zakres:` u kandydata i u epiku w toku, część wspólna tylko z plików generowanych i dokumentacji
-  (przechodzi), wspólny `CLAUDE.md`, `.github/workflows/ci.yml`, `make/*.mk`, `Makefile`, `infra/k8s/README.md`
-  i ścieżka kodu (pominięty), `paths` z dwóch epików w toku, plik spoza zakresu w diffie epiku w toku, niższy kandydat
+  zależność, brak `Zakres:` u kandydata i u epiku w toku, część wspólna z CI, `CLAUDE.md`, `Makefile`, `make/*.mk`,
+  runbooka, testów, konfiguracji, infrastruktury, dokumentacji, plików generowanych i rejestracji (przechodzi),
+  wspólny kod aplikacji, także przez deklarację szerszą (`apps`, `apps/<aplikacja>`) i katalog z plikiem rejestracji
+  (pominięty), próby obejścia (ścieżka podobna do kodu po prefiksie znaków, plik generowany jako prefiks), `paths` z dwóch epików w toku, plik spoza zakresu w diffie epiku w toku, niższy kandydat
   przed wyższym, `--dir` (epik spoza tablicy, nieprzygotowany, w toku → `resumed`); pamięć: wystarczająca, za mała,
   rezerwa epiku bez stosu, błąd `docker`, nieczytelne wyjście `docker`; limit: brak pomiaru, stan inny niż `ok`, pełny
   szacunek epiku aktywnego przekracza 80%, okno odnawiane przed końcem, szacunek zużycia bez pomiarów nakładających się;
@@ -386,5 +560,46 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
 - `pairs.py`: brak par, para, trzy epiki w łańcuchu, para otwarta, okno odnowione, awarie stosu w rozpiętości i poza
   nią, brak katalogu diagnostyki, linie sprzed 19a (nakładanie bez `docker` nie jest parą, zamknięty epik sprzed 19a
   z późniejszym `start` 19a jest, otwarty `start` sprzed 19a jest pomijany), `claude_md_only` z `gate.jsonl` (tylko
-  `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką nie), brak `gate.jsonl`, nieczytelny plik → kod 2.
+  `CLAUDE.md` tak, `CLAUDE.md` z inną ścieżką nie), `code_blocked` (ścieżka kodu tak, sama ścieżka dopuszczona nie),
+  `record` przy parze (także w odwrotnej kolejności epików, ostatni zapis wygrywa), `summary` z wierszami `claude_md`
+  i `code`, brak `gate.jsonl` i `pairs.jsonl`, nieczytelny plik → kod 2. `record`: poprawny zapis, brak i nadmiar pola,
+  para spoza raportu, `record` nie jako pierwszy argument, liczba ujemna, ułamkowa albo logiczna, `auto_resolved` większe od `conflicts`, zły numer w `critical`, `shared` nie
+  będące listą ścieżek ani `null`, `A` równe `B`, nieczytelny JSON, zajęta blokada → kod 2 bez zapisu.
+- `task_pairs.py` (baza SQLite w katalogu tymczasowym, podstawiony `git`/`gh`): zadanie zgodne z deklaracją, plik
+  spoza `paths`, porównanie po segmentach bez wielkości liter, zadanie bez `paths`, squash i merge commit z tym samym
+  diffem `^1`, brak commitu w historii i brak `merged_sha` (`gh`), oba źródła zawodzą (`null`), deklaracja z `plan_sha`,
+  nie z HEAD, tylko zadania `plan` z PR, para `parallel_with` z `actual_conflicts` mimo pustych `declared_conflicts`,
+  śledzony `CLAUDE.md` przy `plan_sha` w `declared_conflicts`, `null` w parze bez danych, nieczytelny plan
+  i manifest bez bloku (kod 0, `declarations` z powodem, metryki liczone),
+  zadanie spoza manifestu odróżnione od zadania bez `paths`;
+  współbieżność: nakładanie 30 min (`concurrent_s` 1800), trzy próby z jedną parą, próby rozłączne, trzy próby
+  naraz (oszczędność z `busy_s`), próba otwarta (także w epiku zakończonym: do końca epiku),
+  tylko próby `plan`, brak prób, czas epiku z `epic_done`, do teraz i do `updated_at`; konflikty i rundy z
+  `fix_requested`, naprawy, interwencje (także `null` operacyjnych bez `run_started`); `queue`, `resources` zawsze
+  `null` z notatką, `null` przy braku `run_started` przed pierwszą próbą, 0 przy zapisującym AO, przedziały cooldown
+  i przerw w oknie epiku (te same przerwy z równoległych prób liczone raz), awarie stosu tego domu w oknie i brak
+  katalogu; brak bazy, nieczytelna baza, epik spoza bazy (kod 2), baza bez zmian i bez zapisu, limit czasu komend.
 - Testy skryptów `/delivery` w `.github/scripts/script-tests.sh` (jeśli sprawdzają treść sekcji) dalej przechodzą.
+- Rezerwa `max-parallel`: wolna pamięć na jeden stos, ale nie na dwa → czekanie; na dwa → przejście; rezerwa
+  epiku aktywnego bez stosu i zmierzona pamięć AO powyżej rezerwy; `MAX_PARALLEL` równe 2 i każde polecenie startu
+  AO w `SKILL.md` `/ao-run` z `--max-parallel` o tej wartości; `task_conflicts` (kod aplikacji, także przez szerszy
+  katalog, kod narzędzi: `tools/` z `tools/` i z `tools/metrics/`, `.claude/` z `.claude/skills/x/`, `.ao/`,
+  `.github/scripts/`, `infra/` z `infra/scripts/` odrzucone, a `.claude/skills/ao-run/` z `.claude/skills/retro/`,
+  `.github/workflows/`, `.claude/agents/`, `docs/` i `infra/k8s/` dozwolone, `toolsx/` z `tools/` dozwolone,
+  `Tools/metrics/` z `tools/metrics/` odrzucone, `tools/README.md` nie jest kodem wykonywanym, `is_app_code` i
+  `is_allowed` bez zmian dla `tools/`; `CLAUDE.md`, ten sam plik, plik w katalogu drugiej strony, pliki generowane
+  i rejestracji, nakładające się katalogi poza kodem dozwolone, wspólny katalog ze śledzonym `CLAUDE.md`
+  w obu kierunkach odrzucony, bez niego dozwolony).
+- Obecny plan METRICS (`docs/features/metrics/plan.md`) przechodzi `validate` z nową regułą pary.
+- `python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'`: manifest bez nowych pól poprawny; zły
+  typ `paths` i `parallel_with`, ścieżka absolutna, `..`, `.`, pusty segment, znak sterujący, znak globa, `~` na
+  początku, pierwszy segment spoza katalogu głównego (także inna wielkość liter i `.git`), powtórzenie; nieznane ID,
+  samo siebie, powtórzenie w `parallel_with`; brak symetrii; para bez `paths` po jednej stronie; para z zależnością
+  bezpośrednią i przechodnią; wspólny kod aplikacji, ten sam plik dokumentacji, wspólny `CLAUDE.md`, wspólny katalog
+  ze śledzonym `CLAUDE.md` (odrzucone), nakładające się katalogi dokumentacji, testów, CI i infrastruktury, także
+  z nieśledzonym `CLAUDE.md` (dozwolone); błąd `git ls-files` (każda para odrzucona, `parallel` z kodem 2, manifest
+  bez par poprawny); `parallel --blocked`: wspólny plik jednej fali i wspólny kod aplikacji w `blocked`, para
+  dozwolona poza `blocked` i w `parallel_with`, zadania z różnych fal i zadanie bez `paths` poza `blocked`, kolejność
+  fala-plan, `[]` bez par, wynik z flagą w osobnych kluczach `parallel_with` i `blocked`, wynik bez flagi jako sama
+  mapa; `parallel`: lista maksymalna i symetryczna, zadanie bez `paths` z `[]`, wynik wpisany do planu przechodzi
+  `validate`, obecne `parallel_with` bez wpływu, odmowa przy innym błędzie manifestu, brak pliku i zły JSON (kod 2).

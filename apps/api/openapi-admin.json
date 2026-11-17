@@ -12,7 +12,7 @@
                     "Staff"
                 ],
                 "summary": "Dashboard",
-                "description": "Catalogue numbers for every staff member. The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.",
+                "description": "Catalogue numbers and the queues of work for every staff member: each queue only for the roles that handle it (`queues` fields are null for the others), counted up to 1000. The number of products is an estimate of the database (null before its first statistics). The sales of today, the last 7 and the last 30 days of completed hours only for administrators (`sales` is null for other roles). The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.",
                 "operationId": "getDashboard",
                 "responses": {
                     "200": {
@@ -106,11 +106,25 @@
                     "Catalog"
                 ],
                 "summary": "Category tree",
-                "description": "The whole category tree, for every staff member. Siblings at every level are sorted by name (Polish collation).",
+                "description": "The whole category tree, for every staff member. Siblings at every level are in the order of the store: the order set by the staff, then by name (Polish collation).",
                 "operationId": "getBackofficeCategoryTree",
+                "parameters": [
+                    {
+                        "name": "withCounts",
+                        "in": "query",
+                        "description": "With `true` every node has the number of its direct products (`productCount`, up to 1000); without it `productCount` is null and nothing is counted.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "true"
+                            ]
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array.",
+                        "description": "Root categories with their descendants. Every node has its `slug` (unique among its siblings), `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`) and `version`. An empty catalogue gives an empty array.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -122,8 +136,481 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "`withCounts` has another value than `true` (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
                     "401": {
                         "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Create a category",
+                "description": "Creates a category at the end of the children of its parent (of the roots for `parentId` null). Administrators and marketing only. The tree has at most 4 levels. An address that redirected to another category becomes the address of the new one.",
+                "operationId": "createCategory",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateCategoryRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The created category.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCategoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A sibling has the slug (`category-slug-taken`) or the parent is on the fourth level (`category-too-deep`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/categories/{id}": {
+            "put": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Change the name and the slug of a category",
+                "description": "Based on the `version` seen. Administrators and marketing only. A new slug changes the address of the category and of its descendants in the store; their old addresses redirect to the current ones (`GET /api/v1/categories/redirect`).",
+                "operationId": "reviseCategory",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Category id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReviseCategoryRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The category as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCategoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such category, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The category changed since the given version (`category-modified`) or a sibling has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Delete an empty category",
+                "description": "Deletes a category without subcategories and without products (main or additional, drafts too), based on the `version` seen. Administrators and marketing only. Its old addresses stop redirecting.",
+                "operationId": "deleteCategory",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Category id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "version",
+                        "in": "query",
+                        "description": "The `version` of the category the deletion is based on.",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted."
+                    },
+                    "400": {
+                        "description": "The version is missing or not a positive integer (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such category, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The category changed since the given version (`category-modified`) or has subcategories or products (`category-not-empty`, with `subcategoryCount` and `productCount`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/categories/{id}/move": {
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Move a category or change its place among its siblings",
+                "description": "Moves the category with its subcategories under a parent (null: among the roots) at a position among the children of that parent, based on the `version` seen; the current parent changes only the order. Administrators and marketing only. The children of the parent are numbered in their current order first, so the others keep their relative order. A new parent changes the addresses of the subtree; the old ones redirect to the current ones.",
+                "operationId": "moveCategory",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Category id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MoveCategoryRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The category as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCategoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change the category tree (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such category, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The category changed since the given version (`category-modified`), the parent is the category or one of its descendants (`category-cycle`), the subtree would end below the fourth level (`category-too-deep`) or a child of the parent has the slug (`category-slug-taken`); see `CategoryConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CategoryConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type, or the parent does not exist (problem details with `violations`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -156,7 +643,7 @@
                     "Catalog"
                 ],
                 "summary": "Product list",
-                "description": "A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "description": "A page of products, drafts included, sorted by name (by default) or by `sort`, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
                 "operationId": "listBackofficeProducts",
                 "parameters": [
                     {
@@ -194,9 +681,37 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "name",
+                            "enum": [
+                                "name",
+                                "-name",
+                                "-updatedAt",
+                                "updatedAt"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "images",
+                        "in": "query",
+                        "description": "`none`: only the products without images; combines with `q`, `category` and `status`.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "none"
+                            ]
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
-                        "description": "The `next` cursor of the previous page.",
+                        "description": "The `next` cursor of the previous page of the same sort.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -982,7 +1497,7 @@
                     "Inventory"
                 ],
                 "summary": "Stock list",
-                "description": "A page of products sorted by name, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "description": "A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive. With `level` the page is of the products at that stock level and the first page has the `total` of them.",
                 "operationId": "listStock",
                 "parameters": [
                     {
@@ -1007,9 +1522,48 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "name",
+                            "enum": [
+                                "name",
+                                "-name",
+                                "-updatedAt",
+                                "updatedAt"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "level",
+                        "in": "query",
+                        "description": "Only the products with at least one variant at the level: `out_of_stock` (nothing available) or `low_stock` (1 to 5 available), in ascending order of the product ids, each with all its variants; the variants at the level have `matchesLevel`. Not with `q`, `category` or `sort` (a 400).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "out_of_stock",
+                                "low_stock"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "productId",
+                        "in": "query",
+                        "description": "Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `level`, `sort` or `after` (a 400).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
-                        "description": "The `next` cursor of the previous page.",
+                        "description": "The `next` cursor of the previous page of the same sort (of the same level with `level`).",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -1474,6 +2028,205 @@
                 ]
             }
         },
+        "/api/v1/admin/customers/{customerId}": {
+            "get": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Customer card",
+                "description": "The contact of the newest order of the customer, the summary of its orders (all, the paid ones and their gross value without the refunds taken off, the first and the last one) and up to 10 distinct shipping addresses of its last 50 orders, the one used last first. Its orders are the order list with `customerId`. Administrators and support only.",
+                "operationId": "getCustomer",
+                "parameters": [
+                    {
+                        "name": "customerId",
+                        "in": "path",
+                        "description": "The id of the account of the store (`sub` of its token), as in `customerId` of the list.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 255,
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The customer.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCustomerResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see customers (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No customer with this id: no account with an order (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/customers": {
+            "get": {
+                "tags": [
+                    "Customers"
+                ],
+                "summary": "Customer list",
+                "description": "A page of the customers: the accounts of the store with at least one order (guests are no customers), the newest last order first (then by id) or in the order of `sort`. The search `q` is a fragment of 3 to 100 characters of the email or the name (any letter case, `%` and `_` mean themselves), only with the sort by the last order. Page with the opaque `nextCursor` as `after`, with the same `q` and `sort` (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching customers, counted up to 10 000. Administrators and support only.",
+                "operationId": "listCustomers",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "A fragment of the email or the name, 3 to 100 characters once trimmed, without control characters. Only with `sort=-lastOrderAt`.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 3
+                        }
+                    },
+                    {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order: `-lastOrderAt` (the newest last order first, the default), `name` (A to Z, any letter case), `-orderCount` (the most orders first) or `-paidGross` (the highest paid value first); the customer id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "-lastOrderAt",
+                            "enum": [
+                                "-lastOrderAt",
+                                "name",
+                                "-orderCount",
+                                "-paidGross"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `nextCursor` of the previous page of the same sort.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeCustomerListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor, also a cursor of another sort or the search with another sort (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see customers (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/orders/{orderId}": {
             "get": {
                 "tags": [
@@ -1560,7 +2313,7 @@
                     "Ordering"
                 ],
                 "summary": "Order list",
-                "description": "A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.",
+                "description": "A page of orders, newest first (then by id) or in the order of `sort` (by the moment of placement or by the amount, then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `refund=overdue` only those past their due date (a subset of the pending ones in the same order, so the cursor of one leads the other); both take no `sort` and no range of days. The status filter, the search and the range of days combine with it (the search with `refund=pending` too); sorting by the amount takes no search and no range of days. The search `q` is an exact order number (`R-100001`, any letter case), or a complete email address (a domain with a dot), exactly and in any letter case, otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` mean themselves; `jan@gm` is a fragment); anything else is a 400 at `q`. `placedFrom` and `placedTo` are days of Europe/Warsaw (`YYYY-MM-DD`, both included), `placedFrom` after `placedTo` is a 400. Page with the opaque `nextCursor` as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching orders, counted up to 10 000. With `customerId` only the orders of that customer, newest first, with the status filter only (its history on the card of the customer). Administrators, support and the warehouse only.",
                 "operationId": "listOrders",
                 "parameters": [
                     {
@@ -1575,30 +2328,80 @@
                     {
                         "name": "refund",
                         "in": "query",
-                        "description": "`pending`: only the orders with a refund to do, nearest due date first.",
+                        "description": "`pending`: only the orders with a refund to do, nearest due date first; `overdue`: only those past their due date (a subset of `pending`, with the same order and cursor). Neither takes `sort`, `placedFrom` or `placedTo`.",
                         "required": false,
                         "schema": {
                             "type": "string",
                             "enum": [
-                                "pending"
+                                "pending",
+                                "overdue"
                             ]
                         }
                     },
                     {
                         "name": "q",
                         "in": "query",
-                        "description": "An order number or an email, exact, any letter case; 1 to 254 characters once trimmed.",
+                        "description": "An order number or a complete email address (exact, any letter case; the email up to 254 characters), otherwise a fragment of 3 to 100 characters of the number, the email or the name (any letter case, `%` and `_` literal); without control characters, trimmed. Not with `sort` by the amount.",
                         "required": false,
                         "schema": {
                             "type": "string",
                             "maxLength": 254,
+                            "minLength": 3
+                        }
+                    },
+                    {
+                        "name": "placedFrom",
+                        "in": "query",
+                        "description": "The first day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included. Not with `refund=pending` or `sort` by the amount.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date",
+                            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                        }
+                    },
+                    {
+                        "name": "placedTo",
+                        "in": "query",
+                        "description": "The last day of the range of the placement, `YYYY-MM-DD` in Europe/Warsaw, included; not before `placedFrom`. Not with `refund=pending` or `sort` by the amount.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date",
+                            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                        }
+                    },
+                    {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order: `-placedAt` (newest first, the default), `placedAt`, `-total` (the highest amount first) or `total`; the id breaks the ties. Not with `refund=pending`; the amount not with `q` or the range of days.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "-placedAt",
+                            "enum": [
+                                "-placedAt",
+                                "placedAt",
+                                "-total",
+                                "total"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "customerId",
+                        "in": "query",
+                        "description": "Only the orders of this customer (the `customerId` of the customer list and of an order), newest first; with `status` only, not with `q`, `sort`, `placedFrom`, `placedTo` or `refund` (a 400 at each).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 255,
                             "minLength": 1
                         }
                     },
                     {
                         "name": "after",
                         "in": "query",
-                        "description": "The `nextCursor` of the previous page.",
+                        "description": "The `nextCursor` of the previous page of the same sort.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -1944,7 +2747,7 @@
                     "Pricing"
                 ],
                 "summary": "Price list",
-                "description": "A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "description": "A page of products sorted by name (by default) or by `sort`, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`, with the same filters and sort (a cursor of another sort is a 400); the first page (without `after`) also has the `total` of the matching products, counted up to 10 000. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
                 "operationId": "listPrices",
                 "parameters": [
                     {
@@ -1969,9 +2772,35 @@
                         }
                     },
                     {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "The order of the products: `name` (A to Z, the default), `-name`, `-updatedAt` (changed last first) or `updatedAt` (changed first first); the id breaks the ties.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "name",
+                            "enum": [
+                                "name",
+                                "-name",
+                                "-updatedAt",
+                                "updatedAt"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "productId",
+                        "in": "query",
+                        "description": "Only this product (a draft too) with all its variants, as the first and only page (`next` is null, `total` is 1); an unknown product gives an empty list. Not with `q`, `category`, `sort` or `after` (a 400).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
                         "name": "after",
                         "in": "query",
-                        "description": "The `next` cursor of the previous page.",
+                        "description": "The `next` cursor of the previous page of the same sort.",
                         "required": false,
                         "schema": {
                             "type": "string",
@@ -2187,7 +3016,7 @@
                     "Pricing"
                 ],
                 "summary": "Discount code list",
-                "description": "A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the total is not counted.",
+                "description": "A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the first page (without `after`) also has the `total` of the matching codes, counted up to 10 000.",
                 "operationId": "listDiscountCodes",
                 "parameters": [
                     {
@@ -2995,7 +3824,7 @@
                     "Pricing"
                 ],
                 "summary": "Promotion list",
-                "description": "A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the total is not counted.",
+                "description": "A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the first page (without `after`) also has the `total` of the matching promotions, counted up to 10 000.",
                 "operationId": "listPromotions",
                 "parameters": [
                     {
@@ -3193,6 +4022,79 @@
     },
     "components": {
         "schemas": {
+            "BoundedCountResponse": {
+                "description": "How many rows a list matches. With `capped` the list has more than `value` rows (`value` is the limit of the count: 10 000 for the lists, 1000 for the dashboard), otherwise `value` is exact.",
+                "required": [
+                    "value",
+                    "capped"
+                ],
+                "properties": {
+                    "value": {
+                        "type": "integer",
+                        "example": 1234,
+                        "minimum": 0
+                    },
+                    "capped": {
+                        "description": "True when there are more matching rows than `value`.",
+                        "type": "boolean",
+                        "example": false
+                    }
+                },
+                "type": "object"
+            },
+            "CategoryNode": {
+                "description": "A category with its descendants, siblings in the order of the store.",
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "path",
+                    "version",
+                    "productCount",
+                    "children"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Namioty"
+                    },
+                    "slug": {
+                        "description": "Unique among the siblings.",
+                        "type": "string",
+                        "example": "namioty"
+                    },
+                    "path": {
+                        "description": "The slugs from the root to the node joined with `/`.",
+                        "type": "string",
+                        "example": "turystyka/biwak/namioty"
+                    },
+                    "version": {
+                        "description": "Send it with a change of the category.",
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "productCount": {
+                        "description": "The products directly in the category (main or additional, drafts too), up to 1000; null unless asked for with `withCounts=true`.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "children": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryNode"
+                        }
+                    }
+                },
+                "type": "object"
+            },
             "Problem": {
                 "description": "Problem details (RFC 9457), `application/problem+json`.",
                 "required": [
@@ -3245,7 +4147,8 @@
                 "description": "A page of the order list.",
                 "required": [
                     "items",
-                    "nextCursor"
+                    "nextCursor",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -3259,6 +4162,15 @@
                         "type": "string",
                         "example": "eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many orders match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -3391,6 +4303,7 @@
                     "number",
                     "status",
                     "version",
+                    "customerId",
                     "email",
                     "fullName",
                     "phone",
@@ -3416,6 +4329,12 @@
                     "orderId": {
                         "type": "string",
                         "format": "uuid"
+                    },
+                    "customerId": {
+                        "description": "The id of the account of the store that placed the order (`sub` of its token), the key of the customer card and of `customerId` of the order list; null for a guest.",
+                        "type": "string",
+                        "example": "5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b",
+                        "nullable": true
                     },
                     "number": {
                         "type": "string",
@@ -3918,6 +4837,58 @@
                 },
                 "type": "object"
             },
+            "CategoryConflictProblem": {
+                "description": "A 409 of the category endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the category changed since the `version` sent, a sibling has the slug, the tree would have more than 4 levels, the new parent is the category or one of its descendants, or the category has subcategories or products (counted in `subcategoryCount` and `productCount`). Nothing is changed.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/category-modified",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-slug-taken",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-too-deep",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-cycle",
+                            "tag:piotrp321.github.io,2026:shop/problems/category-not-empty"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the staff member.",
+                        "type": "string"
+                    },
+                    "subcategoryCount": {
+                        "description": "Only with `category-not-empty`. The direct subcategories.",
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "productCount": {
+                        "description": "Only with `category-not-empty`. The products directly in the category (main or additional, drafts too), up to 1000.",
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
             "ProductConflictProblem": {
                 "description": "A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations.",
                 "required": [
@@ -3951,6 +4922,97 @@
                     "detail": {
                         "description": "Polish text for the staff member.",
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "CreateCategoryRequest": {
+                "description": "A new category, placed at the end of its siblings.",
+                "required": [
+                    "name",
+                    "slug",
+                    "parentId"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed of whitespace, without control characters.",
+                        "type": "string",
+                        "example": "Namioty",
+                        "maxLength": 100
+                    },
+                    "slug": {
+                        "description": "The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.",
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                        "example": "namioty",
+                        "maxLength": 60
+                    },
+                    "parentId": {
+                        "description": "The parent category; null for a root.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "MoveCategoryRequest": {
+                "description": "Where the category (with its subcategories) goes: under a parent (null: among the roots), at a position among its children.",
+                "required": [
+                    "parentId",
+                    "position",
+                    "version"
+                ],
+                "properties": {
+                    "parentId": {
+                        "description": "The new parent, the current one for a new order; null for a root.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "position": {
+                        "description": "The place among the children of the parent, without the category itself: 0 is the first; a position past the last child is the end.",
+                        "type": "integer",
+                        "example": 0,
+                        "minimum": 0
+                    },
+                    "version": {
+                        "description": "The `version` of the category the move is based on.",
+                        "type": "integer",
+                        "example": 1,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    }
+                },
+                "type": "object"
+            },
+            "ReviseCategoryRequest": {
+                "description": "The name and the slug of a category. A new slug changes the address of the category and its descendants; the old addresses redirect to the new ones.",
+                "required": [
+                    "name",
+                    "slug",
+                    "version"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed of whitespace, without control characters.",
+                        "type": "string",
+                        "example": "Namioty",
+                        "maxLength": 100
+                    },
+                    "slug": {
+                        "description": "The address segment: lower case a-z and digits in words joined by single dashes, 1 to 60 characters, unique among the siblings.",
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+                        "example": "namioty",
+                        "maxLength": 60
+                    },
+                    "version": {
+                        "description": "The `version` of the category the change is based on.",
+                        "type": "integer",
+                        "example": 1,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
                     }
                 },
                 "type": "object"
@@ -4258,6 +5320,17 @@
                             "published"
                         ]
                     },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "name",
+                            "-name",
+                            "-updatedAt",
+                            "updatedAt"
+                        ]
+                    },
                     "after": {
                         "type": "string",
                         "nullable": true,
@@ -4270,6 +5343,14 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    },
+                    "images": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "none"
+                        ]
                     }
                 },
                 "type": "object"
@@ -4306,6 +5387,17 @@
                         "nullable": true,
                         "default": null
                     },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "name",
+                            "-name",
+                            "-updatedAt",
+                            "updatedAt"
+                        ]
+                    },
                     "after": {
                         "type": "string",
                         "nullable": true,
@@ -4318,6 +5410,20 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    },
+                    "level": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "out_of_stock",
+                            "low_stock"
+                        ]
+                    },
+                    "productId": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
                     }
                 },
                 "type": "object"
@@ -4409,6 +5515,43 @@
                 },
                 "type": "object"
             },
+            "BackofficeCustomerListQuery": {
+                "properties": {
+                    "q": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 100,
+                        "minLength": 3
+                    },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "-lastOrderAt",
+                            "name",
+                            "-orderCount",
+                            "-paidGross"
+                        ]
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "nullable": true,
+                        "default": null,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
             "BackofficeOrderListQuery": {
                 "properties": {
                     "status": {
@@ -4429,16 +5572,27 @@
                         "nullable": true,
                         "default": null,
                         "enum": [
-                            "pending"
+                            "pending",
+                            "overdue"
                         ]
                     },
                     "q": {
                         "type": "string",
-                        "pattern": "((?!\\0).)*",
                         "nullable": true,
                         "default": null,
                         "maxLength": 254,
-                        "minLength": 1
+                        "minLength": 3
+                    },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "-placedAt",
+                            "placedAt",
+                            "-total",
+                            "total"
+                        ]
                     },
                     "after": {
                         "type": "string",
@@ -4452,6 +5606,25 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    },
+                    "placedFrom": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "placedTo": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "customerId": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 255,
+                        "minLength": 1
                     }
                 },
                 "type": "object"
@@ -4531,6 +5704,17 @@
                         "nullable": true,
                         "default": null
                     },
+                    "sort": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "name",
+                            "-name",
+                            "-updatedAt",
+                            "updatedAt"
+                        ]
+                    },
                     "after": {
                         "type": "string",
                         "nullable": true,
@@ -4543,6 +5727,11 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    },
+                    "productId": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
                     }
                 },
                 "type": "object"
@@ -4756,26 +5945,196 @@
                 },
                 "type": "object"
             },
+            "DashboardProductCountResponse": {
+                "description": "The number of products as the statistics of the database estimate it; the products are never counted for the dashboard.",
+                "required": [
+                    "value",
+                    "estimated"
+                ],
+                "properties": {
+                    "value": {
+                        "type": "integer",
+                        "example": 10000000,
+                        "minimum": 0
+                    },
+                    "estimated": {
+                        "description": "Always true: the number is an estimate.",
+                        "type": "boolean",
+                        "example": true,
+                        "default": true
+                    }
+                },
+                "type": "object"
+            },
             "DashboardCatalogResponse": {
                 "description": "Catalogue numbers, from the database.",
                 "required": [
                     "productCount",
-                    "categoryCount",
-                    "productsWithoutImages"
+                    "categoryCount"
                 ],
                 "properties": {
                     "productCount": {
-                        "type": "integer",
-                        "example": 412
+                        "description": "The estimated number of products. Null while the database has no statistics of the products yet (they are refreshed after a mass change and by the autovacuum).",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/DashboardProductCountResponse"
+                            }
+                        ]
                     },
                     "categoryCount": {
                         "type": "integer",
                         "example": 36
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardQueuesResponse": {
+                "description": "The work waiting for the staff member. Every queue is counted up to 1000 (`capped`: more than that) by the module that owns it, and is null when the staff member has no access to the queue: the roles are listed with each field.",
+                "required": [
+                    "paidToShip",
+                    "awaitingPayment",
+                    "pendingRefunds",
+                    "overdueRefunds",
+                    "outOfStockVariants",
+                    "lowStockVariants",
+                    "productsWithoutImages"
+                ],
+                "properties": {
+                    "paidToShip": {
+                        "description": "Paid orders waiting for shipping (`/orders?status=paid`). Administrators, support, warehouse.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "awaitingPayment": {
+                        "description": "Orders not paid yet (`/orders?status=new`). Administrators and support.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "pendingRefunds": {
+                        "description": "Refunds to do (`/orders?refund=pending`). Administrators and support.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "overdueRefunds": {
+                        "description": "Refunds past their due date (`/orders?refund=overdue`). Administrators and support.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "outOfStockVariants": {
+                        "description": "Variants with nothing available (`/inventory?level=out_of_stock`). Administrators and warehouse.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    },
+                    "lowStockVariants": {
+                        "description": "Variants with 1 to 5 available (`/inventory?level=low_stock`). Administrators and warehouse.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     },
                     "productsWithoutImages": {
-                        "description": "Products with no image.",
+                        "description": "Products with no image (`/products?images=none`). Administrators and marketing.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardSalesPeriodResponse": {
+                "description": "The sales of one period. Amounts in grosze. Every field is null for a period without a completed hour (today between 0:00 and 1:00).",
+                "required": [
+                    "revenue",
+                    "orderCount",
+                    "averageOrderValue",
+                    "changeBasisPoints"
+                ],
+                "properties": {
+                    "revenue": {
+                        "description": "The gross revenue in grosze.",
                         "type": "integer",
-                        "example": 8
+                        "example": 1234500,
+                        "nullable": true,
+                        "minimum": 0
+                    },
+                    "orderCount": {
+                        "description": "The number of orders paid in the period.",
+                        "type": "integer",
+                        "example": 42,
+                        "nullable": true,
+                        "minimum": 0
+                    },
+                    "averageOrderValue": {
+                        "description": "Revenue per order in grosze, rounded half up; null without orders.",
+                        "type": "integer",
+                        "example": 29393,
+                        "nullable": true,
+                        "minimum": 0
+                    },
+                    "changeBasisPoints": {
+                        "description": "The change of the revenue against the period before in basis points (1250 is +12.5%), rounded half away from zero; null when the period before had no revenue.",
+                        "type": "integer",
+                        "example": 1250,
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardSalesResponse": {
+                "description": "The sales of completed hours, summed from an hourly pre-aggregation by Ordering: revenue is the gross total (after discounts) of the orders paid in the period by the moment of their payment; a later cancellation or refund does not lower it. `today` runs from midnight of the Polish clock to `dataUntil` and is compared with yesterday from midnight to the same hour of the clock (on the days the clock changes the two may differ by an hour of real time); between 0:00 and 1:00 every field of `today` is null. `last7Days` and `last30Days` are the last 168 and 720 hours, compared with as many hours before them.",
+                "required": [
+                    "dataUntil",
+                    "currency",
+                    "today",
+                    "last7Days",
+                    "last30Days"
+                ],
+                "properties": {
+                    "dataUntil": {
+                        "description": "The end of every period: the start of the current hour (UTC). The current hour is not counted.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-15T13:00:00+00:00"
+                    },
+                    "currency": {
+                        "description": "The currency of the amounts.",
+                        "type": "string",
+                        "example": "PLN"
+                    },
+                    "today": {
+                        "$ref": "#/components/schemas/DashboardSalesPeriodResponse"
+                    },
+                    "last7Days": {
+                        "$ref": "#/components/schemas/DashboardSalesPeriodResponse"
+                    },
+                    "last30Days": {
+                        "$ref": "#/components/schemas/DashboardSalesPeriodResponse"
                     }
                 },
                 "type": "object"
@@ -4863,14 +6222,16 @@
                         "nullable": true
                     },
                     "catalogProducts": {
-                        "description": "Products in the database.",
+                        "description": "The estimated number of products in the database. Null while the database has no statistics of the products yet.",
                         "type": "integer",
-                        "example": 412
+                        "example": 412,
+                        "nullable": true
                     },
                     "inSync": {
-                        "description": "Whether both numbers are equal. False when the index cannot be counted.",
+                        "description": "Whether the index is within 1% of the estimated number of products. False when the index cannot be counted, null without an estimate to compare with.",
                         "type": "boolean",
-                        "example": true
+                        "example": true,
+                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -4912,11 +6273,25 @@
                 "description": "What the admin dashboard shows.",
                 "required": [
                     "catalog",
+                    "queues",
+                    "sales",
                     "system"
                 ],
                 "properties": {
                     "catalog": {
                         "$ref": "#/components/schemas/DashboardCatalogResponse"
+                    },
+                    "queues": {
+                        "$ref": "#/components/schemas/DashboardQueuesResponse"
+                    },
+                    "sales": {
+                        "description": "Null unless the staff member is an administrator.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/DashboardSalesResponse"
+                            }
+                        ]
                     },
                     "system": {
                         "description": "Null unless the staff member is an administrator.",
@@ -4966,32 +6341,44 @@
                 },
                 "type": "object"
             },
-            "CategoryNode": {
+            "BackofficeCategoryResponse": {
+                "description": "A category as the change saved it.",
                 "required": [
                     "id",
                     "name",
                     "slug",
                     "path",
-                    "children"
+                    "parentId",
+                    "version"
                 ],
                 "properties": {
                     "id": {
-                        "type": "string"
+                        "type": "string",
+                        "format": "uuid"
                     },
                     "name": {
-                        "type": "string"
+                        "type": "string",
+                        "example": "Namioty"
                     },
                     "slug": {
-                        "type": "string"
+                        "type": "string",
+                        "example": "namioty"
                     },
                     "path": {
-                        "type": "string"
+                        "description": "The address in the store: the slugs from the root joined with `/`.",
+                        "type": "string",
+                        "example": "turystyka/biwak/namioty"
                     },
-                    "children": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/CategoryNode"
-                        }
+                    "parentId": {
+                        "description": "Null for a root.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "version": {
+                        "description": "Send it with the next change of the category.",
+                        "type": "integer",
+                        "example": 2
                     }
                 },
                 "type": "object"
@@ -5132,7 +6519,8 @@
                 "description": "A page of the product list of the panel.",
                 "required": [
                     "items",
-                    "next"
+                    "next",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -5146,6 +6534,15 @@
                         "type": "string",
                         "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -5437,7 +6834,8 @@
                 "required": [
                     "variantId",
                     "label",
-                    "stock"
+                    "stock",
+                    "matchesLevel"
                 ],
                 "properties": {
                     "variantId": {
@@ -5457,6 +6855,10 @@
                                 "$ref": "#/components/schemas/ListedStockResponse"
                             }
                         ]
+                    },
+                    "matchesLevel": {
+                        "description": "The stock of the variant is at the level the list is filtered by (`level`); false when the list is not filtered by one.",
+                        "type": "boolean"
                     }
                 },
                 "type": "object"
@@ -5491,7 +6893,8 @@
                 "description": "A page of the stock list.",
                 "required": [
                     "items",
-                    "next"
+                    "next",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -5505,6 +6908,15 @@
                         "type": "string",
                         "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -5684,6 +7096,217 @@
                 },
                 "type": "object"
             },
+            "BackofficeCustomerContactResponse": {
+                "description": "The contact of the newest order of the customer.",
+                "required": [
+                    "email",
+                    "fullName",
+                    "phone"
+                ],
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "phone": {
+                        "description": "+48 and 9 digits.",
+                        "type": "string",
+                        "example": "+48600100200"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerSummaryResponse": {
+                "description": "The orders of the customer: all, the paid ones and their gross value (refunds not taken off), the first and the last one. Amounts in grosze, moments RFC 3339 in UTC.",
+                "required": [
+                    "orderCount",
+                    "paidCount",
+                    "paidGross",
+                    "currency",
+                    "firstOrderAt",
+                    "lastOrderAt"
+                ],
+                "properties": {
+                    "orderCount": {
+                        "type": "integer",
+                        "example": 3,
+                        "minimum": 1
+                    },
+                    "paidCount": {
+                        "type": "integer",
+                        "example": 2,
+                        "minimum": 0
+                    },
+                    "paidGross": {
+                        "type": "integer",
+                        "example": 24600,
+                        "minimum": 0
+                    },
+                    "currency": {
+                        "type": "string",
+                        "example": "PLN"
+                    },
+                    "firstOrderAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-10-01T10:00:00+00:00"
+                    },
+                    "lastOrderAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerAddressResponse": {
+                "description": "A shipping address of the orders of the customer.",
+                "required": [
+                    "street",
+                    "postalCode",
+                    "city",
+                    "country"
+                ],
+                "properties": {
+                    "street": {
+                        "type": "string",
+                        "example": "D\u0142uga 1"
+                    },
+                    "postalCode": {
+                        "type": "string",
+                        "example": "00-950"
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Warszawa"
+                    },
+                    "country": {
+                        "description": "ISO 3166-1 alpha-2.",
+                        "type": "string",
+                        "example": "PL"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerResponse": {
+                "description": "The card of a customer.",
+                "required": [
+                    "customerId",
+                    "contact",
+                    "summary",
+                    "addresses"
+                ],
+                "properties": {
+                    "customerId": {
+                        "description": "The id of the account of the store (`sub` of its token).",
+                        "type": "string",
+                        "example": "5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
+                    },
+                    "contact": {
+                        "$ref": "#/components/schemas/BackofficeCustomerContactResponse"
+                    },
+                    "summary": {
+                        "$ref": "#/components/schemas/BackofficeCustomerSummaryResponse"
+                    },
+                    "addresses": {
+                        "description": "Up to 10 distinct shipping addresses of the last 50 orders, the one used last first.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeCustomerAddressResponse"
+                        },
+                        "maxItems": 10
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerListItemResponse": {
+                "description": "A customer in the list: an account of the store with at least one order. Amounts in grosze.",
+                "required": [
+                    "customerId",
+                    "email",
+                    "fullName",
+                    "orderCount",
+                    "paidGross",
+                    "currency",
+                    "lastOrderAt"
+                ],
+                "properties": {
+                    "customerId": {
+                        "description": "The id of the account of the store (`sub` of its token).",
+                        "type": "string",
+                        "example": "5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
+                    },
+                    "email": {
+                        "description": "The email of the newest order.",
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "description": "The name of the newest order.",
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "orderCount": {
+                        "description": "All orders of the customer.",
+                        "type": "integer",
+                        "example": 3,
+                        "minimum": 1
+                    },
+                    "paidGross": {
+                        "description": "The gross total of the paid orders, refunds not taken off.",
+                        "type": "integer",
+                        "example": 24600,
+                        "minimum": 0
+                    },
+                    "currency": {
+                        "type": "string",
+                        "example": "PLN"
+                    },
+                    "lastOrderAt": {
+                        "description": "The moment of the newest order, RFC 3339 in UTC.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeCustomerListResponse": {
+                "description": "A page of the customer list.",
+                "required": [
+                    "items",
+                    "nextCursor",
+                    "total"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeCustomerListItemResponse"
+                        }
+                    },
+                    "nextCursor": {
+                        "description": "Opaque cursor of the next page (send it as `after` with the same `q` and `sort`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJzIjoibmFtZSIsInYiOiJhbm5hIG5vd2FrIiwiaSI6ImtjLTEifQ",
+                        "nullable": true
+                    },
+                    "total": {
+                        "description": "How many customers match the search, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
             "ListedPriceResponse": {
                 "description": "The stored price of a product variant. Amounts are in grosze, the rate in basis points; all computed by the API.",
                 "required": [
@@ -5811,7 +7434,8 @@
                 "description": "A page of the price list.",
                 "required": [
                     "items",
-                    "next"
+                    "next",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -5825,6 +7449,15 @@
                         "type": "string",
                         "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many products match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -5923,7 +7556,8 @@
                 "description": "A page of the discount codes, newest first.",
                 "required": [
                     "items",
-                    "next"
+                    "next",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -5936,6 +7570,15 @@
                         "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
                         "type": "string",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many codes match the filters, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -6355,7 +7998,8 @@
                 "description": "A page of the promotions, newest start first.",
                 "required": [
                     "items",
-                    "next"
+                    "next",
+                    "total"
                 ],
                 "properties": {
                     "items": {
@@ -6368,6 +8012,15 @@
                         "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
                         "type": "string",
                         "nullable": true
+                    },
+                    "total": {
+                        "description": "How many promotions match the filter, up to 10 000; on the first page (no `after`) only, null on the next ones.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BoundedCountResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"
@@ -6394,6 +8047,10 @@
         {
             "name": "Inventory",
             "description": "Inventory"
+        },
+        {
+            "name": "Customers",
+            "description": "Customers"
         },
         {
             "name": "Ordering",

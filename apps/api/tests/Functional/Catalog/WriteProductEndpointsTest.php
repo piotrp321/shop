@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Catalog;
 
 use App\Catalog\Application\Event\ProductChanged;
-use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Image\FlysystemProductImageStorage;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Support\InMemory\InMemoryProductImageStorage;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -110,6 +111,17 @@ final class WriteProductEndpointsTest extends WebTestCase
         $this->assertKeysMatchSchema($view, 'ProductEditViewResponse');
         self::assertSame('9d5ad4f4-2b61-4a35-8c2b-6d2b9a1d9e11', $this->connection->fetchOne('SELECT updated_by FROM catalog_product WHERE id = ?', [$view['id']]));
         self::assertSame($view, $this->api('GET', self::PRODUCTS.'/'.self::string($view['id'])));
+    }
+
+    public function testAnotherNotationOfTheProductIdViewsTheSameProduct(): void
+    {
+        $view = $this->createProduct();
+        $id = self::string($view['id']);
+
+        foreach (InputValues::equivalentUuidForms($id) as [$notation]) {
+            self::assertSame($view, $this->api('GET', self::PRODUCTS.'/'.$notation));
+            self::assertResponseStatusCodeSame(200);
+        }
     }
 
     public function testNewVariantsGetIdsAndAnEmptySlugIsDerivedFromTheName(): void
@@ -272,6 +284,28 @@ final class WriteProductEndpointsTest extends WebTestCase
         new \App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository($this->entityManager)->save($other);
         $this->api('POST', self::PRODUCTS, $this->body(['additionalCategoryIds' => [$other->id()->toString(), self::UNKNOWN_ID]]));
         self::assertSame([['propertyPath' => 'additionalCategoryIds[1]', 'title' => 'Kategoria nie istnieje.']], $this->violations());
+    }
+
+    public function testACategoryIdOutsideTheVersionsIsAViolationAtItsFieldOnly(): void
+    {
+        foreach (InputValues::uuidsOutsideTheVersions() as [$uuid]) {
+            $this->api('POST', self::PRODUCTS, $this->body(['mainCategoryId' => $uuid]));
+
+            self::assertSame(['mainCategoryId'], array_values(array_unique(array_column($this->violations(), 'propertyPath'))));
+            self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM catalog_product'));
+        }
+    }
+
+    public function testAnotherNotationOfTheMainCategoryIdIsTheSameCategory(): void
+    {
+        $category = $this->category->id()->toString();
+
+        foreach (InputValues::equivalentUuidForms($category) as [$notation]) {
+            $view = $this->api('POST', self::PRODUCTS, $this->body(['mainCategoryId' => $notation]));
+
+            self::assertResponseStatusCodeSame(201);
+            self::assertSame($category, $this->connection->fetchOne('SELECT primary_category_id FROM catalog_product WHERE id = ?', [$view['id']]));
+        }
     }
 
     public function testAnImageWithoutAnOriginalIsAViolationAtItsKey(): void
@@ -544,6 +578,12 @@ final class WriteProductEndpointsTest extends WebTestCase
         $this->api('POST', self::PRODUCTS.'/'.self::UNKNOWN_ID.'/'.$action, ['version' => 1]);
 
         $this->assertProblem(404);
+
+        foreach (InputValues::uuidsOutsideTheVersions() as [$uuid]) {
+            $this->api('POST', self::PRODUCTS.'/'.$uuid.'/'.$action, ['version' => 1]);
+
+            $this->assertProblem(404);
+        }
     }
 
     /**

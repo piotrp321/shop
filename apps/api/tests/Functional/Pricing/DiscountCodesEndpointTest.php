@@ -11,6 +11,7 @@ use App\Pricing\Domain\DiscountCode\OrderId;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeRepository;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeUsageRepository;
 use App\Tests\Factory\DiscountCodeFactory;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -212,6 +213,28 @@ final class DiscountCodesEndpointTest extends WebTestCase
         self::assertNull($second['next']);
     }
 
+    public function testTheFirstPageHoldsTheTotalOfTheMatchingCodesAndLaterPagesNone(): void
+    {
+        $this->storedCode(['code' => 'ZIMA20', 'enabled' => false]);
+        $this->storedCode(['code' => 'WIOSNA', 'startsAt' => '+1 day']);
+        $this->storedCode(['code' => 'WITAJ10']);
+        $this->storedCode(['code' => 'WITAJ20']);
+        $this->storedCode(['code' => 'LATO15', 'startsAt' => '-60 days', 'endsAt' => '-30 days']);
+
+        $first = $this->send('GET', '/api/v1/admin/discount-codes?perPage=2');
+        self::assertIsString($first['next']);
+        $second = $this->send('GET', '/api/v1/admin/discount-codes?perPage=2&after='.$first['next']);
+
+        self::assertSame(['value' => 5, 'capped' => false], $first['total']);
+        self::assertNull($second['total']);
+        self::assertSame(['value' => 2, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?status=active')['total']);
+        self::assertSame(['value' => 3, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode(' wi '))['total']);
+        self::assertSame(['value' => 1, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?status=planned&q=Wi')['total']);
+        self::assertSame(['value' => 0, 'capped' => false], $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode('wi%'))['total']);
+        $this->assertKeysMatchSchema($first, 'DiscountCodeListResponse');
+        $this->assertKeysMatchSchema($first['total'], 'BoundedCountResponse');
+    }
+
     public function testTheListFiltersByStatusAndByTheBeginningOfTheCode(): void
     {
         $disabled = $this->storedCode(['code' => 'ZIMA20', 'enabled' => false]);
@@ -237,7 +260,7 @@ final class DiscountCodesEndpointTest extends WebTestCase
 
         $none = $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode('wi%'));
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['items' => [], 'next' => null], $none);
+        self::assertSame(['items' => [], 'next' => null, 'total' => ['value' => 0, 'capped' => false]], $none);
     }
 
     public function testAPrefixOf32CharactersFollowedByANoBreakSpaceFiltersLikeOneOf32(): void
@@ -307,6 +330,21 @@ final class DiscountCodesEndpointTest extends WebTestCase
     {
         yield 'an unknown id' => ['/api/v1/admin/discount-codes/'.self::UNKNOWN];
         yield 'an id that is no UUID' => ['/api/v1/admin/discount-codes/code-1'];
+        foreach (InputValues::uuidsOutsideTheVersions() as $name => [$uuid]) {
+            yield $name => ['/api/v1/admin/discount-codes/'.$uuid];
+        }
+    }
+
+    public function testAnotherNotationOfTheCodeIdReadsTheSameCode(): void
+    {
+        $id = $this->storedCode();
+        $canonical = $this->send('GET', '/api/v1/admin/discount-codes/'.$id);
+        self::assertResponseStatusCodeSame(200);
+
+        foreach (InputValues::equivalentUuidForms($id) as [$notation]) {
+            self::assertSame($canonical, $this->send('GET', '/api/v1/admin/discount-codes/'.$notation));
+            self::assertResponseStatusCodeSame(200);
+        }
     }
 
     #[DataProvider('unknownCodes')]

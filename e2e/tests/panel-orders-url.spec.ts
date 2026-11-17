@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { openMenuItem, panelMenu } from "../support/panel-menu";
-import { openOrderList, openPanelAs } from "../support/panel-orders";
+import { ensurePaidOrder, openOrderList, openPanelAs } from "../support/panel-orders";
 import { urls } from "../support/urls";
 
 /** The query of the next request of the panel for the list of orders. */
@@ -46,7 +46,7 @@ test("the order list takes its filters from the address and the menu item „Zwr
     expect(params.has("status")).toBe(false);
     expect(params.has("refund")).toBe(false);
     await expect(refundSwitch(page)).not.toBeChecked();
-    await expect(page.getByTestId("status-filter")).toContainText("Wszystkie statusy");
+    await expect(page.getByTestId("status-filter")).toContainText("Wszystkie");
 
     // The menu switches the list that is open, without a reload of the page.
     await page.goto(`${urls.admin}/`);
@@ -70,20 +70,22 @@ test("the order list takes its filters from the address and the menu item „Zwr
     await expect(current(page)).toHaveText("Lista zamówień");
     expect(await page.evaluate(() => (window as unknown as { openPage?: boolean }).openPage), "the page was not reloaded").toBe(true);
 
-    // A filter set in the list is not in the address, yet the menu item of the current address applies it again.
+    // A filter set in the list is written to the address, replacing the entry of the history (no new entry).
     await openMenuItem(page, "Zwroty do wykonania", "Zamówienia");
     await expect(refundSwitch(page)).toBeChecked();
+    const entries = await page.evaluate(() => history.length);
     query = nextOrderListQuery(page);
     await page.locator("label[for=refund-pending]").click();
     expect((await query).has("refund")).toBe(false);
     await expect(refundSwitch(page)).not.toBeChecked();
-    await expect(page).toHaveURL(/\/orders\?refund=pending$/);
+    await expect(page).toHaveURL(/\/orders$/);
     query = nextOrderListQuery(page);
-    await openMenuItem(page, "Zwroty do wykonania", "Zamówienia");
+    await page.locator("label[for=refund-pending]").click();
     expect((await query).get("refund")).toBe("pending");
-    await expect(refundSwitch(page)).toBeChecked();
-    await expect(current(page)).toHaveText("Zwroty do wykonania");
+    await expect(page).toHaveURL(/\/orders\?refund=pending$/);
+    expect(await page.evaluate(() => history.length), "a change of the filter adds no entry to the history").toBe(entries);
 
+    // The menu item of the current address keeps the list as it is; the other item switches it.
     await openMenuItem(page, "Lista zamówień", "Zamówienia");
     await expect(page).toHaveURL(/\/orders$/);
     await expect(refundSwitch(page)).not.toBeChecked();
@@ -97,6 +99,47 @@ test("the order list takes its filters from the address and the menu item „Zwr
     await expect(refundSwitch(page)).not.toBeChecked();
     await expect(current(page)).toHaveText("Lista zamówień");
     expect(await page.evaluate(() => (window as unknown as { openPage?: boolean }).openPage), "the page was not reloaded").toBe(true);
+  } finally {
+    await panel.close();
+  }
+});
+
+test("the order list takes the status, the page size and the search from the address, and writes its changes back without a new entry of the history", async ({ browser }) => {
+  // A stack without a paid order gets one from Jan (the shard of this file may have none).
+  test.setTimeout(120_000);
+  const panel = await openPanelAs(browser, staff.admin);
+  try {
+    const { page } = panel;
+    await ensurePaidOrder(browser, page);
+
+    const query = nextOrderListQuery(page);
+    await page.goto(`${urls.admin}/orders?status=paid&perPage=10`);
+    const params = await query;
+    expect(params.get("status")).toBe("paid");
+    expect(params.get("perPage")).toBe("10");
+    await expect(page.getByTestId("status-filter")).toContainText("Opłacone");
+    await expect(page.getByTestId("per-page")).toContainText("10");
+    await expect(page.getByTestId("order-row").first()).toBeVisible();
+    expect(await page.getByTestId("order-row").count()).toBeLessThanOrEqual(10);
+
+    const entries = await page.evaluate(() => history.length);
+    const next = nextOrderListQuery(page);
+    await page.getByTestId("status-filter").click();
+    await page.getByRole("option", { name: "Wysłane", exact: true }).click();
+    expect((await next).get("status")).toBe("shipped");
+    await expect(page).toHaveURL(/\/orders\?status=shipped&perPage=10$/);
+    expect(await page.evaluate(() => history.length), "a change of the filter adds no entry to the history").toBe(entries);
+
+    await page.getByTestId("clear-filters").click();
+    await expect(page).toHaveURL(/\/orders$/);
+    await expect(page.getByTestId("status-filter")).toContainText("Wszystkie");
+
+    // The link „Inne zamówienia klienta” of a detail is a search of the list.
+    const search = nextOrderListQuery(page);
+    await page.goto(`${urls.admin}/orders?q=${encodeURIComponent("nikt@example.com")}`);
+    expect((await search).get("q")).toBe("nikt@example.com");
+    await expect(page.getByRole("searchbox", { name: "Szukaj po numerze zamówienia lub e-mailu" })).toHaveValue("nikt@example.com");
+    await expect(page.getByTestId("empty")).toContainText("Brak wyników dla wybranych filtrów.");
   } finally {
     await panel.close();
   }

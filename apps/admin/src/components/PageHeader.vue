@@ -14,7 +14,8 @@ export interface Crumb {
  * The header of a screen: the H1 on the left and the crumbs on the right. The crumbs start with „Pulpit” (added here)
  * and `crumbs` ends with the current page (a form or a detail ends with the name of the object), shown without a link
  * and with `aria-current="page"`. `focus()` moves the focus to the H1, for the end of an action that removed its button; `heading` is the element,
- * for the `fallback-focus` of a dialog.
+ * for the `fallback-focus` of a dialog. The slot `status` is
+ * shown right after the H1 (the status label of the object a detail screen is about).
  */
 defineProps<{ title: string; crumbs: Crumb[] }>();
 
@@ -35,13 +36,16 @@ defineExpose({ heading, focus: () => heading.value?.focus() });
 
 <template>
   <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-    <h1
-      ref="heading"
-      tabindex="-1"
-      class="text-xl font-bold text-heading focus:outline-none"
-    >
-      {{ title }}
-    </h1>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <h1
+        ref="heading"
+        tabindex="-1"
+        class="text-xl font-bold text-heading focus:outline-none"
+      >
+        {{ title }}
+      </h1>
+      <slot name="status" />
+    </div>
     <Breadcrumb aria-label="Okruszki">
       <BreadcrumbList>
         <BreadcrumbItem>

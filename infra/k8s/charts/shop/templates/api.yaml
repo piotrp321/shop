@@ -84,6 +84,10 @@ The secrets come with envFrom (the .env.local of the compose file).
   value: {{ include "shop.url" (dict "root" . "sub" "api") | quote }}
 - name: PAYMENT_WEBHOOK_BASE_URL
   value: http://api
+{{- /* Sentry of the api, the worker and the jobs: one project, only with a DSN (docs/features/sentry/spec.md, D3). */}}
+{{- with include "shop.sentryEnv" (dict "root" . "app" "api") }}
+{{ . | trim }}
+{{- end }}
 {{- end }}
 
 {{/* Waits until the migrations of this revision are applied (the api and the worker never start on an old schema). */}}
@@ -126,9 +130,10 @@ readinessProbe:
 
 {{- define "shop.worker.container" -}}
 imagePullPolicy: {{ .Values.image.pullPolicy }}
-# The transports one after another: the outbox relay, the events of RabbitMQ, the delayed commands and the webhook
-# deliveries of the payment simulator and the boundaries of the promotion periods (the same as in the compose file).
-command: ["php", "bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator", "promotions"]
+# The transports one after another: the outbox relay, the events of RabbitMQ, the delayed commands, the webhook
+# deliveries of the payment simulator, the boundaries of the promotion periods and the batches of background jobs (the
+# same as in the compose file).
+command: ["php", "bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator", "promotions", "jobs"]
 env:
   {{- include "shop.apiEnv" . | nindent 2 }}
 {{ include "shop.envFromSecret" . }}
@@ -137,7 +142,7 @@ readinessProbe:
     command:
       - sh
       - -c
-      - "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator promotions'"
+      - "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator promotions jobs'"
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 6

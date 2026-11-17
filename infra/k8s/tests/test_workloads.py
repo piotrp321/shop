@@ -9,7 +9,7 @@ from support import (
 
 STATEFUL = {"postgres", "elasticsearch", "rabbitmq", "redis", "garage"}
 STATELESS = {"api", "worker", "store", "admin", "imgproxy", "varnish", "keycloak", "mailpit"}
-VERSION_JOBS = {"garage-init", "migrate", "keycloak-config", "initialize", "purge-caches"}
+VERSION_JOBS = {"garage-init", "migrate", "keycloak-config", "initialize", "purge-caches", "backfill"}
 
 
 def compose_services():
@@ -65,7 +65,8 @@ class WorkloadsTest(unittest.TestCase):
 
     def test_images_are_those_of_compose(self):
         """The images we do not build: name:tag as in compose, pinned by the digest of the image (never by the tag alone)."""
-        used = {image for workload in of_kind("prod", "Deployment", "StatefulSet", "Job", "CronJob") for image in images(workload)}
+        # prod-backup: the tools of the backup are rendered only with it, and prod has it off until it is configured.
+        used = {image for workload in of_kind("prod-backup", "Deployment", "StatefulSet", "Job", "CronJob") for image in images(workload)}
         own = {image for image in used if image.startswith("ghcr.io/piotrp321/shop/")}
         third_party = used - own
         for image in third_party:

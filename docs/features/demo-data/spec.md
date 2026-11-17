@@ -10,7 +10,7 @@ to generator i jego testy, część 2 (#486, DEMO-LOAD) to integracja z k3d, k6 
 opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”, a jej plan powstaje w przygotowaniu #486.
 
 Issues: #482
-Zakres: `apps/api/src/DemoData`, `apps/api/tests/Unit/DemoData`, `apps/api/tests/Integration/DemoData`, `apps/api/tests/Functional/DemoData`, `apps/api/fixtures/demo-data`, `apps/api/bin/generate-demo`, `apps/api/bin/upload-demo-photos`, `apps/api/config/packages/flysystem.yaml`, `apps/api/phpunit.dist.xml`, `apps/api/tests/Unit/Bin`, `make/demo-data.mk`, `apps/api/deptrac.yaml`, `apps/api/config/services.yaml`, `apps/api/CLAUDE.md`, `apps/api/src/Catalog/Application/Search`, `apps/api/src/Catalog/Infrastructure/Search`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Integration/Catalog`, `docs/vision.md`, `docs/features/search/spec.md`
+Zakres: `apps/api/src/DemoData`, `apps/api/tests/Unit/DemoData`, `apps/api/tests/Integration/DemoData`, `apps/api/tests/Functional/DemoData`, `apps/api/fixtures/demo-data`, `apps/api/bin/generate-demo`, `apps/api/bin/upload-demo-photos`, `apps/api/config/packages/flysystem.yaml`, `apps/api/.env`, `apps/api/phpunit.dist.xml`, `apps/api/tests/Unit/Bin`, `make/demo-data.mk`, `apps/api/deptrac.yaml`, `apps/api/config/services.yaml`, `apps/api/CLAUDE.md`, `apps/api/src/Catalog/Application/Search`, `apps/api/src/Catalog/Infrastructure/Search`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Integration/Catalog`, `docs/vision.md`, `docs/features/search/spec.md`
 
 ## Cel i zakres
 
@@ -214,7 +214,10 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
   5. zamówienia z liniami, historią statusów, płatnościami i użyciami kodów;
   6. stany, rezerwacje i ruchy stanów: jedno przejście SQL po zamówieniach (sekcja „Stany po zamówieniach”);
   7. sekwencja numerów zamówień (`setval` powyżej najwyższego numeru);
-  8. `demo-data:verify`.
+  8. modele odczytu i statystyki, których kroki 1–6 z pominięciem komend nie wypełniają: `ordering:read-models:rebuild`
+     (sprzedaż godzinowa i klienci panelu z zamówień) i `ANALYZE` wypełnionych tabel (pulpit liczy produkty ze
+     statystyk `catalog_product`);
+  9. `demo-data:verify`.
 - Kroki 1, 3 i 5 dzielą dane na części o stałym rozmiarze z `profiles.yaml` (niezależnym od liczby procesów);
   skrypt uruchamia części równolegle (liczba procesów z opcji, domyślnie 4), czeka na każdy proces osobno, a błąd
   jednej części zatrzymuje pozostałe i kończy krok kodem różnym od 0. Każda część ma własny strumień liczb
@@ -258,7 +261,8 @@ Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastaj�
   i `reserved_after` z sum narastających; bilans otwarcia = stan końcowy + zatwierdzone w oknie; ostatni ruch zgadza
   się ze stanem;
 - warianty bez ruchów w oknie: rekord stanu bez historii (jak `CreateEmptyStock`) albo przyjęcie `seed` przy stanie
-  > 0 (jak `inventory:seed-demo`).
+  > 0 (jak `inventory:seed-demo`), więc rekord stanu (z `product_id`) ma każdy wariant, także bez zamówień: kolejki
+  i filtr poziomu stanów pulpitu czytają tylko rekordy stanów.
 
 ### Spójność (sprawdzenie po załadowaniu)
 
@@ -357,7 +361,7 @@ Aktualizacja `docs/features/search/spec.md`.
 
 ### Testy i lokalnie
 
-- Testy API (`make -C apps/api test`, w CI w jobie `checks`) uruchamiają kroki `demo-data:*` z profilem `small`
+- Testy API (`make -C apps/api test`, w CI w częściach `checks part api integration` i `checks part api functional`) uruchamiają kroki `demo-data:*` z profilem `small`
   osobno, na bazie `shop_test`, bez `bin/seed-demo` i bez czyszczenia cache sklepu (worker i Varnish nie obsługują
   `shop_test`): w procesie testu, w transakcji testu, a test determinizmu przy innej liczbie procesów w osobnej grupie
   z czyszczeniem tabel po sobie. Krok kont w testach pracuje na tymczasowych realmach zakładanych i usuwanych przez

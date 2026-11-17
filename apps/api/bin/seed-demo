@@ -24,5 +24,9 @@ done
 # availability) only after this step.
 "$console" catalog:reindex
 
-# Last, the catalog in both caches of the store.
+# Then the catalog in both caches of the store.
 "$console" storefront:cache:purge-all
+
+# Last, every backfill step, forced: the seeds replaced the data the steps fill (stock records, read models), so a step
+# recorded as completed before has to run again on the new data.
+"$console" app:backfill --force

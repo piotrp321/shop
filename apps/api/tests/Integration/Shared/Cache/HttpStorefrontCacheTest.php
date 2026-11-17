@@ -161,12 +161,15 @@ final class HttpStorefrontCacheTest extends TestCase
 
     /**
      * The first request of the route in `next dev` compiles it: a store answering after a few seconds is not a
-     * failure with the default limits, although the application's HTTP client stops after 5 s by default.
+     * failure with the default limits, although the application's HTTP client stops after 5 s by default. The test
+     * scales the client limits down (idle timeout 2 s to 1 s, maximum duration 5 s to 2 s) and the store's answer from
+     * 6 s to 3 s: it still answers past both limits of the client, and the default store limit (30 s) still holds
+     * the request.
      */
     public function testAStoreAnsweringAfterAFewSecondsFitsTheDefaultLimit(): void
     {
-        $this->double = HttpDouble::start(['store' => ['delay' => 6]]);
-        $client = HttpClient::create(['timeout' => 2, 'max_duration' => 5]);
+        $this->double = HttpDouble::start(['store' => ['delay' => 3]]);
+        $client = HttpClient::create(['timeout' => 1, 'max_duration' => 2]);
 
         new HttpStorefrontCache($client, $this->double->url, self::PURGE_SECRET, $this->double->url, self::REVALIDATE_SECRET)->invalidateProduct(self::PRODUCT);
 

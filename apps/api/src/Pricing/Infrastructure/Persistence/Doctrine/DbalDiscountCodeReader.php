@@ -9,6 +9,8 @@ use App\Pricing\Application\Port\ListedDiscountCode;
 use App\Pricing\Application\Query\DiscountCodeCursor;
 use App\Pricing\Domain\DiscountCode\DiscountCodeStatus;
 use App\Pricing\Domain\DiscountCode\DiscountKind;
+use App\Shared\Domain\BoundedCount;
+use App\Shared\Infrastructure\Persistence\BoundedCounter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
@@ -21,34 +23,15 @@ final readonly class DbalDiscountCodeReader implements DiscountCodeReader
 {
     private const string MOMENT = 'Y-m-d H:i:s.uP';
 
-    public function __construct(private Connection $connection)
+    public function __construct(private Connection $connection, private BoundedCounter $counter)
     {
     }
 
     public function page(?DiscountCodeStatus $status, ?string $codePrefix, \DateTimeImmutable $now, ?DiscountCodeCursor $after, int $limit): array
     {
-        $conditions = [];
-        $parameters = ['limit' => $limit];
+        [$conditions, $parameters] = self::filter($status, $codePrefix, $now);
+        $parameters['limit'] = $limit;
         $types = ['limit' => ParameterType::INTEGER];
-        if (null !== $status) {
-            $conditions[] = match ($status) {
-                DiscountCodeStatus::Disabled => 'NOT c.enabled',
-                DiscountCodeStatus::Planned => 'c.enabled AND c.starts_at > CAST(:now AS timestamptz)',
-                DiscountCodeStatus::Active => 'c.enabled AND c.starts_at <= CAST(:now AS timestamptz) AND (c.ends_at IS NULL OR c.ends_at > CAST(:now AS timestamptz))',
-                DiscountCodeStatus::Expired => 'c.enabled AND c.ends_at <= CAST(:now AS timestamptz)',
-            };
-            if (DiscountCodeStatus::Disabled !== $status) {
-                $parameters['now'] = $now->format(self::MOMENT);
-            }
-        }
-        if (null !== $codePrefix) {
-            // A–Z, 0–9 and the dash only (the caller's contract), none of them special in LIKE.
-            if (1 !== preg_match('/^[A-Z0-9-]+$/D', $codePrefix)) {
-                throw new \InvalidArgumentException('A code prefix has the characters of a code only.');
-            }
-            $conditions[] = 'c.code LIKE :prefix';
-            $parameters['prefix'] = $codePrefix.'%';
-        }
         if (null !== $after) {
             $conditions[] = '(c.created_at < CAST(:afterCreatedAt AS timestamptz) OR (c.created_at = CAST(:afterCreatedAt AS timestamptz) AND c.id > CAST(:afterId AS uuid)))';
             $parameters['afterCreatedAt'] = $after->createdAt->format(self::MOMENT);
@@ -87,5 +70,44 @@ final readonly class DbalDiscountCodeReader implements DiscountCodeReader
                 new \DateTimeImmutable($row['created_at'])->setTimezone($utc),
             );
         }, $rows);
+    }
+
+    public function count(?DiscountCodeStatus $status, ?string $codePrefix, \DateTimeImmutable $now): BoundedCount
+    {
+        [$conditions, $parameters] = self::filter($status, $codePrefix, $now);
+
+        return $this->counter->count('pricing_discount_code c', $conditions, $parameters);
+    }
+
+    /**
+     * The conditions of the status at now and of the prefix, the same for a page and for the count, without the cursor.
+     *
+     * @return array{list<string>, array<string, mixed>} the conditions and the values they bind
+     */
+    private static function filter(?DiscountCodeStatus $status, ?string $codePrefix, \DateTimeImmutable $now): array
+    {
+        $conditions = [];
+        $parameters = [];
+        if (null !== $status) {
+            $conditions[] = match ($status) {
+                DiscountCodeStatus::Disabled => 'NOT c.enabled',
+                DiscountCodeStatus::Planned => 'c.enabled AND c.starts_at > CAST(:now AS timestamptz)',
+                DiscountCodeStatus::Active => 'c.enabled AND c.starts_at <= CAST(:now AS timestamptz) AND (c.ends_at IS NULL OR c.ends_at > CAST(:now AS timestamptz))',
+                DiscountCodeStatus::Expired => 'c.enabled AND c.ends_at <= CAST(:now AS timestamptz)',
+            };
+            if (DiscountCodeStatus::Disabled !== $status) {
+                $parameters['now'] = $now->format(self::MOMENT);
+            }
+        }
+        if (null !== $codePrefix) {
+            // A–Z, 0–9 and the dash only (the caller's contract), none of them special in LIKE.
+            if (1 !== preg_match('/^[A-Z0-9-]+$/D', $codePrefix)) {
+                throw new \InvalidArgumentException('A code prefix has the characters of a code only.');
+            }
+            $conditions[] = 'c.code LIKE :prefix';
+            $parameters['prefix'] = $codePrefix.'%';
+        }
+
+        return [$conditions, $parameters];
     }
 }

@@ -1,0 +1,90 @@
+{
+  "breakdown_order": ["work", "human_wait", "limit_wait", "ci_wait", "host_pause", "github_wait", "idle"],
+  "github_wait_cap_s": 1800,
+  "busy_timeout_ms": 5000,
+  "gh_timeout_s": 60,
+  "shell_tools": ["Bash", "bash"],
+  "command_categories": {
+    "read": [
+      "^\\s*(?:git\\s+(?:status|diff|log|show|rev-parse)|ls|cat|head|tail|grep|rg|wc|pwd)\\b[^|;&<>`$\\n]*$"
+    ],
+    "test": [
+      "\\bmake\\s+(?:-C\\s+\\S+\\s+)?test\\b[^|;&>]*",
+      "\\bphpunit\\b[^|;&>]*",
+      "\\bvitest\\b[^|;&>]*",
+      "\\bpytest\\b[^|;&>]*",
+      "\\bpython3?\\s+-m\\s+unittest\\b[^|;&>]*",
+      "\\bnpm\\s+(?:run\\s+)?test\\b[^|;&>]*",
+      "\\bscript-tests\\.sh\\b[^|;&>]*"
+    ],
+    "e2e": [
+      "\\bmake\\s+(?:-C\\s+\\S+\\s+)?e2e\\b[^|;&>]*",
+      "\\bplaywright\\s+test\\b[^|;&>]*"
+    ],
+    "check": [
+      "\\bmake\\s+(?:-C\\s+\\S+\\s+)?check\\b[^|;&>]*",
+      "\\bphpstan\\b[^|;&>]*",
+      "\\beslint\\b[^|;&>]*",
+      "\\btsc\\b[^|;&>]*",
+      "\\bdeptrac\\b[^|;&>]*",
+      "\\bphp-cs-fixer\\b[^|;&>]*"
+    ],
+    "selftest": [
+      "\\bmake\\s+(?:-C\\s+\\S+\\s+)?selftest\\b[^|;&>]*"
+    ],
+    "stack": [
+      "\\bmake\\s+up\\b[^|;&>]*",
+      "\\.ao/setup\\b[^|;&>]*",
+      "\\bdocker\\s+compose\\s+up\\b[^|;&>]*"
+    ],
+    "ci_watch": [
+      "\\bgh\\s+pr\\s+checks\\b[^|;&>]*--watch[^|;&>]*",
+      "\\bgh\\s+run\\s+watch\\b[^|;&>]*"
+    ]
+  },
+  "code_change_tools": ["Edit", "Write", "NotebookEdit"],
+  "repeat_categories": ["test", "e2e", "check"],
+  "token_weights": {
+    "input": 1,
+    "cache_write_5m": 1.25,
+    "cache_write_1h": 2,
+    "cache_read": 0.1,
+    "output": 5
+  },
+  "bottlenecks": {
+    "min_excess_h": 0.5,
+    "max_items": 3,
+    "min_history": 5
+  },
+  "waste": {
+    "cost_multiple": 3,
+    "cost_min_usd": 5,
+    "time_multiple": 3,
+    "time_min_h": 1,
+    "min_history": 5,
+    "loop_failed_attempts": 2
+  },
+  "decisions": {
+    "d1_role_share": 0.15,
+    "d2_work_multiple": 2,
+    "d2_failed_attempts": 2,
+    "d3_gate_wait_h": 1,
+    "d4_human_wait_share": 0.2,
+    "d4_ci_share": 0.2,
+    "d4_limit_wait_share": 0.1,
+    "d4_review_share": 0.2,
+    "report_max": 3,
+    "effect_min_tasks": 15,
+    "effect_min_task_epics": 3,
+    "effect_min_epics": 3
+  },
+  "evals": {
+    "roles": ["code-reviewer"],
+    "results_dir": "~/.local/state/shop-evals-pilot"
+  },
+  "regression_window_days": 14,
+  "ci_workflow": "ci.yml",
+  "ci_jobs": ["checks", "e2e"],
+  "trend_last": 10,
+  "weekly_window_label": "Weekly \u00b7 all models"
+}

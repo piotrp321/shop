@@ -13,7 +13,8 @@ w `make seed`, slug kategorii i reguła „nazwa osi bez `:`”. Opiera się te�
 
 ## Cel i zakres
 
-- Panel: lista produktów (wyszukiwanie po nazwie, filtr kategorii i statusu, stronicowanie), formularz nowego
+- Panel: lista produktów (wyszukiwanie po nazwie, filtr kategorii i statusu, sortowanie po nazwie albo dacie ostatniej
+  zmiany, stronicowanie), formularz nowego
   produktu i edycji: nazwa, slug, krótki opis, kategoria główna i dodatkowe, klasa podatkowa, zdjęcia (upload,
   tekst alternatywny, kolejność, usunięcie), osie i warianty (dodanie, zmiana wartości, usunięcie).
 - Produkt ma status: szkic albo opublikowany. Sklep widzi wyłącznie produkty opublikowane. Nowy produkt z panelu
@@ -27,8 +28,8 @@ w `make seed`, slug kategorii i reguła „nazwa osi bez `:`”. Opiera się te�
 - Edycja z widoku z optimistic locking (wersja produktu).
 
 Poza zakresem:
-- tworzenie, edycja i usuwanie kategorii oraz przekierowania po zmianie sluga kategorii (kategorie zostają z danych
-  demo; osobne issue);
+- zarządzanie drzewem kategorii i przekierowania starych adresów kategorii (`docs/features/admin-features/spec.md`,
+  sekcja 4);
 - usuwanie produktu (zamiast niego wycofanie publikacji);
 - przekierowania 301 po zmianie sluga produktu (slug jest stały od pierwszej publikacji, decyzja K4);
 - import hurtowy, eksport, operacje masowe;
@@ -45,7 +46,7 @@ Poza zakresem:
 |---|---|
 | K1 | Status produktu: `draft` (szkic) albo `published` (opublikowany). Nowy produkt z panelu jest szkicem. Publikacja i wycofanie (powrót do szkicu) to osobne akcje. Produktów się nie usuwa. Istniejące produkty i dane demo są opublikowane. |
 | K2 | Publikacja szkicu wymaga co najmniej jednego zdjęcia. Cena i stan nie są wymagane: opublikowany produkt bez ceny albo stanu jest w sklepie „Niedostępny” (E3 VARIANTS). Zapis opublikowanego produktu, który miał zdjęcia, nie może usunąć ostatniego. Opublikowany produkt bez zdjęć (dane demo `imagelessEvery: 50`, `PhotoPlaceholder` w sklepie) jest edytowalny bez dodawania zdjęcia. |
-| K3 | Uprawnienia: tworzenie, edycja, upload zdjęć, publikacja i wycofanie: role `admin` i `marketing`. Lista i podgląd produktu: każdy pracownik. |
+| K3 | Uprawnienia: tworzenie, edycja, upload zdjęć, publikacja i wycofanie: role `admin` i `marketing`. Lista i podgląd produktu: każdy pracownik z rolą personelu (`admin`, `support`, `warehouse`, `marketing`). |
 | K4 | Slug: na tworzeniu opcjonalny (pusty: API wylicza go z nazwy); zmienny, dopóki produkt nie był nigdy opublikowany; od pierwszej publikacji stały (także po wycofaniu). Bez przekierowań 301. |
 | K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany klucza porównania (`VariantValues::comparisonKey()`: wielkość liter i spacje na brzegach, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany klucza porównania); nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
 | K6 | Zmiana klasy podatkowej przelicza ceny wariantów produktu: to samo brutto, nowa stawka i netto, nowy wpis historii cen (Omnibus) ze źródłem systemowym `tax_reconciliation`, bez pracownika (pracownika zmiany klasy wskazuje `updated_by` produktu). |
@@ -79,6 +80,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - `Product::create(..., status)`: panel tworzy `Draft`, loader danych demo `Published` (z `firstPublishedAt`).
   `create` nie sprawdza reguły K2 (dane demo mają produkty bez zdjęć). Zapisuje `ProductCreated` (nie
   `ProductChanged`); `IndexProduct` obsługuje je, więc nowy szkic trafia do indeksu od utworzenia (dokument `draft`).
+  `CreateProduct` publikuje w tej wersji oba `ProductCreated`: domenowe dla poprzedniej wersji workera w trakcie
+  wymiany podów i integracyjne (zgodność wersji, `apps/api/CLAUDE.md`).
 - `edit(name, slug, shortDescription, categories, taxClass, images, variants)`: zastępuje dane produktu. Zmiana
   sluga produktu z `firstPublishedAt ≠ null` → `SlugLocked` (`Conflict`). Opublikowany produkt, który miał zdjęcia,
   a nowa lista jest pusta → `ProductNotPublishable` (`Conflict`); opublikowany produkt bez zdjęć zapisuje się bez
@@ -154,8 +157,9 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   `ProductSearchSource` zwraca status, a `ProductIndexing::reindex` zapisuje dokument każdego produktu, także szkicu
   (ze statusem `draft`), z wersją `external_gte` jak w SEARCH. Dokumentów się nie usuwa, więc wersja szkicu chroni
   przed spóźnionym zapisem starszego stanu bez limitu czasu (bez zależności od `index.gc_deletes`). `catalog:reindex`
-  indeksuje wszystkie produkty. `IndexProduct` obsługuje oba zdarzenia: `ProductCreated` i integracyjne
-  `ProductChanged`; oba prowadzą do `ProductIndexing::reindex`. Każde zapytanie sklepu (`ProductSearch`: wyniki, `total`, fasety, `availableCount`,
+  indeksuje wszystkie produkty. `IndexProduct` obsługuje oba integracyjne zdarzenia Catalog: `ProductCreated`
+  i `ProductChanged`, a w tej wersji także domenowe `ProductCreated` z outboxa poprzedniej wersji; wszystkie prowadzą
+  do `ProductIndexing::reindex`. Każde zapytanie sklepu (`ProductSearch`: wyniki, `total`, fasety, `availableCount`,
   `price`) ma filtr `term status: published` w `query`, więc działa też w agregacjach.
 - Statystyki katalogu (dashboard): indeks ma dokument każdego produktu, także szkicu, więc zgodność
   indeksu (`inSync`: liczba dokumentów = liczba produktów) zostaje poprawna, a liczba produktów obejmuje szkice.
@@ -196,11 +200,12 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 ## API panelu
 
 Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `backoffice`, voter `ProductVoter`
-(K3: `VIEW_PRODUCTS` każdy pracownik, `MANAGE_PRODUCTS` `admin` i `marketing`).
+(K3: `VIEW_PRODUCTS` każdy pracownik z rolą personelu, `MANAGE_PRODUCTS` `admin` i `marketing`). Konto `backoffice`
+bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie panelu poza `GET /api/v1/admin/me`.
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /products?q&category&status&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), kursor keyset; 400 złe parametry; 404 nieznana kategoria |
+| `GET /products?q&category&status&images&sort&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), `images=none` (tylko produkty bez zdjęć, `catalog_product.images = '[]'::jsonb`; łączy się z `q`, `category`, `status` i `sort`; częściowy indeks `catalog_product_without_images_idx (id) WHERE images = '[]'::jsonb`, migracja nietransakcyjna `CONCURRENTLY`; `ProductsWithoutImagesPlanTest` sprawdza plan na 100 000 produktów bez wyłączania skanów; inna wartość `images` to 400), `sort` `name` (domyślny), `-name`, `-updatedAt`, `updatedAt` (indeksy `(name, id)` i `(updated_at, id)` z częściowymi wariantami szkiców; oba kierunki czytają ten sam indeks), kursor keyset z kluczem sortu (kursor innego sortu to 400 przy `after`); 400 złe parametry; 404 nieznana kategoria |
 | `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values}], updatedAt}`; 404 |
 | `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria); 503 Garage niedostępny |
 | `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 Garage niedostępny |
@@ -249,8 +254,10 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   `marketing` przekierowuje na listę.
 - Lista (`useProductList` na `useListUrlState` i `useCursorPager`, standard listy z `docs/features/admin-design/spec.md`):
   wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii (`CategoryCombobox` na `useCategoryTree`), filtr statusu
-  (Select: Wszystkie, Szkice, Opublikowane), rozmiar strony 10/25/50, stan listy w adresie (`q`, `category`, `status`,
-  `perPage`), stronicowanie kursorem ze stosem kursorów i „Pokazano X–Y”. Kolumny: produkt (miniatura albo placeholder,
+  (Select: Wszystkie, Szkice, Opublikowane), filtr „Zdjęcia” (Select: Wszystkie, Bez zdjęć; `images=none` w adresie), `Select` „Sortuj” („Nazwa A–Z”, „Nazwa Z–A”, „Ostatnio zmienione”,
+  „Najdawniej zmienione”; nagłówek „Produkt” albo „Ostatnia zmiana” ma `aria-sort`), rozmiar strony 10/25/50, stan listy
+  w adresie (`q`, `category`, `status`, `sort` (domyślny `name` nie jest zapisywany ani wysyłany), `perPage`),
+  stronicowanie kursorem ze stosem kursorów i „Pokazano X–Y”. Kolumny: produkt (miniatura albo placeholder,
   nazwa jako link do edycji, slug), kategoria główna, liczba wariantów, status (etykieta: „Szkic”, „Opublikowany”),
   ostatnia zmiana, akcje („Edytuj”, „Podgląd w sklepie” dla opublikowanego). Przycisk „Dodaj produkt” tylko dla
   `admin` i `marketing` (role z `/me`).

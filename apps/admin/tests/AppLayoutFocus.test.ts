@@ -1,12 +1,10 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
-import PrimeVue from "primevue/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onMounted, ref } from "vue";
 import { createMemoryHistory, createRouter, RouterView } from "vue-router";
 import { clearLoginProblem } from "@/auth/loginProblem";
 import AppLayout from "@/layout/AppLayout.vue";
-import { primeVueOptions } from "@/primevue";
 
 const mocks = vi.hoisted(() => ({ signoutRedirect: vi.fn(), get: vi.fn() }));
 
@@ -33,11 +31,13 @@ const routes = [
       { path: "forms/:id", name: "form", component: form },
       // Targets of the menu that the tests do not visit.
       { path: "products/new", name: "product-new", component: page("Nowy produkt") },
+      { path: "categories", name: "categories", component: page("Kategorie") },
       { path: "prices", name: "prices", component: page("Ceny") },
       { path: "inventory", name: "inventory", component: page("Stany") },
       { path: "discount-codes", name: "discount-codes", component: page("Kody") },
-      // A screen that is not migrated yet: its H1 has no tabindex.
+      // A screen whose H1 has no tabindex of its own.
       { path: "orders", name: "orders", component: { template: "<div><h1>Zamówienia</h1></div>" } },
+      { path: "customers", name: "customers", component: { template: "<div><h1>Klienci</h1></div>" } },
       // The H1 shows only after the data has loaded.
       {
         path: "promotions",
@@ -85,7 +85,7 @@ describe("AppLayout: the focus after a change of page", () => {
   async function mountShell(path = "/") {
     router = createRouter({ history: createMemoryHistory(), routes });
     await router.push(path);
-    wrapper = mount(RouterView, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] }, attachTo: document.body });
+    wrapper = mount(RouterView, { global: { plugins: [createPinia(), router] }, attachTo: document.body });
     await flushPromises();
   }
 
@@ -210,7 +210,7 @@ describe("AppLayout: the focus after a change of page", () => {
     expect(active()).toBe(field);
   });
 
-  it("focuses the H1 of a screen that is not migrated yet, which has no tabindex of its own", async () => {
+  it("focuses the H1 of a screen that has no tabindex of its own", async () => {
     await mountShell("/");
     document.querySelector<HTMLElement>("#to-products")!.focus();
 

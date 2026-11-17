@@ -28,14 +28,14 @@ final class ProductVoterTest extends TestCase
         yield 'support and marketing' => [['support', 'marketing'], VoterInterface::ACCESS_GRANTED, VoterInterface::ACCESS_GRANTED];
         yield 'support' => [['support'], VoterInterface::ACCESS_GRANTED, VoterInterface::ACCESS_DENIED];
         yield 'warehouse' => [['warehouse'], VoterInterface::ACCESS_GRANTED, VoterInterface::ACCESS_DENIED];
-        yield 'no staff role' => [[], VoterInterface::ACCESS_GRANTED, VoterInterface::ACCESS_DENIED];
+        yield 'no staff role' => [[], VoterInterface::ACCESS_DENIED, VoterInterface::ACCESS_DENIED];
     }
 
     /**
      * @param list<string> $roles
      */
     #[DataProvider('staffRoles')]
-    public function testEveryStaffMemberViewsAndOnlyAdminAndMarketingManage(array $roles, int $view, int $manage): void
+    public function testEveryStaffRoleViewsAndOnlyAdminAndMarketingManage(array $roles, int $view, int $manage): void
     {
         $user = new StaffUser(self::STAFF_ID, 'staff', $roles);
 

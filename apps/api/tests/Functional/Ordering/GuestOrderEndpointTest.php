@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Ordering;
 
 use App\Tests\Integration\Cart\CartFixture;
 use App\Tests\Integration\Ordering\OrderingFixture;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -345,6 +346,38 @@ final class GuestOrderEndpointTest extends WebTestCase
 
         $this->assertViolations($violations, $this->place(self::PATH, [] === $body ? '{}' : $body));
 
+        self::assertSame(0, $this->orders());
+    }
+
+    /**
+     * Fields with a format (a valid address, 9 digits, `NN-NNN`, docs/features/checkout/spec.md P4), so a value a reader
+     * sees as empty is no valid value of the field, whichever of its messages it gets.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function formattedFieldsOfBlankUnicodeText(): iterable
+    {
+        foreach (['email', 'phone', 'postalCode'] as $field) {
+            foreach (InputValues::blankUnicodeTexts() as $name => [$text]) {
+                yield "$field of $name" => [$field, $text];
+            }
+        }
+    }
+
+    #[DataProvider('formattedFieldsOfBlankUnicodeText')]
+    public function testAFormattedFieldOfUnicodeWhiteSpaceOnlyIsAViolationOfThatFieldAndPlacesNothing(string $field, string $text): void
+    {
+        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+
+        $problem = $this->place(self::PATH, [$field => $text] + $this->body($cart, 12_300));
+
+        $this->assertProblem(422, null, $problem);
+        self::assertIsArray($problem['violations'] ?? null);
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            self::assertSame($field, $violation['propertyPath'] ?? null);
+        }
+        self::assertNotSame([], $problem['violations']);
         self::assertSame(0, $this->orders());
     }
 

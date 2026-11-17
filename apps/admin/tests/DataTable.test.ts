@@ -124,6 +124,19 @@ describe("DataTable", () => {
     expect(main.findAll("[data-testid^=line-]")).toHaveLength(2);
   });
 
+  it("says with aria-sort which column the list is sorted by, and in which direction; the other headers have none", () => {
+    const table = mountTable({ columns: columns.map((column) => (column.key === "name" ? { ...column, sort: "descending" } : column.key === "changed" ? { ...column, sort: "ascending" } : column)) });
+
+    const heads = table.findAll("th");
+    expect(heads.map((head) => head.attributes("aria-sort"))).toEqual(["descending", undefined, "ascending", undefined]);
+  });
+
+  it("has no aria-sort on any header of a list that is not sorted by a column", () => {
+    const table = mountTable();
+
+    expect(table.findAll("th[aria-sort]")).toHaveLength(0);
+  });
+
   it("aligns a numeric column to the right", () => {
     const table = mountTable();
 
@@ -242,6 +255,159 @@ describe("DataTable", () => {
       await flushPromises();
 
       expect(document.activeElement).toBe(table.get("[data-testid=empty-region]").element);
+    });
+  });
+
+  it("gives the error the test id the list asks for, `list-error` by default", () => {
+    expect(mountTable({ error: "Błąd." }).find("[data-testid=list-error]").exists()).toBe(true);
+    wrapper?.unmount();
+
+    const named = mountTable({ error: "Błąd.", errorTestid: "prices-error" });
+    expect(named.get("[data-testid=prices-error]").text()).toContain("Błąd.");
+    expect(named.find("[data-testid=list-error]").exists()).toBe(false);
+  });
+
+  describe("rows of a group", () => {
+    interface Variant {
+      id: string;
+      product: string;
+      label: string;
+    }
+    const variants: Variant[] = [
+      { id: "v1", product: "Buty", label: "40" },
+      { id: "v2", product: "Buty", label: "41" },
+      { id: "v3", product: "Plecak", label: "" },
+    ];
+    const variantColumns: ListColumn<Variant>[] = [
+      { key: "label", header: "Wariant", main: true },
+      { key: "gross", header: "Brutto" },
+      { key: "net", header: "Netto", hideBelow: "lg", text: () => "52,29 zł" },
+    ];
+
+    function mountGrouped() {
+      return mount(DataTable<Variant>, {
+        props: {
+          label: "Lista cen",
+          columns: variantColumns,
+          rows: variants,
+          rowKey: (row: Variant) => row.id,
+          rowTestid: "price-row",
+          groupKey: (row: Variant) => row.product,
+          groupTestid: "product-row",
+          loading: false,
+          loaded: true,
+          error: null,
+          forbidden: false,
+          retry: async () => {},
+        },
+        slots: {
+          group: ({ row }: { row: Variant }) => h("strong", { "data-testid": "name" }, row.product),
+          "cell-label": ({ row }: { row: Variant }) => h("span", row.label),
+          "cell-gross": () => h("span", "54,90 zł"),
+          "cell-net": () => h("span", "52,29 zł"),
+        },
+        attachTo: document.body,
+      });
+    }
+
+    it("puts a row of the group before the first row of each group, with one header cell over the whole width", () => {
+      wrapper = mountGrouped();
+
+      const groups = wrapper.findAll("[data-testid=product-row]");
+      expect(groups.map((group) => group.get("[data-testid=name]").text())).toEqual(["Buty", "Plecak"]);
+      const head = groups[0]!.get("th");
+      expect(head.attributes("scope")).toBe("rowgroup");
+      expect(head.attributes("colspan")).toBe("3");
+      expect(groups[0]!.findAll("td")).toHaveLength(0);
+      // The rows of the variants stay what the row test id says; the row of a group is not one of them.
+      expect(wrapper.findAll("[data-testid=price-row]")).toHaveLength(3);
+      expect(wrapper.findAll("[data-testid=price-row]").some((row) => row.find("[data-testid=name]").exists())).toBe(false);
+    });
+
+    it("keeps the group row right before the rows of its group, in the order of the rows", () => {
+      wrapper = mountGrouped();
+
+      const order = wrapper.findAll("tbody tr").map((row) => row.attributes("data-testid"));
+      expect(order).toEqual(["product-row", "price-row", "price-row", "product-row", "price-row"]);
+    });
+
+    it("shows a group row also on a table without hidden columns, and no group row without a group key", () => {
+      wrapper = mountTable();
+      expect(wrapper.findAll("[data-testid=group-row]")).toHaveLength(0);
+      expect(wrapper.findAll("tbody tr")).toHaveLength(2);
+    });
+  });
+  describe("as cards", () => {
+    function mountCards(props: Record<string, unknown> = {}) {
+      wrapper = mount(DataTable<Row>, {
+        props: {
+          label: "Zamówienia",
+          columns,
+          rows,
+          rowKey: (row: Row) => row.id,
+          rowTestid: "product-row",
+          cards: true,
+          loading: false,
+          loaded: true,
+          error: null,
+          forbidden: false,
+          retry: async () => {},
+          ...props,
+        },
+        slots: {
+          card: ({ row }: { row: Row }) => h("strong", { "data-testid": "card-name" }, row.name),
+          empty: () => h("p", { "data-testid": "empty-slot" }, "Pusto"),
+        },
+        attachTo: document.body,
+      });
+      return wrapper;
+    }
+
+    it("lists the rows as a named list of cards instead of a table, one row test id per row", () => {
+      const cards = mountCards();
+
+      expect(cards.find("table").exists()).toBe(false);
+      const list = cards.get("ul");
+      expect(list.attributes("aria-label")).toBe("Zamówienia");
+      const items = cards.findAll("[data-testid=product-row]");
+      expect(items).toHaveLength(2);
+      expect(items.every((item) => item.element.tagName === "LI")).toBe(true);
+      expect(items[1]!.get("[data-testid=card-name]").text()).toBe("Plecak");
+    });
+
+    it("marks the list busy while it loads again", () => {
+      const cards = mountCards({ loading: true });
+
+      expect(cards.get("ul").attributes("aria-busy")).toBe("true");
+    });
+
+    it("moves the focus to the list of cards when the retry succeeds and the alert goes, never to the body", async () => {
+      const cards = mountCards({ loaded: false, rows: [], error: "Błąd." });
+      await cards.setProps({
+        retry: async () => {
+          await cards.setProps({ error: null, loaded: true, rows });
+        },
+      });
+      cards.get<HTMLButtonElement>("[data-testid=retry]").element.focus();
+
+      await cards.get("[data-testid=retry]").trigger("click");
+      await flushPromises();
+
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(cards.get("ul").element);
+    });
+
+    it("shows the error with a retry, the empty state and the skeleton as the table does", async () => {
+      const retry = vi.fn(async () => {});
+      const failed = mountCards({ loaded: false, error: "Nie udało się.", retry });
+      expect(failed.get("[role=alert]").text()).toContain("Nie udało się.");
+      await failed.get("[data-testid=retry]").trigger("click");
+      expect(retry).toHaveBeenCalledOnce();
+      failed.unmount();
+
+      expect(mountCards({ rows: [] }).find("[data-testid=empty-slot]").exists()).toBe(true);
+      wrapper?.unmount();
+      expect(mountCards({ loaded: false, loading: true }).find("[data-testid=list-loading]").exists()).toBe(true);
     });
   });
 });

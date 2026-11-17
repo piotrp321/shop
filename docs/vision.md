@@ -19,7 +19,7 @@ Projekt ma dwa cele:
 |---|---|---|
 | `apps/api` | PHP 8.5, Symfony 8, Doctrine ORM, PostgreSQL | REST API, cała logika biznesowa |
 | `apps/store` | Next.js (App Router), React, TypeScript, Tailwind CSS 4, shadcn/ui | Sklep dla klientów, SSR/ISR pod SEO |
-| `apps/admin` | Vue 3, Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), Lucide, PrimeVue | Panel dla obsługi sklepu |
+| `apps/admin` | Vue 3, Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), Lucide | Panel dla obsługi sklepu |
 | `infra` | Docker Compose | Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit |
 
 Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
@@ -92,10 +92,15 @@ Klient sklepu (`Customer`) i pracownik obsługujący panel (`Staff`) to dwa osob
   `backoffice` (sprawdzany wystawca tokena). Token klienta nie przejdzie przez firewall panelu, niezależnie od ról.
 - Uprawnienia pracowników sprawdzane w voterach na podstawie ról z tokena.
 - Katalog (tworzenie i edycja produktów, upload zdjęć, publikacja i wycofanie) edytują `admin` i `marketing`; listę
-  i podgląd produktów widzi każdy pracownik. Ceny zmienia `admin`, stany magazynowe `admin` i `warehouse`.
+  i podgląd produktów widzi każdy pracownik z rolą personelu (konto panelu bez roli nie widzi żadnych danych). Ceny
+  zmienia `admin`, stany magazynowe `admin` i `warehouse`.
 - Zmiany wykonane w panelu zapisują identyfikator pracownika (z tokena), żeby było wiadomo, kto zmienił
   cenę, stan czy status zamówienia.
 - Ta sama osoba jako klient i jako pracownik ma dwa osobne konta. To świadoma decyzja.
+- Klienci w panelu (lista i karta klienta, `admin` i `support`) to model odczytu Ordering nad zamówieniami
+  (`ordering_customer`): klient to konto sklepu z co najmniej jednym zamówieniem, z kontaktem najnowszego zamówienia,
+  liczbą i wartością zamówień oraz adresami dostawy ostatnich zamówień. Goście nie są klientami, a konta bez zamówień
+  nie są widoczne (API nie pyta Keycloaka). Context Customer zostaje przy tożsamości z tokenu.
 
 ## Cache HTTP i unieważnianie
 
@@ -146,6 +151,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Strony kategorii** (`/c/<ścieżka slugów>`) i lista `/`: renderowane na serwerze przy każdym żądaniu (SSR), bez ISR.
   Odczyty idą przez Varnisha, który jest jedynym cache list (bez data cache Next.js), więc strona nie zależy od
   rewalidacji. Mega menu działów w nagłówku jest zbudowane z drzewa kategorii, a wszystkie jego linki są w HTML.
+  Kolejność działów i podkategorii ustawia pracownik w panelu; poziom, którego nikt nie ułożył, jest alfabetyczny.
 - **Wyszukiwarka i filtry**: SSR, parametry w URL, kanoniczne adresy dla kombinacji filtrów,
   `noindex` dla kombinacji bez wartości SEO.
 - **Koszyk, checkout, konto klienta**: renderowane po stronie klienta, `noindex`.
@@ -160,7 +166,8 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
   `/auth/` i `/api/`, nie blokuje stron z `noindex, follow` (listing z filtrami, `/szukaj`), żeby robot widział ich
   dyrektywę, i wskazuje indeks map; jest taki sam w każdym środowisku.
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<ścieżka slugów kategorii>` (np. `/c/turystyka/biwak/namioty`),
-  przekierowania 301 przy zmianie sluga. Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
+  przekierowanie 308 przy zmianie sluga albo położenia kategorii (stare adresy kategorii i jej podkategorii prowadzą do
+  bieżących, także po kolejnych zmianach). Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
   z publikacji); zmienia się tylko w szkicu, który nie był nigdy opublikowany, więc w MVP adres produktu nie wymaga
   przekierowania. Stary adres `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
 - **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP z `srcset`,
@@ -190,10 +197,10 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 | Catalog | Produkty, warianty, kategorie, atrybuty, zdjęcia |
 | Pricing | Ceny katalogowe (netto, VAT, brutto), promocje, kody rabatowe, historia cen (Omnibus) |
 | Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
-| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień |
+| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień, modele odczytu z zamówień (sprzedaż godzinowa, klienci w panelu) |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
-| Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak |
+| Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak (klient to tożsamość z tokenu, a klientów w panelu daje model odczytu Ordering) |
 
 Contexty nie importują nawzajem swojego kodu domenowego. Komunikują się przez zdarzenia domenowe
 (asynchronicznie, RabbitMQ) albo przez jawne porty w warstwie aplikacji. To samo słowo może znaczyć
@@ -246,8 +253,15 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
   więc jedno żądanie da się prześledzić przez wszystkie procesy, które uruchomiło.
 - Health checki dla API i wszystkich usług w docker-compose.
 - Profilowanie PHP lokalnie przez SPX (php-spx): rozszerzenie tylko w obrazie deweloperskim API,
-  włączane na żądanie, z podglądem flame graph w przeglądarce. W środowisku demo wydajność śledzimy
-  przez Sentry Performance (#180); logi i metryki klastra są w Grafana Cloud (niżej, środowisko wdrożeniowe).
+  włączane na żądanie, z podglądem flame graph w przeglądarce.
+- Sentry SaaS (darmowy plan, region UE) w środowisku wdrożeniowym: błędy API, workera, serwera sklepu i przeglądarek sklepu
+  i panelu (jedno zdarzenie na błąd, bez błędów 4xx) z wersją (rewizja obrazu), środowiskiem i correlation ID oraz trace'y
+  (Sentry Performance: żądania API ze spanami bazy, klienta HTTP i Redisa, renderowanie sklepu, nawigacja panelu, połączone
+  nagłówkami między procesami; próbkowanie 0,1). Zdarzenia są filtrowane po stronie SDK: bez danych osobowych klientów,
+  tokenów, ciasteczek, treści żądań, query stringów i parametrów SQL. SDK działa tylko przy DSN z konfiguracji wdrożenia, więc
+  lokalny stos i testy nie wysyłają niczego. Mapy źródeł sklepu i panelu są wysyłane przy budowaniu obrazów produkcyjnych
+  (`docs/features/sentry/spec.md`, `docs/adr/backups-observability.md`). Logi i metryki klastra są w Grafana Cloud (niżej,
+  środowisko wdrożeniowe).
 
 **Bezpieczeństwo**
 - Rate limiting (Symfony RateLimiter, Redis) na składaniu zamówień, rozpoczęciu płatności i webhookach dostawców;
@@ -317,8 +331,8 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   platformy (Argo CD, Sealed Secrets, `k8s-monitoring` z Grafana Alloy, `prometheus-operator-crds`).
 - **GitOps**: Argo CD (app-of-apps w `infra/k8s/argocd/`) śledzi gałąź `deploy-images`. Zmiana w repo → Argo
   synchronizuje klaster, bez ręcznego `kubectl apply`.
-- **CI**: GitHub Actions z każdego commita na `main` buduje cztery obrazy produkcyjne (api, store, admin,
-  elasticsearch), wypycha je do GitHub Container Registry, uruchamia smoke test na k3d na tych obrazach i dopiero
+- **CI**: GitHub Actions na życzenie użytkownika (`workflow_dispatch` na `main`, nie po każdym pushu) buduje cztery
+  obrazy produkcyjne (api, store, admin, elasticsearch) z bieżącego commita `main`, wypycha je do GitHub Container Registry, uruchamia smoke test na k3d na tych obrazach i dopiero
   po zielonym jednym atomowym pushem przesuwa `deploy` (fast-forward na commit z `main`) i dodaje do `deploy-images`
   snapshot: ten commit plus plik z tagiem i digestami obrazów. Obrazy są wdrażane po digeście.
 - **Sekrety**: nigdy w repo w postaci jawnej; Sealed Secrets (certyfikat kontrolera w repo, klucz prywatny w kopii
@@ -345,7 +359,6 @@ Kolejne kroki, osobne zgłoszenia:
 
 - **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
   uploadów.
-- **Sentry** (#180): Sentry SaaS (darmowy plan) dla API, store i admin, także Sentry Performance.
 
 ## Poza zakresem (na razie)
 

@@ -1,0 +1,11 @@
+--- order.orig.md
++++ order.md
+@@ -1 +1 @@
+-Zrecenzuj (FULL) task CART-FIXES-3 „Polish validation messages of the cart requests (#82)” w checkoucie `<home>/Development/claude/shop-CART-FIXES-3`, na zamrożonym HEAD `bbabb283efaf42ff19cafd1127da44fd0d4ef490`. Diff taska: `git diff 63b6a5761efcd207fe588a7db1fa4273ae873002..bbabb28` (merge-base z `origin/epic/cart-fixes`). Nie modyfikuj plików.
++Zrecenzuj (FULL) task CART-FIXES-3 „Polish validation messages of the cart requests (#82)” w checkoucie `{{CHECKOUT}}`, na zamrożonym HEAD `bbabb283efaf42ff19cafd1127da44fd0d4ef490`. Diff taska: `git diff 63b6a5761efcd207fe588a7db1fa4273ae873002..bbabb28` (merge-base z `origin/epic/cart-fixes`). Nie modyfikuj plików.
+@@ -7 +7 @@
+-tdd.status: verified. Dziennik dowodów: `<home>/.local/state/ao-cart-fixes/tasks/CART-FIXES-3/delivery-state.json.evidence.jsonl` (RED na 63b6a57 z czystym `src/`, 57 niepowodzeń asercji; GREEN po implementacji). Orkiestrator już uruchomił: `make -C apps/api check` = 0, `make -C apps/api openapi` + `git diff --exit-code apps/api/openapi*.json` = bez różnic; pełny `make -C apps/api test` trwa (developer zgłosił OK 1933 testów). Nie uruchamiaj ponownie pełnego zestawu; celowane testy możesz (`make -C apps/api test PHPUNIT_ARGS='--filter ...'`, stos Dockera działa; po zmianie atrybutów może być potrzebne `docker compose exec -T api bin/console cache:clear --env=test`).
++tdd.status: verified. Dziennik dowodów: `{{INPUT_DIR}}/tdd-evidence.jsonl` (RED na 63b6a57 z czystym `src/`, 57 niepowodzeń asercji; GREEN po implementacji). Orkiestrator już uruchomił: `make -C apps/api check` = 0, `make -C apps/api openapi` + `git diff --exit-code apps/api/openapi*.json` = bez różnic; pełny `make -C apps/api test` trwa (developer zgłosił OK 1933 testów). Nie uruchamiaj ponownie pełnego zestawu; celowane testy możesz (`make -C apps/api test PHPUNIT_ARGS='--filter ...'`, stos Dockera działa; po zmianie atrybutów może być potrzebne `docker compose exec -T api bin/console cache:clear --env=test`).
+@@ -11,0 +12,2 @@
++
++Uwaga do tego przebiegu (dopisana przez ewaluację, nie przez orkiestratora): stos Dockera nie działa i nie ma sieci. Nie uruchamiaj testów, `make` ani `docker`; pracuj na odczycie kodu i dziennika dowodów.

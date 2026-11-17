@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace App\Shared\Infrastructure\Http;
 
-use App\Shared\Domain\Exception\Conflict;
 use App\Shared\Domain\Exception\ExtendedProblem;
-use App\Shared\Domain\Exception\InvalidInput;
-use App\Shared\Domain\Exception\NotFound;
 use App\Shared\Domain\Exception\ProblemException;
 use App\Shared\Domain\Exception\TypedProblem;
 use App\Shared\Domain\Exception\Unavailable;
@@ -17,9 +14,6 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
-use Symfony\Component\Messenger\Exception\HandlerFailedException;
-use Symfony\Component\Security\Core\Exception\AccessDeniedException;
-use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 
 /**
@@ -31,7 +25,8 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it.
  * The one exception: a Messenger HandlerFailedException that wraps exactly one exception is replaced by that
  * exception, repeatedly for nested buses, because a sync bus wraps whatever a handler throws.
- * - {@see ProblemException}: status by kind (see PROBLEM_STATUSES), message as `detail` (written for clients; none for
+ * The status of every document is {@see ExceptionStatus::of()}, the one mapping of exceptions to statuses.
+ * - {@see ProblemException}: status by kind, message as `detail` (written for clients; none for
  *   a 5xx such as {@see Unavailable}), `type`
  *   from {@see TypedProblem} when the exception has one, otherwise `about:blank`, and the extension members of an
  *   {@see ExtendedProblem} (never in place of a member of the problem, none for a 5xx).
@@ -48,18 +43,6 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  */
 final class ProblemDetailsSubscriber implements EventSubscriberInterface
 {
-    /**
-     * Kind of project exception to HTTP status, first match wins. A ProblemException of no known kind is invalid input.
-     */
-    private const PROBLEM_STATUSES = [
-        NotFound::class => Response::HTTP_NOT_FOUND,
-        Conflict::class => Response::HTTP_CONFLICT,
-        InvalidInput::class => Response::HTTP_UNPROCESSABLE_ENTITY,
-        Unavailable::class => Response::HTTP_SERVICE_UNAVAILABLE,
-    ];
-
-    private const MAX_UNWRAP_DEPTH = 10;
-
     /** The members of a problem document that an extension never replaces. */
     private const RESERVED_MEMBERS = ['type', 'title', 'status', 'detail', 'instance', 'violations'];
 
@@ -87,16 +70,15 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
 
     public function onException(ExceptionEvent $event): void
     {
-        $exception = $this->unwrapHandlerFailure($event->getThrowable());
+        $exception = ExceptionStatus::unwrapHandlerFailure($event->getThrowable());
+        $status = ExceptionStatus::of($exception);
 
-        $validation = $this->findValidationFailure($exception);
+        $validation = ExceptionStatus::validationFailure($exception);
         $response = match (true) {
-            null !== $validation => $this->validationProblem($validation, self::validationStatus($exception)),
-            $exception instanceof ProblemException => $this->projectProblem($exception),
-            $exception instanceof AuthenticationException => self::genericProblem(Response::HTTP_UNAUTHORIZED),
-            $exception instanceof AccessDeniedException => self::genericProblem(Response::HTTP_FORBIDDEN),
-            $exception instanceof HttpExceptionInterface => self::genericProblem($exception->getStatusCode(), $exception->getHeaders()),
-            default => self::genericProblem(Response::HTTP_INTERNAL_SERVER_ERROR),
+            null !== $validation => $this->validationProblem($validation, $status),
+            $exception instanceof ProblemException => $this->projectProblem($exception, $status),
+            $exception instanceof HttpExceptionInterface => self::genericProblem($status, $exception->getHeaders()),
+            default => self::genericProblem($status),
         };
 
         $event->setResponse($response);
@@ -121,20 +103,6 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         return self::problemResponse($problem, $status, $headers);
     }
 
-    /**
-     * A validation failure is a 400, unless an HTTP exception that wraps it is a 422: a request payload mapped with
-     * `validationFailedStatusCode: 422`. Any other status of the wrapper is ignored (`#[MapQueryString]` wraps in a
-     * 404 by default, but a bad query is a 400), so it is never a server error either.
-     */
-    private static function validationStatus(\Throwable $exception): int
-    {
-        if ($exception instanceof HttpExceptionInterface && Response::HTTP_UNPROCESSABLE_ENTITY === $exception->getStatusCode()) {
-            return Response::HTTP_UNPROCESSABLE_ENTITY;
-        }
-
-        return Response::HTTP_BAD_REQUEST;
-    }
-
     private function validationProblem(ValidationFailedException $validation, int $status): JsonResponse
     {
         $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status, 'violations' => []];
@@ -148,9 +116,8 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         return self::problemResponse($problem, $status);
     }
 
-    private function projectProblem(ProblemException $exception): JsonResponse
+    private function projectProblem(ProblemException $exception, int $status): JsonResponse
     {
-        $status = $this->problemStatus($exception);
         $type = $exception instanceof TypedProblem ? $exception->problemType() : 'about:blank';
         $problem = ['type' => $type, 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status];
         if ($status < 500 && '' !== $exception->getMessage()) {
@@ -173,49 +140,5 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         $response->headers->set('Content-Type', 'application/problem+json');
 
         return $response;
-    }
-
-    private function problemStatus(ProblemException $exception): int
-    {
-        foreach (self::PROBLEM_STATUSES as $kind => $status) {
-            if ($exception instanceof $kind) {
-                return $status;
-            }
-        }
-
-        return Response::HTTP_UNPROCESSABLE_ENTITY;
-    }
-
-    /**
-     * Follows chains of HandlerFailedException that each wrap exactly one exception (nested buses). Anything else,
-     * including more than one wrapped exception or a chain deeper than MAX_UNWRAP_DEPTH, is left as it is and ends up
-     * as a 500 without detail.
-     */
-    private function unwrapHandlerFailure(\Throwable $exception): \Throwable
-    {
-        for ($depth = 0; $depth < self::MAX_UNWRAP_DEPTH && $exception instanceof HandlerFailedException; ++$depth) {
-            $wrapped = $exception->getWrappedExceptions();
-            if (1 !== \count($wrapped)) {
-                break;
-            }
-            $exception = reset($wrapped);
-        }
-
-        return $exception;
-    }
-
-    private function findValidationFailure(\Throwable $exception): ?ValidationFailedException
-    {
-        for ($current = $exception; null !== $current; $current = $current->getPrevious()) {
-            if ($current instanceof HandlerFailedException) {
-                // Not unwrapped, so it wraps several exceptions or is too deep: never trust what is inside.
-                return null;
-            }
-            if ($current instanceof ValidationFailedException) {
-                return $current;
-            }
-        }
-
-        return null;
     }
 }

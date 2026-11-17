@@ -7,6 +7,7 @@ namespace App\Inventory\UI\Console;
 use App\Inventory\Application\Demo\DemoStockSeeder;
 use App\Inventory\Application\Port\DemoStockSource;
 use App\Inventory\Application\Port\InventoryReset;
+use App\Inventory\Application\StockRecords\StockRecordSync;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
@@ -15,7 +16,8 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Removes all stocks, reservations and the stock history, then sets the demo stock of every variant, matched by its
- * key (run after catalog:seed-demo). The file and the variants are checked before anything is removed.
+ * key (run after catalog:seed-demo), and gives every record its product (inventory:stock-records:sync). The file and
+ * the variants are checked before anything is removed.
  * Exit codes: 0 every variant has a stock, 1 the guard refused, the stock file is invalid or a variant has no
  * matching pattern (nothing was changed).
  */
@@ -27,6 +29,7 @@ final readonly class SeedDemoStockCommand
     public function __construct(
         private DemoStockSource $source,
         private DemoStockSeeder $seeder,
+        private StockRecordSync $records,
         private InventoryReset $reset,
         #[Autowire('%kernel.environment%')]
         private string $environment,
@@ -67,8 +70,10 @@ final readonly class SeedDemoStockCommand
 
         $this->reset->reset();
         $count = $this->seeder->seed($stock);
+        // The seed writes the stocks by variant; the product of each record comes from Catalog.
+        $records = $this->records->ofCatalog();
 
-        $io->success(\sprintf('stocks: %d', $count));
+        $io->success(\sprintf('stocks: %d, stock records written: %d', $count, $records->written));
 
         return Command::SUCCESS;
     }

@@ -10,8 +10,8 @@ use Symfony\Component\Security\Core\Authorization\Voter\Vote;
 use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 
 /**
- * Every staff member views products; only an administrator or marketing creates, edits, publishes and uploads
- * images (decision K3). Decided on the staff roles of the backoffice token, through the security contract of Backoffice.
+ * Every staff member with a staff role views products; only an administrator or marketing creates, edits, publishes
+ * and uploads images (decision K3). Decided on the staff roles of the backoffice token, through the security contract of Backoffice.
  *
  * @extends Voter<string, null>
  */
@@ -34,6 +34,10 @@ final class ProductVoter extends Voter
             return false;
         }
 
-        return self::VIEW_PRODUCTS === $attribute || [] !== array_intersect(self::MANAGING_ROLES, $user->staffRoles());
+        if (self::VIEW_PRODUCTS === $attribute) {
+            return [] !== $user->staffRoles();
+        }
+
+        return [] !== array_intersect(self::MANAGING_ROLES, $user->staffRoles());
     }
 }

@@ -30,6 +30,16 @@ brevo:
 # nothing but Cloudflare reaches the origin (ipAllowList below).
 clientIpHeader: CF-Connecting-IP
 
+# Sentry (docs/features/sentry/spec.md, P4 and P7): the environment and one trace in ten. The DSNs are public values, not secrets: one per
+# project of the Sentry organization `worf` (EU region, infra/k8s/README.md section 10); an application with an empty DSN has Sentry off.
+sentry:
+  environment: demo
+  tracesSampleRate: 0.1
+  dsn:
+    api: https://9456d06b82ba3a47b64727357ae7931f@o4512424218329088.ingest.de.sentry.io/4512424271413328
+    store: https://dde664ef9af8b65a0dbb626186f27183@o4512424218329088.ingest.de.sentry.io/4512424273444944
+    admin: https://4e7feefd85036218103d9fb8f246026e@o4512424218329088.ingest.de.sentry.io/4512424275542096
+
 # The origin takes HTTP(S) only from Cloudflare (https://www.cloudflare.com/ips/, to be refreshed when they change).
 ipAllowList:
   enabled: true
@@ -60,8 +70,9 @@ ipAllowList:
 # The nightly backup into a restic repository in a Cloudflare R2 bucket (docs/features/deploy-ops/spec.md, O2). Replace the
 # repository with the address of the bucket (s3:https://<account id>.r2.cloudflarestorage.com/<bucket>) before the first
 # deployment with the backups; the secret is the SealedSecret shop-backup (make -C infra/k8s seal-secrets WHAT=backup).
+# Off until both exist (README.md, section 2, step 3): without them the backup would fail every night and fire its alerts.
 backup:
-  enabled: true
+  enabled: false
   repository: s3:https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/shop-backups
   s3Region: auto
   secretName: shop-backup

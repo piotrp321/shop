@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { focusAfterAction } from "@/lib/focus";
 
 /**
@@ -19,6 +19,10 @@ import { focusAfterAction } from "@/lib/focus";
  * consequence, the button says the effect (red when `destructive`), and „Wróć” has the focus when the dialog opens.
  * Closing (Escape, „Wróć”, the action) gives the focus back to the element that had it when the dialog opened; when that
  * element is gone by then, to `fallbackFocus`, the heading of the card the action belongs to (`tabindex="-1"`).
+ * An action that the API may refuse and that has to say why in the dialog turns `closeOnConfirm` off: the confirmation
+ * then leaves the dialog open (the view closes it with `open` when the action succeeds), `busy` disables the button
+ * while the request runs (`aria-disabled`, not `disabled`: a disabled button would drop the focus on `body`) and `error`
+ * is said in the dialog (`role="alert"`, `tabindex="-1"`) with the focus moved to it, so the refusal is read.
  */
 const props = withDefaults(
   defineProps<{
@@ -29,8 +33,11 @@ const props = withDefaults(
     destructive?: boolean;
     cancelLabel?: string;
     fallbackFocus?: HTMLElement | null;
+    closeOnConfirm?: boolean;
+    busy?: boolean;
+    error?: string | null;
   }>(),
-  { destructive: false, cancelLabel: "Wróć", fallbackFocus: null },
+  { destructive: false, cancelLabel: "Wróć", fallbackFocus: null, closeOnConfirm: true, busy: false, error: null },
 );
 
 const open = defineModel<boolean>("open", { default: false });
@@ -48,6 +55,17 @@ watch(
   { flush: "sync" },
 );
 
+const errorElement = ref<HTMLElement | null>(null);
+watch(
+  () => props.error,
+  async (error) => {
+    if (error) {
+      await nextTick();
+      errorElement.value?.focus();
+    }
+  },
+);
+
 function returnFocus(event: Event) {
   event.preventDefault();
   focusAfterAction(opener, props.fallbackFocus);
@@ -61,15 +79,35 @@ function returnFocus(event: Event) {
       <AlertDialogHeader>
         <AlertDialogTitle>{{ title }}</AlertDialogTitle>
         <AlertDialogDescription>{{ description }}</AlertDialogDescription>
+        <p
+          v-if="error"
+          ref="errorElement"
+          role="alert"
+          tabindex="-1"
+          data-testid="confirm-error"
+          class="text-sm text-status-danger focus:outline-none"
+        >
+          {{ error }}
+        </p>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>{{ cancelLabel }}</AlertDialogCancel>
         <AlertDialogAction
+          v-if="closeOnConfirm"
           :class="buttonVariants({ variant: destructive ? 'destructive' : 'interface' })"
           @click="emit('confirm')"
         >
           {{ confirmLabel }}
         </AlertDialogAction>
+        <Button
+          v-else
+          type="button"
+          :variant="destructive ? 'destructive' : 'interface'"
+          :aria-disabled="busy ? 'true' : undefined"
+          @click="!busy && emit('confirm')"
+        >
+          {{ confirmLabel }}
+        </Button>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

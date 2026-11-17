@@ -1,0 +1,7 @@
+{"at": 1794037520.3450618, "data": {"percent": 100}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794044127.0628219, "data": {"percent": 69}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794048931.725299, "data": {"percent": 99}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794057941.434397, "data": {"percent": 100}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794063212.006541, "data": {"epic_id": "catalog-admin", "head_sha": "f8f51e576d10a8a2e0aad92452fcb26cc649a21c", "pr_number": 239}, "epic_id": "catalog-admin", "task_id": null, "type": "final_pr_created"}
+{"at": 1794065211.8448472, "data": {"low": true, "percent": 20}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794068288.924047, "data": {"epic_id": "catalog-admin"}, "epic_id": "catalog-admin", "task_id": null, "type": "epic_done"}

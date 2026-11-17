@@ -10,8 +10,8 @@ use Symfony\Component\Security\Core\Authorization\Voter\Vote;
 use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 
 /**
- * Only an administrator or the warehouse receives and corrects stock; every staff member reads it. Decided on the
- * staff roles of the backoffice token, through the security contract of Backoffice.
+ * Only an administrator or the warehouse receives and corrects stock; reading needs any staff role (the firewall of
+ * the panel). Decided on the staff roles of the backoffice token, through the security contract of Backoffice.
  *
  * @extends Voter<string, null>
  */

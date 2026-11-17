@@ -10,6 +10,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\PriceHistoryRecordFactory;
 use App\Tests\Factory\ProductFactory;
+use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -62,6 +63,19 @@ final class PriceHistoryEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($body, 'PriceHistoryResponse');
         $this->assertKeysMatchSchema($items[0], 'PriceHistoryItemResponse');
         self::assertStringNotContainsString('sub-123', (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testAnotherNotationOfTheVariantIdGivesTheSameHistory(): void
+    {
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 5490);
+        $canonical = $this->get($variantId);
+        self::assertCount(1, $this->items($canonical));
+
+        foreach (InputValues::equivalentUuidForms($variantId) as [$notation]) {
+            self::assertSame($canonical, $this->get($notation));
+            self::assertResponseStatusCodeSame(200);
+        }
     }
 
     public function testAVariantWithoutAPriceHasAnEmptyHistory(): void
@@ -195,6 +209,7 @@ final class PriceHistoryEndpointTest extends WebTestCase
         yield 'a word' => ['shoes'];
         yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
         yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
+        yield from InputValues::uuidsOutsideTheVersions();
     }
 
     #[DataProvider('idsThatAreNotUuids')]

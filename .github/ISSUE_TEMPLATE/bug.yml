@@ -44,6 +44,13 @@ body:
       description: "Po czym poznamy, że problem jest rozwiązany. Najlepiej jako test."
     validations:
       required: true
+  - type: input
+    id: introduced_by
+    attributes:
+      label: Wprowadzone przez (epik albo PR, jeśli znane)
+      description: "ID epiku (np. deploy-ops) albo numer jego końcowego PR. Wpisz tylko, gdy wiesz; puste pole nie blokuje zgłoszenia."
+    validations:
+      required: false
   - type: textarea
     id: unknowns
     attributes:

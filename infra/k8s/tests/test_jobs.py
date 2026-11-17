@@ -65,6 +65,18 @@ class JobCommandsTest(unittest.TestCase):
     def test_purge_caches(self):
         self.assertIn("storefront:cache:purge-all", command_line(by_logical("prod", "Job")["purge-caches"]))
 
+    def test_backfill_runs_the_steps_after_the_rollout_with_a_deadline_of_its_own(self):
+        """Migrations change the schema only; app:backfill fills the data once api and worker run the new version."""
+        for case in ("prod", "ci"):
+            jobs = by_logical(case, "Job")
+            job = jobs["backfill"]
+            self.assertEqual(["bin/console", "app:backfill"], containers(job)[0]["command"], case)
+            self.assertNotIn("--force", command_line(job), case)
+            self.assertEqual("prod", env_of(containers(job)[0])["APP_ENV"], case)
+            self.assertGreater(wave(job), wave(by_logical(case, "Deployment")["worker"]), case)
+            self.assertEqual(21600, job["spec"]["activeDeadlineSeconds"], case)
+            self.assertEqual(1800, jobs["purge-caches"]["spec"]["activeDeadlineSeconds"], case)
+
     def test_initialize_runs_the_script_in_prod_mode(self):
         job = by_logical("prod", "Job")["initialize"]
         self.assertIn("initialize.sh", command_line(job))
@@ -87,7 +99,7 @@ class JobCommandsTest(unittest.TestCase):
 
 class CronJobTest(unittest.TestCase):
     def test_cart_purge(self):
-        for case in ("prod", "ci"):
+        for case in ("prod-backup", "ci"):
             crons = by_logical(case, "CronJob")
             self.assertEqual({"cart-purge-expired", "backup", "backup-verify", "restore"}, set(crons), case)
             cron = crons["cart-purge-expired"]

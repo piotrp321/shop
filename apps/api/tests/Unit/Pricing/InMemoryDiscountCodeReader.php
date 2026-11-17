@@ -9,6 +9,7 @@ use App\Pricing\Application\Port\ListedDiscountCode;
 use App\Pricing\Application\Query\DiscountCodeCursor;
 use App\Pricing\Domain\DiscountCode\DiscountCodeStatus;
 use App\Pricing\Domain\DiscountCode\ValidityPeriod;
+use App\Shared\Domain\BoundedCount;
 
 /**
  * The list of discount codes as the database gives it: newest first, then by id.
@@ -19,6 +20,14 @@ final class InMemoryDiscountCodeReader implements DiscountCodeReader
     public array $codes = [];
     /** @var list<array{DiscountCodeStatus|null, string|null, \DateTimeImmutable, DiscountCodeCursor|null, int}> */
     public array $pages = [];
+    /** @var list<array{DiscountCodeStatus|null, string|null, \DateTimeImmutable}> */
+    public array $counts = [];
+    public BoundedCount $total;
+
+    public function __construct()
+    {
+        $this->total = new BoundedCount(0, false);
+    }
 
     public function page(?DiscountCodeStatus $status, ?string $codePrefix, \DateTimeImmutable $now, ?DiscountCodeCursor $after, int $limit): array
     {
@@ -30,5 +39,12 @@ final class InMemoryDiscountCodeReader implements DiscountCodeReader
             && (null === $after || $c->createdAt < $after->createdAt || ($c->createdAt == $after->createdAt && $c->id > $after->id)));
 
         return \array_slice(array_values($codes), 0, $limit);
+    }
+
+    public function count(?DiscountCodeStatus $status, ?string $codePrefix, \DateTimeImmutable $now): BoundedCount
+    {
+        $this->counts[] = [$status, $codePrefix, $now];
+
+        return $this->total;
     }
 }

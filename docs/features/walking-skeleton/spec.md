@@ -53,7 +53,7 @@ są przypięte w pliku compose, a wersja Elasticsearch w `infra/elasticsearch/Do
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
 | `api` | własny obraz FrankenPHP, PHP 8.5, target `dev` (z SPX) | HTTP API | `GET /health` |
-| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events scheduled` | proces konsumenta działa |
+| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events scheduled payment_simulator promotions jobs` | proces konsumenta działa |
 | `store` | Node 24, `next dev` | sklep | `GET /` |
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E i pomiar Lighthouse, uruchamiany tylko przez `make e2e` i `make lighthouse` | — |
@@ -619,7 +619,9 @@ i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTr
 
 ```json
 {
-  "catalog": { "productCount": 412, "categoryCount": 36, "productsWithoutImages": 8 },
+  "catalog": { "productCount": { "value": 412, "estimated": true }, "categoryCount": 36 },
+  "queues": { "paidToShip": { "value": 3, "capped": false }, "awaitingPayment": null, "pendingRefunds": null, "overdueRefunds": null,
+              "outOfStockVariants": null, "lowStockVariants": null, "productsWithoutImages": { "value": 8, "capped": false } },
   "system": {
     "services": [{ "name": "postgres", "status": "up", "latencyMs": 3 }],
     "outbox": { "pending": 0 },
@@ -628,6 +630,10 @@ i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTr
   }
 }
 ```
+
+- `catalog.productCount` to szacunek bazy (`pg_class.reltuples`), `null` przed pierwszymi statystykami; `queues` to liczniki ograniczone
+  do 1000, każdy `null` dla roli bez dostępu do kolejki; `searchIndex.inSync` to zgodność w granicach 1% szacunku (`null` bez
+  szacunku). Szczegóły: `docs/features/admin-features/spec.md`, sekcja 1.
 
 - `system` jest `null`, gdy `DashboardVoter` odmówi atrybutu `VIEW_SYSTEM_STATUS` (wymaga roli `admin`).
 - `services` zawsze w tej kolejności: `postgres`, `redis`, `elasticsearch`, `rabbitmq`, `keycloak`, `garage`,
@@ -662,12 +668,13 @@ w tej kolejności:
 - Klient HTTP API ma limit 2 s na połączenie i odpowiedź oraz 5 s na całe żądanie, więc zawieszony Keycloak nie
   blokuje żądań.
 - `StaffUser`: `sub`, `preferred_username`, role z `realm_access.roles` przycięte do `admin`, `support`,
-  `warehouse`, `marketing` (w tej kolejności); dostaje `ROLE_STAFF`.
+  `warehouse`, `marketing` (w tej kolejności); `ROLE_STAFF` dostaje tylko z co najmniej jedną z nich.
 - `CustomerUser`: `sub`, `email`, `name` (pusty, gdy go nie ma); dostaje `ROLE_CUSTOMER`. Token bez `email` daje 401.
 - `StaffUser` i `CustomerUser` to osobne klasy, bez wspólnej klasy bazowej. Implementują interfejsy z warstwy
   Application swoich modułów (`AuthenticatedStaffMember`, `AuthenticatedCustomer`), a kontrolery dostają je przez
   `#[CurrentUser]`. Dzięki temu UI nie zależy od Infrastructure.
-- `access_control` domyślnie odmawia: `/api/v1/admin` wymaga `ROLE_STAFF`, reszta `/api/v1` `ROLE_CUSTOMER`, poza
+- `access_control` domyślnie odmawia: `/api/v1/admin` wymaga `ROLE_STAFF` (poza `GET /api/v1/admin/me`, które wymaga
+  tylko uwierzytelnienia), reszta `/api/v1` `ROLE_CUSTOMER`, poza
   jawnie publicznymi `GET` (`products`, `categories`) z `PUBLIC_ACCESS`. Nowy endpoint publiczny trzeba tam dopisać.
 - Przesłanie nieprawidłowego tokena do endpointu publicznego też daje 401. Nagłówek `Authorization` z innym
   schematem niż `Bearer` (albo z wartością spoza składni tokena) jest traktowany jak brak tokena.
@@ -832,8 +839,7 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
 ## Panel (`apps/admin`)
 
 Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, komponenty shadcn-vue na Reka UI
-(`src/components/ui/`) i ikony Lucide; ekrany jeszcze niezmigrowane używają PrimeVue 4 z presetem Aura i PrimeIcons
-(wygląd: `docs/features/admin-design/spec.md`, biblioteka: `docs/adr/admin-ui-library.md`).
+(`src/components/ui/`) i ikony Lucide (wygląd: `docs/features/admin-design/spec.md`, biblioteka: `docs/adr/admin-ui-library.md`).
 
 ### Logowanie
 
@@ -992,15 +998,18 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 `.github/workflows/ci.yml`, uruchamiany przy każdym pull requeście (także ze zmianami wyłącznie w dokumentacji)
 i pushu na `main`, więc job `checks` może być wymaganym checkiem gałęzi `main`. Nowe uruchomienie dla tego samego
 PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
+Job `checks` tylko zbiera wynik czterech części (`checks part <nazwa>`), z których każda biegnie na własnym runnerze
+i ma tylko obrazy i usługi, których potrzebuje. Część pobiera tylko obrazy deweloperskie, których potrzebuje (`apps`: `api`, `store` i `admin`; części api: `api`),
+z GHCR (a brakujące zbudowane z cache buildx, `type=gha`) i instalacja zależności do wolumenów, jak lokalnie.
+Polecenia mają `RUN="docker compose run --rm --no-deps -T"`.
 
-1. Budowa obrazów deweloperskich `api`, `store` i `admin` z cache buildx (`type=gha`).
-2. Instalacja zależności do wolumenów, jak lokalnie.
-3. `make check` z `RUN="docker compose run --rm --no-deps -T"`.
-4. Testy z tym samym `RUN`: `make -C apps/api test` (wszystkie suity api), `make -C apps/store test`
-   (z Redisem), `make -C apps/admin test`. Zmiana, która dodaje testy na usługach stosu, w tym samym PR
-   uruchamia w CI te usługi przed testami.
-5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
-   `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
+1. `k8s`: `make -C infra/k8s check` (bez obrazów i usług).
+2. `apps`: `make check-code` (`make check` bez `infra/k8s`), suita `unit` api (bez usług), aktualność kontraktu
+   (`make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na `apps/api/openapi.json`,
+   `apps/api/openapi-admin.json` i obu `schema.d.ts`), `make -C apps/store test` (z Redisem),
+   `make -C apps/admin test`, testy VCL i testy skryptów.
+3. `api integration` i `api functional`: `make -C apps/api test` z `PHPUNIT_ARGS` jednej z suit, na usługach stosu.
+   Zmiana, która dodaje testy na usługach stosu, w tym samym PR uruchamia w CI te usługi przed testami.
 
 Osobny job `e2e` najpierw sprawdza typy testów i uruchamia testy skryptu median (`make e2e-check`), potem uruchamia pełny
 stos (`make up`, `make seed`) i `make e2e`. Po `make e2e` i testach `init-env.sh` uruchamia `make lighthouse` (sklep
@@ -1017,7 +1026,7 @@ Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależ
 | api (Composer) | `symfony/flex`, `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` (wraz z zależnościami przechodnimi: `elastic/transport`, `nyholm/psr7`, `psr/http-client`, `psr/http-factory`, `psr/http-message`, `php-http/httplug`, `php-http/promise`, `php-http/discovery` jako plugin Composera wyłączony w `allow-plugins`, `open-telemetry/api`, `open-telemetry/context`, `symfony/polyfill-php82`; klient HTTP to `symfony/http-client` przez `Psr18Client`) | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
 | api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` | `spx` |
 | store (npm) | `next`, `react`, `react-dom`, `openid-client`, `redis`, `openapi-fetch`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` | `typescript`, `@types/node`, `@types/react`, `@types/react-dom`, `tailwindcss`, `@tailwindcss/postcss`, `tw-animate-css`, `eslint`, `eslint-config-next`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `jsdom` |
-| admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch`, `reka-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `@vueuse/core`, `lucide-vue-next`, `vue-sonner` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom`, `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css` |
+| admin (npm) | `vue`, `vue-router`, `pinia`, `oidc-client-ts`, `openapi-fetch`, `reka-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `@vueuse/core`, `lucide-vue-next`, `vue-sonner` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom`, `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css` |
 | e2e (npm) | — | `@lhci/cli`, `@playwright/test`, `otpauth`, `typescript` |
 | obrazy | — | `socat` w obrazie `e2e` |
 

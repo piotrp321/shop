@@ -23,3 +23,39 @@ export function readUrl(name: ConfigKey, sources: ConfigSources = currentSources
   }
   return value.replace(/\/+$/, "");
 }
+
+export interface SentryConfig {
+  dsn: string;
+  environment: string | null;
+  release: string | null;
+  /** From 0 to 1; 0 (no traces) when the value is missing, not a number written in digits or outside the range. */
+  tracesSampleRate: number;
+}
+
+const text = (value: string | undefined): string | null => value?.trim() || null;
+
+function sampleRate(value: string | undefined): number {
+  const written = value?.trim() ?? "";
+  const rate = /^\d+(\.\d+)?$/.test(written) ? Number(written) : Number.NaN;
+  return rate >= 0 && rate <= 1 ? rate : 0;
+}
+
+/**
+ * Reads the optional Sentry keys of window.__ADMIN_CONFIG__ (written by docker/40-admin-config.sh only when the variables are
+ * set). Without a DSN (missing, empty or blank) it returns null and the SDK stays off. Only the runtime configuration counts:
+ * Sentry is not active in `vite dev`, so the Vite environment is never read.
+ */
+export function readSentryConfig(
+  runtime: Partial<Record<string, string>> | undefined = window.__ADMIN_CONFIG__,
+): SentryConfig | null {
+  const dsn = text(runtime?.SENTRY_DSN);
+  if (dsn === null) {
+    return null;
+  }
+  return {
+    dsn,
+    environment: text(runtime?.SENTRY_ENVIRONMENT),
+    release: text(runtime?.SENTRY_RELEASE),
+    tracesSampleRate: sampleRate(runtime?.SENTRY_TRACES_SAMPLE_RATE),
+  };
+}

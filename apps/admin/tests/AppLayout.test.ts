@@ -1,12 +1,10 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
-import PrimeVue from "primevue/config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "vue-sonner";
 import { createMemoryHistory, createRouter, RouterView } from "vue-router";
 import { clearLoginProblem } from "@/auth/loginProblem";
 import AppLayout from "@/layout/AppLayout.vue";
-import { primeVueOptions } from "@/primevue";
 
 const mocks = vi.hoisted(() => ({ signoutRedirect: vi.fn(), get: vi.fn() }));
 
@@ -26,19 +24,21 @@ async function mountLayout(path = "/", attach = false) {
           { path: "", name: "dashboard", component: { template: "<div />" } },
           { path: "products", name: "products", component: { template: "<div />" } },
           { path: "products/new", name: "product-new", component: { template: "<div />" } },
+          { path: "categories", name: "categories", component: { template: "<div />" } },
           { path: "prices", name: "prices", component: { template: "<div />" } },
           { path: "promotions", name: "promotions", component: { template: "<div />" } },
           { path: "discount-codes", name: "discount-codes", component: { template: "<div />" } },
           { path: "inventory", name: "inventory", component: { template: "<div />" } },
           { path: "system", name: "system", component: { template: "<div />" } },
           { path: "orders", name: "orders", component: { template: "<div />" } },
+          { path: "customers", name: "customers", component: { template: "<div />" } },
         ],
       },
     ],
   });
   await router.push(path);
   const wrapper = mount(RouterView, {
-    global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] },
+    global: { plugins: [createPinia(), router] },
     attachTo: attach ? document.body : undefined,
   });
   return Object.assign(wrapper, { router });

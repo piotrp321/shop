@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
+import { stockRowOf } from "../support/catalog-admin";
 import { openMenuItem } from "../support/panel-menu";
 import { loginStaff } from "../support/staff-login";
 
@@ -14,9 +15,6 @@ const PRODUCT_PATH = "/p/kajak-turystyczny-vilmar-rzeka-2";
 const VARIANT_LABEL = "zielony";
 // More than the low stock threshold, so the level after the receipt is "Dostępny" and not "Ostatnie sztuki".
 const RECEIVED_QUANTITY = 10;
-
-/** The whole text, literally (also an empty one, which `getByText` cannot match). */
-const exactly = (text: string): RegExp => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 
 /**
  * Opens the product page until it shows the level of the product (before a variant is chosen); the level event of the
@@ -44,14 +42,12 @@ test("a stock receipt for a variant in the panel makes the product available on 
   await loginStaff(page, staff.warehouse);
   await openMenuItem(page, "Stany magazynowe", "Katalog");
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(PRODUCT_NAME);
-  // The unfiltered first page has many products: the product name as the only one (a name is shown on the first row of
-  // each product, its variants follow) means the (debounced) search has been applied. Changing the stock earlier would let a late search
-  // answer overwrite the row with the old stock.
-  await expect(page.getByTestId("name"), "the search narrows the list to the product").toHaveText([PRODUCT_NAME]);
-  // Every row left is a variant of the product (pomarańczowy, zielony); the one to receive into is found by its label.
-  const row = page
-    .getByTestId("stock-row")
-    .filter({ has: page.getByTestId("variant-label").filter({ hasText: exactly(VARIANT_LABEL) }) });
+  // The unfiltered first page has many products: the product name as the only one (a name is shown in the row of each
+  // product, the rows of its variants follow) means the (debounced) search has been applied. Changing the stock earlier
+  // would let a late search answer overwrite the row with the old stock.
+  await expect(page.getByTestId("product-row").getByTestId("name"), "the search narrows the list to the product").toHaveText([PRODUCT_NAME]);
+  // The rows under the row of the product are its variants (pomarańczowy, zielony); the one to receive into is found by its label.
+  const row = stockRowOf(page, PRODUCT_NAME, VARIANT_LABEL);
   await expect(row).toHaveCount(1);
   await expect(
     row.getByTestId("physical"),

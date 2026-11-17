@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Shared\RateLimit;
 use Monolog\Handler\FingersCrossedHandler;
 use Monolog\Handler\StreamHandler;
 use PHPUnit\Framework\TestCase;
+use Sentry\Monolog\LogToSentryIssueHandler;
 use Symfony\Component\Cache\Adapter\RedisAdapter;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
@@ -20,6 +21,12 @@ use Symfony\Component\DependencyInjection\Reference;
  */
 final class RateLimitConfigurationTest extends TestCase
 {
+    /**
+     * The pool as the limiters see it: the Sentry bundle decorates every cache pool for its spans (cache tracing), so
+     * the definition of cache.rate_limiter itself is the inner service of the decorator.
+     */
+    private const string POOL = 'cache.rate_limiter.traceable';
+
     /** @var array<string, array<string, Definition>> */
     private static array $definitions = [];
 
@@ -44,14 +51,14 @@ final class RateLimitConfigurationTest extends TestCase
             self::assertNull($limiter->getArgument(2), $name.' has no lock factory');
             $storage = $limiter->getArgument(1);
             self::assertInstanceOf(Reference::class, $storage);
-            self::assertEquals([new Reference('cache.rate_limiter')], $definitions[(string) $storage]->getArguments(), $name.' stores in cache.rate_limiter');
+            self::assertEquals([new Reference(self::POOL)], $definitions[(string) $storage]->getArguments(), $name.' stores in cache.rate_limiter');
         }
     }
 
     public function testThePoolIsOnRedisWithTimeoutsOfOneSecond(): void
     {
         $definitions = self::definitions('prod');
-        $pool = $definitions['cache.rate_limiter'];
+        $pool = $definitions[self::POOL.'.inner'];
         self::assertSame(RedisAdapter::class, $pool->getClass());
         $connection = $pool->getArgument(0);
         self::assertInstanceOf(Reference::class, $connection);
@@ -86,7 +93,8 @@ final class RateLimitConfigurationTest extends TestCase
 
         $appHandlers = self::handlersOf($definitions, 'monolog.logger');
         self::assertNotContains($cacheHandlers[0], $appHandlers, 'the other channels do not use it');
-        self::assertSame([FingersCrossedHandler::class], array_values(array_unique(array_map(static fn (string $id): ?string => $definitions[$id]->getClass(), $appHandlers))), 'the other channels keep the buffer');
+        // Next to it, the handler of the errors for Sentry (config/packages/monolog.yaml), which keeps nothing.
+        self::assertSame([FingersCrossedHandler::class, LogToSentryIssueHandler::class], array_values(array_unique(array_map(static fn (string $id): ?string => $definitions[$id]->getClass(), $appHandlers))), 'the other channels keep the buffer');
     }
 
     /**

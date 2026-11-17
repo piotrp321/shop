@@ -7,11 +7,16 @@ export interface RowAction {
   /** The verb, e.g. „Edytuj”; the accessible name and the tooltip add the name of the object. */
   label: string;
   icon: Component;
-  /** A page of the panel (a plain link that the router follows) or `href`, an address outside it. */
+  /**
+   * A page of the panel (a plain link that the router follows) or `href`, an address outside it. An action with neither
+   * is a button: pressing it emits `select` with its key and the button, and the list decides what it does (opens a window).
+   */
   to?: RouteLocationRaw;
   href?: string;
   /** Opens in a new tab; the accessible name says so. */
   external?: boolean;
+  /** The `data-testid` of the action when it is not `action-<key>`. */
+  testid?: string;
 }
 </script>
 
@@ -23,9 +28,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 /**
  * The actions of a row (docs/features/admin-design/spec.md, „Standard listy”): square 34 px buttons with an icon, each
  * with an accessible name that has the name of the object („Edytuj: Buty trailowe Norvane Grań 300”) and a tooltip with
- * it on hover and focus. An action that the role can never do is not passed in at all.
+ * it on hover and focus. An action that the role can never do is not passed in at all. The buttons stay in one line
+ * (a column of a table keeps its width); `wrap` lets them go to the next line where the row has room for nothing else
+ * (the node of the category tree at 320 px).
  */
-const props = defineProps<{ name: string; actions: RowAction[] }>();
+const props = withDefaults(defineProps<{ name: string; actions: RowAction[]; wrap?: boolean }>(), { wrap: false });
+const emit = defineEmits<{ select: [key: string, trigger: HTMLElement] }>();
 
 const router = useRouter();
 
@@ -50,18 +58,32 @@ const labelOf = (action: RowAction) => `${action.label}: ${props.name}`;
 
 <template>
   <TooltipProvider v-if="actions.length > 0">
-    <div class="flex items-center justify-end gap-2">
+    <div :class="['flex items-center justify-end gap-2', wrap && 'flex-wrap']">
       <Tooltip
         v-for="action in actions"
         :key="action.key"
       >
         <TooltipTrigger as-child>
+          <button
+            v-if="action.to === undefined && action.href === undefined"
+            type="button"
+            :aria-label="labelOf(action)"
+            :data-testid="action.testid ?? `action-${action.key}`"
+            :class="buttonVariants({ variant: 'outline', size: 'icon-sm' })"
+            @click="emit('select', action.key, $event.currentTarget as HTMLElement)"
+          >
+            <component
+              :is="action.icon"
+              aria-hidden="true"
+            />
+          </button>
           <a
+            v-else
             :href="targetOf(action)"
             :aria-label="action.external ? labelOf(action) + NEW_TAB : labelOf(action)"
             :target="action.external ? '_blank' : undefined"
             :rel="action.external ? 'noopener' : undefined"
-            :data-testid="`action-${action.key}`"
+            :data-testid="action.testid ?? `action-${action.key}`"
             :class="buttonVariants({ variant: 'outline', size: 'icon-sm' })"
             @click="follow($event, action)"
           >

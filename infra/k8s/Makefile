@@ -14,7 +14,8 @@ check:
 # auth ingress exposing the master realm, a job in a wave before its dependency, an image without a digest, a chart
 # allowed on Kubernetes older than 1.36, Brevo allowed without its secret, keycloak-config printing a secret,
 # create-admin going on without tak, deploy.yml needing a job that does not exist, an unquoted variable in its scripts, no
-# smoke test before deploy, images pushed for every event, runs for main cancelled, steps of deploy.yml without pipefail,
+# smoke test before deploy, images pushed for every event, deploy.yml triggered by a push, a deployment for a dispatch on any
+# branch, runs for main cancelled, steps of deploy.yml without pipefail,
 # the two deploy branches pushed without --atomic, no check of the render before the push, a short digest accepted by
 # the images values generator, a workflow that deletes package versions, the certificate of Sealed Secrets ignored by git,
 # deploy.yml missing, a backup repository without its password, the backup CronJob without concurrencyPolicy Forbid, the
@@ -29,6 +30,8 @@ check:
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing without the absent for a metric that is gone, NodeDiskFull
 # firing at exactly 85 percent, an alert rule that PromQL cannot parse).
+# Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
+# only: CI does not run it (workflow k8s-selftest.yml, started by hand).
 selftest:
 	sh scripts/selftest.sh
 
@@ -71,6 +74,7 @@ load:
 # Runs a job of a version again under its name (a finished or failed one): make -C infra/k8s rerun JOB=<name>.
 # KUBE_DIR is the directory with the kubeconfig of the cluster (required), KUBE_NETWORK the Docker network of kubectl.
 rerun:
+	@sh scripts/ao-guard.sh rerun
 	@test -n "$(JOB)" || { echo "rerun: set JOB=<job name>, e.g. make -C infra/k8s rerun JOB=initialize-3fa9c1d2e4" >&2; exit 2; }
 	sh scripts/rerun.sh "$(JOB)"
 
@@ -79,6 +83,7 @@ rerun:
 # sends the e-mail to set the password and TOTP (valid 12 h). An existing login or e-mail fails without changes.
 # KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 create-admin:
+	@sh scripts/ao-guard.sh create-admin
 	sh scripts/create-admin.sh "$(LOGIN)" "$(EMAIL)"
 
 # Restores a snapshot of the backups (docs/features/deploy-ops/spec.md, O4): make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip].
@@ -89,11 +94,13 @@ create-admin:
 # the reindex and purge-caches again and brings everything back. A failure leaves the applications off and says at which step
 # and which pre-restore snapshot (infra/k8s/README.md). KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 restore:
+	@sh scripts/ao-guard.sh restore
 	SNAPSHOT="$(SNAPSHOT)" PRE_RESTORE="$(PRE_RESTORE)" sh scripts/restore.sh
 
 # The snapshots of the repository of the backups (identifier, time, host, tags, revision), the oldest first; only reads:
 # make -C infra/k8s backups. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 backups:
+	@sh scripts/ao-guard.sh backups
 	sh scripts/backups.sh
 
 # Encrypts the secrets of the environment with the certificate of the controller (environments/prod/sealed-secrets.pem) into
@@ -116,6 +123,7 @@ bootstrap:
 # Copies the kubeconfig of the cluster from the server into KUBE_DIR (outside the repository) for rerun and create-admin:
 # make -C infra/k8s kubeconfig HOST=<user>@<address> KUBE_DIR=<directory>.
 kubeconfig:
+	@sh scripts/ao-guard.sh kubeconfig
 	sh scripts/kubeconfig.sh "$(HOST)"
 
 # The applications of Argo CD, the pods and the jobs of the shop, and the logs of the failed jobs, read over SSH: make -C infra/k8s status HOST=<user>@<address>.

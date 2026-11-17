@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Ordering\Persistence;
 use App\Ordering\Application\Port\CustomerListedOrder;
 use App\Ordering\Application\Port\ListedOrder;
 use App\Ordering\Application\Query\BackofficeOrderCursor;
+use App\Ordering\Application\Query\BackofficeOrderSort;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DbalCustomerOrderReader;
 use App\Tests\Integration\Ordering\BackofficeOrderFixture;
 use Doctrine\DBAL\Connection;
@@ -77,7 +78,7 @@ final class DbalCustomerOrderReaderTest extends KernelTestCase
             if (\count($page) < 2) {
                 break;
             }
-            $after = BackofficeOrderCursor::decode(BackofficeOrderCursor::placedAfter($page[1]->placedAt, $page[1]->orderId)->encode(), false);
+            $after = BackofficeOrderCursor::decode(BackofficeOrderCursor::placedAfter($page[1]->placedAt, $page[1]->orderId)->encode(), BackofficeOrderSort::PlacedDescending);
         }
 
         self::assertSame($this->ids($this->reader->page(self::CUSTOMER, null, 100)), $seen, 'the pages together are the one page');
@@ -88,7 +89,7 @@ final class DbalCustomerOrderReaderTest extends KernelTestCase
     public function testACursorOfTheSortOfThePendingRefundsIsRefused(): void
     {
         $order = $this->order('returned', '2026-11-05 10:00:00', 'R-100001', refundDueAt: '2026-11-19 10:00:00+00:00');
-        $cursor = BackofficeOrderCursor::decode(BackofficeOrderCursor::after(new ListedOrder($order, 'R-100001', new \DateTimeImmutable('2026-11-05 10:00:00+00:00'), 'returned', 'jan@example.com', 'Jan', 1_000, 'PLN', 1, 1_000, new \DateTimeImmutable('2026-11-19 10:00:00+00:00'), null), true)->encode(), true);
+        $cursor = BackofficeOrderCursor::decode(BackofficeOrderCursor::after(new ListedOrder($order, 'R-100001', new \DateTimeImmutable('2026-11-05 10:00:00+00:00'), 'returned', 'jan@example.com', 'Jan', 1_000, 'PLN', 1, 1_000, new \DateTimeImmutable('2026-11-19 10:00:00+00:00'), null), BackofficeOrderSort::RefundDueDate)->encode(), BackofficeOrderSort::RefundDueDate);
 
         $this->expectException(\InvalidArgumentException::class);
 

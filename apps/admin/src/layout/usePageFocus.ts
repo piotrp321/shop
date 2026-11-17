@@ -18,7 +18,7 @@ const HEADING_WAIT_MS = 10_000;
  *   or the menu they used. An element that has the focus and still exists is a trigger that stays.
  * - The H1 may appear only after the data has loaded: until then the focus goes to <main> (`tabindex="-1"`), and when
  *   the H1 appears and the focus is still free it moves there; a focus moved by the staff member meanwhile is not taken.
- * - The H1 of a screen that is not migrated yet has no `tabindex`: the shell gives it `-1`.
+ * - An H1 without a `tabindex` of its own (the dashboard): the shell gives it `-1`.
  *
  * The drawer is the exception: its item is gone as the drawer closes, and the focus would return to „Menu”. After
  * `choseInDrawer`, the next change of page takes the focus whatever has it, and `takenByChoice` tells the drawer that the

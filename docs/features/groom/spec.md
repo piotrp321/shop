@@ -21,6 +21,12 @@ sprawdza propozycje i po „tak” użytkownika wykonuje dokładnie zatwierdzone
   oraz otwarte issues bez żadnej z etykiet rodzaju (`bug`, `ux`, `tech-debt`, `epic`, `enhancement`), np. tylko
   z `documentation` i `agent`. Issues `epic` i `enhancement` nie są przeglądane. Otwarte epiki są kontekstem (zakresy,
   przypisane issues).
+- **Zgłoszenia zewnętrzne.** Issues autorów bez prawa zapisu do repozytorium (`read`, `triage`, brak dostępu, boty,
+  `ghost`; bramka pochodzenia `tools/agent-security/github_trust.py`, `docs/adr/agent-security.md`) nie są wejściem:
+  agent dostaje tylko ich numer, autora i link, bez tytułu, treści i etykiet, i niczego dla nich nie proponuje.
+  Użytkownik widzi je osobno jako „Zgłoszenia zewnętrzne: #N od @autor, link”; zgłoszenie, którym chce się zająć,
+  przepisuje we własne issue. Issue `epic` takiego autora nie jest otwartym epikiem (bez zakresu, przypisanych issues
+  i ID).
 - **Issues przypisane do otwartego epiku** (w linii `Issues:` jego `spec.md` na `origin/main` albo w treści issue
   epiku) nie dostają żadnej propozycji. Gdy agent uważa takie issue za nieaktualne albo zdublowane, wpisuje to do
   hipotez z nazwą epiku (decyzja należy do odbioru tego epiku).
@@ -86,14 +92,19 @@ na `-FIXES` (ID i jego wzorzec jak w `next_epic.py`). Na raz istnieje jeden epik
 1. **Dane.** Katalog przebiegu `~/.local/state/shop-groom/<data>-<sha7>-<n>/` (`n` kolejny numer przebiegu tego dnia
    i commitu). Worktree `git worktree add --detach` z `origin/main` w katalogu przebiegu. `groom.py collect` zapisuje
    `input.json`:
-   - issues z wejścia (numer, tytuł, treść, etykiety, autor, `updatedAt`) przez `gh issue list --limit 500`; wynik
-     równy limitowi to błąd (kod 1);
-   - otwarte epiki: ID, numer, przypisane issues (treść issue i linia `Issues:` ich `spec.md` w worktree), zakres
-     (`parse_scope` z `night_queue.py` na `spec.md` w worktree), stan z `next_epic.board_epics` (przygotowany, w toku);
+   - issues z wejścia (numer, tytuł, treść, etykiety, autor, `updatedAt`) przez bramkę pochodzenia (`Gate.issues`,
+     czyli `gh issue list --limit 500` i jedno `gh api …/collaborators/<login>/permission` na autora); wynik równy
+     limitowi to błąd (kod 1), błąd bramki też (kod 1, bez `input.json`);
+   - `external`: rekordy bramki zgłoszeń zewnętrznych (`number`, `author`, `url`, `trusted: false`);
+   - otwarte epiki: otwarte issues `epic` zaufanych autorów z tej samej listy: ID, numer, przypisane issues (treść
+     issue i linia `Issues:` ich `spec.md` w worktree), zakres (`parse_scope` z `night_queue.py` na `spec.md`
+     w worktree), stan z `next_epic.board_epics` (przygotowany, w toku; z tablicy brany jest tylko stan i kolejność,
+     nie tekst);
    - zajęte ID: katalogi `docs/features/` z worktree, gałęzie `epic/*` (`git ls-remote`), ID otwartych epików;
    - wpisy z `rejected.jsonl`.
 
-   `groom.py` importuje `next_epic` i `night_queue` (jak `night_queue.py` importuje `next_epic`), bez kopii ich kodu.
+   `groom.py` importuje `next_epic`, `night_queue` (jak `night_queue.py` importuje `next_epic`) i `github_trust`, bez
+   kopii ich kodu. Wyjście `collect` ma `external` i `external_summary` (linia „Zgłoszenia zewnętrzne: …” albo `null`).
 2. **Agent `backlog-groomer`** (`.claude/agents/backlog-groomer.md`, model Sonnet, narzędzia Read, Grep, Glob, Bash
    tylko do odczytu, Write tylko w katalogu przebiegu) dostaje ścieżki `input.json` i worktree, zwraca
    `proposals.json`. Zasady agenta:
@@ -108,6 +119,7 @@ na `-FIXES` (ID i jego wzorzec jak w `next_epic.py`). Na raz istnieje jeden epik
      i powodem zamknięcia, `label` z dozwoloną etykietą;
    - każde issue (także `keep`) najwyżej w jednej pozycji `items` i nie jednocześnie w `items` i `fix_epic`;
    - żadne issue przypisane do otwartego epiku; `needs-info` tylko dla issue bez tej etykiety;
+   - żadne zgłoszenie zewnętrzne (`external` z `input.json` albo z `--current`), także w epiku poprawek;
    - odrzucenia: pozycja o tym samym rodzaju i zbiorze issues co wpis w `rejected.jsonl` jest błędem, chyba że
      któreś issue ma `updatedAt` inny niż zapisany we wpisie i pozycja ma `previously_rejected`;
    - epik poprawek: brak otwartego `-FIXES`, 3–8 kandydatów spełniających reguły, wolne ID według reguły. Skrypt
@@ -117,7 +129,7 @@ na `-FIXES` (ID i jego wzorzec jak w `next_epic.py`). Na raz istnieje jeden epik
    nierozstrzygnięta (`decided_at` z wynikiem „błąd walidacji”).
 4. **Lista.** Worktree jest usuwany (`git worktree remove`) zaraz po walidacji, także po błędzie. `report.md`
    w katalogu przebiegu i lista w rozmowie: numerowane pozycje (rodzaj, issues, uzasadnienie, dowód), na końcu epik
-   poprawek z kolizjami, potem hipotezy i nadmiar. Push „Backlog: N propozycji[, epik <ID>: k issues]” (do 200
+   poprawek z kolizjami, potem hipotezy, nadmiar i sekcja „Zgłoszenia zewnętrzne” z `external_summary`. Push „Backlog: N propozycji[, epik <ID>: k issues]” (do 200
    znaków). Lista pusta (bez pozycji i epiku): `decided_at` od razu, push „Backlog: brak propozycji”.
 5. **Decyzja** użytkownika w sesji, która pokazała listę (z harmonogramu, ręcznej albo kolejnej z przypomnieniem):
    „tak” (wszystkie), „tak bez 2, 5”, „1, 3 i epik”, „odrzuć 4: <powód>”. Przy odpowiedzi częściowej pozycje bez
@@ -166,7 +178,8 @@ są ilustracją.
   dla przebiegu ręcznego).
 - `.claude/agents/backlog-groomer.md`: agent.
 - `.claude/skills/groom/groom.py` (Python 3.9+, bez zależności) i `test_groom.py`: `collect`, `validate`, `apply` oraz `origin` i `gate` (tryb po `/groom` w `/prepare-epic`).
-  Komendy `gh` i `git` przez wstrzykiwany runner `next_epic.make_runner`. `ci.yml` dostaje linię
+  Komendy `gh` i `git` przez wstrzykiwany runner `next_epic.make_runner`; treść issues przez bramkę
+  `github_trust.Gate` (runner `github_trust.make_runner`, który zachowuje wyjście nieudanego `gh api --include`). `ci.yml` dostaje linię
   `python3 -m unittest discover -s .claude/skills/groom -p "test_*.py"`.
 - Stan poza repo: `~/.local/state/shop-groom/` (katalogi przebiegów, `rejected.jsonl`). Plik odrzuconych `/sweep`
   (`~/.local/state/shop-sweep/rejected.md`) jest osobny: ma inną semantykę (commit, pliki, nowy dowód).
@@ -186,10 +199,12 @@ są ilustracją.
 
 1. Testy `groom.py` z podstawionymi wynikami `gh` i `git`:
    - `collect`: filtr etykiet, issues bez etykiety rodzaju, issues przypisane do otwartych epików, zajęte ID, limit 500
-     osiągnięty → kod 1, błąd `gh` → kod 1;
+     osiągnięty → kod 1, błąd `gh` → kod 1; zgłoszenie zewnętrzne bez tytułu i treści w `input.json`
+     i w `external_summary`, epik zewnętrznego autora poza `epics`, błąd bramki → kod 1;
    - `validate`: każda reguła z sekcji „Walidacja” i „Epik poprawek” (jedno issue w dwóch pozycjach, issue z epiku,
      odrzucenie bez zmiany i ze zmianą `updatedAt`, `needs-info` na issue z tą etykietą, `label` z `epic`, ID i sufiks
-     `-2`, kolizje liczone przez skrypt, 2 i 9 kandydatów, Critical w kandydatach);
+     `-2`, kolizje liczone przez skrypt, 2 i 9 kandydatów, Critical w kandydatach, numer zgłoszenia zewnętrznego
+     w pozycji i w epiku poprawek);
    - `apply`: tylko zatwierdzone numery, kolejność rodzajów, dokładne komendy `gh` każdego rodzaju (`--duplicate-of`
      z `keep`, powód zamknięcia `obsolete`), issue zamknięte albo zmienione od przeglądu → pominięte, błąd jednej
      pozycji nie zatrzymuje reszty i nie trafia do odrzuconych, `fix_epic` bez tablicy → komenda ręczna, zapis

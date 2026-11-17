@@ -9,11 +9,16 @@ use Symfony\Component\Security\Core\User\UserInterface;
 
 /**
  * A staff member authenticated by an access token of the `backoffice` realm. Built from the token claims on every
- * request. Every staff member has ROLE_STAFF; what they may do depends on their staff roles, checked by voters.
+ * request. Only a member with at least one staff role has ROLE_STAFF, which every panel route but GET /admin/me
+ * requires (config/packages/security.yaml); what they may do beyond that depends on their staff roles, checked by
+ * voters. A member without a staff role can only read who they are.
  */
 final readonly class StaffUser implements UserInterface, AuthenticatedStaffMember
 {
     public const string ROLE = 'ROLE_STAFF';
+
+    /** Staff roles in the order they are reported; the only list of them. */
+    public const array STAFF_ROLES = ['admin', 'support', 'warehouse', 'marketing'];
 
     /**
      * @param non-empty-string $id
@@ -43,7 +48,7 @@ final readonly class StaffUser implements UserInterface, AuthenticatedStaffMembe
 
     public function getRoles(): array
     {
-        return [self::ROLE];
+        return [] === array_intersect($this->staffRoles, self::STAFF_ROLES) ? [] : [self::ROLE];
     }
 
     public function getUserIdentifier(): string

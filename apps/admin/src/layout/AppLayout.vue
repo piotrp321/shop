@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMediaQuery } from "@vueuse/core";
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterView } from "vue-router";
 import BrandMark from "@/components/BrandMark.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,19 +14,53 @@ import AppTopbar from "./AppTopbar.vue";
 import { usePageFocus } from "./usePageFocus";
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+// The toasts stand at the top right, under the topbar (70 px, `h-17.5` of `AppTopbar`) and a gap of 12 px: far from the
+// save bar at the bottom, and never over the topbar. Below 640 px they take the width of the screen with a 16 px margin:
+// vue-sonner does that only up to 600 px (its own media query), so the classes of `TOAST_NARROW` do the rest. They are on the
+// list (`ol`) of the toasts and are important (`!`), because the stylesheet of vue-sonner is not in a layer and would win;
+// `*:w-full!` is the width of the toasts themselves (`--width` is set inline, 356 px).
+const TOAST_TOP = "calc(4.375rem + 0.75rem)";
+const TOAST_NARROW = "max-sm:right-4! max-sm:left-4! max-sm:w-auto! max-sm:*:w-full!";
+const TOAST_OFFSET = { top: TOAST_TOP, right: "1.5rem" };
+const TOAST_MOBILE_OFFSET = { top: TOAST_TOP, right: "1rem", left: "1rem" };
 
 const auth = useAuthStore();
 const storeUrl = readUrl("VITE_STORE_URL");
 const year = new Date().getFullYear();
 let idle: { stop(): void } | undefined;
 
+/**
+ * An account of the panel without any staff role (spec: docs/features/admin-features/spec.md, section 0): the API answers it
+ * only on /me, so instead of the menu and the page the shell says that the account has no role; the topbar with „Wyloguj”
+ * stays. Unknown until /me is read: a member whose /me cannot be read sees the panel as before.
+ */
+const noStaffRole = computed(() => auth.staff !== null && auth.staff.roles.length === 0);
+
 const main = ref<HTMLElement | null>(null);
+const noRoleHeading = ref<HTMLElement | null>(null);
 const topbar = ref<InstanceType<typeof AppTopbar> | null>(null);
 const drawerOpen = ref(false);
 const pageFocus = usePageFocus(main);
 watch(drawerOpen, (open) => {
   if (open) {
     pageFocus.resetChoice();
+  }
+});
+
+// The page the member was on is gone with the message: a focus that was in it (on <body> now) or on <main> moves to the
+// heading of the message; a focus elsewhere, e.g. in the topbar, stays.
+async function focusNoRoleHeading() {
+  drawerOpen.value = false;
+  await nextTick();
+  const active = document.activeElement;
+  if (active === null || active === document.body || active === main.value) {
+    noRoleHeading.value?.focus();
+  }
+}
+
+watch(noStaffRole, (none) => {
+  if (none) {
+    void focusNoRoleHeading();
   }
 });
 
@@ -74,6 +108,11 @@ function returnFocusToMenuButton(event: Event) {
 
 onMounted(() => {
   startIdleLogout();
+  // The guard of a route (a deep link to /orders, /system, …) may have read /me before the layout was created: the watcher
+  // above then never sees the change, so the heading takes the free focus here.
+  if (noStaffRole.value) {
+    void focusNoRoleHeading();
+  }
   void auth.load();
 });
 
@@ -97,12 +136,18 @@ onBeforeUnmount(() => idle?.stop());
       <div class="flex h-17.5 shrink-0 items-center px-6">
         <BrandMark inverted />
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto">
+      <div
+        v-if="!noStaffRole"
+        class="min-h-0 flex-1 overflow-y-auto"
+      >
         <AppMenu />
       </div>
     </aside>
 
-    <Sheet v-model:open="drawerOpen">
+    <Sheet
+      v-if="!noStaffRole"
+      v-model:open="drawerOpen"
+    >
       <SheetContent
         side="left"
         data-surface="sidebar"
@@ -126,6 +171,7 @@ onBeforeUnmount(() => idle?.stop());
     <div class="flex min-w-0 flex-1 flex-col">
       <AppTopbar
         ref="topbar"
+        :menu="!noStaffRole"
         @open-menu="drawerOpen = true"
       />
       <main
@@ -141,7 +187,22 @@ onBeforeUnmount(() => idle?.stop());
         >
           <AlertDescription>{{ auth.error }}</AlertDescription>
         </Alert>
-        <RouterView />
+        <template v-if="noStaffRole">
+          <h1
+            ref="noRoleHeading"
+            tabindex="-1"
+            class="text-xl font-bold text-heading focus:outline-none"
+          >
+            Brak dostępu do panelu
+          </h1>
+          <Alert
+            data-testid="no-staff-role"
+            class="max-w-2xl border-status-danger text-status-danger *:data-[slot=alert-description]:text-status-danger"
+          >
+            <AlertDescription>Twoje konto nie ma roli w panelu. Skontaktuj się z administratorem.</AlertDescription>
+          </Alert>
+        </template>
+        <RouterView v-else />
       </main>
       <footer class="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-separator px-4 py-4 text-xs text-muted-foreground sm:px-6">
         <p>© {{ year }} Worf · Panel administracyjny</p>
@@ -155,6 +216,12 @@ onBeforeUnmount(() => idle?.stop());
       </footer>
     </div>
 
-    <Toaster :duration="5000" />
+    <Toaster
+      position="top-right"
+      :class="TOAST_NARROW"
+      :duration="5000"
+      :offset="TOAST_OFFSET"
+      :mobile-offset="TOAST_MOBILE_OFFSET"
+    />
   </div>
 </template>

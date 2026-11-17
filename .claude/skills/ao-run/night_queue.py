@@ -38,6 +38,12 @@ open start before the interval does not count). A start/done pair is a measureme
 Estimates take time per task from all measurements and usage per task from the measurements without `overlap` (from
 all when none of them has the window).
 
+Board: every command that reads the board (propose, approve, next, ahead, gate) reads the open epic issues through
+the origin gate tools/agent-security/github_trust.py (next_epic.board_epics). An epic issue of an author without
+write access is never an epic of the queue or a candidate: it has no ID or directory (its title is never read), so
+it is never listed, chosen, reserved or matched by --dir; propose lists it in `skipped` as {issue, id: null, reason,
+author, url}. A permission lookup the gate cannot judge fails closed like a failed gh command (exit 1).
+
 propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
 {"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
 "in_progress": [{dir, id, issue}], "until": <iso>, "measured": <bool>, "hold": {at, reason} | null}: the prepared epics
@@ -105,7 +111,8 @@ zarezerwowany albo w toku`). Steps against the epics in progress other than the 
 wait; a parallel hold (parallel-hold.json, see hold) -> wait `równoległość wstrzymana: <reason>`; dependency on an open
 epic -> skip; no readable scope: candidate -> skip, epic in progress (also without spec.md on origin/main) -> wait; a
 common path that is not allowed (parallel_gate.is_allowed) -> skip with the blocking paths of all epics in progress;
-free Docker memory below one stack (--stack-gib, default 6) -> wait; usage status not `ok`, no estimate, an active epic
+free Docker memory below parallel_gate.MAX_PARALLEL stacks (the reserve of every active epic is as many stacks; one
+stack: --stack-gib, default 6) -> wait; usage status not `ok`, no estimate, an active epic
 without a readable plan.md on origin/main, or a window resetting after the candidate's estimated end above 80% with the
 full estimates of the active epics and the candidate -> wait. A skip moves to the next candidate (with --dir it stops);
 a wait stops. Prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null, "reason", "reserved": false,
@@ -133,8 +140,8 @@ gate.jsonl), so a failure never leaves a token in claims.json that was not print
 
 release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
-hold: the parallel hold after a critical problem of a pair (docs/features/parallel-work/spec.md, „Pomiar pierwszych
-dwóch par”): writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
+hold: the parallel hold after a critical problem of a pair (docs/features/parallel-work/spec.md, „Metryki
+par”): writes <state>/parallel-hold.json {at, reason} and prints it, exit 0; an existing hold is kept (printed,
 not overwritten); an empty or blank --reason exits 2. While it exists, the gate (also `next` case (c)) makes every
 candidate next to an epic in progress wait; nothing in progress still passes, so serial work goes on. unhold: removes
 the hold (the user's decision) and prints {"removed": <bool>}, exit 0 also without a hold. An unreadable
@@ -493,8 +500,7 @@ def propose(run, state_dir, until_text, now):
     ctx = gate_context(run, state_dir, now)
     board, measured = ctx.board, ctx.measured
     in_progress = [{'dir': p['dir'], 'id': p['id'], 'issue': p['issue']} for p in ctx.in_progress]
-    skipped = [{'issue': e['number'], 'id': e['id'], 'reason': e['reason']}
-               for e in board if e['state'] in ('invalid', 'unprepared')]
+    skipped = [next_epic.skipped_entry(e) for e in board if e['state'] in ('untrusted', 'invalid', 'unprepared')]
     claimed = {p['dir'] for p in ctx.in_progress}
     chosen, minutes_total = [], 0.0
     for e in [e for e in board if e['state'] == 'prepared' and e['dir'] not in claimed]:
@@ -988,16 +994,18 @@ def check_files(ctx, entry, others):
 
 
 def check_docker(ctx, active, stack_mib):
-    """Step 6: free Docker memory for one more stack; sets ctx.docker (None when not measured)."""
+    """Step 6: free Docker memory for one more epic: parallel_gate.MAX_PARALLEL stacks, the same reserve as for every
+    active epic; sets ctx.docker (None when not measured)."""
     try:
         snapshot = parallel_gate.docker_snapshot(ctx.run)
     except parallel_gate.DockerError as error:
         ctx.docker = None
         return str(error)
-    free = parallel_gate.free_mib(snapshot, len(active), stack_mib)
-    ctx.docker = dict(snapshot, free_mib=round(free, 1), required_mib=round(stack_mib, 1))
-    if free < stack_mib:
-        return 'pamięć Dockera: wolne %.0f MiB < %.0f MiB' % (free, stack_mib)
+    epic_mib = stack_mib * parallel_gate.MAX_PARALLEL
+    free = parallel_gate.free_mib(snapshot, len(active), epic_mib)
+    ctx.docker = dict(snapshot, free_mib=round(free, 1), required_mib=round(epic_mib, 1))
+    if free < epic_mib:
+        return 'pamięć Dockera: wolne %.0f MiB < %.0f MiB' % (free, epic_mib)
     return None
 
 

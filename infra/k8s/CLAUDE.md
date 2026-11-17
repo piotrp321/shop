@@ -25,8 +25,11 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje: każdy przypadek uruchamia tylko krok
   `check.sh`, który ma ten błąd wyłapać, a w kroku `tests` tylko test, który ma się nie udać (`CHECK_TESTS_FILTER`);
   nieuszkodzona kopia przechodzi pełny `check`; `SELFTEST_FULL=1` uruchamia przy każdym przypadku pełny `check`;
-  `SELFTEST_ONLY='<regex>'` wybiera przypadki po nazwie; CI uruchamia wszystkie przypadki przy zmianie `infra/k8s`,
-  więc lokalnie agent uruchamia tylko przypadki, które dodał albo zmienił, i przypadki testów, które zmienił);
+  `SELFTEST_ONLY='<regex>'` wybiera przypadki po nazwie; przypadki działają równolegle, po jednym na procesor demona Dockera,
+  każdy we własnym drzewie (`SELFTEST_JOBS=<n>` ustawia liczbę, `1` to kolejno; wyjście przypadku jest drukowane w całości, po jego
+  zakończeniu); CI go nie uruchamia: wszystkie przypadki idą na żądanie (`make -C infra/k8s selftest` lokalnie albo
+  `gh workflow run k8s-selftest.yml --ref <gałąź> [-f only=<regex>]`, pole `only` to `SELFTEST_ONLY`), a agent uruchamia lokalnie tylko
+  przypadki, które dodał albo zmienił, i przypadki testów, które zmienił);
   `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
   i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
   e-mail z akcjami `UPDATE_PASSWORD` i `CONFIGURE_TOTP`, link ważny 12 h; istniejący login albo e-mail: błąd, kod 3,
@@ -44,13 +47,20 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   identyfikator, czas, host, tagi, rewizja; tylko odczyt). `rerun`, `create-admin`, `restore` i `backups` łączą się z
   klastrem przez kubeconfig z `KUBE_DIR` (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w
   przestrzeni `KUBE_NAMESPACE` (domyślnie `shop`). Agent uruchamia `create-admin` i `restore` tylko po zgodzie użytkownika
-  w rozmowie; `backups` sam.
+  w rozmowie; `backups` sam. Te cztery i `kubeconfig` (cele, które zapisują albo montują `KUBE_DIR`, czyli kubeconfig
+  produkcji) wołają w Makefile najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0, bez zmian, z komunikatem po angielsku: zatrzymaj AO albo
+  poczekaj na koniec przebiegu), gdy działa AO (`python3 -m orchestrator … run`) albo żywy wykonawca (proces `claude-agent`
+  albo runner AO `orchestrator/runner.py`); błąd `ps` też jest odmową, a żadna zmienna nie wyłącza sprawdzenia. Skrypty
+  `rerun.sh`, `create-admin.sh`, `restore.sh` i `backups.sh` same go nie wołają, bo woła je `smoke.sh` (test dymny działa też
+  w trakcie przebiegu AO). `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej (runbook,
+  2.6); `kubeconfig` dopisuje jego bezwzględną ścieżkę do rejestru `~/.local/state/shop-ops/kube-dirs` (jedna ścieżka w
+  wierszu), z którego czyta `ao-prepare` i odmawia startu AO, dopóki zapisany katalog istnieje.
   Serwer obsługują cele (po SSH, `HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `make -C infra/k8s bootstrap HOST=…
   [SEALED_KEY_FILE=<kopia klucza>]` (czysty Ubuntu 26.04: k3s w przypiętej wersji, ufw, aktualizacje bezpieczeństwa, Argo CD,
   Sealed Secrets, aplikacja `root`; idempotentny; bez roota albo na innym systemie kończy się błędem przed zmianami;
   zapisuje certyfikat kontrolera do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma, a rozbieżny
   certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun`, `create-admin`, `restore`
-  i `backups`),
+  i `backups`; zapisuje `KUBE_DIR` w rejestrze, patrz wyżej),
   `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby i logi nieudanych Jobów), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
   demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup grafana"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
@@ -59,8 +69,26 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
   (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
   runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
-  „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset i deploy key, backup VPS-a)
+  „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a)
   nie są jego decyzją ani czynnością.
+
+## Joby wersji
+
+- Job `backfill` (fala 3, jak `purge-caches`) uruchamia `bin/console app:backfill` po rolloucie `api` i `worker`
+  (initContainery `shop.waitRollout`, ServiceAccount `shop-wait`): migracje zmieniają tylko schemat, a dane wypełniają
+  kroki `app:backfill` (`apps/api/CLAUDE.md`), każdy raz, bo ukończone zapisuje w `app_backfill`; kolejne wersje
+  pomijają ukończone kroki, a ponowienie Joba (`backoffLimit`, `rerun`) zaczyna od nieukończonego. Ma własny limit czasu
+  `jobs.backfillActiveDeadlineSeconds` (domyślnie 21 600 s; pozostałe Joby `jobs.activeDeadlineSeconds`), bo przy
+  docelowej skali przechodzi cały katalog i zamówienia. Lokalnie (compose) kroki uruchamia koniec `bin/seed-demo`
+  (`app:backfill --force`); `restore` go nie ponawia. Test: `tests/test_jobs.py`, `tests/test_waves.py`.
+
+## Worker
+
+- Deployment `worker` (obraz `api`) uruchamia `messenger:consume outbox events scheduled payment_simulator promotions
+  jobs`, transporty po kolei, ta sama komenda co `worker` w compose; sonda gotowości czeka, aż PID 1 to ten konsument
+  z tą listą transportów. `jobs` to partie zadań w tle wywołanych zmianą w domenie (reindeksacja poddrzewa kategorii,
+  `apps/api/CLAUDE.md`). Nowy transport trafia do compose i chartu w tym samym PR (test
+  `test_worker_consumes_the_transports_of_compose` w `tests/test_workloads.py`).
 
 ## Co sprawdza `check`
 
@@ -73,7 +101,13 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
   jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
   w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
-  razem z `image.requireDigests` kończą render błędem) oraz testy
+  razem z `image.requireDigests` kończą render błędem; blok `sentry` (`environment`, `tracesSampleRate`, `dsn.api`, `dsn.store`,
+  `dsn.admin`, domyślnie puste, w `prod` `environment: demo` i `tracesSampleRate: 0.1`, DSN-y trzech projektów Sentry tylko w `prod`,
+  `README.md` sekcja 10): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (`image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` tylko dla
+  aplikacji z niepustym DSN, przez helper `shop.sentryEnv`; DSN api w `shop.apiEnv` (api, worker, Joby, init kontenery, CronJoby
+  `cart-purge-expired` i `restore`), DSN sklepu tylko w sklepie, panelu tylko w panelu; bez DSN żadnej `SENTRY_*` (także w `prod`
+  i `ci`, `tests/test_sentry.py`); schemat odrzuca `tracesSampleRate` spoza 0–1 i DSN innego kształtu niż
+  `https://<klucz>@<host>/<id projektu>`) oraz testy
   skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
   `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
   robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within` tylko po kopii `nightly` (kopia `pre-restore` niczego nie przycina); weryfikacja: snapshot `nightly` tego klastra
@@ -132,7 +166,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   konfiguracja z renderu przechodzi `alloy validate`),
   reguły alertów (`templates/00-alerts.yaml`: nazwa sortuje się tak, żeby Helm, który renderuje szablony w odwrotnej kolejności
   nazw, wyrenderował ją po wszystkich workloadach; `PrometheusRule` z siedmioma alertami tylko przy `alerts.enabled`, czyli w
-  `prod`, nie w `ci` i `load`, a bez `backup.enabled` bez czterech alertów kopii; `WorkloadNotReady` ma `absent` dla każdego Deploymentu
+  `prod`, nie w `ci` i `load`, a bez `backup.enabled` (w `prod`, dopóki kopie nie są skonfigurowane) bez czterech alertów kopii;
+  `promtool` testuje reguły renderu `prod-backup` (`prod` z `backup.enabled=true`), z którego czytają też testy kopii; `WorkloadNotReady` ma `absent` dla każdego Deploymentu
   i StatefulSetu renderu, także w `ci` z `alerts.enabled`, bo `shop.deployment` i `shop.statefulset` zapisują workload w rejestrze
   czytanym przez regułę; alerty kopii patrzą na dokładną nazwę CronJoba, `BackupMissing` i `BackupVerifyMissing` mają `absent`,
   `NodeDiskFull` pomija systemy tymczasowe; brak CRD przy `alerts.enabled` ma dawać błąd synchronizacji, więc szablon nie pyta
@@ -148,7 +183,19 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   zaszyfrowaną wartość w `environments/prod/secrets/`; jawny Secret w tym katalogu to błąd), `seal-secrets.sh`
   i skrypty serwera na atrapach `docker` i `ssh`, `server-bootstrap.sh` dwa razy w kontenerze Ubuntu 26.04 bez k3s
   (atrapy `k3s`, `apt-get`, `ufw`, `sysctl`), brak workflowu usuwającego wersje pakietów GHCR oraz to, że `.gitignore`
-  nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście).
+  nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście). Testy workflowów
+  (`tests/test_deploy_workflow.py`, `render.sh` zamienia na JSON każdy plik `.github/workflows/*.yml` i `*.yaml`): job `deploy`
+  ma `environment: production` (nazwa albo obiekt z literalną nazwą), tylko on (inny job może mieć wyłącznie środowisko z
+  `MAIN_ONLY_ENVIRONMENTS` poza `production`: `images` ma `sentry`, bez zatwierdzenia), a żadne wyrażenie z kontekstem `secrets` inne niż
+  `secrets.GITHUB_TOKEN` (w każdej pisowni: wielkie litery, spacje, `secrets['X']`, `toJSON(secrets)`, `format(…)`, `env:`,
+  `with:`, skrypt, `if`) nie występuje poza jobem ze środowiskiem z listy `MAIN_ONLY_ENVIRONMENTS` (środowiska z polityką
+  gałęzi „tylko `main`”: `production` i `sentry`, opisane w runbooku); na poziomie workflowu i przy `secrets: inherit` jest błąd zawsze. Test widzi
+  pliki, nie ustawienia środowisk w GitHubie (to pozycja użytkownika w runbooku), i odrzuca atrapy z tymi obejściami.
+  Testy `ao-guard.sh` i celów (`tests/test_ao_guard.py`: atrapa `ps` z liniami jak na komputerze użytkownika, cele uruchamiane
+  przepisami z Makefile na atrapach `docker` i `ssh`: z AO, runnerem albo `claude-agent` każdy z pięciu celów odmawia bez wywołania
+  `docker`/`ssh` i bez zmian w `KUBE_DIR`, procesy podobne do AO przepuszcza, błąd `ps` jest odmową, bez AO cele działają jak
+  dotąd) i rejestru `KUBE_DIR` (`tests/test_server_scripts.py`). `selftest` ma przypadki: `deploy.yml` bez środowiska
+  `production`, `images` bez środowiska `sentry`, `images` w środowisku `production` i sekret w `env:` workflowu.
 
 ## Gałęzie `deploy` i `deploy-images`
 
@@ -157,16 +204,35 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `infra/k8s/environments/prod/values-images.yaml` (`image.tag` i digesty czterech obrazów; nie ma go na `main`), z
   rodzicami: poprzedni snapshot i commit z `deploy`. Aplikacja `shop` ma jedno źródło: chart z `deploy-images` z plikami
   wartości `prod` i `values-images.yaml`. Obie gałęzie przesuwa wyłącznie workflow `.github/workflows/deploy.yml` jednym
-  `git push --atomic` (`.github/scripts/deploy-ref.sh`: bez `--force`, deploy keyem z sekretu repo `DEPLOY_KEY`), nikt
+  `git push --atomic` (`.github/scripts/deploy-ref.sh`: bez `--force`, deploy keyem z sekretu `DEPLOY_KEY` środowiska
+  `production`), nikt
   ich nie edytuje ręcznie. Workflow:
-  - push do `main`: buduje i wypycha cztery obrazy produkcyjne `ghcr.io/piotrp321/shop/<app>:<sha>` (api, store, admin,
-    elasticsearch; ich digesty są w podsumowaniu runu), raz generuje `values-images.yaml`
+  - `workflow_dispatch` na `main` (wdrożenie tylko na życzenie użytkownika: `gh workflow run deploy.yml --ref main`, agent
+    uruchamia je wyłącznie na jego wyraźne polecenie w rozmowie; push do `main` niczego nie wdraża): buduje i wypycha cztery obrazy produkcyjne
+    `ghcr.io/piotrp321/shop/<app>:<sha>` (api, store, admin, elasticsearch; ich digesty są w podsumowaniu runu), raz generuje `values-images.yaml`
     (`infra/k8s/scripts/images-values.sh`), uruchamia smoke test na tych obrazach (`make -C infra/k8s smoke` na
     `ubuntu-latest`; z `SMOKE_VALUES=<ten plik>` pierwsza instalacja pobiera obrazy z GHCR po digeście) i dopiero po zielonym
     oraz po sprawdzeniu renderu `prod` z tym plikiem (`infra/k8s/scripts/verify-images.sh`) przesuwa `deploy` i
-    `deploy-images`. Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu `DEPLOY_KEY` kończy się po smoke
-    teście z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy).
-  - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch`: tylko smoke test
+    `deploy-images`. Job `deploy` (jedyny z `DEPLOY_KEY`) działa w środowisku `production` (wymagane zatwierdzenie użytkownika,
+    „Prevent self-review” wyłączone, polityka gałęzi tylko `main`), więc czeka na zatwierdzenie w GitHubie (strona przebiegu,
+    powiadomienie albo aplikacja mobilna; agent go nie zatwierdza). Każdy sekret Actions poza `GITHUB_TOKEN` jest sekretem
+    środowiska z polityką „tylko `main`” (pilnuje tego test). Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu
+    `DEPLOY_KEY` kończy się po smoke teście i zatwierdzeniu z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
+    (dispatch na `main`) decyduje o wypychaniu obrazów, pliku digestów i jobie `deploy`.
+    Job `images` działa w środowisku `sentry` (bez zatwierdzenia, polityka gałęzi tylko `main`; runbook 1.3), którego sekretem jest
+    `SENTRY_AUTH_TOKEN`; działa tylko przy dispatchu na `main`, więc workflow z innej gałęzi nie dotyka tego sekretu.
+    Mapy źródeł sklepu i panelu (spec Sentry, P3, D10): krok `sentry` jobu `images` ustawia flagę wysyłki na `true`, gdy istnieje
+    sekret `SENTRY_AUTH_TOKEN` (porównanie z pustym napisem: krok widzi tylko wartość logiczną), inaczej pomija wysyłkę i dopisuje
+    to do podsumowania; sekret bez zmiennych repozytorium `SENTRY_ORG`, `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` kończy
+    job błędem przed budowaniem. Budowania sklepu i panelu dostają flagę, organizację i projekt jako `build-args`
+    (`SENTRY_UPLOAD`, `SENTRY_ORG`, `SENTRY_PROJECT`: `ARG` etapu `build`, więc część klucza cache), a token wyłącznie jako
+    wejście `secrets:` (`sentry_auth_token`, montowanie `--mount=type=secret` w Dockerfile; wartość nie jest nigdzie indziej:
+    ani w `build-args`, ani w `env` kroku, ani w skrypcie, ani w jobach `smoke` i `deploy`; test `SentrySourceMaps` w
+    `tests/test_deploy_workflow.py`). Job `smoke` (także na PR) buduje bez flagi i bez sekretu, a etapy `prod` obu aplikacji
+    nigdy nie mają plików `.map` (Dockerfile je usuwa; test dymny sprawdza po HTTP, że sklep i panel ich nie serwują, `smoke/checks.py`
+    `check_no_source_maps`). Wysyłka z sekretem, która się nie uda (zły token, Sentry niedostępny), kończy budowanie obrazu błędem,
+    więc nic nie jest wdrażane. Zmiana `apps/admin/vite.config.ts` uruchamia smoke test na PR jak `apps/store/next.config.ts`.
+  - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch` na innej gałęzi: tylko smoke test
     na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
     `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba
     na jego gałęzi odbywa się przez zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
@@ -175,8 +241,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
     typ `DeployKey`) obejmują `refs/heads/deploy` i `refs/heads/deploy-images`, bez wymogu PR. Aktor `DeployKey` to
     każdy deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia).
     Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak rulesetu `epic` (główny `CLAUDE.md`), osobno każdy plik
-    (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`). Rulesety, deploy key i sekret
-    `DEPLOY_KEY` zakłada się po merge'u epiku według runbooka wdrożenia.
+    (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`). Rulesety, deploy key, środowisko `production`
+    i jego sekret `DEPLOY_KEY` zakłada się według runbooka wdrożenia (sekret repozytorium `DEPLOY_KEY` użytkownik usuwa).
   - Obrazy, do których odwołują się snapshoty `deploy-images`, nie mogą być usuwane z GHCR (cofnięcie wersji to powrót do
     starszego snapshotu): żadna retencja pakietów ani workflow nie usuwa ich wersji (test w `make -C infra/k8s check`).
   - Test struktury rulesetów: `python3 -m unittest discover -s tools/rulesets -p 'test_*.py'`.

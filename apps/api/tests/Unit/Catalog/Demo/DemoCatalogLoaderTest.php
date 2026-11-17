@@ -39,6 +39,8 @@ final class DemoCatalogLoaderTest extends TestCase
             ['bieganie', 'buty', 'szosowe', 'turystyka', 'plecaki'],
             array_map(static fn (CreateCategory $category): string => $category->slug, $categories),
         );
+        // The seed sets no positions: every category stays at 0, so the tree keeps the alphabetical order.
+        self::assertSame([true, true, true, true, true], array_map(static fn (CreateCategory $category): bool => $category->bySeed, $categories));
         // Two distinct files (sample.jpg, sample.png) are used by 7 products; each is stored once.
         self::assertCount(2, $storage->stored);
         $keys = array_column(array_merge(...array_map(static fn (CreateProduct $p): array => $p->images, $products)), 'key');

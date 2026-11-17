@@ -2,23 +2,27 @@
 
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { DEFAULT_SITE_SWITCHES, loadSiteSwitches, type SiteSwitches } from "@/api/client";
+import { startBrowserSentry } from "@/observability/lazy";
 
 /** `loaded` is false until the read of `/api/site` ends (successfully or not); until then the switches are the defaults. */
-type SiteSwitchesState = SiteSwitches & { loaded: boolean };
+type SiteSwitchesState = Omit<SiteSwitches, "sentry"> & { loaded: boolean };
 
 // Without a provider (a component rendered alone) the state is the default one, already loaded.
-const SiteSwitchesContext = createContext<SiteSwitchesState>({ ...DEFAULT_SITE_SWITCHES, loaded: true });
+const DEFAULT_STATE = { demoNotice: DEFAULT_SITE_SWITCHES.demoNotice, customerAccounts: DEFAULT_SITE_SWITCHES.customerAccounts };
+const SiteSwitchesContext = createContext<SiteSwitchesState>({ ...DEFAULT_STATE, loaded: true });
 
 /**
  * Reads the switches of the deployment once per page, in the browser (never on the server), so the static and ISR
- * HTML is the same in every deployment. A failed read leaves the defaults.
+ * HTML is the same in every deployment. A failed read leaves the defaults. With a configuration of Sentry it starts the
+ * SDK of the browser, which is loaded only then (`@/observability/lazy`).
  */
 export function SiteSwitchesProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<SiteSwitchesState>({ ...DEFAULT_SITE_SWITCHES, loaded: false });
+  const [state, setState] = useState<SiteSwitchesState>({ ...DEFAULT_STATE, loaded: false });
 
   useEffect(() => {
     let active = true;
-    void loadSiteSwitches().then((switches) => {
+    void loadSiteSwitches().then(({ sentry, ...switches }) => {
+      if (sentry) void startBrowserSentry(sentry);
       if (active) setState({ ...switches, loaded: true });
     });
     return () => {

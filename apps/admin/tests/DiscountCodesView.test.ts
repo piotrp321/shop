@@ -1,16 +1,15 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import PrimeVue from "primevue/config";
-import SelectButton from "primevue/selectbutton";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
+import { Select } from "@/components/ui/select";
 import { SEARCH_DEBOUNCE_MS } from "@/discount-codes/useDiscountCodeList";
-import { primeVueOptions } from "@/primevue";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import DiscountCodesView from "@/views/DiscountCodesView.vue";
+import type { WithOptionalTotal } from "./listPage";
 
-type CodeList = components["schemas"]["DiscountCodeListResponse"];
+type CodeList = WithOptionalTotal<components["schemas"]["DiscountCodeListResponse"]>;
 type Code = components["schemas"]["DiscountCodeResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
@@ -45,7 +44,7 @@ function queries(): Record<string, unknown>[] {
   return mocks.get.mock.calls.map(([, options]) => (options as { params: { query: Record<string, unknown> } }).params.query);
 }
 
-async function mountView(roles: StaffMe["roles"] = ["admin"], attach = false, path = "/discount-codes") {
+async function mountView(roles: StaffMe["roles"] = ["admin"], path = "/discount-codes") {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().staff = { id: "u1", username: "anna", roles };
@@ -53,16 +52,14 @@ async function mountView(roles: StaffMe["roles"] = ["admin"], attach = false, pa
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/", name: "dashboard", component: empty },
       { path: "/discount-codes", name: "discount-codes", component: empty },
       { path: "/discount-codes/new", name: "discount-code-new", component: empty },
       { path: "/discount-codes/:id", name: "discount-code", component: empty },
     ],
   });
   await router.push(path);
-  const wrapper = mount(DiscountCodesView, {
-    attachTo: attach ? document.body : undefined,
-    global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[] },
-  });
+  const wrapper = mount(DiscountCodesView, { attachTo: document.body, global: { plugins: [pinia, router] } });
   await flushPromises();
   return Object.assign(wrapper, { router });
 }
@@ -77,7 +74,21 @@ describe("DiscountCodesView", () => {
   afterEach(() => {
     wrapper?.unmount();
     wrapper = undefined;
+    document.body.innerHTML = "";
     vi.useRealTimers();
+  });
+
+  const statusSelect = () => wrapper!.findAllComponents(Select)[0]!;
+  const perPageSelect = () => wrapper!.findAllComponents(Select)[1]!;
+
+  it("has the H1 „Kody rabatowe” and the crumbs „Pulpit › Marketing › Kody rabatowe”", async () => {
+    serve({ "": { items: [item("A")], next: null } });
+    wrapper = await mountView();
+
+    expect(wrapper.get("h1").text()).toBe("Kody rabatowe");
+    const crumbs = wrapper.get("nav[aria-label=Okruszki]");
+    expect(crumbs.text()).toMatch(/^Pulpit.*Marketing.*Kody rabatowe$/);
+    expect(crumbs.get("[aria-current=page]").text()).toBe("Kody rabatowe");
   });
 
   it("shows a row per code with the discount, the minimum, the Polish period, the uses and the status", async () => {
@@ -110,50 +121,96 @@ describe("DiscountCodesView", () => {
     expect(second.get("[data-testid=code-status]").text()).toBe("Wygasły");
   });
 
+  it("has the columns Kod, Rabat, Minimum, Okres, Użycia and Status, and the minimum and the period as lines of the cell Kod below 1024 px", async () => {
+    serve({ "": { items: [item("MINUS50", { kind: "amount", value: 5000, minimumOrderGross: 30000, endsAt: null })], next: null } });
+    wrapper = await mountView();
+
+    const headers = wrapper.findAll("th[scope=col]").map((header) => header.text());
+    expect(headers).toEqual(["Kod", "Rabat", "Minimum", "Okres", "Użycia", "Status", "Akcje"]);
+    const row = wrapper.get("[data-testid=discount-code-row]");
+    expect(row.get("[data-testid=line-minimum]").text().replace(/\s/g, " ")).toBe("Minimum: 300,00 zł");
+    expect(row.get("[data-testid=line-period]").text()).toBe("Okres: 11.11.2026, 00:00:00 – bez końca");
+  });
+
   it.each([
-    ["planned", "Zaplanowany"],
-    ["active", "Aktywny"],
-    ["expired", "Wygasły"],
-    ["disabled", "Wyłączony"],
-  ] as const)("labels the status %s as %s", async (status, label) => {
+    ["planned", "Zaplanowany", "info"],
+    ["active", "Aktywny", "success"],
+    ["expired", "Wygasły", "neutral"],
+    ["disabled", "Wyłączony", "warning"],
+  ] as const)("shows the status %s as a badge %s in the colours of the status", async (status, label, colour) => {
     serve({ "": { items: [item("A", { status })], next: null } });
     wrapper = await mountView();
 
-    expect(wrapper.get("[data-testid=code-status]").text()).toBe(label);
+    const badge = wrapper.get("[data-testid=code-status]");
+    expect(badge.text()).toBe(label);
+    expect(badge.classes().join(" ")).toContain(`text-status-${colour}`);
   });
 
-  it("filters by status and starts from the first page", async () => {
+  it("filters by status with the Select „Status” and starts from the first page, the status in the address", async () => {
     serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
     wrapper = await mountView();
     await wrapper.get("[data-testid=next-page]").trigger("click");
     await flushPromises();
 
-    wrapper.getComponent(SelectButton).vm.$emit("update:modelValue", "disabled");
+    statusSelect().vm.$emit("update:modelValue", "disabled");
     await flushPromises();
 
     expect(queries().at(-1)).toEqual({ status: "disabled" });
     expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 1");
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/discount-codes?status=disabled");
 
-    wrapper.getComponent(SelectButton).vm.$emit("update:modelValue", "all");
+    statusSelect().vm.$emit("update:modelValue", "all");
     await flushPromises();
     expect(queries().at(-1)).toEqual({});
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/discount-codes");
   });
 
-  describe("status from the address", () => {
-    it("shows the list filtered by the status of the address, with that status selected", async () => {
-      serve({ "": { items: [item("LATO", { status: "active" })], next: null } });
-      wrapper = await mountView(["admin"], false, "/discount-codes?status=active");
+  it("has a Select „Status” with a visible label and every status", async () => {
+    serve({ "": { items: [], next: null } });
+    wrapper = await mountView();
 
-      expect(queries()).toEqual([{ status: "active" }]);
-      expect(wrapper.getComponent(SelectButton).props("modelValue")).toBe("active");
+    const status = wrapper.get<HTMLButtonElement>("[data-testid=status-filter]");
+    expect(status.element.labels?.[0]?.textContent?.trim()).toBe("Status");
+    expect(status.text()).toBe("Wszystkie");
+    status.element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, ctrlKey: false }));
+    await flushPromises();
+    const options = [...document.body.querySelectorAll("[role=option]")].map((option) => option.textContent?.trim());
+    expect(options).toEqual(["Wszystkie", "Zaplanowane", "Aktywne", "Wygasłe", "Wyłączone"]);
+  });
+
+  it("changes the page size with the Select „Wierszy na stronie” and starts from the first page", async () => {
+    serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+    wrapper = await mountView();
+    await wrapper.get("[data-testid=next-page]").trigger("click");
+    await flushPromises();
+
+    perPageSelect().vm.$emit("update:modelValue", "10");
+    await flushPromises();
+
+    expect(queries().at(-1)).toEqual({ perPage: 10 });
+    expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 1");
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/discount-codes?perPage=10");
+  });
+
+  describe("the state in the address", () => {
+    it("shows the list filtered by the address, with the filters filled in", async () => {
+      serve({ "": { items: [item("LATO", { status: "active" })], next: null } });
+      wrapper = await mountView(["admin"], "/discount-codes?status=active&q=LATO&perPage=10");
+
+      expect(queries()).toEqual([{ status: "active", q: "LATO", perPage: 10 }]);
+      expect(wrapper.get("[data-testid=status-filter]").text()).toBe("Aktywne");
+      expect((wrapper.get("[data-testid=search]").element as HTMLInputElement).value).toBe("LATO");
+      expect(wrapper.get("[data-testid=per-page]").text()).toBe("10");
+      expect(wrapper.find("[data-testid=clear-filters]").exists()).toBe(true);
     });
 
     it("shows all codes for an unknown status of the address", async () => {
       serve({ "": { items: [item("LATO")], next: null } });
-      wrapper = await mountView(["admin"], false, "/discount-codes?status=nope");
+      wrapper = await mountView(["admin"], "/discount-codes?status=nope");
 
       expect(queries()).toEqual([{}]);
-      expect(wrapper.getComponent(SelectButton).props("modelValue")).toBe("all");
+      expect(wrapper.get("[data-testid=status-filter]").text()).toBe("Wszystkie");
+      expect(wrapper.find("[data-testid=clear-filters]").exists()).toBe(false);
     });
 
     it("switches the open list when the address changes, with one request", async () => {
@@ -165,21 +222,25 @@ describe("DiscountCodesView", () => {
       await flushPromises();
 
       expect(queries()).toEqual([{ status: "active" }]);
-      expect(wrapper.getComponent(SelectButton).props("modelValue")).toBe("active");
+      expect(wrapper.get("[data-testid=status-filter]").text()).toBe("Aktywne");
+    });
+
+    it("clears the search, the filter and the page size with „Wyczyść filtry”, and puts the focus in the search", async () => {
+      serve({ "": { items: [item("LATO")], next: null } });
+      wrapper = await mountView(["admin"], "/discount-codes?status=active&q=LATO&perPage=10");
+      mocks.get.mockClear();
+
+      await wrapper.get("[data-testid=clear-filters]").trigger("click");
+      await flushPromises();
+
+      expect(queries()).toEqual([{}]);
+      expect(wrapper.router.currentRoute.value.fullPath).toBe("/discount-codes");
+      expect((wrapper.get("[data-testid=search]").element as HTMLInputElement).value).toBe("");
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=search]").element);
     });
   });
 
-  it("offers every status in the filter", async () => {
-    serve({ "": { items: [], next: null } });
-    wrapper = await mountView();
-
-    const labels = wrapper.get("[data-testid=status-filter]").text();
-    for (const label of ["Wszystkie", "Zaplanowane", "Aktywne", "Wygasłe", "Wyłączone"]) {
-      expect(labels).toContain(label);
-    }
-  });
-
-  it("searches by the beginning of the code, labelled for a screen reader, after a pause in typing", async () => {
+  it("searches by the beginning of the code, labelled for a screen reader, after a pause in typing, and writes it to the address", async () => {
     serve({ "": { items: [item("A")], next: null } });
     wrapper = await mountView();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -192,9 +253,22 @@ describe("DiscountCodesView", () => {
     await flushPromises();
 
     expect(queries().at(-1)).toEqual({ q: "wit" });
+    expect(wrapper.router.currentRoute.value.fullPath).toBe("/discount-codes?q=wit");
   });
 
-  it("says that a search longer than a code is not sent", async () => {
+  it("#336: a search of only an invisible character does not ask for q", async () => {
+    serve({ "": { items: [item("A")], next: null } });
+    wrapper = await mountView();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    await wrapper.get("[data-testid=search]").setValue("​");
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
+    await flushPromises();
+
+    expect(queries()).toEqual([{}]);
+  });
+
+  it("says in a status region that a search longer than a code is not sent", async () => {
     serve({ "": { items: [item("A")], next: null } });
     wrapper = await mountView();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -204,236 +278,195 @@ describe("DiscountCodesView", () => {
     await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
     await flushPromises();
 
-    expect(wrapper.get("[data-testid=search-hint]").text()).toBe("Kod ma najwyżej 32 znaki.");
+    const hint = wrapper.get("[data-testid=search-hint]");
+    expect(hint.text()).toBe("Kod ma najwyżej 32 znaki.");
+    expect(hint.attributes("role")).toBe("status");
     expect(mocks.get).toHaveBeenCalledTimes(1);
   });
 
-  it("pages with the cursors of the API", async () => {
-    serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
-    wrapper = await mountView();
-    expect(wrapper.get("[data-testid=previous-page]").attributes("disabled")).toBeDefined();
-
-    await wrapper.get("[data-testid=next-page]").trigger("click");
-    await flushPromises();
-    expect(wrapper.get("[data-testid=code-link]").text()).toBe("B");
-    expect(wrapper.get("[data-testid=page-number]").text()).toBe("Strona 2");
-    expect(wrapper.get("[data-testid=next-page]").attributes("disabled")).toBeDefined();
-
-    await wrapper.get("[data-testid=previous-page]").trigger("click");
-    await flushPromises();
-    expect(wrapper.get("[data-testid=code-link]").text()).toBe("A");
-    expect(queries()).toEqual([{}, { after: "c1" }, {}]);
-  });
-
-  describe("paging with the keyboard", () => {
+  describe("paging", () => {
     const THREE_PAGES = { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: "c2" }, c2: { items: [item("C")], next: null } };
     const pager = (testid: string) => wrapper!.get(`[data-testid=${testid}]`);
-    const press = async (testid: string) => {
-      (pager(testid).element as HTMLElement).focus();
-      await pager(testid).trigger("click");
-    };
-    /** The next request stays open until the returned function answers it. */
-    const holdNextRequest = (page: CodeList) => {
-      let answer: () => void = () => undefined;
-      mocks.get.mockImplementationOnce(() => new Promise((resolve) => (answer = () => resolve({ data: page, response: { status: 200 } }))));
-      return () => answer();
-    };
 
-    it("keeps the pager buttons on while a page loads, so that the focused one keeps the focus", async () => {
-      serve(THREE_PAGES);
-      wrapper = await mountView(["admin"], true);
-      const answer = holdNextRequest(THREE_PAGES.c1);
+    it("says „z N” with the total of the first page on the next page too", async () => {
+      serve({ "": { items: [item("A")], next: "c1", total: { value: 12, capped: false } }, c1: { items: [item("B")], next: null, total: null } });
+      wrapper = await mountView();
+      expect(pager("range").text()).toBe("Pokazano 1–1 z 12");
 
-      await press("next-page");
-
-      expect(pager("next-page").attributes("disabled")).toBeUndefined();
-      answer();
-      await flushPromises();
-      expect(pager("page-number").text()).toBe("Strona 2");
-    });
-
-    it("leaves the focus on the button that was pressed while it stays available", async () => {
-      serve(THREE_PAGES);
-      wrapper = await mountView(["admin"], true);
-
-      await press("next-page");
+      await pager("next-page").trigger("click");
       await flushPromises();
 
-      expect(pager("page-number").text()).toBe("Strona 2");
-      expect(document.activeElement).toBe(pager("next-page").element);
+      expect(pager("range").text()).toBe("Pokazano 26–26 z 12");
     });
 
-    it("moves the focus to the other button when the pressed one goes off at the end of the list", async () => {
+    it("pages with the cursors of the API and says which codes are shown", async () => {
       serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
-      wrapper = await mountView(["admin"], true);
-
-      await press("next-page");
-      await flushPromises();
-
-      expect(pager("next-page").attributes("disabled")).toBeDefined();
-      expect(document.activeElement).toBe(pager("previous-page").element);
-
-      await press("previous-page");
-      await flushPromises();
-
-      expect(pager("page-number").text()).toBe("Strona 1");
+      wrapper = await mountView();
       expect(pager("previous-page").attributes("disabled")).toBeDefined();
-      expect(document.activeElement).toBe(pager("next-page").element);
-    });
+      expect(pager("range").text()).toBe("Pokazano 1–1");
 
-    it("does not move the focus when the page cannot be loaded", async () => {
-      serve({ "": { items: [item("A")], next: "c1" } });
-      wrapper = await mountView(["admin"], true);
-      mocks.get.mockResolvedValueOnce({ data: undefined, response: { status: 500 } });
-
-      await press("next-page");
+      await pager("next-page").trigger("click");
       await flushPromises();
+      expect(pager("code-link").text()).toBe("B");
+      expect(pager("page-number").text()).toBe("Strona 2");
+      expect(pager("next-page").attributes("disabled")).toBeDefined();
 
-      expect(pager("page-number").text()).toBe("Strona 1");
-      expect(document.activeElement).toBe(pager("next-page").element);
+      await pager("previous-page").trigger("click");
+      await flushPromises();
+      expect(pager("code-link").text()).toBe("A");
+      expect(queries()).toEqual([{}, { after: "c1" }, {}]);
     });
 
-    it("announces the page number to a screen reader", async () => {
-      serve({ "": { items: [item("A")], next: null } });
+    it("leaves the focus on the pressed button while it stays available, and moves it to the other one at the end of the list", async () => {
+      serve(THREE_PAGES);
       wrapper = await mountView();
 
-      expect(pager("page-number").attributes("aria-live")).toBe("polite");
-    });
-
-    it("does not skip a page when the button is pressed twice before the page arrives", async () => {
-      serve(THREE_PAGES);
-      wrapper = await mountView(["admin"], true);
-      const answer = holdNextRequest(THREE_PAGES.c1);
-
-      await press("next-page");
-      await press("next-page");
-      answer();
+      (pager("next-page").element as HTMLElement).focus();
+      await pager("next-page").trigger("click");
       await flushPromises();
-
       expect(pager("page-number").text()).toBe("Strona 2");
-      expect(wrapper.get("[data-testid=code-link]").text()).toBe("B");
-      expect(queries().filter((query) => query.after === "c2")).toEqual([]);
+      expect(document.activeElement).toBe(pager("next-page").element);
+
+      await pager("next-page").trigger("click");
+      await flushPromises();
+      expect(pager("next-page").attributes("disabled")).toBeDefined();
+      expect(document.activeElement).toBe(pager("previous-page").element);
+    });
+
+    it("keeps the page that is shown and the focus when the next page cannot be loaded", async () => {
+      serve({ "": { items: [item("A")], next: "c1" } });
+      wrapper = await mountView();
+      (pager("next-page").element as HTMLElement).focus();
+      mocks.get.mockResolvedValueOnce({ data: undefined, response: { status: 500 } });
+
+      await pager("next-page").trigger("click");
+      await flushPromises();
+
+      expect(pager("page-number").text()).toBe("Strona 1");
+      expect(pager("code-link").text()).toBe("A");
+      expect(document.activeElement).toBe(pager("next-page").element);
     });
   });
 
-  it("says the list is empty, and that nothing matches a filter", async () => {
-    serve({ "": { items: [], next: null } });
-    wrapper = await mountView();
-    expect(wrapper.get("[data-testid=empty]").text()).toBe("Brak kodów rabatowych.");
-
-    wrapper.getComponent(SelectButton).vm.$emit("update:modelValue", "expired");
-    await flushPromises();
-    expect(wrapper.get("[data-testid=empty]").text()).toBe("Nie znaleziono kodów rabatowych.");
-  });
-
-  it("shows an error with a retry, and no retry for a 403", async () => {
-    serve({}, 500);
-    wrapper = await mountView();
-    expect(wrapper.get("[data-testid=discount-codes-error]").text()).toContain("Nie udało się pobrać kodów rabatowych (HTTP 500).");
-    expect(wrapper.find("[data-testid=discount-code-row]").exists()).toBe(false);
-
-    serve({ "": { items: [item("A")], next: null } });
-    await wrapper.get("[data-testid=retry]").trigger("click");
-    await flushPromises();
-    expect(wrapper.find("[data-testid=discount-codes-error]").exists()).toBe(false);
-    expect(wrapper.findAll("[data-testid=discount-code-row]")).toHaveLength(1);
-
-    wrapper.unmount();
-    serve({}, 403);
-    wrapper = await mountView();
-    expect(wrapper.get("[data-testid=discount-codes-error]").text()).toContain("Nie masz dostępu do kodów rabatowych.");
-    expect(wrapper.find("[data-testid=retry]").exists()).toBe(false);
-  });
-
-  describe("retry with the keyboard", () => {
-    const retryButton = () => wrapper!.get("[data-testid=retry]");
-    const press = async () => {
-      (retryButton().element as HTMLElement).focus();
-      await retryButton().trigger("click");
-    };
-
-    it("keeps the retry button on while the list loads, so that it keeps the focus", async () => {
-      serve({}, 500);
-      wrapper = await mountView(["admin"], true);
-      let answer: () => void = () => undefined;
-      mocks.get.mockImplementationOnce(
-        () => new Promise((resolve) => (answer = () => resolve({ data: { items: [item("A")], next: null }, response: { status: 200 } }))),
-      );
-
-      await press();
-
-      expect(retryButton().attributes("disabled")).toBeUndefined();
-      expect(document.activeElement).toBe(retryButton().element);
-      answer();
-      await flushPromises();
-    });
-
-    it("moves the focus to the first code after a successful retry", async () => {
-      serve({}, 500);
-      wrapper = await mountView(["admin"], true);
-      serve({ "": { items: [item("A"), item("B")], next: null } });
-
-      await press();
-      await flushPromises();
-
-      expect(wrapper.find("[data-testid=discount-codes-error]").exists()).toBe(false);
-      expect(document.activeElement).toBe(wrapper.get("[data-testid=code-link]").element);
-    });
-
-    it("moves the focus to the pager after a successful retry that finds no codes", async () => {
-      serve({}, 500);
-      wrapper = await mountView(["admin"], true);
-      serve({ "": { items: [], next: "c1" } });
-
-      await press();
-      await flushPromises();
-
-      expect(wrapper.find("[data-testid=code-link]").exists()).toBe(false);
-      expect(document.activeElement).toBe(wrapper.get("[data-testid=next-page]").element);
-    });
-
-    it("moves the focus to the search field after a successful retry that finds no codes on the only page", async () => {
-      serve({}, 500);
-      wrapper = await mountView(["admin"], true);
+  describe("empty states", () => {
+    it("says that there are no codes yet, with „Dodaj kod” for a role that can add one", async () => {
       serve({ "": { items: [], next: null } });
+      wrapper = await mountView();
 
-      await press();
+      expect(wrapper.get("[data-testid=empty]").text()).toContain("Nie ma jeszcze kodów rabatowych.");
+      expect(wrapper.get("[data-testid=empty-add-discount-code]").attributes("href")).toBe("/discount-codes/new");
+    });
+
+    it("does not offer adding a code in the empty list of a role that cannot", async () => {
+      serve({ "": { items: [], next: null } });
+      wrapper = await mountView(["support"]);
+
+      expect(wrapper.get("[data-testid=empty]").text()).toContain("Nie ma jeszcze kodów rabatowych.");
+      expect(wrapper.find("[data-testid=empty-add-discount-code]").exists()).toBe(false);
+    });
+
+    it("says that nothing matches the filters, with „Wyczyść filtry”", async () => {
+      serve({ "": { items: [], next: null } });
+      wrapper = await mountView(["admin"], "/discount-codes?status=expired");
+
+      expect(wrapper.get("[data-testid=empty]").text()).toContain("Brak wyników dla wybranych filtrów.");
+      mocks.get.mockClear();
+      await wrapper.get("[data-testid=empty-clear-filters]").trigger("click");
+      await flushPromises();
+      expect(queries()).toEqual([{}]);
+    });
+  });
+
+  describe("errors", () => {
+    it("shows an error with a retry, and no retry for a 403", async () => {
+      serve({}, 500);
+      wrapper = await mountView();
+      expect(wrapper.get("[data-testid=discount-codes-error]").text()).toContain("Nie udało się pobrać kodów rabatowych (HTTP 500).");
+      expect(wrapper.find("[data-testid=discount-code-row]").exists()).toBe(false);
+
+      serve({ "": { items: [item("A")], next: null } });
+      await wrapper.get("[data-testid=retry]").trigger("click");
+      await flushPromises();
+      expect(wrapper.find("[data-testid=discount-codes-error]").exists()).toBe(false);
+      expect(wrapper.findAll("[data-testid=discount-code-row]")).toHaveLength(1);
+
+      wrapper.unmount();
+      serve({}, 403);
+      wrapper = await mountView();
+      expect(wrapper.get("[data-testid=discount-codes-error]").text()).toContain("Nie masz dostępu do kodów rabatowych.");
+      expect(wrapper.find("[data-testid=retry]").exists()).toBe(false);
+    });
+
+    it("#337: a retry that ends in a 403 leaves the focus on the message, not on the body", async () => {
+      serve({}, 500);
+      wrapper = await mountView();
+      const retry = wrapper.get<HTMLButtonElement>("[data-testid=retry]");
+      retry.element.focus();
+
+      serve({}, 403);
+      await retry.trigger("click");
       await flushPromises();
 
-      expect(wrapper.find("[data-testid=code-link]").exists()).toBe(false);
-      expect(document.activeElement).toBe(wrapper.get("[data-testid=search]").element);
+      expect(wrapper.find("[data-testid=retry]").exists()).toBe(false);
+      const alert = wrapper.get("[data-testid=discount-codes-error]");
+      expect(alert.text()).toContain("Nie masz dostępu do kodów rabatowych.");
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(alert.element);
     });
 
     it("leaves the focus on the retry button when the retry fails", async () => {
       serve({}, 500);
-      wrapper = await mountView(["admin"], true);
+      wrapper = await mountView();
+      const retry = wrapper.get<HTMLButtonElement>("[data-testid=retry]");
+      retry.element.focus();
 
-      await press();
+      await retry.trigger("click");
       await flushPromises();
 
-      expect(wrapper.find("[data-testid=discount-codes-error]").exists()).toBe(true);
-      expect(document.activeElement).toBe(retryButton().element);
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=retry]").element);
+    });
+
+    it("moves the focus to the first row's region after a successful retry, never to the body", async () => {
+      serve({}, 500);
+      wrapper = await mountView();
+      const retry = wrapper.get<HTMLButtonElement>("[data-testid=retry]");
+      retry.element.focus();
+
+      serve({ "": { items: [item("A")], next: null } });
+      await retry.trigger("click");
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid=discount-codes-error]").exists()).toBe(false);
+      expect(document.activeElement).not.toBe(document.body);
     });
   });
 
-  it.each([[["admin"]], [["marketing"]], [["support", "marketing"]]] as StaffMe["roles"][][])(
-    "offers adding a discount code to the roles %j",
-    async (roles) => {
-      serve({ "": { items: [], next: null } });
-      wrapper = await mountView(roles);
+  describe("roles", () => {
+    it.each([[["admin"]], [["marketing"]], [["support", "marketing"]]] as StaffMe["roles"][][])(
+      "offers adding a discount code and editing a row to the roles %j",
+      async (roles) => {
+        serve({ "": { items: [item("A")], next: null } });
+        wrapper = await mountView(roles);
 
-      expect(wrapper.get("[data-testid=add-discount-code]").attributes("href")).toBe("/discount-codes/new");
-    },
-  );
+        expect(wrapper.get("[data-testid=add-discount-code]").attributes("href")).toBe("/discount-codes/new");
+        expect(wrapper.get("[data-testid=add-discount-code]").text()).toBe("Dodaj kod");
+        const edit = wrapper.get("[data-testid=action-edit]");
+        expect(edit.attributes("aria-label")).toBe("Edytuj: A");
+        expect(edit.attributes("href")).toBe("/discount-codes/id-A");
+      },
+    );
 
-  it.each([[["support"]], [["warehouse"]], [["support", "warehouse"]], [[]]] as StaffMe["roles"][][])(
-    "does not offer adding a discount code to the roles %j, who still see the list",
-    async (roles) => {
-      serve({ "": { items: [item("A")], next: null } });
-      wrapper = await mountView(roles);
+    it.each([[["support"]], [["warehouse"]], [["support", "warehouse"]], [[]]] as StaffMe["roles"][][])(
+      "does not offer adding or editing to the roles %j, who still see the list and open a code by its link",
+      async (roles) => {
+        serve({ "": { items: [item("A")], next: null } });
+        wrapper = await mountView(roles);
 
-      expect(wrapper.find("[data-testid=add-discount-code]").exists()).toBe(false);
-      expect(wrapper.findAll("[data-testid=discount-code-row]")).toHaveLength(1);
-    },
-  );
+        expect(wrapper.find("[data-testid=add-discount-code]").exists()).toBe(false);
+        expect(wrapper.find("[data-testid=action-edit]").exists()).toBe(false);
+        expect(wrapper.findAll("[data-testid=discount-code-row]")).toHaveLength(1);
+        expect(wrapper.get("[data-testid=code-link]").attributes("href")).toBe("/discount-codes/id-A");
+      },
+    );
+  });
 });

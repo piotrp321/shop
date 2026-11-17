@@ -1,12 +1,9 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import PrimeVue from "primevue/config";
-import SelectButton from "primevue/selectbutton";
-import ToggleSwitch from "primevue/toggleswitch";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter, RouterView } from "vue-router";
+import { toast } from "vue-sonner";
 import type { components } from "@/api/schema";
-import { primeVueOptions } from "@/primevue";
 import { type StaffMe, useAuthStore } from "@/stores/auth";
 import DiscountCodeFormView from "@/views/DiscountCodeFormView.vue";
 
@@ -70,6 +67,7 @@ async function mountForm(path: string, roles: StaffMe["roles"] = ["marketing"]) 
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/", name: "dashboard", component: empty },
       { path: "/discount-codes", name: "discount-codes", component: empty },
       { path: "/discount-codes/new", name: "discount-code-new", component: DiscountCodeFormView },
       { path: "/discount-codes/:id", name: "discount-code", component: DiscountCodeFormView },
@@ -78,7 +76,7 @@ async function mountForm(path: string, roles: StaffMe["roles"] = ["marketing"]) 
   await router.push(path);
   const wrapper = mount(
     { components: { RouterView }, template: "<RouterView />" },
-    { attachTo: document.body, global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[] } },
+    { attachTo: document.body, global: { plugins: [pinia, router] } },
   );
   await settle();
   return { wrapper, router };
@@ -86,6 +84,7 @@ async function mountForm(path: string, roles: StaffMe["roles"] = ["marketing"]) 
 
 describe("DiscountCodeFormView", () => {
   let mounted: Awaited<ReturnType<typeof mountForm>> | undefined;
+  let successToast: Mock<typeof toast.success>;
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
@@ -93,12 +92,16 @@ describe("DiscountCodeFormView", () => {
     for (const mock of Object.values(mocks)) {
       mock.mockReset();
     }
+    // The toast store is global; the tests read what was shown from the calls.
+    successToast = vi.spyOn(toast, "success").mockImplementation(() => 1);
     serve();
   });
 
   afterEach(() => {
     mounted?.wrapper.unmount();
     mounted = undefined;
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -119,13 +122,47 @@ describe("DiscountCodeFormView", () => {
   const input = (wrapper: Wrapper, testid: string) => wrapper.get(`[data-testid=${testid}]`).element as HTMLInputElement;
   const disabled = (wrapper: Wrapper, testid: string) => wrapper.get(`[data-testid=${testid}]`).attributes("disabled") !== undefined;
   const pickKind = async (wrapper: Wrapper, kind: "percent" | "amount") => {
-    wrapper.getComponent(SelectButton).vm.$emit("update:modelValue", kind);
-    await settle();
+    await click(wrapper, `kind-${kind}`);
   };
+  const isEnabled = (wrapper: Wrapper) => wrapper.get("[data-testid=enabled]").attributes("aria-checked") === "true";
   const toggleEnabled = async (wrapper: Wrapper, value: boolean) => {
-    wrapper.getComponent(ToggleSwitch).vm.$emit("update:modelValue", value);
-    await settle();
+    if (isEnabled(wrapper) !== value) {
+      await click(wrapper, "enabled");
+    }
   };
+  const saveBar = () => document.body.querySelector("section[aria-label='Zapis formularza']");
+  const barButton = (name: string) => [...(saveBar()?.querySelectorAll("button") ?? [])].find((button) => button.textContent?.trim() === name) as HTMLButtonElement | undefined;
+  const dialog = () => document.body.querySelector<HTMLElement>("[role=alertdialog]");
+  const dialogButton = (name: string) => [...(dialog()?.querySelectorAll("button") ?? [])].find((button) => button.textContent?.trim() === name);
+  const heading = (level: "h1" | "h2", text?: string) => [...document.body.querySelectorAll(level)].find((candidate) => text === undefined || candidate.textContent?.trim() === text);
+  /** The control a visible label points at. */
+  const labelled = (label: string) => {
+    const element = [...document.body.querySelectorAll("label")].find((candidate) => candidate.textContent?.trim() === label);
+    expect(element, `a label „${label}”`).toBeDefined();
+    return element!.htmlFor ? document.getElementById(element!.htmlFor) : null;
+  };
+
+  describe("the layout", () => {
+    it("has the card „Status” before the cards „Kod i rabat” and „Okres i limit” in the document, and the crumbs of the list", async () => {
+      const wrapper = await open();
+
+      const titles = [...document.body.querySelectorAll("h2")].map((title) => title.textContent?.trim());
+      expect(titles).toEqual(["Status", "Kod i rabat", "Okres i limit"]);
+      const crumbs = wrapper.get("nav[aria-label=Okruszki]");
+      expect(crumbs.text()).toMatch(/^Pulpit.*Marketing.*Kody rabatowe.*WITAJ10$/);
+      expect(crumbs.get("a[href='/discount-codes']").text()).toBe("Kody rabatowe");
+    });
+
+    it("puts the status, the switch „Aktywny” and the active uses in the card „Status”", async () => {
+      const wrapper = await open("/discount-codes/code-1", undefined, started({ activeUses: 7 }));
+
+      const status = heading("h2", "Status")!.closest("section")!;
+      expect(status.querySelector("[data-testid=code-status]")?.textContent?.trim()).toBe("Aktywny");
+      expect(status.querySelector("[data-testid=enabled]")).not.toBeNull();
+      expect(labelled("Aktywny")).toBe(wrapper.get("[data-testid=enabled]").element);
+      expect(status.querySelector("[data-testid=active-uses]")?.textContent).toBe("7");
+    });
+  });
 
   describe("a new code", () => {
     async function fill(wrapper: Wrapper) {
@@ -146,21 +183,55 @@ describe("DiscountCodeFormView", () => {
       expect(disabled(wrapper, "code-input")).toBe(false);
       expect(mocks.get).not.toHaveBeenCalled();
       expect(wrapper.text()).toContain("Czas w strefie Europe/Warsaw");
-      for (const id of ["discount-code-code", "discount-code-value", "discount-code-minimum", "discount-code-starts", "discount-code-ends", "discount-code-limit"]) {
-        expect(wrapper.find(`label[for=${id}]`).exists(), id).toBe(true);
-        expect(wrapper.find(`#${id}`).exists(), id).toBe(true);
+      const controls: [string, string][] = [
+        ["Kod", "code-input"],
+        ["Rabat (%)", "value-input"],
+        ["Minimalna wartość zamówienia (zł)", "minimum-input"],
+        ["Początek", "starts-input"],
+        ["Koniec", "ends-input"],
+        ["Limit użyć", "limit-input"],
+        ["Aktywny", "enabled"],
+        ["Procent", "kind-percent"],
+        ["Kwota", "kind-amount"],
+      ];
+      for (const [label, testid] of controls) {
+        expect(labelled(label), label).toBe(wrapper.get(`[data-testid=${testid}]`).element);
       }
-      expect(wrapper.find("label[for=discount-code-enabled]").exists()).toBe(true);
-      expect(wrapper.get("[data-testid=kind-input]").attributes("aria-label")).toBe("Rodzaj rabatu");
+      const group = wrapper.get("[role=radiogroup]");
+      expect(document.getElementById(group.attributes("aria-labelledby")!)?.textContent).toBe("Rodzaj rabatu");
+    });
+
+    it("chooses the kind of the discount with a group of radio buttons: percent is chosen", async () => {
+      const wrapper = await open("/discount-codes/new");
+
+      expect(wrapper.get("[data-testid=kind-percent]").attributes("aria-checked")).toBe("true");
+      expect(wrapper.get("[data-testid=kind-amount]").attributes("aria-checked")).toBe("false");
+
+      await pickKind(wrapper, "amount");
+
+      expect(wrapper.get("[data-testid=kind-percent]").attributes("aria-checked")).toBe("false");
+      expect(wrapper.get("[data-testid=kind-amount]").attributes("aria-checked")).toBe("true");
     });
 
     it("labels the value by the kind: a percent or złoty", async () => {
       const wrapper = await open("/discount-codes/new");
-      expect(wrapper.get("label[for=discount-code-value]").text()).toBe("Rabat (%)");
+      expect(labelled("Rabat (%)")).toBe(wrapper.get("[data-testid=value-input]").element);
 
       await pickKind(wrapper, "amount");
 
-      expect(wrapper.get("label[for=discount-code-value]").text()).toBe("Kwota rabatu (zł)");
+      expect(labelled("Kwota rabatu (zł)")).toBe(wrapper.get("[data-testid=value-input]").element);
+    });
+
+    it("shows the save bar „Nowy kod rabatowy” with „Anuluj” from the start, and „Anuluj” goes back to the list", async () => {
+      const wrapper = await open("/discount-codes/new");
+
+      expect(saveBar()?.textContent).toContain("Nowy kod rabatowy");
+      expect(barButton("Odrzuć")).toBeUndefined();
+      barButton("Anuluj")!.click();
+      await settle();
+
+      expect(mounted!.router.currentRoute.value.name).toBe("discount-codes");
+      expect(wrapper.exists()).toBe(true);
     });
 
     it("posts the code with amounts in grosze and times in UTC, then moves to the page of the created code", async () => {
@@ -184,10 +255,11 @@ describe("DiscountCodeFormView", () => {
       });
       expect(mounted!.router.currentRoute.value.name).toBe("discount-code");
       expect(mounted!.router.currentRoute.value.params.id).toBe("code-1");
-      expect(wrapper.get("[data-testid=success-message]").text()).toBe("Kod rabatowy zapisany.");
+      expect(successToast).toHaveBeenCalledWith("Kod rabatowy zapisany.");
+      expect(wrapper.find("[data-testid=success-message]").exists()).toBe(false);
     });
 
-    it("moves the focus to the success message after the code is created, on the page of the created code", async () => {
+    it("moves the focus to the H1 after the code is created, on the page of the created code, and the save bar goes away", async () => {
       const wrapper = await open("/discount-codes/new");
       await fill(wrapper);
       mocks.post.mockResolvedValue({ data: code({ kind: "amount", value: 5000, version: 1 }), response: { status: 201 } });
@@ -196,9 +268,9 @@ describe("DiscountCodeFormView", () => {
       await click(wrapper, "save");
 
       expect(mounted!.router.currentRoute.value.name).toBe("discount-code");
-      const message = wrapper.get("[data-testid=success-message]");
-      expect(message.attributes("tabindex")).toBe("-1");
-      expect(document.activeElement).toBe(message.element);
+      expect(saveBar()).toBeNull();
+      expect(document.activeElement).toBe(heading("h1"));
+      expect(heading("h1")?.textContent?.trim()).toBe("WITAJ10");
     });
 
     it("puts a 409 discount-code-taken at the code field, keeps the form and moves the focus to the field", async () => {
@@ -208,12 +280,15 @@ describe("DiscountCodeFormView", () => {
 
       await click(wrapper, "save");
 
-      expect(wrapper.get("[data-testid=code-error]").text()).toBe("Taki kod już istnieje.");
+      const error = wrapper.get("[data-testid=code-error]");
+      expect(error.text()).toBe("Taki kod już istnieje.");
       expect(wrapper.get("[data-testid=code-input]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.get("[data-testid=code-input]").attributes("aria-describedby")).toContain(error.attributes("id"));
       expect(wrapper.find("[data-testid=form-error]").exists()).toBe(false);
       expect(input(wrapper, "code-input").value).toBe("minus50");
       expect(document.activeElement).toBe(wrapper.get("[data-testid=code-input]").element);
       expect(mocks.get).not.toHaveBeenCalled();
+      expect(successToast).not.toHaveBeenCalled();
     });
 
     it("shows what cannot be read at the field without sending, and focuses the first such field", async () => {
@@ -230,7 +305,7 @@ describe("DiscountCodeFormView", () => {
       expect(document.activeElement).toBe(wrapper.get("[data-testid=value-input]").element);
     });
 
-    it("puts the 422 violations at their fields", async () => {
+    it("puts the 422 violations at their fields and focuses the first one in the order of the document", async () => {
       const wrapper = await open("/discount-codes/new");
       await fill(wrapper);
       mocks.post.mockResolvedValue({
@@ -238,10 +313,10 @@ describe("DiscountCodeFormView", () => {
         error: {
           status: 422,
           violations: [
+            { propertyPath: "usageLimit", title: "Limit to 1–1 000 000 użyć." },
             { propertyPath: "code", title: "Kod ma 3–32 znaki: litery, cyfry i myślnik." },
             { propertyPath: "minimumOrderGross", title: "Kod kwotowy wymaga minimum większego od kwoty rabatu." },
             { propertyPath: "endsAt", title: "Koniec musi być po początku." },
-            { propertyPath: "usageLimit", title: "Limit to 1–1 000 000 użyć." },
           ],
         },
         response: { status: 422 },
@@ -253,6 +328,29 @@ describe("DiscountCodeFormView", () => {
       expect(wrapper.get("[data-testid=minimum-error]").text()).toBe("Kod kwotowy wymaga minimum większego od kwoty rabatu.");
       expect(wrapper.get("[data-testid=ends-error]").text()).toBe("Koniec musi być po początku.");
       expect(wrapper.get("[data-testid=limit-error]").text()).toBe("Limit to 1–1 000 000 użyć.");
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=code-input]").element);
+    });
+
+    it("shows a 422 that has no field as a message of the form, with the focus on it", async () => {
+      const wrapper = await open("/discount-codes/new");
+      await fill(wrapper);
+      mocks.post.mockResolvedValue({ data: undefined, error: { status: 422, violations: [{ propertyPath: "", title: "Dane są niepoprawne." }] }, response: { status: 422 } });
+
+      await click(wrapper, "save");
+
+      const alert = wrapper.get("[data-testid=form-error]");
+      expect(alert.text()).toBe("Dane są niepoprawne.");
+      expect(document.activeElement).toBe(alert.element);
+    });
+
+    it("shows a 403 as a message of the form", async () => {
+      const wrapper = await open("/discount-codes/new");
+      await fill(wrapper);
+      mocks.post.mockResolvedValue({ data: undefined, error: {}, response: { status: 403 } });
+
+      await click(wrapper, "save");
+
+      expect(wrapper.get("[data-testid=form-error]").text()).toBe("Nie masz uprawnień do zmiany kodów rabatowych.");
     });
   });
 
@@ -268,6 +366,7 @@ describe("DiscountCodeFormView", () => {
       expect(wrapper.get("[data-testid=code-status]").text()).toBe("Zaplanowany");
       expect(input(wrapper, "code-input").value).toBe("WITAJ10");
       expect(disabled(wrapper, "code-input")).toBe(true);
+      expect(wrapper.get("[data-testid=kind-amount]").attributes("aria-checked")).toBe("true");
       expect(input(wrapper, "value-input").value).toBe("50,00");
       expect(input(wrapper, "minimum-input").value).toBe("123,45");
       expect(input(wrapper, "starts-input").value).toBe("2026-11-21T00:00");
@@ -279,18 +378,18 @@ describe("DiscountCodeFormView", () => {
     it("lets everything but the code text change", async () => {
       const wrapper = await open();
 
-      for (const field of ["value-input", "minimum-input", "starts-input", "ends-input", "limit-input"]) {
+      for (const field of ["value-input", "minimum-input", "starts-input", "ends-input", "limit-input", "kind-percent", "kind-amount"]) {
         expect(disabled(wrapper, field), field).toBe(false);
       }
-      expect(wrapper.getComponent(SelectButton).props("disabled")).toBeFalsy();
       expect(wrapper.find("[data-testid=terms-locked-note]").exists()).toBe(false);
     });
 
-    it("keeps the save button off until something changes, then saves with the version", async () => {
+    it("has no save bar until something changes, then saves with the version", async () => {
       const wrapper = await open();
-      expect(disabled(wrapper, "save")).toBe(true);
+      expect(saveBar()).toBeNull();
 
       await wrapper.get("[data-testid=value-input]").setValue("15");
+      expect(saveBar()?.textContent).toContain("Niezapisane zmiany");
       expect(disabled(wrapper, "save")).toBe(false);
       mocks.put.mockResolvedValue({ data: code({ value: 15, version: 4 }), response: { status: 200 } });
 
@@ -309,11 +408,12 @@ describe("DiscountCodeFormView", () => {
           version: 3,
         },
       });
-      expect(wrapper.get("[data-testid=success-message]").text()).toBe("Kod rabatowy zapisany.");
-      expect(disabled(wrapper, "save")).toBe(true);
+      expect(successToast).toHaveBeenCalledTimes(1);
+      expect(successToast).toHaveBeenCalledWith("Kod rabatowy zapisany.");
+      expect(saveBar()).toBeNull();
     });
 
-    it("moves the focus to the success message after a save, as the save button goes off", async () => {
+    it("moves the focus to the H1 after a save, as the save bar and its button go away", async () => {
       const wrapper = await open();
       await wrapper.get("[data-testid=value-input]").setValue("15");
       mocks.put.mockResolvedValue({ data: code({ value: 15, version: 4 }), response: { status: 200 } });
@@ -321,20 +421,68 @@ describe("DiscountCodeFormView", () => {
       (wrapper.get("[data-testid=save]").element as HTMLElement).focus();
       await click(wrapper, "save");
 
-      const message = wrapper.get("[data-testid=success-message]");
-      expect(message.attributes("tabindex")).toBe("-1");
-      expect(document.activeElement).toBe(message.element);
+      expect(document.activeElement).toBe(heading("h1"));
+      expect(heading("h1")?.getAttribute("tabindex")).toBe("-1");
     });
 
-    it("disables the code by the switch", async () => {
+    it("leaves the focus in a field the staff member moved to while the save was running", async () => {
       const wrapper = await open();
+      await wrapper.get("[data-testid=value-input]").setValue("15");
+      let release!: (value: unknown) => void;
+      mocks.put.mockReturnValue(new Promise((resolve) => (release = resolve)));
+
+      await wrapper.get("[data-testid=save]").trigger("click");
+      (wrapper.get("[data-testid=limit-input]").element as HTMLElement).focus();
+      release({ data: code({ value: 15, version: 4 }), response: { status: 200 } });
+      await settle();
+
+      expect(successToast).toHaveBeenCalledWith("Kod rabatowy zapisany.");
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=limit-input]").element);
+    });
+
+    it("shows the save bar when only the switch „Aktywny” changes, and sends the change only with „Zapisz”", async () => {
+      const wrapper = await open();
+      expect(saveBar()).toBeNull();
+
       await toggleEnabled(wrapper, false);
+
+      expect(isEnabled(wrapper)).toBe(false);
+      expect(saveBar()?.textContent).toContain("Niezapisane zmiany");
+      expect(mocks.put).not.toHaveBeenCalled();
       mocks.put.mockResolvedValue({ data: code({ enabled: false, status: "disabled" }), response: { status: 200 } });
 
       await click(wrapper, "save");
 
+      expect(mocks.put).toHaveBeenCalledTimes(1);
       expect(mocks.put.mock.calls[0]![1].body.enabled).toBe(false);
       expect(wrapper.get("[data-testid=code-status]").text()).toBe("Wyłączony");
+      expect(saveBar()).toBeNull();
+    });
+
+    it("hides the save bar again when the switch goes back to what is stored", async () => {
+      const wrapper = await open();
+
+      await toggleEnabled(wrapper, false);
+      await toggleEnabled(wrapper, true);
+
+      expect(saveBar()).toBeNull();
+    });
+
+    it("throws away the changes with „Odrzuć” without a request, and puts the focus on the H1", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=value-input]").setValue("15");
+      await toggleEnabled(wrapper, false);
+      mocks.get.mockClear();
+
+      barButton("Odrzuć")!.click();
+      await settle();
+
+      expect(input(wrapper, "value-input").value).toBe("10");
+      expect(isEnabled(wrapper)).toBe(true);
+      expect(saveBar()).toBeNull();
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(mocks.put).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(heading("h1"));
     });
   });
 
@@ -342,14 +490,13 @@ describe("DiscountCodeFormView", () => {
     it.each(["active", "expired"] as const)("%s: locks the kind, the value, the minimum and the start and says so", async (status) => {
       const wrapper = await open("/discount-codes/code-1", undefined, started({ status }));
 
-      expect(wrapper.getComponent(SelectButton).props("disabled")).toBe(true);
-      for (const field of ["value-input", "minimum-input", "starts-input"]) {
+      for (const field of ["kind-percent", "kind-amount", "value-input", "minimum-input", "starts-input"]) {
         expect(disabled(wrapper, field), field).toBe(true);
       }
-      for (const field of ["ends-input", "limit-input"]) {
+      for (const field of ["ends-input", "limit-input", "enabled"]) {
         expect(disabled(wrapper, field), field).toBe(false);
       }
-      expect(wrapper.get("[data-testid=terms-locked-note]").text()).toContain("rodzaj, wartość, minimum i początek są zablokowane");
+      expect(wrapper.get("[data-testid=terms-locked-note]").text()).toContain("rodzaj, wartość, minimum i początek są zablokowane. Możesz zmienić koniec, „Aktywny” i limit.");
       expect(wrapper.get("[data-testid=active-uses]").text()).toBe("7");
     });
 
@@ -389,6 +536,7 @@ describe("DiscountCodeFormView", () => {
 
       expect(disabled(wrapper, "limit-input")).toBe(true);
       expect(wrapper.get("[data-testid=limit-locked-note]").text()).toBe("Limitu nie można dodać kodowi, który już obowiązuje.");
+      expect(wrapper.get("[data-testid=limit-input]").attributes("aria-describedby")).toContain(wrapper.get("[data-testid=limit-locked-note]").element.parentElement!.id);
       expect(disabled(wrapper, "ends-input")).toBe(false);
     });
 
@@ -426,6 +574,56 @@ describe("DiscountCodeFormView", () => {
       expect(disabled(wrapper, "value-input")).toBe(true);
       expect(input(wrapper, "value-input").value).toBe("10");
       expect(document.activeElement).toBe(wrapper.get("[data-testid=form-error]").element);
+      expect(successToast).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("leaving with unsaved changes", () => {
+    it("asks in a dialog and stays, with the form as it was, when the staff member stays", async () => {
+      const wrapper = await open();
+      const confirm = vi.spyOn(window, "confirm");
+
+      await wrapper.get("[data-testid=value-input]").setValue("15");
+      const navigation = mounted!.router.push("/discount-codes");
+      await settle();
+
+      expect(dialog()?.textContent).toContain("Masz niezapisane zmiany");
+      expect(document.activeElement).toBe(dialogButton("Zostań"));
+      dialogButton("Zostań")!.click();
+      await navigation;
+      await settle();
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(dialog()).toBeNull();
+      expect(mounted!.router.currentRoute.value.name).toBe("discount-code");
+      expect(input(wrapper, "value-input").value).toBe("15");
+      expect(saveBar()).not.toBeNull();
+    });
+
+    it("asks also when only the switch „Aktywny” changed, and leaves with „Opuść bez zapisu”", async () => {
+      const wrapper = await open();
+
+      await toggleEnabled(wrapper, false);
+      const navigation = mounted!.router.push("/discount-codes");
+      await settle();
+      expect(dialog()?.textContent).toContain("Masz niezapisane zmiany");
+      dialogButton("Opuść bez zapisu")!.click();
+      await navigation;
+      await settle();
+
+      expect(mounted!.router.currentRoute.value.name).toBe("discount-codes");
+      expect(mocks.put).not.toHaveBeenCalled();
+      expect(wrapper.exists()).toBe(true);
+    });
+
+    it("does not ask when nothing changed", async () => {
+      await open();
+
+      await mounted!.router.push("/discount-codes");
+      await settle();
+
+      expect(dialog()).toBeNull();
+      expect(mounted!.router.currentRoute.value.name).toBe("discount-codes");
     });
   });
 
@@ -440,23 +638,28 @@ describe("DiscountCodeFormView", () => {
 
       expect(wrapper.get("[data-testid=form-error]").text()).toBe("Kod rabatowy został w międzyczasie zmieniony. Odśwież go i spróbuj ponownie.");
       expect(input(wrapper, "limit-input").value).toBe("10");
-      expect(wrapper.get("[data-testid=enabled] input").element).toHaveProperty("checked", true);
+      expect(isEnabled(wrapper)).toBe(true);
     });
 
-    it("says so when the code does not exist", async () => {
+    it("says so when the code does not exist: the heading, the message with the colour of an error, and a link to the list (#446)", async () => {
       const wrapper = await open("/discount-codes/nope", undefined, null);
 
-      expect(wrapper.get("[data-testid=load-error]").text()).toBe("Ten kod rabatowy nie istnieje.");
+      const alert = wrapper.get("[data-testid=load-error]");
+      expect(alert.text()).toContain("Ten kod rabatowy nie istnieje.");
+      expect(alert.attributes("role")).toBe("alert");
+      expect(alert.classes().join(" ")).toContain("text-status-danger");
+      expect(alert.get("a").attributes("href")).toBe("/discount-codes");
       expect(wrapper.find("[data-testid=value-input]").exists()).toBe(false);
-      expect(wrapper.get("h1").text()).toBe("Kod rabatowy");
+      expect(wrapper.get("h1").text()).toBe("Nie udało się wczytać kodu rabatowego");
+      expect(saveBar()).toBeNull();
     });
 
-    it("keeps the heading of an existing code when it fails to load", async () => {
+    it("keeps that heading for an existing code that fails to load, not „Nowy kod rabatowy”", async () => {
       mocks.get.mockResolvedValue({ data: undefined, error: {}, response: { status: 500 } });
       const wrapper = await open("/discount-codes/code-1");
 
       expect(wrapper.find("[data-testid=load-error]").exists()).toBe(true);
-      expect(wrapper.get("h1").text()).toBe("Kod rabatowy");
+      expect(wrapper.get("h1").text()).toBe("Nie udało się wczytać kodu rabatowego");
     });
 
     it("keeps the heading of an existing code until it is loaded", async () => {
@@ -466,21 +669,27 @@ describe("DiscountCodeFormView", () => {
       expect(wrapper.get("h1").text()).toBe("Kod rabatowy");
     });
 
-    it.each([["support"], ["warehouse"]] as StaffMe["roles"][])("shows the code read-only to %s, without a save button", async (...roles) => {
+    it.each([["support"], ["warehouse"]] as StaffMe["roles"][])("shows the code read-only to %s, without a save bar", async (...roles) => {
       const wrapper = await open("/discount-codes/code-1", roles, code({ usageLimit: 10 }));
 
-      for (const field of ["value-input", "minimum-input", "starts-input", "ends-input", "limit-input", "code-input"]) {
+      for (const field of ["value-input", "minimum-input", "starts-input", "ends-input", "limit-input", "code-input", "kind-percent", "kind-amount", "enabled"]) {
         expect(disabled(wrapper, field), field).toBe(true);
       }
-      expect(wrapper.getComponent(SelectButton).props("disabled")).toBe(true);
-      expect(wrapper.getComponent(ToggleSwitch).props("disabled")).toBe(true);
+      expect(saveBar()).toBeNull();
       expect(wrapper.find("[data-testid=save]").exists()).toBe(false);
       expect(wrapper.get("[data-testid=read-only-note]").text()).toContain("tylko do odczytu");
       expect(wrapper.get("[data-testid=active-uses]").text()).toBe("0");
     });
 
+    it("has no save bar for a new code of a role that cannot change codes", async () => {
+      await open("/discount-codes/new", ["support"]);
+
+      expect(saveBar()).toBeNull();
+    });
+
     it.each([["admin"], ["marketing"]] as StaffMe["roles"][])("offers saving to %s", async (...roles) => {
       const wrapper = await open("/discount-codes/code-1", roles);
+      await wrapper.get("[data-testid=value-input]").setValue("11");
 
       expect(wrapper.find("[data-testid=save]").exists()).toBe(true);
       expect(wrapper.find("[data-testid=read-only-note]").exists()).toBe(false);

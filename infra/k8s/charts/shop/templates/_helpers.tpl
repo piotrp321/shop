@@ -347,7 +347,7 @@ ttlSecondsAfterFinished: the finished Job stays; `make -C infra/k8s rerun JOB=<n
 Parameters: root, name, wave, template (YAML of the pod template: metadata and spec).
 */}}
 {{- define "shop.job" -}}
-{{- $settings := dict "backoffLimit" .root.Values.jobs.backoffLimit "activeDeadlineSeconds" .root.Values.jobs.activeDeadlineSeconds -}}
+{{- $settings := dict "backoffLimit" .root.Values.jobs.backoffLimit "activeDeadlineSeconds" (.activeDeadlineSeconds | default .root.Values.jobs.activeDeadlineSeconds) -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -359,8 +359,8 @@ metadata:
   annotations:
     {{- include "shop.wave" .wave | nindent 4 }}
 spec:
-  backoffLimit: {{ .root.Values.jobs.backoffLimit }}
-  activeDeadlineSeconds: {{ .root.Values.jobs.activeDeadlineSeconds }}
+  backoffLimit: {{ $settings.backoffLimit }}
+  activeDeadlineSeconds: {{ $settings.activeDeadlineSeconds }}
   template:
     {{- .template | nindent 4 }}
 {{- end }}
@@ -373,5 +373,26 @@ when it is empty.
 {{- if .Values.clientIpHeader }}
 - name: CLIENT_IP_HEADER
   value: {{ .Values.clientIpHeader | quote }}
+{{- end }}
+{{- end }}
+
+{{- /*
+SENTRY_* of one application (dict "root" "app": api, store or admin): the DSN of the application (values sentry.dsn.<app>), the
+environment (sentry.environment, when set), the release (image.tag, the revision of the images) and the sample rate of the traces
+(sentry.tracesSampleRate), nothing when the DSN is empty: without a DSN the SDK of the application stays off.
+*/ -}}
+{{- define "shop.sentryEnv" -}}
+{{- $dsn := get .root.Values.sentry.dsn .app }}
+{{- if $dsn }}
+- name: SENTRY_DSN
+  value: {{ $dsn | quote }}
+{{- with .root.Values.sentry.environment }}
+- name: SENTRY_ENVIRONMENT
+  value: {{ . | quote }}
+{{- end }}
+- name: SENTRY_RELEASE
+  value: {{ required "image.tag (the revision) is required" .root.Values.image.tag | quote }}
+- name: SENTRY_TRACES_SAMPLE_RATE
+  value: {{ .root.Values.sentry.tracesSampleRate | quote }}
 {{- end }}
 {{- end }}

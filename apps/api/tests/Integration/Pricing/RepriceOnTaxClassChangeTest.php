@@ -46,7 +46,7 @@ final class RepriceOnTaxClassChangeTest extends MessagingKernelTestCase
         OriginalImages::exist(self::getContainer(), self::IMAGE);
         // The product change is invalidated in the store too; nothing to send in this test.
         self::getContainer()->set(HttpStorefrontCache::class, new SpyStorefrontCache());
-        $this->commandBus()->dispatch(new CreateCategory(self::CATEGORY_ID, 'Książki', 'ksiazki', null));
+        $this->commandBus()->dispatch(CreateCategory::bySeed(self::CATEGORY_ID, 'Książki', 'ksiazki', null));
         $this->commandBus()->dispatch(new CreateProduct(
             self::PRODUCT_ID,
             'Atlas Tatr',
@@ -172,7 +172,7 @@ final class RepriceOnTaxClassChangeTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => $messages, '--time-limit' => 10]);
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => $messages, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 
