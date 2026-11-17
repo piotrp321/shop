@@ -231,9 +231,8 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
    końcowego PR, z HEAD końcowego PR w osobnym worktree, ze stosem `agent-observability` na Macu): `telemetry.py
    check` z kodem 0; sonda w przebiegu domyślnym z `--otel-forward http://127.0.0.1:4318`, potem sonda `--mode ao`,
    każda z kodem 0 i statusem `pass` przypadków `telemetry_export` i `telemetry_no_content` w JSON wyniku (sam kod 0
-   nie wystarcza, bo `no_export` i `unverifiable` go nie zmieniają); `telemetry.py check --project-override` na
-   binarce przypiętej z kodem 0; zapytanie do Lokiego przez proxy źródła danych Grafany zwraca zdarzenia
-   `api_request` zadania sondy z `shop_source="ao"` z ostatniego przebiegu. Wyniki (kody, czas, koszt sond,
+   nie wystarcza, bo `no_export` i `unverifiable` go nie zmieniają); zapytanie do Lokiego przez proxy źródła danych Grafany zwraca
+   zdarzenia `api_request` zadania sondy z `shop_source="ao"` z ostatniego przebiegu. Wyniki (kody, czas, koszt sond,
    zapytanie i jego wynik) trafiają do raportu odbioru; nieudany punkt to bloker dla użytkownika, jak w odbiorze
    AGENT-SECURITY: rekomendacja „najpierw sprawdź”, push i brak merge'u także na polecenie, do ponownego odbioru.
    Push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Końcowy PR merguje użytkownik w GitHubie albo sesja, gdy
