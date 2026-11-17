@@ -1,6 +1,7 @@
 #!/bin/sh
 # Prints what the change from <base> to <head> touches, which decides how much of the CI runs:
-#   docs     documentation only (docs/** and *.md outside .github/)
+#   docs     documentation only (docs/**, *.md outside .github/ and the issue forms in .github/ISSUE_TEMPLATE/**,
+#            which no CI step reads)
 #   tooling  repository tooling (.claude/**, .ao/**, tools/**), possibly with documentation: only the script tests run
 #   k8s      the Kubernetes deployment (infra/k8s/**: chart, environments, sealed secrets, server scripts), possibly with
 #            documentation: only `make -C infra/k8s check` runs. The compose stack of the tests and E2E does not use
@@ -29,6 +30,7 @@ echo "$files" | {
     scope=0
     while IFS= read -r file; do
         case "$file" in
+            .github/ISSUE_TEMPLATE/*) ;;
             .github/*) exit 2 ;;
             docs/* | *.md) ;;
             .claude/* | .ao/* | tools/*) [ "$scope" -eq 3 ] && exit 2; scope=1 ;;
