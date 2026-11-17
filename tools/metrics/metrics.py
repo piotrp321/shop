@@ -1345,7 +1345,7 @@ def other_attempts(epic, records, ao_root, config, busy_timeout_ms):
         return None
 
 
-def add_share(subscription, stretches, attempts, lookup, gaps):
+def add_share(subscription, stretches, attempts, lookup, gaps, missing_times=()):
     """`share` of the subscription (spec: Rekord epiku): the value of this epic in the common interval (the parts of
     its measurement interval in which another epic ran; the union when there are several) by the value of this epic and
     of the overlapping epics in it (each epic's attempts assigned to the interval evenly over their duration, the other
@@ -1357,6 +1357,9 @@ def add_share(subscription, stretches, attempts, lookup, gaps):
         subscription['share'] = 1
         return
     subscription['share_estimated'] = True
+    if missing_times:           # which part of an attempt lies in the common interval is unknown
+        gaps.add('subscription.share', 'brak kolumny %s w bazie AO: czasy prób nieznane' % ', '.join(missing_times))
+        return
     common = clip_merge([stretch for epic in subscription['overlap'] for stretch in stretches.get(epic, [])],
                         float('-inf'), float('inf'))
     mine = value_within(attempts, common)
@@ -1366,11 +1369,13 @@ def add_share(subscription, stretches, attempts, lookup, gaps):
     total = mine
     for other in subscription['overlap']:
         others = lookup(other)
-        theirs = None if others is None else value_within(others, clip_merge(stretches.get(other, []), float('-inf'),
-                                                                              float('inf')))
+        known = others is not None and (not others or any(_timestamp(a.get('started_at')) is not None
+                                                          for a in others if isinstance(a, dict)))
+        theirs = value_within(others, clip_merge(stretches.get(other, []), float('-inf'), float('inf'))) if known \
+            else None
         if theirs is None:
             gaps.add('subscription.share', 'brak wartości tokenów epiku %s (brak rekordu i katalogu przebiegu albo próby'
-                     ' bez wartości)' % other)
+                     ' bez wartości albo bez początku)' % other)
             return
         total += theirs
     if total <= 0:
@@ -2071,7 +2076,8 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     fields = transcript_fields(ao_home, ao_run, config, records, epic_id, gaps)
     if subscription is not None:
         add_share(subscription, stretches, fields['attempts'],
-                  lambda other: other_attempts(other, records, ao_root, config, busy_timeout_ms), gaps)
+                  lambda other: other_attempts(other, records, ao_root, config, busy_timeout_ms), gaps,
+                  [c for c in ('attempts.started_at', 'attempts.ended_at') if lacks(ao_run, c)])
     retries = retries_of(ao_run, run_ended, gaps)
     retries['sync_prs'] = None if github['sync'] is None else [{'number': p['number'], 'state': p['state']}
                                                                 for p in github['sync']]
