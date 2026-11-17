@@ -46,16 +46,19 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   epiku (liczby bez korekty). Przed tabelą `trend` przelicza `regressions` i `found_after_merge` rekordów z otwartym oknem
   (`regressions.open`), bez tych pól albo z nieznanym składnikiem (`gh`; zapisuje rekordy; `--no-gh` pomija). Błąd `gh`
   zostawia zapisane wartości, tabela się wypisuje, kod wyjścia `3`. Kolumny `value` (gdy `value.total.estimated`) i `pp`
-  (gdy `subscription.share_estimated`) są szacowane: tabela i linie „wobec mediany” (jak „Pozycja na tle mediany” w
-  `render`) pokazują je z „≈ ” przed liczbą, także medianę, w której jest choć jedna wartość szacowana; kolumna bez
+  (gdy `subscription.share_estimated`) oraz `repeat_runs` (gdy `in_attempts.incomplete`: dolna granica z części transkryptów) są szacowane: tabela i linie „wobec mediany” (jak „Pozycja na tle mediany” w
+  `render`) pokazują je z „≈ ” przed liczbą, także medianę, w której jest choć jedna wartość szacowana; procent różnicy w linii „wobec mediany” i w pozycji ma „≈” (`≈ +50%`), gdy wartość albo mediana kolumny jest szacowana (kolumna
+  jest na liście `position.estimated` albo `position.median_estimated`; tak samo `diff` i `diff_pct` w `--json`); kolumna bez
   wartości nie jest szacowana. `--json` wypisuje tabelę jako JSON (`columns`, `epics`, `median`, `position`,
   `recomputed`) i listy kolumn szacowanych: `epics[].estimated` (wartości epiku), `median_estimated` (mediany tabeli),
   `position.estimated` (wartości epiku z `position.epic`) i `position.median_estimated`; liczby są te same co bez
   oznaczenia. Bez rekordów kod `2` z podpowiedzią `backfill`.
 - `render EPIK --format report|comment`: tekst z zapisanego rekordu i historii (`<state>/epics`), bez `gh`.
   `report` (raport odbioru, przed merge'em) zaczyna się od wąskich gardeł liczonych od nowa bez `review`, potem: czas do
-  `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami), integracja, wartość
-  tokenów (razem, role z dopiskiem „podział między subagentów szacowany”, modele, najdroższe zadanie; liczby szacowane z „≈”),
+  `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami; przy `in_attempts.incomplete` godziny z „≈”
+  i dopiskiem „transkrypty tylko N z M prób”), integracja (przy `integration.incomplete` z „≈” i „(dolna granica)”), wartość
+  tokenów (razem, role z dopiskiem „podział między subagentów szacowany”, modele, najdroższe zadanie z dopiskiem „(wśród
+  zadań ze znaną wartością)”, gdy któreś zadanie ma wartość nieznaną albo niepełną; liczby szacowane z „≈”),
   subskrypcja w pp (osobno, nigdy w sumie z wartością tokenów; `share` przy nakładaniu), próby, REPAIR, FIX, sync, czekanie
   w bramce, interwencje, alarmy, wersje CLI i modele, CI, pozycja na tle mediany historii (epiki zmergowane przed tym) i braki
   danych (pełny tekst `gaps`). `comment` (po merge'u): linie `Interwencje człowieka: N`, `Czekanie na użytkownika: M czekania,
@@ -94,21 +97,21 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 | `started_at`, `done_at`, `merged_at` | `epics.created_at`; pierwsze zdarzenie `epic_done` (bez niego `null`); `mergedAt` końcowego PR z `gh` |
 | `wall` | `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge) |
 | `breakdown` | rozkład `to_done` na `work`, `human_wait`, `limit_wait`, `ci_wait`, `host_pause`, `github_wait`, `idle`; suma kategorii z wartością równa się `to_done`; bez `epic_done` całość `null` |
-| `integration` | `work_s` (suma `wall_s` prób zadań `integration`, `fix`, `finalize`), `attempts`, `rounds` (`epics.round`) |
+| `integration` | `work_s` (suma `wall_s` prób zadań `integration`, `fix`, `finalize`), `attempts`, `rounds` (`epics.round`); `incomplete: true`, gdy część prób nie ma czasu (suma to dolna granica, pozycja w `gaps`) |
 | `retries` | `attempts` (`total`, `per_task`, klasy prób), `failed_by_outcome`, `repair` (`count`, `final_pr_conflict`, `ci_red`, `unknown`), `fix` (liczba zadań FIX), `sync_prs` (PR `sync/<epik>-main`: `number`, `state`) |
 | `parallel` | `epics` (epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem), `repairs` (zadania REPAIR z próbą w czasie nakładania), `sync_prs` (numery PR sync utworzonych w czasie nakładania) |
 | `subscription` | `share` i `share_estimated` (niżej), `windows`: surowy przyrost procentu każdego okna limitu w pp (`null` gdy okno odnowione w trakcie albo stan jednego z pomiarów inny niż `ok`, wtedy `{etykieta: null}`; gdy żaden pomiar nie ma stanu `ok`, nie da się ustalić etykiet okien i całe `windows` to `null`, z pozycją w `gaps`; reguły `night_queue._window_deltas`), `overlap`: epiki z nakładającym się przedziałem |
 | `gate_wait` | `wait_s`: od pierwszego wpisu `waiting` epiku w `gate.jsonl` do `started_at` (0 bez czekania; `null`, gdy brak pliku albo wpisów epiku), `reasons`: różne powody czekania |
 | `human` | `interventions` (`human_action`), `waits`, `wait_s` (suma zakończonych czekań, nakładające się liczone raz), `open` (czekania otwarte), `manual_fixes` (`[{pr, text}]` z `--manual-fixes` albo `null`); z `ao_events.summarize` |
-| `in_attempts` | czas poleceń powłoki w próbach z transkryptów: `categories` (`read`, `test`, `e2e`, `check`, `selftest`, `stack`, `ci_watch`, `other`: `count`, `background`, `unfinished`, `seconds`), `repeat_runs` (`count`, `seconds`, `by_category`), `api_retry` (`count`, `delay_ms`), `permission_denials` (`{narzędzie: liczba}`); `null` bez żadnego transkryptu |
-| `by_task` | `{zadanie: {kind, work, attempts}}`: `work` to suma `wall_s` prób zadania, także prób po `epic_done` |
+| `in_attempts` | czas poleceń powłoki w próbach z transkryptów: `categories` (`read`, `test`, `e2e`, `check`, `selftest`, `stack`, `ci_watch`, `other`: `count`, `background`, `unfinished`, `seconds`), `repeat_runs` (`count`, `seconds`, `by_category`), `api_retry` (`count`, `delay_ms`), `permission_denials` (`{narzędzie: liczba}`); `null` bez żadnego transkryptu. Gdy część prób nie ma transkryptu: `incomplete: true`, `attempts_without_transcript` i `attempts` (sumy obejmują tylko próby z transkryptem, to dolne granice; pozycja w `gaps`) |
+| `by_task` | `{zadanie: {kind, work, attempts}}`: `work` to suma `wall_s` prób zadania, także prób po `epic_done`; `incomplete: true` przy zadaniu, którego próba nie ma `wall_s` ani końca (pominięta w sumie: `work` to dolna granica, pozycja w `gaps`) |
 | `versions` | `cli` (`[{version, attempts}]`, z `system/init`) i `models` (`[{model, attempts}]`, z wiadomości `assistant`); `null` bez transkryptów |
 | `attempts` | lista prób: `task`, `kind`, `number`, `outcome`, `executor_status`, `wall_s`, `started_at`, `ended_at`, `value` (USD), `estimated`, `tokens` (`input`, `output`, `cache_read`, `cache_write`), `estimated_tokens`, `cli_result` (czy próba ma wynik CLI), `model_rates` (USD na ważony token wejścia i cache modelu, tylko próby z wynikiem CLI); próba bez transkryptu ma `null` w polach wartości |
 | `value` | `total`, `by_role`, `by_model`, `by_task`, `by_role_model` (`{rola: {model: komórka}}`), `by_task_role` (`{zadanie: {rola: komórka}}`: wartość roli w zadaniu; rola, która w zadaniu nie działała, nie ma wpisu; wejście miary D1 w `effect`; zob. „Brakujące źródła i pola rekordu”); komórka: `usd`, `estimated`, `tokens`, `estimated_tokens` i `incomplete`, gdy część wartości jest nieznana |
 | `ci` | `final` i `tasks` (`{zadanie: ...}`): `pr`, `runs` (liczba przebiegów `ci_workflow` gałęzi `epic/<epik>` albo `task/<zadanie>` dla zdarzenia `pull_request`, czyli ponowienia), `checks_s` i `e2e_s` (czas ostatniego przebiegu: od pierwszego startu do ostatniego końca zadań o nazwie z `ci_jobs` albo z jej przedrostkiem i spacją, np. `checks part 1/3`; `null` bez takich zadań). Zadania bez numeru PR nie wchodzą. `null` z `gaps` bez `gh` albo przy błędzie |
 | `regressions` | okno `window_days` (14) od merge'u końcowego PR: `until`, `open` (czas okna nie minął albo ostatni przebieg miał zawiedzione źródło), `complete` (wszystkie źródła, także `found_after_merge`, odpowiedziały; okno zamyka się, `open: false`, dopiero po takim przebiegu; lista obcięta do limitu 200 issues albo 10 stron po 100 commitów (`reverts`: strony `page=1, 2, …` do pierwszej krótszej albo pustej; obcięta tylko przy dziesięciu pełnych stronach) też daje `complete: false`, a `trend` do tego czasu przelicza rekord), `checked_at`, `merge_commit`, `ci_red` (liczba czerwonych przebiegów `ci_workflow` ze zdarzeniem `push` na commicie merge'u; 0 przy zielonym), `reverts` (SHA commitów `main` w oknie, których pierwsza linia zaczyna się od `Revert`, a treść wymienia `#<numer końcowego PR>`), `issues` (numery issues `bug` z okna, których pole „Wprowadzone przez (epik albo PR, jeśli znane)” wskazuje ID epiku albo numer końcowego PR, założone albo ostatnio zmienione przez osobę z prawem zapisu: autor, a gdy go nie ma, ostatni edytor treści (`editor` z zapytania `gh api graphql`, tylko `query`, po jednym na issue, które wskazuje epik; bez `--repo` owner i nazwę ustala raz na proces `gh repo view --json owner,name` (błąd nie jest zapamiętany; podane `--repo` niepasujące do `OWNER/NAZWA` to błąd źródła z pozycją w `gaps`, nie pytanie o katalog roboczy), bo `gh api` nie podstawia `{owner}` i `{repo}` w polach `-f`) sprawdzani tym samym `gh api repos/{owner}/{repo}/collaborators/{login}/permission` (`write`, `maintain` albo `admin`); 404 to brak prawa, login niepasujący do wzorca loginu GitHuba nie jest sprawdzany; issues z etykietą `agent` nie liczą się tu), `count` (czerwone CI jako 1, plus reverty i issues; `null`, gdy któryś składnik nieznany). Składnik, którego źródło zawiodło, ma poprzednią zapisaną wartość albo `null`, z `gaps` |
 | `found_after_merge` | `issues` i `count`: issues z etykietą `agent` utworzone w oknie, których sekcja „Źródło” ma linię `Przebieg `/sweep` <data>-<sha7>-<epik>` tego epiku (propozycje `/sweep`, osobno od regresji; etykietę `agent` ustawiają tylko osoby z prawem zapisu, więc bez sprawdzania autora) |
-| `bottlenecks` | do `max_items` (3) pozycji o największej nadwyżce czasu ponad medianę historii, malejąco, nadwyżka co najmniej `min_excess_h` (0,5 h): `kind` (`breakdown`, `task`, `in_attempts`, `gate_wait`, `review`), `name`, `value_s`, `median_s`, `excess_h`, `share` i `share_of` (`to_done`, `gate_wait+to_done` albo `to_merge`), `rule` (klucz reguły decyzji: D2 dla zadania planu, D3 dla `gate_wait`, D4 dla `human_wait`, `ci_wait`, `limit_wait`, `in_attempts.ci_watch` i `review`, inaczej `null`), `repeat_h` (tylko `in_attempts`: ile z nadwyżki to `repeat_runs` tej kategorii, nie więcej niż nadwyżka). `effect_h` i `effect_rule`: potencjalny efekt optymalizacji (niżej, „Potencjalny efekt wąskich gardeł”) |
+| `bottlenecks` | do `max_items` (3) pozycji o największej nadwyżce czasu ponad medianę historii, malejąco, nadwyżka co najmniej `min_excess_h` (0,5 h): `kind` (`breakdown`, `task`, `in_attempts`, `gate_wait`, `review`), `name`, `value_s`, `median_s`, `excess_h`, `share` i `share_of` (`to_done`, `gate_wait+to_done` albo `to_merge`), `rule` (klucz reguły decyzji: D2 dla zadania planu, D3 dla `gate_wait`, D4 dla `human_wait`, `ci_wait`, `limit_wait`, `in_attempts.ci_watch` i `review`, inaczej `null`), `estimated` (`true`, gdy wartość pozycji albo mediana, z której powstała nadwyżka, pochodzi z czasu niepełnego: `by_task.<zadanie>.incomplete` albo `in_attempts.incomplete` w epiku lub w historii; efekt z kandydata `decide` dziedziczy jego `estimated`), `repeat_h` (tylko `in_attempts`: ile z nadwyżki to `repeat_runs` tej kategorii, nie więcej niż nadwyżka). `effect_h` i `effect_rule`: potencjalny efekt optymalizacji (niżej, „Potencjalny efekt wąskich gardeł”) |
 | `waste` | alarmy tego epiku z `<state>/waste.json` (jak w pliku: `key`, `rule`, `epic`, `task`, `attempt`, `at`, `push`, liczby); `[]`, gdy plik jest i nie ma alarmów epiku; `null` z pozycją w `gaps` (sam powód, bez ścieżki) bez pliku (komenda `waste` nie zapisała alarmów) albo gdy plik jest nieczytelny (`epic` nie kończy się wtedy błędem); zapisana wcześniej lista zostaje (zob. „Cache”) |
 | `gaps` | braki danych |
 
@@ -173,6 +176,8 @@ tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie z
   cache; mediana z prób z wynikiem CLI zapisanych rekordów innych epików (`<state>/epics/*.json`) i bieżącego przebiegu.
   Bez historii stawki modelu wartość to `null` z pozycją w `gaps`.
 - **Przekroje:** sumy komórek po próbach; `incomplete`, gdy część prób nie ma wartości (suma obejmuje znane).
+  Próba bez transkryptu nie ma komórek, więc może należeć do każdej roli i modelu: oznacza jako `estimated` i `incomplete`
+  także `by_role`, `by_model` i `by_role_model` oraz role jej zadania w `by_task_role` (nie role innych zadań).
   Wartości zapisane z dokładnością 1e-8 USD.
 - **Polecenia** (`in_attempts`): narzędzia powłoki z `shell_tools`; czas od `tool_use` do `tool_result` o tym samym
   identyfikatorze, według pierwszej pasującej kategorii z `command_categories` (`read` jest pierwsza, bo pasuje tylko do
@@ -225,7 +230,7 @@ a `effect_rule` to `null`, czyli „bez reguły decyzji”. `ci_wait` i `ci_watc
 łącznie), więc efektów pozycji nie należy sumować. `render --format report` pokazuje to obok kosztu czasowego:
 `1. `human_wait`: +6,2 h ponad medianę (22% czasu), potencjalnie −4,1 h (D4)` albo `… potencjalnie −X h (bez reguły
 decyzji)`; render wypisuje tylko liczbę i nazwę reguły z kodu (`D1`–`D9`), a rekord bez `effect_h` w `bottlenecks` ma
-`, reguła D4`.
+`, reguła D4`. Pozycja z `estimated: true` ma w renderze „≈ ” przed każdą liczbą (`1. `P-3`: ≈ +4,5 h ponad medianę (≈ 12% czasu), potencjalnie ≈ −4,5 h (D2)`).
 
 ### Brakujące źródła i pola rekordu
 
@@ -286,7 +291,7 @@ nigdy kandydaci) i `gaps`. Kandydat to reguła, która zadziałała i ma propozy
 | Pole | Treść |
 |---|---|
 | `key` | reguła i przedmiot, ten sam dla tej samej reguły i przedmiotu w każdym epiku: `D1:<rola>`, `D2:plan_split`, `D3:gate_wait`, `D4:human_wait`, `D4:ci`, `D4:limit_wait`, `D4:review` |
-| `rule`, `data` | `D1`–`D4` i liczby reguły (sekundy, udziały, progi); wartości szacowane są w `data.estimated` (D1: `["role_value"]`) |
+| `rule`, `data` | `D1`–`D4` i liczby reguły (sekundy, udziały, progi); wartości szacowane lub niepełne są w `data.estimated` (D1: `role_value`, `epic_total`; D2: `work`; D4 `ci`: `in_attempts.ci_watch`; pusta lista, gdy dokładne) |
 | `proposal` | propozycja po polsku; D1 to tylko eksperyment porównania wariantów w EVALS 2.0, nigdy zmiana modelu |
 | `expected_effect` | `wall_h` (skrócenie czasu zegarowego w godzinach albo `null`), `value_usd` (wartość tokenów w USD albo `null`), `estimated` |
 | `verification` | miara reguły i komenda `effect` z kluczem |
@@ -308,13 +313,17 @@ Kolejność: `wall_h` malejąco, potem `value_usd` malejąco (nieznane to 0), po
   `skipped` z przyczyną „porównanie w EVALS 2.0, decyzja w jego raporcie” i `data` (`runs`, `measurements`). Brak katalogu
   albo czytelnego `meta.json` to `gaps` i `skipped` („brak wyników EVALS 2.0”); nieczytelny plik, plik bez `status` i `mode`
   albo przebieg `ok` w trybie `replay` bez `subagent_model` jest pomijany i liczony w `gaps`. Efekt: `value_usd` = wartość
-  roli na każdym droższym modelu × (1 − stawka najtańszego / stawka tego modelu); wartość roli szacowana (komórka z
-  `estimated` albo `incomplete`) jest zaznaczona w `data.estimated`, w `expected_effect.estimated` i w propozycji.
+  roli na każdym droższym modelu × (1 − stawka najtańszego / stawka tego modelu); wartość szacowana jest zaznaczona w `data.estimated`, w `expected_effect.estimated` i w propozycji, gdy szacowana
+  albo niepełna jest komórka roli na droższym modelu (`role_value`), gdy komórka roli na droższym modelu nie ma wartości
+  (`usd` `null`: wartość roli to dolna granica; też `role_value`) albo gdy szacowana lub niepełna jest suma epiku
+  (`value.total`: z niej liczy się `share`; `epic_total`).
 - **D2 podział planu:** zadanie planu z `work` > `d2_work_multiple` (2) × mediana `work` zadań planu w historii albo z co
   najmniej `d2_failed_attempts` (2) próbami nieudanymi (klasa `failed`, `blocked` i `usage_limit` się nie liczą; próby
   z `attempts` rekordu). Klucz jest jeden na epik, `D2:plan_split` (zadanie ma w każdym epiku inne ID, więc przedmiotem
   klucza jest sama reguła; zadania są w `data.tasks`). `wall_h` = suma czasu zadań ponad medianę (zadanie z samymi
-  nieudanymi próbami dodaje 0). Bez historii kryterium czasu jest pominięte z pozycją w `gaps`.
+  nieudanymi próbami dodaje 0). Bez historii kryterium czasu jest pominięte z pozycją w `gaps`. Zadanie z `incomplete` w
+  `by_task` albo mediana z historii z takim zadaniem planu daje `estimated: true` zadania w `data.tasks`, w `data.estimated`
+  (`["work"]`) i w `expected_effect.estimated`.
 - **D3 kolejka pracy równoległej:** `gate_wait.wait_s` ≥ `d3_gate_wait_h` (1 h) z powodu reguły plików bramki. `gate_wait`
   liczy się od pierwszego wpisu `waiting` epiku w `gate.jsonl` (`night_queue.append_gate_log`), a `reasons` to powody tych
   wpisów. Reguła plików (`night_queue.check_files`, kroki 4 i 5) zapisuje wpis `waiting` tylko jako WAIT, gdy zakres epiku
@@ -326,7 +335,8 @@ Kolejność: `wall_h` malejąco, potem `value_usd` malejąco (nieznane to 0), po
 - **D4 czekanie:** `human_wait` ≥ `d4_human_wait_share` (20%) `to_done`, `ci_wait` + `in_attempts.ci_watch` ≥ `d4_ci_share`
   (20%) `work`, `limit_wait` ≥ `d4_limit_wait_share` (10%) `to_done`, `review` ≥ `d4_review_share` (20%) `to_merge`
   (tylko po merge'u; przed nim `skipped`). `wall_h` = udział × mianownik (dla `human_wait` i `limit_wait` udział × `to_done`, dla
-  `review` udział × `to_merge`); dla `ci` czas `ci_wait` + `ci_watch` (oszczędność nie przekracza czasu czekania). Znane
+  `review` udział × `to_merge`); dla `ci` czas `ci_wait` + `ci_watch` (oszczędność nie przekracza czasu czekania); `ci` ma
+  `data.estimated` `["in_attempts.ci_watch"]` i `expected_effect.estimated: true`, gdy `in_attempts.incomplete`. Znane
   źródło `null` (brak `to_done`, `work`, `in_attempts`) to `skipped` z nazwą brakującego pola, nie zero.
 
 Progi są włącznie (dokładnie próg alarmuje, tuż poniżej milczy), z wyjątkiem D2 (ostro większe niż wielokrotność mediany).
@@ -353,13 +363,15 @@ tyle samo epików zmergowanych najpóźniej w `CZAS` (włącznie), najbliższych
 nim i zmergowany po nim nie jest w żadnym oknie (`spanning`); epik rozpoczęty po `CZAS`, a niezmergowany, też (`unmerged_after`).
 Dla D1 poziom to `kind` zadań (`level_kind`), w którym rola ma największą łączną wartość w obu oknach (rozstrzygnięcie
 wykonawcy: spec mówi „zadania tego `kind`” bez wskazania, który; bez wartości roli `level_kind` to `null`); rekord bez
-`value.by_task_role` jest pomijany z pozycją w `gaps`, nie liczony jako zero.
+`value.by_task_role` jest pomijany z pozycją w `gaps`, nie liczony jako zero. D2 i `D4:ci` mają okno `estimated: true`, gdy
+zadanie planu ma `by_task.<zadanie>.incomplete` (D2) albo epik ma `in_attempts.incomplete` (`D4:ci`).
 
 Wynik (JSON): `before` i `after` (`epics`: epiki z pomiarem, `n`: próbki (zadania albo epiki), `n_epics`, `median`, `p25`,
 `p75`; kwartyle metodą interpolacji liniowej między rangami; `estimated`: `true`, gdy któraś użyta próbka pochodzi
-z komórki `value.by_task_role` z `estimated: true` albo `incomplete: true`, co w `decide` też oznacza wartość szacowaną, albo gdy
+z komórki `value.by_task_role` z `estimated: true` albo `incomplete: true`, co w `decide` też oznacza wartość szacowaną, albo
+z zadania, którego `value.by_task` jest `incomplete` albo nieznane (rola mogła mieć brakującą część), albo gdy
 pominięto zadanie, w którym rola działała z nieznaną wartością (`usd` `null`), także gdy przez to epik nie ma żadnej próbki (jest pominięty, z pozycją w `gaps`): okno jest wtedy niepełne; tylko
-D1, pozostałe miary są dokładne i mają `false`), `estimated` (na poziomie wyniku: `true`, gdy szacowane jest któreś okno;
+D1, D2 (`work` zadania planu z `incomplete`) i `D4:ci` (`in_attempts.incomplete`), pozostałe miary są dokładne i mają `false`), `estimated` (na poziomie wyniku: `true`, gdy szacowane jest któreś okno;
 dotyczy wtedy też `diff`; liczby szacowane są pokazywane z „≈”), `diff` (`value` w jednostce miary i `pct` w procentach różnicy
 median; `pct` `null` przy medianie „przed” równej 0), `message` (`za mało danych` i wtedy `diff` `null`, a `reasons` mówi
 dlaczego), `epic_time` (czas do `epic_done` na zadanie planu w godzinach: mediana trzech epików zmergowanych najbliżej
@@ -385,10 +397,13 @@ historii niczego nie zmienia). Linia `gaps` nie ma klucza `push`: sesja `/ao-run
 | W1 koszt próby | próba zakończona: `value` > `cost_multiple` (3) × mediana `value` zakończonych prób tego `kind` z wartością **i** `value` ≥ `cost_min_usd` (5 USD); próba bez wartości nie alarmuje (pozycja w `gaps`); wartość szacowana (próba bez wyniku CLI) może alarmować i ma w `push` „≈” | `W1:<epik>:<zadanie>:<próba>` |
 | W2 trwająca próba | próba bez `ended_at` i bez `outcome` w epiku, który się nie skończył: `now − started_at` > `time_multiple` (3) × mediana `wall_s` zakończonych prób tego `kind` **i** > `time_min_h` (1) h; bez szacowania kosztu trwającej próby | `W2:<epik>:<zadanie>:<próba>` |
 | W3 pętla prób (bez mediany i bez kwoty) | (a) próba zadania rozpoczęta po co najmniej `loop_failed_attempts` (2) nieudanych próbach tego samego zadania (klasa `failed`; `blocked` i `usage_limit` się nie liczą); alarmuje każda kolejna próba z własnym kluczem; (b) kolejny REPAIR epiku z rzędu: zadanie `repair` rozpoczęte, gdy od startu poprzedniego zadania `repair` (kolejność pierwszych prób) nie było zdarzenia `epic_ci_green` ani `epic_ci_inherited` epiku; trzeci REPAIR bez zielonego CI alarmuje też; (c) `epics.round` równe `--max-qa-rounds` | (a) `W3:<epik>:<zadanie>:<próba>`, (b) `W3:<epik>:repair:<zadanie>`, (c) `W3:<epik>:qa:<runda>` |
-| W4 koszt zadania | suma `value` **zakończonych** prób zadania (trwającej się nie dolicza; zadanie, w którym zakończona próba nie ma wartości, jest pomijane z pozycją w `gaps`) > `cost_multiple` × mediana tej sumy po zadaniach tego `kind` w historii (zadania, w których wszystkie zakończone próby mają wartość) **i** ≥ `cost_min_usd`; raz na zadanie; suma z próbą szacowaną (bez wyniku CLI) ma w `push` „≈”, a w alarmie `estimated: true` | `W4:<epik>:<zadanie>` |
+| W4 koszt zadania | suma `value` **zakończonych** prób zadania (trwającej się nie dolicza; zadanie, w którym zakończona próba nie ma wartości, jest pomijane z pozycją w `gaps`) > `cost_multiple` × mediana tej sumy po zadaniach tego `kind` w historii (zadania, w których wszystkie zakończone próby mają wartość) **i** ≥ `cost_min_usd`; raz na zadanie; suma z próbą szacowaną (bez wyniku CLI) ma w `push` „≈”, a w alarmie `estimated: true`; zadanie z trwającą próbą ma w alarmie `incomplete: true`, a `push` mówi „zakończone próby kosztują” zamiast „kosztuje łącznie” (suma to dolna granica) | `W4:<epik>:<zadanie>` |
 
 Alarm kosztowy wymaga obu warunków (dokładnie 3× mediany nie alarmuje, dokładnie 5 USD alarmuje), czasowy też (dokładnie
-3× mediany i dokładnie 1 h nie alarmują). Mediana zerowa nie ma ilorazu (`ratio: null`, `push` bez „×”).
+3× mediany i dokładnie 1 h nie alarmują). Mediana zerowa nie ma ilorazu (`ratio: null`, `push` bez „×”). Iloraz „N× mediany” ma w `push` „≈”, gdy kwota jest szacowana
+(`estimated`) albo mediana pochodzi choć z jednej wartości szacowanej historii (`median_estimated: true` w alarmie W1 i W4;
+historia niesie `estimated` prób zakończonych, reguła zachowawcza jak w `trend`). Zadanie historii z próbą bez `ended_at`
+nie jest pomiarem W4 (suma byłaby częściowa).
 
 Wyjście: jedna linia JSON na nowy alarm, np. `{"alarm": "W2", "key": "W2:deploy-ops:DEPLOY-OPS-4:3", "epic":
 "deploy-ops", "task": "DEPLOY-OPS-4", "attempt": 3, "push": "deploy-ops: DEPLOY-OPS-4 próba 3 trwa 4,1 h (3,2× mediany)",
