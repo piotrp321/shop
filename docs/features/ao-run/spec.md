@@ -66,7 +66,8 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
   - `auto <plik> --action qa-round|fix-round [--task ID]`: dopisuje zdarzenie `auto_action` (automatyczne
     przedłużenie, sekcja „Automatyczne przedłużenia”); kończy okno czekania jak `human_action`, ale nie jest
     interwencją.
-  - `summary <plik> [--now EPOCH]`: jedna linia JSON `{"interventions", "waits", "wait_s", "open"}`. Czekanie na
+  - `summary <plik> [--now EPOCH]`: jedna linia JSON `{"interventions", "auto", "waits", "wait_s", "open"}`
+    (`auto`: liczba zdarzeń `auto_action`, które kończą czekanie jak `human_action`, ale nie są interwencjami). Czekanie na
     użytkownika zaczyna `status_changed` do `BLOCKED` albo `FAILED` (klucz: zadanie) albo `epic_blocked`
     i `queue_held` (klucz: epik), a kończy następne `human_action` z tym samym kluczem (decyzja dotycząca epiku nie
     ma `--task`). `wait_s` to czas zegarowy, w którym trwało co najmniej jedno zakończone czekanie (nakładające się
@@ -315,7 +316,9 @@ dodatkową rundę sama, a pyta użytkownika tylko wtedy, gdy któryś warunek ni
 
 - **Runda QA epiku** (`auto_extend.py qa <AO_HOME> --epic <id>`). Wszystkie warunki:
   - epik `BLOCKED` z powodem `max_qa_rounds` (`repeated_finding` i inne powody zawsze idą do użytkownika);
-  - ten epik nie miał jeszcze automatycznego przedłużenia QA, bo drugie oznacza pętlę;
+  - ten epik nie miał jeszcze przedłużenia QA: ani automatycznego (`auto_action`, zapisywanego przed `ao epic
+    resume`, a nieudany zapis to pytanie), ani żadnego w AO (`add_qa_rounds` w konfiguracji epiku), bo drugie
+    oznacza pętlę;
   - ostatnia runda nie ma znalezisk Critical;
   - żadne znalezisko Critical ani Important ostatniej rundy nie powtarza znaleziska wcześniejszej rundy. Powtórzenie
     to równy odcisk AO (waga, tytuł, pliki), podobny tytuł (Jaccard zbiorów słów od 4 znaków ≥ 0,5) albo to samo

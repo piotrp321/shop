@@ -310,11 +310,13 @@ Zaraz po starcie zadania tła sprawdź, czy kolejny epik może ruszyć równoleg
   wiadomości ani z pamięci.
 - **Zgoda z góry.** Gdy polecenie użytkownika w rozmowie już wprost zgadza się na krok, o który skill każe zapytać
   (np. „uruchom mimo bramki” dla tego epiku i tego powodu, „+1 runda QA” dla tego epiku), wykonaj go bez ponownego
-  pytania i zacytuj tę zgodę w rozmowie. Zgoda dotyczy tylko kroku, epiku i powodu, które wskazuje.
+  pytania i zacytuj tę zgodę w rozmowie. Zgoda dotyczy tylko kroku, epiku i powodu, które wskazuje, i nie zmienia
+  zasad nocy: w nocy start mimo bramki (`--force`) jest niedozwolony także przy zgodzie z góry.
 - **Restart AO.** Gdy trzeba zatrzymać proces AO (np. zmiana limitów na polecenie użytkownika), nie zabijaj zadania
   tła w trakcie próby: poczekaj, aż `ao status --epic <epik>` nie pokazuje zadania `RUNNING` ani `INTEGRATING`
-  w toku, i dopiero wtedy zatrzymaj zadanie tła (`TaskStop`) i uruchom krok 4. Przerwanie trwającej próby tylko na
-  wyraźne polecenie użytkownika.
+  w toku, i dopiero wtedy zatrzymaj zadanie tła (`TaskStop`) i uruchom krok 4. Przy dwóch zadaniach naraz AO może
+  od razu zaczynać kolejne próby i taka chwila nie nadejść: wtedy zapytaj użytkownika, czy przerwać trwającą próbę.
+  Przerwanie trwającej próby tylko na wyraźne polecenie użytkownika.
 - **Automatyczne przedłużenia** (dzień i noc; zasady: spec `ao-run`, „Automatyczne przedłużenia”). Zamiast pytania,
   na które odpowiedź byłaby mechanicznym „tak”, sesja sama daje jedną dodatkową rundę, gdy skrypt
   `auto_extend.py` zwraca `"decision": "extend"`. Każdy inny wynik, kod wyjścia różny od 0 albo wątpliwość sesji
@@ -328,20 +330,22 @@ Zaraz po starcie zadania tła sprawdź, czy kolejny epik może ruszyć równoleg
     Przy `extend` przeczytaj jeszcze raporty rund (`$AO_HOME/epics/<epik>/integration/round-N.md`): gdy znalezisko
     Important ostatniej rundy dotyczy tej samej zasady albo kryterium specyfikacji co znalezisko wcześniejszej rundy
     (np. ta sama reguła w innym miejscu), to powtórzenie i pytasz użytkownika. Sesja może tylko zamienić `extend`
-    na pytanie, nigdy odwrotnie. Bez powtórzenia: `ao epic resume <epik> --add-qa-rounds 1`, potem
-    `ao_events.py auto "$AO_HOME/events.jsonl" --action qa-round`, push „Epik <epik>: automatycznie +1 runda QA
-    (koszt <cost_usd>/<max_usd> USD)” i krok 4, jeśli AO już nie działa.
+    na pytanie, nigdy odwrotnie. Bez powtórzenia najpierw zapis
+    `ao_events.py auto "$AO_HOME/events.jsonl" --action qa-round`, potem `ao epic resume <epik> --add-qa-rounds 1`,
+    push „Epik <epik>: automatycznie +1 runda QA (koszt <cost_usd>/<max_usd> USD)” i krok 4, jeśli AO już nie
+    działa.
   - **Trzecia runda poprawek zadania:** zadanie `BLOCKED` z jedynym blokerem `EXTRA-FIX-ROUND` (`/delivery`, krok 7):
 
     ```bash
     python3 "$SKILL_ROOT/.claude/skills/ao-run/auto_extend.py" fix "$AO_HOME" --task <ID>
     ```
 
-    Przy `extend`: `ao answer <ID>` z tekstem z pola `answer` wyniku (dosłownie, w cytowanym heredoc), potem
-    `ao_events.py auto "$AO_HOME/events.jsonl" --action fix-round --task <ID>`, push „<ID>: automatycznie trzecia
-    runda poprawek (koszt <cost_usd>/<max_usd> USD)” i krok 4, jeśli AO już nie działa.
-  - Kod wyjścia `ao_events.py auto` różny od 0: powiedz o tym użytkownikowi (pomiar pokaże czekanie do końca epiku)
-    i prowadź epik dalej. Automatycznej decyzji nie zapisujesz przez `ao_events.py human`.
+    Przy `extend` najpierw zapis `ao_events.py auto "$AO_HOME/events.jsonl" --action fix-round --task <ID>`, potem
+    `ao answer <ID>` z tekstem z pola `answer` wyniku (dosłownie, w cytowanym heredoc), push „<ID>: automatycznie
+    trzecia runda poprawek (koszt <cost_usd>/<max_usd> USD)” i krok 4, jeśli AO już nie działa.
+  - Zapis `ao_events.py auto` jest przed decyzją dla AO, bo jest bezpiecznikiem przed drugim przedłużeniem (QA
+    sprawdza też `add_qa_rounds` w AO). Kod wyjścia różny od 0: nie przedłużasz, tylko pytasz użytkownika jak wyżej.
+    Automatycznej decyzji nie zapisujesz przez `ao_events.py human`.
   - **Próg kosztu** epiku to 150 USD. Inny próg dla epiku ustawiasz tylko na polecenie użytkownika w rozmowie,
     zapisem `{"max_usd": <liczba>}` do `$AO_HOME/auto-extend.json` (przed startem albo w trakcie epiku).
 - **Zapis decyzji.** Zaraz po udanym `ao answer <ID>`, `ao resume <ID>`, `ao release` albo `ao epic resume <epik>`
@@ -351,7 +355,8 @@ Zaraz po starcie zadania tła sprawdź, czy kolejny epik może ruszyć równoleg
   python3 "$SKILL_ROOT/.claude/skills/ao-run/ao_events.py" human "$AO_HOME/events.jsonl" --action answer --task <ID>
   ```
 
-  `--action` to `answer`, `resume`, `release` albo `epic-resume`; `--task <ID>` tylko przy `answer` i `resume`. Kod
+  `--action` to `answer`, `resume`, `release` albo `epic-resume`; `--task <ID>` tylko przy `answer` i `resume`.
+  Automatyczne przedłużenie zapisujesz inaczej (`ao_events.py auto`, „Automatyczne przedłużenia” wyżej). Kod
   wyjścia różny od 0: powiedz o tym użytkownikowi (pomiar czasu oczekiwania będzie zawyżony) i prowadź epik dalej.
 
 ## 6. Raport odbioru

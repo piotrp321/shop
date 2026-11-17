@@ -15,7 +15,7 @@ CREATE TABLE tasks (task_id TEXT PRIMARY KEY, status TEXT NOT NULL, reason TEXT,
                     answers TEXT NOT NULL DEFAULT '[]', epic_id TEXT);
 CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, at REAL NOT NULL, task_id TEXT, attempt_id INTEGER,
                      type TEXT NOT NULL, data TEXT NOT NULL);
-CREATE TABLE epics (epic_id TEXT PRIMARY KEY, status TEXT NOT NULL, reason TEXT);
+CREATE TABLE epics (epic_id TEXT PRIMARY KEY, status TEXT NOT NULL, reason TEXT, config TEXT);
 CREATE TABLE attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, number INTEGER NOT NULL,
                        started_at REAL NOT NULL, ended_at REAL, executor_status TEXT, cost_usd REAL, result TEXT);
 """
@@ -43,8 +43,8 @@ class Base(unittest.TestCase):
         self.db.close()
         self.tmp.cleanup()
 
-    def epic(self, status='BLOCKED', reason='max_qa_rounds: F1 [Important] x', epic_id='metrics'):
-        self.db.execute('INSERT INTO epics VALUES (?, ?, ?)', (epic_id, status, reason))
+    def epic(self, status='BLOCKED', reason='max_qa_rounds: F1 [Important] x', epic_id='metrics', config=None):
+        self.db.execute('INSERT INTO epics VALUES (?, ?, ?, ?)', (epic_id, status, reason, config))
         self.db.commit()
 
     def task(self, task_id, status='DONE', blockers=None, epic_id='metrics'):
@@ -143,6 +143,24 @@ class QaTest(Base):
     # Q2
     def test_earlier_automatic_qa_round_is_ask(self):
         self.jsonl({'type': 'auto_action', 'at': 1.0, 'task_id': None, 'data': {'action': 'qa-round'}})
+        self.assertAsk(self.qa(), 'Q2')
+
+    def test_qa_rounds_added_earlier_in_ao_are_ask(self):
+        # A resume with --add-qa-rounds (automatic or by the user) is in AO even when events.jsonl missed its record.
+        self.db.execute("UPDATE epics SET config = ? WHERE epic_id = 'metrics'",
+                        (json.dumps({'limits': {'add_qa_rounds': 1}}),))
+        self.db.commit()
+        self.assertAsk(self.qa(), 'Q2')
+
+    def test_config_without_added_rounds_is_not_an_extension(self):
+        self.db.execute("UPDATE epics SET config = ? WHERE epic_id = 'metrics'",
+                        (json.dumps({'limits': {'add_qa_rounds': 0, 'add_attempts': 2}}),))
+        self.db.commit()
+        self.assertEqual(self.qa()['decision'], 'extend')
+
+    def test_unreadable_epic_config_is_ask(self):
+        self.db.execute("UPDATE epics SET config = '{broken' WHERE epic_id = 'metrics'")
+        self.db.commit()
         self.assertAsk(self.qa(), 'Q2')
 
     def test_fix_round_or_human_action_do_not_count_as_qa_round(self):

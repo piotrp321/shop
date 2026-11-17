@@ -314,6 +314,9 @@ def main():
     if args.command == 'human':
         return human(args.file, args.action, args.task)
     if args.command == 'auto':
+        # qa-round is a decision about the epic (no task), fix-round about one task
+        if (args.action == 'qa-round') != (args.task is None):
+            parser.error('auto --action qa-round takes no --task, --action fix-round needs --task')
         return auto(args.file, args.action, args.task)
     if args.command == 'summary':
         return summary(args.file, args.now)

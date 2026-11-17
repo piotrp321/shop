@@ -10,7 +10,7 @@ auto-extend.json) and prints one JSON line with a decision. Every uncertain cond
       extend when all hold:
       Q1 the epic is BLOCKED with a reason starting with max_qa_rounds;
       Q2 events.jsonl has no auto_action qa-round without a task (a missing file counts as none, lines that are not
-         JSON objects are skipped);
+         JSON objects are skipped), and AO has no QA rounds added to the epic (epics.config limits.add_qa_rounds);
       Q3 the last round (highest `round` of the epic's integration_findings events) has critical 0 and a non-empty
          blocking list;
       Q4 no blocking finding of the last round repeats a blocking finding of an earlier round (see is_repeat);
@@ -235,9 +235,23 @@ def valid_findings(items):
     return isinstance(items, list) and all(isinstance(f, dict) and isinstance(f.get('title'), str) for f in items)
 
 
+def added_qa_rounds(config):
+    """The QA rounds `ao epic resume --add-qa-rounds` added to the epic (AO keeps them in epics.config.limits), the
+    record that survives a lost auto_action; None when the config cannot be read."""
+    if config in (None, ''):
+        return 0
+    try:
+        value = json.loads(config)
+    except ValueError:
+        return None
+    limits = value.get('limits') if isinstance(value, dict) else None
+    added = (limits or {}).get('add_qa_rounds', 0) if isinstance(limits, (dict, type(None))) else None
+    return added if isinstance(added, int) and not isinstance(added, bool) and added >= 0 else None
+
+
 def decide_qa(db, home, epic_id, max_usd):
     reasons, last = [], None
-    epic = db.execute('SELECT status, reason FROM epics WHERE epic_id = ?', (epic_id,)).fetchone()
+    epic = db.execute('SELECT status, reason, config FROM epics WHERE epic_id = ?', (epic_id,)).fetchone()
     if epic is None:
         reasons.append('Q1: brak epiku %s' % epic_id)
     elif epic['status'] != 'BLOCKED' or not str(epic['reason'] or '').startswith('max_qa_rounds'):
@@ -248,6 +262,12 @@ def decide_qa(db, home, epic_id, max_usd):
         reasons.append('Q2: nie da się odczytać events.jsonl')
     elif any(action == 'qa-round' and task is None for action, task in actions):
         reasons.append('Q2: epik dostał już automatyczną rundę QA')
+    if epic is not None:
+        added = added_qa_rounds(epic['config'])
+        if added is None:
+            reasons.append('Q2: nie da się odczytać konfiguracji epiku w AO')
+        elif added > 0:
+            reasons.append('Q2: epik dostał już dodatkowe rundy QA w AO (add_qa_rounds %d)' % added)
 
     rounds, problem = epic_rounds(db, epic_id)
     if problem:

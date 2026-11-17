@@ -516,6 +516,13 @@ class AutoTest(unittest.TestCase):
         self.assertIsNone(ev['task_id'])
         self.assertEqual(ev['data'], {'action': 'qa-round'})
 
+    def test_qa_round_with_task_or_fix_round_without_task_is_rejected_without_writing(self):
+        for args in (('--action', 'qa-round', '--task', 'T-1'), ('--action', 'fix-round')):
+            with self.subTest(args=args):
+                result = self.auto(*args)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(os.path.exists(self.file))
+
     def test_unknown_action_is_rejected_without_writing(self):
         result = self.auto('--action', 'answer', '--task', 'T-1')
         self.assertEqual(result.returncode, 2)
