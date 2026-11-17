@@ -14,7 +14,7 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482), EVALS (#495). Kolejność epików jest na tablicy „Backlog sklepu”.
+W toku przez `/ao-run`: DEMO-DATA (#482). Kolejność epików jest na tablicy „Backlog sklepu”.
 Blokery: brak. Ostatni zmergowany epik: METRICS (końcowy PR #674; 5 interwencji, 6 czekań na użytkownika, razem
 400 min, 4 ręczne poprawki). Retro do zrobienia: brak (retro METRICS w tym PR).
 Krok 7: CART-FIXES (#88)
@@ -71,7 +71,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Tester całego sklepu | `tester` w `/sweep`, uruchamiany przez `/ao-run` po merge'u | działa |
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
 | | Bezpieczeństwo agentów: niezaufane wejścia, izolacja uprawnień i sekretów, testy obejścia | sandbox i reguły w `shop` | krok 16 |
-| | Evale agentów i workflowów, benchmark i kryteria regresji | `make evals` | krok 17 |
+| | Evale agentów na prawdziwych zadaniach i porównanie wariantów agenta | EVALS 2.0: `tools/evals-pilot` (`code-reviewer`), uruchamiane ręcznie za zgodą właściciela | krok 17 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
 | | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | `tools/metrics` (`tools/metrics/README.md`), uruchamiany przez `/ao-run`; telemetria Claude Code w lokalnym stosie na Macu (TELEMETRY #577) | krok 18 |
@@ -343,16 +343,15 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    - testy prób obejścia w prawdziwych procesach AO, także przez Bash i procesy potomne;
    - agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych;
    - nikt, także użytkownik, nie zmerguje do `main` ani `epic/*` bez zielonego CI (rulesety bez aktora bypass).
-17. **Evale agentów i workflowów.** Realizuje komponent „Metryki i evale” z ADR:
-   - evale pojedynczych agentów (`code-reviewer`, `spec-critic`, `backlog-groomer`, `retro-analyst`, próby prompt
-     injection) przy każdej zmianie agenta albo skilla;
-   - benchmark całych workflowów: zamrożone zadania z poprzednich epików od ich commita bazowego, uruchamiane przy
-     zmianie modelu, wersji CLI albo `/delivery`;
-   - mierzą poprawność, wykrywanie błędów, przestrzeganie zakresu, stabilność wyników między powtórzeniami
-     i zachowanie po zmianie promptu albo modelu; wyniki mają historię i kryteria regresji;
-   - PR zmieniający agenta, skill albo pin CLI ma aktualny wynik; CI sprawdza tylko jego zgodność z wersją plików,
-     bez uruchamiania modelu;
-   - każde uruchomienie ma limit kosztu i zużycia limitu subskrypcji ustalony w specyfikacji.
+17. **Evale agentów i workflowów.** Realizuje komponent „Metryki i evale” z ADR przez EVALS 2.0
+   (`docs/features/evals-2/spec.md`, narzędzie `tools/evals-pilot/`):
+   - evale pojedynczych agentów na prawdziwych zadaniach z `/delivery`: produkcyjna definicja agenta, wynik z etykiet
+     właściciela nadanych zgłoszeniom agenta; dziś `code-reviewer`;
+   - porównanie wariantów agenta (prompt, model) na tym samym zestawie, z kryteriami przyjęcia ustalonymi przed
+     pomiarem i raportem w `docs/reports/`;
+   - każdy etap i każdy płatny pomiar ma zakres, limit kosztu i kryteria przyjęcia zatwierdzone przez właściciela;
+     CI nie uruchamia modelu;
+   - benchmark całych workflowów `/delivery` (zamrożone zadania z poprzednich epików) nie ma specyfikacji ani epiku.
 18. **Pomiar, koszty i optymalizacja.** Dwa epiki: METRICS (#496: pomiar epiku z danych AO, transkryptów prób i GitHuba,
    `tools/metrics`, opis w `tools/metrics/README.md`) i TELEMETRY (#577: telemetria Claude Code).
    - TELEMETRY: telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
@@ -396,7 +395,7 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
 21. **Dokumentacja wdrożenia procesu i studium przypadku.** Dokumentacja pozwalająca wdrożyć proces w innym
    repozytorium, diagram architektury, rzeczywiste metryki z kroku 18, studium przypadku i opis najważniejszych
    decyzji technicznych. Raporty z liczbami trafiają do `docs/reports/`.
-22. **Porównanie Claude Code i OpenAI Codex.** Po kroku 17, na tym samym benchmarku workflowów: jakość, czas, koszt
+22. **Porównanie Claude Code i OpenAI Codex.** Na benchmarku workflowów `/delivery` z kroku 17 (bez specyfikacji): jakość, czas, koszt
    i potrzeba ingerencji człowieka; raport w `docs/reports/`. Bez kupowania dodatkowych usług na etapie planowania;
    konto do uruchomienia Codex ustala specyfikacja kroku.
 
