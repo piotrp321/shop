@@ -2848,6 +2848,27 @@ def trend_values(record, config):
     return values
 
 
+def trend_estimated(record, config):
+    """The columns of `trend_values` of one record that come from an estimated source (`value.total.estimated`,
+    `subscription.share_estimated`) and have a value: an unknown column is not an estimate."""
+    values = trend_values(record, config)
+    flags = {'value': _get(record, ('value', 'total', 'estimated')) is True,
+             'pp': _get(record, ('subscription', 'share_estimated')) is True}
+    return {column for column, flag in flags.items() if flag and values[column] is not None}
+
+
+def estimated_list(sets):
+    """The union of sets of estimated columns as a list in the order of TREND_COLUMNS (a median of a column is
+    estimated when one of the values it is built from is)."""
+    union = set().union(*sets) if sets else set()
+    return [column for column in TREND_COLUMNS if column in union]
+
+
+def cell_text(value, estimated):
+    """A number with two places, `≈ ` before an estimated one (as `usd_text`); `-` for an unknown one."""
+    return ('≈ ' if estimated and value is not None else '') + pl(value, 2)
+
+
 def median_of(values):
     known = [v for v in values if v is not None]
     return round(median(known), 4) if known else None
@@ -2951,12 +2972,17 @@ def build_trend(records, config, last, epic):
     for record in shown:
         index = ordered.index(record)
         rows.append({'epic': record['epic'], 'merged_at': record.get('merged_at'), 'tasks': record.get('tasks'),
-                     'values': trend_values(record, config),
+                     'values': trend_values(record, config), 'estimated': estimated_list([trend_estimated(record, config)]),
                      'annotations': change_annotations(ordered[index - 1], record) if index else []})
     medians = {column: median_of([row['values'][column] for row in rows]) for column in TREND_COLUMNS}
     values = trend_values(chosen, config)
+    shown_estimated = [trend_estimated(record, config) for record in shown]
     return {'columns': list(TREND_COLUMNS), 'epics': rows, 'median': medians,
-            'position': {'epic': chosen['epic'], 'columns': position_of(values, medians)}, 'recomputed': []}
+            'median_estimated': estimated_list(shown_estimated),
+            'position': {'epic': chosen['epic'], 'columns': position_of(values, medians),
+                         'estimated': estimated_list([trend_estimated(chosen, config)]),
+                         'median_estimated': estimated_list(shown_estimated)},
+            'recomputed': []}
 
 
 def pl(value, digits=1):
@@ -2971,13 +2997,15 @@ def format_trend(table):
              'repeat_runs': 'powt.', 'value': 'USD', 'pp': 'pp', 'failed': 'nieud.', 'repair': 'REPAIR',
              'interventions': 'interw.', 'regressions': 'regr.'}
     width = max([len('mediana')] + [len(r['epic']) for r in table['epics']])
+    cells = [[cell_text(row['values'][c], c in row['estimated']) for c in table['columns']] for row in table['epics']]
+    middle = [cell_text(table['median'][c], c in table['median_estimated']) for c in table['columns']]
+    # a column is as wide as its widest cell (an estimate with `≈ ` can be wider than 8 characters)
+    widths = [max([8, len(middle[i])] + [len(cell[i]) for cell in cells]) for i in range(len(table['columns']))]
     lines = ['Trend (na zadanie planu; czasy w godzinach; epików: %d)' % len(table['epics']),
-             ' '.join(['epik'.ljust(width)] + [heads[c].rjust(8) for c in table['columns']])]
-    for row in table['epics']:
-        lines.append(' '.join([row['epic'].ljust(width)] + [pl(row['values'][c], 2).rjust(8)
-                                                           for c in table['columns']]))
-    lines.append(' '.join(['mediana'.ljust(width)] + [pl(table['median'][c], 2).rjust(8)
-                                                      for c in table['columns']]))
+             ' '.join(['epik'.ljust(width)] + [heads[c].rjust(w) for c, w in zip(table['columns'], widths)])]
+    for row, line in zip(table['epics'], cells):
+        lines.append(' '.join([row['epic'].ljust(width)] + [t.rjust(w) for t, w in zip(line, widths)]))
+    lines.append(' '.join(['mediana'.ljust(width)] + [t.rjust(w) for t, w in zip(middle, widths)]))
     position = table['position']
     lines.append('%s wobec mediany:' % position['epic'])
     for column in table['columns']:
@@ -2987,7 +3015,9 @@ def format_trend(table):
             continue
         pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
                                                                  pl(abs(entry['diff_pct']), 0))
-        lines.append('  %s: %s (mediana %s%s)' % (heads[column], pl(entry['value'], 2), pl(entry['median'], 2), pct))
+        lines.append('  %s: %s (mediana %s%s)' % (
+            heads[column], cell_text(entry['value'], column in position['estimated']),
+            cell_text(entry['median'], column in position['median_estimated']), pct))
     notes = ['%s: %s' % (row['epic'], note) for row in table['epics'] for note in row['annotations']]
     if notes:
         lines.append('Zmiany wersji CLI i modeli (liczby bez korekty):')
@@ -3333,6 +3363,8 @@ def position_topic(record, history, config, comment):
     values = [trend_values(h, config) for h in history]
     medians = {c: median_of([v[c] for v in values]) for c in TREND_COLUMNS}
     position = position_of(trend_values(record, config), medians)
+    estimated = trend_estimated(record, config)
+    median_estimated = set(estimated_list([trend_estimated(h, config) for h in history]))
     parts = []
     for column in TREND_COLUMNS:
         entry = position[column]
@@ -3340,7 +3372,8 @@ def position_topic(record, history, config, comment):
             continue            # the review is known only after the merge
         pct = '' if entry['diff_pct'] is None else ', %s%s%%' % ('+' if entry['diff_pct'] >= 0 else '−',
                                                                  pl(abs(entry['diff_pct']), 0))
-        parts.append('%s %s (mediana %s%s)' % (column, pl(entry['value'], 2), pl(entry['median'], 2), pct))
+        parts.append('%s %s (mediana %s%s)' % (column, cell_text(entry['value'], column in estimated),
+                                               cell_text(entry['median'], column in median_estimated), pct))
     return ['Pozycja na tle mediany (%d %s, na zadanie planu; czasy w godzinach): %s' % (
         len(history), plural(len(history), 'epik', 'epiki', 'epików'), '; '.join(parts) or NO_DATA)]
 

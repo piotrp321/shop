@@ -227,6 +227,8 @@ modelu jako szacowane, z pozycją w `gaps`.
 - `metrics.py trend [--last N]`: tabela zmergowanych epików (domyślnie 10 ostatnich) z wartościami na zadanie planu:
   czas do `epic_done`, `work`, `human_wait`, `review`, `gate_wait`, `repeat_runs`, wartość tokenów, pp okna tygodniowego (`share`), próby nieudane, REPAIR,
   interwencje, regresje; mediana każdej kolumny (z pominięciem `null`) i pozycja wskazanego epiku względem niej.
+  Wartość tokenów i pp z szacowanego źródła (`estimated`, `share_estimated`) mają „≈” w tabeli, w pozycji względem
+  mediany (także w raporcie odbioru) i znacznik w `--json`, tak samo jak w `render`.
 - Rekordy z otwartym oknem regresji przelicza każde `trend` (merge kolejnego epiku, start `/ao-run`).
 - Epik z inną wersją CLI albo innym zestawem modeli niż poprzedni ma w `trend` adnotację zmiany (bez korekty liczb).
 
