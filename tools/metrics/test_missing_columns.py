@@ -110,6 +110,36 @@ class MissingColumnTest(Env):
         self.assertIsNone(record['breakdown']['work'])
         self.assert_gap(record, 'attempts.started_at')
 
+    def test_a_category_of_the_breakdown_without_its_source_is_null_and_its_time_is_in_idle(self):
+        cases = (('attempts', 'started_at', ['work']), ('attempts', 'ended_at', ['work']),
+                 ('events', 'data', ['limit_wait', 'host_pause', 'github_wait']),
+                 ('events', 'task_id', ['github_wait']), ('tasks', 'task_id', ['github_wait']))
+        for table, column, names in cases:
+            with self.subTest(column='%s.%s' % (table, column)):
+                record = self.record('demo', home=self.home_without(table, column))
+                breakdown = record['breakdown']
+                for name, seconds in breakdown.items():
+                    if name in names:
+                        self.assertIsNone(seconds, name)
+                        self.assertTrue(any(g.startswith('breakdown.%s:' % name) and 'idle' in g
+                                            for g in record['gaps']), (name, record['gaps']))
+                    else:
+                        self.assertIsNotNone(seconds, name)
+                self.assertAlmostEqual(sum(v for v in breakdown.values() if v is not None), record['wall']['to_done'],
+                                       places=3)
+
+    def test_without_the_events_the_cause_of_a_repair_is_unknown_not_zero(self):
+        for column in ('data', 'type'):
+            with self.subTest(column=column):
+                record = self.record('demo', home=self.home_without('events', column))
+                repair = record['retries']['repair']
+                self.assertEqual(repair['count'], 1)
+                self.assertIsNone(repair['final_pr_conflict'])
+                self.assertIsNone(repair['ci_red'])
+                self.assertEqual(repair['unknown'], 1)
+                self.assertTrue(run_cli(['render', 'demo', '--format', 'report', '--state', self.state])[1]
+                                .count('REPAIR: 1 (przyczyna nieznana)'))
+
     def test_a_null_value_in_an_existing_column_is_still_counted(self):
         record = self.record('demo', home=testkit.synthetic_home(
             self.root, created=1000.0, jsonl=[], events=[(9000, 'epic_done', {})], tasks=[('T-1', 'plan')],

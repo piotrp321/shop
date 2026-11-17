@@ -434,13 +434,20 @@ def _next_at(events, index, kinds, after=None):
     return None
 
 
+EVENT_CATEGORY = {'cooldown_set': 'limit_wait', 'host_pause': 'host_pause', 'github_wait': 'github_wait'}
+
+
 def category_intervals(run, done, jsonl, config, gaps):
     """{category: [(start, end)] or None} for the breakdown categories except idle (before clipping and
     precedence). None: the source of the category is missing."""
     events = run['events']
     epic_id = run['epic']['epic_id']
     task_ids = {t['task_id'] for t in run['tasks']}
-    found = {'work': None if gaps.lacks('attempts.started_at') else [], 'human_wait': None, 'limit_wait': [], 'ci_wait': [], 'host_pause': [], 'github_wait': []}
+    def source(*columns):
+        return None if lacks(run, *columns) else []         # None: the AO database cannot tell this category
+    found = {'work': source('attempts.started_at', 'attempts.ended_at'), 'human_wait': None,
+             'limit_wait': source('events.data'), 'ci_wait': [], 'host_pause': source('events.data'),
+             'github_wait': source('events.data', 'events.task_id', 'tasks.task_id')}
     for attempt in run['attempts'] if found['work'] is not None else []:
         start = _number(attempt['started_at'])
         if start is None:
@@ -451,6 +458,8 @@ def category_intervals(run, done, jsonl, config, gaps):
         found['human_wait'] = [(w['start'], done if w['end'] is None else w['end']) for w in ao_events.waits(jsonl)]
     for i, event in enumerate(events):
         kind, data, at = event['type'], event['data'], event['at']
+        if found.get(EVENT_CATEGORY.get(kind), []) is None:     # the category has no source: its events are not read
+            continue
         if kind == 'cooldown_set':
             start = _number(data.get('from'))
             ends = [e for e in (_number(data.get('until')), _next_at(events, i + 1, ('cooldown_released',))) if e]
@@ -507,6 +516,10 @@ def breakdown_of(run, started, done, jsonl, jsonl_gap, config, gaps):
     if jsonl is None:
         gaps.add('breakdown.human_wait', '%s: czas czekania na człowieka jest w idle' % jsonl_gap)
     found = category_intervals(run, done, jsonl, config, gaps)
+    for name in found:
+        if found[name] is None and name != 'human_wait':
+            gaps.add('breakdown.%s' % name, 'brak kolumny źródła w bazie AO: czas tej kategorii jest w innych '
+                                            'kategoriach i w idle')
     taken, result = [], {}
     for name in config['breakdown_order']:
         if name == 'idle':
@@ -572,24 +585,28 @@ def retries_of(run, run_ended, gaps):
         elif name == 'unclassified':
             gaps.add('retries.attempts', 'próba %s/%s ma nieznany outcome %r' % (attempt['task_id'],
                                                                                   attempt['number'], detail))
-    if gaps.lacks('tasks.kind'):
-        return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': None, 'fix': None}
-    repair = {'count': 0, 'final_pr_conflict': 0, 'ci_red': 0, 'unknown': 0}
+    fix = None if lacks(run, 'tasks.kind') else sum(1 for t in run['tasks'] if t['kind'] == 'fix')
+    if lacks(run, 'tasks.kind', 'tasks.task_id'):
+        return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': None, 'fix': fix}
+    no_events = lacks(run, 'events.type', 'events.data', 'events.at')     # the cause of a repair is in its event
+    repair = {'count': 0, 'final_pr_conflict': None if no_events else 0, 'ci_red': None if no_events else 0,
+              'unknown': 0}
     repairing = {e['data'].get('task_id'): e['data'] for e in run['events'] if e['type'] == 'epic_repairing'}
     for task in run['tasks']:
         if task['kind'] != 'repair':
             continue
         repair['count'] += 1
         data = repairing.get(task['task_id'])
-        if data is None:
+        if no_events:
+            repair['unknown'] += 1
+        elif data is None:
             repair['unknown'] += 1
             gaps.add('retries.repair', 'zadanie %s bez zdarzenia epic_repairing: przyczyna nieznana' % task['task_id'])
         elif data.get('final_pr') is not None:
             repair['final_pr_conflict'] += 1
         else:
             repair['ci_red'] += 1
-    return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': repair,
-            'fix': sum(1 for t in run['tasks'] if t['kind'] == 'fix')}
+    return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': repair, 'fix': fix}
 
 
 def integration_of(run, epic, gaps):
@@ -3191,8 +3208,9 @@ def retries_topics(record):
     if _count(repair.get('count')) is None:
         lines.append('REPAIR: %s' % NO_DATA)
     else:
-        lines.append('REPAIR: %d (konflikt końcowego PR %d, czerwone CI %d)' % (
-            repair['count'], _count(repair.get('final_pr_conflict')) or 0, _count(repair.get('ci_red')) or 0))
+        causes = [_count(repair.get('final_pr_conflict')), _count(repair.get('ci_red'))]
+        lines.append('REPAIR: %d (%s)' % (repair['count'], 'przyczyna nieznana' if None in causes else
+                                           'konflikt końcowego PR %d, czerwone CI %d' % tuple(causes)))
     lines.append('FIX: %s' % (_count(data.get('fix')) if _count(data.get('fix')) is not None else NO_DATA))
     if not isinstance(data.get('sync_prs'), list):
         lines.append('Sync: %s' % NO_DATA)
