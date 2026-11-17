@@ -113,6 +113,24 @@ def post(endpoint, path, body, headers=None, chunked=False):
         connection.close()
 
 
+def send_raw(endpoint, data):
+    """The status of the answer to the bytes `data` sent as they are, or None when the receiver closed the connection
+    with a reset before the answer could be read (it answers before it read a body it refuses)."""
+    host, port = endpoint[len('http://'):].split(':')
+    with socket.create_connection((host, int(port)), timeout=10) as connection:
+        try:
+            connection.sendall(data)
+            answer = b''
+            while b'\r\n' not in answer:
+                piece = connection.recv(4096)
+                if not piece:
+                    break
+                answer += piece
+        except ConnectionError:
+            return None
+    return int(answer.split(b' ', 2)[1]) if answer else None
+
+
 # -- tests ------------------------------------------------------------------------------------------------------------
 
 class KeyValuesTest(unittest.TestCase):
@@ -138,6 +156,16 @@ class KeyValuesTest(unittest.TestCase):
     def test_polish_text_is_decoded_as_utf8(self):
         pairs = otlp_receiver.key_values(logs_request({'shop.epic': 'zażółć'}))
         self.assertIn(('shop.epic', 'zażółć'), pairs)
+
+    def test_nesting_deeper_than_the_limit_is_cut_off_without_an_error(self):
+        def nested(depth):
+            message = key_value('shop.task', 'DEEP-1')
+            for _ in range(depth):
+                message = delimited(1, message)
+            return message
+        self.assertIn(('shop.task', 'DEEP-1'), otlp_receiver.key_values(nested(otlp_receiver.MAX_DEPTH - 1)))
+        for depth in (otlp_receiver.MAX_DEPTH + 1, 3000):
+            self.assertEqual([], otlp_receiver.key_values(nested(depth)), depth)
 
     def test_an_empty_body_is_an_empty_message(self):
         self.assertEqual([], otlp_receiver.key_values(b''))
@@ -271,6 +299,44 @@ class ReceiverTest(unittest.TestCase):
         self.assertEqual('nieznane Content-Encoding', request['problem'])
         self.assertEqual(b'xyz', request['raw'])
         self.assertEqual('br', request['content_encoding'])
+
+    def small_limit(self, limit=16):
+        original, otlp_receiver.MAX_BODY = otlp_receiver.MAX_BODY, limit
+        self.addCleanup(setattr, otlp_receiver, 'MAX_BODY', original)
+
+    def assert_unreadable(self, receiver, status, reason):
+        self.assertIn(status, (400, None))
+        request = receiver.requests[0]
+        self.assertEqual(('/v1/logs', None, b''), (request['path'], request['body'], request['raw']))
+        self.assertEqual('nieczytelne ciało żądania: %s' % reason, request['problem'])
+
+    def test_a_content_length_over_the_limit_is_recorded_unreadable_and_answered_400(self):
+        self.small_limit()
+        receiver = self.receiver()
+        status = send_raw(receiver.endpoint, b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 17\r\n\r\n'
+                          + b'a' * 17)
+        self.assert_unreadable(receiver, status, 'ciało większe niż 16 bajtów')
+
+    def test_an_unreadable_chunk_size_is_recorded_unreadable(self):
+        receiver = self.receiver()
+        status = send_raw(receiver.endpoint, b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n'
+                          b'\r\nzz\r\nabc\r\n0\r\n\r\n')
+        self.assert_unreadable(receiver, status, 'nieczytelny rozmiar fragmentu')
+
+    def test_chunks_over_the_limit_together_are_recorded_unreadable(self):
+        self.small_limit()
+        receiver = self.receiver()
+        status = send_raw(receiver.endpoint, b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n'
+                          b'\r\n8\r\naaaaaaaa\r\n8\r\naaaaaaaa\r\n1\r\na\r\n0\r\n\r\n')
+        self.assert_unreadable(receiver, status, 'ciało większe niż 16 bajtów')
+
+    def test_chunks_up_to_the_limit_are_read(self):
+        self.small_limit()
+        receiver = self.receiver()
+        status = send_raw(receiver.endpoint, b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n'
+                          b'\r\n8\r\naaaaaaaa\r\n8\r\naaaaaaaa\r\n0\r\n\r\n')
+        self.assertEqual(200, status)
+        self.assertEqual((b'a' * 16, None), (receiver.requests[0]['body'], receiver.requests[0]['problem']))
 
     def test_any_path_is_recorded(self):
         receiver = self.receiver()
