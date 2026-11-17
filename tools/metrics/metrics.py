@@ -1213,9 +1213,6 @@ def _wall(attempt):
     return seconds
 
 
-NO_TASK_REASON = 'brak kolumny attempts.task_id w bazie AO: nie wiadomo, do której próby należy transkrypt'
-
-
 def transcript_path(ao_home, attempt):
     """The `stdout.jsonl` of an attempt, or None when the task id or number would leave the attempt directory."""
     task, number = attempt['task_id'], attempt['number']
@@ -1235,6 +1232,8 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
                                                        str(a['task_id']), a['number'] or 0))
     weights, compiled = config['token_weights'], compile_categories(config)
     no_task = lacks(run, 'attempts.task_id')            # which task an attempt belongs to is unknown
+    no_path = ', '.join(c for c in ('attempts.task_id', 'attempts.number') if lacks(run, c))
+    no_path = 'brak kolumny %s w bazie AO: nie wiadomo, do której próby należy transkrypt' % no_path if no_path else ''
     by_task = None if no_task else {}
     for attempt in [] if no_task else attempts:
         task = by_task.setdefault(attempt['task_id'], {'kind': kinds.get(attempt['task_id']), 'work': 0.0,
@@ -1253,8 +1252,7 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     for attempt in attempts:
         label = '%s/%s' % (attempt['task_id'], attempt['number'])
         path = transcript_path(ao_home, attempt)
-        data, reason = read_transcript(path) if path else (None, NO_TASK_REASON if no_task
-                                                           else 'nieprawidłowy identyfikator próby')
+        data, reason = read_transcript(path) if path else (None, no_path or 'nieprawidłowy identyfikator próby')
         seconds = _wall(attempt)
         entry = {'task': attempt['task_id'], 'kind': kinds.get(attempt['task_id']), 'number': attempt['number'],
                  'outcome': attempt['outcome'], 'executor_status': attempt['executor_status'],

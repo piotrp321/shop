@@ -227,22 +227,45 @@ decyzji)`; render wypisuje tylko liczbę i nazwę reguły z kodu (`D1`–`D9`), 
 Brak źródła nie zatrzymuje pomiaru, a pole bez danych jest `null` z powodem w `gaps`, nigdy zerem:
 
 - Kolumna, której nie ma w bazie AO (albo tabela), daje pozycję `tabela.kolumna: brak kolumny albo tabeli w bazie AO`
-  (brak tabeli to brak wszystkich jej kolumn), a pola od niej zależne są `null`:
+  (brak tabeli to brak wszystkich jej kolumn), a pola od niej zależne są `null` (pusta kolekcja jest tylko tam, gdzie
+  lista po prostu nie ma elementów), nie zero ani klucz `null`:
   - bez `tasks.kind`: `tasks`, `retries.repair`, `retries.fix`, `integration.work_s`, `integration.attempts`
-    i `parallel.repairs`;
-  - bez `attempts.task_id`: `retries.attempts.per_task`, `integration.work_s` i `integration.attempts`;
-  - bez `attempts.started_at`: `breakdown.work`;
+    i `parallel.repairs`; `decide` pomija D2 (rodzaje zadań nieznane);
+  - bez `tasks.task_id`: `retries.repair`, `integration.work_s`, `integration.attempts`, `parallel.repairs`
+    i `breakdown.github_wait`;
+  - bez `attempts.task_id`: `by_task`, `value.by_task`, `value.by_task_role` (`decide` pomija D2 z powodem
+    `brak danych: by_task`), `retries.attempts.per_task`, `integration.work_s`, `integration.attempts`
+    i `parallel.repairs`; próby w `attempts` mają `task: null`, a bez zadania i numeru próby nie wiadomo, gdzie leży
+    jej transkrypt (pozycja `attempts.transcript`, wartość prób `null`);
+  - bez `attempts.number`: tylko transkrypty prób nie są znajdowane (jak wyżej);
+  - bez `attempts.started_at` albo `attempts.ended_at`: `breakdown.work`, `parallel.repairs` i `subscription.share`
+    (przy epiku nakładającym się z innym; `share` bez nakładania to nadal 1);
+  - bez `attempts.wall_s` i bez początku albo końca prób: czas prób, czyli `by_task.<zadanie>.work` i
+    `integration.work_s` (`integration.attempts` zostaje); sam brak `wall_s` nie przeszkadza, bo czas to koniec minus
+    początek;
   - bez `attempts.outcome` albo `attempts.executor_status`: klasy prób w `retries.attempts` (`successful`, `blocked`,
     `failed`, `usage_limit`, `running`, `unclassified`) i `retries.failed_by_outcome`;
-  - bez tabeli `attempts`: wszystko powyższe z `attempts.*` oraz `retries.attempts.total`;
-  - zostają zawsze `integration.rounds` (z `epics.round`), a przy braku samej kolumny też `retries.attempts.total`
-    (liczy wiersze tabeli).
+  - bez `events.data`: `breakdown.limit_wait`, `breakdown.host_pause` i `breakdown.github_wait`; bez `events.task_id`:
+    `breakdown.github_wait`; bez `events.type`, `events.at` albo `events.data`: przyczyny REPAIR w `retries.repair`
+    (`final_pr_conflict` i `ci_red` to `null`, `unknown` to wszystkie), a bez `events.type` albo `events.at` także
+    cały `breakdown` (brak `epic_done`);
+  - bez `epics.round`: `integration.rounds`;
+  - bez tabeli `attempts`: wszystko powyższe z `attempts.*` oraz `retries.attempts.total`; przy braku samej kolumny
+    `retries.attempts.total` zostaje (liczy wiersze tabeli).
 
-  Reguła W3 komendy `waste` bez `attempts.outcome` albo `attempts.executor_status` nie liczy prób nieudanych (nie
-  alarmuje o pętli prób), a w `gaps` wyjścia jest pozycja `W3`. `null` w istniejącej kolumnie to zwykły brak wartości,
+  Kategoria rozkładu czasu bez źródła ma w `gaps` pozycję `breakdown.<kategoria>`: jej czas jest w innych kategoriach
+  i w `idle` (tak samo `human_wait` bez `events.jsonl`).
+
+  Komenda `waste` pomija reguły, którym brakuje kolumny, z pozycją w `gaps` wyjścia (`W1`–`W4`, osobno części
+  `W3`): W1 i W4 potrzebują `attempts.ended_at`, `attempts.task_id`, `attempts.number`, `tasks.kind` i `tasks.task_id`;
+  W2 do tego `attempts.started_at` (oraz `epics.status` albo `events.type`, żeby wiedzieć, czy przebieg trwa); W3 (pętla
+  prób nieudanych) `attempts.outcome`, `attempts.executor_status`, `attempts.ended_at`, `attempts.task_id`,
+  `attempts.number`; W3 (REPAIR bez zielonego CI)
+  `tasks.kind`, `tasks.task_id`, `attempts.task_id`, `attempts.started_at` i `events.type`, `events.at`,
+  `events.task_id`, `events.data`; W3 (runda QA) `epics.round`. `null` w istniejącej kolumnie to zwykły brak wartości,
   np. próba bez `outcome` po końcu przebiegu jest nieudana (`no_outcome`). Render pisze „brak danych” (`REPAIR`,
-  `FIX`, `Integracja`, `Próby`, podział prób), `decide` pomija w D2 kryterium nieudanych prób z pozycją w `gaps`,
-  a `trend` ma `null` w kolumnach `repair` i `failed`.
+  `FIX`, `Integracja`, `Próby`, podział prób; przy nieznanych przyczynach `REPAIR: N (przyczyna nieznana)`), `decide`
+  pomija w D2 kryterium nieudanych prób z pozycją w `gaps`, a `trend` ma `null` w kolumnach `repair` i `failed`.
 - Rekord bez `waste` albo bez `waste.json` ma `waste: null` z pozycją w `gaps`, a render pokazuje „Alarmy (waste):
   brak danych”.
 - Rekord bez `value.by_task_role` albo bez `effect_h` w `bottlenecks` (zapisany w innej wersji skryptu): `effect` pomija

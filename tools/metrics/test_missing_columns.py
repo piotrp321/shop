@@ -100,6 +100,14 @@ class MissingColumnTest(Env):
                 self.assertTrue(all(entry['task'] is None for entry in record['attempts']))
                 self.assert_gap(record, 'attempts.task_id')
 
+    def test_the_transcripts_are_not_found_without_the_task_id_or_the_number_and_the_gap_says_which(self):
+        for column in ('task_id', 'number'):
+            with self.subTest(column=column):
+                record = self.record('demo', home=self.home_without('attempts', column))
+                self.assertTrue(any(g.startswith('attempts.transcript:') and 'attempts.%s' % column in g
+                                    for g in record['gaps']), record['gaps'])
+                self.assertTrue(all(entry['value'] is None for entry in record['attempts']))
+
     def test_without_attempts_task_id_decide_skips_d2_with_a_reason(self):
         self.record('demo', home=self.home_without('attempts', 'task_id'))
         code, out, err = run_cli(['decide', 'demo', '--state', self.state])
