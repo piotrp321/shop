@@ -66,6 +66,21 @@ final class ProductGenerator
         }
     }
 
+    /**
+     * How many leading products (indexes below the returned one) are certainly published, whether or not they are
+     * drafts, by the moment: a lower bound that ignores the jitter of at most a day that the publication time of each
+     * product gets, so a product at or above it may still be published by the moment.
+     */
+    public function publishedBy(\DateTimeImmutable $moment): int
+    {
+        $seconds = $moment->getTimestamp() - $this->anchor->modify(\sprintf('-%d days', self::PUBLICATION_START_DAYS))->getTimestamp() - 86_399;
+        if ($seconds <= 0) {
+            return 0;
+        }
+
+        return min($this->total, intdiv($seconds * $this->total, self::PUBLICATION_SPAN_DAYS * 86_400));
+    }
+
     private function product(int $index, Prng $prng): ProductSpec
     {
         $type = $this->types[$prng->weighted($this->typeWeights)];
