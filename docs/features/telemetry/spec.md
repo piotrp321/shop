@@ -94,10 +94,9 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
   - Q6: propozycje researchu odrzucone (sekcja „Poza zakresem”).
   - Q7: brak eksportu nie zatrzymuje AO. Statusy przypadków telemetrii rozdzielają brak eksportu, wykryty wyciek
     i niemożność sprawdzenia (R3).
-- 2026-11-17 (przy realizacji): `telemetry.py check --project-override` zostaje usunięte. Sprawdzenie było pozorne:
-  klucze z ustawień projektu były też w bloku `--settings`, który ma pierwszeństwo, więc wynik był zawsze 0. Od wersji
-  Claude Code 2.1.282 ustawienia projektu i tak nie mogą włączać telemetrii, przekierowywać endpointów ani włączać
-  eksportu treści (R4, model zagrożeń).
+- 2026-11-17 (przy realizacji): `telemetry.py` nie sprawdza, czy Claude Code ignoruje `OTEL_*` z ustawień projektu.
+  Od wersji 2.1.282 ustawienia projektu nie mogą włączać telemetrii, przekierowywać endpointów ani włączać eksportu
+  treści, a test przez ustawienia projektu nie sprawdziłby rzeczywistej luki (R4, model zagrożeń).
 
 ## Poza zakresem
 
@@ -128,7 +127,8 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
 - Claude Code 2.1.311 eksportuje z `claude -p` przed końcem procesu, z blokiem `env` z `--settings`, w profilu sandboxa.
   Źródło: istnieje: eksperymenty E1–E4 (sekcja „Ustalenia”), polecenie
   `env -i HOME PATH USER claude -p … --settings "<render_settings.py + env>" --setting-sources project --strict-mcp-config --model haiku`.
-  Zmiana wersji przypiętej przez AO jest sprawdzana przez sondę przy starcie AO (ostrzeżenie) i przy odbiorze (R7).
+  Zmianę wersji wykrywa sonda przy każdym starcie AO (`no_export` i `unverifiable` to ostrzeżenie, `fail`
+  `telemetry_no_content` to odmowa); odbiór (R7) sprawdza tylko wersję przypiętą w chwili odbioru tego epiku.
 - Przebiegi z prawdziwym modelem (tylko sonda) i ze stosem wykonuje przy odbiorze sesja
   `/ao-run`, nie wykonawca: sandbox wykonawcy nie czyta Keychain ani binarki przypiętej pod `~` (jak odbiór
   AGENT-SECURITY). Źródło: zadanie dokumentacji `/ao-run` (R7).
@@ -307,10 +307,11 @@ Python 3.9+, wyłącznie biblioteka standardowa (stała adresu i lista zmiennych
     brak punktu po czasie: kod 1 i jedna linia z przyczyną (który adres i co nie odpowiada).
   - Domyślne adresy to `http://127.0.0.1:4318` i `http://127.0.0.1:3030`. Sklep zależy od adresów stosu i uid źródła
     `prometheus` (zapisane w `tools/telemetry/README.md`), nie od jego plików.
-- Nie ma sprawdzenia, że Claude Code ignoruje `OTEL_*` z ustawień projektu (`check --project-override`); jego opcje
-  są nieznane (kod 2). Powody:
-  - sprawdzenie było pozorne: klucze z `.claude/settings.json` projektu były też w bloku `--settings`, który ma
-    pierwszeństwo, więc wynik był zawsze 0, niezależnie od tego, czy Claude Code ignoruje ustawienia projektu;
+- Nie ma sprawdzenia, że Claude Code ignoruje `OTEL_*` z ustawień projektu; `--project-override` i `--claude-bin`
+  są nieznanymi opcjami (kod 2). Powody:
+  - każdy blok `--settings` wykonawcy ma te same klucze `OTEL_*`, a `--settings` ma pierwszeństwo przed ustawieniami
+    projektu, więc takie sprawdzenie z blokiem `--settings` nie rozróżniłoby, czy Claude Code ignoruje ustawienia
+    projektu;
   - od wersji 2.1.282 (dokumentacja Claude Code) zmienne `OTEL_*` w ustawieniach projektu nie mogą włączać telemetrii,
     przekierowywać endpointów ani włączać eksportu treści, więc tej drogi nie trzeba sprawdzać po każdej zmianie wersji;
   - endpointy per sygnał (`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`) mają w standardzie
@@ -415,7 +416,7 @@ Kryteria 1–5 sprawdzają testy zadań bez modelu i bez stosu. Kryterium 6 spra
   utratę danych albo opóźnienie końca procesu. Wykrywa to sonda przy każdym starcie AO (ostrzeżenie) i odbiór.
 
 - Claude Code zmienia nazwy zmiennych `OTEL_LOG_*` albo atrybutów między wersjami. Ochrona: sonda
-  przy każdym starcie AO i odbiór.
+  przy każdym starcie AO (odbiór R7 sprawdza tylko wersję z chwili odbioru tego epiku).
 - Liczba serii w Prometheusie rośnie z `session_id` (domyślnie włączone w Claude Code), a nie z `shop.task`: każda
   sesja ma jedno zadanie. Przy jednym użytkowniku to dziesiątki tysięcy serii rocznie, co mieści się w możliwościach
   lokalnego Prometheusa. Wyłączenie `session_id` na metrykach łączyłoby strumienie równoległych procesów w procesorze

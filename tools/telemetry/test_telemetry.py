@@ -36,11 +36,10 @@ INVALID_ENDPOINTS = ('http://localhost.evil:4318', 'http://127.0.0.1.nip.io:4318
                      'http://127.0.0.1:4318/v1', 'http://127.0.0.1', '')
 
 
-def cli(*args, env=None, cwd=None, home=None):
+def cli(*args, cwd=None, home=None):
     """(exit code, stdout, stderr) of telemetry.py with HOME in `home` (a temporary directory by default)."""
     with tempfile.TemporaryDirectory() as fallback:
         run_env = {'PATH': os.environ.get('PATH', ''), 'HOME': home or fallback, 'TMPDIR': tempfile.gettempdir()}
-        run_env.update(env or {})
         result = subprocess.run([sys.executable, TELEMETRY] + list(args), capture_output=True, text=True,
                                 env=run_env, cwd=cwd, timeout=120)
     return result.returncode, result.stdout, result.stderr
@@ -272,8 +271,8 @@ class CheckCliTest(unittest.TestCase):
                     self.assertEqual(len(err.strip().splitlines()), 1, err)
 
 
-class RemovedOptionsTest(unittest.TestCase):
-    """There is no check of the project settings: the options of the removed check are unknown options (spec R4)."""
+class UnknownOptionsTest(unittest.TestCase):
+    """--project-override and --claude-bin are not options of telemetry.py (spec R4)."""
 
     def test_project_override_and_claude_bin_are_unknown_options_with_exit_2(self):
         for args in (('check', '--project-override'), ('check', '--claude-bin', '/bin/true'),
