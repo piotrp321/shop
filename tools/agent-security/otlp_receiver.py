@@ -5,14 +5,18 @@ copies it next to probe.py.
   Receiver(forward=None).start()   an HTTP server on 127.0.0.1 with a random port; `endpoint` is its address
                                    http://127.0.0.1:<port>, `requests` a copy of what it got, stop() ends it
                                    (idempotent). Every request, on any path, is recorded before the answer (200, an
-                                   empty Export*ServiceResponse), as a dict:
+                                   empty Export*ServiceResponse; 400 for a body that cannot be read; 500 for an
+                                   error in the processing), as a dict:
                                      method, path (without the query), content_type, content_encoding (None without
-                                     the header), raw (the body as received, chunked transfer decoded),
-                                     body (raw after Content-Encoding, or None), problem (why body is None, or None),
-                                     forwarded (None without forward; the status of the forward or the error text).
+                                     the header; several lines of it joined by ", ", as one line), raw (the body as
+                                     received, chunked transfer decoded), body (raw after Content-Encoding, or None),
+                                     problem (why body is None, or None), forwarded (None without forward; the status
+                                     of the forward or the error text).
                                    With `forward` (only http://127.0.0.1:<port>, validated by render_settings.py) each
-                                   request goes on unchanged (method, path, Content-Type, Content-Encoding, raw body)
-                                   to that address; its failure changes nothing else.
+                                   request goes on (method, path, Content-Type, Content-Encoding, raw body) to that
+                                   address; its failure, whatever it is, changes nothing else. An error in the
+                                   processing of a request (a path or a body it cannot handle) still records it: raw
+                                   as far as it was read, body None, a fixed problem.
   decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
                                    (None, problem) for any other encoding, a body that does not decompress (also
                                    bytes after a member that are not a whole member) or one larger than MAX_BODY.
@@ -192,6 +196,15 @@ class _BodyError(Exception):
     pass
 
 
+def _path_of(target):
+    """The path of a request target without the query; for a target urlsplit rejects (http://[/v1/logs) the target up
+    to the first ? or #. Never raises: the path is only recorded, probe.py quotes only the telemetry paths."""
+    try:
+        return urllib.parse.urlsplit(target).path
+    except ValueError:
+        return target.split('?', 1)[0].split('#', 1)[0]
+
+
 class _Handler(http.server.BaseHTTPRequestHandler):
     receiver = None
 
@@ -228,21 +241,30 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return raw
 
     def _handle(self):
-        encoding = self.headers.get('Content-Encoding')
-        request = {'method': self.command, 'path': urllib.parse.urlsplit(self.path).path,
-                   'content_type': self.headers.get('Content-Type'), 'content_encoding': encoding,
-                   'raw': b'', 'body': None, 'problem': None, 'forwarded': None}
-        status = 200
+        request = {'method': self.command, 'path': _path_of(self.path), 'content_type': None,
+                   'content_encoding': None, 'raw': b'', 'body': None, 'problem': None, 'forwarded': None}
+        status, read = 200, False
         try:
-            request['raw'] = self._read_body()
-        except _BodyError as e:
-            request['problem'] = 'nieczytelne ciało żądania: %s' % e
-            status = 400
-        else:
-            request['body'], request['problem'] = decompress(request['raw'], encoding)
-            if self.receiver.forward:
-                request['forwarded'] = self.receiver._forward(self.command, self.path, self.headers, request['raw'])
-        self.receiver._record(request)
+            request['content_type'] = self.headers.get('Content-Type')
+            encodings = self.headers.get_all('Content-Encoding')    # several lines are one line joined by commas
+            request['content_encoding'] = ', '.join(encodings) if encodings else None
+            try:
+                request['raw'] = self._read_body()
+                read = True
+            except _BodyError as e:
+                request['problem'] = 'nieczytelne ciało żądania: %s' % e
+                status = 400
+            else:
+                request['body'], request['problem'] = decompress(request['raw'], request['content_encoding'])
+        except Exception:   # whatever it is, the request is still recorded and answered; raw stays for the markers
+            request['body'], request['problem'] = None, 'nieoczekiwany błąd przy przetwarzaniu żądania'
+            status = 500
+        try:
+            if read and self.receiver.forward:
+                request['forwarded'] = self.receiver._forward(self.command, self.path, request['content_type'],
+                                                              request['content_encoding'], request['raw'])
+        finally:
+            self.receiver._record(request)
         json_body = 'json' in (request['content_type'] or '')
         answer = b'{}' if json_body else b''
         self.send_response(status)
@@ -298,21 +320,24 @@ class Receiver:
         with self._lock:
             self._requests.append(request)
 
-    def _forward(self, method, path, headers, raw):
-        """The status of the forwarded request, or the error text."""
-        port = int(self.forward.rsplit(':', 1)[1])
-        target = path if path.startswith('/') else '/' + path
-        forwarded = {'Content-Length': str(len(raw))}
-        for name in ('Content-Type', 'Content-Encoding'):
-            if headers.get(name) is not None:
-                forwarded[name] = headers.get(name)
-        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=self.forward_timeout)
+    def _forward(self, method, path, content_type, content_encoding, raw):
+        """The status of the forwarded request, or the error text. Whatever fails (a path http.client cannot send
+        too), the answer to the sender and the record do not change."""
+        connection = None
         try:
+            port = int(self.forward.rsplit(':', 1)[1])
+            target = path if path.startswith('/') else '/' + path
+            forwarded = {'Content-Length': str(len(raw))}
+            for name, value in (('Content-Type', content_type), ('Content-Encoding', content_encoding)):
+                if value is not None:
+                    forwarded[name] = value
+            connection = http.client.HTTPConnection('127.0.0.1', port, timeout=self.forward_timeout)
             connection.request(method, target, body=raw, headers=forwarded)
             response = connection.getresponse()
             response.read()
             return response.status
-        except (OSError, http.client.HTTPException) as e:
+        except Exception as e:
             return 'przekazanie do %s nie powiodło się: %s' % (self.forward, e)
         finally:
-            connection.close()
+            if connection is not None:
+                connection.close()

@@ -17,6 +17,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location('otlp_receiver', os.path.join(HERE, 'otlp_receiver.py'))
 otlp_receiver = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(otlp_receiver)
+spec = importlib.util.spec_from_file_location('probe', os.path.join(HERE, 'probe.py'))
+probe = importlib.util.module_from_spec(spec)   # the verdicts the recorded requests end up in
+spec.loader.exec_module(probe)
 
 
 # -- protobuf encoder (tests only) ------------------------------------------------------------------------------------
@@ -397,6 +400,97 @@ class ReceiverTest(unittest.TestCase):
             with self.assertRaises(ValueError, msg=bad):
                 otlp_receiver.Receiver(forward=bad)
         self.assertEqual('http://127.0.0.1:4318', otlp_receiver.forward_endpoint('http://127.0.0.1:4318'))
+
+
+class EveryRequestIsRecordedTest(unittest.TestCase):
+    """R3: a request is recorded before the answer whatever its path, headers or body, with or without forward; a
+    failure of the processing or of the forward changes nothing else."""
+    MARKERS = {'znacznik promptu': 'PROMPT-feed1234'}
+    EXPECTED = {'shop.task': 'T-1'}
+
+    def receiver(self, **kwargs):
+        receiver = otlp_receiver.Receiver(**kwargs).start()
+        self.addCleanup(receiver.stop)
+        return receiver
+
+    def leaking_body(self):
+        return logs_request(ATTRIBUTES, {'prompt': 'x PROMPT-feed1234 y'})
+
+    def send_post(self, receiver, target, body):
+        return send_raw(receiver.endpoint, b'POST ' + target + b' HTTP/1.1\r\nHost: x\r\nContent-Type: '
+                        b'application/x-protobuf\r\nContent-Length: %d\r\n\r\n' % len(body) + body)
+
+    def verdicts(self, receiver):
+        return probe.telemetry_verdicts(receiver.requests, [], self.MARKERS, self.EXPECTED)
+
+    def test_an_absolute_path_that_urlsplit_rejects_is_recorded_and_answered(self):
+        receiver = self.receiver()
+        body = self.leaking_body()
+        status = self.send_post(receiver, b'http://[/v1/logs?x=1', body)
+        self.assertIsNotNone(status)
+        requests = receiver.requests
+        self.assertEqual(1, len(requests))
+        self.assertEqual(body, requests[0]['raw'])
+        self.assertEqual(body, requests[0]['body'])
+        self.assertEqual('http://[/v1/logs', requests[0]['path'])
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_path_outside_ascii_with_a_forward_is_recorded_answered_and_judged_as_without(self):
+        stack = self.receiver()
+        forwarding, plain = self.receiver(forward=stack.endpoint), self.receiver()
+        body = self.leaking_body()
+        statuses = [self.send_post(r, b'/v1/logs\xe9', body) for r in (forwarding, plain)]
+        self.assertEqual([200, 200], statuses)
+        recorded = forwarding.requests
+        self.assertEqual(1, len(recorded))
+        self.assertEqual(body, recorded[0]['raw'])
+        self.assertIsInstance(recorded[0]['forwarded'], str)
+        self.assertEqual(self.verdicts(plain), self.verdicts(forwarding))
+        self.assertEqual('fail', self.verdicts(forwarding)['telemetry_no_content']['status'])
+
+    def test_an_unexpected_error_in_the_processing_still_records_and_answers(self):
+        receiver = self.receiver()
+        body = self.leaking_body()
+        secret = 'TEXT-OF-THE-REQUEST'
+
+        def explode(raw, encoding):
+            raise RuntimeError(secret)
+        original, otlp_receiver.decompress = otlp_receiver.decompress, explode
+        self.addCleanup(setattr, otlp_receiver, 'decompress', original)
+        status = self.send_post(receiver, b'/v1/logs', body)
+        self.assertIsNotNone(status)
+        request = receiver.requests[0]
+        self.assertEqual(body, request['raw'])
+        self.assertIsNone(request['body'])
+        self.assertTrue(request['problem'])
+        self.assertNotIn(secret, request['problem'])
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_two_content_encoding_lines_are_judged_as_one_line_with_both_values(self):
+        receiver = self.receiver()
+        body = gzip.compress(gzip.compress(self.leaking_body()))
+        connection = http.client.HTTPConnection(*receiver.endpoint[len('http://'):].split(':'), timeout=10)
+        self.addCleanup(connection.close)
+        connection.putrequest('POST', '/v1/logs')
+        for value in ('gzip', 'gzip'):
+            connection.putheader('Content-Encoding', value)
+        connection.putheader('Content-Length', str(len(body)))
+        connection.endheaders(body)
+        self.assertEqual(200, connection.getresponse().status)
+        post(receiver.endpoint, '/v1/logs', body, {'Content-Encoding': 'gzip, gzip'})
+        two_lines, one_line = receiver.requests
+        self.assertEqual('gzip, gzip', two_lines['content_encoding'])
+        self.assertIsNone(two_lines['body'])
+        self.assertTrue(two_lines['problem'])
+        self.assertNotIn('gzip', two_lines['problem'].replace('nieznane Content-Encoding', ''))
+        for key in ('content_encoding', 'body', 'problem'):
+            self.assertEqual(one_line[key], two_lines[key], key)
+        self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_without_the_header_content_encoding_is_none(self):
+        receiver = self.receiver()
+        post(receiver.endpoint, '/v1/logs', b'')
+        self.assertIsNone(receiver.requests[0]['content_encoding'])
 
 
 if __name__ == '__main__':
