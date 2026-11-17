@@ -3781,11 +3781,13 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
         hit = over_median('W4', kind, history['task'].get(kind, []), amount, rules['cost_multiple'],
                           rules['cost_min_usd'], False, rules['min_history'], gaps)
         if hit:
+            estimated = any(e['estimated'] for e in task_entries)
             found.append(make_alarm(
                 'W4', 'W4:%s:%s' % (epic_id, task), epic_id, task, None,
-                '%s: %s kosztuje łącznie %s USD%s' % (name, _id(task), _decimal(amount, 2),
-                                                     _of_median(hit[1], 'mediany zadań')),
-                value=round(amount, 8), median=hit[0], ratio=hit[1], attempts=len(task_entries)))
+                '%s: %s kosztuje łącznie %s%s USD%s' % (name, _id(task), '≈' if estimated else '',
+                                                       _decimal(amount, 2), _of_median(hit[1], 'mediany zadań')),
+                value=round(amount, 8), median=hit[0], ratio=hit[1], attempts=len(task_entries),
+                estimated=estimated))
     if no_value:
         gaps.add('W4', '%d zadań z zakończoną próbą bez wartości: nie sprawdzone' % no_value)
     return found
