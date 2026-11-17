@@ -19,10 +19,17 @@ export function initServerSentry(config: SentryConfig, env: Record<string, strin
     // A transaction per request, sent through `beforeSendTransaction` (the filter). The default of this SDK streams
     // single spans, which skip `beforeSendTransaction`.
     traceLifecycle: "static",
+    ignoreTransactions: [HEALTH_PROBE_TRANSACTION],
     ...filterOptions,
   });
   ignoreIncomingTraces();
 }
+
+/**
+ * The request of the readiness probe of Kubernetes (`infra/k8s/charts/shop/templates/store.yaml`) and the healthcheck of
+ * compose: every 5 s, so traced it would be nearly all the transactions of the store and use up the plan of Sentry.
+ */
+const HEALTH_PROBE_TRANSACTION = /^GET \/favicon\.ico$/;
 
 /** The headers through which a request would continue a trace: Sentry's and W3C's. */
 const TRACE_HEADERS = ["sentry-trace", "baggage", "traceparent", "tracestate"];
