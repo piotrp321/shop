@@ -14,10 +14,15 @@
       FILE: /ao-run records each decision of the user it passes to AO (`ao answer`, `ao resume`, `ao release`,
       `ao epic resume`). A task decision has --task; a decision on the epic or the queue has none. Exit code 0 when the
       line was written, 1 (message on stderr) when it was not, 2 for invalid arguments.
+  auto FILE --action (qa-round|fix-round) [--task ID]
+      Appends {"type": "auto_action", "at": <now>, "task_id": ID or null, "data": {"action"}} to FILE: /ao-run records
+      each automatic one-time extension (R2, auto_extend.py) it passes to AO instead of the user (qa-round: one more
+      QA round of the epic, no --task; fix-round: one more fix round of the task). Exit codes as for `human`.
   summary FILE [--now EPOCH]
-      Prints one JSON line {"interventions", "waits", "wait_s", "open": [{"task_id", "since", "wait_s"}]} for FILE:
-      interventions = human_action events; a wait for the user starts at a task's status_changed to BLOCKED or FAILED
-      (key: the task) or at epic_blocked / queue_held (key: null) and ends at the next human_action with the same key;
+      Prints one JSON line {"interventions", "auto", "waits", "wait_s", "open": [{"task_id", "since", "wait_s"}]} for
+      FILE: interventions = human_action events, auto = auto_action events; a wait for the user starts at a task's
+      status_changed to BLOCKED or FAILED (key: the task) or at epic_blocked / queue_held (key: null) and ends at the
+      next human_action or auto_action with the same key;
       wait_s is the wall-clock time covered by at least one ended wait (overlapping waits count once), `open` lists
       the waits not ended yet, each measured until the last epic_done after its start or else until --now (default:
       the current time). `interventions` counts the decisions recorded by /ao-run; `ao report` counts AO's own. Lines that are not JSON objects are skipped. A missing or unreadable FILE is exit code 1 with a message on
@@ -47,6 +52,8 @@ import sys
 import time
 
 HUMAN_ACTIONS = ('answer', 'resume', 'release', 'epic-resume')
+AUTO_ACTIONS = ('qa-round', 'fix-round')
+CLOSING = ('human_action', 'auto_action')
 WAIT_STATUSES = ('BLOCKED', 'FAILED')
 EPIC_WAITS = ('epic_blocked', 'queue_held')
 MAX_MESSAGE = 200
@@ -135,6 +142,10 @@ def human(path, action, task):
                           'at': time.time()})
 
 
+def auto(path, action, task):
+    return _append(path, {'type': 'auto_action', 'at': time.time(), 'task_id': task, 'data': {'action': action}})
+
+
 def _wait_key(event):
     """(True, key) when the event starts a wait for the user, else (False, None)."""
     kind = event.get('type')
@@ -167,20 +178,24 @@ def waits(events):
     """The windows of waiting for the user in a list of AO events, in the order they start.
 
     A window starts at a task's status_changed to BLOCKED or FAILED (key: the task) or at epic_blocked / queue_held
-    (key: None) and ends at the next human_action with the same key; a repeated start before the end belongs to the
-    first window. Each window: {key, type (the starting event), task_id (of that event), data (of that event), start,
-    end, action}; end and action are None while the window is open. Events without a numeric `at` are skipped.
+    (key: None) and ends at the next human_action or auto_action with the same key; a repeated start before the end
+    belongs to the first window. Each window: {key, type (the starting event), task_id (of that event), data (of that
+    event), start, end, action}; action is the data.action of the closing event, prefixed with "auto:" for an
+    auto_action; end and action are None while the window is open. Events without a numeric `at` are skipped.
     """
     windows, opened = [], {}
     for event in events:
         if not _valid_time(event):
             continue
-        if event.get('type') == 'human_action':
+        if event.get('type') in CLOSING:
             window = opened.pop(event.get('task_id'), None)
             if window is not None:
                 window['end'] = max(window['start'], float(event['at']))
                 data = event.get('data')
-                window['action'] = data.get('action') if isinstance(data, dict) else None
+                action = data.get('action') if isinstance(data, dict) else None
+                if event['type'] == 'auto_action' and action is not None:
+                    action = 'auto:%s' % action
+                window['action'] = action
             continue
         starts, key = _wait_key(event)
         if starts and key not in opened:
@@ -196,6 +211,7 @@ def summarize(events, now):
     """Interventions and waits for the user in a list of AO events (see `summary` in the module docstring)."""
     windows = waits(events)
     interventions = sum(1 for e in events if _valid_time(e) and e.get('type') == 'human_action')
+    automatic = sum(1 for e in events if _valid_time(e) and e.get('type') == 'auto_action')
     done = [float(e['at']) for e in events if _valid_time(e) and e.get('type') == 'epic_done']
     closed = [(w['start'], w['end']) for w in windows if w['end'] is not None]
     still = []
@@ -203,7 +219,7 @@ def summarize(events, now):
         if window['end'] is None:
             end = max([at for at in done if at >= window['start']], default=now)
             still.append({'task_id': window['key'], 'since': window['start'], 'wait_s': max(0.0, end - window['start'])})
-    return {'interventions': interventions, 'waits': len(windows), 'wait_s': _union_s(closed), 'open': still}
+    return {'interventions': interventions, 'auto': automatic, 'waits': len(windows), 'wait_s': _union_s(closed), 'open': still}
 
 
 def summary(path, now):
@@ -285,6 +301,10 @@ def main():
     hum.add_argument('file')
     hum.add_argument('--action', required=True, choices=HUMAN_ACTIONS)
     hum.add_argument('--task')
+    aut = commands.add_parser('auto')
+    aut.add_argument('file')
+    aut.add_argument('--action', required=True, choices=AUTO_ACTIONS)
+    aut.add_argument('--task')
     summ = commands.add_parser('summary')
     summ.add_argument('file')
     summ.add_argument('--now', type=float)
@@ -293,6 +313,8 @@ def main():
         return record(args.file)
     if args.command == 'human':
         return human(args.file, args.action, args.task)
+    if args.command == 'auto':
+        return auto(args.file, args.action, args.task)
     if args.command == 'summary':
         return summary(args.file, args.now)
     return watch(args.file, args.from_start, args.epic_label)
