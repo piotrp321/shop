@@ -18,6 +18,22 @@ copies it next to probe.py.
                                    allowed; Content-Length (all lines and values) must be one number, several equal
                                    ones count as that one. Anything else is a 400 with nothing read, except different
                                    Content-Length values: the shortest length is read as the prefix kept in raw.
+                                   Headers http.client cannot read whole (a line without a valid field name, such as
+                                   "Content-Length : 3", which ends its parsing; an obs-fold line, which it joins to
+                                   the line before) are a 400 with nothing read too: they could hide the framing.
+                                   chunked is read strictly (RFC 9112 §7.1): a size line of hex digits only (then
+                                   optional whitespace and ;extensions) ended by a line end within LINE_LIMIT bytes,
+                                   a line end (CRLF or LF) right after the data of each chunk and an empty trailer;
+                                   anything else is a 400 with the chunks read until then in raw.
+                                   The answer says Connection: close, one request per connection. After the answer
+                                   to a request whose body was read the receiver shuts its write side and reads what
+                                   the sender still put in the connection (an excess after the body, a second
+                                   request), until its end, TRAILING_TIMEOUT seconds in all or MAX_BODY bytes; any
+                                   such bytes are a record of their own: method and path '', raw the bytes (cut to
+                                   MAX_BODY), body None, the problem "bajty po ciele żądania" (", ponad <MAX_BODY>
+                                   bajtów" when cut), never forwarded. stop() waits for those reads. Bytes after a
+                                   body that cannot be read, and bytes sent later than TRAILING_TIMEOUT, are not
+                                   read.
                                    With `forward` (only http://127.0.0.1:<port>, validated by render_settings.py) each
                                    request goes on (method, path, Content-Type, Content-Encoding, raw body) to that
                                    address; its failure, whatever it is, changes nothing else. An error in the
@@ -45,7 +61,10 @@ import http.client
 import http.server
 import importlib.util
 import os
+import re
+import socket
 import threading
+import time
 import urllib.parse
 import zlib
 
@@ -53,6 +72,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_BODY = 32 * 1024 * 1024        # bytes of a request body, before and after decompression
 MAX_DEPTH = 32                     # nesting of messages the decoder follows (OTLP needs about 10)
 FORWARD_TIMEOUT = 5
+TRAILING_TIMEOUT = 1               # seconds the receiver reads the bytes after a body, in all
+LINE_LIMIT = 1024                  # bytes of a chunk size line and of the trailer line, with the line end
+_CHUNK_SIZE = re.compile(rb'([0-9A-Fa-f]+)[ \t]*(?:;[^\r\n]*)?\r?\n\Z')
 
 
 def _load(name):
@@ -252,7 +274,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         """The body by its framing (RFC 9112 §6): exactly `chunked`, or the one Content-Length of all its lines and
         values, or none. Anything else is ambiguous (a request smuggler's, the message is not read as one): _BodyError
         with nothing read, except conflicting Content-Length values, whose shortest length is part of the message at
-        any reading, so those bytes are kept as the prefix. Problems are fixed texts, never a header value."""
+        any reading, so those bytes are kept as the prefix. Headers http.client could not read whole are ambiguous
+        too: a line without a valid field name ends its parsing (a defect, the rest in the payload) and an obs-fold
+        line joins the line before, so either can hide a Content-Length or Transfer-Encoding another reader sees.
+        Problems are fixed texts, never a header value."""
+        if (self.headers.defects or self.headers.get_payload()
+                or any('\r' in str(value) or '\n' in str(value) for value in self.headers.values())):
+            raise _BodyError('nieczytelne nagłówki')
         codings, lengths = self._values('Transfer-Encoding'), self._values('Content-Length')
         if codings:
             if [coding.lower() for coding in codings] != ['chunked']:
@@ -279,25 +307,64 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return raw
 
     def _read_chunked(self):
+        """RFC 9112 §7.1, strictly: a size line of hex digits (optional whitespace and ;extensions after them) ended
+        by a line end within LINE_LIMIT bytes, a line end (CRLF or LF) right after the data of each chunk, and an
+        empty trailer. Anything else is _BodyError with the chunks read until then."""
         chunks, total = [], 0
         while True:
-            line = self.rfile.readline(1024)
-            try:
-                size = int(line.split(b';', 1)[0].strip(), 16)
-            except ValueError:
+            line = self.rfile.readline(LINE_LIMIT)
+            size = _CHUNK_SIZE.match(line)
+            if size is None:
                 raise _BodyError('nieczytelny rozmiar fragmentu', b''.join(chunks))
+            size = int(size.group(1), 16)
             if size == 0:
-                while self.rfile.readline(1024) not in (b'\r\n', b'\n', b''):
-                    pass
+                if self.rfile.readline(LINE_LIMIT) not in (b'\r\n', b'\n'):
+                    raise _BodyError('niepusty albo urwany trailer', b''.join(chunks))
                 return b''.join(chunks)
             total += size
-            if size < 0 or total > MAX_BODY:
+            if total > MAX_BODY:
                 raise _BodyError('ciało większe niż %d bajtów' % MAX_BODY, b''.join(chunks))
             chunk = self.rfile.read(size)
             chunks.append(chunk)
             if len(chunk) != size:
                 raise _BodyError('urwany fragment ciała', b''.join(chunks))
-            self.rfile.readline(1024)
+            end = self.rfile.read(1)
+            if end == b'\r':
+                end += self.rfile.read(1)
+            if end not in (b'\r\n', b'\n'):
+                raise _BodyError('brak końca linii po fragmencie', b''.join(chunks))
+
+    def _read_after_body(self):
+        """The bytes the sender put in the connection after the framed body (an excess, a second request): the answer
+        said Connection: close and is whole, so the write side is shut and the rest is read until the end, the
+        TRAILING_TIMEOUT or MAX_BODY. Any bytes are a record of their own (no method nor path: they belong to no
+        request read here), never forwarded. Whatever fails, what was read is recorded."""
+        pieces, total = [], 0
+        try:
+            try:
+                self.connection.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+            deadline = time.monotonic() + TRAILING_TIMEOUT
+            while total <= MAX_BODY:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                self.connection.settimeout(left)
+                piece = self.rfile.read1(MAX_BODY + 1 - total)
+                if not piece:
+                    break
+                pieces.append(piece)
+                total += len(piece)
+        except Exception:   # a timeout, a reset, anything: what was read is still recorded
+            pass
+        if pieces:
+            raw = b''.join(pieces)
+            problem = 'bajty po ciele żądania'
+            if len(raw) > MAX_BODY:
+                raw, problem = raw[:MAX_BODY], 'bajty po ciele żądania, ponad %d bajtów' % MAX_BODY
+            self.receiver._record({'method': '', 'path': '', 'content_type': None, 'content_encoding': None,
+                                   'raw': raw, 'body': None, 'problem': problem, 'forwarded': None})
 
     def _handle(self):
         request = {'method': self.command, 'path': _path_of(self.path), 'content_type': None,
@@ -328,13 +395,21 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.receiver._record(request)
         json_body = 'json' in (request['content_type'] or '')
         answer = b'{}' if json_body else b''
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json' if json_body else 'application/x-protobuf')
-        self.send_header('Content-Length', str(len(answer)))
-        self.send_header('Connection', 'close')
-        self.end_headers()
-        if self.command != 'HEAD':
-            self.wfile.write(answer)
+        if read:   # before the answer: stop() waits for the read of the bytes after the body from here on
+            self.receiver._after_body_started()
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json' if json_body else 'application/x-protobuf')
+            self.send_header('Content-Length', str(len(answer)))
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            if self.command != 'HEAD':
+                self.wfile.write(answer)
+            if read:
+                self._read_after_body()
+        finally:
+            if read:
+                self.receiver._after_body_done()
 
     def log_message(self, *args):
         pass
@@ -349,6 +424,8 @@ class Receiver:
         self.endpoint = None
         self._requests = []
         self._lock = threading.Lock()
+        self._after_body = threading.Condition(self._lock)
+        self._reading = 0                 # handlers reading the bytes after a body
         self._server = None
 
     def start(self):
@@ -364,6 +441,8 @@ class Receiver:
         if server is not None:
             server.shutdown()
             server.server_close()
+            with self._after_body:   # their records come after the answer; each read ends by TRAILING_TIMEOUT
+                self._after_body.wait_for(lambda: not self._reading, TRAILING_TIMEOUT + 1)
 
     def __enter__(self):
         return self.start()
@@ -379,6 +458,15 @@ class Receiver:
     def _record(self, request):
         with self._lock:
             self._requests.append(request)
+
+    def _after_body_started(self):
+        with self._lock:
+            self._reading += 1
+
+    def _after_body_done(self):
+        with self._after_body:
+            self._reading -= 1
+            self._after_body.notify_all()
 
     def _forward(self, method, path, content_type, content_encoding, raw):
         """The status of the forwarded request, or the error text. Whatever fails (a path http.client cannot send

@@ -11,6 +11,7 @@ import http.client
 import importlib.util
 import os
 import socket
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -671,6 +672,153 @@ class EveryRequestIsRecordedTest(unittest.TestCase):
         self.assertEqual('nieczytelne ciało żądania: nieczytelny rozmiar fragmentu', request['problem'])
         self.assertEqual((None, self.LEAK), (request['body'], request['raw']))
         self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def recorded_after_stop(self, receiver):
+        """The requests once the receiver stopped: stop() waits for the read of the bytes after a body."""
+        receiver.stop()
+        return receiver.requests
+
+    def assert_not_a_pass(self, receiver):
+        self.assertNotEqual('pass', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_header_line_the_parser_cannot_read_is_unreadable_and_nothing_is_read(self):
+        # http.client ends the headers at a line without a valid field name (the rest goes to the payload, with
+        # a defect) and joins an obs-fold line to the line before: either way a Content-Length or Transfer-Encoding
+        # another reader sees would be hidden, and its body read as nothing.
+        chunked = b'f\r\n' + self.LEAK + b'\r\n0\r\n\r\n'
+        for lines, payload in (([b'Content-Length : 15'], self.LEAK), ([b'Content-Length\t: 15'], self.LEAK),
+                               ([b'Bad line', b'Content-Length: 15'], self.LEAK),
+                               ([b' Content-Length: 15'], self.LEAK),
+                               ([b'X-A: 1', b'\tContent-Length: 15'], self.LEAK),
+                               ([b'Transfer-Encoding : chunked'], chunked),
+                               ([b'Content-Type: a', b' Transfer-Encoding: chunked'], chunked)):
+            with self.subTest(lines=lines):
+                receiver = self.receiver()
+                status = self.send_lines(receiver, lines, payload)
+                self.assert_unframed(receiver, status)
+                self.assertEqual('nieczytelne ciało żądania: nieczytelne nagłówki', receiver.requests[0]['problem'])
+                self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+                self.assertEqual(1, len(self.recorded_after_stop(receiver)))
+
+    def test_a_chunk_size_line_cut_off_by_the_line_limit_is_unreadable(self):
+        receiver = self.receiver()
+        status = self.send_lines(receiver, [b'Transfer-Encoding: chunked'],
+                                 b'0' * 1100 + b'f\r\n' + self.LEAK + b'\r\n0\r\n\r\n')
+        self.assert_unframed(receiver, status)
+        self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_a_chunk_size_int_accepts_outside_the_hex_digits_is_unreadable(self):
+        for size in (b'0x0f', b'0X0F', b'+f', b'0_f', b' f', b'\tf', b'\x0bf', b'-0', b'+0', b'0x0', b'', b' '):
+            with self.subTest(size=size):
+                receiver = self.receiver()
+                status = self.send_lines(receiver, [b'Transfer-Encoding: chunked'],
+                                         size + b'\r\n' + self.LEAK + b'\r\n0\r\n\r\n')
+                self.assert_unframed(receiver, status)
+                self.assertEqual('nieczytelne ciało żądania: nieczytelny rozmiar fragmentu',
+                                 receiver.requests[0]['problem'])
+                self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_bytes_instead_of_the_line_end_after_a_chunk_keep_the_chunks_before_and_are_not_a_pass(self):
+        for after in (self.LEAK + b'\r\n', b'\r' + self.LEAK + b'\r\n', b' \r\n' + self.LEAK):
+            with self.subTest(after=after):
+                receiver = self.receiver()
+                status = self.send_lines(receiver, [b'Transfer-Encoding: chunked'],
+                                         b'3\r\nabc' + after + b'0\r\n\r\n')
+                self.assert_unframed(receiver, status, raw=b'abc')
+                self.assertEqual('nieczytelne ciało żądania: brak końca linii po fragmencie',
+                                 receiver.requests[0]['problem'])
+                self.assert_not_a_pass(receiver)
+
+    def test_a_trailer_with_a_field_or_cut_off_is_unreadable_and_keeps_the_chunks(self):
+        for end, half_close in ((b'X-Trailer: PROMPT-feed1234\r\n\r\n', False), (b'', True), (b'\r', True)):
+            with self.subTest(end=end):
+                receiver = self.receiver()
+                status = self.send_lines(receiver, [b'Transfer-Encoding: chunked'], b'3\r\nabc\r\n0\r\n' + end,
+                                         half_close=half_close)
+                self.assert_unframed(receiver, status, raw=b'abc')
+                self.assertEqual('nieczytelne ciało żądania: niepusty albo urwany trailer',
+                                 receiver.requests[0]['problem'])
+                self.assert_not_a_pass(receiver)
+
+    def test_well_framed_requests_are_one_record_read_as_before(self):
+        for lines, payload in (([b'Content-Length: 15'], self.LEAK),
+                               ([b'Transfer-Encoding: chunked'], b'f;name=value\r\n' + self.LEAK + b'\r\n0;x\r\n\r\n'),
+                               ([b'Transfer-Encoding: chunked'], b'F ; a=b\r\n' + self.LEAK + b'\r\n0\r\n\r\n'),
+                               ([b'Transfer-Encoding: chunked'], b'000f\n' + self.LEAK + b'\n0\n\n'),
+                               ([b'Transfer-Encoding: chunked'], b'5\r\nPROMP\r\na\r\nT-feed1234\r\n0\r\n\r\n')):
+            with self.subTest(payload=payload):
+                receiver = self.receiver()
+                self.assertEqual(200, self.send_lines(receiver, lines, payload))
+                requests = self.recorded_after_stop(receiver)
+                self.assertEqual(1, len(requests))
+                self.assertEqual((self.LEAK, self.LEAK, None),
+                                 (requests[0]['raw'], requests[0]['body'], requests[0]['problem']))
+                self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+        receiver = self.receiver()
+        self.assertEqual(200, self.send_lines(receiver, [b'Content-Length: 3'], b'abc'))
+        self.assertEqual(1, len(self.recorded_after_stop(receiver)))
+        self.assertEqual('pass', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def assert_bytes_after_the_body(self, requests, raw, problem='bajty po ciele żądania'):
+        self.assertEqual(2, len(requests))
+        first, after = requests
+        self.assertEqual(('POST', '/v1/logs', b'abc', b'abc', None), (first['method'], first['path'], first['raw'],
+                                                                       first['body'], first['problem']))
+        self.assertEqual({'method': '', 'path': '', 'content_type': None, 'content_encoding': None, 'raw': raw,
+                          'body': None, 'problem': problem, 'forwarded': None}, after)
+
+    def test_bytes_after_the_body_are_a_second_record(self):
+        receiver = self.receiver()
+        self.send_lines(receiver, [b'Content-Length: 3'], b'abc' + self.LEAK)
+        self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), self.LEAK)
+        verdict = self.verdicts(receiver)['telemetry_no_content']
+        self.assertEqual('fail', verdict['status'])
+        self.assertIn('ciało żądania pod inną ścieżką', verdict['reason'])
+
+    def test_a_second_request_in_the_connection_is_bytes_after_the_body(self):
+        stack = self.receiver()
+        receiver = self.receiver(forward=stack.endpoint)
+        second = b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 15\r\n\r\n' + self.LEAK
+        self.send_lines(receiver, [b'Content-Length: 3'], b'abc' + second)
+        requests = self.recorded_after_stop(receiver)
+        self.assertEqual(200, requests[0]['forwarded'])
+        requests[0]['forwarded'] = None
+        self.assert_bytes_after_the_body(requests, second)
+        self.assertEqual('fail', self.verdicts(receiver)['telemetry_no_content']['status'])
+        self.assertEqual(1, len(stack.requests))
+
+    def test_bytes_after_the_body_without_a_marker_are_unverifiable(self):
+        receiver = self.receiver()
+        self.send_lines(receiver, [b'Content-Length: 3'], b'abcdef')
+        self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), b'def')
+        self.assertEqual('unverifiable', self.verdicts(receiver)['telemetry_no_content']['status'])
+
+    def test_bytes_after_a_chunked_body_are_a_second_record(self):
+        receiver = self.receiver()
+        self.send_lines(receiver, [b'Transfer-Encoding: chunked'], b'3\r\nabc\r\n0\r\n\r\n' + self.LEAK)
+        self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), self.LEAK)
+
+    def test_bytes_after_the_body_over_the_limit_are_cut_to_it(self):
+        original, otlp_receiver.MAX_BODY = otlp_receiver.MAX_BODY, 16
+        self.addCleanup(setattr, otlp_receiver, 'MAX_BODY', original)
+        receiver = self.receiver()
+        self.send_lines(receiver, [b'Content-Length: 3'], b'abc' + b'a' * 40)
+        self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), b'a' * 16,
+                                         'bajty po ciele żądania, ponad 16 bajtów')
+
+    def test_bytes_after_the_body_from_a_sender_that_keeps_the_connection_are_read_until_the_timeout(self):
+        receiver = self.receiver()
+        host, port = receiver.endpoint[len('http://'):].split(':')
+        connection = socket.create_connection((host, int(port)), timeout=10)
+        self.addCleanup(connection.close)
+        connection.sendall(b'POST /v1/logs HTTP/1.1\r\nHost: x\r\nContent-Length: 3\r\n\r\nabc' + self.LEAK)
+        answer = b''
+        while b'\r\n\r\n' not in answer:
+            answer += connection.recv(4096)
+        self.assertEqual(b'', connection.recv(4096))   # the end of the answer: the receiver shut its side
+        started = time.monotonic()
+        self.assert_bytes_after_the_body(self.recorded_after_stop(receiver), self.LEAK)
+        self.assertLess(time.monotonic() - started, 5)
 
     def test_without_the_header_content_encoding_is_none(self):
         receiver = self.receiver()
