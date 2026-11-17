@@ -229,8 +229,10 @@ class GateWaitTest(NightEnv):
             for line in lines:
                 f.write(json.dumps(line) + '\n')
 
-    def entry(self, seconds, waiting=None, epic=None, reason=None):
-        return {'at': at(seconds), 'dir_arg': None, 'epic': epic, 'reason': reason, 'skipped': [],
+    def entry(self, seconds, waiting=None, epic=None, reason=None, dir_arg=None):
+        """A gate.jsonl line: `dir_arg` is set by `gate --dir <epik>` (/ao-run section 1, after the user's start request
+        or "yes"; at night the evaluation of the candidate by `next`), None by the board scan of section 8."""
+        return {'at': at(seconds), 'dir_arg': dir_arg, 'epic': epic, 'reason': reason, 'skipped': [],
                 'waiting': waiting}
 
     def gate_wait(self, gate, **kwargs):
@@ -240,23 +242,48 @@ class GateWaitTest(NightEnv):
         record = self.record('demo', home=self.demo(begin=3590, **kwargs))
         return record['gate_wait'], record
 
-    def test_wait_is_the_time_from_the_first_waiting_entry_to_the_start_of_the_epic(self):
-        gate, record = self.gate_wait([self.entry(600, 'demo', reason='dwa epiki aktywne'),
+    def test_wait_is_the_time_from_the_decision_to_start_to_the_start_of_the_epic(self):
+        gate, record = self.gate_wait([self.entry(600, 'demo', reason='dwa epiki aktywne', dir_arg='demo'),
                                        self.entry(1200, 'demo', reason='dwa epiki aktywne'),
-                                       self.entry(3590, epic='demo')])
+                                       self.entry(3590, epic='demo', dir_arg='demo')])
         self.assertEqual(gate, {'wait_s': 2990.0, 'reasons': ['dwa epiki aktywne']})
 
+    def test_waits_of_the_board_scan_before_the_decision_to_start_do_not_count(self):
+        gate, record = self.gate_wait([self.entry(100, 'demo', reason='przed decyzją'),
+                                       self.entry(600, 'demo', reason='dwa epiki aktywne', dir_arg='demo'),
+                                       self.entry(3590, epic='demo', dir_arg='demo')])
+        self.assertEqual(gate, {'wait_s': 2990.0, 'reasons': ['dwa epiki aktywne']})
+
+    def test_a_skip_at_the_decision_starts_the_wait_that_follows_it(self):
+        gate, record = self.gate_wait([self.entry(300, reason='wspólne pliki z X: a', dir_arg='demo'),
+                                       self.entry(600, 'demo', reason='dwa epiki aktywne', dir_arg='demo'),
+                                       self.entry(3590, epic='demo', dir_arg='demo')])
+        self.assertEqual(gate, {'wait_s': 3290.0, 'reasons': ['dwa epiki aktywne']})
+
+    def test_board_scan_waits_and_a_decision_that_passes_at_once_are_zero(self):
+        gate, record = self.gate_wait([self.entry(100, 'demo', reason='dwa epiki aktywne'),
+                                       self.entry(2000, epic='demo'),
+                                       self.entry(3500, epic='demo', dir_arg='demo')])
+        self.assertEqual(gate, {'wait_s': 0.0, 'reasons': []})
+
+    def test_waits_without_a_recorded_decision_to_start_are_null_with_a_gap(self):
+        gate, record = self.gate_wait([self.entry(100, 'demo', reason='dwa epiki aktywne'),
+                                       self.entry(3590, epic='demo')])
+        self.assertIsNone(gate)
+        self.assertTrue(any(g.startswith('gate_wait') and 'gate --dir' in g for g in record['gaps']), record['gaps'])
+
     def test_reasons_are_distinct_and_in_order(self):
-        gate, record = self.gate_wait([self.entry(600, 'demo', reason='b'), self.entry(900, 'demo', reason='a'),
-                                       self.entry(1200, 'demo', reason='b')])
+        gate, record = self.gate_wait([self.entry(600, 'demo', reason='b', dir_arg='demo'),
+                                       self.entry(900, 'demo', reason='a'), self.entry(1200, 'demo', reason='b')])
         self.assertEqual(gate['reasons'], ['b', 'a'])
 
     def test_waiting_entries_of_other_epics_do_not_count(self):
-        gate, record = self.gate_wait([self.entry(100, 'other'), self.entry(3590, epic='demo')])
+        gate, record = self.gate_wait([self.entry(100, 'other', dir_arg='other'),
+                                       self.entry(3590, epic='demo', dir_arg='demo')])
         self.assertEqual(gate, {'wait_s': 0.0, 'reasons': []})
 
     def test_passing_the_gate_without_waiting_is_zero(self):
-        gate, record = self.gate_wait([self.entry(3590, epic='demo')])
+        gate, record = self.gate_wait([self.entry(3590, epic='demo', dir_arg='demo')])
         self.assertEqual(gate, {'wait_s': 0.0, 'reasons': []})
 
     def test_no_entries_of_the_epic_is_null_with_a_gap(self):
@@ -270,10 +297,11 @@ class GateWaitTest(NightEnv):
         self.assertTrue(any(g.startswith('gate_wait') for g in record['gaps']), record['gaps'])
 
     def test_a_waiting_entry_after_the_start_is_not_a_wait(self):
-        gate, record = self.gate_wait([self.entry(3590, epic='demo'), self.entry(4000, 'demo')])
+        gate, record = self.gate_wait([self.entry(3590, epic='demo', dir_arg='demo'),
+                                       self.entry(4000, 'demo', dir_arg='demo')])
         self.assertEqual(gate, {'wait_s': 0.0, 'reasons': []})
 
-    def test_fixture_wait_of_admin_screens_until_its_start(self):
+    def test_fixture_wait_of_admin_screens_from_its_first_gate_dir_until_its_start(self):
         shutil.copy(testkit.fixture('measurements.jsonl'), self.night)
         shutil.copy(testkit.fixture('gate.jsonl'), self.night)
         begin = datetime.fromisoformat('2026-11-14T19:34:40+01:00').timestamp()   # epics.created_at
@@ -281,17 +309,19 @@ class GateWaitTest(NightEnv):
         home = testkit.synthetic_home(self.root, epic='admin-screens', created=begin,
                                       events=[(end, 'epic_done', {})], jsonl=[])
         record = self.record('admin-screens', home=home)
-        self.assertAlmostEqual(record['gate_wait']['wait_s'], 21716.143, places=2)
+        # from `gate --dir admin-screens` at 13:31:12 (a skip, then waits), not from the first wait at 13:32:43
+        self.assertAlmostEqual(record['gate_wait']['wait_s'], 21807.616, places=2)
         self.assertEqual(record['gate_wait']['reasons'], ['redacted'])
 
-    def test_fixture_epic_with_an_unfinished_measurement_has_a_gate_wait_but_no_subscription(self):
+    def test_fixture_evals_waited_only_in_the_board_scan_before_the_decision_to_start(self):
         shutil.copy(testkit.fixture('measurements.jsonl'), self.night)
         shutil.copy(testkit.fixture('gate.jsonl'), self.night)
         begin = datetime.fromisoformat('2026-11-15T09:11:05+01:00').timestamp()
         home = testkit.synthetic_home(self.root, epic='evals', created=begin, jsonl=[], status='ACTIVE',
                                       events=[(begin + 5000, 'epic_done', {})])
         record = self.record('evals', home=home)
-        self.assertAlmostEqual(record['gate_wait']['wait_s'], 48942.722, places=2)
+        # the waits of 2026-11-14 are board scans; `gate --dir evals` at 09:10:21 passed at once
+        self.assertEqual(record['gate_wait'], {'wait_s': 0.0, 'reasons': []})
         self.assertIsNone(record['subscription'])
 
 

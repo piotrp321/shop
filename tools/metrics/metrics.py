@@ -1571,8 +1571,12 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
 
 
 def gate_wait_of(night_dir, epic_id, started, gaps):
-    """{wait_s, reasons}: from the first `waiting` entry of the epic in gate.jsonl to the start of the epic; 0 when
-    the gate let it through without waiting; None (and a gap) without the file or any entry of the epic."""
+    """{wait_s, reasons}: from the decision to start the epic to its start, when the gate made it wait. The decision is
+    the first entry of `gate --dir <epic>` (`dir_arg`) in gate.jsonl at or before the start: /ao-run calls it right
+    after the user's start request or "yes" (section 1), at night `next` writes it for the candidate of the approved
+    night. Waits of the board scan before it (`gate` without --dir, section 8: a proposal, not a decision) do not count.
+    0 when no `waiting` entry of the epic comes between the decision and the start; None (and a gap) without the file,
+    without any entry of the epic, or with waits but no recorded decision."""
     path = os.path.join(night_dir, 'gate.jsonl')
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
@@ -1595,14 +1599,20 @@ def gate_wait_of(night_dir, epic_id, started, gaps):
     if not mine or started is None:
         gaps.add('gate_wait', 'brak wpisów epiku w gate.jsonl')
         return None
-    waiting = sorted((at, e) for at, e in mine if e.get('waiting') == epic_id and at <= started)
+    before = sorted(((at, e) for at, e in mine if at <= started), key=lambda pair: pair[0])
+    decision = next((at for at, e in before if e.get('dir_arg') == epic_id), None)
+    waiting = [(at, e) for at, e in before if e.get('waiting') == epic_id and (decision is None or at >= decision)]
     if not waiting:
         return {'wait_s': 0.0, 'reasons': []}
+    if decision is None:
+        gaps.add('gate_wait', 'czekanie w bramce bez wpisu gate --dir epiku przed startem: moment decyzji o starcie '
+                              'nieznany')
+        return None
     reasons = []
     for _, entry in waiting:
         if isinstance(entry.get('reason'), str) and entry['reason'] not in reasons:
             reasons.append(entry['reason'])
-    return {'wait_s': round(started - waiting[0][0], 3), 'reasons': reasons}
+    return {'wait_s': round(started - decision, 3), 'reasons': reasons}
 
 
 PR_ITEM = re.compile(r'^PR\s*#(\d+)\s*[:\-\u2013\u2014]?\s*(.*)$')

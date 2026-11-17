@@ -194,7 +194,12 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   `sync/<epik>-main`;
 - `parallel`: epiki, których przedział w `measurements.jsonl` przecinał się z tym epikiem, i REPAIR oraz sync
   w czasie nakładania (konflikty pary);
-- `gate_wait`: czas od pierwszego wpisu `waiting` tego epiku w `gate.jsonl` do jego startu i powody czekania;
+- `gate_wait`: czas od decyzji o starcie epiku do jego startu, gdy bramka kazała mu czekać, i powody czekania.
+  Decyzja to pierwszy wpis `gate --dir <epik>` (`dir_arg`) w `gate.jsonl` przed startem: `/ao-run` wywołuje go
+  zaraz po prośbie użytkownika o start albo jego „tak” (sekcja 1), a w nocy zapisuje go `next` dla kandydata
+  zatwierdzonej nocy. Czekania z przeglądu tablicy przed decyzją (`gate` bez `--dir`, propozycja „Zacząć epik?”) się
+  nie liczą. Bez wpisu `waiting` epiku między decyzją a startem 0; czekania bez wpisu decyzji dają `null` z pozycją
+  w `gaps`;
 - `human`: liczba decyzji (`human_action`), liczba czekań i ich suma, czekania otwarte, ręczne poprawki;
 - `waste`: alarmy z przebiegu (`waste.json`);
 - `regressions`, `found_after_merge`: sekcja „Regresje po merge'u”;
@@ -263,7 +268,7 @@ uszeregowane malejąco; pozycja wchodzi, gdy nadwyżka jest co najmniej 0,5 h (p
 - każda kategoria `in_attempts`: jak kategorie `breakdown`, na zadanie planu; pozycja pokazuje obok, ile z nadwyżki
   to `repeat_runs` tej kategorii („w tym możliwe powtórzenia: X h”), bez osobnej pozycji dla powtórzeń;
 - `gate_wait` i `review`: jak kategorie `breakdown`, na zadanie planu. Przejście bramki bez czekania daje 0, brak
-  wpisów epiku w `gate.jsonl` daje `null` z pozycją w `gaps` (kandydat pominięty). `review` jest znany dopiero po
+  wpisów epiku w `gate.jsonl` (albo wpisu decyzji o starcie przy czekaniu) daje `null` z pozycją w `gaps` (kandydat pominięty). `review` jest znany dopiero po
   merge'u, więc wchodzi do bloku po merge'u, `trend` i `/retro`, nie do raportu odbioru.
 
 Każda pozycja ma:
