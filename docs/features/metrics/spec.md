@@ -475,14 +475,10 @@ procesy użytkownika (ten sam poziom zaufania co stan AO).
   `/ao-run metrics`; skan pakietu `tools/metrics` w repo powtarza test (METRICS-1). Po co: testy zadań na
   prawdziwym formacie (po AGENT-SECURITY wykonawca w sandboxie nie czyta `~/.local/state` poza katalogiem zadania).
   Źródło: użytkownik: zgoda na sesję przygotowania danych poza sandboxem (lista i reguły z tej sekcji) przed
-  `/ao-run metrics`, jak w EVALS (Q9; zgoda udzielona 2026-11-15).
+  `/ao-run metrics` (Q9; zgoda udzielona 2026-11-15).
 - Reguła D1 czyta wyniki EVALS 2.0 (`tools/evals-pilot`, surowe wyniki poza repo), gdy są; bez nich D1 nie powstaje
-  (pozycja w `gaps`), więc METRICS nie czeka ani na EVALS, ani na EVALS 2.0. Formatu epiku EVALS (#495,
-  `tools/evals/history/`, wstrzymany, nie na `main`) METRICS nie czyta: EVALS 2.0 jest od niego niezależne.
-  `## Zależności` issue #496 nie wymienia ID innego epiku (lista nocy traktuje każde wymienione ID otwartego epiku jako
-  zależność): evale są tam opisane numerem #495, a telemetria numerem #577. Zakresy METRICS i EVALS mają wspólne pliki (`.claude/skills/retro`, dokumentacja
-  procesu), ale nie kod aplikacji, więc bramka pracy równoległej dopuszcza je naraz, a wspólne pliki obsługuje sync
-  pary.
+  (pozycja w `gaps`), więc METRICS nie czeka na EVALS 2.0. `## Zależności` issue #496 nie wymienia ID innego epiku
+  (lista nocy traktuje każde wymienione ID otwartego epiku jako zależność): telemetria jest tam opisana numerem #577.
 
 Sekretów, kont i usług zewnętrznych epik nie potrzebuje: czyta lokalne dane AO i publiczny GitHub przez `gh`
 użytkownika.
