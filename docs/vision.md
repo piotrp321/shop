@@ -347,8 +347,9 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   Grafana Alloy (chart `k8s-monitoring`, aplikacja Argo CD `monitoring` po `shop`) wysyła logi podów wszystkich przestrzeni,
   zdarzenia klastra i metryki z listy dozwolonych. Logi są maskowane w Alloy przed wysłaniem (hasła, tokeny, nagłówki
   `Authorization` i ciasteczka, adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i `STATEMENT` Postgresa
-  odrzucone), a Mailpit nie jest zbierany. Alloy czyta z klastra tylko sekret z tokenem Grafana Cloud.
-- **Alerty**: siedem reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do rulera Grafana Cloud:
+  odrzucone), a Mailpit nie jest zbierany. Alloy czyta z klastra tylko sekret z tokenami Grafana Cloud.
+- **Alerty**: siedem reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do Grafana Cloud jako reguły
+  zarządzane przez Grafanę (powiadomienia e-mailem):
   nieudana albo brakująca kopia, nieudana albo brakująca weryfikacja kopii, zajęty dysk węzła, brak sygnału z klastra i
   niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
   i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze.

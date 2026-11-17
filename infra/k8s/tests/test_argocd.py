@@ -156,12 +156,13 @@ class Observability(unittest.TestCase):
 
     def test_the_values_are_in_the_manifest_not_in_the_chart_of_the_shop(self):
         values = self.monitoring["spec"]["source"]["helm"]["valuesObject"]
-        self.assertEqual({"grafana-metrics": "prometheus", "grafana-logs": "loki"}, {n: d["type"] for n, d in values["destinations"].items()})
-        self.assertTrue(values["destinations"]["grafana-metrics"]["rules"]["enabled"])
-        # The address of the ruler is the base address of the stack, not the one that metrics are pushed to.
+        self.assertEqual({"grafana-metrics": "prometheus", "grafana-logs": "loki", "grafana-alerting": "prometheus"},
+                         {n: d["type"] for n, d in values["destinations"].items()})
+        # The metrics are pushed; the rules go to the import API of the Grafana of the stack (test_monitoring.AlertRules).
         metrics = values["destinations"]["grafana-metrics"]
-        self.assertFalse(metrics["rules"]["address"].endswith("/push"))
+        self.assertFalse(metrics.get("rules", {}).get("enabled"))
         self.assertTrue(metrics["url"].endswith("/api/prom/push"))
+        self.assertTrue(values["destinations"]["grafana-alerting"]["rules"]["address"].endswith(".grafana.net/api/convert"))
         text = (REPO / "infra/k8s/environments/prod/values.yaml").read_text()
         self.assertNotIn("grafana", text.lower())
 

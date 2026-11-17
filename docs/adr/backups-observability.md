@@ -66,7 +66,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   przypięty tagiem, który wskazuje chart, więc działa ten, na którym biegnie test maskowania. Brak konta albo zły token
   zostawia `Degraded` tylko `monitoring`; sklep się wdraża.
 - **Alloy czyta z klastra jeden sekret: `grafana-cloud` w przestrzeni `shop`** (SealedSecret z `seal-secrets WHAT=grafana`,
-  klucz `GRAFANA_CLOUD_TOKEN`, `secret.create: false`). Domyślne reguły Alloy (`get/list/watch` na wszystkie sekrety i
+  klucze `GRAFANA_CLOUD_TOKEN` dla metryk i logów oraz `GRAFANA_ALERTING_TOKEN` dla reguł alertów, `secret.create: false`). Domyślne reguły Alloy (`get/list/watch` na wszystkie sekrety i
   ConfigMapy klastra) zastępuje ClusterRole kolektora tylko do odczytu, bez sekretów i ConfigMap (węzły i metryki kubeleta
   i cAdvisora, usługi, endpointy, pody i ich logi, przestrzenie, zdarzenia, `PrometheusRule`), a osobna Role w `shop` daje
   dostęp tylko do tego sekretu (`resourceNames`); kube-state-metrics nie zbiera metryk sekretów.
@@ -99,7 +99,11 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   w konfiguracji serwera API, poza Helm i Argo CD. `check` pilnuje polityk w renderze, `monitoring-smoke` wysyła w k3d żądania,
   które muszą odrzucić, i odtwarza pody `monitoring` pod nimi.
 - **Alerty to `PrometheusRule` w chartcie `shop`** (`templates/00-alerts.yaml`, tylko przy `alerts.enabled`: `prod`), które Alloy
-  synchronizuje do rulera Grafana Cloud, więc alert przychodzi także wtedy, gdy serwer albo Alloy nie żyje (reguły z `absent`).
+  synchronizuje przez API importu Grafany (`/api/convert`) jako reguły zarządzane przez Grafanę, więc alert przychodzi także
+  wtedy, gdy serwer albo Alloy nie żyje (reguły z `absent`), i idzie przez Alertmanager Grafany do punktu kontaktowego e-mail.
+  Ruler metryk stosu odpada: nowe stosy Grafana Cloud nie mają Alertmanagera dla reguł źródła danych, więc jego alerty nie
+  trafiały do nikogo. Import wymaga osobnego tokenu konta serwisowego Grafany (`shop-alloy-rules`, tylko reguły, foldery
+  i odczyt źródeł danych), bo token access policy Grafana Cloud nie działa w API Grafany.
   Siedem reguł: `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `NodeDiskFull`, `ClusterSilent`,
   `WorkloadNotReady`. Alerty kopii patrzą na Job z `kube_job_owner` o dokładnej nazwie CronJoba (`backup` nie łapie
   `backup-verify`) i na `kube_cronjob_status_last_successful_time` (26 godzin); `BackupFailed` odpala dla Joba `Failed` nowszego niż

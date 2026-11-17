@@ -194,10 +194,12 @@ cat > "$KUBE_DIR/overlay.yaml" <<YAML
 destinations:
   grafana-metrics:
     url: http://$receiver_ip:9009/api/v1/metrics/write
-    rules:
-      address: http://$receiver_ip:9009
   grafana-logs:
     url: http://$receiver_ip:3100/loki/api/v1/push
+  grafana-alerting:
+    url: http://$receiver_ip:9009/api/v1/metrics/write
+    rules:
+      address: http://$receiver_ip:9009
 YAML
 
 log "the namespace shop (dummy Secrets, a pod that logs a password and an e-mail address)"

@@ -13,9 +13,11 @@
 #   backup shop-backup.yaml: RESTIC_PASSWORD (the password of the restic repository of the backups, asked for twice: a
 #          different second value is an error), BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY (the key of its S3
 #          bucket), asked for on the terminal.
-#   grafana grafana-cloud.yaml: GRAFANA_CLOUD_TOKEN, the one access policy token of Grafana Cloud that Alloy (the application
-#          `monitoring`) reads from the namespace shop for the metrics, the logs and the alert rules, asked for on the terminal.
-# Without arguments (WHAT) all five are processed. brevo, tls, backup and grafana are created once: when their file exists nothing
+#   grafana grafana-cloud.yaml: GRAFANA_CLOUD_TOKEN (the access policy token of Grafana Cloud for the metrics and the logs) and
+#          GRAFANA_ALERTING_TOKEN (the token of the Grafana service account shop-alloy-rules, which imports the alert rules),
+#          which Alloy (the application `monitoring`) reads from the namespace shop, asked for on the terminal. Only the tokens
+#          the file lacks are asked for; the sealed ones are kept byte for byte.
+# Without arguments (WHAT) all five are processed. brevo, tls and backup are created once: when their file exists nothing
 # is asked and nothing changes (a new password would make the earlier backups unreadable).
 #
 # External values are read from the terminal (/dev/tty) with the echo off: never from arguments or from the environment,
@@ -224,7 +226,7 @@ seal_shop() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
-# brevo, tls, backup and grafana: created once, from values typed in the terminal.
+# brevo, tls, backup and grafana: from values typed in the terminal.
 # ---------------------------------------------------------------------------------------------------------------
 seal_brevo() {
   name=shop-brevo-smtp
@@ -309,24 +311,33 @@ seal_backup() {
   echo "seal-secrets: $name.yaml gets the keys: RESTIC_PASSWORD BACKUP_S3_ACCESS_KEY_ID BACKUP_S3_SECRET_ACCESS_KEY"
 }
 
+# grafana: each token is asked for only when the file lacks it, so a token added later does not need the earlier ones again.
 seal_grafana() {
   name=grafana-cloud
   path="$out_dir/$name.yaml"
-  if [ -f "$path" ]; then
-    echo "seal-secrets: $name.yaml exists, nothing is asked and nothing changes"
+  : > "$work/$name.pairs"
+  [ ! -f "$path" ] || existing_pairs "$path" "$name" Opaque "$work/$name.pairs"
+  added=""
+  for key in GRAFANA_CLOUD_TOKEN GRAFANA_ALERTING_TOKEN; do
+    grep -q "^$key$tab" "$work/$name.pairs" && continue
+    case "$key" in
+      GRAFANA_CLOUD_TOKEN) ask "Grafana Cloud access policy token (metrics:write, logs:write)" ;;
+      GRAFANA_ALERTING_TOKEN) ask "Grafana service account token of shop-alloy-rules (the alert rules)" ;;
+    esac
+    case "$secret_value" in
+      *[[:space:]]*) fail "the token $key must not contain spaces; nothing was written" ;;
+    esac
+    add_pair "$work/$name.pairs" "$key" "$name" "$secret_value"
+    secret_value=""
+    added="$added $key"
+  done
+  if [ -z "$added" ]; then
+    echo "seal-secrets: $name.yaml has both tokens, nothing is asked and nothing changes"
     return 0
   fi
-  ask "Grafana Cloud access policy token (metrics:write, logs:write, rules:read, rules:write)"
-  token="$secret_value"
-  case "$token" in
-    *[[:space:]]*) fail "the Grafana Cloud token must not contain spaces; nothing was written" ;;
-  esac
-  : > "$work/$name.pairs"
-  add_pair "$work/$name.pairs" GRAFANA_CLOUD_TOKEN "$name" "$token"
-  secret_value="" token=""
   write_file "$name" Opaque "$work/$name.yaml" "$work/$name.pairs"
   stage "$name"
-  echo "seal-secrets: $name.yaml gets the keys: GRAFANA_CLOUD_TOKEN"
+  echo "seal-secrets: $name.yaml gets the keys:$added"
 }
 
 for item in $what; do

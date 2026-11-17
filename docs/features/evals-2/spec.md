@@ -4,9 +4,6 @@ Mierzy jakość agenta na prawdziwych zadaniach: uruchamia produkcyjną definicj
 powstaje z etykiet właściciela nadanych konkretnym zgłoszeniom. Obejmuje dziś jednego agenta, `code-reviewer`,
 i sześć przypadków. Narzędzie: `tools/evals-pilot/` (opis uruchomienia w jego `README.md`). Stan prac: `plan.md`.
 
-EVALS 2.0 jest niezależne od epiku EVALS (`docs/features/evals/`, gałąź `epic/evals`): nie używa jego runnera,
-asercji ani formatu wyników i nie jest z nim łączone.
-
 ## Zasady
 
 1. **Najpierw pomiar, potem narzędzia.** Nowy mechanizm powstaje dopiero wtedy, gdy pomiar pokaże, że jest potrzebny.

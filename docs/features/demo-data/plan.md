@@ -34,7 +34,18 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "docs/features/search/spec.md describes retries and the refresh setting; make -C apps/api check and test pass."
       ],
       "risk": "STANDARD",
-      "depends_on": []
+      "depends_on": [],
+      "paths": [
+        "apps/api/src/Catalog/Application/Search/",
+        "apps/api/src/Catalog/Infrastructure/Search/",
+        "apps/api/config/services.yaml",
+        "apps/api/tests/Unit/Catalog/",
+        "apps/api/tests/Integration/Catalog/",
+        "docs/features/search/spec.md"
+      ],
+      "parallel_with": [
+        "DEMO-DATA-7"
+      ]
     },
     {
       "id": "DEMO-DATA-2",
@@ -51,7 +62,22 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
         "apps/api/CLAUDE.md describes the DemoData module, the COPY and outbox exceptions with the tables it writes, the test approach, bin/generate-demo and make seed-scale."
       ],
       "risk": "STANDARD",
-      "depends_on": []
+      "depends_on": [],
+      "paths": [
+        "apps/api/src/DemoData/",
+        "apps/api/tests/Unit/DemoData/",
+        "apps/api/tests/Integration/DemoData/",
+        "apps/api/tests/Functional/DemoData/",
+        "apps/api/tests/Unit/Bin/",
+        "apps/api/fixtures/demo-data/",
+        "apps/api/bin/generate-demo",
+        "apps/api/deptrac.yaml",
+        "apps/api/config/services.yaml",
+        "apps/api/phpunit.dist.xml",
+        "make/demo-data.mk",
+        "apps/api/CLAUDE.md"
+      ],
+      "parallel_with": []
     },
     {
       "id": "DEMO-DATA-3",
@@ -69,7 +95,16 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
       "risk": "STANDARD",
       "depends_on": [
         "DEMO-DATA-2"
-      ]
+      ],
+      "paths": [
+        "apps/api/src/DemoData/",
+        "apps/api/tests/Unit/DemoData/",
+        "apps/api/tests/Integration/DemoData/",
+        "apps/api/tests/Functional/DemoData/",
+        "apps/api/fixtures/demo-data/",
+        "apps/api/config/services.yaml"
+      ],
+      "parallel_with": []
     },
     {
       "id": "DEMO-DATA-4",
@@ -87,7 +122,20 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
       "risk": "CRITICAL",
       "depends_on": [
         "DEMO-DATA-2"
-      ]
+      ],
+      "paths": [
+        "apps/api/src/DemoData/",
+        "apps/api/tests/Unit/DemoData/",
+        "apps/api/tests/Integration/DemoData/",
+        "apps/api/tests/Functional/DemoData/",
+        "apps/api/fixtures/demo-data/",
+        "apps/api/config/services.yaml",
+        "apps/api/bin/generate-demo",
+        "make/demo-data.mk",
+        "apps/api/phpunit.dist.xml",
+        "apps/api/CLAUDE.md"
+      ],
+      "parallel_with": []
     },
     {
       "id": "DEMO-DATA-5",
@@ -110,7 +158,20 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
       "depends_on": [
         "DEMO-DATA-3",
         "DEMO-DATA-4"
-      ]
+      ],
+      "paths": [
+        "apps/api/src/DemoData/",
+        "apps/api/tests/Unit/DemoData/",
+        "apps/api/tests/Integration/DemoData/",
+        "apps/api/tests/Functional/DemoData/",
+        "apps/api/fixtures/demo-data/",
+        "apps/api/config/services.yaml",
+        "apps/api/bin/generate-demo",
+        "apps/api/tests/Unit/Bin/",
+        "apps/api/CLAUDE.md",
+        "docs/vision.md"
+      ],
+      "parallel_with": []
     },
     {
       "id": "DEMO-DATA-6",
@@ -125,7 +186,23 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
       "risk": "FAST",
       "depends_on": [
         "DEMO-DATA-2"
-      ]
+      ],
+      "paths": [
+        "apps/api/src/DemoData/",
+        "apps/api/tests/Unit/DemoData/",
+        "apps/api/tests/Integration/DemoData/",
+        "apps/api/tests/Functional/DemoData/",
+        "apps/api/tests/Unit/Bin/",
+        "apps/api/fixtures/demo-data/",
+        "apps/api/bin/upload-demo-photos",
+        "apps/api/bin/generate-demo",
+        "apps/api/config/packages/flysystem.yaml",
+        "apps/api/config/services.yaml",
+        "apps/api/.env",
+        "make/demo-data.mk",
+        "apps/api/CLAUDE.md"
+      ],
+      "parallel_with": []
     },
     {
       "id": "DEMO-DATA-7",
@@ -141,6 +218,15 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
       "depends_on": [
         "DEMO-DATA-2",
         "DEMO-DATA-6"
+      ],
+      "paths": [
+        "apps/api/fixtures/demo-data/photos.yaml",
+        "apps/api/fixtures/demo-data/CREDITS.md",
+        "apps/api/tests/Unit/DemoData/",
+        "apps/api/bin/upload-demo-photos"
+      ],
+      "parallel_with": [
+        "DEMO-DATA-1"
       ]
     }
   ]

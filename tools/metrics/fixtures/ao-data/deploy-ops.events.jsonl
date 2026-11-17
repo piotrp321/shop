@@ -1,0 +1,34 @@
+{"at": 1794404791.381804, "data": {"percent": 86}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794408393.707107, "data": {"low": true, "percent": 10}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794412764.6383119, "data": {"resets_at": 1794420000, "threshold": 0.75, "utilization": 0.86, "window": "seven_day"}, "epic_id": "deploy-ops", "task_id": "DEPLOY-OPS-1", "type": "usage_warning"}
+{"at": 1794422807.263718, "data": {"percent": 75}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794425811.0058198, "data": {"low": true, "percent": 18}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794427011.702806, "data": {"low": true, "percent": 14}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794428212.778989, "data": {"low": true, "percent": 11}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794444292.712532, "data": {"from": "RUNNING", "to": "BLOCKED"}, "epic_id": "deploy-ops", "task_id": "DEPLOY-OPS-4", "type": "status_changed"}
+{"at": 1794468399.3401458, "data": {"action": "answer"}, "epic_id": null, "task_id": "DEPLOY-OPS-4", "type": "human_action"}
+{"at": 1794468408.2560158, "data": {"percent": 100}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794468410.0118499, "data": {"epic_id": "deploy-ops", "from": "ACTIVE"}, "epic_id": "deploy-ops", "task_id": null, "type": "epic_blocked"}
+{"at": 1794468454.3413508, "data": {"action": "epic-resume"}, "epic_id": null, "task_id": null, "type": "human_action"}
+{"at": 1794468459.9427369, "data": {"percent": 100}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794474327.4658072, "data": {"from": "RUNNING", "to": "BLOCKED"}, "epic_id": "deploy-ops", "task_id": "DEPLOY-OPS-4", "type": "status_changed"}
+{"at": 1794474942.608083, "data": {"action": "answer"}, "epic_id": null, "task_id": "DEPLOY-OPS-4", "type": "human_action"}
+{"at": 1794474948.296458, "data": {"percent": 100}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794480353.718643, "data": {"low": true, "percent": 12}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794485573.673054, "data": {"low": true, "percent": 4}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794491123.845113, "data": {"from": "RUNNING", "to": "BLOCKED"}, "epic_id": "deploy-ops", "task_id": "DEPLOY-OPS-4", "type": "status_changed"}
+{"at": 1794491190.7522838, "data": {"action": "answer"}, "epic_id": null, "task_id": "DEPLOY-OPS-4", "type": "human_action"}
+{"at": 1794498403.9420538, "data": {"percent": 100}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794503148.9823391, "data": {"from": "RUNNING", "to": "BLOCKED"}, "epic_id": "deploy-ops", "task_id": "DEPLOY-OPS-5", "type": "status_changed"}
+{"at": 1794503440.561711, "data": {"action": "answer"}, "epic_id": null, "task_id": "DEPLOY-OPS-5", "type": "human_action"}
+{"at": 1794506223.540308, "data": {"percent": 92}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794507361.6442618, "data": {"epic_id": "deploy-ops", "from": "INTEGRATING"}, "epic_id": "deploy-ops", "task_id": null, "type": "epic_blocked"}
+{"at": 1794507951.824314, "data": {"action": "epic-resume"}, "epic_id": null, "task_id": null, "type": "human_action"}
+{"at": 1794507961.020687, "data": {"percent": 79}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794512765.453677, "data": {"percent": 94}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794514937.973074, "data": {"epic_id": "deploy-ops", "head_sha": "ac1f78421dda52ecaa3484ae03158f99fae4c4d8", "pr_number": 476}, "epic_id": "deploy-ops", "task_id": null, "type": "final_pr_created"}
+{"at": 1794520100.914815, "data": {"low": true, "percent": 16}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794520508.182703, "data": {"epic_id": "deploy-ops", "from": "ACTIVE"}, "epic_id": "deploy-ops", "task_id": null, "type": "epic_blocked"}
+{"at": 1794520558.7744918, "data": {"action": "epic-resume"}, "epic_id": null, "task_id": null, "type": "human_action"}
+{"at": 1794520564.3337228, "data": {"low": true, "percent": 12}, "epic_id": null, "task_id": null, "type": "host_on_battery"}
+{"at": 1794520570.349689, "data": {"epic_id": "deploy-ops"}, "epic_id": "deploy-ops", "task_id": null, "type": "epic_done"}

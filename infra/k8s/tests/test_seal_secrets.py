@@ -38,7 +38,8 @@ S3_KEY_ID = "0123456789abcdef0123456789abcdef"
 S3_SECRET = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 BACKUP_TTY = f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\n{S3_KEY_ID}\n{S3_SECRET}\n"
 GRAFANA_TOKEN = "glc_eyJvIjoiMTIzNDU2IiwibiI6InNob3AiLCJrIjoiU0VDUkVUVE9LRU5WQUxVRSIsIm0iOnsiciI6InByb2QtZXUifX0="
-GRAFANA_TTY = f"{GRAFANA_TOKEN}\n"
+ALERTING_TOKEN = "glsa_AlertingServiceAccountTokenSECRETVALUE_0123abcd"
+GRAFANA_TTY = f"{GRAFANA_TOKEN}\n{ALERTING_TOKEN}\n"
 ALL_TTY = f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}{GRAFANA_TTY}"
 
 
@@ -363,22 +364,23 @@ class SealSecretsTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(RESTIC_PASSWORD, self.sent()[0])
 
-    # --- Grafana Cloud: one token for the metrics and the logs --------------------------------------------------------
+    # --- Grafana Cloud: the token of the metrics and the logs, and the token of the alert rules --------------------------
 
-    def test_the_grafana_token_comes_from_the_terminal_and_is_never_printed_or_passed_on(self):
-        result = self.run_script("grafana", tty=GRAFANA_TTY, GRAFANA_CLOUD_TOKEN="from-the-environment-123")
+    def test_the_grafana_tokens_come_from_the_terminal_and_are_never_printed_or_passed_on(self):
+        result = self.run_script("grafana", tty=GRAFANA_TTY, GRAFANA_CLOUD_TOKEN="from-the-environment-123",
+                                 GRAFANA_ALERTING_TOKEN="from-the-environment-456")
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(["grafana-cloud.yaml"], self.files())
-        self.assertEqual(["GRAFANA_CLOUD_TOKEN"], self.keys_of("grafana-cloud.yaml"))
-        self.assertEqual([GRAFANA_TOKEN], self.sent())
-        self.assert_no_secret_anywhere(result, GRAFANA_TOKEN, "from-the-environment-123")
+        self.assertEqual(["GRAFANA_CLOUD_TOKEN", "GRAFANA_ALERTING_TOKEN"], self.keys_of("grafana-cloud.yaml"))
+        self.assertEqual([GRAFANA_TOKEN, ALERTING_TOKEN], self.sent())
+        self.assert_no_secret_anywhere(result, GRAFANA_TOKEN, ALERTING_TOKEN, "from-the-environment-123", "from-the-environment-456")
         text = (self.secrets_dir() / "grafana-cloud.yaml").read_text()
         self.assertIn("  name: grafana-cloud\n  namespace: shop\n", text)
         self.assertIn("    type: Opaque\n", text)
         for call in self.calls():
             self.assertIn("--name grafana-cloud --namespace shop", call)
 
-    def test_grafana_is_created_once_then_nothing_is_asked(self):
+    def test_grafana_with_both_tokens_asks_nothing_and_changes_nothing(self):
         self.run_script("grafana", tty=GRAFANA_TTY)
         before = (self.secrets_dir() / "grafana-cloud.yaml").read_bytes()
         self.log.write_text("")
@@ -389,8 +391,32 @@ class SealSecretsTest(unittest.TestCase):
         self.assertEqual([], self.calls())
         self.assertIn("nothing changes", result.stdout)
 
+    def test_a_file_without_the_alerting_token_gets_only_that_token_and_keeps_the_other_byte_for_byte(self):
+        self.run_script("grafana", tty=GRAFANA_TTY)
+        path = self.secrets_dir() / "grafana-cloud.yaml"
+        lines = path.read_text().splitlines(keepends=True)
+        cloud_line = next(line for line in lines if line.startswith("    GRAFANA_CLOUD_TOKEN: "))
+        path.write_text("".join(line for line in lines if not line.startswith("    GRAFANA_ALERTING_TOKEN: ")))
+        self.log.write_text("")
+        result = self.run_script("grafana", tty=f"{ALERTING_TOKEN}\n")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([ALERTING_TOKEN], self.sent())
+        self.assertEqual(["GRAFANA_CLOUD_TOKEN", "GRAFANA_ALERTING_TOKEN"], self.keys_of("grafana-cloud.yaml"))
+        self.assertIn(cloud_line, path.read_text())
+        self.assertIn("GRAFANA_ALERTING_TOKEN", result.stdout)
+        self.assert_no_secret_anywhere(result, ALERTING_TOKEN)
+
+    def test_a_grafana_file_in_another_format_is_not_touched(self):
+        path = self.secrets_dir()
+        path.mkdir(parents=True)
+        (path / "grafana-cloud.yaml").write_text("kind: SealedSecret\nspec: {}\n")
+        result = self.run_script("grafana", tty=f"{ALERTING_TOKEN}\n")
+        self.assertEqual(1, result.returncode)
+        self.assertEqual("kind: SealedSecret\nspec: {}\n", (path / "grafana-cloud.yaml").read_text())
+        self.assertEqual([], self.calls())
+
     def test_an_empty_or_a_bad_grafana_token_writes_nothing(self):
-        for tty in ("\n", "token with space\n", ""):
+        for tty in ("\n", "token with space\n", "", f"{GRAFANA_TOKEN}\n\n", f"{GRAFANA_TOKEN}\nalerting with space\n"):
             with self.subTest(tty=tty):
                 result = self.run_script("grafana", tty=tty)
                 self.assert_nothing_written(result)

@@ -64,9 +64,10 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby i logi nieudanych Jobów), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
   demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup grafana"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
-  Brevo SMTP, certyfikat Origin CA, hasło restic i klucz S3 kopii zapasowych (`shop-backup`) oraz token Grafana Cloud
-  (`grafana-cloud`, klucz `GRAFANA_CLOUD_TOKEN`) czytane z terminala bez echa (hasło restic dwa razy, różne wartości to
-  błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
+  Brevo SMTP, certyfikat Origin CA, hasło restic i klucz S3 kopii zapasowych (`shop-backup`) oraz tokeny Grafana Cloud
+  (`grafana-cloud`, klucze `GRAFANA_CLOUD_TOKEN` metryk i logów i `GRAFANA_ALERTING_TOKEN` konta serwisowego reguł alertów)
+  czytane z terminala bez echa (hasło restic dwa razy, różne wartości to błąd), każdy z nich tylko raz (`grafana` pyta tylko
+  o brakujące tokeny i zostawia zaszyfrowane bez zmian), błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
   (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
   runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
   „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a)
@@ -155,7 +156,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   wyjątku; w renderze dostęp do hosta ma tylko DaemonSet node-exportera, a klasy priorytetu systemu żaden workload; polityka
   Service przy tworzeniu i zmianie dopuszcza tylko typ `ClusterIP` bez `externalIPs`, a każdy Service renderu jest `ClusterIP`;
   polityka tokenów na sekrety; lista dozwolonych metryk niepusta i z metrykami alertów, widoczna w
-  konfiguracji Alloy; budżet węzła: `shop` i `monitoring` razem do 7 vCPU requestów i 20 GiB limitów, z jawnymi zasobami Alloy,
+  konfiguracji Alloy; reguły alertów synchronizuje tylko cel `grafana-alerting` do API importu Grafany (`/api/convert`, token
+  `GRAFANA_ALERTING_TOKEN`, nagłówek źródła danych, tenant `1`), a żadna funkcja ani telemetria chartu nie wysyła do niego metryk; budżet węzła: `shop` i `monitoring` razem do 7 vCPU requestów i 20 GiB limitów, z jawnymi zasobami Alloy,
   jego reloadera, operatora, kube-state-metrics i node-exportera; obraz Alloy w `tools.sh` to tag z chartu i z manifestu),
   test maskowania logów (`scripts/masking.sh`: prawdziwy Alloy, przypięty tagiem i digestem, uruchamia etapy
   `extraLogProcessingStages` wyciągnięte z manifestu na korpusie `tests/log-corpus`, jeden plik na źródło w jego formacie, z

@@ -14,14 +14,13 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482), EVALS (#495); przygotowane do startu: METRICS (#496). Kolejność epików
-jest na tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: ADMIN-FEATURES (końcowy PR #623;
-5 interwencji, 5 czekań na użytkownika, razem 528 min, 1 ręczna poprawka). Retro do zrobienia: brak (retro
-ADMIN-FEATURES w tym PR).
+W toku przez `/ao-run`: DEMO-DATA (#482). Kolejność epików jest na tablicy „Backlog sklepu”.
+Blokery: brak. Ostatni zmergowany epik: METRICS (końcowy PR #674; 5 interwencji, 6 czekań na użytkownika, razem
+400 min, 4 ręczne poprawki). Retro do zrobienia: brak (retro METRICS w tym PR).
 Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 91, zamkniętych 50.
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 111, zamkniętych 52.
 Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17, 18 i 19b
 (w toku); 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
 
@@ -44,7 +43,7 @@ Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epi
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | do zrobienia |
-| 18 | Pomiar, koszty i optymalizacja | do zrobienia |
+| 18 | Pomiar, koszty i optymalizacja | w toku (epik METRICS #496 zrobiony, końcowy PR #674 zmergowany: pomiar epiku, `tools/metrics`; pomiar w `/retro` bez dowodu z przebiegu; epik TELEMETRY #577: telemetria Claude Code do zrobienia) |
 | 19 | Praca równoległa | 19a: zrobione, pomiar par trwa; 19b: w toku (AO `--max-parallel`, piotrp321/agentic-orchestrator#50; w `shop` pola `paths` i `parallel_with` manifestu, `--max-parallel 2` w `/ao-run`, rezerwa pamięci bramki na dwa stosy na epik) |
 | 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
 | 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
@@ -72,10 +71,10 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Tester całego sklepu | `tester` w `/sweep`, uruchamiany przez `/ao-run` po merge'u | działa |
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
 | | Bezpieczeństwo agentów: niezaufane wejścia, izolacja uprawnień i sekretów, testy obejścia | sandbox i reguły w `shop` | krok 16 |
-| | Evale agentów i workflowów, benchmark i kryteria regresji | `make evals` | krok 17 |
+| | Evale agentów na prawdziwych zadaniach i porównanie wariantów agenta | EVALS 2.0: `tools/evals-pilot` (`code-reviewer`), uruchamiane ręcznie za zgodą właściciela | krok 17 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
-| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | pomiar epiku i telemetria Claude Code w lokalnym stosie na Macu | krok 18 |
+| | Pomiar czasu, kosztu i jakości z decyzjami optymalizacyjnymi | `tools/metrics` (`tools/metrics/README.md`), uruchamiany przez `/ao-run`; telemetria Claude Code w lokalnym stosie na Macu (TELEMETRY #577) | krok 18 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues, dyżur i hypercare | agent dyżurny: Sentry i Grafana Cloud przez MCP, tylko odczyt | krok 11 |
 
@@ -215,9 +214,14 @@ flowchart TB
      issues.
    - `/ao-run` dopisuje do opisu końcowego PR `Closes #N` każdego issue z linii `Issues:` specyfikacji. Użytkownik
      sprawdza je i merguje PR (squash). Issue zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
-   - Po każdym epiku trzy liczby w komentarzu do issue epiku: liczba interwencji (z `ao report`), czas czekania na
-     decyzje użytkownika (z `events.jsonl`, `ao_events.py summary`) i liczba ręcznych poprawek. Minut pracy
-     użytkownika nie szacujemy. Pełny pomiar z trendem i decyzjami optymalizacyjnymi: krok 18.
+   - Raport odbioru ma sekcje „Pomiar” (wąskie gardła, czas, wartość tokenów, próby, alarmy, pozycja na tle mediany;
+     `metrics.py render --format report`) i, jako ostatnia sekcja raportu, „Decyzje optymalizacyjne” (najwyżej 3
+     kandydatów z rekomendacją, efektem i liczbą epików, w których reguła zadziałała; `metrics.py decide`, decyzji nie
+     zapisuje) (krok 18).
+   - Po każdym epiku komentarz do issue epiku to blok „Pomiar epiku” (`metrics.py render --format comment`): trzy liczby
+     (interwencje człowieka, czas czekania na decyzje użytkownika, liczba ręcznych poprawek) i pomiar po merge'u. Minut
+     pracy użytkownika nie szacujemy. `/ao-run` pokazuje też trend (`metrics.py trend`) na starcie i po każdym merge'u,
+     a w trakcie przebiegu wysyła pushem alarmy bezproduktywnego zużycia (`metrics.py waste`).
 6. **Po merge'u (`/sweep [epik]`).** Sesja `/ao-run` uruchamia przegląd sama po merge'u końcowego PR: kolejka
    przeglądów, jeden naraz, nigdy równolegle z epikiem (następny epik rusza po kolejce), pominięcie przy oknie limitu
    ≥ 95% (`docs/features/ao-run/spec.md`). Użytkownik może go też uruchomić ręcznie.
@@ -339,25 +343,25 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
    - testy prób obejścia w prawdziwych procesach AO, także przez Bash i procesy potomne;
    - agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych;
    - nikt, także użytkownik, nie zmerguje do `main` ani `epic/*` bez zielonego CI (rulesety bez aktora bypass).
-17. **Evale agentów i workflowów.** Realizuje komponent „Metryki i evale” z ADR:
-   - evale pojedynczych agentów (`code-reviewer`, `spec-critic`, `backlog-groomer`, `retro-analyst`, próby prompt
-     injection) przy każdej zmianie agenta albo skilla;
-   - benchmark całych workflowów: zamrożone zadania z poprzednich epików od ich commita bazowego, uruchamiane przy
-     zmianie modelu, wersji CLI albo `/delivery`;
-   - mierzą poprawność, wykrywanie błędów, przestrzeganie zakresu, stabilność wyników między powtórzeniami
-     i zachowanie po zmianie promptu albo modelu; wyniki mają historię i kryteria regresji;
-   - PR zmieniający agenta, skill albo pin CLI ma aktualny wynik; CI sprawdza tylko jego zgodność z wersją plików,
-     bez uruchamiania modelu;
-   - każde uruchomienie ma limit kosztu i zużycia limitu subskrypcji ustalony w specyfikacji.
-18. **Pomiar, koszty i optymalizacja.**
-   - Telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
+17. **Evale agentów i workflowów.** Realizuje komponent „Metryki i evale” z ADR przez EVALS 2.0
+   (`docs/features/evals-2/spec.md`, narzędzie `tools/evals-pilot/`):
+   - evale pojedynczych agentów na prawdziwych zadaniach z `/delivery`: produkcyjna definicja agenta, wynik z etykiet
+     właściciela nadanych zgłoszeniom agenta; dziś `code-reviewer`;
+   - porównanie wariantów agenta (prompt, model) na tym samym zestawie, z kryteriami przyjęcia ustalonymi przed
+     pomiarem i raportem w `docs/reports/`;
+   - każdy etap i każdy płatny pomiar ma zakres, limit kosztu i kryteria przyjęcia zatwierdzone przez właściciela;
+     CI nie uruchamia modelu;
+   - benchmark całych workflowów `/delivery` (zamrożone zadania z poprzednich epików) nie ma specyfikacji ani epiku.
+18. **Pomiar, koszty i optymalizacja.** Dwa epiki: METRICS (#496: pomiar epiku z danych AO, transkryptów prób i GitHuba,
+   `tools/metrics`, opis w `tools/metrics/README.md`) i TELEMETRY (#577: telemetria Claude Code).
+   - TELEMETRY: telemetria Claude Code (OpenTelemetry, bez treści promptów) w lokalnym stosie na Macu
      z retencją ustawianą lokalnie, dłuższą niż 14 dni darmowego planu Grafana Cloud.
-   - Pomiar każdego epiku: czas zegarowy (miara główna), czas rzeczywistej pracy, oczekiwania i blokad; koszt
+   - METRICS: pomiar każdego epiku: czas zegarowy (miara główna), czas rzeczywistej pracy, oczekiwania i blokad; koszt
      i tokeny na agenta, model i zadanie; ponowienia, naprawy i konflikty; czas testów, selftestów i integracji;
      interwencje człowieka; regresje i błędy po merge'u.
-   - Szacunkowa wartość tokenów (ceny API z CLI) osobno od faktycznego kosztu subskrypcji (punkty procentowe limitu).
-   - Wykrywanie bezproduktywnego zużycia zasobów (zadanie zużywa wielokrotność mediany, pętla prób) z pushem.
-   - Raport odbioru i `/retro` kończą się konkretnymi decyzjami optymalizacyjnymi (model dla roli z evali kroku 17
+   - METRICS: szacunkowa wartość tokenów (ceny API z CLI) osobno od faktycznego kosztu subskrypcji (punkty procentowe limitu).
+   - METRICS: wykrywanie bezproduktywnego zużycia zasobów (zadanie zużywa wielokrotność mediany, pętla prób) z pushem.
+   - METRICS: raport odbioru i `/retro` kończą się konkretnymi decyzjami optymalizacyjnymi (model dla roli z evali kroku 17
      i kosztu, podział planu, równoległość), a nie samym zestawieniem.
 19. **Praca równoległa.** Równoległość jest domyślną możliwością: epiki i zadania ruszają naraz, a wykonanie
    szeregowe jest rozwiązaniem awaryjnym, gdy bramka wykryje realne ryzyko. Realizuje komponent „Pula środowisk”
@@ -391,7 +395,7 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
 21. **Dokumentacja wdrożenia procesu i studium przypadku.** Dokumentacja pozwalająca wdrożyć proces w innym
    repozytorium, diagram architektury, rzeczywiste metryki z kroku 18, studium przypadku i opis najważniejszych
    decyzji technicznych. Raporty z liczbami trafiają do `docs/reports/`.
-22. **Porównanie Claude Code i OpenAI Codex.** Po kroku 17, na tym samym benchmarku workflowów: jakość, czas, koszt
+22. **Porównanie Claude Code i OpenAI Codex.** Na benchmarku workflowów `/delivery` z kroku 17 (bez specyfikacji): jakość, czas, koszt
    i potrzeba ingerencji człowieka; raport w `docs/reports/`. Bez kupowania dodatkowych usług na etapie planowania;
    konto do uruchomienia Codex ustala specyfikacja kroku.
 
