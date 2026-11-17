@@ -68,7 +68,7 @@ final readonly class AccountsCommand
                         $io->writeln(\sprintf('%s: %d %s', $realm, $total, $phase));
                     }
                 });
-            } catch (\RuntimeException $e) {
+            } catch (\RuntimeException|\InvalidArgumentException $e) {
                 $io->error(\sprintf('%s: %s', $realm, $e->getMessage()));
 
                 return Command::FAILURE;

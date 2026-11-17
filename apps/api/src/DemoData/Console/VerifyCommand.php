@@ -68,7 +68,7 @@ final readonly class VerifyCommand
                 foreach ($reconciler->differences($directory, $target) as $difference) {
                     $violations[] = $realm.': '.$difference;
                 }
-            } catch (\RuntimeException $e) {
+            } catch (\RuntimeException|\InvalidArgumentException $e) {
                 $io->error(\sprintf('%s: %s', $realm, $e->getMessage()));
 
                 return Command::FAILURE;

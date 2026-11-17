@@ -46,11 +46,18 @@ final class KeycloakTestRealms
                 'redirectUris' => ['*'],
             ]],
         ]);
-        $this->createRealm([
-            'realm' => $this->backoffice,
-            'enabled' => true,
-            'roles' => ['realm' => array_map(static fn (string $role): array => ['name' => $role], self::STAFF_ROLES)],
-        ]);
+        try {
+            $this->createRealm([
+                'realm' => $this->backoffice,
+                'enabled' => true,
+                'roles' => ['realm' => array_map(static fn (string $role): array => ['name' => $role], self::STAFF_ROLES)],
+            ]);
+        } catch (\Throwable $e) {
+            // The constructor failed, so no caller can delete the realm that was created.
+            $this->admin->request('DELETE', '/'.$this->shop)->getStatusCode();
+
+            throw $e;
+        }
     }
 
     public static function url(): string
