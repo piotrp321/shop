@@ -8,6 +8,7 @@ use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
 use App\DemoData\Identity\DemoUuid;
+use App\DemoData\Pricing\PriceGenerator;
 use App\DemoData\Pricing\PromotionPlanner;
 use App\DemoData\Pricing\PromotionSpec;
 use App\DemoData\Profile\Profiles;
@@ -129,6 +130,29 @@ final class PromotionPlannerTest extends TestCase
                 $published = $owners[$variantId]->firstPublishedAt;
                 self::assertNotNull($published, 'A draft is never promoted.');
                 self::assertLessThanOrEqual($promotion->period->startsAt()->modify('-2 days'), $published);
+            }
+        }
+    }
+
+    public function testEveryPromotedVariantHasItsFirstPriceBeforeThePromotionIsCreated(): void
+    {
+        // The application plans a promotion only for variants that have a current price at that moment.
+        $generator = new ProductGenerator(self::dictionaries(), self::profiles()->namespace, self::anchor(), 2_000, self::profiles()->partSize);
+        $prices = new PriceGenerator(self::dictionaries(), self::profiles()->namespace, self::anchor(), 20);
+        /** @var array<string, \DateTimeImmutable> $firstPrice */
+        $firstPrice = [];
+        for ($part = 0; $part < 4; ++$part) {
+            foreach ($generator->part($part) as $product) {
+                foreach ($prices->forProduct($product) as $position => $timeline) {
+                    $firstPrice[$product->variants[$position]->id] = $timeline->entries()[0]->changedAt;
+                }
+            }
+        }
+
+        foreach (self::promotions() as $promotion) {
+            foreach ($promotion->variantIds as $variantId) {
+                self::assertArrayHasKey($variantId, $firstPrice);
+                self::assertLessThan($promotion->createdAt, $firstPrice[$variantId], $promotion->name);
             }
         }
     }

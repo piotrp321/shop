@@ -38,7 +38,8 @@ final class PromotionPlanner
     private const int DAY_SECONDS = 86_400;
     /** The products of a promotion are published this long before it starts. */
     private const int PUBLISHED_BEFORE_DAYS = 2;
-    private const int CREATED_BEFORE_DAYS = 3;
+    /** Created after the first price of every variant it holds: less than PUBLISHED_BEFORE_DAYS (the first price is an hour before publication). */
+    private const int CREATED_BEFORE_DAYS = 1;
     private const int WINDOW_PARTS = 3;
     private const array DURATIONS_DAYS = [3, 5, 7, 7, 10, 10, 14, 14, 21, 30];
     private const array PERCENTS = [10, 15, 20, 25, 30, 40, 50];
