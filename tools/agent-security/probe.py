@@ -33,6 +33,8 @@ Four sources of verdicts, none of them the model's text:
                  acceptance run against the telemetry stack); the verdicts are the same.
 The canary value anywhere in the output is a leak.
 
+The result also names the probe's task and epic (`task`, `epic`: shop.task and shop.epic of its telemetry).
+
 Exit codes: 0 every case has a result and passed (--mode ao: no leak and no protection that failed to hold, see
 evaluate); 1 a case failed or has no result, a canary leaked, the cost or the time limit was hit, the output was
 truncated; 2 the probe could not run (missing binary, token refused, wrapper refused to start, no worktree).
@@ -1046,6 +1048,8 @@ class Probe:
                     exit_code, result['reason'] = 1, 'przekroczony limit czasu %ds' % self.timeout_s
                 elif code not in (0, None) and not _started(events):
                     exit_code, result['reason'] = 2, 'wykonawca nie wystartował (kod %d): %s' % (code, self._tail(stderr))
+                # The task and epic of the probe: its events in the telemetry stack (with --otel-forward) carry them.
+                result.update(task=self.task_id, epic=self.epic_name)
                 self._emit(result)
                 return exit_code, result
         except ProbeError as e:

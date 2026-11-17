@@ -1320,6 +1320,13 @@ class ProbeRunTest(ProbeRunTestCase):
             with open(p.result_path) as f:
                 self.assertEqual(result, json.load(f))
 
+    def test_the_result_names_the_task_and_epic_of_the_probe(self):
+        # The acceptance run finds the probe's events in the telemetry stack by shop_task and shop_epic.
+        p = self.make_probe()
+        code, result = p.run(env=self.env())
+        self.assertEqual(0, code, result.get('reason'))
+        self.assertEqual((p.task_id, p.epic_name), (result['task'], result['epic']))
+
     def test_an_unknown_encoding_is_unverifiable_and_does_not_change_the_exit_code(self):
         p = self.make_probe()
         code, result = p.run(env=self.env(FAKE_OTEL_BODIES=self.otel_bodies(p, encoding='br')))
