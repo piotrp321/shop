@@ -55,13 +55,13 @@ services:
                 accessKeyId: '%env(GARAGE_ACCESS_KEY_ID)%'
                 accessKeySecret: '%env(GARAGE_SECRET_ACCESS_KEY)%'
 
-    # The private R2 bucket of the demo photo pool (DemoData, read only): the region is not used by R2, the bucket is in the path.
+    # The private R2 bucket of the demo photo pool (DemoData, read only): the bucket is in the path, R2 takes the region `auto`.
     app.demo_photos_s3_client:
         class: AsyncAws\S3\S3Client
         arguments:
             -
                 endpoint: '%env(DEMO_PHOTOS_ENDPOINT)%'
-                region: auto
+                region: '%env(DEMO_PHOTOS_REGION)%'
                 pathStyleEndpoint: 'true'
                 accessKeyId: '%env(DEMO_PHOTOS_ACCESS_KEY_ID)%'
                 accessKeySecret: '%env(DEMO_PHOTOS_SECRET_ACCESS_KEY)%'
@@ -301,6 +301,10 @@ when@test: &test
             public: true
         test.product_images.storage:
             alias: product_images.storage
+            public: true
+        # Public, so a test can check how the private bucket of the photo pool is wired.
+        test.demo_photos.storage:
+            alias: demo_photos.storage
             public: true
         # Public, so a test can set the identifier like the request subscriber does and read it back.
         App\Shared\Infrastructure\Observability\CorrelationId:
