@@ -158,7 +158,9 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
   `ProductIndexer` (pojedyncze dokumenty) tego nie dotyczy.
 - Każda zapisana paczka przebudowy loguje (`info`, „Search index rebuild progress.”) indeks, liczbę dokumentów
   zapisanych do tej pory i ich tempo (`documents_per_second`, średnie od początku wypełniania; `null`, gdy minęło
-  0 s).
+  0 s). Oba logi (postęp i ponowienia) idą kanałem Monologa `search_rebuild`, który w `prod` trafia na stderr jako JSON od
+  `info`, poza buforem `fingers_crossed` (ten zachowuje tylko logi żądań zakończonych błędem, a `catalog:reindex` nie loguje
+  błędu), więc są widoczne także przy udanej przebudowie.
 
 ### Wyzwalacze
 
