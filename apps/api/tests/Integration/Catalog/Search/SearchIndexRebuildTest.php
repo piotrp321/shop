@@ -194,7 +194,8 @@ final class SearchIndexRebuildTest extends KernelTestCase
     {
         $ids = $this->createProducts(7);
         $previous = $this->maintenance->activeIndex();
-        // Batches of 3: a rejected item, an overloaded cluster, a timeout and rejected items of the next batch.
+        // Batches of 3: all four faults hit the first batch: a rejected item (3 documents, then 1), an overloaded
+        // cluster (503), a timeout and a rejected item (429); the fifth attempt succeeds.
         $http = $this->faultyBulks([['transient' => [1]], 'unavailable', 'timeout', ['transient' => [0, 2]]]);
         $refreshIntervals = [];
         $http->onBulk = function () use (&$refreshIntervals, $previous): void {
