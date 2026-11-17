@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\DemoData;
 
+use App\DemoData\Accounts\AccountGenerator;
+use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
 use App\DemoData\Catalog\ProductType;
-use App\DemoData\Accounts\AccountGenerator;
-use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Identity\StaffRoles;
 use App\DemoData\Pricing\PriceGenerator;
 use App\DemoData\Pricing\PriceTimeline;
