@@ -14,14 +14,17 @@ local repository; /ao-run never passes it.
 
 Steps, in order; the first that fails ends the run with exit 1 and one line `ao-prepare: <reason>` on stderr, nothing
 on stdout:
+  0. AGENT_OTEL_ENDPOINT of its environment (the telemetry endpoint the wrapper exports to, spec
+     docs/features/telemetry/spec.md, R5) is unset, `off` or http://127.0.0.1:<port> (the rule of render_settings.py);
+     another value is the refusal `niepoprawny AGENT_OTEL_ENDPOINT <value>: <reason>`;
   1. one ao-prepare per AO_HOME (flock on $AO_HOME/agent-security.lock) and no AO process on it (its
      orchestrator.lock is held): the copy never changes while AO runs on it;
   2. no KUBE_DIR recorded in ~/.local/state/shop-ops/kube-dirs (one absolute path per line, written by
      infra/k8s/scripts/kubeconfig.sh) still exists (also as a dangling symlink); a missing registry is no KUBE_DIR, an
      unreadable registry or a relative entry is a refusal;
   3. the pinned binary from claude_pin.py (exit 0 and an absolute path of an executable file; otherwise its stderr);
-  4. the six files claude-agent, render_settings.py, executor-settings.json, probe.py, probe-cases.sh and bin/mktemp
-     of the commit `main` points to in the source: the public repository piotrp321/shop on GitHub, a fixed address
+  4. the seven files claude-agent, render_settings.py, executor-settings.json, probe.py, probe-cases.sh, bin/mktemp
+     and otlp_receiver.py of the commit `main` points to in the source: the public repository piotrp321/shop on GitHub, a fixed address
      (git allows only https and ssh for it). Nothing comes from the main clone, whose .git executors and containers
      can write: not its objects or refs (replace objects, a moved refs/remotes/origin/main) and not its
      configuration (a planted .git/commondir or include, a remote URL changed through Docker). The SHA comes from
@@ -38,9 +41,18 @@ on stdout:
      the probe, SIGKILL to its process group after --term-grace), a missing or unreadable result, or a result with a
      reason or a case that did not pass is a refusal `sonda bezpieczeństwa nie przeszła (<reason>); czas <s> s,
      koszt <usd> USD` (`koszt brak danych` without a cost). SIGTERM, SIGINT or SIGHUP of ao-prepare stops the probe
-     the same way;
+     the same way. The exception (spec TELEMETRY, R3): telemetry_export with no_export and telemetry_no_content with
+     no_export or unverifiable (no telemetry, or none that could be checked) are not a refusal; each gets the line
+     `ao-prepare: telemetria: sonda <case> <status> (<reason>)` on stderr before the last line. A fail of
+     telemetry_no_content (content in the export) is a refusal like any other case;
   6. the KUBE_DIR registry once more (step 2) after the probe, which takes minutes: an operation started meanwhile
      still stops the start.
+
+Telemetry warning: right before the probe, a TCP connection to the telemetry endpoint (AGENT_OTEL_ENDPOINT, unset:
+DEFAULT_TELEMETRY_ENDPOINT of render_settings.py; off: no check) within 2 s. Without it the line `ao-prepare:
+telemetria: brak stosu pod <endpoint>; dane tego przebiegu nie trafią do stosu` goes to stderr before the probe's
+output; the exit code and the start do not change. Every `ao-prepare: telemetria:` line is a warning, never the last
+line of stderr.
 
 The probe's stdout and stderr go to the stderr of ao-prepare. Every probe run appends {at, main, code, seconds,
 cost_usd, reason} to $AO_HOME/probe-runs.jsonl (time and cost for the acceptance report) and keeps its result JSON
@@ -59,11 +71,13 @@ Exit codes: 0 AO may start with the output; 1 refused (any step above); 2 usage 
 import argparse
 import datetime
 import fcntl
+import importlib.util
 import json
 import os
 import re
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -73,7 +87,8 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_PIN = os.path.join(HERE, '..', '..', '.claude', 'skills', 'ao-run', 'claude_pin.py')
 SOURCE = 'tools/agent-security'
-FILES = ('claude-agent', 'render_settings.py', 'executor-settings.json', 'probe.py', 'probe-cases.sh', 'bin/mktemp')
+FILES = ('claude-agent', 'render_settings.py', 'executor-settings.json', 'probe.py', 'probe-cases.sh', 'bin/mktemp',
+         'otlp_receiver.py')
 COPY = 'agent-security'
 PROBE_TIMEOUT = 600
 COST_LIMIT = 1.0
@@ -92,6 +107,20 @@ SHA = re.compile(r'^(?:[0-9a-f]{40}|[0-9a-f]{64})$')
 GIT = ['git', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '-c', 'core.commitGraph=false',
        '-c', 'advice.graftFileDeprecated=false', '-c', 'fetch.fsckObjects=true']
 GIT_ENV = {'GIT_NO_REPLACE_OBJECTS': '1', 'GIT_GRAFT_FILE': '/dev/null', 'GIT_TERMINAL_PROMPT': '0'}
+TELEMETRY_CONNECT_TIMEOUT = 2
+# The statuses of the probe's telemetry cases that are a warning, not a refusal (spec TELEMETRY, R3 and R5).
+TELEMETRY_WARNINGS = {'telemetry_export': ('no_export',), 'telemetry_no_content': ('no_export', 'unverifiable')}
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location('_ao_prepare_' + name, os.path.join(HERE, name + '.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# The endpoint rule and its default come from render_settings.py next to this script, as the wrapper's.
+render_settings = _load('render_settings')
 
 
 class Refused(Exception):
@@ -110,6 +139,46 @@ def _check_path(value, what):
     if any(ord(c) < 32 or c == '\x7f' for c in value):
         raise Refused('%s zawiera znak sterujący' % what)
     return value
+
+
+def _printable(value):
+    return ''.join(c if c.isprintable() else repr(c)[1:-1] for c in value)
+
+
+def telemetry_endpoint(environ):
+    """The telemetry endpoint the wrapper will export to, or None for off; Refused for an invalid value."""
+    value = environ.get('AGENT_OTEL_ENDPOINT')
+    if value is None:
+        return render_settings.DEFAULT_TELEMETRY_ENDPOINT
+    if value == 'off':
+        return None
+    try:
+        return render_settings.telemetry_endpoint(value, option='AGENT_OTEL_ENDPOINT')
+    except render_settings.SettingsError:
+        raise Refused('niepoprawny AGENT_OTEL_ENDPOINT %s: dozwolony adres http://127.0.0.1:<port> (port 1-65535, bez '
+                      'ścieżki, użytkownika, zapytania i fragmentu) albo off' % _printable(value))
+
+
+def check_telemetry_stack(endpoint):
+    """The warning (without the `ao-prepare: ` prefix) when nothing accepts a connection at the endpoint, else None."""
+    if endpoint is None:
+        return None
+    port = int(render_settings.TELEMETRY_ENDPOINT_PATTERN.fullmatch(endpoint).group(1))
+    try:
+        socket.create_connection(('127.0.0.1', port), timeout=TELEMETRY_CONNECT_TIMEOUT).close()
+    except OSError:
+        return 'telemetria: brak stosu pod %s; dane tego przebiegu nie trafią do stosu' % endpoint
+    return None
+
+
+def telemetry_warnings(result):
+    """The warning lines (without the prefix) of the telemetry cases of a readable result that do not block."""
+    lines = []
+    for case in (result or {}).get('cases', []):
+        if isinstance(case, dict) and case.get('status') in TELEMETRY_WARNINGS.get(case.get('name'), ()):
+            lines.append('telemetria: sonda %s %s (%s)' % (case['name'], case['status'],
+                                                            _line(case.get('reason') or 'brak przyczyny')))
+    return lines
 
 
 def ao_home_of(value):
@@ -365,6 +434,8 @@ def judge(code, interrupted, result, problem):
     for case in result['cases']:
         if not isinstance(case, dict):
             return 'kod 0, ale nieczytelny przypadek w wyniku: %s' % _line(json.dumps(case, ensure_ascii=False))[:200]
+        if case.get('status') in TELEMETRY_WARNINGS.get(case.get('name'), ()):
+            continue    # a warning of telemetry_warnings, not a refusal
         if case.get('status') != 'pass':
             return 'kod 0, ale przypadek %s nie przeszedł' % case.get('name')
     return None
@@ -390,6 +461,7 @@ def prepare(args):
     if not os.path.isdir(repo) or not os.path.lexists(os.path.join(repo, '.git')):
         raise Refused('--repo %s nie jest klonem git shop (brak .git)' % repo)
     url = _check_path(args.source_url, '--source-url')
+    otel_endpoint = telemetry_endpoint(os.environ)
     fd = lock(ao_home)
     try:
         check_kube_dirs(os.path.join(os.path.expanduser('~'), REGISTRY))
@@ -399,12 +471,17 @@ def prepare(args):
         handle, result_path = tempfile.mkstemp(prefix='.probe-result.', suffix='.json', dir=ao_home)
         os.close(handle)
         os.remove(result_path)    # the probe writes it; a missing file means no result
+        warning = check_telemetry_stack(otel_endpoint)
+        if warning:
+            print('ao-prepare: %s' % warning, file=sys.stderr, flush=True)
         try:
             outer = args.outer_timeout if args.outer_timeout is not None else args.probe_timeout + OUTER_MARGIN
             code, interrupted, seconds = run_probe(repo, copy, binary, result_path, args.probe_timeout,
                                                    args.cost_limit, outer, args.term_grace)
             result, problem = read_result(result_path)
             reason = judge(code, interrupted, result, problem)
+            for warning in telemetry_warnings(result):
+                print('ao-prepare: %s' % warning, file=sys.stderr, flush=True)
             cost = _cost(result)
             record_run(ao_home, sha, code if code is not None else -1, seconds, cost, reason, result_path)
         finally:
