@@ -402,6 +402,175 @@ class ClaudeTmpdirTest(RenderTestCase):
                 module.render(template(), self.home, self.work, claude_tmpdir=run)
 
 
+TELEMETRY_ATTRIBUTES = ('--telemetry-attribute', 'shop.task_kind=plan', '--telemetry-attribute', 'shop.task=X-1',
+                        '--telemetry-attribute', 'shop.source=ao', '--telemetry-attribute', 'shop.epic=x')
+TELEMETRY_ENV = {
+    'CLAUDE_CODE_ENABLE_TELEMETRY': '1',
+    'OTEL_METRICS_EXPORTER': 'otlp',
+    'OTEL_LOGS_EXPORTER': 'otlp',
+    'OTEL_EXPORTER_OTLP_PROTOCOL': 'http/protobuf',
+    'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://127.0.0.1:4318',
+    'OTEL_METRIC_EXPORT_INTERVAL': '10000',
+    'OTEL_LOGS_EXPORT_INTERVAL': '5000',
+    'OTEL_LOG_USER_PROMPTS': '0',
+    'OTEL_LOG_ASSISTANT_RESPONSES': '0',
+    'OTEL_LOG_TOOL_DETAILS': '0',
+    'OTEL_LOG_TOOL_CONTENT': '0',
+    'OTEL_LOG_RAW_API_BODIES': '0',
+    'OTEL_RESOURCE_ATTRIBUTES': 'shop.source=ao,shop.epic=x,shop.task=X-1,shop.task_kind=plan',
+}
+
+
+class TelemetryTest(RenderTestCase):
+    """The telemetry block (spec TELEMETRY R1): an env block of the settings, only with the --telemetry-* options."""
+
+    def base(self):
+        return ('--workdir', self.work, '--git-common-dir', self.git, '--state-dir', self.task)
+
+    def test_the_options_give_the_env_block(self):
+        settings = self.render(*self.base(), '--telemetry-endpoint', 'http://127.0.0.1:4318', *TELEMETRY_ATTRIBUTES)
+        self.assertEqual(settings['env'], TELEMETRY_ENV)
+        self.assertEqual(list(settings['env']), list(TELEMETRY_ENV))
+
+    def test_another_port_and_a_subset_of_attributes(self):
+        settings = self.render(*self.base(), '--telemetry-endpoint', 'http://127.0.0.1:65535',
+                               '--telemetry-attribute', 'shop.task=X-1', '--telemetry-attribute', 'shop.source=ao')
+        self.assertEqual(settings['env']['OTEL_EXPORTER_OTLP_ENDPOINT'], 'http://127.0.0.1:65535')
+        self.assertEqual(settings['env']['OTEL_RESOURCE_ATTRIBUTES'], 'shop.source=ao,shop.task=X-1')
+        self.assertEqual(self.render(*self.base(), '--telemetry-endpoint', 'http://127.0.0.1:1')['env']
+                         ['OTEL_EXPORTER_OTLP_ENDPOINT'], 'http://127.0.0.1:1')
+
+    def test_attributes_without_an_endpoint_go_to_the_default_endpoint(self):
+        module = load_module()
+        self.assertEqual(module.DEFAULT_TELEMETRY_ENDPOINT, 'http://127.0.0.1:4318')
+        settings = self.render(*self.base(), *TELEMETRY_ATTRIBUTES)
+        self.assertEqual(settings['env'], TELEMETRY_ENV)
+
+    def test_with_telemetry_only_the_env_key_is_added(self):
+        without = self.render(*self.base())
+        with_telemetry = self.render(*self.base(), '--telemetry-endpoint', 'http://127.0.0.1:4318',
+                                     *TELEMETRY_ATTRIBUTES)
+        self.assertNotIn('env', without)
+        del with_telemetry['env']
+        self.assertEqual(with_telemetry, without)
+
+    def test_without_telemetry_the_output_is_unchanged(self):
+        # The exact bytes of the CLI without the options: the render of the module (which has no env key) in the
+        # compact form the CLI always printed.
+        result = self.run_cli(*self.base())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        module = load_module()
+        expected = module.render(template(), self.home, self.work, git_common_dir=self.git, state_dirs=[self.task])
+        self.assertNotIn('env', expected)
+        self.assertEqual(result.stdout, json.dumps(expected, indent=None, separators=(',', ':')) + '\n')
+
+    def test_the_module_renders_the_same(self):
+        module = load_module()
+        attributes = {'shop.task_kind': 'plan', 'shop.epic': 'x', 'shop.task': 'X-1', 'shop.source': 'ao'}
+        settings = module.render(template(), self.home, self.work, git_common_dir=self.git, state_dirs=[self.task],
+                                 telemetry={'endpoint': 'http://127.0.0.1:4318', 'attributes': attributes})
+        self.assertEqual(settings, self.render(*self.base(), '--telemetry-endpoint', 'http://127.0.0.1:4318',
+                                               *TELEMETRY_ATTRIBUTES))
+        self.assertEqual(list(settings['env']), list(TELEMETRY_ENV))
+        self.assertNotIn('env', module.render(template(), self.home, self.work))
+        self.assertNotIn('env', module.render(template(), self.home, self.work, telemetry=None))
+
+    def test_the_variables_are_module_constants(self):
+        # ao-prepare and tools/telemetry use them without a copy; the snippet of interactive sessions has no intervals.
+        module = load_module()
+        self.assertEqual(module.telemetry_env('http://127.0.0.1:4318', {'shop.source': 'ao', 'shop.epic': 'x',
+                                                                         'shop.task': 'X-1', 'shop.task_kind': 'plan'}),
+                         TELEMETRY_ENV)
+        without_intervals = module.telemetry_env('http://127.0.0.1:4318', {'shop.source': 'interactive'},
+                                                 intervals=False)
+        expected = {k: v for k, v in TELEMETRY_ENV.items() if not k.endswith('_EXPORT_INTERVAL')}
+        expected['OTEL_RESOURCE_ATTRIBUTES'] = 'shop.source=interactive'
+        self.assertEqual(without_intervals, expected)
+        self.assertEqual(list(without_intervals), list(expected))
+        self.assertEqual(module.TELEMETRY_ATTRIBUTE_KEYS, ('shop.source', 'shop.epic', 'shop.task', 'shop.task_kind'))
+        for name in ('OTEL_LOG_USER_PROMPTS', 'OTEL_LOG_ASSISTANT_RESPONSES', 'OTEL_LOG_TOOL_DETAILS',
+                     'OTEL_LOG_TOOL_CONTENT', 'OTEL_LOG_RAW_API_BODIES'):
+            self.assertIn((name, '0'), module.TELEMETRY_NO_CONTENT_ENV)
+
+    def test_security_rules_stay_with_telemetry(self):
+        settings = self.render(*self.base(), '--no-network', *TELEMETRY_ATTRIBUTES)
+        without = self.render(*self.base(), '--no-network')
+        del settings['env']
+        self.assertEqual(settings, without)
+
+
+class TelemetryValidationTest(RenderTestCase):
+    """Only http://127.0.0.1:<port> and attributes of the list with values [A-Za-z0-9._-]{1,128}: anything else is
+    exit code 1 (SettingsError), nothing on stdout, also for attempts to get around the check."""
+
+    BAD_ENDPOINTS = (
+        'http://localhost.evil:4318', 'http://127.0.0.1.nip.io:4318', 'http://127.0.0.1@host:4318',
+        'http://user@127.0.0.1:4318', 'http://127.0.0.1:4318@evil:80', 'https://127.0.0.1:4318', 'http://[::1]:4318',
+        'http://127.0.0.1:0', 'http://127.0.0.1:65536', 'http://127.0.0.1:99999', 'http://127.0.0.1:04318',
+        'http://127.0.0.1:00', 'http://127.0.0.1:', 'http://127.0.0.1', 'http://127.0.0.1:4318/v1',
+        'http://127.0.0.1:4318/', 'http://127.0.0.1:4318?x=1', 'http://127.0.0.1:4318#f', 'http://127.0.0.1:4318\n',
+        'http://127.0.0.1:4318 ', ' http://127.0.0.1:4318', 'http://127.0.0.1:４３１８',
+        'HTTP://127.0.0.1:4318', 'http://localhost:4318', 'http://127.1:4318', 'http://0.0.0.0:4318',
+        'http://127.0.0.2:4318', 'http://2130706433:4318', 'http://127.0.0.1:+4318', 'http://127.0.0.1:-1',
+        'http:/127.0.0.1:4318', '//127.0.0.1:4318', '127.0.0.1:4318', '', 'off',
+    )
+    BAD_ATTRIBUTES = (
+        'shop.task=X-1,shop.task=other', 'shop.task=a=b', 'shop.task=', 'shop.task=' + 'a' * 129, 'shop.task=a b',
+        'shop.task=a\nb', 'shop.task=X-1\n', 'shop.task=a ', 'shop.task=zadanie-ż',
+        'shop.task=a ', 'shop.task=a/b', 'shop.task=a%2Cb', 'shop.other=x', 'service.name=x', 'SHOP.TASK=x',
+        'shop.task', '=x', 'shop.task =x', ' shop.task=x',
+    )
+
+    def base(self):
+        return ('--workdir', self.work)
+
+    def test_bad_endpoints_are_refused_with_code_1(self):
+        for endpoint in self.BAD_ENDPOINTS:
+            with self.subTest(endpoint=endpoint):
+                result = self.run_cli(*self.base(), '--telemetry-endpoint', endpoint)
+                self.assertEqual(result.returncode, 1, (endpoint, result.stderr))
+                self.assertEqual(result.stdout, '')
+                self.assertIn('telemetry', result.stderr)
+
+    def test_bad_attributes_are_refused_with_code_1(self):
+        for attribute in self.BAD_ATTRIBUTES:
+            with self.subTest(attribute=attribute):
+                result = self.run_cli(*self.base(), '--telemetry-attribute', 'shop.source=ao',
+                                      '--telemetry-attribute', attribute)
+                self.assertEqual(result.returncode, 1, (attribute, result.stderr))
+                self.assertEqual(result.stdout, '')
+                self.assertIn('telemetry', result.stderr)
+
+    def test_a_duplicate_key_is_refused(self):
+        result = self.run_cli(*self.base(), '--telemetry-attribute', 'shop.task=X-1',
+                              '--telemetry-attribute', 'shop.task=X-2')
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout, '')
+
+    def test_boundary_values_are_accepted(self):
+        value = 'A.z_0-' + 'a' * 122
+        settings = self.render(*self.base(), '--telemetry-endpoint', 'http://127.0.0.1:65535',
+                               '--telemetry-attribute', 'shop.task=' + value, '--telemetry-attribute', 'shop.epic=a')
+        self.assertEqual(settings['env']['OTEL_RESOURCE_ATTRIBUTES'], 'shop.epic=a,shop.task=' + value)
+
+    def test_the_module_refuses_the_same(self):
+        module = load_module()
+        for telemetry in ({'endpoint': 'http://127.0.0.1.nip.io:4318', 'attributes': {}},
+                          {'endpoint': 'http://127.0.0.1:4318', 'attributes': {'shop.task': 'a,b'}},
+                          {'endpoint': 'http://127.0.0.1:4318', 'attributes': {'other': 'a'}},
+                          {'endpoint': 'http://127.0.0.1:4318', 'attributes': {'shop.task': 1}},
+                          {'endpoint': 4318, 'attributes': {}},
+                          {'endpoint': 'http://127.0.0.1:4318', 'attributes': [('shop.task', 'a')]},
+                          {'endpoint': 'http://127.0.0.1:4318', 'attributes': {}, 'headers': 'x'},
+                          # NUL cannot be passed in argv, only through the module
+                          {'endpoint': 'http://127.0.0.1:43\x0018', 'attributes': {}},
+                          {'endpoint': 'http://127.0.0.1:4318', 'attributes': {'shop.task': 'a\x00'}},
+                          'http://127.0.0.1:4318'):
+            with self.subTest(telemetry=telemetry):
+                with self.assertRaises(module.SettingsError):
+                    module.render(template(), self.home, self.work, telemetry=telemetry)
+
+
 class SecurityRulesStayTest(RenderTestCase):
     """No combination of options removes or weakens a rule of the template."""
 

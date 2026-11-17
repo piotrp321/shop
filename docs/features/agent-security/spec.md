@@ -130,6 +130,9 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
   `~/.claude`, pliki innych projektów, baza stanu AO (`$AO_HOME`), kod wykonywany poza sandboxem (AO, `.ao/*`,
   hooki git, wrapper wykonawcy).
 - A4 Sekrety lokalnego stosu (`.env.local` w worktree): generowane na stos, bez wartości poza nim; akceptowane.
+- A5 Telemetria wykonawców (`docs/features/telemetry/spec.md`) w lokalnym stosie `agent-observability` na Macu
+  (OTLP `127.0.0.1:4318`, Grafana `127.0.0.1:3030`): treść pracy wykonawców i dane konta (`user.email`) wobec każdego
+  odbiorcy spoza Maca oraz poprawność danych stosu (koszt, atrybuty zadań) wobec wykonawcy.
 
 **Strony.**
 
@@ -212,6 +215,14 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
     doda aktora (R4, R8, P13). Sprawdzenie: test struktury rulesetów z próbami dodania aktora i sonda:
     `current_user_can_bypass` rulesetów `main-merge` i `epic-merge` z tokenem wykonawcy to `never`; odbiór sprawdza
     `never` także z tokenem użytkownika i puste `bypass_actors` obu rulesetów merge'a w GitHubie.
+16. Telemetria wykonawcy (A5): odziedziczone `OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` (z sesji `/ao-run` albo
+    z powłoki użytkownika) przekierowują eksport albo włączają treść, adres eksportu spoza Maca, wykonawca podaje
+    fałszywe atrybuty własnego procesu → wrapper usuwa te zmienne przed każdym startem binarki, blok `env`
+    w `--settings` ma `0` dla każdego `OTEL_LOG_*`, `render_settings.py` przyjmuje tylko `http://127.0.0.1:<port>`,
+    a atrybuty `shop.*` ustala wrapper poza sandboxem z `AO_TASK_ID` i nazwy `AGENT_AO_HOME` (R2); wykonawca nie zmienia
+    środowiska ani ustawień własnego procesu Claude Code. `OTEL_*` w ustawieniach projektu zatrzymuje P12 (droga 5).
+    Sprawdzenie: testy `render_settings.py` (także próby obejścia adresu: `localhost.evil`, `127.0.0.1.nip.io`,
+    `127.0.0.1@host`, `https://`, `[::1]`, port spoza 1–65535, ścieżka) i testy wrappera z atrapą binarki.
 
 **Luki, które epik świadomie zostawia** (każda z powodem; propozycje osobnych zgłoszeń):
 
@@ -254,6 +265,16 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
   przypięta binarka i wtyczki z `~/.claude/plugins` są zaufane (łańcuch dostaw).
 - `allowLocalBinding` pozwala wykonawcy łączyć się z każdą usługą na `localhost` hosta (potrzebne: QA `/integration`
   na lokalnym stosie).
+- Integralność telemetrii (A5) nie jest zagwarantowana. Przez pętlę zwrotną Bash wykonawcy może wysłać fałszywe
+  punkty OTLP na `127.0.0.1:4318`, także z atrybutami innych zadań, i zalogować się do Grafany (`127.0.0.1:3030`)
+  domyślnym hasłem admina (zgłoszenie piotrp321/agent-observability#3). Przez gniazdo Dockera może usunąć wolumeny
+  `agent-observability_*` albo zatrzymać kontenery stosu (#498). Pętli zwrotnej nie da się zamknąć, bo wykonawcy
+  potrzebują portów własnego stosu compose. Dane stosu to obraz pomocniczy; źródłem prawdy o przebiegach epików jest
+  METRICS (baza AO).
+- Odczyt telemetrii przez Grafanę na pętli zwrotnej (anonimowy Viewer, ryzyko zaakceptowane): wykonawca może odczytać
+  metadane wszystkich sesji w stosie, także innych zadań i sesji interaktywnych użytkownika (`user_email`,
+  identyfikatory konta, koszt, tokeny, modele, nazwy i wyniki narzędzi, epiki i zadania, czasy pracy), i wynieść je
+  przez GitHub. Treści promptów, odpowiedzi i poleceń w stosie nie ma (`OTEL_LOG_*=0`).
 - Przejęcie GitHuba, Anthropic, Dockera, macOS albo hosta; złośliwa wtyczka Claude Code.
 
 ## Rozwiązanie
@@ -304,9 +325,10 @@ osobno (interfejs modułu `render(...)` dla evali EVALS, #495, w tym samym sandb
 <.git>` (opcjonalnie), `--state-dir <katalog>` (powtarzalny: odczyt i zapis), `--read-dir <katalog>` (powtarzalny:
 tylko odczyt), `--claude-tmpdir <katalog>` (katalog tymczasowy Claude Code przebiegu: odczyt i zapis tylko jego
 podkatalogu `claude-<uid>`), `--deny-write <ścieżka>`
-(powtarzalny), `--no-network` (bez domen GitHuba i `allowLocalBinding`), `--no-docker` (bez gniazda Dockera); wynik
-JSON na stdout. Kody wyjścia: 0 ustawienia wygenerowane, 1 ścieżka albo szablon nieprawidłowe (nic na stdout),
-2 błąd wywołania.
+(powtarzalny), `--no-network` (bez domen GitHuba i `allowLocalBinding`), `--no-docker` (bez gniazda Dockera),
+`--telemetry-endpoint <adres>` i `--telemetry-attribute KLUCZ=WARTOŚĆ` (powtarzalna; blok telemetrii, niżej); wynik
+JSON na stdout. Kody wyjścia: 0 ustawienia wygenerowane, 1 ścieżka, szablon, adres albo atrybut telemetrii
+nieprawidłowe (nic na stdout), 2 błąd wywołania.
 
 - Opcje zaostrzające (`--deny-write`, `--no-network`, `--no-docker`) tylko dokładają ograniczenia. Opcje dostępu
   (`--workdir`, `--git-common-dir`, `--state-dir`, `--read-dir`, `--claude-tmpdir`) **rozszerzają** odczyt albo zapis, więc o tym, co
@@ -378,6 +400,21 @@ JSON na stdout. Kody wyjścia: 0 ustawienia wygenerowane, 1 ścieżka albo szabl
   korzystają). W 2.1.311 `blockReadsOutsideWorkingDirectories` ma też część w sandboxie, która blokuje odczyt poza
   katalogami roboczymi także poleceniom Bash: `denyRead` i ta część chronią odczyt niezależnie od siebie (sonda
   z szablonem bez `denyRead` nadal nie widzi kanarka; wyciek pokazuje dopiero szablon bez obu).
+- Telemetria (`docs/features/telemetry/spec.md`, R1): z opcją `--telemetry-*` ustawienia dostają blok `env`
+  (`render(..., telemetry={'endpoint': …, 'attributes': {…}})` w module), bez niej klucza `env` nie ma i wynik jest
+  taki sam jak bez telemetrii (runner EVALS jej nie używa). Blok: `CLAUDE_CODE_ENABLE_TELEMETRY=1`,
+  `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`,
+  `OTEL_EXPORTER_OTLP_ENDPOINT=<adres>`, `OTEL_METRIC_EXPORT_INTERVAL=10000`, `OTEL_LOGS_EXPORT_INTERVAL=5000`, jawne
+  `0` dla `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_ASSISTANT_RESPONSES`, `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`
+  i `OTEL_LOG_RAW_API_BODIES` oraz `OTEL_RESOURCE_ATTRIBUTES` w stałej kolejności kluczy (`shop.source`, `shop.epic`,
+  `shop.task`, `shop.task_kind`). Eksport to ruch sieciowy procesu Claude Code, nie poleceń Bash: z bloku `env`
+  do poleceń Bash przechodzi tylko `CLAUDE_CODE_ENABLE_TELEMETRY`, bez adresu i atrybutów. Adres to dokładnie
+  `http://127.0.0.1:<port>` z portem 1–65535 bez zer wiodących, ścieżki, użytkownika, zapytania i fragmentu
+  (sprawdzany wyrażeniem w całości, nie parserem adresów); bez `--telemetry-endpoint` obowiązuje
+  `DEFAULT_TELEMETRY_ENDPOINT` (`http://127.0.0.1:4318`). Atrybuty: tylko klucze z listy, każdy raz, wartości
+  `[A-Za-z0-9._-]{1,128}`, więc `OTEL_RESOURCE_ATTRIBUTES` nie wymaga kodowania. Adres, zmienne bloku i lista kluczy
+  są stałymi modułu (`telemetry_env(endpoint, attributes, intervals=True)` buduje blok, `intervals=False` bez
+  interwałów).
 
 `tools/agent-security/claude-agent` (wrapper, POSIX sh) jest binarką `--claude-bin` AO:
 
@@ -444,7 +481,24 @@ JSON na stdout. Kody wyjścia: 0 ustawienia wygenerowane, 1 ścieżka albo szabl
   dowiązań);
 - ustawia dla procesu wykonawcy `git` przez HTTPS zamiast SSH
   (`url.https://github.com/.insteadOf` dla `git@github.com:` i `ssh://git@github.com/`) i pomocnika poświadczeń czytającego `GH_TOKEN` (zmienne
-  `GIT_CONFIG_COUNT`/`KEY`/`VALUE`, bez zmian w `.git/config` i `~/.gitconfig`); usuwa `SSH_AUTH_SOCK`.
+  `GIT_CONFIG_COUNT`/`KEY`/`VALUE`, bez zmian w `.git/config` i `~/.gitconfig`); usuwa `SSH_AUTH_SOCK`;
+- przed każdym startem binarki, także `--version` i `auth status`, usuwa ze środowiska wszystkie zmienne `OTEL_*`,
+  `CLAUDE_CODE_ENABLE_TELEMETRY` i `AGENT_OTEL_ENDPOINT`. Nazwy bierze z wyjścia `env` w locale C (błąd `env` albo
+  `sed` to odmowa); wartość z nową linią może wyglądać jak kolejne `NAZWA=wartość`, co najwyżej usuwa wtedy
+  nieustawioną nazwę `OTEL_*`. Nazwy, która nie jest identyfikatorem powłoki (`OTEL_A.B`), `sh` nie usunie, więc
+  zostaje; Claude Code czyta tylko standardowe nazwy `OTEL_*`, które są identyfikatorami;
+- dodaje blok telemetrii z adresem z `AGENT_OTEL_ENDPOINT`, a bez tej zmiennej z `DEFAULT_TELEMETRY_ENDPOINT`
+  `render_settings.py` (wrapper nie ma kopii adresu). `AGENT_OTEL_ENDPOINT=off` wyłącza telemetrię: ustawienia bez
+  bloku `env`, jak bez telemetrii. Inna wartość niż `off` i `http://127.0.0.1:<port>`, także pusta, to odmowa startu
+  (kod 2) z przyczyną z `render_settings.py` na stderr: zły adres mógłby skierować eksport poza Maca. Zmienną ustawia
+  tylko proces spoza sandboxa (sonda, testy, sesja `/ao-run` na polecenie użytkownika). Brak stosu pod adresem nie
+  jest odmową: wykonawca działa bez zmian, a dane przepadają;
+- ustala atrybuty bez bazy AO, z wartości, które już sprawdza: `shop.source=ao`, `shop.epic=<nazwa>` z
+  `AGENT_AO_HOME` (`~/.local/state/ao-<nazwa>`), `shop.task=<AO_TASK_ID>` i `shop.task_kind` z `AO_TASK_ID` po
+  odcięciu prefiksu `<NAZWA>-` (nazwa wielkimi literami): `<liczba>` → `plan`, `INTEGRATION-<liczba>` →
+  `integration`, `FIX-<liczba>` → `fix`, `REPAIR-<liczba>` → `repair`, `FINALIZE` → `finalize`, inaczej (także
+  prefiks innego epiku) `unknown`. Wartość spoza `[A-Za-z0-9._-]{1,128}` (np. `AO_TASK_ID` dłuższy niż 128 znaków,
+  nazwa epiku ze znakiem spoza wzorca) staje się `unknown`; start się nie zatrzymuje.
 
 AO sam (merge zadań do `epic/*`, `gh` AO, `.ao/setup`, `.ao/teardown`) działa jak dziś, z poświadczeniami użytkownika.
 
@@ -713,6 +767,9 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
 | Użytkownik uruchamia `restore`, gdy działa AO | odmowa (`ao-guard.sh`, kod 1) bez zmian z komunikatem; użytkownik zatrzymuje AO albo czeka |
 | Sonda przekracza limit czasu albo kosztu, model nie wykonał przypadku | kod 1 z przyczyną; AO nie startuje (fail-closed) |
 | Wykonawca bez `AO_TASK_ID` albo z nieznanym zadaniem | wrapper odmawia startu; AO notuje nieudaną próbę |
+| `AGENT_OTEL_ENDPOINT` niepoprawny (także pusty) | wrapper odmawia startu (kod 2) z przyczyną na stderr |
+| `AO_TASK_ID` albo nazwa `AGENT_AO_HOME` spoza wzorca atrybutów telemetrii | atrybut `unknown`, start bez zmian |
+| Stos telemetrii wyłączony albo port zamknięty | wykonawca działa bez zmian, dane telemetrii tego przebiegu przepadają |
 | Ruleset `main-merge` albo `epic-merge` nie jest założony | sonda: przypadek bypassu `fail` z przyczyną „brak rulesetu”, kod 1; AO nie startuje; użytkownik zakłada rulesety (R8) |
 | Token wykonawcy ma bypass (`current_user_can_bypass` inne niż `never`, np. ruleset w GitHubie nadal ma aktora) | sonda kod 1 z przyczyną; AO nie startuje; użytkownik usuwa aktora bypass w GitHubie (R8) |
 | PR do `main` albo `epic/*` z czerwonym CI | GitHub odmawia merge'a każdemu; naprawa kolejnym commitem w PR |

@@ -26,6 +26,8 @@ AGENT-ISOLATION (#498).
 - A3 Host: `~/.config/shop/demo-photos.env`, poświadczenia rejestrów Dockera, Keychain, `~/.claude`, pliki innych
   projektów, baza stanu AO (`$AO_HOME`), kod wykonywany poza sandboxem (AO, `.ao/*`, hooki git, wrapper wykonawcy).
 - A4 Sekrety lokalnego stosu (`.env.local` worktree): generowane na stos, bez wartości poza nim; ryzyko przyjęte.
+- A5 Telemetria wykonawców w lokalnym stosie `agent-observability` na Macu: treść pracy i `user.email` wobec odbiorców
+  spoza Maca, poprawność danych stosu wobec wykonawcy.
 
 **Strony.** S1: każdy, kto może pisać w publicznym repozytorium. S2: treść spoza repozytorium czytana w trakcie pracy
 (strony WWW, logi CI z wyjściem zależności). S3: pomyłka agenta bez ataku.
@@ -50,6 +52,7 @@ AGENT-ISOLATION (#498).
 | 13 | Podmiana wrappera, profilu, bazy AO, `events.jsonl`, stanu innego zadania | kopia w `$AO_HOME/agent-security/`, dostęp tylko do katalogu własnego zadania (R2, R7) | sonda |
 | 14 | Kubeconfig produkcji w `KUBE_DIR` w trakcie przebiegu AO | cele montujące `KUBE_DIR` odmawiają przy działającym AO albo wykonawcy; rejestr `KUBE_DIR`, `ao-prepare` odmawia startu (R5, R7) | testy celów i `ao-prepare` |
 | 15 | Merge wykonawcy z pominięciem wymagań rulesetu (`gh pr merge --admin`, REST, GraphQL) | rulesety merge'a bez aktora bypass, token wykonawcy bez Administration (R4, R8) | `tools/rulesets/test_rulesets.py`, sonda: `current_user_can_bypass` = `never` |
+| 16 | Telemetria: odziedziczone `OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` przekierowują eksport albo włączają treść, adres spoza Maca, fałszywe atrybuty własnego procesu | wrapper usuwa te zmienne przed startem binarki, `OTEL_LOG_*=0` w bloku `env`, tylko `http://127.0.0.1:<port>`, atrybuty ustala wrapper (R2) | testy `render_settings.py` (z próbami obejścia adresu) i wrappera z atrapą binarki |
 
 **Luki, które epik świadomie zostawia:**
 
@@ -85,6 +88,13 @@ AGENT-ISOLATION (#498).
   wdrożenia wymaga zgadnięcia SHA commita `main` po squashu.
 - Przypięta binarka Claude Code i wtyczki z `~/.claude/plugins` są zaufane (łańcuch dostaw poza zakresem).
 - `allowLocalBinding` pozwala łączyć się z każdą usługą na `localhost` hosta (potrzebne QA `/integration`).
+- Integralność telemetrii nie jest zagwarantowana. Zapis: Bash wykonawcy może wysłać fałszywe punkty OTLP na
+  `127.0.0.1:4318` (także z atrybutami innych zadań) i zalogować się do Grafany domyślnym hasłem admina
+  (piotrp321/agent-observability#3), a przez Dockera usunąć wolumeny `agent-observability_*` albo zatrzymać stos
+  (#498). Dane stosu są pomocnicze; źródłem prawdy o przebiegach jest METRICS (baza AO).
+- Odczyt telemetrii przez anonimowego Viewera Grafany na pętli zwrotnej (ryzyko zaakceptowane): metadane wszystkich
+  sesji w stosie (`user_email`, koszt, tokeny, narzędzia i ich wyniki, zadania, czasy pracy), które wykonawca może
+  wynieść przez GitHub. Treści promptów, odpowiedzi i poleceń w stosie nie ma.
 - Przejęcie GitHuba, Anthropic, Dockera, macOS albo hosta; złośliwa wtyczka Claude Code.
 
 ## Decyzja
@@ -109,6 +119,13 @@ AGENT-ISOLATION (#498).
   (także `-d` i `-t`) na macOS pisze do katalogu tymczasowego użytkownika (`/var/folders/…/T`), którego wykonawca nie
   zapisuje, a skrypty repozytorium wołają goły `mktemp -d`; nakładka daje systemowemu `mktemp` jawny szablon w `TMPDIR`
   zadania, a wywołania z szablonem zostawia bez zmian.
+  Telemetria wykonawców (`docs/features/telemetry/spec.md`) to ruch sieciowy samego procesu Claude Code na pętlę
+  zwrotną Maca (`http://127.0.0.1:<port>`, domyślnie `:4318`), poza sandboxem Bash. Konfiguruje ją blok `env`
+  w `--settings` z `render_settings.py`, z `0` dla każdego `OTEL_LOG_*`; do poleceń Bash przechodzi z niego tylko
+  `CLAUDE_CODE_ENABLE_TELEMETRY`. Wrapper usuwa odziedziczone `OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` przed każdym
+  startem binarki, adres bierze z `AGENT_OTEL_ENDPOINT` (`off` wyłącza telemetrię, adres inny niż
+  `http://127.0.0.1:<port>` to odmowa startu), a atrybuty `shop.source`, `shop.epic`, `shop.task` i `shop.task_kind`
+  ustala sam z `AGENT_AO_HOME` i `AO_TASK_ID` (wartość spoza wzorca to `unknown`, bez odmowy).
 - **R3. Docker.** Docker Desktop udostępnia kontenerom tylko `~/Development/claude` i katalogi tymczasowe.
 - **R4. Token wykonawców.** Fine-grained PAT tylko dla `shop`, bez Administration, Deployments, Environments, Secrets
   i Variables, czytany z Keychain wyłącznie przez wrapper i sondę; wykonawca nigdy nie startuje z tokenem użytkownika.
@@ -149,6 +166,11 @@ AGENT-ISOLATION (#498).
   produkcyjnych i pliki innych procesów, więc zapis tam nie wchodzi w grę. Zmiana skryptów repozytorium na jawne
   szablony w `TMPDIR` byłaby poprawniejsza u źródła, ale to zmiana poza zakresem epiku (osobne zgłoszenie); nakładka
   nie wymaga jej i nie szkodzi skryptom, które już mają szablon.
+- Telemetria przez blok `env` w `--settings`, a nie przez zmienne środowiska wrappera: adres i atrybuty nie trafiają
+  do środowiska poleceń Bash wykonawcy, a ustawień własnego procesu Claude Code wykonawca nie zmienia. Niepoprawny
+  adres to jedyny błąd telemetrii, który zatrzymuje start, bo mógłby skierować eksport z `user.email` poza Maca; brak
+  stosu albo eksportu niczego nie zatrzymuje (dane przepadają). Pętli zwrotnej nie da się zamknąć, bo wykonawcy
+  potrzebują portów własnego stosu compose, więc danych stosu nie traktujemy jako dowodu.
 - Pełna izolacja (osobny użytkownik systemu, lifecycle AO w sandboxie, osobna tożsamość GitHub agentów) wymaga zmian
   w zamrożonym AO i nowej infrastruktury, więc jest osobnym epikiem (#498).
 
@@ -163,6 +185,8 @@ AGENT-ISOLATION (#498).
 - Sonda działa przed każdym startem AO (krótki przebieg Haiku, limit 1 USD jako zabezpieczenie).
 - Zbyt wąski profil psuje pracę wykonawcy w rzadkim przypadku: bloker z `Operation not permitted` i poprawka profilu
   w PR. Epik zmieniający `.claude/settings*.json` albo `.mcp.json` nie idzie przez AO.
+- Liczby z dashboardu telemetrii to obraz pomocniczy: wykonawca może je dopisać albo usunąć. Wnioski o kosztach
+  i przebiegach opieramy na METRICS.
 
 ## Zalecenia dla użytkownika
 

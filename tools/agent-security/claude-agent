@@ -7,12 +7,16 @@
 #                                               --setting-sources project
 #
 # Environment: AGENT_CLAUDE_BIN (the pinned binary), AGENT_AO_HOME (~/.local/state/ao-<name>, set by ao-prepare),
-# AO_TASK_ID (set by AO). The settings come from render_settings.py next to this script: the working directory, the
-# .git of the main clone, the task directory $AGENT_AO_HOME/tasks/$AO_TASK_ID (its briefs and attempts write-protected)
-# and, for <EPIC>-INTEGRATION-<n>, $AGENT_AO_HOME/epics/<epic>/integration.
+# AO_TASK_ID (set by AO), AGENT_OTEL_ENDPOINT (optional, set only outside the sandbox: the telemetry endpoint
+# http://127.0.0.1:<port>, or off). The settings come from render_settings.py next to this script: the working
+# directory, the .git of the main clone, the task directory $AGENT_AO_HOME/tasks/$AO_TASK_ID (its briefs and attempts
+# write-protected), for <EPIC>-INTEGRATION-<n> $AGENT_AO_HOME/epics/<epic>/integration, and the telemetry block
+# (the default endpoint of render_settings.py; attributes shop.source=ao, shop.epic=<name>, shop.task=$AO_TASK_ID,
+# shop.task_kind). No inherited OTEL_*, CLAUDE_CODE_ENABLE_TELEMETRY or AGENT_OTEL_ENDPOINT reaches the binary.
 #
 # Refuses to start (exit 2, the reason on stderr) when a variable, the task, the template or the executor token is
-# missing, when a path goes through a symlink, when arguments would replace the profile, and when
+# missing, when a path goes through a symlink, when arguments would replace the profile, when AGENT_OTEL_ENDPOINT is
+# set to anything but off or http://127.0.0.1:<port> (also when empty), and when
 # .claude/settings.json, .claude/settings.local.json or .mcp.json differ from the merge-base of HEAD with main in the
 # branch, the index, the working tree or as untracked files (P12: git diff against the merge-base plus a comparison of
 # the raw content with the merge-base blob), and when the index marks one of them assume-unchanged or skip-worktree.
@@ -46,6 +50,28 @@ g() {
         git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.commitGraph=false \
         -c advice.graftFileDeprecated=false "$@"
 }
+
+# Telemetry (spec docs/features/telemetry/spec.md, R2). The endpoint comes only from AGENT_OTEL_ENDPOINT (unset: the
+# default of render_settings.py; off: no telemetry), which the wrapper takes out of the environment. Inherited OTEL_*
+# and CLAUDE_CODE_ENABLE_TELEMETRY (from the /ao-run session or the user's shell) could redirect the export or turn
+# content on, so none of them reaches the binary, also with --version and auth status. The names come from env (in the
+# C locale, failing closed): a value with a newline can look like further NAME=value lines, which at worst unsets an
+# OTEL_* name that is not set. A name that is not a shell identifier (OTEL_A.B) cannot be unset in sh and is left;
+# Claude Code reads only the standard OTEL_* names, which are identifiers.
+otel_endpoint=
+otel_endpoint_set=
+if [ -n "${AGENT_OTEL_ENDPOINT+set}" ]; then
+    otel_endpoint=$AGENT_OTEL_ENDPOINT
+    otel_endpoint_set=1
+fi
+environment=$(env) || die "env nie wypisał środowiska: nie można usunąć odziedziczonych zmiennych OTEL_*"
+otel_names=$(printf '%s\n' "$environment" |
+    LC_ALL=C sed -n 's/^\(OTEL_[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_]*\)=.*/\1/p') ||
+    die "nie można ustalić odziedziczonych zmiennych OTEL_*"
+for otel_name in $otel_names; do
+    unset "$otel_name"
+done
+unset AGENT_OTEL_ENDPOINT CLAUDE_CODE_ENABLE_TELEMETRY environment otel_names
 
 [ -n "${AGENT_CLAUDE_BIN:-}" ] || die "brak AGENT_CLAUDE_BIN (binarka wersji przypiętej przez AO, z ao-prepare)"
 [ -f "$AGENT_CLAUDE_BIN" ] && [ -x "$AGENT_CLAUDE_BIN" ] || die "AGENT_CLAUDE_BIN $AGENT_CLAUDE_BIN nie jest plikiem wykonywalnym"
@@ -252,12 +278,55 @@ if ! real_dir "$claude_tmp" || [ -z "$(find "$claude_tmp" -prune -type d -user "
 fi
 mkdir -m 700 "$claude_tmp/claude-$(id -u)" || die "nie można utworzyć $claude_tmp/claude-$(id -u)"
 
+# The telemetry attributes of the task (spec TELEMETRY R2), from values checked above. A value outside
+# [A-Za-z0-9._-]{1,128} becomes unknown: render_settings.py would refuse it, and the data of a task must not stop its
+# start. The characters are spelt out, because a range in a shell pattern depends on the locale.
+attribute_value() {
+    case $1 in
+    '' | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-]*) printf unknown ;;
+    *) if [ "${#1}" -le 128 ]; then printf '%s' "$1"; else printf unknown; fi ;;
+    esac
+}
+digits_only() {
+    case $1 in '' | *[!0123456789]*) return 1 ;; esac
+}
+# The kind of an AO task after the prefix <NAME>- (the epic name in capitals): <n> plan, INTEGRATION-<n>, FIX-<n>,
+# REPAIR-<n>, FINALIZE; anything else (also the prefix of another epic) unknown.
+task_kind=unknown
+task_prefix=$(printf '%s' "$name" | LC_ALL=C tr abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ)- || task_prefix=
+task_rest=${AO_TASK_ID#"$task_prefix"}
+if [ -n "$task_prefix" ] && [ "$task_rest" != "$AO_TASK_ID" ]; then
+    case $task_rest in
+    INTEGRATION-*) digits_only "${task_rest#INTEGRATION-}" && task_kind=integration ;;
+    FIX-*) digits_only "${task_rest#FIX-}" && task_kind=fix ;;
+    REPAIR-*) digits_only "${task_rest#REPAIR-}" && task_kind=repair ;;
+    FINALIZE) task_kind=finalize ;;
+    *) digits_only "$task_rest" && task_kind=plan ;;
+    esac
+fi
+epic_attribute=$(attribute_value "$name")
+task_attribute=$(attribute_value "$AO_TASK_ID")
+
 integration_opt=''
 [ -n "$integration_dir" ] && integration_opt="--state-dir $integration_dir"
-# shellcheck disable=SC2086 # integration_opt is an option list built above, intentionally word-split
-settings=$(python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
-    --state-dir "$task_dir" $integration_opt --claude-tmpdir "$claude_tmp" --read-dir "$overlay_dir" \
-    --deny-write "$overlay_dir" --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts") || die "render_settings.py nie wygenerował ustawień"
+render() {
+    # shellcheck disable=SC2086 # integration_opt is an option list built above, intentionally word-split
+    python3 "$here/render_settings.py" --workdir "$workdir" --git-common-dir "$git_dir" \
+        --state-dir "$task_dir" $integration_opt --claude-tmpdir "$claude_tmp" --read-dir "$overlay_dir" \
+        --deny-write "$overlay_dir" --deny-write "$task_dir/briefs" --deny-write "$task_dir/attempts" "$@"
+}
+render_with_telemetry() {
+    render "$@" --telemetry-attribute shop.source=ao --telemetry-attribute "shop.epic=$epic_attribute" \
+        --telemetry-attribute "shop.task=$task_attribute" --telemetry-attribute "shop.task_kind=$task_kind"
+}
+if [ -z "$otel_endpoint_set" ]; then
+    settings=$(render_with_telemetry) || die "render_settings.py nie wygenerował ustawień"
+elif [ "$otel_endpoint" = off ]; then
+    settings=$(render) || die "render_settings.py nie wygenerował ustawień"
+else
+    settings=$(render_with_telemetry --telemetry-endpoint "$otel_endpoint") ||
+        die "render_settings.py nie wygenerował ustawień (adres telemetrii z AGENT_OTEL_ENDPOINT: '$otel_endpoint'; dozwolone http://127.0.0.1:<port> albo off)"
+fi
 
 unset SSH_AUTH_SOCK
 TMPDIR=$run_tmp/tmp
