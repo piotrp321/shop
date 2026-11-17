@@ -9,10 +9,13 @@ use App\Catalog\Application\Port\ProductOfferFacts;
 use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Port\SearchIndexMaintenance;
 use App\Catalog\Application\Port\SearchIndexRebuildLock;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Synchronous rebuild of the search index from the database and the offer facts: a new physical index is filled in
  * batches, verified and the alias is switched to it in one request. A failure of the offer facts stops the rebuild.
+ * Every written batch is logged with the documents done so far and their rate.
  * Not an online rebuild: writes made through the alias while it runs go to the previous index (see the spec,
  * "Ograniczenia tej przebudowy").
  */
@@ -25,6 +28,7 @@ final readonly class ProductSearchIndexRebuilder
         private ProductDocumentBuilder $builder,
         private ProductOfferFacts $offers,
         private Clock $clock,
+        private LoggerInterface $logger = new NullLogger(),
     ) {
     }
 
@@ -123,6 +127,7 @@ final readonly class ProductSearchIndexRebuilder
     {
         $written = 0;
         $afterId = null;
+        $startedAt = self::seconds($this->clock->now());
         while (true) {
             $version = ProductIndexing::version($this->clock->now());
             $page = $this->source->page($afterId, $batchSize);
@@ -139,7 +144,18 @@ final readonly class ProductSearchIndexRebuilder
             }
             $written += \count($page);
             $afterId = $page[array_key_last($page)]->id;
+            $elapsed = self::seconds($this->clock->now()) - $startedAt;
+            $this->logger->info('Search index rebuild progress.', [
+                'index' => $index,
+                'documents' => $written,
+                'documents_per_second' => $elapsed > 0 ? round($written / $elapsed, 1) : null,
+            ]);
         }
+    }
+
+    private static function seconds(\DateTimeImmutable $time): float
+    {
+        return (float) $time->format('U.u');
     }
 
     private function discard(string $new, RebuildReport $report): RebuildReport
