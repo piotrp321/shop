@@ -358,7 +358,7 @@ wykonawcy: spec mówi „zadania tego `kind`” bez wskazania, który; bez warto
 Wynik (JSON): `before` i `after` (`epics`: epiki z pomiarem, `n`: próbki (zadania albo epiki), `n_epics`, `median`, `p25`,
 `p75`; kwartyle metodą interpolacji liniowej między rangami; `estimated`: `true`, gdy któraś użyta próbka pochodzi
 z komórki `value.by_task_role` z `estimated: true` albo `incomplete: true`, co w `decide` też oznacza wartość szacowaną, albo gdy
-pominięto zadanie, w którym rola działała z nieznaną wartością (`usd` `null`): okno jest wtedy niepełne; tylko
+pominięto zadanie, w którym rola działała z nieznaną wartością (`usd` `null`), także gdy przez to epik nie ma żadnej próbki (jest pominięty, z pozycją w `gaps`): okno jest wtedy niepełne; tylko
 D1, pozostałe miary są dokładne i mają `false`), `estimated` (na poziomie wyniku: `true`, gdy szacowane jest któreś okno;
 dotyczy wtedy też `diff`; liczby szacowane są pokazywane z „≈”), `diff` (`value` w jednostce miary i `pct` w procentach różnicy
 median; `pct` `null` przy medianie „przed” równej 0), `message` (`za mało danych` i wtedy `diff` `null`, a `reasons` mówi

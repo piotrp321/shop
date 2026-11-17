@@ -299,6 +299,24 @@ class D1Test(EffectEnv):
         self.assertIs(result['after']['estimated'], True)
         self.assertIs(result['estimated'], True)
 
+    def test_an_epic_left_out_entirely_for_an_unknown_role_value_marks_the_window_estimated_with_a_gap(self):
+        def unknown_role_everywhere(record):
+            for n in range(5):
+                record['value']['by_task_role']['P-%d' % n]['code-reviewer'] = {
+                    'usd': None, 'estimated': True, 'tokens': {}, 'estimated_tokens': []}
+            return record
+        store_records(self.state, *[self.role_epic('b%d' % i, i, i + 1, 1.0) for i in range(1, 9)],
+                      *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5) for i in range(1, 6)],
+                      *[unknown_role_everywhere(self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5)) for i in (6, 7, 8)])
+        result = self.result('D1:code-reviewer')
+        self.assertEqual(result['after']['epics'], ['a1', 'a2', 'a3', 'a4', 'a5'])     # a6-a8 have no sample at all
+        self.assertIsNotNone(result['diff'])
+        self.assertIs(result['before']['estimated'], False)
+        self.assertIs(result['after']['estimated'], True)
+        self.assertIs(result['estimated'], True)
+        for epic_name in ('a6', 'a7', 'a8'):
+            self.assertTrue(any(epic_name in g and 'okno po' in g for g in result['gaps']), result['gaps'])
+
     def test_a_role_that_never_acted_has_no_level_and_not_enough_data(self):
         store_records(self.state, *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5) for i in range(1, 4)])
         result = self.result('D1:qa-adversarial')

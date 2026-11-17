@@ -2741,8 +2741,9 @@ def role_estimated(record, role, kind):
 
 def window_stats(records, samples_of, gaps, label, missing='brak miary', estimated_of=None):
     """{epics, n, n_epics, median, p25, p75, estimated} of the samples of the records of a window; a record whose
-    samples are unknown (None) is left out with a gap. `estimated`: a record that has samples is estimated by
-    `estimated_of` (the measures that are not computed from estimated values have none)."""
+    samples are unknown (None) is left out with a gap. `estimated`: a record is estimated by `estimated_of` (the
+    measures that are not computed from estimated values have none); a record with no samples left because the role
+    value is unknown is left out with a gap and makes the window estimated."""
     values, epics, estimated = [], [], False
     for record in records:
         found = samples_of(record)
@@ -2752,6 +2753,9 @@ def window_stats(records, samples_of, gaps, label, missing='brak miary', estimat
             values.extend(found)
             epics.append(str(record.get('epic')))
             estimated = estimated or bool(estimated_of and estimated_of(record))
+        elif estimated_of and estimated_of(record):
+            estimated = True                            # left out for an unknown value: the window is incomplete
+            gaps.add('effect', 'epik %s (okno %s): wartość roli nieznana, pominięty' % (record.get('epic'), label))
     ordered = sorted(values)
     stat = lambda f: round(percentile(ordered, f), 4) if ordered else None
     return {'epics': epics, 'n': len(values), 'n_epics': len(epics),
@@ -2795,7 +2799,7 @@ def build_effect(records, key, at, config):
     if rule == 'D1':
         level_kind = role_kind(before + after, subject)
         samples_of = (lambda r: role_samples(r, subject, level_kind)) if level_kind else (lambda r: [])
-        estimated_of = lambda r: role_estimated(r, subject, level_kind)
+        estimated_of = (lambda r: role_estimated(r, subject, level_kind)) if level_kind else None
     elif rule == 'D2':
         samples_of = plan_work_samples
     else:
