@@ -52,6 +52,22 @@ trait RunsDemoDataSteps
         $this->succeeds('demo-data:photos');
     }
 
+    /**
+     * The steps of the catalog and of the prices (step 3: the prices with their history, then the promotions and the
+     * discount codes); the checks of demo-data:verify need both.
+     */
+    private function generatedSteps(): void
+    {
+        $this->catalogSteps();
+        $this->pricingSteps();
+    }
+
+    private function pricingSteps(): void
+    {
+        $this->succeeds('demo-data:prices');
+        $this->succeeds('demo-data:promotions');
+    }
+
     private function int(mixed $value): int
     {
         return Sql::int($value);
