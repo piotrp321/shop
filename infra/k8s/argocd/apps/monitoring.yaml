@@ -85,8 +85,9 @@ spec:
           enabled: true
           destinations: [grafana-metrics]
           # The allowed metrics (the free plan of Grafana Cloud holds 10 thousand active series): the default list of the chart
-          # (what the Kubernetes dashboards of Grafana Cloud need) plus the metrics of the alerts (spec, O6), named here so that
-          # a change of the default list in a new version of the chart cannot take them away.
+          # (what the Kubernetes dashboards of Grafana Cloud need) plus the metrics of the alerts (spec, O6) and of hypercare of
+          # /oncall (the image tag and owner of a pod, its readiness, the restarts; docs/features/oncall/spec.md), named here so
+          # that a change of the default list in a new version of the chart cannot take them away.
           kube-state-metrics:
             metricsTuning:
               useDefaultAllowList: true
@@ -99,6 +100,10 @@ spec:
                 - kube_deployment_spec_replicas
                 - kube_statefulset_status_replicas_ready
                 - kube_statefulset_replicas
+                - kube_pod_container_info
+                - kube_pod_owner
+                - kube_pod_status_ready
+                - kube_pod_container_status_restarts_total
         hostMetrics:
           enabled: true
           destinations: [grafana-metrics]

@@ -155,7 +155,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   kontrolera DaemonSetów i `ownerReferences`, bez etykiet, oraz odrzucenie `priorityClassName` z prefiksem `system-` bez
   wyjątku; w renderze dostęp do hosta ma tylko DaemonSet node-exportera, a klasy priorytetu systemu żaden workload; polityka
   Service przy tworzeniu i zmianie dopuszcza tylko typ `ClusterIP` bez `externalIPs`, a każdy Service renderu jest `ClusterIP`;
-  polityka tokenów na sekrety; lista dozwolonych metryk niepusta i z metrykami alertów, widoczna w
+  polityka tokenów na sekrety; lista dozwolonych metryk niepusta, z metrykami alertów i metrykami, od których zależy hypercare `/oncall` (`kube_pod_container_info`, `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`), widoczna w
   konfiguracji Alloy; reguły alertów synchronizuje tylko cel `grafana-alerting` do API importu Grafany (`/api/convert`, token
   `GRAFANA_ALERTING_TOKEN`, nagłówek źródła danych, tenant `1`), a żadna funkcja ani telemetria chartu nie wysyła do niego metryk; budżet węzła: `shop` i `monitoring` razem do 7 vCPU requestów i 20 GiB limitów, z jawnymi zasobami Alloy,
   jego reloadera, operatora, kube-state-metrics i node-exportera; obraz Alloy w `tools.sh` to tag z chartu i z manifestu),
