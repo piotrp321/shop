@@ -6,15 +6,17 @@ namespace App\DemoData\Console;
 
 use App\DemoData\Profile\RunContextFactory;
 use App\DemoData\Verify\CatalogVerifier;
+use App\DemoData\Verify\PricingVerifier;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * The consistency check after the load (the last step of bin/generate-demo, also on its own). For now the catalog
- * checks: a published product without a variant, the counts of the tables against the profile, the slugs of the tail
- * (unique, different from the slugs of fixtures/catalog.yaml).
+ * The consistency check after the load (the last step of bin/generate-demo, also on its own). The catalog checks: a
+ * published product without a variant, the counts of the tables against the profile, the slugs of the tail (unique,
+ * different from the slugs of fixtures/catalog.yaml). The price checks: a variant without a price or history, a price
+ * that is not the rule of Pricing, the promotions (ended, at most 1000 variants, no overlap) and the discount codes.
  * Exit codes: 0 no violation, 1 violations (listed) or a bad option.
  */
 #[AsCommand(name: 'demo-data:verify', description: 'Checks that the generated data is consistent; lists the violations.')]
@@ -23,6 +25,7 @@ final readonly class VerifyCommand
     public function __construct(
         private RunContextFactory $contexts,
         private CatalogVerifier $catalog,
+        private PricingVerifier $pricing,
     ) {
     }
 
@@ -45,7 +48,7 @@ final readonly class VerifyCommand
             return Command::FAILURE;
         }
 
-        $violations = $this->catalog->violations($context);
+        $violations = [...$this->catalog->violations($context), ...$this->pricing->violations($context)];
         if ([] !== $violations) {
             $io->error(\sprintf('%d violation(s):', \count($violations)));
             $io->listing($violations);

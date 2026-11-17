@@ -47,7 +47,7 @@ final readonly class PricingLoader
     {
         $products = $this->products($context);
         $prices = new PriceGenerator($this->dictionaries, $context->namespace, $context->anchor, $context->profile->staff);
-        $byVariant = PromotionPlanner::byVariant($this->planner($context, $products)->plan());
+        $byVariant = PromotionPlanner::byVariant(PromotionPlanner::forRun($this->dictionaries, $context)->plan());
         $totals = ['parts' => 0, 'variants' => 0, 'entries' => 0];
 
         for ($part = $worker; $part < $context->productParts(); $part += $workers) {
@@ -70,7 +70,7 @@ final readonly class PricingLoader
      */
     public function loadPromotions(RunContext $context): array
     {
-        $promotions = $this->planner($context, $this->products($context))->plan();
+        $promotions = PromotionPlanner::forRun($this->dictionaries, $context)->plan();
         $codes = new DiscountCodePlan($context->namespace, $context->anchor)->codes();
 
         $variants = 0;
@@ -103,11 +103,6 @@ final readonly class PricingLoader
     private function products(RunContext $context): ProductGenerator
     {
         return new ProductGenerator($this->dictionaries, $context->namespace, $context->anchor, $context->profile->products, $context->partSize);
-    }
-
-    private function planner(RunContext $context, ProductGenerator $products): PromotionPlanner
-    {
-        return new PromotionPlanner($this->dictionaries, $products, $context->namespace, $context->anchor, $context->profile->products, $context->partSize);
     }
 
     /**

@@ -42,4 +42,14 @@ final class Sql
 
         throw new \UnexpectedValueException(\sprintf('Expected a string from the database, got %s.', get_debug_type($value)));
     }
+
+    /**
+     * A PostgreSQL array literal of strings, bound as one parameter and cast on the statement (`?::text[]`, `?::uuid[]`).
+     *
+     * @param list<string> $values
+     */
+    public static function textArray(array $values): string
+    {
+        return '{'.implode(',', array_map(static fn (string $value): string => '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"', $values)).'}';
+    }
 }

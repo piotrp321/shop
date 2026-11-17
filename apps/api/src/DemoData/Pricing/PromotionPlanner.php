@@ -9,6 +9,7 @@ use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
 use App\DemoData\Catalog\ProductType;
 use App\DemoData\Identity\DemoUuid;
+use App\DemoData\Profile\RunContext;
 use App\DemoData\Random\Prng;
 use App\Pricing\Domain\Promotion\PercentOff;
 use App\Pricing\Domain\Promotion\Promotion;
@@ -63,6 +64,16 @@ final class PromotionPlanner
         foreach ($dictionaries->departments() as $department) {
             $this->departments[$department['slug']] = $department['name'];
         }
+    }
+
+    /**
+     * The planner of a run: the promotions over the products of its profile.
+     */
+    public static function forRun(Dictionaries $dictionaries, RunContext $context): self
+    {
+        $products = new ProductGenerator($dictionaries, $context->namespace, $context->anchor, $context->profile->products, $context->partSize);
+
+        return new self($dictionaries, $products, $context->namespace, $context->anchor, $context->profile->products, $context->partSize);
     }
 
     /**

@@ -18,8 +18,6 @@ use Doctrine\DBAL\Connection;
  */
 final readonly class CatalogVerifier
 {
-    private const int LISTED = 10;
-
     public function __construct(
         private Connection $connection,
         private Dictionaries $dictionaries,
@@ -50,10 +48,10 @@ final readonly class CatalogVerifier
     {
         /** @var list<string> $slugs */
         $slugs = $this->connection->fetchFirstColumn(
-            "SELECT p.slug FROM catalog_product p WHERE p.status = 'published' AND NOT EXISTS (SELECT 1 FROM catalog_product_variant v WHERE v.product_id = p.id) ORDER BY p.slug LIMIT ".(self::LISTED + 1),
+            "SELECT p.slug FROM catalog_product p WHERE p.status = 'published' AND NOT EXISTS (SELECT 1 FROM catalog_product_variant v WHERE v.product_id = p.id) ORDER BY p.slug LIMIT ".(Listing::SHOWN + 1),
         );
 
-        return $this->listed('A published product has no variant', $slugs);
+        return Listing::of('A published product has no variant', $slugs);
     }
 
     /**
@@ -93,7 +91,7 @@ final readonly class CatalogVerifier
         // go from 1 to the number of products of the profile.
         $row = $this->connection->fetchAssociative(
             "SELECT count(*) AS products, count(DISTINCT substring(slug from '-([0-9]+)\$')) AS numbers, count(*) FILTER (WHERE slug !~ '-[0-9]+\$') AS unnumbered, coalesce(max(substring(slug from '-([0-9]+)\$')::int) FILTER (WHERE slug ~ '-[0-9]+\$'), 0) AS highest FROM catalog_product WHERE NOT (slug = ANY(?::text[]))",
-            [$this->textArray($seedSlugs)],
+            [Sql::textArray($seedSlugs)],
         );
         if (false === $row) {
             return [];
@@ -133,7 +131,7 @@ final readonly class CatalogVerifier
         }
         sort($taken);
 
-        return $this->listed('The slug of a catalog.yaml product belongs to another product', $taken);
+        return Listing::of('The slug of a catalog.yaml product belongs to another product', $taken);
     }
 
     /**
@@ -141,29 +139,6 @@ final readonly class CatalogVerifier
      */
     private function generatedProducts(array $seedSlugs): int
     {
-        return Sql::int($this->connection->fetchOne('SELECT count(*) FROM catalog_product WHERE NOT (slug = ANY(?::text[]))', [$this->textArray($seedSlugs)]));
-    }
-
-    /**
-     * @param list<string> $values
-     */
-    private function textArray(array $values): string
-    {
-        return '{'.implode(',', array_map(static fn (string $value): string => '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"', $values)).'}';
-    }
-
-    /**
-     * @param list<string> $items
-     *
-     * @return list<string>
-     */
-    private function listed(string $what, array $items): array
-    {
-        if ([] === $items) {
-            return [];
-        }
-        $shown = \array_slice($items, 0, self::LISTED);
-
-        return [\sprintf('%s: %s%s.', $what, implode(', ', $shown), \count($items) > self::LISTED ? ' and more' : '')];
+        return Sql::int($this->connection->fetchOne('SELECT count(*) FROM catalog_product WHERE NOT (slug = ANY(?::text[]))', [Sql::textArray($seedSlugs)]));
     }
 }
