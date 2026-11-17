@@ -92,7 +92,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   proces, po cenach) oraz `demo-data:verify` (kontrole katalogu: opublikowany produkt bez wariantu, liczby w tabelach
   różne od profilu, kategorie ogona niekompletne, slug produktu z ogona bez numeru, z powtórzonym numerem albo numerem
   powyżej liczby produktów profilu, slug produktu z `catalog.yaml` należący do innego produktu; kontrole cen: wariant
-  bez ceny bieżącej albo bez wpisu historii, cena bieżąca różna od ostatniego wpisu historii, cena bez wariantu, netto,
+  bez ceny bieżącej albo bez wpisu historii, cena bieżąca różna od ostatniego wpisu historii (w `small` wszystkie warianty, w większych profilach deterministyczna próbka co 1 na `products / 300000`), cena bez wariantu, netto,
   VAT i stawka próbki cen różne od reguły Pricing, liczba wygenerowanych promocji i kodów różna od planu, promocja
   niezakończona przed chwilą odniesienia, z więcej niż 1000 wariantów albo nakładająca się na innej na wariancie,
   wariant promocji bez ceny w chwili jej startu albo ze zmianą ceny w jej trakcie, kod niezakończony;

@@ -28,6 +28,8 @@ use Doctrine\DBAL\Connection;
 final readonly class PricingVerifier
 {
     private const int SAMPLE = 2_000;
+    /** The check of the last entry reads the history of every variant it looks at: it covers one variant in this many products of the profile (all in the small profiles). */
+    private const int PRODUCTS_PER_CHECKED_VARIANT = 300_000;
 
     public function __construct(
         private Connection $connection,
@@ -51,7 +53,7 @@ final readonly class PricingVerifier
         return [
             ...$this->variantsWithout('pricing_variant_price', 'A variant has no current price', $seedSlugs),
             ...$this->variantsWithout('pricing_price_history', 'A variant has no price history entry', $seedSlugs),
-            ...$this->currentPriceNotLastEntry($seedSlugs),
+            ...$this->currentPriceNotLastEntry($seedSlugs, max(1, intdiv($context->profile->products, self::PRODUCTS_PER_CHECKED_VARIANT))),
             ...$this->pricesWithoutVariant(),
             ...$this->breakdowns($seedSlugs),
             ...$this->promotionCount(\count($promotions), $promotionIds),
@@ -80,18 +82,20 @@ final readonly class PricingVerifier
     }
 
     /**
+     * @param int $every one variant in this many is checked (1: all), a deterministic sample by the id of the variant
+     *
      * @return list<string>
      */
-    private function currentPriceNotLastEntry(string $seedSlugs): array
+    private function currentPriceNotLastEntry(string $seedSlugs, int $every): array
     {
         /** @var list<string> $slugs */
         $slugs = $this->connection->fetchFirstColumn(
             'SELECT DISTINCT p.slug FROM pricing_variant_price pr JOIN catalog_product_variant v ON v.id = pr.variant_id JOIN catalog_product p ON p.id = v.product_id
              JOIN LATERAL (SELECT * FROM pricing_price_history h WHERE h.variant_id = pr.variant_id ORDER BY h.changed_at DESC, h.id DESC LIMIT 1) l ON true
-             WHERE NOT (p.slug = ANY(?::text[]))
+             WHERE NOT (p.slug = ANY(?::text[])) AND (1 = ? OR abs(hashtext(pr.variant_id::text)) % ? = 0)
                AND (l.gross_amount, l.net_amount, l.vat_amount, l.vat_rate_bp, l.tax_class, l.currency, l.changed_at) IS DISTINCT FROM (pr.gross_amount, pr.net_amount, pr.vat_amount, pr.vat_rate_bp, pr.tax_class, pr.currency, pr.updated_at)
              ORDER BY p.slug LIMIT '.(Listing::SHOWN + 1),
-            [$seedSlugs],
+            [$seedSlugs, $every, $every],
         );
 
         return Listing::of('The current price of a variant is not the last entry of its history (products)', $slugs);

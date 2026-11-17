@@ -167,6 +167,21 @@ final class VerifyStepTest extends KernelTestCase
         self::assertStringContainsString('The current price of a variant is not the last entry of its history', $tester->getDisplay());
     }
 
+    public function testALargeProfileChecksTheLastEntryOfASampleOfTheVariants(): void
+    {
+        $this->generatedSteps();
+        $connection = $this->connection();
+        // --products 600000 makes the sample one variant in two; the counts of the profile then differ, which is not what is looked at.
+        $inSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE abs(hashtext(variant_id::text)) % 2 = 0 ORDER BY variant_id LIMIT 1');
+        $outOfSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE abs(hashtext(variant_id::text)) % 2 = 1 ORDER BY variant_id LIMIT 1');
+        $connection->executeStatement('UPDATE pricing_variant_price SET gross_amount = gross_amount + 100, net_amount = net_amount + 81, vat_amount = vat_amount + 19 WHERE variant_id = ?', [$outOfSample]);
+        self::assertStringNotContainsString('is not the last entry of its history', $this->step('demo-data:verify', ['--products' => 600_000])->getDisplay());
+
+        $connection->executeStatement('UPDATE pricing_variant_price SET gross_amount = gross_amount + 100, net_amount = net_amount + 81, vat_amount = vat_amount + 19 WHERE variant_id = ?', [$inSample]);
+
+        self::assertStringContainsString('is not the last entry of its history', $this->step('demo-data:verify', ['--products' => 600_000])->getDisplay());
+    }
+
     public function testItListsAPriceThatDoesNotBreakDownByThePricingRule(): void
     {
         $this->generatedSteps();
