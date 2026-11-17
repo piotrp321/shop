@@ -41,11 +41,31 @@ spec:
               create: false
               name: grafana-cloud
               namespace: shop
-            # The PrometheusRule objects of the cluster go to the ruler of the same stack: the base address, not the push path.
+          # Only the alert rules (spec, O6): the PrometheusRule objects of the cluster become Grafana-managed alert rules through
+          # the import API of the Grafana of the stack (/api/convert, compatible with the ruler API: the default prefix /prometheus
+          # gives /api/convert/prometheus/config/v1/rules), so that their alerts reach the Alertmanager of Grafana and its email
+          # contact point. The ruler of the metrics has no Alertmanager on this stack (issue #594). The token is the one of the
+          # service account shop-alloy-rules; the header names the data source the rules query. No feature sends metrics here: the
+          # remote_write the chart gives every prometheus destination stays idle.
+          grafana-alerting:
+            type: prometheus
+            url: https://cosmiccinnamon1835.grafana.net/api/convert
+            auth:
+              type: bearerToken
+              bearerTokenKey: GRAFANA_ALERTING_TOKEN
+            # The organization of the Grafana (the import API takes the tenant 1).
+            tenantIdFrom: '"1"'
+            secret:
+              create: false
+              name: grafana-cloud
+              namespace: shop
             rules:
               enabled: true
-              address: https://prometheus-prod-72-prod-eu-west-4.grafana.net
-              prometheusHttpPrefix: /api/prom
+              address: https://cosmiccinnamon1835.grafana.net/api/convert
+              extraArguments: |
+                http_headers = {
+                  "X-Grafana-Alerting-Datasource-UID" = ["grafanacloud-prom"],
+                }
           grafana-logs:
             type: loki
             url: https://logs-prod-050-prod-eu-west-4.grafana.net/loki/api/v1/push
@@ -58,6 +78,9 @@ spec:
               create: false
               name: grafana-cloud
               namespace: shop
+        # The metrics about the chart itself: without a list they would go to every prometheus destination, grafana-alerting too.
+        selfReporting:
+          destinations: [grafana-metrics]
         clusterMetrics:
           enabled: true
           destinations: [grafana-metrics]

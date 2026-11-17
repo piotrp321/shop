@@ -267,7 +267,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
-| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, punkt kontaktowy: użytkownik | siedem reguł w rulerze (trzy przy wyłączonych kopiach); `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
+| Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, konto serwisowe i punkt kontaktowy: użytkownik | siedem reguł zarządzanych przez Grafanę w folderze `agent/shop/…` (trzy przy wyłączonych kopiach), alert z reguły dochodzi e-mailem; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
 | Sentry (10.): po wpisaniu DSN-ów i wdrożeniu | użytkownik | zdarzenia i trace'y w projektach `api`, `store` i `admin` z wersją (rewizja obrazu) i środowiskiem `demo`; przegląd próbki zdarzeń bez danych osobowych |
 | AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
@@ -408,18 +408,24 @@ uwierzytelnienia: każdy pod klastra, także w `monitoring`, sięga do nich po s
 Alerty to `PrometheusRule` `shop-alerts` chartu `shop` (`alerts.enabled: true` w `prod`; `docs/features/deploy-ops/spec.md`, O6):
 `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `NodeDiskFull` (ponad 85% przez 10 minut),
 `ClusterSilent` (brak metryk klastra przez 15 minut) i `WorkloadNotReady` (Deployment albo StatefulSet w `shop` niegotowy albo
-usunięty przez 10 minut). Alloy synchronizuje je do rulera Grafana Cloud, który działa poza serwerem, więc alert przychodzi także
-wtedy, gdy serwer albo Alloy nie żyje. Alerty z treści logów (np. ostrzeżenia kanału `cache` przy awarii Redisa) nie istnieją.
+usunięty przez 10 minut). Alloy synchronizuje je przez API importu Grafany stosu (`/api/convert`, cel `grafana-alerting`) jako
+reguły zarządzane przez Grafanę; ewaluuje je Grafana Cloud poza serwerem, więc alert przychodzi także wtedy, gdy serwer albo Alloy
+nie żyje, a powiadomienia idą przez Alertmanager Grafany. Ruler metryk stosu nie ma Alertmanagera (nowe stosy Grafana Cloud go nie
+dostają), więc reguły nie trafiają do niego. Alerty z treści logów (np. ostrzeżenia kanału `cache` przy awarii Redisa) nie istnieją.
 
 1. **użytkownik** – zakłada konto Grafana Cloud (darmowy plan) ze stosem w regionie UE i retencją logów 14 dni oraz jeden token
-   access policy dla metryk i logów z zakresami `metrics:write`, `logs:write`, `rules:read` i `rules:write`. Podaje agentowi (bez
-   tokenu) z portalu stosu: adres zapisu metryk (Prometheus, kończy się `/api/prom/push`) i bazowy adres rulera (ten sam host bez
-   `/api/prom/push`), adres zapisu logów (Loki) i identyfikatory instancji (nazwa użytkownika Prometheusa i Lokiego).
-2. **agent** – wpisuje je w `argocd/apps/monitoring.yaml` (`destinations.grafana-metrics`: `url`, `rules.address`,
-   `auth.usernameFrom` i `tenantIdFrom`; `destinations.grafana-logs`: `url`, `auth.usernameFrom` i `tenantIdFrom`; przy zmianie
-   stosu) i, jeśli ruler stosu ma inny prefiks niż `/api/prom`, `rules.prometheusHttpPrefix` (PR). Merge robi
-   **użytkownik**.
-3. **użytkownik** – token wpisuje w terminalu: `make -C infra/k8s seal-secrets WHAT=grafana` (3.4); **agent** dodaje powstały
+   access policy dla metryk i logów z zakresami `metrics:write` i `logs:write`. W Grafanie stosu (Administration → Users and
+   access → Service accounts) zakłada konto serwisowe `shop-alloy-rules` z rolą podstawową `None` i rolami: Alerting Rules Reader,
+   Rules Writer, Set provisioning status, Data sources Reader, Folders Creator, Reader i Writer (to wykonuje też agent w przeglądarce
+   użytkownika na jego prośbę), i generuje jego token (bez daty wygaśnięcia albo z przypomnieniem o odnowieniu). Podaje agentowi (bez
+   tokenów) z portalu stosu: adres zapisu metryk (Prometheus, kończy się `/api/prom/push`), adres zapisu logów (Loki), identyfikatory
+   instancji (nazwa użytkownika Prometheusa i Lokiego) i adres Grafany stosu (`https://<stos>.grafana.net`).
+2. **agent** – wpisuje je w `argocd/apps/monitoring.yaml` (`destinations.grafana-metrics`: `url`, `auth.usernameFrom`
+   i `tenantIdFrom`; `destinations.grafana-logs`: `url`, `auth.usernameFrom` i `tenantIdFrom`; `destinations.grafana-alerting`:
+   `url` i `rules.address`, czyli `<adres Grafany>/api/convert`; przy zmianie stosu także UID źródła danych Prometheusa
+   w nagłówku `X-Grafana-Alerting-Datasource-UID`) (PR). Merge robi **użytkownik**.
+3. **użytkownik** – tokeny wpisuje w terminalu: `make -C infra/k8s seal-secrets WHAT=grafana` (3.4; pyta tylko o tokeny, których
+   `grafana-cloud.yaml` jeszcze nie ma: `GRAFANA_CLOUD_TOKEN`, potem `GRAFANA_ALERTING_TOKEN`); **agent** dodaje powstały
    `grafana-cloud.yaml` do PR z sekretami.
 4. **agent** – po wdrożeniu `make -C infra/k8s status HOST=<user>@<adres>`: `prometheus-crds` i `monitoring` są `Synced` i
    `Healthy`. Brak konta albo zły token zostawia `Degraded` tylko `monitoring` (log Alloy w przestrzeni `monitoring`); sklep działa i
@@ -433,21 +439,23 @@ wtedy, gdy serwer albo Alloy nie żyje. Alerty z treści logów (np. ostrzeżeni
 6. **agent** – po wdrożeniu sprawdza w Grafana Cloud liczbę aktywnych serii (darmowy plan: 10 tys.); przy przekroczeniu Grafana Cloud
    odrzuca nadmiar, a agent zawęża listę metryk w manifeście.
 7. **użytkownik** – w Grafana Cloud (Alerting → Contact points) dodaje punkt kontaktowy e-mail i ustawia go jako domyślny w drzewie
-   powiadomień. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; czy reguły z rulera trafiają do tego punktu
-   kontaktowego, potwierdza dopiero krok 8.
+   powiadomień Alertmanagera Grafany. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; że alerty reguł trafiają
+   do tego punktu kontaktowego, potwierdza dopiero krok 8.
 8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać siedem reguł grupy `shop-backup` i `shop-cluster`
    (przy kopiach wyłączonych w `prod`, 3.: trzy reguły `shop-cluster`)
-   (źródło: `PrometheusRule` `shop-alerts` w przestrzeni `shop`, synchronizowany przez Alloy do rulera). **`BackupMissing` i
+   w folderze `agent/shop/shop-alerts/…`, oznaczonych jako provisioned (źródło: `PrometheusRule` `shop-alerts` w przestrzeni
+   `shop`, synchronizowany przez Alloy przez API importu Grafany; zmiana reguły to zmiana chartu, nie edycja w UI). Brak reguł
+   po 10 minutach od wdrożenia: log Alloy (`mimir.rules.kubernetes`, np. 401 przy złym tokenie konta serwisowego). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
    `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.
    To też sprawdzenie od końca do końca, które wykonuje **użytkownik** (agent nie ma dostępu do jego skrzynki): jeśli Grafana
    Cloud powstała przed pierwszą udaną kopią, `BackupMissing` odpala zaraz po załadowaniu reguły (`absent_over_time` bez `for`),
-   więc e-mail o nim powinien przyjść wkrótce po synchronizacji reguły. Jeśli nie przyszedł, reguły z rulera mogą trafiać do Alertmanagera
-   źródła danych, a nie do Alertmanagera Grafany: punkt kontaktowy i drzewo powiadomień trzeba wtedy ustawić w tym Alertmanagerze
-   (jego wybór jest na stronie Contact points), a po zmianie użytkownik sprawdza, że e-mail przychodzi. Jeśli Grafana Cloud
-   powstała dopiero po pierwszej udanej kopii, `BackupMissing` nie odpala i brak e-maila niczego nie dowodzi: dostarczenie
-   sprawdza wtedy inny alert, który odpala (użytkownik wysyła w Grafana Cloud testowe powiadomienie punktu kontaktowego albo
-   czeka na najbliższy alert).
+   więc e-mail o nim powinien przyjść wkrótce po synchronizacji reguły. Agent widzi stronę alertu: w Alertmanagerze Grafany
+   (Alerting → Groups) alert ma odbiorcę `email`, a punkt kontaktowy `email` ma ostatnią próbę wysyłki bez błędu. Testowe
+   powiadomienie punktu kontaktowego niczego nie dowodzi o regułach. Jeśli nie odpala żaden alert (kopie wyłączone, klaster
+   zdrowy), agent w przeglądarce użytkownika wysyła przez to samo API importu tymczasową regułę `vector(1)` w osobnym folderze
+   (`agent/shop/delivery-test`), sprawdza odbiorcę `email` i próbę wysyłki bez błędu, a potem usuwa regułę i folder; e-mail
+   potwierdza użytkownik.
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
    wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*"`, dla
    innych prac `alertname="WorkloadNotReady"` (przy wyłączeniu całego serwera także `ClusterSilent`), na czas prac z zapasem.

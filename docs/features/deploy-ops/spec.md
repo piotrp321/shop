@@ -159,11 +159,14 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   Operator (Deployment i CRD `collectors.grafana.com`), a kolektor jest zasobem `kind: Alloy`; operator tworzy z niego
   Deployment Alloy (`presets: [deployment]`), więc nie ma go w renderze. Funkcje: `clusterMetrics` (kube-state-metrics,
   kubelet, cAdvisor), `hostMetrics` (node-exporter, `linuxHosts`), `clusterEvents`, logi podów wszystkich przestrzeni (`podLogsViaKubernetesApi`). Cele
-  `prometheus` (z `rules.enabled` i `rules.address` wskazującym bazowy adres rulera, nie adres zapisu) i `loki` w
-  Grafana Cloud mają adresy i identyfikatory instancji w `valuesObject` manifestu `monitoring` (nie w wartościach
-  `prod` chartu `shop`). Token jest w sekrecie `grafana-cloud` (klucz `GRAFANA_CLOUD_TOKEN`, jeden token access policy
-  dla obu celów; SealedSecret w przestrzeni `shop` w `environments/prod/secrets/`, `seal-secrets WHAT=grafana`), który
-  Alloy czyta z tej przestrzeni (`secret.create: false`, `secret.namespace: shop`, klucz hasła wskazany w celu). RBAC
+  `prometheus` (`grafana-metrics`) i `loki` (`grafana-logs`) w Grafana Cloud mają adresy i identyfikatory instancji
+  w `valuesObject` manifestu `monitoring` (nie w wartościach `prod` chartu `shop`). Trzeci cel, `grafana-alerting`
+  (typ `prometheus`), służy tylko regułom alertów (O6): `rules.enabled` z adresem API importu reguł Grafany stosu
+  (`/api/convert`); żadna funkcja ani `selfReporting` nie wysyła do niego metryk. Tokeny są w sekrecie `grafana-cloud`
+  (SealedSecret w przestrzeni `shop` w `environments/prod/secrets/`, `seal-secrets WHAT=grafana`): `GRAFANA_CLOUD_TOKEN`
+  (token access policy `metrics:write` i `logs:write` dla metryk i logów) i `GRAFANA_ALERTING_TOKEN` (token konta
+  serwisowego Grafany `shop-alloy-rules` dla reguł). Alloy czyta go z tej przestrzeni (`secret.create: false`,
+  `secret.namespace: shop`, klucz wskazany w celu). RBAC
   i polityki dopuszczania monitoringu są w manifeście (`extraObjects`), nie w chartach:
   - Alloy Operator działa tylko w przestrzeni `monitoring` (`ownNamespaceOnly: true`, `rbac.create: false`): bez ClusterRoli,
     z jedną Role w `monitoring` i bez uprawnień do obiektów RBAC; nie czyta ani nie zmienia sekretów żadnej innej przestrzeni.
@@ -206,13 +209,19 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   Deployment operatora, kube-state-metrics, DaemonSet node-exportera); `kubeconform` zna schemat `Alloy` (CRDs-catalog).
 - **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/00-alerts.yaml`), renderowane, gdy
   `alerts.enabled` (`prod: true`, `ci: false`, bo smoke test nie ma CRD); brak CRD w klastrze z `alerts.enabled` daje
-  widoczny błąd synchronizacji, nie ciche zniknięcie reguł. Alloy synchronizuje je do rulera Grafana Cloud. Metryki
+  widoczny błąd synchronizacji, nie ciche zniknięcie reguł. Alloy (`mimir.rules.kubernetes` celu `grafana-alerting`)
+  synchronizuje je przez API importu Grafany (`/api/convert/prometheus/config/v1/rules`, zgodne z API rulera; nagłówek
+  `X-Grafana-Alerting-Datasource-UID: grafanacloud-prom`), więc w Grafanie są regułami zarządzanymi przez Grafanę
+  w folderze `agent/shop/shop-alerts/…`, oznaczonymi jako provisioned (bez edycji w UI), a ich alerty idą przez
+  Alertmanager Grafany. Ruler metryk stosu nie ma Alertmanagera (nowe stosy Grafana Cloud go nie dostają), więc jego alerty
+  nie dochodziły do nikogo. Konto serwisowe `shop-alloy-rules` ma rolę podstawową `None` i role: odczyt i zapis reguł,
+  ustawianie statusu provisioningu, odczyt źródeł danych, tworzenie, odczyt i zapis folderów. Metryki
   z kube-state-metrics: `kube_cronjob_status_last_successful_time`, `kube_job_status_condition` (warunek `Failed`)
   i `kube_job_owner` (Job należy do CronJoba o dokładnej nazwie, więc `backup` nie łapie `backup-verify`). Reguły:
   - `BackupFailed`: Job CronJoba `backup` z warunkiem `Failed` (wyczerpane ponowienia), nowszy niż ostatnia udana kopia;
     nieudany pod, po którym ponowienie się udało, nie odpala; po kolejnej udanej kopii alert gaśnie;
-  - `BackupMissing`: ostatnia udana kopia starsza niż 26 h albo brak metryki przez 30 min (`absent`; ruler działa
-    w Grafana Cloud, więc alert przychodzi także, gdy serwer albo Alloy nie żyje);
+  - `BackupMissing`: ostatnia udana kopia starsza niż 26 h albo brak metryki przez 30 min (`absent`; reguły ewaluuje
+    Grafana Cloud, więc alert przychodzi także, gdy serwer albo Alloy nie żyje);
   - `BackupVerifyFailed`, `BackupVerifyMissing`: to samo dla `backup-verify`;
   - `NodeDiskFull`: system plików węzła (node-exporter, `node_filesystem_avail_bytes` i `node_filesystem_size_bytes`,
     bez systemów tymczasowych) zajęty w ponad 85% przez 10 min;
@@ -226,7 +235,8 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
     klastra (`kube_node_info`), żeby cisza całego klastra była tylko `ClusterSilent`. Workload świadomie zeskalowany do
     zera (`restore`) nie odpala części o replikach.
 
-  Powiadomienia: punkt kontaktowy e-mail w Grafana Cloud (krok runbooka „użytkownik”). Świadomy `restore` i planowane
+  Powiadomienia: punkt kontaktowy e-mail w Alertmanagerze Grafany, domyślny w drzewie powiadomień (krok runbooka
+  „użytkownik”). Świadomy `restore` i planowane
   prace wyciszamy ręcznie w Grafana Cloud (silence na czas prac, procedura w runbooku), bez automatycznego mechanizmu.
   Reguły mają testy `promtool test rules` (obraz `prom/prometheus` przypięty digestem) w `check`: każdy alert odpala
   w swoim scenariuszu i milczy, gdy wszystko jest zdrowe; alerty kopii milczą też, gdy ponowienie po nieudanym podzie się
@@ -350,13 +360,13 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
 
 - **użytkownik**: Cloudflare R2 na koncie Cloudflare (bucket, token API R2 z dostępem tylko do tego bucketu), hasło
   restic w menedżerze haseł; konto Grafana Cloud (stos w regionie UE, retencja logów 14 dni), token access policy
-  (`metrics:write`, `logs:write`, `rules:read`, `rules:write`), punkt kontaktowy e-mail dla alertów.
+  (`metrics:write`, `logs:write`), token konta serwisowego `shop-alloy-rules`, punkt kontaktowy e-mail dla alertów.
 - **agent**: adres i region repozytorium w `environments/prod/values.yaml`, adresy i identyfikatory instancji Grafana
   Cloud w `argocd/apps/monitoring.yaml` (PR); `seal-secrets WHAT="backup grafana"` uruchamia **użytkownik** (wartości
   z terminala).
 - **agent**: po wdrożeniu następnego dnia sprawdza `status`: Job z CronJoba `backup` kończy się wierszem `backup: done`,
   a `backup-verify` wierszem `backup-verify: ok`; `make backups` wypisuje snapshoty; w Grafana Cloud widać logi i metryki
-  klastra, reguły alertów są w rulerze. Do pierwszej udanej kopii `BackupMissing` odpala z `absent` (oczekiwane).
+  klastra, reguły alertów są w Grafanie (Alerting → Alert rules, folder `agent/shop/…`). Do pierwszej udanej kopii `BackupMissing` odpala z `absent` (oczekiwane).
 - **agent**: po wdrożeniu przegląd próbki logów w Grafana Cloud pod kątem sekretów i danych klientów; znalezisko to
   nowa reguła maskowania albo wyłączenie źródła (O7).
 - **użytkownik**: przed świadomym `restore` albo planowanymi pracami wycisza alerty w Grafana Cloud (silence z
