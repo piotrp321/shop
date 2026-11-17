@@ -2751,7 +2751,8 @@ HOUR = 3600.0
 
 def per_task_sources(record, config):
     """{column: (value, scale)} of a record before the division by the plan tasks: times in seconds (scale: 3600 for
-    hours), the others counts, USD or pp. A value that is not known is None."""
+    hours), the others counts, USD or pp. A value that is not known is None (also the `value` of a record whose total is
+    incomplete)."""
     windows = _get(record, ('subscription', 'windows'))
     weekly = windows.get(config['weekly_window_label']) if isinstance(windows, dict) else None
     share = _get(record, ('subscription', 'share'))
@@ -2760,7 +2761,8 @@ def per_task_sources(record, config):
         'human_wait': (_get(record, ('breakdown', 'human_wait')), HOUR), 'review': (_get(record, ('wall', 'review')), HOUR),
         'gate_wait': (_get(record, ('gate_wait', 'wait_s')), HOUR),
         'repeat_runs': (_get(record, ('in_attempts', 'repeat_runs', 'seconds')), HOUR),
-        'value': (_get(record, ('value', 'total', 'usd')), 1.0),
+        'value': (None if _get(record, ('value', 'total', 'incomplete')) is True       # a partial sum is not a value
+                  else _get(record, ('value', 'total', 'usd')), 1.0),
         'pp': (weekly * share if _is_number(weekly) and _is_number(share) else None, 1.0),
         'failed': (_get(record, ('retries', 'attempts', 'failed')), 1.0),
         'repair': (_get(record, ('retries', 'repair', 'count')), 1.0),

@@ -4,6 +4,7 @@ import json
 import os
 import unittest
 
+import metrics
 import testkit
 from testkit import Env, FakeGh, fake_record, merged_pr, run_cli, store_records
 
@@ -44,6 +45,19 @@ class ColumnsTest(TrendEnv):
                        'regressions'):
             self.assertIsNone(values[column], column)
         self.assertIsNotNone(values['failed'])
+
+    def test_incomplete_value_gives_a_null_column(self):
+        incomplete = fake_record('a', value=10)
+        incomplete['value']['total']['incomplete'] = True
+        self.assertIsNone(self.row_values(incomplete)['value'])
+        self.assertEqual(metrics.trend_values({'tasks': 10, 'value': {'total': {'usd': 10.0, 'incomplete': True}}},
+                                              metrics.load_config(os.path.join(testkit.HERE, 'config.json')))['value'],
+                         None)
+        self.assertEqual(self.row_values(fake_record('b', value=10))['value'], 1.0)      # a complete total stays
+
+    def row_values(self, record):
+        store_records(self.state, record)
+        return self.row(self.table('--no-gh'), record['epic'])['values']
 
     def test_share_missing_gives_null_pp(self):
         store_records(self.state, fake_record('a', share=None))
@@ -95,6 +109,16 @@ class MedianTest(TrendEnv):
         median = self.table('--no-gh')['median']
         self.assertEqual(median['human_wait'], 0.2)             # 0.1, 0.2, 1.0
         self.assertEqual(median['to_done'], 1.0)
+
+    def test_median_skips_an_epic_with_an_incomplete_value(self):
+        partial = fake_record('b', merged='2026-11-02T10:00:00Z', value=1)       # 0.1 per task: would pull the median down
+        partial['value']['total']['incomplete'] = True
+        store_records(self.state, fake_record('a', merged='2026-11-01T10:00:00Z', value=10), partial,
+                      fake_record('c', merged='2026-11-03T10:00:00Z', value=30))
+        table = self.table('--no-gh')
+        self.assertEqual(table['median']['value'], 2.0)                       # 1.0 and 3.0, not 0.1, 1.0, 3.0
+        self.assertIsNone(self.row(table, 'b')['values']['value'])
+        self.assertEqual(table['position']['columns']['value']['diff'], 1.0)  # c against the median
 
     def test_median_of_an_all_null_column_is_null(self):
         store_records(self.state, fake_record('a', gate_wait=None), fake_record('b', gate_wait=None,
