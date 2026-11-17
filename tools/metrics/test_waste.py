@@ -511,6 +511,74 @@ class RichEnv(WasteEnv):
         return home
 
 
+class MissingColumnsTest(RichEnv):
+    """A column (or table) missing in the AO database: the rules that need it are skipped with a position in the `gaps`
+    of the output, never alarm on what they cannot know (a made up task `None`, a loop of attempts not told apart)."""
+
+    ATTEMPT = ('attempts.ended_at', 'attempts.task_id', 'attempts.number')
+    KIND = ('tasks.kind', 'tasks.task_id')
+    RULES = (
+        ('W1', ['W1:demo:T-1:1'], ATTEMPT + KIND),
+        ('W2', ['W2:demo:T-2:1'], ATTEMPT + ('attempts.started_at',) + KIND),
+        ('W3', ['W3:demo:R-2:3'], ATTEMPT + ('attempts.outcome', 'attempts.executor_status')),
+        ('W3', ['W3:demo:repair:R-2'], KIND + ('attempts.task_id', 'attempts.started_at', 'events.type', 'events.at',
+                                                'events.task_id', 'events.data')),
+        ('W3', ['W3:demo:qa:3'], ('epics.round',)),
+        ('W4', ['W4:demo:T-1'], ATTEMPT + KIND),
+    )
+
+    def drop(self, home, table, column=None):
+        con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
+        con.execute('DROP TABLE %s' % table if column is None else 'ALTER TABLE %s DROP COLUMN %s' % (table, column))
+        con.commit()
+        con.close()
+
+    def waste_without(self, table, column=None):
+        path = os.path.join(self.state, 'waste.json')
+        if os.path.exists(path):
+            os.unlink(path)                                   # every case starts with no alarm printed before
+        home = self.rich_home()
+        self.drop(home, table, column)
+        return self.run_ok(home)
+
+    def check(self, out, missing):
+        """The alarms of the rules that need none of `missing` stay; the others are gone and each has a gap."""
+        expected, gaps = list(self.EXPECTED), self.gaps(out)
+        for rule, keys, needs in self.RULES:
+            found = [c for c in needs if c in missing]
+            if not found:
+                continue
+            expected = [k for k in expected if k not in keys]
+            self.assertTrue(any(g.startswith(rule + ':') and all(c in g for c in found) for g in gaps),
+                            (rule, found, gaps))
+        self.assertEqual(self.keys(out), sorted(expected), gaps)
+
+    def test_a_missing_column_skips_the_rules_that_need_it(self):
+        columns = sorted({c for _, _, needs in self.RULES for c in needs})
+        for column in columns:
+            with self.subTest(column=column):
+                table, name = column.split('.')
+                self.check(self.waste_without(table, name), [column])
+
+    def test_a_missing_table_skips_the_rules_that_need_it(self):
+        sqlite_columns = {'attempts': ['ended_at', 'task_id', 'number', 'started_at', 'outcome', 'executor_status'],
+                          'events': ['type', 'at', 'task_id', 'data'], 'tasks': ['kind', 'task_id']}
+        for table, columns in sqlite_columns.items():
+            with self.subTest(table=table):
+                self.check(self.waste_without(table), ['%s.%s' % (table, c) for c in columns])
+
+    def test_a_run_whose_end_cannot_be_told_has_no_w2(self):
+        home = self.rich_home()
+        self.drop(home, 'epics', 'status')
+        self.drop(home, 'events', 'type')
+        out = self.run_ok(home)
+        self.assertNotIn('W2:demo:T-2:1', self.keys(out))
+        self.assertTrue(any(g.startswith('W2:') and 'epics.status' in g for g in self.gaps(out)), self.gaps(out))
+
+    def test_without_attempts_task_id_the_attempts_are_not_one_made_up_task(self):
+        out = self.waste_without('attempts', 'task_id')
+        self.assertFalse([k for k in self.keys(out) if k.endswith(':None') or ':None:' in k], self.keys(out))
+
 class OncePerAlarmTest(RichEnv):
     def test_every_rule_alarms_once(self):
         home = self.rich_home()

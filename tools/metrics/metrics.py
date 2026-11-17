@@ -3622,6 +3622,35 @@ def make_alarm(rule, key, epic, task, attempt, push, **numbers):
             **numbers}
 
 
+ATTEMPT_ID = ('attempts.ended_at', 'attempts.task_id', 'attempts.number')      # an ended attempt of a task, numbered
+KIND_OF_TASK = ('tasks.kind', 'tasks.task_id')
+# The columns of the AO database each rule needs: without one the rule cannot tell what it measures (an attempt of a
+# task, its kind, whether it ended), so it is skipped with a gap instead of alarming on a guess.
+WASTE_NEEDS = {
+    'W1': ATTEMPT_ID + KIND_OF_TASK,
+    'W2': ATTEMPT_ID + ('attempts.started_at',) + KIND_OF_TASK,
+    'W3 (a)': ATTEMPT_ID + ('attempts.outcome', 'attempts.executor_status'),
+    'W3 (b)': KIND_OF_TASK + ('attempts.task_id', 'attempts.started_at', 'events.type', 'events.at', 'events.task_id',
+                              'events.data'),
+    'W3 (c)': ('epics.round',),
+    'W4': ATTEMPT_ID + KIND_OF_TASK,
+}
+WASTE_SKIPPED = {'W1': 'koszt próby nie sprawdzony', 'W2': 'trwająca próba nie sprawdzona',
+                 'W3 (a)': 'pętla prób nieudanych nie sprawdzona',
+                 'W3 (b)': 'kolejny REPAIR bez zielonego CI nie sprawdzony', 'W3 (c)': 'runda QA nie sprawdzona',
+                 'W4': 'koszt zadania nie sprawdzony'}
+
+
+def waste_unknown(run, rule, gaps):
+    """True (and a gap of the rule, `W3` for its parts) when a column that `rule` needs is missing in the AO database."""
+    missing = [c for c in WASTE_NEEDS[rule] if c in run['absent']]
+    if rule == 'W2' and lacks(run, 'epics.status') and lacks(run, 'events.type'):
+        missing += ['epics.status', 'events.type']          # whether the run is over is not known
+    if missing:
+        gaps.add(rule[:2], 'brak kolumny %s w bazie AO: %s' % (', '.join(sorted(set(missing))), WASTE_SKIPPED[rule]))
+    return bool(missing)
+
+
 def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
     """The alarms (W1-W4) the current state of the run raises, whether or not they were sent before. Ended attempts
     only for the cost rules (a running attempt has no cost estimate), running ones only for W2."""
@@ -3635,7 +3664,7 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
     entries = transcript_fields(ao_home, dict(run, attempts=ended), config, records, epic_id, Gaps())['attempts']
     # W1: the value of an ended attempt
     unknown = 0
-    for entry in entries:
+    for entry in [] if waste_unknown(run, 'W1', gaps) else entries:
         if entry['value'] is None:
             unknown += 1
             continue
@@ -3654,7 +3683,7 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
                  % (unknown, len(entries)))
     # W2: a running attempt of a run that is not over
     over = epic['status'] == 'DONE' or any(e['type'] == 'epic_done' for e in run['events'])
-    for attempt in run['attempts']:
+    for attempt in [] if waste_unknown(run, 'W2', gaps) else run['attempts']:
         start = _number(attempt['started_at'])
         if over or attempt['ended_at'] is not None or attempt['outcome'] or start is None or not _is_int(
                 attempt['number']):
@@ -3671,7 +3700,7 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
     found.extend(loop_alarms(run, name, task_ids, rules, max_rounds, gaps))
     # W4: the value of the ended attempts of a task
     by_task, no_value = {}, 0
-    for entry in entries:
+    for entry in [] if waste_unknown(run, 'W4', gaps) else entries:
         by_task.setdefault(entry['task'], []).append(entry)
     for task, task_entries in by_task.items():
         if any(e['value'] is None for e in task_entries):
@@ -3695,22 +3724,17 @@ def loop_alarms(run, name, task_ids, rules, max_rounds, gaps):
     """W3: loops of attempts, independent of the median and the cost. (a) an attempt that starts after at least
     `loop_failed_attempts` failed attempts of its task (blocked and usage_limit attempts are not failures); (b) a REPAIR
     task that starts with no green CI of the epic (epic_ci_green, epic_ci_inherited) since the previous REPAIR started;
-    (c) the QA round of the epic equal to `max_rounds`. Without attempts.outcome or attempts.executor_status in the AO
-    database no attempt is known to be failed: (a) is skipped and `gaps` says so."""
+    (c) the QA round of the epic equal to `max_rounds`. A part whose columns (WASTE_NEEDS) are missing in the AO
+    database is skipped and `gaps` says so."""
     epic, epic_id = run['epic'], run['epic']['epic_id']
     found, per_task = [], {}
-    missing = sorted(c for c in ('attempts.outcome', 'attempts.executor_status') if c in run['absent'])
-    if missing:
-        gaps.add('W3', 'brak kolumny %s w bazie AO: próby nieudane nie są liczone (pętla prób nie sprawdzona)'
-                 % ', '.join(missing))
+    skip_loop, skip_repair = waste_unknown(run, 'W3 (a)', gaps), waste_unknown(run, 'W3 (b)', gaps)
     for attempt in run['attempts']:
         per_task.setdefault(attempt['task_id'], []).append(attempt)
-    for task, attempts in per_task.items():
+    for task, attempts in {} if skip_loop else per_task.items():
         failed = 0
         for attempt in sorted(attempts, key=lambda a: (_number(a['started_at']) is None, _number(a['started_at']) or 0,
                                                        a['number'] or 0)):
-            if missing:
-                break
             if failed >= rules['loop_failed_attempts'] and _is_int(attempt['number']):
                 found.append(make_alarm(
                     'W3', 'W3:%s:%s:%s' % (epic_id, task, attempt['number']), epic_id, task, attempt['number'],
@@ -3721,7 +3745,7 @@ def loop_alarms(run, name, task_ids, rules, max_rounds, gaps):
                 failed += 1
     greens = [e['at'] for e in run['events'] if e['type'] in CI_GREEN and _of_epic(e, epic_id, task_ids)]
     starts = []
-    for task in run['tasks']:
+    for task in [] if skip_repair else run['tasks']:
         begun = [_number(a['started_at']) for a in per_task.get(task['task_id'], [])
                  if _number(a['started_at']) is not None]
         if task['kind'] == 'repair' and begun:
@@ -3731,7 +3755,7 @@ def loop_alarms(run, name, task_ids, rules, max_rounds, gaps):
         if not any(before <= g <= start for g in greens):
             found.append(make_alarm('W3', 'W3:%s:repair:%s' % (epic_id, task), epic_id, task, None,
                                     '%s: %s: kolejny REPAIR z rzędu bez zielonego CI epiku' % (name, _id(task))))
-    if _is_int(epic['round']) and epic['round'] == max_rounds:
+    if not waste_unknown(run, 'W3 (c)', gaps) and _is_int(epic['round']) and epic['round'] == max_rounds:
         found.append(make_alarm('W3', 'W3:%s:qa:%s' % (epic_id, epic['round']), epic_id, None, None,
                                 '%s: runda QA %s (limit %s)' % (name, epic['round'], max_rounds), round=epic['round'],
                                 max_rounds=max_rounds))
