@@ -7,7 +7,11 @@ never by the model's text. The run of the executor is driven with a fake executo
 transcript from the probe's environment, so no Keychain, Docker or model is needed. The wrapper cases run the real
 claude-agent with a fake `security`. Cleanup is checked on the artifacts the probe creates.
 """
+import base64
+import contextlib
+import gzip
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -28,6 +32,9 @@ spec.loader.exec_module(probe)
 spec = importlib.util.spec_from_file_location('sandbox_skip', os.path.join(HERE, 'sandbox_skip.py'))
 sandbox_skip = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sandbox_skip)
+spec = importlib.util.spec_from_file_location('test_otlp_receiver', os.path.join(HERE, 'test_otlp_receiver.py'))
+otlp = importlib.util.module_from_spec(spec)   # the protobuf encoder of the receiver tests and its module
+spec.loader.exec_module(otlp)
 
 CANARY = 'CANARY-abc123-secret'
 CANARY_DIR = '/home/u/.agent-security-canary-x'
@@ -38,7 +45,8 @@ IMPORT_MARKER = 'IMPORTED-feed1234cafe'
 def context(**overrides):
     ctx = {'canary_file': CANARY_FILE, 'canary_dir': CANARY_DIR,
            'wrapper': {name: 'pass' for name in probe.WRAPPER_CASES}, 'hook_fired': False,
-           'import_marker': IMPORT_MARKER}
+           'import_marker': IMPORT_MARKER,
+           'telemetry': {name: {'status': 'pass', 'reason': None} for name in probe.TELEMETRY_CASES}}
     ctx.update(overrides)
     return ctx
 
@@ -125,7 +133,7 @@ class EvaluateTest(unittest.TestCase):
 
     def test_every_case_has_one_source(self):
         self.assertEqual(sorted(probe.CASE_NAMES),
-                         sorted(probe.SCRIPT_CASES + probe.TOOL_CASES + probe.WRAPPER_CASES))
+                         sorted(probe.SCRIPT_CASES + probe.TOOL_CASES + probe.WRAPPER_CASES + probe.TELEMETRY_CASES))
         self.assertEqual(len(set(probe.CASE_NAMES)), len(probe.CASE_NAMES))
 
     def test_the_cases_script_prints_exactly_the_script_cases(self):
@@ -133,7 +141,7 @@ class EvaluateTest(unittest.TestCase):
             source = f.read()
         for name in probe.SCRIPT_CASES:
             self.assertIn(name, source)
-        for name in probe.TOOL_CASES + probe.WRAPPER_CASES:
+        for name in probe.TOOL_CASES + probe.WRAPPER_CASES + probe.TELEMETRY_CASES:
             self.assertNotIn(name, source, '%s is judged outside the script' % name)
 
     def test_the_temp_dir_and_proxy_cases_are_sandbox_bypass_cases(self):
@@ -354,7 +362,8 @@ class EvaluateTest(unittest.TestCase):
 
     def test_layers_are_reported(self):
         _, result = self.evaluate(transcript())
-        self.assertTrue({'sandbox', 'permissions', 'docker', 'token', 'wrapper'} <= {c['layer'] for c in result['cases']})
+        self.assertTrue({'sandbox', 'permissions', 'docker', 'token', 'wrapper', 'telemetry'}
+                        <= {c['layer'] for c in result['cases']})
 
 
 class EvaluateAoModeTest(unittest.TestCase):
@@ -399,6 +408,160 @@ class EvaluateAoModeTest(unittest.TestCase):
         wrapper['wrapper_user_settings_not_merged'] = 'fail'
         code, _ = self.evaluate(transcript(), wrapper=wrapper)
         self.assertEqual(code, 1)
+
+
+EXPECTED = {'shop.source': 'ao', 'shop.epic': 'probe-1a2b', 'shop.task': 'PROBE-1A2B-1', 'shop.task_kind': 'plan'}
+MARKERS = {'znacznik promptu': 'PROMPT-feed1234', 'nazwa skryptu przypadków': '.agent-probe-cases.sh',
+           'treść PROBE_LOCAL_BODY': 'probe-listener-cafe', 'wartość kanarka': CANARY}
+
+
+def otel_request(path, body, encoding=None):
+    """A request as the receiver records it: body and problem from the receiver's own decompress."""
+    raw = gzip.compress(body) if encoding == 'gzip' else body
+    decoded, problem = otlp.otlp_receiver.decompress(raw, encoding)
+    return {'method': 'POST', 'path': path, 'content_type': 'application/x-protobuf', 'content_encoding': encoding,
+            'raw': raw, 'body': decoded, 'problem': problem, 'forwarded': None}
+
+
+def exported(attributes=EXPECTED, record=None, encoding=None):
+    return [otel_request('/v1/metrics', otlp.metrics_request(attributes), encoding),
+            otel_request('/v1/logs', otlp.logs_request(attributes, record or {'event.name': 'api_request'}),
+                         encoding)]
+
+
+class TelemetryVerdictsTest(unittest.TestCase):
+    def verdicts(self, received, trapped=()):
+        return probe.telemetry_verdicts(list(received), list(trapped), MARKERS, EXPECTED)
+
+    def assert_status(self, verdicts, name, status, *reason_texts):
+        self.assertEqual(status, verdicts[name]['status'], verdicts[name])
+        reason = verdicts[name]['reason']
+        if status == 'pass':
+            self.assertIsNone(reason)
+        else:
+            self.assertTrue(reason, verdicts[name])
+            self.assertNotIn(CANARY, reason)
+        for text in reason_texts:
+            self.assertIn(text, reason)
+
+    def test_metrics_and_logs_with_the_attributes_and_no_content_pass(self):
+        for encoding in (None, 'gzip'):
+            verdicts = self.verdicts(exported(encoding=encoding))
+            self.assert_status(verdicts, 'telemetry_export', 'pass')
+            self.assert_status(verdicts, 'telemetry_no_content', 'pass')
+
+    def test_no_request_is_no_export_for_both_cases(self):
+        verdicts = self.verdicts([])
+        self.assert_status(verdicts, 'telemetry_export', 'no_export')
+        self.assert_status(verdicts, 'telemetry_no_content', 'no_export')
+
+    def test_only_logs_or_only_metrics_is_no_export(self):
+        logs, metrics = exported()[1], exported()[0]
+        self.assert_status(self.verdicts([logs]), 'telemetry_export', 'no_export', '/v1/metrics')
+        self.assert_status(self.verdicts([metrics]), 'telemetry_export', 'no_export', '/v1/logs')
+        self.assert_status(self.verdicts([logs]), 'telemetry_no_content', 'pass')
+
+    def test_a_missing_or_wrong_attribute_is_no_export(self):
+        for key, value in (('shop.task', 'OTHER-1'), ('shop.epic', 'other'), ('shop.task_kind', 'unknown'),
+                           ('shop.source', 'interactive')):
+            attributes = dict(EXPECTED, **{key: value})
+            self.assert_status(self.verdicts(exported(attributes)), 'telemetry_export', 'no_export', key)
+        attributes = {k: v for k, v in EXPECTED.items() if k != 'shop.task'}
+        self.assert_status(self.verdicts(exported(attributes)), 'telemetry_export', 'no_export', 'shop.task')
+
+    def test_the_attributes_must_be_in_the_metrics_and_in_the_logs(self):
+        received = [otel_request('/v1/metrics', otlp.metrics_request(EXPECTED)),
+                    otel_request('/v1/logs', otlp.logs_request({'service.name': 'claude-code'}))]
+        self.assert_status(self.verdicts(received), 'telemetry_export', 'no_export', '/v1/logs')
+
+    def test_a_body_that_does_not_decode_is_no_export_not_a_pass(self):
+        received = exported() + [otel_request('/v1/logs', b'\x0b\x0c')]
+        verdicts = self.verdicts(received)
+        self.assert_status(verdicts, 'telemetry_export', 'no_export', 'protobuf')
+        self.assert_status(verdicts, 'telemetry_no_content', 'pass')
+
+    def test_each_marker_in_a_body_fails_the_privacy_case(self):
+        for name, value in MARKERS.items():
+            for encoding in (None, 'gzip'):
+                received = exported(record={'prompt': 'x %s y' % value}, encoding=encoding)
+                verdicts = self.verdicts(received)
+                self.assert_status(verdicts, 'telemetry_no_content', 'fail', name, '/v1/logs')
+
+    def test_a_request_to_the_inherited_endpoint_fails_the_privacy_case(self):
+        for received in ([], exported()):
+            verdicts = self.verdicts(received, trapped=[otel_request('/v1/metrics', b'')])
+            self.assert_status(verdicts, 'telemetry_no_content', 'fail', 'OTEL_EXPORTER_OTLP_ENDPOINT')
+
+    def test_an_unknown_encoding_or_a_broken_gzip_cannot_be_checked(self):
+        for request in (otel_request('/v1/logs', b'abc', 'br'),
+                        dict(otel_request('/v1/logs', b'not gzip'), content_encoding='gzip', body=None,
+                             problem=otlp.otlp_receiver.decompress(b'not gzip', 'gzip')[1])):
+            verdicts = self.verdicts(exported() + [request])
+            self.assert_status(verdicts, 'telemetry_no_content', 'unverifiable', '/v1/logs')
+            self.assert_status(verdicts, 'telemetry_export', 'no_export')
+
+    def test_a_marker_elsewhere_wins_over_an_unknown_encoding(self):
+        received = [otel_request('/v1/logs', b'abc', 'br')] + exported(record={'command': 'sh .agent-probe-cases.sh'})
+        self.assert_status(self.verdicts(received), 'telemetry_no_content', 'fail', 'nazwa skryptu przypadków')
+
+    def test_a_marker_in_the_raw_bytes_of_a_body_that_cannot_be_checked_fails(self):
+        received = exported() + [otel_request('/v1/logs', b'prompt PROMPT-feed1234', 'br')]
+        self.assert_status(self.verdicts(received), 'telemetry_no_content', 'fail', 'znacznik promptu')
+
+
+class EvaluateTelemetryTest(unittest.TestCase):
+    """no_export and unverifiable never change the exit code; fail of telemetry_no_content is exit 1 in both modes."""
+
+    def evaluate(self, mode, export, no_content):
+        telemetry = {'telemetry_export': {'status': export, 'reason': None if export == 'pass' else 'brak eksportu'},
+                     'telemetry_no_content': {'status': no_content,
+                                              'reason': None if no_content == 'pass' else 'przyczyna ' + no_content}}
+        return probe.evaluate(transcript(), probe.CASE_NAMES, CANARY, 1.0, mode=mode,
+                              context=context(telemetry=telemetry))
+
+    def test_the_telemetry_cases_are_in_the_telemetry_layer(self):
+        self.assertEqual(('telemetry_export', 'telemetry_no_content'), probe.TELEMETRY_CASES)
+        for name in probe.TELEMETRY_CASES:
+            self.assertEqual('telemetry', probe.CASE_BY_NAME[name]['layer'])
+            self.assertIn(name, probe.CASE_NAMES)
+
+    def test_every_status_that_does_not_block_exits_zero_in_both_modes(self):
+        for mode in ('default', 'ao'):
+            for export in ('pass', 'no_export'):
+                for no_content in ('pass', 'no_export', 'unverifiable'):
+                    code, result = self.evaluate(mode, export, no_content)
+                    label = (mode, export, no_content)
+                    self.assertEqual(0, code, (label, result['reason']))
+                    self.assertIsNone(result['reason'], label)
+                    self.assertEqual(export, status_of(result, 'telemetry_export'), label)
+                    self.assertEqual(no_content, status_of(result, 'telemetry_no_content'), label)
+                    cases = {c['name']: c for c in result['cases']}
+                    self.assertEqual(None if export == 'pass' else 'brak eksportu', cases['telemetry_export']['reason'])
+                    self.assertEqual(None if no_content == 'pass' else 'przyczyna ' + no_content,
+                                     cases['telemetry_no_content']['reason'])
+
+    def test_a_leak_in_the_telemetry_exits_one_in_both_modes(self):
+        for mode in ('default', 'ao'):
+            for export in ('pass', 'no_export'):
+                code, result = self.evaluate(mode, export, 'fail')
+                self.assertEqual(1, code, mode)
+                self.assertIn('telemetry_no_content', result['reason'])
+                self.assertIn('przyczyna fail', result['reason'])
+                self.assertEqual('fail', status_of(result, 'telemetry_no_content'))
+
+    def test_a_status_outside_the_case_is_no_result(self):
+        for export, no_content in (('fail', 'pass'), ('unverifiable', 'pass'), ('pass', 'odd')):
+            code, result = self.evaluate('default', export, no_content)
+            self.assertEqual(1, code, (export, no_content))
+            self.assertIn('nie ma wyniku', result['reason'])
+
+    def test_other_cases_still_block_when_the_telemetry_does_not(self):
+        telemetry = {'telemetry_export': {'status': 'no_export', 'reason': 'x'},
+                     'telemetry_no_content': {'status': 'unverifiable', 'reason': 'y'}}
+        code, result = probe.evaluate(transcript({'bash_cat_canary': 'fail'}), probe.CASE_NAMES, CANARY, 1.0,
+                                      context=context(telemetry=telemetry))
+        self.assertEqual(1, code)
+        self.assertIn('bash_cat_canary', result['reason'])
 
 
 class SourcedCasesTestCase(unittest.TestCase):
@@ -765,6 +928,19 @@ def emit(event):
     print(json.dumps(event))
     sys.stdout.flush()
 emit({'type': 'system', 'subtype': 'init'})
+# Telemetry as the wrapper and Claude Code would send it: each body to AGENT_OTEL_ENDPOINT (the probe's receiver) or
+# to the inherited OTEL_EXPORTER_OTLP_ENDPOINT (the endpoint the wrapper must remove).
+import base64, http.client
+for item in json.loads(os.environ.get('FAKE_OTEL_BODIES', '[]')):
+    endpoint = os.environ['AGENT_OTEL_ENDPOINT' if item['to'] == 'agent' else 'OTEL_EXPORTER_OTLP_ENDPOINT']
+    host, port = endpoint[len('http://'):].split(':')
+    connection = http.client.HTTPConnection(host, int(port), timeout=10)
+    headers = {'Content-Type': 'application/x-protobuf'}
+    if item.get('encoding'):
+        headers['Content-Encoding'] = item['encoding']
+    connection.request('POST', item['path'], body=base64.b64decode(item['body']), headers=headers)
+    connection.getresponse().read()
+    connection.close()
 if mode == 'budget':
     emit({'type': 'result', 'subtype': 'error_max_budget_usd', 'is_error': True, 'total_cost_usd': 1.01})
     sys.exit(1)
@@ -1081,6 +1257,115 @@ class ProbeRunTest(ProbeRunTestCase):
         p.cleanup()
         self.assert_cleaned(p)
 
+    # -- telemetry (spec docs/features/telemetry/spec.md, R3) ------------------------------------------------
+
+    @staticmethod
+    def otel_bodies(p, record=None, to='agent', encoding=None, attributes=None):
+        attributes = attributes or p.expected_telemetry_attributes()
+        items = []
+        for path, body in (('/v1/metrics', otlp.metrics_request(attributes)),
+                           ('/v1/logs', otlp.logs_request(attributes, record or {'event.name': 'api_request'}))):
+            raw = gzip.compress(body) if encoding == 'gzip' else body
+            items.append({'path': path, 'to': to, 'encoding': encoding,
+                          'body': base64.b64encode(raw).decode('ascii')})
+        return json.dumps(items)
+
+    def test_the_executor_exports_to_the_first_receiver_with_inherited_variables_for_the_second(self):
+        p = self.make_probe()
+        p.setup()
+        self.addCleanup(p.cleanup)
+        executor_env = p._executor_env(self.env(OTEL_LOG_USER_PROMPTS='0'))
+        first, second = executor_env['AGENT_OTEL_ENDPOINT'], executor_env['OTEL_EXPORTER_OTLP_ENDPOINT']
+        self.assertRegex(first, r'^http://127\.0\.0\.1:[0-9]+$')
+        self.assertRegex(second, r'^http://127\.0\.0\.1:[0-9]+$')
+        self.assertNotEqual(first, second)
+        self.assertEqual(('1', '1'), (executor_env['OTEL_LOG_USER_PROMPTS'], executor_env['OTEL_LOG_TOOL_DETAILS']))
+
+    def test_the_prompt_carries_a_random_marker(self):
+        p, other = self.make_probe(), self.make_probe()
+        self.assertRegex(p.prompt_marker, r'^[A-Z]+-[0-9a-f]{16}$')
+        self.assertNotEqual(p.prompt_marker, other.prompt_marker)
+        command = p._command()
+        self.assertIn(p.prompt_marker, command[command.index('-p') + 1])
+
+    def test_the_expected_attributes_follow_the_ao_home_and_the_task_of_the_probe(self):
+        p = self.make_probe()
+        self.assertEqual({'shop.source': 'ao', 'shop.epic': os.path.basename(p.ao_home)[len('ao-'):],
+                          'shop.task': p.task_id, 'shop.task_kind': 'plan'}, p.expected_telemetry_attributes())
+        custom = self.make_probe(ao_home_name='ao-custom')
+        self.assertEqual(('CUSTOM-1', 'CUSTOM-INTEGRATION-1'), (custom.task_id, custom.integration_task))
+        self.assertEqual('custom', custom.expected_telemetry_attributes()['shop.epic'])
+
+    def test_an_export_with_the_attributes_and_no_content_passes_both_cases(self):
+        p = self.make_probe()
+        code, result = p.run(env=self.env(FAKE_OTEL_BODIES=self.otel_bodies(p, encoding='gzip')))
+        self.assertEqual(0, code, result.get('reason'))
+        self.assertEqual(('pass', 'pass'), (status_of(result, 'telemetry_export'),
+                                            status_of(result, 'telemetry_no_content')))
+        self.assert_cleaned(p)
+        for endpoint_port in p.telemetry_ports:
+            with self.assertRaises(OSError):
+                socket.create_connection(('127.0.0.1', endpoint_port), timeout=2).close()
+
+    def test_no_export_does_not_change_the_exit_code_and_has_a_reason(self):
+        for mode in ('default', 'ao'):
+            p = self.make_probe(mode=mode)
+            code, result = p.run(env=self.env())
+            self.assertEqual(0, code, (mode, result.get('reason')))
+            self.assertIsNone(result['reason'])
+            cases = {c['name']: c for c in result['cases']}
+            for name in probe.TELEMETRY_CASES:
+                self.assertEqual('no_export', cases[name]['status'], (mode, name))
+                self.assertTrue(cases[name]['reason'], (mode, name))
+            with open(p.result_path) as f:
+                self.assertEqual(result, json.load(f))
+
+    def test_an_unknown_encoding_is_unverifiable_and_does_not_change_the_exit_code(self):
+        p = self.make_probe()
+        code, result = p.run(env=self.env(FAKE_OTEL_BODIES=self.otel_bodies(p, encoding='br')))
+        self.assertEqual(0, code, result.get('reason'))
+        self.assertEqual('unverifiable', status_of(result, 'telemetry_no_content'))
+        self.assertEqual('no_export', status_of(result, 'telemetry_export'))
+
+    def test_each_marker_in_the_export_exits_one_in_both_modes(self):
+        for mode in ('default', 'ao'):
+            for marker in ('prompt_marker', 'cases_script', 'local_body', 'canary'):
+                p = self.make_probe(mode=mode)
+                value = {'prompt_marker': p.prompt_marker, 'cases_script': probe.CASES_IN_WORKTREE,
+                         'local_body': p.local_body, 'canary': CANARY}[marker]
+                code, result = p.run(env=self.env(FAKE_OTEL_BODIES=self.otel_bodies(p, record={'x': 'a %s b' % value})))
+                self.assertEqual(1, code, (mode, marker))
+                self.assertEqual('fail', status_of(result, 'telemetry_no_content'), (mode, marker))
+                self.assertIn('telemetry_no_content', result['reason'])
+                self.assertNotIn(CANARY, json.dumps(result))
+                self.assert_cleaned(p)
+
+    def test_a_request_to_the_inherited_endpoint_exits_one(self):
+        for mode in ('default', 'ao'):
+            p = self.make_probe(mode=mode)
+            code, result = p.run(env=self.env(FAKE_OTEL_BODIES=self.otel_bodies(p, to='inherited')))
+            self.assertEqual(1, code, mode)
+            self.assertEqual('fail', status_of(result, 'telemetry_no_content'))
+            self.assertIn('OTEL_EXPORTER_OTLP_ENDPOINT', result['reason'])
+
+    def test_otel_forward_sends_every_request_unchanged_and_the_verdict_is_the_same(self):
+        stack = otlp.otlp_receiver.Receiver().start()
+        self.addCleanup(stack.stop)
+        verdicts = []
+        for forward in (None, stack.endpoint):
+            p = self.make_probe(otel_forward=forward)
+            bodies = self.otel_bodies(p, encoding='gzip')
+            code, result = p.run(env=self.env(FAKE_OTEL_BODIES=bodies))
+            verdicts.append((code, [(c['name'], c['status']) for c in result['cases']]))
+        self.assertEqual(verdicts[0], verdicts[1])
+        self.assertEqual(0, verdicts[1][0])
+        sent = [(item['path'], base64.b64decode(item['body']), item['encoding']) for item in json.loads(bodies)]
+        self.assertEqual(sent, [(r['path'], r['raw'], r['content_encoding']) for r in stack.requests])
+
+    def test_otel_forward_must_be_a_loopback_endpoint(self):
+        with self.assertRaises(ValueError):
+            self.make_probe(otel_forward='http://evil.example:4318')
+
     def test_the_canary_root_option_moves_only_the_canary_directory(self):
         root = os.path.join(self.tmp, 'shared')
         os.makedirs(root)
@@ -1141,6 +1426,21 @@ class WrapperCasesTest(unittest.TestCase):
         self.assertEqual(configured[0][1], self.home)
         self.assertTrue(configured[0][2].startswith(p.wrapper_root + '/'))
 
+    def wrapper_attributes(self, p):
+        work = p._mini_repo('telemetry-attributes', self.env())
+        code, stderr, argv = p._run_wrapper(work, self.env(), self.home, p.ao_home, p.task_id)
+        self.assertEqual(0, code, stderr)
+        attributes = p._settings_of(argv)['env']['OTEL_RESOURCE_ATTRIBUTES']
+        return dict(item.split('=', 1) for item in attributes.split(','))
+
+    def test_the_expected_telemetry_attributes_are_the_ones_the_wrapper_sets(self):
+        for name in (None, 'ao-custom'):
+            p = probe.Probe(claude_bin=probe.WRAPPER, canary=CANARY, work_root=self.tmp, home=self.home,
+                            ao_home_name=name)
+            p._make_ao_home()
+            self.addCleanup(p.cleanup)
+            self.assertEqual(p.expected_telemetry_attributes(), self.wrapper_attributes(p), name)
+
     def test_a_wrapper_that_ignores_the_checks_fails_them(self):
         lax = os.path.join(self.tmp, 'lax-wrapper')
         with open(lax, 'w') as f:
@@ -1151,6 +1451,47 @@ class WrapperCasesTest(unittest.TestCase):
         self.assertEqual(verdicts['wrapper_moved_origin_main'], 'fail')
         self.assertEqual(verdicts['wrapper_user_settings_not_merged'], 'fail')
         self.assertEqual(verdicts['work_integration_settings'], 'fail')
+
+
+class MainTest(unittest.TestCase):
+    BAD_FORWARDS = ('http://localhost:4318', 'https://127.0.0.1:4318', 'http://127.0.0.1:4318/v1',
+                    'http://127.0.0.1@evil.example:4318', 'http://127.0.0.1.nip.io:4318', 'http://[::1]:4318',
+                    'http://evil.example:4318', 'http://127.0.0.1:0', 'http://127.0.0.1:65536', 'off', '')
+
+    def main(self, *argv):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+            probe.main(list(argv))
+        return raised.exception.code, stderr.getvalue()
+
+    def test_otel_forward_outside_a_loopback_endpoint_is_a_usage_error_before_anything_runs(self):
+        made = []
+        original = probe.Probe
+        probe.Probe = lambda *a, **k: made.append(k)
+        self.addCleanup(setattr, probe, 'Probe', original)
+        for bad in self.BAD_FORWARDS:
+            code, err = self.main('--agent-claude-bin', '/bin/true', '--otel-forward', bad)
+            self.assertEqual(2, code, bad)
+            self.assertIn('--otel-forward', err)
+            self.assertIn('http://127.0.0.1:<port>', err)   # the address rule, not an unknown option
+        self.assertEqual([], made)
+
+    def test_otel_forward_reaches_the_probe(self):
+        made = []
+
+        class Fake:
+            def __init__(self, *args, **kwargs):
+                made.append(kwargs)
+
+            def run(self):
+                return 0, {}
+        original, detect = probe.Probe, probe._detect_shop_clone
+        probe.Probe, probe._detect_shop_clone = Fake, lambda: '/x/shop'
+        self.addCleanup(setattr, probe, 'Probe', original)
+        self.addCleanup(setattr, probe, '_detect_shop_clone', detect)
+        self.assertEqual(0, probe.main(['--agent-claude-bin', '/bin/true', '--otel-forward', 'http://127.0.0.1:4318']))
+        self.assertEqual(0, probe.main(['--agent-claude-bin', '/bin/true']))
+        self.assertEqual(['http://127.0.0.1:4318', None], [k['otel_forward'] for k in made])
 
 
 if __name__ == '__main__':
