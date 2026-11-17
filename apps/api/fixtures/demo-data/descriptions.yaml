@@ -1,38 +1,40 @@
 # The short descriptions of the products: "<name>: <feature>, <feature> i <feature>. <closing>", where the features come
-# from the product type and the closing from the department of the product.
+# from the product type and the closing from the department of the product. The closings are phrases without a verb or
+# an adjective that would have to agree with the name of the product (a product may be singular or plural, of any
+# gender).
 closings:
   bieganie:
-    - "Sprawdzi się na treningach i w zawodach."
-    - "Dobrze znosi regularne pranie i długie dystanse."
-    - "Wybór biegaczy, którzy liczą na stały poziom komfortu."
-    - "Pasuje do każdego planu treningowego."
+    - "Na treningi i do startów w zawodach."
+    - "Na krótkie rozbiegania i długie dystanse."
+    - "Dla biegaczy, którzy liczą na stały poziom komfortu."
+    - "Do każdego planu treningowego."
   rower:
-    - "Dobrze sprawdza się na szosie, szutrze i leśnych ścieżkach."
+    - "Na szosę, szuter i leśne ścieżki."
     - "Do codziennych dojazdów i weekendowych wypraw."
-    - "Prosty w montażu i przygotowany na zmienną pogodę."
+    - "Na zmienną pogodę i długie trasy."
     - "Dla rowerzystów, którzy cenią niezawodność."
   turystyka:
-    - "Przygotowany na zmienną pogodę w górach."
+    - "Na zmienną pogodę w górach."
     - "Na weekendowe wyjścia i wielodniowe wyprawy."
-    - "Lekki, a przy tym wytrzymały w trudnym terenie."
-    - "Dobry towarzysz na szlaku o każdej porze roku."
+    - "Do trudnego terenu, przy niewielkiej masie w plecaku."
+    - "Na szlak o każdej porze roku."
   sporty-zimowe:
-    - "Zaprojektowany na mroźne dni i długie zjazdy."
-    - "Dobrze trzyma ciepło przy intensywnym wysiłku."
+    - "Na mroźne dni i długie zjazdy."
     - "Na stok, na skitury i na zimowy spacer."
-    - "Sprawdzony w niskich temperaturach."
+    - "Do niskich temperatur i intensywnego wysiłku."
+    - "Na całą zimę."
   fitness:
     - "Do treningów w domu i na siłowni."
-    - "Pasuje do ćwiczeń dla początkujących i zaawansowanych."
-    - "Trwały, łatwy w utrzymaniu w czystości."
-    - "Pomaga utrzymać regularność treningów."
+    - "Dla początkujących i zaawansowanych."
+    - "Do regularnych ćwiczeń."
+    - "Na każdy dzień treningowy."
   sporty-wodne:
-    - "Odporny na wodę słodką i słoną."
+    - "Do użytku w wodzie słodkiej i słonej."
     - "Na jezioro, rzekę i basen."
-    - "Szybko schnie i łatwo się go pakuje."
     - "Dla wodniaków, którzy lubią mieć sprzęt pod kontrolą."
+    - "Na sezon nad wodą."
   sporty-druzynowe:
     - "Do gry na treningach i w meczach."
-    - "Wytrzymuje intensywne użytkowanie przez cały sezon."
-    - "Dobry wybór dla drużyn szkolnych i klubowych."
-    - "Prosty w użyciu, gotowy do gry od razu."
+    - "Na cały sezon rozgrywek."
+    - "Dla drużyn szkolnych i klubowych."
+    - "Na boisko i na halę."
