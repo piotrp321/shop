@@ -1,6 +1,9 @@
 parameters:
     app.images_bucket: '%env(IMAGES_BUCKET)%'
     app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
+    # The rules of an uploaded original: the upload in Catalog and the photo pool of the demo data (DemoData) share them.
+    app.image_upload.max_bytes: 67108864 # 64 MB
+    app.image_upload.max_pixels: 50000000 # 50 MP
     # Seconds between the attempts of storefront:cache:purge-all (5 per layer).
     app.storefront_cache.retry_delay: 5.0
     # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
@@ -55,8 +58,8 @@ services:
     App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
         arguments:
             $filesystem: '@product_images.storage'
-            $maxBytes: 67108864 # 64 MB
-            $maxPixels: 50000000 # 50 MP
+            $maxBytes: '%app.image_upload.max_bytes%'
+            $maxPixels: '%app.image_upload.max_pixels%'
 
     App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator:
         arguments:
@@ -296,8 +299,8 @@ when@test: &test
             public: true
             arguments:
                 $filesystem: '@product_images.storage'
-                $maxBytes: 67108864 # 64 MB
-                $maxPixels: 50000000 # 50 MP
+                $maxBytes: '%app.image_upload.max_bytes%'
+                $maxPixels: '%app.image_upload.max_pixels%'
         # Tests switch the search backend (a temporary index, a failing stub) through this service.
         App\Tests\Support\SwitchableProductSearch:
             public: true

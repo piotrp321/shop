@@ -25,12 +25,21 @@ final class ImageKeys
     }
 
     /**
+     * The type of the contents by what they are (not by a name), null when it is not one of the originals the catalog accepts.
+     */
+    public static function typeOf(string $contents): ?OriginalImageType
+    {
+        $mime = new \finfo(\FILEINFO_MIME_TYPE)->buffer($contents);
+
+        return false === $mime ? null : (self::TYPES[$mime] ?? null);
+    }
+
+    /**
      * @throws \InvalidArgumentException when the type of the contents is not one of the originals the catalog accepts
      */
     public static function forContents(string $contents): string
     {
-        $mime = new \finfo(\FILEINFO_MIME_TYPE)->buffer($contents);
-        $type = false === $mime ? null : (self::TYPES[$mime] ?? null);
+        $type = self::typeOf($contents);
         if (null === $type) {
             throw new \InvalidArgumentException('The file is not an image type the catalog accepts.');
         }
