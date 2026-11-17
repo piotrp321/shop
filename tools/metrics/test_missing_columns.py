@@ -11,7 +11,8 @@ from testkit import Env, run_cli
 
 class MissingColumnTest(Env):
 
-    def home_without(self, table, column):
+    def home_without(self, table, column, *more):
+        """The run without `table.column` (the table when column is None) and the other `table.column` of `more`."""
         home = testkit.synthetic_home(
             self.root, created=1000.0, rounds=2, jsonl=[], events=[(9000, 'epic_done', {})],
             tasks=[('T-1', 'plan'), ('T-2', 'plan'), ('I-1', 'integration'), ('F-1', 'fix'), ('R-1', 'repair')],
@@ -20,10 +21,11 @@ class MissingColumnTest(Env):
                       dict(task_id='I-1', started_at=2000, ended_at=2100),
                       dict(task_id='R-1', started_at=2700, ended_at=3000, outcome=None)])
         con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
-        if column is None:
-            con.execute('DROP TABLE %s' % table)
-        else:
-            con.execute('ALTER TABLE %s DROP COLUMN %s' % (table, column))
+        for name, dropped in [(table, column)] + [tuple(m.split('.')) for m in more]:
+            if dropped is None:
+                con.execute('DROP TABLE %s' % name)
+            else:
+                con.execute('ALTER TABLE %s DROP COLUMN %s' % (name, dropped))
         con.commit()
         con.close()
         return home
@@ -139,6 +141,34 @@ class MissingColumnTest(Env):
                 self.assertEqual(repair['unknown'], 1)
                 self.assertTrue(run_cli(['render', 'demo', '--format', 'report', '--state', self.state])[1]
                                 .count('REPAIR: 1 (przyczyna nieznana)'))
+
+    def test_the_time_of_an_attempt_is_unknown_without_wall_s_and_a_start_or_an_end(self):
+        record = self.record('demo', home=self.home_without('attempts', 'wall_s'))     # the end and start give it
+        self.assertEqual(record['by_task']['T-1']['work'], 800.0)
+        self.assertEqual(record['integration']['work_s'], 100.0)
+        for other in ('attempts.started_at', 'attempts.ended_at'):
+            with self.subTest(column=other):
+                record = self.record('demo', home=self.home_without('attempts', 'wall_s', other))
+                self.assertEqual(sorted(record['by_task']), ['I-1', 'R-1', 'T-1', 'T-2'])
+                self.assertTrue(all(entry['work'] is None for entry in record['by_task'].values()))
+                self.assertIsNone(record['integration']['work_s'])
+                self.assertEqual(record['integration']['attempts'], 1)
+                self.assert_gap(record, 'by_task')
+
+    def test_without_tasks_task_id_the_integration_is_null(self):
+        record = self.record('demo', home=self.home_without('tasks', 'task_id'))
+        self.assertIsNone(record['integration']['work_s'])
+        self.assertIsNone(record['integration']['attempts'])
+        self.assertIsNone(record['retries']['repair'])
+        self.assertEqual(record['retries']['fix'], 1)
+        self.assert_gap(record, 'tasks.task_id')
+
+    def test_without_tasks_kind_decide_skips_d2_with_a_reason(self):
+        self.record('demo', home=self.home_without('tasks', 'kind'))
+        code, out, err = run_cli(['decide', 'demo', '--state', self.state])
+        self.assertEqual(code, 0, err)
+        skipped = {item['key']: item['reason'] for item in json.loads(out)['skipped']}
+        self.assertIn('tasks.kind', skipped.get('D2:plan_split', ''))
 
     def test_a_null_value_in_an_existing_column_is_still_counted(self):
         record = self.record('demo', home=testkit.synthetic_home(

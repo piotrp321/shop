@@ -609,8 +609,16 @@ def retries_of(run, run_ended, gaps):
     return {'attempts': attempts, 'failed_by_outcome': failed_by_outcome, 'repair': repair, 'fix': fix}
 
 
+def wall_unknown(run):
+    """True when no attempt has a time: the AO database has neither wall_s nor both the start and the end."""
+    return lacks(run, 'attempts.wall_s') and lacks(run, 'attempts.started_at', 'attempts.ended_at')
+
+
+WALL_UNKNOWN = 'brak kolumny wall_s i początku albo końca prób w bazie AO: czas nieznany'
+
+
 def integration_of(run, epic, gaps):
-    if gaps.lacks('tasks.kind', 'attempts.task_id'):        # which attempts are integration ones is unknown
+    if lacks(run, 'tasks.kind', 'tasks.task_id', 'attempts.task_id'):    # which attempts are integration ones is unknown
         return {'work_s': None, 'attempts': None, 'rounds': epic['round']}
     kinds = {t['task_id']: t['kind'] for t in run['tasks']}
     work, count = 0.0, 0
@@ -618,6 +626,9 @@ def integration_of(run, epic, gaps):
         if kinds.get(attempt['task_id']) not in INTEGRATION_KINDS:
             continue
         count += 1
+        if wall_unknown(run):
+            gaps.add('integration', WALL_UNKNOWN)
+            continue
         seconds = _number(attempt['wall_s'])
         start, end = _number(attempt['started_at']), _number(attempt['ended_at'])
         if seconds is None and start is not None and end is not None:
@@ -627,7 +638,7 @@ def integration_of(run, epic, gaps):
                                                                                          attempt['number']))
             continue
         work += seconds
-    return {'work_s': round(work, 3), 'attempts': count, 'rounds': epic['round']}
+    return {'work_s': None if wall_unknown(run) else round(work, 3), 'attempts': count, 'rounds': epic['round']}
 
 
 # --------------------------------------------------------------------------------------------- transcripts: reading
@@ -1230,7 +1241,10 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
                                                        'attempts': 0})
         task['attempts'] += 1
         seconds = _wall(attempt)
-        if seconds is None:
+        if wall_unknown(run):
+            task['work'] = None
+            gaps.add('by_task', WALL_UNKNOWN)
+        elif seconds is None:
             gaps.add('by_task', 'próba %s/%s bez wall_s i końca: pominięta w czasie' % (attempt['task_id'],
                                                                                     attempt['number']))
         else:
@@ -2341,6 +2355,8 @@ def d2_candidates(record, history, config, skipped, gaps):
     by_task = record.get('by_task')
     if not isinstance(by_task, dict):
         return skip_rule(skipped, D2_KEY, 'brak danych: by_task')
+    if by_task and all(isinstance(e, dict) and e.get('kind') is None for e in by_task.values()):
+        return skip_rule(skipped, D2_KEY, 'brak danych: tasks.kind (rodzaje zadań nieznane)')
     works = [e['work'] for h in history for e in (h.get('by_task') or {}).values()
              if isinstance(e, dict) and e.get('kind') == 'plan' and _is_number(e.get('work'))]
     middle = median(works) if works else None
