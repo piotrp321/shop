@@ -201,6 +201,21 @@ class OverlapTest(NightEnv):
         self.assertEqual(parallel['epics'], ['other'])
         self.assertIsNone(parallel['repairs'])
 
+    def test_repairs_are_null_when_the_attempts_that_place_them_are_unknown(self):
+        for table, column in (('attempts', 'task_id'), ('attempts', 'started_at'), ('attempts', 'ended_at'),
+                              ('tasks', 'task_id')):
+            with self.subTest(column='%s.%s' % (table, column)):
+                self.write_night([start('demo', 110), start('other', 2000), done('other', 3000), done('demo', 5010)])
+                home = self.demo(tasks=[('T-1', 'plan'), ('R-1', 'repair')],
+                                 attempts=[dict(task_id='R-1', started_at=epoch(2500), ended_at=epoch(2600))])
+                con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
+                con.execute('ALTER TABLE %s DROP COLUMN %s' % (table, column))
+                con.commit()
+                con.close()
+                parallel = self.record('demo', home=home)['parallel']
+                self.assertEqual(parallel['epics'], ['other'])
+                self.assertIsNone(parallel['repairs'])
+
     def test_catalog_admin_fixture_has_its_repair_in_the_overlap(self):
         shutil.copy(testkit.fixture('measurements.jsonl'), self.night)
         record = self.record('catalog-admin', home=testkit.fixture_home(self.root, 'catalog-admin'))

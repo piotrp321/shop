@@ -1,5 +1,6 @@
 """A column missing in the AO database gives null in the fields derived from it and a gap, never a zero (spec: Źródła:
 `Zera bez danych są zakazane`)."""
+import json
 import os
 import sqlite3
 import unittest
@@ -86,6 +87,23 @@ class MissingColumnTest(Env):
         self.assertIsNone(record['integration']['attempts'])
         self.assertEqual(record['integration']['rounds'], 2)
         self.assert_gap(record, 'attempts.task_id')
+
+    def test_without_attempts_task_id_no_field_per_task_is_made_up(self):
+        for table, column in (('attempts', 'task_id'), ('attempts', None)):
+            with self.subTest(column=column):
+                record = self.record('demo', home=self.home_without(table, column))
+                self.assertIsNone(record['by_task'])
+                self.assertIsNone(record['value']['by_task'])
+                self.assertIsNone(record['value']['by_task_role'])
+                self.assertTrue(all(entry['task'] is None for entry in record['attempts']))
+                self.assert_gap(record, 'attempts.task_id')
+
+    def test_without_attempts_task_id_decide_skips_d2_with_a_reason(self):
+        self.record('demo', home=self.home_without('attempts', 'task_id'))
+        code, out, err = run_cli(['decide', 'demo', '--state', self.state])
+        self.assertEqual(code, 0, err)
+        skipped = {item['key']: item['reason'] for item in json.loads(out)['skipped']}
+        self.assertEqual(skipped.get('D2:plan_split'), 'brak danych: by_task')
 
     def test_without_attempts_started_at_the_work_of_the_breakdown_is_null(self):
         record = self.record('demo', home=self.home_without('attempts', 'started_at'))

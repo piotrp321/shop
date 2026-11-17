@@ -81,6 +81,15 @@ class WasteEnv(Env):
             return json.load(f)
 
 
+class HistoryOfAttemptsWithoutATaskTest(unittest.TestCase):
+    def test_attempts_of_a_record_without_task_ids_are_not_one_made_up_task(self):
+        record = {'attempts': [hist(None, 'plan', value=2.0, wall_s=10.0), hist(None, 'plan', value=3.0, wall_s=20.0)]}
+        found = metrics.waste_history({'old': record}, set())
+        self.assertEqual(found['value'], {'plan': [2.0, 3.0]})         # per attempt it is still a measurement
+        self.assertEqual(found['wall'], {'plan': [10.0, 20.0]})
+        self.assertEqual(found['task'], {})                            # per task it is not: which task is unknown
+
+
 class W1Test(WasteEnv):
     """An attempt that has ended costs more than 3x the median of the ended attempts of its kind and at least 5 USD."""
 

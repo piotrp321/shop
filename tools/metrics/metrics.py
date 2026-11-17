@@ -309,6 +309,11 @@ class Gaps:
 
 # ------------------------------------------------------------------------------------------------------ the record
 
+def lacks(run, *columns):
+    """True when any of the `table.column` names is missing in the AO database of the run (`load_run`)."""
+    return any(column in run['absent'] for column in columns)
+
+
 def iso(epoch):
     if epoch is None:
         return None
@@ -1013,29 +1018,33 @@ def render_cell(cell):
     return out
 
 
-def value_sections(items):
+def value_sections(items, with_tasks=True):
     """The `value` of the record from items [(task, {role: {model: cell}} or None)]: total, by_role, by_model, by_task,
     by_role_model and by_task_role ({task: {role: cell}}, the value of a role in one task). An attempt without cells
-    (no transcript) is an unknown part of its sections."""
+    (no transcript) is an unknown part of its sections. Without `with_tasks` (the AO database does not say which task
+    an attempt belongs to) by_task and by_task_role are None."""
     sections = {name: Section(name in ('by_role', 'by_role_model', 'by_task_role'))
                 for name in ('total', 'by_role', 'by_model', 'by_task', 'by_role_model', 'by_task_role')}
     nothing = {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0, 'shared': False, 'no_cli': False}
     for task, cells in items:
         if cells is None:
             sections['total'].mark_unknown('all')
-            sections['by_task'].mark_unknown(task)
+            if with_tasks:
+                sections['by_task'].mark_unknown(task)
             continue
         if not cells:                       # a CLI result without any usage: a real zero
             sections['total'].add('all', nothing)
-            sections['by_task'].add(task, nothing)
+            if with_tasks:
+                sections['by_task'].add(task, nothing)
         for role, models in cells.items():
             for model, cell in models.items():
                 sections['total'].add('all', cell)
                 sections['by_role'].add(role, cell)
                 sections['by_model'].add(model, cell)
-                sections['by_task'].add(task, cell)
                 sections['by_role_model'].add((role, model), cell)
-                sections['by_task_role'].add((task, role), cell)
+                if with_tasks:
+                    sections['by_task'].add(task, cell)
+                    sections['by_task_role'].add((task, role), cell)
     value = {'total': sections['total'].render('all') if sections['total'].cells else None}
     for name in ('by_role', 'by_model', 'by_task'):
         value[name] = {key: sections[name].render(key) for key in sorted(sections[name].cells)}
@@ -1047,6 +1056,8 @@ def value_sections(items):
     for task, role in sorted(sections['by_task_role'].cells):
         by_task_role.setdefault(task, {})[role] = sections['by_task_role'].render((task, role))
     value['by_task_role'] = by_task_role
+    if not with_tasks:
+        value['by_task'] = value['by_task_role'] = None
     return value
 
 # ------------------------------------------------------------------------------------- transcripts: shell commands
@@ -1174,6 +1185,9 @@ def _wall(attempt):
     return seconds
 
 
+NO_TASK_REASON = 'brak kolumny attempts.task_id w bazie AO: nie wiadomo, do której próby należy transkrypt'
+
+
 def transcript_path(ao_home, attempt):
     """The `stdout.jsonl` of an attempt, or None when the task id or number would leave the attempt directory."""
     task, number = attempt['task_id'], attempt['number']
@@ -1192,8 +1206,9 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     attempts = sorted(run['attempts'], key=lambda a: (_number(a['started_at']) is None, _number(a['started_at']) or 0,
                                                        str(a['task_id']), a['number'] or 0))
     weights, compiled = config['token_weights'], compile_categories(config)
-    by_task = {}
-    for attempt in attempts:
+    no_task = lacks(run, 'attempts.task_id')            # which task an attempt belongs to is unknown
+    by_task = None if no_task else {}
+    for attempt in [] if no_task else attempts:
         task = by_task.setdefault(attempt['task_id'], {'kind': kinds.get(attempt['task_id']), 'work': 0.0,
                                                        'attempts': 0})
         task['attempts'] += 1
@@ -1207,7 +1222,8 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     for attempt in attempts:
         label = '%s/%s' % (attempt['task_id'], attempt['number'])
         path = transcript_path(ao_home, attempt)
-        data, reason = read_transcript(path) if path else (None, 'nieprawidłowy identyfikator próby')
+        data, reason = read_transcript(path) if path else (None, NO_TASK_REASON if no_task
+                                                           else 'nieprawidłowy identyfikator próby')
         seconds = _wall(attempt)
         entry = {'task': attempt['task_id'], 'kind': kinds.get(attempt['task_id']), 'number': attempt['number'],
                  'outcome': attempt['outcome'], 'executor_status': attempt['executor_status'],
@@ -1251,7 +1267,7 @@ def transcript_fields(ao_home, run, config, records, epic_id, gaps):
     if not datas:
         gaps.add('in_attempts', 'brak transkryptów prób')
         gaps.add('versions', 'brak transkryptów prób')
-    return {'by_task': by_task, 'attempts': entries, 'value': value_sections(items), 'in_attempts': in_attempts,
+    return {'by_task': by_task, 'attempts': entries, 'value': value_sections(items, not no_task), 'in_attempts': in_attempts,
             'versions': versions_of(datas) if datas else None}
 
 
@@ -1438,7 +1454,9 @@ def night_fields(run, epic_id, started, run_end, night_dir, gaps):
         if any(start < s_end and s_start < end for stretch in stretches.values() for s_start, s_end in stretch):
             in_overlap.add(attempt['task_id'])
     return (subscription_of(span, stretches, gaps),
-            {'epics': sorted(stretches), 'repairs': None if gaps.lacks('tasks.kind') else sorted(in_overlap)},
+            {'epics': sorted(stretches),
+             'repairs': None if lacks(run, 'tasks.kind', 'tasks.task_id', 'attempts.task_id', 'attempts.started_at',
+                                      'attempts.ended_at') else sorted(in_overlap)},
             stretches, span)
 
 
@@ -3562,7 +3580,8 @@ def waste_history(records, skip):
                 found['value'].setdefault(kind, []).append(attempt['value'])
             if _is_number(attempt.get('wall_s')):
                 found['wall'].setdefault(kind, []).append(attempt['wall_s'])
-            tasks.setdefault((str(attempt.get('task')), kind), []).append(attempt.get('value'))
+            if attempt.get('task') is not None:         # a record made without task ids has no tasks to total
+                tasks.setdefault((str(attempt['task']), kind), []).append(attempt.get('value'))
         for (_, kind), values in tasks.items():
             if all(_is_number(v) for v in values):
                 found['task'].setdefault(kind, []).append(sum(values))
