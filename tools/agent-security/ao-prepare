@@ -24,9 +24,9 @@ on stdout:
      unreadable registry or a relative entry is a refusal;
   3. the pinned binary from claude_pin.py (exit 0 and an absolute path of an executable file; otherwise its stderr);
   4. the seven files claude-agent, render_settings.py, executor-settings.json, probe.py, probe-cases.sh, bin/mktemp
-     and otlp_receiver.py of the commit `main` points to in the source: the public repository piotrp321/shop on GitHub, a fixed address
-     (git allows only https and ssh for it). Nothing comes from the main clone, whose .git executors and containers
-     can write: not its objects or refs (replace objects, a moved refs/remotes/origin/main) and not its
+     and otlp_receiver.py of the commit `main` points to in the source: the public repository piotrp321/shop on
+     GitHub, a fixed address (git allows only https and ssh for it). Nothing comes from the main clone, whose .git
+     executors and containers can write: not its objects or refs (replace objects, a moved refs/remotes/origin/main) and not its
      configuration (a planted .git/commondir or include, a remote URL changed through Docker). The SHA comes from
      `git ls-remote <source> refs/heads/main` (only the line whose ref is exactly refs/heads/main, so a branch like
      x/refs/heads/main changes nothing); the commit is fetched by that SHA (--depth=1) into the private bare
@@ -171,13 +171,19 @@ def check_telemetry_stack(endpoint):
     return None
 
 
+def _warns(case):
+    """Whether a case of the result is a telemetry case with a status that is a warning, not a refusal."""
+    name = case.get('name') if isinstance(case, dict) else None
+    return isinstance(name, str) and case.get('status') in TELEMETRY_WARNINGS.get(name, ())
+
+
 def telemetry_warnings(result):
     """The warning lines (without the prefix) of the telemetry cases of a readable result that do not block."""
     lines = []
     for case in (result or {}).get('cases', []):
-        if isinstance(case, dict) and case.get('status') in TELEMETRY_WARNINGS.get(case.get('name'), ()):
+        if _warns(case):
             lines.append('telemetria: sonda %s %s (%s)' % (case['name'], case['status'],
-                                                            _line(case.get('reason') or 'brak przyczyny')))
+                                                            _line(str(case.get('reason') or 'brak przyczyny'))))
     return lines
 
 
@@ -434,7 +440,7 @@ def judge(code, interrupted, result, problem):
     for case in result['cases']:
         if not isinstance(case, dict):
             return 'kod 0, ale nieczytelny przypadek w wyniku: %s' % _line(json.dumps(case, ensure_ascii=False))[:200]
-        if case.get('status') in TELEMETRY_WARNINGS.get(case.get('name'), ()):
+        if _warns(case):
             continue    # a warning of telemetry_warnings, not a refusal
         if case.get('status') != 'pass':
             return 'kod 0, ale przypadek %s nie przeszedł' % case.get('name')

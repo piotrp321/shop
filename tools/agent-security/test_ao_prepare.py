@@ -74,6 +74,8 @@ elif mode == 'notdict':
     payload['cases'] = ['bash_cat_canary']
 elif mode == 'odd_status':
     cases[0]['status'] = 'no_export'
+elif mode == 'odd_name':
+    cases.append({'name': ['telemetry_export'], 'layer': 'telemetry', 'status': 'no_export', 'reason': None})
 elif mode.startswith('telemetry_'):
     export = {'name': 'telemetry_export', 'layer': 'telemetry', 'kind': 'work', 'status': 'pass', 'reason': None}
     content = {'name': 'telemetry_no_content', 'layer': 'telemetry', 'kind': 'bypass', 'status': 'pass',
@@ -420,7 +422,8 @@ class AoPrepareTest(unittest.TestCase):
                             'znacznik promptu')
 
     def test_only_the_telemetry_statuses_of_their_cases_do_not_block(self):
-        for mode, case in (('telemetry_bad', 'telemetry_export'), ('odd_status', 'bash_cat_canary')):
+        for mode, case in (('telemetry_bad', 'telemetry_export'), ('odd_status', 'bash_cat_canary'),
+                           ('odd_name', "['telemetry_export']")):
             code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE=mode))
             self.assert_refused(code, out, err, 'kod 0, ale przypadek %s nie przeszedł' % case)
 
