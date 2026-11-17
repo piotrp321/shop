@@ -2696,8 +2696,9 @@ def role_kind(records, role):
 
 
 def role_samples(record, role, kind):
-    """The value of the role in each task of `kind` (0 where it did not act); None for a record without
-    value.by_task_role (older than the field)."""
+    """The value of the role in each task of `kind` (0 where it did not act, i.e. has no cell); a task is left out
+    when its own value is unknown or the role acted in it with an unknown value (`usd` null): not a zero. None for
+    a record without value.by_task_role (older than the field)."""
     by_role, by_task = _get(record, ('value', 'by_task_role')), record.get('by_task')
     if not isinstance(by_role, dict) or not isinstance(by_task, dict):
         return None
@@ -2707,8 +2708,12 @@ def role_samples(record, role, kind):
             continue
         if not _is_number(_get(record, ('value', 'by_task', task, 'usd'))):
             continue                                    # the value of the task is unknown: not a zero
-        usd = _get(by_role, (task, role, 'usd'))
-        found.append(usd if _is_number(usd) else 0.0)
+        cell = _get(by_role, (task, role))
+        if cell is None:
+            found.append(0.0)                           # the role did not act in the task
+        elif _is_number(_get(cell, ('usd',))):
+            found.append(cell['usd'])
+        # else: the role acted but its value is unknown: not a zero
     return found
 
 

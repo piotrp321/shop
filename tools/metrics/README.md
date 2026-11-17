@@ -343,7 +343,7 @@ Katalog wyników EVALS 2.0 jest czytany raz na wywołanie.
 
 | Reguła | Miara | Poziom | Jednostka |
 |---|---|---|---|
-| `D1:<rola>` | wartość roli w zadaniu (`value.by_task_role`; 0, gdy rola w zadaniu nie działała; zadanie bez znanej wartości pominięte) | zadania `kind` roli | USD |
+| `D1:<rola>` | wartość roli w zadaniu (`value.by_task_role`; 0, gdy rola w zadaniu nie działała; pominięte jest zadanie bez znanej wartości oraz zadanie, w którym rola działała, ale jej wartość jest nieznana, `usd` `null`) | zadania `kind` roli | USD |
 | `D2:plan_split` | `work` zadania planu | zadania `plan` | h |
 | `D3:gate_wait` | `gate_wait.wait_s` | epik | h |
 | `D4:<human_wait\|ci\|limit_wait\|review>` | udział kategorii w jej mianowniku (jak w `decide`) | epik | pp |

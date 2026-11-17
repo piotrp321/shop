@@ -274,6 +274,15 @@ class D1Test(EffectEnv):
         store_records(self.state, record)
         self.assertEqual(self.result('D1:code-reviewer')['after']['n'], 4)
 
+    def test_a_task_in_which_the_role_acted_with_an_unknown_value_is_left_out_not_counted_as_zero(self):
+        record = self.role_epic('a1', 11, 12, 0.5)
+        record['value']['by_task_role']['P-0']['code-reviewer'] = {'usd': None, 'estimated': True, 'tokens': {},
+                                                                   'estimated_tokens': []}
+        store_records(self.state, record)
+        after = self.result('D1:code-reviewer')['after']
+        self.assertEqual(after['n'], 4)                  # P-0 is not a sample; P-3 and P-4 (no entry) still give 0
+        self.assertEqual(after['median'], 0.25)          # 0.5, 0.5, 0, 0: the unknown value is not a fifth sample
+
     def test_a_role_that_never_acted_has_no_level_and_not_enough_data(self):
         store_records(self.state, *[self.role_epic('a%d' % i, 10 + i, 12 + i, 0.5) for i in range(1, 4)])
         result = self.result('D1:qa-adversarial')
