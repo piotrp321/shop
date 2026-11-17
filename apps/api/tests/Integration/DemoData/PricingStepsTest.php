@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\DemoData;
 
+use App\DemoData\Accounts\AccountGenerator;
+use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Identity\StaffRoles;
@@ -93,7 +95,7 @@ final class PricingStepsTest extends KernelTestCase
         $profiles = Profiles::fromFile(\dirname(__DIR__, 3).'/fixtures/demo-data/profiles.yaml');
         $dictionaries = new Dictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data');
         $products = new ProductGenerator($dictionaries, $profiles->namespace, self::anchor(), 2_000, $profiles->partSize);
-        $prices = new PriceGenerator($dictionaries, $profiles->namespace, self::anchor(), 20);
+        $prices = new PriceGenerator($dictionaries, $profiles->namespace, self::anchor(), 20, new PersonDictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data'));
         $byVariant = PromotionPlanner::byVariant(new PromotionPlanner($dictionaries, $products, $profiles->namespace, self::anchor(), 2_000, $profiles->partSize)->plan());
 
         $checked = 0;
@@ -153,8 +155,11 @@ final class PricingStepsTest extends KernelTestCase
         $changed = $this->int($connection->fetchOne("SELECT count(DISTINCT variant_id) FROM pricing_price_history WHERE source = 'staff'"));
         self::assertEqualsWithDelta(0.30, $changed / $variants, 0.04);
 
-        $admins = array_map(static fn (int $number): string => StaffRoles::actorId(self::NAMESPACE, $number), StaffRoles::adminNumbers(20));
-        $actors = array_map($this->text(...), $connection->fetchFirstColumn("SELECT DISTINCT actor_id FROM pricing_price_history WHERE source = 'staff'"));
+        // The actors are the generated staff accounts with the role admin, by their ids and names.
+        $accounts = new AccountGenerator(self::NAMESPACE, new PersonDictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data'));
+        $admins = array_map(static fn (int $number): string => $accounts->staffId($number).' '.$accounts->staff($number)->person->fullName(), StaffRoles::adminNumbers(20));
+        $actors = array_map($this->text(...), $connection->fetchFirstColumn("SELECT DISTINCT actor_id || ' ' || actor_name FROM pricing_price_history WHERE source = 'staff'"));
+        self::assertNotSame([], $actors);
         self::assertSame([], array_diff($actors, $admins));
         self::assertSame(0, $this->int($connection->fetchOne("SELECT count(*) FROM pricing_price_history WHERE source = 'seed' AND actor_id IS NOT NULL")));
         self::assertSame(0, $this->int($connection->fetchOne("SELECT count(*) FROM pricing_price_history WHERE source = 'staff' AND (changed_at < ?::timestamptz - interval '90 days' OR changed_at >= ?::timestamptz)", [self::ANCHOR, self::ANCHOR])));

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\DemoData\Pricing;
 
+use App\DemoData\Accounts\AccountGenerator;
+use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductSpec;
 use App\DemoData\Catalog\ProductType;
@@ -29,8 +31,9 @@ use App\Pricing\Domain\Tax\VatRates;
  * more for every three sizes up. Net and VAT come from PriceBreakdown at the rate of the tax class, the source and the
  * actor of an entry from PriceChangeOrigin. The history starts with an entry of the source `seed` an hour before the
  * product is published (a draft: before its last change), so every possible order has a price. About 30% of the
- * variants have one change by an `admin` of the staff (source `staff`) in the last 90 days: a rung or two up or down,
- * never inside a promotion of the variant (the price of a promoted variant is locked, as in the application).
+ * variants have one change by an `admin` of the generated staff (source `staff`; the actor is the id and the name of
+ * its account, AccountGenerator) in the last 90 days: a rung or two up or down, never inside a promotion of the variant
+ * (the price of a promoted variant is locked, as in the application).
  */
 final class PriceGenerator
 {
@@ -54,6 +57,7 @@ final class PriceGenerator
     /** @var list<int> */
     private array $admins;
     private VatRates $rates;
+    private AccountGenerator $accounts;
     private int $anchor;
 
     public function __construct(
@@ -61,11 +65,13 @@ final class PriceGenerator
         private readonly string $namespace,
         \DateTimeImmutable $anchor,
         int $staff,
+        PersonDictionaries $people,
     ) {
         foreach ($dictionaries->types() as $type) {
             $this->types[$type->key] = $type;
         }
         $this->admins = StaffRoles::adminNumbers($staff);
+        $this->accounts = new AccountGenerator($namespace, $people);
         $this->rates = new PolishVatRates();
         $this->anchor = $anchor->getTimestamp();
     }
@@ -121,7 +127,7 @@ final class PriceGenerator
                         PriceLadder::gross($rungs[$target], $endsWithNinetyNine),
                         $product->taxClass,
                         $rate,
-                        PriceChangeOrigin::staff(StaffRoles::actorId($this->namespace, $admin), StaffRoles::actorName($admin)),
+                        PriceChangeOrigin::staff($this->accounts->staffId($admin), $this->accounts->staff($admin)->person->fullName()),
                         $prng,
                     );
                 }

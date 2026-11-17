@@ -321,8 +321,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   obniżony o promocję trwającą w `t`, `[start, koniec)`, regułą `PromotionalPrice`; wynik `UnitPrice`: cena katalogowa,
   skuteczna, stawka i promocja) dla zamówień: `PriceGenerator::forProduct(spec, PromotionPlanner::byVariant(plan))[pozycja]`
   daje oś czasu wariantu bez bazy. Pracownicy: numery kont od 1, rola to funkcja samego numeru (`StaffRoles::roleOf`,
-  cykl 500: 10 `admin`, 200 `support`, 200 `warehouse`, 90 `marketing`), id aktora to UUID v5 `staff:<n>` w przestrzeni
-  profilu (`StaffRoles::actorId`), nazwa aktora to zastępnik `Pracownik demo <n>` (`StaffRoles::actorName`).
+  cykl 500: 10 `admin`, 200 `support`, 200 `warehouse`, 90 `marketing`), id i nazwa aktora historii to id i imię
+  z nazwiskiem wygenerowanego konta pracownika o tym numerze (`AccountGenerator::staff`, krok 4).
 - Wyjątek: `DemoData` zapisuje tabele przez `COPY FROM STDIN` i SQL, nie przez rekordy Doctrine ani agregaty
   (`CopyWriter`: natywne `Pdo\Pgsql::copyFromArray` na połączeniu DBAL, paczkami po 5000 wierszy, w transakcji
   wywołującego, do tabel z indeksami z migracji, bez zmiany schematu; sesja ładowania ustawia `SET synchronous_commit =

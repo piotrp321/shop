@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\DemoData;
 
+use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Copy\Sql;
@@ -89,7 +90,7 @@ final class GeneratedPricesOnTheRealPathsTest extends WebTestCase
         $profiles = Profiles::fromFile(\dirname(__DIR__, 3).'/fixtures/demo-data/profiles.yaml');
         $dictionaries = new Dictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data');
         $products = new ProductGenerator($dictionaries, $profiles->namespace, $this->anchor, 2_000, $profiles->partSize);
-        $prices = new PriceGenerator($dictionaries, $profiles->namespace, $this->anchor, 20);
+        $prices = new PriceGenerator($dictionaries, $profiles->namespace, $this->anchor, 20, new PersonDictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data'));
         $byVariant = PromotionPlanner::byVariant(new PromotionPlanner($dictionaries, $products, $profiles->namespace, $this->anchor, 2_000, $profiles->partSize)->plan());
 
         $recent = $this->anchor->modify('-29 days');
