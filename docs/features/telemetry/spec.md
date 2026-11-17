@@ -231,7 +231,8 @@ Poza zakresem (świadomie otwarte, założenia):
 
 - Sonda uruchamia wykonawcę z `AGENT_OTEL_ENDPOINT` ustawionym na własny odbiornik OTLP/HTTP na `127.0.0.1` (losowy
   port). Odbiornik zbiera ciała żądań `/v1/metrics` i `/v1/logs`, więc dane sondy nie trafiają do stosu.
-- Odbiornik rozpakowuje ciało według `Content-Encoding` (`gzip` albo brak). Znaczników `telemetry_no_content` szuka
+- Odbiornik rozpakowuje ciało według `Content-Encoding` (`gzip` albo brak; `gzip` ze wszystkimi członami, a bajty po
+  członie, które nie są całym członem, czynią ciało nie do rozpakowania). Znaczników `telemetry_no_content` szuka
   w surowych bajtach po rozpakowaniu: łańcuchy protobufa są w UTF-8, więc dekoder nie jest potrzebny. Do atrybutów
   `telemetry_export` dekoduje protobuf minimalnym dekoderem z biblioteki standardowej: varint i pola
   length-delimited, rekurencyjnie, z wyciągnięciem par `KeyValue` (klucz, wartość tekstowa). Ciało, którego nie da

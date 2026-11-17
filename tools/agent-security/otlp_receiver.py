@@ -13,8 +13,9 @@ tools/telemetry/telemetry.py; ao-prepare copies it next to probe.py.
                                    With `forward` (only http://127.0.0.1:<port>, validated by render_settings.py) each
                                    request goes on unchanged (method, path, Content-Type, Content-Encoding, raw body)
                                    to that address; its failure changes nothing else.
-  decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip; (None, problem) for any other
-                                   encoding, a body that does not decompress or one larger than MAX_BODY.
+  decompress(raw, encoding)        (body, None) for no Content-Encoding or gzip (every member, joined);
+                                   (None, problem) for any other encoding, a body that does not decompress (also
+                                   bytes after a member that are not a whole member) or one larger than MAX_BODY.
   find_markers(body, markers)      the names of `markers` ({name: value}) whose value is in the raw bytes of body.
   key_values(body)                 the (key, string value) pairs of every KeyValue with a string AnyValue anywhere
                                    in a protobuf message (ExportMetricsServiceRequest, ExportLogsServiceRequest): a
@@ -71,16 +72,23 @@ def decompress(raw, encoding):
         return raw, None
     if name.lower() != 'gzip':
         return None, 'nieznane Content-Encoding %r' % name
-    decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
-    try:
-        body = decoder.decompress(raw, MAX_BODY + 1)
-    except zlib.error as e:
-        return None, 'ciało gzip nie daje się rozpakować: %s' % e
-    if len(body) > MAX_BODY or decoder.unconsumed_tail:
-        return None, 'ciało gzip po rozpakowaniu większe niż %d bajtów' % MAX_BODY
-    if not decoder.eof:
-        return None, 'ciało gzip nie daje się rozpakować: urwany strumień'
-    return body, None
+    # Every member, like gzip.decompress: a later member must not carry what the check never sees.
+    parts, total, rest = [], 0, raw
+    while True:
+        decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try:
+            part = decoder.decompress(rest, MAX_BODY - total + 1)
+        except zlib.error as e:
+            return None, 'ciało gzip nie daje się rozpakować: %s' % e
+        total += len(part)
+        if total > MAX_BODY or decoder.unconsumed_tail:
+            return None, 'ciało gzip po rozpakowaniu większe niż %d bajtów' % MAX_BODY
+        if not decoder.eof:
+            return None, 'ciało gzip nie daje się rozpakować: urwany strumień'
+        parts.append(part)
+        rest = decoder.unused_data
+        if not rest:
+            return b''.join(parts), None
 
 
 def find_markers(body, markers):

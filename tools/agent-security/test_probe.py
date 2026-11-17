@@ -504,6 +504,13 @@ class TelemetryVerdictsTest(unittest.TestCase):
         received = [otel_request('/v1/logs', b'abc', 'br')] + exported(record={'command': 'sh .agent-probe-cases.sh'})
         self.assert_status(self.verdicts(received), 'telemetry_no_content', 'fail', 'nazwa skryptu przypadków')
 
+    def test_a_marker_in_a_later_gzip_member_fails(self):
+        clean, leak = otlp.logs_request(EXPECTED), otlp.logs_request(EXPECTED, {'prompt': MARKERS['znacznik promptu']})
+        raw = gzip.compress(clean) + gzip.compress(leak)
+        body, problem = otlp.otlp_receiver.decompress(raw, 'gzip')
+        request = dict(otel_request('/v1/logs', clean), content_encoding='gzip', raw=raw, body=body, problem=problem)
+        self.assert_status(self.verdicts(exported() + [request]), 'telemetry_no_content', 'fail', 'znacznik promptu')
+
     def test_a_marker_in_the_raw_bytes_of_a_body_that_cannot_be_checked_fails(self):
         received = exported() + [otel_request('/v1/logs', b'prompt PROMPT-feed1234', 'br')]
         self.assert_status(self.verdicts(received), 'telemetry_no_content', 'fail', 'znacznik promptu')

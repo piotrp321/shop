@@ -660,8 +660,9 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   na pierwszy odbiornik, a do tego `OTEL_LOG_USER_PROMPTS=1`, `OTEL_LOG_TOOL_DETAILS=1`
   i `OTEL_EXPORTER_OTLP_ENDPOINT` na drugi: wrapper musi je usunąć (R2). Polecenie sondy kończy losowy znacznik
   (`PROMPT-<losowe>`). Odbiornik zapisuje każde żądanie (także z ciałem `chunked`) i rozpakowuje je według
-  `Content-Encoding` (`gzip` albo brak; inne kodowanie albo ciało, którego nie da się rozpakować, jest nie do
-  sprawdzenia). Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem protobufa
+  `Content-Encoding` (`gzip` albo brak; `gzip` rozpakowuje wszystkie człony, z łącznym limitem rozmiaru; inne
+  kodowanie albo ciało, którego nie da się rozpakować, także z bajtami po członie, które nie są całym członem, jest
+  nie do sprawdzenia). Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem protobufa
   (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością tekstową).
   - `telemetry_export`: `pass`, gdy pierwszy odbiornik dostał żądania `/v1/logs` i `/v1/metrics`, a w parach logów
     i metryk są `shop.source=ao`, `shop.task=<zadanie sondy>`, `shop.epic=<nazwa atrapy $AO_HOME po ao->`
@@ -715,8 +716,8 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   więc profil ani walidacja ścieżki się nie zmieniają.
 - Testy bez modelu (CI przez `script-tests.sh`): ocena wyniku `stream-json` z atrapami (wyciek kanarka w wyniku
   narzędzia, próba niewykonana, brak przypadku, przekroczony koszt, urwane wyjście), odbiornik i dekoder na ciałach
-  protobuf zbudowanych w teście (zwykłych, `gzip` i `chunked`; nieznane `Content-Encoding`, uszkodzony `gzip`, ciało
-  nie do zdekodowania), każdy status przypadków telemetrii w obu trybach z kodem wyjścia, każdy znacznik w ciele,
+  protobuf zbudowanych w teście (zwykłych, `gzip` i `chunked`; nieznane `Content-Encoding`, uszkodzony `gzip`,
+  `gzip` z wieloma członami, bajty po członie, ciało nie do zdekodowania), każdy status przypadków telemetrii w obu trybach z kodem wyjścia, każdy znacznik w ciele,
   żądanie do drugiego odbiornika, `--otel-forward` (przekazanie bez zmian, ta sama ocena, próby obejścia adresu),
   atrybuty oczekiwane przez sondę równe tym, które ustawia wrapper, limit czasu z atrapą binarki,
   która nie kończy pracy, sprzątanie po błędzie i po sygnale, kody wyjścia; wrapper z atrapą binarki,

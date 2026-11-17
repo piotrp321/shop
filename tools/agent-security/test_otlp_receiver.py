@@ -181,6 +181,31 @@ class DecompressTest(unittest.TestCase):
         self.assertIsNone(body)
         self.assertTrue(problem)
 
+    def test_every_member_of_a_multi_member_gzip_body_is_decompressed(self):
+        # gzip.decompress reads every member; a second member must not hide what it carries.
+        raw = gzip.compress(b'clean') + gzip.compress(b'PROMPT-leak') + gzip.compress(b'')
+        self.assertEqual((b'cleanPROMPT-leak', None), otlp_receiver.decompress(raw, 'gzip'))
+
+    def test_bytes_after_a_member_or_a_cut_off_next_member_cannot_be_checked(self):
+        second = gzip.compress(b'PROMPT-leak' * 50)
+        for raw in (gzip.compress(b'clean') + b'junk',
+                    gzip.compress(b'clean') + b'\x00\x00',
+                    gzip.compress(b'clean') + second[:-10],
+                    gzip.compress(b'clean') + second[:5]):
+            body, problem = otlp_receiver.decompress(raw, 'gzip')
+            self.assertIsNone(body, raw)
+            self.assertIn('gzip', problem, raw)
+
+    def test_the_limit_after_decompression_counts_every_member(self):
+        limit = 64
+        original, otlp_receiver.MAX_BODY = otlp_receiver.MAX_BODY, limit
+        self.addCleanup(setattr, otlp_receiver, 'MAX_BODY', original)
+        half = gzip.compress(b'a' * (limit // 2))
+        self.assertEqual((b'a' * limit, None), otlp_receiver.decompress(half + half, 'gzip'))
+        body, problem = otlp_receiver.decompress(half + half + gzip.compress(b'a'), 'gzip')
+        self.assertIsNone(body)
+        self.assertIn(str(limit), problem)
+
 
 class FindMarkersTest(unittest.TestCase):
     MARKERS = {'znacznik promptu': 'PROMPT-feed', 'nazwa skryptu': '.agent-probe-cases.sh',
