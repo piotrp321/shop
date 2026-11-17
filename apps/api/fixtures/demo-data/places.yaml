@@ -1,0 +1,149 @@
+# Addresses of the generated people (for the orders): cities with their weight (about the population in thousands)
+# and postal codes NN-NNN of the city, and street names, which every city shares. Written for this project (see
+# CREDITS.md): the postal codes are codes of the given city, the street names are among the most common in Poland.
+cities:
+  Warszawa: { weight: 1860, postalCodes: ["00-001", "00-511", "00-950", "01-234", "02-495", "02-797", "03-310", "03-982", "04-028", "04-753"] }
+  Kraków: { weight: 800, postalCodes: ["30-001", "30-110", "30-418", "30-960", "31-004", "31-153", "31-503", "31-864"] }
+  Wrocław: { weight: 670, postalCodes: ["50-001", "50-370", "51-117", "52-129", "53-238", "54-130"] }
+  Łódź: { weight: 660, postalCodes: ["90-001", "90-361", "91-341", "92-213", "93-005", "94-020"] }
+  Poznań: { weight: 540, postalCodes: ["60-001", "60-161", "60-529", "61-131", "61-574", "61-896"] }
+  Gdańsk: { weight: 490, postalCodes: ["80-001", "80-180", "80-394", "80-462", "80-819", "80-958"] }
+  Szczecin: { weight: 390, postalCodes: ["70-001", "70-383", "71-006", "71-450"] }
+  Bydgoszcz: { weight: 330, postalCodes: ["85-001", "85-067", "85-326", "85-796"] }
+  Lublin: { weight: 330, postalCodes: ["20-001", "20-093", "20-388", "20-950"] }
+  Białystok: { weight: 290, postalCodes: ["15-001", "15-062", "15-351", "15-950"] }
+  Katowice: { weight: 280, postalCodes: ["40-001", "40-097", "40-524", "40-750"] }
+  Gdynia: { weight: 240, postalCodes: ["81-001", "81-198", "81-384", "81-572"] }
+  Częstochowa: { weight: 210, postalCodes: ["42-200", "42-202", "42-217", "42-224"] }
+  Radom: { weight: 200, postalCodes: ["26-600", "26-604", "26-610", "26-617"] }
+  Rzeszów: { weight: 195, postalCodes: ["35-001", "35-064", "35-326", "35-959"] }
+  Toruń: { weight: 195, postalCodes: ["87-100", "87-118"] }
+  Sosnowiec: { weight: 190, postalCodes: ["41-200", "41-205", "41-214", "41-219"] }
+  Kielce: { weight: 185, postalCodes: ["25-001", "25-312", "25-516", "25-734"] }
+  Gliwice: { weight: 170, postalCodes: ["44-100", "44-102", "44-117", "44-122"] }
+  Olsztyn: { weight: 170, postalCodes: ["10-001", "10-117", "10-437", "10-686"] }
+  Zabrze: { weight: 155, postalCodes: ["41-800", "41-806", "41-819"] }
+  Bielsko-Biała: { weight: 165, postalCodes: ["43-300", "43-303", "43-316", "43-382"] }
+  Bytom: { weight: 160, postalCodes: ["41-900", "41-902", "41-923", "41-940"] }
+  Zielona Góra: { weight: 140, postalCodes: ["65-001", "65-034", "65-417", "65-950"] }
+  Rybnik: { weight: 135, postalCodes: ["44-200", "44-203", "44-217"] }
+  Ruda Śląska: { weight: 135, postalCodes: ["41-700", "41-703", "41-710"] }
+  Opole: { weight: 125, postalCodes: ["45-001", "45-064", "45-315", "45-940"] }
+  Tychy: { weight: 125, postalCodes: ["43-100", "43-102", "43-110"] }
+  Gorzów Wielkopolski: { weight: 120, postalCodes: ["66-400", "66-403", "66-410"] }
+  Elbląg: { weight: 115, postalCodes: ["82-300", "82-310"] }
+  Płock: { weight: 115, postalCodes: ["09-400", "09-402", "09-410"] }
+  Dąbrowa Górnicza: { weight: 115, postalCodes: ["41-300", "41-303", "41-308"] }
+  Wałbrzych: { weight: 110, postalCodes: ["58-300", "58-302", "58-309"] }
+  Włocławek: { weight: 105, postalCodes: ["87-800", "87-805", "87-810"] }
+  Tarnów: { weight: 105, postalCodes: ["33-100", "33-101", "33-110"] }
+  Chorzów: { weight: 105, postalCodes: ["41-500", "41-503", "41-506"] }
+  Koszalin: { weight: 105, postalCodes: ["75-001", "75-016", "75-420"] }
+  Kalisz: { weight: 98, postalCodes: ["62-800", "62-805", "62-810"] }
+  Legnica: { weight: 98, postalCodes: ["59-220", "59-225"] }
+  Grudziądz: { weight: 92, postalCodes: ["86-300", "86-302"] }
+  Słupsk: { weight: 88, postalCodes: ["76-200", "76-206"] }
+  Jaworzno: { weight: 89, postalCodes: ["43-600", "43-603", "43-609"] }
+  Jastrzębie-Zdrój: { weight: 87, postalCodes: ["44-330", "44-335"] }
+  Nowy Sącz: { weight: 83, postalCodes: ["33-300", "33-310"] }
+  Jelenia Góra: { weight: 78, postalCodes: ["58-500", "58-506", "58-560"] }
+  Siedlce: { weight: 77, postalCodes: ["08-100", "08-110"] }
+  Konin: { weight: 72, postalCodes: ["62-500", "62-510"] }
+  Piła: { weight: 72, postalCodes: ["64-920"] }
+  Piotrków Trybunalski: { weight: 72, postalCodes: ["97-300"] }
+  Inowrocław: { weight: 72, postalCodes: ["88-100"] }
+  Lubin: { weight: 71, postalCodes: ["59-300"] }
+  Ostrów Wielkopolski: { weight: 71, postalCodes: ["63-400"] }
+  Suwałki: { weight: 69, postalCodes: ["16-400"] }
+  Gniezno: { weight: 67, postalCodes: ["62-200"] }
+  Stargard: { weight: 67, postalCodes: ["73-110"] }
+  Głogów: { weight: 66, postalCodes: ["67-200"] }
+  Pabianice: { weight: 64, postalCodes: ["95-200"] }
+  Leszno: { weight: 62, postalCodes: ["64-100"] }
+  Zamość: { weight: 61, postalCodes: ["22-400"] }
+  Łomża: { weight: 62, postalCodes: ["18-400"] }
+  Pruszków: { weight: 62, postalCodes: ["05-800"] }
+  Ełk: { weight: 61, postalCodes: ["19-300"] }
+  Chełm: { weight: 60, postalCodes: ["22-100"] }
+  Mielec: { weight: 59, postalCodes: ["39-300"] }
+  Przemyśl: { weight: 58, postalCodes: ["37-700"] }
+  Stalowa Wola: { weight: 58, postalCodes: ["37-450"] }
+  Tczew: { weight: 59, postalCodes: ["83-110"] }
+  Biała Podlaska: { weight: 56, postalCodes: ["21-500"] }
+  Bełchatów: { weight: 56, postalCodes: ["97-400"] }
+  Świdnica: { weight: 56, postalCodes: ["58-100"] }
+  Będzin: { weight: 55, postalCodes: ["42-500"] }
+  Zgierz: { weight: 55, postalCodes: ["95-100"] }
+  Racibórz: { weight: 54, postalCodes: ["47-400"] }
+  Legionowo: { weight: 54, postalCodes: ["05-120"] }
+  Ostrowiec Świętokrzyski: { weight: 66, postalCodes: ["27-400"] }
+  Wejherowo: { weight: 47, postalCodes: ["84-200"] }
+  Zawiercie: { weight: 48, postalCodes: ["42-400"] }
+  Starachowice: { weight: 47, postalCodes: ["27-200"] }
+  Skierniewice: { weight: 47, postalCodes: ["96-100"] }
+  Puławy: { weight: 46, postalCodes: ["24-100"] }
+  Kołobrzeg: { weight: 46, postalCodes: ["78-100"] }
+  Krosno: { weight: 46, postalCodes: ["38-400"] }
+  Sanok: { weight: 37, postalCodes: ["38-500"] }
+  Zakopane: { weight: 27, postalCodes: ["34-500"] }
+  Sopot: { weight: 35, postalCodes: ["81-701", "81-712", "81-731"] }
+streets:
+  - Polna
+  - Leśna
+  - Słoneczna
+  - Krótka
+  - Szkolna
+  - Ogrodowa
+  - Lipowa
+  - Brzozowa
+  - Łąkowa
+  - Kwiatowa
+  - Sosnowa
+  - Kościelna
+  - Akacjowa
+  - Parkowa
+  - Zielona
+  - Kolejowa
+  - Sportowa
+  - Długa
+  - Spacerowa
+  - Klonowa
+  - Słowackiego
+  - Mickiewicza
+  - Kościuszki
+  - Sienkiewicza
+  - Kopernika
+  - Jana Pawła II
+  - Wojska Polskiego
+  - 3 Maja
+  - Piłsudskiego
+  - Żeromskiego
+  - Reymonta
+  - Prusa
+  - Konopnickiej
+  - Chopina
+  - Mostowa
+  - Wiejska
+  - Wrzosowa
+  - Jaśminowa
+  - Dębowa
+  - Świerkowa
+  - Kasztanowa
+  - Wiśniowa
+  - Topolowa
+  - Graniczna
+  - Cicha
+  - Nowa
+  - Rynek
+  - Główna
+  - Szeroka
+  - Wąska
+  - Strażacka
+  - Ogrodnicza
+  - Moniuszki
+  - Kilińskiego
+  - Narutowicza
+  - Batorego
+  - Kasprowicza
+  - Matejki
+  - Żwirki i Wigury

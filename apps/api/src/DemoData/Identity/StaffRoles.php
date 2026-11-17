@@ -61,6 +61,16 @@ final class StaffRoles
         return $numbers;
     }
 
+    /**
+     * The rule itself (the roles of the cycle with their counts), part of the fingerprint of the generated accounts.
+     *
+     * @return array<string, int>
+     */
+    public static function rule(): array
+    {
+        return self::CYCLE_ROLES;
+    }
+
     public static function actorId(string $namespace, int $number): string
     {
         return DemoUuid::v5($namespace, 'staff:'.$number);
