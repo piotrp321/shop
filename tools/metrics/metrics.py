@@ -146,18 +146,37 @@ def inexact(cell):
     return isinstance(cell, dict) and (cell.get('estimated') is True or cell.get('incomplete') is True)
 
 
-def lower_bounds(record):
-    """The categories of `breakdown` of the record that are lower bounds (`breakdown_incomplete`): part of their time
-    was skipped for lack of data and is in the other categories and in `idle`."""
-    found = record.get('breakdown_incomplete') if isinstance(record, dict) else None
+def _category_list(record, field):
+    found = record.get(field) if isinstance(record, dict) else None
     return {c for c in found if isinstance(c, str)} if isinstance(found, list) else set()
 
 
+def lower_bounds(record):
+    """The categories of `breakdown` of the record that are lower bounds (`breakdown_incomplete`): part of their time
+    was skipped for lack of data and is in the other categories and in `idle`."""
+    return _category_list(record, 'breakdown_incomplete')
+
+
+def upper_bounds(record):
+    """The categories of `breakdown` of the record that are upper bounds (`breakdown_upper_bound`): they come after a
+    lower bound in the order of the breakdown, so the skipped time may be in them (`idle` is one whenever there is a lower
+    bound)."""
+    return _category_list(record, 'breakdown_upper_bound')
+
+
+def upper_bounds_of(lower, order):
+    """The categories of `order` (config `breakdown_order`) that come after the earliest of the `lower` ones (except
+    `idle`, the remainder): each moment goes to the first category that covers it, so the time of an interval skipped for
+    lack of data lands in any of them."""
+    first = min((order.index(c) for c in lower if c in order), default=None)
+    return [] if first is None else [c for c in order[first + 1:] if c != 'idle']
+
+
 def breakdown_inexact(record, name):
-    """Whether the category `name` of `breakdown` is a lower bound, or `idle` an upper bound (the skipped time is in
-    it)."""
+    """Whether the category `name` of `breakdown` is a lower bound (skipped time) or an upper bound (it may hold skipped
+    time); `idle` is an upper bound whenever there is a lower bound."""
     found = lower_bounds(record)
-    return name in found or (name == 'idle' and bool(found))
+    return name in found or name in upper_bounds(record) or (name == 'idle' and bool(found))
 
 
 def approx(flag, space=' '):
@@ -2172,6 +2191,9 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     }
     if lower:
         record['breakdown_incomplete'] = [c for c in config['breakdown_order'] if c in lower]
+        upper = upper_bounds_of(lower, config['breakdown_order'])
+        if upper:
+            record['breakdown_upper_bound'] = upper
     errors = github['errors']
     record.update(github_derived(run, no_gh, repo, config, epic_id, ao_run['tasks'], final_pr, github['pr'], known_merge,
                                  now, previous, gaps, errors))
@@ -2383,15 +2405,16 @@ def d4_candidates(record, config, skipped):
     to_done, work = _get(record, ('wall', 'to_done')), _get(record, ('breakdown', 'work'))
     check('human_wait', [_get(record, ('breakdown', 'human_wait'))], to_done, 'to_done', settings['d4_human_wait_share'],
           'Skrócić czekanie na użytkownika: zebrać pytania przed startem epiku i uruchamiać go o godzinie, '
-          'w której użytkownik odpowiada.')
+          'w której użytkownik odpowiada.', ['human_wait'] if breakdown_inexact(record, 'human_wait') else [])
     check('limit_wait', [_get(record, ('breakdown', 'limit_wait'))], to_done, 'to_done',
           settings['d4_limit_wait_share'],
           'Zaplanować start epiku (planowanie nocy) tak, żeby mieścił się w oknie limitów bez przerwy na cooldown.',
-          ['limit_wait'] if 'limit_wait' in lower_bounds(record) else [])
+          ['limit_wait'] if breakdown_inexact(record, 'limit_wait') else [])
     ci = [_get(record, ('breakdown', 'ci_wait')), _get(record, ('in_attempts', 'categories', 'ci_watch', 'seconds'))]
     data = check('ci', ci, work, 'work', settings['d4_ci_share'],
                  'Skrócić czekanie na CI: sprawdzić, które przebiegi CI zadań i końcowego PR trwają najdłużej '
-                 'i ile jest ponowień.', (['in_attempts.ci_watch'] if inexact(record.get('in_attempts')) else [])
+                 'i ile jest ponowień.', (['ci_wait'] if breakdown_inexact(record, 'ci_wait') else [])
+                 + (['in_attempts.ci_watch'] if inexact(record.get('in_attempts')) else [])
                  + (['work'] if 'work' in lower_bounds(record) else []))
     if data is not None:
         data['ci_wait_s'], data['ci_watch_s'] = round(ci[0], 3), round(ci[1], 3)
@@ -2855,12 +2878,13 @@ def plan_work_inexact(record):
 
 
 def d4_inexact(subject):
-    """The test of a record for the measure of `D4:<subject>`: the category is a lower bound (limit_wait), or so is a
-    part of `ci` (`in_attempts.ci_watch`, an attempt without a transcript) or its denominator `work`."""
-    if subject == 'limit_wait':
-        return lambda record: 'limit_wait' in lower_bounds(record)
+    """The test of a record for the measure of `D4:<subject>`: the category is a lower or an upper bound (`human_wait`,
+    `limit_wait`), or so is a part of `ci` (`ci_wait`, `in_attempts.ci_watch`) or its denominator `work`."""
+    if subject in ('human_wait', 'limit_wait'):
+        return lambda record: breakdown_inexact(record, subject)
     if subject == 'ci':
-        return lambda record: inexact(record.get('in_attempts')) or 'work' in lower_bounds(record)
+        return lambda record: (breakdown_inexact(record, 'ci_wait') or inexact(record.get('in_attempts'))
+                               or 'work' in lower_bounds(record))
     return None
 
 
@@ -2998,7 +3022,8 @@ def trend_estimated(record, config):
     values = trend_values(record, config)
     flags = {'value': _get(record, ('value', 'total', 'estimated')) is True,
              'pp': _get(record, ('subscription', 'share_estimated')) is True,
-             'repeat_runs': inexact(record.get('in_attempts')), 'work': 'work' in lower_bounds(record)}
+             'repeat_runs': inexact(record.get('in_attempts')), 'work': 'work' in lower_bounds(record),
+             'human_wait': breakdown_inexact(record, 'human_wait')}
     return {column for column, flag in flags.items() if flag and values[column] is not None}
 
 
@@ -3281,6 +3306,13 @@ def bottleneck_lines(items):
     return lines
 
 
+def _bound_note(record, name):
+    """The note of a marked category of the breakdown: a lower bound, an upper bound or both."""
+    lower = name in lower_bounds(record)
+    upper = name == 'idle' or name in upper_bounds(record)
+    return ', ' + ('dolna i górna granica' if lower and upper else 'górna granica' if upper else 'dolna granica')
+
+
 def time_topic(record, comment):
     to_done = _dict(record.get('wall')).get('to_done')
     tasks = record.get('tasks')
@@ -3301,7 +3333,7 @@ def time_topic(record, comment):
                     marked = breakdown_inexact(record, name)
                     parts.append('%s %s (%s%d%%%s)' % (
                         name, hours_text(value, marked), approx(marked), percent_of(value, to_done) or 0,
-                        (', górna granica' if name == 'idle' else ', dolna granica') if marked else ''))
+                        _bound_note(record, name) if marked else ''))
             text += '; rozkład: ' + ', '.join(parts)
         lines = [text]
     if comment:

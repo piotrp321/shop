@@ -150,9 +150,12 @@ Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
   Brak źródła kategorii (np. `events.jsonl`) przenosi jej czas do `idle` z pozycją w `gaps`. Pominięty jest też
   przedział, któremu brakuje danych: `cooldown_set` bez `until` i bez `cooldown_released` (`limit_wait`), `host_pause`
   bez `from`/`to` i `seconds` (`host_pause`) i próba bez `started_at` (`work`). Taka kategoria jest dolną granicą, a
-  `idle` górną: rekord ma ich listę w `breakdown_incomplete`, pozycję w `gaps`, a render pokazuje je z „≈” i dopiskiem
-  „dolna granica” albo „górna granica”. Oznaczenie przechodzi do wąskich gardeł, `trend` (`work`), D4 (`limit_wait`,
-  `ci` z mianownikiem `work`) i okien `effect` tych miar.
+  pominięty czas trafia do kategorii, która stoi dalej w `breakdown_order` i pokrywa ten przedział (każda chwila należy do
+  pierwszej pokrywającej kategorii), albo do `idle`. Górną granicą jest więc każda kategoria po najwcześniejszej
+  pominiętej w `breakdown_order` i `idle`. Rekord ma dolne granice w `breakdown_incomplete`, górne w
+  `breakdown_upper_bound`, pozycję w `gaps`, a render pokazuje je z „≈” i dopiskiem „dolna granica” albo „górna granica”.
+  Oznaczenie przechodzi do wąskich gardeł, `trend` (`work`, `human_wait`), D4 (`human_wait`, `limit_wait`, `ci`
+  z `ci_wait` i mianownikiem `work`) i okien `effect` tych miar.
 - `in_attempts`: czas poleceń powłoki w próbach (nazwy narzędzi powłoki w `config.json`: `Bash`, `bash`) według
   kategorii z `config.json` (`test`, `e2e`, `check`, `selftest`, `stack` dla `make up` i `.ao/setup`, `ci_watch` dla
   `gh pr checks --watch` i `gh run watch`, `read` dla poleceń tylko do odczytu, `other` dla reszty), od `tool_use` do

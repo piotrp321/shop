@@ -381,6 +381,26 @@ class DecideTest(test_decide.DecideEnv):
         self.assertEqual(found['D4:human_wait']['data']['estimated'], [])
         self.assertIs(found['D4:human_wait']['expected_effect']['estimated'], False)
 
+    def test_an_upper_bound_human_wait_makes_the_d4_human_wait_candidate_estimated(self):
+        record = test_decide.target(human_wait=25 * H)
+        record['breakdown_incomplete'] = ['work']
+        record['breakdown_upper_bound'] = ['human_wait']
+        store_records(self.state, record)
+        candidate = self.candidate(self.result(), 'D4:human_wait')
+        self.assertEqual(candidate['data']['estimated'], ['human_wait'])
+        self.assertIs(candidate['expected_effect']['estimated'], True)
+
+    def test_an_upper_bound_ci_wait_makes_the_d4_ci_candidate_estimated(self):
+        record = test_decide.target()
+        record['breakdown']['ci_wait'] = 4 * H
+        record['in_attempts']['categories']['ci_watch']['seconds'] = 6 * H
+        record['breakdown_incomplete'] = ['limit_wait']
+        record['breakdown_upper_bound'] = ['ci_wait']
+        store_records(self.state, record)
+        candidate = self.candidate(self.result(), 'D4:ci')
+        self.assertEqual(candidate['data']['estimated'], ['ci_wait'])
+        self.assertIs(candidate['expected_effect']['estimated'], True)
+
     def test_a_lower_bound_work_makes_the_d4_ci_share_estimated(self):
         record = test_decide.target()
         record['breakdown']['ci_wait'] = 4 * H
@@ -592,6 +612,71 @@ class BreakdownTest(RunEnv):
         del record['breakdown_incomplete']
         self.assertNotIn(APPROX, metrics.time_topic(record, False)[0])
 
+    def skipped_work_record(self, ci_pending=True):
+        """A run of 1000 s: one attempt without `started_at` (skipped) and `epic_ci_pending` in the middle."""
+        self.history()
+        events = [(1500.0, 'epic_ci_pending', {})] if ci_pending else []
+        home = testkit.synthetic_home(
+            self.root, tasks=[('P-1', 'plan')], created=1000.0,
+            attempts=[dict(task_id='P-1', number=1, started_at=None, ended_at=None, wall_s=None)],
+            events=events + [(2000.0, 'epic_done', {})])
+        return self.record('demo', home=home)
+
+    def test_a_skipped_attempt_makes_the_categories_that_cover_its_time_upper_bounds(self):
+        record = self.skipped_work_record()
+        self.assertEqual(record['breakdown_incomplete'], ['work'])
+        self.assertEqual(record['breakdown']['ci_wait'], 500.0)         # the skipped time may be in it
+        self.assertTrue(metrics.breakdown_inexact(record, 'ci_wait'))
+        self.assertTrue(metrics.breakdown_inexact(record, 'human_wait'))
+        self.assertTrue(metrics.breakdown_inexact(record, 'github_wait'))
+        self.assertTrue(metrics.breakdown_inexact(record, 'idle'))
+
+    def test_a_skipped_category_makes_only_the_categories_after_it_in_the_order_upper_bounds(self):
+        lower = {'limit_wait'}
+        self.assertEqual(metrics.upper_bounds_of(lower, self.config['breakdown_order']),
+                         ['ci_wait', 'host_pause', 'github_wait'])
+        record = {'breakdown_incomplete': ['limit_wait'], 'breakdown_upper_bound': ['ci_wait', 'host_pause', 'github_wait']}
+        self.assertFalse(metrics.breakdown_inexact(record, 'work'))
+        self.assertFalse(metrics.breakdown_inexact(record, 'human_wait'))
+        self.assertTrue(metrics.breakdown_inexact(record, 'limit_wait'))
+        self.assertTrue(metrics.breakdown_inexact(record, 'ci_wait'))
+
+    def test_the_earliest_skipped_category_decides_which_categories_are_upper_bounds(self):
+        order = self.config['breakdown_order']
+        self.assertEqual(metrics.upper_bounds_of({'host_pause', 'limit_wait'}, order),
+                         ['ci_wait', 'host_pause', 'github_wait'])
+        self.assertEqual(metrics.upper_bounds_of(set(), order), [])
+        self.assertEqual(metrics.upper_bounds_of({'github_wait'}, order), [])
+
+    def test_a_complete_breakdown_leaves_ci_wait_and_the_others_exact(self):
+        self.history()
+        home = testkit.synthetic_home(
+            self.root, tasks=[('P-1', 'plan')], created=1000.0,
+            attempts=[dict(task_id='P-1', number=1, started_at=1100.0, ended_at=1300.0)],
+            events=[(1500.0, 'epic_ci_pending', {}), (2000.0, 'epic_done', {})])
+        record = self.record('demo', home=home)
+        self.assertNotIn('breakdown_upper_bound', record)
+        for name in metrics.BREAKDOWN_CATEGORIES:
+            self.assertFalse(metrics.breakdown_inexact(record, name), name)
+
+    def test_the_time_lines_mark_an_upper_bound_category_with_the_sign_and_the_note(self):
+        record = fake_record('demo', tasks=5, to_done=10 * H, work=5 * H, human_wait=2 * H)
+        record['breakdown'].update(ci_wait=1 * H, idle=2 * H)
+        record['breakdown_incomplete'] = ['work']
+        record['breakdown_upper_bound'] = ['human_wait', 'limit_wait', 'ci_wait', 'host_pause', 'github_wait']
+        line = metrics.time_topic(record, False)[0]
+        self.assertIn('human_wait ≈ 2,0 h (≈ 20%, górna granica)', line)
+        self.assertIn('ci_wait ≈ 1,0 h (≈ 10%, górna granica)', line)
+        self.assertIn('work ≈ 5,0 h (≈ 50%, dolna granica)', line)
+
+    def test_an_upper_bound_category_is_an_estimated_bottleneck_and_the_trend_human_wait_column(self):
+        record = test_decide.target(human_wait=25 * H)
+        record['breakdown_incomplete'] = ['work']
+        record['breakdown_upper_bound'] = ['human_wait']
+        found = {i['name']: i for i in metrics.bottlenecks_of(record, test_decide.history(), self.config, metrics.Gaps())}
+        self.assertIs(found['human_wait']['estimated'], True)
+        self.assertEqual(metrics.trend_estimated(record, self.config), {'work', 'human_wait'})
+
     def test_the_trend_work_column_of_a_lower_bound_work_is_estimated(self):
         record = fake_record('x')
         record['breakdown_incomplete'] = ['work']
@@ -689,6 +774,21 @@ class EffectTest(test_effect.EffectEnv):
             self.assertEqual((result['before']['estimated'], result['after']['estimated'], result['estimated']),
                              (False, True, True), key)
         self.assertIs(self.result('D4:human_wait')['estimated'], False)
+
+    def test_an_upper_bound_category_makes_the_d4_window_of_it_estimated_and_an_exact_one_not(self):
+        records = []
+        for i in range(1, 4):
+            for record in (test_effect.epic('b%d' % i, i, i + 1), test_effect.epic('a%d' % i, 10 + i, 12 + i)):
+                if record['epic'].startswith('a'):
+                    record['breakdown_incomplete'] = ['work']
+                    record['breakdown_upper_bound'] = ['human_wait', 'ci_wait']
+                records.append(record)
+        store_records(self.state, *records)
+        for key in ('D4:human_wait', 'D4:ci'):
+            result = self.result(key)
+            self.assertEqual((result['before']['estimated'], result['after']['estimated'], result['estimated']),
+                             (False, True, True), key)
+        self.assertIs(self.result('D4:limit_wait')['estimated'], False)
 
     def test_exact_in_attempts_leave_the_d4_ci_window_unmarked(self):
         self.ci_epics(lambda r: None)
