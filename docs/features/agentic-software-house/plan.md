@@ -383,7 +383,9 @@ przed implementacją; jedna specyfikacja kroku 19 obejmuje 19a i 19b. Kolejnoś�
      2026-11-15 (decyzje D1–D4 w `docs/features/ao-speedup/plan.md`). `ao run --max-parallel 2`: niezależne zadania
      jednej fali równolegle (pary dopuszczone przez `parallel_with` manifestu, `docs/features/parallel-work/spec.md`,
      „19b”), każde we własnym worktree i stosie; integracja i merge'e po kolei; kontrola zasobów i limitów; awaria
-     jednego zadania nie zatrzymuje drugiego. Pomiar par 19a trwa dalej; krytyczny problem pary (zepsuty `main`,
+     jednego zadania nie zatrzymuje drugiego. `/planner` maksymalizuje bezpieczną równoległość: fale według granic
+     odpowiedzialności, `paths` i rzeczywistych zależności, bez dzielenia kodu wyłącznie dla równoległości; wspólne
+     ścieżki pary jednej fali to wada planu albo praca szeregowa z powodem w planie. Pomiar par 19a trwa dalej; krytyczny problem pary (zepsuty `main`,
      konflikt, którego sync i REPAIR nie rozwiązały bez ręcznej poprawki, przebieg przerwany przez brak zasobów albo
      limitu, albo więcej ręcznych poprawek lub interwencji niż w porównywalnych epikach szeregowych; REPAIR i sync
      automatyczny się nie liczą) wstrzymuje równoległe epiki do decyzji użytkownika.

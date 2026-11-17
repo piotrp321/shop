@@ -407,8 +407,15 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
     `{"parallel_with": {ID: [ID]}, "blocked": [...]}`; `blocked` (`{"tasks": [A, B], "paths": [...]}`)
     wymienia pary zadań jednej fali, które obie mają `paths`, a nie mogą iść naraz, bo reguła poniżej zwraca niepustą
     część wspólną (`paths`); kolejność: fala, potem plan; brak par to `[]`.
-    Bez `--blocked` wynik to sama mapa `{ID: [ID]}`. `/planner` preferuje w jednej fali rozłączne pliki
-    (`.claude/skills/planner/SKILL.md`).
+    Bez `--blocked` wynik to sama mapa `{ID: [ID]}`.
+- **Podział planu** (`/planner`, `.claude/skills/planner/SKILL.md`, kroki 2 i 6) maksymalizuje bezpieczną
+  równoległość: zadania tnie po rzeczywistych granicach odpowiedzialności, `paths` i zależnościach, a zadania
+  z rozłącznymi `paths` i bez zależności są w jednej fali z `parallel_with`. `depends_on` tylko przy zależności od
+  kodu, kontraktu, migracji lub danych innego zadania. Para z `blocked` to wada planu: planner zmienia podział po
+  granicach odpowiedzialności albo zostawia parę szeregowo z powodem w sekcji „Praca szeregowa” planu. Kodu nie dzieli
+  się na moduły wyłącznie dla równoległości; wydzielenie kilku rzeczywistych odpowiedzialności z jednego pliku może
+  być pierwszym zadaniem, z uzasadnieniem odpowiedzialnościami w `scope`. Sekcji „Praca szeregowa” walidator nie
+  sprawdza; para z `parallel_with` i wspólnymi ścieżkami jest odrzucana (reguła pary niżej).
   Zadanie bez `parallel_with` (także cały manifest bez tych pól, np. sprzed 19b) idzie szeregowo; `schema_version`
   zostaje 1.
 - **Reguła pary** (`plan_manifest.py validate` odrzuca manifest, który ją łamie): relacja jest symetryczna (każde
