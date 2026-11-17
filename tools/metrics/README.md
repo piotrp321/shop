@@ -238,7 +238,8 @@ Brak źródła nie zatrzymuje pomiaru, a pole bez danych jest `null` z powodem w
   - zostają zawsze `integration.rounds` (z `epics.round`), a przy braku samej kolumny też `retries.attempts.total`
     (liczy wiersze tabeli).
 
-  `null` w istniejącej kolumnie to zwykły brak wartości,
+  Reguła W3 komendy `waste` bez `attempts.outcome` albo `attempts.executor_status` nie liczy prób nieudanych (nie
+  alarmuje o pętli prób), a w `gaps` wyjścia jest pozycja `W3`. `null` w istniejącej kolumnie to zwykły brak wartości,
   np. próba bez `outcome` po końcu przebiegu jest nieudana (`no_outcome`). Render pisze „brak danych” (`REPAIR`,
   `FIX`, `Integracja`, `Próby`, podział prób), `decide` pomija w D2 kryterium nieudanych prób z pozycją w `gaps`,
   a `trend` ma `null` w kolumnach `repair` i `failed`.

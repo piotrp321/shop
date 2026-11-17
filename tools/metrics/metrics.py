@@ -3649,7 +3649,7 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
                 attempt['number'], '%s: %s próba %s trwa %s h%s' % (name, _id(attempt['task_id']), attempt['number'],
                                                                     _decimal(seconds / 3600.0), _of_median(hit[1])),
                 seconds=round(seconds, 3), median=hit[0], ratio=hit[1]))
-    found.extend(loop_alarms(run, name, task_ids, rules, max_rounds))
+    found.extend(loop_alarms(run, name, task_ids, rules, max_rounds, gaps))
     # W4: the value of the ended attempts of a task
     by_task, no_value = {}, 0
     for entry in entries:
@@ -3672,19 +3672,26 @@ def waste_alarms(ao_home, run, config, records, history, max_rounds, now, gaps):
     return found
 
 
-def loop_alarms(run, name, task_ids, rules, max_rounds):
+def loop_alarms(run, name, task_ids, rules, max_rounds, gaps):
     """W3: loops of attempts, independent of the median and the cost. (a) an attempt that starts after at least
     `loop_failed_attempts` failed attempts of its task (blocked and usage_limit attempts are not failures); (b) a REPAIR
     task that starts with no green CI of the epic (epic_ci_green, epic_ci_inherited) since the previous REPAIR started;
-    (c) the QA round of the epic equal to `max_rounds`."""
+    (c) the QA round of the epic equal to `max_rounds`. Without attempts.outcome or attempts.executor_status in the AO
+    database no attempt is known to be failed: (a) is skipped and `gaps` says so."""
     epic, epic_id = run['epic'], run['epic']['epic_id']
     found, per_task = [], {}
+    missing = sorted(c for c in ('attempts.outcome', 'attempts.executor_status') if c in run['absent'])
+    if missing:
+        gaps.add('W3', 'brak kolumny %s w bazie AO: próby nieudane nie są liczone (pętla prób nie sprawdzona)'
+                 % ', '.join(missing))
     for attempt in run['attempts']:
         per_task.setdefault(attempt['task_id'], []).append(attempt)
     for task, attempts in per_task.items():
         failed = 0
         for attempt in sorted(attempts, key=lambda a: (_number(a['started_at']) is None, _number(a['started_at']) or 0,
                                                        a['number'] or 0)):
+            if missing:
+                break
             if failed >= rules['loop_failed_attempts'] and _is_int(attempt['number']):
                 found.append(make_alarm(
                     'W3', 'W3:%s:%s:%s' % (epic_id, task, attempt['number']), epic_id, task, attempt['number'],

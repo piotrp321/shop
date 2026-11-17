@@ -301,6 +301,27 @@ class W3Test(WasteEnv):
     def test_successful_attempts_are_not_failures(self):
         self.assertEqual(self.keys_of(('result', 'PASSED'), ('result', 'PASSED'), (None, None)), [])
 
+    def home_without(self, column):
+        home = self.home(attempts=self.attempts(('result', 'READY_FOR_INTEGRATION'), ('result', 'READY_FOR_INTEGRATION'),
+                                                ('result', 'READY_FOR_INTEGRATION'), ('result', 'PASSED'),
+                                                ('result', 'PASSED')))
+        con = sqlite3.connect(os.path.join(home, 'orchestrator.db'))
+        con.execute('ALTER TABLE attempts DROP COLUMN %s' % column)
+        con.commit()
+        con.close()
+        return home
+
+    def test_without_attempts_outcome_failed_attempts_are_not_counted(self):
+        out = self.run_ok(self.home_without('outcome'), '--max-qa-rounds', '9')
+        self.assertEqual(self.keys(out), [])
+        self.assertTrue(any(g.startswith('W3:') and 'attempts.outcome' in g for g in self.gaps(out)), self.gaps(out))
+
+    def test_without_attempts_executor_status_failed_attempts_are_not_counted(self):
+        out = self.run_ok(self.home_without('executor_status'), '--max-qa-rounds', '9')
+        self.assertEqual(self.keys(out), [])
+        self.assertTrue(any(g.startswith('W3:') and 'attempts.executor_status' in g for g in self.gaps(out)),
+                        self.gaps(out))
+
     def test_the_threshold_comes_from_config_json(self):
         with open(metrics.DEFAULT_CONFIG, encoding='utf-8') as f:
             config = json.load(f)
