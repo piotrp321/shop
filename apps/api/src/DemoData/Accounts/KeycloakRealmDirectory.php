@@ -81,8 +81,12 @@ final readonly class KeycloakRealmDirectory implements AccountDirectory
     {
         $path = '/users/'.rawurlencode($userId).'/groups';
         $response = $this->send('GET', $path, ['query' => ['first' => 0, 'max' => self::GROUPS_PAGE, 'briefRepresentation' => 'true']]);
-        if (404 === $this->status($response)) {
+        $status = $this->status($response);
+        if (404 === $status) {
             return null;
+        }
+        if (200 !== $status) {
+            throw $this->failure('GET', $path, $status);
         }
         $ids = [];
         foreach ($this->decode($response, 'GET', $path) as $group) {
