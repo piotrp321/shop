@@ -2,19 +2,18 @@
 
 Telemetria Claude Code w lokalnym stosie na Macu (specyfikacja: `docs/features/telemetry/spec.md`). Python 3.9+, tylko
 biblioteka standardowa. Skrypt `telemetry.py` nie zależy od plików stosu, tylko od jego adresów i uid źródła danych
-(niżej). Stała adresu i lista zmiennych eksportu są w `tools/agent-security/render_settings.py`, a odbiornik OTLP i dekoder
-w `tools/agent-security/otlp_receiver.py` (ten sam moduł używa sonda); `telemetry.py` ładuje je stamtąd, bez kopii.
+(niżej). Stała adresu i lista zmiennych eksportu są w `tools/agent-security/render_settings.py`; `telemetry.py` ładuje je stamtąd,
+bez kopii (nic więcej z `tools/agent-security` ani z `.claude/skills` nie jest mu potrzebne).
 
 ## Polecenia
 
 ```
 python3 tools/telemetry/telemetry.py snippet [--endpoint URL]
 python3 tools/telemetry/telemetry.py check [--endpoint URL] [--grafana URL] [--timeout S]
-python3 tools/telemetry/telemetry.py check --project-override [--claude-bin BIN]
 ```
 
 Kody wyjścia: `0` sukces, `1` niepowodzenie sprawdzenia (jedna linia z przyczyną na stderr), `2` błąd użycia (zły adres
-albo limit czasu, brak binarki, nieznana opcja). Adresy (`--endpoint`, `--grafana`) to wyłącznie
+albo limit czasu, nieznana opcja). Adresy (`--endpoint`, `--grafana`) to wyłącznie
 `http://127.0.0.1:<port>` (port 1–65535, bez ścieżki, użytkownika, zapytania i fragmentu): dane zostają na Macu.
 
 - `snippet`: wypisuje blok JSON z kluczem `env` do wklejenia do `~/.claude/settings.json`. Dzięki niemu sesje
@@ -26,18 +25,25 @@ albo limit czasu, brak binarki, nieznana opcja). Adresy (`--endpoint`, `--grafan
   z linią „który adres i co nie odpowiada” przy zamkniętym porcie OTLP albo odpowiedzi z błędem, niedostępnej Grafanie,
   braku źródła `prometheus` (odpowiedź 404) i braku punktu po czasie. Wartość odróżnia przebiegi, bo Prometheus promuje do
   etykiet tylko atrybuty zasobu z listy stosu.
-- `check --project-override`: sprawdza, że Claude Code ignoruje `OTEL_*` z ustawień projektu (sesje interaktywne w innych
-  repozytoriach nie mają ochrony wrappera `claude-agent`). Uruchamia prawdziwy `claude -p` (Haiku,
-  `--max-budget-usd 0.1`, `--setting-sources project`, `--strict-mcp-config`, bez `CLAUDE*` i `OTEL_*` w środowisku)
-  w tymczasowym repozytorium git, którego `.claude/settings.json` kieruje eksport na pierwszy lokalny odbiornik
-  skryptu, włącza `OTEL_LOG_USER_PROMPTS=1` i ustawia `shop.task=override`, a `--settings` ma blok telemetrii
-  skierowany na drugi odbiornik. Kod `0` tylko wtedy, gdy pierwszy odbiornik nie dostał żadnego żądania, drugi dostał
-  metryki i logi, żadne ciało (po rozpakowaniu) nie zawiera znacznika z promptu, a `shop.task` nie ma wartości
-  `override`. Stosu nie dotyka (`--endpoint`, `--grafana` i `--timeout` są wtedy ignorowane). Binarka to `--claude-bin`,
-  a bez niej ta przypięta przez AO (`.claude/skills/ao-run/claude_pin.py`); jej brak albo inna wersja to kod `2`, a
-  binarka, która zawodzi, zawiesza się (limit 180 s) albo eksportuje inaczej, to kod `1`. Tymczasowe repozytorium
-  i odbiorniki są usuwane także po błędzie. Polecenie zużywa budżet modelu (do 0,1 USD), więc uruchamia je sesja
-  `/ao-run` przy odbiorze (spec R7) i użytkownik po zmianie wersji Claude Code, nie testy.
+  Dwa `check` uruchomione naraz mogą dać fałszywy kod `1`: oba piszą do tej samej serii (te same etykiety), więc
+  późniejszy punkt zastępuje wcześniejszy, a wcześniejszy `check` nie zobaczy swojej wartości. Uruchamiaj je po kolei.
+
+## Ograniczenia sesji interaktywnych
+
+Blok z `snippet` w `~/.claude/settings.json` działa tylko tam, gdzie nic go nie nadpisuje. Sesja interaktywna nie ma
+ochrony wrappera `claude-agent` (profil P12 i czyszczenie odziedziczonego środowiska, które chronią wykonawców AO), więc:
+
+- Środowisko uruchomieniowe (zmienne `OTEL_*` i `CLAUDE_CODE_ENABLE_TELEMETRY` w powłoce) albo ustawienia zarządzane
+  (managed settings) mogą nadpisać blok z `~/.claude/settings.json`: eksport trafi wtedy gdzie indziej albo go nie będzie.
+- Projekt może wyłączyć niektóre eksportery, więc telemetria sesji interaktywnej nie ma gwarancji kompletności.
+- Zmienne `OTEL_*` w ustawieniach projektu (`.claude/settings.json` repozytorium) nie mogą włączać telemetrii,
+  przekierowywać endpointów ani włączać eksportu treści (od wersji Claude Code 2.1.282, według dokumentacji produktu),
+  więc ten kierunek nadpisania nie istnieje i telemetry.py nie ma na to sprawdzenia. Endpointy per sygnał
+  (`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`) mają w standardzie OTel pierwszeństwo przed
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, ale z ustawień projektu Claude Code też ich nie czyta, więc próba przez te ustawienia nie
+  sprawdziłaby rzeczywistej luki.
+- Wykonawców AO chroni `--settings` (ma pierwszeństwo przed ustawieniami projektu), profil P12 i czyszczenie
+  odziedziczonego środowiska przez wrapper; pilnują ich testy wrappera i sonda przy każdym starcie AO (spec R2 i R3).
 
 ## Stos i uid źródła danych
 
@@ -70,6 +76,5 @@ Zmiana któregokolwiek z nich w stosie wymaga zmiany tu (`DEFAULT_GRAFANA`, `PRO
 python3 -m unittest discover -s tools/telemetry -p 'test_*.py'
 ```
 
-Bez modelu, stosu i sieci poza `127.0.0.1`: punkt OTLP i Grafana to lokalne serwery testowe, a `claude` to skrypt, który
-zachowuje się jak Claude Code (czyta adres i atrybuty z `--settings`, eksportuje OTLP protobuf), z trybami błędów.
-Testy obejmują ścieżki sukcesu i błędu każdego polecenia.
+Bez modelu, stosu i sieci poza `127.0.0.1`: punkt OTLP i Grafana to lokalne serwery testowe. Testy obejmują ścieżki
+sukcesu i błędu każdego polecenia oraz to, że opcje `--project-override` i `--claude-bin` nie istnieją (kod `2`).

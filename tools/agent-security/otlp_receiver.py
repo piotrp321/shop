@@ -1,6 +1,6 @@
-"""Local OTLP/HTTP receiver for checks of the telemetry of Claude Code (spec docs/features/telemetry/spec.md, R3 and
-R4). Python 3.9+, standard library only. Used by probe.py (cases telemetry_export and telemetry_no_content) and by
-tools/telemetry/telemetry.py; ao-prepare copies it next to probe.py.
+"""Local OTLP/HTTP receiver for checks of the telemetry of Claude Code (spec docs/features/telemetry/spec.md, R3).
+Python 3.9+, standard library only. Used by probe.py (cases telemetry_export and telemetry_no_content); ao-prepare
+copies it next to probe.py.
 
   Receiver(forward=None).start()   an HTTP server on 127.0.0.1 with a random port; `endpoint` is its address
                                    http://127.0.0.1:<port>, `requests` a copy of what it got, stop() ends it
