@@ -210,7 +210,9 @@ Wszystko **użytkownik**.
    `secrets` i `shop` (fale: kontroler, sekrety, sklep). Pierwsza synchronizacja na pustym klastrze trwa kilkanaście minut
    (Elasticsearch, migracje, wczytanie danych demo).
 2. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`/`Healthy`, pody `Running`, Joby `Complete`.
-   Nieudany Job wersji: log (`status`), poprawka w repo (nowa rewizja) albo `make -C infra/k8s rerun JOB=<nazwa>`. Job
+   Nieudany Job wersji: log (`status`), poprawka w repo (nowa rewizja) albo `make -C infra/k8s rerun JOB=<nazwa>`.
+   `rerun` służy tylko Jobom wersji (`<job>-<hash>`): Joba `restore-run-*` nie ponawia się nim nigdy, bo powtórzyłby
+   odtworzenie bez pytania o `tak` i bez kopii `pre-restore` (odtworzenie ponawia `make restore`, sekcja 8). Job
    `initialize` z błędem „mixed state” (przerwane wczytanie): **zgoda użytkownika**, potem
    `make -C infra/k8s reinitialize HOST=<user>@<adres>` (kasuje dane sklepu i wczytuje dane demo od nowa; wymaga słowa `tak`).
    Pod usługi stale `0/1` mimo działającej usługi: sonda (np. AppArmor, sekcja 2, krok 3), poprawka przez PR; po niej

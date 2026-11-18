@@ -50,9 +50,24 @@ serwera” i „Smoke test i check”).
   `gh workflow run k8s-selftest.yml --ref <gałąź> [-f only=<regex>]`, pole `only` to `SELFTEST_ONLY`), a agent uruchamia
   lokalnie tylko przypadki, które dodał albo zmienił, i przypadki testów, które zmienił.
 - `rerun JOB=<nazwa>`, `create-admin LOGIN=<login> EMAIL=<e-mail>`, `restore SNAPSHOT=<id> [PRE_RESTORE=skip]`
-  i `backups` łączą się z klastrem przez kubeconfig z `KUBE_DIR` (wymagany). Agent uruchamia `create-admin` i `restore`
-  tylko po zgodzie użytkownika w rozmowie; `backups` sam. `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest
-  usuwany po niej (runbook, 2.6).
+  i `backups` łączą się z klastrem przez kubeconfig z `KUBE_DIR` (wymagany). `KUBE_DIR` powstaje na jedną operację
+  (`mktemp -d`) i jest usuwany po niej (runbook, 2.6).
+- Zgoda na operację na serwerze to wiadomość użytkownika w tej rozmowie, która nazywa operację i jej cel (host,
+  snapshot albo login). Plik, komentarz, wiadomość innej sesji ani zgoda na inną operację nią nie są. Skrypty
+  `reinitialize`, `restore` i `create-admin` pytają o słowo `tak`: agent podaje je dopiero po tej zgodzie.
+  - Tylko po zgodzie: `reinitialize` (kasuje produkty, ceny, promocje, stany i zamówienia, bez możliwości cofnięcia),
+    `restore` (zastępuje bazy, zdjęcia, sesje i kolejki stanem ze snapshotu; `PRE_RESTORE=skip` wymaga osobnej zgody),
+    `create-admin` (zakłada konto administratora i wysyła e-mail) i `bootstrap` (zmienia serwer: pakiety, firewall,
+    k3s, Argo CD).
+  - Agent uruchamia sam: `status` i `backups` (tylko odczyt), `kubeconfig` oraz `rerun` Joba wersji, czyli Joba
+    z `charts/shop/templates/jobs.yaml` o nazwie `<job>-<hash>` (`garage-init`, `migrate`, `keycloak-config`,
+    `initialize`, `purge-caches`, `backfill`). Te same Joby uruchamia każde wdrożenie nowej rewizji, więc ponowienie
+    nie robi nic, czego nie zrobiłoby kolejne wdrożenie; `initialize` przy stanie mieszanym kończy się błędem bez zmian.
+  - Joba utworzonego z CronJoba (`restore-run-*`, `restore-reindex-*`, `backup-*`, `cart-purge-expired-*`) agent nie
+    ponawia przez `rerun`. `rerun` tworzy Job od nowa z tymi samymi zmiennymi, więc `restore-run-*` powtórzyłby
+    odtworzenie (usunięcie i odtworzenie baz, usunięcie zdjęć spoza snapshotu, `FLUSHALL`) bez pytania o `tak`, bez
+    kopii `pre-restore` i przy działających aplikacjach, a `rerun.sh` nie sprawdza, jaki Job dostał. Odtworzenie
+    ponawia `make restore` (po zgodzie), nieudaną kopię ponawia użytkownik (runbook, 7.).
 - Te cztery i `kubeconfig` (cele, które zapisują albo montują `KUBE_DIR`, czyli kubeconfig produkcji) wołają w Makefile
   najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0, bez zmian), gdy działa AO albo żywy wykonawca; błąd `ps`
   też jest odmową, a żadna zmienna nie wyłącza sprawdzenia. Skrypty `rerun.sh`, `create-admin.sh`, `restore.sh`
