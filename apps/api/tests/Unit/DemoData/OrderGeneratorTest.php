@@ -148,7 +148,7 @@ final class OrderGeneratorTest extends TestCase
                 self::assertGreaterThanOrEqual($previous, $order->placedAt);
             }
             $previous = $order->placedAt;
-            self::assertEquals($order->placedAt->modify('+30 minutes'), $order->paymentDeadline);
+            self::assertEquals($order->placedAt->modify(Order::PAYMENT_TIME), $order->paymentDeadline, 'The deadline of Ordering.');
             foreach ($order->history as $change) {
                 self::assertLessThan($anchor, $change->occurredAt);
             }
@@ -291,7 +291,7 @@ final class OrderGeneratorTest extends TestCase
             self::assertSame($byStaff ? 'staff' : 'payment_timeout', $order->cancellationReason);
             self::assertSame($byStaff ? 'staff' : 'system', $at['cancelled']->actorType);
             if (!$byStaff) {
-                self::assertEquals($order->placedAt->modify('+35 minutes'), $order->cancelledAt);
+                self::assertEquals($order->placedAt->modify(Order::PAYMENT_TIME)->modify(Order::DELIVERY_WINDOW), $order->cancelledAt, 'The expiry of Ordering.');
                 if (null !== $order->codeUsage) {
                     self::assertEquals($order->cancelledAt, $order->codeUsage->releasedAt);
                 }
