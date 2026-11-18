@@ -1,0 +1,19 @@
+# Local override of the performance audit (never committed): the api and the worker of the compose stack run the
+# production image (APP_ENV=prod, code baked in, opcache without timestamp checks), as the chart runs them.
+services:
+  api:
+    image: shop-perfaudit-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      CLIENT_IP_HEADER: CF-Connecting-IP
+  worker:
+    image: shop-perfaudit-api:prod
+    build: !reset null
+    volumes: !reset []
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      APP_CACHE_DIR: /app/var/cache
