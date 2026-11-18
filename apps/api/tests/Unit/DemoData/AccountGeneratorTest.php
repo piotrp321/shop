@@ -163,7 +163,9 @@ final class AccountGeneratorTest extends TestCase
             foreach (['first-names.yaml', 'surnames.yaml', 'places.yaml'] as $file) {
                 copy(self::FIXTURES.'/'.$file, $copy.'/'.$file);
             }
-            file_put_contents($copy.'/surnames.yaml', str_replace("  Mróz: 11500\n", '', (string) file_get_contents($copy.'/surnames.yaml')));
+            $surnames = (string) file_get_contents($copy.'/surnames.yaml');
+            self::assertStringContainsString("  NOWAK: 147672\n", $surnames);
+            file_put_contents($copy.'/surnames.yaml', str_replace("  NOWAK: 147672\n", '', $surnames));
             $other = new AccountGenerator(self::NAMESPACE, new PersonDictionaries($copy));
 
             self::assertNotSame(self::generator()->customerId(1), $other->customerId(1));

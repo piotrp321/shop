@@ -211,7 +211,9 @@ final class AccountsStepTest extends KernelTestCase
             foreach (['first-names.yaml', 'surnames.yaml', 'places.yaml'] as $file) {
                 copy(self::FIXTURES.'/'.$file, $copy.'/'.$file);
             }
-            file_put_contents($copy.'/first-names.yaml', str_replace("  Zenon: 16000\n", '', (string) file_get_contents($copy.'/first-names.yaml')));
+            $firstNames = (string) file_get_contents($copy.'/first-names.yaml');
+            self::assertStringContainsString("  PIOTR: 682516\n", $firstNames);
+            file_put_contents($copy.'/first-names.yaml', str_replace("  PIOTR: 682516\n", '', $firstNames));
             $generator = $this->generator($other, new PersonDictionaries($copy));
             $reconciler = new AccountReconciler(pageSize: 2, batchSize: 3, streams: 4);
             $shop = $reconciler->reconcile($this->realms->admin->realm($this->realms->shop), new TargetAccounts($generator, false, 4));

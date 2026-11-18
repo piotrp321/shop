@@ -23,12 +23,13 @@ final class PersonDictionariesTest extends TestCase
         }
     }
 
-    public function testTheDictionariesOfTheRepositoryHaveAboutAHundredNamesOfEachKind(): void
+    public function testTheDictionariesOfTheRepositoryHaveTheNamesOfTheRegisterOfEachKind(): void
     {
         $people = new PersonDictionaries(self::FIXTURES);
 
-        foreach ([$people->firstNames(false), $people->firstNames(true), $people->surnames(false), $people->surnames(true)] as $list) {
-            self::assertGreaterThanOrEqual(90, \count($list->names()));
+        foreach ([true, false] as $female) {
+            self::assertCount(300, $people->firstNames($female)->names());
+            self::assertCount(1000, $people->surnames($female)->names());
         }
         self::assertContains('Łukasz', $people->firstNames(false)->names());
         self::assertContains('Kowalska', $people->surnames(true)->names());
@@ -68,7 +69,8 @@ final class PersonDictionariesTest extends TestCase
         self::assertMatchesRegularExpression('/^[0-9a-f]{16}$/D', $fingerprint);
         self::assertSame($fingerprint, new PersonDictionaries(self::FIXTURES)->fingerprint());
 
-        foreach (['first-names.yaml' => "  Zenon: 16000\n", 'surnames.yaml' => "  Mróz: 11500\n", 'places.yaml' => "  - Żwirki i Wigury\n"] as $file => $line) {
+        // The first entry of each dictionary: a name with its weight, a street.
+        foreach (['first-names.yaml' => "  PIOTR: 682516\n", 'surnames.yaml' => "  NOWAK: 147672\n", 'places.yaml' => "  - Polna\n"] as $file => $line) {
             $this->copyFixtures();
             self::assertSame($fingerprint, new PersonDictionaries($this->copy)->fingerprint(), 'A copy has the same fingerprint.');
 

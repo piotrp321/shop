@@ -350,9 +350,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   dla wszystkich profili; `categories.yaml` około 100 kategorii końcowych w działach z `catalog.yaml`, `product-types.yaml`
   około 120 typów produktów z osiami wariantów, klasą podatkową, przedziałem cen, grupą zdjęć i cechami do opisów,
   `brands.yaml` około 300 fikcyjnych marek, `models.yaml`, `descriptions.yaml`, `photo-groups.yaml`, słowniki osób
-  `first-names.yaml` i `surnames.yaml` (imiona i nazwiska według płci z wagami, w formacie list GUS z rejestru PESEL;
-  dziś przybliżone, do podmiany na listy GUS samą treścią plików) i `places.yaml` (miasta z wagą i kodami pocztowymi,
-  ulice), `CREDITS.md`).
+  `first-names.yaml` i `surnames.yaml` (po 300 imion i 1000 nazwisk każdej płci z list GUS z rejestru PESEL, z liczbą osób jako
+  wagą, wielkimi literami jak w rejestrze; generator je normalizuje) i `places.yaml` (miasta z wagą, ich kody pocztowe z punktów
+  adresowych PRG, tylko kody miast, nigdy wsi o tej samej nazwie, i ulice), `CREDITS.md` ze źródłami i licencjami).
   Determinizm: każda część ma własny strumień liczb pseudolosowych (`Prng`: xoshiro256** z ziarna, nazwy strumienia i
   numeru części, nigdy `mt_rand` ani zegar), identyfikatory nazwanych encji to UUID v5 w przestrzeni ziarna
   (`category:<ścieżka slugów>`, `product:<i>`, `variant:<i>:<k>`; `DemoUuid`), zdarzeń UUID v7 z czasem zdarzenia i bitami
