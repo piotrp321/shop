@@ -2,6 +2,8 @@
 
 Raporty z przeglądów i pomiarów, każdy przypięty do rewizji kodu. Raport opisuje wynik na konkretnej rewizji i po
 zapisaniu się nie zmienia; kolejny pomiar albo przegląd to nowy plik (z datą w nazwie), a nie edycja poprzedniego.
+Raport z przeglądu źródeł zewnętrznych, który nie dotyczy kodu (np. ogłoszeń o pracę), zamiast rewizji podaje datę
+odczytu źródeł.
 Surowe wyniki pomiarów zostają poza repozytorium; wyjątkiem jest wybór wyników i skryptów potrzebny do odtworzenia
 pomiaru, dołączony w katalogu o nazwie raportu, bez danych testowych i danych uwierzytelniających.
 
