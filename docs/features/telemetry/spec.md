@@ -66,7 +66,7 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
   spoza listy połączyć się nie może. Grafana ma domyślne hasło admina.
 - Eksperyment E4: blok `env` z `--settings` przechodzi do poleceń Bash wykonawcy tylko jako
   `CLAUDE_CODE_ENABLE_TELEMETRY`, bez `OTEL_*`. Sam `CLAUDE_CODE_ENABLE_TELEMETRY=1` bez eksportera nie zmienia
-  wyjścia `stream-json` ani stderr, więc nie psuje runnera EVALS.
+  wyjścia `stream-json` ani stderr.
 - Eksperymenty przy METRICS (2.1.311): `.claude/settings.json` projektu z `OTEL_EXPORTER_OTLP_ENDPOINT`,
   `OTEL_LOG_USER_PROMPTS=1` i `OTEL_LOG_TOOL_DETAILS=1` nie zmienia eksportu. Zgodnie z dokumentacją Claude Code od
   wersji 2.1.282 zmienne `OTEL_*` w ustawieniach projektu nie mogą włączać telemetrii, przekierowywać endpointów ani
@@ -107,7 +107,7 @@ Research (raport „Telemetria agentów kodujących”, 2026-11-17) i eksperymen
 - Ślady (traces, w Claude Code beta) i `TRACEPARENT`. Złączenie z METRICS daje `shop.task` z czasem próby.
 - Alerty Grafany, także `absent()` na brak danych. Brak danych przy starcie przebiegu sygnalizuje `/ao-run`.
 - Inne agenty (Codex, Gemini CLI). AO uruchamia tylko Claude Code.
-- Telemetria runnera EVALS i sondy w stosie. Runner nie dostaje opcji telemetrii, a sonda wysyła telemetrię do
+- Telemetria sondy w stosie. Sonda wysyła telemetrię do
   własnego odbiornika (R3; przekazanie do stosu tylko przy odbiorze, opcją `--otel-forward`).
 - Ochrona danych stosu przed wykonawcą przez Docker (#498) i przez HTTP na pętli zwrotnej (model zagrożeń, „Poza
   zakresem”).
@@ -197,7 +197,7 @@ Poza zakresem (świadomie otwarte, założenia):
 - Blok `env` w `--settings`, a nie zmienne eksportowane przez wrapper. Według E4 do poleceń Bash wykonawcy przechodzi
   wtedy tylko `CLAUDE_CODE_ENABLE_TELEMETRY`, bez adresu i atrybutów.
 - Nowe opcje `--telemetry-endpoint URL` i `--telemetry-attribute KEY=VALUE` (powtarzalna). Podaje je tylko wrapper
-  `claude-agent`. Runner EVALS (`render()` jako moduł) ich nie używa i nie dostaje bloku `env`. Interfejs modułu:
+  `claude-agent`. Interfejs modułu:
   `render(..., telemetry=None)`, gdzie `telemetry` to `{'endpoint': str, 'attributes': dict}` albo `None`.
 - Stała `DEFAULT_TELEMETRY_ENDPOINT = 'http://127.0.0.1:4318'` i lista zmiennych bloku są w `render_settings.py`.
   Wrapper, `ao-prepare` i `telemetry.py` korzystają z nich bez kopii.

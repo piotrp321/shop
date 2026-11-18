@@ -43,7 +43,7 @@ $HOME. The template's ~ paths are made absolute in the sandbox lists.
 Exit codes: 0 rendered; 1 a path, the template, the telemetry endpoint or an attribute is invalid; 2 usage error.
 Nothing goes to stdout on an error.
 
-Module interface (EVALS runs its cases in the same sandbox, without telemetry):
+Module interface:
   render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dirs=(), deny_writes=(), network=True,
          docker=True, claude_tmpdir=None, telemetry=None) -> dict
       telemetry: None (no env block) or {'endpoint': str, 'attributes': {key: value}}; endpoint defaults to
