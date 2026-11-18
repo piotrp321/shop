@@ -481,9 +481,8 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
 - `docs/features/deploy/spec.md` („Chart `shop`”): Job `backfill` po rolloucie. `infra/k8s/CLAUDE.md` („Chart
   a compose”): transport `jobs` w workerze chartu jak w compose.
 - `apps/api/CLAUDE.md`: wyjątki DBAL (sprzedaż, klienci, ścieżki poddrzewa, rekordy stanów), migracje
-  `CONCURRENTLY`, transport `jobs` i łańcuch partii, liczniki ograniczone i szacunek `reltuples`, sortowanie, endpointy
-  i komendy (`app:backfill` z krokami, `ordering:read-models:rebuild`, `inventory:stock-records:sync`, kroki
-  `bin/seed-demo`).
+  `CONCURRENTLY`, transport `jobs` i łańcuch partii, reguły liczników ograniczonych, szacunku `reltuples` i sortowania,
+  `app:backfill` i jego kroki.
 - `apps/admin/CLAUDE.md`: sortowanie w `ListToolbar`, moduły `categories` i `customers`; brak `@tanstack/vue-table`
   i zaznaczania wierszy.
 - `apps/store/CLAUDE.md`: przekierowania kategorii, kolejność drzewa.
