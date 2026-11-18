@@ -145,10 +145,11 @@ final class PhotoPoolVerifierTest extends TestCase
                 'sha256' => hash('sha256', $files[$name]),
                 'group' => 0 === $index ? 'run-road' : 'bike-road',
                 'alt' => 'Zdjęcie '.$index,
-                'unsplashId' => 'photo'.str_repeat((string) $index, 6),
-                'source' => 'https://unsplash.com/photos/photo'.$index,
+                'sourceId' => 'commons:'.(100 + $index),
+                'variant' => 'original',
+                'source' => 'https://commons.wikimedia.org/wiki/File:Photo_'.$index.'.jpg',
                 'author' => 'Autor',
-                'license' => 'Unsplash License',
+                'license' => 'Public domain',
             ];
         }
 

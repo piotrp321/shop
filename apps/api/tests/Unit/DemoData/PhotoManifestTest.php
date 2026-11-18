@@ -28,12 +28,45 @@ final class PhotoManifestTest extends TestCase
         self::assertSame(str_repeat('a', 64), $manifest->files[0]->sha256);
         self::assertSame('run-road', $manifest->files[0]->group);
         self::assertSame('Biegacz na asfaltowej drodze', $manifest->files[0]->alt);
-        self::assertSame('Ab12Cd34Ef5', $manifest->files[0]->unsplashId);
-        self::assertSame('https://unsplash.com/photos/runner-on-road-Ab12Cd34Ef5', $manifest->files[0]->source);
+        self::assertSame('commons:129176897', $manifest->files[0]->sourceId);
+        self::assertSame('original', $manifest->files[0]->variant);
+        self::assertSame('https://commons.wikimedia.org/wiki/File:Runner_on_road,_20240106_V%C3%A5lerenga_(1).jpg', $manifest->files[0]->source);
         self::assertSame('Zażółć Gęślą', $manifest->files[0]->author);
-        self::assertSame('Unsplash License', $manifest->files[0]->license);
+        self::assertSame('CC0 1.0', $manifest->files[0]->license);
+        self::assertSame('Public domain', $manifest->files[1]->license);
         self::assertSame(['run-road-001.jpg', 'bike-road-001.jpg'], $manifest->fileNames());
         self::assertSame(['run-road' => ['run-road-001.jpg'], 'bike-road' => ['bike-road-001.jpg']], $manifest->fileNamesByGroup());
+    }
+
+    public function testTheSameSourceIdWithDifferentVariantsIsAllowed(): void
+    {
+        $manifest = $this->valid();
+        $manifest['files'][1] = self::changed($manifest['files'][1], ['sourceId' => 'commons:129176897', 'variant' => 'mirror-crop-left']);
+
+        $parsed = PhotoManifest::fromYaml(Yaml::dump($manifest), self::GROUPS);
+
+        self::assertSame('original', $parsed->files[0]->variant);
+        self::assertSame('mirror-crop-left', $parsed->files[1]->variant);
+        self::assertSame($parsed->files[0]->sourceId, $parsed->files[1]->sourceId);
+    }
+
+    #[DataProvider('variants')]
+    public function testEveryVariantOfTheListIsAccepted(string $variant): void
+    {
+        $manifest = $this->valid();
+        $manifest['files'][0]['variant'] = $variant;
+
+        self::assertSame($variant, PhotoManifest::fromYaml(Yaml::dump($manifest), self::GROUPS)->files[0]->variant);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function variants(): iterable
+    {
+        foreach (['original', 'mirror', 'crop-left', 'crop-right', 'crop-top', 'crop-bottom', 'crop-center', 'mirror-crop-left', 'mirror-crop-right', 'mirror-crop-center'] as $variant) {
+            yield $variant => [$variant];
+        }
     }
 
     public function testTheFileOfTheRepositoryFormatCanBeRead(): void
@@ -119,19 +152,43 @@ final class PhotoManifestTest extends TestCase
         yield 'an alt text over 300 characters' => [[], ['alt' => str_repeat('ą', 301)], [], 'files[0].alt'];
         yield 'an alt text with invalid UTF-8' => [[], ['alt' => "Bieg\xC3\x28acz"], [], 'files[0].alt'];
         yield 'a blank author' => [[], ['author' => '  '], [], 'files[0].author'];
-        yield 'an Unsplash id with a slash' => [[], ['unsplashId' => 'a/b'], [], 'files[0].unsplashId'];
-        yield 'an empty Unsplash id' => [[], ['unsplashId' => ''], [], 'files[0].unsplashId'];
-        yield 'a source on another host' => [[], ['source' => 'https://example.com/photos/x'], [], 'files[0].source'];
-        yield 'a source on a look-alike host' => [[], ['source' => 'https://unsplash.com.example.com/photos/x'], [], 'files[0].source'];
-        yield 'a source with credentials' => [[], ['source' => 'https://user:pass@unsplash.com/photos/x'], [], 'files[0].source'];
-        yield 'a source over plain http' => [[], ['source' => 'http://unsplash.com/photos/x'], [], 'files[0].source'];
+        yield 'a source id of another prefix' => [[], ['sourceId' => 'unsplash:129176897'], [], 'files[0].sourceId'];
+        yield 'a source id without a prefix' => [[], ['sourceId' => '129176897'], [], 'files[0].sourceId'];
+        yield 'a source id that is not a number' => [[], ['sourceId' => 'commons:abc'], [], 'files[0].sourceId'];
+        yield 'a source id with a leading zero' => [[], ['sourceId' => 'commons:0123'], [], 'files[0].sourceId'];
+        yield 'a source id of zero' => [[], ['sourceId' => 'commons:0'], [], 'files[0].sourceId'];
+        yield 'a source id with a sign' => [[], ['sourceId' => 'commons:-5'], [], 'files[0].sourceId'];
+        yield 'an empty source id' => [[], ['sourceId' => ''], [], 'files[0].sourceId'];
+        yield 'a source id that is a number, not text' => [[], ['sourceId' => 129176897], [], 'files[0].sourceId'];
+        yield 'an unknown variant' => [[], ['variant' => 'crop-diagonal'], [], 'files[0].variant'];
+        yield 'a variant in capitals' => [[], ['variant' => 'Mirror'], [], 'files[0].variant'];
+        yield 'an empty variant' => [[], ['variant' => ''], [], 'files[0].variant'];
+        yield 'a missing variant' => [[], ['variant' => null], [], 'files[0].variant'];
+        yield 'a source on another host' => [[], ['source' => 'https://example.com/wiki/File:x.jpg'], [], 'files[0].source'];
+        yield 'a source on Unsplash' => [[], ['source' => 'https://unsplash.com/photos/x'], [], 'files[0].source'];
+        yield 'a source on a look-alike host' => [[], ['source' => 'https://commons.wikimedia.org.evil.com/wiki/File:x'], [], 'files[0].source'];
+        yield 'a source on a sub-domain' => [[], ['source' => 'https://upload.commons.wikimedia.org/wiki/File:x.jpg'], [], 'files[0].source'];
+        yield 'a source with credentials' => [[], ['source' => 'https://user@commons.wikimedia.org/wiki/File:x'], [], 'files[0].source'];
+        yield 'a source with a user and a password' => [[], ['source' => 'https://user:pass@commons.wikimedia.org/wiki/File:x'], [], 'files[0].source'];
+        yield 'a source over plain http' => [[], ['source' => 'http://commons.wikimedia.org/wiki/File:x.jpg'], [], 'files[0].source'];
+        yield 'a source with a port' => [[], ['source' => 'https://commons.wikimedia.org:8443/wiki/File:x.jpg'], [], 'files[0].source'];
+        yield 'a source with a query' => [[], ['source' => 'https://commons.wikimedia.org/wiki/File:x.jpg?action=raw'], [], 'files[0].source'];
+        yield 'a source with a fragment' => [[], ['source' => 'https://commons.wikimedia.org/wiki/File:x.jpg#file'], [], 'files[0].source'];
+        yield 'a source that is not a file page' => [[], ['source' => 'https://commons.wikimedia.org/wiki/Category:Running'], [], 'files[0].source'];
+        yield 'a source without the File: prefix' => [[], ['source' => 'https://commons.wikimedia.org/wiki/x.jpg'], [], 'files[0].source'];
+        yield 'a source with an empty file name' => [[], ['source' => 'https://commons.wikimedia.org/wiki/File:'], [], 'files[0].source'];
+        yield 'a source outside /wiki/' => [[], ['source' => 'https://commons.wikimedia.org/w/File:x.jpg'], [], 'files[0].source'];
+        yield 'a source with a further path' => [[], ['source' => 'https://commons.wikimedia.org/wiki/File:a/../../x'], [], 'files[0].source'];
+        yield 'a source with a space' => [[], ['source' => 'https://commons.wikimedia.org/wiki/File:a b.jpg'], [], 'files[0].source'];
         yield 'a source that is the object store' => [[], ['source' => 'https://abc.r2.cloudflarestorage.com/shop-demo-photos/demo-photos/v3/photos.tar'], [], 'files[0].source'];
-        yield 'another licence' => [[], ['license' => 'CC0'], [], 'files[0].license'];
+        yield 'the licence of Unsplash' => [[], ['license' => 'Unsplash License'], [], 'files[0].license'];
+        yield 'another licence' => [[], ['license' => 'CC BY 4.0'], [], 'files[0].license'];
+        yield 'a licence in another case' => [[], ['license' => 'cc0 1.0'], [], 'files[0].license'];
+        yield 'the old key of the Unsplash id' => [[], ['unsplashId' => 'Ab12Cd34Ef5'], [], 'unknown key "unsplashId"'];
         yield 'a duplicated file' => [[], [], ['file' => 'run-road-001.jpg'], 'files[1].file: duplicate'];
         yield 'a file differing only in case' => [[], [], ['file' => 'RUN-ROAD-001.JPG'], 'files[1].file: duplicate'];
         yield 'a duplicated sum' => [[], [], ['sha256' => str_repeat('a', 64)], 'files[1].sha256: duplicate'];
-        yield 'a duplicated Unsplash id' => [[], [], ['unsplashId' => 'Ab12Cd34Ef5'], 'files[1].unsplashId: duplicate'];
-        yield 'a duplicated Unsplash id in another case' => [[], [], ['unsplashId' => 'ab12cd34ef5'], 'files[1].unsplashId: duplicate'];
+        yield 'a repeated pair of the source id and the variant' => [[], [], ['sourceId' => 'commons:129176897', 'variant' => 'original'], 'files[1].sourceId: duplicate'];
         yield 'a credential variable in a text' => [[], ['alt' => 'DEMO_PHOTOS_SECRET_ACCESS_KEY=abc'], [], 'DEMO_PHOTOS_'];
     }
 
@@ -205,20 +262,22 @@ final class PhotoManifestTest extends TestCase
                     'sha256' => str_repeat('a', 64),
                     'group' => 'run-road',
                     'alt' => 'Biegacz na asfaltowej drodze',
-                    'unsplashId' => 'Ab12Cd34Ef5',
-                    'source' => 'https://unsplash.com/photos/runner-on-road-Ab12Cd34Ef5',
+                    'sourceId' => 'commons:129176897',
+                    'variant' => 'original',
+                    'source' => 'https://commons.wikimedia.org/wiki/File:Runner_on_road,_20240106_V%C3%A5lerenga_(1).jpg',
                     'author' => 'Zażółć Gęślą',
-                    'license' => 'Unsplash License',
+                    'license' => 'CC0 1.0',
                 ],
                 [
                     'file' => 'bike-road-001.jpg',
                     'sha256' => str_repeat('b', 64),
                     'group' => 'bike-road',
                     'alt' => 'Rowerzysta na szosie',
-                    'unsplashId' => 'Zy98Xw76Vu5',
-                    'source' => 'https://unsplash.com/photos/cyclist-Zy98Xw76Vu5',
+                    'sourceId' => 'commons:98765',
+                    'variant' => 'original',
+                    'source' => 'https://commons.wikimedia.org/wiki/File:Cyclist.jpg',
                     'author' => 'Jan Kowalski',
-                    'license' => 'Unsplash License',
+                    'license' => 'Public domain',
                 ],
             ],
         ];
