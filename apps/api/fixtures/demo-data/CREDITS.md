@@ -1,6 +1,6 @@
 # Źródła słowników generatora danych demo
 
-Słowniki w tym katalogu napisano na potrzeby tego projektu i nie pochodzą z żadnego zewnętrznego źródła:
+Słowniki w tym katalogu napisano na potrzeby tego projektu, z wyjątkiem słowników osób i kodów pocztowych, których źródła są w tabeli:
 
 | Plik | Zawartość | Pochodzenie |
 |---|---|---|
@@ -11,14 +11,6 @@ Słowniki w tym katalogu napisano na potrzeby tego projektu i nie pochodzą z ż
 | `descriptions.yaml` | zakończenia opisów | własne |
 | `photo-groups.yaml` | przypisanie grup zdjęć do plików z `fixtures/images` (profil `small`) | własne; zdjęcia: `apps/api/fixtures/images/CREDITS.md` (Unsplash License) |
 | `profiles.yaml` | liczby profili, ziarno, rozmiar części | własne, według `docs/features/demo-data/spec.md` |
-| `first-names.yaml` | imiona męskie i żeńskie (po około 100) z wagami | własne, **przybliżone**: lista popularnych polskich imion i wagi szacowane z pamięci, spisane bez dostępu do rejestru PESEL; nie pochodzą z GUS |
-| `surnames.yaml` | nazwiska męskie i żeńskie (po 100) z wagami | własne, **przybliżone** jak wyżej; nie pochodzą z GUS |
-| `places.yaml` | miasta z wagą (w przybliżeniu liczba mieszkańców w tysiącach) i kodami pocztowymi, popularne nazwy ulic | własne: kody pocztowe z zakresów kodów tych miast spisane z pamięci (format `NN-NNN` sprawdza loader), bez sprawdzenia każdego kodu w spisie Poczty Polskiej; nazwy ulic to popularne polskie nazwy |
-
-Słowniki osób mają docelowo pochodzić z list GUS z rejestru PESEL na dane.gov.pl („Lista imion występujących w rejestrze
-PESEL”, „Nazwiska męskie osób żyjących”, „Nazwiska żeńskie osób żyjących”; licencję i wymagany opis źródła trzeba
-przepisać ze strony zbioru przy podmianie). Format plików jest formatem tych list (imię albo nazwisko i liczba osób, osobno
-dla płci; wielkie litery z rejestru loader normalizuje), więc podmiana to wyłącznie zmiana treści `first-names.yaml`
-i `surnames.yaml` (zmieni odcisk słowników, a więc identyfikatory kont) i wpis źródła w tej tabeli. Do tego czasu imiona
-i nazwiska z wagami są przybliżeniem, nie danymi GUS: przy tworzeniu kroku kont środowisko nie miało dostępu do
-dane.gov.pl.
+| `first-names.yaml` | imiona męskie i żeńskie (po 300 najczęstszych) z liczbą osób żyjących | GUS, rejestr PESEL, dane.gov.pl: „Lista imion występujących w rejestrze PESEL”, imię pierwsze, stan na 20.01.2026 (zasoby 1159669 i 1159670), licencja CC0 1.0; wpisy bez zmian, z wyjątkiem pominiętych zapisów ze znakami innymi niż litery |
+| `surnames.yaml` | nazwiska męskie i żeńskie (po 1000 najczęstszych) z liczbą osób | GUS, rejestr PESEL, dane.gov.pl: „Nazwiska występujące w rejestrze PESEL”, nazwiska męskie stan na 22.01.2025 (zasób 63886, nowszej listy męskiej nie ma) i nazwiska żeńskie stan na 20.01.2026 (zasób 1148815), licencja CC0 1.0; wpisy bez zmian, z wyjątkiem pominiętych zapisów ze znakami innymi niż litery |
+| `places.yaml` | miasta z wagą (w przybliżeniu liczba mieszkańców w tysiącach) i kodami pocztowymi, popularne nazwy ulic | wagi i ulice własne; kody pocztowe z punktów adresowych Państwowego Rejestru Granic (usługa GUGiK `services.gugik.gov.pl/uug`, 2026-11-18): każdy kod to kod istniejącego adresu w danym mieście (popularna ulica i numer) |
