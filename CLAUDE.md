@@ -129,7 +129,8 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Reviewer sprawdza zgodność ze specyfikacją, błędy logiczne, architekturę, przypadki brzegowe, testy (także przebieg
   TDD na podstawie wyników obu uruchomień) i zbędną złożoność; brak prawdziwej fazy RED w zadaniu z TDD to problem
   Important. Dodatkowych reviewerów ani modeli nie uruchamiamy bez powodu. Sesja orkiestrująca może działać na
-  najmocniejszym modelu, a subagenci na modelu z definicji albo dobranym do trudności zadania.
+  najmocniejszym modelu. Model i effort w definicji agenta to wartości domyślne: sesja prowadząca dobiera je w zleceniu
+  do trudności i ryzyka zadania.
 - Orkiestrator sam rozstrzyga szczegóły implementacji. Istotne decyzje DDD (agregaty, value objecty, granice modułów,
   persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury przedstawia użytkownikowi przed implementacją.
 - Raport po PR: zakres, subagenci i ich role, wynik review, wykryte i naprawione problemy, uruchomione testy

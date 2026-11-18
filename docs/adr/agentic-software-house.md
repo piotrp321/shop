@@ -46,8 +46,9 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
    `SUGGESTION` i `Minor` trafiają do opisu PR jako odroczone.
 4. **Merge do `main`** zawsze należy do użytkownika albo do sesji na jego wyraźne polecenie, które wskazuje PR.
    Squash i usunięcie gałęzi. Wyjątki procedury AO (niżej) obowiązują tylko przy jej uruchomieniu.
-5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu; subagenci używają modelu z definicji albo
-   dobranego do trudności zadania.
+5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu. Model i effort w definicji agenta to wartości
+   domyślne: sesja prowadząca dobiera je w zleceniu do trudności i ryzyka zadania. Skille `/brainstorm` i `/planner`
+   działają na modelu sesji, która je wywołuje.
 6. **AO jest zamrożony.** Nie rozwijamy AO, skilli istniejących tylko dla niego (`/ao-run`, `/prepare-epic`,
    `/delivery`, `/sweep`, `/retro`, `/groom`) ani narzędzi z nimi związanych. AO zostaje uruchamialny jako
    rozwiązanie awaryjne, dopóki nie ocenimy trzech epików dostarczonych natywnie. Epik DEMO-DATA, już w toku, kończy
@@ -89,8 +90,10 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
 7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje w opis PR odroczone uwagi i `Closes #N` dla
    issues z linii `Issues:` specyfikacji, oznacza PR jako gotowy i pisze raport. Merge do `main` robi użytkownik.
 8. **Wznowienie po przerwie.** Stan odtwarza się z sekcji „Status” planu, gałęzi `task/*`, `git worktree list` i draft
-   PR. Niedokończone zadanie podejmuje nowy subagent: sesja usuwa stary worktree zadania (`git worktree remove`,
-   commity zostają na gałęzi), a zlecenie każe `git switch task/<ID>`.
+   PR. Worktree przerwanego zadania zostaje na dysku razem z niezacommitowanymi zmianami. Sesja zapisuje je commitem
+   w tym worktree (`git -C <worktree> add -A && git -C <worktree> commit -m "wip: …"`), potem go usuwa
+   (`git worktree remove`, bez `--force`, który skasowałby niezapisane zmiany), a zlecenie nowego subagenta każe
+   `git switch task/<ID>`.
 
 Mała zmiana (poprawka albo do trzech zadań niskiego ryzyka) nie potrzebuje tej ścieżki: jedna gałąź i jeden PR do
 `main` w zwykłej sesji.
