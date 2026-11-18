@@ -63,11 +63,6 @@ final class InMemoryProductRepository implements ProductRepository
         return self::copy($product, $this->versions[$id->toString()]);
     }
 
-    public function all(): iterable
-    {
-        return array_values($this->products);
-    }
-
     public function count(): int
     {
         return \count($this->products);
