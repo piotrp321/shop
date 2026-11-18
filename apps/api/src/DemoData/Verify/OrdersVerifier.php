@@ -55,8 +55,9 @@ final readonly class OrdersVerifier
             ...$this->orderCount($context),
             ...$this->variantsWithoutStock($seedSlugs),
             ...$this->listed('The reserved stock of a variant is not the sum of its active reservations (variants)',
-                "SELECT s.variant_id FROM inventory_stock_item s WHERE s.reserved <> coalesce((SELECT sum(l.quantity) FROM inventory_reservation_line l JOIN inventory_reservation r ON r.reservation_key = l.reservation_key
-                 WHERE r.status = 'active' AND l.variant_id = s.variant_id), 0) ORDER BY s.variant_id"),
+                "SELECT s.variant_id FROM inventory_stock_item s
+                 LEFT JOIN (SELECT l.variant_id, sum(l.quantity) AS quantity FROM inventory_reservation_line l JOIN inventory_reservation r ON r.reservation_key = l.reservation_key WHERE r.status = 'active' GROUP BY l.variant_id) a ON a.variant_id = s.variant_id
+                 WHERE s.reserved <> coalesce(a.quantity, 0) ORDER BY s.variant_id"),
             ...$this->listed('The last movement of a variant is not its stock (variants)',
                 'SELECT s.variant_id FROM inventory_stock_item s JOIN LATERAL (SELECT m.physical_after, m.reserved_after FROM inventory_stock_movement m WHERE m.variant_id = s.variant_id ORDER BY m.occurred_at DESC, m.id DESC LIMIT 1) l ON true
                  WHERE (l.physical_after, l.reserved_after) IS DISTINCT FROM (s.physical, s.reserved) ORDER BY s.variant_id'),
