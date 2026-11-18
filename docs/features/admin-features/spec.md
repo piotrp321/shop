@@ -496,7 +496,8 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
 - `docs/features/order-management/spec.md`: fragment i zakres dat, sortowanie, `customerId`.
 - `docs/features/demo-data/spec.md`: generator woła `ordering:read-models:rebuild` i `ANALYZE` po wstawieniu danych
   i zakłada rekord stanu każdemu wariantowi.
-- `e2e/CLAUDE.md`: podział E2E na części (`E2E_SHARD_WEIGHTS`) z testami tej funkcji.
+- `.github/workflows/ci.yml` (komentarz kroku `make e2e`): podział E2E na części (`E2E_SHARD_WEIGHTS`) z testami tej
+  funkcji.
 
 ## Poza zakresem
 
