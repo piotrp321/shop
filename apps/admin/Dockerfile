@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# Pinned: Node 24.22.1 (npm 11.19.1) on Alpine.
-FROM node:24.22.1-alpine AS node
+# Pinned: Node 24.22.3 (npm 11.19.1) on Alpine.
+FROM node:24.22.3-alpine AS node
 
 WORKDIR /app
 
