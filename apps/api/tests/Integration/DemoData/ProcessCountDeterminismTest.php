@@ -12,9 +12,9 @@ use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
- * The rows of the catalog and price steps do not depend on the number of processes: bin/console processes (APP_ENV=test)
- * write the parts of the products and of the prices with 1, 3 and 4 workers, and the checksum of every table is the
- * same. The processes commit,
+ * The rows of the catalog, price, order and stock steps do not depend on the number of processes: bin/console processes
+ * (APP_ENV=test) write the parts of the products, the prices and the orders with 1, 3 and 4 workers, and the checksum of
+ * every table (without the random guest tokens and idempotency keys) is the same. The processes commit,
  * so the test reads and cleans the tables through a connection of its own, outside the transaction of the test; it
  * empties the tables before and after every run. Its own group, so a run that cannot start processes can leave it out.
  */
@@ -33,6 +33,20 @@ final class ProcessCountDeterminismTest extends KernelTestCase
         'pricing_promotion' => 't.id',
         'pricing_promotion_variant' => 't.promotion_id, t.variant_id',
         'pricing_discount_code' => 't.id',
+        'ordering_order' => 't.id',
+        'ordering_order_line' => 't.id',
+        'ordering_order_status_change' => 't.order_id, t.position',
+        'payment_payment' => 't.id',
+        'pricing_discount_code_usage' => 't.id',
+        'inventory_stock_item' => 't.variant_id',
+        'inventory_reservation' => 't.reservation_key',
+        'inventory_reservation_line' => 't.reservation_key, t.variant_id',
+        'inventory_stock_movement' => 't.id',
+    ];
+    /** The random columns, left out of the checksum: the guest tokens and the idempotency keys. */
+    private const array RANDOM_COLUMNS = [
+        'ordering_order' => ['access_token', 'idempotency_key'],
+        'payment_payment' => ['idempotency_key'],
     ];
 
     private Connection $control;
@@ -55,7 +69,7 @@ final class ProcessCountDeterminismTest extends KernelTestCase
         parent::tearDown();
     }
 
-    public function testTheCatalogAndPriceRowsAreTheSameWithOneThreeAndFourProcesses(): void
+    public function testTheCatalogPriceOrderAndStockRowsAreTheSameWithOneThreeAndFourProcesses(): void
     {
         $sums = [];
         foreach ([1, 3, 4] as $processes) {
@@ -63,6 +77,7 @@ final class ProcessCountDeterminismTest extends KernelTestCase
             $sums[$processes] = $this->checksums();
             self::assertSame(2_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM catalog_product')), $processes.' processes');
             self::assertGreaterThan(5_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM pricing_variant_price')), $processes.' processes');
+            self::assertSame(5_000, Sql::int($this->control->fetchOne('SELECT count(*) FROM ordering_order')), $processes.' processes');
             $this->empty();
         }
 
@@ -88,6 +103,14 @@ final class ProcessCountDeterminismTest extends KernelTestCase
         }
         $this->await($running, $processes, 'prices');
         $this->runConsole(['demo-data:promotions']);
+
+        $running = [];
+        for ($worker = 0; $worker < $processes; ++$worker) {
+            $running[$worker] = $this->start(['demo-data:orders', '--worker='.$worker, '--workers='.$processes]);
+        }
+        $this->await($running, $processes, 'orders');
+        $this->runConsole(['demo-data:stock']);
+        $this->runConsole(['demo-data:order-numbers']);
     }
 
     /**
@@ -128,7 +151,8 @@ final class ProcessCountDeterminismTest extends KernelTestCase
 
     private function empty(): void
     {
-        $this->control->executeStatement('TRUNCATE catalog_product_category, catalog_product_variant, catalog_product, catalog_category_redirect, catalog_category, pricing_variant_price, pricing_price_history, pricing_promotion_variant, pricing_promotion, pricing_discount_code_usage, pricing_discount_code');
+        $this->control->executeStatement('TRUNCATE catalog_product_category, catalog_product_variant, catalog_product, catalog_category_redirect, catalog_category, pricing_variant_price, pricing_price_history, pricing_promotion_variant, pricing_promotion, pricing_discount_code_usage, pricing_discount_code,
+            ordering_order_notification, ordering_order_status_change, ordering_order_line, ordering_order, payment_payment, inventory_reservation_line, inventory_reservation, inventory_stock_movement, inventory_stock_item');
     }
 
     /**
@@ -138,7 +162,8 @@ final class ProcessCountDeterminismTest extends KernelTestCase
     {
         $sums = [];
         foreach (self::TABLES as $table => $order) {
-            $sums[$table] = Sql::string($this->control->fetchOne(\sprintf("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY %s)), 'empty') FROM %s t", $order, $table)));
+            $row = isset(self::RANDOM_COLUMNS[$table]) ? '(to_jsonb(t) - '.implode(' - ', array_map(static fn (string $column): string => "'".$column."'", self::RANDOM_COLUMNS[$table])).')::text' : 't::text';
+            $sums[$table] = Sql::string($this->control->fetchOne(\sprintf("SELECT coalesce(md5(string_agg(%s, '|' ORDER BY %s)), 'empty') FROM %s t", $row, $order, $table)));
         }
 
         return $sums;
