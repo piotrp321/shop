@@ -478,7 +478,8 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
 - `docs/vision.md`: klienci w panelu z modelu odczytu Ordering (sekcja „Klienci i pracownicy”, tabela contextów),
   kolejność kategorii w mega menu ustawiana przez pracownika i przekierowanie 308 starych adresów kategorii (sekcja
   SEO i „Przyjazne adresy”).
-- `infra/k8s/CLAUDE.md`: Job `backfill` po rolloucie, transport `jobs` w workerze.
+- `docs/features/deploy/spec.md` („Chart `shop`”): Job `backfill` po rolloucie; transport `jobs` w workerze chartu jak
+  w compose (`infra/k8s/charts/shop`, test `test_worker_consumes_the_transports_of_compose`).
 - `apps/api/CLAUDE.md`: wyjątki DBAL (sprzedaż, klienci, ścieżki poddrzewa, rekordy stanów), migracje
   `CONCURRENTLY`, transport `jobs` i łańcuch partii, liczniki ograniczone i szacunek `reltuples`, sortowanie, endpointy
   i komendy (`app:backfill` z krokami, `ordering:read-models:rebuild`, `inventory:stock-records:sync`, kroki
@@ -495,7 +496,8 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
 - `docs/features/order-management/spec.md`: fragment i zakres dat, sortowanie, `customerId`.
 - `docs/features/demo-data/spec.md`: generator woła `ordering:read-models:rebuild` i `ANALYZE` po wstawieniu danych
   i zakłada rekord stanu każdemu wariantowi.
-- `e2e/CLAUDE.md`: podział E2E na części (`E2E_SHARD_WEIGHTS`) z testami tej funkcji.
+- `.github/workflows/ci.yml` (komentarz kroku `make e2e`): podział E2E na części (`E2E_SHARD_WEIGHTS`) z testami tej
+  funkcji.
 
 ## Poza zakresem
 
