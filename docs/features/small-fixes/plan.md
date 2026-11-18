@@ -17,7 +17,7 @@ Epik w toku od 2026-11-18. Gałąź epiku: `feat/small-fixes`, szkic PR do `main
 | SMALL-FIXES-3 | |
 | SMALL-FIXES-4 | zmergowane do gałęzi epiku (`4d614748`); przegląd FULL + DELTA: PASS |
 | SMALL-FIXES-5 | zmergowane do gałęzi epiku (`9101e482`); przegląd FULL: PASS |
-| SMALL-FIXES-6 | |
+| SMALL-FIXES-6 | zmergowane do gałęzi epiku (`a0da43fd`); FAST: diff i wyniki sprawdzone przez sesję prowadzącą |
 | SMALL-FIXES-7 | |
 | SMALL-FIXES-8 | |
 
