@@ -18,7 +18,6 @@ final class KeycloakAdmin
 {
     /** A token this close to its expiry is not used for a new request. */
     private const int EXPIRY_MARGIN_SECONDS = 15;
-    private const float REQUEST_TIMEOUT = 120.0;
 
     private ?string $token = null;
     private float $expiresAt = 0.0;
@@ -52,7 +51,6 @@ final class KeycloakAdmin
         $headers = \is_array($options['headers'] ?? null) ? $options['headers'] : [];
 
         return $this->http->request($method, rtrim($this->url, '/').'/admin/realms'.$path, [
-            'timeout' => self::REQUEST_TIMEOUT,
             ...$options,
             'headers' => [...$headers, 'Authorization' => 'Bearer '.$this->token()],
         ]);
