@@ -138,6 +138,11 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\PaymentSimulator\\#'
+    # The demo data generator (flat module, one layer): see the ruleset.
+    - name: DemoData
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\DemoData\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -439,6 +444,17 @@ deptrac:
       - Native
       - Vendor
       - Shared_Infrastructure
+    # The generator of the demo data writes the tables with COPY and SQL, never through an aggregate, a repository or
+    # the Application and Infrastructure layers of a context: from the Domain layers it takes only the rules and value
+    # objects of the values it writes (Slug, VariantKey, CategoryPath, TaxClassCode, PriceBreakdown, OrderNumber, ...).
+    # It is a sink: no context and no other module depends on it.
+    DemoData:
+      - Native
+      - Vendor
+      - Shared_Infrastructure
+      - Catalog_Domain
+      - Pricing_Domain
+      - Ordering_Domain
     Shared_Domain:
       - Native
     Shared_Application:

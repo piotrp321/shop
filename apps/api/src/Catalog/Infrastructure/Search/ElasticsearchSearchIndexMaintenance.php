@@ -7,26 +7,44 @@ namespace App\Catalog\Infrastructure\Search;
 use App\Catalog\Application\Port\SearchIndexMaintenance;
 use App\Catalog\Application\Search\ActivationResult;
 use App\Catalog\Application\Search\BulkResult;
+use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use Elastic\Elasticsearch\Client;
 use Elastic\Elasticsearch\Response\Elasticsearch;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Physical indexes named <alias>_<UTC yyyymmddhhmmssmmm>_<6 hex> behind one alias.
  * $client carries the short timeout (alias operations, reads, deletions), $longRequestClient the long one
  * (index creation, bulk writes, refresh).
+ *
+ * A bulk write retries what failed transiently (items rejected with 429 or es_rejected_execution_exception, whole
+ * requests answered with 429, 502, 503 or 504 or lost to a timeout) up to {@see WRITE_ATTEMPTS} times in all, waiting
+ * twice as long after each failed attempt. The writes keep version_type external_gte, so repeating a document that
+ * a timed-out request already indexed is harmless. An index created for a rebuild is filled with the refresh
+ * disabled; {@see verify()} restores the default refresh interval.
  */
 final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexMaintenance
 {
     private const string ALIAS_SWITCH_MASTER_TIMEOUT = '1s';
     private const string ALIAS_SWITCH_ACK_TIMEOUT = '1s';
+    private const int WRITE_ATTEMPTS = 5;
 
+    /**
+     * @param (\Closure(int): void)|null $sleeper          waits the given number of milliseconds between the attempts of a
+     *                                                     bulk write; null really sleeps
+     * @param int                        $retryBaseDelayMs the wait after the first failed attempt, doubled after each next one
+     */
     public function __construct(
         private Client $client,
         private Client $longRequestClient,
         private ProductIndexDefinition $definition,
         private string $alias,
+        private ?\Closure $sleeper = null,
+        private int $retryBaseDelayMs = 1000,
+        private LoggerInterface $logger = new NullLogger(),
     ) {
     }
 
@@ -86,10 +104,45 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
 
     public function write(string $index, array $documents): BulkResult
     {
-        if ([] === $documents) {
-            return new BulkResult();
+        $indexed = $stale = $permanent = $transient = [];
+        $pending = $documents;
+        for ($attempt = 1; [] !== $pending; ++$attempt) {
+            try {
+                $result = $this->writeOnce($index, $pending);
+            } catch (SearchUnavailable $e) {
+                if ($attempt >= self::WRITE_ATTEMPTS) {
+                    throw new SearchUnavailable(\sprintf('%s (after %d attempts)', $e->getMessage(), $attempt), 0, $e);
+                }
+                $this->waitBeforeRetry($index, $attempt, \count($pending), $e->getMessage());
+
+                continue;
+            }
+
+            $indexed = [...$indexed, ...$result->indexed];
+            $stale = [...$stale, ...$result->stale];
+            $permanent += $result->permanentFailures;
+            $transient = $result->transientFailures;
+            // A rebuild ends on the first stale or permanent item, so retrying the rest would only delay the error.
+            if ([] === $transient || [] !== $stale || [] !== $permanent) {
+                break;
+            }
+            if ($attempt >= self::WRITE_ATTEMPTS) {
+                $transient = array_map(static fn (string $reason): string => \sprintf('%s (after %d attempts)', $reason, $attempt), $transient);
+                break;
+            }
+
+            $pending = array_values(array_filter($pending, static fn (ProductDocument $document): bool => \array_key_exists($document->id, $transient)));
+            $this->waitBeforeRetry($index, $attempt, \count($pending), $result->describeProblems());
         }
 
+        return new BulkResult($indexed, $stale, $transient, $permanent);
+    }
+
+    /**
+     * @param list<ProductDocument> $documents
+     */
+    private function writeOnce(string $index, array $documents): BulkResult
+    {
         $body = [];
         foreach ($documents as $document) {
             $body[] = ['index' => ['_index' => $index, '_id' => $document->id, 'version' => $document->version, 'version_type' => 'external_gte']];
@@ -119,12 +172,27 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
         return new BulkResult($indexed, $stale, $transient, $permanent);
     }
 
+    private function waitBeforeRetry(string $index, int $failedAttempt, int $pendingDocuments, string $problem): void
+    {
+        $delay = $this->retryBaseDelayMs * 2 ** ($failedAttempt - 1);
+        $this->logger->warning('Retrying a bulk write to the search index.', [
+            'index' => $index,
+            'failed_attempt' => $failedAttempt,
+            'documents' => $pendingDocuments,
+            'delay_ms' => $delay,
+            'problem' => $problem,
+        ]);
+        null === $this->sleeper ? usleep($delay * 1000) : ($this->sleeper)($delay);
+    }
+
     public function verify(string $index, int $expectedDocuments): void
     {
         if (!$this->indexExists($index)) {
             throw new SearchIndexError(\sprintf('The index "%s" does not exist.', $index));
         }
 
+        // An index created for a rebuild was filled without refreshes; null puts the default interval back.
+        $this->request('restore refresh interval', fn () => $this->longRequestClient->indices()->putSettings(['index' => $index, 'body' => ['index' => ['refresh_interval' => null]]]));
         $this->request('refresh index', fn () => $this->longRequestClient->indices()->refresh(['index' => $index]));
 
         // Healthy: every primary shard assigned (yellow or green). A timed-out wait answers 408.
@@ -213,6 +281,9 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
         if ($withAlias) {
             // The index and its alias appear together, in one request.
             $body['aliases'] = [$this->alias => new \stdClass()];
+        } else {
+            // A rebuild fills the index in one go; verify() restores the default interval.
+            $body['settings']['refresh_interval'] = '-1';
         }
 
         $this->request('create index', fn () => $this->longRequestClient->indices()->create(['index' => $index, 'body' => $body]));

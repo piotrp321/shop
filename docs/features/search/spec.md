@@ -141,6 +141,26 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 - `ProductSearchSource` czyta migawkę produktu, w tym status, warianty (`variantId`, wartości osi) i nazwy kategorii.
 - Przebudowa (`catalog:reindex`) indeksuje wszystkie produkty, także szkice, i pobiera fakty ofert dla każdej paczki
   produktów; błąd faktów przerywa przebudowę.
+- Przebudowa wypełnia nowy indeks z wyłączonym odświeżaniem (`refresh_interval` `-1`): indeks jest tworzony z tym
+  ustawieniem, a `verify` przywraca domyślny interwał (`null` w `_settings`) przed jawnym `refresh`, sprawdzeniem
+  zdrowia, liczby dokumentów i skrótu definicji, czyli przed przepięciem aliasu. Skrót definicji nie obejmuje ustawień,
+  więc odświeżanie go nie zmienia. Indeks z `catalog:search-index:setup` zostaje z domyślnym odświeżaniem.
+- Zapis paczki (`ElasticsearchSearchIndexMaintenance::write`) ponawia to, co zawiodło przejściowo: pozycje odrzucone
+  jako przejściowe (429, `es_rejected_execution_exception`, 502, 503, 504, czyli to, co `ElasticsearchErrorClassifier`
+  uznaje za `SearchUnavailable`) oraz całe żądanie, które zakończyło się takim błędem albo przekroczeniem czasu.
+  Prób jest najwyżej 5 (łącznie z pierwszą), a odstęp rośnie dwukrotnie: 1, 2, 4 i 8 s (`retryBaseDelayMs`, w testach
+  podmieniany `sleeper`). Ponowienie obejmuje tylko pozycje, które jeszcze nie zostały zaindeksowane, a wersja
+  `external_gte` sprawia, że powtórzenie dokumentu, który przekroczone żądanie zdążyło zapisać, jest nieszkodliwe.
+  Pozycja trwale odrzucona i pozycja przestarzała (409; w świeżym indeksie nie powinna się zdarzyć) nie są ponawiane:
+  przebudowa kończy się jak przy każdym innym błędzie. Po wyczerpaniu prób wynik zawiera pozycje przejściowe
+  z informacją o liczbie prób (albo żądanie kończy się `SearchUnavailable`), a przebudowa kończy się porażką: nowy
+  indeks jest usuwany, a alias zostaje na poprzednim. Każde ponowienie trafia do logu (`warning`). Zapis przez
+  `ProductIndexer` (pojedyncze dokumenty) tego nie dotyczy.
+- Każda zapisana paczka przebudowy loguje (`info`, „Search index rebuild progress.”) indeks, liczbę dokumentów
+  zapisanych do tej pory i ich tempo (`documents_per_second`, średnie od początku wypełniania; `null`, gdy minęło
+  0 s). Oba logi (postęp i ponowienia) idą kanałem Monologa `search_rebuild`, który w `prod` trafia na stderr jako JSON od
+  `info`, poza buforem `fingers_crossed` (ten zachowuje tylko logi żądań zakończonych błędem, a `catalog:reindex` nie loguje
+  błędu), więc są widoczne także przy udanej przebudowie.
 
 ### Wyzwalacze
 
@@ -386,7 +406,10 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   kategorie; ponad 10 osi i 30 wartości z rzadkimi wartościami na osi z pierwszej dziesiątki, kilka wybranych osi
   z ceną i dostępnością, brak kombinacji z różnych wariantów, porównanie całej odpowiedzi faset z modelem policzonym
   w PHP na wygenerowanym zbiorze setek produktów; pomiar `took` agregacji pod `SEARCH_PERF=1`, poza zwykłym
-  `make test`), wersja `external_gte` (starszy odczyt przestarzały), przebudowa z faktami ofert.
+  `make test`), wersja `external_gte` (starszy odczyt przestarzały), przebudowa z faktami ofert, ponawianie zapisów
+  przebudowy (transport wstrzykujący 429 pozycji, 503 i przekroczenia czasu do prawdziwego Elasticsearcha: sukces po
+  kilku błędach, wyczerpanie 5 prób i błąd trwały kończą przebudowę z nowym indeksem usuniętym i aliasem bez zmian),
+  `refresh_interval` `-1` w trakcie wypełniania i domyślny po udanej przebudowie, log postępu (test jednostkowy).
 - Funkcjonalne API: `GET /api/v1/products` z każdym parametrem (adres w formacie klienta) i błędami 400 (każdy
   niepoprawny parametr, `relevance` bez `q`), `facets` w odpowiedzi, nagłówki `Cache-Control` i `xkey`; `GET /api/v1/categories`
   i `GET /api/v1/admin/categories` ze `slug` i `path`; `breadcrumb` z `path` w szczegółach produktu.

@@ -1,0 +1,224 @@
+# The category tree of the generated tail of the catalog: the same departments as fixtures/catalog.yaml (a department is
+# looked up by its slug among the root categories and created when missing), each with groups and leaf categories of its
+# own. The slugs of the groups differ from the groups of the seed catalog in the same department, so both trees live
+# side by side. Three levels, the 4-level limit of the catalog is not reached.
+departments:
+  - name: "Bieganie"
+    slug: "bieganie"
+    groups:
+      - name: "Obuwie startowe"
+        slug: "obuwie-startowe"
+        leaves:
+          - {name: "Buty startowe", slug: "startowe"}
+          - {name: "Buty na bieżnię", slug: "na-bieznie"}
+          - {name: "Kolce lekkoatletyczne", slug: "kolce"}
+      - name: "Ubrania do biegania"
+        slug: "ubrania-do-biegania"
+        leaves:
+          - {name: "Spodenki biegowe", slug: "spodenki"}
+          - {name: "Legginsy biegowe", slug: "legginsy"}
+          - {name: "Czapki i opaski", slug: "czapki-i-opaski"}
+          - {name: "Rękawiczki biegowe", slug: "rekawiczki"}
+          - {name: "Skarpety biegowe", slug: "skarpety"}
+      - name: "Elektronika biegowa"
+        slug: "elektronika-biegowa"
+        leaves:
+          - {name: "Zegarki sportowe", slug: "zegarki"}
+          - {name: "Opaski pulsometryczne", slug: "opaski-pulsometryczne"}
+          - {name: "Słuchawki sportowe", slug: "sluchawki"}
+      - name: "Regeneracja biegacza"
+        slug: "regeneracja-biegacza"
+        leaves:
+          - {name: "Rolki do masażu", slug: "rolki"}
+          - {name: "Opaski kompresyjne", slug: "opaski-kompresyjne"}
+          - {name: "Taśmy kinesiotaping", slug: "tasmy"}
+  - name: "Rower"
+    slug: "rower"
+    groups:
+      - name: "Części rowerowe"
+        slug: "czesci-rowerowe"
+        leaves:
+          - {name: "Opony rowerowe", slug: "opony"}
+          - {name: "Dętki", slug: "detki"}
+          - {name: "Łańcuchy i kasety", slug: "lancuchy-i-kasety"}
+          - {name: "Hamulce rowerowe", slug: "hamulce"}
+          - {name: "Siodełka", slug: "siodelka"}
+      - name: "Ubrania rowerowe"
+        slug: "ubrania-rowerowe"
+        leaves:
+          - {name: "Koszulki rowerowe", slug: "koszulki"}
+          - {name: "Spodenki rowerowe", slug: "spodenki"}
+          - {name: "Rękawiczki rowerowe", slug: "rekawiczki"}
+          - {name: "Buty rowerowe", slug: "buty"}
+      - name: "Elektronika rowerowa"
+        slug: "elektronika-rowerowa"
+        leaves:
+          - {name: "Liczniki rowerowe", slug: "liczniki"}
+          - {name: "Lampki rowerowe", slug: "lampki"}
+          - {name: "Zapięcia rowerowe", slug: "zapiecia"}
+      - name: "Bagażniki i foteliki"
+        slug: "bagazniki-i-foteliki"
+        leaves:
+          - {name: "Bagażniki rowerowe", slug: "bagazniki"}
+          - {name: "Foteliki rowerowe", slug: "foteliki"}
+  - name: "Turystyka"
+    slug: "turystyka"
+    groups:
+      - name: "Odzież turystyczna"
+        slug: "odziez-turystyczna"
+        leaves:
+          - {name: "Kurtki trekkingowe", slug: "kurtki"}
+          - {name: "Spodnie trekkingowe", slug: "spodnie"}
+          - {name: "Polary", slug: "polary"}
+          - {name: "Koszulki trekkingowe", slug: "koszulki"}
+      - name: "Obuwie turystyczne"
+        slug: "obuwie-turystyczne"
+        leaves:
+          - {name: "Buty trekkingowe", slug: "trekkingowe"}
+          - {name: "Sandały turystyczne", slug: "sandaly"}
+          - {name: "Skarpety trekkingowe", slug: "skarpety"}
+      - name: "Kuchnia turystyczna"
+        slug: "kuchnia-turystyczna"
+        leaves:
+          - {name: "Kuchenki turystyczne", slug: "kuchenki"}
+          - {name: "Menażki i garnki", slug: "menazki-i-garnki"}
+          - {name: "Termosy i butelki", slug: "termosy-i-butelki"}
+          - {name: "Sztućce turystyczne", slug: "sztucce"}
+      - name: "Akcesoria górskie"
+        slug: "akcesoria-gorskie"
+        leaves:
+          - {name: "Kijki trekkingowe", slug: "kijki"}
+          - {name: "Kompasy", slug: "kompasy"}
+          - {name: "Lornetki", slug: "lornetki"}
+          - {name: "Filtry do wody", slug: "filtry-do-wody"}
+      - name: "Literatura i żywność"
+        slug: "literatura-i-zywnosc"
+        leaves:
+          - {name: "Książki górskie", slug: "ksiazki"}
+          - {name: "Atlasy i mapy szczegółowe", slug: "atlasy-i-mapy"}
+          - {name: "Zupy i desery liofilizowane", slug: "zupy-i-desery"}
+  - name: "Sporty zimowe"
+    slug: "sporty-zimowe"
+    groups:
+      - name: "Snowboard"
+        slug: "snowboard"
+        leaves:
+          - {name: "Deski snowboardowe", slug: "deski"}
+          - {name: "Wiązania snowboardowe", slug: "wiazania"}
+          - {name: "Buty snowboardowe", slug: "buty"}
+      - name: "Akcesoria narciarskie"
+        slug: "akcesoria-narciarskie"
+        leaves:
+          - {name: "Kijki narciarskie", slug: "kijki"}
+          - {name: "Gogle narciarskie", slug: "gogle"}
+          - {name: "Wiązania narciarskie", slug: "wiazania"}
+          - {name: "Pokrowce na narty", slug: "pokrowce"}
+          - {name: "Smary i woski", slug: "smary-i-woski"}
+      - name: "Obuwie zimowe"
+        slug: "obuwie-zimowe"
+        leaves:
+          - {name: "Buty narciarskie", slug: "narciarskie"}
+          - {name: "Buty zimowe turystyczne", slug: "turystyczne"}
+          - {name: "Ocieplacze do butów", slug: "ocieplacze"}
+      - name: "Odzież termiczna"
+        slug: "odziez-termiczna"
+        leaves:
+          - {name: "Bielizna termoaktywna", slug: "bielizna"}
+          - {name: "Rękawice zimowe", slug: "rekawice"}
+          - {name: "Kominy i czapki", slug: "kominy-i-czapki"}
+  - name: "Fitness"
+    slug: "fitness"
+    groups:
+      - name: "Siłownia"
+        slug: "silownia"
+        leaves:
+          - {name: "Sztangi i talerze", slug: "sztangi-i-talerze"}
+          - {name: "Ławki treningowe", slug: "lawki"}
+          - {name: "Kettlebelle", slug: "kettlebelle"}
+          - {name: "Gumy oporowe", slug: "gumy-oporowe"}
+      - name: "Cardio"
+        slug: "cardio"
+        leaves:
+          - {name: "Rowery treningowe", slug: "rowery-treningowe"}
+          - {name: "Skakanki", slug: "skakanki"}
+          - {name: "Bieżnie", slug: "bieznie"}
+      - name: "Joga i pilates"
+        slug: "joga-i-pilates"
+        leaves:
+          - {name: "Klocki do jogi", slug: "klocki"}
+          - {name: "Pasy do jogi", slug: "pasy"}
+          - {name: "Piłki gimnastyczne", slug: "pilki-gimnastyczne"}
+      - name: "Akcesoria treningowe"
+        slug: "akcesoria-treningowe"
+        leaves:
+          - {name: "Rękawice treningowe", slug: "rekawice"}
+          - {name: "Pasy do podnoszenia", slug: "pasy-do-podnoszenia"}
+          - {name: "Shakery i bidony", slug: "shakery"}
+          - {name: "Opaski na nadgarstki", slug: "opaski"}
+      - name: "Odżywki dodatkowe"
+        slug: "odzywki-dodatkowe"
+        leaves:
+          - {name: "Batony proteinowe", slug: "batony"}
+          - {name: "Napoje izotoniczne w proszku", slug: "napoje-izotoniczne"}
+          - {name: "Odżywki regeneracyjne", slug: "odzywki-regeneracyjne"}
+  - name: "Sporty wodne"
+    slug: "sporty-wodne"
+    groups:
+      - name: "Sprzęt do pływania"
+        slug: "sprzet-do-plywania"
+        leaves:
+          - {name: "Czepki pływackie", slug: "czepki"}
+          - {name: "Deski pływackie", slug: "deski"}
+          - {name: "Płetwy pływackie", slug: "pletwy"}
+          - {name: "Stroje pływackie", slug: "stroje"}
+      - name: "Wiosłowanie"
+        slug: "wioslowanie"
+        leaves:
+          - {name: "Wiosła", slug: "wiosla"}
+          - {name: "Kamizelki asekuracyjne", slug: "kamizelki"}
+          - {name: "Worki wodoszczelne", slug: "worki"}
+          - {name: "Pompki do pontonów", slug: "pompki"}
+      - name: "Nurkowanie i snorkeling"
+        slug: "nurkowanie"
+        leaves:
+          - {name: "Maski do nurkowania", slug: "maski"}
+          - {name: "Fajki", slug: "fajki"}
+          - {name: "Płetwy do nurkowania", slug: "pletwy"}
+      - name: "Odzież wodna"
+        slug: "odziez-wodna"
+        leaves:
+          - {name: "Buty neoprenowe", slug: "buty-neoprenowe"}
+          - {name: "Koszulki z filtrem UV", slug: "koszulki-uv"}
+          - {name: "Rękawice neoprenowe", slug: "rekawice-neoprenowe"}
+  - name: "Sporty drużynowe"
+    slug: "sporty-druzynowe"
+    groups:
+      - name: "Akcesoria piłkarskie"
+        slug: "akcesoria-pilkarskie"
+        leaves:
+          - {name: "Getry piłkarskie", slug: "getry"}
+          - {name: "Ochraniacze piłkarskie", slug: "ochraniacze"}
+          - {name: "Rękawice bramkarskie", slug: "rekawice-bramkarskie"}
+          - {name: "Stroje piłkarskie", slug: "stroje"}
+      - name: "Koszykówka"
+        slug: "koszykowka"
+        leaves:
+          - {name: "Kosze do koszykówki", slug: "kosze"}
+          - {name: "Buty koszykarskie", slug: "buty"}
+          - {name: "Stroje koszykarskie", slug: "stroje"}
+      - name: "Siatkówka"
+        slug: "siatkowka"
+        leaves:
+          - {name: "Siatki do siatkówki", slug: "siatki"}
+          - {name: "Ochraniacze siatkarskie", slug: "ochraniacze"}
+          - {name: "Buty siatkarskie", slug: "buty"}
+      - name: "Piłka ręczna"
+        slug: "pilka-reczna"
+        leaves:
+          - {name: "Piłki ręczne", slug: "pilki"}
+      - name: "Trening drużynowy"
+        slug: "trening-druzynowy"
+        leaves:
+          - {name: "Pachołki i znaczniki", slug: "pacholki"}
+          - {name: "Torby sportowe", slug: "torby"}
+          - {name: "Pompki do piłek", slug: "pompki"}
