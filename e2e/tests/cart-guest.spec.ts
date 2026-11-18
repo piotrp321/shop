@@ -47,15 +47,26 @@ test("a guest adds a product from the list, changes its quantity on the cart pag
   await expect(line).toHaveCount(1);
   await expect(quantity).toHaveValue("1");
 
+  // Changing the quantity does not take the keyboard focus (#391): ArrowUp and Tab save quantity 2 and the focus is on
+  // "Usuń" while the change is saved and after it.
+  const remove = line.getByRole("button", { name: /^Usuń/ });
+  await quantity.focus();
+  await quantity.press("ArrowUp");
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("cart-count")).toHaveText("2");
+  await expect(quantity).toHaveValue("2");
+  await expect(remove).toBeFocused();
+
   await quantity.fill("3");
   await quantity.press("Enter");
   await expect(quantity).toHaveValue("3");
+  await expect(quantity).toBeFocused();
   await expect(page.getByTestId("cart-item-count")).toHaveText("3");
   await expect(page.getByTestId("cart-count")).toHaveText("3");
   await expect.poll(async () => groszeOf(await line.getByTestId("line-total").innerText())).toBe(3 * unitGrosze);
   await expect.poll(async () => groszeOf(await page.getByTestId("cart-total").innerText())).toBe(3 * unitGrosze);
 
-  await line.getByRole("button", { name: /^Usuń/ }).click();
+  await remove.click();
   await expect(page.getByText("Twój koszyk jest pusty")).toBeVisible();
   await expect(page.getByTestId("cart-count")).toHaveText("0");
 
