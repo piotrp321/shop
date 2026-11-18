@@ -483,8 +483,8 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
   `CONCURRENTLY`, transport `jobs` i łańcuch partii, liczniki ograniczone i szacunek `reltuples`, sortowanie, endpointy
   i komendy (`app:backfill` z krokami, `ordering:read-models:rebuild`, `inventory:stock-records:sync`, kroki
   `bin/seed-demo`).
-- `apps/admin/CLAUDE.md`: sortowanie w `ListToolbar`, moduły `categories` i `customers`, karta cen i stanów, kafle
-  sprzedaży i liczby „Do obsługi”; brak `@tanstack/vue-table` i zaznaczania wierszy.
+- `apps/admin/CLAUDE.md`: sortowanie w `ListToolbar`, moduły `categories` i `customers`; brak `@tanstack/vue-table`
+  i zaznaczania wierszy.
 - `apps/store/CLAUDE.md`: przekierowania kategorii, kolejność drzewa.
 - `docs/adr/admin-ui-library.md` i `docs/features/admin-design/spec.md`: sortowanie bez `@tanstack/vue-table`; pulpit
   (kafle sprzedaży, liczby „Do obsługi”, linki kafli); w „Dostępności” karta klienta na liście wyjątków kolejności
