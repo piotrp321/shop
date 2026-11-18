@@ -42,7 +42,8 @@ final class ConsoleCommandFailureTest extends KernelTestCase
 
         $this->assertReported('forced failure of a purge');
         self::assertSame(2, $tester->getStatusCode(), $tester->getDisplay());
-        self::assertStringContainsString('The purge stopped: forced failure of a purge', $this->flat($tester));
+        self::assertStringContainsString('The purge stopped: ', $this->flat($tester));
+        self::assertStringContainsString('forced failure of a purge', $this->flat($tester));
     }
 
     public function testRebuildingTheReadModelsReportsTheFailureAndExitsWithOne(): void

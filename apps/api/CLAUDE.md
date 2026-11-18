@@ -58,6 +58,11 @@ cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventor
 partiami w osobnych transakcjach i jest poprawny przy ruchu. Ukończony krok nie uruchomi się drugi raz bez `--force`,
 więc nowy model odczytu dostaje własny krok, a nie zmianę istniejącego.
 
+Komenda konsoli nie połyka `\Throwable`: po komunikacie dla operatora przekazuje wyjątek dalej (`throw new
+\RuntimeException(…, $kodWyjścia, $e)`) z kodem wyjścia z dokumentacji komendy, bo konsola bierze kod z `getCode()`.
+Dzięki temu błąd jest w logu konsoli i w Sentry (listener konsoli zgłasza tylko wyjątki nieobsłużone). Test ścieżki błędu
+używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku nie łapie.
+
 ## Architektura
 
 - Kod jest podzielony na bounded contexty: `src/<Context>/{Domain,Application,Infrastructure,UI}`.

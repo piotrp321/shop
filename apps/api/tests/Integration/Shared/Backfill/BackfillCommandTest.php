@@ -10,11 +10,11 @@ use App\Shared\UI\Console\BackfillCommand;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
-use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Console\Application as FrameworkApplication;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Tester\ApplicationTester;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
@@ -78,9 +78,12 @@ final class BackfillCommandTest extends KernelTestCase
 
     public function testAFailingStepIsNotRecordedAndStopsTheRunAndTheNextRunStartsWithIt(): void
     {
-        $tester = $this->tester([$this->step('first'), $this->step('broken', fails: true), $this->step('third')]);
+        $application = $this->application([$this->step('first'), $this->step('broken', fails: true), $this->step('third')]);
+        $application->setAutoExit(false);
+        $tester = new ApplicationTester($application);
 
-        self::assertSame(Command::FAILURE, $tester->execute([]));
+        // The command hands the error on to the console, which ends with 1 (a CommandTester would not catch it).
+        self::assertSame(Command::FAILURE, $tester->run(['command' => 'app:backfill']));
         self::assertSame(['first', 'broken'], $this->runs());
         self::assertSame(['first'], $this->recorded());
         self::assertStringContainsString('broken: failed: the database went away', $tester->getDisplay());
@@ -170,10 +173,18 @@ final class BackfillCommandTest extends KernelTestCase
      */
     private function tester(array $steps): CommandTester
     {
-        $application = new Application();
-        $application->addCommand(new BackfillCommand($steps, new BackfillLog($this->connection), new NullLogger()));
+        return new CommandTester($this->application($steps)->find('app:backfill'));
+    }
 
-        return new CommandTester($application->find('app:backfill'));
+    /**
+     * @param list<BackfillStep> $steps
+     */
+    private function application(array $steps): Application
+    {
+        $application = new Application();
+        $application->addCommand(new BackfillCommand($steps, new BackfillLog($this->connection)));
+
+        return $application;
     }
 
     /**
