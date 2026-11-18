@@ -308,8 +308,10 @@ w chartcie w tym samym PR.
 - Endpoint `/api/site` (route handler, dynamiczny, `Cache-Control: no-store`) zwraca `{ demoNotice, customerAccounts }`
   ze zmiennych serwera `STORE_DEMO_NOTICE` i `STORE_CUSTOMER_ACCOUNTS`. Domyślnie (lokalnie, w testach):
   `demoNotice: false`, `customerAccounts: true`, czyli zachowanie lokalne.
-- Komponent klienta w layoutcie pokazuje nad nagłówkiem pasek: „Sklep demonstracyjny: płatności i zamówienia są
-  symulowane, nic nie zostanie wysłane ani pobrane.”, gdy `demoNotice`. `AccountMenu` nie pokazuje „Zaloguj się”, gdy
+- Komponent klienta w layoutcie pokazuje przy dole okna (przypięty, poza przepływem strony, pod oknami dialogowymi)
+  pasek: „Sklep demonstracyjny: płatności i zamówienia są symulowane, nic nie zostanie wysłane ani pobrane.”, gdy
+  `demoNotice`; jego pojawienie się nie przesuwa strony, a na końcu strony jest miejsce na jego wysokość
+  (`scroll-padding-bottom` dokumentu chroni element z fokusem). `AccountMenu` nie pokazuje „Zaloguj się”, gdy
   `!customerAccounts`. Błąd odczytu `/api/site`: bez paska i z linkiem (stan domyślny).
 - Testy komponentów (z flagą, bez niej, błąd odczytu); smoke test sprawdza pasek i brak linku na `/` i `/cart`
   w przeglądarce, w obrazie zbudowanym bez flag.

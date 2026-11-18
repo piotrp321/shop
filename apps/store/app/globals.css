@@ -1,1 +1,6 @@
 @import "../src/styles/tokens.css";
+
+/* While the demo bar is shown (`DemoNotice` sets the property) a focused element scrolls clear of it. */
+html {
+  scroll-padding-bottom: var(--demo-notice-height, 0px);
+}
