@@ -124,6 +124,25 @@ final class TarExtractorTest extends TestCase
         }
     }
 
+    public function testAFailedWriteIsReportedAsOneAndNotAsAWrongChecksumLater(): void
+    {
+        if (!file_exists('/dev/full')) {
+            self::markTestSkipped('There is no /dev/full to fail a write.');
+        }
+        // The target of the file is a device that refuses every write like a full disk does.
+        symlink('/dev/full', $this->dir.'/out/a.jpg');
+
+        try {
+            $this->extract(TarBuilder::archive([TarBuilder::entry('a.jpg', str_repeat('x', 1500))]), ['a.jpg']);
+            self::fail('A write that failed should have stopped the extraction.');
+        } catch (InvalidPhotoPool $e) {
+            self::assertStringContainsString('could not be written', implode(' | ', $e->violations));
+            self::assertStringContainsString('disk space', implode(' | ', $e->violations));
+        } finally {
+            unlink($this->dir.'/out/a.jpg');
+        }
+    }
+
     public function testNothingOutsideTheDirectoryIsWrittenForAPathThatLeavesIt(): void
     {
         try {

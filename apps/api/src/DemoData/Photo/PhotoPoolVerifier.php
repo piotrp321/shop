@@ -26,14 +26,17 @@ final readonly class PhotoPoolVerifier
 
         $violations = [];
         $present = array_values(array_diff(scandir($directory) ?: [], ['.', '..']));
+        // The names are keys, so a lookup does not scan the list for each of the thousands of files.
+        $inManifest = array_flip($manifest->fileNames());
+        $inDirectory = array_flip($present);
         foreach ($present as $name) {
-            if (!\in_array($name, $manifest->fileNames(), true)) {
+            if (!isset($inManifest[$name])) {
                 $violations[] = InvalidPhotoPool::nameOf($name).': not in the manifest';
             }
         }
         foreach ($manifest->files as $entry) {
             $path = rtrim($directory, '/').'/'.$entry->file;
-            if (!\in_array($entry->file, $present, true)) {
+            if (!isset($inDirectory[$entry->file])) {
                 $violations[] = $entry->file.': missing';
                 continue;
             }

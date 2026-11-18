@@ -152,7 +152,10 @@ final readonly class TarExtractor
                 if ('' === $chunk) {
                     return false;
                 }
-                fwrite($target, $chunk);
+                $written = @fwrite($target, $chunk);
+                if (\strlen($chunk) !== $written) {
+                    throw InvalidPhotoPool::because('A file of the archive could not be written to the work directory: check the free disk space.');
+                }
                 $left -= \strlen($chunk);
             }
         } finally {
