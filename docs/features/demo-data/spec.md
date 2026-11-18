@@ -38,8 +38,8 @@ Ustalone z użytkownikiem 2026-11-13 przed przygotowaniem epiku:
 - **U4. Realizm.** Obecny katalog z `apps/api/fixtures/catalog.yaml` zostaje (seed jak dziś), a generator dokłada
   długi ogon ze słowników w repo (wygenerowanych raz, po polsku), z realistycznymi rozkładami. Dane osób z otwartych
   danych GUS, e-maile wyłącznie w domenach zarezerwowanych (`example.com`, `example.net`, `example.org`).
-- **U5. Zdjęcia.** Większa pula prawdziwych zdjęć z Unsplash poza gitem (w repo lista plików z autorami i sumą
-  kontrolną archiwum), obiekty w Garage współdzielone między produktami (oryginały nigdy nie są usuwane, decyzja K7
+- **U5. Zdjęcia.** Większa pula prawdziwych zdjęć z Wikimedia Commons (CC0 1.0 i domena publiczna) poza gitem
+  (w repo lista plików z autorami, licencjami i sumami kontrolnymi), obiekty w Garage współdzielone między produktami (oryginały nigdy nie są usuwane, decyzja K7
   w `docs/features/catalog-admin/spec.md`).
 - **U6. Bez nocnego resetu.** Dane demo nie są resetowane co noc (zmiana #179 należy do osobnego epiku dostępu do
   demo); przywrócenie danych to świadome uruchomienie generatora.
@@ -70,9 +70,12 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   poświadczeń: nie da się na nie zalogować ani zamówić dla nich resetu hasła (realm `shop` ma
   `resetPasswordAllowed`, a poczta Keycloaka w `prod` idzie przez Brevo). Istnieją jako tożsamości, na które wskazują
   zamówienia i historia działań.
-- **P6. Pula zdjęć.** Około 4000 zdjęć z Unsplash (Unsplash License), w tonacji obecnych zdjęć, przypisanych do grup
-  zdjęć typów produktów (10–40 na grupę, około 33 średnio, zależnie od tego, ile pasujących zdjęć ma Unsplash),
-  wybranych i przeskalowanych do 1600 px przez zadanie epiku; tyle, żeby na stronie listy jednego typu (24 produkty)
+- **P6. Pula zdjęć.** Około 4000 plików z Wikimedia Commons (tylko CC0 1.0 i domena publiczna: licencje bez wymogu
+  podania autora i bez zakazu zmian), w tonacji obecnych zdjęć, przypisanych do grup zdjęć typów produktów (100–300 na
+  grupę, około 200 średnio). To 1142 prawdziwe zdjęcia i ich warianty (odbicie lustrzane, kadry 80%), wybrane
+  i przeskalowane do 1600 px przez zadanie epiku; każdy wariant to osobny plik, więc osobny oryginał dla imgproxy
+  i Varnisha. Commons zamiast Unsplash i Pexels: Pexels wstrzymał nowe klucze API, a regulamin API Unsplash wymaga
+  hotlinkingu, więc ich zdjęć nie wolno pobrać do własnej puli. Pula ma tyle plików, żeby na stronie listy jednego typu (24 produkty)
   zdjęcia rzadko się powtarzały, a pomiar obejmował realną liczbę różnych oryginałów w imgproxy i Varnishu; archiwum w prywatnym magazynie
   (P10), w repo manifest z autorami, licencjami i sumami kontrolnymi. Testy i profil `small` używają 37 obecnych zdjęć
   z `apps/api/fixtures/images`.
@@ -86,7 +89,7 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   nie czyta (API bierze tożsamość z tokenu, zamówienia mają kopię danych klienta, k6 się nie loguje); konta zostają,
   bo skala Keycloaka (1 mln klientów, 500 pracowników) jest częścią demo (U1), a W1 wymaga ich spójności z danymi.
 - **P10. Prywatny magazyn zdjęć.** Pula nie jest publikowana jako ogólnodostępne archiwum (bez wydania GitHub), żeby
-  nie redystrybuować kolekcji z Unsplash. Archiwum leży w prywatnym buckecie Cloudflare R2 (konto użytkownika, jak
+  nie redystrybuować kolekcji zdjęć z Commons. Archiwum leży w prywatnym buckecie Cloudflare R2 (konto użytkownika, jak
   kopie zapasowe), w niezmiennych wersjach, z weryfikacją SHA-256 (sekcja „Zdjęcia”). W repo zostaje manifest.
 - **P11. Dwa końcowe PR.** Jeden epik w specyfikacji, z dotychczasowymi kryteriami i kolejnością zależności,
   dostarczany w dwóch częściach mergowanych po kolei, każda z własnym końcowym PR i własnymi kontrolami CI: część 1
@@ -324,8 +327,13 @@ Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
   S3, więc wersjonowanie to niezmienne klucze): wysyłka nie nadpisuje istniejącego klucza, a nowa pula to nowa
   wersja.
 - **Manifest w repo.** `apps/api/fixtures/demo-data/photos.yaml`: wersja, klucz obiektu i lista plików z SHA-256
-  pliku (archiwum to tylko transport), grupą typu, tekstem alternatywnym, stroną źródła, autorem i licencją (Unsplash License).
-  Bez adresu bucketu i bez danych dostępu.
+  pliku (archiwum to tylko transport), grupą typu, tekstem alternatywnym, `sourceId`, `variant`, stroną źródła, autorem i licencją. `sourceId` to
+  `commons:<id strony pliku>` (dodatnia liczba całkowita), `variant` to `original`, `mirror`, `crop-left`,
+  `crop-right`, `crop-top`, `crop-bottom`, `crop-center`, `mirror-crop-left`, `mirror-crop-right` albo
+  `mirror-crop-center`, źródło to strona pliku `https://commons.wikimedia.org/wiki/File:…`, a licencja to `CC0 1.0`
+  albo `Public domain`. Para `sourceId` i `variant` jest unikalna (to samo zdjęcie może wystąpić w wielu wariantach,
+  każdy wariant ma własny plik i sumę). Schemat jest zamknięty: nieznany klucz to błąd. Bez adresu bucketu i bez
+  danych dostępu.
 - **Dostęp.** Dwa tokeny API R2 ograniczone do tego bucketu: zapis i odczyt dla wysyłki puli (zadanie epiku), tylko
   odczyt dla generatora. Endpoint, nazwa bucketu i klucze są w pliku użytkownika poza repo (domyślnie
   `~/.config/shop/demo-photos.env`, zmienne `DEMO_PHOTOS_*`); narzędzia czytają go bez wypisywania wartości. W CI
@@ -339,8 +347,9 @@ Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
   Profil `small` bierze 37 plików z `apps/api/fixtures/images` bez pobierania.
 - **Wysyłka.** Kod pobierania, weryfikacji i wysyłki powstaje i jest testowany na małym archiwum lokalnym (DEMO-DATA-6);
   pulę wybiera osobne zadanie (DEMO-DATA-7) partiami po działach, z przerwami między pobraniami, bez duplikatów
-  (jedno zdjęcie Unsplash raz w puli). Gdy CDN zacznie blokować pobieranie, zadanie się zatrzymuje i zgłasza to, bez
-  obchodzenia ochrony. DEMO-DATA-7 pobiera zdjęcia z CDN `images.unsplash.com`, skaluje je, buduje archiwum, wysyła je
+  (ta sama para `sourceId` i `variant` raz w puli). Gdy Commons zacznie blokować pobieranie, zadanie się zatrzymuje
+  i zgłasza to, bez obchodzenia ochrony. DEMO-DATA-7 pobiera zdjęcia z Wikimedia Commons, skaluje je, buduje warianty
+  i archiwum, wysyła je
   skryptem `apps/api/bin/upload-demo-photos` (obraz `rclone` przypięty digestem jak w chartcie, `copyto --immutable`,
   więc istniejąca wersja nie zostanie nadpisana) z tokenem zapisu i commituje `photos.yaml`. Przed wysyłką każdy plik
   przechodzi te same reguły co upload w Catalog (typ po zawartości, rozmiar, wymiary). Archiwum ani zdjęcia puli nie
@@ -489,7 +498,8 @@ Aktualizacja `docs/features/search/spec.md`.
 15. `make seed-scale PROFILE=small` na stosie zadania kończy się kodem 0 (cały skrypt na prawdziwych usługach, wynik
     w PR części 1), a `make seed` po nim przywraca dane E2E.
 16. Pula zdjęć (P10): obiekt archiwum w prywatnym buckecie istnieje pod kluczem z manifestu, sumy plików zgadzają
-    się z manifestem, pula ma około 4000 zdjęć bez duplikatów i 10–40 na grupę zdjęć, każdy plik spełnia reguły
+    się z manifestem, pula ma około 4000 plików (1142 zdjęcia i ich warianty) bez powtórzonej pary `sourceId` i `variant` i 100–300
+    plików na grupę zdjęć, każdy plik spełnia reguły
     uploadu Catalog, bucket nie ma dostępu publicznego, a skrypt wysyłki
     przekazuje `--immutable` (test skryptu z podstawionym `docker`).
 
@@ -523,9 +533,8 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
   `DEMO_PHOTOS_WRITE_ACCESS_KEY_ID`, `DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY`, `DEMO_PHOTOS_ACCESS_KEY_ID`,
   `DEMO_PHOTOS_SECRET_ACCESS_KEY`) — użytkownik: bucket, tokeny i plik przed `/ao-run` (wartości nigdy nie przechodzą
   przez rozmowę).
-- Pobieranie zdjęć z CDN `images.unsplash.com` bez klucza API: istnieje (tak powstały zdjęcia VISUAL-DESIGN-11,
-  PR #357; link „Download” blokuje ochrona przed botami). Przy około 4000 zdjęć nie było sprawdzane; blokada zatrzymuje
-  DEMO-DATA-7 (sekcja „Zdjęcia”).
+- Pobieranie zdjęć z Wikimedia Commons (tylko CC0 1.0 i domena publiczna) bez klucza API: istnieje, przez publiczne
+  API Commons z limitami zapytań i nagłówkiem `User-Agent`; blokada zatrzymuje DEMO-DATA-7 (sekcja „Zdjęcia”).
 - (część 2) Przebieg `LOAD_DATA=medium` w zadaniu: Docker na komputerze użytkownika z co najmniej 10 CPU, 20 GiB pamięci
   (wymagania `load`) i około 32 GB wolnego miejsca (1,25 × szacunek `medium`, W2) w VM i na dysku komputera — istnieje (2026-11-13: 16 CPU, 31 GiB, w VM 873 GB wolnego,
   na dysku komputera 279 GiB wolnego).

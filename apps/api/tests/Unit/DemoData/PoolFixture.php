@@ -43,10 +43,11 @@ final class PoolFixture
                     'sha256' => hash('sha256', $contents),
                     'group' => $group,
                     'alt' => 'Zdjęcie grupy '.$group.' nr '.($number + 1),
-                    'unsplashId' => \sprintf('pool%02d%02d', $index, $number),
-                    'source' => \sprintf('https://unsplash.com/photos/pool%02d%02d', $index, $number),
+                    'sourceId' => \sprintf('commons:%d', 1000 + $index * 10 + $number),
+                    'variant' => 'original',
+                    'source' => \sprintf('https://commons.wikimedia.org/wiki/File:Pool_%02d_%02d.jpg', $index, $number),
                     'author' => 'Autor Łukasz',
-                    'license' => 'Unsplash License',
+                    'license' => 'CC0 1.0',
                 ];
             }
         }

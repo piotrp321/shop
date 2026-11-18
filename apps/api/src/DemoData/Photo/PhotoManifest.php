@@ -9,16 +9,21 @@ use Symfony\Component\Yaml\Yaml;
 
 /**
  * fixtures/demo-data/photos.yaml: the version of the pool, the key of its archive in the private bucket and the files
- * of the pool (sum, photo group, alt text and the origin of every photo). The schema is closed: an unknown key (an
+ * of the pool (sum, photo group, alt text and the origin of every file: a photo of Wikimedia Commons under CC0 1.0 or in
+ * the public domain, and the variant of it: the original, the mirror image or a crop). The schema is closed: an unknown key (an
  * endpoint, a bucket, a credential) is a violation, so the file cannot carry the access to the bucket.
  */
 final readonly class PhotoManifest
 {
-    private const string LICENSE = 'Unsplash License';
+    private const array LICENSES = ['CC0 1.0', 'Public domain'];
+    private const array VARIANTS = [
+        'original', 'mirror', 'crop-left', 'crop-right', 'crop-top', 'crop-bottom', 'crop-center',
+        'mirror-crop-left', 'mirror-crop-right', 'mirror-crop-center',
+    ];
     private const int MAX_TEXT = 300;
     private const int MAX_FILE_NAME = 100;
     private const array TOP_KEYS = ['version', 'key', 'files'];
-    private const array FILE_KEYS = ['file', 'sha256', 'group', 'alt', 'unsplashId', 'source', 'author', 'license'];
+    private const array FILE_KEYS = ['file', 'sha256', 'group', 'alt', 'sourceId', 'variant', 'source', 'author', 'license'];
 
     /**
      * @param non-empty-list<PhotoEntry> $files
@@ -84,7 +89,7 @@ final readonly class PhotoManifest
         if (!\is_array($files) || [] === $files || !array_is_list($files)) {
             $violations[] = 'files: a non-empty list is required';
         } else {
-            $seen = ['file' => [], 'sha256' => [], 'unsplashId' => []];
+            $seen = ['file' => [], 'sha256' => [], 'pair' => []];
             foreach ($files as $index => $row) {
                 $entry = self::entry($index, $row, $groups, $seen, $violations);
                 if (null !== $entry) {
@@ -132,9 +137,9 @@ final readonly class PhotoManifest
     }
 
     /**
-     * @param list<string>                                                                                   $groups
-     * @param array{file: array<string, true>, sha256: array<string, true>, unsplashId: array<string, true>} $seen
-     * @param list<string>                                                                                   $violations
+     * @param list<string>                                                                             $groups
+     * @param array{file: array<string, true>, sha256: array<string, true>, pair: array<string, true>} $seen
+     * @param list<string>                                                                             $violations
      */
     private static function entry(int $index, mixed $row, array $groups, array &$seen, array &$violations): ?PhotoEntry
     {
@@ -169,38 +174,46 @@ final readonly class PhotoManifest
         }
         $alt = self::text($row, 'alt', $where, $violations);
         $author = self::text($row, 'author', $where, $violations);
-        $unsplashId = self::value($row, 'unsplashId', $where, $violations);
-        if (null !== $unsplashId && 1 !== preg_match('/^[A-Za-z0-9_-]{6,40}$/D', $unsplashId)) {
-            $violations[] = $where.'.unsplashId: 6 to 40 letters, digits, dash or underscore are required';
-            $unsplashId = null;
+        $sourceId = self::value($row, 'sourceId', $where, $violations);
+        if (null !== $sourceId && 1 !== preg_match('/^commons:[1-9][0-9]{0,17}$/D', $sourceId)) {
+            $violations[] = $where.'.sourceId: commons:<page id> with a positive whole number without leading zeros is required';
+            $sourceId = null;
+        }
+        $variant = self::value($row, 'variant', $where, $violations);
+        if (null !== $variant && !\in_array($variant, self::VARIANTS, true)) {
+            $violations[] = $where.'.variant: one of '.implode(', ', self::VARIANTS).' is required';
+            $variant = null;
         }
         $source = self::value($row, 'source', $where, $violations);
-        if (null !== $source && !self::isUnsplashPage($source)) {
-            $violations[] = $where.'.source: an https://unsplash.com/photos/… page is required';
+        if (null !== $source && !self::isCommonsFilePage($source)) {
+            $violations[] = $where.'.source: an https://commons.wikimedia.org/wiki/File:… page is required';
             $source = null;
         }
         $license = self::value($row, 'license', $where, $violations);
-        if (null !== $license && self::LICENSE !== $license) {
-            $violations[] = $where.'.license: has to be "'.self::LICENSE.'"';
+        if (null !== $license && !\in_array($license, self::LICENSES, true)) {
+            $violations[] = $where.'.license: has to be one of "'.implode('", "', self::LICENSES).'"';
             $license = null;
         }
 
-        foreach (['file' => $file, 'sha256' => $sha256, 'unsplashId' => $unsplashId] as $field => $value) {
+        $pair = null === $sourceId || null === $variant ? null : $sourceId.' '.$variant;
+        foreach (['file' => $file, 'sha256' => $sha256, 'pair' => $pair] as $field => $value) {
             if (null === $value) {
                 continue;
             }
             $normalized = 'sha256' === $field ? $value : strtolower($value);
             if (isset($seen[$field][$normalized])) {
-                $violations[] = $where.'.'.$field.': duplicate of an earlier file';
+                $violations[] = 'pair' === $field
+                    ? $where.'.sourceId: duplicate of an earlier file with the same photo and variant'
+                    : $where.'.'.$field.': duplicate of an earlier file';
             }
             $seen[$field][$normalized] = true;
         }
 
-        if (\count($violations) > $before || null === $file || null === $sha256 || null === $group || null === $alt || null === $author || null === $unsplashId || null === $source || null === $license) {
+        if (\count($violations) > $before || null === $file || null === $sha256 || null === $group || null === $alt || null === $author || null === $sourceId || null === $variant || null === $source || null === $license) {
             return null;
         }
 
-        return new PhotoEntry($file, $sha256, $group, $alt, $unsplashId, $source, $author, $license);
+        return new PhotoEntry($file, $sha256, $group, $alt, $sourceId, $variant, $source, $author, $license);
     }
 
     /**
@@ -254,15 +267,20 @@ final readonly class PhotoManifest
         return $value;
     }
 
-    private static function isUnsplashPage(string $url): bool
+    /**
+     * A file page of Wikimedia Commons: https, the host exactly commons.wikimedia.org and the path /wiki/File:<name>, the
+     * name made of the characters of a percent-encoded title (letters, digits, % and the punctuation of titles), without
+     * a further path, user, port, query or fragment.
+     */
+    private static function isCommonsFilePage(string $url): bool
     {
         $parts = parse_url($url);
 
         return false !== $parts
             && 'https' === ($parts['scheme'] ?? null)
-            && 'unsplash.com' === ($parts['host'] ?? null)
+            && 'commons.wikimedia.org' === ($parts['host'] ?? null)
             && [] === array_intersect(['user', 'pass', 'port', 'query', 'fragment'], array_keys($parts))
-            && 1 === preg_match('#^/photos/[A-Za-z0-9_-]+$#D', $parts['path'] ?? '');
+            && 1 === preg_match('#^/wiki/File:[A-Za-z0-9_.,()%@!\'~+=&$*;:-]+$#D', $parts['path'] ?? '');
     }
 
     /**

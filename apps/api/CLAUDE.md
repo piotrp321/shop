@@ -110,9 +110,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   kończy się błędem), `demo-data:photos [--preflight]` (krok 2: zdjęcia produktów; `small` zapisuje 37 plików z `fixtures/images` raz do Garage
   pod `originals/<sha256>.<rozszerzenie>` i przypisuje klucze według grupy zdjęć typu, co 50. produkt bez zdjęć, bez
   pobierania. Profil inny niż `small` bierze zdjęcia z puli: archiwum `demo-photos/v<N>/photos.tar` z prywatnego bucketu R2
-  opisanego w `fixtures/demo-data/photos.yaml` (wersja, klucz, pliki z SHA-256, grupą typu, alt, `unsplashId`, stroną źródła,
+  opisanego w `fixtures/demo-data/photos.yaml` (wersja, klucz, pliki z SHA-256, grupą typu, alt, `sourceId`, `variant`, stroną źródła,
   autorem i licencją; schemat `PhotoManifest` jest zamknięty: nieznany klucz, w tym adres bucketu albo poświadczenie, to błąd;
-  manifest dodaje DEMO-DATA-7, bez niego krok kończy się błędem przed pobraniem). Kolejność (`PhotoPoolLoader`): niepuste
+  brak manifestu kończy krok błędem przed pobraniem). Kolejność (`PhotoPoolLoader`): niepuste
   `DEMO_PHOTOS_*` (inaczej kod 1 z nazwami zmiennych), manifest i grupy zdjęć z `photo-groups.yaml` (każda ma pliki), potem
   pobranie archiwum do katalogu tymczasowego (adapter AsyncAws czyta całe ciało do strumienia `php://temp`, który powyżej 2 MB
   idzie do pliku w `sys_get_temp_dir()`, i dopiero stąd `PhotoPoolLoader` kopiuje je do `photos.tar`, więc w trakcie pobierania na dysku są
