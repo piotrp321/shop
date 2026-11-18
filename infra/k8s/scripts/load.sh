@@ -6,6 +6,8 @@
 # container). Nothing is installed on the host and nothing is pushed. The cluster is deleted on every exit.
 #
 #   LOAD_OUT=<directory> load.sh   the directory for the results: required, an existing absolute path outside the repository
+#                                  that Docker can mount for writing (Docker Desktop: shared in Settings > Resources > File
+#                                  Sharing); a short container tries the mount before any image is built
 #
 # The data (LOAD_DATA, docs/features/demo-data/spec.md, "k3d"): seed (the default) measures on the demo data that the Job
 # initialize loads and raises the stock of every variant. medium, server and full run, once the cluster is ready, one Job of
@@ -37,11 +39,12 @@
 # LOAD_DATA; the times of the steps only with a generator.
 #
 # Exit code: 0 the measurement was done (it has no thresholds of speed; a ramp that ended on saturation is the normal
-# end), 2 the environment is not fit (LOAD_OUT missing or wrong, an unknown LOAD_DATA, the file of the photo pool missing or
+# end), 2 the environment is not fit (LOAD_OUT missing, wrong or not mountable by Docker, an unknown LOAD_DATA, the file of the photo pool missing or
 # without a read variable, no Docker, too few CPUs or too little memory in the Docker VM, too little room on the disks before the
 # start or a fall below 10% of diskPeakGb during the run, a free space or diskPeakGb that cannot be read, pods not ready, the
 # generator failed or did not finish in time, no chunks of the sitemap, the data of the demo or the stocks not prepared, the
 # warm-up failed) with a message, 1 anything else that went wrong (a failed run of k6 in the ramp or the steady run, a failed build).
+# Exit 125 of `docker run` of k6 is Docker failing to start it (named so in the message), not a shop that does not answer.
 #
 #   LOAD_DATA=seed        seed, medium, server or full (above)
 #   DEMO_PHOTOS_ENV_FILE  the file of the user with the access of the photo pool (~/.config/shop/demo-photos.env)
@@ -364,6 +367,13 @@ esac
 # MemTotal of the Docker VM is a little below what is set (Docker Desktop: 32 GiB gives 31.3 GiB), so 95% of the limit counts.
 [ "$docker_mem" -ge $(( LOAD_MIN_MEM_GIB * 1073741824 * 95 / 100 )) ] || fail "the Docker VM has $(( docker_mem / 1073741824 )) GiB of memory, the measurement needs at least $LOAD_MIN_MEM_GIB GiB (the pods of prod ask for about 8.5 GiB; give Docker more memory, or lower LOAD_MIN_MEM_GIB knowingly)"
 
+# k6 writes its results to LOAD_OUT mounted into its container (k6_run); Docker Desktop mounts only the paths shared with it
+# (Settings > Resources > File Sharing). The same mount, with the same user, is tried now with a short container of an image
+# that is used anyway, not after the images, the cluster and the data.
+if ! mount_answer="$(docker run --rm -u "$(id -u):$(id -g)" -v "$out:/out" --entrypoint sh "$PYTHON_IMAGE" -c 'touch /out/.mount-check && rm /out/.mount-check' 2>&1)"; then
+  fail "Docker cannot mount LOAD_OUT '$out' for writing (Docker Desktop: the directory must be shared with Docker, Settings > Resources > File Sharing; the user of the host must be able to write to it); docker answered: $mount_answer"
+fi
+
 # The room on the disks, before any image is built or cluster made.
 if [ "$LOAD_DATA" != seed ]; then
   check_space_before_start
@@ -544,6 +554,9 @@ script_settings() {
   done
   printf '%s' "$settings"
 }
+
+# 125 is the exit code of `docker run` itself (a mount refused, an image or a network missing), not of k6.
+docker_not_started="Docker did not start k6 (docker run exit 125; above), the shop was not asked"
 
 # run_k6 <script> <log name> [-e NAME=value...]: runs a script of load/ against the store and the API of the cluster, its
 # output in LOAD_OUT/<log name>.txt and then on the terminal. Prints the exit code of k6 in $k6_status (0, 99 for crossed
@@ -811,6 +824,7 @@ start_samplers
 
 log "warm-up"
 run_k6 warmup.js warmup
+[ "$k6_status" -ne 125 ] || fail "the warm-up failed: $docker_not_started"
 [ "$k6_status" -eq 0 ] || fail "the warm-up failed (k6 exit $k6_status; above): the shop does not answer as the scripts expect"
 
 log "ramp to saturation (reads and carts)"
@@ -819,6 +833,7 @@ run_k6 saturate.js ramp
 # 99 is the end on saturation (a threshold of a step with abortOnFail); anything else is a run that did not happen.
 case "$k6_status" in
   0 | 99) ;;
+  125) echo "load: the ramp failed: $docker_not_started" >&2; exit 1 ;;
   *) echo "load: the ramp failed (k6 exit $k6_status; above)" >&2; exit 1 ;;
 esac
 [ -s "$out/ramp.json" ] && [ -s "$out/steady-rate" ] || { echo "load: the ramp wrote no result (above)" >&2; exit 1; }
@@ -830,6 +845,7 @@ nap "$LOAD_COOLDOWN"
 log "steady run (70% of the saturation, with the checkout)"
 run_k6 steady.js steady -e "STEADY_RATE=$steady_rate" -e "CHECKOUT_VUS=$checkout_vus"
 # The steady run has no thresholds: any exit code but 0 is a run that did not happen.
+[ "$k6_status" -ne 125 ] || { echo "load: the steady run failed: $docker_not_started" >&2; exit 1; }
 [ "$k6_status" -eq 0 ] || { echo "load: the steady run failed (k6 exit $k6_status; above)" >&2; exit 1; }
 [ -s "$out/steady.json" ] || { echo "load: the steady run wrote no result (above)" >&2; exit 1; }
 echo "load: peak CPU and memory per pod: see top.log; the node: node-stats.log"

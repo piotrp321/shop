@@ -27,10 +27,18 @@ SCRIPT = REPO / "infra/k8s/scripts/load.sh"
 # generator is in the state STUB_DATA_JOB (Complete by default) with the log STUB_DATA_LOG; curl answers the chunks of the
 # sitemap with STUB_CHUNKS (exit STUB_CHUNKS_STATUS); k6 writes its results to STUB_K6_OUT when it is set, and with
 # STUB_K6_SLEEP it runs that many seconds (its pid in $STUB_SPACE_DIR/k6.pid, `docker rm -f k6-...` ends it). The free space
-# of the disks (the checks of W2) comes from STUBSPACE (see there); `df -Pk` of the host is the stub DF.
+# of the disks (the checks of W2) comes from STUBSPACE (see there); `df -Pk` of the host is the stub DF. A `docker run` that
+# mounts the directory STUB_MOUNT_DENIED (-v <directory>:...) is refused as Docker Desktop refuses a path that is not shared
+# (exit 125, "mounts denied"); k6 ends with <code> when STUB_K6_FAIL is <script>:<code> (125: the docker run itself failed).
 DOCKER = r"""#!/bin/sh
-printf '%s\n' "$*" | tr '\n' ' ' >> "$STUB_LOG"
-echo >> "$STUB_LOG"
+# The try of the mount of LOAD_OUT is kept apart in $STUB_LOG.mount (with the number of the calls of $STUB_LOG before it), so that
+# the tests of what is made before the cluster still see only the calls that make something.
+case "$*" in
+  *"touch /out/.mount-check"*) echo "$(wc -l < "$STUB_LOG" | tr -d ' ') $*" >> "$STUB_LOG.mount" ;;
+  *)
+    printf '%s\n' "$*" | tr '\n' ' ' >> "$STUB_LOG"
+    echo >> "$STUB_LOG" ;;
+esac
 case "$*" in
   *registry.k8s.io/kubectl*"create -f -"*)
     n="$(ls "$STUB_STDIN_DIR" | wc -l | tr -d ' ')"
@@ -45,6 +53,11 @@ case "$1" in
       *k6-ld-loadtest*) [ ! -f "$STUB_SPACE_DIR/k6.pid" ] || kill "$(cat "$STUB_SPACE_DIR/k6.pid")" 2>/dev/null || true ;;
     esac ;;
   run)
+    case "$*" in
+      *" -v ${STUB_MOUNT_DENIED:-/nonexistent-stub-path}:"*)
+        echo "docker: Error response from daemon: mounts denied: The path $STUB_MOUNT_DENIED is not shared from the host and is not known to Docker." >&2
+        exit 125 ;;
+    esac
     case "$*" in
       *"--entrypoint df "*) stubspace vm ;;
       *k3d-io/k3d*"kubeconfig get"*) printf 'apiVersion: v1\nclusters:\n- cluster:\n    server: https://0.0.0.0:6443\n' ;;
@@ -76,6 +89,9 @@ case "$1" in
         exit "${STUB_CHUNKS_STATUS:-0}" ;;
       *grafana/k6*)
         stubdrop k6
+        case "${STUB_K6_FAIL:-}" in
+          ?*:*) case "$*" in *"${STUB_K6_FAIL%:*}"*) echo "stub k6 failed" >&2; exit "${STUB_K6_FAIL#*:}" ;; esac ;;
+        esac
         if [ -n "${STUB_K6_SLEEP:-}" ]; then echo $$ > "$STUB_SPACE_DIR/k6.pid"; exec sleep "$STUB_K6_SLEEP"; fi
         [ -n "${STUB_K6_OUT:-}" ] || exit 0
         case "$*" in
@@ -247,6 +263,35 @@ class LoadScript(unittest.TestCase):
         self.assertEqual(2, result.returncode, result.stderr)
         self.assertIn("outside the repository", result.stderr)
         self.assertEqual([], self.calls())
+
+    def test_a_load_out_that_docker_cannot_mount_ends_with_2_before_any_image_or_cluster(self):
+        """Docker Desktop mounts only the shared paths: that is found before the 30 minutes of images, cluster and data."""
+        shared = os.path.realpath(self.out)
+        for data in ("seed", "medium"):
+            with self.subTest(data=data):
+                self.log.write_text("")
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_DATA=data, LOAD_TIMEOUT="2",
+                                       DEMO_PHOTOS_ENV_FILE=self.photo_file(), STUB_MOUNT_DENIED=shared)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn(f"Docker cannot mount LOAD_OUT '{shared}'", result.stderr)
+                self.assertIn("File Sharing", result.stderr)
+                self.assertNotIn("shop does not answer", result.stderr)
+                for word in ("build", "k3d-io/k3d", "kubectl", "grafana/k6", "helm"):
+                    self.assertEqual([], [call for call in self.calls() if word in call], word)
+
+    def test_the_mount_of_load_out_is_tried_like_k6_mounts_it_before_any_image_is_built(self):
+        """The same options as k6_run (the user of the host, -v <directory>:/out), an image the script already uses."""
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", STUB_READY="1", STUB_UPDATE_STATUS="1")
+        mounts = pathlib.Path(f"{self.log}.mount").read_text().splitlines()
+        self.assertEqual(1, len(mounts), mounts)
+        before, mount = mounts[0].split(" ", 1)
+        self.assertIn(f"-v {os.path.realpath(self.out)}:/out", mount)
+        self.assertIn(f"-u {os.getuid()}:{os.getgid()}", mount)
+        self.assertIn("python:3.13-alpine", mount)
+        builds = [i for i, call in enumerate(self.calls()) if call.startswith("build ")]
+        self.assertTrue(builds, "the images were not built")
+        self.assertLessEqual(int(before), builds[0])
+        self.assertLessEqual(int(before), min(i for i, call in enumerate(self.calls()) if "k3d-io/k3d" in call))
 
     def test_without_docker_it_ends_with_2_and_makes_no_cluster(self):
         result = self.run_load(LOAD_OUT=str(self.out), STUB_NO_DOCKER="1")
@@ -600,6 +645,28 @@ class LoadScript(unittest.TestCase):
         sizes_call = self.calls()[self.index_of("pg_database_size")]
         for what in ("pg_total_relation_size", "pg_indexes_size", "pg_relation_size"):
             self.assertIn(what, sizes_call)
+
+    def test_a_k6_that_docker_did_not_start_says_so_and_not_that_the_shop_does_not_answer(self):
+        """Exit 125 is the exit of `docker run` itself (a mount, an image), not of k6; the other codes keep their meaning."""
+        cases = (("warmup.js", 2, "the warm-up"), ("saturate.js", 1, "the ramp"), ("steady.js", 1, "the steady run"))
+        for script, code, name in cases:
+            with self.subTest(script=script):
+                self.log.write_text("")
+                result = self.run_data("seed", STUB_K6_FAIL=f"{script}:125")
+                self.assertEqual(code, result.returncode, result.stderr)
+                self.assertIn(f"{name} failed: Docker did not start k6 (docker run exit 125; above)", result.stderr)
+                self.assertNotIn("shop does not answer", result.stderr)
+
+    def test_a_k6_that_fails_with_another_code_keeps_its_messages(self):
+        result = self.run_data("seed", STUB_K6_FAIL="warmup.js:1")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("the warm-up failed (k6 exit 1; above): the shop does not answer as the scripts expect", result.stderr)
+        result = self.run_data("seed", STUB_K6_FAIL="saturate.js:1")
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("the ramp failed (k6 exit 1; above)", result.stderr)
+        result = self.run_data("seed", STUB_K6_FAIL="steady.js:1")
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("the steady run failed (k6 exit 1; above)", result.stderr)
 
     def test_seed_raises_every_stock_and_runs_no_generator(self):
         for env in ({}, {"LOAD_DATA": "seed"}, {"LOAD_DATA": ""}):

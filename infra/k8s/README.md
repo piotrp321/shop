@@ -533,6 +533,8 @@ sekret wskazany w `demoData.photosSecretName` (klucze `DEMO_PHOTOS_ENDPOINT`, `D
    tego pliku.
 2. **agent** – pomiar na danych z seeda: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (`LOAD_DATA=seed`,
    domyślnie; dziesiątki minut, VM Dockera co najmniej 10 CPU i 20 GiB).
+   `LOAD_OUT` musi być katalogiem, który Docker może zamontować do zapisu (Docker Desktop: udostępniony w Settings →
+   Resources → File Sharing); cel sprawdza to przed budowaniem obrazów i inaczej kończy się kodem 2.
 3. **zgoda użytkownika** – pomiar na danych z generatora: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>
    LOAD_DATA=medium` (albo `server`, `full`; inny plik puli: `DEMO_PHOTOS_ENV_FILE=<plik>`). Generator działa godzinami
    i zajmuje dziesiątki do setek GB dysku (szacunki w specyfikacji DEMO-DATA, „Środowiska”). Cel sprawdza plik puli przed

@@ -65,7 +65,9 @@ monitoring-smoke:
 
 # The load measurement on a throwaway k3d cluster with the production images built here and the profile `load`: the demo
 # data, the stocks raised, a warm-up, the ramp to saturation and the steady run with a checkout (the k6 scripts of
-# ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required)
+# ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required; Docker
+# must be able to mount it for writing, on Docker Desktop it must be shared in Settings > Resources > File Sharing, which is
+# tried before any image is built: exit 2)
 # [LOAD_DATA=seed|medium|server|full]. LOAD_DATA=seed (the default) measures on the demo data of the Job initialize and raises
 # the stock of every variant. medium, server and full first run one Job of the suspended CronJob demo-data (bin/generate-demo
 # with that profile; it deletes the seed; hours for server and full, LOAD_DATA_TIMEOUT), then raise the stock of the variants
