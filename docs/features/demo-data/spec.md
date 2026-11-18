@@ -310,6 +310,11 @@ Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
   Keycloaka (`partialImport`, `ifResourceExists=SKIP`, paczki po 2000, 4 strumienie), z identyfikatorem wyliczonym.
   Eksperyment na Keycloak 26.6.0 z Postgresem: identyfikator z importu zostaje, około 770 kont/s na komputerze
   użytkownika (1 mln w około 22 min).
+- Żądania kroku do Keycloaka idą własnym klientem HTTP (nie domyślnym klientem aplikacji z limitem 5 s na żądanie):
+  `partialImport` paczki to jedna transakcja Keycloaka i nie odpowiada, dopóki się nie skończy, a na klastrze przy
+  4 strumieniach trwa dłużej niż 5 s. Limit bezczynności żądania to 120 s, limit całego żądania 300 s (parametry
+  `app.demo_data.keycloak_idle_timeout` i `app.demo_data.keycloak_max_duration` w `config/services.yaml`), więc
+  zawieszony Keycloak nadal kończy krok błędem.
 - Konta wyłączone i bez poświadczeń (P5). Adres Keycloaka, login i hasło administratora z opcji albo zmiennych
   (`DEMO_DATA_KEYCLOAK_URL`, domyślnie `http://keycloak:8080`; login domyślnie `admin` jak w compose i Jobie
   `keycloak-config`; hasło z `KC_BOOTSTRAP_ADMIN_PASSWORD` sekretu stosu). Nazwy realmów są opcjami kroku
