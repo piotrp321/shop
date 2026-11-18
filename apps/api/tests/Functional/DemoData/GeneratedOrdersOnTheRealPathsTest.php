@@ -38,18 +38,21 @@ final class GeneratedOrdersOnTheRealPathsTest extends WebTestCase
     {
         $staff = TestTokenFactory::staff(['support']);
         $delivered = $this->get('/api/v1/admin/orders?status=delivered', $staff);
-        self::assertNotSame([], $delivered['items']);
-        self::assertSame(['delivered'], array_values(array_unique(array_column($delivered['items'], 'status'))));
+        $statuses = $this->column($delivered, 'items', 'status');
+        self::assertNotSame([], $statuses);
+        foreach ($statuses as $status) {
+            self::assertSame('delivered', $status);
+        }
 
         $row = $this->connection()->fetchAssociative("SELECT id, number FROM ordering_order WHERE status = 'returned' AND refund_completed_at IS NOT NULL ORDER BY number LIMIT 1");
         self::assertIsArray($row);
         $found = $this->get('/api/v1/admin/orders?q='.$this->text($row['number']), $staff);
-        self::assertSame([$this->text($row['id'])], array_column($found['items'], 'orderId'));
+        self::assertSame([$this->text($row['id'])], $this->column($found, 'items', 'orderId'));
 
         $order = $this->get('/api/v1/admin/orders/'.$this->text($row['id']), $staff);
         self::assertSame('returned', $order['status']);
-        self::assertSame(['new', 'paid', 'shipped', 'delivered', 'returned'], array_column($order['history'], 'to'));
-        self::assertSame(['customer', 'system', 'staff', 'staff', 'staff'], array_column($order['history'], 'actorType'));
+        self::assertSame(['new', 'paid', 'shipped', 'delivered', 'returned'], $this->column($order, 'history', 'to'));
+        self::assertSame(['customer', 'system', 'staff', 'staff', 'staff'], $this->column($order, 'history', 'actorType'));
         self::assertNotNull($order['paidAt']);
         self::assertNotNull($order['paymentId']);
         self::assertIsArray($order['refund']);
@@ -80,7 +83,7 @@ final class GeneratedOrdersOnTheRealPathsTest extends WebTestCase
 
         $list = $this->get('/api/v1/me/orders', $token);
 
-        self::assertSame($expected, array_column($list['items'], 'number'));
+        self::assertSame($expected, $this->column($list, 'items', 'number'));
         $paid = $this->text($this->connection()->fetchOne('SELECT id FROM ordering_order WHERE customer_id = ? AND paid_at IS NOT NULL ORDER BY number LIMIT 1', [$customer]));
         $payment = $this->get('/api/v1/me/orders/'.$paid.'/payment', $token);
         self::assertFalse($payment['canStartPayment']);
@@ -93,13 +96,31 @@ final class GeneratedOrdersOnTheRealPathsTest extends WebTestCase
         $variant = $this->text($this->connection()->fetchOne("SELECT variant_id FROM inventory_stock_movement WHERE type = 'commit' ORDER BY variant_id LIMIT 1"));
 
         $stock = $this->get('/api/v1/admin/variants/'.$variant.'/stock-history', TestTokenFactory::staff(['warehouse']));
-        $types = array_column($stock['items'], 'type');
+        $types = $this->column($stock, 'items', 'type');
         self::assertContains('receipt', $types);
         self::assertContains('reservation', $types);
         self::assertContains('commit', $types);
 
         $prices = $this->get('/api/v1/admin/variants/'.$variant.'/price-history', TestTokenFactory::staff(['admin']));
         self::assertNotSame([], $prices['items']);
+    }
+
+    /**
+     * @param array<mixed> $decoded
+     *
+     * @return list<mixed> the values of the key in the rows of the list
+     */
+    private function column(array $decoded, string $list, string $key): array
+    {
+        $rows = $decoded[$list] ?? null;
+        self::assertIsArray($rows);
+        $values = [];
+        foreach ($rows as $row) {
+            self::assertIsArray($row);
+            $values[] = $row[$key] ?? null;
+        }
+
+        return $values;
     }
 
     private function reservedOf(string $orderId): int
