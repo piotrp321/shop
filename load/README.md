@@ -33,8 +33,28 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   dokumenty HTML i wywołania API sklepu, bez plików statycznych i zdjęć.
 - Checkout: dodanie losowego wariantu możliwego do kupienia (ilość 1), odczyt koszyka i `POST /api/checkout` z losowym
   dostawcą płatności. Zamówienie z rozpoczętą płatnością (`redirectUrl`) to sukces.
-- Dane wejściowe (ścieżki kategorii, slugi, frazy z nazw produktów, filtry z facetów, warianty z `product-offers`, dostawcy
-  płatności) czyta `setup()` z publicznego API; pusty katalog przerywa przebieg.
+- Dane wejściowe czyta `setup()` (`lib/data.js`) z publicznego API; pusty katalog przerywa przebieg. Katalog nie jest
+  nigdy listowany w całości, więc koszt `setup()` nie rośnie z jego rozmiarem:
+  - kategorie: drzewo `GET /api/v1/categories` (ścieżki do stron `/c/<ścieżka>`) i dostawcy płatności;
+  - produkty: z losowych porcji mapy strony. Klucze porcji daje `GET /api/v1/sitemap/product-chunks`, a produkty porcji
+    `GET /api/v1/sitemap/products?chunk=…` (tylko opublikowane). Z każdej wybranej porcji losowana jest równa część
+    produktów; dla każdego `setup()` czyta `GET /api/v1/products/<slug>` (identyfikator i nazwa) i `product-offers`
+    (warianty możliwe do kupienia, używane przez koszyk i checkout);
+  - frazy wyszukiwania: słowa i pary pierwszych słów z nazw wybranych produktów;
+  - filtry wyszukiwarki (opcje i zakresy cen): z facetów listingu `GET /api/v1/products?category=<id>&perPage=1` kilku
+    losowych kategorii, które mają produkty (trzy, po najwyżej 20 próbach), nie z listingu całego katalogu.
+- Opcje wyboru danych (zmienne środowiska k6; `make load-smoke` przekazuje te, które są ustawione):
+
+  | Opcja | Domyślnie | Znaczenie |
+  |---|---|---|
+  | `DISCOVER_CHUNKS` | brak (losowanie) | klucze porcji oddzielone przecinkami; zastępują losowanie porcji i listę z API |
+  | `DISCOVER_CHUNK_COUNT` | 3 | ile porcji wylosować, gdy nie podano `DISCOVER_CHUNKS` (nie więcej, niż ma API) |
+  | `DISCOVER_PRODUCTS` | 60 | ile produktów w sumie (równo z każdej porcji); to liczba żądań szczegółów w `setup()` |
+
+  Klucz, którego API nie wydało, albo wartość opcji, która nie jest liczbą nieujemną, kończy `setup()` czytelnym błędem
+  (kod 107), a porcje bez opublikowanych produktów, tak jak pusty katalog, błędem „no products”. `setup()` loguje liczbę
+  produktów, porcji, wariantów do kupienia, opcji i przedziałów cen. Cel `make -C infra/k8s load` nie przekazuje tych
+  opcji, więc używa wartości domyślnych.
 - Każda iteracja ma nowy adres w `CF-Connecting-IP` z puli `2001:db8::/32` (zakres dokumentacyjny RFC 3849; API i sklep liczą adres IPv6 po prefiksie /64, więc adresy różnią się prefiksem; osobne pule dla odczytu i checkoutu, bez powtórzeń w 16 milionach iteracji scenariusza), własny
   słoik ciasteczek (nowa przeglądarka) i tagi `flow`, `kind`, w przebiegu rosnącym `step`.
 - Wyniki: 409 (`conflicts_409`) i 429 (`rate_limited_429`) są liczone osobno i nie wchodzą do `http_req_failed`; błędem
