@@ -65,7 +65,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `bin/seed-demo` woła względem własnego katalogu (test: `tests/Unit/Bin/GenerateDemoScriptTest.php`, podstawiona
   konsola i podstawiony `seed-demo`, jak test `bin/seed-demo`). Argumenty: `--profile=` (nazwa z `profiles.yaml`),
   `--anchor=` (chwila odniesienia; domyślnie początek bieżącej doby UTC, liczony raz i przekazany każdemu krokowi),
-  `--processes=` (procesy kroków produktów i cen, domyślnie 4; zła wartość to kod 2) i `--force-reset`: w `prod` bez niego
+  `--processes=` (procesy kroków produktów, cen i zamówień, domyślnie 4; zła wartość to kod 2) i `--force-reset`: w `prod` bez niego
   skrypt odmawia (kod 1, nic nie jest zmienione), bo zaczyna od `bin/seed-demo`, który kasuje dane wszystkich modułów
   (`seed-demo` dodaje własny `--force-reset` seedom w `prod`, kroki generatora go nie mają). Kolejność: sprawdzenie opcji
   (`demo-data:products --list-parts`: nieznany profil albo zła chwila odniesienia zatrzymują skrypt, zanim cokolwiek
@@ -73,8 +73,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zapisuje identyfikator i kod wyjścia każdego procesu osobno, więc błąd jednej części zauważa od razu, zatrzymuje
   pozostałe i kończy krok jej kodem), `demo-data:photos`, części `demo-data:prices` (tak samo jak produkty),
   `demo-data:promotions`, `demo-data:accounts` (konta w Keycloak stosu: administrator z `KC_BOOTSTRAP_ADMIN_PASSWORD`
-  kontenera `api`, czyli z `.env.local`), `demo-data:analyze`, `catalog:reindex`,
-  `storefront:cache:purge-all`, `demo-data:verify`. Pierwszy błąd przerywa skrypt z kodem tego kroku, kolejne kroki się
+  kontenera `api`, czyli z `.env.local`), części `demo-data:orders` (tak samo jak produkty), `demo-data:stock`,
+  `demo-data:order-numbers`, `ordering:read-models:rebuild` (sprzedaż godzinowa i klienci panelu z zamówień),
+  `demo-data:analyze`, `catalog:reindex`, `storefront:cache:purge-all`, `demo-data:verify`. Pierwszy błąd przerywa skrypt z kodem tego kroku, kolejne kroki się
   nie wykonują; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`). Profil inny niż `small` bierze
   zdjęcia z puli w prywatnym buckecie R2 (niżej), więc `bin/generate-demo` wymaga w środowisku czterech zmiennych odczytu
   (`DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY`) i bez nich
@@ -137,7 +138,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `catalog_product`), `demo-data:prices [--worker=N --workers=M] [--list-parts]` (krok 3: cena bieżąca i historia cen każdego
   wygenerowanego wariantu, w tych samych częściach co produkty; potrzebuje produktów danej części, inaczej kod 1 bez
   zmian) i `demo-data:promotions` (krok 3: zakończone promocje z wariantami i zakończone historyczne kody rabatowe, jeden
-  proces, po cenach), `demo-data:accounts` (krok 4: pracownicy w realmie `backoffice` z rolą numeru i klienci w realmie
+  proces, po cenach), `demo-data:orders [--worker=N --workers=M] [--list-parts]` (krok 5: zamówienia z liniami,
+  historią statusów, płatnościami opłaconych i użyciami kodów, w częściach o stałym rozmiarze z `profiles.yaml`, każda
+  w osobnej transakcji; część to ciągły zakres globalnych indeksów zamówień; katalog i ceny czyta z tabel kroków 1 i 3,
+  bez nich kod 1), `demo-data:stock` (krok 6: jedno przejście SQL po zamówieniach: stany każdego wariantu bez rekordu
+  stanu, rezerwacje i ruchy stanów zamówień z 90 dni przed chwilą odniesienia), `demo-data:order-numbers` (krok 7:
+  sekwencja numerów zamówień za najwyższym numerem, nigdy wstecz), `demo-data:accounts` (krok 4: pracownicy w realmie `backoffice` z rolą numeru i klienci w realmie
   `shop` w Keycloak, wyłączeni i bez poświadczeń; opcje kont, wspólne z `verify` (`AccountsInput`): `--keycloak-url`
   (domyślnie `DEMO_DATA_KEYCLOAK_URL`, bez niej `http://keycloak:8080`, parametr `app.demo_data.keycloak_url`),
   `--keycloak-user` (domyślnie `admin`), `--keycloak-password` (domyślnie `KC_BOOTSTRAP_ADMIN_PASSWORD`; bez hasła kod 1),
@@ -154,7 +160,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wariant promocji bez ceny w chwili jej startu albo ze zmianą ceny w jej trakcie, kod niezakończony;
   kontrole kont (opcje kont jak w `demo-data:accounts`, `--no-accounts` je pomija): w każdym realmie grupa
   `demo-data-generated` istnieje, a jej członkowie to dokładnie zbiór docelowy z bieżącymi danymi; Keycloak, który nie
-  odpowiada, to kod 1; kod 1 i lista naruszeń, kod 0 na poprawnych danych). Kody: 0 gotowe, 1 odmowa (zła opcja) albo naruszenia
+  odpowiada, to kod 1; kontrole zamówień i stanów (`OrdersVerifier`; `--orders` zastępuje liczbę zamówień profilu):
+  liczba zamówień różna od profilu, wariant z ogona bez rekordu stanu, `reserved` różne od sumy linii aktywnych rezerwacji,
+  ostatni ruch różny od stanu, zamówienie `paid` bez aktywnej rezerwacji, opłacone bez płatności `succeeded` tej kwoty,
+  suma linii minus rabat różna od sumy zamówienia (i sumy netto, VAT, brutto linii różne od sum zamówienia), zamówienie
+  z kodem bez użycia, zamówienie klienta spoza wygenerowanych kont, historia, która nie kończy się statusem zamówienia,
+  cena jednostkowa linii różna od ceny skutecznej wariantu w chwili złożenia albo linia w promocji bez jej kopii (w
+  `small` wszystkie zamówienia, w większych co `orders / 100000`-te według indeksu); kod 1 i lista naruszeń, kod 0 na
+  poprawnych danych). Kody: 0 gotowe, 1 odmowa (zła opcja) albo naruszenia
 - `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
   `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
   (`Shared\Infrastructure\Backfill\BackfillStep`: `name()`, `run(report)`; implementacja w warstwie Infrastructure
@@ -336,8 +349,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Moduł `DemoData` (`src/DemoData`, spec `docs/features/demo-data/spec.md`, P1 i P1a): generator danych demo to płaski moduł
   poza contextami (jak `PaymentSimulator`) z jedną warstwą Deptrac, która zależy tylko od `Native`, `Vendor`,
   `Shared_Infrastructure` i warstw Domain Catalog, Pricing i Ordering (reguły i value objecty wartości, które zapisuje:
-  `Slug`, `VariantKey`, `VariantValues`, `CategoryPath`, `TaxClassCode`, a w dalszych krokach `PriceBreakdown`,
-  `LineAmounts`, `OrderNumber`); żaden context ani inny moduł nie zależy od `DemoData`, a on nie używa agregatu ani
+  `Slug`, `VariantKey`, `VariantValues`, `CategoryPath`, `TaxClassCode`, `PriceBreakdown`, `PromotionalPrice`,
+  rabat kodu i jego podział na linie z `BasketQuote::discountOf` i `BasketQuote::allocate`, `LineAmounts`, `OrderNumber`,
+  `PromotionCopy`, `Contact`, `ShippingAddress`, `RequestFingerprint`, `AccessToken`, `IdempotencyKey`); żaden context ani inny moduł nie zależy od `DemoData`, a on nie używa agregatu ani
   repozytorium (pilnuje tego Deptrac i `DemoDataBoundaryTest`, który wyłapuje agregat i repozytorium wewnątrz warstwy
   Domain). Reguły spoza Domain, które generator powtarza, pilnują testy kontraktu (`CatalogStepsTest`): klucz wartości
   wariantu `values_key` i ścieżka kategorii `path` równe temu, co zapisuje kod Catalog, klucz zdjęcia równy kluczowi
@@ -380,6 +394,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   daje oś czasu wariantu bez bazy. Pracownicy: numery kont od 1, rola to funkcja samego numeru (`StaffRoles::roleOf`,
   cykl 500: 10 `admin`, 200 `support`, 200 `warehouse`, 90 `marketing`), id i nazwa aktora historii to id i imię
   z nazwiskiem wygenerowanego konta pracownika o tym numerze (`AccountGenerator::staff`, krok 4).
+  Zamówienia (krok 5, `src/DemoData/Orders`): zamówienie ma globalny indeks `i` (część to ciągły zakres indeksów,
+  strumień `order` na część), czas złożenia to `OrderTraffic::placedAt(i)` (odwrotność ruchu godzinowego z 3 lat przed
+  chwilą odniesienia: wzrost 2,5 raza, szczyt w listopadzie i grudniu, rytm doby w czasie polskim; ostatnie zamówienie
+  godzinę przed chwilą odniesienia), więc rośnie z `i`, a numer to `R-<OrderNumber::FIRST + i>`. `OrderGenerator`
+  losuje najpierw (`OrderDraft`, stała kolejność losowań) właściciela (40% gości z osobą `guest` numeru zamówienia
+  i e-mailem `<imię>.<nazwisko>.g<numer>@example.*`, 60% klientów z kont kroku 4 z ich danymi, numer konta z trzech
+  warstw ciągłej permutacji: 70% zamówień na wszystkich, 20% na 2%, 10% na 0,2% klientów), 1–4 linie po 1–3 sztuki
+  (każda z 4 kandydatów: produkt opublikowany na pewno przed złożeniem, `ProductGenerator::publishedBy`, „gorący”
+  z szansą 0,8 według skrótu indeksu, co piąty produkt; wybór między kandydatami ważony sezonem działu
+  `OrderTraffic::departmentWeight`, szkice i produkty opublikowane później odpadają), kod (około 10%), dostawcę płatności,
+  wynik i opóźnienia cyklu, pracowników i id; potem czyta katalog i osie cen (`OrderCatalog`: `DbalOrderCatalog`
+  z tabel kroków 1 i 3) i liczy linie: cena jednostkowa to `PriceTimeline::effectiveAt(złożenie)` z kopią promocji, rabat
+  i podział regułami Pricing (`BasketQuote`), kwoty linii `PriceBreakdown::ofLineGross` sprawdzone `LineAmounts`. Kod
+  (historyczny, ważny w chwili złożenia, minimum jak `DiscountCode::rejectionFor`, a kod z limitem najwyżej limit /
+  liczba części jego okresu na część) dostaje około 10% zamówień. Cykl według wieku (P8, nic `new`): 4% wygasa
+  nieopłaconych (anulowanie `system` 35 minut po złożeniu, użycie kodu zwolnione), pozostałe opłaca `system` w 1–25 minut
+  (płatność `succeeded` sumy, odcisk jak `RequestFingerprint` Payment, sprawdza go test), 2% anuluje potem pracownik
+  `admin`/`support`, reszta jest wysyłana i dostarczana przez `admin`/`warehouse`, 4,5% dostarczonych wraca
+  (`admin`/`support`); anulowanie przez pracownika i zwrot mają zwrot sumy należny po 14 dniach, rozliczony do 2 dni po
+  terminie przez `admin`/`support`, jeśli to przed chwilą odniesienia; krok po chwili odniesienia się nie zdarza. Token
+  gościa (`random_bytes`) i klucze idempotencji zamówienia i płatności (UUID v4) są losowe, nigdy z ziarna; odcisk
+  żądania jest z ziarna (koszyk `customer:<id>` albo `guest:<UUID v5 cart:<i>>`). Stany (krok 6, `StockLoader`): opis
+  w specyfikacji („Stany po zamówieniach”); stan wylosowany ze skrótu ziarna i wariantu (8% wariantów bez zamówień
+  w oknie: pusty rekord bez ruchów), nie mniejszy niż szczyt rezerwacji aktywnych naraz, id ruchów to UUID v7 w SQL.
   Konta (krok 4, `src/DemoData/Accounts`): osoba to czysta funkcja ziarna, słowników i klucza (strumień
   `person:<rodzaj>` na numer; `AccountGenerator::person('customer'|'staff'|'guest', n)`): płeć z udziału wag imion
   żeńskich, imię i nazwisko ze słowników płci z wagami (`WeightedNames`, wyszukiwanie binarne po sumach), domena
@@ -412,7 +450,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `catalog_product`, `catalog_product_variant`, `catalog_product_category` (krok 1), kolumnę `images`
   `catalog_product` (krok 2, `UPDATE` z tabeli tymczasowej), `pricing_variant_price`, `pricing_price_history` (krok 3,
   części), `pricing_promotion`, `pricing_promotion_variant` i `pricing_discount_code` (krok 3, jeden proces; nie
-  `pricing_discount_code_usage`, użycia robią zamówienia); kolejne kroki dopisują tu swoje tabele. Generator nie
+  `pricing_discount_code_usage`, użycia robią zamówienia), `ordering_order`, `ordering_order_line`,
+  `ordering_order_status_change`, `payment_payment` i `pricing_discount_code_usage` (krok 5, części),
+  `inventory_reservation`, `inventory_reservation_line`, `inventory_stock_movement`, `inventory_stock_item` (krok 6, SQL)
+  i sekwencję `ordering_order_number_seq` (krok 7, `setval`). Nie pisze `ordering_order_notification` (żadnego e-maila
+  zamówienia), `payment_webhook_event` ani tabel symulatora płatności. Generator nie
   zapisuje do `catalog_category_redirect`, outboxu ani kolejek.
 - Wyjątek od outboxu: generator nie publikuje zdarzeń ani nie planuje wiadomości Messengera (nie ma `ProductCreated`
   ani `CategoryTreeChanged`, outbox i kolejki zostają, jakie były), więc nie obowiązuje go zasada „zdarzenie w tej samej
@@ -423,12 +465,18 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `bin/seed-demo` i bez czyszczenia cache sklepu (worker i Varnish nie obsługują `shop_test`); `CatalogStepsTest` liczy
   sumę kontrolną każdej tabeli katalogu po dwóch przebiegach z tą samą chwilą odniesienia i po podziale na procesy
   (`--worker`), `PricingStepsTest` to samo dla tabel cen i odtwarza ceny, promocje i kody przez repozytoria Pricing,
-  `VerifyStepTest` wstrzykuje naruszenia (katalogu i cen), `GeneratedProductsOnTheRealPathsTest` czyta produkt z ogona
+  `VerifyStepTest` wstrzykuje naruszenia (katalogu i cen; po wszystkich krokach bazy, `RunsDemoDataSteps::allSteps`),
+  `OrderGeneratorTest` (jednostkowo, katalog z generatorów kroków 1 i 3: `GeneratedOrderCatalog`) sprawdza zamówienia,
+  ceny linii z wyceną `BasketQuote` z kodem, historię z rolami aktorów i rozkłady, `OrderStepsTest` wiersze kroków 5–7,
+  powtarzalność poza tokenami i kluczami, odtworzenie przez repozytoria Ordering, Payment, Pricing i Inventory
+  i niezmienniki stanów, `OrderVerifyTest` naruszenia zamówień i stanów,
+  `GeneratedOrdersOnTheRealPathsTest` listę i szczegół zamówienia w panelu, wysyłkę i anulowanie przez API panelu,
+  historię zamówień i płatność klienta (token z `sub` wygenerowanego konta) i historię cen i stanów wariantu, `GeneratedProductsOnTheRealPathsTest` czyta produkt z ogona
   przez stronę produktu sklepu, listing kategorii, wyszukiwarkę (po `catalog:reindex` na indeksie testowym) i listę
   produktów panelu, a `GeneratedPricesOnTheRealPathsTest` cenę Omnibus wariantu z ogona po zaplanowaniu promocji przez
   API panelu (chwila odniesienia to początek dzisiejszej doby, bo API czyta prawdziwy zegar). `ProcessCountDeterminismTest`
   (grupa `demo-data-processes`, w suicie `integration`) uruchamia części w osobnych procesach `bin/console`
-  (`APP_ENV=test`) z 1, 3 i 4 procesami, więc dane są zatwierdzone: czyta i czyści tabele katalogu i cen własnym
+  (`APP_ENV=test`) z 1, 3 i 4 procesami, więc dane są zatwierdzone: czyta i czyści tabele katalogu, cen, zamówień i stanów (bez tokenów i kluczy idempotencji) własnym
   połączeniem, przed testem i po nim. Nowy krok generatora dopisuje swoje tabele do sum
   kontrolnych i kontroli `verify`. Konta: `AccountGeneratorTest`, `PersonDictionariesTest` i `AccountReconcilerTest`
   (Keycloak w pamięci, `InMemoryAccountDirectory`, z zachowaniem zmierzonym na 26.6) jednostkowo, a `AccountsStepTest`

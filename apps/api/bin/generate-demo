@@ -5,7 +5,7 @@
 #   --profile    profile of fixtures/demo-data/profiles.yaml (default small)
 #   --anchor     reference moment of every generated time (default: the start of the current UTC day, taken once, so
 #                every step gets the same one)
-#   --processes  processes that write the parts of the products and of the prices at the same time (default 4); the rows do not depend on it
+#   --processes  processes that write the parts of the products, the prices and the orders at the same time (default 4); the rows do not depend on it
 #   --force-reset  required in prod, where the run starts with bin/seed-demo, which deletes the data of every module
 #
 # A profile other than small takes its photos from the private bucket of the photo pool, so it needs the read variables
@@ -17,8 +17,9 @@
 # The steps, in order: a check of the options (nothing is changed), bin/seed-demo (reset and the seed catalog), the
 # categories of the tail, the parts of the products and, after the photos, the parts of the prices (one process per part
 # group, run in parallel, each awaited), the promotions and discount codes, the staff and customer accounts in Keycloak
-# (the administrator of the stack from the environment), ANALYZE of the filled tables, the search index, the caches of
-# the store and the consistency check (also of the accounts). The first failing step stops the script with its exit code, so the
+# (the administrator of the stack from the environment), the parts of the orders (like the prices), the stock after the
+# orders, the order number sequence, the read models of the orders, ANALYZE of the filled tables, the search index, the
+# caches of the store and the consistency check (also of the accounts). The first failing step stops the script with its exit code, so the
 # later steps do not run; a failing part stops the other parts first.
 set -eu
 
@@ -111,7 +112,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-# The parts of a step (the products, the prices): one process per worker, each in a subshell of its own that records the
+# The parts of a step (the products, the prices, the orders): one process per worker, each in a subshell of its own that records the
 # process id of the command and, when it ends, its exit code. The script polls those records, so it notices a failing part
 # at once instead of when the parts before it have finished, and then stops the others. The step is the name of the
 # command.
@@ -188,6 +189,17 @@ run_parts demo-data:prices || exit "$?"
 # shellcheck disable=SC2086
 "$console" demo-data:accounts $common
 
+run_parts demo-data:orders || exit "$?"
+
+# The stock after the orders (one pass of SQL) and the number sequence past the last number.
+# shellcheck disable=SC2086
+"$console" demo-data:stock $common
+# shellcheck disable=SC2086
+"$console" demo-data:order-numbers $common
+
+# The read models the steps fill without the commands (the hourly sales and the customers of the panel), then the
+# statistics of the filled tables.
+"$console" ordering:read-models:rebuild
 "$console" demo-data:analyze
 
 # The seed's own events do not index the generated products: the index and the caches are rebuilt at the end.

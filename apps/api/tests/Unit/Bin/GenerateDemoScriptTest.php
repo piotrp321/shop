@@ -76,9 +76,13 @@ final class GenerateDemoScriptTest extends TestCase
         $priceWorkers = \array_slice($calls, 6, 2);
         sort($priceWorkers);
         self::assertSame(['demo-data:prices '.$common.' --worker=0 --workers=2', 'demo-data:prices '.$common.' --worker=1 --workers=2'], $priceWorkers);
+        self::assertSame(['demo-data:promotions '.$common, 'demo-data:accounts '.$common], \array_slice($calls, 8, 2));
+        $orderWorkers = \array_slice($calls, 10, 2);
+        sort($orderWorkers);
+        self::assertSame(['demo-data:orders '.$common.' --worker=0 --workers=2', 'demo-data:orders '.$common.' --worker=1 --workers=2'], $orderWorkers);
         self::assertSame(
-            ['demo-data:promotions '.$common, 'demo-data:accounts '.$common, 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
-            \array_slice($calls, 8),
+            ['demo-data:stock '.$common, 'demo-data:order-numbers '.$common, 'ordering:read-models:rebuild', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
+            \array_slice($calls, 12),
         );
     }
 
@@ -159,8 +163,8 @@ final class GenerateDemoScriptTest extends TestCase
      */
     public static function failingSteps(): iterable
     {
-        $steps = ['check', 'seed-demo', 'demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:accounts', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'];
-        foreach (['seed-demo', 'demo-data:categories', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:accounts', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'] as $failing) {
+        $steps = ['check', 'seed-demo', 'demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:accounts', 'demo-data:orders', 'demo-data:stock', 'demo-data:order-numbers', 'ordering:read-models:rebuild', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'];
+        foreach (['seed-demo', 'demo-data:categories', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:accounts', 'demo-data:orders', 'demo-data:stock', 'demo-data:order-numbers', 'ordering:read-models:rebuild', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'] as $failing) {
             yield $failing => [$failing, \array_slice($steps, 0, array_search($failing, $steps, true) + 1)];
         }
         // The check of the options, which has no name of its own: it is the products command asked for the parts.
@@ -227,6 +231,34 @@ final class GenerateDemoScriptTest extends TestCase
         self::assertNotContains('demo-data:promotions', $names);
         self::assertNotContains('demo-data:accounts', $names);
         self::assertNotContains('demo-data:analyze', $names);
+        self::assertNotContains('demo-data:verify', $names);
+
+        $hung = file_exists($this->dir.'/bin/hung.log') ? array_filter(explode("\n", trim((string) file_get_contents($this->dir.'/bin/hung.log')))) : [];
+        self::assertCount(2, $hung, 'Both other parts had started.');
+        foreach ($hung as $pid) {
+            self::assertFalse(posix_kill((int) $pid, 0), 'The part with process id '.$pid.' is still running.');
+        }
+    }
+
+    public function testAFailingOrderPartStopsTheOtherPartsAndTheFollowingSteps(): void
+    {
+        $started = microtime(true);
+        $orders = 'demo-data:orders --demo-profile=small --anchor=2026-11-17T00:00:00Z --worker=';
+
+        [$code, $stderr] = $this->runScript(
+            ['--processes=3', '--anchor=2026-11-17T00:00:00Z'],
+            ['APP_ENV' => 'dev', 'FAKE_FAIL_ON' => $orders.'2', 'FAKE_FAIL_CODE' => '9'],
+            hang: $orders.'0|'.$orders.'1',
+        );
+
+        self::assertSame(9, $code);
+        self::assertStringContainsString('boom in demo-data:orders', $stderr);
+        self::assertLessThan(20.0, microtime(true) - $started, 'The script waited for the other parts.');
+        $names = $this->names();
+        self::assertContains('demo-data:accounts', $names, 'The steps before the orders ran.');
+        self::assertNotContains('demo-data:stock', $names);
+        self::assertNotContains('demo-data:order-numbers', $names);
+        self::assertNotContains('ordering:read-models:rebuild', $names);
         self::assertNotContains('demo-data:verify', $names);
 
         $hung = file_exists($this->dir.'/bin/hung.log') ? array_filter(explode("\n", trim((string) file_get_contents($this->dir.'/bin/hung.log')))) : [];

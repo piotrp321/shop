@@ -24,4 +24,9 @@ final readonly class DemoProfile
     {
         return new self($this->name, $this->staff, $this->customers, $products, $this->orders, $this->diskPeakGb);
     }
+
+    public function withOrders(int $orders): self
+    {
+        return new self($this->name, $this->staff, $this->customers, $this->products, $orders, $this->diskPeakGb);
+    }
 }

@@ -21,6 +21,8 @@ final readonly class AnalyzeCommand
     private const array TABLES = [
         'catalog_category', 'catalog_product', 'catalog_product_variant', 'catalog_product_category',
         'pricing_variant_price', 'pricing_price_history', 'pricing_promotion', 'pricing_promotion_variant', 'pricing_discount_code',
+        'ordering_order', 'ordering_order_line', 'ordering_order_status_change', 'payment_payment', 'pricing_discount_code_usage',
+        'inventory_stock_item', 'inventory_reservation', 'inventory_reservation_line', 'inventory_stock_movement',
     ];
 
     public function __construct(private Connection $connection)

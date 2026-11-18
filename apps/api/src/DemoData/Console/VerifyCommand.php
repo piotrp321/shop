@@ -9,6 +9,7 @@ use App\DemoData\Accounts\KeycloakAdminFactory;
 use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Profile\RunContextFactory;
 use App\DemoData\Verify\CatalogVerifier;
+use App\DemoData\Verify\OrdersVerifier;
 use App\DemoData\Verify\PricingVerifier;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\MapInput;
@@ -21,6 +22,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * published product without a variant, the counts of the tables against the profile, the slugs of the tail (unique,
  * different from the slugs of fixtures/catalog.yaml). The price checks: a variant without a price or history, a price
  * that is not the rule of Pricing, the promotions (ended, at most 1000 variants, no overlap) and the discount codes.
+ * The order and stock checks: the number of orders, a variant without a stock record, reserved stock that is not the
+ * sum of the active reservations, a last movement that is not the stock, a paid order without an active reservation or
+ * a payment of its total, lines less the discount that are not the total, an order with a code without its usage, a
+ * customer outside the generated accounts, a history that does not end with the status, a line price that is not the
+ * effective price at the placement (a sample of the orders in the large profiles; `--orders` overrides the count).
  * The account checks (Keycloak, the options of demo-data:accounts; `--no-accounts` skips them): in each realm the group
  * demo-data-generated exists and its members are exactly the target set with current data.
  * Exit codes: 0 no violation, 1 violations (listed), a bad option or Keycloak not answering.
@@ -32,6 +38,7 @@ final readonly class VerifyCommand
         private RunContextFactory $contexts,
         private CatalogVerifier $catalog,
         private PricingVerifier $pricing,
+        private OrdersVerifier $orders,
         private PersonDictionaries $people,
         private KeycloakAdminFactory $keycloak,
     ) {
@@ -51,9 +58,11 @@ final readonly class VerifyCommand
         ?int $products = null,
         #[Option(description: 'Check the accounts in Keycloak (--no-accounts: only the database)')]
         bool $accounts = true,
+        #[Option(description: 'Number of orders instead of the one of the profile')]
+        ?int $orders = null,
     ): int {
         try {
-            $context = $this->contexts->create($demoProfile, $seed, $products, $anchor);
+            $context = $this->contexts->create($demoProfile, $seed, $products, $anchor, $orders);
             $realms = $accounts ? $keycloak->realms($context, $this->people, $this->keycloak) : [];
         } catch (\InvalidArgumentException $e) {
             $io->error($e->getMessage());
@@ -61,7 +70,7 @@ final readonly class VerifyCommand
             return Command::FAILURE;
         }
 
-        $violations = [...$this->catalog->violations($context), ...$this->pricing->violations($context)];
+        $violations = [...$this->catalog->violations($context), ...$this->pricing->violations($context), ...$this->orders->violations($context)];
         $reconciler = new AccountReconciler(max(1, $keycloak->pageSize));
         foreach ($realms as [$realm, $directory, $target]) {
             try {
