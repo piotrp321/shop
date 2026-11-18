@@ -485,6 +485,82 @@ describe("useProductForm", () => {
     });
   });
 
+  describe("an upload that outlives the product it was sent for (B4)", () => {
+    const stored = (key: string) => ok({ key, preview: { size: "thumbnail", aspectRatio: "1:1", variants: {} } }, 201);
+
+    it("does not add the image to the next product, and leaves no files in the list", async () => {
+      const { form, id } = await start();
+      const sending = deferred();
+      mocks.post.mockReturnValue(sending.promise);
+      form.upload.addFiles([new File(["x"], "c.jpg"), new File(["y"], "d.jpg")]);
+      await flushPromises();
+      expect(form.upload.uploading.value).toBe(true);
+
+      serveReads(view({ id: "p-2", name: "Kurtka", images: [] }));
+      id.value = "p-2";
+      await flushPromises();
+      sending.resolve(stored("originals/c.jpg"));
+      await flushPromises();
+
+      expect(form.form.value.images).toEqual([]);
+      expect(form.view.value?.id).toBe("p-2");
+      expect(form.upload.entries.value).toEqual([]);
+      expect(form.upload.uploading.value).toBe(false);
+      expect(form.dirty.value).toBe(false);
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not add the image to a new product opened in its place", async () => {
+      const { form, id } = await start();
+      const sending = deferred();
+      mocks.post.mockReturnValue(sending.promise);
+      form.upload.addFiles([new File(["x"], "c.jpg")]);
+      await flushPromises();
+
+      id.value = null;
+      await flushPromises();
+      sending.resolve(stored("originals/c.jpg"));
+      await flushPromises();
+
+      expect(form.view.value).toBeNull();
+      expect(form.form.value.images).toEqual([]);
+      expect(form.upload.entries.value).toEqual([]);
+      expect(form.dirty.value).toBe(false);
+    });
+
+    it("lets a file chosen after the switch upload into the new product", async () => {
+      const { form, id } = await start();
+      mocks.post.mockReturnValueOnce(new Promise(() => undefined));
+      form.upload.addFiles([new File(["x"], "c.jpg")]);
+      await flushPromises();
+
+      id.value = null;
+      await flushPromises();
+      mocks.post.mockResolvedValueOnce(stored("originals/e.jpg"));
+      form.upload.addFiles([new File(["z"], "e.jpg")]);
+      await flushPromises();
+
+      expect(form.form.value.images.map((image) => image.key)).toEqual(["originals/e.jpg"]);
+    });
+
+    it("keeps the upload when the route only moves to the product that was just created", async () => {
+      const { form, id } = await start({ id: null });
+      mocks.post.mockResolvedValueOnce(ok(view({ images: [] }), 201));
+      await form.save();
+      const sending = deferred();
+      mocks.post.mockReturnValue(sending.promise);
+      form.upload.addFiles([new File(["x"], "c.jpg")]);
+      await flushPromises();
+
+      id.value = "p-1";
+      await flushPromises();
+      sending.resolve(stored("originals/c.jpg"));
+      await flushPromises();
+
+      expect(form.form.value.images.map((image) => image.key)).toEqual(["originals/c.jpg"]);
+    });
+  });
+
   describe("without the permission to manage products", () => {
     it("cannot act and sends nothing", async () => {
       const { form } = await start({ canManage: false });
