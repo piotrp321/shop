@@ -234,8 +234,15 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
 - Generator nie publikuje zdarzeń (outbox) i nie planuje wiadomości; dane „w toku”, które ich wymagają, nie powstają
   (P8). Indeks wyszukiwarki i cache sklepu odświeża końcówka skryptu. To jawny wyjątek od „zdarzenia w tej samej
   transakcji co agregat”, ograniczony do danych demo.
-- Wyjątek od persystencji przez rekordy ORM (`apps/api/CLAUDE.md`): `DemoData` pisze przez `COPY` i SQL; zapisany
-  w `apps/api/CLAUDE.md` z listą tabel, które generator wypełnia.
+- Wyjątek od persystencji przez rekordy ORM (`apps/api/CLAUDE.md`): `DemoData` pisze przez `COPY` i SQL. Tabele, które
+  generator wypełnia: `catalog_category`, `catalog_product`, `catalog_product_variant`, `catalog_product_category`
+  (krok 1), kolumnę `images` `catalog_product` (krok 2, `UPDATE` z tabeli tymczasowej), `pricing_variant_price`,
+  `pricing_price_history` (krok 3, części), `pricing_promotion`, `pricing_promotion_variant` i `pricing_discount_code`
+  (krok 3, jeden proces), `ordering_order`, `ordering_order_line`, `ordering_order_status_change`, `payment_payment`
+  i `pricing_discount_code_usage` (krok 5, części), `inventory_reservation`, `inventory_reservation_line`,
+  `inventory_stock_movement`, `inventory_stock_item` (krok 6, SQL) i sekwencję `ordering_order_number_seq` (krok 7,
+  `setval`). Nie pisze `ordering_order_notification`, `payment_webhook_event`, tabel symulatora płatności,
+  `catalog_category_redirect`, outboxu ani kolejek.
 
 ### Identyfikatory, czas i determinizm
 
@@ -357,7 +364,9 @@ Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
   do katalogu tymczasowego usuwanego po kroku, także po błędzie; opcja `--preflight` sprawdza tylko zmienne, manifest
   i obecność archiwum w buckecie, bez zmian), zapisuje każdy plik raz do Garage pod kluczem
   `originals/<sha256>.<rozszerzenie>` (format `FlysystemProductImageStorage`; test kontraktu) i przypisuje produktom
-  klucze z grupy typu. Bez zmiennych `DEMO_PHOTOS_*` profil inny niż `small` kończy się błędem przed pierwszym krokiem.
+  klucze z grupy typu. W trakcie pobierania na dysku są dwie kopie archiwum (strumień `php://temp` adaptera i
+  `photos.tar`), a szczyt miejsca w katalogu tymczasowym to około 2 × rozmiar archiwum (pobranie i rozpakowanie).
+  Bez zmiennych `DEMO_PHOTOS_*` profil inny niż `small` kończy się błędem przed pierwszym krokiem.
   Profil `small` bierze 37 plików z `apps/api/fixtures/images` bez pobierania.
 - **Wysyłka.** Pulę (zdjęcia z Wikimedia Commons, przeskalowane, z wariantami, bez duplikatów: ta sama para `sourceId`
   i `variant` raz w puli) wysyła na R2 skrypt `apps/api/bin/upload-demo-photos` (`make upload-demo-photos DIR=…`; obraz
@@ -507,8 +516,9 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 14. Dokumentacja części 1: `docs/vision.md` („Dane demo”: generator i profile), `apps/api/CLAUDE.md` (moduł
     `DemoData`, wyjątki persystencji i outboxu, komendy, sposób testów), `docs/features/search/spec.md`. Część 2:
     `docs/vision.md` („Skala docelowa”: pomiar na danych w skali i obowiązkowy pomiar `full` przed optymalizacjami
-    i wdrożeniem na serwer; bez twierdzenia, że pełna skala jest zweryfikowana, W3), `infra/k8s/CLAUDE.md` (`LOAD_DATA`,
-    CronJob `demo-data`), `docs/features/hardening/spec.md` (opis `load`), `load/README.md`.
+    i wdrożeniem na serwer; bez twierdzenia, że pełna skala jest zweryfikowana, W3), runbook `infra/k8s/README.md`
+    i komentarz przy celu make (opis `LOAD_DATA` i CronJoba `demo-data`), `infra/k8s/CLAUDE.md` (tylko zasada, np.
+    wymóg zgody użytkownika), `docs/features/hardening/spec.md` (opis `load`), `load/README.md`.
 15. `make seed-scale PROFILE=small` na stosie kończy się kodem 0 (cały skrypt na prawdziwych usługach), a `make seed`
     po nim przywraca dane E2E.
 16. Pula zdjęć (P10): obiekt archiwum w prywatnym buckecie istnieje pod kluczem z manifestu, sumy plików zgadzają

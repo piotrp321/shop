@@ -386,7 +386,7 @@ plików, Bash tylko do odczytu, nie wymyśla problemów na siłę. Raport po pol
 ## Zmiany w dokumentacji (w tym samym PR co skill)
 
 - `CLAUDE.md`:
-  - sekcja „Claude Code i Superpowers”: epik do AO przygotowuje `/prepare-epic` (analityk według `/brainstorm`,
+  - sekcja „Epiki, agenci i przegląd” i `docs/adr/agentic-software-house.md`: epik do AO przygotowuje `/prepare-epic` (analityk według `/brainstorm`,
     `spec-critic`, `architecture-reviewer`, `/planner`); użytkownik akceptuje specyfikację i rozmiar końcowego PR,
     `plan.md` przechodzi walidator manifestu; `/brainstorm` i `/planner` zostają do pracy poza epikami;
   - wyjątek merge'ów AO: akceptacja epiku w `/prepare-epic` (specyfikacja i rozmiar końcowego PR) obejmuje zgodę na

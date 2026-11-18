@@ -878,7 +878,7 @@ Wyjście `{"removed": true|false}`; po nim od razu sprawdź czekającego kandyda
 pokaż metryki reguły plików (spec pracy równoległej, „Ocena reguły plików”), uruchamiając `pairs.py` ponownie
 po zapisie: `summary` (pary dopuszczone, konflikty, rozwiązane automatycznie, wymagające człowieka, regresje, wiersze `claude_md` i `code`)
 i `code_blocked` (epiki, które czekały przez wspólny kod aplikacji, z liczbą pominięć). Decyzja o zmianie reguły należy
-do użytkownika; zmiana reguły to osobny PR do specyfikacji i `parallel_gate.py`.
+do użytkownika; zmiana reguły to osobny PR do specyfikacji i `.claude/skills/planner/plan_manifest.py`.
 
 Potem sekcja 8 (epik z listy nocy: reguła niżej; gdy jeszcze nie pora na sekcję 8, od razu sekcja 7a), a dopiero
 po jej pushu sekcja 7a: pytanie „Zacząć epik?” nie

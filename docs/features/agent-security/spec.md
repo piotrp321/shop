@@ -806,7 +806,7 @@ wymagań merge'a. Żaden z nich nie ma aktora bypass:
   wzorzec niż para.
 - Zakładanie i aktualizacja (pozycja użytkownika, wymaga admina repozytorium; najpierw rulesety merge'a, potem pary,
   żeby nie było chwili bez wymagań): `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/<plik>.json`
-  albo `-X PUT repos/piotrp321/shop/rulesets/<id>` dla istniejącego. Opis w `CLAUDE.md`. Zasada w `CLAUDE.md`: agent
+  albo `-X PUT repos/piotrp321/shop/rulesets/<id>` dla istniejącego. Zasada w `CLAUDE.md`: agent
   (wykonawca, sesja, skill) nie zmienia rulesetów ani nie dodaje aktora bypass.
 - Sonda (R6), przypadek warstwy `token`: `gh api repos/piotrp321/shop/rulesets` z tokenem wykonawcy (identyfikatory
   po nazwie), potem `gh api repos/piotrp321/shop/rulesets/<id>` (lista nie zwraca pola), a `current_user_can_bypass`

@@ -371,7 +371,7 @@ Spec: `docs/features/sentry/spec.md`.
   kluczu cache), token to sekret budowania `sentry_auth_token` (`RUN --mount=type=secret`, nigdy `ARG` ani `ENV`); po budowaniu
   `find .next -name '*.map' -delete` usuwa każdy `.map` (serwera, `standalone` i puste pliki wejściowe tras, które Next zapisuje zawsze), więc etap
   `prod` nigdy ich nie ma; test dymny (`infra/k8s/smoke/checks.py`) sprawdza, że sklep ich nie serwuje. Flagę ustawia tylko job
-  `images` workflowu `deploy.yml` (`infra/k8s/CLAUDE.md`).
+  `images` workflowu `deploy.yml` (`docs/features/sentry/spec.md`, D10).
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w
   `src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy (`infra/k8s/argocd/apps/monitoring.yaml`,
   korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy korpusu `store.log`, `api.log`

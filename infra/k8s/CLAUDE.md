@@ -1,250 +1,96 @@
 # CLAUDE.md – infra/k8s
 
-Zasady i cele chartu Helm, serwera i wdrożenia. Zasady ogólne (chart odzwierciedla compose, realmy, zgoda użytkownika
-na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `README.md` w tym katalogu.
+Zasady chartu Helm, serwera i wdrożenia. Zasady ogólne (chart odzwierciedla compose, zgoda użytkownika
+na operacje na serwerze) są w głównym `CLAUDE.md`, ich szczegóły w sekcjach „Chart a compose” i „Cele Makefile” niżej.
+Runbook wdrożenia: `README.md` w tym katalogu. Działanie celów, skryptów i chartu opisują komentarze celów w `Makefile`,
+nagłówki skryptów w `scripts/` i w `charts/shop/files/scripts/` oraz `docs/features/deploy/spec.md`
+i `docs/features/deploy-ops/spec.md` (co sprawdzają `check`, `selftest`, `smoke` i `monitoring-smoke`: „Weryfikacja bez
+serwera” i „Smoke test i check”).
+
+## Chart a compose
+
+- Chart `infra/k8s/charts/shop` odzwierciedla compose. Zmiana usług, obrazów i ich wersji, zmiennych środowiska,
+  transportów workera, sekretów w compose (`infra/scripts/init-env.sh`) i zmiana realmów Keycloaka
+  (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. Pilnuje tego
+  `make -C infra/k8s check` (każdy klucz z `init-env.sh` jest w szablonie sekretu, obrazy usług bez naszego kodu mają
+  tag jak w compose i digest, Elasticsearch to obraz z `infra/elasticsearch/Dockerfile` jak w compose) i test dymny;
+  nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich nie wyłapie. Nowy sekret
+  (klucz w `infra/scripts/init-env.sh`) trafia do szablonu sekretu chartu i, gdy w repo jest certyfikat Sealed Secrets,
+  zaszyfrowany `make -C infra/k8s seal-secrets` do `environments/prod/secrets/` w tym samym PR (pilnuje tego `check`). Zmiana wersji
+  obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`).
+- Nowy transport workera trafia do compose i chartu w tym samym PR (test
+  `test_worker_consumes_the_transports_of_compose` w `tests/test_workloads.py`).
+- Nocne kopie zapasowe (CronJob `backup`: restic do Cloudflare R2) to funkcja tylko środowiska wdrożeniowego: compose się
+  nie zmienia, a obrazy `restic/restic` i `rclone/rclone` w `images.*` chartu nie mają w nim odpowiednika (digest jak
+  wyżej). Sekret `shop-backup` tworzy raz `make -C infra/k8s seal-secrets WHAT=backup`; hasło restic użytkownik trzyma
+  też poza serwerem, bo bez niego kopie są nie do odczytania. Opis: `docs/adr/backups-observability.md`.
+- Logi i metryki klastra trafiają do Grafana Cloud przez Alloy (aplikacja Argo CD `monitoring`, chart `k8s-monitoring`
+  przypięty wersją, adresy i identyfikatory instancji w `argocd/apps/monitoring.yaml`, token w sekrecie `grafana-cloud`
+  z `seal-secrets WHAT=grafana`; aktualizacja chartu: runbook, sekcja 9). Logi są maskowane w Alloy (jeden blok etapów
+  dla logów podów i zdarzeń), a źródło, którego nie da się zamaskować, nie jest zbierane (Mailpit: `extraDiscoveryRules`);
+  nowa usługa z danymi klientów albo sekretami w logach dostaje regułę maskowania i wiersz w korpusie
+  `infra/k8s/tests/log-corpus` w tym samym PR. Alloy czyta z klastra tylko sekret `grafana-cloud`
+  (`docs/features/deploy-ops/spec.md`, O5 i O7, `docs/adr/backups-observability.md`). Lista dozwolonych metryk w tym
+  manifeście ma metryki alertów i metryki, od których zależy hypercare `/oncall` (`kube_pod_container_info`,
+  `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`; pilnuje tego `check`).
+- Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
+  `docs/features/deploy/spec.md`, D9). Brakujący realm zakłada; w istniejącym `partialImport` z `ifResourceExists=SKIP`
+  dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem przy każdym uruchomieniu ustawia wartości
+  z konfiguracji: sekret klienta `store`, `redirectUris`, `webOrigins` i adresy po wylogowaniu klientów z domeny,
+  rejestrację w realmie `shop`, `verifyEmail` w `shop` i SMTP obu realmów. Nigdy nie usuwa użytkowników, haseł ani
+  zasobów. Inna zmiana istniejącego klienta, roli albo ustawienia realmu w pliku do klastra nie trafi: wymaga ręcznej
+  zmiany przez `kcadm` albo nowego kroku w Jobie.
 
 ## Cele Makefile
 
-- `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita): `make -C infra/k8s check`; `make -C infra/k8s smoke`
-  (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
-  sprawdza m.in. nagłówki bezpieczeństwa panelu i jego załadowanie w przeglądarce bez naruszeń CSP;
-  obrazy każdej rewizji sprawdza w węźle przez `crictl` po `k3d image import`, który potrafi skończyć się kodem 0 bez
-  importu, i importuje brakujące ponownie, najwyżej trzy razy; `SMOKE_BREAK=migration|image` psuje go celowo; po `create-admin` robi kopię zapasową: osobna instancja S3 w przestrzeni
-  `smoke-backup`, Job z CronJoba `backup`, snapshot `nightly` z dumpami obu baz, obiektem i manifestem, potem Job z CronJoba
-  `backup-verify` (profil `ci`: `verifyReadData: all`); wypisuje czas tej fazy, czas weryfikacji i zajęty dysk; potem
-  odtworzenie na pustym klastrze: `backups`, usunięcie przestrzeni `shop` z wolumenami, instalacja od nowa, `restore` snapshotu
-  `nightly` (bez Argo CD): administrator z `create-admin`, klient i jego logowanie, liczby produktów i zamówień jak przy kopii,
-  realmy bez zmian, obiekt w buckecie, zdjęcie przez imgproxy, produkt w wyszukiwarce po słowie, które ma tylko odtworzona
-  baza, strona główna, snapshot `pre-restore`; `restore` snapshotu z migracją nieznaną kodowi kończy się odmową bez pytania,
-  bez kopii `pre-restore` i bez zmian; wypisuje czas fazy i szczytowy dysk; dalsze fazy działają na odtworzonym klastrze; Alloy i Grafana Cloud w nim nie działają, bo CI nie ma kont: sprawdza je `check`, `monitoring-smoke` i runbook); `make -C infra/k8s monitoring-smoke` (monitoring na pustym klastrze k3d, poza `check` i CI, kilka minut: CRD `prometheus-operator-crds` i chart `k8s-monitoring` z archiwów `monitoring-render.sh` z wartościami manifestu `monitoring`, jedyna nakładka to adresy celów wskazujące odbiornik, Alloy z `ALLOY_IMAGE` w kontenerze na sieci Dockera klastra, nie w klastrze, bo Alloy zbierałby jego log w pętli; RBAC i polityki dopuszczania bez nakładki; czeka na operatora i Deployment `monitoring-alloy`; polityki dopuszczania: żądania `--dry-run=server` jako konto operatora (Deploymenty z `hostPath` `/`, `hostNetwork`, `hostPID`, `hostIPC`, `hostPort`, `privileged`, dodaną capability, uprzywilejowanym kontenerem init, klasą priorytetu `system-cluster-critical` albo `system-node-critical`, etykietami node-exportera i szablonem z `ownerReference` na jego DaemonSet, Service `NodePort`, `LoadBalancer`, `ExternalName` i `ClusterIP` z `externalIPs`, zmiana Service `monitoring-alloy` na `NodePort` albo z `externalIPs`, sekret z tokenem konta) i jako administrator (pody z etykietami albo podrobionym `ownerReference` node-exportera, DaemonSet, StatefulSet, ReplicaSet, Job, CronJob, kontener efemeryczny i inny obraz w podzie node-exportera, pod i CronJob z klasą priorytetu systemu, Service `NodePort`, `LoadBalancer` i z `externalIPs`, zmiana Service kube-state-metrics na `LoadBalancer`, sekret z tokenem) musi odrzucić polityka (jej nazwa w błędzie, nie RBAC), a zwykły Deployment, Service `ClusterIP` i headless operatora, zwykły kontener efemeryczny, sekret `Opaque` oraz w `shop` pod z `hostPath`, pod z klasą `system-cluster-critical` i Service `NodePort` przechodzą; potem usuwa wszystkie pody `monitoring` i czeka, aż powstaną pod politykami (DaemonSet node-exportera, operator, kube-state-metrics, Alloy); dalej zamaskowana linia poda-znacznika w `shop` z hasłem i e-mailem, zdarzenie klastra tego poda i metryki kube-state-metrics, node-exportera, kubeleta i cAdvisora w odbiorniku (metryki wysłane po odtworzeniu podów), logi operatora, Alloy i kube-state-metrics sprzed i po odtworzeniu bez `forbidden`, potem `kubectl auth can-i` dla kont usług operatora, Alloy, kube-state-metrics i node-exportera: żadnych sekretów `shop` (w tym `shop-backup`, `shop-secrets`) ani `kube-system`, `bind`, `escalate`, `impersonate`, tworzenia ról i powiązań ani podów w `shop`, podzasobów (`--subresource`) `exec`, `attach`, `portforward`, `ephemeralcontainers` i `serviceaccounts/token` w `shop` i `kube-system` ani `nodes/proxy`; Alloy czyta `grafana-cloud`, operator działa w `monitoring`, tworzy Deploymenty, ale nie DaemonSety, StatefulSety, pody ani zasoby `Alloy`, a zmienia i usuwa tylko obiekty `monitoring-alloy`; wypisuje `can-i --list` operatora i Alloy, czas faz; każda niezgodność kończy go błędem; `MONITORING_SMOKE_BREAK=operator-cluster-role` instaluje RBAC chartu operatora, a `MONITORING_SMOKE_BREAK=no-admission-policy` `extraObjects` bez polityk dopuszczania i test musi się nie udać, `MONITORING_SMOKE_KEEP=1` zostawia klaster po błędzie); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
-  obciążenia: klaster k3d z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `load`, dane demo, stany
-  podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
-  stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
-  Dockera co najmniej 10 vCPU i 20 GiB; kod 0 – pomiar wykonany, bez progów, 2 – błąd środowiska: brak `LOAD_OUT`,
-  za mało zasobów, obrazy nieobecne w węźle po trzech importach, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie; 1 – inny błąd (nieudany przebieg k6, build); klaster jest usuwany przy każdym wyjściu); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
-  samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje: każdy przypadek uruchamia tylko krok
-  `check.sh`, który ma ten błąd wyłapać, a w kroku `tests` tylko test, który ma się nie udać (`CHECK_TESTS_FILTER`);
-  nieuszkodzona kopia przechodzi pełny `check`; `SELFTEST_FULL=1` uruchamia przy każdym przypadku pełny `check`;
-  `SELFTEST_ONLY='<regex>'` wybiera przypadki po nazwie; przypadki działają równolegle, po jednym na procesor demona Dockera,
-  każdy we własnym drzewie (`SELFTEST_JOBS=<n>` ustawia liczbę, `1` to kolejno; wyjście przypadku jest drukowane w całości, po jego
-  zakończeniu); CI go nie uruchamia: wszystkie przypadki idą na żądanie (`make -C infra/k8s selftest` lokalnie albo
-  `gh workflow run k8s-selftest.yml --ref <gałąź> [-f only=<regex>]`, pole `only` to `SELFTEST_ONLY`), a agent uruchamia lokalnie tylko
-  przypadki, które dodał albo zmienił, i przypadki testów, które zmienił);
-  `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
-  i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
-  e-mail z akcjami `UPDATE_PASSWORD` i `CONFIGURE_TOTP`, link ważny 12 h; istniejący login albo e-mail: błąd, kod 3,
-  bez zmian; niczego tajnego nie wypisuje); `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (odtworzenie
-  snapshotu kopii, `docs/features/deploy-ops/spec.md`, O4: bez `SNAPSHOT` (identyfikator z `backups`, nigdy `latest`), przy
-  aktywnym Jobie w przestrzeni, trwającej synchronizacji `shop` w Argo CD albo snapshocie z migracją spoza klas migracji
-  obrazu `api` odmawia bez zmian; wypisuje snapshot i skutki, działa dopiero po słowie `tak`; najpierw kopia `pre-restore`
-  (Job z CronJoba `backup`; jej błąd kończy bez zmian, `PRE_RESTORE=skip` ją pomija), potem wyłącza synchronizację `root`
-  i `shop` (merge patchem: przejdzie też bez `automated`), wstrzymuje `cart-purge-expired` i `backup`, czeka na Job, który
-  wystartował po pierwszym sprawdzeniu (`RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd bez zmiany
-  aplikacji), skaluje do zera `api`, `worker`, `store` i `keycloak`, Job z
-  CronJoba `restore` odtwarza dane, ponawia `migrate`, `keycloak-config` (jak `rerun`), reindeks i `purge-caches`, przywraca
-  repliki, CronJoby (`suspend: false` jak w chartcie, także po przerwanej próbie) i synchronizację `root`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz
-  snapshot `pre-restore`; kod 0, 1 odmowa albo błąd, 2 złe argumenty) i `make -C infra/k8s backups` (snapshoty repozytorium:
-  identyfikator, czas, host, tagi, rewizja; tylko odczyt). `rerun`, `create-admin`, `restore` i `backups` łączą się z
-  klastrem przez kubeconfig z `KUBE_DIR` (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w
-  przestrzeni `KUBE_NAMESPACE` (domyślnie `shop`). Agent uruchamia `create-admin` i `restore` tylko po zgodzie użytkownika
-  w rozmowie; `backups` sam. Te cztery i `kubeconfig` (cele, które zapisują albo montują `KUBE_DIR`, czyli kubeconfig
-  produkcji) wołają w Makefile najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0, bez zmian, z komunikatem po angielsku: zatrzymaj AO albo
-  poczekaj na koniec przebiegu), gdy działa AO (`python3 -m orchestrator … run`) albo żywy wykonawca (proces `claude-agent`
-  albo runner AO `orchestrator/runner.py`); błąd `ps` też jest odmową, a żadna zmienna nie wyłącza sprawdzenia. Skrypty
-  `rerun.sh`, `create-admin.sh`, `restore.sh` i `backups.sh` same go nie wołają, bo woła je `smoke.sh` (test dymny działa też
-  w trakcie przebiegu AO). `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest usuwany po niej (runbook,
-  2.6); `kubeconfig` dopisuje jego bezwzględną ścieżkę do rejestru `~/.local/state/shop-ops/kube-dirs` (jedna ścieżka w
-  wierszu), z którego czyta `ao-prepare` i odmawia startu AO, dopóki zapisany katalog istnieje.
-  Serwer obsługują cele (po SSH, `HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `make -C infra/k8s bootstrap HOST=…
-  [SEALED_KEY_FILE=<kopia klucza>]` (czysty Ubuntu 26.04: k3s w przypiętej wersji, ufw, aktualizacje bezpieczeństwa, Argo CD,
-  Sealed Secrets, aplikacja `root`; idempotentny; bez roota albo na innym systemie kończy się błędem przed zmianami;
-  zapisuje certyfikat kontrolera do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma, a rozbieżny
-  certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun`, `create-admin`, `restore`
-  i `backups`; zapisuje `KUBE_DIR` w rejestrze, patrz wyżej),
-  `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby i logi nieudanych Jobów), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
-  demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup grafana"]` (szyfruje
-  sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
-  Brevo SMTP, certyfikat Origin CA, hasło restic i klucz S3 kopii zapasowych (`shop-backup`) oraz tokeny Grafana Cloud
-  (`grafana-cloud`, klucze `GRAFANA_CLOUD_TOKEN` metryk i logów i `GRAFANA_ALERTING_TOKEN` konta serwisowego reguł alertów)
-  czytane z terminala bez echa (hasło restic dwa razy, różne wartości to błąd), każdy z nich tylko raz (`grafana` pyta tylko
-  o brakujące tokeny i zostawia zaszyfrowane bez zmian), błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
-  (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
-  runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
-  „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a)
-  nie są jego decyzją ani czynnością.
-
-## Joby wersji
-
-- Job `backfill` (fala 3, jak `purge-caches`) uruchamia `bin/console app:backfill` po rolloucie `api` i `worker`
-  (initContainery `shop.waitRollout`, ServiceAccount `shop-wait`): migracje zmieniają tylko schemat, a dane wypełniają
-  kroki `app:backfill` (`apps/api/CLAUDE.md`), każdy raz, bo ukończone zapisuje w `app_backfill`; kolejne wersje
-  pomijają ukończone kroki, a ponowienie Joba (`backoffLimit`, `rerun`) zaczyna od nieukończonego. Ma własny limit czasu
-  `jobs.backfillActiveDeadlineSeconds` (domyślnie 21 600 s; pozostałe Joby `jobs.activeDeadlineSeconds`), bo przy
-  docelowej skali przechodzi cały katalog i zamówienia. Lokalnie (compose) kroki uruchamia koniec `bin/seed-demo`
-  (`app:backfill --force`); `restore` go nie ponawia. Test: `tests/test_jobs.py`, `tests/test_waves.py`.
-
-## Worker
-
-- Deployment `worker` (obraz `api`) uruchamia `messenger:consume outbox events scheduled payment_simulator promotions
-  jobs`, transporty po kolei, ta sama komenda co `worker` w compose; sonda gotowości czeka, aż PID 1 to ten konsument
-  z tą listą transportów. `jobs` to partie zadań w tle wywołanych zmianą w domenie (reindeksacja poddrzewa kategorii,
-  `apps/api/CLAUDE.md`). Nowy transport trafia do compose i chartu w tym samym PR (test
-  `test_worker_consumes_the_transports_of_compose` w `tests/test_workloads.py`).
-
-## Co sprawdza `check`
-
-- `make -C infra/k8s check` (woła go też główny `make check`): `helm lint`, render chartu dla `prod`, `ci` i `load` (nakładka z zasobami podów jak `prod` i nagłówkiem adresu klienta;
-  test porównuje zasoby z `prod`), schemat wartości,
-  `kubeconform`, `shellcheck`, `actionlint` (workflowy z `.github/workflows` razem ze skryptami ich kroków) i testy
-  renderu (fale, ścieżki ingressu `auth`, middleware (`ipAllowList`, `noindex`, HSTS tylko przy `ingress.tls`), klucze sekretu, nazwy Jobów,
-  CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`;
-  przełączniki `demoNotice`, `customerAccounts`, `orderMail` i poczta Keycloaka w środowisku sklepu, api, workera i Jobów
-  oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
-  jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
-  w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
-  razem z `image.requireDigests` kończą render błędem; blok `sentry` (`environment`, `tracesSampleRate`, `dsn.api`, `dsn.store`,
-  `dsn.admin`, domyślnie puste, w `prod` `environment: demo` i `tracesSampleRate: 0.1`, DSN-y trzech projektów Sentry tylko w `prod`,
-  `README.md` sekcja 10): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (`image.tag`) i `SENTRY_TRACES_SAMPLE_RATE` tylko dla
-  aplikacji z niepustym DSN, przez helper `shop.sentryEnv`; DSN api w `shop.apiEnv` (api, worker, Joby, init kontenery, CronJoby
-  `cart-purge-expired` i `restore`), DSN sklepu tylko w sklepie, panelu tylko w panelu; bez DSN żadnej `SENTRY_*` (także w `prod`
-  i `ci`, `tests/test_sentry.py`); schemat odrzuca `tracesSampleRate` spoza 0–1 i DSN innego kształtu niż
-  `https://<klucz>@<host>/<id projektu>`) oraz testy
-  skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
-  `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
-  robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within` tylko po kopii `nightly` (kopia `pre-restore` niczego nie przycina); weryfikacja: snapshot `nightly` tego klastra
-  starszy niż 26 h albo brak snapshotu, błąd `restic check`, `n` w `--read-data-subset=n/7` z `date +%u` i `--read-data`
-  przy `verifyReadData: all`, dumpy strumieniem z `restic dump` do `pg_restore`, błąd `pg_restore` albo `restic dump`,
-  pusta tabela migracji, brak realmu `shop` albo `backoffice`, liczba obiektów inna niż w manifeście: błąd z opisem,
-  zdrowy przypadek przechodzi) oraz skryptu poda odtworzenia `restore-job.sh` na atrapach `restic`, `psql`, `pg_restore`, `rclone`,
-  `redis-cli`, `rabbitmqadmin` i `bin/console` (tryby `list`, `check`, `restore`, `reindex`; snapshot z migracją spoza klas
-  migracji obrazu `api` odrzucony przed odtworzeniem; kolejność `DROP`/`CREATE`/`pg_restore` z rolą właściciela; błąd każdego
-  narzędzia kończy etap błędem), skryptów `restore.sh`, `backups.sh` i `rerun.sh` na atrapie `docker` grającej klaster dla
-  `kubectl` (bez `tak`, bez `SNAPSHOT`, przy aktywnym Jobie, trwającej synchronizacji `shop` i snapshocie nowszym niż kod
-  nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; identyfikator snapshotu `pre-restore` jest czytany z pełnego logu Joba, także przy długim; kolejność kroków z Argo CD
-  (`root`, potem `shop`, na końcu `root`) i bez niego (zapamiętane repliki; CronJoby wstrzymane po przerwanej próbie wracają do `suspend: false`); błąd Joba odtworzenia zostawia aplikacje
-  wyłączone i wypisuje krok oraz snapshot `pre-restore`; aplikacje bez `automated` w Argo CD; Job aktywny, który pojawił się po
-  pierwszym sprawdzeniu, jest czekany i po limicie kończy odtworzenie przed tym, co rusza dane; czekanie najwyżej `activeDeadlineSeconds` Joba). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
-  i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`
-  tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; CronJob
-  `backup-verify` (05:00, limity jak `backup`, tymczasowy Postgres jako natywny sidecar na `emptyDir`, bez sekretów i
-  połączeń produkcyjnej bazy, sekret `shop-backup` tylko w kontenerze skryptu, token tylko w identyfikatorze klastra,
-  `restic` jako wolumen obrazu z jego certyfikatami CA w `SSL_CERT_FILE`, `emptyDir` z limitem `storage.postgres`); CronJob `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`,
-  `backoffLimit: 0`, etapy w kontenerach obrazów narzędzi i `api` rewizji, tryb `list` domyślnie, bez tokenu API, sekret
-  `shop-backup` tylko w kontenerze restic, cache restic poza wolumenem `backup-work`); schemat: `backup.enabled`
-  bez `backup.repository` albo `backup.secretName` oraz `backup.verifyReadData` inne niż `subset` i `all` kończą render błędem
-  z nazwą wartości. Sprawdza też: render `prod` z plikiem
-  digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD
-  (`kubeconform`; testy: jedno źródło `shop` na gałęzi `deploy-images`, kolejność fal `prometheus-crds` −3, `sealed-secrets` −2,
-  `secrets` −1, `shop` 0, `monitoring` 1, `ServerSideApply` przy CRD, `SkipDryRunOnMissingResource` i `CreateNamespace` przy
-  `monitoring`, charty innych przypięte wersją), render chartu `k8s-monitoring` z wartościami z manifestu `monitoring`
-  (`scripts/monitoring-render.sh`: archiwum chartu pobrane raz do cache narzędzi, sprawdzone sha256 zapisanym w skrypcie;
-  `kubeconform` ze schematem `Alloy`; RBAC renderu: żadna rola nie ma `bind`, `escalate`, `impersonate`, `*`, zmian obiektów
-  RBAC ani podzasobów `pods/exec`, `pods/attach`, `pods/portforward`, `pods/ephemeralcontainers`, `serviceaccounts/token`
-  i `nodes/proxy` (także przez `*`, `pods/*`, `*/proxy`), ClusterRole tylko czyta i nigdy sekretów (także przez `*`), Role tylko
-  w `shop` i `monitoring`, sekrety poza `monitoring` daje tylko Role na `grafana-cloud` w `shop` związana wyłącznie z kontem
-  Alloy, a sekrety w `monitoring` tylko Role operatora związana wyłącznie z jego kontem; operator bez ClusterRoleBinding i bez
-  powiązań poza `monitoring`, z `WATCH_NAMESPACE=monitoring`; podmioty powiązań porównywane po rodzaju, nazwie i przestrzeni,
-  a grupy `system:serviceaccounts`, `system:serviceaccounts:monitoring`, `system:authenticated` i nazwa użytkownika konta
-  obejmują konta monitoringu; powiązania tylko do ról renderu, bez `aggregationRule`; dokładny kształt Role operatora (bez
-  DaemonSetów, StatefulSetów, ConfigMap, podów i tworzenia zasobów `Alloy`, zmiana i usuwanie Deploymentu, konta i Service
-  tylko `monitoring-alloy`); zasób `Alloy` z `rbac.create: false`, a ClusterRole kolektora z `extraObjects` czyta dokładnie
-  listę zasobów z testu; polityki dopuszczania: trzy `ValidatingAdmissionPolicy` z powiązaniami na `monitoring` przez
-  `kubernetes.io/metadata.name`, `Deny`, `failurePolicy: Fail`, bez `matchConditions` i selektorów, w fali przed resztą
-  aplikacji, polityka hosta na pody (z kontenerami efemerycznymi) i szablony podów sześciu rodzajów workloadów przy tworzeniu
-  i zmianie, z polami dostępu do hosta i listą capability profilu baseline, wyjątek tylko dla node-exportera po koncie
-  kontrolera DaemonSetów i `ownerReferences`, bez etykiet, oraz odrzucenie `priorityClassName` z prefiksem `system-` bez
-  wyjątku; w renderze dostęp do hosta ma tylko DaemonSet node-exportera, a klasy priorytetu systemu żaden workload; polityka
-  Service przy tworzeniu i zmianie dopuszcza tylko typ `ClusterIP` bez `externalIPs`, a każdy Service renderu jest `ClusterIP`;
-  polityka tokenów na sekrety; lista dozwolonych metryk niepusta, z metrykami alertów i metrykami, od których zależy hypercare `/oncall` (`kube_pod_container_info`, `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`), widoczna w
-  konfiguracji Alloy; reguły alertów synchronizuje tylko cel `grafana-alerting` do API importu Grafany (`/api/convert`, token
-  `GRAFANA_ALERTING_TOKEN`, nagłówek źródła danych, tenant `1`), a żadna funkcja ani telemetria chartu nie wysyła do niego metryk; budżet węzła: `shop` i `monitoring` razem do 7 vCPU requestów i 20 GiB limitów, z jawnymi zasobami Alloy,
-  jego reloadera, operatora, kube-state-metrics i node-exportera; obraz Alloy w `tools.sh` to tag z chartu i z manifestu),
-  test maskowania logów (`scripts/masking.sh`: prawdziwy Alloy, przypięty tagiem i digestem, uruchamia etapy
-  `extraLogProcessingStages` wyciągnięte z manifestu na korpusie `tests/log-corpus`, jeden plik na źródło w jego formacie, z
-  podłożonymi hasłami, tokenami, JWT, nagłówkami, ciasteczkami, e-mailami, adresami IP, parametrami Doctrine i `DETAIL`
-  Postgresa; korpus idzie przez potok logów podów (linie CRI) i zdarzeń; test sprawdza, że żadna podłożona wartość nie wyszła,
-  linie `DETAIL` i `STATEMENT` zniknęły, a poziom, komunikat, kanał i kod odpowiedzi zostały, że oba miejsca konfiguracji mają
-  ten sam blok etapów i że reguły `extraDiscoveryRules` odrzucają dokładnie źródła z listy wyłączonych, czyli Mailpit; ta sama
-  konfiguracja z renderu przechodzi `alloy validate`),
-  reguły alertów (`templates/00-alerts.yaml`: nazwa sortuje się tak, żeby Helm, który renderuje szablony w odwrotnej kolejności
-  nazw, wyrenderował ją po wszystkich workloadach; `PrometheusRule` z siedmioma alertami tylko przy `alerts.enabled`, czyli w
-  `prod`, nie w `ci` i `load`, a bez `backup.enabled` (w `prod`, dopóki kopie nie są skonfigurowane) bez czterech alertów kopii;
-  `promtool` testuje reguły renderu `prod-backup` (`prod` z `backup.enabled=true`), z którego czytają też testy kopii; `WorkloadNotReady` ma `absent` dla każdego Deploymentu
-  i StatefulSetu renderu, także w `ci` z `alerts.enabled`, bo `shop.deployment` i `shop.statefulset` zapisują workload w rejestrze
-  czytanym przez regułę; alerty kopii patrzą na dokładną nazwę CronJoba, `BackupMissing` i `BackupVerifyMissing` mają `absent`,
-  `NodeDiskFull` pomija systemy tymczasowe; brak CRD przy `alerts.enabled` ma dawać błąd synchronizacji, więc szablon nie pyta
-  klastra o wersje API) i krok `alerts`: `promtool check rules` i `promtool test rules` (obraz `prom/prometheus` przypięty
-  tagiem i digestem w `tools.sh`) na regułach wyciągniętych z renderu `prod` przez `tests/alerts/prepare.py`, ze scenariuszami
-  `tests/alerts/alerts.test.yml` (każdy alert odpala w swoim scenariuszu i milczy, gdy zdrowo; alerty kopii milczą przy udanym
-  ponowieniu i po powrocie do zdrowia, `backup` nie łapie Jobów `backup-verify`; `NodeDiskFull` milczy przy 85% i krótkim skoku;
-  `WorkloadNotReady` odpala przy niedostępnej replice i brakującym workloadzie, milczy przy niedostępności krótszej niż 10 minut,
-  zeskalowaniu do zera i ciszy klastra; linia `# @healthy-workloads` scenariusza to serie zdrowych workloadów renderu, więc nowy
-  workload nie wymaga zmiany scenariuszy); `selftest` ma przypadki: `BackupMissing` bez `absent`, `NodeDiskFull` odpalający przy
-  dokładnie 85% i regułę ze składnią, której PromQL nie przyjmuje,
-  sekrety zaszyfrowane (po dodaniu certyfikatu `environments/prod/sealed-secrets.pem` każdy klucz z `init-env.sh` ma
-  zaszyfrowaną wartość w `environments/prod/secrets/`; jawny Secret w tym katalogu to błąd), `seal-secrets.sh`
-  i skrypty serwera na atrapach `docker` i `ssh`, `server-bootstrap.sh` dwa razy w kontenerze Ubuntu 26.04 bez k3s
-  (atrapy `k3s`, `apt-get`, `ufw`, `sysctl`), brak workflowu usuwającego wersje pakietów GHCR oraz to, że `.gitignore`
-  nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście). Testy workflowów
-  (`tests/test_deploy_workflow.py`, `render.sh` zamienia na JSON każdy plik `.github/workflows/*.yml` i `*.yaml`): job `deploy`
-  ma `environment: production` (nazwa albo obiekt z literalną nazwą), tylko on (inny job może mieć wyłącznie środowisko z
-  `MAIN_ONLY_ENVIRONMENTS` poza `production`: `images` ma `sentry`, bez zatwierdzenia), a żadne wyrażenie z kontekstem `secrets` inne niż
-  `secrets.GITHUB_TOKEN` (w każdej pisowni: wielkie litery, spacje, `secrets['X']`, `toJSON(secrets)`, `format(…)`, `env:`,
-  `with:`, skrypt, `if`) nie występuje poza jobem ze środowiskiem z listy `MAIN_ONLY_ENVIRONMENTS` (środowiska z polityką
-  gałęzi „tylko `main`”: `production` i `sentry`, opisane w runbooku); na poziomie workflowu i przy `secrets: inherit` jest błąd zawsze. Test widzi
-  pliki, nie ustawienia środowisk w GitHubie (to pozycja użytkownika w runbooku), i odrzuca atrapy z tymi obejściami.
-  Testy `ao-guard.sh` i celów (`tests/test_ao_guard.py`: atrapa `ps` z liniami jak na komputerze użytkownika, cele uruchamiane
-  przepisami z Makefile na atrapach `docker` i `ssh`: z AO, runnerem albo `claude-agent` każdy z pięciu celów odmawia bez wywołania
-  `docker`/`ssh` i bez zmian w `KUBE_DIR`, procesy podobne do AO przepuszcza, błąd `ps` jest odmową, bez AO cele działają jak
-  dotąd) i rejestru `KUBE_DIR` (`tests/test_server_scripts.py`). `selftest` ma przypadki: `deploy.yml` bez środowiska
-  `production`, `images` bez środowiska `sentry`, `images` w środowisku `production` i sekret w `env:` workflowu.
+- `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita); opis celów, ich zmiennych i kodów wyjścia
+  jest przy celu. Testy i pomiary bez serwera: `check`, `selftest`, `smoke`, `monitoring-smoke` (poza `check` i CI)
+  i `load LOAD_OUT=<katalog poza repo>`.
+- CI nie uruchamia `selftest`: wszystkie przypadki idą na żądanie (`make -C infra/k8s selftest` lokalnie albo
+  `gh workflow run k8s-selftest.yml --ref <gałąź> [-f only=<regex>]`, pole `only` to `SELFTEST_ONLY`), a agent uruchamia
+  lokalnie tylko przypadki, które dodał albo zmienił, i przypadki testów, które zmienił.
+- `rerun JOB=<nazwa>`, `create-admin LOGIN=<login> EMAIL=<e-mail>`, `restore SNAPSHOT=<id> [PRE_RESTORE=skip]`
+  i `backups` łączą się z klastrem przez kubeconfig z `KUBE_DIR` (wymagany). Agent uruchamia `create-admin` i `restore`
+  tylko po zgodzie użytkownika w rozmowie; `backups` sam. `KUBE_DIR` powstaje na jedną operację (`mktemp -d`) i jest
+  usuwany po niej (runbook, 2.6).
+- Te cztery i `kubeconfig` (cele, które zapisują albo montują `KUBE_DIR`, czyli kubeconfig produkcji) wołają w Makefile
+  najpierw `scripts/ao-guard.sh` i odmawiają (kod różny od 0, bez zmian), gdy działa AO albo żywy wykonawca; błąd `ps`
+  też jest odmową, a żadna zmienna nie wyłącza sprawdzenia. Skrypty `rerun.sh`, `create-admin.sh`, `restore.sh`
+  i `backups.sh` same go nie wołają, bo woła je `smoke.sh` (test dymny działa też w trakcie przebiegu AO). `kubeconfig`
+  dopisuje bezwzględną ścieżkę `KUBE_DIR` do rejestru `~/.local/state/shop-ops/kube-dirs`, z którego czyta `ao-prepare`
+  i odmawia startu AO, dopóki zapisany katalog istnieje.
+- Serwer obsługują cele po SSH (`HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `bootstrap`, `kubeconfig`, `status` (tylko
+  odczyt) i `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa; działa dopiero po słowie `tak`), a z klastrem
+  łączą się też `rerun`, `create-admin`, `restore` i `backups`; `seal-secrets` i `cloudflare-ips` zmieniają pliki w repo.
+  Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda
+  użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości
+  sekretów, Cloudflare Access, ruleset, środowiska `production` i `sentry`, deploy key, backup VPS-a) nie są jego decyzją
+  ani czynnością.
 
 ## Gałęzie `deploy` i `deploy-images`
 
-- Gałęzie `deploy` i `deploy-images` to wdrażana wersja. `deploy` przesuwa się wyłącznie fast-forwardem na zatwierdzony
-  commit z `main`. `deploy-images` (śledzi ją Argo CD) to kolejne snapshoty: drzewo commita z `deploy` plus wygenerowany
-  `infra/k8s/environments/prod/values-images.yaml` (`image.tag` i digesty czterech obrazów; nie ma go na `main`), z
-  rodzicami: poprzedni snapshot i commit z `deploy`. Aplikacja `shop` ma jedno źródło: chart z `deploy-images` z plikami
-  wartości `prod` i `values-images.yaml`. Obie gałęzie przesuwa wyłącznie workflow `.github/workflows/deploy.yml` jednym
-  `git push --atomic` (`.github/scripts/deploy-ref.sh`: bez `--force`, deploy keyem z sekretu `DEPLOY_KEY` środowiska
-  `production`), nikt
-  ich nie edytuje ręcznie. Workflow:
-  - `workflow_dispatch` na `main` (wdrożenie tylko na życzenie użytkownika: `gh workflow run deploy.yml --ref main`, agent
-    uruchamia je wyłącznie na jego wyraźne polecenie w rozmowie; push do `main` niczego nie wdraża): buduje i wypycha cztery obrazy produkcyjne
-    `ghcr.io/piotrp321/shop/<app>:<sha>` (api, store, admin, elasticsearch; ich digesty są w podsumowaniu runu), raz generuje `values-images.yaml`
-    (`infra/k8s/scripts/images-values.sh`), uruchamia smoke test na tych obrazach (`make -C infra/k8s smoke` na
-    `ubuntu-latest`; z `SMOKE_VALUES=<ten plik>` pierwsza instalacja pobiera obrazy z GHCR po digeście) i dopiero po zielonym
-    oraz po sprawdzeniu renderu `prod` z tym plikiem (`infra/k8s/scripts/verify-images.sh`) przesuwa `deploy` i
-    `deploy-images`. Job `deploy` (jedyny z `DEPLOY_KEY`) działa w środowisku `production` (wymagane zatwierdzenie użytkownika,
-    „Prevent self-review” wyłączone, polityka gałęzi tylko `main`), więc czeka na zatwierdzenie w GitHubie (strona przebiegu,
-    powiadomienie albo aplikacja mobilna; agent go nie zatwierdza). Każdy sekret Actions poza `GITHUB_TOKEN` jest sekretem
-    środowiska z polityką „tylko `main`” (pilnuje tego test). Błąd walidacji albo pusha: nic nie jest opublikowane. Bez sekretu
-    `DEPLOY_KEY` kończy się po smoke teście i zatwierdzeniu z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy). Jeden przełącznik `env.DEPLOY`
-    (dispatch na `main`) decyduje o wypychaniu obrazów, pliku digestów i jobie `deploy`.
-    Job `images` działa w środowisku `sentry` (bez zatwierdzenia, polityka gałęzi tylko `main`; runbook 1.3), którego sekretem jest
-    `SENTRY_AUTH_TOKEN`; działa tylko przy dispatchu na `main`, więc workflow z innej gałęzi nie dotyka tego sekretu.
-    Mapy źródeł sklepu i panelu (spec Sentry, P3, D10): krok `sentry` jobu `images` ustawia flagę wysyłki na `true`, gdy istnieje
-    sekret `SENTRY_AUTH_TOKEN` (porównanie z pustym napisem: krok widzi tylko wartość logiczną), inaczej pomija wysyłkę i dopisuje
-    to do podsumowania; sekret bez zmiennych repozytorium `SENTRY_ORG`, `SENTRY_PROJECT_STORE` i `SENTRY_PROJECT_ADMIN` kończy
-    job błędem przed budowaniem. Budowania sklepu i panelu dostają flagę, organizację i projekt jako `build-args`
-    (`SENTRY_UPLOAD`, `SENTRY_ORG`, `SENTRY_PROJECT`: `ARG` etapu `build`, więc część klucza cache), a token wyłącznie jako
-    wejście `secrets:` (`sentry_auth_token`, montowanie `--mount=type=secret` w Dockerfile; wartość nie jest nigdzie indziej:
-    ani w `build-args`, ani w `env` kroku, ani w skrypcie, ani w jobach `smoke` i `deploy`; test `SentrySourceMaps` w
-    `tests/test_deploy_workflow.py`). Job `smoke` (także na PR) buduje bez flagi i bez sekretu, a etapy `prod` obu aplikacji
-    nigdy nie mają plików `.map` (Dockerfile je usuwa; test dymny sprawdza po HTTP, że sklep i panel ich nie serwują, `smoke/checks.py`
-    `check_no_source_maps`). Wysyłka z sekretem, która się nie uda (zły token, Sentry niedostępny), kończy budowanie obrazu błędem,
-    więc nic nie jest wdrażane. Zmiana `apps/admin/vite.config.ts` uruchamia smoke test na PR jak `apps/store/next.config.ts`.
-  - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch` na innej gałęzi: tylko smoke test
-    na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
-    `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba
-    na jego gałęzi odbywa się przez zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
-  - Rulesety `deploy` (`tools/rulesets/deploy.json`: zakaz usunięcia i force pusha wszystkim, bez aktora bypass)
-    i `deploy-push` (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`, jedyny aktor bypass to deploy key,
-    typ `DeployKey`) obejmują `refs/heads/deploy` i `refs/heads/deploy-images`, bez wymogu PR. Aktor `DeployKey` to
-    każdy deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia).
-    Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak rulesetu `epic` (główny `CLAUDE.md`), osobno każdy plik
-    (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`). Rulesety, deploy key, środowisko `production`
-    i jego sekret `DEPLOY_KEY` zakłada się według runbooka wdrożenia (sekret repozytorium `DEPLOY_KEY` użytkownik usuwa).
-  - Obrazy, do których odwołują się snapshoty `deploy-images`, nie mogą być usuwane z GHCR (cofnięcie wersji to powrót do
-    starszego snapshotu): żadna retencja pakietów ani workflow nie usuwa ich wersji (test w `make -C infra/k8s check`).
-  - Test struktury rulesetów: `python3 -m unittest discover -s tools/rulesets -p 'test_*.py'`.
+- Gałęzie `deploy` i `deploy-images` to wdrażana wersja (mechanizm: `docs/features/deploy/spec.md`, D4 i „Wdrożenie nowej
+  wersji”). `deploy` przesuwa się wyłącznie fast-forwardem na zatwierdzony commit z `main`. `deploy-images` (śledzi ją
+  Argo CD) to kolejne snapshoty z wygenerowanym `infra/k8s/environments/prod/values-images.yaml` (nie ma go na `main`).
+  Obie gałęzie przesuwa wyłącznie workflow `.github/workflows/deploy.yml` jednym `git push --atomic`
+  (`.github/scripts/deploy-ref.sh`: bez `--force`, deploy keyem z sekretu `DEPLOY_KEY` środowiska `production`), nikt
+  ich nie edytuje ręcznie.
+- Wdrożenie (`workflow_dispatch` na `main`) tylko na życzenie użytkownika: `gh workflow run deploy.yml --ref main`, agent
+  uruchamia je wyłącznie na jego wyraźne polecenie w rozmowie; push do `main` niczego nie wdraża. Job `deploy` (jedyny
+  z `DEPLOY_KEY`) działa w środowisku `production` (wymagane zatwierdzenie użytkownika, polityka gałęzi tylko `main`),
+  więc czeka na zatwierdzenie w GitHubie; agent go nie zatwierdza. Każdy sekret Actions poza `GITHUB_TOKEN` jest sekretem
+  środowiska z polityką „tylko `main`” (pilnuje tego test).
+- Token map źródeł `SENTRY_AUTH_TOKEN` (sekret środowiska `sentry` jobu `images`; `docs/features/sentry/spec.md`, D10)
+  trafia do budowania sklepu i panelu wyłącznie jako wejście `secrets:` (montowanie `--mount=type=secret` w Dockerfile);
+  wartość nie jest nigdzie indziej: ani w `build-args`, ani w `env` kroku, ani w skrypcie, ani w jobach `smoke`
+  i `deploy` (test `SentrySourceMaps` w `tests/test_deploy_workflow.py`). Etapy `prod` obu aplikacji nigdy nie mają
+  plików `.map` (test dymny: `smoke/checks.py` `check_no_source_maps`).
+- Rulesety `deploy` (`tools/rulesets/deploy.json`: zakaz usunięcia i force pusha wszystkim, bez aktora bypass)
+  i `deploy-push` (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`, jedyny aktor bypass to deploy key,
+  typ `DeployKey`) obejmują `refs/heads/deploy` i `refs/heads/deploy-images`, bez wymogu PR. Aktor `DeployKey` to
+  każdy deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia).
+  Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Rulesety, deploy key, środowisko `production` i jego sekret `DEPLOY_KEY` zakłada się według runbooka wdrożenia
+  (sekcja 1).
+- Obrazy, do których odwołują się snapshoty `deploy-images`, nie mogą być usuwane z GHCR (cofnięcie wersji to powrót do
+  starszego snapshotu): żadna retencja pakietów ani workflow nie usuwa ich wersji (test w `make -C infra/k8s check`).
+- Test struktury rulesetów: `python3 -m unittest discover -s tools/rulesets -p 'test_*.py'`.
