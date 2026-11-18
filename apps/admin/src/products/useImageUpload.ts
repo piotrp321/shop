@@ -126,7 +126,12 @@ export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => strin
     running = true;
     const mine = generation;
     try {
-      for (let id = queue.shift(); id !== undefined && mine === generation; id = queue.shift()) {
+      // The generation is checked before taking from the queue: the queue now belongs to the newer generation.
+      while (mine === generation) {
+        const id = queue.shift();
+        if (id === undefined) {
+          break;
+        }
         await send(id);
       }
     } finally {

@@ -239,6 +239,33 @@ describe("useImageUpload", () => {
       expect(mocks.post).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+      ["a stored image", () => created("originals/a.jpg")],
+      ["a failure", () => rejected(503)],
+    ])("sends every file chosen after the abandon when the abandoned one ends with %s", async (_label, answer) => {
+      const { images, upload } = setup();
+      const sending: ((value: unknown) => void)[] = [];
+      mocks.post.mockImplementation(() => new Promise((resolve) => sending.push(resolve)));
+      upload.addFiles([file("a.jpg")]);
+      await flushPromises();
+      upload.abandon();
+      upload.addFiles([file("b.jpg"), file("c.jpg")]);
+      await flushPromises();
+      expect(sending).toHaveLength(2);
+
+      sending[0]!(answer());
+      await flushPromises();
+      sending[1]!(created("originals/b.jpg"));
+      await flushPromises();
+      expect(sending).toHaveLength(3);
+      sending[2]!(created("originals/c.jpg"));
+      await flushPromises();
+
+      expect(statuses(upload)).toEqual([["b.jpg", "done"], ["c.jpg", "done"]]);
+      expect(upload.uploading.value).toBe(false);
+      expect(images.value.map((image) => image.key)).toEqual(["originals/b.jpg", "originals/c.jpg"]);
+    });
+
     it("ignores a failure that arrives later and sends the files chosen afterwards", async () => {
       const { images, upload } = setup();
       const sending: ((value: unknown) => void)[] = [];
