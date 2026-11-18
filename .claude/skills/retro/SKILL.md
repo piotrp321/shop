@@ -317,7 +317,7 @@ Jeden otwarty PR retro naraz; retro idą po kolei (blokada), więc dwa nie pisz�
 - Nie uruchamiasz `ao` ani niczego w katalogach `~/.local/state/ao-*` poza odczytem (`sqlite3` w trybie `mode=ro`,
   pliki tekstowe).
 - Nie zmieniasz kodu, konfiguracji ani plików spoza listy dozwolonej (`CLAUDE.md`, `apps/*/CLAUDE.md`, skille, agenci,
-  `docs/features/{ao-run,prepare-epic,groom,agent-tester-ux,retro}/spec.md`) i „Statusu” planu bez manifestu; reszta
+  `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`) i „Statusu” planu bez manifestu; reszta
   to propozycja `issue`, nie poprawka.
 - Nie zakładasz issues ani komentarzy bez „tak” użytkownika w rozmowie i nie ponad jego wybór; nie zamykasz ani nie
   etykietujesz istniejących issues.

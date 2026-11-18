@@ -88,7 +88,7 @@ Spełnij je od razu; to sprawdza skrypt, nie ty, a błąd kosztuje poprawkę:
   incydentów z `input.json`, tylko istniejących), `classes`, `cause`, `why_prevents` (dlaczego zapobiegnie podobnemu
   problemowi), `verify` (po czym w kolejnych epikach poznamy, że działa).
 - **`fix`:** dodatkowo `files` i `change`. `files` tylko z listy dozwolonej: `CLAUDE.md`, `apps/*/CLAUDE.md`,
-  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{ao-run,prepare-epic,groom,agent-tester-ux,retro}/spec.md`.
+  `.claude/skills/*/SKILL.md`, `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`.
   Zmiana w innym pliku (np. skrypt, `retro.py`, `docs/` poza listą, plany) to `issue` z `repo: "shop"`.
 - **`issue`:** `repo` (`ao` albo `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo
   `existing_issue`. `existing_issue` to numer **otwartego** issue z `input.json` z `trusted: true` (otwarte issues AO
