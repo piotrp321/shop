@@ -671,9 +671,11 @@ Opcje: `--mode default|ao`, `--claude-bin` (wrapper), `--agent-claude-bin` (bina
   przyjęte połączenie (linia żądania, nagłówki, ciało i jego rozpakowanie, przekazanie, odpowiedź, bajty po ciele),
   a każde połączenie wciąż otwarte po tym czasie, także z już zapisanym żądaniem, daje dodatkowy zapis nie do
   sprawdzenia bez ciała („żądanie w toku przy zatrzymaniu odbiornika”) i zostaje zamknięte; bajtów, które jeszcze
-  w nim czekały, odbiornik nie czyta. Żądanie, które odrzuca sam serwer HTTP (także pusta linia żądania), jest zapisem
-  nie do sprawdzenia bez ciała. Znaczników szuka w surowych bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym
-  dekoderem protobufa (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością
+  w nim czekały, odbiornik nie czyta. Połączenia jeszcze nieprzyjęte przez serwer (w kolejce nasłuchu jądra) w chwili
+  zatrzymania znikają bez zapisu: to świadomie zaakceptowane ograniczenie (#719, R3 `docs/features/telemetry/spec.md`),
+  przez które `pass` przypadku `telemetry_no_content` nie jest dowodem prywatności eksportu. Żądanie, które odrzuca
+  sam serwer HTTP (także pusta linia żądania), jest zapisem nie do sprawdzenia bez ciała. Znaczników szuka w surowych
+  bajtach po rozpakowaniu, a atrybuty wyciąga minimalnym dekoderem protobufa (varint, pola stałej długości i length-delimited, rekurencyjnie; pary `KeyValue` z wartością
   tekstową).
   - `telemetry_export`: `pass`, gdy pierwszy odbiornik dostał żądania `/v1/logs` i `/v1/metrics`, a w parach logów
     i metryk są `shop.source=ao`, `shop.task=<zadanie sondy>`, `shop.epic=<nazwa atrapy $AO_HOME po ao->`

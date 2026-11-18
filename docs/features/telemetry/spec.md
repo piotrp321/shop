@@ -268,6 +268,12 @@ Poza zakresem (świadomie otwarte, założenia):
       (niejednoznaczne ramowanie żądania, bajty wysłane w połączeniu po ciele, połączenie wciąż w toku, gdy sonda
       zatrzymuje odbiornik, także z powodu wolnego przekazania `--otel-forward`), a w pozostałych nie ma znacznika.
       Prywatności nie da się wtedy sprawdzić, a wycieku nie wykryto.
+- Znane ograniczenie, świadomie zaakceptowane (#719): połączenie, które nadawca otworzył tuż przed zatrzymaniem
+  odbiornika, a serwer jeszcze go nie przyjął (czeka w kolejce nasłuchu jądra), znika przy zamknięciu gniazda bez
+  zapisu. Gdy wcześniej przyszło czyste żądanie, `telemetry_no_content` daje wtedy `pass` mimo znacznika w tym
+  połączeniu. `pass` znaczy więc „w zapisanych żądaniach nie ma znacznika”, a nie dowód prywatności eksportu we
+  wszystkich scenariuszach. Sonda zatrzymuje odbiornik po zakończeniu procesu wykonawcy, więc ta droga wymaga
+  eksportu wysłanego w ostatniej chwili; zmianę architektury odbiornika opisuje #719.
 - Co blokuje (wyjątek od reguły sondy, że każdy przypadek ma przejść):
   - Statusy `no_export` i `unverifiable` nigdy nie blokują: ani kod wyjścia sondy w żadnym trybie, ani `ao-prepare`.
     Sonda zapisuje je w wyniku z przyczyną, a `ao-prepare` wypisuje dla nich linię ostrzeżenia (R5). Przyczyna nie
@@ -423,6 +429,8 @@ Kryteria 1–5 sprawdzają testy zadań bez modelu i bez stosu. Kryterium 6 spra
   sesja ma jedno zadanie. Przy jednym użytkowniku to dziesiątki tysięcy serii rocznie, co mieści się w możliwościach
   lokalnego Prometheusa. Wyłączenie `session_id` na metrykach łączyłoby strumienie równoległych procesów w procesorze
   `delta_to_cumulative` stosu, więc epik go nie wyłącza.
+- Odbiornik nie zapisuje połączeń nieprzyjętych przed zatrzymaniem (R3, znane ograniczenie, #719), więc `pass`
+  przypadku `telemetry_no_content`, także w odbiorze R7, nie dowodzi prywatności eksportu we wszystkich scenariuszach.
 - Przypadki telemetrii ocenia odbiornik, więc nie zależą od tekstu modelu. Zależą tylko od tego, czy wykonawca sondy
   w ogóle wysłał żądanie do API.
 - Minimalny dekoder protobufa może nie rozpoznać nowego układu wiadomości OTLP. Wtedy `telemetry_export` ma
