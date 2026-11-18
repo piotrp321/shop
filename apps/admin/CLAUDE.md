@@ -199,7 +199,8 @@ Spec: `docs/features/sentry/spec.md`.
   pola), po akcji, która zastępuje swój przycisk, na nagłówek karty; po błędzie na pierwszy `data-form-error` albo pole
   `aria-invalid`. Akcje nieodwracalne pytają `ConfirmDialog`.
 - Lista według standardu: `PageHeader`, karta z `ListToolbar`, `DataTable` i `ListPager`; stan listy (wyszukiwanie, filtry,
-  rozmiar strony 10/25/50, domyślnie 25) jest w adresie przez `useListUrlState`, stronicowanie przez `useCursorPager`, a
+  rozmiar strony 10/25/50, domyślnie 25, w Cenach i Stanach 10) jest w adresie przez `useListUrlState`,
+  stronicowanie przez `useCursorPager`, a
   pozycja w stronicowaniu tylko w pamięci. Wzorem jest `ProductsView`. Ukrywanie kolumn to klasy CSS na progach 1024 i 900 px
   (`hideBelow`), bez modelu tabeli. Kolejność wybiera `Select` „Sortuj” w `ListToolbar` (lista produktów, cen, stanów,
   zamówień i klientów; klucze API, `sortParam` i `ariaSortOf` z `src/composables/listSort.ts`), jest w adresie jako `sort`

@@ -31,8 +31,9 @@ serwera” i „Smoke test i check”).
   nowa usługa z danymi klientów albo sekretami w logach dostaje regułę maskowania i wiersz w korpusie
   `infra/k8s/tests/log-corpus` w tym samym PR. Alloy czyta z klastra tylko sekret `grafana-cloud`
   (`docs/features/deploy-ops/spec.md`, O5 i O7, `docs/adr/backups-observability.md`). Lista dozwolonych metryk w tym
-  manifeście ma metryki alertów i metryki, od których zależy hypercare `/oncall` (`kube_pod_container_info`,
-  `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`; pilnuje tego `check`).
+  manifeście ma metryki alertów i metryki, od których zależy planowany hypercare z `docs/features/oncall/spec.md`
+  (`kube_pod_container_info`, `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`;
+  pilnuje tego `check`).
 - Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
   `docs/features/deploy/spec.md`, D9). Brakujący realm zakłada; w istniejącym `partialImport` z `ifResourceExists=SKIP`
   dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem przy każdym uruchomieniu ustawia wartości
