@@ -8,7 +8,7 @@ treściami żądań, zapełnić dysk węzła cache ISR i oślepić Sentry. Epik 
 i ingressu. Każdy limit ma test prób obejścia (zasada projektu dla zadań ustawiających reguły).
 
 Issues: #332, #406, #407, #421
-Zakres: `apps/api/src/Shared/Infrastructure/Http`, `apps/api/src/Cart/Domain`, `apps/api/src/Cart/UI/Http`, `apps/api/src/Ordering`, `apps/api/src/Payment`, `apps/api/config`, `apps/api/migrations`, `apps/api/docker/frankenphp`, `apps/api/Dockerfile`, `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/tests`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/cart`, `apps/store/src/checkout`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app/api`, `apps/store/app/p`, `apps/store/next.config.ts`, `apps/store/Dockerfile`, `apps/store/tests`, `infra/keycloak/realms`, `infra/k8s/charts/shop`, `infra/k8s/tests`, `infra/k8s/smoke`, `load/lib`, `e2e/tests`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `infra/k8s/CLAUDE.md`, `docs/vision.md`, `docs/features/hardening/spec.md`, `docs/features/cart/spec.md`, `docs/features/checkout/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `docs/features/sentry/spec.md`, `docs/features/deploy/spec.md`
+Zakres: `apps/api/src/Shared/Infrastructure/Http`, `apps/api/src/Cart/Domain`, `apps/api/src/Cart/UI/Http`, `apps/api/src/Ordering`, `apps/api/src/Payment`, `apps/api/config`, `apps/api/migrations`, `apps/api/docker/frankenphp`, `apps/api/Dockerfile`, `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/tests`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/cart`, `apps/store/src/checkout`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app/api`, `apps/store/app/p`, `apps/store/next.config.ts`, `apps/store/Dockerfile`, `apps/store/tests`, `infra/keycloak/realms`, `infra/k8s/charts/shop`, `infra/k8s/tests`, `infra/k8s/smoke`, `load/lib`, `e2e/tests`, `apps/api/CLAUDE.md`, `docs/features/hardening/spec.md`, `docs/features/cart/spec.md`, `docs/features/checkout/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`
 
 **Zależności.** HARDENING (#267): `ClientIp`, `RateLimitSubscriber`, limitery w Redisie, przekazywanie
 `CF-Connecting-IP` przez sklep i Cloudflare przed originem (`ipAllowList`). CHECKOUT, PAYMENT, DISCOUNT-CODES,
@@ -450,24 +450,24 @@ z tabeli wybiera sklep według miejsca, jak przy kasie.
 
 ## Dokumentacja
 
-Każde zadanie aktualizuje w tym samym PR dokumenty opisujące zmienione zachowanie:
+Ta specyfikacja opisuje docelowe zachowanie, więc zadania nie opisują go drugi raz. `CLAUDE.md` aplikacji zmieniają
+tylko dwie nowe reguły dla agentów, każdą jedno zadanie, jedną linią w `apps/api/CLAUDE.md`:
 
-- `apps/api/CLAUDE.md`: limitery, klucze, blokada i warunek parametru (L1–L3); reguły złożenia, roszczenia, blokady
-  doradcze i kolejność blokad (L5, L6); `StartPayment` (L7); limit treści Caddy (L8); kanały Sentry (L10).
-- `docs/features/hardening/spec.md`: tabela limiterów i D1 (L1–L3), D16 i D19 (L5, L6); opis bieżący odsyła do tej
-  specyfikacji.
-- `docs/features/discount-codes/spec.md`: limit podglądu zamiast pozycji „poza zakresem” i ryzyka (L3); kolejność
-  blokad złożenia (L6).
-- `docs/vision.md` („Bezpieczeństwo”): limity koszyka i podglądu kodu (L1–L3).
-- `docs/features/cart/spec.md`: czas życia pustego koszyka i limity (L2), BFF: adres klienta, 429 i limit treści (L4).
-- `apps/store/CLAUDE.md`: BFF (L4), nowe 409 kasy (L5, L6), cache ISR (L9).
-- `docs/features/checkout/spec.md`: nowe 409 w kasie (L5, L6).
-- `docs/features/payment/spec.md`: blokada rozpoczęcia (L7).
-- `infra/k8s/CLAUDE.md`: middleware `buffering` (L8).
-- `docs/features/product-page/spec.md`: cache ISR (L9).
-- `docs/features/sentry/spec.md`: kryterium 401 z błędnym tokenem (L10).
-- `CLAUDE.md` (lista wartości ustawianych przez Job `keycloak-config`) i `docs/features/deploy/spec.md` („Keycloak
-  i konta”): polityka haseł (L11).
+- „Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (`RateLimit::ROUTE_DEFAULT`, wartości `prod`, `dev`
+  i `test`) i test prób obejścia.” (L1–L3);
+- „Blokada doradcza transakcji przez DBAL (`pg_advisory_xact_lock`, `pg_try_advisory_xact_lock`) do szeregowania jest
+  dozwolonym wyjątkiem od persystencji przez rekordy ORM w każdym module; liczenie i zapis idą przez repozytorium.”
+  (L6; korzysta z niej też L7).
+
+Specyfikacje innych funkcji zmieniają się tylko tam, gdzie ich zdanie przeczy nowemu zachowaniu:
+
+- `docs/features/hardening/spec.md`: D1 (bez `symfony/lock`), limity koszyka poza zakresem (L1–L3); D16 (L5, L6).
+- `docs/features/discount-codes/spec.md`: limit podglądu poza zakresem i ryzyko zgadywania (L3); D7, kolejność blokad
+  (L6).
+- `docs/features/cart/spec.md`: decyzja 5 i rate limiting koszyków poza zakresem (L2); kody BFF dla przeglądarki (L4).
+- `docs/features/checkout/spec.md`: tabela 409 złożenia (L5, L6).
+- `docs/features/payment/spec.md`: równoległe rozpoczęcia i ryzyko samoblokady (L7).
+- `docs/features/product-page/spec.md`: A6 i ryzyko wpisów ISR na dysku (L9).
 
 ## Ryzyka i ograniczenia
 
