@@ -112,16 +112,24 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   autorem i licencją; schemat `PhotoManifest` jest zamknięty: nieznany klucz, w tym adres bucketu albo poświadczenie, to błąd;
   manifest dodaje DEMO-DATA-7, bez niego krok kończy się błędem przed pobraniem). Kolejność (`PhotoPoolLoader`): niepuste
   `DEMO_PHOTOS_*` (inaczej kod 1 z nazwami zmiennych), manifest i grupy zdjęć z `photo-groups.yaml` (każda ma pliki), potem
-  archiwum strumieniem do katalogu tymczasowego, rozpakowanie (`TarExtractor`: tylko płaskie zwykłe pliki z manifestu, żadne
+  pobranie archiwum do katalogu tymczasowego (adapter AsyncAws czyta całe ciało do strumienia `php://temp`, który powyżej 2 MB
+  idzie do pliku w `sys_get_temp_dir()`, i dopiero stąd `PhotoPoolLoader` kopiuje je do `photos.tar`, więc w trakcie pobierania na dysku są
+  dwie kopie archiwum), rozpakowanie (`TarExtractor`: tylko płaskie zwykłe pliki z manifestu, żadne
   ścieżki ani dowiązania), sprawdzenie kompletu plików, SHA-256 każdego i reguł uploadu Catalog (`PhotoPoolVerifier`,
   `PhotoRules`), i dopiero potem zapis każdego pliku raz do Garage (istniejące pomija) i przypisanie 1–3 kluczy grupy produktom
   jak dla `small`. Niezgodność, brakujący albo nadmiarowy plik, błąd pobierania to kod 1 bez zmian w Garage i w bazie;
-  katalog tymczasowy (`sys_get_temp_dir()`, około 2 × rozmiar archiwum) jest usuwany zawsze. Komunikaty o źródle nie powtarzają
+  katalog tymczasowy (`sys_get_temp_dir()`; szczyt miejsca na dysku to około 2 × rozmiar archiwum: pobranie i rozpakowanie, bo
+  `photos.tar` jest usuwany po rozpakowaniu, a strumień `php://temp` po skopiowaniu) jest usuwany zawsze; brak miejsca przy zapisie pliku
+  to kod 1 z komunikatem o zapisie, nie o sumie SHA-256. Komunikaty o źródle nie powtarzają
   wartości zmiennych ani komunikatu wyjątku klienta S3 (zawiera adres i bucket), tylko nazwę klasy wyjątku. `--preflight` nie zmienia
   niczego: sprawdza zmienne, manifest i obecność archiwum w buckecie. Filesystem puli to `demo_photos.storage`
   (`config/packages/flysystem.yaml`, adapter AsyncAws, klient `app.demo_photos_s3_client` ze zmiennych `DEMO_PHOTOS_ENDPOINT`,
   `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY` i `DEMO_PHOTOS_REGION` = `auto`; `.env` ma je
-  puste, żeby aplikacja startowała bez nich; wartości nie należą do repo), a limity plików (`app.image_upload.max_bytes`,
+  puste, żeby aplikacja startowała bez nich; wartości nie należą do repo). Klient ma własnego klienta HTTP
+  (`app.demo_photos_http_client`: `timeout` bezczynności 60 s i `max_duration: 0`, bo wspólny `http_client` ma 5 s na całe żądanie
+  (`framework.yaml`), co przerwałoby pobranie archiwum około 1,6 GB) i nie ma loggera (ani klient HTTP, ani klient S3 nie loguje
+  adresu żądania, który zawiera endpoint i bucket; pilnuje tego `DemoPhotosStorageWiringTest`, a czas pobrania
+  `DemoPhotosDownloadDurationTest`), a limity plików (`app.image_upload.max_bytes`,
   `app.image_upload.max_pixels`) to te same parametry co upload w Catalog), `demo-data:photos:check KATALOG
   [--manifest=…] [--archive=….tar]` (sprawdzenie katalogu zdjęć z manifestem i budowa archiwum do wysyłki; woła je
   `bin/upload-demo-photos`; kod 1 z listą naruszeń: plik z powodem), `demo-data:analyze` (`ANALYZE` wypełnionych tabel: pulpit liczy produkty ze statystyk
