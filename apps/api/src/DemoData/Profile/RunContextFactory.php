@@ -22,7 +22,7 @@ final readonly class RunContextFactory
     /**
      * @throws \InvalidArgumentException for an unknown profile, a seed that is not a UUID, a count below 1 or an anchor that is not a date
      */
-    public function create(string $profile, ?string $seed, ?int $products, ?string $anchor): RunContext
+    public function create(string $profile, ?string $seed, ?int $products, ?string $anchor, ?int $orders = null): RunContext
     {
         $profiles = Profiles::fromFile($this->profilesFile);
         if (null !== $seed) {
@@ -34,6 +34,12 @@ final readonly class RunContextFactory
                 throw new \InvalidArgumentException('--products has to be at least 1.');
             }
             $selected = $selected->withProducts($products);
+        }
+        if (null !== $orders) {
+            if ($orders < 1) {
+                throw new \InvalidArgumentException('--orders has to be at least 1.');
+            }
+            $selected = $selected->withOrders($orders);
         }
 
         return new RunContext($selected, $profiles->namespace, $profiles->partSize, Anchor::resolve($anchor, new \DateTimeImmutable()));

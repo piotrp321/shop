@@ -54,7 +54,7 @@ final class AccountsVerifyTest extends KernelTestCase
 
     public function testVerifyPassesWhenTheMembersAreTheTargetSetsAndListsEveryDifference(): void
     {
-        foreach (['demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions'] as $step) {
+        foreach (['demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:orders', 'demo-data:stock', 'demo-data:order-numbers'] as $step) {
             $this->succeeds($step, ['--seed' => $this->seed]);
         }
         $this->succeeds('demo-data:analyze', [], false);

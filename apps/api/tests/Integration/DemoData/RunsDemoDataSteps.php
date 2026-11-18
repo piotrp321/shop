@@ -77,6 +77,18 @@ trait RunsDemoDataSteps
     }
 
     /**
+     * Every step of the database in the order of bin/generate-demo (the accounts are left out: they live in Keycloak),
+     * with the ANALYZE before demo-data:verify.
+     */
+    private function allSteps(): void
+    {
+        $this->catalogSteps();
+        $this->pricingSteps();
+        $this->orderSteps();
+        $this->succeeds('demo-data:analyze', [], false);
+    }
+
+    /**
      * The steps after the accounts (5 to 7): the orders, the stock after them and the number sequence.
      */
     private function orderSteps(): void
