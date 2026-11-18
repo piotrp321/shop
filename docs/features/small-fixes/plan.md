@@ -12,7 +12,7 @@ Epik w toku od 2026-11-18. Gałąź epiku: `feat/small-fixes`, szkic PR do `main
 
 | Zadanie | Status |
 |---|---|
-| SMALL-FIXES-1 | |
+| SMALL-FIXES-1 | zmergowane do gałęzi epiku (`75ef4781`); przegląd FULL: PASS |
 | SMALL-FIXES-2 | |
 | SMALL-FIXES-3 | |
 | SMALL-FIXES-4 | zmergowane do gałęzi epiku (`4d614748`); przegląd FULL + DELTA: PASS |
