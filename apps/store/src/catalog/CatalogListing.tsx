@@ -65,8 +65,7 @@ export function CatalogListing({
             {products.items.length === 0 ? <EmptyResults basePath={basePath} state={state} /> : <ProductGrid products={products.items} offers={offers} home={intro !== undefined} />}
             <CatalogPagination
               page={products.page}
-              perPage={products.perPage}
-              total={products.total}
+              pageCount={products.pageCount}
               hrefFor={(page) => listingHref(basePath, state, { page: page > 1 ? String(page) : undefined })}
             />
           </div>

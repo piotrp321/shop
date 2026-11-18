@@ -74,10 +74,11 @@ final class ProductsEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
-        self::assertSame(['items', 'page', 'perPage', 'total', 'facets'], array_keys($body));
+        self::assertSame(['items', 'page', 'perPage', 'total', 'pageCount', 'facets'], array_keys($body));
         self::assertSame(1, $body['page']);
         self::assertSame(24, $body['perPage']);
         self::assertSame(2, $body['total']);
+        self::assertSame(1, $body['pageCount']);
 
         $items = $this->items($body);
         self::assertSame(['Buty', 'Czapka'], array_column($items, 'name'));
@@ -200,6 +201,7 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], $body['items']);
         self::assertSame(0, $body['total']);
+        self::assertSame(0, $body['pageCount']);
     }
 
     public function testPagePastTheEndGivesAnEmptyListWithTheRealTotal(): void
@@ -211,6 +213,7 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], $body['items']);
         self::assertSame(3, $body['total']);
+        self::assertSame(1, $body['pageCount']);
         self::assertSame(999, $body['page']);
         self::assertSame(24, $body['perPage']);
     }
@@ -225,6 +228,27 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame(2, $body['page']);
         self::assertSame(2, $body['perPage']);
         self::assertSame(3, $body['total']);
+        self::assertSame(2, $body['pageCount']);
+    }
+
+    public function testPageCountStopsAtTheResultWindowWhileTheTotalStaysExact(): void
+    {
+        $this->index(...array_map(fn (string $name): ProductDocument => $this->document($name, self::LEAF, [self::LEAF]), ['A', 'B', 'C', 'D', 'E']));
+        // A window of 4 products with 3 per page: two pages are reachable, the second one holds one product.
+        $this->searchService()->use(new ElasticsearchProductSearch(self::clientFactory()->create(2.0), $this->alias(), 4));
+
+        $first = $this->get('/api/v1/products?perPage=3');
+        self::assertSame(5, $first['total']);
+        self::assertSame(2, $first['pageCount']);
+
+        $second = $this->get('/api/v1/products?perPage=3&page=2');
+        self::assertSame(['D'], array_column($this->items($second), 'name'));
+        self::assertSame(2, $second['pageCount']);
+
+        $beyond = $this->get('/api/v1/products?perPage=3&page=3');
+        self::assertSame([], $beyond['items']);
+        self::assertSame(5, $beyond['total']);
+        self::assertSame(2, $beyond['pageCount']);
     }
 
     public function testPerPageUpTo48IsAccepted(): void

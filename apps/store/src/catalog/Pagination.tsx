@@ -2,11 +2,12 @@ import { Pagination, PaginationContent, PaginationItem, PaginationNext, Paginati
 
 /**
  * Previous and next links in the addresses `hrefFor` builds for a page number (it carries the other parameters of the
- * listing). Renders nothing when there is a single page. From a page past the end, "previous" leads to the last real page.
+ * listing). `pageCount` is the number of pages the API says can be read (the store never works it out from the number of
+ * products). Renders nothing when there is a single page or when the answer has no numeric `pageCount` (an older API
+ * from the cache). From a page past the end, "previous" leads to the last real page.
  */
-export function CatalogPagination({ page, perPage, total, hrefFor }: { page: number; perPage: number; total: number; hrefFor: (page: number) => string }) {
-  const pageCount = Math.ceil(total / perPage);
-  if (pageCount <= 1) return null;
+export function CatalogPagination({ page, pageCount, hrefFor }: { page: number; pageCount: number | undefined; hrefFor: (page: number) => string }) {
+  if (typeof pageCount !== "number" || !Number.isInteger(pageCount) || pageCount <= 1) return null;
 
   return (
     <Pagination>
