@@ -235,6 +235,77 @@ final class GenerateDemoScriptTest extends TestCase
         }
     }
 
+    private const array PHOTO_VARIABLES = [
+        'DEMO_PHOTOS_ENDPOINT' => 'https://account-1234.r2.example.invalid',
+        'DEMO_PHOTOS_BUCKET' => 'bucket-of-the-test',
+        'DEMO_PHOTOS_ACCESS_KEY_ID' => 'AKIA-key-id-of-the-test',
+        'DEMO_PHOTOS_SECRET_ACCESS_KEY' => 'secret-value-of-the-test',
+    ];
+
+    public function testAProfileOtherThanSmallWithoutThePhotoVariablesIsRefusedBeforeAnyStep(): void
+    {
+        [$code, $stderr] = $this->runScript(['--profile=medium'], ['APP_ENV' => 'dev']);
+
+        self::assertSame(1, $code);
+        foreach (array_keys(self::PHOTO_VARIABLES) as $name) {
+            self::assertStringContainsString($name, $stderr);
+        }
+        self::assertSame([], $this->calls(), 'Not even the check of the options runs, and nothing is deleted.');
+    }
+
+    public function testOnlyTheMissingOrBlankPhotoVariablesAreNamedAndNoValueIsPrinted(): void
+    {
+        $env = ['APP_ENV' => 'dev', ...self::PHOTO_VARIABLES, 'DEMO_PHOTOS_BUCKET' => '', 'DEMO_PHOTOS_ENDPOINT' => "  \t"];
+        unset($env['DEMO_PHOTOS_SECRET_ACCESS_KEY']);
+
+        [$code, $stderr] = $this->runScript(['--profile=server'], $env);
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString('DEMO_PHOTOS_BUCKET', $stderr);
+        self::assertStringContainsString('DEMO_PHOTOS_ENDPOINT', $stderr);
+        self::assertStringContainsString('DEMO_PHOTOS_SECRET_ACCESS_KEY', $stderr);
+        self::assertStringNotContainsString('DEMO_PHOTOS_ACCESS_KEY_ID', $stderr);
+        foreach (self::PHOTO_VARIABLES as $value) {
+            self::assertStringNotContainsString($value, $stderr);
+        }
+        self::assertSame([], $this->calls());
+    }
+
+    public function testAProfileOtherThanSmallChecksThePhotoPoolBeforeItDeletesAnything(): void
+    {
+        [$code, $stderr] = $this->runScript(['--profile=medium', '--anchor=2026-11-17T00:00:00Z', '--processes=1'], ['APP_ENV' => 'dev', ...self::PHOTO_VARIABLES]);
+
+        self::assertSame(0, $code, $stderr);
+        $calls = $this->calls();
+        $common = '--demo-profile=medium --anchor=2026-11-17T00:00:00Z';
+        self::assertSame('demo-data:products '.$common.' --list-parts', $calls[0]);
+        self::assertSame('demo-data:photos '.$common.' --preflight', $calls[1]);
+        self::assertSame('seed-demo', $calls[2]);
+        self::assertContains('demo-data:photos '.$common, $calls);
+        foreach (self::PHOTO_VARIABLES as $value) {
+            self::assertStringNotContainsString($value, $stderr);
+            self::assertStringNotContainsString($value, implode("\n", $calls));
+        }
+    }
+
+    public function testAFailingPhotoPreflightStopsTheScriptBeforeTheReset(): void
+    {
+        [$code] = $this->runScript(['--profile=medium'], ['APP_ENV' => 'dev', 'FAKE_FAIL_ON' => '--preflight', 'FAKE_FAIL_CODE' => '1', ...self::PHOTO_VARIABLES]);
+
+        self::assertSame(1, $code);
+        self::assertSame(['check', 'demo-data:photos'], $this->names());
+    }
+
+    public function testTheSmallProfileNeedsNeitherThePhotoVariablesNorThePreflight(): void
+    {
+        [$code] = $this->runScript(['--profile=small', '--processes=1'], ['APP_ENV' => 'dev']);
+
+        self::assertSame(0, $code);
+        foreach ($this->calls() as $call) {
+            self::assertStringNotContainsString('--preflight', $call);
+        }
+    }
+
     public function testAnInvalidProcessCountIsRefused(): void
     {
         foreach (['--processes=0', '--processes=abc', '--processes=-1', '--processes='] as $argument) {

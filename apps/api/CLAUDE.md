@@ -60,7 +60,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
   (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
 - `make seed-scale` (główny `Makefile`, fragment `make/demo-data.mk`; `PROFILE`: `small` domyślnie, `medium`, `server`
-  albo `full`, oraz opcjonalne `ANCHOR` i `PROCESSES`) uruchamia `bin/generate-demo`: generator danych demo na seedzie
+  albo `full`, oraz opcjonalne `ANCHOR`, `PROCESSES` i `DEMO_PHOTOS_ENV_FILE`) uruchamia `bin/generate-demo`: generator danych demo na seedzie
   (`docs/features/demo-data/spec.md`; po nim `make seed` przywraca dane E2E). Skrypt `sh`, `set -eu`, konsolę i
   `bin/seed-demo` woła względem własnego katalogu (test: `tests/Unit/Bin/GenerateDemoScriptTest.php`, podstawiona
   konsola i podstawiony `seed-demo`, jak test `bin/seed-demo`). Argumenty: `--profile=` (nazwa z `profiles.yaml`),
@@ -74,8 +74,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   pozostałe i kończy krok jej kodem), `demo-data:photos`, części `demo-data:prices` (tak samo jak produkty),
   `demo-data:promotions`, `demo-data:analyze`, `catalog:reindex`,
   `storefront:cache:purge-all`, `demo-data:verify`. Pierwszy błąd przerywa skrypt z kodem tego kroku, kolejne kroki się
-  nie wykonują; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`). Poza `small` krok zdjęć kończy
-  się dziś błędem (pula zdjęć: DEMO-DATA-6), więc skrypt też
+  nie wykonują; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`). Profil inny niż `small` bierze
+  zdjęcia z puli w prywatnym buckecie R2 (niżej), więc `bin/generate-demo` wymaga w środowisku czterech zmiennych odczytu
+  (`DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY`) i bez nich
+  kończy się kodem 1 na samym początku (przed `--list-parts` i `bin/seed-demo`), z nazwami pustych zmiennych, nigdy z wartością;
+  z nimi, przed `bin/seed-demo` woła jeszcze `demo-data:photos --preflight` (zmienne, `photos.yaml`, archiwum w buckecie), żeby
+  reset nie skasował danych przed błędem puli. `make seed-scale` dla takiego profilu czyta te cztery zmienne jako dane (bez
+  `source` i `eval`) z pliku użytkownika poza repo (`DEMO_PHOTOS_ENV_FILE`, domyślnie `~/.config/shop/demo-photos.env`;
+  brak pliku to błąd przed uruchomieniem czegokolwiek) i przekazuje je kontenerowi samą nazwą (`docker compose exec -e NAME`),
+  więc wartość nie trafia do linii komendy, do wyjścia make ani do `make -n`; tokenu zapisu nie przekazuje
+- `make upload-demo-photos DIR=apps/api/var/demo-photos` (`bin/upload-demo-photos`, skrypt `sh`, `set -eu`, uruchamiany na
+  hoście, bo tylko tam są `docker` i plik z poświadczeniami; test: `tests/Unit/Bin/UploadDemoPhotosScriptTest.php`,
+  podstawiony `docker`, a `compose exec` uruchamia prawdziwą konsolę): wysyła pulę zdjęć (zadanie DEMO-DATA-7) do prywatnego
+  bucketu. Katalog (i opcjonalny `--manifest=`) musi leżeć w `apps/api` (kontener `api` widzi tylko to; `apps/api/var/` jest
+  ignorowany przez git). Kolejność: poświadczenia z pliku (`DEMO_PHOTOS_ENV_FILE` albo `--env-file=`; tylko linie `NAME=wartość`
+  czterech zmiennych `DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_WRITE_ACCESS_KEY_ID`,
+  `DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY`, bez wykonywania czegokolwiek; token odczytu nie jest używany), obraz `rclone` z
+  `infra/k8s/charts/shop/values.yaml` (`images.rclone`, wyłącznie przypięty `@sha256:`, inaczej odmowa; `--print-image` go
+  wypisuje), potem `demo-data:photos:check` w kontenerze (komplet plików z manifestu i brak nadmiarowych, SHA-256 każdego,
+  reguły uploadu Catalog z tych samych parametrów co `FlysystemProductImageStorage`: typ po zawartości, rozmiar, wymiary,
+  liczba pikseli; buduje `var/demo-photos-upload.tar`), a dopiero po sprawdzeniu `docker run --rm` z obrazem rclone:
+  `rclone copyto --immutable --s3-no-check-bucket` do `<bucket>/demo-photos/v<N>/photos.tar` (klucz z manifestu), więc istniejąca
+  wersja nie zostanie nadpisana. Endpoint i klucze trafiają do kontenera zmiennymi `RCLONE_CONFIG_R2_*` przekazanymi samą nazwą
+  (`-e NAME`), nigdy w argumentach ani na wyjściu (nazwa bucketu jest w argumencie); archiwum jest usuwane po zakończeniu. Kody:
+  0 wysłano, 1 odmowa albo błąd (nic nie wysłano po nieudanym sprawdzeniu), 2 złe użycie
 - Komendy `demo-data:*` (moduł `DemoData`, opcje wspólne: `--demo-profile` (nie `--profile`: tę opcję rezerwuje konsola
   Symfony), `--anchor`, `--seed` (UUID przestrzeni nazw zamiast tego z `profiles.yaml`) i `--products` (liczba produktów
   zamiast liczby profilu)): `demo-data:categories` (krok 1: kategorie ogona w działach z `catalog.yaml`; dział znaleziony
@@ -83,9 +105,34 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `demo-data:products [--worker=N --workers=M] [--list-parts]` (krok 1: produkty, warianty i powiązania kategorii w
   częściach o stałym rozmiarze z `profiles.yaml`, każda w osobnej transakcji; proces `N` z `M` zapisuje części `N`,
   `N + M`, …, więc wiersze nie zależą od liczby procesów; `--list-parts` tylko wypisuje liczbę części; bez kategorii
-  kończy się błędem), `demo-data:photos` (krok 2, tylko `small`: 37 plików z `fixtures/images` raz do Garage pod
-  `originals/<sha256>.<rozszerzenie>` i klucze zdjęć produktów według grupy zdjęć typu, co 50. produkt bez zdjęć; inny
-  profil to kod 1 bez zmian), `demo-data:analyze` (`ANALYZE` wypełnionych tabel: pulpit liczy produkty ze statystyk
+  kończy się błędem), `demo-data:photos [--preflight]` (krok 2: zdjęcia produktów; `small` zapisuje 37 plików z `fixtures/images` raz do Garage
+  pod `originals/<sha256>.<rozszerzenie>` i przypisuje klucze według grupy zdjęć typu, co 50. produkt bez zdjęć, bez
+  pobierania. Profil inny niż `small` bierze zdjęcia z puli: archiwum `demo-photos/v<N>/photos.tar` z prywatnego bucketu R2
+  opisanego w `fixtures/demo-data/photos.yaml` (wersja, klucz, pliki z SHA-256, grupą typu, alt, `unsplashId`, stroną źródła,
+  autorem i licencją; schemat `PhotoManifest` jest zamknięty: nieznany klucz, w tym adres bucketu albo poświadczenie, to błąd;
+  manifest dodaje DEMO-DATA-7, bez niego krok kończy się błędem przed pobraniem). Kolejność (`PhotoPoolLoader`): niepuste
+  `DEMO_PHOTOS_*` (inaczej kod 1 z nazwami zmiennych), manifest i grupy zdjęć z `photo-groups.yaml` (każda ma pliki), potem
+  pobranie archiwum do katalogu tymczasowego (adapter AsyncAws czyta całe ciało do strumienia `php://temp`, który powyżej 2 MB
+  idzie do pliku w `sys_get_temp_dir()`, i dopiero stąd `PhotoPoolLoader` kopiuje je do `photos.tar`, więc w trakcie pobierania na dysku są
+  dwie kopie archiwum), rozpakowanie (`TarExtractor`: tylko płaskie zwykłe pliki z manifestu, żadne
+  ścieżki ani dowiązania), sprawdzenie kompletu plików, SHA-256 każdego i reguł uploadu Catalog (`PhotoPoolVerifier`,
+  `PhotoRules`), i dopiero potem zapis każdego pliku raz do Garage (istniejące pomija) i przypisanie 1–3 kluczy grupy produktom
+  jak dla `small`. Niezgodność, brakujący albo nadmiarowy plik, błąd pobierania to kod 1 bez zmian w Garage i w bazie;
+  katalog tymczasowy (`sys_get_temp_dir()`; szczyt miejsca na dysku to około 2 × rozmiar archiwum: pobranie i rozpakowanie, bo
+  `photos.tar` jest usuwany po rozpakowaniu, a strumień `php://temp` po skopiowaniu) jest usuwany zawsze; brak miejsca przy zapisie pliku
+  to kod 1 z komunikatem o zapisie, nie o sumie SHA-256. Komunikaty o źródle nie powtarzają
+  wartości zmiennych ani komunikatu wyjątku klienta S3 (zawiera adres i bucket), tylko nazwę klasy wyjątku. `--preflight` nie zmienia
+  niczego: sprawdza zmienne, manifest i obecność archiwum w buckecie. Filesystem puli to `demo_photos.storage`
+  (`config/packages/flysystem.yaml`, adapter AsyncAws, klient `app.demo_photos_s3_client` ze zmiennych `DEMO_PHOTOS_ENDPOINT`,
+  `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY` i `DEMO_PHOTOS_REGION` = `auto`; `.env` ma je
+  puste, żeby aplikacja startowała bez nich; wartości nie należą do repo). Klient ma własnego klienta HTTP
+  (`app.demo_photos_http_client`: `timeout` bezczynności 60 s i `max_duration: 0`, bo wspólny `http_client` ma 5 s na całe żądanie
+  (`framework.yaml`), co przerwałoby pobranie archiwum około 1,6 GB) i nie ma loggera (ani klient HTTP, ani klient S3 nie loguje
+  adresu żądania, który zawiera endpoint i bucket; pilnuje tego `DemoPhotosStorageWiringTest`, a czas pobrania
+  `DemoPhotosDownloadDurationTest`), a limity plików (`app.image_upload.max_bytes`,
+  `app.image_upload.max_pixels`) to te same parametry co upload w Catalog), `demo-data:photos:check KATALOG
+  [--manifest=…] [--archive=….tar]` (sprawdzenie katalogu zdjęć z manifestem i budowa archiwum do wysyłki; woła je
+  `bin/upload-demo-photos`; kod 1 z listą naruszeń: plik z powodem), `demo-data:analyze` (`ANALYZE` wypełnionych tabel: pulpit liczy produkty ze statystyk
   `catalog_product`), `demo-data:prices [--worker=N --workers=M] [--list-parts]` (krok 3: cena bieżąca i historia cen każdego
   wygenerowanego wariantu, w tych samych częściach co produkty; potrzebuje produktów danej części, inaczej kod 1 bez
   zmian) i `demo-data:promotions` (krok 3: zakończone promocje z wariantami i zakończone historyczne kody rabatowe, jeden
