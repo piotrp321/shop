@@ -425,7 +425,7 @@ final class PhotoPoolStepTest extends KernelTestCase
         is_file($path) && unlink($path);
         $names = array_diff(array_map(static fn (array $file): string => $file['file'], $this->manifest['files']), $without);
         // The archive is written to the file entry by entry: the files of the pool are copied, never held in memory.
-        $archive = fopen($path, 'wb');
+        $archive = fopen($path, 'w');
         self::assertIsResource($archive);
         foreach (array_unique([...$names, ...array_keys($contents)]) as $name) {
             if (isset($contents[$name])) {

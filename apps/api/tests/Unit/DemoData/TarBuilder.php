@@ -35,7 +35,7 @@ final class TarBuilder
     public static function appendFile($stream, string $name, string $path): void
     {
         $size = filesize($path);
-        $file = fopen($path, 'rb');
+        $file = fopen($path, 'r');
         if (false === $size || false === $file) {
             throw new \RuntimeException('The file cannot be read: '.$path);
         }
