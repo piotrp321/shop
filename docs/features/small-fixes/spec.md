@@ -6,7 +6,7 @@ Działanie funkcji opisują ich specyfikacje; ta opisuje tylko zmiany. Każde tw
 `origin/main` z 2026-11-18 (`fc3324a8`).
 
 Issues: #391
-Zakres: `apps/store/Dockerfile`, `apps/store/src/cart`, `apps/store/src/components`, `apps/store/src/catalog`, `apps/store/app/layout.tsx`, `apps/store/app/layout.switches.test.tsx`, `apps/store/app/cart`, `apps/store/app/konto`, `apps/store/app/not-found.tsx`, `apps/store/app/page.test.tsx`, `apps/store/app/page.requests.test.tsx`, `apps/store/app/szukaj`, `apps/store/app/c`, `apps/store/src/api/schema.d.ts`, `apps/admin/src/products`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/tests`, `apps/api/src/Catalog`, `apps/api/src/Cart/UI/Console`, `apps/api/src/Ordering/UI/Console`, `apps/api/src/Pricing/UI/Console`, `apps/api/src/Shared/UI/Console`, `apps/api/src/Shared/Infrastructure/Observability/CorrelationIdMiddleware.php`, `apps/api/config/packages/messenger.yaml`, `apps/api/docker/php/conf.d/app.ini`, `apps/api/tests`, `apps/api/openapi.json`, `apps/api/CLAUDE.md`, `infra/k8s/smoke/checks.py`, `infra/k8s/environments/prod/values.yaml`, `infra/k8s/environments/load/values.yaml`, `infra/k8s/tests`, `e2e/tests/cart-guest.spec.ts`, `e2e/tests/demo-notice.spec.ts`, `docs/features/deploy/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/product-page/spec.md`
+Zakres: `apps/store/Dockerfile`, `apps/store/src/cart`, `apps/store/src/components`, `apps/store/src/catalog`, `apps/store/app/layout.tsx`, `apps/store/app/layout.switches.test.tsx`, `apps/store/app/cart`, `apps/store/app/konto`, `apps/store/app/not-found.tsx`, `apps/store/app/page.test.tsx`, `apps/store/app/page.requests.test.tsx`, `apps/store/app/szukaj`, `apps/store/app/c`, `apps/store/src/api/schema.d.ts`, `apps/admin/src/products`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/tests`, `apps/api/src/Catalog`, `apps/api/src/Cart/UI/Console`, `apps/api/src/Ordering/UI/Console`, `apps/api/src/Pricing/UI/Console`, `apps/api/src/Shared/UI/Console`, `apps/api/src/Shared/Infrastructure/Observability/CorrelationIdMiddleware.php`, `apps/api/config/packages/messenger.yaml`, `apps/api/config/packages/nelmio_api_doc.yaml`, `apps/api/docker/php/conf.d/app.ini`, `apps/api/tests`, `apps/api/openapi.json`, `apps/api/CLAUDE.md`, `infra/k8s/smoke/checks.py`, `infra/k8s/environments/prod/values.yaml`, `infra/k8s/environments/load/values.yaml`, `infra/k8s/tests`, `e2e/tests/cart-guest.spec.ts`, `e2e/tests/demo-notice.spec.ts`, `docs/features/deploy/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/product-page/spec.md`, `docs/features/walking-skeleton/spec.md`
 
 ## Cel i zakres
 
@@ -76,9 +76,12 @@ poda sklepu (eksmisja, OOM, restart węzła), a Job `purge-caches` działa tylko
   więc po restarcie poda menu wraca najpóźniej po godzinie bez wdrożenia. Miejsce ustawienia wybiera zadanie, pod
   warunkiem że strony dynamiczne zostają dynamiczne (`scripts/check-dynamic-routes.mjs` przechodzi), a rewalidacja
   innych stron się nie skraca.
-- Założenie techniczne: Next.js przypisuje stronie tagi `fetch` także wtedy, gdy samo żądanie się nie udało. Zadanie
-  sprawdza je najpierw na buildzie (kryterium 1). Gdy się nie potwierdzi, zadanie zatrzymuje się i wraca z tym do
-  użytkownika (bez tagu menu wracałoby dopiero po rewalidacji czasowej, nie po wdrożeniu).
+- Mechanizm opiera się na zachowaniu Next.js: strona dostaje tagi `fetch` także wtedy, gdy samo żądanie się nie
+  udało (potwierdzone na buildzie obrazu z Next 16.4.6, kryterium 1; sama rewalidacja czasowa bez adresu zastępczego
+  tagu nie daje). Bez tagu menu wracałoby dopiero po rewalidacji czasowej, nie po wdrożeniu.
+- Rewalidację czasową ustawiają same strony (`export const revalidate = 3600` w `app/cart/page.tsx`,
+  `app/konto/zamowienia/page.tsx` i `app/not-found.tsx`), nie layout: eksport z layoutu skróciłby rewalidację innych
+  tras.
 - Test dymny klastra po `purge-caches` sprawdza w HTML `/cart`, `/konto/zamowienia` i strony 404 nieznanego adresu
   nawigację `aria-label="Działy"` i co najmniej jeden link `/c/`.
 - `apps/store/Dockerfile` ma przy adresie zastępczym komentarz, dlaczego istnieje. Opisy w `apps/store/CLAUDE.md:54-56`
@@ -335,12 +338,15 @@ Plik ładuje się po `php.ini`, więc ustawienie wygrywa także z `php.ini-produ
 
 ## Ryzyka i ograniczenia
 
-- B1 opiera się na zachowaniu Next.js 16 (tag z nieudanego `fetch`); sprawdza je pierwsze kryterium B1 na buildzie,
-  przed testem dymnym.
+- B1 opiera się na zachowaniu Next.js 16 (tag z nieudanego `fetch`), potwierdzonym na Next 16.4.6; po aktualizacji
+  Next.js pilnuje go test dymny klastra (menu na `/cart`, `/konto/zamowienia` i stronie 404 po `purge-caches`).
 - Po restarcie poda sklepu strony prerenderowane w buildzie mogą być bez menu do godziny (rewalidacja czasowa).
 - Pasek demo przypięty do dołu zajmuje na telefonie 2–3 wiersze ekranu przez cały czas oglądania sklepu demo.
 - Eksmisja poda sklepu po przekroczeniu limitu dysku to przerwa sklepu na czas startu nowego poda (jedna replika);
   przy dużym katalogu i ruchu robotów może się powtarzać. Limit chroni węzeł demo, skali docelowej nie rozwiązuje.
+  Pomiar na stosie compose w trybie produkcyjnym (70 różnych stron produktów): wpis ISR strony produktu to 7 plików,
+  średnio ok. 140 KiB, więc w limicie 2 GiB mieści się ok. 15 tys. wpisów (mniej o logi i inne zapisy poda; wpisy 404
+  nieznanych slugów nie były mierzone).
 - `pageCount` to nowe pole wymagane w publicznym kontrakcie; jedynym klientem jest sklep, generowany w tej samej zmianie,
   a okno wdrożenia obsługuje reguła zgodności z sekcji paginacji.
 - Porzucony upload zostawia oryginał w Garage (jak dziś upload bez zapisu produktu, K7).
