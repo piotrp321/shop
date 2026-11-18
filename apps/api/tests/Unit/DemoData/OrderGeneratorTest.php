@@ -50,6 +50,17 @@ final class OrderGeneratorTest extends TestCase
     /** @var list<OrderSpec>|null */
     private static ?array $orders = null;
 
+    /**
+     * The catalog and the orders are kept for the tests of this class only: the suite runs in one process.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        self::$catalog = null;
+        self::$orders = null;
+        gc_collect_cycles();
+        parent::tearDownAfterClass();
+    }
+
     private static function context(): RunContext
     {
         return new RunContext(new DemoProfile('small', 20, 1_000, 2_000, self::ORDERS, 5), self::NAMESPACE, 500, new \DateTimeImmutable(self::ANCHOR));
