@@ -12,7 +12,7 @@ afterEach(cleanup);
 
 const listing = (total: number, items = [makeProduct(1)], page = 1, facets = EMPTY_FACETS) => ({
   kind: "ok" as const,
-  products: { items, page, perPage: 24, total, facets },
+  products: { items, page, perPage: 24, total, pageCount: Math.ceil(total / 24), facets },
   offers: { [makeProduct(1).id]: makeOffer(1) },
 });
 
@@ -68,6 +68,21 @@ describe("CatalogListing", () => {
     render(<CatalogListing title="Buty" basePath="/c/bieganie/buty" state={NO_FILTERS} mode="list" listing={listing(60, [makeProduct(1)], 2)} />);
     expect(screen.getByRole("link", { name: /następnej/ }).getAttribute("href")).toBe("/c/bieganie/buty?page=3");
     expect(screen.getByRole("link", { name: /poprzedniej/ }).getAttribute("href")).toBe("/c/bieganie/buty");
+  });
+
+  it("paginates by the page count of the API while the heading counts all the products", () => {
+    const huge = { ...listing(10_000_000), products: { ...listing(10_000_000).products, pageCount: 417 } };
+    render(<CatalogListing title="Wszystkie produkty" basePath="/" state={NO_FILTERS} mode="list" listing={huge} />);
+    expect(screen.getByText("Strona 1 z 417")).toBeTruthy();
+    expect(screen.getByText("10000000 produktów")).toBeTruthy();
+  });
+
+  it("shows no pagination when the answer has no page count (an older API from the cache), however many products there are", () => {
+    const { pageCount: _omitted, ...products } = listing(60).products;
+    render(<CatalogListing title="Buty" basePath="/" state={NO_FILTERS} mode="list" listing={{ ...listing(60), products: products as ReturnType<typeof listing>["products"] }} />);
+    expect(screen.queryByText(/Strona/)).toBeNull();
+    expect(screen.queryByRole("link", { name: /następnej/ })).toBeNull();
+    expect(screen.getByText("60 produktów")).toBeTruthy();
   });
 
   it("says there are no products on an empty page and still counts them", () => {

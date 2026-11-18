@@ -60,6 +60,7 @@ final readonly class ListProductsHandler
             $query->page,
             $query->perPage,
             $result->total,
+            (int) ceil($result->reachable / $query->perPage),
             new ProductFacets(
                 $this->categoryFacets($facetCategories, $result->facets->categoryCounts),
                 $result->facets->options,
