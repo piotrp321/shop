@@ -63,7 +63,11 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
     dla człowieka pomija, także `host_on_battery` (o zasilaniu decyduje użytkownik).
   - `human <plik> --action answer|resume|release|epic-resume [--task ID]`: dopisuje zdarzenie `human_action`
     z bieżącym czasem. Sesja zapisuje tak każdą decyzję użytkownika przekazaną AO.
-  - `summary <plik> [--now EPOCH]`: jedna linia JSON `{"interventions", "waits", "wait_s", "open"}`. Czekanie na
+  - `auto <plik> --action qa-round|fix-round [--task ID]`: dopisuje zdarzenie `auto_action` (automatyczne
+    przedłużenie, sekcja „Automatyczne przedłużenia”); kończy okno czekania jak `human_action`, ale nie jest
+    interwencją.
+  - `summary <plik> [--now EPOCH]`: jedna linia JSON `{"interventions", "auto", "waits", "wait_s", "open"}`
+    (`auto`: liczba zdarzeń `auto_action`, które kończą czekanie jak `human_action`, ale nie są interwencjami). Czekanie na
     użytkownika zaczyna `status_changed` do `BLOCKED` albo `FAILED` (klucz: zadanie) albo `epic_blocked`
     i `queue_held` (klucz: epik), a kończy następne `human_action` z tym samym kluczem (decyzja dotycząca epiku nie
     ma `--task`). `wait_s` to czas zegarowy, w którym trwało co najmniej jedno zakończone czekanie (nakładające się
@@ -71,6 +75,11 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
     `interventions` liczy decyzje zapisane przez sesję; rekord pomiaru (`tools/metrics`) liczy z tych samych zdarzeń
     interwencje, liczbę i sumę czekań, więc raport odbioru i komentarz biorą je z rekordu, a z `summary` tylko czekania
     otwarte. Brak albo nieczytelny plik: kod 1 i komunikat, bez zer na wyjściu.
+- `.claude/skills/ao-run/auto_extend.py` (Python 3.9+, bez zależności) i `test_auto_extend.py`: decyzja
+  automatycznego przedłużenia (`qa` i `fix`, sekcja „Automatyczne przedłużenia”). Czyta `orchestrator.db`,
+  `events.jsonl` i `auto-extend.json` z `AO_HOME` i niczego nie zapisuje. Wypisuje jedną linię JSON z `decision`
+  (`extend` albo `ask`), `reasons`, `cost_usd`, `max_usd` (przy `qa` też `round`, przy `fix` też `answer`). Brak
+  albo nieczytelna baza, niepoprawny `auto-extend.json` i zły argument dają kod 1 (sesja pyta wtedy użytkownika).
 - `.claude/skills/ao-run/next_epic.py` (Python 3.9+, bez zależności) i `test_next_epic.py`: wybór następnego epiku.
   Sam wykonuje `gh project item-list 1 --owner piotrp321` (pozycje w kolejności tablicy „Backlog sklepu”),
   `git ls-remote --heads origin 'epic/*'`, `git ls-tree` i `git show` na `origin/main` (po `git fetch origin main`),
@@ -181,7 +190,11 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
    `ao answer <ID> --text "<odpowiedź>"` z jego słowami i, jeśli `ao run` się zakończył, uruchamia go ponownie.
    Inne zatrzymania (`FAILED`, `epic_blocked`, `queue_held`) sesja diagnozuje przez `ao status` i opisuje w pushu;
    `ao resume`, `ao release` i `ao epic resume` wykonuje tylko na polecenie użytkownika. Po każdej z tych komend
-   i po `ao answer` zapisuje decyzję przez `ao_events.py human`.
+   i po `ao answer` zapisuje decyzję przez `ao_events.py human`. Wyjątek: jedno automatyczne przedłużenie (sekcja
+   „Automatyczne przedłużenia”), zapisywane przez `ao_events.py auto`. Higiena koordynatora: przed czekaniem na
+   odnowienie limitu sesja sprawdza świeże `get_usage` i wznawia pracę od razu, gdy limit jest już dostępny; nie
+   pyta ponownie o krok, na który użytkownik wprost zgodził się w rozmowie (ten epik, ten powód); proces AO
+   zatrzymuje dopiero po zakończeniu trwającej próby, chyba że użytkownik każe ją przerwać.
 5. **Raport odbioru.** Po `epic_done` (AO ustawia go dopiero przy zielonym CI końcowego PR) sesja czyta `ao report --epic <epik>`
    i sekcję „Lista odbioru” z ostatniego raportu `/integration` i zostawia w rozmowie raport odbioru:
    - rekomendacja: „merge” albo „najpierw sprawdź: …” (każda pozycja „Sprawdź:” z listy odbioru, znaleziska bez naprawy,
@@ -293,6 +306,53 @@ w przedziale zaczyna się `start` innego epiku bez `done` (`start` bez `done` sp
 Rekord pomiaru epiku (`metrics.py epic`, punkt 5) sesja zapisuje po `done`, bo czyta jego pomiar z `measurements.jsonl`
 (przyrost okien limitu i nakładanie się epików); to inny zapis niż `measurements.jsonl` i nie zastępuje go: szacunki nocy
 i bramka czytają dalej `night_queue.py`.
+
+## Automatyczne przedłużenia
+
+Dwa zatrzymania AO kończyły się prawie zawsze odpowiedzią „tak”, także w nocy, gdy AO stało godzinami: limit rund QA
+epiku (`max_qa_rounds`) i limit dwóch rund poprawek zadania w `/delivery`. Sesja daje w tych przypadkach jedną
+dodatkową rundę sama, a pyta użytkownika tylko wtedy, gdy któryś warunek nie jest spełniony. Rozstrzyga skrypt
+`auto_extend.py`. Każda wątpliwość oznacza pytanie (fail-closed).
+
+- **Runda QA epiku** (`auto_extend.py qa <AO_HOME> --epic <id>`). Wszystkie warunki:
+  - epik `BLOCKED` z powodem `max_qa_rounds` (`repeated_finding` i inne powody zawsze idą do użytkownika);
+  - ten epik nie miał jeszcze przedłużenia QA: ani automatycznego (`auto_action`, zapisywanego przed `ao epic
+    resume`, a nieudany zapis to pytanie), ani żadnego w AO (`add_qa_rounds` w konfiguracji epiku), bo drugie
+    oznacza pętlę;
+  - ostatnia runda nie ma znalezisk Critical;
+  - żadne znalezisko Critical ani Important ostatniej rundy nie powtarza znaleziska wcześniejszej rundy. Powtórzenie
+    to równy odcisk AO (waga, tytuł, pliki), podobny tytuł (Jaccard zbiorów słów od 4 znaków ≥ 0,5) albo to samo
+    zadanie z co najmniej jednym wspólnym plikiem i tytułem o podobieństwie ≥ 0,25. Same pliki nigdy nie
+    rozstrzygają. Sesja dodatkowo czyta raporty rund i traktuje jako powtórzenie tę samą zasadę albo kryterium
+    specyfikacji w innym miejscu. Sesja może tylko zamienić przedłużenie na pytanie, nigdy odwrotnie;
+  - koszt epiku (suma `cost_usd` prób zadań epiku) jest poniżej progu; trwająca próba albo próba bez kosztu oznacza
+    pytanie;
+  - żadne zadanie epiku nie jest `BLOCKED` ani `FAILED` i nie ma blokera `business`, `architecture` ani `cost`.
+
+  Wynik `extend`: `ao epic resume <epik> --add-qa-rounds 1` i push informacyjny.
+- **Trzecia runda poprawek zadania** (`auto_extend.py fix <AO_HOME> --task <id>`). `/delivery` oznacza wynik po dwóch
+  nieskutecznych rundach jedynym blokerem `EXTRA-FIX-ROUND` (`technical`) tylko wtedy, gdy:
+  - nie ma Critical ani `BLOCKER`;
+  - każde otwarte znalezisko jest nowym problemem, a nie tą samą wadą, zasadą albo kryterium w innym miejscu, albo
+    wymagany check psuje test innego zadania epiku;
+  - poprawka nie wymaga decyzji `business`, `architecture` ani `cost`.
+
+  Skrypt sprawdza dodatkowo:
+  - ostatnia próba ma dokładnie ten jeden bloker;
+  - zadanie nie dostało jeszcze dodatkowej rundy (wcześniejsza próba z `EXTRA-FIX-ROUND` albo wcześniejsza
+    automatyczna zgoda: pętla);
+  - koszt epiku jest poniżej progu;
+  - żadne zadanie epiku nie ma blokera `business`, `architecture` ani `cost`.
+
+  Wynik `extend`: `ao answer <ID>` ze stałym tekstem zgody ze skryptu i push informacyjny. Kontrakt AO dopuszcza
+  `fix_rounds_used` najwyżej 2, więc dodatkowa runda jest odpowiedzią na bloker. Gdy po niej problem zostaje,
+  `/delivery` zwraca `BLOCKED` z innym `id` i decyduje użytkownik.
+- **Próg kosztu:** 150 USD na epik. Inny próg dla epiku ustawia sesja tylko na polecenie użytkownika w rozmowie,
+  plikiem `$AO_HOME/auto-extend.json` (`{"max_usd": <liczba dodatnia>}`); niepoprawny plik oznacza pytanie.
+- **Pomiar:** automatyczna decyzja to zdarzenie `auto_action` (`ao_events.py auto`), które kończy okno czekania jak
+  decyzja człowieka, ale nie jest interwencją. `summary` podaje ich liczbę w `auto`.
+- Bez zmian zostają przy człowieku blokery `business`, `architecture`, `cost` i bezpieczeństwa, limit rund poprawek
+  AO (`fix_rounds_exhausted`), wszystkie merge'e, drugie przedłużenie i każde powtórzenie.
 
 ## Przegląd po merge'u
 
@@ -471,7 +531,8 @@ wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo
 Nie zmienia kodu ani konfiguracji AO, nie merguje do `main` bez polecenia użytkownika w rozmowie (merge'e sesji:
 końcowy PR epiku na polecenie, squash, i PR `sync/<epik>-main` do `epic/<epik>` merge commitem, po zgodzie użytkownika
 albo, w parze epików równoległych, na podstawie akceptacji specyfikacji pracy równoległej), nie zakłada issues z przeglądu ani z retro bez decyzji użytkownika, nie uruchamia
-przeglądu ani retro równolegle z epikiem, nie merguje PR retro, nie odpowiada na blokery sam, nie prowadzi więcej niż
+przeglądu ani retro równolegle z epikiem, nie merguje PR retro, nie odpowiada na blokery sam (poza jednym
+automatycznym przedłużeniem z sekcji „Automatyczne przedłużenia”), nie prowadzi więcej niż
 dwóch aktywnych epików naraz (razem z epikami innych sesji) i nie zaczyna epiku z pominięciem bramki (start mimo bramki
 tylko w dzień po „tak” użytkownika, w nocy nigdy), nie zdejmuje wstrzymania równoległości (`unhold`) bez decyzji
 użytkownika w rozmowie, nie zatrzymuje prób, epiku ani AO z powodu alarmu `waste`, nie zapisuje decyzji optymalizacyjnych
@@ -486,7 +547,10 @@ z wcześniejszego przebiegu, nie pomija sondy i nie zmienia rulesetów.
 i niepoprawny JSON, brak katalogu), `watch` (każdy typ zdarzenia z README AO, limit 200 znaków, pomijanie zdarzeń bez
 znaczenia, linie dopisane w trakcie), `human` (zadanie i epik, nieznana akcja, katalog bez zapisu → kod 1),
 `summary` (pary na zadanie, `FAILED` i `resume`, epik i kolejka, powtórzony bloker, nakładające się czekania,
-czekanie otwarte do teraz i do `epic_done`, decyzja bez czekania, decyzja przed blokerem, zdarzenia bez znaczenia i zły czas, linie nie-JSON, brak pliku i katalog → kod 1); `claude_pin.py` z checkoutem AO w repo tymczasowym i podstawionymi binarkami
+czekanie otwarte do teraz i do `epic_done`, decyzja bez czekania, decyzja przed blokerem, zdarzenia bez znaczenia i zły czas, linie nie-JSON, brak pliku i katalog → kod 1; `auto` kończy czekanie i nie jest interwencją); `auto_extend.py`
+z bazą AO w katalogu tymczasowym (każdy warunek `qa` i `fix` spełniony i niespełniony, powtórzenie po odcisku,
+podobnym tytule i zadaniu z plikiem, ten sam plik z innym tytułem to nie powtórzenie, drugie przedłużenie, próba
+w toku i bez kosztu, próg domyślny i z pliku, niepoprawny plik progu, brak bazy i zły argument → kod 1); `claude_pin.py` z checkoutem AO w repo tymczasowym i podstawionymi binarkami
 (wersja z `origin/main`, nie z drzewa roboczego; drugi kandydat, gdy pierwszego brak albo zgłasza inną wersję; brak
 pliku i katalogu, plik niewykonywalny, inna wersja, błąd i przekroczony czas `--version` → kod 2 z komendą
 instalacji; brak `origin/main`, brak checkoutu, brak pola, nieczytelny plik, wartość, która nie jest wersją → kod 1;

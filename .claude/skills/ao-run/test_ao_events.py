@@ -300,11 +300,11 @@ class SummarizeTest(unittest.TestCase):
         return ao_events.summarize(events, now)
 
     def test_no_events_is_zero(self):
-        self.assertEqual(self.summarize([]), {'interventions': 0, 'waits': 0, 'wait_s': 0.0, 'open': []})
+        self.assertEqual(self.summarize([]), {'interventions': 0, 'auto': 0, 'waits': 0, 'wait_s': 0.0, 'open': []})
 
     def test_blocker_answered_counts_its_wait(self):
         got = self.summarize([blocked('T-1', 100.0), human('answer', 700.0, 'T-1')])
-        self.assertEqual(got, {'interventions': 1, 'waits': 1, 'wait_s': 600.0, 'open': []})
+        self.assertEqual(got, {'interventions': 1, 'auto': 0, 'waits': 1, 'wait_s': 600.0, 'open': []})
 
     def test_waits_are_paired_per_task(self):
         got = self.summarize([blocked('A', 0.0), blocked('B', 100.0), human('answer', 400.0, 'B'),
@@ -329,7 +329,7 @@ class SummarizeTest(unittest.TestCase):
 
     def test_unanswered_blocker_is_open_with_time_until_now(self):
         got = self.summarize([blocked('T-1', 100.0)], now=400.0)
-        self.assertEqual(got, {'interventions': 0, 'waits': 1, 'wait_s': 0.0,
+        self.assertEqual(got, {'interventions': 0, 'auto': 0, 'waits': 1, 'wait_s': 0.0,
                                'open': [{'task_id': 'T-1', 'since': 100.0, 'wait_s': 300.0}]})
 
     def test_action_without_a_wait_is_an_intervention_only(self):
@@ -340,7 +340,7 @@ class SummarizeTest(unittest.TestCase):
         got = self.summarize([event('epic_done'), at(event('host_on_battery', {'percent': 10}), 5.0),
                               at(event('status_changed', {'to': 'PENDING'}), 6.0),
                               blocked('T-1', 'x'), {'type': 'invalid_event', 'raw': ''}, 'not a dict'])
-        self.assertEqual(got, {'interventions': 0, 'waits': 0, 'wait_s': 0.0, 'open': []})
+        self.assertEqual(got, {'interventions': 0, 'auto': 0, 'waits': 0, 'wait_s': 0.0, 'open': []})
 
     def test_overlapping_waits_count_wall_clock_time_once(self):
         # an /integration blocker: the task is BLOCKED and the epic blocked 40 ms later, both answered
@@ -460,7 +460,7 @@ class SummaryCliTest(unittest.TestCase):
             f.write(json.dumps(blocked('T-1', 100.0)) + '\nnot json\n' + json.dumps(human('answer', 220.0, 'T-1')))
         result = self.summary('--now', '1000')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout), {'interventions': 1, 'waits': 1, 'wait_s': 120.0, 'open': []})
+        self.assertEqual(json.loads(result.stdout), {'interventions': 1, 'auto': 0, 'waits': 1, 'wait_s': 120.0, 'open': []})
 
     def test_missing_file_exits_1_without_zeros(self):
         result = self.summary()
@@ -477,3 +477,89 @@ class SummaryCliTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def auto(action, seconds, task=None):
+    return {'type': 'auto_action', 'task_id': task, 'data': {'action': action}, 'at': seconds}
+
+
+class AutoTest(unittest.TestCase):
+    """`auto`: an automatic one-time extension (R2) recorded like a decision of the user."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.file = os.path.join(self.tmp.name, 'sub', 'events.jsonl')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def auto(self, *args, path=None):
+        return subprocess.run([sys.executable, SCRIPT, 'auto', path or self.file, *args], capture_output=True,
+                              text=True)
+
+    def test_fix_round_with_task_appends_auto_action(self):
+        before = time.time()
+        result = self.auto('--action', 'fix-round', '--task', 'METRICS-3')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(self.file, encoding='utf-8') as f:
+            lines = f.read().splitlines()
+        self.assertEqual(len(lines), 1)
+        ev = json.loads(lines[0])
+        self.assertEqual({k: ev[k] for k in ('type', 'task_id', 'data')},
+                         {'type': 'auto_action', 'task_id': 'METRICS-3', 'data': {'action': 'fix-round'}})
+        self.assertGreaterEqual(ev['at'], before)
+
+    def test_qa_round_has_no_task(self):
+        self.assertEqual(self.auto('--action', 'qa-round').returncode, 0)
+        with open(self.file, encoding='utf-8') as f:
+            ev = json.loads(f.readline())
+        self.assertIsNone(ev['task_id'])
+        self.assertEqual(ev['data'], {'action': 'qa-round'})
+
+    def test_qa_round_with_task_or_fix_round_without_task_is_rejected_without_writing(self):
+        for args in (('--action', 'qa-round', '--task', 'T-1'), ('--action', 'fix-round')):
+            with self.subTest(args=args):
+                result = self.auto(*args)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(os.path.exists(self.file))
+
+    def test_unknown_action_is_rejected_without_writing(self):
+        result = self.auto('--action', 'answer', '--task', 'T-1')
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(os.path.exists(self.file))
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root ignores permissions')
+    def test_unwritable_directory_exits_1_with_message(self):
+        locked = os.path.join(self.tmp.name, 'locked')
+        os.makedirs(locked)
+        os.chmod(locked, 0o500)
+        try:
+            result = self.auto('--action', 'qa-round', path=os.path.join(locked, 'events.jsonl'))
+        finally:
+            os.chmod(locked, 0o700)
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(result.stderr.strip())
+
+
+class AutoActionWaitsTest(unittest.TestCase):
+    def test_auto_action_closes_the_task_window(self):
+        got = ao_events.waits([blocked('T-1', 100.0), auto('fix-round', 160.0, 'T-1')])
+        self.assertEqual([(w['key'], w['start'], w['end'], w['action']) for w in got],
+                         [('T-1', 100.0, 160.0, 'auto:fix-round')])
+
+    def test_auto_action_without_task_closes_the_epic_window(self):
+        got = ao_events.waits([at(event('epic_blocked', {'reason': 'max_qa_rounds: F1'}, task_id=None), 0.0),
+                               auto('qa-round', 30.0)])
+        self.assertEqual([(w['key'], w['end'], w['action']) for w in got], [(None, 30.0, 'auto:qa-round')])
+
+    def test_auto_action_of_another_task_does_not_close(self):
+        got = ao_events.waits([blocked('T-1', 100.0), auto('fix-round', 160.0, 'T-2')])
+        self.assertEqual(got[0]['end'], None)
+
+    def test_summary_counts_auto_apart_from_interventions(self):
+        got = ao_events.summarize([blocked('T-1', 100.0), auto('fix-round', 160.0, 'T-1'), blocked('T-2', 200.0),
+                                   human('answer', 260.0, 'T-2'), auto('qa-round', 300.0)], 1000.0)
+        self.assertEqual((got['interventions'], got['auto'], got['waits'], got['wait_s']), (1, 2, 2, 120.0))
+
+    def test_summary_without_auto_actions_has_zero_auto(self):
+        self.assertEqual(ao_events.summarize([], 1.0)['auto'], 0)

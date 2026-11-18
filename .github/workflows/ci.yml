@@ -4,10 +4,11 @@
 # The `e2e-shard` jobs are the exception: each starts the full stack and runs one part of the Playwright tests; the
 # `e2e` job only reports their joint result.
 # `checks` and `e2e` run for every change, so they can be required status checks. For a pull request the `scope` job
-# says what it changes (.github/scripts/scope.sh): documentation only (docs/** and *.md outside .github/) skips every
-# step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with documentation) runs just the script
-# tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**, possibly with documentation) runs just
-# `make -C infra/k8s check` (in the `k8s` part). Skipped steps let the other jobs pass within seconds. Anything else,
+# says what it changes (.github/scripts/scope.sh): documentation only (docs/**, *.md outside .github/ and
+# .github/ISSUE_TEMPLATE/**) skips every step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with
+# documentation) runs just the script tests (in the `apps` part); the Kubernetes deployment only (infra/k8s/**,
+# possibly with documentation) runs just `make -C infra/k8s check` (in the `k8s` part). Skipped steps
+# let the other jobs pass within seconds. Anything else,
 # and every push, runs it all. A full run uses 1 + 4 + 3 runners for its work (`scope`, the `checks-part` and
 # `e2e-shard` parts) and two more for the short `checks` and `e2e` reports.
 name: CI
