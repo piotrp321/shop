@@ -1,7 +1,8 @@
 # CLAUDE.md – apps/api
 
 Symfony 8, PHP 8.5, Doctrine ORM, PostgreSQL. DDD + hexagonal.
-Zasady wspólne dla całego repo są w głównym `CLAUDE.md`, opis domeny w `docs/vision.md`.
+Zasady wspólne dla całego repo są w głównym `CLAUDE.md`, opis domeny w `docs/vision.md`. Działanie funkcji (endpointy,
+pola, przebiegi, komendy) opisują specyfikacje w `docs/features/<funkcja>/spec.md` i kod.
 
 ## Komendy
 
@@ -16,214 +17,46 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
-- dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
-  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog razem z przebiegami reindeksacji kategorii `catalog_category_reindex`
-  i kolejkami `outbox` i `jobs`; po załadowaniu produktów woła `ANALYZE catalog_product`, bo pulpit liczy produkty ze statystyk tabeli), potem
-  `pricing:seed-demo`, który w jednej transakcji czyści ceny z historią, promocje (`pricing_promotion`,
-  `pricing_promotion_variant`), kody rabatowe z użyciami (`pricing_discount_code`, `pricing_discount_code_usage`) i kolejkę promocji (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
-  pozostałe kolejki zostają), potem ustawia cenę (źródło `seed`) każdemu wariantowi demo według
-  wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
-  `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
-  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych), potem planuje
-  promocje z `fixtures/promotions.yaml` (lista: `name`, `percentOff`, `days`, `variants` = wzorce kluczy w tej samej
-  składni) komendą `PlanPromotion` bez aktora i ze źródłem `seed`, od chwili seeda na `days` dni (planuje tylko
-  granicę końca na kolejce `promotions`, bez wiadomości startu: `make seed` kończy się reindeksacją i czyszczeniem
-  cache sklepu; port `PromotionBoundaries` dostaje jawny `announceStart`); wariant należy do pierwszej promocji, która go dopasuje, żeby okresy się nie nakładały; plik promocji jest
-  sprawdzany przed resetem, więc promocja bez wariantu (albo z ponad 1000) kończy seed błędem bez zmian w danych.
-  Na końcu tworzy kody rabatowe z `fixtures/discount-codes.yaml` (lista: `code`, jedno z `percentOff` i `amountOff`,
-  `minimumOrder`, `startsInDays` i opcjonalne `endsInDays` jako dni od chwili seeda, ujemne w przeszłości) komendą
-  `CreateDiscountCode` bez aktora, włączone i bez limitu użyć: `WITAJ10` (10%), `MINUS50` (50 zł od 300 zł) i wygasły
-  `LATO15` (15%, okres od 60 do 30 dni przed seedem). Plik kodów jest sprawdzany przed resetem tymi samymi value objectami
-  i agregatem co zapis kodu w panelu (zły format kodu, kod kwotowy bez minimum, koniec przed początkiem, powtórzony kod),
-  więc błąd kończy seed bez zmian w danych; testy E2E nie realizują ani nie zmieniają kodów demo, tworzą własne przez
-  API panelu (`admin-design.spec.ts` tylko otwiera formularz pierwszego kodu z listy, więc lista nie może być pusta).
-  Promocje demo omijają produkty E2E i kategorię Bieganie > Buty biegowe (pilnuje tego `RealDemoPromotionsTest`, lista
-  wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem
-  `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
-  i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
-  `outbox`, `scheduled`, `promotions`, `jobs`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
-  `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
-  `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie, historię statusów, powiadomienia, sprzedaż godzinową (`ordering_sales_hour`) i klientów (`ordering_customer`) jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
-  WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
-  rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
-  klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
-  źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), a na końcu wpisuje każdemu rekordowi jego produkt (jak `inventory:stock-records:sync`),
-  więc po seedzie nie ma zamówień ani ich rezerwacji, a każdy wariant demo ma rekord stanu z `product_id`. Wszystkie komendy `*:seed-demo`
-  (jest ich sześć) w `prod` wymagają `--force-reset`, więc `bin/seed-demo` dodaje go do nich tylko przy `APP_ENV=prod`.
-  Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem woła `catalog:reindex`, który
-  przebudowuje indeks wyszukiwania z cenami i dostępnością, potem `storefront:cache:purge-all` (zdarzenia cen
-  i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają), a na końcu `app:backfill --force` (seedy
-  podmieniły dane, które wypełniają kroki, więc każdy krok liczy od nowa; jego kroki `ordering:read-models:rebuild:sales`
-  i `ordering:read-models:rebuild:customers` to przebudowa sprzedaży i klientów po `ordering:seed-demo`, bez osobnego
-  wywołania komendy w skrypcie). Błąd dowolnego kroku przerywa skrypt
-  (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
-- `make seed-scale` (główny `Makefile`, fragment `make/demo-data.mk`; `PROFILE`: `small` domyślnie, `medium`, `server`
-  albo `full`, oraz opcjonalne `ANCHOR`, `PROCESSES` i `DEMO_PHOTOS_ENV_FILE`) uruchamia `bin/generate-demo`: generator danych demo na seedzie
-  (`docs/features/demo-data/spec.md`; po nim `make seed` przywraca dane E2E). Skrypt `sh`, `set -eu`, konsolę i
-  `bin/seed-demo` woła względem własnego katalogu (test: `tests/Unit/Bin/GenerateDemoScriptTest.php`, podstawiona
-  konsola i podstawiony `seed-demo`, jak test `bin/seed-demo`). Argumenty: `--profile=` (nazwa z `profiles.yaml`),
-  `--anchor=` (chwila odniesienia; domyślnie początek bieżącej doby UTC, liczony raz i przekazany każdemu krokowi),
-  `--processes=` (procesy kroków produktów, cen i zamówień, domyślnie 4; zła wartość to kod 2) i `--force-reset`: w `prod` bez niego
-  skrypt odmawia (kod 1, nic nie jest zmienione), bo zaczyna od `bin/seed-demo`, który kasuje dane wszystkich modułów
-  (`seed-demo` dodaje własny `--force-reset` seedom w `prod`, kroki generatora go nie mają). Kolejność: sprawdzenie opcji
-  (`demo-data:products --list-parts`: nieznany profil albo zła chwila odniesienia zatrzymują skrypt, zanim cokolwiek
-  zostanie skasowane), `bin/seed-demo`, `demo-data:categories`, części `demo-data:products` (jeden proces na grupę części, uruchomione równolegle; skrypt
-  zapisuje identyfikator i kod wyjścia każdego procesu osobno, więc błąd jednej części zauważa od razu, zatrzymuje
-  pozostałe i kończy krok jej kodem), `demo-data:photos`, części `demo-data:prices` (tak samo jak produkty),
-  `demo-data:promotions`, `demo-data:accounts` (konta w Keycloak stosu: administrator z `KC_BOOTSTRAP_ADMIN_PASSWORD`
-  kontenera `api`, czyli z `.env.local`), części `demo-data:orders` (tak samo jak produkty), `demo-data:stock`,
-  `demo-data:order-numbers`, `ordering:read-models:rebuild` (sprzedaż godzinowa i klienci panelu z zamówień),
-  `demo-data:analyze`, `catalog:reindex`, `storefront:cache:purge-all`, `demo-data:verify`. Pierwszy błąd przerywa skrypt z kodem tego kroku, kolejne kroki się
-  nie wykonują; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`). Profil inny niż `small` bierze
-  zdjęcia z puli w prywatnym buckecie R2 (niżej), więc `bin/generate-demo` wymaga w środowisku czterech zmiennych odczytu
-  (`DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY`) i bez nich
-  kończy się kodem 1 na samym początku (przed `--list-parts` i `bin/seed-demo`), z nazwami pustych zmiennych, nigdy z wartością;
-  z nimi, przed `bin/seed-demo` woła jeszcze `demo-data:photos --preflight` (zmienne, `photos.yaml`, archiwum w buckecie), żeby
-  reset nie skasował danych przed błędem puli. `make seed-scale` dla takiego profilu czyta te cztery zmienne jako dane (bez
-  `source` i `eval`) z pliku użytkownika poza repo (`DEMO_PHOTOS_ENV_FILE`, domyślnie `~/.config/shop/demo-photos.env`;
-  brak pliku to błąd przed uruchomieniem czegokolwiek) i przekazuje je kontenerowi samą nazwą (`docker compose exec -e NAME`),
-  więc wartość nie trafia do linii komendy, do wyjścia make ani do `make -n`; tokenu zapisu nie przekazuje
-- `make upload-demo-photos DIR=apps/api/var/demo-photos` (`bin/upload-demo-photos`, skrypt `sh`, `set -eu`, uruchamiany na
-  hoście, bo tylko tam są `docker` i plik z poświadczeniami; test: `tests/Unit/Bin/UploadDemoPhotosScriptTest.php`,
-  podstawiony `docker`, a `compose exec` uruchamia prawdziwą konsolę): wysyła pulę zdjęć (zadanie DEMO-DATA-7) do prywatnego
-  bucketu. Katalog (i opcjonalny `--manifest=`) musi leżeć w `apps/api` (kontener `api` widzi tylko to; `apps/api/var/` jest
-  ignorowany przez git). Kolejność: poświadczenia z pliku (`DEMO_PHOTOS_ENV_FILE` albo `--env-file=`; tylko linie `NAME=wartość`
-  czterech zmiennych `DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_WRITE_ACCESS_KEY_ID`,
-  `DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY`, bez wykonywania czegokolwiek; token odczytu nie jest używany), obraz `rclone` z
-  `infra/k8s/charts/shop/values.yaml` (`images.rclone`, wyłącznie przypięty `@sha256:`, inaczej odmowa; `--print-image` go
-  wypisuje), potem `demo-data:photos:check` w kontenerze (komplet plików z manifestu i brak nadmiarowych, SHA-256 każdego,
-  reguły uploadu Catalog z tych samych parametrów co `FlysystemProductImageStorage`: typ po zawartości, rozmiar, wymiary,
-  liczba pikseli; buduje `var/demo-photos-upload.tar`), a dopiero po sprawdzeniu `docker run --rm` z obrazem rclone:
-  `rclone copyto --immutable --s3-no-check-bucket` do `<bucket>/demo-photos/v<N>/photos.tar` (klucz z manifestu), więc istniejąca
-  wersja nie zostanie nadpisana. Endpoint i klucze trafiają do kontenera zmiennymi `RCLONE_CONFIG_R2_*` przekazanymi samą nazwą
-  (`-e NAME`), nigdy w argumentach ani na wyjściu (nazwa bucketu jest w argumencie); archiwum jest usuwane po zakończeniu. Kody:
-  0 wysłano, 1 odmowa albo błąd (nic nie wysłano po nieudanym sprawdzeniu), 2 złe użycie
-- Komendy `demo-data:*` (moduł `DemoData`, opcje wspólne: `--demo-profile` (nie `--profile`: tę opcję rezerwuje konsola
-  Symfony), `--anchor`, `--seed` (UUID przestrzeni nazw zamiast tego z `profiles.yaml`) i `--products` (liczba produktów
-  zamiast liczby profilu)): `demo-data:categories` (krok 1: kategorie ogona w działach z `catalog.yaml`; dział znaleziony
-  po slugu wśród kategorii głównych jest używany, nie zapisywany; ponowne uruchomienie niczego nie zmienia),
-  `demo-data:products [--worker=N --workers=M] [--list-parts]` (krok 1: produkty, warianty i powiązania kategorii w
-  częściach o stałym rozmiarze z `profiles.yaml`, każda w osobnej transakcji; proces `N` z `M` zapisuje części `N`,
-  `N + M`, …, więc wiersze nie zależą od liczby procesów; `--list-parts` tylko wypisuje liczbę części; bez kategorii
-  kończy się błędem), `demo-data:photos [--preflight]` (krok 2: zdjęcia produktów; `small` zapisuje 37 plików z `fixtures/images` raz do Garage
-  pod `originals/<sha256>.<rozszerzenie>` i przypisuje klucze według grupy zdjęć typu, co 50. produkt bez zdjęć, bez
-  pobierania. Profil inny niż `small` bierze zdjęcia z puli: archiwum `demo-photos/v<N>/photos.tar` z prywatnego bucketu R2
-  opisanego w `fixtures/demo-data/photos.yaml` (wersja, klucz, pliki z SHA-256, grupą typu, alt, `sourceId`, `variant`, stroną źródła,
-  autorem i licencją; schemat `PhotoManifest` jest zamknięty: nieznany klucz, w tym adres bucketu albo poświadczenie, to błąd;
-  brak manifestu kończy krok błędem przed pobraniem). Kolejność (`PhotoPoolLoader`): niepuste
-  `DEMO_PHOTOS_*` (inaczej kod 1 z nazwami zmiennych), manifest i grupy zdjęć z `photo-groups.yaml` (każda ma pliki), potem
-  pobranie archiwum do katalogu tymczasowego (adapter AsyncAws czyta całe ciało do strumienia `php://temp`, który powyżej 2 MB
-  idzie do pliku w `sys_get_temp_dir()`, i dopiero stąd `PhotoPoolLoader` kopiuje je do `photos.tar`, więc w trakcie pobierania na dysku są
-  dwie kopie archiwum), rozpakowanie (`TarExtractor`: tylko płaskie zwykłe pliki z manifestu, żadne
-  ścieżki ani dowiązania), sprawdzenie kompletu plików, SHA-256 każdego i reguł uploadu Catalog (`PhotoPoolVerifier`,
-  `PhotoRules`), i dopiero potem zapis każdego pliku raz do Garage (istniejące pomija) i przypisanie 1–3 kluczy grupy produktom
-  jak dla `small`. Niezgodność, brakujący albo nadmiarowy plik, błąd pobierania to kod 1 bez zmian w Garage i w bazie;
-  katalog tymczasowy (`sys_get_temp_dir()`; szczyt miejsca na dysku to około 2 × rozmiar archiwum: pobranie i rozpakowanie, bo
-  `photos.tar` jest usuwany po rozpakowaniu, a strumień `php://temp` po skopiowaniu) jest usuwany zawsze; brak miejsca przy zapisie pliku
-  to kod 1 z komunikatem o zapisie, nie o sumie SHA-256. Komunikaty o źródle nie powtarzają
-  wartości zmiennych ani komunikatu wyjątku klienta S3 (zawiera adres i bucket), tylko nazwę klasy wyjątku. `--preflight` nie zmienia
-  niczego: sprawdza zmienne, manifest i obecność archiwum w buckecie. Filesystem puli to `demo_photos.storage`
-  (`config/packages/flysystem.yaml`, adapter AsyncAws, klient `app.demo_photos_s3_client` ze zmiennych `DEMO_PHOTOS_ENDPOINT`,
-  `DEMO_PHOTOS_BUCKET`, `DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY` i `DEMO_PHOTOS_REGION` = `auto`; `.env` ma je
-  puste, żeby aplikacja startowała bez nich; wartości nie należą do repo). Klient ma własnego klienta HTTP
-  (`app.demo_photos_http_client`: `timeout` bezczynności 60 s i `max_duration: 0`, bo wspólny `http_client` ma 5 s na całe żądanie
-  (`framework.yaml`), co przerwałoby pobranie archiwum około 1,6 GB) i nie ma loggera (ani klient HTTP, ani klient S3 nie loguje
-  adresu żądania, który zawiera endpoint i bucket; pilnuje tego `DemoPhotosStorageWiringTest`, a czas pobrania
-  `DemoPhotosDownloadDurationTest`), a limity plików (`app.image_upload.max_bytes`,
-  `app.image_upload.max_pixels`) to te same parametry co upload w Catalog), `demo-data:photos:check KATALOG
-  [--manifest=…] [--archive=….tar]` (sprawdzenie katalogu zdjęć z manifestem i budowa archiwum do wysyłki; woła je
-  `bin/upload-demo-photos`; kod 1 z listą naruszeń: plik z powodem), `demo-data:analyze` (`ANALYZE` wypełnionych tabel: pulpit liczy produkty ze statystyk
-  `catalog_product`), `demo-data:prices [--worker=N --workers=M] [--list-parts]` (krok 3: cena bieżąca i historia cen każdego
-  wygenerowanego wariantu, w tych samych częściach co produkty; potrzebuje produktów danej części, inaczej kod 1 bez
-  zmian) i `demo-data:promotions` (krok 3: zakończone promocje z wariantami i zakończone historyczne kody rabatowe, jeden
-  proces, po cenach), `demo-data:orders [--worker=N --workers=M] [--list-parts]` (krok 5: zamówienia z liniami,
-  historią statusów, płatnościami opłaconych i użyciami kodów, w częściach o stałym rozmiarze z `profiles.yaml`, każda
-  w osobnej transakcji; część to ciągły zakres globalnych indeksów zamówień; katalog i ceny czyta z tabel kroków 1 i 3,
-  bez nich kod 1), `demo-data:stock` (krok 6: jedno przejście SQL po zamówieniach: stany każdego wariantu bez rekordu
-  stanu, rezerwacje i ruchy stanów zamówień z 90 dni przed chwilą odniesienia), `demo-data:order-numbers` (krok 7:
-  sekwencja numerów zamówień za najwyższym numerem, nigdy wstecz), `demo-data:accounts` (krok 4: pracownicy w realmie `backoffice` z rolą numeru i klienci w realmie
-  `shop` w Keycloak, wyłączeni i bez poświadczeń; opcje kont, wspólne z `verify` (`AccountsInput`): `--keycloak-url`
-  (domyślnie `DEMO_DATA_KEYCLOAK_URL`, bez niej `http://keycloak:8080`, parametr `app.demo_data.keycloak_url`),
-  `--keycloak-user` (domyślnie `admin`), `--keycloak-password` (domyślnie `KC_BOOTSTRAP_ADMIN_PASSWORD`; bez hasła kod 1),
-  `--shop-realm` i `--backoffice-realm` (domyślnie `shop` i `backoffice`), `--staff` i `--customers` (liczby kont zamiast
-  liczb profilu), `--page-size` (członkowie grupy czytani na żądanie, domyślnie 1000); własne: `--batch-size` (konta na
-  żądanie importu, domyślnie 2000) i `--streams` (żądania importu naraz, domyślnie 4); `--anchor` przyjmuje jak każdy
-  krok, konta od niego nie zależą; konflikty kończą krok kodem 1 z listą, bez zmiany cudzego konta) oraz
-  `demo-data:verify` (kontrole katalogu: opublikowany produkt bez wariantu, liczby w tabelach
-  różne od profilu, kategorie ogona niekompletne, slug produktu z ogona bez numeru, z powtórzonym numerem albo numerem
-  powyżej liczby produktów profilu, slug produktu z `catalog.yaml` należący do innego produktu; kontrole cen: wariant
-  bez ceny bieżącej albo bez wpisu historii, cena bieżąca różna od ostatniego wpisu historii (w `small` wszystkie warianty, w większych profilach deterministyczna próbka co 1 na `products / 300000`), cena bez wariantu, netto,
-  VAT i stawka próbki cen różne od reguły Pricing, liczba wygenerowanych promocji i kodów różna od planu, promocja
-  niezakończona przed chwilą odniesienia, z więcej niż 1000 wariantów albo nakładająca się na innej na wariancie,
-  wariant promocji bez ceny w chwili jej startu albo ze zmianą ceny w jej trakcie, kod niezakończony;
-  kontrole kont (opcje kont jak w `demo-data:accounts`, `--no-accounts` je pomija): w każdym realmie grupa
-  `demo-data-generated` istnieje, a jej członkowie to dokładnie zbiór docelowy z bieżącymi danymi; Keycloak, który nie
-  odpowiada, to kod 1; kontrole zamówień i stanów (`OrdersVerifier`; `--orders` zastępuje liczbę zamówień profilu):
-  liczba zamówień różna od profilu, wariant z ogona bez rekordu stanu, `reserved` różne od sumy linii aktywnych rezerwacji,
-  ostatni ruch różny od stanu, zamówienie `paid` bez aktywnej rezerwacji, opłacone bez płatności `succeeded` tej kwoty,
-  suma linii minus rabat różna od sumy zamówienia (i sumy netto, VAT, brutto linii różne od sum zamówienia), zamówienie
-  z kodem bez użycia, zamówienie klienta spoza wygenerowanych kont, historia, która nie kończy się statusem zamówienia,
-  cena jednostkowa linii różna od ceny skutecznej wariantu w chwili złożenia albo linia w promocji bez jej kopii (w
-  `small` wszystkie zamówienia, w większych co `orders / 100000`-te według indeksu); kod 1 i lista naruszeń, kod 0 na
-  poprawnych danych). Kody: 0 gotowe, 1 odmowa (zła opcja) albo naruszenia
-- `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
-  `bin/seed-demo`) – wypełnia dane, dla których migracje dodały tylko schemat: uruchamia po kolei zarejestrowane kroki
-  (`Shared\Infrastructure\Backfill\BackfillStep`: `name()`, `run(report)`; implementacja w warstwie Infrastructure
-  modułu, rejestracja tagiem z interfejsu, kolejność według `#[AsTaggedItem(priority: …)]` malejąco) i każdy ukończony
-  zapisuje w `app_backfill (name PK, completed_at)` (`BackfillLog`, DBAL), więc kolejne uruchomienia go pomijają;
-  `--force` uruchamia wszystkie od nowa. Krok jest idempotentny, działa partiami w osobnych transakcjach i jest poprawny
-  przy ruchu. Kroki dziś: `inventory:stock-records:sync` (priorytet 300), `catalog:analyze-products` (200: `ANALYZE catalog_product`, po którym pulpit ma szacunek liczby produktów) `ordering:read-models:rebuild:sales` (100: część sprzedaży `ordering:read-models:rebuild`) i `ordering:read-models:rebuild:customers` (90: część klientów tej komendy; każdy model odczytu tej komendy ma własny krok, więc dopisany później uruchomi się przy następnym wdrożeniu). Krok, który się nie powiedzie, nie jest
-  zapisany, a kolejne kroki nie ruszają (następne uruchomienie zaczyna od niego). Kod wyjścia: 0 – wszystkie kroki
-  ukończone albo pominięte, 1 – krok się nie powiódł (błąd w logu `error`) albo dwa kroki mają tę samą nazwę (nic nie
-  uruchomione). Test: `BackfillCommandTest`
-- `inventory:stock-records:sync` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; krok
-  `app:backfill`) – każdemu wariantowi Catalog pusty rekord stanu z produktem, a rekordom bez produktu ich produkt,
-  partiami po 100 produktów, każda w osobnej transakcji; idempotentna. Kod wyjścia: 0 – gotowe, 1 – przerwane błędem
-  (zapisane partie zostają). Opis: `docs/features/inventory/spec.md`, „Rekord stanu każdego wariantu”
-- `ordering:read-models:rebuild` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`; obie
-  części to kroki `app:backfill`, więc woła je też `bin/seed-demo` po `ordering:seed-demo`) – przebudowuje modele
-  odczytu Ordering z zamówień, najpierw sprzedaż, potem klientów. Sprzedaż godzinową (`ordering_sales_hour`, `SalesRebuild`) godzina po godzinie, od
-  pierwszej godziny z opłaconym zamówieniem albo wierszem sprzedaży (`nextHour`: po indeksie częściowym
-  `ordering_order (paid_at) WHERE paid_at IS NOT NULL` i kluczu tabeli; godziny bez jednego i drugiego pomija), każda
-  w osobnej transakcji (opis protokołu przy wyjątku DBAL sprzedaży w „Architekturze”). Idempotentna: drugi przebieg
-  zostawia te same wiersze, a wynik to dokładnie tabela zapisu przyrostowego (wiersz godziny i kubełka z zamówieniami,
-  bez wierszy zerowych). Wypisuje postęp co 1000 godzin i podsumowanie (godziny, zamówienia, grosze). Klientów
-  (`ordering_customer`, `CustomerRebuild`) partiami po 500 klientów w kolejności `customer_id`: koniec partii to 500.
-  klient po poprzedniej spośród kont z zamówieniami albo z wierszem (`nextBatchEnd`: po indeksie częściowym zamówień
-  klientów `(customer_id, placed_at DESC, id DESC)` i kluczu tabeli), każda partia w osobnej transakcji (opis
-  protokołu przy wyjątku DBAL klientów w „Architekturze”); wiersz klienta bez zamówień usuwa. Wynik to dokładnie tabela
-  zapisu przyrostowego. Wypisuje postęp co 100 partii i podsumowanie (klienci, partie, zamówienia). Kod wyjścia: 0 –
-  gotowe, 1 – przerwane błędem (przebudowane godziny i partie zostają; ponowne uruchomienie zaczyna od początku)
-- `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
-  rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
-  `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
-  nie odpowiedziała 200 po ostatniej próbie (np. niedostępny Varnish albo sklep), z komunikatem bez sekretów
-- `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
-  narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
-  ani `make seed`. Przechodzi wszystkie ceny wariantów partiami po `variant_id` razem z wariantami Catalog
-  (`ListVariantIdentities`) i wypisuje w jednej linii każdą cenę ze stawką inną niż bieżąca stawka jej klasy albo
-  z klasą inną niż klasa produktu wariantu w Catalog (cena wariantu, którego nie ma w Catalog, zachowuje swoją
-  klasę).
-  Z `--apply` przelicza je (`reprice`: to samo brutto, źródło `tax_reconciliation`), każdą w osobnej transakcji
-  (pętla `PriceReconciler`, wspólna z przeliczeniem po zmianie klasy produktu);
-  zapis odrzucony przez równoległą zmianę ceny ponawia raz na cenie odczytanej od nowa (świeży EntityManager), drugi
-  konflikt zostaje w raporcie. Kod wyjścia: 0 – wszystko spójne albo naprawione, 1 – zostały rozbieżności (bez
-  `--apply` znalezione; z `--apply` nienaprawione: dwa konflikty albo klasa bez stawki), 2 – przerwane błędem
-  (np. niedostępna baza), naprawione wcześniej ceny zostają zmienione
-- `cart:purge-expired [--batch-size=1000]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
-  narzędzie uruchamiane świadomie (ręcznie albo z crona); nie wywołuje go `make init`, `make up` ani `make seed`,
-  a w MVP nie ma harmonogramu. Usuwa koszyki z `expires_at` w przeszłości (gości w każdym statusie i klientów) razem
-  z liniami (kaskada FK), partiami po `--batch-size` (domyślnie 1000) id po indeksie `expires_at`. Każda partia to
-  osobna komenda `PurgeExpiredCarts` na `command.bus`, czyli osobna transakcja, powtarzana do partii pustej;
-  koszyk zablokowany przez równoległą zmianę jest pomijany (`FOR UPDATE SKIP LOCKED`), a odnowiony nie jest usuwany.
-  Wypisuje każdą partię i sumę. Kod wyjścia: 0 – gotowe (także gdy nic nie wygasło), 1 – rozmiar partii nie jest
-  dodatnią liczbą całkowitą (bez zmian), 2 – przerwane błędem (np. niedostępna baza), usunięte wcześniej partie
-  zostają usunięte
 - `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
-  oraz `openapi-admin.json` (panel: `/api/v1/admin`). Zrzut idzie przez pliki tymczasowe, więc nieudany eksport
-  kończy się błędem i nie zmienia ani nie obcina plików. CI sprawdza, że commitowane pliki są aktualne
+  oraz `openapi-admin.json` (panel: `/api/v1/admin`). Nieudany eksport nie zmienia plików. CI sprawdza, że commitowane
+  pliki są aktualne
+- Komendy konsoli bez celu make: `make -C apps/api shell` albo `docker compose exec api bin/console`.
+
+Dane demo:
+- `make seed` (główny `Makefile`) uruchamia `bin/seed-demo`: seedy `*:seed-demo` wszystkich modułów, potem
+  `catalog:reindex`, `storefront:cache:purge-all` i `app:backfill --force`. Błąd dowolnego kroku przerywa skrypt
+  z niezerowym kodem. Każda komenda `*:seed-demo` w `prod` wymaga `--force-reset` (`bin/seed-demo` dodaje go tylko przy
+  `APP_ENV=prod`). Seed sprawdza pliki `fixtures/*.yaml` przed resetem: błąd w pliku kończy seed bez zmian w danych.
+  Kolejność i zawartość seedów: `bin/seed-demo` i specyfikacje modułów.
+- Testy E2E nie realizują ani nie zmieniają kodów rabatowych demo (`fixtures/discount-codes.yaml`), tworzą własne przez
+  API panelu; lista kodów demo nie może być pusta (`admin-design.spec.ts` otwiera formularz pierwszego kodu z listy).
+  Promocje demo (`fixtures/promotions.yaml`) omijają produkty E2E i kategorię Bieganie > Buty biegowe (pilnuje tego
+  `RealDemoPromotionsTest`, lista wykluczeń w teście, razem z produktem `promotions.spec.ts`).
+- `make seed-scale` (`PROFILE`, `ANCHOR`, `PROCESSES`, `DEMO_PHOTOS_ENV_FILE`; `bin/generate-demo`) i
+  `make upload-demo-photos DIR=apps/api/var/demo-photos` (`bin/upload-demo-photos`, na hoście): generator danych demo
+  i wysyłka puli zdjęć, opis w `docs/features/demo-data/spec.md`. Po `make seed-scale` `make seed` przywraca dane E2E.
+  Katalog zdjęć do wysyłki (i `--manifest=`) musi leżeć w `apps/api`, bo kontener `api` widzi tylko ten katalog
+  (`apps/api/var/` jest ignorowany przez git).
+  W `prod` `bin/generate-demo` bez `--force-reset` odmawia, bo zaczyna od `bin/seed-demo`.
+- Poświadczenia puli zdjęć (`DEMO_PHOTOS_*`) nie należą do repo (`.env` ma je puste): `make seed-scale`
+  i `bin/upload-demo-photos` czytają je jako dane (bez `source` i `eval`) z pliku użytkownika poza repo i przekazuje kontenerowi samą nazwą (`docker compose exec -e NAME`,
+  `docker run -e NAME`), więc wartość nie trafia do linii komendy, wyjścia make ani `make -n`. Komunikaty błędów
+  podają nazwy zmiennych, nigdy wartości, i nie powtarzają komunikatu wyjątku klienta S3 (zawiera adres i bucket),
+  tylko nazwę klasy wyjątku. Generator dostaje tylko token odczytu, wysyłka tylko token zapisu. Obraz `rclone` jest
+  wyłącznie przypięty `@sha256:` (`images.rclone` w `infra/k8s/charts/shop/values.yaml`).
+
+Narzędzia uruchamiane świadomie (nie wywołuje ich `make init`, `make up` ani `make seed`): `pricing:reconcile-tax
+[--apply]` (np. po zmianie stawki w `PolishVatRates`; `docs/features/pricing/spec.md`) i `cart:purge-expired`
+(ręcznie albo z crona, w MVP bez harmonogramu; `docs/features/cart/spec.md`). `storefront:cache:purge-all` unieważnia
+cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventory:stock-records:sync` są krokami
+`app:backfill` (niżej).
+
+`app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
+`bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (`docs/features/admin-features/spec.md`,
+sekcja 1). Nowy krok implementuje `Shared\Infrastructure\Backfill\BackfillStep` w warstwie Infrastructure modułu
+(rejestracja tagiem z interfejsu, kolejność `#[AsTaggedItem(priority: …)]` malejąco), jest idempotentny, działa
+partiami w osobnych transakcjach i jest poprawny przy ruchu. Ukończony krok nie uruchomi się drugi raz bez `--force`,
+więc nowy model odczytu dostaje własny krok, a nie zmianę istniejącego.
 
 ## Architektura
 
@@ -232,510 +65,121 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Domena nie jest mapowana przez Doctrine. Persystencja przez rekordy w `<Context>/Infrastructure/Persistence/Doctrine`
   mapowane atrybutami, z relacjami między rekordami. Repozytoria mapują agregat ↔ rekord, a agregat odtwarzają
   przez `reconstitute()`, które nie zapisuje zdarzeń.
-- Wyjątek: Inventory. Stan, rezerwacje i historię zapisuje i czyta przez DBAL na połączeniu Doctrine, w transakcji
-  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją), także rekordy
-  stanów wariantów z produktem (`DbalStockRecords`: `INSERT … ON CONFLICT … DO UPDATE … WHERE product_id IS NULL`
-  i `DELETE` pustych rekordów usuniętych wariantów, bez agregatu i bez zdarzeń; `docs/features/inventory/spec.md`,
-  „Rekord stanu każdego wariantu”). Rekordy Doctrine
-  Inventory są tylko definicją schematu dla `doctrine:schema` i migracji, repozytoria ich nie używają. Powody:
-  rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
-  wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
-  w identity map nie odświeża jej stanu (ryzyko sprzedaży ponad stan); `ON CONFLICT` i tak wymaga SQL.
-- Wyjątek: Cart. Zapisuje przez rekordy Doctrine, ale każda komenda zaczyna od blokady wiersza koszyka przez ORM
-  (`find()` z `PESSIMISTIC_WRITE`). Rekord już obecny w identity map jest odświeżany pod blokadą
-  (`refresh()` z `PESSIMISTIC_WRITE`), a po nim jego linie: kaskada `refresh` Doctrine czytałaby (i blokowała) linie
-  przed wierszem koszyka, w odwrotnej kolejności niż inne transakcje. Koszyk klienta zakłada
-  `INSERT … ON CONFLICT DO NOTHING` przed blokadą (`lockOrCreateForCustomer`), bo naruszenie unikalności przy dwóch
-  równoległych pierwszych dodaniach zamknęłoby `EntityManager`; gdy koszyk zniknął między `INSERT` a blokadą
-  (usunął go `cart:purge-expired`), `lockOrCreateForCustomer` ponawia `INSERT` i blokadę raz. Wyjątek od blokady przez
-  ORM: `PurgeExpiredCarts` usuwa partię jednym `DELETE` przez DBAL z `FOR UPDATE SKIP LOCKED` (bez ORM i repozytorium).
-  Dwie blokady naraz bierze tylko scalenie
-  (`MergeGuestCart`), zawsze w kolejności: koszyk gościa, potem koszyk klienta, i zapisuje oba w jednej transakcji,
-  więc nie ma zakleszczeń, a koszyk gościa jest `merged` tylko po udanym przeniesieniu linii. Scalenie bez
-  przeniesienia (`nothing_to_merge`, `already_merged`) czyta koszyk klienta bez blokady, więc trzyma tylko blokadę
-  wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
-  bez blokady i bez transakcji. Linie są zapisywane w miejscu po wariancie, więc usunięcie i ponowne dodanie wariantu
-  w jednej zmianie nie trafia na unikalny indeks `(cart_id, variant_id)`.
-- Wyjątek: blokada zapisów promocji (Pricing, `docs/features/pricing/spec.md`, „Promocje”). Promocje zapisują się
-  przez rekordy Doctrine według ogólnej zasady, a DBAL służy tylko do blokady doradczej transakcji
-  (`PostgresPromotionWriteLock`: `pg_advisory_xact_lock` na stałym kluczu Pricing, poza transakcją adapter odmawia) i do
-  dwóch zapytań między promocjami (nakładanie okresów, wariant w aktywnej promocji). `PlanPromotion`,
-  `RevisePromotion` i `DeletePromotion` biorą blokadę na wyłączność, więc niezmiennik „wariant najwyżej w jednej
-  promocji naraz” jest sprawdzany na zatwierdzonych danych; `SetVariantPrice` bierze ją w trybie współdzielonym, więc
-  zmiany cen nie czekają na siebie, a zmiana ceny i równoległy zapis promocji idą po kolei. Każdy z tych handlerów
-  czyta zegar (port `Clock`) dopiero po blokadzie, a cena dostaje ten czas (`changed_at`), więc cena zapisana przed
-  promocją „od teraz” jest przed jej startem (`startOfNow`: `now` ucięte do sekundy + 1 s), a cena wariantu w promocji
-  aktywnej w chwili zapisu to 409 `PriceLockedByPromotion` przed sprawdzeniem wersji. `ReconcileTax` i przeliczenie
-  po zmianie klasy (`reprice`, brutto bez zmian) blokady nie biorą.
-- Wyjątek: drzewo kategorii (Catalog, spec ADMIN-FEATURES, 4 „Reguły”, decyzje P9, P10). Kategorie zapisują się przez
-  rekordy Doctrine według ogólnej zasady. `CreateCategory`, `ReviseCategory`, `MoveCategory` (także nowa kolejność: ten
-  sam rodzic) i `DeleteCategory` (`command.bus`) zaczynają od blokady doradczej transakcji (`PostgresCategoryTreeLock`:
-  `pg_advisory_xact_lock` na stałym kluczu Catalog, poza transakcją adapter odmawia), dopiero potem czytają całe drzewo
-  (`CategoryRepository::all` z odświeżeniem rekordów z identity map), więc dwa przeniesienia nie tworzą cyklu, a głębokość,
-  slugi i pustość są sprawdzane na zatwierdzonych danych (`CategoryMoveConcurrencyTest`, dwa procesy). Reguły ma
-  `CategoryTree` (Domain): kolejność rodzeństwa to `position`, potem nazwa w `pl_PL` (`Collator`), potem `id` (ta sama
-  w `CategoryTreeBuilder` sklepu i panelu, więc przy wszystkich pozycjach 0 kolejność jest alfabetyczna); umieszczenie
-  kategorii (nowej na końcu rodzeństwa, przeniesionej, przestawionej) najpierw numeruje rodzeństwo docelowe 0, 1, 2…
-  w bieżącej kolejności; najwyżej 4 poziomy (`category-too-deep`, przeniesienie liczy głębokość całego poddrzewa), bez
-  cyklu (`category-cycle`), usuwa tylko kategorię bez podkategorii i produktów (`category-not-empty`). `version`
-  (zwykła kolumna, bez `#[ORM\Version]`) rośnie przy każdej zmianie samej kategorii (nazwa, slug, rodzic, miejsce),
-  nie przy przenumerowaniu rodzeństwa. Jedyny zapis DBAL: przeniesienie zmienia zmaterializowaną `path` kategorii
-  i poddrzewa jednym `UPDATE catalog_category … WHERE path LIKE :old || '%'` (indeks `text_pattern_ops`; ścieżka ma tylko
-  cyfry szesnastkowe, myślniki i ukośniki, więc `LIKE` nie wymaga ucieczki), a rekordy poddrzewa obecne w identity map
-  są potem odświeżane, żeby `flush` nie zapisał starych ścieżek. `DeleteCategory` blokuje wiersz kategorii
-  (`SELECT … FOR UPDATE`) przed liczeniem produktów: zapis produktu (`ProductInput`, `CategoryRepository::lockForAssignment`) bierze
-  w swojej transakcji `FOR KEY SHARE` na wierszu każdej swojej kategorii (głównej i dodatkowych) przed zapisem, więc
-  produkt zapisany w tym czasie jest policzony (409 `category-not-empty`) albo czeka na usunięcie i kończy się 422
-  „Kategoria nie istnieje.” (`UnknownCategory`), nigdy 500 z klucza obcego (`CategoryAssignmentLockTest`). Seed (`CreateCategory::bySeed`, `DemoCatalogLoader`) zostawia pozycję
-  0 bez przenumerowania i bez zdarzenia. Przekierowania (`catalog_category_redirect`, `old_path` PK, `category_id` FK
-  `ON DELETE CASCADE`, rekord `CategoryRedirectRecord`) zapisuje ta sama transakcja: zmiana sluga i przeniesienie na
-  innego rodzica zapisują stare ścieżki slugów kategorii i potomków, a każda ścieżka, którą istniejąca kategoria ma po
-  zmianie (także utworzeniu), przestaje być przekierowaniem. `catalog:seed-demo` czyści je razem z kategoriami.
-- Wyjątek: użycie kodu rabatowego (Pricing, decyzje A3, D7 w `docs/features/discount-codes/spec.md`).
-  `RedeemDiscountCode(codeId, orderId, subtotalGross)` (`command.bus`, wyłącznie zagnieżdżona w `PlaceOrder`) zapisuje
-  użycie przez rekord Doctrine (`DiscountCodeUsageRecord`), a nie przez DBAL jak Inventory: handler złożenia nigdy nie
-  łapie jej wyjątku, więc odrzucenie wycofuje całą transakcję i `UnitOfWork` nie zapisze wycofanych zmian. Rekord kodu
-  jest zawsze czytany od nowa (`DiscountCodeRepository::find` z odświeżeniem rekordu z identity map); kod z limitem
-  potem jeszcze raz pod blokadą wiersza (`lock`: `SELECT … FOR NO KEY UPDATE`, potem odczyt rekordu z odświeżeniem), kod bez limitu bez blokady.
-  Blokada kodu to `FOR NO KEY UPDATE`, nie `FOR UPDATE` z `PESSIMISTIC_WRITE`: klucz obcy użycia bierze
-  `FOR KEY SHARE` na wierszu kodu, z którym `FOR UPDATE` by się wykluczało, więc zmiana kodu bez limitu
-  (`ReviseDiscountCode`) czekałaby na złożenia z nim; `FOR NO KEY UPDATE` wyklucza tylko inną blokadę kodu i jego
-  `UPDATE`. Zegar i liczba aktywnych użyć po blokadzie, potem `rejectionFor` jeszcze raz; odrzucenie to
-  `DiscountCodeRejected(rejection)` (Pricing Application). `ReleaseDiscountCodeUsage(orderId)` (`command.bus`,
-  zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
-  wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
-- Wyjątek: sprzedaż godzinowa Ordering (spec ADMIN-FEATURES, „Sprzedaż”, decyzja A2). Tabela `ordering_sales_hour`
-  (PK `(hour_start, shard)`: początek godziny w UTC i jeden z 16 kubełków identyfikatora zamówienia; `order_count`,
-  `gross` w groszach) jest zapisywana i czytana przez DBAL (`DbalSalesHours`, port `SalesHours`), a rekord
-  `SalesHourRecord` tylko definiuje schemat. `MarkOrderPaid` po zapisie opłaconego zamówienia (tylko wynik `Paid`;
-  `AlreadyPaid`, inna płatność, płatność po terminie i anulowane zamówienie nic nie dopisują) robi w swojej transakcji
-  jeden `INSERT … ON CONFLICT (hour_start, shard) DO UPDATE SET order_count = order_count + 1, gross = gross + …`, więc
-  wycofany webhook wycofuje też licznik, a równoległe płatności jednej godziny czekają najwyżej na wiersz swojego
-  kubełka. Godzinę (`date_bin` od `paid_at`) i kubełek (dolne 4 bity ostatniego bajtu UUID) liczą wyłącznie wyrażenia
-  SQL `SalesSql`, wspólne dla zapisu przyrostowego i przebudowy, więc obie drogi trafiają w ten sam wiersz.
-  Przebudowa godziny (`SalesHoursRebuild::rebuild`, `READ COMMITTED`) w jednej transakcji: `INSERT` 16 wierszy godziny
-  `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` tych wierszy, dopiero potem liczenie zamówień opłaconych w godzinie
-  (`UPDATE` z agregacją po kubełku) i `DELETE` wierszy z zerem. Płatność godziny dopisuje się do jednego z tych
-  wierszy przed swoim commitem, więc albo zatwierdziła się przed blokadą (liczenie ją widzi, a zapis nadpisuje jej
-  dopisanie), albo czeka na commit przebudowy i dopisuje się do nowego wiersza; żadne zamówienie nie ginie ani nie
-  liczy się dwa razy (test `SalesRebuildConcurrencyTest`, dwa procesy). Odczyt (`GetSalesSummary`) sumuje najwyżej
-  2 × 720 godzin po kluczu tabeli, nigdy zamówień.
-- Wyjątek: klienci panelu w Ordering (spec ADMIN-FEATURES, sekcja 5, decyzja A4). Tabela `ordering_customer`
-  (PK `customer_id` = `sub` konta sklepu; `email`, `full_name`, `phone` najnowszego zamówienia, `order_count`,
-  `paid_count`, `paid_gross` w groszach bez odejmowania zwrotów, `first_order_at`, `last_order_at` i `last_order_id`)
-  jest zapisywana przez DBAL (`DbalCustomerSummaries`, port `CustomerSummaries`), a rekord `CustomerRecord` tylko
-  definiuje schemat. Klient to konto z co najmniej jednym zamówieniem; gość nim nie jest. `PlaceOrder` tylko dla nowego
-  zamówienia klienta (nie dla powtórzenia po `Idempotency-Key`) robi w swojej transakcji jeden `INSERT … ON CONFLICT
-  (customer_id) DO UPDATE SET order_count = order_count + 1, first_order_at = LEAST(…), last_order_at = GREATEST(…)`,
-  a kontakt i `last_order_id` bierze z zamówienia tylko wtedy, gdy `(placed_at, id)` zamówienia nie jest wcześniejsze
-  niż `(last_order_at, last_order_id)` wiersza (`placed_at` ma sekundy, więc remis rozstrzyga identyfikator, tak jak
-  przebudowa `ORDER BY placed_at DESC, id DESC`); starsze zamówienie zatwierdzone po nowszym nie nadpisuje kontaktu (test
-  `CustomerSummariesConcurrencyTest`, dwa procesy). `MarkOrderPaid` przy wyniku `Paid` zamówienia klienta dopisuje
-  `paid_count + 1`, `paid_gross + total_gross`; klient bez wiersza (zamówienia sprzed wdrożenia, przed backfillem)
-  dostaje wiersz z samego opłaconego zamówienia (`INSERT … SELECT` z `ordering_order`: jego kontakt i chwila, jedno
-  zamówienie, opłacone), nigdy wiersz z `NULL`, a przebudowa i tak go nadpisze. Wycofana transakcja wycofuje dopisanie.
-  Przebudowa partii (`CustomerSummariesRebuild::rebuild`, zakres `customer_id`, `READ COMMITTED`) w jednej transakcji:
-  `INSERT` brakujących wierszy klientów zakresu z zatwierdzonymi zamówieniami (wartości zastępcze, `ORDER BY
-  customer_id`) `ON CONFLICT DO NOTHING`, `SELECT … FOR UPDATE` wszystkich widocznych wierszy zakresu (kolejność
-  `customer_id`), dopiero potem liczenie zamówień (`UPDATE` z agregacją i kontaktem najnowszego zamówienia) i `DELETE`
-  wierszy klientów bez zamówień, oba tylko dla zablokowanych wierszy (wiersz klienta, którego wszystkie zamówienia
-  zatwierdziły się po utworzeniu wartości zastępczych, nie jest zablokowany, więc przebudowa go nie rusza: jego
-  dopisania są pełne, a nadpisanie z liczenia po blokadzie zgubiłoby dopisanie równoległej płatności). Złożenie i płatność dopisują się do
-  wiersza swojego klienta przed commitem, więc albo zatwierdziły się przed blokadą (liczenie je widzi, zapis nadpisuje
-  dopisanie), albo czekają na commit przebudowy i dopisują się do nowego wiersza; pierwsze zamówienie klienta bez wiersza
-  jest albo widoczne dla liczenia razem ze swoim wierszem, albo jego wiersz zostaje nietknięty. Żadne zamówienie nie ginie ani
-  nie liczy się dwa razy (test `CustomerSummariesConcurrencyTest`, dwa procesy, oba przeplecenia ze złożeniem
-  i z płatnością oraz pierwsze złożenie nowego klienta w trakcie przebudowy z płatnością po nim).
-- Moduł `DemoData` (`src/DemoData`, spec `docs/features/demo-data/spec.md`, P1 i P1a): generator danych demo to płaski moduł
-  poza contextami (jak `PaymentSimulator`) z jedną warstwą Deptrac, która zależy tylko od `Native`, `Vendor`,
-  `Shared_Infrastructure` i warstw Domain Catalog, Pricing i Ordering (reguły i value objecty wartości, które zapisuje:
-  `Slug`, `VariantKey`, `VariantValues`, `CategoryPath`, `TaxClassCode`, `PriceBreakdown`, `PromotionalPrice`,
-  rabat kodu i jego podział na linie z `BasketQuote::discountOf` i `BasketQuote::allocate`, `LineAmounts`, `OrderNumber`,
-  `PromotionCopy`, `Contact`, `ShippingAddress`, `RequestFingerprint`, `AccessToken`, `IdempotencyKey`); żaden context ani inny moduł nie zależy od `DemoData`, a on nie używa agregatu ani
-  repozytorium (pilnuje tego Deptrac i `DemoDataBoundaryTest`, który wyłapuje agregat i repozytorium wewnątrz warstwy
-  Domain). Reguły spoza Domain, które generator powtarza, pilnują testy kontraktu (`CatalogStepsTest`): klucz wartości
-  wariantu `values_key` i ścieżka kategorii `path` równe temu, co zapisuje kod Catalog, klucz zdjęcia równy kluczowi
-  `FlysystemProductImageStorage`. Słowniki, profile i ziarno: `fixtures/demo-data/` (`profiles.yaml`: liczby i
-  `diskPeakGb` profili, jedna przestrzeń nazw ziarna, inna niż w `catalog.yaml`, i jeden stały rozmiar części wspólny
-  dla wszystkich profili; `categories.yaml` około 100 kategorii końcowych w działach z `catalog.yaml`, `product-types.yaml`
-  około 120 typów produktów z osiami wariantów, klasą podatkową, przedziałem cen, grupą zdjęć i cechami do opisów,
-  `brands.yaml` około 300 fikcyjnych marek, `models.yaml`, `descriptions.yaml`, `photo-groups.yaml`, słowniki osób
-  `first-names.yaml` i `surnames.yaml` (po 300 imion i 1000 nazwisk każdej płci z list GUS z rejestru PESEL, z liczbą osób jako
-  wagą, wielkimi literami jak w rejestrze; generator je normalizuje) i `places.yaml` (miasta z wagą, ich kody pocztowe z punktów
-  adresowych PRG, tylko kody miast, nigdy wsi o tej samej nazwie, i ulice), `CREDITS.md` ze źródłami i licencjami).
-  Determinizm: każda część ma własny strumień liczb pseudolosowych (`Prng`: xoshiro256** z ziarna, nazwy strumienia i
-  numeru części, nigdy `mt_rand` ani zegar), identyfikatory nazwanych encji to UUID v5 w przestrzeni ziarna
-  (`category:<ścieżka slugów>`, `product:<i>`, `variant:<i>:<k>`; `DemoUuid`), zdarzeń UUID v7 z czasem zdarzenia i bitami
-  ze strumienia (`DemoUuid::v7`, dla kolejnych kroków), a wszystkie czasy liczą się od `--anchor` (`Anchor`). Produkt ma
-  globalny indeks `i`: jego slug to slug Catalog z nazwy `<typ> <marka> <model>` i `-<i + 1>`, więc jest unikalny z
-  konstrukcji, niezależnie od części i liczby procesów, i rozłączny ze slugami `catalog.yaml` (sprawdza to `verify`);
-  opublikowanie rozkłada się na 1140 dni kończących się 16 dni przed chwilą odniesienia, w kolejności indeksów (kolejne
-  kroki biorą do zamówień tylko produkty opublikowane przed złożeniem); około 40% produktów ma jeden wariant, pozostałe 2–8
-  (średnio około 3), około 2% to szkice, co 50. produkt nie ma zdjęć, około 20% ma dodatkową kategorię z tego samego działu.
-  Ceny (krok 3, `src/DemoData/Pricing`): `PriceGenerator::forProduct(ProductSpec, promocje wariantów)` to czysta funkcja
-  produktu (strumień `pricing` na indeks produktu, więc cena nie zależy od innych produktów, części ani liczby
-  procesów): szczebel drabinki cen typu (`PriceLadder`: okrągłe ceny, odstęp 5 zł poniżej 50, 10 poniżej 200, 25 poniżej
-  500, 50 poniżej 1000, 100 powyżej; tańsze szczeble częstsze) z końcówką `,99` (3 produkty na 4) albo `,00`, warianty w tej
-  samej cenie albo (1/3 produktów z osią „Rozmiar”) z dopłatą szczebla za każde 3 rozmiary w górę; netto, VAT i stawka to
-  `PriceBreakdown` ze stawką klasy podatkowej (`PolishVatRates`), źródło i aktor wpisu to `PriceChangeOrigin`. Historia:
-  wpis `seed` godzinę przed opublikowaniem produktu (szkic: przed ostatnią zmianą), u około 30% wariantów jedna zmiana
-  `staff` w ostatnich 90 dniach (szczebel lub dwa w górę albo w dół, aktor to `admin` z `StaffRoles`), nigdy w trakcie
-  promocji wariantu (cena promowanego wariantu jest zablokowana, jak w aplikacji: zmiana czeka do końca promocji).
-  Wiersz ceny bieżącej to ostatni wpis (wersja 1, po zmianie 2, `updated_at` = jego czas). `PromotionPlanner::plan()`
-  planuje 40 zakończonych promocji (3–30 dni, 10–50%, do 1000 wariantów; próbka wariantów jednego działu z produktów
-  opublikowanych dwa dni przed startem, z okna 1–3 części katalogu, bez wariantów w promocji o nakładającym się okresie; co 8. promocja z ostatnich 100 dni, reszta w 3
-  latach zamówień; żadna nie trwa po chwili odniesienia, P8; id to UUID v5 `promotion:<i>`, bez aktora, nazwa
-  „Promocja <dział> -<n>% (<mm.rrrr>)”), `DiscountCodePlan` 14 zakończonych kodów kolejno w 3 latach (`ZIMA-24`, UUID v5
-  `code:<n>` od 1, co 3. kod kwotowy z minimum 5 razy wyższym, co 4. z limitem, bez użyć; kody z `discount-codes.yaml` bez
-  zmian). Plan to czysta funkcja profilu, ziarna i chwili odniesienia (koszt kilkudziesięciu części katalogu, więc
-  liczy go każdy proces). Cena skuteczna: `PriceTimeline::effectiveAt(t)` (ostatni wpis historii nie późniejszy niż `t`,
-  obniżony o promocję trwającą w `t`, `[start, koniec)`, regułą `PromotionalPrice`; wynik `UnitPrice`: cena katalogowa,
-  skuteczna, stawka i promocja) dla zamówień: `PriceGenerator::forProduct(spec, PromotionPlanner::byVariant(plan))[pozycja]`
-  daje oś czasu wariantu bez bazy. Pracownicy: numery kont od 1, rola to funkcja samego numeru (`StaffRoles::roleOf`,
-  cykl 500: 10 `admin`, 200 `support`, 200 `warehouse`, 90 `marketing`), id i nazwa aktora historii to id i imię
-  z nazwiskiem wygenerowanego konta pracownika o tym numerze (`AccountGenerator::staff`, krok 4).
-  Zamówienia (krok 5, `src/DemoData/Orders`): zamówienie ma globalny indeks `i` (część to ciągły zakres indeksów,
-  strumień `order` na część), czas złożenia to `OrderTraffic::placedAt(i)` (odwrotność ruchu godzinowego z 3 lat przed
-  chwilą odniesienia: wzrost 2,5 raza, szczyt w listopadzie i grudniu, rytm doby w czasie polskim; ostatnie zamówienie
-  godzinę przed chwilą odniesienia), więc rośnie z `i`, a numer to `R-<OrderNumber::FIRST + i>`. `OrderGenerator`
-  losuje najpierw (`OrderDraft`, stała kolejność losowań) właściciela (40% gości z osobą `guest` numeru zamówienia
-  i e-mailem `<imię>.<nazwisko>.g<numer>@example.*`, 60% klientów z kont kroku 4 z ich danymi, numer konta z trzech
-  warstw ciągłej permutacji: 70% zamówień na wszystkich, 20% na 2%, 10% na 0,2% klientów), 1–4 linie po 1–3 sztuki
-  (każda z 4 kandydatów: produkt opublikowany na pewno przed złożeniem, `ProductGenerator::publishedBy`, „gorący”
-  z szansą 0,8 według skrótu indeksu, co piąty produkt; wybór między kandydatami ważony sezonem działu
-  `OrderTraffic::departmentWeight`, szkice i produkty opublikowane później odpadają), kod (około 10%), dostawcę płatności,
-  wynik i opóźnienia cyklu, pracowników i id; potem czyta katalog i osie cen (`OrderCatalog`: `DbalOrderCatalog`
-  z tabel kroków 1 i 3) i liczy linie: cena jednostkowa to `PriceTimeline::effectiveAt(złożenie)` z kopią promocji, rabat
-  i podział regułami Pricing (`BasketQuote`), kwoty linii `PriceBreakdown::ofLineGross` sprawdzone `LineAmounts`. Kod
-  (historyczny, ważny w chwili złożenia, minimum jak `DiscountCode::rejectionFor`, a kod z limitem najwyżej limit /
-  liczba części jego okresu na część) dostaje około 10% zamówień. Cykl według wieku (P8, nic `new`): 4% wygasa
-  nieopłaconych (anulowanie `system` 35 minut po złożeniu, użycie kodu zwolnione), pozostałe opłaca `system` w 1–25 minut
-  (płatność `succeeded` sumy, odcisk jak `RequestFingerprint` Payment, sprawdza go test), 2% anuluje potem pracownik
-  `admin`/`support`, reszta jest wysyłana i dostarczana przez `admin`/`warehouse`, 4,5% dostarczonych wraca
-  (`admin`/`support`); anulowanie przez pracownika i zwrot mają zwrot sumy należny po 14 dniach, rozliczony do 2 dni po
-  terminie przez `admin`/`support`, jeśli to przed chwilą odniesienia; krok po chwili odniesienia się nie zdarza. Token
-  gościa (`random_bytes`) i klucze idempotencji zamówienia i płatności (UUID v4) są losowe, nigdy z ziarna; odcisk
-  żądania jest z ziarna (koszyk `customer:<id>` albo `guest:<UUID v5 cart:<i>>`). Stany (krok 6, `StockLoader`): opis
-  w specyfikacji („Stany po zamówieniach”); stan wylosowany ze skrótu ziarna i wariantu (8% wariantów bez zamówień
-  w oknie: pusty rekord bez ruchów), nie mniejszy niż szczyt rezerwacji aktywnych naraz, id ruchów to UUID v7 w SQL.
-  Konta (krok 4, `src/DemoData/Accounts`): osoba to czysta funkcja ziarna, słowników i klucza (strumień
-  `person:<rodzaj>` na numer; `AccountGenerator::person('customer'|'staff'|'guest', n)`): płeć z udziału wag imion
-  żeńskich, imię i nazwisko ze słowników płci z wagami (`WeightedNames`, wyszukiwanie binarne po sumach), domena
-  `example.com|net|org`, telefon `+48` z prefiksem komórkowym i 9 cyframi, miasto z wagą, kod pocztowy miasta, ulica
-  i numer (połowa z lokalem). Login bez polskich znaków (`Transliteration::login`: małe litery a–z i pojedyncze `-`):
-  klient ma nazwę użytkownika = e-mail `<imię>.<nazwisko>.<n>@example.(com|net|org)`, pracownik `<imię>.<nazwisko>.<n>`,
-  bez e-maila, z rolą `StaffRoles::roleOf(n)`. Id konta to UUID v5 `customer:<odcisk>:<n>` albo `staff:<odcisk>:<n>`
-  w przestrzeni ziarna; odcisk (`PersonDictionaries::fingerprint`, 16 znaków szesnastkowych) to skrót treści
-  `first-names.yaml`, `surnames.yaml`, `places.yaml` (bez komentarzy), reguły ról (`StaffRoles::rule`) i wersji sposobu
-  losowania (`GENERATOR_VERSION`, podbijana przy zmianie losowania osoby albo konta). Reconciliacja realmu
-  (`AccountReconciler`, port `AccountDirectory`, adapter `KeycloakRealmDirectory`): zapewnia grupę `demo-data-generated`
-  (atrybut `description`), czyta całą listę członków stronami (w pamięci binarne id i 64-bitowy skrót danych, około
-  80 B na członka), członek z id zbioru docelowego i bieżącymi danymi (nazwa, e-mail, imię, nazwisko, wyłączony,
-  u pracowników role cyklu z list członków ról) zostaje, pozostali są usuwani po kolei dopiero po odczycie ich grup
-  i potwierdzeniu członkostwa (spoza grupy: pominięty i zgłoszony, 404: pominięty), potem import brakujących
-  (`partialImport`, `SKIP`) i sprawdzenie każdego pominiętego (inne id albo konto spoza grupy to konflikt). Keycloak 26.6
-  odrzuca całą paczkę przy zajętym id (409) i przy koncie pominiętym tylko przez e-mail (500), więc odrzuconą paczkę
-  reconciliacja importuje ponownie po jednym koncie, a odrzucone konto to konflikt, gdy tłumaczy go nazwa, e-mail albo
-  id; inaczej krok kończy się błędem. `differences()` to te same porównania bez zmian (kontrole kont `verify`).
-- Wyjątek: `DemoData` zapisuje konta w Keycloak przez REST administratora (`KeycloakAdmin`: token realmu `master`
-  klienta `admin-cli`, brany od nowa przed wygaśnięciem; `partialImport` z kontami wyłączonymi, bez poświadczeń i bez
-  atrybutów użytkownika, z grupą w `groups` i rolą w `realmRoles` w tej samej reprezentacji, paczkami po 2000, do
-  4 żądań naraz, oczekiwanych w kolejności wysłania), nie przez realmy z repo ani Job `keycloak-config`; zmienia tylko
-  konta grupy `demo-data-generated` (spec, „Konta w Keycloak”, W1).
-- Wyjątek: `DemoData` zapisuje tabele przez `COPY FROM STDIN` i SQL, nie przez rekordy Doctrine ani agregaty
-  (`CopyWriter`: natywne `Pdo\Pgsql::copyFromArray` na połączeniu DBAL, paczkami po 5000 wierszy, w transakcji
-  wywołującego, do tabel z indeksami z migracji, bez zmiany schematu; sesja ładowania ustawia `SET synchronous_commit =
-  off`, którego przy wycofaniu transakcji nie zostaje). Naruszenie `NOT NULL`, `CHECK` albo klucza obcego odrzuca
-  `COPY`, więc brak wartości kolumny wykrywają już same testy kroków. Tabele, które generator wypełnia: `catalog_category`,
-  `catalog_product`, `catalog_product_variant`, `catalog_product_category` (krok 1), kolumnę `images`
-  `catalog_product` (krok 2, `UPDATE` z tabeli tymczasowej), `pricing_variant_price`, `pricing_price_history` (krok 3,
-  części), `pricing_promotion`, `pricing_promotion_variant` i `pricing_discount_code` (krok 3, jeden proces; nie
-  `pricing_discount_code_usage`, użycia robią zamówienia), `ordering_order`, `ordering_order_line`,
-  `ordering_order_status_change`, `payment_payment` i `pricing_discount_code_usage` (krok 5, części),
-  `inventory_reservation`, `inventory_reservation_line`, `inventory_stock_movement`, `inventory_stock_item` (krok 6, SQL)
-  i sekwencję `ordering_order_number_seq` (krok 7, `setval`). Nie pisze `ordering_order_notification` (żadnego e-maila
-  zamówienia), `payment_webhook_event` ani tabel symulatora płatności. Generator nie
-  zapisuje do `catalog_category_redirect`, outboxu ani kolejek.
-- Wyjątek od outboxu: generator nie publikuje zdarzeń ani nie planuje wiadomości Messengera (nie ma `ProductCreated`
-  ani `CategoryTreeChanged`, outbox i kolejki zostają, jakie były), więc nie obowiązuje go zasada „zdarzenie w tej samej
-  transakcji co agregat”; indeks wyszukiwarki i cache sklepu odświeża koniec `bin/generate-demo` (`catalog:reindex`,
-  `storefront:cache:purge-all`). Dotyczy tylko danych demo.
-- Testy generatora (`tests/Unit/DemoData`, `tests/Integration/DemoData`, `tests/Functional/DemoData`): kroki `demo-data:*`
-  z profilem `small` biegną na `shop_test` w procesie testu i w jego transakcji (wycofanej po teście), bez
-  `bin/seed-demo` i bez czyszczenia cache sklepu (worker i Varnish nie obsługują `shop_test`); `CatalogStepsTest` liczy
-  sumę kontrolną każdej tabeli katalogu po dwóch przebiegach z tą samą chwilą odniesienia i po podziale na procesy
-  (`--worker`), `PricingStepsTest` to samo dla tabel cen i odtwarza ceny, promocje i kody przez repozytoria Pricing,
-  `VerifyStepTest` wstrzykuje naruszenia (katalogu i cen; po wszystkich krokach bazy, `RunsDemoDataSteps::allSteps`),
-  `OrderGeneratorTest` (jednostkowo, katalog z generatorów kroków 1 i 3: `GeneratedOrderCatalog`) sprawdza zamówienia,
-  ceny linii z wyceną `BasketQuote` z kodem, historię z rolami aktorów i rozkłady, `OrderStepsTest` wiersze kroków 5–7,
-  powtarzalność poza tokenami i kluczami, odtworzenie przez repozytoria Ordering, Payment, Pricing i Inventory
-  i niezmienniki stanów, `OrderVerifyTest` naruszenia zamówień i stanów,
-  `GeneratedOrdersOnTheRealPathsTest` listę i szczegół zamówienia w panelu, wysyłkę i anulowanie przez API panelu,
-  historię zamówień i płatność klienta (token z `sub` wygenerowanego konta) i historię cen i stanów wariantu, `GeneratedProductsOnTheRealPathsTest` czyta produkt z ogona
-  przez stronę produktu sklepu, listing kategorii, wyszukiwarkę (po `catalog:reindex` na indeksie testowym) i listę
-  produktów panelu, a `GeneratedPricesOnTheRealPathsTest` cenę Omnibus wariantu z ogona po zaplanowaniu promocji przez
-  API panelu (chwila odniesienia to początek dzisiejszej doby, bo API czyta prawdziwy zegar). `ProcessCountDeterminismTest`
-  (grupa `demo-data-processes`, w suicie `integration`) uruchamia części w osobnych procesach `bin/console`
-  (`APP_ENV=test`) z 1, 3 i 4 procesami, więc dane są zatwierdzone: czyta i czyści tabele katalogu, cen, zamówień i stanów (bez tokenów i kluczy idempotencji) własnym
-  połączeniem, przed testem i po nim. Nowy krok generatora dopisuje swoje tabele do sum
-  kontrolnych i kontroli `verify`. Konta: `AccountGeneratorTest`, `PersonDictionariesTest` i `AccountReconcilerTest`
-  (Keycloak w pamięci, `InMemoryAccountDirectory`, z zachowaniem zmierzonym na 26.6) jednostkowo, a `AccountsStepTest`
-  i `AccountsVerifyTest` na Keycloaku stosu, na dwóch tymczasowych realmach na test (`KeycloakTestRealms`: nazwy
-  `demo-data-test-*`, usuwane po teście; nigdy realmy `shop` i `backoffice`) i z ziarnem losowanym na test (id kont są
-  globalne w Keycloaku); brak logowania i e-maila resetu hasła sprawdza Mailpit stosu z kontem kontrolnym, które e-mail
-  dostaje. Testy kroków bazy wołają `verify` z `--no-accounts` (`RunsDemoDataSteps::verify`).
-- Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
-  `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
-  kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
-  połączeniu (savepoint), a wycena (Pricing `QuoteBasket` z kodem z żądania, port `OrderPrices`; wartości linii, rabat
-  i kopie promocji pochodzą z niej) i nazwy (Catalog `GetVariantSummaries`) przez `query.bus`. Zasady:
-  - handler nigdy nie łapie wyjątku zagnieżdżonej komendy, żeby pisać dalej: każdy błąd wycofuje całą transakcję
-    (koszyk, użycie kodu, rezerwację, zamówienie, outbox). Adaptery tłumaczą tylko niedobór Inventory
-    (`InsufficientStock`) na `InsufficientStockForOrder` i odrzucenie kodu Pricing (`DiscountCodeRejected` Pricing
-    Application) na `DiscountCodeRejected` Ordering (typ, `detail` i minimum z Pricing) i rzucają je dalej, inne wyjątki
-    przekazują bez zmian. Kod odrzucony już w wycenie to ten sam 409, przed porównaniem kwoty;
-  - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
-    z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady, a `OrderRepository::get` czyta
-    zamówienie z bazy z odświeżeniem rekordu z identity map, więc kolejny odczyt w tej samej transakcji widzi zmiany
-    zatwierdzone w międzyczasie;
-  - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersz kodu rabatowego (tylko kod z limitem,
-    `RedeemDiscountCode` po nadaniu `orderId`, przed numerem), potem wiersze stanów (`lockMany` Inventory, rosnąco po
-    `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, zmiana kodu
-    (`ReviseDiscountCode`) tylko wiersz kodu, a zwolnienie użycia nie blokuje kodu, więc nie ma cyklu;
-  - odcisk żądania obejmuje kod znormalizowany (`DiscountCodeText`), dopisany tylko, gdy jest, więc odcisk bez kodu
-    jest taki sam jak przed kodami rabatowymi; powtórzenie nie zapisuje drugiego użycia;
-  - idempotencja: zamówienie z tym samym `Idempotency-Key` i tym samym odciskiem żądania (koszyk i treść) jest
-    zwracane jako powtórzenie przed blokadą koszyka i jeszcze raz pod nią; inny odcisk to `IdempotencyKeyReused` (409),
-    także z unikalnego indeksu `idempotency_key` przy równoległym złożeniu z innego koszyka;
-  - numer zamówienia (`R-` i wartość od 100001) bierze `nextval('ordering_order_number_seq')` przez DBAL. Sekwencja
-    nie jest częścią transakcji: wycofane złożenie zostawia lukę. Schemat Doctrine dostaje sekwencję od listenera
-    `OrderNumberSequenceSchema` (mapowanie nie wyraża sekwencji poza id), więc diff migracji jej nie usuwa.
-- Cykl płatności zamówienia (Ordering, `docs/features/payment/spec.md`): zamówienie ma termin płatności (`placedAt`
-  + 30 min), a zamówienie gościa losowy `accessToken` (32 bajty w base64url, 43 znaki, generuje `PlaceOrder`; zwracany
-  w `OrderView`, klient ma `null`). Przejścia `new → paid` i `new → cancelled` to metody agregatu `Order` (bez Symfony
-  Workflow) i szereguje je wersja zamówienia: przegrany zapis kończy się konfliktem wersji i ponowieniem, więc nie ma
-  przejścia `cancelled → paid` ani zwolnienia rezerwacji opłaconego zamówienia.
-  - `markPaid` decyduje po czasie wykonania płatności u dostawcy (`executedAt ≤ paymentDeadline` opłaca), nie po czasie
-    odebrania webhooka; zwraca enum domenowy (także `paidAfterDeadline`, `alreadyPaid`, `paidByAnotherPayment`,
-    `orderCancelled` bez zmian), zła kwota albo waluta to `InvalidOrder`.
-  - Dla Payment (jedyny context zależny od Ordering) wszystko jest w `Ordering_Application`: zapytanie
-    `GetOrderForPayment(orderId, OrderAccess)` (`query.bus`) zwraca `OrderForPayment` (status jako `statusForPayment`:
-    `new`, `paid` albo `cancelled`; wysłane, dostarczone i zwrócone są `paid`, więc Payment nie zna statusów panelu)
-    albo `null` przy każdym braku
-    dostępu (nieznane zamówienie, id spoza UUID, zły token porównywany `hash_equals`, cudze zamówienie, inny rodzaj
-    właściciela); komenda `MarkOrderPaid` (`command.bus`, zagnieżdżona w transakcji webhooka) zwraca
-    `MarkOrderPaidResult`, a nieznane zamówienie i konflikt wersji to `OrderToPayNotFound` i `OrderChangedConcurrently`.
-  - Anulowanie nieopłaconego: `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` na
-    termin + 5 min (port `UnpaidOrderExpiry`; powtórzenie złożenia nic nie wysyła). Handler w transakcji `command.bus`
-    zaczyna od blokady zamówienia (`OrderRepository::lock`, jak komendy pracownika), przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
-    zagnieżdżony dispatch), potem użycie kodu rabatowego (port `DiscountCodeRedemptions::release`, Pricing
-    `ReleaseDiscountCodeUsage`, także dla zamówienia bez kodu, bez skutku), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
-    zaokrąglenie `available_at`) wraca na termin + 5 min + 1 s, opłacone albo anulowane zamówienie nic nie zmienia,
-    nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
-    `ReservationStateConflict`) idą dalej: ponowienia transportu, potem `failed` (zamówienie zostaje `new`).
-  - E-maile „Płatność przyjęta” (`SendPaymentReceived` po `OrderPaid`) i „Zamówienie … anulowane”
-    (`SendOrderCancelled` po `OrderCancelled`) działają jak `SendOrderConfirmation` (poniżej), każdy z własnym rodzajem
-    powiadomienia (`payment_received`, `cancelled`); port `OrderStatusMailer`, adapter
-    `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. `SendOrderCancelled` wybiera
-    treść według `cancellationReason` zamówienia: `payment_timeout` jak wyżej, `staff` „Anulowaliśmy Twoje zamówienie.
-    Zwrócimy płatność.” (`OrderCancelledByStaffText`). E-mail z potwierdzeniem podaje termin płatności w strefie
-    `Europe/Warsaw`.
-- Cykl zamówienia po opłaceniu (Ordering, `docs/features/order-management/spec.md`): statusy `shipped`, `delivered`,
-  `returned` i anulowanie opłaconego przez pracownika (`cancellationReason` `staff`). Przejścia pracownika to metody
-  agregatu `Order` (`ship`, `deliver`, `cancel`, `registerReturn`; bez Symfony Workflow), a tabela dozwolonych przejść
-  jest tylko w `OrderStatus::allowedStaffTransitions()` (enum `StaffTransition`); inne przejście to
-  `OrderTransitionNotAllowed` (409, `TypedProblem`). Notatka pracownika (`StaffNote`): przycięta z białych
-  znaków Unicode (także NBSP), 1–500 znaków, bez znaków sterujących (także nowej linii), U+0085, U+2028, U+2029 i bez
-  niepoprawnego UTF-8 (`ControlCharacters`, wzorzec z flagą `u`), wymagana przy anulowaniu i zwrocie, pusta przy pozostałych to brak notatki.
-  `markPaid` traktuje `shipped`, `delivered` i `returned` jak `paid` (`alreadyPaid`, `paidByAnotherPayment`).
-  - Zwrot pieniędzy (`Refund`, value object w zamówieniu): `cancel` i `registerReturn` zakładają zwrot brutto zamówienia
-    z terminem `Order::REFUND_TIME` (14 dni); `completeRefund` oznacza go jako wykonany (data, pracownik, notatka), drugi
-    raz albo bez zwrotu `RefundNotPending` (409). Sam przelew jest ręczny, poza systemem; wykonanie nie zmienia statusu.
-  - Historia statusów (`OrderStatusChange` z aktorem `StatusActor`: `system`, `customer`, `staff(staffId, username)`)
-    jest częścią agregatu, wpisy tylko dopisywane: złożenie `null → new` (klient), opłacenie i wygaśnięcie (system),
-    przejścia z panelu (pracownik z notatką). Zapis w tabeli podrzędnej `ordering_order_status_change`
-    (PK `(order_id, position)`, FK bez `ON DELETE CASCADE`). `DoctrineOrderRepository::save` najpierw zapisuje
-    zamówienie (`UPDATE` z wersją), a nowe wpisy dopisuje osobnym `flush`: Doctrine wstawia przed aktualizacją, więc
-    przegrany wyścig kończyłby się naruszeniem klucza historii zamiast konfliktem wersji.
-  - CHECK-i `ordering_order` (migracja): `paid_at` razem z `payment_id`, dokładnie dla zamówienia opłaconego (`paid`
-    i dalej oraz anulowanego przez pracownika); `shipped_at` od `shipped`, `delivered_at` tylko przy `delivered` i
-    `returned`, `returned_at` dokładnie przy `returned`; zwrot (`refund_amount`, `refund_due_at`) dokładnie przy
-    `returned` i anulowaniu przez pracownika, jego wykonanie (data, pracownik, notatka) tylko przy zwrocie.
-  - Komendy pracownika (`command.bus`, jedna transakcja, wynik `BackofficeOrderView` zapisanego zamówienia):
-    `ChangeOrderStatus(orderId, transition, expectedVersion, note, staffId, staffUsername)` i
-    `CompleteRefund(orderId, expectedVersion, note, staffId, staffUsername)`. Każda zaczyna od
-    `OrderRepository::lock` (`PESSIMISTIC_WRITE`; rekord już w identity map jest odświeżany pod blokadą, jak koszyk),
-    potem porównuje `expectedVersion` z wersją odczytaną pod blokadą (różna: `OrderModifiedConcurrently`, 409, także
-    przy powtórzeniu udanej zmiany); nieznane zamówienie i id spoza UUID to `OrderNotFound`. Wysyłka zatwierdza
-    rezerwację (port `StockReservations::commit`, adapter `CommandBusStockReservations` → Inventory
-    `CommitReservation`), anulowanie ją zwalnia (`release`), obie przed zapisem zamówienia (zagnieżdżony dispatch);
-    błędy Inventory (`ReservationNotFound`, `ReservationStateConflict`) to błędy logiczne (500, wycofanie całości).
-    Zapis zamówienia z historią i zdarzeniem (`OrderShipped`, `OrderCancelled`, `OrderReturned`) w outboxie.
-  - Kolejność blokad: wiersz zamówienia, potem rezerwacja i stany (Inventory). Tak samo `ExpireUnpaidOrder`, więc
-    równoległe zmiany z tą samą wersją idą po kolei (druga to 409, nigdy `ReservationStateConflict`), a wygaśnięcie
-    i zmiana pracownika nie zakleszczają się. Webhook (`MarkOrderPaid`) nie dotyka Inventory i zostaje przy wersji.
-  - E-maile do klienta tak samo jak e-maile płatności (jeden na zdarzenie, `NotificationSender`): „Zamówienie … wysłane”
-    z adresem (`SendOrderShipped` po `OrderShipped`, rodzaj `shipped`, `OrderShippedText`) i „Zamówienie … wróciło do
-    nas” (`SendReturnReceived` po `OrderReturned`, rodzaj `return_received`, `ReturnReceivedText`). Dostarczenie
-    i wykonanie zwrotu pieniędzy są bez e-maila; notatka pracownika ani termin zwrotu nie trafiają do e-maila.
-  - Panel (`openapi-admin.json`, tag `Ordering`): `GET /api/v1/admin/orders` (lista), `GET /api/v1/admin/orders/{orderId}`
-    (szczegóły), `POST …/{orderId}/status-changes` (`{transition, version, note}`) i `POST …/{orderId}/refund-completion`
-    (`{version, note}`); każda odpowiedź `private, no-store` (`OrderResponseCacheSubscriber` obejmuje `admin/orders`).
-    Reguła ról (P6) jest tylko w `OrderVoter` (`Ordering_Infrastructure`, role z `AuthenticatedStaffMember`):
-    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `VIEW_CUSTOMERS` (`admin`, `support`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
-    subject (`ship`, `deliver`: `admin`, `warehouse`; `cancel`, `return`: `admin`, `support`; bez przejścia voter
-    wstrzymuje się, czyli odmowa) i `COMPLETE_REFUND` (`admin`, `support`); `marketing` nie ma dostępu. Kontrolery
-    znają tylko nazwy atrybutów (`BackofficeOrderAttributes`) i pytają `isGranted`; Deptrac pozwala `Ordering_UI`
-    i `Ordering_Infrastructure` tylko na `Backoffice_Application`.
-  - Zapytania panelu (`query.bus`, bez blokad): `GetBackofficeOrder(orderId)` czyta zamówienie przez
-    `OrderRepository::get` i zwraca ten sam `BackofficeOrderView` co komendy pracownika (`overdue` z zegara; nieznane
-    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage, sort, placedFrom, placedTo, overdueRefunds)` czyta przez
-    port `BackofficeOrderReader` (adapter DBAL `DbalBackofficeOrderReader`, liczba sztuk z sumy linii): `q` po
-    przycięciu (także o spacje Unicode) znaczy (`OrderSearchTerm`): dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$` (cały `q` ma najwyżej 254 znaki, dłuższy to 400);
-    dokładny pełny adres e-mail (`lower(email) = lower(:email)`, do 254 znaków), gdy ma lokalną część, `@` i domenę
-    z kropką z ostatnim członem co najmniej 2 znaki (więc „jan@gm” nim nie jest); inny tekst 3–100 znaków to fragment
-    numeru, e-maila albo imienia i nazwiska; krótszy, dłuższy albo ze znakiem sterującym (w tym U+001F) to 400 przy
-    `q` (polski komunikat). Fragment to warunek `lower(o.number || E'\x1f' || o.email || E'\x1f' || o.full_name) LIKE
-    '%' || lower(:fragment) || '%'` z ucieczką `\`, `%` i `_` (znaczą siebie): dokładnie wyrażenie jedynego indeksu GIN
-    trigram `ordering_order_search_trgm_idx` (migracja nietransakcyjna `Version20261115140000`, `CONCURRENTLY`;
-    `number`, `email` i `full_name` są `NOT NULL`, więc konkatenacja nie daje NULL, a separator U+001F nie występuje w polach,
-    więc fragment nie przechodzi przez granicę pól). `placedFrom` i `placedTo` to dni `YYYY-MM-DD` w `Europe/Warsaw`
-    (2000–2999, oba końce włącznie), które `OrderPlacedRange` zamienia na chwile UTC `[początek dnia, początek dnia
-    po ostatnim)` (dzień zmiany czasu ma 23 albo 25 godzin); `placedFrom` po `placedTo` to 400 przy `placedTo`; łączą się
-    ze `status`, `q` i sortem po dacie (indeksy `placed_at`), a z `sort=total|-total` (400 przy `sort`) i `refund=pending`
-    (400 przy polach dat) nie. Sort z `sort` (domyślnie `placed_at DESC, id DESC`,
-    patrz „Sortowanie list panelu”), a przy `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC`
-    (łączy się ze `status` i `q`); `refund=overdue` to podzbiór `pending` z `refund_due_at` < chwila odczytu
-    (`BackofficeOrderFilter::$refundDueBefore`, zakres tego samego częściowego indeksu), z tym samym sortem i kursorem. Kursor keyset `BackofficeOrderCursor` (base64url JSON klucza sortu, chwili w UTC
-    z mikrosekundami albo kwoty i id); zły kursor i kursor innego sortu to 400 przy `after`. Parametry: `perPage` 1–100
-    (domyślnie 25), inaczej 400. `refund`, `q`, `sort`, `placedFrom`, `placedTo` i `customerId` są w DTO typu `mixed` i sprawdzane w callbackach, żeby
-    błąd typu (`q[]=…`) miał ten sam polski komunikat, co zły tekst (tak samo `level` listy stanów, `images` listy produktów, `sort` list produktów, cen i stanów oraz `productId` list cen i stanów). Indeksy listy (migracje): `(placed_at DESC, id DESC)`,
-    `(status, placed_at DESC, id DESC)`, `(total_gross, id)`, `(status, total_gross, id)`, `(lower(email))`, GIN trigram
-    wyszukiwania (wyrażenia, mapowanie ich nie zna, więc narzędzia schematu je pomijają) i częściowy `(refund_due_at, id)
-    WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL` (warunek w mapowaniu tak, jak zwraca go PostgreSQL);
-    `OrderingSchemaTest` pilnuje zgodności mapowania z migracją. `OrderSearchPlanTest` na 100 000 zamówień w tabeli
-    tymczasowej `ordering_order` (kopia definicji z indeksami, po `ANALYZE`; zasłania tabelę w połączeniu testu, więc
-    nie zostawia śmieci po wycofaniu) sprawdza `EXPLAIN` bez wyłączania skanów: `Bitmap Index Scan` na indeksie
-    wyszukiwania i brak `Seq Scan` po `ordering_order` dla fragmentu numeru, e-maila i nazwiska (strona i licznik).
-  - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
-    `GET /api/v1/me/orders?after=&perPage=` i `GET /api/v1/me/orders/{orderId}`; każda odpowiedź `private, no-store`
-    (`OrderResponseCacheSubscriber` obejmuje `me/orders`), brak tokenu albo token panelu to 401. Klient to `sub` z tokenu
-    (`AuthenticatedCustomer::id()`), nigdy parametr. `ListCustomerOrders(customerId, after, perPage)` czyta przez port
-    `CustomerOrderReader` (adapter DBAL `DbalCustomerOrderReader`, tylko `owner_type = 'customer'` i `customer_id`, liczba
-    sztuk z sumy linii): sort `placed_at DESC, id DESC`, kursor keyset ten sam co listy panelu (`BackofficeOrderCursor`,
-    sort po złożeniu; zły kursor i kursor zwrotów to 400 przy `after`), `perPage` 1–50 (domyślnie 10), inaczej 400.
-    Indeks (migracja): częściowy `(customer_id, placed_at DESC, id DESC) WHERE owner_type = 'customer'`, w mapowaniu tak,
-    jak zwraca go PostgreSQL (`OrderingSchemaTest`). Element listy: `orderId, number, placedAt, status, totalGross, currency,
-    itemCount, paymentDeadline, paymentDeadlinePassed`. `GetCustomerOrder(orderId, customerId)` czyta zamówienie przez
-    `OrderRepository::get` i sprawdza `Order::grantsAccess(AccessClaim::customer(...))`: nieznane, cudze, gościa i id spoza
-    UUID dają jeden wynik (null), a kontroler odpowiada tym samym 404 `OrderNotFound`. `CustomerOrderView` ma pozycje,
-    sumy, adres, `placedAt`, `paidAt`, `shippedAt`, `deliveredAt`, `cancelledAt`, `returnedAt`, `paymentDeadline`
-    i `paymentDeadlinePassed`, bez historii, notatek, danych pracowników, zwrotu, płatności i danych kontaktowych.
-    `paymentDeadlinePassed` liczy API z zegara: tylko zamówienie `new` od chwili terminu (`now >= paymentDeadline`, jak
-    `Order::isPayable`), dla innych statusów zawsze `false`.
-- Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
-  dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
-  więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:
-  istniejącą płatność zmieniają tylko operacje pod blokadą jej wiersza. Zapis płatności przez rekordy Doctrine według
-  ogólnej zasady (`payment_payment`), bez kluczy obcych do Ordering. Wyjątek: obsłużone zdarzenie webhooka
-  (`payment_webhook_event`, PK `(provider, event_id)`, na zawsze) zapisuje `DoctrinePaymentRepository::recordWebhookEvent`
-  przez DBAL `INSERT … ON CONFLICT DO NOTHING` (rekord tylko definiuje schemat): powtórzenie nie jest naruszeniem
-  unikalności, które zamknęłoby `EntityManager`, a wiersz wycofanej transakcji nie zostaje w identity map jako
-  „już obsłużony”.
-  - Payment sięga do Ordering tylko przez dwa swoje porty: `PayableOrders` (adapter `QueryBusPayableOrders`: Ordering
-    `GetOrderForPayment` na `query.bus`, wynik przetłumaczony na `OrderToPay` z domeny Payment) i `OrderPayments` (adapter
-    `CommandBusOrderPayments`: Ordering `MarkOrderPaid` zagnieżdżony na `command.bus` w transakcji webhooka, wynik
-    przetłumaczony na `OrderPaymentResult`, `OrderChangedConcurrently` na `OrderBusy`), i ma własne value objecty
-    (`OrderId`, `Amount`, `Currency`). Deptrac: tylko `Payment_Infrastructure → Ordering_Application`; Ordering ani żaden
-    inny context nie zależy od Payment.
-  - `StartPayment` (`command.bus`, jedna transakcja): dostęp do zamówienia przed powtórzeniem (sam klucz nie daje
-    płatności; brak dostępu to `OrderNotFound` 404 „Nie znaleźliśmy zamówienia.”), powtórzenie po `Idempotency-Key` i
-    odcisku (zamówienie i dostawca; inny odcisk to 409), stan zamówienia (opłacone, anulowane, po terminie: 409),
-    oczekująca płatność zamówienia blokowana `SELECT … FOR UPDATE` z odświeżeniem rekordu z identity map i anulowana
-    u swojego dostawcy (anulowana → `cancel`, odrzucona → `fail`, wykonana → 409 `PaymentInProgress` bez zmian, błąd →
-    503 bez zmian), potem stan zamówienia jest sprawdzany ponownie na świeżym odczycie (webhook, który trzymał
-    blokadę, mógł zatwierdzić zamówienie jako opłacone: 409), potem nowa płatność zapisana przed wywołaniem dostawcy i sesja do terminu płatności zamówienia
-    (adres powrotu `STORE_URL` + `/checkout/confirmation` buduje API). Wywołania HTTP są w transakcji: każdy błąd
-    wycofuje całość. Równoległe rozpoczęcia odrzuca unikalny indeks `idempotency_key` albo częściowy unikalny indeks
-    `(order_id) WHERE status = 'pending'` (w mapowaniu warunek zapisany tak, jak zwraca go PostgreSQL, żeby schemat
-    mapowania był równy zmigrowanemu): naruszenie to `PaymentInProgress` „Płatność za to zamówienie jest w toku.”.
-  - Webhook `POST /api/v1/payments/webhooks/{provider}` (publiczny, `security.yaml` `PUBLIC_ACCESS`; `WebhookController`):
-    podpis i treść sprawdza adapter dostawcy, jak mapowanie treści żądania; nieznany dostawca 404, `InvalidWebhook` 400 ze
-    stałym ogólnym `detail` (przyczyna w logu `warning`), zdarzenie innego typu 204 bez komendy, inaczej
-    `HandleProviderWebhook(provider, event)` i 204. Komenda (`command.bus`, jedna transakcja): blokada płatności po
-    `(provider, providerPaymentId)` (`lockByProviderPayment`, `PESSIMISTIC_WRITE` z odświeżeniem rekordu, więc równoległe
-    dostawy idą po kolei; nieznana to `PaymentNotFound` 404 „Nie znaleźliśmy płatności.”), deduplikacja (zdarzenie już
-    obsłużone: 204 bez zmian), `fail` albo `succeed` (inna kwota: `PaymentAmountMismatch` 422 i log `error`). Płatność,
-    która właśnie przeszła w `succeeded`, opłaca zamówienie przez port `OrderPayments` (adapter `CommandBusOrderPayments`:
-    Ordering `MarkOrderPaid` zagnieżdżony na `command.bus`, w tej samej transakcji, więc płatność i status zamówienia
-    zmieniają się razem). Wynik `paid` i `alreadyPaid` nic nie dodaje; przy `orderCancelled`, `paidAfterDeadline` i
-    `paidByAnotherPayment` płatność zostaje `succeeded` z oznaczeniem zwrotu (`requireRefund`: `order_cancelled`,
-    `paid_after_deadline`, `duplicate`; `OrderPaymentResult::refundReason()`), handler loguje `error` „requires a manual
-    refund”, a odpowiedź to 204 (dostawa kończy się bez ponowień). Zwrot jest ręczny, poza systemem: płatności do zwrotu
-    to `payment_payment.refund_required_reason IS NOT NULL`. Konflikt wersji zamówienia (`OrderChangedConcurrently`, np.
-    równoległe `ExpireUnpaidOrder`) adapter tłumaczy na `OrderBusy` (marker `Unavailable`,
-    503), inne błędy Ordering przekazuje bez zmian (500); w obu przypadkach wycofana jest cała transakcja, także wiersz
-    deduplikacji, a symulator ponawia dostawę.
-- PaymentSimulator (`src/PaymentSimulator`, `docs/features/payment/spec.md`) udaje dwóch zewnętrznych dostawców płatności
-  (`demo-transfer`, `demo-card`) w tym samym API, ale poza `/api/v1` (`/payment-simulator/...`, bez firewalla, poza
-  dokumentami OpenAPI) i poza contextami: płaski moduł (kontrolery, encja Doctrine, komendy z handlerami, podpisy), jedna
-  warstwa Deptrac `PaymentSimulator` z dostępem tylko do `Native`, `Vendor` i `Shared_Infrastructure`; żaden context nie
-  zależy od niego, on od żadnego. Z sklepem rozmawia wyłącznie przez HTTP (api ↔ worker ↔ przeglądarka), jak z prawdziwym
-  dostawcą.
-  - Decyzja klienta (`DecideTransaction`) i anulowanie (`CancelTransaction`) to komendy na `command.bus`, każda blokuje
-    wiersz transakcji (`SELECT … FOR UPDATE` przez ORM; encja już w identity map jest odczytywana pod blokadą przez
-    `refresh()`), więc idą po kolei i transakcja kończy w jednym stanie: anulowana nigdy nie zostanie opłacona,
-    opłaconej nie da się anulować, druga decyzja nic nie zmienia. Zastosowana decyzja zapisuje status, `decided_at` i
-    wiadomość `DeliverSimulatedWebhook` (transport `payment_simulator`) w jednej transakcji.
-  - Klucze API i sekrety webhooków (`PAYMENT_DEMO_TRANSFER_API_KEY`, `…_WEBHOOK_SECRET`, `PAYMENT_DEMO_CARD_API_KEY`,
-    `…_WEBHOOK_SECRET`) generuje `infra/scripts/init-env.sh` do `.env.local`; brakujące dopisuje do istniejącego pliku
-    (jedyne klucze, które skrypt dopisuje; brak jakiegokolwiek innego kończy się błędem i odtworzeniem stosu). Adresy
-    `PAYMENT_PROVIDER_BASE_URL`, `PAYMENT_SIMULATOR_PUBLIC_URL` i `PAYMENT_WEBHOOK_BASE_URL` (nie sekrety) są w
-    `infra/docker-compose.yml` dla `api` i `worker` oraz w `phpunit.dist.xml`. Skrypt testuje
-    `infra/scripts/test-init-env.sh` (`make init-env-test`, w CI).
-  - Wszystkie wywołania HTTP między sklepem a symulatorem idą przez serwis `app.payment_http_client` (w produkcji
-    `http_client`). W środowisku `test` to `KernelForwardingHttpClient` (`tests/Support`): `MockHttpClient`, który
-    przekazuje żądanie do osobnej instancji kernela (własny kontener i `EntityManager`; to samo połączenie DAMA i baza
-    `shop_test`), więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego; testy błędów dostawcy podmieniają
-    serwis na klienta ze stałymi odpowiedziami. Wektor podpisów do wspólnych testów symulatora i adapterów Payment to
-    `WebhookSignatureVector` (`tests/Support`).
-  - Symulator działa w kontenerze API, więc wywołanie go przez HTTP z tego samego kontenera zajmuje drugi wątek
-    FrankenPHP: przy tylu równoległych wywołaniach, ile wątków, grozi samoblokada (opis w spec, „Ryzyka”); przed testami
-    obciążeniowymi płatności symulator przechodzi do osobnej usługi.
-- E-mail z potwierdzeniem zamówienia wysyła handler zdarzenia `SendOrderConfirmation` (`event.bus`, transport `events`,
-  po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
-  `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
-  szynę `command.bus`, a błąd SMTP nie wróciłby do handlera i nie uruchomił ponowień transportu `events`). Konfiguracja
-  w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025?timeout=10`) i `MAILER_FROM`
-  (`Worf <zamowienia@worf.localhost>`), ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą
-  je z serwisu `api`; `phpunit.dist.xml` ma te same wartości domyślne). Opcję `timeout` DSN SMTP (sekundy, > 0) dodaje
-  `SmtpTimeoutTransportFactory` (`Shared\Infrastructure\Mail`, dekorator `mailer.transport_factory.smtp`): limit
-  każdego połączenia, odczytu i zapisu gniazda zamiast `default_socket_timeout` (60 s), więc wysyłka (około 7 wymian)
-  kończy się dużo przed końcem 5-minutowego zajęcia wysyłki; pilnuje tego `SmtpTimeoutWithinTheLeaseTest`. Treść składa `OrderConfirmationText` (Ordering Application), a port
-  `OrderConfirmationMailer` ma adapter `SymfonyOrderConfirmationMailer` w Ordering Infrastructure.
-- Znaczniki wysłanych e-maili Ordering są poza agregatem `Order`, więc wysłanie e-maila nie zmienia zamówienia ani
-  jego wersji (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”). Tabela
-  `ordering_order_notification` (PK `(order_id, kind)`, FK do `ordering_order` bez `ON DELETE CASCADE`; `kind`:
-  `confirmation`, `payment_received`, `cancelled`, `shipped`, `return_received` jak enum `NotificationKind`;
-  `claimed_until`, `sent_at`). Port `OrderNotifications` (`claim`, `markSent`, `release`) z adapterem
-  `DbalOrderNotifications`: wyjątek od zapisu przez rekordy ORM, jak `payment_webhook_event` (rekord
-  `OrderNotificationRecord` tylko definiuje schemat). `claim(orderId, kind, now)` to jeden warunkowy
-  `INSERT … ON CONFLICT … DO UPDATE … WHERE … RETURNING`: zajmuje wysyłkę do `now` + 5 min (lease), gdy e-mail nie
-  wyszedł i nikt nie trzyma niewygasłego zajęcia; wynik `claimed`, `alreadySent` albo `inProgress(until)`. Równoległe
-  pierwsze zajęcie czeka na wiersz drugiego zamiast naruszenia unikalności, które zamknęłoby `EntityManager`.
-  Handlery (`event.bus`, bez transakcji, każdy krok zatwierdzany od razu) idą przez `NotificationSender::sendOnce`:
-  najpierw odczyt zamówienia (nieznane: `UnrecoverableMessageHandlingException`, nic nie jest zajmowane), potem
-  zajęcie; `alreadySent` nic nie robi; `inProgress` to `RecoverableMessageHandlingException` z opóźnieniem do końca
-  lease + 1 s (ponawiane bez limitu prób transportu); `claimed` wysyła i zapisuje `markSent`, a błąd wysyłki zwalnia
-  zajęcie (`release`) i idzie dalej do ponowień transportu `events`. Dwie równoległe dostawy tego samego zdarzenia
-  wysyłają jeden e-mail. Drugi e-mail jest możliwy, gdy wysyłka się udała, a znacznik nie został zapisany: awaria
-  procesu albo bazy przed `markSent` (po wygaśnięciu lease) albo błąd SMTP zgłoszony po przyjęciu wiadomości
-  (`release` i ponowienie); także gdy wysyłka trwa dłużej niż lease (limit czasu SMTP jest dużo krótszy).
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
 - Brak wspólnych value objectów między contextami. Każdy context ma własne (np. `Price` w Pricing i `Amount` w Payment).
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
+
+### Pułapki Doctrine (powód wyjątków niżej)
+
+- Rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
+  wycofane zmiany.
+- Błąd bazy (także naruszenie unikalności) zamyka wspólny `EntityManager`: równoległe pierwsze założenie wiersza robi
+  się przez `INSERT … ON CONFLICT DO NOTHING`, nie przez łapanie naruszenia.
+- `find()` z `PESSIMISTIC_WRITE` na encji już obecnej w identity map nie odświeża jej stanu (ryzyko decyzji na starych
+  danych, np. sprzedaży ponad stan): rekord odczytany pod blokadą odświeżaj (`refresh()`), a odczyt, który ma widzieć
+  zmiany zatwierdzone w międzyczasie, czyta rekord z odświeżeniem.
+- Kaskada `refresh` Doctrine czyta (i blokuje) dzieci przed rodzicem: odświeżaj rodzica pod blokadą, dopiero potem
+  dzieci, żeby kolejność blokad była taka jak w innych transakcjach.
+
+### Jawne wyjątki od persystencji przez rekordy ORM
+
+Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj z powodem.
+- Inventory: stan, rezerwacje, historię i rekordy stanów wariantów z produktem zapisuje i czyta przez DBAL na
+  połączeniu Doctrine, w transakcji `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`,
+  `UPDATE` z wersją). Rekordy Doctrine Inventory są tylko definicją schematu dla `doctrine:schema` i migracji,
+  repozytoria ich nie używają. Powody: trzy pierwsze pułapki wyżej, a `ON CONFLICT` i tak wymaga SQL
+  (`docs/features/inventory/spec.md`).
+- Cart: zapisuje przez rekordy, ale każda komenda zaczyna od blokady wiersza koszyka przez ORM (`PESSIMISTIC_WRITE`,
+  rekord z identity map odświeżany pod blokadą, linie po nim). Koszyk klienta zakłada `INSERT … ON CONFLICT DO NOTHING`
+  przed blokadą. `PurgeExpiredCarts` usuwa partię jednym `DELETE` przez DBAL z `FOR UPDATE SKIP LOCKED`. Dwie blokady
+  naraz bierze tylko scalenie (`MergeGuestCart`), zawsze w kolejności: koszyk gościa, potem koszyk klienta. Odczyty
+  przez DBAL, bez blokady i bez transakcji (`docs/features/cart/spec.md`, „Blokady i jawne wyjątki od zasad”).
+- Pricing, promocje: DBAL tylko do blokady doradczej transakcji (`pg_advisory_xact_lock`; `PlanPromotion`,
+  `RevisePromotion`, `DeletePromotion` na wyłączność, `SetVariantPrice` współdzielona) i dwóch zapytań między
+  promocjami. Handler czyta zegar dopiero po blokadzie (`docs/features/pricing/spec.md`, „Promocje”).
+- Pricing, użycie kodu rabatowego: `RedeemDiscountCode` (wyłącznie zagnieżdżona w `PlaceOrder`) zapisuje przez rekord,
+  nie przez DBAL, bo handler złożenia nigdy nie łapie jej wyjątku, więc odrzucenie wycofuje całą transakcję. Rekord kodu
+  jest zawsze czytany od nowa, kod z limitem jeszcze raz pod blokadą `FOR NO KEY UPDATE` (nie `FOR UPDATE`: klucz obcy
+  użycia bierze `FOR KEY SHARE` na wierszu kodu, z którym `FOR UPDATE` by się wykluczało). Decyzje A3, D7
+  w `docs/features/discount-codes/spec.md`.
+- Catalog, drzewo kategorii: komendy drzewa zaczynają od blokady doradczej transakcji (`PostgresCategoryTreeLock`),
+  dopiero potem czytają całe drzewo z odświeżeniem rekordów. Jedyny zapis DBAL: zmiana zmaterializowanej `path`
+  poddrzewa jednym `UPDATE … WHERE path LIKE :old || '%'`, po którym rekordy poddrzewa z identity map są odświeżane,
+  żeby `flush` nie zapisał starych ścieżek. `DeleteCategory` blokuje wiersz kategorii (`FOR UPDATE`) przed liczeniem
+  produktów, a zapis produktu bierze `FOR KEY SHARE` na wierszach swoich kategorii przed zapisem
+  (`CategoryRepository::lockForAssignment`), więc nigdy nie kończy się 500 z klucza obcego
+  (`docs/features/admin-features/spec.md`, sekcja 4, P9, P10).
+- Ordering, sprzedaż godzinowa (`ordering_sales_hour`) i klienci panelu (`ordering_customer`): zapis i odczyt przez DBAL
+  (rekordy tylko definiują schemat). Dopisanie przyrostowe to jeden `INSERT … ON CONFLICT … DO UPDATE` w transakcji
+  `MarkOrderPaid` albo `PlaceOrder`, więc wycofana transakcja wycofuje też licznik. Godzinę i kubełek liczą wyłącznie
+  wyrażenia `SalesSql`, wspólne dla zapisu i przebudowy. Przebudowa zakłada brakujące wiersze, blokuje je
+  (`FOR UPDATE`) i dopiero potem liczy, więc żadne zamówienie nie ginie ani nie liczy się dwa razy (testy
+  `SalesRebuildConcurrencyTest`, `CustomerSummariesConcurrencyTest`). Decyzje A2, A4 w
+  `docs/features/admin-features/spec.md`.
+- Payment: obsłużone zdarzenie webhooka (`payment_webhook_event`) przez DBAL `INSERT … ON CONFLICT DO NOTHING`:
+  powtórzenie nie jest naruszeniem unikalności, a wiersz wycofanej transakcji nie zostaje w identity map jako
+  „już obsłużony” (`docs/features/payment/spec.md`).
+- Ordering, znaczniki wysłanych e-maili (`ordering_order_notification`, `DbalOrderNotifications`): poza agregatem
+  `Order`, więc wysłanie e-maila nie zmienia zamówienia ani jego wersji; zajęcie wysyłki to jeden warunkowy
+  `INSERT … ON CONFLICT … DO UPDATE … RETURNING` z lease (`docs/features/order-management/spec.md`, „Znaczniki wysyłki
+  poza agregatem”).
+- Ordering, numer zamówienia: `nextval('ordering_order_number_seq')` przez DBAL; sekwencja nie jest częścią transakcji
+  (wycofane złożenie zostawia lukę). Schemat Doctrine dostaje sekwencję od listenera `OrderNumberSequenceSchema`, więc
+  diff migracji jej nie usuwa.
+- `DemoData` zapisuje tabele przez `COPY FROM STDIN` i SQL (`CopyWriter`, w transakcji wywołującego, do tabel
+  z indeksami z migracji, bez zmiany schematu), a konta w Keycloak przez REST administratora (`partialImport`), nie przez
+  realmy z repo ani Job `keycloak-config`, i zmienia tylko konta grupy `demo-data-generated`. Nie publikuje zdarzeń
+  ani nie planuje wiadomości, więc nie obowiązuje go zasada „zdarzenie w tej samej transakcji co agregat”; indeks
+  i cache sklepu odświeża koniec `bin/generate-demo`. Dotyczy tylko danych demo (`docs/features/demo-data/spec.md`).
+
+### Transakcje między contextami
+
+- Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart, Pricing i Inventory idą
+  przez porty Ordering jako zagnieżdżony dispatch na tym samym połączeniu (savepoint), a wycena i nazwy przez
+  `query.bus` (`docs/features/checkout/spec.md`, „Zasady transakcji”). Zasady:
+  - handler nigdy nie łapie wyjątku zagnieżdżonej komendy, żeby pisać dalej: każdy błąd wycofuje całą transakcję
+    (koszyk, użycie kodu, rezerwację, zamówienie, outbox). Adaptery tłumaczą tylko niedobór Inventory
+    i odrzucenie kodu Pricing na wyjątki Ordering i rzucają je dalej, inne wyjątki przekazują bez zmian;
+  - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
+    z Ordering;
+  - kolejność blokad: wiersz koszyka, potem wiersz kodu rabatowego (tylko kod z limitem), potem wiersze stanów
+    (rosnąco po `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, zmiana kodu
+    tylko wiersz kodu, a zwolnienie użycia nie blokuje kodu, więc nie ma cyklu.
+- Komendy pracownika na zamówieniu i `ExpireUnpaidOrder` blokują najpierw wiersz zamówienia, potem rezerwację i stany
+  (Inventory), więc równoległe zmiany idą po kolei i nie zakleszczają się. Webhook (`MarkOrderPaid`) nie dotyka
+  Inventory i zostaje przy wersji (`docs/features/order-management/spec.md`, `docs/features/payment/spec.md`).
+- Przejścia statusów zamówienia to metody agregatu `Order`, bez Symfony Workflow; tabela dozwolonych przejść
+  pracownika jest tylko w `OrderStatus::allowedStaffTransitions()`.
+- Payment (jedyny context zależny od Ordering) sięga do Ordering tylko przez swoje porty z adapterami na `query.bus`
+  i `command.bus` i ma własne value objecty. Deptrac: tylko `Payment_Infrastructure → Ordering_Application`; Ordering
+  ani żaden inny context nie zależy od Payment. Payment nie zna statusów panelu.
+- Wywołania HTTP do dostawcy płatności są w transakcji: każdy błąd wycofuje całość.
+
+### Moduły poza contextami
+
+- `PaymentSimulator` (`src/PaymentSimulator`, `docs/features/payment/spec.md`) udaje zewnętrznych dostawców płatności
+  poza `/api/v1` (`/payment-simulator/...`, bez firewalla, poza dokumentami OpenAPI): płaski moduł z jedną warstwą
+  Deptrac z dostępem tylko do `Native`, `Vendor` i `Shared_Infrastructure`; żaden context nie zależy od niego, on od
+  żadnego. Ze sklepem rozmawia wyłącznie przez HTTP, jak z prawdziwym dostawcą, przez serwis `app.payment_http_client`.
+  Symulator działa w kontenerze API, więc wywołanie go z tego samego kontenera zajmuje drugi wątek FrankenPHP (ryzyko
+  samoblokady, spec „Ryzyka”): przed testami obciążeniowymi płatności symulator przechodzi do osobnej usługi.
+- Klucze API i sekrety webhooków symulatora generuje `infra/scripts/init-env.sh` do `.env.local` (test:
+  `infra/scripts/test-init-env.sh`, `make init-env-test`, w CI).
+- `DemoData` (`src/DemoData`, `docs/features/demo-data/spec.md`, P1 i P1a): płaski moduł z jedną warstwą Deptrac, która
+  zależy tylko od `Native`, `Vendor`, `Shared_Infrastructure` i warstw Domain Catalog, Pricing i Ordering (reguły
+  i value objecty wartości, które zapisuje); żaden context ani inny moduł nie zależy od `DemoData`, a on nie używa
+  agregatu ani repozytorium (Deptrac i `DemoDataBoundaryTest`). Reguły spoza Domain, które generator powtarza, pilnują
+  testy kontraktu (`CatalogStepsTest`).
+- Determinizm `DemoData`: liczby pseudolosowe tylko ze strumieni `Prng` z ziarna (nigdy `mt_rand` ani zegar),
+  identyfikatory z `DemoUuid`, czasy od `--anchor`. Tokeny dostępu i klucze idempotencji są losowe, nigdy z ziarna.
+  Zmiana losowania osoby albo konta podbija `GENERATOR_VERSION`. Nowy krok generatora dopisuje swoje tabele do sum
+  kontrolnych testów i kontroli `demo-data:verify`.
+- Opcja profilu komend `demo-data:*` to `--demo-profile`, nie `--profile`: tę opcję rezerwuje konsola Symfony.
+- Pula zdjęć demo ma własnego klienta HTTP (`app.demo_photos_http_client`, bez limitu całego żądania), bo wspólny
+  `http_client` ma 5 s na całe żądanie, co przerwałoby pobranie archiwum. Ani klient HTTP, ani klient S3 puli nie ma
+  loggera, bo adres żądania zawiera endpoint i bucket (`DemoPhotosStorageWiringTest`).
 
 ## Przepisy Fleksa
 
@@ -752,74 +196,32 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   w `StockItemRepository::lockMany`, w kolejności rosnącego `variant_id`; przyjęcie i korekta wariantu bez stanu
   zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
   uzyskaniu blokady; zapis i tak podnosi wersję. Korekta z panelu blokuje wiersz i dodatkowo sprawdza wersję z widoku.
-- Produkt (Catalog) ma status `draft` albo `published` (`ProductStatus`) i `firstPublishedAt` (pierwsza publikacja,
-  nigdy nie zerowana). Zapisuje się wyłącznie komendami `command.bus`: `CreateProduct` (status z komendy: panel
-  tworzy szkic, seed opublikowany produkt bez pracownika; pusty slug wylicza `Slug::slugify(name)`), `EditProduct`,
-  `PublishProduct`, `UnpublishProduct`. Te trzy porównują wersję z widoku (`expectedVersion`) z wersją wczytanego
-  produktu przed budową wariantów, odczytem stanów i każdą regułą domeny (`ProductModifiedConcurrently`, 409
-  `product-modified`), a `ProductRepository::save(product, expectedVersion, actorId, at)` porównuje ją jeszcze raz
-  z rekordem pod `#[ORM\Version]`. Zapis z widoku zawsze podnosi wersję (także bez zmiany danych), zapis bez widoku
-  (seed) tylko przy zmianie; `updated_at` i `updated_by` (`sub` pracownika) zmieniają się tylko przy zapisie, który
-  podnosi wersję. Publikacja opublikowanego i wycofanie szkicu nic nie zapisują. Reguły pilnuje agregat: publikacja
-  szkicu wymaga zdjęcia, zapis opublikowanego produktu ze zdjęciami nie usuwa ostatniego (`ProductNotPublishable`),
-  slug jest stały od pierwszej publikacji (`SlugLocked`), po pierwszej publikacji warianty zachowują tożsamość
-  (`VariantIdentityLocked`), a wariantu ze stanem nie da się usunąć (`VariantInUse`). Fakty stanu daje port
-  `VariantStockFacts` (`Catalog_Application`) z adapterem `QueryBusVariantStockFacts` w `Inventory_Infrastructure`
-  (Inventory `GetStockLevels` na `query.bus`, odczyt bez blokady; stan fizyczny > 0 albo zarezerwowany > 0), więc
-  Catalog nie zależy od Inventory w żadnej warstwie. Reguły i ich błędy opisuje `docs/features/catalog-admin/spec.md`.
-- Szkic jest ukryty w odczytach sklepu w Catalog: `GET /api/v1/products/{slug}` szkicu to 404 jak nieznany slug,
-  `GetVariantSummaries` (koszyk, zamówienie) i `ListProductVariants` bez `includeDrafts` (oferta sklepu) pomijają
-  warianty szkiców jak nieznane, a zapytania indeksu dopasowują tylko `status: published`. Cart i Ordering nie znają
-  statusu: linia z wariantem szkicu ma stan `unavailable_product`, a złożenie zamówienia z nią to 409
-  `CartNotOrderable`. Szkice widzą `GetVariant`, `ListVariantIdentities`, `SearchBackofficeProducts`
-  i `ListProductVariants(productIds, includeDrafts: true)` (listy cen i stanów panelu, adaptery
-  `QueryBusProductDirectory` w `Pricing_Infrastructure` i `Inventory_Infrastructure`). `ProductVariantList` ma klasę
-  podatkową produktu (`taxClass`) i jego nazwę (`productName`: lista stanów z filtrem poziomu nazywa strony produktów przez
-  `ProductDirectory::describe`).
+  Komendy pracownika na zamówieniu blokują wiersz i porównują wersję z widoku z wersją odczytaną pod blokadą.
+- Produkt (Catalog) zapisuje się wyłącznie komendami `command.bus`. Komendy z widoku porównują `expectedVersion`
+  z wersją wczytanego produktu przed każdą regułą domeny, a repozytorium jeszcze raz z rekordem pod `#[ORM\Version]`.
+  Reguły i ich błędy: `docs/features/catalog-admin/spec.md`.
+- Catalog nie zależy od Inventory, Cart ani Pricing w żadnej warstwie: fakty stanu i oferty dają porty
+  `Catalog_Application` (`VariantStockFacts`, `ProductOfferFacts`) z adapterami w `Inventory_Infrastructure`
+  i `Cart_Infrastructure`. Reguła „możliwy do kupienia” i cena „od” są tylko w Cart.
+- Szkic produktu jest ukryty we wszystkich odczytach sklepu w Catalog; Cart i Ordering nie znają statusu produktu.
+  Które zapytania widzą szkice: `docs/features/catalog-admin/spec.md`.
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
-  Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
-  `ProductCreated`, Ordering `OrderPlaced`, `OrderPaid`, `OrderCancelled`, `OrderShipped`, `OrderReturned`), gdy jedyną
-  drogą zapisu jest ta komenda.
-  Gdy agregat ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
-  rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
-  w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
-  pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
-  Catalog publikuje też `ProductChanged` z handlera komendy, jak `ProductCreated`; Pricing ma ścieżkę zapisu także
-  przy przeliczeniu po zmianie klasy podatkowej produktu. `PromotionPricesChanged` `{productId, source, occurredAt}`
-  (Pricing, źródło `promotion` albo `seed`) publikują handlery wiadomości granic promocji (niżej), nie zapis promocji.
+  Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`), gdy jedyną
+  drogą zapisu jest ta komenda. Gdy agregat ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed,
+  `pricing:reconcile-tax`, przeliczenie po zmianie klasy; Inventory: panel, seed, port rezerwacji w zagnieżdżonym
+  dispatchu), publikuje je `save` repozytorium w transakcji zapisu, więc żadna ścieżka go nie pominie, a odrzucony albo
+  wycofany zapis nie zostawia zdarzenia.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
-  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Dziś trzy, wszystkie Catalog:
-  `Catalog\Application\Event\ProductCreated` `{productId, occurredAt}`, `Catalog\Application\Event\ProductChanged`
-  `{productId, slug, occurredAt}` (`slug` po zmianie) i `Catalog\Application\Event\CategoryTreeChanged`
-  `{categoryId, kind, occurredAt}` (`kind`: `created`, `revised`, `moved`, `reordered`, `deleted`; publikują go wprost
-  komendy drzewa kategorii przez outbox, seed nie). Agregat `Product` zapisuje wewnętrzne
-  `Catalog\Domain\Product\ProductCreated` przy utworzeniu i `Catalog\Domain\Product\ProductChanged` przy każdej
-  edycji, publikacji i wycofaniu, a handler komendy tłumaczy je na kontrakty (`IntegrationEvents::translate`) przed
-  publikacją przez outbox; zdarzeń domenowych Catalog nikt poza nim nie subskrybuje. Wyjątek zgodności wersji (do
-  usunięcia w kolejnej wersji): w tej wersji `CreateProduct` publikuje oba `ProductCreated`, domenowe (poprzednia
-  wersja indeksuje produkt tylko z niego) i integracyjne, a `IndexProduct` obsługuje też domenowe z outboxa poprzedniej
-  wersji, więc nowy produkt jest indeksowany dwa razy (reindeksacja to dopuszcza). Inventory subskrybuje tylko
-  integracyjne (Deptrac); rekordy produktów utworzonych w oknie wymiany uzupełnia Job `backfill`. Seed tworzy produkty bez
-  `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana pól
-  kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (oba, reindeksacja),
-  `SyncStockRecordsOnProductChange` (`Inventory_Infrastructure`, oba, rekord stanu z produktem dla każdego wariantu),
-  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, `ProductChanged`, unieważnienie sklepu),
-  `InvalidateStorefrontOnCategoryTreeChange` (`Catalog_Infrastructure`, `CategoryTreeChanged`, unieważnienie tagu `catalog`),
-  `ReindexSubtreeOnCategoryTreeChange` (`Catalog_Application`, `CategoryTreeChanged` `revised` i `moved`, start łańcucha
-  reindeksacji poddrzewa na transporcie `jobs`, niżej) i `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, `ProductChanged`, przeliczenie cen po zmianie klasy
-  podatkowej).
-- Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
-  i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` (port `ProductDirectory::taxClassOf`,
-  adapter `QueryBusProductDirectory`), nigdy ze zdarzenia, więc zmiany A → B → A w dowolnej kolejności i powtórzone
-  zdarzenia kończą się cenami w klasie bieżącej. Każda cena z klasą inną niż klasa produktu idzie przez `PriceReconciler`
-  (ta sama pętla co `pricing:reconcile-tax --apply`: `reprice` z tym samym brutto, źródło `tax_reconciliation`, osobna
-  transakcja na cenę, jedno ponowienie po konflikcie wersji); cena w klasie produktu nie jest zapisywana (także
-  z nieaktualną stawką). Po zapisach klasa jest czytana ponownie: inna to `TaxClassChangedWhileRepricing` (ponowienie
-  wiadomości). Klasa bez stawki: `UnrecoverableMessageHandlingException` z komunikatem (`failed`), ceny bez zmian; drugi
-  konflikt wersji: `PriceModifiedConcurrently` po zapisie pozostałych cen (ponowienie); produkt nieznany Catalogowi:
-  wiadomość obsłużona bez zmian.
+  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Handler komendy tłumaczy
+  zdarzenia domenowe na kontrakty przed publikacją przez outbox (`IntegrationEvents::translate` w Catalog). Subskrybent
+  czyta to, czego potrzebuje, zapytaniami modułu właściciela; zmiana pól kontraktu dotyka wszystkich subskrybentów.
+  Wyjątek zgodności wersji (do usunięcia w kolejnej wersji): `CreateProduct` publikuje oba `ProductCreated`, domenowe
+  (poprzednia wersja indeksuje produkt tylko z niego) i integracyjne, a `IndexProduct` obsługuje też domenowe z outboxa
+  poprzedniej wersji, więc nowy produkt jest indeksowany dwa razy (reindeksacja to dopuszcza).
+- Subskrybent, który przelicza dane według stanu innego modułu (np. `RepriceOnTaxClassChange`), czyta ten stan
+  zapytaniem, nigdy ze zdarzenia, więc zdarzenia w dowolnej kolejności i powtórzone kończą się stanem bieżącym.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
 - Zamówienie przechowuje kopię cen, rabatów i adresu z chwili złożenia, nie referencje.
 - Elasticsearch to tylko model odczytu. Nigdy nie podejmuj na jego podstawie decyzji biznesowych.
@@ -830,21 +232,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników. Złe parametry zapytania
   (`#[MapQueryString]`) to 400, zła treść żądania (`#[MapRequestPayload]`, tylko JSON, typy bez rzutowania) to 422;
   oba z listą `violations`.
-- Treść żądań panelu, w których wszystkie klucze są wymagane (zmiana statusu i wykonanie zwrotu w Ordering, korekta
-  i przyjęcie stanu w Inventory, zmiana ceny oraz zaplanowanie i zmiana promocji w Pricing), czyta `#[RequiredKeysBody]`
-  (`Shared\UI\Http`, `RequiredKeysBodyResolver`) zamiast `#[MapRequestPayload]` z `REQUIRE_ALL_PROPERTIES`: argumentem
-  kontrolera jest klasa żądania, a jej parametry konstruktora to klucze. Brak dowolnego klucza, także takiego, który
-  dopuszcza `null` (`version` korekty stanu i ceny, `note`, `startsAt`), to jedno naruszenie „To pole jest wymagane.”
-  przy kluczu (`propertyPath` = nazwa klucza), a `{}`, pusta treść i JSON niebędący obiektem to takie naruszenie dla
-  każdego klucza. Klasa żądania nie powstaje, więc brak klucza nie dociera do niej jako `null` (nie uruchamia też reguł
-  ani `Assert\Callback` klasy); raportowane są wtedy tylko brakujące klucze, wartości dopiero gdy są wszystkie.
-  `null` przekazany jawnie, nieznane klucze i typy (bez rzutowania) zachowują się jak w `#[MapRequestPayload]`: ocenia je
-  walidacja klasy żądania, a w niej każde pole z `Assert\Sequentially`, żeby dawało najwyżej jedno polskie naruszenie.
-  Zły JSON to 400, inny format niż JSON (także brak `Content-Type`) 415. Treść jest czytana późno, tak jak robi to
-  `#[MapRequestPayload]` (nasłuch `kernel.controller_arguments` o priorytecie -10100, po `#[IsGranted]`), więc 403
-  atrybutu nadal poprzedza 400, 415 i 422 treści. Wyjątek: kody rabatowe (`DiscountCodeBodyReader`, niżej), bo
-  kontroler czyta tam treść sam, po sprawdzeniu 404. Deptrac pozwala `Ordering_UI`, `Inventory_UI` i `Pricing_UI` na
-  `Shared_UI`.
+- Parametry, których błąd typu (`q[]=…`) ma dawać ten sam polski komunikat co zła wartość, są w DTO typu `mixed`
+  i sprawdzane w callbackach (np. `sort`, `q`, filtry list panelu).
+- Treść żądań panelu, w których wszystkie klucze są wymagane, czyta `#[RequiredKeysBody]` (`Shared\UI\Http`,
+  `RequiredKeysBodyResolver`) zamiast `#[MapRequestPayload]` z `REQUIRE_ALL_PROPERTIES`: argumentem kontrolera jest klasa
+  żądania, a jej parametry konstruktora to klucze. Brak dowolnego klucza, także takiego, który dopuszcza `null`, to
+  jedno naruszenie „To pole jest wymagane.” przy kluczu; klasa żądania wtedy nie powstaje. Każde pole klasy żądania ma
+  `Assert\Sequentially`, żeby dawało najwyżej jedno polskie naruszenie. Treść jest czytana późno, po `#[IsGranted]`,
+  więc 403 atrybutu poprzedza 400, 415 i 422 treści (`docs/features/quality-fixes/spec.md`). Wyjątek: kody rabatowe
+  (`DiscountCodeBodyReader`), bo kontroler czyta tam treść sam, po sprawdzeniu 404.
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),
@@ -852,30 +248,22 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   na stosie lokalnym do ręcznych żądań: `.claude/skills/integration/kc_login.py` (opis w skillu `/integration`).
 - Nie twórz wspólnej klasy `User` dla klientów i pracowników. To osobne byty.
 - Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`; jedyna
-  lista: `StaffUser::STAFF_ROLES`). `ROLE_STAFF` ma tylko pracownik z co najmniej jedną z nich (`StaffUser::getRoles()`),
-  a `access_control` wymaga go na każdej trasie `/api/v1/admin` poza `GET`/`HEAD /api/v1/admin/me` (tylko
-  `IS_AUTHENTICATED`, ścieżka dokładnie `/me`), więc konto bez roli dostaje 403 wszędzie poza `/me`. Pilnuje tego
-  `AdminRouteAccessTest`, który bierze trasy panelu z routera, więc nowa trasa bez `ROLE_STAFF` łamie go bez zmiany testu.
-  Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
+  lista: `StaffUser::STAFF_ROLES`). `ROLE_STAFF` ma tylko pracownik z co najmniej jedną z nich, a `access_control`
+  wymaga go na każdej trasie `/api/v1/admin` poza `GET`/`HEAD /api/v1/admin/me`, więc konto bez roli dostaje 403
+  wszędzie poza `/me`. Pilnuje tego `AdminRouteAccessTest`, który bierze trasy panelu z routera, więc nowa trasa bez
+  `ROLE_STAFF` łamie go bez zmiany testu. Reguła ról jest tylko w voterze modułu; kontrolery znają tylko nazwy
+  atrybutów i pytają `isGranted`. Klient: tylko własne dane (właściciel zasobu = `sub` z tokena, nigdy parametr).
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
-  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je osiem 409 Ordering
-  sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`, także trzy typy odrzucenia kodu), dwa 409 komend pracownika Ordering
-  (`order-transition-not-allowed`, `refund-not-pending`; schemat `BackofficeOrderConflictProblem` w obszarze `admin`) i cztery 409 Payment: `order-already-paid`,
-  `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
-  Pięć 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable`,
-  `discount-code-taken`, `discount-code-not-editable` (schemat `PricingConflictProblem` w obszarze `admin`, razem
-  z `about:blank` konfliktu wersji ceny, promocji i kodu rabatowego). Typy odrzucenia kodu (`discount-code-invalid`,
-  `discount-code-used-up`, `discount-code-below-minimum`) i ich polskie `detail` daje wyłącznie
-  `DiscountCodeRejection` (Pricing Domain); `DiscountCodeRejected` Ordering (409 złożenia) dostaje je od adapterów.
-  Nowy typ dopisz do `enum` schematu swojego contextu.
+  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Nowy typ dopisz do `enum`
+  schematu konfliktu swojego contextu w OpenAPI (np. `OrderConflictProblem`, `PaymentConflictProblem`,
+  `PricingConflictProblem`). Typy odrzucenia kodu rabatowego i ich polskie `detail` daje wyłącznie
+  `DiscountCodeRejection` (Pricing Domain).
 - Wyjątek, który niesie dane dla klienta (np. listę kolidujących wariantów), implementuje
   `App\Shared\Domain\Exception\ExtendedProblem` (`problemExtensions()`): subscriber dopisuje te pola do dokumentu
-  problemu, nigdy w miejsce `type`, `title`, `status`, `detail`, `instance` ani `violations`, i nie przy 5xx. Dziś:
-  `PromotionOverlap` (`conflictingVariantIds`) i `DiscountCodeRejected` Ordering (`minimumOrderGross`, tylko przy
-  `discount-code-below-minimum`).
+  problemu, nigdy w miejsce `type`, `title`, `status`, `detail`, `instance` ani `violations`, i nie przy 5xx.
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
@@ -885,216 +273,82 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
-  `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
-  treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
-  treścią albo dla innego wariantu to 409. Klucze przyjęć są w historii stanów na zawsze (unikalny indeks).
-  Złożenie zamówienia (`POST /api/v1/orders` gościa, `POST /api/v1/me/orders` klienta) z tym samym kluczem, z tego
-  samego koszyka (id koszyka gościa z treści albo `sub` z tokena) i z tą samą treścią niczego nie zmienia i zwraca 200
-  z tym samym zamówieniem zamiast 201, także gdy koszyk gościa w międzyczasie wygasł albo został scalony; ten sam klucz
-  z innego koszyka, od innego klienta albo z inną treścią to 409 `IdempotencyKeyReused` bez żadnych danych zamówienia,
-  które go użyło. Klucze zamówień są w `ordering_order` na zawsze (unikalny indeks).
-  Rozpoczęcie płatności z tym samym kluczem dla tego samego zamówienia i dostawcy zwraca 200 z tą płatnością w bieżącym
-  stanie zamiast 201; ten sam klucz dla innego zamówienia albo dostawcy to 409 `PaymentIdempotencyKeyReused`, a bez
-  dostępu do zamówienia (inny token, inny klient) 404. Klucze płatności są w `payment_payment` na zawsze.
-- Rate limiting (`docs/features/hardening/spec.md`, D1–D8): Symfony RateLimiter (`symfony/rate-limiter`), okno
-  przesuwne, bez `symfony/lock` (`lock_factory: null`: równoległe żądania mogą przekroczyć limit o liczbę żądań
-  w locie). Limitery w `config/packages/rate_limiter.yaml`: `order_placement` (`POST /api/v1/orders` i
-  `/api/v1/me/orders`, 10 na 15 min), `payment_start` (`POST …/orders/{id}/payments` gościa i klienta, 20 na 15 min),
-  `payment_webhook` (`POST /api/v1/payments/webhooks/{provider}`, 300 na minutę); `when@dev` po 10 000 (stos compose
-  i E2E: wszystkie żądania sklepu mają tam jeden adres kontenera), `when@test` po 10 w pamięci (`InMemoryStorage`,
-  stan żyje tyle co kernel jednego testu; pula `cache.adapter.array` odpada, bo kernel czyści ją po każdym żądaniu).
-  Trasa wskazuje limiter domyślną wartością `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`
-  (`Shared\Infrastructure\Http\RateLimit`): `guest:<adres>`, `customer:<sub>` (konto z tokena, niezależnie od adresu)
-  albo `<provider>:<adres>`. `RateLimitSubscriber` (`kernel.request`, priorytet 4, po firewallu) zużywa limit przy
-  każdym żądaniu trasy (także powtórzonym `Idempotency-Key` i odrzuconym walidacją), a przekroczenie to 429 przed
-  kontrolerem (bez odczytu treści, podpisu webhooka i komendy): problem z `type` `about:blank`, `title` „Too Many
-  Requests”, `detail` „Zbyt wiele prób. Spróbuj ponownie za kilka minut.”, `Retry-After` w sekundach (najwyżej okno
-  plus 1 s zaokrąglenia) i `Cache-Control: private, no-store`; OpenAPI opisuje 429 na tych pięciu trasach.
-- Adres klienta (`ClientIp::of(Request)`, `Shared\Infrastructure\Http`, używa go tylko rate limiting): nagłówek
-  nazwany w `CLIENT_IP_HEADER` (`%env(default::CLIENT_IP_HEADER)%`; compose jej nie ustawia, chart w `prod`:
-  `CF-Connecting-IP`), gdy jest jedną wartością z jednym poprawnym adresem IP (odstępy ASCII wokół są dozwolone);
-  inaczej `Request::getClientIp()` (adres połączenia, bez `trusted_proxies`). IPv6 liczy się prefiksem /64, adres IPv4
-  zapisany jako IPv6 (`::ffff:a.b.c.d`) jako IPv4, żądanie bez adresu ma wspólny klucz `unknown`.
-- Stan limitów jest w puli `cache.rate_limiter` na Redisie (`framework.cache.default_redis_provider`:
-  `redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1`, połączenie leniwe). Redis niedostępny: pula zwraca brak
-  wpisu i loguje `warning` w kanale `cache`, więc żądanie przechodzi bez limitu (fail open, D7), wolniej najwyżej
-  o limity czasu trzech wywołań puli (dwa odczyty, zapis). W `prod` Monolog kieruje kanał `cache` od `warning` osobnym
-  handlerem JSON na stderr, poza `fingers_crossed`, więc wpis jest także przy udanym żądaniu. Testy: funkcjonalne
-  `tests/Functional/Shared/RateLimitEndpointTest.php`, na prawdziwym Redisie i z Redisem niedostępnym
-  `tests/Integration/Shared/RateLimit/RedisRateLimitTest.php` (kernel `RedisPoolKernel` z pulą produkcji), wartości
-  `prod` i `dev` oraz Monolog `prod` z kontenera zbudowanego z `config/` (`RateLimitConfigurationTest`). Kontener
-  testów ma `APP_DEBUG=0`, więc po zmianie konfiguracji lokalnie usuń `var/cache/test*`.
-- `SecurityHeadersSubscriber` (`Shared\Infrastructure\Http`, `kernel.response`) ustawia `X-Content-Type-Options: nosniff`
-  na każdej odpowiedzi API: sukces, błędy, 404, 429 i preflight CORS (`tests/Functional/Shared/SecurityHeadersTest.php`).
-  Reszta nagłówków bezpieczeństwa (HSTS) należy do ingressu (`docs/features/hardening/spec.md`, D10).
+  `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Powtórzenie z tym samym kluczem i tą
+  samą treścią niczego nie zmienia i zwraca 200 z bieżącym wynikiem zamiast 201; ten sam klucz z inną treścią (albo
+  innego właściciela, koszyka, zamówienia, dostawcy) to 409 bez danych zasobu, który go użył. Klucze są zapisane na
+  zawsze (unikalny indeks). Szczegóły: specyfikacje `inventory`, `checkout`, `payment`.
+- Rate limiting (`docs/features/hardening/spec.md`, D1–D8, `config/packages/rate_limiter.yaml`): bez `symfony/lock`
+  (równoległe żądania mogą przekroczyć limit o liczbę żądań w locie). Trasa wskazuje limiter domyślną wartością
+  `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`; nowa trasa z limitem ma 429 w OpenAPI. Redis
+  niedostępny: żądanie przechodzi bez limitu (fail open, D7). Adres klienta bierze wyłącznie `ClientIp::of(Request)`.
+  Kontener testów ma `APP_DEBUG=0`, więc po zmianie konfiguracji lokalnie usuń `var/cache/test*`.
+- Nagłówki bezpieczeństwa API ustawia `SecurityHeadersSubscriber` na każdej odpowiedzi; HSTS należy do ingressu
+  (`docs/features/hardening/spec.md`, D10).
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 
 ## Infrastruktura
 
-- Varnish (`infra/varnish/default.vcl`) stoi tylko przed publicznymi odczytami `GET` katalogu: `/api/v1/products`,
-  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/categories/redirect`, `/api/v1/product-offers` i dokładna ścieżka `/api/v1/sitemap/product-chunks`
-  (bez query stringu; porcje map `/api/v1/sitemap/products` przechodzą bez cache). Czyta przez niego wyłącznie serwer sklepu
-  (`API_CATALOG_URL`); inne ścieżki, żądania z `Authorization` albo `Cookie` i metody inne niż `GET`/`HEAD` Varnish
-  przepuszcza do API bez cache. TTL bierze tylko z `Cache-Control` odpowiedzi; bez nagłówka, z `private` albo
-  `no-store` nic nie trzyma. Endpointy z autoryzacją, koszyk i checkout zawsze `private, no-store`.
-- Tagi cache (xkey) bez FOSHttpCacheBundle. Słownik: `catalog` (każdy odczyt katalogu), `product-<id>` (UUID małymi
-  literami) dla każdego produktu, którego dane zawiera odpowiedź, i `product-slug-<slug>` (404 szczegółów produktu).
-  Nazwy buduje wyłącznie `CacheTags` (`Shared\Infrastructure\Http\Cache`: stała `CATALOG`, `product(id)`, inny napis
-  niż UUID to wyjątek, `productSlug(slug)`, slug spoza formatu `Slug` produktu to wyjątek), a nagłówek
-  `xkey: <tag> <tag>` (spacje) ustawia w kontrolerze `CacheTagger::tag()`. Varnish usuwa `xkey` przed wysłaniem
-  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony), drzewo kategorii
-  (`catalog`) i przekierowanie starego adresu kategorii (`catalog`, 200 i 404) z `Cache-Control: public, max-age=60`; oferty (`catalog` i `product-<id>` każdego żądanego id) z `public,
-  max-age=60, s-maxage=3600`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
-  max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (szkic, nieznany slug,
-  slug niezgodny z formatem `Slug`) z `public, max-age=60` i tagami `catalog` `product-slug-<slug>` (slug niezgodny
-  z formatem: tylko `catalog`), więc publikacja produktu usuwa zapamiętane 404 jego sluga. Zdjęcia szczegółów są w rozmiarach
-  `product` (`images`) i `zoom` (`zoomImages`: te same zdjęcia w tej samej kolejności i liczbie, z tych samych kluczy
-  i opisów z jednego odczytu), a `GetProductBySlug` czyta wprost z tabel Catalog przez port `ProductDetailsSource`.
+- Varnish (`infra/varnish/default.vcl`) stoi tylko przed publicznymi odczytami `GET` katalogu z listy ścieżek w VCL.
+  Czyta przez niego wyłącznie serwer sklepu (`API_CATALOG_URL`). TTL bierze tylko z `Cache-Control` odpowiedzi; bez
+  nagłówka, z `private` albo `no-store` nic nie trzyma. Endpointy z autoryzacją, koszyk i checkout zawsze
+  `private, no-store`.
+- Tagi cache (xkey) bez FOSHttpCacheBundle. Nazwy buduje wyłącznie `CacheTags` (`Shared\Infrastructure\Http\Cache`),
+  a nagłówek `xkey` ustawia w kontrolerze `CacheTagger::tag()`. Słownik tagów i nagłówki odpowiedzi katalogu:
+  `docs/features/product-page/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/seo/spec.md`.
 - Trasa publicznego odczytu ma domyślną wartość `PublicReadErrorCacheSubscriber::ROUTE_DEFAULT`
   (`defaults: [... => true]` w `#[Route]`): jej 400, 401 (także z firewalla) i 503 dostają `private, no-store` bez tagów.
 - Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
   trasy i unieważnianie po zmianie danych (zdarzenie i konsument wołający `StorefrontCache`). Bez tego zmiana danych
   nie będzie widoczna w sklepie przed końcem `max-age`/`s-maxage`.
-
-- Indeks wyszukiwania (Elasticsearch, alias `products`) należy do Catalog. Dokument (`ProductIndexDefinition`,
-  `dynamic: strict`): dane produktu, `name`, `category_names` (nazwy kategorii produktu i ich przodków)
-  i `short_description` z analizatorem `polish_text` (`lowercase`, `polish_stem`, `asciifolding`) i podpolem `folded`
-  (bez stemmera), `variants` (`nested`: `gross` brutto w groszach, brak bez ceny; `purchasable`; `options` jako
-  `<oś>` U+001F `<wartość>` jak w Catalog, po nich dopasowuje się warunek wariantu; `pairs`: `nested` w wariancie,
-  obiekt `{axis, value}` na parę, po nich liczą się fasety osi), `from_gross` (cena „od”, brak bez wariantu możliwego do kupienia)
-  i `status` (`keyword`, `published` albo `draft`: szkic zostaje w indeksie jako trwały tombstone z wersją, a każde
-  zapytanie sklepu ma `term status: published` w `query`, więc wyniki, `total` i agregacje widzą tylko opublikowane).
-  Ceny i dostępność daje port `ProductOfferFacts` (`Catalog_Application`) z adapterem `QueryBusProductOfferFacts`
-  w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48, bez ceny Omnibus): reguła „możliwy
-  do kupienia” i cena „od” są tylko w Cart, a ceny są skuteczne (w aktywnej promocji promocyjne, Pricing
-  `GetCurrentPrices`). Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
-  Inventory.
-- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, zwykle poza `command.bus`, a w partii łańcucha
-  reindeksacji kategorii w jego transakcji; tylko czyta bazę, a w READ COMMITTED każdy odczyt ma świeży snapshot): znacznik
-  czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
-  z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały” (także spóźniony zapis
-  opublikowanego stanu po nowszym zapisie szkicu). Zapisuje każdy produkt, szkic jako dokument `draft`; przebudowa
-  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (integracyjne `ProductCreated`
-  i `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
-  (`Pricing_Infrastructure`, `VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`,
-  `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
-  obsłużona bez zapisu; `ReindexProductOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`) tak
-  samo, ale produkt jest w zdarzeniu (bez `GetVariant`). `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane,
-  `SearchIndexError` idzie do `failed`. Zmiana nazwy i przeniesienie kategorii przepisują dokumenty poddrzewa łańcuchem
-  partii na transporcie `jobs` (niżej). Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
-  cen i stanów obsłużone w jej trakcie trafiają do starego indeksu (przebudowa nie jest online).
-
+- Indeks wyszukiwania (Elasticsearch, alias `products`) należy do Catalog (`docs/features/search/spec.md`). Szkic
+  zostaje w indeksie jako dokument `draft`, a każde zapytanie sklepu filtruje `status: published`. Zapis dokumentu robi
+  tylko `ProductIndexing::reindex` z wersją zewnętrzną (`external_gte`, znacznik czasu pobrany przed odczytem), więc
+  zapis starszego odczytu po nowszym nic nie zmienia. Catalog nie importuje Cart, Pricing ani Inventory.
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
-- Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów. `POST /api/v1/admin/product-images`
-  (`multipart/form-data`, pole `file`, jeden plik na żądanie) przyjmuje JPEG, PNG, WebP, AVIF i HEIC do 64 MB i 50 MP,
-  zapisuje oryginał pod kluczem z treści (`originals/<sha256>.<rozszerzenie>`, ten sam plik to ten sam klucz) i odpowiada
-  kluczem oraz podglądem `thumbnail`; oryginałów nie usuwa nic (także po usunięciu zdjęcia z produktu albo uploadzie bez
-  zapisu). Limity PHP w `docker/php/conf.d/app.ini`: `upload_max_filesize = 64M`, `post_max_size = 70M` (Caddy nie ma
-  własnego limitu ciała) oraz `display_errors = Off`, `log_errors = On` (obraz nie ma `php.ini`, a ostrzeżenie PHP o
-  żądaniu ponad `post_max_size` pojawia się przy starcie żądania: wypisane do odpowiedzi wysłałoby status 200
-  i nagłówki przed 422). Plik ponad `upload_max_filesize` (błąd uploadu PHP) i żądanie z `Content-Length` ponad
-  `post_max_size` (PHP odrzuca wtedy całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) to 422
-  „Plik jest za duży.”; komunikaty `detail` odrzuceń (typ, rozdzielczość, wymiary, brak pliku) są po polsku. Garage
-  niedostępny przy uploadzie i przy zapisie produktu (`ProductImageStorage::exists` sprawdza każdy klucz zdjęcia)
-  to 503 bez `detail`. Limity PHP nie działają w kernelu testów funkcjonalnych, więc testy symulują ich skutek (błąd
-  uploadu, nagłówek), a prawdziwe limity sprawdza E2E na działającym stosie.
-- Rozmiary obrazów (`ImageSize`): `listing`, `product` i `thumbnail` (1:1, szerokości 96 i 192, WebP, `fill`; miniatury
-  list i podglądy formularza produktu w panelu) oraz `zoom` (`fit`: całe zdjęcie bez przycinania, bez stałych proporcji,
-  `aspectRatio()` zwraca `null`, w adresie imgproxy `rs:fit:<szerokość>:0`, szerokości 1280, 1920, 2560, WebP, bez
-  powiększania ponad oryginał). Zdjęcie `zoom` ma osobny widok `ZoomImageView` (`alt`, `size`, `variants`, bez
-  `aspectRatio`; `SizedImage::zoomView`) i schemat OpenAPI `ZoomImage`; `ImageView` i `ProductImage` zostają dla
-  rozmiarów o stałych proporcjach. Nowy rozmiar dopisuje się tylko w `ImageSize`.
-- Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik z rolą personelu, `MANAGE_PRODUCTS` `admin`
-  i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `images=none`, `sort`, `after`, `perPage`; zapytanie
-  `ListBackofficeProducts` składa stronę z `SearchBackofficeProducts` i podsumowań z `BackofficeProductSource::summaries`),
-  `GET /products/{id}` (`ProductEditView` z `version`, czytany z DBAL, także szkic), `POST /products` (szkic),
-  `PUT /products/{id}`, `POST /products/{id}/publish` i `/unpublish` (wszystkie z `version`), `GET /tax-classes`
-  (nazwy po polsku w `ListTaxClassesHandler`). Ciało zapisu waliduje jedno ograniczenie klasy `ValidProductWrite`
-  (`Catalog_UI`): każda reguła z `docs/features/catalog-admin/spec.md` ma ścieżkę pola (`variants[3].values[1]`) i polski
-  komunikat; reguły domeny stosuje, nie kopiuje (`Slug`, `ImageKey`, `VariantValues::comparisonKey()`). Reguły domeny, które
-  wskazują miejsce w ciele (`ImageNotFound`, `UnknownVariant`, `UnknownCategory`, `SlugRequired`), `ProductWriteFailures`
-  zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
-  widok edycji odczytany po zapisie, `private, no-store`.
-- Kody rabatowe w panelu (`/api/v1/admin/discount-codes`, Pricing UI, `docs/features/pricing/spec.md`, „Kody
-  rabatowe”): `GET` lista (`status`, `q`, `after`, `perPage`) i szczegóły dla każdego pracownika z rolą personelu, `POST` i `PUT /{id}`
-  dla `admin` i `marketing` (`DiscountCodeVoter`, `MANAGE_DISCOUNT_CODES`, przed treścią). Wyjątek od
-  `#[MapRequestPayload]`: treść czyta w kontrolerze `DiscountCodeBodyReader` (JSON, typy ścisłe, ta sama walidacja DTO),
-  bo `PUT` odpowiada 404 przed 422 treści, a brak klucza ma polski komunikat „To pole jest wymagane.” zamiast
-  angielskiego tekstu frameworka; `DiscountCodeWriteFailures` zamienia `InvalidDiscountCode` na naruszenie przy polu.
-  `ReviseDiscountCode` blokuje wiersz kodu (`DiscountCodeRepository::lock`: `SELECT … FOR NO KEY UPDATE`, potem odczyt rekordu z odświeżeniem)
-  i czyta liczbę aktywnych użyć pod blokadą. Odpowiedzi to `GetDiscountCode` odczytane po zapisie, `private, no-store`.
+- Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów (`docs/features/catalog-admin/spec.md`).
+  Oryginałów nie usuwa nic. Limity PHP są w `docker/php/conf.d/app.ini`, razem z `display_errors = Off`
+  i `log_errors = On`: obraz nie ma `php.ini`, a ostrzeżenie PHP o żądaniu ponad `post_max_size` wypisane do odpowiedzi
+  wysłałoby status 200 i nagłówki przed 422. Limity PHP nie działają w kernelu testów funkcjonalnych, więc testy
+  symulują ich skutek (błąd uploadu, nagłówek), a prawdziwe limity sprawdza E2E na działającym stosie.
+- Rozmiary obrazów są tylko w `ImageSize`; nowy rozmiar dopisuje się tylko tam.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
+- E-maile idą przez Symfony Mailer synchronicznie, bez Messengera: `framework.mailer.message_bus: false` (inaczej
+  `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną szynę `command.bus`, a błąd SMTP nie wróciłby do
+  handlera i nie uruchomił ponowień transportu `events`). Opcja `timeout` DSN SMTP (`SmtpTimeoutTransportFactory`)
+  ogranicza każde połączenie, odczyt i zapis gniazda, więc wysyłka kończy się dużo przed końcem lease wysyłki
+  (`SmtpTimeoutWithinTheLeaseTest`). Handler e-maila zamówienia wysyła przez `NotificationSender::sendOnce` (jeden
+  e-mail na zdarzenie; `docs/features/order-management/spec.md`).
 - Logi przez Monolog w JSON. Correlation ID: `docs/features/hardening/spec.md` (D9); źródłem prawdy jest kod w `src/Shared/Infrastructure/Observability`.
-- Sentry (`docs/features/sentry/spec.md`, `config/packages/sentry.yaml`, `sentry/sentry-symfony`): zmienne `SENTRY_DSN`,
-  `SENTRY_ENVIRONMENT` (bez niej środowisko kernela), `SENTRY_RELEASE` i `SENTRY_TRACES_SAMPLE_RATE` (bez niej 0,
-  parametr `app.sentry.traces_sample_rate`; wartość inna niż liczba od 0 do 1 zapisana cyframi to też 0,
-  `SentrySampleRateEnvVarProcessor`, jak w sklepie i panelu, więc nie zatrzymuje startu) czytane przy starcie (`%env(default:…)%`). Bez DSN SDK nic nie wysyła, zły
-  DSN to błąd konfiguracji. Zdarzenie błędu idzie od razu (limit połączenia i odpowiedzi 2 s), transakcja po odpowiedzi
-  (`kernel.terminate`). `send_default_pii: false`, `max_request_body_size: none`, handler błędów PHP SDK wyłączony,
-  w `prod.ini` `zend.exception_ignore_args = On`. Błąd fatalny PHP w workerze i konsoli (np. OOM, limit czasu) nie jest
-  zdarzeniem Sentry (handler błędów SDK wyłączony, kanał `php` wykluczony): trafia tylko do logów.
-  - Jeden kanał na źródło, jeden błąd to jedno zdarzenie: HTTP zgłasza `ServerErrorReporter`
-    (`Shared\Infrastructure\Observability`, `kernel.exception` z priorytetem -99, tuż przed `ProblemDetailsSubscriber`,
-    który ustawia odpowiedź i zatrzymuje propagację) tylko dla statusu ≥ 500 z `ExceptionStatus`, a listener błędów
-    bundla jest wyłączony; konsolę listener konsoli bundla (`services.yaml` definiuje go z raportowaniem, które bundle
-    wiąże z listenerem błędów); workera listener Messengera bundla tylko po ostatniej próbie (`capture_soft_fails:
-    false`), z osobnym kontekstem Sentry na wiadomość; jawne logi aplikacji od `error` handler `sentry` w
-    `monolog.yaml` (`LogToSentryIssueHandler`: bez kontekstu logu, bez wpisów z `context.exception`) we wszystkich
-    kanałach poza `request`, `console`, `messenger`, `php`, `deprecation` i `cache`. Handlera breadcrumbs nie ma. Nowe
-    zgłaszanie do Sentry idzie jednym z tych kanałów, nie obok.
+- Sentry (`docs/features/sentry/spec.md`, `config/packages/sentry.yaml`):
+  - Jeden kanał na źródło, jeden błąd to jedno zdarzenie: HTTP zgłasza `ServerErrorReporter` tylko dla statusu ≥ 500
+    z `ExceptionStatus`, konsolę listener konsoli bundla, workera listener Messengera bundla tylko po ostatniej próbie,
+    jawne logi aplikacji od `error` handler `sentry` w `monolog.yaml`. Nowe zgłaszanie do Sentry idzie jednym z tych
+    kanałów, nie obok.
   - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w `SentryEventFilter::MASKS` i w Alloy
     (`infra/k8s/argocd/apps/monitoring.yaml`, korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma
     kopię wierszy korpusu `api.log` i `postgres.log` (kontener api widzi tylko `apps/api`): zmiana korpusu zmienia też
     kopię.
-  - Trace'y: `/health` nie jest śledzony (`ignore_transactions`), api kontynuuje trace z `sentry-trace` i `baggage`
-    (CORS dopuszcza je z `ADMIN_URL`), ale nie przekazuje trace'a dalej: wywołania wychodzące (Keycloak, Varnish, sklep,
-    płatności) nie niosą `sentry-trace` ani `baggage` (`trace_propagation_targets: []`), także bez DSN. Spany Doctrine,
-    klienta HTTP i pul cache (bundle dekoruje każdą pulę jako `<pula>.traceable`).
-- Transport Messengera `scheduled` (Doctrine,
-  `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
-  `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
-  Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
-  pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
-  `failed`. Worker (`infra/docker-compose.yml` i chart, komenda i healthcheck albo sonda) konsumuje `outbox events scheduled
-  payment_simulator promotions jobs` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
-  prawdziwy (Doctrine na `shop_test`).
-- Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
-  `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
-  symulatora płatności, zapisywane w transakcji decyzji klienta. Ponowienia: 5 prób po 1, 3, 9, 27 i 81 s (około
-  2 minut), potem `failed` (`messenger:failed:retry`). Kolejka czeka w bazie, więc przestój workera tylko opóźnia
-  webhooki. Długa kolejka `events` opóźnia je też, bo worker obsługuje transporty po kolei.
-- Transport `promotions` (Doctrine, `queue_name=promotions`, ten sam DSN, opcje i ponowienia co `scheduled`; w `test`
-  w pamięci, w `test_messaging` prawdziwy) trzyma wiadomości granic promocji (Pricing,
-  `docs/features/promotions/spec.md`, „Granice promocji i unieważnianie”). Osobna kolejka, bo `ordering:seed-demo`
-  czyści całe `scheduled`. Zapis promocji (`PlanPromotion`, `RevisePromotion`) wysyła je w swojej transakcji przez
-  port `PromotionBoundaries` (adapter `MessengerPromotionBoundaries`, `command.bus` z `DelayStamp`):
-  `PromotionBoundaryReached(promotionId, at)` na każdą granicę okresu `≥ now` (start „od teraz” i „Zakończ teraz” to
-  `startOfNow`, więc też), także tę, którą miał poprzedni okres (jej wcześniejsza wiadomość mogła trafić do `failed`,
-  a powtórzona jest nieszkodliwa, bo handler i konsumenci są idempotentni), oraz
-  `RefreshPromotionProducts(promotionId)` bez opóźnienia, gdy zapis przesuwa koniec aktywnej promocji na chwilę po
-  `startOfNow`. Wyjątek: seed (`PlanPromotion::bySeed`, źródło `seed`) przekazuje portowi `announceStart: false`, więc
-  planuje tylko granicę końca. Usunięcie zaplanowanej promocji nic nie wysyła. Handlery (`command.bus`, poza transakcją panelu):
-  granica nieznanej promocji albo inna niż jej bieżący start i koniec to wiadomość obsłużona bez skutku, za wczesna
-  wraca na `at` + 1 s (`redeliverBoundary`); `RefreshPromotionProducts` nieznanej albo zakończonej promocji nic nie
-  robi. Inaczej `PromotionPriceEvents` wyznacza produkty wariantów promocji (port `VariantSummaries`, Catalog
-  `GetVariantSummaries` paczkami po 100; wariant nieznany Catalogowi pomija) i publikuje jedno
-  `PromotionPricesChanged` (źródło `promotion`) na produkt w outboxie, w jednej transakcji. Handler komendy promocji
-  nie czyta Catalog w tym celu ani nie publikuje zdarzeń. Przestój workera opóźnia tylko indeks i cache sklepu.
-- Transport `jobs` (Doctrine, `queue_name=jobs`, ten sam DSN, opcje i ponowienia co `scheduled`: `redeliver_timeout=300`,
-  `use_notify: false`, 5 prób po 1, 3, 9, 27 i 81 s, potem `failed`; w `test` w pamięci, w `test_messaging` prawdziwy)
-  trzyma partie zadań w tle. **Wzorzec łańcucha partii** to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
+  - Api nie przekazuje trace'a dalej: wywołania wychodzące nie niosą `sentry-trace` ani `baggage`
+    (`trace_propagation_targets: []`).
+- Transporty Messengera na Doctrine (`scheduled`, `payment_simulator`, `promotions`, `jobs`; ta sama tabela
+  `messenger_messages` i to samo połączenie co `outbox`) trzymają wiadomości zapisane w transakcji wywołującego, więc
+  przestój workera tylko opóźnia ich obsługę. W `test` są w pamięci (jak `outbox`), w `test_messaging` prawdziwe.
+  Worker konsumuje `outbox events scheduled payment_simulator promotions jobs` po kolei (compose i chart, komenda
+  i healthcheck albo sonda), więc długa kolejka wcześniejszego transportu opóźnia następne. Granice promocji mają osobną
+  kolejkę `promotions`, bo `ordering:seed-demo` czyści całe `scheduled`. Nowy transport: compose i chart w tym samym PR
+  (`infra/k8s/CLAUDE.md`).
+- **Wzorzec łańcucha partii** (transport `jobs`) to sposób zadań wywołanych zmianą w domenie i wykonywanych przez
   workera (komendy uruchamiane świadomie, jak `catalog:reindex`, `cart:purge-expired` i `pricing:reconcile-tax`, zostają
   przy swoich wzorcach): odbiorca zdarzenia w jednej transakcji `command.bus` zakłada wiersz przebiegu (`next_batch` 0,
   `cursor` pusty) i wysyła wiadomość pierwszej partii `{runId, batch}`; handler partii w jednej transakcji `command.bus`
   najpierw blokuje wiersz przebiegu (`SELECT … FOR UPDATE`), partia inna niż `next_batch` albo przebieg zakończony
   (albo nieznany) to koniec bez skutku, potem robi partię po `cursor`, zapisuje nowy `cursor` i `next_batch + 1`
   i wysyła wiadomość następnej partii w tej samej transakcji; pusta partia ustawia `finished_at`. Druga kopia partii
-  (ponowna dostawa po `redeliver_timeout`, ponowienie) czeka na blokadę i widzi nowy `next_batch`, więc partia jest
-  zrobiona raz i następna wiadomość jest jedna (`CategoryReindexConcurrencyTest`, dwa procesy). Partia trwa sekundy,
-  daleko poniżej `redeliver_timeout`. Po wyczerpaniu ponowień wiadomość jest w `failed`, a Messenger zapisuje błąd
-  w logu (`critical`, kanał `messenger`); przebieg zostaje bez `finished_at` i nikt go nie wznawia, a skutek naprawia
-  narzędzie zadania (dla reindeksacji `catalog:reindex`).
+  czeka na blokadę i widzi nowy `next_batch`, więc partia jest zrobiona raz i następna wiadomość jest jedna
+  (`CategoryReindexConcurrencyTest`, dwa procesy). Partia trwa sekundy, daleko poniżej `redeliver_timeout`. Przebieg,
+  którego wiadomość trafiła do `failed`, zostaje bez `finished_at` i nikt go nie wznawia, a skutek naprawia narzędzie
+  zadania (dla reindeksacji `catalog:reindex`).
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
 - Migracje zmieniają tylko schemat: nowe tabele, kolumny z wartością domyślną albo `NULL`, indeksy. Nie aktualizują
   danych dużych tabel i nie wołają kodu aplikacji; dane wypełnia po rolloucie krok `app:backfill` (sekcja „Komendy”). Indeks na
@@ -1104,84 +358,39 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   przerwane `CREATE INDEX CONCURRENTLY`), i tylko wtedy dodaje `DROP INDEX CONCURRENTLY IF EXISTS`, potem zawsze
   `CREATE INDEX CONCURRENTLY IF NOT EXISTS`. Poprawny indeks zostaje, więc ponowiony Job `migrate` przechodzi. Pozostałe
   zmiany schematu idą w zwykłej, transakcyjnej migracji obok. Wzór: `Version20261115120100IndexStockLevels`, test:
-  `StockLevelIndexMigrationTest` (połączenie poza transakcją DAMA, indeks `INVALID` zostawiony przez nieudaną
-  unikalną budowę `CONCURRENTLY`).
-- Sortowanie list panelu (spec ADMIN-FEATURES, „Sortowanie”; produkty, ceny, stany i zamówienia): parametr `sort`
-  z zamkniętą listą kluczy (`-` to malejąco); w DTO zapytania `sort` jest typu `mixed` i sprawdza go callback `validateSort`, więc klucz spoza listy i wartość innego typu (`sort[]=…`) to 400 przy `sort` z tym samym polskim komunikatem.
-  Produkty, ceny i stany stronicują produkty Catalog po `name` (domyślny), `-name`, `-updatedAt` albo `updatedAt`
-  (`ProductSort`); Pricing i Inventory przekazują klucz tekstem przez `ProductDirectory::page(..., $sort)` do
-  `SearchBackofficeProducts`, a Catalog go waliduje. Zamówienia: `-placedAt` (domyślny), `placedAt`, `-total`, `total`
-  (`BackofficeOrderSort`; `RefundDueDate` to sort filtra `refund=pending`, nie klucz API). Kursor keyset niesie klucz
-  sortu (`{"s": klucz, "v": wartość, "i": id}`), więc kursor innego sortu (także `name` użyty jako `-name`) to 400 przy
-  `after`. Id rozstrzyga remisy w kierunku sortu, więc oba kierunki sortu czytają ten sam indeks, wprzód albo wstecz:
-  `(name, id)`, `(updated_at, id)` i częściowe warianty szkiców, `(placed_at DESC, id DESC)`, `(total_gross, id)`
-  i ich wersje z `status`. Połączenia, których żaden indeks nie obsługuje, to 400 z naruszeniem pola `sort`
-  (callback `BackofficeOrderListQuery`; handler dodatkowo rzuca `InvalidBackofficeOrderList`): `sort` z `refund=pending`
-  i kwota (`-total`, `total`) z `q` albo zakresem dni (`placedFrom`, `placedTo`). Nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis
-  `#[ORM\Index]` w rekordzie (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection`
-  (`tests/Support`; wyłączone `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`). Liczniki nie
-  zależą od sortu. Testy: `SortBackofficeProductsTest`, `SortedProductListsEndpointTest`, `DbalBackofficeOrderReaderTest`, `DbalCustomerReaderTest` (plan pierwszej strony i strony po kursorze każdego sortu klientów),
-  `ListBackofficeOrdersEndpointTest`, `OrderSearchEndpointTest`, `ConcurrentIndexMigrationsTest` (ponowienie po indeksie `INVALID`, który zostawia
-  budowa przerwana na timeoucie blokady).
-- Pulpit (`GET /admin/dashboard`, decyzja A1 spec ADMIN-FEATURES): `GetDashboard` (Backoffice) składa sekcje przez porty Backoffice
-  z adapterami na `query.bus` do zapytań modułów właścicieli: `CatalogStatistics` → `GetCatalogStatistics` (Catalog),
-  `OrderQueues` → `GetOrderQueues` (Ordering), `StockQueues` → `GetStockQueues` (Inventory), `SalesSummary` →
-  `GetSalesSummary` (Ordering); Deptrac pozwala
-  `Backoffice_Infrastructure` na `Ordering_Application` i `Inventory_Application` (tylko zapytania i widoki), a
-  `Backoffice_UI` na `Shared_UI` (schemat `BoundedCountResponse`). Uprawnienie kolejki sprawdza voter modułu, który ją
-  posiada: kontroler pyta `isGranted` (`VIEW_ORDERS`, `VIEW_PENDING_PAYMENTS` (admin i support, `OrderVoter`),
-  `COMPLETE_REFUND`, `MANAGE_STOCK`, `MANAGE_PRODUCTS`) i przekazuje wynik w `QueueAccess`; kolejka bez dostępu nie jest
-  liczona i jest `null` w odpowiedzi, a właściciel, od którego nic nie trzeba, nie jest pytany. Każda kolejka to
-  `BoundedCount` z limitem 1000 (`GetOrderQueuesHandler::LIMIT`, `GetStockQueuesHandler::LIMIT`,
-  `GetCatalogStatisticsHandler::LIMIT`), liczony tymi samymi warunkami co lista, do której prowadzi link (zamówienia:
-  `BackofficeOrderReader::count($filter, 1000)` z filtrem statusu, zwrotów do wykonania i po terminie; produkty bez zdjęć:
-  `BackofficeProductSource::count(..., withoutImages: true, limit: 1000)`; stany: `StockLevelProducts::countVariants`, bo
-  kolejka liczy warianty, a lista stanów pokazuje ich produkty), więc zapytania idą po indeksach list
-  (`OrderQueuesPlanTest`, `StockLevelProductsPlanTest`, `ProductsWithoutImagesPlanTest`: plan bez `Seq Scan`). Kolejka
-  zwrotów płatności z części 2 dopisze się tym samym wzorcem (port, zapytanie w module, pole `null` według votera).
-  Liczba produktów (`catalog.productCount`) nigdy nie jest `count(*)`: `ProductTableStatistics::estimatedProductCount`
-  czyta `pg_class.reltuples` (jeden wiersz katalogu bazy), odpowiedź to `{value, estimated: true}`, a `null` przed
-  pierwszą analizą tabeli (`reltuples` < 0); odświeża ją `ANALYZE catalog_product` na końcu `catalog:seed-demo`
-  i w kroku `app:backfill` `catalog:analyze-products`, a generator danych demo robi to po masowym wstawieniu produktów.
-  `system.searchIndex.inSync` porównuje dokładny `_count` Elasticsearcha z szacunkiem: różnica najwyżej 1% szacunku,
-  `null` bez szacunku, `false` gdy indeksu nie da się policzyć. Test: `DashboardQueuesEndpointTest` (każda rola widzi swoje
-  kolejki i `null` dla pozostałych, `{1000, capped}` powyżej limitu), `PostgresProductTableStatisticsTest` (brak zapytania
-  o produkty także bez statystyk).
-- Liczniki wyników list panelu są ograniczone (spec ADMIN-FEATURES, „Liczniki wyników”): pierwsza strona (bez `after`)
-  listy produktów, cen, stanów, zamówień, promocji i kodów zwraca `total: BoundedCountResponse` (`{value, capped}`), kolejne
-  strony `total: null`. Liczy `BoundedCounter` (`Shared\Infrastructure\Persistence`): `SELECT count(*) FROM (SELECT 1 FROM
-  <tabela> WHERE <warunki strony bez kursora i bez ORDER BY> LIMIT 10001) t`, więc zapytanie czyta najwyżej 10 001 wierszy
-  po tym samym warunku co strona, bez kursora i sortu (`DEFAULT_LIMIT` 10 000; `capped` mówi, że wierszy jest więcej niż `value`).
-  Nowa lista dopisuje metodę `count(...)` do portu odczytu, składa warunki jednym helperem dla strony i licznika (jak
-  `filter()` w `DbalBackofficeProductSource`), woła licznik tylko na pierwszej stronie (`after === null`), która ma
-  następną: strona bez następnej zawiera cały wynik, więc jej `total` to `BoundedCount(count(items), false)` bez drugiego
-  skanu. Wynik zapytania niesie `BoundedCount` (`Shared\Domain`); odpowiedź mapuje `BoundedCountResponse` (`Shared\UI\Http`, schemat OpenAPI
-  `BoundedCountResponse`, `ofNullable`), a `Catalog_UI` ma w Deptracu `Shared_UI` właśnie po ten schemat. „Wiersz” licznika
-  to wiersz strony: na Cenach i Stanach produkt (strona liczy produkty, nie warianty), więc licznik tych list to licznik
-  `SearchBackofficeProducts` przekazany przez `DirectoryPage`. Lista z filtrem, który nic nie może znaleźć (kody
-  z prefiksem ze znakiem, którego żaden kod nie może mieć, `ListDiscountCodesHandler::prefix`), daje na pierwszej stronie `{value: 0, capped: false}` bez odczytu; poprawny
-  prefiks bez trafień jest liczony w bazie jak każdy inny. Test: `BoundedCounterTest` (plan `EXPLAIN ANALYZE` na
-  prawdziwej tabeli: węzeł `Limit` i skan zatrzymany po limit + 1 wierszach), liczniki czytników, testy handlerów
-  (licznik wołany tylko na pierwszej stronie z następną) i testy funkcjonalne każdej listy.
-- Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
-  (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)` (albo `(updated_at, id)`, zob. „Sortowanie list panelu”).
-  Indeks GIN obsługuje frazy od 3 znaków; fraza 2-znakowa (minimum w API) nie ma trigramów, więc idzie skanem indeksu
-  `(name, id)` z filtrem `ILIKE`.
+  `StockLevelIndexMigrationTest`.
+- Mapowanie jest równe schematowi po migracjach: indeks częściowy ma w `#[ORM\Index]` warunek zapisany tak, jak zwraca
+  go PostgreSQL; indeksy na wyrażeniach (mapowanie ich nie zna) narzędzia schematu pomijają. Zgodności pilnują testy
+  schematu modułów (np. `OrderingSchemaTest`).
+- Listy panelu (`docs/features/admin-features/spec.md`, „Sortowanie” i „Liczniki wyników”):
+  - stronicowanie kursorem keyset, który niesie klucz sortu, więc kursor innego sortu to 400 przy `after`; `sort`
+    z zamkniętą listą kluczy, a połączenia filtrów i sortów, których żaden indeks nie obsługuje, to 400 z naruszeniem
+    pola `sort`;
+  - nowy klucz sortu to nowy indeks w migracji nietransakcyjnej (reguła wyżej), wpis `#[ORM\Index]` w rekordzie
+    (mapowanie równe schematowi) i test planu pierwszej strony na `RecordingConnection` (`tests/Support`; wyłączone
+    `enable_seqscan` i `enable_sort`, plan ma używać indeksu bez węzła `Sort`); id rozstrzyga remisy w kierunku sortu,
+    więc oba kierunki czytają ten sam indeks;
+  - licznik wyników to `BoundedCounter` (`Shared\Infrastructure\Persistence`, najwyżej 10 001 wierszy): nowa lista
+    dopisuje metodę `count(...)` do portu odczytu, składa warunki jednym helperem dla strony i licznika (jak `filter()`
+    w `DbalBackofficeProductSource`), woła licznik tylko na pierwszej stronie (`after === null`), która ma następną;
+    strona bez następnej daje `BoundedCount(count(items), false)` bez drugiego skanu. Liczniki nie zależą od sortu;
+  - kolejki pulpitu liczą `BoundedCount` tymi samymi warunkami co lista, do której prowadzi link, więc idą po indeksach
+    list (testy planu bez `Seq Scan`); uprawnienie kolejki sprawdza voter modułu, który ją posiada, a kolejka bez
+    dostępu nie jest liczona i jest `null`. Nowa kolejka dopisuje się tym samym wzorcem (port Backoffice, zapytanie
+    w module, pole `null` według votera);
+  - liczba produktów nigdy nie jest `count(*)`: to szacunek `pg_class.reltuples`, więc po masowym wstawieniu produktów
+    trzeba `ANALYZE catalog_product`.
+- Wyszukiwanie produktów po nazwie w panelu używa rozszerzenia PostgreSQL `pg_trgm` (indeks GIN tworzony migracją).
   Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
   Przy problemie z wydajnością najpierw zmierz w SPX, potem optymalizuj.
-- Obraz Docker (`apps/api/Dockerfile`), etapy po kolei: `runtime` (FrankenPHP, rozszerzenia PHP, `app.ini`, Caddyfile),
-  `base` z `runtime` (Composer, git, unzip, entrypoint `composer install` przy zmianie `composer.lock`), `build`
-  z `base` (`composer install --no-dev --classmap-authoritative`, kod aplikacji, rozgrzany cache `prod`), `prod`
-  z `runtime` (kod i `vendor` z `build`, `docker/php/conf.d/prod.ini` z opcache bez sprawdzania znaczników czasu i bez argumentów w śladach wyjątków,
-  `APP_ENV=prod`, `APP_DEBUG=0`, bez Composera, gita, SPX, pakietów dev i entrypointu instalującego zależności;
-  `fixtures/` jest w obrazie, `tests/` nie) i `dev` z `base` jako ostatni etap (compose i CI budują `target: dev`).
-  Produkcyjny obraz buduje się `docker build --target prod apps/api` bez stosu i bez sekretów: cache `prod` rozgrzewa
-  komenda z atrapami `SHOP_DB_*` ustawionymi tylko dla niej (Doctrine czyta parametry połączenia, ale się nie łączy,
-  a w cache zostają odwołania do zmiennych środowiska, nie ich wartości). Konfigurację obraz czyta ze zmiennych
-  środowiska przy starcie. Ten sam obraz uruchamia FrankenPHP, workera i komendy konsoli (np. `bin/seed-demo`).
-  Zmiana w `.dockerignore` albo nowy katalog z kodem potrzebnym w `prod` wymaga sprawdzenia, że obraz `prod` nadal
-  się buduje i odpowiada na `/health`.
+- Obraz Docker (`apps/api/Dockerfile`): etap `prod` bez Composera, gita, SPX, pakietów dev i entrypointu instalującego
+  zależności, z `fixtures/` i bez `tests/`; `dev` jest ostatnim etapem (compose i CI budują `target: dev`). Produkcyjny
+  obraz buduje się `docker build --target prod apps/api` bez stosu i bez sekretów (cache `prod` rozgrzewa komenda
+  z atrapami `SHOP_DB_*` ustawionymi tylko dla niej; w cache zostają odwołania do zmiennych środowiska, nie ich
+  wartości). Konfigurację obraz czyta ze zmiennych środowiska przy starcie. Ten sam obraz uruchamia FrankenPHP, workera
+  i komendy konsoli. Zmiana w `.dockerignore` albo nowy katalog z kodem potrzebnym w `prod` wymaga sprawdzenia, że
+  obraz `prod` nadal się buduje i odpowiada na `/health`.
 
 ## Zgodność wersji
 
@@ -1218,6 +427,13 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   `ProbesTest`, timeouty DSN Redisa, limity w `DashboardTimingTest` i podobne), czekają ich prawdziwy czas; test wolnego
   sklepu (`HttpStorefrontCacheTest`) używa klienta z pomniejszonymi limitami. Test, który czeka na powrót ponowienia do
   kolejki, odpytuje ją co 20 ms (`awaitEventsInQueue`, do 3 s) zamiast spać.
+- Wywołania HTTP do symulatora płatności w `test` idą przez `KernelForwardingHttpClient` (`tests/Support`: osobna
+  instancja kernela z własnym `EntityManager`, więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego);
+  testy błędów dostawcy podmieniają serwis na klienta ze stałymi odpowiedziami.
+- Testy generatora danych demo biegną na `shop_test` w transakcji testu, bez `bin/seed-demo` i bez czyszczenia cache
+  sklepu (worker i Varnish nie obsługują `shop_test`). Testy kont na Keycloaku stosu używają tymczasowych realmów
+  (`KeycloakTestRealms`, `demo-data-test-*`, usuwane po teście), nigdy realmów `shop` i `backoffice`, i ziarna losowanego
+  na test (id kont są globalne w Keycloaku).
 
 ## Czego nie robić
 
