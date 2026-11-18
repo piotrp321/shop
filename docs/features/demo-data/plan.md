@@ -16,8 +16,8 @@ Epik w toku od 2026-11-18: gałąź `feat/demo-load`, szkic PR do `main`.
 | Fala | Zadania | Status |
 |---|---|---|
 | 1 | DEMO-LOAD-1, DEMO-LOAD-3 | zmergowane: DEMO-LOAD-3 (c9a03bbe), DEMO-LOAD-1 (207bafbd); przeglądy PASS |
-| 2 | DEMO-LOAD-2, DEMO-LOAD-4 | DEMO-LOAD-4 zmergowane (b28a2eb0, przegląd PASS); DEMO-LOAD-2 w toku |
-| 3 | DEMO-LOAD-5 | |
+| 2 | DEMO-LOAD-2, DEMO-LOAD-4 | zmergowane: DEMO-LOAD-4 (b28a2eb0), DEMO-LOAD-2 (ddb1f2aa); przeglądy PASS |
+| 3 | DEMO-LOAD-5 | w toku |
 | 4 | DEMO-LOAD-6 | |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.

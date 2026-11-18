@@ -42,7 +42,8 @@ selftest:
 # checked; the time of that phase is printed. Then the restore on an empty cluster: the namespace shop is deleted with its volumes,
 # the chart installed again and make restore brings the snapshot back (checked: the administrator, the customer, the numbers of
 # products and orders, an image, the search, the snapshot pre-restore), and refuses a snapshot newer than the code; the later
-# phases run on the restored cluster. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
+# phases run on the restored cluster. The last phase runs a Job from the CronJob demo-data (the generator, profile small) and checks that
+# it ended with 0 and replaced the data. SMOKE_BREAK=migration|image|demo-data makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
 

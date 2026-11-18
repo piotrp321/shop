@@ -123,6 +123,14 @@ class Phase(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("did not replace the data", result.stderr)
 
+    def test_a_count_that_cannot_be_read_fails_the_phase(self):
+        for variables in ({"STUB_PRODUCTS": " "}, {"STUB_ORDERS": " "}, {"STUB_PRODUCTS": "error"}):
+            with self.subTest(variables):
+                result = self.run_phase(**variables)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("cannot read the numbers", result.stderr)
+                self.assertNotIn("ok: the generator", result.stdout)
+
     def test_the_break_gives_the_generator_a_profile_it_refuses_and_the_phase_fails(self):
         result = self.run_phase(SMOKE_BREAK="demo-data", STUB_PATCH_FAILS="1")
         self.assertNotEqual(0, result.returncode)

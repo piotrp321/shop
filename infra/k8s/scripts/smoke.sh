@@ -872,6 +872,12 @@ check_demo_data() {
   # The generator ran its own consistency check (demo-data:verify) before it ended with 0; here only that it replaced the data.
   demo_data_products="$(count catalog_product)"
   demo_data_orders="$(count ordering_order)"
+  # A count that cannot be read (a failed exec gives an empty answer) is a failure, never a pass.
+  for demo_data_count in "$demo_data_products" "$demo_data_orders"; do
+    case "$demo_data_count" in
+      "" | *[!0-9]*) echo "smoke: cannot read the numbers of products and orders after the generator ('$demo_data_products', '$demo_data_orders')" >&2; return 1 ;;
+    esac
+  done
   if [ "$demo_data_products" -lt 2000 ] || [ "$demo_data_orders" -lt 5000 ]; then
     echo "smoke: the Job of the generator ended with 0 but did not replace the data: $demo_data_products products and $demo_data_orders orders (the profile small: 2000 products and 5000 orders besides the seed)" >&2
     kc logs job/demo-data-smoke --all-containers --prefix --tail=40 >&2 || true
