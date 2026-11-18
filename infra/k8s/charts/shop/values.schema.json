@@ -20,6 +20,7 @@
     "brevo",
     "initialize",
     "jobs",
+    "demoData",
     "backup",
     "alerts",
     "cartPurge",
@@ -276,21 +277,21 @@
             "admin"
           ],
           "properties": {
-        "api": {
-          "type": "string",
-          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-          "description": "DSN of the api, the worker and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
-        },
-        "store": {
-          "type": "string",
-          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-          "description": "DSN of the store (its server and its browser); empty: Sentry off."
-        },
-        "admin": {
-          "type": "string",
-          "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
-          "description": "DSN of the admin panel; empty: Sentry off."
-        }
+            "api": {
+              "type": "string",
+              "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+              "description": "DSN of the api, the worker and the jobs: https://<key>@<host>/<project id>; empty: Sentry off."
+            },
+            "store": {
+              "type": "string",
+              "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+              "description": "DSN of the store (its server and its browser); empty: Sentry off."
+            },
+            "admin": {
+              "type": "string",
+              "pattern": "^(https://[A-Za-z0-9]+@[A-Za-z0-9.-]+(:[0-9]+)?/[0-9]+)?$",
+              "description": "DSN of the admin panel; empty: Sentry off."
+            }
           }
         }
       }
@@ -440,6 +441,73 @@
         "enabled": {
           "type": "boolean",
           "description": "Render the PrometheusRule with the alert rules (needs the CRD of the Prometheus Operator in the cluster)."
+        }
+      }
+    },
+    "demoData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "profile",
+        "anchor",
+        "activeDeadlineSeconds",
+        "photosSecretName"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the suspended CronJob demo-data (the profiles ci and load); never with image.requireDigests."
+        },
+        "profile": {
+          "type": "string",
+          "enum": [
+            "small",
+            "medium",
+            "server",
+            "full"
+          ],
+          "description": "The profile of the generator (apps/api/fixtures/demo-data/profiles.yaml)."
+        },
+        "anchor": {
+          "type": "string",
+          "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?)?$",
+          "description": "--anchor of the generator: a date or a UTC moment; empty: the start of the current UTC day."
+        },
+        "activeDeadlineSeconds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "small",
+            "medium",
+            "server",
+            "full"
+          ],
+          "properties": {
+            "small": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "medium": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "server": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "full": {
+              "type": "integer",
+              "minimum": 60
+            }
+          },
+          "description": "The time limit of a Job in seconds, per profile of the generator."
+        },
+        "photosSecretName": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$",
+          "maxLength": 253,
+          "description": "The Secret with the four DEMO_PHOTOS_* read variables of the photo pool, created outside the chart; empty: none."
         }
       }
     },
@@ -614,7 +682,8 @@
         "imgproxy",
         "varnish",
         "backup",
-        "job"
+        "job",
+        "demoData"
       ],
       "properties": {
         "postgres": {
@@ -886,6 +955,24 @@
               "type": "object"
             }
           }
+        },
+        "demoData": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
         }
       }
     }
@@ -1001,6 +1088,37 @@
           "clientIpHeaderWithoutAllowList": {
             "const": false,
             "description": "Never with the images of a release (image.requireDigests)."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "image"
+        ],
+        "properties": {
+          "image": {
+            "required": [
+              "requireDigests"
+            ],
+            "properties": {
+              "requireDigests": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "demoData": {
+            "properties": {
+              "enabled": {
+                "const": false,
+                "description": "Never with the images of a release (image.requireDigests): the generator deletes the data of every module."
+              }
+            }
           }
         }
       }

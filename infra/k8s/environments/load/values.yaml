@@ -12,6 +12,11 @@
 clientIpHeader: CF-Connecting-IP
 clientIpHeaderWithoutAllowList: true
 
+# No backups: the cluster has no repository to take them to (the profile ci takes them into a Garage of its own, which the smoke test
+# starts), and the measurement never restores. The CronJobs backup, backup-verify and restore are not rendered.
+backup:
+  enabled: false
+
 # The heaps of the prod profile (they size the pods together with the resources below).
 elasticsearch:
   javaOpts: -Xms2g -Xmx2g
@@ -36,3 +41,6 @@ resources:
   varnish: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
   backup: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   job: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+  # The generator of the demo data (CronJob demo-data, enabled by the profile ci): not a pod of prod, so its resources are an initial
+  # estimate (several PHP processes at once) that the run of the profile medium calibrates.
+  demoData: { requests: { cpu: "1", memory: 1Gi }, limits: { memory: 4Gi } }
