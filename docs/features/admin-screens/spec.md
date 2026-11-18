@@ -439,8 +439,7 @@ otwarte z komentarzem, czego brakuje. Test weryfikacji ma numer zgłoszenia w na
 
 ## Dokumenty opisujące funkcję
 
-- `apps/admin/CLAUDE.md`: stos bez PrimeVue, opisy widoków cen, stanów, promocji, kodów i zamówień (stan listy
-  w adresie, okna, toasty, fokus, oś czasu, kopiowanie), komentarz `style-src`.
+- `apps/admin/CLAUDE.md`: stos bez PrimeVue, komentarz `style-src`.
 - `CLAUDE.md` (linia `apps/admin` w „Struktura”), `README.md` (tabela stosu), `docs/vision.md` (tabela „Aplikacje”),
   `docs/adr/admin-ui-library.md` (wybór biblioteki komponentów).
 - `docs/features/admin-design/spec.md`: standardy, powłoka (położenie i nazwa regionu toastów, sekcja „Toasty”),
