@@ -28,18 +28,20 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
    - specyfikacja przez `/brainstorm`, plan przez `/planner`;
    - jedna gałąź epiku spoza `epic/*` (tam bezpośredni push blokuje ruleset `epic-merge`) z draft PR do `main` od
      początku, więc CI biegnie przy każdym pushu;
-   - zadania planu implementuje subagent `developer`, a przegląda `code-reviewer` w świeżym kontekście; niezależne
-     zadania (bez wspólnych plików, z ustalonym kontraktem) idą równolegle w osobnych worktree, gdy pozwalają na to
-     izolacja i zasoby;
+   - zadania planu implementuje subagent `developer`; zadania `STANDARD` i `CRITICAL` przegląda `code-reviewer`
+     w świeżym kontekście, `FAST` sprawdza sesja prowadząca; niezależne zadania (bez wspólnych plików, z ustalonym
+     kontraktem) idą równolegle w osobnych worktree, gdy pozwalają na to izolacja i zasoby;
    - na końcu jeden przegląd całej zmiany: `architecture-reviewer`, `qa-adversarial` i `ux-reviewer` według ryzyka
      i rodzaju zmiany.
+
+   Kroki są w sekcji „Przebieg epiku” niżej. Nie ma do nich skilla ani skryptu.
 2. **Najpierw natywne, własne na końcu.** Bez własnego schedulera, orkiestratora ani frameworka. Nowy komponent
    powstaje tylko dla powtarzalnego, istotnego, zaobserwowanego problemu i przechodzi zwykłą drogę: specyfikacja,
    plan, akceptacja, implementacja.
 3. **Polityka przeglądu.** Dwie rundy to domyślny budżet, nie twardy limit. Luki bezpieczeństwa, utrata danych, błędy
    logiki biznesowej i istotne regresje muszą być naprawione; drobne uwagi, hipotetyczne przypadki brzegowe i styl
-   są odraczane bez pytania właściciela; kolejna runda wymaga konkretnego uzasadnienia. Rubryka wag jest w skillu
-   `/integration` (`.claude/skills/integration/SKILL.md`).
+   są odraczane bez pytania właściciela; kolejna runda wymaga konkretnego uzasadnienia. Wagę nadaje reviewer według
+   skutku w normalnym użyciu; definicje są w plikach agentów, a dla AO także w skillu `/integration`.
 4. **Merge do `main`** zawsze należy do użytkownika albo do sesji na jego wyraźne polecenie, które wskazuje PR.
    Squash i usunięcie gałęzi. Wyjątki procedury AO (niżej) obowiązują tylko przy jej uruchomieniu.
 5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu; subagenci używają modelu z definicji albo
@@ -52,6 +54,37 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
 7. Zabezpieczenia agentów są techniczne i wynikają z modelu zagrożeń ([`agent-security.md`](agent-security.md)), nie
    tylko z instrukcji w promptach. Człowiek zatwierdza istotne decyzje biznesowe i końcową integrację (merge funkcji,
    wdrożenie na produkcję). Agent nie wykonuje samodzielnie destrukcyjnych operacji produkcyjnych, w tym rollbacku.
+
+### Przebieg epiku
+
+Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
+
+1. **Start.** Specyfikacja i plan są na `main`. Sesja zakłada gałąź epiku od `origin/main` (nazwa spoza `epic/*`, np.
+   `feat/<epik>`), wypycha ją i otwiera draft PR do `main`.
+2. **Zlecenie zadania.** Zadanie gotowe do startu (zależności zmergowane do gałęzi epiku) dostaje subagent `developer`
+   z `isolation: worktree`. Jego worktree startuje z `origin/main`, nie z gałęzi epiku, więc zlecenie każe zacząć od
+   `git fetch origin && git switch -c task/<ID> origin/<gałąź epiku>`. Zlecenie podaje ID zadania, ścieżkę planu
+   i specyfikacji, a gdy zadanie potrzebuje stosu (testy na bazie, kolejce, przeglądarce): nazwę projektu Compose
+   i pierwszy z 7 wolnych portów dla `.ao/setup`; stos gasi `.ao/teardown`. Subagent commituje na gałęzi zadania i nie
+   pushuje.
+3. **Równoległość.** Naraz idą zadania jednej fali, które mają się nawzajem w `parallel_with`. Liczbę ogranicza
+   pamięć hosta (zwykle 2–3 stosy) i limity subskrypcji, które sesja sprawdza przed falą; płatnych przekroczeń nie
+   włącza.
+4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów. `STANDARD` i `CRITICAL`: `code-reviewer`
+   na SHA zadania. Poprawki robi `developer`, po nich przegląd różnicy.
+5. **Merge zadania.** Sesja merguje gałąź zadania do gałęzi epiku (`git merge`), wypycha ją i wpisuje commit
+   w „Status” planu. Czerwone CI draft PR naprawia przed kolejną falą.
+6. **Przegląd epiku.** Po ostatnim zadaniu i zielonym CI: jeden przegląd całego diffu `origin/main...<gałąź epiku>`
+   agentami dobranymi do zmiany: `architecture-reviewer` przy nowym module, migracji albo zmianie granic;
+   `qa-adversarial` na działającym stosie przy zmianie zachowania aplikacji; `ux-reviewer` przy zmianie frontów.
+   Znaleziska blokujące naprawia jedno zadanie, po nim przegląd różnicy (punkt 3 decyzji).
+7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje odroczone uwagi w opis PR, oznacza PR jako
+   gotowy i pisze raport. Merge do `main` robi użytkownik.
+8. **Wznowienie po przerwie.** Stan odtwarza się z sekcji „Status” planu, gałęzi `task/*`, `git worktree list` i draft
+   PR. Niedokończone zadanie podejmuje nowy subagent od commitów gałęzi `task/<ID>`.
+
+Mała zmiana (poprawka albo do trzech zadań niskiego ryzyka) nie potrzebuje tej ścieżki: jedna gałąź i jeden PR do
+`main` w zwykłej sesji.
 
 ### Zasady obowiązujące tylko przy uruchomieniu AO
 
@@ -177,9 +210,8 @@ Zasady przebiegu AO:
 - Po trzech epikach natywnych (SMALL-FIXES → ABUSE-LIMITS → ASYNC-RELIABILITY, każdy z punktem odniesienia przed
   i krótkim raportem po) użytkownik decyduje o archiwizacji AO i usunięciu jego narzędzi. Do tego czasu nic z nich nie
   jest usuwane ani rozwijane.
-- Droga natywna ma otwarte ryzyka wykonalności z raportu (sekcja 10.3), m.in.: worktree subagenta startuje z gałęzi
-  domyślnej, jeśli nie ustawiono inaczej; tryb auto może blokować merge'e; izolacja jest na sesję epiku, nie na
-  zadanie; przed `main` jedyną twardą bramką są rulesety (0 wymaganych zatwierdzeń), więc merge do `main` opiera się
-  na zasadzie z punktu 4.
+- Droga natywna ma otwarte ryzyka wykonalności z raportu (sekcja 10.3), m.in.: wznowienie zadania po przerwanej sesji
+  nie było sprawdzone; izolacja jest na sesję epiku, nie na zadanie; przed `main` jedyną twardą bramką są rulesety (0
+  wymaganych zatwierdzeń), więc merge do `main` opiera się na zasadzie z punktu 4.
 - Praca agentów zużywa limity subskrypcji wspólne z pracą interaktywną; równoległe zadania potrzebują osobnych stosów
   Docker, a zasoby jednego hosta ograniczają ich liczbę.

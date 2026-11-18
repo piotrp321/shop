@@ -7,11 +7,10 @@ disable-model-invocation: true
 ---
 
 Zaprojektuj najprostsze poprawne rozwiązanie spełniające wymagania.
-Ten skill zastępuje superpowers:brainstorming, gdy użytkownik wywołuje /brainstorm. Nie uruchamiaj obu.
 
 ## Proces
 
-1. Przeczytaj CLAUDE.md, istotną dokumentację i istniejący kod. Nie pytaj o fakty dostępne w projekcie.
+1. Przeczytaj istotną dokumentację i istniejący kod. Nie pytaj o fakty dostępne w projekcie.
 2. Business discovery przed projektowaniem. Przeanalizuj: cel i kryteria sukcesu, zakres względem MVP i zależności
    od istniejących funkcjonalności, kto korzysta i jak się zachowuje, kto co może (uprawnienia), reguły i limity
    danych (unikalność, limity, cykl życia, retencja), co widzi użytkownik, gdy coś się nie uda, oraz przypadki brzegowe

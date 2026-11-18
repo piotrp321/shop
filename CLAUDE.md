@@ -111,19 +111,21 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 
 ## Epiki, agenci i przegląd
 
-- Epik prowadzi główna sesja Claude Code jako orkiestrator: natywne subagenty, worktree, istniejące skille i agenci
-  z `.claude/`, CI i rulesety. Specyfikacja przez `/brainstorm` (projektowy skill `brainstorm`, nie
-  `superpowers:brainstorming`), plan przez `/planner`. Epik ma jedną gałąź spoza `epic/*` (tam bezpośredni push
-  blokuje ruleset `epic-merge`) z draft PR do `main` od początku, więc CI biegnie przy każdym pushu. Zadania planu
-  implementuje subagent `developer`, a przegląda `code-reviewer` w świeżym kontekście; niezależne zadania (bez
-  wspólnych plików, z ustalonym kontraktem) idą równolegle w osobnych worktree, gdy pozwalają na to izolacja i zasoby.
-  Na końcu jeden przegląd całej zmiany: `architecture-reviewer`, `qa-adversarial`, `ux-reviewer` (tryb `integration`)
-  według ryzyka i rodzaju zmiany. Większa zmiana poza epikiem też kończy się przeglądem całej zmiany w świeżym kontekście.
+- Epik prowadzi główna sesja Claude Code jako orkiestrator: natywne subagenty w osobnych worktree, agenci z `.claude/`,
+  CI i rulesety. Przed startem epiku przeczytaj „Przebieg epiku” w `docs/adr/agentic-software-house.md`. Specyfikacja
+  przez `/brainstorm`, plan przez `/planner`. Epik ma jedną gałąź spoza `epic/*` (tam bezpośredni push blokuje ruleset
+  `epic-merge`) z draft PR do `main` od początku, więc CI biegnie przy każdym pushu. Zadania planu implementuje
+  subagent `developer`; zadania `STANDARD` i `CRITICAL` przegląda `code-reviewer` w świeżym kontekście, `FAST` sprawdza
+  sesja prowadząca. Niezależne zadania (bez wspólnych plików, z ustalonym kontraktem) idą równolegle, gdy pozwalają na
+  to izolacja i zasoby. Na końcu jeden przegląd całej zmiany: `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`
+  (tryb `integration`) według ryzyka i rodzaju zmiany. Większa zmiana poza epikiem też kończy się przeglądem całej
+  zmiany w świeżym kontekście.
 - Najpierw natywne, własne na końcu: bez własnego schedulera, orkiestratora, frameworka ani hooków; nowy komponent tylko
   dla powtarzalnego, istotnego, zaobserwowanego problemu (`docs/adr/agentic-software-house.md`).
 - Dwie rundy przeglądu to domyślny budżet, nie twardy limit. Luki bezpieczeństwa, utratę danych, błędy logiki
   biznesowej i istotne regresje naprawiamy; drobne uwagi, hipotetyczne przypadki brzegowe i styl odraczamy bez pytania
-  właściciela; kolejna runda wymaga konkretnego uzasadnienia. Rubryka wag: `.claude/skills/integration/SKILL.md`.
+  właściciela; kolejna runda wymaga konkretnego uzasadnienia. Wagę nadaje reviewer według skutku w normalnym użyciu
+  (definicje w plikach agentów).
 - Reviewer sprawdza zgodność ze specyfikacją, błędy logiczne, architekturę, przypadki brzegowe, testy (także przebieg
   TDD na podstawie wyników obu uruchomień) i zbędną złożoność; brak prawdziwej fazy RED w zadaniu z TDD to problem
   Important. Dodatkowych reviewerów ani modeli nie uruchamiamy bez powodu. Sesja orkiestrująca może działać na
@@ -132,8 +134,23 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
   persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury przedstawia użytkownikowi przed implementacją.
 - Raport po PR: zakres, subagenci i ich role, wynik review, wykryte i naprawione problemy, uruchomione testy
   z wynikami, link do PR i CI, czas pracy i zużycie modelu. Zwięźle, bez pełnych logów.
-- Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`). Wspólna konfiguracja
-  Claude Code jest w `.claude/settings.json`, lokalne ustawienia w `.claude/settings.local.json` (poza repo).
+- Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`). Lokalne ustawienia
+  Claude Code są w `.claude/settings.local.json` (poza repo).
+
+## Lista jakości
+
+Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
+
+- **Błędy API:** złe dane wejściowe (brak klucza, zły typ, za długi tekst, duplikat różniący się wielkością liter) dają
+  4xx z polem naruszenia, nigdy 500.
+- **Komunikaty po polsku:** każdy komunikat widoczny dla użytkownika, także `violations[].title` z walidacji
+  i deserializacji frameworka.
+- **Unicode:** polskie znaki działają; znaki sterujące (NUL, U+2028) i same białe znaki Unicode (NBSP) w tekstach są
+  odrzucane albo obsłużone (`trim()` i wyrażenia bez `/u` działają tylko na ASCII).
+- **Klawiatura, focus, etykiety:** każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd)
+  focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
+- **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.
+- **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
 
 Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/prepare-epic`, `/delivery`, `/sweep`, `/retro`, `/groom` jest
 zamrożony; AO zostaje uruchamialny jako rozwiązanie awaryjne. Sesja, która uruchamia AO albo któryś z tych skilli,
