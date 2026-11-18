@@ -34,8 +34,10 @@ Zasady:
   - otwartego modelu zagrożeń: kryterium bezpieczeństwa bez sekcji `## Model zagrożeń` albo sformułowane jako ogólny
     zakaz („żadnej drogi do sekretów”, „brak możliwości eskalacji”) zamiast zamkniętej listy dróg ze sprawdzeniem
     każdej i jawnej listy „poza zakresem”; droga w zakresie bez sprawdzenia; komponent zewnętrzny (chart, operator,
-    obraz), którego domyślnych uprawnień szkic nie porównał z kryteriami (sprawdź jego manifesty). Każde to
-    `Important`;
+    obraz), którego domyślnych uprawnień szkic nie porównał z kryteriami (sprawdź jego manifesty); sprawdzenie
+    zbudowane przez epik, które ocenia dane kontrolowane przez atakującego (sonda, odbiornik, parser, walidator), bez
+    zamkniętej listy ocenianych form wejścia, statusu każdej innej formy (nigdy `pass`) i zachowania przy
+    zatrzymaniu. Każde to `Important`;
   - niesprawdzonego założenia o zachowaniu narzędzia albo biblioteki w wersji, której epik używa (ustawienie CLI
     albo sandboxa, opcja SDK, mechanizm frameworka), na którym stoi kryterium akceptacji albo przypadek pracy: brak
     eksperymentu na tej wersji w „Wymagane przed startem” (polecenie, wersja, wynik), a przy epiku ograniczającym
