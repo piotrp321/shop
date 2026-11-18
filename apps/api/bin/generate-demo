@@ -1,0 +1,210 @@
+#!/bin/sh
+# Generates the demo data of a profile on top of the seed (docs/features/demo-data/spec.md). `make seed-scale` runs it.
+#
+# Usage: bin/generate-demo [--profile=NAME] [--anchor=DATE] [--processes=N] [--force-reset]
+#   --profile    profile of fixtures/demo-data/profiles.yaml (default small)
+#   --anchor     reference moment of every generated time (default: the start of the current UTC day, taken once, so
+#                every step gets the same one)
+#   --processes  processes that write the parts of the products, the prices and the orders at the same time (default 4); the rows do not depend on it
+#   --force-reset  required in prod, where the run starts with bin/seed-demo, which deletes the data of every module
+#
+# A profile other than small takes its photos from the private bucket of the photo pool, so it needs the read variables
+# DEMO_PHOTOS_ENDPOINT, DEMO_PHOTOS_BUCKET, DEMO_PHOTOS_ACCESS_KEY_ID and DEMO_PHOTOS_SECRET_ACCESS_KEY in the environment
+# (`make seed-scale` takes them from the file of the user, ~/.config/shop/demo-photos.env). Without them the script stops
+# first, naming the empty ones (never a value); with them, it asks the photos step what it needs (`demo-data:photos --preflight`:
+# the manifest, the archive in the bucket) before anything is deleted.
+#
+# The steps, in order: a check of the options (nothing is changed), bin/seed-demo (reset and the seed catalog), the
+# categories of the tail, the parts of the products and, after the photos, the parts of the prices (one process per part
+# group, run in parallel, each awaited), the promotions and discount codes, the staff and customer accounts in Keycloak
+# (the administrator of the stack from the environment), the parts of the orders (like the prices), the stock after the
+# orders, the order number sequence, the read models of the orders, ANALYZE of the filled tables, the search index, the
+# caches of the store and the consistency check (also of the accounts). The first failing step stops the script with its exit code, so the
+# later steps do not run; a failing part stops the other parts first.
+set -eu
+
+here="$(dirname "$0")"
+console="$here/console"
+seed_demo="$here/seed-demo"
+
+usage() {
+  echo "Usage: $0 [--profile=NAME] [--anchor=DATE] [--processes=N] [--force-reset]" >&2
+}
+
+profile="small"
+anchor=""
+processes="4"
+force_reset=""
+for argument in "$@"; do
+  case "$argument" in
+    --profile=*) profile="${argument#--profile=}" ;;
+    --anchor=*) anchor="${argument#--anchor=}" ;;
+    --processes=*) processes="${argument#--processes=}" ;;
+    --force-reset) force_reset="yes" ;;
+    *)
+      echo "Unknown argument: $argument" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+case "$profile" in
+  "" | *[!a-z0-9_-]*)
+    echo "--profile has to be a name made of lower-case letters, digits, - and _." >&2
+    exit 2
+    ;;
+esac
+case "$processes" in
+  "" | *[!0-9]* | 0 | 0[0-9]*)
+    echo "--processes has to be a positive whole number." >&2
+    exit 2
+    ;;
+esac
+
+if [ "${APP_ENV:-}" = "prod" ] && [ -z "$force_reset" ]; then
+  echo "The run deletes the data of every module (bin/seed-demo). In prod it needs --force-reset; nothing was changed." >&2
+  exit 1
+fi
+
+if [ "$profile" != "small" ]; then
+  missing=""
+  for name in DEMO_PHOTOS_ENDPOINT DEMO_PHOTOS_BUCKET DEMO_PHOTOS_ACCESS_KEY_ID DEMO_PHOTOS_SECRET_ACCESS_KEY; do
+    value="$(printenv "$name" || true)"
+    case "$value" in
+      *[![:space:]]*) ;;
+      *) missing="$missing $name" ;;
+    esac
+  done
+  if [ -n "$missing" ]; then
+    echo "The profile $profile takes its photos from the private bucket of the photo pool, and these variables are empty:$missing. Nothing was changed." >&2
+    exit 1
+  fi
+fi
+
+if [ -z "$anchor" ]; then
+  anchor="$(date -u +%Y-%m-%dT00:00:00Z)"
+fi
+
+common="--demo-profile=$profile --anchor=$anchor"
+
+workdir="$(mktemp -d)"
+parts_running=""
+
+# Stops the parts that are still running (their process ids are in files of the work directory).
+stop_parts() {
+  for pid_file in "$workdir"/pid.*; do
+    [ -e "$pid_file" ] || continue
+    index="${pid_file##*/pid.}"
+    if [ ! -e "$workdir/status.$index" ]; then
+      kill "$(cat "$pid_file")" 2>/dev/null || true
+    fi
+  done
+  wait || true
+}
+
+cleanup() {
+  if [ -n "$parts_running" ]; then
+    stop_parts
+  fi
+  rm -rf "$workdir"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+# The parts of a step (the products, the prices, the orders): one process per worker, each in a subshell of its own that records the
+# process id of the command and, when it ends, its exit code. The script polls those records, so it notices a failing part
+# at once instead of when the parts before it have finished, and then stops the others. The step is the name of the
+# command.
+run_parts() {
+  step="$1"
+  rm -f "$workdir"/pid.* "$workdir"/status.*
+  index=0
+  while [ "$index" -lt "$processes" ]; do
+    (
+      # shellcheck disable=SC2086 # common is a list of options
+      "$console" "$step" $common --worker="$index" --workers="$processes" &
+      child=$!
+      echo "$child" >"$workdir/pid.$index"
+      code=0
+      wait "$child" || code=$?
+      echo "$code" >"$workdir/status.$index"
+    ) &
+    index=$((index + 1))
+  done
+  parts_running="yes"
+
+  while :; do
+    finished=0
+    index=0
+    while [ "$index" -lt "$processes" ]; do
+      if [ -s "$workdir/status.$index" ]; then
+        finished=$((finished + 1))
+        code="$(cat "$workdir/status.$index")"
+        if [ "$code" != "0" ]; then
+          echo "Part group $index of $processes failed with code $code; stopping the others." >&2
+          stop_parts
+          parts_running=""
+          return "$code"
+        fi
+      fi
+      index=$((index + 1))
+    done
+    if [ "$finished" -ge "$processes" ]; then
+      break
+    fi
+    sleep 0.2 2>/dev/null || sleep 1
+  done
+  wait || true
+  parts_running=""
+}
+
+# The options are checked before anything is deleted: an unknown profile or a bad anchor stops the script here (the
+# command prints the number of parts of the profile and touches no data).
+# shellcheck disable=SC2086 # common is a list of options
+"$console" demo-data:products $common --list-parts
+
+# The photo pool must be loadable (variables, manifest, archive in the bucket) before the reset deletes the data.
+if [ "$profile" != "small" ]; then
+  # shellcheck disable=SC2086
+  "$console" demo-data:photos $common --preflight
+fi
+
+"$seed_demo"
+
+# shellcheck disable=SC2086
+"$console" demo-data:categories $common
+
+run_parts demo-data:products || exit "$?"
+
+# shellcheck disable=SC2086
+"$console" demo-data:photos $common
+
+run_parts demo-data:prices || exit "$?"
+
+# shellcheck disable=SC2086
+"$console" demo-data:promotions $common
+
+# The accounts in Keycloak, with its administrator from the environment (DEMO_DATA_KEYCLOAK_URL, KC_BOOTSTRAP_ADMIN_PASSWORD).
+# shellcheck disable=SC2086
+"$console" demo-data:accounts $common
+
+run_parts demo-data:orders || exit "$?"
+
+# The stock after the orders (one pass of SQL) and the number sequence past the last number.
+# shellcheck disable=SC2086
+"$console" demo-data:stock $common
+# shellcheck disable=SC2086
+"$console" demo-data:order-numbers $common
+
+# The read models the steps fill without the commands (the hourly sales and the customers of the panel), then the
+# statistics of the filled tables.
+"$console" ordering:read-models:rebuild
+"$console" demo-data:analyze
+
+# The seed's own events do not index the generated products: the index and the caches are rebuilt at the end.
+"$console" catalog:reindex
+"$console" storefront:cache:purge-all
+
+# shellcheck disable=SC2086
+"$console" demo-data:verify $common

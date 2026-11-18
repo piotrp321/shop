@@ -2,6 +2,7 @@
 monolog:
     channels:
         - deprecation
+        - search_rebuild
     handlers:
         # The explicit logs of the application from `error` up are Sentry events (spec: docs/features/sentry/spec.md, P6
         # and D5), in every environment; without SENTRY_DSN nothing is sent. The channels of the framework repeat an
@@ -40,7 +41,7 @@ when@prod:
                 action_level: error
                 handler: stderr_json
                 excluded_http_codes: [404, 405]
-                channels: ['!event', '!cache']
+                channels: ['!event', '!cache', '!search_rebuild']
                 buffer_size: 50
             # A failing cache pool (Redis of the rate limits down: the limits are off, spec docs/features/hardening/
             # spec.md, D7) is logged by the pool as a warning and the request goes on; outside the buffer above, so
@@ -51,6 +52,16 @@ when@prod:
                 level: warning
                 formatter: monolog.formatter.json
                 channels: ['cache']
+            # The progress and the retries of the search index rebuild (catalog:reindex, spec docs/features/search/
+            # spec.md) are logs of info and warning of a command that ends without an error, so the buffer above would
+            # drop them; outside it they are written always. The channel stays in the Sentry handler: an error there
+            # would be an event, and none is logged (warning and info never are).
+            search_rebuild_stderr:
+                type: stream
+                path: php://stderr
+                level: info
+                formatter: monolog.formatter.json
+                channels: ['search_rebuild']
             stderr_json:
                 type: stream
                 path: php://stderr

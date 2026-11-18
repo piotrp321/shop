@@ -29,9 +29,11 @@ final class ProductSearchIndexRebuilderTest extends TestCase
     private InMemoryProductSearchSource $source;
     private InMemoryProductOfferFacts $offers;
     private FixedCatalogClock $clock;
+    private RecordingLogger $logger;
 
     protected function setUp(): void
     {
+        $this->logger = new RecordingLogger();
         $this->maintenance = new FakeSearchIndexMaintenance('products_old', 'products_new');
         $this->lock = new FakeSearchIndexRebuildLock();
         $this->source = new InMemoryProductSearchSource(self::snapshots(7));
@@ -76,6 +78,33 @@ final class ProductSearchIndexRebuilderTest extends TestCase
                 $this->maintenance->written['products_new'],
             ),
         );
+    }
+
+    public function testEveryBatchLogsTheDocumentsDoneAndTheRate(): void
+    {
+        $this->source->onRead = fn () => $this->clock->advance('+1 second');
+
+        $this->rebuilder()->rebuild(3);
+
+        $progress = array_values(array_filter($this->logger->records, static fn (array $record): bool => 'info' === $record['level']));
+        self::assertCount(3, $progress);
+        self::assertSame(
+            [
+                ['index' => 'products_new', 'documents' => 3, 'documents_per_second' => 3.0],
+                ['index' => 'products_new', 'documents' => 6, 'documents_per_second' => 3.0],
+                ['index' => 'products_new', 'documents' => 7, 'documents_per_second' => 2.3],
+            ],
+            array_map(static fn (array $record): array => $record['context'], $progress),
+        );
+    }
+
+    public function testABatchThatTakesNoTimeLogsNoRate(): void
+    {
+        $this->rebuilder()->rebuild(7);
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame(7, $this->logger->records[0]['context']['documents']);
+        self::assertNull($this->logger->records[0]['context']['documents_per_second']);
     }
 
     public function testAFailureOfTheOfferFactsStopsTheRebuildAndKeepsTheAlias(): void
@@ -302,7 +331,7 @@ final class ProductSearchIndexRebuilderTest extends TestCase
 
     private function rebuilder(): ProductSearchIndexRebuilder
     {
-        return new ProductSearchIndexRebuilder($this->source, $this->maintenance, $this->lock, new ProductDocumentBuilder(), $this->offers, $this->clock);
+        return new ProductSearchIndexRebuilder($this->source, $this->maintenance, $this->lock, new ProductDocumentBuilder(), $this->offers, $this->clock, $this->logger);
     }
 
     private function assertLockReleased(): void

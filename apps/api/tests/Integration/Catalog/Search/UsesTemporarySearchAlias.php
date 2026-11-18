@@ -39,15 +39,20 @@ trait UsesTemporarySearchAlias
         return self::clientFactory()->create(30.0);
     }
 
-    protected function maintenance(?ClientInterface $httpClient = null, ?ProductIndexDefinition $definition = null): ElasticsearchSearchIndexMaintenance
+    /**
+     * @param ClientInterface|null       $longHttpClient the transport of the bulk writes, index creation and refresh
+     * @param (\Closure(int): void)|null $sleeper        replaces the wait between the attempts of a bulk write
+     */
+    protected function maintenance(?ClientInterface $httpClient = null, ?ProductIndexDefinition $definition = null, ?ClientInterface $longHttpClient = null, ?\Closure $sleeper = null): ElasticsearchSearchIndexMaintenance
     {
         $factory = self::clientFactory();
 
         return new ElasticsearchSearchIndexMaintenance(
             null === $httpClient ? $factory->create(2.0) : $factory->createWith($httpClient),
-            $factory->create(30.0),
+            null === $longHttpClient ? $factory->create(30.0) : $factory->createWith($longHttpClient),
             $definition ?? new ProductIndexDefinition(1, 0),
             $this->alias(),
+            $sleeper,
         );
     }
 
