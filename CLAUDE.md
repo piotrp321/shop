@@ -152,6 +152,9 @@ najpierw czyta zasady AO: `docs/adr/agentic-software-house.md` („Zasady obowi�
   implementacji jest dokumentem roboczym: po ukończeniu funkcji usuń go.
 - Główny `CLAUDE.md` zawiera zasady i wskaźniki. Opis pojedynczych celów make, kroków CI i tego, co sprawdza dany cel,
   jest przy celu (komentarz w `make/*.mk` albo w Makefile aplikacji) i w `CLAUDE.md` obszaru.
+- `CLAUDE.md` aplikacji i obszarów zawierają wyłącznie zasady, komendy i decyzje, których nie widać w kodzie. Opisu
+  działania kodu (endpointy, pola, komponenty, przebieg) tam nie dopisujemy: należy do specyfikacji funkcji i do kodu.
+  Zadanie zmienia taki plik tylko wtedy, gdy wprowadza albo zmienia zasadę.
 
 ## Czego nie robić
 
