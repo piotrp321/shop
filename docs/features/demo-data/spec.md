@@ -434,7 +434,10 @@ Opis szczegółowy: `docs/features/search/spec.md`.
   Dockera Desktop rośnie w miarę zapisu, więc granicą jest host). Oba muszą mieć co najmniej 1,25 × `diskPeakGb`;
   inaczej cel kończy się kodem 2 bez startu, z wymaganym i dostępnym miejscem w komunikacie. W trakcie cel co 30 s
   sprawdza oba miejsca i przy spadku poniżej 10% `diskPeakGb` zatrzymuje Job generatora i k6, usuwa klaster i kończy
-  się kodem 2. Szacunek z tej specyfikacji: `medium` około 25 GB, `server` około 100 GB, `full` około 225 GB;
+  się kodem 2. Każdy odczyt trafia do `space.log` w wynikach (pierwszy wiersz to odczyt sprzed startu), a na końcu
+  przebiegu plik dostaje podsumowanie z najmniejszym wolnym miejscem i zużyciem względem pierwszego odczytu (szczytowe
+  zużycie dysku, z którego uaktualnia się `diskPeakGb`). Próbniki pamięci i CPU (`top.log`, `node-stats.log`) działają
+  od chwili, gdy klaster jest gotowy, więc obejmują generator. Szacunek z tej specyfikacji: `medium` około 25 GB, `server` około 100 GB, `full` około 225 GB;
   przebieg `medium` w zadaniu epiku uaktualnia `diskPeakGb` według zmierzonych rozmiarów.
 - Wynik `load` zawiera czasy kroków generatora i rozmiary tabel i indeksów (do raportu).
 
