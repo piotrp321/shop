@@ -10,10 +10,9 @@ nad kolejkami z alertem i procedurą oraz test zgodności wersji wiadomości.
 Issues: brak (epik z raportu audytu; issue `epic` zakłada użytkownik, patrz „Wymagane przed startem”)
 Zakres: `apps/api`, `apps/admin`, `infra/docker-compose.yml`, `Makefile`, `.github/workflows/ci.yml`, `.github/scripts`,
 `infra/k8s`, `e2e/tests/staff-dashboard.spec.ts`, `docs/vision.md`, `docs/adr/backups-observability.md`,
-`docs/features/payment/spec.md`, `docs/features/order-management/spec.md`, `docs/features/product-page/spec.md`,
-`docs/features/pricing/spec.md`, `docs/features/deploy/spec.md`, `docs/features/deploy-ops/spec.md`,
-`docs/features/admin-features/spec.md`, `docs/features/oncall/spec.md`, `docs/features/demo-data/spec.md`, `README.md`,
-`CLAUDE.md`
+`docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `docs/features/pricing/spec.md`,
+`docs/features/deploy/spec.md`, `docs/features/deploy-ops/spec.md`, `docs/features/admin-features/spec.md`,
+`docs/features/oncall/spec.md`, `docs/features/demo-data/spec.md`, `README.md`
 
 ## Cel i zakres
 
@@ -326,7 +325,7 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 - `GET /api/v1/admin/dashboard`, sekcja `system` (tylko `admin`), nowe wymagane pole `messages`:
   `{ healthy: bool, failed: { count: int, capped: bool, oldestAt: date-time|null }, transports: [{ name, ready: int,
   capped: bool, oldestReadyAgeSeconds: int|null, stalled: bool }] }`. `outbox.pending` i `queues` (RabbitMQ) bez zmian.
-  Eksport `openapi-admin.json` i klient panelu (`make -C apps/api openapi`, `make api-client`) w tym samym PR, razem
+  Eksport `openapi-admin.json` i klient panelu (`make -C apps/api openapi`, `make api-client`) w tym samym zadaniu, razem
   z typowanymi danymi testowymi panelu (`apps/admin/tests/dashboardSupport.ts`). Inne role: `system` dalej `null`.
 - Komenda `app:messaging:check` (warstwa UI Backoffice) wypisuje tę samą ocenę: linię `failed` i linię na transport (bez
   treści wiadomości). Kod wyjścia: 0 – zdrowe, 1 – `failed` niepuste albo kolejka stoi, 2 – błąd odczytu (np. niedostępna
@@ -434,14 +433,16 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
 
 ## Dokumentacja do zmiany
 
-Każda zmiana razem z zadaniem, które zmienia opisane zachowanie:
+Opis działania (workery i transporty, handlery, endpoint, komendy CronJobów, CronJoby i reguły) jest w tej specyfikacji
+i w kodzie; zadania nie dopisują go do `CLAUDE.md` aplikacji ani obszaru (zasada dokumentacji z nowego głównego
+`CLAUDE.md`, #737). `CLAUDE.md` zmieniają tylko dwa zadania, bo zmieniają zasady albo polecenia dla agentów:
 
-- `apps/api/CLAUDE.md`: workery i transporty opisane przez odwołanie do `infra/k8s/CLAUDE.md` („Worker”), niezależność
-  transportów Doctrine od brokera (W1), ponowienia `events`, `outbox` i `test_messaging` (W3), handlery ceny (W4),
-  `ExpireOverdueOrder` i komendy `ordering:expire-overdue`, `payment:close-abandoned`, `GetOrderPayability` (W5, W6),
-  `app:messaging:check` i pulpit (W7), „Zgodność wersji” (W11).
-- `apps/admin/CLAUDE.md`: ekran „Stan systemu” (W8).
-- `infra/k8s/CLAUDE.md`: sekcja „Worker” (W1, W2), CronJoby i alerty w „Co sprawdza check” (W9), cele `failed*` (W10).
+- `apps/api/CLAUDE.md`, „Zgodność wersji”: zasada z D3 (W11), w zadaniu testu zgodności wiadomości.
+- `infra/k8s/CLAUDE.md`, „Cele Makefile”: nowe cele `failed`, `failed-retry`, `failed-remove`, którymi agent może
+  operować na serwerze, i zgoda użytkownika na dwa ostatnie (W10), w zadaniu tych celów.
+
+Dokumenty, które dziś podają zachowanie zmieniane przez epik, zmienia zadanie, które je zmienia:
+
 - `infra/k8s/README.md`: odtworzenie (Deploymenty i CronJoby), alerty (liczba reguł, nowe severity), reakcja na nowe
   alerty i cele `failed*` (W1, W9, W10).
 - `docs/vision.md` („Alerty”), `docs/adr/backups-observability.md` (lista reguł; lista skalowanych do zera przy
@@ -449,10 +450,10 @@ Każda zmiana razem z zadaniem, które zmienia opisane zachowanie:
   (worker, fale, oczekiwanie na rollout, nieudana migracja), `docs/features/admin-features/spec.md` (transport `jobs`
   w workerze, `backfill` po rolloucie), `docs/features/oncall/spec.md` (workloady wdrażane) (W1, W9).
 - `docs/features/payment/spec.md` („Ryzyka i ograniczenia”: kolejność transportów, `ExpireUnpaidOrder` w `failed`,
-  porzucone `pending`) (W1, W5, W6), `docs/features/order-management/spec.md` i `docs/features/demo-data/spec.md`
-  („`new` wygasa tylko przez wiadomość”) (W5), `docs/features/product-page/spec.md` i `docs/features/pricing/spec.md`
-  (ponowienia `events`, uzgodnienie VAT) (W3, W4).
-- `README.md` (`docker compose restart worker` → oba workery) (W1); `CLAUDE.md` (cele wymagające zgody) (W10).
+  porzucone `pending`) (W1, W5, W6), `docs/features/demo-data/spec.md` („`new` wygasa tylko przez wiadomość”) (W5),
+  `docs/features/product-page/spec.md` (ponowienia `events`) i `docs/features/pricing/spec.md` (konsumenci zdarzenia ceny
+  i źródła, które potwierdzają bez pracy) (W3, W4).
+- `README.md` (`docker compose restart worker` → oba workery) (W1).
 
 ## Kryteria akceptacji
 
