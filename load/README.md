@@ -12,8 +12,8 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   `http://api`; `Origin` zapisów to publiczny adres sklepu (`STORE_URL` kontenera sklepu), którego BFF wymaga. CI uruchamia
   ten cel po testach E2E.
 - `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` – pomiar (`infra/k8s/scripts/load.sh`): rozgrzanie (`warmup.js`),
-  przebieg rosnący do nasycenia (`saturate.js`), przebieg stały (`steady.js`). Opis, kody wyjścia i ustawienia są w nagłówku
-  skryptu i w `CLAUDE.md`.
+  przebieg rosnący do nasycenia (`saturate.js`), przebieg stały (`steady.js`), na danych z seeda albo z generatora
+  (`LOAD_DATA=seed|medium|server|full`). Opis, kody wyjścia i ustawienia są w nagłówku skryptu i w `CLAUDE.md`.
 
 ## Skrypty
 
@@ -53,8 +53,11 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
 
   Klucz, którego API nie wydało, albo wartość opcji, która nie jest liczbą nieujemną, kończy `setup()` czytelnym błędem
   (kod 107), a porcje bez opublikowanych produktów, tak jak pusty katalog, błędem „no products”. `setup()` loguje liczbę
-  produktów, porcji, wariantów do kupienia, opcji i przedziałów cen. Cel `make -C infra/k8s load` nie przekazuje tych
-  opcji, więc używa wartości domyślnych.
+  produktów, porcji, wariantów do kupienia, opcji i przedziałów cen. Cel `make -C infra/k8s load` przekazuje k6 te
+  opcje, które ustawił wywołujący; z `LOAD_DATA` innym niż `seed` (dane z generatora) sam wybiera porcje
+  (`DISCOVER_CHUNKS` wywołującego albo `DISCOVER_CHUNK_COUNT` losowych z API klastra), podnosi stany tylko wariantów
+  produktów z tych porcji i przekazuje k6 ich klucze w `DISCOVER_CHUNKS`, więc checkout kupuje warianty z podniesionym
+  stanem.
 - Każda iteracja ma nowy adres w `CF-Connecting-IP` z puli `2001:db8::/32` (zakres dokumentacyjny RFC 3849; API i sklep liczą adres IPv6 po prefiksie /64, więc adresy różnią się prefiksem; osobne pule dla odczytu i checkoutu, bez powtórzeń w 16 milionach iteracji scenariusza), własny
   słoik ciasteczek (nowa przeglądarka) i tagi `flow`, `kind`, w przebiegu rosnącym `step`.
 - Wyniki: 409 (`conflicts_409`) i 429 (`rate_limited_429`) są liczone osobno i nie wchodzą do `http_req_failed`; błędem

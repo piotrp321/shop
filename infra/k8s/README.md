@@ -513,3 +513,36 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
    repozytorium.
 
 Gdy klaster dostanie NetworkPolicy dla ruchu wychodzącego, trzeba dopuścić ruch do `*.ingest.de.sentry.io`.
+
+## 11. Pomiar obciążenia na k3d i dane demo w skali
+
+Pomiar `make -C infra/k8s load` działa na jednorazowym klastrze k3d na komputerze użytkownika, nie na serwerze
+(`docs/features/hardening/spec.md`, „Testy obciążeniowe”; dane: `docs/features/demo-data/spec.md`, „k3d”). Opcje, pliki
+wyniku i kody wyjścia: komentarz celu w `Makefile` i nagłówek `scripts/load.sh`.
+
+Profile `ci` i `load` chartu mają zawieszony CronJob `demo-data` (`suspend: true`, w `prod` go nie ma), który sam nigdy
+się nie uruchamia. Jego Job (`kubectl create job --from=cronjob/demo-data`) kasuje dane każdego modułu i generuje profil
+`demoData.profile` (`bin/generate-demo --force-reset`) z limitem czasu `demoData.activeDeadlineSeconds` profilu, bez
+ponowień. Job tworzą wyłącznie test dymny (profil `small`) i `load` (jeden Job na przebieg); `concurrencyPolicy` nie
+chroni przed dwoma Jobami utworzonymi ręcznie. Profile inne niż `small` czytają zdjęcia z prywatnego bucketu puli przez
+sekret wskazany w `demoData.photosSecretName` (klucze `DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`,
+`DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY`); chart go nie tworzy, w klastrze pomiaru zakłada go `load`.
+
+1. **użytkownik** – zakłada prywatny bucket puli zdjęć, tokeny i plik `~/.config/shop/demo-photos.env`
+   (`docs/features/demo-data/spec.md`, „Wymagane przed startem”); wartości nie przechodzą przez rozmowę, a agent nie czyta
+   tego pliku.
+2. **agent** – pomiar na danych z seeda: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (`LOAD_DATA=seed`,
+   domyślnie; dziesiątki minut, VM Dockera co najmniej 10 CPU i 20 GiB).
+3. **zgoda użytkownika** – pomiar na danych z generatora: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>
+   LOAD_DATA=medium` (albo `server`, `full`; inny plik puli: `DEMO_PHOTOS_ENV_FILE=<plik>`). Generator działa godzinami
+   i zajmuje dziesiątki do setek GB dysku (szacunki w specyfikacji DEMO-DATA, „Środowiska”). Cel sprawdza plik puli przed
+   utworzeniem klastra (brak pliku albo zmiennej odczytu: kod 2), zakłada sekret `demo-photos` tylko z czterema
+   zmiennymi odczytu (token zapisu `DEMO_PHOTOS_WRITE_*` nie trafia do klastra), czeka na Job generatora
+   (`LOAD_DATA_TIMEOUT`, domyślnie limit Joba i 10 minut; błąd albo przekroczenie czasu: kod 2 z logiem Joba), podnosi
+   stany tylko wariantów z losowych porcji mapy strony i przekazuje ich klucze k6. Klaster z danymi i sekretem jest usuwany
+   przy każdym wyjściu.
+4. **agent** – raport z wyników w `LOAD_OUT`: `environment.txt` (w nim `LOAD_DATA` i porcje), `sizes.txt` (rozmiary baz,
+   tabel i indeksów Postgresa i indeksów Elasticsearcha), przy danych z generatora `demo-data.log` (log Joba z czasem
+   każdej linii) i `demo-data-steps.txt` (czasy kroków generatora). Wynik `medium` i ekstrapolacja nie są pomiarem pełnej
+   skali; `server` i `full` uznaje się za zweryfikowane dopiero po ich własnym przebiegu
+   (`docs/features/demo-data/spec.md`, W3).
