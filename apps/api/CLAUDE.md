@@ -53,7 +53,7 @@ cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventor
 
 `app:backfill [--force]` (`Shared_UI`; w klastrze Job `backfill` po rolloucie `api` i `worker`, lokalnie koniec
 `bin/seed-demo`) wypełnia dane, dla których migracje dodały tylko schemat (`docs/features/admin-features/spec.md`,
-sekcja 1). Nowy krok implementuje `Shared\Infrastructure\Backfill\BackfillStep` w warstwie Infrastructure modułu
+„Wdrożenie: schemat w migracjach, wypełnienie po rolloucie”). Nowy krok implementuje `Shared\Infrastructure\Backfill\BackfillStep` w warstwie Infrastructure modułu
 (rejestracja tagiem z interfejsu, kolejność `#[AsTaggedItem(priority: …)]` malejąco), jest idempotentny, działa
 partiami w osobnych transakcjach i jest poprawny przy ruchu. Ukończony krok nie uruchomi się drugi raz bez `--force`,
 więc nowy model odczytu dostaje własny krok, a nie zmianę istniejącego.
@@ -75,8 +75,13 @@ więc nowy model odczytu dostaje własny krok, a nie zmianę istniejącego.
 
 - Rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
   wycofane zmiany.
-- Błąd bazy (także naruszenie unikalności) zamyka wspólny `EntityManager`: równoległe pierwsze założenie wiersza robi
-  się przez `INSERT … ON CONFLICT DO NOTHING`, nie przez łapanie naruszenia.
+- Błąd bazy (także naruszenie unikalności) zamyka wspólny `EntityManager`, więc po nim transakcja nie może pisać dalej.
+  Naruszenie, które kończy operację błędem domeny, można złapać po `flush` i przetłumaczyć (np.
+  `PriceModifiedConcurrently`, `IdempotencyKeyReused`). Gdy po założeniu wiersza transakcja ma działać dalej (blokada,
+  zapis), wiersz zakłada `INSERT … ON CONFLICT DO NOTHING` jako jawny wyjątek z listy niżej.
+- `flush` wstawia nowe wiersze przed `UPDATE` z wersją: wiersze podrzędne, które zależą od wygranej wersji (np.
+  historia statusów zamówienia), dopisuj osobnym `flush` po zapisie wersjonowanym, inaczej przegrany wyścig kończy się
+  naruszeniem klucza zamiast konfliktem wersji.
 - `find()` z `PESSIMISTIC_WRITE` na encji już obecnej w identity map nie odświeża jej stanu (ryzyko decyzji na starych
   danych, np. sprzedaży ponad stan): rekord odczytany pod blokadą odświeżaj (`refresh()`), a odczyt, który ma widzieć
   zmiany zatwierdzone w międzyczasie, czyta rekord z odświeżeniem.
@@ -129,7 +134,7 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (wycofane złożenie zostawia lukę). Schemat Doctrine dostaje sekwencję od listenera `OrderNumberSequenceSchema`, więc
   diff migracji jej nie usuwa.
 - `DemoData` zapisuje tabele przez `COPY FROM STDIN` i SQL (`CopyWriter`, w transakcji wywołującego, do tabel
-  z indeksami z migracji, bez zmiany schematu), a konta w Keycloak przez REST administratora (`partialImport`), nie przez
+  z indeksami z migracji, bez zmiany schematu), a konta w Keycloak (wyłączone i bez poświadczeń) przez REST administratora (`partialImport`), nie przez
   realmy z repo ani Job `keycloak-config`, i zmienia tylko konta grupy `demo-data-generated`. Nie publikuje zdarzeń
   ani nie planuje wiadomości, więc nie obowiązuje go zasada „zdarzenie w tej samej transakcji co agregat”; indeks
   i cache sklepu odświeża koniec `bin/generate-demo`. Dotyczy tylko danych demo (`docs/features/demo-data/spec.md`).
@@ -146,7 +151,9 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
     z Ordering;
   - kolejność blokad: wiersz koszyka, potem wiersz kodu rabatowego (tylko kod z limitem), potem wiersze stanów
     (rosnąco po `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, zmiana kodu
-    tylko wiersz kodu, a zwolnienie użycia nie blokuje kodu, więc nie ma cyklu.
+    tylko wiersz kodu, a zwolnienie użycia nie blokuje kodu, więc nie ma cyklu;
+  - odcisk żądania złożenia się nie zmienia dla żądań, które już istnieją: nowe pole dopisuje się do odcisku tylko
+    wtedy, gdy jest w żądaniu.
 - Komendy pracownika na zamówieniu i `ExpireUnpaidOrder` blokują najpierw wiersz zamówienia, potem rezerwację i stany
   (Inventory), więc równoległe zmiany idą po kolei i nie zakleszczają się. Webhook (`MarkOrderPaid`) nie dotyka
   Inventory i zostaje przy wersji (`docs/features/order-management/spec.md`, `docs/features/payment/spec.md`).
@@ -207,6 +214,7 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   Które zapytania widzą szkice: `docs/features/catalog-admin/spec.md`.
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
+- Płatność (Payment) nie ma pola wersji: istniejącą płatność zmieniają tylko operacje pod blokadą jej wiersza.
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`), gdy jedyną
   drogą zapisu jest ta komenda. Gdy agregat ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed,
@@ -233,7 +241,8 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (`#[MapQueryString]`) to 400, zła treść żądania (`#[MapRequestPayload]`, tylko JSON, typy bez rzutowania) to 422;
   oba z listą `violations`.
 - Parametry, których błąd typu (`q[]=…`) ma dawać ten sam polski komunikat co zła wartość, są w DTO typu `mixed`
-  i sprawdzane w callbackach (np. `sort`, `q`, filtry list panelu).
+  i sprawdzane w callbackach (np. `sort` list panelu, `q` zamówień, klientów i kodów, `level`, `images`,
+  `productId`).
 - Treść żądań panelu, w których wszystkie klucze są wymagane, czyta `#[RequiredKeysBody]` (`Shared\UI\Http`,
   `RequiredKeysBodyResolver`) zamiast `#[MapRequestPayload]` z `REQUIRE_ALL_PROPERTIES`: argumentem kontrolera jest klasa
   żądania, a jej parametry konstruktora to klucze. Brak dowolnego klucza, także takiego, który dopuszcza `null`, to
@@ -251,8 +260,10 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   lista: `StaffUser::STAFF_ROLES`). `ROLE_STAFF` ma tylko pracownik z co najmniej jedną z nich, a `access_control`
   wymaga go na każdej trasie `/api/v1/admin` poza `GET`/`HEAD /api/v1/admin/me`, więc konto bez roli dostaje 403
   wszędzie poza `/me`. Pilnuje tego `AdminRouteAccessTest`, który bierze trasy panelu z routera, więc nowa trasa bez
-  `ROLE_STAFF` łamie go bez zmiany testu. Reguła ról jest tylko w voterze modułu; kontrolery znają tylko nazwy
-  atrybutów i pytają `isGranted`. Klient: tylko własne dane (właściciel zasobu = `sub` z tokena, nigdy parametr).
+  `ROLE_STAFF` łamie go bez zmiany testu. Ograniczenie ról trasy jest tylko w voterze modułu; kontroler zna tylko
+  nazwę atrybutu i pyta `isGranted` (trasa dla każdego pracownika polega na `ROLE_STAFF`). Klient: tylko własne dane
+  (właściciel zasobu = `sub` z tokena, nigdy parametr). Cudzy i nieznany zasób klienta dają ten sam wynik (404), tokeny
+  dostępu porównuje `hash_equals`.
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
@@ -273,9 +284,11 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
-  `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Powtórzenie z tym samym kluczem i tą
-  samą treścią niczego nie zmienia i zwraca 200 z bieżącym wynikiem zamiast 201; ten sam klucz z inną treścią (albo
-  innego właściciela, koszyka, zamówienia, dostawcy) to 409 bez danych zasobu, który go użył. Klucze są zapisane na
+  `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Dostęp do zasobu jest sprawdzany przed
+  powtórzeniem: sam klucz nigdy nie zwraca zasobu (bez dostępu 404 jak nieznany). Powtórzenie z tym samym kluczem i tą
+  samą treścią niczego nie zmienia i zwraca 200 z bieżącym wynikiem zamiast 201; ten sam klucz z inną treścią albo
+  użyty dla innego koszyka, zamówienia lub dostawcy (przy dostępie do zasobu żądania) to 409 bez danych zasobu, który
+  go użył. Klucze są zapisane na
   zawsze (unikalny indeks). Szczegóły: specyfikacje `inventory`, `checkout`, `payment`.
 - Rate limiting (`docs/features/hardening/spec.md`, D1–D8, `config/packages/rate_limiter.yaml`): bez `symfony/lock`
   (równoległe żądania mogą przekroczyć limit o liczbę żądań w locie). Trasa wskazuje limiter domyślną wartością

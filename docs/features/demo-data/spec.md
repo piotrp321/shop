@@ -516,8 +516,9 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 14. Dokumentacja części 1: `docs/vision.md` („Dane demo”: generator i profile), `apps/api/CLAUDE.md` (moduł
     `DemoData`, wyjątki persystencji i outboxu, komendy, sposób testów), `docs/features/search/spec.md`. Część 2:
     `docs/vision.md` („Skala docelowa”: pomiar na danych w skali i obowiązkowy pomiar `full` przed optymalizacjami
-    i wdrożeniem na serwer; bez twierdzenia, że pełna skala jest zweryfikowana, W3), `infra/k8s/CLAUDE.md` (`LOAD_DATA`,
-    CronJob `demo-data`), `docs/features/hardening/spec.md` (opis `load`), `load/README.md`.
+    i wdrożeniem na serwer; bez twierdzenia, że pełna skala jest zweryfikowana, W3), runbook `infra/k8s/README.md`
+    i komentarz przy celu make (opis `LOAD_DATA` i CronJoba `demo-data`), `infra/k8s/CLAUDE.md` (tylko zasada, np.
+    wymóg zgody użytkownika), `docs/features/hardening/spec.md` (opis `load`), `load/README.md`.
 15. `make seed-scale PROFILE=small` na stosie kończy się kodem 0 (cały skrypt na prawdziwych usługach), a `make seed`
     po nim przywraca dane E2E.
 16. Pula zdjęć (P10): obiekt archiwum w prywatnym buckecie istnieje pod kluczem z manifestu, sumy plików zgadzają
