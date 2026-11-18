@@ -275,6 +275,8 @@ export function useProductForm(options: ProductFormOptions) {
       return;
     }
     clearFeedback();
+    // The uploads were sent for the product that was shown; their answers must not reach the next one.
+    upload.abandon();
     if (id === null) {
       latest++;
       startNew();
@@ -291,6 +293,7 @@ export function useProductForm(options: ProductFormOptions) {
   onBeforeUnmount(() => {
     disposed = true;
     latest++;
+    upload.abandon();
   });
   watch(
     () => options.productId(),

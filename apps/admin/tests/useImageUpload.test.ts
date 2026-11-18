@@ -219,4 +219,44 @@ describe("useImageUpload", () => {
     upload.dismiss(upload.entries.value[0]!.id);
     expect(statuses(upload)).toEqual([["c.jpg", "done"]]);
   });
+
+  describe("abandoning the uploads", () => {
+    it("drops the queue and the result of the file being sent, and forgets every entry", async () => {
+      const { images, upload } = setup();
+      const sending: ((value: unknown) => void)[] = [];
+      mocks.post.mockImplementation(() => new Promise((resolve) => sending.push(resolve)));
+      upload.addFiles([file("a.jpg"), file("b.jpg")]);
+      await flushPromises();
+
+      upload.abandon();
+      expect(upload.entries.value).toEqual([]);
+      expect(upload.uploading.value).toBe(false);
+      sending[0]!(created("originals/a.jpg"));
+      await flushPromises();
+
+      expect(images.value).toEqual([]);
+      expect(upload.entries.value).toEqual([]);
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a failure that arrives later and sends the files chosen afterwards", async () => {
+      const { images, upload } = setup();
+      const sending: ((value: unknown) => void)[] = [];
+      mocks.post.mockImplementation(() => new Promise((resolve) => sending.push(resolve)));
+      upload.addFiles([file("a.jpg")]);
+      await flushPromises();
+      upload.abandon();
+      upload.addFiles([file("b.jpg")]);
+      await flushPromises();
+
+      sending[0]!(rejected(503));
+      await flushPromises();
+      expect(statuses(upload)).toEqual([["b.jpg", "uploading"]]);
+      sending[1]!(created("originals/b.jpg"));
+      await flushPromises();
+
+      expect(statuses(upload)).toEqual([["b.jpg", "done"]]);
+      expect(images.value.map((image) => image.key)).toEqual(["originals/b.jpg"]);
+    });
+  });
 });

@@ -51,6 +51,9 @@ function failureMessage(status: number, body: unknown): string {
  * image is appended to `images` with `defaultAlt()` as its alt text. A file that failed does not stop the others and
  * can be sent again. The API stores an original once per content, so a key that `images` already holds is not added a
  * second time. Files that do not fit in the free slots (counting the ones still waiting or being sent) are not sent.
+ *
+ * `abandon()` is for a form that moves to another product: it drops the queue and the list, and the answer of a file
+ * that was already being sent is thrown away, so a stored image never reaches a form it was not sent for.
  */
 export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => string) {
   const entries = ref<UploadEntry[]>([]);
@@ -58,6 +61,8 @@ export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => strin
   const queue: number[] = [];
   let nextId = 1;
   let running = false;
+  // Raised by `abandon()`: a send or a drain that started under an older one has no say any more.
+  let generation = 0;
 
   const uploading = computed(() => entries.value.some((entry) => entry.status === "pending" || entry.status === "uploading"));
   const inFlight = computed(() => entries.value.filter((entry) => entry.status === "pending" || entry.status === "uploading").length);
@@ -72,6 +77,7 @@ export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => strin
   }
 
   async function send(id: number): Promise<void> {
+    const mine = generation;
     const file = files.get(id);
     if (file === undefined) {
       return;
@@ -91,6 +97,9 @@ export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => strin
           return form;
         },
       });
+      if (mine !== generation) {
+        return;
+      }
       if (!result.data) {
         fail(id, failureMessage(result.response.status, result.error));
         return;
@@ -104,7 +113,9 @@ export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => strin
       files.delete(id);
       update(id, { status: "done", message: null });
     } catch {
-      fail(id, "Nie udało się wysłać zdjęcia. Sprawdź połączenie z API.");
+      if (mine === generation) {
+        fail(id, "Nie udało się wysłać zdjęcia. Sprawdź połączenie z API.");
+      }
     }
   }
 
@@ -113,13 +124,25 @@ export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => strin
       return;
     }
     running = true;
+    const mine = generation;
     try {
-      for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+      for (let id = queue.shift(); id !== undefined && mine === generation; id = queue.shift()) {
         await send(id);
       }
     } finally {
-      running = false;
+      // A drain of an abandoned generation must not mark the newer one as stopped.
+      if (mine === generation) {
+        running = false;
+      }
     }
+  }
+
+  function abandon(): void {
+    generation++;
+    queue.length = 0;
+    files.clear();
+    entries.value = [];
+    running = false;
   }
 
   function addFiles(chosen: File[]): void {
@@ -159,5 +182,5 @@ export function useImageUpload(images: Ref<FormImage[]>, defaultAlt: () => strin
     entries.value = entries.value.filter((candidate) => candidate.id !== id);
   }
 
-  return { entries, uploading, canAddMore, addFiles, retry, dismiss };
+  return { entries, uploading, canAddMore, addFiles, retry, dismiss, abandon };
 }
