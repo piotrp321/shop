@@ -39,17 +39,21 @@ niesprawdzony z powodem):
   z niego wyprowadzone, oraz konsumentów poza diffem (kod, który te wartości wyświetla, przelicza, zapisuje albo
   wysyła); podaj wszystkie naruszenia razem jako jedno znalezisko na zasadę z listą miejsc, nie pierwsze znalezione.
 
-Wagi (wagę wyznacza wpływ, nie ostrożność):
+Wagi (wagę wyznacza skutek w normalnym użyciu i waga komponentu, nie ostrożność ani sama odtwarzalność; Critical
+i Important blokują, Minor nie):
 - Critical — utrata danych lub poważna luka bezpieczeństwa.
-- Important — błędne działanie w realnym scenariuszu, w tym zawsze: odpowiedź 500, niedziałająca ścieżka użytkownika
+- Important — błędne działanie w normalnym użyciu: luka bezpieczeństwa, uszkodzenie danych, błąd logiki biznesowej
+  (złe ceny, stany, zamówienia, płatności), istotna regresja, w tym zawsze: odpowiedź 500 na żądanie, które wysyła
+  front albo zwykłe użycie API, niedziałająca ścieżka użytkownika
   albo reguła ze specyfikacji (np. walidacja przepuszcza dane, które spec odrzuca), regresja funkcjonalna, komunikat
   widoczny dla użytkownika nie po polsku, istotny problem dostępności (element niedostępny z klawiatury, brak etykiety
   albo focusu).
-- Minor — kosmetyka i drobna jakość bez wpływu na działanie, dane i dostępność.
-- Nie podnoś mechanicznie wszystkich znalezisk i nie obniżaj błędu z listy Important tylko dlatego, że dotyczy
-  przypadku brzegowego. Przykłady błędów, które przeszły jako Minor, a są Important: 500 na NUL w nazwie produktu
-  (#247), 500 przy duplikacie wariantu różniącym się wielkością liter (#248), notatka z samego NBSP przyjęta mimo
-  wymogu specyfikacji (#256), angielski komunikat 422 (#257).
+- Minor — kosmetyka i drobna jakość bez wpływu na działanie, dane i dostępność; sugestie stylistyczne; przypadki
+  hipotetyczne (wejście, które trzeba spreparować; wyścig poniżej sekundy w lokalnym narzędziu deweloperskim),
+  chyba że są drogą ataku.
+- Nie podnoś mechanicznie wszystkich znalezisk. Przykłady Important: 500 przy duplikacie wariantu różniącym się
+  wielkością liter (#248), angielski komunikat 422 (#257). Przykłady Minor (wejście spreparowane): 500 na NUL
+  w nazwie produktu (#247), notatka z samego NBSP przyjęta mimo wymogu specyfikacji (#256).
 
 Walidacja wejścia, błędna odpowiedź i integralność danych (ta sama treść w `/integration` i agencie `qa-adversarial`;
 uzupełnia listę `Important`):
@@ -65,6 +69,9 @@ uzupełnia listę `Important`):
   z usterką w szczegółach (422 na właściwym polu, ale dwa naruszenia zamiast jednego, #113). „Wpływ” bez
   odpowiedzi na pierwsze pytanie nie uzasadnia wagi `Minor`.
 - Klasa znaleziska nie przesądza wagi: nie jest automatycznie ani `Minor`, ani `Important`.
+- Wejście, którego nie wysyła front ani zwykłe użycie API (trzeba je spreparować), to przypadek hipotetyczny:
+  `Minor` mimo reguł wyżej, chyba że jest drogą ataku (dostęp do cudzych danych, sekretów albo uprawnień,
+  uszkodzenie cudzych danych).
 - Potwierdzony problem tej klasy poza zakresem zmiany idzie do raportu jako uwaga z tym samym zdaniem „Wpływ: …”,
   wagą, jaką miałby według tych reguł, i proponowanym tytułem zgłoszenia (etykiety `agent`, `bug`).
 

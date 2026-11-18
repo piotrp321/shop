@@ -263,24 +263,31 @@ JSON i AO powtarza rundę. Dlatego:
    nie błąd kodu: pozostałe bramki oznacz `skipped` i zwróć bloker `technical`.
 5. **Weryfikacja.** Zgłoszenia agentów (także agenta UX) są hipotezami. Każde `Critical` i `Important` sprawdź w kodzie lub
    odtwórz komendą, zanim trafi do wyniku; niepotwierdzone, niepewne i stylistyczne wpisz do raportu jako uwagi
-   albo odrzuć, nie jako znaleziska. Scal duplikaty. Wagi:
+   albo odrzuć, nie jako znaleziska. Scal duplikaty. Waga wynika ze skutku w normalnym użyciu i z wagi komponentu,
+   nie z samej odtwarzalności: `Critical` i `Important` blokują epik, `Minor` nie. Wagi:
    - `Critical`: utrata danych lub poważna luka bezpieczeństwa.
-   - `Important`: odpowiedź 500 (każde 5xx) na żądanie, które da się wysłać do API albo z frontu, także przy
-     nietypowych danych wejściowych; niedziałająca ścieżka użytkownika; regresja funkcjonalna względem `main` albo
+   - `Important`: luka bezpieczeństwa; uszkodzenie danych; błąd logiki biznesowej (złe ceny, stany, zamówienia,
+     płatności albo funkcja ze specyfikacji, która nie działa w normalnym użyciu); istotna regresja. W normalnym
+     użyciu należą tu: odpowiedź 500 (każde 5xx) na żądanie, które wysyła front albo zwykłe użycie API;
+     niedziałająca ścieżka użytkownika; regresja funkcjonalna względem `main` albo
      specyfikacji; komunikat widoczny dla użytkownika nie po polsku (ekran, a w API `title` i `detail` błędu,
      `violations[].title`); istotny problem dostępności: element niedostępny z klawiatury albo kontrolka bez
      etykiety; naruszenie kryterium akceptacji albo zasady z `CLAUDE.md`
-     lub architektury, które da się naprawić; przypadki `Important` z kroków 3a, 4 i 6. To, że przypadek jest
-     brzegowy albo panel go nie wysyła, nie obniża wagi, gdy problem da się wywołać.
+     lub architektury, które da się naprawić; przypadki `Important` z kroków 3a, 4 i 6.
    - `Minor`: kosmetyka (wygląd, odstępy, nazewnictwo), drobna jakość kodu (duplikacja, brakujący test zachowania,
-     które działa poprawnie) i pozostałe potwierdzone problemy o niewielkim wpływie, których nie ma na liście
-     `Important`.
-   Przykłady `Important`: NUL w nazwie produktu daje 500 (#247), duplikat
-   wariantu różniący się wielkością liter daje 500 zamiast 422 (#248), notatka z samych białych znaków Unicode
-   przechodzi mimo wymagania specyfikacji (#256), angielski komunikat 422 (#257).
-   Każde znalezisko ma w `detail` jedno zdanie „Wpływ: …”, które uzasadnia wagę skutkiem dla użytkownika albo
-   systemu. Waga wynika z tej listy, nie z liczby znalezisk: problemu spoza listy `Important` nie podnosisz, a
-   problemu z listy nie obniżasz.
+     które działa poprawnie), sugestie stylistyczne, przypadki hipotetyczne (wejście, które trzeba spreparować, np.
+     znaki sterujące albo same białe znaki Unicode w tekście; wyścig poniżej sekundy w lokalnym narzędziu
+     deweloperskim) i pozostałe potwierdzone problemy o niewielkim wpływie, których nie ma na liście
+     `Important`. Przypadek hipotetyczny, który jest drogą ataku (dostęp do cudzych danych, sekretów albo uprawnień,
+     uszkodzenie cudzych danych), oceniasz jak lukę bezpieczeństwa.
+   Znaleziska `Minor` są poprawkami odroczonymi: wpisujesz je do wyniku i raportu bez pytania właściciela i nie
+   blokują `PASSED`.
+   Przykłady `Important`: duplikat wariantu różniący się wielkością liter daje 500 zamiast 422 (#248), angielski
+   komunikat 422 (#257). Przykłady `Minor` (wejście spreparowane): NUL w nazwie produktu daje 500 (#247), notatka
+   z samych białych znaków Unicode przechodzi mimo wymagania specyfikacji (#256).
+   Każde znalezisko ma w `detail` jedno zdanie „Wpływ: …”, które uzasadnia wagę skutkiem w normalnym użyciu dla
+   użytkownika albo systemu. Waga wynika z tej listy, nie z liczby znalezisk: problemu spoza listy `Important` nie
+   podnosisz, a problemu z listy nie obniżasz.
    Walidacja wejścia, błędna odpowiedź i integralność danych (ta sama treść w `/integration` i agencie `qa-adversarial`;
    uzupełnia listę `Important`):
    - Zdanie „Wpływ: …” odpowiada na trzy pytania: co zostaje zapisane albo zwrócone (dane, których specyfikacja nie
@@ -295,6 +302,9 @@ JSON i AO powtarza rundę. Dlatego:
      z usterką w szczegółach (422 na właściwym polu, ale dwa naruszenia zamiast jednego, #113). „Wpływ” bez
      odpowiedzi na pierwsze pytanie nie uzasadnia wagi `Minor`.
    - Klasa znaleziska nie przesądza wagi: nie jest automatycznie ani `Minor`, ani `Important`.
+   - Wejście, którego nie wysyła front ani zwykłe użycie API (trzeba je spreparować), to przypadek hipotetyczny:
+     `Minor` mimo reguł wyżej, chyba że jest drogą ataku (dostęp do cudzych danych, sekretów albo uprawnień,
+     uszkodzenie cudzych danych).
    - Potwierdzony problem tej klasy poza zakresem zmiany idzie do raportu jako uwaga z tym samym zdaniem „Wpływ: …”,
      wagą, jaką miałby według tych reguł, i proponowanym tytułem zgłoszenia (etykiety `agent`, `bug`).
    Dla UX: `Important` tylko problem odtworzony (2/2, powtórz komendę z `Odtworzenie` raportu UX albo przeczytaj
@@ -309,8 +319,8 @@ JSON i AO powtarza rundę. Dlatego:
    tytułem zgłoszenia (etykiety `agent`, `bug`), nie nowe kryterium. Tak samo oceniasz pozycje z sekcji
    `## Poza modelem zagrożeń` opisów PR zadań (lista odbioru, „Decyzje bez pytania”).
    Kod (także kontrakt API i zachowanie frontu) niezgodny ze specyfikacją, która jednoznacznie określa oczekiwane
-   zachowanie, to znalezisko `Important` do naprawy według specyfikacji, nie bloker: w opisie podaj fragment
-   specyfikacji i zmiany, których wymaga naprawa (np. kontrakt API, eksport OpenAPI, klient TS, testy).
+   zachowanie, to znalezisko (waga według listy wyżej) do naprawy według specyfikacji, nie bloker: w opisie podaj
+   fragment specyfikacji i zmiany, których wymaga naprawa (np. kontrakt API, eksport OpenAPI, klient TS, testy).
    Gdy znalezisko narusza zasadę przekrojową specyfikacji, przed zgłoszeniem sprawdź wszystkie wyjścia tego rodzaju
    w całym diffie epiku (`origin/main...HEAD`, także w trybie `DELTA`), także wartości z nich wyprowadzone, oraz ich
    konsumentów poza diffem (kod, który te wartości wyświetla, przelicza, zapisuje albo wysyła). Zgłoś jedno
@@ -321,6 +331,9 @@ JSON i AO powtarza rundę. Dlatego:
    Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (specyfikacja
    niejednoznaczna albo milczy, naprawa wymaga zmiany specyfikacji, nowa zależność, zmiana granic modułów, świadome
    odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne naruszenie jest znaleziskiem.
+   Właściciela angażujesz tylko wtedy, gdy problemu o wadze `Critical` albo `Important` nie da się naprawić bez
+   zmiany specyfikacji albo decyzji produktowej; problem `Minor`, który wymagałby takiej decyzji, idzie do raportu
+   jako uwaga, nie bloker, a o akceptację znalezisk `Minor` nie pytasz.
 6. **Lista odbioru.** Przygotuj ją dla właściciela, zawsze dla całego epiku (`origin/main...HEAD`), także w trybie
    `DELTA`. Sprawdzasz sam, bez agentów:
    - **Istniejące testy:** pliki testów zmienione, usunięte albo przemianowane względem `origin/main`
@@ -383,8 +396,12 @@ JSON i AO powtarza rundę. Dlatego:
 ## Status
 
 - `PASSED`: brak `Critical` i `Important`, bramki `make check`, `make test`, `make e2e` zielone, brak blokerów.
-  Znaleziska `Minor` są dozwolone.
+  Znaleziska `Minor` są dozwolone (poprawki odroczone, krok 5).
 - `FINDINGS`: co najmniej jedno `Critical` lub `Important` (czerwona bramka jest takim znaleziskiem), brak blokerów.
+  `FINDINGS` zleca rundę naprawczą i kolejną rundę przeglądu. Domyślny budżet epiku to dwie rundy przeglądu
+  (pierwsza i jedna `DELTA` po poprawkach), nie twardy limit: `FINDINGS` w rundzie `DELTA` zleca rundę ponad budżet,
+  więc werdykt raportu ma wtedy zdanie „Uzasadnienie kolejnej rundy: …” z konkretnym powodem (np. znalezisko
+  blokujące zostało bez naprawy albo poprawka dotknęła ryzykownego kodu, którego nikt jeszcze nie przejrzał).
 - `BLOCKED`: potrzebna decyzja albo nie da się ocenić (`blockers` niepuste). Dokończ wcześniej pracę, której
   bloker nie zmienia, i dołącz znaleziska, które już masz.
 
