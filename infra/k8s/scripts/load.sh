@@ -34,9 +34,13 @@
 # Results in LOAD_OUT: environment.txt (host, Docker, versions, resources, LOAD_DATA and the data, the chunks), sizes.txt (the
 # databases, the tables and the indexes of Postgres and the indices of Elasticsearch before the measurement), ramp.json,
 # ramp.txt, steady.json, steady.txt, warmup.txt, top.log (kubectl top pods every 10 s), node-stats.log (the node container,
-# every 10 s); with a generated profile also demo-data.log (the log of the Job, with the time of every line) and
-# demo-data-steps.txt (the seconds of each step of the generator, from its [OK] lines). sizes.txt is written with every
-# LOAD_DATA; the times of the steps only with a generator.
+# every 10 s; both from the moment the cluster is ready, so they cover the Job of the generator, the data phase and k6: the
+# peak memory of Postgres and of the Job is read from top.log); with a generated profile also demo-data.log (the log of the Job,
+# with the time of every line), demo-data-steps.txt (the seconds of each step of the generator, from its [OK] lines) and
+# space.log (the free KiB of the Docker VM and of the disk of the host: the reading before the start, every reading of the
+# guard, and at the end of the run, also a failed one, the least free space and the use against the first reading in GB: the
+# peak use of the disk, diskPeakGb; a file that cannot be written is a warning). sizes.txt is written with every LOAD_DATA;
+# the times of the steps and space.log only with a generator.
 #
 # Exit code: 0 the measurement was done (it has no thresholds of speed; a ramp that ended on saturation is the normal
 # end), 2 the environment is not fit (LOAD_OUT missing, wrong or not mountable by Docker, an unknown LOAD_DATA, the file of the photo pool missing or
@@ -283,6 +287,41 @@ free_kib() {
 
 gb() { awk -v kib="$1" 'BEGIN { printf "%.2f", kib * 1024 / 1000000000 }'; }
 
+# space.log of LOAD_OUT (LOAD_DATA other than seed): one row per reading, `<epoch seconds> <free KiB of the Docker VM> <free KiB of
+# the disk of the host>`, the first one the reading before the start (the peak use is that one minus the least), and at the end
+# of the run the comment lines of the summary. A file that cannot be written is a warning (once; the guard has its own shell, so
+# it also leaves a mark in a file), never the end of the run.
+space_warned=""
+space_warned_file=""
+space_log_warn() {
+  if [ -z "$space_warned" ] && { [ -z "$space_warned_file" ] || [ ! -e "$space_warned_file" ]; }; then
+    echo "load: $out/space.log cannot be written (the free space is not recorded there; the run goes on)" >&2
+  fi
+  space_warned=1
+  [ -z "$space_warned_file" ] || : > "$space_warned_file" 2>/dev/null || true
+}
+space_log_start() {
+  { printf '# epoch seconds, free KiB in the Docker VM, free KiB on the disk of the host (the first row is the reading before the start)\n' > "$out/space.log"; } 2>/dev/null \
+    || space_log_warn
+}
+space_log_row() {
+  { printf '%s %s %s\n' "$(date +%s)" "$1" "$2" >> "$out/space.log"; } 2>/dev/null || space_log_warn
+}
+# The summary at the end of the run: the least free space of both disks and the use against the first reading (GB of 10^9 bytes).
+space_log_summary() {
+  [ -f "$out/space.log" ] || return 0
+  space_summary="$(awk '
+    /^#/ || NF != 3 { next }
+    !seen { seen = 1; vm_first = $2; host_first = $3; vm_min = $2; host_min = $3; next }
+    { if ($2 + 0 < vm_min + 0) vm_min = $2; if ($3 + 0 < host_min + 0) host_min = $3 }
+    END {
+      if (!seen) exit 1
+      printf "# the least free space: %.2f GB in the Docker VM (%d KiB), %.2f GB on the disk of the host (%d KiB)\n", vm_min * 1024 / 1e9, vm_min, host_min * 1024 / 1e9, host_min
+      printf "# the peak use against the first reading: %.2f GB in the Docker VM, %.2f GB on the disk of the host\n", (vm_first - vm_min) * 1024 / 1e9, (host_first - host_min) * 1024 / 1e9
+    }' "$out/space.log" 2>/dev/null)" || return 0
+  { printf '%s\n' "$space_summary" >> "$out/space.log"; } 2>/dev/null || space_log_warn
+}
+
 vm_unreadable="cannot read the free space of the Docker VM (docker run --entrypoint df ... -Pk / failed or answered something that is not a number)"
 host_unreadable() { echo "cannot read the free space of the disk of the host ($LOAD_DISK_PATH; df -Pk failed or answered something that is not a number)"; }
 
@@ -290,6 +329,8 @@ host_unreadable() { echo "cannot read the free space of the disk of the host ($L
 check_space_before_start() {
   vm_kib="$(free_kib vm)" || fail "$vm_unreadable; LOAD_DATA=$LOAD_DATA needs to know it"
   host_kib="$(free_kib host)" || fail "$(host_unreadable); LOAD_DATA=$LOAD_DATA needs to know it"
+  space_log_start
+  space_log_row "$vm_kib" "$host_kib"
   if [ "$vm_kib" -lt "$required_kib" ] || [ "$host_kib" -lt "$required_kib" ]; then
     fail "LOAD_DATA=$LOAD_DATA needs at least $required_gb GB free in the Docker VM and on the disk of the host (1.25 x diskPeakGb $disk_peak GB of $LOAD_PROFILES_FILE); free: $(gb "$vm_kib") GB in the Docker VM, $(gb "$host_kib") GB on the disk of the host ($LOAD_DISK_PATH); make room, or point LOAD_DISK_PATH at the disk that holds the image of the Docker VM"
   fi
@@ -299,6 +340,7 @@ check_space_before_start() {
 check_space_once() {
   watch_vm="$(free_kib vm)" || { echo "$vm_unreadable during the run"; return 1; }
   watch_host="$(free_kib host)" || { echo "$(host_unreadable) during the run"; return 1; }
+  space_log_row "$watch_vm" "$watch_host"
   if [ "$watch_vm" -lt "$floor_kib" ]; then
     echo "the free space of the Docker VM fell to $(gb "$watch_vm") GB, below 10% of diskPeakGb ($floor_gb GB)"
     return 1
@@ -404,6 +446,7 @@ data_job_created=0
 k6_name="k6-$cluster"
 main_pid=$$
 space_reason_file="$KUBE_DIR/space-reason"
+space_warned_file="$KUBE_DIR/space-log-warned"
 
 # k6 (its container and the docker client that waits for it) stops; the container is removed first, so the client ends by itself.
 stop_k6() {
@@ -416,6 +459,8 @@ cleanup() {
   status=$?
   [ -z "$guard_pid" ] || kill "$guard_pid" 2>/dev/null || true
   trap - EXIT INT TERM
+  # The guard is stopped: its last reading is in space.log, and the summary closes it (also when the run did not succeed).
+  [ "$LOAD_DATA" = seed ] || space_log_summary || true
   [ -z "$nap_pid" ] || kill "$nap_pid" 2>/dev/null || true
   stop_k6
   for pid in $sampler_pids; do kill "$pid" 2>/dev/null || true; done
@@ -576,22 +621,36 @@ run_k6() {
   cat "$out/$logname.txt"
 }
 
+sample_top() {
+  stamp="$(date +%s)"
+  kc top pods --no-headers 2>/dev/null | sed "s/^/$stamp /" >> "$out/top.log" || true
+}
+sample_node() {
+  stamp="$(date +%s)"
+  docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' "$node" 2>/dev/null | sed "s/^/$stamp /" >> "$out/node-stats.log" || true
+}
+
+# Every 10 s, from the moment the cluster is ready (before the generator, so that the logs cover it, the data phase and k6). The
+# first reading is taken here, before the Job is made; the loops go on from the second one.
 start_samplers() {
   : > "$out/top.log"
   : > "$out/node-stats.log"
+  sample_top
+  sample_node
+  sampler_loop sample_top
+  sampler_loop sample_node
+}
+# Runs the function $1 every 10 s in the background; on TERM it ends its sleep too, so that nothing holds the output of the run.
+sampler_loop() {
   (
+    trap - EXIT INT TERM
+    sampler_sleep=""
+    trap 'kill "$sampler_sleep" 2>/dev/null; exit 0' TERM
     while :; do
-      stamp="$(date +%s)"
-      kc top pods --no-headers 2>/dev/null | sed "s/^/$stamp /" >> "$out/top.log" || true
-      sleep 10
-    done
-  ) &
-  sampler_pids="$sampler_pids $!"
-  (
-    while :; do
-      stamp="$(date +%s)"
-      docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}}' "$node" 2>/dev/null | sed "s/^/$stamp /" >> "$out/node-stats.log" || true
-      sleep 10
+      sleep 10 &
+      sampler_sleep=$!
+      wait "$sampler_sleep" || true
+      "$1"
     done
   ) &
   sampler_pids="$sampler_pids $!"
@@ -750,6 +809,7 @@ wait_for_traefik
 helm_cluster upgrade --install shop charts/shop --namespace "$namespace" --create-namespace \
   -f environments/ci/values.yaml -f environments/load/values.yaml --set image.tag=r1 --set "image.registry=$registry" $data_values >/dev/null
 wait_ready
+start_samplers
 
 traefik_port="$(kubectl -n kube-system get service traefik -o jsonpath='{.spec.ports[?(@.name=="web")].nodePort}')"
 [ -n "$traefik_port" ] || fail "the service of Traefik has no node port (the pods are not ready)"
@@ -819,8 +879,6 @@ checkout_vus="${LOAD_CHECKOUT_VUS:-$(( api_threads / 4 ))}"
   echo "resources of the containers (requests and limits):"
   kc get pods -o jsonpath='{range .items[*]}{range .spec.containers[*]}  {.name} {.resources}{"\n"}{end}{end}' | sort -u
 } > "$out/environment.txt"
-
-start_samplers
 
 log "warm-up"
 run_k6 warmup.js warmup

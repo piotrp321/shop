@@ -106,10 +106,28 @@ exit 0
 # The free space of the disk `vm` (the Docker VM: `docker run --entrypoint df <image> -Pk /`) or `host` (`df -Pk <path>`) as the
 # line of df, in KiB: STUB_VM_FREE_KB or STUB_HOST_FREE_KB (plenty by default), or the content of $STUB_SPACE_DIR/<disk> once
 # STUBDROP wrote it (the space that falls during the run). The value `fail` is a failing df, `none` a df that prints nothing,
-# any other text is printed as it is in the column of the free space.
+# any other text is printed as it is in the column of the free space. STUB_VM_FREE_SEQ or STUB_HOST_FREE_SEQ (values separated with
+# spaces) is a space that falls: each reading takes the next value, the last one stays.
 STUBSPACE = r"""#!/bin/sh
+sequence=""
+case "$1" in
+  vm) sequence="${STUB_VM_FREE_SEQ:-}" ;;
+  host) sequence="${STUB_HOST_FREE_SEQ:-}" ;;
+esac
 if [ -f "$STUB_SPACE_DIR/$1" ]; then
   value="$(cat "$STUB_SPACE_DIR/$1")"
+elif [ -n "$sequence" ]; then
+  n=0
+  [ ! -f "$STUB_SPACE_DIR/$1.read" ] || n="$(cat "$STUB_SPACE_DIR/$1.read")"
+  n=$((n + 1))
+  echo "$n" > "$STUB_SPACE_DIR/$1.read"
+  value=""
+  i=0
+  for item in $sequence; do
+    i=$((i + 1))
+    value="$item"
+    [ "$i" -lt "$n" ] || break
+  done
 else
   case "$1" in
     vm) value="${STUB_VM_FREE_KB-900000000}" ;;
@@ -894,6 +912,100 @@ class LoadScript(unittest.TestCase):
                 self.log.write_text("")
                 result = self.run_data("medium", LOAD_SPACE_POLL=value)
                 self.assert_no_docker_call(result, "LOAD_SPACE_POLL")
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # The samplers cover the generator, and space.log records the free space (docs/features/demo-data/spec.md, criterion 12)
+    # -----------------------------------------------------------------------------------------------------------------
+    def test_the_samplers_start_before_the_generator_job_so_that_top_log_and_node_stats_cover_it(self):
+        result = self.run_data("medium")
+        self.assertEqual(0, result.returncode, result.stderr)
+        job = self.index_of("create job demo-data-load")
+        self.assertLess(self.index_of("top pods"), job)
+        self.assertLess(self.index_of("stats --no-stream"), job)
+        # The samplers start once the cluster is ready, not before.
+        self.assertLess(self.index_of("get statefulsets"), self.index_of("top pods"))
+        self.assertTrue((self.out / "top.log").exists())
+        self.assertTrue((self.out / "node-stats.log").exists())
+
+    def test_the_samplers_of_seed_start_as_soon_as_the_cluster_is_ready(self):
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", LOAD_COOLDOWN="0", STUB_READY="1", STUB_UPDATE_OUT="UPDATE 7",
+                               STUB_K6_OUT=str(self.out))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertLess(self.index_of("top pods"), self.index_of("UPDATE "))
+        self.assertLess(self.index_of("stats --no-stream"), self.index_of("UPDATE "))
+
+    def space_rows(self):
+        """The readings of space.log: (epoch, vm KiB, host KiB), the comment lines apart."""
+        lines = (self.out / "space.log").read_text().splitlines()
+        rows = [tuple(int(word) for word in line.split()) for line in lines if line.strip() and not line.startswith("#")]
+        return rows, [line for line in lines if line.startswith("#")]
+
+    def test_space_log_has_the_reading_before_the_start_the_readings_of_the_guard_and_the_summary(self):
+        vm = [900_000_000, 880_000_000, 860_000_000]
+        host = [950_000_000, 940_000_000, 600_000_000]
+        result = self.run_space("medium", LOAD_DATA_TIMEOUT="6", STUB_VM_FREE_SEQ=" ".join(map(str, vm)),
+                                STUB_HOST_FREE_SEQ=" ".join(map(str, host)))
+        # The run did not finish (the Job never ends): the summary is there all the same.
+        self.assertEqual(2, result.returncode, result.stderr)
+        rows, comments = self.space_rows()
+        self.assertGreaterEqual(len(rows), 4, rows)
+        # The first row is the reading before the start, then the ones of the guard, which fall as the stub does.
+        self.assertEqual((vm[0], host[0]), rows[0][1:])
+        self.assertEqual((vm[1], host[1]), rows[1][1:])
+        self.assertEqual((vm[2], host[2]), rows[2][1:])
+        self.assertEqual(sorted(row[0] for row in rows), [row[0] for row in rows])
+        self.assertGreater(rows[-1][0], 1_700_000_000)
+        summary = " ".join(comments[-2:])
+        # The least free space and the use against the first reading, in GB of 10^9 bytes.
+        for text in (f"{vm[2] * 1024 / 1e9:.2f}", f"{host[2] * 1024 / 1e9:.2f}",
+                     f"{(vm[0] - vm[2]) * 1024 / 1e9:.2f}", f"{(host[0] - host[2]) * 1024 / 1e9:.2f}"):
+            self.assertIn(text, summary)
+        self.assertIn("VM", summary)
+        self.assertIn("host", summary)
+
+    def test_the_summary_of_space_log_is_the_last_thing_in_it_and_comes_once(self):
+        result = self.run_data("medium", LOAD_SPACE_POLL="1", STUB_VM_FREE_SEQ="900000000 899000000", STUB_HOST_FREE_SEQ="950000000")
+        self.assertEqual(0, result.returncode, result.stderr)
+        text = (self.out / "space.log").read_text()
+        rows, comments = self.space_rows()
+        self.assertEqual((900_000_000, 950_000_000), rows[0][1:])
+        self.assertEqual(1, len(re.findall(r"(?m)^# .*least", text)), text)
+        self.assertFalse(text.splitlines()[-1][0].isdigit(), "a reading follows the summary")
+
+    def test_space_log_after_a_fall_of_the_space_has_the_fallen_value_as_the_least(self):
+        peak = disk_peak_gb("medium")
+        low = kib(peak * 0.1) - 1
+        result = self.run_space("medium", STUB_SPACE_DROP=self.drop("vm", low))
+        self.assertEqual(2, result.returncode, result.stderr)
+        rows, comments = self.space_rows()
+        self.assertEqual(900_000_000, rows[0][1])
+        self.assertEqual(low, rows[-1][1])
+        self.assertIn(f"{low * 1024 / 1e9:.2f}", " ".join(comments))
+
+    def test_a_space_log_that_cannot_be_written_is_a_warning_and_the_run_goes_on(self):
+        (self.out / "space.log").mkdir()
+        result = self.run_data("medium", LOAD_SPACE_POLL="1")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("space.log", result.stderr)
+
+    def test_seed_writes_no_space_log_and_leaves_an_old_one_alone(self):
+        (self.out / "space.log").write_text("old\n")
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", LOAD_COOLDOWN="0", STUB_READY="1", STUB_UPDATE_OUT="UPDATE 7",
+                               STUB_K6_OUT=str(self.out))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("old\n", (self.out / "space.log").read_text())
+        self.out.joinpath("space.log").unlink()
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", LOAD_COOLDOWN="0", STUB_READY="1", STUB_UPDATE_OUT="UPDATE 7",
+                               STUB_K6_OUT=str(self.out))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse((self.out / "space.log").exists())
+
+    def test_a_new_run_starts_a_new_space_log(self):
+        (self.out / "space.log").write_text("1 111 222\n# old summary\n")
+        result = self.run_data("medium", LOAD_SPACE_POLL="1")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("old summary", (self.out / "space.log").read_text())
+        self.assertEqual((900_000_000, 900_000_000), self.space_rows()[0][0][1:])
 
 
 if __name__ == "__main__":

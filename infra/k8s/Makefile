@@ -85,7 +85,9 @@ monitoring-smoke:
 # the home directory) must have at least 1.25 x diskPeakGb of the profile (apps/api/fixtures/demo-data/profiles.yaml) free, else
 # exit 2 with the needed and the free space. From the start on, every LOAD_SPACE_POLL seconds (30) both are read again; a fall
 # of either below 10% of diskPeakGb stops the Job of the generator and k6, deletes the cluster and ends with 2. A free space or
-# diskPeakGb that cannot be read is exit 2 as well. seed checks nothing.
+# diskPeakGb that cannot be read is exit 2 as well. seed checks nothing. Every reading goes to LOAD_OUT/space.log with the least
+# free space and the use against the first reading at the end (the measure of diskPeakGb); top.log and node-stats.log are taken from
+# the moment the cluster is ready, so they cover the generator.
 load:
 	sh scripts/load.sh
 

@@ -556,9 +556,14 @@ sekret wskazany w `demoData.photosSecretName` (klucze `DEMO_PHOTOS_ENDPOINT`, `D
    zatrzymuje Job generatora i k6, usuwa klaster i kończy cel kodem 2 z przyczyną. Wolnego miejsca ani `diskPeakGb` nie da
    się odczytać (polecenie zawodzi albo odpowiada czymś innym niż liczba): kod 2, nigdy „wystarczy miejsca”. Cel
    reaguje na spadek dopiero po zakończeniu bieżącego polecenia pierwszego planu (budowanie obrazu, import, `helm`,
-   zapytania SQL); w czasie czekania na Job generatora i na k6 reaguje od razu.
+   zapytania SQL); w czasie czekania na Job generatora i na k6 reaguje od razu. Każdy odczyt (także ten sprzed startu,
+   jako pierwszy wiersz) trafia do `LOAD_OUT/space.log` (czas, wolne KiB w VM i na hoście); na końcu przebiegu, także
+   nieudanego, plik dostaje podsumowanie: najmniejsze wolne miejsce obu dysków i zużycie względem pierwszego odczytu
+   w GB, z którego uaktualnia się `diskPeakGb`. Plik, którego nie da się zapisać, to ostrzeżenie, nie koniec przebiegu.
 4. **agent** – raport z wyników w `LOAD_OUT`: `environment.txt` (w nim `LOAD_DATA` i porcje), `sizes.txt` (rozmiary baz,
-   tabel i indeksów Postgresa i indeksów Elasticsearcha), przy danych z generatora `demo-data.log` (log Joba z czasem
-   każdej linii) i `demo-data-steps.txt` (czasy kroków generatora). Wynik `medium` i ekstrapolacja nie są pomiarem pełnej
+   tabel i indeksów Postgresa i indeksów Elasticsearcha), `top.log` i `node-stats.log` (próbkowane co 10 s od chwili, gdy
+   klaster jest gotowy, więc obejmują także Job generatora i fazę danych: stąd szczyt pamięci Postgresa i Joba), przy danych
+   z generatora `demo-data.log` (log Joba z czasem każdej linii), `demo-data-steps.txt` (czasy kroków generatora)
+   i `space.log` (wolne miejsce w czasie przebiegu i szczytowe zużycie dysku). Wynik `medium` i ekstrapolacja nie są pomiarem pełnej
    skali; `server` i `full` uznaje się za zweryfikowane dopiero po ich własnym przebiegu
    (`docs/features/demo-data/spec.md`, W3).
