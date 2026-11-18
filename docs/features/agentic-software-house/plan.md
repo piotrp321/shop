@@ -19,18 +19,17 @@ Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko d
 `docs/reports/agentic-software-house-audit-2026-11-18.md`). Wstrzymane są niedokończone kroki 17–22 i epik ONCALL
 (krok 11, `docs/features/oncall/`). Kolejność epików jest na tablicy „Backlog sklepu”.
 
-W toku przez `/ao-run`: DEMO-DATA (#482), ostatni epik prowadzony przez AO. Blokery: DEMO-DATA-7 (`BLOCKED` w AO).
-Ostatni zmergowany epik: TELEMETRY (końcowy PR #721; 3 interwencje, 4 czekania na użytkownika, razem 7 min, 2 ręczne
-poprawki).
+Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
+w pierwszej rundzie).
 
 Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 
 | Krok | Zakres | Status |
 |---|---|---|
-| P1 | Zachowanie danych historycznych (transkrypty, stan i zrzuty AO) przed ich wygaśnięciem | w toku |
-| P2 | Pilne porządki z raportu audytu | w toku |
-| P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | w toku |
-| P4 | Uproszczenie instrukcji i konfiguracji (pierwszy krok: krótki główny `CLAUDE.md`) | w toku |
+| P1 | Zachowanie danych historycznych (transkrypty, stan i zrzuty AO) przed ich wygaśnięciem | zrobione (kopia poza repozytorium) |
+| P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
+| P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
+| P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | w toku (zostaje `apps/api/CLAUDE.md`) |
 | P5 | Trzy epiki natywnie: SMALL-FIXES → ABUSE-LIMITS → ASYNC-RELIABILITY, każdy z punktem odniesienia przed i krótkim raportem po | do zrobienia |
 | P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
 
