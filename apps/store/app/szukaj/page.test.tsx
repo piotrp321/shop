@@ -18,7 +18,7 @@ const html = async (query: Query = {}) => renderToStaticMarkup(await SearchPage(
 
 const okPage = (page = 1, total = 1, items = [makeProduct(1)]) => ({
   kind: "ok" as const,
-  products: { items, page, perPage: 24, total, facets: EMPTY_FACETS },
+  products: { items, page, perPage: 24, total, pageCount: Math.ceil(total / 24), facets: EMPTY_FACETS },
   offers: { [makeProduct(1).id]: makeOffer(1) },
 });
 

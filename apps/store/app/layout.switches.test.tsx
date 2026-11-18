@@ -21,7 +21,14 @@ const NOTICE = "Sklep demonstracyjny: płatności i zamówienia są symulowane, 
 
 const layout = () => RootLayout({ children: <main>content</main> } as unknown as Parameters<typeof RootLayout>[0]);
 
+// jsdom has no ResizeObserver (the demo bar measures itself with it); the height of the bar is tested in `SiteSwitches.test.tsx`.
+class SilentResizeObserver {
+  observe = vi.fn();
+  disconnect = vi.fn();
+}
+
 beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", SilentResizeObserver);
   vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ count: 0, itemCount: 0, notice: null })));
 });
@@ -34,13 +41,16 @@ afterEach(() => {
 });
 
 describe("the root layout and the site switches", () => {
-  it("shows the demo bar above the header and one read of the switches serves the bar and the account box", async () => {
+  it("shows the demo bar pinned to the bottom of the window and one read of the switches serves the bar and the account box", async () => {
     vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: true, customerAccounts: false });
     render(await layout(), { container: document });
 
     const bar = await screen.findByText(NOTICE);
-    const header = document.querySelector("header")!;
-    expect(bar.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bar.getAttribute("role")).toBe("note");
+    expect(bar.className).toContain("fixed");
+    expect(bar.className).toContain("bottom-0");
+    // Under the dialogs of the store (`z-50`).
+    expect(bar.className).toContain("z-40");
     await vi.waitFor(() => expect(loadAccountSession).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole("link", { name: "Zaloguj się" })).toBeNull();

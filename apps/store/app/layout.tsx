@@ -26,8 +26,8 @@ export default async function RootLayout({ children, search }: LayoutProps<"/">)
       <body className="min-h-screen antialiased">
         {/* The switches of the deployment (`/api/site`) are read in the browser, so this HTML is the same everywhere. */}
         <SiteSwitchesProvider>
-          {/* The page grows, so the footer is at the bottom of a short page (the 404). */}
-          <div className="flex min-h-screen flex-col">
+          {/* The page grows, so the footer is at the bottom of a short page (the 404). The padding is the room for the demo bar pinned to the bottom of the window. */}
+          <div className="flex min-h-screen flex-col pb-[var(--demo-notice-height,0px)]">
             <DemoNotice />
             <SiteHeader categories={categories} search={search ?? <SearchBox />} />
             <div className="flex-1">{children}</div>

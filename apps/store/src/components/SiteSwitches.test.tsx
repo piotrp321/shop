@@ -11,12 +11,35 @@ vi.mock("@/observability/lazy", () => ({ startBrowserSentry: vi.fn(async () => {
 
 const NOTICE = "Sklep demonstracyjny: płatności i zamówienia są symulowane, nic nie zostanie wysłane ani pobrane.";
 
+const HEIGHT_PROPERTY = "--demo-notice-height";
+
+/** jsdom has no ResizeObserver: this one remembers the callbacks, so a test can report a new size of the bar. */
+const resizeCallbacks = new Set<() => void>();
+class FakeResizeObserver {
+  private readonly callback: () => void;
+  constructor(callback: () => void) {
+    this.callback = callback;
+  }
+  observe() {
+    resizeCallbacks.add(this.callback);
+  }
+  disconnect() {
+    resizeCallbacks.delete(this.callback);
+  }
+}
+
 beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   vi.mocked(loadSiteSwitches).mockReset();
   vi.mocked(startBrowserSentry).mockClear();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resizeCallbacks.clear();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function Probe() {
   const { customerAccounts, loaded } = useSiteSwitches();
@@ -36,6 +59,39 @@ describe("DemoNotice", () => {
     render(page());
 
     expect((await screen.findByText(NOTICE)).textContent).toBe(NOTICE);
+  });
+
+  it("is pinned to the bottom of the window, out of the flow and under the dialogs (z-50)", async () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: true, customerAccounts: true });
+    render(page());
+
+    const bar = await screen.findByRole("note");
+    expect(bar.className).toContain("fixed");
+    expect(bar.className).toContain("bottom-0");
+    expect(bar.className).toContain("z-40");
+  });
+
+  it("publishes its height for the room at the end of the page and the scroll padding, follows a resize, and removes it", async () => {
+    let height = 48;
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => height);
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: true, customerAccounts: true });
+    const { unmount } = render(page());
+    await screen.findByRole("note");
+
+    expect(document.documentElement.style.getPropertyValue(HEIGHT_PROPERTY)).toBe("48px");
+    height = 72;
+    resizeCallbacks.forEach((callback) => callback());
+    expect(document.documentElement.style.getPropertyValue(HEIGHT_PROPERTY)).toBe("72px");
+    unmount();
+    expect(document.documentElement.style.getPropertyValue(HEIGHT_PROPERTY)).toBe("");
+  });
+
+  it("publishes no height when there is no bar", async () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: true });
+    render(page());
+
+    await screen.findByText("true:true");
+    expect(document.documentElement.style.getPropertyValue(HEIGHT_PROPERTY)).toBe("");
   });
 
   it("shows no bar when the store is not a demo", async () => {

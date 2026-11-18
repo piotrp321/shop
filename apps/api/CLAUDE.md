@@ -58,6 +58,11 @@ cały katalog w Varnishu i w sklepie. `ordering:read-models:rebuild` i `inventor
 partiami w osobnych transakcjach i jest poprawny przy ruchu. Ukończony krok nie uruchomi się drugi raz bez `--force`,
 więc nowy model odczytu dostaje własny krok, a nie zmianę istniejącego.
 
+Komenda konsoli nie połyka `\Throwable`: po komunikacie dla operatora przekazuje wyjątek dalej (`throw new
+\RuntimeException(…, $kodWyjścia, $e)`) z kodem wyjścia z dokumentacji komendy, bo konsola bierze kod z `getCode()`.
+Dzięki temu błąd jest w logu konsoli i w Sentry (listener konsoli zgłasza tylko wyjątki nieobsłużone). Test ścieżki błędu
+używa `ApplicationTester` (`setAutoExit(false)`), bo `CommandTester` wyjątku nie łapie.
+
 ## Architektura
 
 - Kod jest podzielony na bounded contexty: `src/<Context>/{Domain,Application,Infrastructure,UI}`.
@@ -225,9 +230,6 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Handler komendy tłumaczy
   zdarzenia domenowe na kontrakty przed publikacją przez outbox (`IntegrationEvents::translate` w Catalog). Subskrybent
   czyta to, czego potrzebuje, zapytaniami modułu właściciela; zmiana pól kontraktu dotyka wszystkich subskrybentów.
-  Wyjątek zgodności wersji (do usunięcia w kolejnej wersji): `CreateProduct` publikuje oba `ProductCreated`, domenowe
-  (poprzednia wersja indeksuje produkt tylko z niego) i integracyjne, a `IndexProduct` obsługuje też domenowe z outboxa
-  poprzedniej wersji, więc nowy produkt jest indeksowany dwa razy (reindeksacja to dopuszcza).
 - Subskrybent, który przelicza dane według stanu innego modułu (np. `RepriceOnTaxClassChange`), czyta ten stan
   zapytaniem, nigdy ze zdarzenia, więc zdarzenia w dowolnej kolejności i powtórzone kończą się stanem bieżącym.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.

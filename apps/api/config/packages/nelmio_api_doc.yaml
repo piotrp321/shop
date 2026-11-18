@@ -20,7 +20,7 @@ nelmio_api_doc:
                         # Application layer stays free of OpenAPI; ProductsEndpointTest checks them against real responses.
                         ProductPage:
                             type: object
-                            required: [items, page, perPage, total, facets]
+                            required: [items, page, perPage, total, pageCount, facets]
                             properties:
                                 items:
                                     type: array
@@ -38,6 +38,14 @@ nelmio_api_doc:
                                     type: integer
                                     description: All products matching the filter, not only this page.
                                     example: 412
+                                pageCount:
+                                    type: integer
+                                    minimum: 0
+                                    description: >-
+                                        The pages of `perPage` products that can be read for the filter, 0 without results. The
+                                        search reads only the first part of the results, so for a large result this is fewer
+                                        pages than `total` would suggest; a page past it is empty.
+                                    example: 18
                                 facets:
                                     $ref: '#/components/schemas/ProductFacets'
                         ProductFacets:

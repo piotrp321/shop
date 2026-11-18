@@ -27,6 +27,7 @@ use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ListProductsHandlerTest extends TestCase
@@ -97,6 +98,7 @@ final class ListProductsHandlerTest extends TestCase
             3,
             2,
             412,
+            206,
             new ProductFacets([], [], null, 0),
         ), $page);
         self::assertNotNull($search->lastCriteria);
@@ -112,6 +114,29 @@ final class ListProductsHandlerTest extends TestCase
         self::assertSame([], $page->items);
         self::assertSame(999, $page->page);
         self::assertSame(7, $page->total);
+    }
+
+    /**
+     * @return iterable<string, array{int, int, int, int}> total, matches inside the window, perPage, expected pageCount
+     */
+    public static function pageCounts(): iterable
+    {
+        yield 'no results' => [0, 0, 24, 0];
+        yield 'below the window, a part of the last page' => [7, 7, 5, 2];
+        yield 'below the window, whole pages' => [10, 10, 5, 2];
+        yield 'equal to the window' => [20, 20, 5, 4];
+        yield 'above the window the window counts, total stays exact' => [10_000_000, 20, 5, 4];
+        yield 'window that perPage does not divide' => [50, 20, 8, 3];
+        yield 'one result' => [1, 1, 48, 1];
+    }
+
+    #[DataProvider('pageCounts')]
+    public function testPageCountIsTheNumberOfPagesInsideTheResultWindow(int $total, int $reachable, int $perPage, int $expected): void
+    {
+        $page = $this->handle(new FakeProductSearch([], $total, reachable: $reachable), new ListProducts(null, 1, $perPage));
+
+        self::assertSame($expected, $page->pageCount);
+        self::assertSame($total, $page->total);
     }
 
     public function testSearchParametersReachTheSearchAsCriteria(): void

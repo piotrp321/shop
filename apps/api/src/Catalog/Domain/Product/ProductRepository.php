@@ -29,9 +29,4 @@ interface ProductRepository
      * @throws ProductNotFound
      */
     public function get(ProductId $id): Product;
-
-    /**
-     * @return iterable<Product>
-     */
-    public function all(): iterable;
 }

@@ -3,13 +3,12 @@ framework:
         default_bus: command.bus
         failure_transport: failed
 
-        # The correlation id middleware comes first among ours: the validation and the transaction run under the
-        # identifier of the message (spec: docs/features/hardening/spec.md, "Correlation ID").
+        # The correlation id middleware comes first among ours: the transaction runs under the identifier of the
+        # message (spec: docs/features/hardening/spec.md, "Correlation ID").
         buses:
             command.bus:
                 middleware:
                     - App\Shared\Infrastructure\Observability\CorrelationIdMiddleware
-                    - validation
                     - doctrine_transaction
             query.bus:
                 middleware:

@@ -444,7 +444,10 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
 - Sekret `PURGE` jest porównywany w VCL zwykłym porównaniem napisów (nie w stałym czasie); Varnish jest dostępny
   tylko w sieci compose, a ACL zawęża nadawców.
 - Każdy nieznany slug zostawia wpis ISR 404 na dysku instancji; wpisy unieważnia `catalog` albo tag ich sluga
-  (publikacja produktu z tym slugiem), nic ich nie usuwa (nieograniczony przyrost przy losowych adresach, razem z A6).
+  (publikacja produktu z tym slugiem), a nic ich nie usuwa. Przyrost ogranicza limit `ephemeral-storage` kontenera
+  `store` w profilu `prod` (żądanie 256 MiB, limit 2 GiB): po jego przekroczeniu kubelet eksmituje pod, a nowy startuje
+  z pustym cache (strony ISR renderują się od nowa przy pierwszym wejściu). To ochrona dysku węzła demo; przy skali
+  docelowej potrzebny jest wspólny cache ISR z eksmisją (A6).
 - Seed publikuje zdarzenie dla każdej ceny i zmiany poziomu (ok. 2 tys. wiadomości); konsument potwierdza je bez
   wywołań HTTP.
 - Wydajność nie jest potwierdzona testami obciążeniowymi.

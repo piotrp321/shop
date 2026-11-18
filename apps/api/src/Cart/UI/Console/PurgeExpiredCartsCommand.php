@@ -19,8 +19,8 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
  * Run deliberately (by hand or a scheduler), never by make init, make up or make seed.
  *
  * Exit codes: 0 the purge is done (also when nothing was expired), 1 the batch size is not a positive integer
- * (nothing was changed), 2 the run stopped on an error (e.g. the database is unavailable); the batches removed until
- * then stay removed.
+ * (nothing was changed), 2 the run stopped on an error (e.g. the database is unavailable; the command prints a message
+ * and hands the error on to the console, which ends with 2); the batches removed until then stay removed.
  */
 #[AsCommand(name: 'cart:purge-expired', description: 'Removes the expired carts with their lines, in batches.')]
 final readonly class PurgeExpiredCartsCommand
@@ -53,7 +53,8 @@ final readonly class PurgeExpiredCartsCommand
         } catch (\Throwable $e) {
             $io->error(\sprintf('The purge stopped: %s The carts removed so far (%d) stay removed; run the command again.', rtrim($e->getMessage(), '.').'.', $total));
 
-            return self::ERROR;
+            // Handed on, not swallowed: the console reports it (a log with the exception, an event of Sentry) and ends with this code.
+            throw new \RuntimeException($e->getMessage(), self::ERROR, $e);
         }
 
         if (0 === $total) {

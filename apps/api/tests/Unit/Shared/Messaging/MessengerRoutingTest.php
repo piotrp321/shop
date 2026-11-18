@@ -105,17 +105,18 @@ final class MessengerRoutingTest extends KernelTestCase
     }
 
     /**
-     * The outbox of the previous version holds the domain ProductCreated; the new worker indexes its product too.
+     * The outbox of the previous version may hold the domain ProductCreated; it is no contract any more, so the worker
+     * acknowledges it without a handler, an error or indexing.
      */
-    public function testTheDomainProductCreatedOfThePreviousVersionIndexesTheProduct(): void
+    public function testTheDomainProductCreatedOfThePreviousVersionIsAcknowledgedWithoutIndexing(): void
     {
         $this->publisher()->publish(new ProductCreatedInCatalog(self::PRODUCT_ID, new \DateTimeImmutable('2026-10-29T12:00:00+00:00')));
         $this->consume('outbox');
 
         $this->consume('events');
 
-        self::assertCount(1, $this->indexer->indexed);
-        self::assertSame(self::PRODUCT_ID, $this->indexer->indexed[0]->id);
+        self::assertSame([], $this->indexer->indexed);
+        self::assertCount(1, $this->transport('events')->getAcknowledged());
         self::assertCount(0, $this->transport('failed')->getSent());
     }
 

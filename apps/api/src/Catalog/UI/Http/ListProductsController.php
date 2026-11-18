@@ -43,7 +43,8 @@ final class ListProductsController
         summary: 'Product list',
         description: 'A page of products, optionally searched by a phrase and narrowed by filters, with the counts that go with '
             .'it (`facets`). The category filter includes the products of all its subcategories; an unknown category gives 404, an '
-            .'existing category without products an empty list. A page past the end gives an empty list with the real total. '
+            .'existing category without products an empty list. A page past the end gives an empty list with the real total; `pageCount` is the number of pages that can be read '
+            .'(the search reads only the first part of a very large result, so it can be lower than `total` suggests). '
             .'Without `sort` the list is by relevance with `q` and by name otherwise. The conditions on variants (`option`, `priceMin`, '
             .'`priceMax`, `available`) all hold for one and the same variant of a product: `option=Kolor:czarne&option=Rozmiar:42` finds '
             .'products with a black variant in size 42, not a black one and a different one in size 42. Prices and availability '
