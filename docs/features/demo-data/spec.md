@@ -251,7 +251,8 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
 
 Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastającymi po wariancie):
 - aktywna rezerwacja (klucz = id zamówienia, status `active`, linie) dla każdego zamówienia `paid`; w oknie 90 dni
-  rezerwacja `committed` dla zamówień wysłanych i `released` dla anulowanych;
+  rezerwacja `committed` dla zamówień wysłanych i `released` dla anulowanych (okno to zamówienia złożone po jego
+  początku: zamówienie z chwili początku okna, czyli chwili bilansu otwarcia, jest „zarchiwizowane”);
 - `reserved` wariantu = suma linii aktywnych rezerwacji; `physical` = stan z rozkładu, nie mniejszy niż największa
   suma rezerwacji jednocześnie aktywnych w oknie (więc żaden ruch nie narusza `physical >= reserved`, a bilans
   otwarcia wariantu z zamówieniami w oknie jest dodatni); około 8% wariantów bez zamówień w oknie ma stan 0;

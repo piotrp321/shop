@@ -13,7 +13,8 @@ use Doctrine\DBAL\Connection;
  * Steps 6 and 7 of the generator (spec: "Stany po zamówieniach", P4): the stock, the reservations and the stock
  * movements as one pass of SQL over the loaded orders, and the number sequence past the last number.
  *
- * Only the orders of the 90 days before the anchor leave reservations and movements (the older ones are as if archived):
+ * Only the orders placed after the start of the 90 days before the anchor leave reservations and movements (the older
+ * ones, also one placed at that very moment, which is the moment of the opening balance, are as if archived):
  * a paid order an active reservation (key = the id of the order, its lines), a shipped one (also delivered or returned)
  * a committed one, a cancelled one a released one. A variant with such orders starts the window with the opening
  * balance (a receipt of the source `seed`, reference `opening:<variantId>`), then the reservation at the placement, the
@@ -59,13 +60,13 @@ final readonly class StockLoader
                 "INSERT INTO inventory_reservation (reservation_key, status, created_at, updated_at)
                  SELECT id::text, CASE status WHEN 'paid' THEN 'active' WHEN 'cancelled' THEN 'released' ELSE 'committed' END, placed_at,
                         CASE status WHEN 'paid' THEN placed_at WHEN 'cancelled' THEN cancelled_at ELSE shipped_at END
-                 FROM ordering_order WHERE placed_at >= CAST(:start AS timestamptz)",
+                 FROM ordering_order WHERE placed_at > CAST(:start AS timestamptz)",
                 $parameters,
             );
             $this->connection->executeStatement(
                 'INSERT INTO inventory_reservation_line (reservation_key, variant_id, quantity)
                  SELECT o.id::text, l.variant_id, l.quantity FROM ordering_order o JOIN ordering_order_line l ON l.order_id = o.id
-                 WHERE o.placed_at >= CAST(:start AS timestamptz)',
+                 WHERE o.placed_at > CAST(:start AS timestamptz)',
                 $parameters,
             );
 
@@ -75,13 +76,13 @@ final readonly class StockLoader
                  SELECT e.*, '.self::uuidV7('e.occurred_at', "md5(:seed || ':' || e.type || ':' || e.reference || ':' || e.variant_id::text)")." AS id
                  FROM (
                      SELECT l.variant_id, o.placed_at AS occurred_at, 'reservation' AS type, 0 AS physical_delta, l.quantity AS reserved_delta, o.id::text AS reference
-                     FROM ordering_order o JOIN ordering_order_line l ON l.order_id = o.id WHERE o.placed_at >= CAST(:start AS timestamptz)
+                     FROM ordering_order o JOIN ordering_order_line l ON l.order_id = o.id WHERE o.placed_at > CAST(:start AS timestamptz)
                      UNION ALL
                      SELECT l.variant_id, o.shipped_at, 'commit', -l.quantity, -l.quantity, o.id::text
-                     FROM ordering_order o JOIN ordering_order_line l ON l.order_id = o.id WHERE o.placed_at >= CAST(:start AS timestamptz) AND o.shipped_at IS NOT NULL
+                     FROM ordering_order o JOIN ordering_order_line l ON l.order_id = o.id WHERE o.placed_at > CAST(:start AS timestamptz) AND o.shipped_at IS NOT NULL
                      UNION ALL
                      SELECT l.variant_id, o.cancelled_at, 'release', 0, -l.quantity, o.id::text
-                     FROM ordering_order o JOIN ordering_order_line l ON l.order_id = o.id WHERE o.placed_at >= CAST(:start AS timestamptz) AND o.cancelled_at IS NOT NULL
+                     FROM ordering_order o JOIN ordering_order_line l ON l.order_id = o.id WHERE o.placed_at > CAST(:start AS timestamptz) AND o.cancelled_at IS NOT NULL
                  ) e",
                 $parameters,
             );

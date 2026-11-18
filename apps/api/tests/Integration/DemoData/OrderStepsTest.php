@@ -230,6 +230,26 @@ final class OrderStepsTest extends KernelTestCase
         )));
     }
 
+    public function testAnOrderPlacedAtTheStartOfTheWindowLeavesNoMovementBeforeTheOpeningBalance(): void
+    {
+        $this->generatedSteps();
+        $this->succeeds('demo-data:orders');
+        $connection = $this->connection();
+        $window = "?::timestamptz - interval '90 days'";
+        // Orders of the window moved to its very start: the receipt of the opening balance has that moment too, so the order of
+        // the movements (moment, id) would depend on the hash in the id.
+        $moved = $connection->executeStatement('UPDATE ordering_order SET placed_at = '.$window.' WHERE id IN (SELECT id FROM ordering_order WHERE placed_at > '.$window.' ORDER BY placed_at LIMIT 60)', [self::ANCHOR, self::ANCHOR]);
+        self::assertSame(60, $moved);
+
+        $this->succeeds('demo-data:stock');
+
+        // The start of the window is the moment of the opening balance: an order placed then is of the archived ones.
+        self::assertSame(0, $this->int($connection->fetchOne('SELECT count(*) FROM inventory_reservation r JOIN ordering_order o ON o.id::text = r.reservation_key WHERE o.placed_at = '.$window, [self::ANCHOR])));
+        self::assertSame(0, $this->int($connection->fetchOne(
+            "SELECT count(*) FROM inventory_stock_item s JOIN LATERAL (SELECT m.type FROM inventory_stock_movement m WHERE m.variant_id = s.variant_id ORDER BY m.occurred_at, m.id LIMIT 1) f ON true WHERE f.type <> 'receipt'",
+        )));
+    }
+
     public function testAboutEightPercentOfTheVariantsWithoutOrdersInTheWindowHaveNoStock(): void
     {
         $this->generatedSteps();
