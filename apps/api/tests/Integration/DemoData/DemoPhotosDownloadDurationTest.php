@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\DemoData;
 
 use League\Flysystem\FilesystemOperator;
+use PHPUnit\Framework\Attributes\Depends;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
@@ -14,11 +15,21 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  */
 final class DemoPhotosDownloadDurationTest extends KernelTestCase
 {
-    use PointsPhotoVariables;
+    use PointsPhotoVariables {
+        // The trait puts the variables back and calls KernelTestCase::tearDown(); this class stops its server first.
+        tearDown as private restorePhotoVariables;
+    }
 
     /** @var resource|null */
     private $server;
     private string $router = '';
+    /** @var array<string, array{string|false, array{bool, mixed}, array{bool, mixed}}> the variables before the first test of the class */
+    private static array $before = [];
+
+    public static function setUpBeforeClass(): void
+    {
+        self::$before = self::variables();
+    }
 
     protected function tearDown(): void
     {
@@ -29,7 +40,7 @@ final class DemoPhotosDownloadDurationTest extends KernelTestCase
         if ('' !== $this->router) {
             @unlink($this->router);
         }
-        parent::tearDown();
+        $this->restorePhotoVariables();
     }
 
     public function testTheClientOfThePoolReadsABodyThatTakesLongerThanTheLimitOfTheSharedClient(): void
@@ -48,6 +59,29 @@ final class DemoPhotosDownloadDurationTest extends KernelTestCase
 
         self::assertSame(str_repeat('x', 7), $body);
         self::assertGreaterThan(6.0, microtime(true) - $started, 'The body must have taken longer than the 5 s of the shared client.');
+    }
+
+    #[Depends('testTheClientOfThePoolReadsABodyThatTakesLongerThanTheLimitOfTheSharedClient')]
+    public function testTheVariablesOfThePreviousTestAreGone(): void
+    {
+        self::assertSame(self::$before, self::variables(), 'The test must leave the environment, $_ENV and $_SERVER as they were.');
+    }
+
+    /**
+     * @return array<string, array{string|false, array{bool, mixed}, array{bool, mixed}}>
+     */
+    private static function variables(): array
+    {
+        $variables = [];
+        foreach (['DEMO_PHOTOS_REGION', 'DEMO_PHOTOS_ENDPOINT', 'DEMO_PHOTOS_BUCKET', 'DEMO_PHOTOS_ACCESS_KEY_ID', 'DEMO_PHOTOS_SECRET_ACCESS_KEY'] as $name) {
+            $variables[$name] = [
+                getenv($name),
+                [\array_key_exists($name, $_ENV), $_ENV[$name] ?? null],
+                [\array_key_exists($name, $_SERVER), $_SERVER[$name] ?? null],
+            ];
+        }
+
+        return $variables;
     }
 
     private function startSlowServer(): int
