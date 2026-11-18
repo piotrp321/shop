@@ -75,9 +75,12 @@ final readonly class PhotosCheckCommand
     {
         is_file($archive) && unlink($archive);
         $tar = new \PharData($archive);
+        // One call: addFile() in a loop rewrites the archive for every file (quadratic), buildFromIterator() writes it once.
+        $files = [];
         foreach ($manifest->fileNames() as $name) {
-            $tar->addFile(rtrim($directory, '/').'/'.$name, $name);
+            $files[$name] = rtrim($directory, '/').'/'.$name;
         }
+        $tar->buildFromIterator(new \ArrayIterator($files));
         unset($tar);
     }
 }
