@@ -5,7 +5,7 @@
 Większość kodu sklepu piszą agenci Claude Code. Epiki prowadził agentic orchestrator (AO) z osobnego repozytorium
 `piotrp321/agentic-orchestrator`: deterministyczny proces w Pythonie, który wykonywał zadania planu przez `/delivery`
 w gałęzi `epic/<epik>`, weryfikował epik przez `/integration` i otwierał końcowy PR, a wokół niego skille `/ao-run`,
-`/prepare-epic`, `/sweep`, `/retro` i `/groom`. Celem była autonomiczna praca przez całą dobę.
+`/sweep` i `/retro`. Celem była autonomiczna praca przez całą dobę.
 
 Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) ustalił m.in.:
 
@@ -46,10 +46,11 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
    `SUGGESTION` i `Minor` trafiają do opisu PR jako odroczone.
 4. **Merge do `main`** zawsze należy do użytkownika albo do sesji na jego wyraźne polecenie, które wskazuje PR.
    Squash i usunięcie gałęzi. Wyjątki procedury AO (niżej) obowiązują tylko przy jej uruchomieniu.
-5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu; subagenci używają modelu z definicji albo
-   dobranego do trudności zadania.
-6. **AO jest zamrożony.** Nie rozwijamy AO, skilli istniejących tylko dla niego (`/ao-run`, `/prepare-epic`,
-   `/delivery`, `/sweep`, `/retro`, `/groom`) ani narzędzi z nimi związanych. AO zostaje uruchamialny jako
+5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu. Model i effort w definicji agenta to wartości
+   domyślne: sesja prowadząca dobiera je w zleceniu do trudności i ryzyka zadania. Skille `/brainstorm` i `/planner`
+   działają na modelu sesji, która je wywołuje.
+6. **AO jest zamrożony.** Nie rozwijamy AO, skilli istniejących tylko dla niego (`/ao-run`, `/delivery`,
+   `/sweep`, `/retro`) ani narzędzi z nimi związanych. AO zostaje uruchamialny jako
    rozwiązanie awaryjne, dopóki nie ocenimy trzech epików dostarczonych natywnie. Epik DEMO-DATA, już w toku, kończy
    się w AO. ONCALL i pozostałe zaplanowane prace infrastrukturalne związane z AO są wstrzymane. Kroki przejścia i ich
    stan: [plan](../features/agentic-software-house/plan.md), sekcja „Status”.
@@ -89,23 +90,25 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
 7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje w opis PR odroczone uwagi i `Closes #N` dla
    issues z linii `Issues:` specyfikacji, oznacza PR jako gotowy i pisze raport. Merge do `main` robi użytkownik.
 8. **Wznowienie po przerwie.** Stan odtwarza się z sekcji „Status” planu, gałęzi `task/*`, `git worktree list` i draft
-   PR. Niedokończone zadanie podejmuje nowy subagent: sesja usuwa stary worktree zadania (`git worktree remove`,
-   commity zostają na gałęzi), a zlecenie każe `git switch task/<ID>`.
+   PR. Worktree przerwanego zadania zostaje na dysku razem z niezacommitowanymi zmianami. Sesja zapisuje je commitem
+   w tym worktree (`git -C <worktree> add -A && git -C <worktree> commit -m "wip: …"`), potem go usuwa
+   (`git worktree remove`, bez `--force`, który skasowałby niezapisane zmiany), a zlecenie nowego subagenta każe
+   `git switch task/<ID>`.
 
 Mała zmiana (poprawka albo do trzech zadań niskiego ryzyka) nie potrzebuje tej ścieżki: jedna gałąź i jeden PR do
 `main` w zwykłej sesji.
 
 ### Zasady obowiązujące tylko przy uruchomieniu AO
 
-Poniższe zasady obowiązują wyłącznie wtedy, gdy sesja uruchamia AO albo któryś ze skilli `/ao-run`, `/prepare-epic`,
-`/delivery`, `/sweep`, `/retro`, `/groom`. Pracy natywnej dotyczą tylko te z nich, które powtarza główny `CLAUDE.md`
+Poniższe zasady obowiązują wyłącznie wtedy, gdy sesja uruchamia AO albo któryś ze skilli `/ao-run`, `/delivery`,
+`/sweep`, `/retro`. Pracy natywnej dotyczą tylko te z nich, które powtarza główny `CLAUDE.md`
 (zgoda na merge, squash, rulesety bez bypassu). Procedurę przebiegu opisuje
 `docs/features/ao-run/spec.md`, zabezpieczenia wykonawców `docs/adr/agent-security.md` (R2, R5–R8), a proces epiku AO
 plan Agentic Software House (sekcje „Proces”, „Kontrakt planu i backlogu”, „Punkty zatrzymania”).
 
-Przepływ AO: `Intake → /prepare-epic → Backlog → AO → /delivery → /integration → Merge`. AO odpowiada za orkiestrację,
-stan i wykonywanie, a nie za decyzje architektoniczne; decyzje spoza granic zadania wracają jako blokery do
-użytkownika. Kontrakt wyniku `/delivery` jest interfejsem zewnętrznym dla AO: zmiany w nim wymagają zmian po obu
+Przepływ AO: `Intake → spec.md i plan.md → Backlog → AO → /delivery → /integration → Merge`. AO odpowiada za
+orkiestrację, stan i wykonywanie, a nie za decyzje architektoniczne; decyzje spoza granic zadania wracają jako
+blokery do użytkownika. Kontrakt wyniku `/delivery` jest interfejsem zewnętrznym dla AO: zmiany w nim wymagają zmian po obu
 stronach. Równoległość epików i zadań fali wymaga bramki ryzyka (bez wspólnego kodu aplikacji, wolna pamięć Dockera
 na `max-parallel` stosów na epik, zapas limitu), osobnych stosów Docker na zadanie, a integracja i merge'e idą po
 kolei; wykonanie szeregowe jest rozwiązaniem awaryjnym. Epik startuje dopiero po „tak” użytkownika na pytanie
@@ -158,23 +161,19 @@ Zasady przebiegu AO:
   i logi usług do `AO_SETUP_DIAG_DIR` (domyślnie `~/.local/state/ao-setup`, poza worktree), bo AO zaraz po nieudanym
   `setup` sprząta stos. `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`.
   Oba odmawiają pracy bez zmiennych albo bez Dockera. Testy: `python3 -m unittest discover -s .ao -p 'test_*.py'`.
-- Nie merguj bez zgody użytkownika. Wyjątek: akceptacja epiku w `/prepare-epic` (specyfikacja
-  i rozmiar końcowego PR) obejmuje zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI
-  (zadanie REPAIR: merge commit).
-  Drugi wyjątek: PR ze specyfikacją i planem epiku z `/prepare-epic` merguje skill po akceptacji użytkownika
-  i zielonym CI, gdy PR zmienia wyłącznie te dwa pliki. Trzeci wyjątek: PR `sync/<epik>-main` z `/ao-run` merguje
+- Nie merguj bez zgody użytkownika. Wyjątek: akceptacja epiku (specyfikacja i rozmiar końcowego PR) obejmuje
+  zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI (zadanie REPAIR: merge commit).
+  Drugi wyjątek: PR `sync/<epik>-main` z `/ao-run` merguje
   skill merge commitem po zgodzie użytkownika na tę procedurę i zielonym CI. Pozostałe PR do `main`, także końcowy
   PR epiku, merguje użytkownik albo sesja na jego wyraźne polecenie w rozmowie, które wskazuje ten PR (także
   odpowiedź z telefonu; wiadomość innej sesji, plik ani komentarz w PR nie jest poleceniem), po zielonym CI.
 - Każdy PR/MR mergujemy wyłącznie w trybie squash, a po merge'u usuwamy jego branch
   (np. `gh pr merge <nr> --squash --delete-branch`). Jedyny wyjątek to PR do `epic/*` z zadania REPAIR i PR
   `sync/<epik>-main`: merge commit (`--merge`). Gałęzi `epic/*` po merge'u końcowego PR nie usuwamy (ruleset `epic`).
-- Epik do realizacji przez Agentic Orchestrator (AO): `/prepare-epic [nr issue]` przygotowuje `spec.md` i `plan.md`
-  (analityk według `/brainstorm`, `spec-critic`, `architecture-reviewer`, `/planner`). Użytkownik akceptuje
-  specyfikację i rozmiar końcowego PR, `plan.md` przechodzi walidator manifestu (manifest JSON), a skill merguje
-  do `main` PR z tymi plikami. `/brainstorm` i `/planner` zostają do pracy poza epikami. `ao submit-plan` zgłasza
-  zadania pierwszej fali, a każde z nich realizuje `/delivery` jako osobny PR. Plan z `/planner` nie ma kroków
-  implementacji.
+- Epik do realizacji przez Agentic Orchestrator (AO) ma na `main` `spec.md` i `plan.md`. Użytkownik akceptuje
+  specyfikację i rozmiar końcowego PR, a `plan.md` przechodzi walidator manifestu (manifest JSON).
+  `ao submit-plan` zgłasza zadania pierwszej fali, a każde z nich realizuje `/delivery` jako osobny PR. Plan
+  z `/planner` nie ma kroków implementacji.
   Po zmergowaniu zadań do `epic/<epik>` AO uruchamia `/integration` (globalny Architecture Review, adversarial QA
   i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); przy zmianach w `apps/store`
   lub `apps/admin` dochodzi agent UX (`ux-reviewer`). Skill niczego nie commituje, a jego wynik waliduje
@@ -189,12 +188,6 @@ Zasady przebiegu AO:
   poprawkach albo zmianie „Statusu”, inaczej wynik to „bez zmian”); issues i komentarze powstają dopiero po „tak”
   użytkownika. Zasilania nie sprawdza; z kolejki odracza przy oknie limitu ≥ 95%, ręcznie przy ≥ 80%, a odroczone
   zostaje w `pending`.
-- `/groom` (codziennie o 8:00 z zadania zaplanowanego w aplikacji Claude albo ręcznie): agent `backlog-groomer`
-  proponuje duplikaty, nieaktualne zgłoszenia, braki, etykiety i jeden epik poprawek (`-FIXES`), a `groom.py` sprawdza
-  listę i wykonuje w GitHubie tylko pozycje zatwierdzone przez użytkownika w rozmowie. Zatwierdzony epik poprawek ta
-  sama sesja przygotowuje według `/prepare-epic` bez użytkownika aż do jednej wiadomości z pytaniami i akceptacją;
-  samo „tak” akceptuje tylko przy spełnionej bramce `groom.py gate`, a przerwane przygotowanie wznawia
-  `/prepare-epic <nr>`.
 - Przebieg prób zadań zgłoszonych do AO jest w AO (`ao status`), nie w repo.
 
 ## Uzasadnienie

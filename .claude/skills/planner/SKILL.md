@@ -2,8 +2,6 @@
 name: planner
 description: Podział zatwierdzonej specyfikacji epica na zadania dla subagentów (plan.md z walidowanym manifestem JSON).
 argument-hint: "[ścieżka spec.md]"
-model: opus
-effort: high
 disable-model-invocation: true
 ---
 

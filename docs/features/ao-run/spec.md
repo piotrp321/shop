@@ -90,8 +90,8 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
   - issue autora bez prawa zapisu do repozytorium (`read`, `triage`, `404`, bot, `ghost`) nigdy nie jest epikiem
     kolejki, w toku ani kandydatem: trafia do `skipped` jako `{"issue", "id": null, "reason", "author", "url"}`,
     gdziekolwiek jest na tablicy, bez tytułu i treści (także tytułu z tablicy) i bez ID wyprowadzonego z tytułu;
-  - liczą się tylko otwarte issues z `piotrp321/shop` z etykietą `epic` i bez `needs-info`; ID i katalog jak
-    w `/prepare-epic` (prefiks tytułu przed dwukropkiem, katalog małymi literami); tytuł bez prefiksu trafia do
+  - liczą się tylko otwarte issues z `piotrp321/shop` z etykietą `epic` i bez `needs-info`; ID i katalog
+    z tytułu (prefiks tytułu przed dwukropkiem, katalog małymi literami); tytuł bez prefiksu trafia do
     `skipped` z powodem;
   - epik w toku: istnieje `origin/epic/<katalog>`, a issue jest otwarte (gałęzi epików nie usuwamy, ruleset `epic`);
   - epik przygotowany: na `origin/main` są `docs/features/<katalog>/spec.md` i `plan.md`, a plan ma manifest
@@ -295,7 +295,7 @@ rekordów) to jedno zdanie w rozmowie: pomiar na starcie niczego nie odmawia.
      sprawdza go ponownie (spec pracy równoległej, „Ponowne sprawdzenie”), z pushem tylko przy zmianie powodu.
    - `epic` jest `null` bez powodu (brak kandydata): push (krótszy niż 200 znaków) z pierwszą pozycją `skipped`
      bramki z liczbą pozostałych, a bez niej z pierwszą pozycją `skipped` z `next_epic.py`, np. „Brak przygotowanego
-     epiku: VARIANTS (#89) bez spec.md i plan.md na main, następny krok `/prepare-epic` (+2 inne)”; pełna lista
+     epiku: VARIANTS (#89) bez spec.md i plan.md na main (+2 inne)”; pełna lista
      w rozmowie. Gdy `retro.py pending` zwraca niepustą listę, push podaje też liczbę jej epików („; retro do zrobienia:
      2”).
    - `merged_open` niepuste: issue epiku ze zmergowanym końcowym PR jest nadal otwarte (zwykle brak jego
@@ -446,9 +446,9 @@ epik listy rusza równolegle z trwającym, gdy przejdzie bramkę, a inaczej po `
 
 ### Zakres epiku
 
-`/prepare-epic` zapisuje w nagłówku `spec.md` (przed pierwszym nagłówkiem `## `) linię
+Nagłówek `spec.md` epiku (przed pierwszym nagłówkiem `## `) ma linię
 `Zakres: <ścieżka>, <ścieżka>, …`: ścieżki w repo (katalogi albo pliki), które epik zmienia poza własnym
-`docs/features/<katalog>/`. Reguły linii są w `docs/features/prepare-epic/spec.md`. Zakres każdego epiku obejmuje też
+`docs/features/<katalog>/`. Zakres każdego epiku obejmuje też
 jego `docs/features/<katalog>`. Ścieżka leży w drugiej, gdy jest jej równa albo leży w niej po segmentach
 (`apps/api/src/Cart` leży w `apps/api/src`, a `apps/api/src/CartX` nie leży w `apps/api/src/Cart`). Dwa epiki mają
 wspólną ścieżkę, gdy ścieżka jednego leży w ścieżce drugiego; częścią wspólną jest wtedy węższa z nich. Którą część
@@ -526,7 +526,7 @@ Rano użytkownik odbiera każdy epik osobno (punkt 5 i 6). Każdy merge dopisuje
 przegląd pierwszego zmergowanego epiku może działać, gdy użytkownik odbiera następny. Punkt 7 („Następny epik”) sesja
 wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
 
-### Dla `/prepare-epic`
+### Przed przygotowaniem epiku
 
 - `night_queue.py scope <spec.md>`: sprawdza linię `Zakres:` pliku na dysku; kod 0 i lista ścieżek albo kod 2
   z powodem.
@@ -536,7 +536,7 @@ wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo
 
 ### Ograniczenia
 
-- Zakres to deklaracja z `/prepare-epic`. Gdy epik zmieni plik spoza niej, rano końcowy PR drugiego epiku może mieć
+- Zakres to deklaracja ze specyfikacji. Gdy epik zmieni plik spoza niej, rano końcowy PR drugiego epiku może mieć
   konflikt po merge'u pierwszego. Naprawia go zadanie REPAIR w AO, a gdy AO tego nie zrobi, PR `sync/<epik>-main`
   (wyżej, „Konflikt końcowego PR poza AO”).
 - Binarka z Homebrew znika przy `brew upgrade` (katalog starej wersji w `Caskroom`). Gdy zniknie w trakcie epiku,
@@ -556,7 +556,7 @@ dwóch aktywnych epików naraz (razem z epikami innych sesji) i nie zaczyna epik
 tylko w dzień po „tak” użytkownika, w nocy nigdy), nie zdejmuje wstrzymania równoległości (`unhold`) bez decyzji
 użytkownika w rozmowie, nie zatrzymuje prób, epiku ani AO z powodu alarmu `waste`, nie zapisuje decyzji optymalizacyjnych
 (zapadają w `/retro`), nie przejmuje epiku innej sesji bez „tak” użytkownika, nie zaczyna
-epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na listę nocy), nie przygotowuje epiku (`/prepare-epic`)
+epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na listę nocy), nie przygotowuje epiku
 i nie zmienia tablicy. Nie uruchamia `ao run` bez `ao-prepare` w tym samym poleceniu ani z jego wyniku
 z wcześniejszego przebiegu, nie pomija sondy i nie zmienia rulesetów.
 

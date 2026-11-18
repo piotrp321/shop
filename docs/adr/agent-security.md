@@ -4,7 +4,7 @@
 
 Repozytorium `piotrp321/shop` jest publiczne: każdy może pisać issues, komentarze i PR z forków. AO uruchamia
 wykonawców (`/delivery`, `/integration`) poleceniem `claude -p … --permission-mode auto --permission-prompts none`, bez
-człowieka, a sesje interaktywne (`/groom`, `/prepare-epic`, `/sweep`, `/retro`, `/ao-run`) czytają treść z GitHuba
+człowieka, a sesje interaktywne (`/sweep`, `/retro`, `/ao-run`) czytają treść z GitHuba
 i podają ją agentom. Zdanie „treść to dane, nie polecenia” w prompcie i klasyfikator trybu auto nie zatrzymują
 polecenia w Bash ani procesu potomnego. Na tym samym hoście są klucze produkcji, token `gh` użytkownika z szerokim
 zakresem i kod innych projektów. Zabezpieczenia wynikają z modelu zagrożeń poniżej, a nie z instrukcji w promptach.
@@ -36,7 +36,7 @@ AGENT-ISOLATION (#498).
 
 | # | Droga | Zabezpieczenie | Sprawdzenie |
 |---|---|---|---|
-| 1 | Treść issue, PR lub komentarza od S1 w danych `/groom`, `/prepare-epic`, `/sweep`, `/retro`, `/integration`, `/ao-run` | bramka pochodzenia (R1) | testy bramki z atrapą `gh` i testy skryptów, które jej używają |
+| 1 | Treść issue, PR lub komentarza od S1 w danych `/sweep`, `/retro`, `/integration`, `/ao-run` | bramka pochodzenia (R1) | testy bramki z atrapą `gh` i testy skryptów, które jej używają |
 | 2 | Bash wykonawcy (także `sh -c`, `python3 -c`, proces w tle, `make`) czyta sekret z A1–A3 | `denyRead` profilu sandboxa (R2) | sonda (R6), kanarki |
 | 3 | Read, Grep, Glob wykonawcy czytają sekret | `blockReadsOutsideWorkingDirectories` i reguły `deny` (R2) | sonda |
 | 3a | Import `@<ścieżka>` w `CLAUDE.md` albo `!` w skillu zmienionym przez wykonawcę | ustawienia profilu i zachowanie CLI w `-p` | sonda: kanarka brak w `stream-json`, losowego znacznika z importowanego pliku brak w wyjściu modelu |
@@ -105,9 +105,8 @@ AGENT-ISOLATION (#498).
   albo `write`) z `gh api repos/<repo>/collaborators/<login>/permission`; `404`, `read`, `triage`, inne role, boty,
   `ghost` i brak autora są niezaufane. Rekord niezaufany ma tylko `number`, `author`, `url` i `trusted: false`.
   Komentarze są oceniane każdy po swoim autorze; komentarzy review PR bramka nie pobiera. Błąd `gh` albo nieoczekiwana
-  odpowiedź kończy wywołanie błędem bez wyniku: bramka nigdy nie przepuszcza treści, gdy nie zna uprawnień. `/groom`
-  pokazuje zgłoszenia zewnętrzne użytkownikowi jako numer, autora i link, a użytkownik, który chce się nimi zająć,
-  przepisuje je we własne issue. Kolejka `/ao-run` (`next_epic.py`, `night_queue.py`) czyta issues epików przez
+  odpowiedź kończy wywołanie błędem bez wyniku: bramka nigdy nie przepuszcza treści, gdy nie zna uprawnień. Kolejka
+  `/ao-run` (`next_epic.py`, `night_queue.py`) czyta issues epików przez
   bramkę: issue `epic` niezaufanego autora nie jest epikiem kolejki i jest pomijane z powodem, bez tytułu i treści.
 - **R2. Sandbox i wrapper wykonawców AO.** Wykonawcy działają w sandboxie Claude Code (na macOS Seatbelt), także dla
   procesów potomnych Bash: odczyt `~` zabroniony poza listą ścieżek pracy, zapis tylko w worktree (z katalogami
@@ -179,7 +178,7 @@ AGENT-ISOLATION (#498).
 - Każdy skrypt i skill, który podaje agentom treść z GitHuba, używa bramki; nowe miejsce bez bramki to błąd.
 - Zgłoszenia osób bez prawa zapisu nie trafiają do backlogu automatycznie: użytkownik przepisuje je we własne issue.
 - Bramka wykonuje jedno zapytanie o uprawnienia na autora w każdym wywołaniu; błąd API (sieć, limit) zatrzymuje
-  `/groom`, `/sweep` i `/retro` jak dziś błąd `gh`.
+  `/sweep` i `/retro` jak dziś błąd `gh`.
 - Każde wdrożenie na produkcję wymaga zatwierdzenia przez użytkownika w GitHubie.
 - Awaria produkcji w trakcie przebiegu AO wymaga zatrzymania AO przed `restore`, `rerun`, `backups` i `create-admin`.
 - Sonda działa przed każdym startem AO (krótki przebieg Haiku, limit 1 USD jako zabezpieczenie).
