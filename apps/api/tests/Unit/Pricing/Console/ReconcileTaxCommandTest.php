@@ -20,6 +20,7 @@ use App\Tests\Unit\Pricing\InMemoryVariantPriceRepository;
 use App\Tests\Unit\Pricing\InMemoryVariantsForPricing;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Tester\ApplicationTester;
 use Symfony\Component\Console\Tester\CommandTester;
 
 final class ReconcileTaxCommandTest extends TestCase
@@ -129,9 +130,12 @@ final class ReconcileTaxCommandTest extends TestCase
                 throw new \RuntimeException('connection to server at "postgres" failed');
             }
         };
-        $tester = $this->tester([self::FIRST => 'energy_gel'], $failing);
+        $application = $this->application([self::FIRST => 'energy_gel'], $failing);
+        $application->setAutoExit(false);
+        $tester = new ApplicationTester($application);
 
-        self::assertSame(2, $tester->execute(['--apply' => true]), $tester->getDisplay());
+        // The command hands the error on to the console, which ends with 2 (a CommandTester would not catch it).
+        self::assertSame(2, $tester->run(['command' => 'pricing:reconcile-tax', '--apply' => true]), $tester->getDisplay());
 
         $display = $this->display($tester);
         self::assertStringContainsString('The reconciliation stopped: connection to server at "postgres" failed', $display);
@@ -143,14 +147,22 @@ final class ReconcileTaxCommandTest extends TestCase
      */
     private function tester(array $catalog, ?VariantPriceRepository $prices = null): CommandTester
     {
+        return new CommandTester($this->application($catalog, $prices)->find('pricing:reconcile-tax'));
+    }
+
+    /**
+     * @param array<string, string> $catalog variant id => tax class code
+     */
+    private function application(array $catalog, ?VariantPriceRepository $prices = null): Application
+    {
         $variants = new InMemoryVariantsForPricing(array_map(static fn (string $class): string => 'slug/standard', $catalog), $catalog);
         $application = new Application();
         $application->addCommand(new ReconcileTaxCommand(new ReconcileTax($prices ?? $this->repository, $variants, $this->rates, $this->session)));
 
-        return new CommandTester($application->find('pricing:reconcile-tax'));
+        return $application;
     }
 
-    private function display(CommandTester $tester): string
+    private function display(CommandTester|ApplicationTester $tester): string
     {
         return preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
     }

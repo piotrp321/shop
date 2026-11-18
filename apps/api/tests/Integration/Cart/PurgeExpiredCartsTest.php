@@ -15,6 +15,7 @@ use Doctrine\DBAL\DriverManager;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Application as ConsoleApplication;
+use Symfony\Component\Console\Tester\ApplicationTester;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
@@ -115,9 +116,10 @@ final class PurgeExpiredCartsTest extends KernelTestCase
         // Expiry order: -5 days (id 5) first, -1 day (id 1) last.
         $this->connection->executeStatement("CREATE FUNCTION cart_test_fail_purge() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'forced failure of a purge'; END \$\$");
         $this->connection->executeStatement(\sprintf("CREATE TRIGGER cart_test_fail_purge BEFORE DELETE ON cart_cart FOR EACH ROW WHEN (OLD.id = '%s'::uuid) EXECUTE FUNCTION cart_test_fail_purge()", $ids[1]));
-        $tester = $this->command();
+        $tester = $this->applicationTester($this->containerApplication());
 
-        self::assertSame(2, $tester->execute(['--batch-size' => '2']), $tester->getDisplay());
+        // The command hands the error on to the console, which ends with its code (a CommandTester would not catch it).
+        self::assertSame(2, $tester->run(['command' => 'cart:purge-expired', '--batch-size' => '2']), $tester->getDisplay());
 
         $display = $this->display($tester);
         self::assertStringContainsString('Batch 1: 2 carts removed.', $display);
@@ -144,9 +146,9 @@ final class PurgeExpiredCartsTest extends KernelTestCase
         $bus = new MessageBus([new HandleMessageMiddleware(new HandlersLocator([PurgeExpiredCarts::class => [$handler]]))]);
         $application = new ConsoleApplication();
         $application->addCommand(new PurgeExpiredCartsCommand($bus));
-        $tester = new CommandTester($application->find('cart:purge-expired'));
+        $tester = $this->applicationTester($application);
 
-        self::assertSame(2, $tester->execute([]), $tester->getDisplay());
+        self::assertSame(2, $tester->run(['command' => 'cart:purge-expired']), $tester->getDisplay());
 
         $display = $this->display($tester);
         self::assertStringContainsString('The purge stopped:', $display);
@@ -200,10 +202,22 @@ final class PurgeExpiredCartsTest extends KernelTestCase
 
     private function containerCommand(): \Symfony\Component\Console\Command\Command
     {
-        return new Application(self::$kernel ?? self::bootKernel())->find('cart:purge-expired');
+        return $this->containerApplication()->find('cart:purge-expired');
     }
 
-    private function display(CommandTester $tester): string
+    private function containerApplication(): Application
+    {
+        return new Application(self::$kernel ?? self::bootKernel());
+    }
+
+    private function applicationTester(ConsoleApplication $application): ApplicationTester
+    {
+        $application->setAutoExit(false);
+
+        return new ApplicationTester($application);
+    }
+
+    private function display(CommandTester|ApplicationTester $tester): string
     {
         return preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
     }
