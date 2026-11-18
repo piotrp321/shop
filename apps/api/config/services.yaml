@@ -34,6 +34,8 @@ parameters:
     app.catalog.category_reindex_batch_size: 500
     # Sampling of the traces without SENTRY_TRACES_SAMPLE_RATE (config/packages/sentry.yaml).
     app.sentry.traces_sample_rate: '0'
+    # Keycloak of the steps of the demo data accounts without DEMO_DATA_KEYCLOAK_URL (KeycloakAdminFactory).
+    app.demo_data.keycloak_url: 'http://keycloak:8080'
 
 services:
     _defaults:

@@ -77,7 +77,7 @@ final class GenerateDemoScriptTest extends TestCase
         sort($priceWorkers);
         self::assertSame(['demo-data:prices '.$common.' --worker=0 --workers=2', 'demo-data:prices '.$common.' --worker=1 --workers=2'], $priceWorkers);
         self::assertSame(
-            ['demo-data:promotions '.$common, 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
+            ['demo-data:promotions '.$common, 'demo-data:accounts '.$common, 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify '.$common],
             \array_slice($calls, 8),
         );
     }
@@ -159,8 +159,8 @@ final class GenerateDemoScriptTest extends TestCase
      */
     public static function failingSteps(): iterable
     {
-        $steps = ['check', 'seed-demo', 'demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'];
-        foreach (['seed-demo', 'demo-data:categories', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'] as $failing) {
+        $steps = ['check', 'seed-demo', 'demo-data:categories', 'demo-data:products', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:accounts', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'];
+        foreach (['seed-demo', 'demo-data:categories', 'demo-data:photos', 'demo-data:prices', 'demo-data:promotions', 'demo-data:accounts', 'demo-data:analyze', 'catalog:reindex', 'storefront:cache:purge-all', 'demo-data:verify'] as $failing) {
             yield $failing => [$failing, \array_slice($steps, 0, array_search($failing, $steps, true) + 1)];
         }
         // The check of the options, which has no name of its own: it is the products command asked for the parts.
@@ -225,6 +225,7 @@ final class GenerateDemoScriptTest extends TestCase
         $names = $this->names();
         self::assertContains('demo-data:photos', $names, 'The steps before the prices ran.');
         self::assertNotContains('demo-data:promotions', $names);
+        self::assertNotContains('demo-data:accounts', $names);
         self::assertNotContains('demo-data:analyze', $names);
         self::assertNotContains('demo-data:verify', $names);
 

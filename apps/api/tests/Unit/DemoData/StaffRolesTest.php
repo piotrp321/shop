@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\DemoData;
 
-use App\DemoData\Identity\DemoUuid;
 use App\DemoData\Identity\StaffRoles;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class StaffRolesTest extends TestCase
 {
-    private const string NAMESPACE = '8d3b6f1e-5a27-4c90-b1e4-7f02a96c35d8';
-
     /**
      * @return iterable<string, array{int, string}>
      */
@@ -64,16 +61,8 @@ final class StaffRolesTest extends TestCase
         self::assertSame([], StaffRoles::adminNumbers(0));
     }
 
-    public function testTheActorIdIsTheUuidV5OfTheStaffKeyInTheNamespaceOfTheProfile(): void
+    public function testTheRuleIsTheCycle(): void
     {
-        self::assertSame(DemoUuid::v5(self::NAMESPACE, 'staff:7'), StaffRoles::actorId(self::NAMESPACE, 7));
-        self::assertNotSame(StaffRoles::actorId(self::NAMESPACE, 7), StaffRoles::actorId(self::NAMESPACE, 8));
-    }
-
-    public function testTheActorNameIsReadableAndStable(): void
-    {
-        self::assertSame(StaffRoles::actorName(7), StaffRoles::actorName(7));
-        self::assertNotSame('', trim(StaffRoles::actorName(7)));
-        self::assertNotSame(StaffRoles::actorName(7), StaffRoles::actorName(8));
+        self::assertSame(['admin' => 10, 'support' => 200, 'warehouse' => 200, 'marketing' => 90], StaffRoles::rule());
     }
 }

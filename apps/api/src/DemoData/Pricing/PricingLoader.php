@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\DemoData\Pricing;
 
+use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
@@ -29,6 +30,7 @@ final readonly class PricingLoader
         private Connection $connection,
         private CopyWriter $copy,
         private Dictionaries $dictionaries,
+        private PersonDictionaries $people,
     ) {
     }
 
@@ -46,7 +48,7 @@ final readonly class PricingLoader
     public function loadPrices(RunContext $context, int $worker, int $workers, ?\Closure $progress = null): array
     {
         $products = $this->products($context);
-        $prices = new PriceGenerator($this->dictionaries, $context->namespace, $context->anchor, $context->profile->staff);
+        $prices = new PriceGenerator($this->dictionaries, $context->namespace, $context->anchor, $context->profile->staff, $this->people);
         $byVariant = PromotionPlanner::byVariant(PromotionPlanner::forRun($this->dictionaries, $context)->plan());
         $totals = ['parts' => 0, 'variants' => 0, 'entries' => 0];
 

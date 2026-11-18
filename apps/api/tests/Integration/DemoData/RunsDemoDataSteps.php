@@ -45,6 +45,17 @@ trait RunsDemoDataSteps
         return $tester;
     }
 
+    /**
+     * demo-data:verify without the account checks: the steps of the database make no accounts, and the realms of the
+     * stack are never used by the tests (AccountsVerifyTest checks the accounts on temporary realms).
+     *
+     * @param array<string, mixed> $input
+     */
+    private function verify(array $input = []): CommandTester
+    {
+        return $this->step('demo-data:verify', $input + ['--no-accounts' => true]);
+    }
+
     private function catalogSteps(): void
     {
         $this->succeeds('demo-data:categories');

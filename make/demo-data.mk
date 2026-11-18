@@ -14,7 +14,9 @@ DIR ?=
 
 # Generates the demo data of PROFILE on top of the seed with apps/api/bin/generate-demo in the api container (the order of
 # the steps, the checks and the exit codes are described there; a failing step stops the target). It resets the data of
-# every module first, like `make seed`; run `make seed` afterwards to get back the data the E2E tests work on.
+# every module first, like `make seed`; run `make seed` afterwards to get back the data the E2E tests work on. The step of
+# the accounts logs in to the Keycloak of the stack as its administrator: the api container has KC_BOOTSTRAP_ADMIN_PASSWORD
+# from .env.local, and the generated accounts go to the realms shop and backoffice of the stack (`make seed` leaves them).
 # A profile other than `small` takes its photos from the private bucket of the photo pool: the four read variables
 # (DEMO_PHOTOS_ENDPOINT, DEMO_PHOTOS_BUCKET, DEMO_PHOTOS_ACCESS_KEY_ID, DEMO_PHOTOS_SECRET_ACCESS_KEY) are read from
 # DEMO_PHOTOS_ENV_FILE as data (no value is evaluated) and passed to the container by name (`-e NAME`: the value comes from

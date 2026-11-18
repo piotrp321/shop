@@ -10,7 +10,7 @@ namespace App\DemoData\Identity;
  * never of the number of accounts. The step of the accounts (Keycloak) and every actor of the history (price changes,
  * order history) use this one function, so a number means the same role everywhere.
  *
- * The id of the actor is the id of the account: UUID v5 of `staff:<n>` in the namespace of the profile.
+ * The id and the name of an actor are those of the generated account of the number (AccountGenerator::staff()).
  */
 final class StaffRoles
 {
@@ -61,17 +61,13 @@ final class StaffRoles
         return $numbers;
     }
 
-    public static function actorId(string $namespace, int $number): string
-    {
-        return DemoUuid::v5($namespace, 'staff:'.$number);
-    }
-
     /**
-     * The name the history shows for the actor. It is a stand-in that depends on the number only; the account of the
-     * staff member (step 4) carries the person of the same number.
+     * The rule itself (the roles of the cycle with their counts), part of the fingerprint of the generated accounts.
+     *
+     * @return array<string, int>
      */
-    public static function actorName(int $number): string
+    public static function rule(): array
     {
-        return 'Pracownik demo '.$number;
+        return self::CYCLE_ROLES;
     }
 }

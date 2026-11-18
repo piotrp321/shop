@@ -20,7 +20,7 @@ final class VerifyStepTest extends KernelTestCase
     {
         $this->generatedSteps();
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
         self::assertStringContainsString('consistent', $tester->getDisplay());
@@ -34,7 +34,7 @@ final class VerifyStepTest extends KernelTestCase
         self::assertIsArray($row);
         $connection->executeStatement('DELETE FROM catalog_product_variant WHERE product_id = ?', [$row['id']]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A published product has no variant', $tester->getDisplay());
@@ -51,7 +51,7 @@ final class VerifyStepTest extends KernelTestCase
         $connection->executeStatement('DELETE FROM pricing_variant_price WHERE variant_id IN (SELECT id FROM catalog_product_variant WHERE product_id = ?)', [$id]);
         $connection->executeStatement('DELETE FROM catalog_product_variant WHERE product_id = ?', [$id]);
 
-        self::assertSame(Command::SUCCESS, $this->step('demo-data:verify')->getStatusCode());
+        self::assertSame(Command::SUCCESS, $this->verify()->getStatusCode());
     }
 
     public function testItListsAProductCountThatDiffersFromTheProfile(): void
@@ -59,7 +59,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement('DELETE FROM catalog_product WHERE id = (SELECT id FROM catalog_product ORDER BY id LIMIT 1)');
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('has 2000 products of the generator, the table has 1999', $tester->getDisplay());
@@ -70,7 +70,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement("UPDATE catalog_product SET slug = 'bez-numeru' WHERE id = (SELECT id FROM catalog_product ORDER BY id LIMIT 1)");
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('without the number of the product', $tester->getDisplay());
@@ -83,7 +83,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->connection()->executeStatement("UPDATE catalog_product SET slug = 'powtorzony-a-17' WHERE id = ?", [$ids[0]]);
         $this->connection()->executeStatement("UPDATE catalog_product SET slug = 'powtorzony-b-17' WHERE id = ?", [$ids[1]]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('repeat a product number', $tester->getDisplay());
@@ -94,7 +94,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement("UPDATE catalog_product SET slug = 'buty-szosowe-tarvik-asfalt-200' WHERE id = (SELECT id FROM catalog_product ORDER BY id LIMIT 1)");
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('The slug of a catalog.yaml product belongs to another product: buty-szosowe-tarvik-asfalt-200', $tester->getDisplay());
@@ -110,7 +110,7 @@ final class VerifyStepTest extends KernelTestCase
             [$seedId, $category],
         );
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         // The id is not the one the seed gives the product, so it is reported as taken by another product.
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
@@ -125,7 +125,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->connection()->executeStatement("DELETE FROM catalog_category WHERE slug = 'kolce'");
         $this->connection()->executeStatement("DELETE FROM catalog_category WHERE slug = 'kolce'");
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('category tree of the generator is incomplete', $tester->getDisplay());
@@ -138,7 +138,7 @@ final class VerifyStepTest extends KernelTestCase
         self::assertIsArray($row);
         $this->connection()->executeStatement('DELETE FROM pricing_variant_price WHERE variant_id = ?', [$row['id']]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A variant has no current price', $tester->getDisplay());
@@ -151,7 +151,7 @@ final class VerifyStepTest extends KernelTestCase
         $id = $this->connection()->fetchOne('SELECT variant_id FROM pricing_variant_price ORDER BY variant_id LIMIT 1');
         $this->connection()->executeStatement('DELETE FROM pricing_price_history WHERE variant_id = ?', [$id]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A variant has no price history entry', $tester->getDisplay());
@@ -162,7 +162,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement('UPDATE pricing_variant_price SET gross_amount = gross_amount + 100, net_amount = net_amount + 81, vat_amount = vat_amount + 19 WHERE variant_id = (SELECT variant_id FROM pricing_variant_price ORDER BY variant_id LIMIT 1)');
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('The current price of a variant is not the last entry of its history', $tester->getDisplay());
@@ -187,11 +187,11 @@ final class VerifyStepTest extends KernelTestCase
         $inSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE '.PricingVerifier::inSample('hashtext(variant_id::text)', 2).' ORDER BY variant_id LIMIT 1');
         $outOfSample = $connection->fetchOne('SELECT variant_id FROM pricing_variant_price WHERE NOT '.PricingVerifier::inSample('hashtext(variant_id::text)', 2).' ORDER BY variant_id LIMIT 1');
         $connection->executeStatement('UPDATE pricing_variant_price SET gross_amount = gross_amount + 100, net_amount = net_amount + 81, vat_amount = vat_amount + 19 WHERE variant_id = ?', [$outOfSample]);
-        self::assertStringNotContainsString('is not the last entry of its history', $this->step('demo-data:verify', ['--products' => 600_000])->getDisplay());
+        self::assertStringNotContainsString('is not the last entry of its history', $this->verify(['--products' => 600_000])->getDisplay());
 
         $connection->executeStatement('UPDATE pricing_variant_price SET gross_amount = gross_amount + 100, net_amount = net_amount + 81, vat_amount = vat_amount + 19 WHERE variant_id = ?', [$inSample]);
 
-        self::assertStringContainsString('is not the last entry of its history', $this->step('demo-data:verify', ['--products' => 600_000])->getDisplay());
+        self::assertStringContainsString('is not the last entry of its history', $this->verify(['--products' => 600_000])->getDisplay());
     }
 
     public function testItListsAPriceThatDoesNotBreakDownByThePricingRule(): void
@@ -201,7 +201,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->connection()->executeStatement('UPDATE pricing_variant_price SET net_amount = net_amount + 1, vat_amount = vat_amount - 1 WHERE variant_id = ?', [$id]);
         $this->connection()->executeStatement('UPDATE pricing_price_history SET net_amount = net_amount + 1, vat_amount = vat_amount - 1 WHERE variant_id = ?', [$id]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('does not break down by the rule of Pricing', $tester->getDisplay());
@@ -212,7 +212,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement('INSERT INTO pricing_variant_price (variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at) SELECT gen_random_uuid(), currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at FROM pricing_variant_price LIMIT 1');
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A price belongs to a variant that does not exist', $tester->getDisplay());
@@ -223,7 +223,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement("UPDATE pricing_promotion SET ends_at = ?::timestamptz + interval '1 day' WHERE id = (SELECT id FROM pricing_promotion ORDER BY id LIMIT 1)", [self::ANCHOR]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A generated promotion has not ended before the anchor', $tester->getDisplay());
@@ -234,7 +234,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) SELECT (SELECT id FROM pricing_promotion ORDER BY id LIMIT 1), gen_random_uuid() FROM generate_series(1, 1001)');
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A generated promotion has more than 1000 variants', $tester->getDisplay());
@@ -250,7 +250,7 @@ final class VerifyStepTest extends KernelTestCase
         $connection->executeStatement('UPDATE pricing_promotion SET starts_at = ?, ends_at = ? WHERE id = ?', [$first['starts_at'], $first['ends_at'], $second]);
         $connection->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) SELECT ?, variant_id FROM pricing_promotion_variant WHERE promotion_id = ? ON CONFLICT DO NOTHING', [$second, $first['id']]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A variant is in two generated promotions with overlapping periods', $tester->getDisplay());
@@ -263,7 +263,7 @@ final class VerifyStepTest extends KernelTestCase
         $variantId = $connection->fetchOne('SELECT variant_id FROM pricing_promotion_variant ORDER BY variant_id LIMIT 1');
         $connection->executeStatement("UPDATE pricing_price_history SET changed_at = ?::timestamptz - interval '1 hour' WHERE variant_id = ? AND source = 'seed'", [self::ANCHOR, $variantId]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A promoted variant has no price when its promotion starts', $tester->getDisplay());
@@ -277,7 +277,7 @@ final class VerifyStepTest extends KernelTestCase
         self::assertIsArray($row);
         $connection->executeStatement("INSERT INTO pricing_price_history (id, variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, changed_at, source, actor_id, actor_name) SELECT gen_random_uuid(), variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, ?::timestamptz + interval '1 hour', 'staff', gen_random_uuid()::text, 'Pracownik demo 1' FROM pricing_price_history WHERE variant_id = ? LIMIT 1", [$row['starts_at'], $row['variant_id']]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A price was changed while its variant was in a promotion', $tester->getDisplay());
@@ -288,7 +288,7 @@ final class VerifyStepTest extends KernelTestCase
         $this->generatedSteps();
         $this->connection()->executeStatement('DELETE FROM pricing_promotion WHERE id = (SELECT id FROM pricing_promotion ORDER BY id LIMIT 1)');
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('The generator plans 40 promotions, the table has 39', $tester->getDisplay());
@@ -301,7 +301,7 @@ final class VerifyStepTest extends KernelTestCase
         $connection->executeStatement("UPDATE pricing_discount_code SET ends_at = ?::timestamptz + interval '10 days' WHERE id = (SELECT id FROM pricing_discount_code ORDER BY id LIMIT 1)", [self::ANCHOR]);
         $connection->executeStatement('DELETE FROM pricing_discount_code WHERE id = (SELECT id FROM pricing_discount_code ORDER BY id DESC LIMIT 1)');
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('A generated discount code has not ended before the anchor', $tester->getDisplay());
@@ -320,7 +320,7 @@ final class VerifyStepTest extends KernelTestCase
         );
         $connection->executeStatement("INSERT INTO catalog_product_variant (id, product_id, position, option_values, values_key) VALUES (?, ?, 0, '[]', '[]')", [$seedId, $seedId]);
 
-        $tester = $this->step('demo-data:verify');
+        $tester = $this->verify();
 
         // The product has the slug of a seed product but not its id (a violation of the catalog check), and no price: the
         // price check does not count it as a generated variant.
@@ -329,7 +329,7 @@ final class VerifyStepTest extends KernelTestCase
 
     public function testAnUnknownProfileIsRefused(): void
     {
-        $tester = $this->step('demo-data:verify', ['--demo-profile' => 'huge']);
+        $tester = $this->verify(['--demo-profile' => 'huge']);
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\DemoData;
 
+use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
@@ -138,7 +139,7 @@ final class PromotionPlannerTest extends TestCase
     {
         // The application plans a promotion only for variants that have a current price at that moment.
         $generator = new ProductGenerator(self::dictionaries(), self::profiles()->namespace, self::anchor(), 2_000, self::profiles()->partSize);
-        $prices = new PriceGenerator(self::dictionaries(), self::profiles()->namespace, self::anchor(), 20);
+        $prices = new PriceGenerator(self::dictionaries(), self::profiles()->namespace, self::anchor(), 20, new PersonDictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data'));
         /** @var array<string, \DateTimeImmutable> $firstPrice */
         $firstPrice = [];
         for ($part = 0; $part < 4; ++$part) {

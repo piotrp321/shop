@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\DemoData;
 
+use App\DemoData\Accounts\AccountGenerator;
+use App\DemoData\Accounts\PersonDictionaries;
 use App\DemoData\Catalog\Dictionaries;
 use App\DemoData\Catalog\ProductGenerator;
 use App\DemoData\Catalog\ProductSpec;
@@ -43,6 +45,11 @@ final class PriceGeneratorTest extends TestCase
         return self::$dictionaries ??= new Dictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data');
     }
 
+    private static function people(): PersonDictionaries
+    {
+        return new PersonDictionaries(\dirname(__DIR__, 3).'/fixtures/demo-data');
+    }
+
     private static function profiles(): Profiles
     {
         return Profiles::fromFile(\dirname(__DIR__, 3).'/fixtures/demo-data/profiles.yaml');
@@ -55,7 +62,7 @@ final class PriceGeneratorTest extends TestCase
 
     private static function generator(int $staff = 20): PriceGenerator
     {
-        return new PriceGenerator(self::dictionaries(), self::profiles()->namespace, self::anchor(), $staff);
+        return new PriceGenerator(self::dictionaries(), self::profiles()->namespace, self::anchor(), $staff, self::people());
     }
 
     /**
@@ -176,7 +183,12 @@ final class PriceGeneratorTest extends TestCase
     {
         $variants = 0;
         $changed = 0;
-        $admins = array_map(static fn (int $number): string => StaffRoles::actorId(self::profiles()->namespace, $number), StaffRoles::adminNumbers(20));
+        // The actor is a generated staff account with the role admin: its id (with the fingerprint) and its name.
+        $accounts = new AccountGenerator(self::profiles()->namespace, self::people());
+        $admins = [];
+        foreach (StaffRoles::adminNumbers(20) as $number) {
+            $admins[$accounts->staffId($number)] = $accounts->staff($number)->person->fullName();
+        }
         $windowStart = self::anchor()->modify('-90 days');
         foreach (self::products() as $product) {
             foreach (self::timelines()[$product->id] as $timeline) {
@@ -187,8 +199,8 @@ final class PriceGeneratorTest extends TestCase
                     ++$changed;
                     $change = $entries[1];
                     self::assertSame('staff', $change->source);
-                    self::assertContains($change->actorId, $admins);
-                    self::assertSame(StaffRoles::actorName((int) array_search($change->actorId, array_combine(StaffRoles::adminNumbers(20), $admins), true)), $change->actorName);
+                    self::assertArrayHasKey((string) $change->actorId, $admins);
+                    self::assertSame($admins[(string) $change->actorId], $change->actorName);
                     self::assertGreaterThanOrEqual($windowStart, $change->changedAt);
                     self::assertLessThan(self::anchor(), $change->changedAt);
                     self::assertGreaterThan($entries[0]->changedAt, $change->changedAt);
@@ -232,7 +244,7 @@ final class PriceGeneratorTest extends TestCase
 
     public function testADifferentSeedGivesDifferentPrices(): void
     {
-        $other = new PriceGenerator(self::dictionaries(), 'b3a7d1f0-3c64-4e8b-9a52-1d7e0c5f6a49', self::anchor(), 20);
+        $other = new PriceGenerator(self::dictionaries(), 'b3a7d1f0-3c64-4e8b-9a52-1d7e0c5f6a49', self::anchor(), 20, self::people());
 
         $differs = false;
         foreach (\array_slice(self::products(), 0, 50) as $product) {

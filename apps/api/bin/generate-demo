@@ -16,8 +16,9 @@
 #
 # The steps, in order: a check of the options (nothing is changed), bin/seed-demo (reset and the seed catalog), the
 # categories of the tail, the parts of the products and, after the photos, the parts of the prices (one process per part
-# group, run in parallel, each awaited), the promotions and discount codes, ANALYZE of the filled tables, the search index,
-# the caches of the store and the consistency check. The first failing step stops the script with its exit code, so the
+# group, run in parallel, each awaited), the promotions and discount codes, the staff and customer accounts in Keycloak
+# (the administrator of the stack from the environment), ANALYZE of the filled tables, the search index, the caches of
+# the store and the consistency check (also of the accounts). The first failing step stops the script with its exit code, so the
 # later steps do not run; a failing part stops the other parts first.
 set -eu
 
@@ -182,6 +183,10 @@ run_parts demo-data:prices || exit "$?"
 
 # shellcheck disable=SC2086
 "$console" demo-data:promotions $common
+
+# The accounts in Keycloak, with its administrator from the environment (DEMO_DATA_KEYCLOAK_URL, KC_BOOTSTRAP_ADMIN_PASSWORD).
+# shellcheck disable=SC2086
+"$console" demo-data:accounts $common
 
 "$console" demo-data:analyze
 
