@@ -1,0 +1,31 @@
+
+Ramp: by step
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+step 0 (10/s)         243       12.15    41.6     101      129.6    0%       0      0
+step 1 (20/s)         473       23.65    37.4     90.5     125.9    0%       0      0
+step 2 (30/s)         707       35.35    25.4     84.1     123.6    0%       0      0
+step 3 (40/s)         1005      50.25    17.5     75.5     106.7    0%       0      0
+step 4 (50/s)         1207      60.35    13.9     65.9     96.9     0%       0      0
+step 5 (60/s)         1437      71.85    13.1     66.6     95.9     0%       0      0
+step 6 (70/s)         1659      82.95    16.9     81.2     113.3    0%       0      0
+step 7 (80/s)         1973      98.65    15.9     69.7     104      0%       0      0
+step 8 (90/s)         2159      107.95   19.1     85.8     129.8    0%       0      0
+step 9 (100/s)        2322      116.1    96.7     1220.4   1513.8   0%       0      0
+step 10 (110/s)       638       31.9     1307.3   2009     2675.5   0%       0      0
+
+Ramp: reads and carts
+                      requests  req/s    p50 ms   p95 ms   p99 ms   5xx/net  409    429
+read                  10286     46.75    22.1     1168.6   1771.3   0%       0      0
+cart                  3537      16.08    18.3     306      619.4    0%       0      0
+home                  1091      4.96     17.4     1161.4   1600.2   0%       0      0
+category              2322      10.55    21.9     1324.2   1839.6   0%       0      0
+product               3959      18       13.5     1048.2   1694.8   0%       0      0
+search                1413      6.42     21.1     1174     1659.4   0%       0      0
+search_filtered       1501      6.82     73.1     1220.6   1893.6   0%       0      0
+cart_add              1183      5.38     32.5     490.9    785.8    0%       0      0
+cart_read             1177      5.35     16.6     359.1    508.1    0%       0      0
+cart_page             1177      5.35     1.6      79.1     130.4    0%       0      0
+
+saturated: step 10 (p95); max sustained 98.7 iterations/s; steady rate 69; dropped iterations 73
+time="2026-11-18T17:40:41Z" level=error msg="thresholds on metrics 'http_req_duration{step:10}' were crossed; at least one has abortOnFail enabled, stopping test prematurely"
+k6 exit 99

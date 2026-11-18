@@ -1,0 +1,652 @@
+Pager usage is off.
+Timing is on.
+Time: 379.737 ms
+Time: 94.638 ms
+Time: 21.101 ms
+Time: 1027.197 ms (00:01.027)
+small_prefix /6f62a979-6012-5f5a-a39b-13948746e108/c30c66bb-d85b-589b-85c6-5a5a4817f05c/13dea1d9-d7ee-52f5-a20b-0761e4bff032/% big_prefix /d7c098d0-4bae-595e-a1e1-e4a923448956/% hot_code dac4c26e-7357-5592-9ab9-b61948e89240
+===== E1a orders fragment frequent (example)
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..435.74 rows=50 width=136) (actual time=3.192..4.439 rows=50.00 loops=1)
+   Buffers: shared hit=193 read=14
+   I/O Timings: shared read=4.108
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..8705753.46 rows=999932 width=136) (actual time=3.191..4.435 rows=50.00 loops=1)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+         Index Searches: 1
+         Buffers: shared hit=193 read=14
+         I/O Timings: shared read=4.108
+         SubPlan 1
+           ->  Aggregate  (cost=8.51..8.52 rows=1 width=8) (actual time=0.054..0.054 rows=1.00 loops=50)
+                 Buffers: shared hit=193 read=8
+                 I/O Timings: shared read=2.511
+                 ->  Index Scan using ordering_order_line_order_id_idx on ordering_order_line l  (cost=0.43..8.50 rows=4 width=4) (actual time=0.053..0.054 rows=2.16 loops=50)
+                       Index Cond: (order_id = o.id)
+                       Index Searches: 50
+                       Buffers: shared hit=193 read=8
+                       I/O Timings: shared read=2.511
+ Planning:
+   Buffers: shared hit=287 read=27
+   I/O Timings: shared read=5.147
+ Planning Time: 7.376 ms
+ Execution Time: 4.466 ms
+(22 rows)
+
+Time: 16.279 ms
+===== E1b orders fragment medium (kowal)
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..461.77 rows=50 width=100) (actual time=0.021..29.324 rows=50.00 loops=1)
+   Buffers: shared hit=7 read=125
+   I/O Timings: shared read=26.006
+   ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.42..186411.08 rows=20203 width=100) (actual time=0.021..29.313 rows=50.00 loops=1)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+         Rows Removed by Filter: 2017
+         Index Searches: 1
+         Buffers: shared hit=7 read=125
+         I/O Timings: shared read=26.006
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.086 ms
+ Execution Time: 29.343 ms
+(13 rows)
+
+Time: 29.720 ms
+===== E1c orders fragment rare (xq7z)
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=452.21..452.34 rows=50 width=100) (actual time=0.199..0.199 rows=0.00 loops=1)
+   Buffers: shared hit=9 read=4
+   I/O Timings: shared read=0.170
+   ->  Sort  (cost=452.21..452.46 rows=100 width=100) (actual time=0.198..0.198 rows=0.00 loops=1)
+         Sort Key: placed_at DESC, id DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=9 read=4
+         I/O Timings: shared read=0.170
+         ->  Bitmap Heap Scan on ordering_order o  (cost=59.40..448.89 rows=100 width=100) (actual time=0.186..0.186 rows=0.00 loops=1)
+               Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%xq7z%'::text)
+               Buffers: shared hit=3 read=4
+               I/O Timings: shared read=0.170
+               ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..59.38 rows=100 width=0) (actual time=0.182..0.183 rows=0.00 loops=1)
+                     Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%xq7z%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=3 read=4
+                     I/O Timings: shared read=0.170
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.086 ms
+ Execution Time: 0.580 ms
+(21 rows)
+
+Time: 0.790 ms
+===== E1d orders fragment medium, sorted by total (kowal)
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..680.05 rows=50 width=100) (actual time=3.983..650.322 rows=50.00 loops=1)
+   Buffers: shared hit=65 read=2348
+   I/O Timings: shared read=603.486
+   ->  Index Scan Backward using ordering_order_total_gross_id_idx on ordering_order o  (cost=0.42..274608.06 rows=20203 width=100) (actual time=3.982..650.284 rows=50.00 loops=1)
+         Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+         Rows Removed by Filter: 2348
+         Index Searches: 1
+         Buffers: shared hit=65 read=2348
+         I/O Timings: shared read=603.486
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.053 ms
+ Execution Time: 650.401 ms
+(13 rows)
+
+Time: 651.463 ms
+===== E2a bounded count fragment frequent (example)
+                                                                    QUERY PLAN                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=906.88..906.89 rows=1 width=8) (actual time=47.399..47.400 rows=1.00 loops=1)
+   Buffers: shared hit=30 read=581
+   I/O Timings: shared read=5.262
+   ->  Limit  (cost=0.00..781.87 rows=10001 width=4) (actual time=1.744..46.092 rows=10001.00 loops=1)
+         Buffers: shared hit=30 read=581
+         I/O Timings: shared read=5.262
+         ->  Seq Scan on ordering_order o  (cost=0.00..78173.80 rows=999932 width=4) (actual time=1.742..44.005 rows=10001.00 loops=1)
+               Filter: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%example%'::text)
+               Buffers: shared hit=30 read=581
+               I/O Timings: shared read=5.262
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 1.676 ms
+ Execution Time: 47.848 ms
+(14 rows)
+
+Time: 51.437 ms
+===== E2b bounded count fragment medium (kowal)
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=19940.27..19940.28 rows=1 width=8) (actual time=253.216..253.217 rows=1.00 loops=1)
+   Buffers: shared hit=489 read=7812
+   I/O Timings: shared read=149.223
+   ->  Limit  (cost=194.38..19815.26 rows=10001 width=4) (actual time=23.006..251.269 rows=10001.00 loops=1)
+         Buffers: shared hit=489 read=7812
+         I/O Timings: shared read=149.223
+         ->  Bitmap Heap Scan on ordering_order o  (cost=194.38..39830.48 rows=20203 width=4) (actual time=23.005..249.953 rows=10001.00 loops=1)
+               Recheck Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+               Rows Removed by Index Recheck: 2
+               Heap Blocks: exact=8157
+               Buffers: shared hit=489 read=7812
+               I/O Timings: shared read=149.223
+               ->  Bitmap Index Scan on ordering_order_search_trgm_idx  (cost=0.00..189.33 rows=20203 width=0) (actual time=20.223..20.223 rows=23464.00 loops=1)
+                     Index Cond: (lower((((((number)::text || '\x1F'::text) || (email)::text) || '\x1F'::text) || (full_name)::text)) ~~ '%kowal%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=50 read=65
+                     I/O Timings: shared read=10.552
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.094 ms
+ Execution Time: 253.330 ms
+(21 rows)
+
+Time: 253.631 ms
+===== E3a admin products in a small leaf category
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=7.68..826.01 rows=50 width=71) (actual time=11198.519..12423.610 rows=4.00 loops=1)
+   Buffers: shared hit=186630 read=827414
+   I/O Timings: shared read=11179.170
+   ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=7.68..12290468.29 rows=750944 width=71) (actual time=11198.518..12423.607 rows=4.00 loops=1)
+         Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+         Rows Removed by Filter: 1000187
+         Index Searches: 1
+         Buffers: shared hit=186630 read=827414
+         I/O Timings: shared read=11179.170
+         SubPlan 1
+           ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=1 width=16) (actual time=0.009..0.016 rows=1.00 loops=1)
+                 Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/c30c66bb-d85b-589b-85c6-5a5a4817f05c/13dea1d9-d7ee-52f5-a20b-0761e4bff032/%'::text)
+                 Rows Removed by Filter: 179
+                 Buffers: shared hit=5
+         SubPlan 3
+           ->  Nested Loop  (cost=22.28..1623.23 rows=1112 width=16) (actual time=0.187..0.189 rows=0.00 loops=1)
+                 Buffers: shared hit=6 read=1
+                 I/O Timings: shared read=0.154
+                 ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=1 width=16) (actual time=0.002..0.012 rows=1.00 loops=1)
+                       Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/c30c66bb-d85b-589b-85c6-5a5a4817f05c/13dea1d9-d7ee-52f5-a20b-0761e4bff032/%'::text)
+                       Rows Removed by Filter: 179
+                       Buffers: shared hit=5
+                 ->  Bitmap Heap Scan on catalog_product_category pc  (cost=22.28..1597.94 rows=1804 width=32) (actual time=0.174..0.174 rows=0.00 loops=1)
+                       Recheck Cond: (category_id = c_1.id)
+                       Buffers: shared hit=1 read=1
+                       I/O Timings: shared read=0.154
+                       ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..21.83 rows=1804 width=0) (actual time=0.160..0.160 rows=0.00 loops=1)
+                             Index Cond: (category_id = c_1.id)
+                             Index Searches: 1
+                             Buffers: shared hit=1 read=1
+                             I/O Timings: shared read=0.154
+ Planning:
+   Buffers: shared hit=97 read=14
+   I/O Timings: shared read=1.898
+ Planning Time: 3.113 ms
+ Execution Time: 12423.641 ms
+(36 rows)
+
+Time: 12428.907 ms (00:12.429)
+===== E3b admin products in the biggest department
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=7.76..832.22 rows=50 width=71) (actual time=1.001..1.155 rows=50.00 loops=1)
+   Buffers: shared hit=10 read=48
+   I/O Timings: shared read=1.032
+   ->  Index Scan using catalog_product_name_id_idx on catalog_product p  (cost=7.76..12382458.95 rows=750944 width=71) (actual time=1.000..1.152 rows=50.00 loops=1)
+         Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+         Index Searches: 1
+         Buffers: shared hit=10 read=48
+         I/O Timings: shared read=1.032
+         SubPlan 1
+           ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=35 width=16) (actual time=0.136..0.188 rows=34.00 loops=1)
+                 Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+                 Rows Removed by Filter: 146
+                 Buffers: shared hit=2 read=3
+                 I/O Timings: shared read=0.141
+         SubPlan 3
+           ->  Hash Join  (cost=7.69..4023.48 rows=38926 width=16) (never executed)
+                 Hash Cond: (pc.category_id = c_1.id)
+                 ->  Seq Scan on catalog_product_category pc  (cost=0.00..3477.92 rows=200192 width=32) (never executed)
+                 ->  Hash  (cost=7.25..7.25 rows=35 width=16) (never executed)
+                       ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=35 width=16) (never executed)
+                             Filter: (path ~~ '/d7c098d0-4bae-595e-a1e1-e4a923448956/%'::text)
+ Planning:
+   Buffers: shared hit=13 read=7
+   I/O Timings: shared read=0.394
+ Planning Time: 0.896 ms
+ Execution Time: 1.177 ms
+(26 rows)
+
+Time: 2.299 ms
+===== E4 bounded count, small leaf category
+                                                                               QUERY PLAN                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=157984.75..157984.76 rows=1 width=8) (actual time=443.289..443.291 rows=1.00 loops=1)
+   Buffers: shared hit=14869 read=110561
+   I/O Timings: shared read=117.591
+   ->  Limit  (cost=7.25..157859.74 rows=10001 width=4) (actual time=255.254..443.261 rows=4.00 loops=1)
+         Buffers: shared hit=14869 read=110561
+         I/O Timings: shared read=117.591
+         ->  Seq Scan on catalog_product p  (cost=7.25..11852659.58 rows=750944 width=4) (actual time=248.288..436.295 rows=4.00 loops=1)
+               Filter: ((ANY (primary_category_id = (hashed SubPlan 1).col1)) OR (ANY (id = (hashed SubPlan 3).col1)))
+               Rows Removed by Filter: 1000187
+               Buffers: shared hit=14869 read=110561
+               I/O Timings: shared read=117.591
+               SubPlan 1
+                 ->  Seq Scan on catalog_category c  (cost=0.00..7.25 rows=1 width=16) (actual time=0.081..0.092 rows=1.00 loops=1)
+                       Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/c30c66bb-d85b-589b-85c6-5a5a4817f05c/13dea1d9-d7ee-52f5-a20b-0761e4bff032/%'::text)
+                       Rows Removed by Filter: 179
+                       Buffers: shared hit=5
+               SubPlan 3
+                 ->  Nested Loop  (cost=22.28..1623.23 rows=1112 width=16) (actual time=0.169..0.171 rows=0.00 loops=1)
+                       Buffers: shared hit=6 read=1
+                       I/O Timings: shared read=0.103
+                       ->  Seq Scan on catalog_category c_1  (cost=0.00..7.25 rows=1 width=16) (actual time=0.042..0.050 rows=1.00 loops=1)
+                             Filter: (path ~~ '/6f62a979-6012-5f5a-a39b-13948746e108/c30c66bb-d85b-589b-85c6-5a5a4817f05c/13dea1d9-d7ee-52f5-a20b-0761e4bff032/%'::text)
+                             Rows Removed by Filter: 179
+                             Buffers: shared hit=5
+                       ->  Bitmap Heap Scan on catalog_product_category pc  (cost=22.28..1597.94 rows=1804 width=32) (actual time=0.117..0.117 rows=0.00 loops=1)
+                             Recheck Cond: (category_id = c_1.id)
+                             Buffers: shared hit=1 read=1
+                             I/O Timings: shared read=0.103
+                             ->  Bitmap Index Scan on idx_8bebef2612469de2  (cost=0.00..21.83 rows=1804 width=0) (actual time=0.110..0.111 rows=0.00 loops=1)
+                                   Index Cond: (category_id = c_1.id)
+                                   Index Searches: 1
+                                   Buffers: shared hit=1 read=1
+                                   I/O Timings: shared read=0.103
+ Planning:
+   Buffers: shared hit=20
+ Planning Time: 0.241 ms
+ JIT:
+   Functions: 41
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.040 ms (Deform 0.296 ms), Inlining 0.000 ms, Optimization 0.508 ms, Emission 7.233 ms, Total 8.781 ms
+ Execution Time: 483.769 ms
+(41 rows)
+
+Time: 484.287 ms
+===== E5 discount codes with active uses
+                                                                                                QUERY PLAN                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.14..2237.74 rows=17 width=41) (actual time=0.608..10.385 rows=17.00 loops=1)
+   Buffers: shared hit=19 read=102
+   I/O Timings: shared read=5.648
+   ->  Index Scan using pricing_discount_code_created_at_id_idx on pricing_discount_code c  (cost=0.14..2237.74 rows=17 width=41) (actual time=0.607..10.381 rows=17.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=19 read=102
+         I/O Timings: shared read=5.648
+         SubPlan 1
+           ->  Aggregate  (cost=130.89..130.90 rows=1 width=8) (actual time=0.596..0.596 rows=1.00 loops=17)
+                 Buffers: shared hit=19 read=100
+                 I/O Timings: shared read=5.454
+                 ->  Index Only Scan using pricing_discount_code_usage_active_idx on pricing_discount_code_usage u  (cost=0.29..118.57 rows=4930 width=0) (actual time=0.117..0.487 rows=4056.82 loops=17)
+                       Index Cond: (code_id = c.id)
+                       Heap Fetches: 0
+                       Index Searches: 17
+                       Buffers: shared hit=19 read=100
+                       I/O Timings: shared read=5.454
+ Planning:
+   Buffers: shared hit=41 read=14
+   I/O Timings: shared read=4.549
+ Planning Time: 6.038 ms
+ Execution Time: 10.419 ms
+(22 rows)
+
+Time: 18.271 ms
+===== E6a customers fragment frequent (example)
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..14.11 rows=50 width=107) (actual time=0.435..4.232 rows=50.00 loops=1)
+   Buffers: shared read=53
+   I/O Timings: shared read=3.964
+   ->  Index Scan using ordering_customer_last_order_at_idx on ordering_customer c  (cost=0.42..26991.99 rows=98534 width=107) (actual time=0.434..4.219 rows=50.00 loops=1)
+         Filter: ((lower((email)::text) ~~ '%example%'::text) OR (lower((full_name)::text) ~~ '%example%'::text))
+         Index Searches: 1
+         Buffers: shared read=53
+         I/O Timings: shared read=3.964
+ Planning:
+   Buffers: shared hit=121 read=24
+   I/O Timings: shared read=3.353
+ Planning Time: 4.013 ms
+ Execution Time: 4.252 ms
+(13 rows)
+
+Time: 8.993 ms
+===== E6b customers fragment medium (nowak)
+                                                                                  QUERY PLAN                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..872.24 rows=50 width=107) (actual time=1.581..113.437 rows=50.00 loops=1)
+   Buffers: shared hit=1005 read=1505
+   I/O Timings: shared read=105.170
+   ->  Index Scan using ordering_customer_last_order_at_idx on ordering_customer c  (cost=0.42..26991.99 rows=1548 width=107) (actual time=1.580..113.417 rows=50.00 loops=1)
+         Filter: ((lower((email)::text) ~~ '%nowak%'::text) OR (lower((full_name)::text) ~~ '%nowak%'::text))
+         Rows Removed by Filter: 2436
+         Index Searches: 1
+         Buffers: shared hit=1005 read=1505
+         I/O Timings: shared read=105.170
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.096 ms
+ Execution Time: 113.464 ms
+(13 rows)
+
+Time: 113.834 ms
+===== E7 orders status + last day + sort by total
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=973.48..973.60 rows=50 width=50) (actual time=7.691..7.692 rows=0.00 loops=1)
+   Buffers: shared hit=3 read=45
+   I/O Timings: shared read=7.485
+   ->  Sort  (cost=973.48..974.64 rows=464 width=50) (actual time=7.690..7.690 rows=0.00 loops=1)
+         Sort Key: total_gross DESC, id DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=3 read=45
+         I/O Timings: shared read=7.485
+         ->  Index Scan using ordering_order_placed_at_id_idx on ordering_order o  (cost=0.43..958.07 rows=464 width=50) (actual time=7.686..7.686 rows=0.00 loops=1)
+               Index Cond: ((placed_at >= (now() - '1 day'::interval)) AND (placed_at < now()))
+               Filter: ((status)::text = 'delivered'::text)
+               Rows Removed by Filter: 747
+               Index Searches: 1
+               Buffers: shared hit=3 read=45
+               I/O Timings: shared read=7.485
+ Planning:
+   Buffers: shared hit=10 read=6
+   I/O Timings: shared read=1.103
+ Planning Time: 1.476 ms
+ Execution Time: 7.707 ms
+(20 rows)
+
+Time: 17.051 ms
+===== E8 bounded count of a status
+                                                                                         QUERY PLAN                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=760.84..760.85 rows=1 width=8) (actual time=14.755..14.755 rows=1.00 loops=1)
+   Buffers: shared hit=58 read=127
+   I/O Timings: shared read=12.833
+   ->  Limit  (cost=0.42..635.83 rows=10001 width=4) (actual time=0.614..14.419 rows=10001.00 loops=1)
+         Buffers: shared hit=58 read=127
+         I/O Timings: shared read=12.833
+         ->  Index Only Scan using ordering_order_status_total_gross_id_idx on ordering_order o  (cost=0.42..56634.36 rows=891395 width=4) (actual time=0.613..13.961 rows=10001.00 loops=1)
+               Index Cond: (status = 'delivered'::text)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared hit=58 read=127
+               I/O Timings: shared read=12.833
+ Planning Time: 0.071 ms
+ Execution Time: 14.770 ms
+(14 rows)
+
+Time: 15.204 ms
+===== E9 active uses of the most used code
+                                                                                         QUERY PLAN                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=326.23..326.24 rows=1 width=8) (actual time=0.775..0.775 rows=1.00 loops=1)
+   Buffers: shared hit=19
+   ->  Index Only Scan using pricing_discount_code_usage_active_idx on pricing_discount_code_usage  (cost=0.29..294.99 rows=12497 width=0) (actual time=0.009..0.446 rows=12573.00 loops=1)
+         Index Cond: (code_id = 'dac4c26e-7357-5592-9ab9-b61948e89240'::uuid)
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=19
+ Planning Time: 0.054 ms
+ Execution Time: 0.785 ms
+(9 rows)
+
+Time: 1.028 ms
+===== E10 outbox count
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=32.15..32.16 rows=1 width=8) (actual time=0.106..0.106 rows=1.00 loops=1)
+   Buffers: shared read=1
+   I/O Timings: shared read=0.099
+   ->  Index Only Scan using idx_75ea56e0fb7336f0e3bd61ce16ba31dbbf396750 on messenger_messages  (cost=0.13..32.15 rows=1 width=0) (actual time=0.104..0.105 rows=0.00 loops=1)
+         Index Cond: (queue_name = 'outbox'::text)
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared read=1
+         I/O Timings: shared read=0.099
+ Planning:
+   Buffers: shared hit=36 read=9
+   I/O Timings: shared read=0.991
+ Planning Time: 1.215 ms
+ Execution Time: 0.120 ms
+(14 rows)
+
+Time: 2.278 ms
+===== E12 sitemap chunk boundaries
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=79520.66..79524.83 rows=1669 width=24) (actual time=701.518..701.522 rows=100.00 loops=1)
+   Sort Key: numbered."position"
+   Sort Method: quicksort  Memory: 28kB
+   Buffers: shared hit=655886 read=7303
+   I/O Timings: shared read=430.089
+   ->  Subquery Scan on numbered  (cost=0.48..79431.32 rows=1669 width=24) (actual time=13.261..701.404 rows=100.00 loops=1)
+         Filter: ((numbered."position" > 1) AND (((numbered."position" - 1) % '10000'::bigint) = 0))
+         Rows Removed by Filter: 1000091
+         Buffers: shared hit=655886 read=7303
+         I/O Timings: shared read=430.089
+         ->  WindowAgg  (cost=0.48..59406.17 rows=1001258 width=24) (actual time=0.483..664.863 rows=1000191.00 loops=1)
+               Window: w1 AS (ORDER BY catalog_product.id ROWS UNBOUNDED PRECEDING)
+               Storage: Memory  Maximum Storage: 17kB
+               Buffers: shared hit=655886 read=7303
+               I/O Timings: shared read=430.089
+               ->  Index Only Scan using catalog_product_pkey on catalog_product  (cost=0.42..44387.30 rows=1001258 width=16) (actual time=0.477..540.995 rows=1000191.00 loops=1)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=655886 read=7303
+                     I/O Timings: shared read=430.089
+ Planning:
+   Buffers: shared hit=9
+ Planning Time: 0.127 ms
+ Execution Time: 701.548 ms
+(24 rows)
+
+Time: 703.368 ms
+===== E13 initialize.sh counts
+                                                                                                     QUERY PLAN                                                                                                     
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Result  (cost=149528.81..149528.82 rows=1 width=32) (actual time=1130.351..1132.729 rows=1.00 loops=1)
+   Buffers: shared hit=289220 read=72306
+   I/O Timings: shared read=960.566
+   InitPlan 1
+     ->  Finalize Aggregate  (cost=18701.82..18701.83 rows=1 width=8) (actual time=138.679..138.730 rows=1.00 loops=1)
+           Buffers: shared hit=920 read=1859
+           I/O Timings: shared read=96.652
+           ->  Gather  (cost=18701.60..18701.81 rows=2 width=8) (actual time=135.801..138.707 rows=3.00 loops=1)
+                 Workers Planned: 2
+                 Workers Launched: 2
+                 Buffers: shared hit=920 read=1859
+                 I/O Timings: shared read=96.652
+                 ->  Partial Aggregate  (cost=17701.60..17701.61 rows=1 width=8) (actual time=124.020..124.021 rows=1.00 loops=3)
+                       Buffers: shared hit=920 read=1859
+                       I/O Timings: shared read=96.652
+                       ->  Parallel Index Only Scan using catalog_product_primary_category_id_idx on catalog_product  (cost=0.42..16658.62 rows=417191 width=0) (actual time=0.340..113.867 rows=333397.00 loops=3)
+                             Heap Fetches: 0
+                             Index Searches: 1
+                             Buffers: shared hit=920 read=1859
+                             I/O Timings: shared read=96.652
+   InitPlan 2
+     ->  Finalize Aggregate  (cost=50881.74..50881.75 rows=1 width=8) (actual time=126.967..126.993 rows=1.00 loops=1)
+           Buffers: shared read=34208
+           I/O Timings: shared read=120.218
+           ->  Gather  (cost=50881.53..50881.74 rows=2 width=8) (actual time=126.547..126.979 rows=3.00 loops=1)
+                 Workers Planned: 2
+                 Workers Launched: 2
+                 Buffers: shared read=34208
+                 I/O Timings: shared read=120.218
+                 ->  Partial Aggregate  (cost=49881.53..49881.54 rows=1 width=8) (actual time=116.501..116.502 rows=1.00 loops=3)
+                       Buffers: shared read=34208
+                       I/O Timings: shared read=120.218
+                       ->  Parallel Seq Scan on pricing_variant_price  (cost=0.00..46746.82 rows=1253882 width=0) (actual time=0.175..84.927 rows=1003116.67 loops=3)
+                             Buffers: shared read=34208
+                             I/O Timings: shared read=120.218
+   InitPlan 3
+     ->  Finalize Aggregate  (cost=47699.91..47699.92 rows=1 width=8) (actual time=128.935..128.963 rows=1.00 loops=1)
+           Buffers: shared read=31026
+           I/O Timings: shared read=123.730
+           ->  Gather  (cost=47699.70..47699.91 rows=2 width=8) (actual time=127.206..128.943 rows=3.00 loops=1)
+                 Workers Planned: 2
+                 Workers Launched: 2
+                 Buffers: shared read=31026
+                 I/O Timings: shared read=123.730
+                 ->  Partial Aggregate  (cost=46699.70..46699.71 rows=1 width=8) (actual time=119.399..119.399 rows=1.00 loops=3)
+                       Buffers: shared read=31026
+                       I/O Timings: shared read=123.730
+                       ->  Parallel Seq Scan on inventory_stock_item  (cost=0.00..43564.96 rows=1253896 width=0) (actual time=0.225..85.537 rows=1003116.67 loops=3)
+                             Buffers: shared read=31026
+                             I/O Timings: shared read=123.730
+   InitPlan 4
+     ->  Finalize Aggregate  (cost=32245.30..32245.31 rows=1 width=8) (actual time=733.503..735.775 rows=1.00 loops=1)
+           Buffers: shared hit=288300 read=5213
+           I/O Timings: shared read=619.967
+           ->  Gather  (cost=32245.08..32245.29 rows=2 width=8) (actual time=731.585..735.742 rows=3.00 loops=1)
+                 Workers Planned: 2
+                 Workers Launched: 2
+                 Buffers: shared hit=288300 read=5213
+                 I/O Timings: shared read=619.967
+                 ->  Partial Aggregate  (cost=31245.08..31245.09 rows=1 width=8) (actual time=723.106..723.106 rows=1.00 loops=3)
+                       Buffers: shared hit=288300 read=5213
+                       I/O Timings: shared read=619.967
+                       ->  Parallel Index Only Scan using ordering_order_lower_email_idx on ordering_order  (cost=0.42..30203.38 rows=416680 width=0) (actual time=0.217..710.583 rows=333333.33 loops=3)
+                             Heap Fetches: 19
+                             Index Searches: 1
+                             Buffers: shared hit=288300 read=5213
+                             I/O Timings: shared read=619.967
+ Planning:
+   Buffers: shared hit=75 read=19
+   I/O Timings: shared read=1.446
+ Planning Time: 1.902 ms
+ JIT:
+   Functions: 33
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 0.829 ms (Deform 0.000 ms), Inlining 0.000 ms, Optimization 0.781 ms, Emission 11.910 ms, Total 13.521 ms
+ Execution Time: 1133.064 ms
+(76 rows)
+
+Time: 1136.359 ms (00:01.136)
+===== E14a admin products ILIKE 2 chars
+                                                                               QUERY PLAN                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..15.07 rows=50 width=54) (actual time=0.388..2.452 rows=50.00 loops=1)
+   Buffers: shared hit=706 read=18
+   I/O Timings: shared read=1.839
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74070.44 rows=252843 width=54) (actual time=0.387..2.448 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%ko%'::text)
+         Rows Removed by Filter: 1037
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=706 read=18
+         I/O Timings: shared read=1.839
+ Planning:
+   Buffers: shared hit=5 read=1
+   I/O Timings: shared read=0.229
+ Planning Time: 0.384 ms
+ Execution Time: 2.466 ms
+(15 rows)
+
+Time: 3.225 ms
+===== E14b admin products ILIKE rare
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=545.99..546.12 rows=50 width=54) (actual time=0.570..0.570 rows=0.00 loops=1)
+   Buffers: shared hit=3 read=4
+   I/O Timings: shared read=0.546
+   ->  Sort  (cost=545.99..546.24 rows=100 width=54) (actual time=0.570..0.570 rows=0.00 loops=1)
+         Sort Key: name, id
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=3 read=4
+         I/O Timings: shared read=0.546
+         ->  Bitmap Heap Scan on catalog_product p  (cost=149.89..542.67 rows=100 width=54) (actual time=0.567..0.567 rows=0.00 loops=1)
+               Recheck Cond: ((name)::text ~~* '%xyzw%'::text)
+               Buffers: shared hit=3 read=4
+               I/O Timings: shared read=0.546
+               ->  Bitmap Index Scan on catalog_product_name_trgm_idx  (cost=0.00..149.87 rows=100 width=0) (actual time=0.561..0.561 rows=0.00 loops=1)
+                     Index Cond: ((name)::text ~~* '%xyzw%'::text)
+                     Index Searches: 1
+                     Buffers: shared hit=3 read=4
+                     I/O Timings: shared read=0.546
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.101 ms
+ Execution Time: 0.580 ms
+(21 rows)
+
+Time: 0.828 ms
+===== E14c admin products ILIKE common word
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..37.04 rows=50 width=54) (actual time=142.724..142.748 rows=50.00 loops=1)
+   Buffers: shared hit=51125 read=1096
+   I/O Timings: shared read=93.030
+   ->  Index Only Scan using catalog_product_name_id_idx on catalog_product p  (cost=0.42..74070.44 rows=101137 width=54) (actual time=142.724..142.745 rows=50.00 loops=1)
+         Filter: ((name)::text ~~* '%buty%'::text)
+         Rows Removed by Filter: 78066
+         Heap Fetches: 0
+         Index Searches: 1
+         Buffers: shared hit=51125 read=1096
+         I/O Timings: shared read=93.030
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.091 ms
+ Execution Time: 142.758 ms
+(14 rows)
+
+Time: 142.964 ms
+===== E19 out-of-stock products page
+                                                                                       QUERY PLAN                                                                                       
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..2.44 rows=50 width=16) (actual time=0.430..0.439 rows=50.00 loops=1)
+   Buffers: shared read=4
+   I/O Timings: shared read=0.271
+   ->  Group  (cost=0.42..601.36 rows=14910 width=16) (actual time=0.430..0.437 rows=50.00 loops=1)
+         Group Key: product_id
+         Buffers: shared read=4
+         I/O Timings: shared read=0.271
+         ->  Index Only Scan using inventory_stock_item_out_of_stock_idx on inventory_stock_item  (cost=0.42..563.74 rows=15047 width=16) (actual time=0.429..0.431 rows=58.00 loops=1)
+               Index Cond: (product_id IS NOT NULL)
+               Heap Fetches: 0
+               Index Searches: 1
+               Buffers: shared read=4
+               I/O Timings: shared read=0.271
+ Planning:
+   Buffers: shared hit=20 read=3
+   I/O Timings: shared read=0.199
+ Planning Time: 0.348 ms
+ Execution Time: 0.450 ms
+(18 rows)
+
+Time: 0.972 ms
+===== E22 category tree counts
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on catalog_category c  (cost=0.00..7651.88 rows=180 width=24) (actual time=0.353..19.946 rows=180.00 loops=1)
+   Buffers: shared hit=1769 read=53
+   I/O Timings: shared read=3.240
+   SubPlan 1
+     ->  Aggregate  (cost=42.46..42.47 rows=1 width=8) (actual time=0.110..0.110 rows=1.00 loops=180)
+           Buffers: shared hit=1764 read=53
+           I/O Timings: shared read=3.240
+           ->  Limit  (cost=0.42..29.95 rows=1001 width=4) (actual time=0.017..0.095 rows=585.12 loops=180)
+                 Buffers: shared hit=1764 read=53
+                 I/O Timings: shared read=3.240
+                 ->  Append  (cost=0.42..322.10 rows=10906 width=4) (actual time=0.017..0.072 rows=585.12 loops=180)
+                       Buffers: shared hit=1764 read=53
+                       I/O Timings: shared read=3.240
+                       ->  Index Only Scan using catalog_product_primary_category_id_idx on catalog_product p  (cost=0.42..227.71 rows=9102 width=4) (actual time=0.006..0.033 rows=584.98 loops=180)
+                             Index Cond: (primary_category_id = c.id)
+                             Heap Fetches: 0
+                             Index Searches: 180
+                             Buffers: shared hit=1656 read=10
+                             I/O Timings: shared read=0.572
+                       ->  Index Only Scan using idx_8bebef2612469de2 on catalog_product_category pc  (cost=0.29..39.87 rows=1804 width=4) (actual time=0.038..0.038 rows=0.35 loops=75)
+                             Index Cond: (category_id = c.id)
+                             Heap Fetches: 0
+                             Index Searches: 75
+                             Buffers: shared hit=108 read=43
+                             I/O Timings: shared read=2.668
+ Planning Time: 0.083 ms
+ Execution Time: 19.973 ms
+(27 rows)
+
+Time: 20.227 ms

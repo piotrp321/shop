@@ -2,7 +2,8 @@
 
 Raporty z przeglądów i pomiarów, każdy przypięty do rewizji kodu. Raport opisuje wynik na konkretnej rewizji i po
 zapisaniu się nie zmienia; kolejny pomiar albo przegląd to nowy plik (z datą w nazwie), a nie edycja poprzedniego.
-Surowe wyniki pomiarów zostają poza repozytorium.
+Surowe wyniki pomiarów zostają poza repozytorium; wyjątkiem jest wybór wyników i skryptów potrzebny do odtworzenia
+pomiaru, dołączony w katalogu o nazwie raportu, bez danych testowych i danych uwierzytelniających.
 
 | Raport | Zakres | Rewizja |
 |---|---|---|
@@ -17,3 +18,4 @@ Surowe wyniki pomiarów zostają poza repozytorium.
 | [app-audit-2026-11-18](app-audit-2026-11-18.md) | niezależny audyt aplikacji (bez narzędzi agentów): architektura, poprawność biznesowa, bezpieczeństwo, wydajność, jakość kodu, testy, gotowość produkcyjna, kompletność produktu i porównanie z Sylius, Shopware, Medusa i Saleor; błędy, ryzyka, zbędne komplikacje, priorytety i propozycje epików; raporty cząstkowe 12 audytorów w `app-audit-2026-11-18/` | `ef204620` |
 | [agentic-software-house-audit-2026-11-18](agentic-software-house-audit-2026-11-18.md) | audyt infrastruktury wokół Claude Code (AO, kod pomocniczy w `.claude/skills` i `tools`, konfiguracja, instrukcje): geneza i zmierzone koszty AO, praktycy i funkcje natywne, inwentarz komponentów z klasyfikacją, warianty architektury, docelowy workflow, plan migracji i propozycja pilota porównawczego; rekomendacja: moratorium na rozwój AO do wyniku pilota i zmiana polityki przeglądu od razu | `9ada1adb` |
 | [security-audit-2026-11-18](security-audit-2026-11-18.md) | niezależny audyt bezpieczeństwa sklepu, API, panelu, Keycloaka, infrastruktury i CI/CD przy założeniu prawdziwych klientów i płatności: model zagrożeń, mapa powierzchni ataku, testy dynamiczne na lokalnym stosie, 42 znaleziska (`SA-01`…`SA-42`), kontrola zależności, plan napraw, propozycje epików i kontroli w CI | `ef20462` |
+| [performance-audit-2026-11-18](performance-audit-2026-11-18.md) | niezależny audyt wydajności i skalowalności sklepu, API i panelu z pomiarami na własnym stosie i danych do 1 mln produktów: koszt żądania API (tryb klasyczny, trwałe połączenie, worker mode FrankenPHP), plany zapytań PostgreSQL, rozbicie kosztu zapytań Elasticsearch, ścieżka zamówienia, przetwarzanie asynchroniczne, strony sklepu i przebieg do nasycenia; rozróżnienie poprawności biznesowej, dostępności i wydajności, rekomendacje z dowodem, kosztem i pewnością, propozycje epików, początkowa infrastruktura i plan benchmarków; skrypty, wybrane surowe wyniki, raporty cząstkowe i research w `performance-audit-2026-11-18/` | `1aeb5076` |

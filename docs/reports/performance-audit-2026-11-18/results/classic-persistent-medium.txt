@@ -1,0 +1,13 @@
+api-prodp.health.v1             vus=1   rps=710.4    p50=1.24    p95=1.83    p99=4.32    sql/req=1.25 sqlms/req=0.022 conn/req=0.0 | postgres=0.171 api_prodp=1.348 | foreign=166.4
+api-prodp.product.v1            vus=1   rps=304.6    p50=2.92    p95=4.96    p99=8.39    sql/req=7.02 sqlms/req=0.15 conn/req=0.0 | postgres=1.421 api_prodp=2.501 | foreign=650.4
+api-prodp.offers_24.v1          vus=1   rps=166.4    p50=5.73    p95=7.47    p99=9.81    sql/req=10.91 sqlms/req=1.189 conn/req=0.01 | postgres=2.507 api_prodp=4.025 | foreign=131.1
+api-prodp.categories.v1         vus=1   rps=209.2    p50=4.54    p95=5.74    p99=7.28    sql/req=6.66 sqlms/req=0.536 conn/req=0.0 | postgres=1.115 api_prodp=4.094 | foreign=218.8
+api-prodp.admin_orders.v1       vus=1   rps=248.0    p50=3.79    p95=5.13    p99=6.64    sql/req=6.94 sqlms/req=0.609 conn/req=0.0 | postgres=1.277 api_prodp=3.021 | foreign=419.0
+api-prodp.health.v16            vus=16  rps=5388.5   p50=2.27    p95=6.98    p99=11.54   sql/req=0.17 sqlms/req=0.003 conn/req=0.0 | postgres=0.055 api_prodp=0.936 | foreign=399.9
+api-prodp.product.v16           vus=16  rps=3257.8   p50=4.24    p95=9.63    p99=13.59   sql/req=4.29 sqlms/req=0.07 conn/req=0.0 | postgres=0.363 api_prodp=1.785 | foreign=232.4
+api-prodp.offers_24.v16         vus=16  rps=1350.1   p50=10.23   p95=23.83   p99=31.41   sql/req=5.64 sqlms/req=1.38 conn/req=0.0 | postgres=1.633 api_prodp=3.423 | foreign=212.4
+api-prodp.categories.v16        vus=16  rps=1679.7   p50=8.07    p95=19.6    p99=27.06   sql/req=2.53 sqlms/req=0.58 conn/req=0.0 | postgres=0.64 api_prodp=3.518 | foreign=303.6
+api-prodp.admin_orders.v16      vus=16  rps=1678.3   p50=8.47    p95=18.89   p99=27.69   sql/req=3.55 sqlms/req=0.665 conn/req=0.0 | postgres=0.937 api_prodp=2.417 | foreign=492.5
+api-prodp.product.v64           vus=64  rps=4026.7   p50=13.92   p95=31.66   p99=44.71   sql/req=4.22 sqlms/req=0.069 conn/req=0.0 | postgres=0.331 api_prodp=1.694 | foreign=219.3
+api-prod.product.v16            vus=16  rps=498.5    p50=30.17   p95=50.23   p99=69.89   sql/req=6.03 sqlms/req=0.16 conn/req=1.0 | postgres=4.972 api_prod=17.32 | foreign=229.5
+api-prodw.product.v16           vus=16  rps=6445.9   p50=1.89    p95=5.63    p99=9.59    sql/req=3.14 sqlms/req=0.078 conn/req=0.0 | postgres=0.322 api_prodw=0.702 | foreign=212.4
