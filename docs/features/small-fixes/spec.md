@@ -6,7 +6,7 @@ Działanie funkcji opisują ich specyfikacje; ta opisuje tylko zmiany. Każde tw
 `origin/main` z 2026-11-18 (`fc3324a8`).
 
 Issues: #391
-Zakres: `apps/store/Dockerfile`, `apps/store/CLAUDE.md`, `apps/store/src/cart`, `apps/store/src/components`, `apps/store/src/catalog`, `apps/store/app/layout.tsx`, `apps/store/app/layout.switches.test.tsx`, `apps/store/app/cart`, `apps/store/app/konto`, `apps/store/app/not-found.tsx`, `apps/store/app/page.test.tsx`, `apps/store/app/page.requests.test.tsx`, `apps/store/app/szukaj`, `apps/store/app/c`, `apps/store/src/api/schema.d.ts`, `apps/admin/src/products`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/tests`, `apps/api/src/Catalog`, `apps/api/src/Cart/UI/Console`, `apps/api/src/Ordering/UI/Console`, `apps/api/src/Pricing/UI/Console`, `apps/api/src/Shared/UI/Console`, `apps/api/src/Shared/Infrastructure/Observability/CorrelationIdMiddleware.php`, `apps/api/config/packages/messenger.yaml`, `apps/api/docker/php/conf.d/app.ini`, `apps/api/tests`, `apps/api/openapi.json`, `apps/api/CLAUDE.md`, `infra/k8s/smoke/checks.py`, `infra/k8s/environments/prod/values.yaml`, `infra/k8s/environments/load/values.yaml`, `infra/k8s/tests`, `e2e/tests/cart-guest.spec.ts`, `e2e/tests/demo-notice.spec.ts`, `docs/features/deploy/spec.md`, `docs/features/cart/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/search/spec.md`, `docs/features/product-page/spec.md`, `docs/features/sentry/spec.md`
+Zakres: `apps/store/Dockerfile`, `apps/store/src/cart`, `apps/store/src/components`, `apps/store/src/catalog`, `apps/store/app/layout.tsx`, `apps/store/app/layout.switches.test.tsx`, `apps/store/app/cart`, `apps/store/app/konto`, `apps/store/app/not-found.tsx`, `apps/store/app/page.test.tsx`, `apps/store/app/page.requests.test.tsx`, `apps/store/app/szukaj`, `apps/store/app/c`, `apps/store/src/api/schema.d.ts`, `apps/admin/src/products`, `apps/admin/src/views/ProductFormView.vue`, `apps/admin/tests`, `apps/api/src/Catalog`, `apps/api/src/Cart/UI/Console`, `apps/api/src/Ordering/UI/Console`, `apps/api/src/Pricing/UI/Console`, `apps/api/src/Shared/UI/Console`, `apps/api/src/Shared/Infrastructure/Observability/CorrelationIdMiddleware.php`, `apps/api/config/packages/messenger.yaml`, `apps/api/docker/php/conf.d/app.ini`, `apps/api/tests`, `apps/api/openapi.json`, `apps/api/CLAUDE.md`, `infra/k8s/smoke/checks.py`, `infra/k8s/environments/prod/values.yaml`, `infra/k8s/environments/load/values.yaml`, `infra/k8s/tests`, `e2e/tests/cart-guest.spec.ts`, `e2e/tests/demo-notice.spec.ts`, `docs/features/deploy/spec.md`, `docs/features/catalog-admin/spec.md`, `docs/features/product-page/spec.md`
 
 ## Cel i zakres
 
@@ -81,9 +81,8 @@ poda sklepu (eksmisja, OOM, restart węzła), a Job `purge-caches` działa tylko
   użytkownika (bez tagu menu wracałoby dopiero po rewalidacji czasowej, nie po wdrożeniu).
 - Test dymny klastra po `purge-caches` sprawdza w HTML `/cart`, `/konto/zamowienia` i strony 404 nieznanego adresu
   nawigację `aria-label="Działy"` i co najmniej jeden link `/c/`.
-- `apps/store/CLAUDE.md` („Obraz produkcyjny” i sekcja z `:283-285`, bez `/checkout` na liście stron statycznych)
-  opisuje adres zastępczy, rewalidację czasową i to, skąd strony statyczne obrazu mają menu; `apps/store/Dockerfile`
-  ma komentarz zgodny z nim; `docs/features/deploy/spec.md` (opis testu dymnego) wymienia nowe sprawdzenie.
+- `apps/store/Dockerfile` ma przy adresie zastępczym komentarz, dlaczego istnieje. Opisy w `apps/store/CLAUDE.md:54-56`
+  i `:284-285` (menu po rewalidacji tagu) stają się prawdziwe bez zmiany pliku; ta specyfikacja opisuje mechanizm.
 
 **Kryteria.**
 1. Build etapu `build` obrazu (`docker build --target build apps/store`) z adresem zastępczym daje w metadanych
@@ -110,7 +109,8 @@ ma asercji fokusu, E2E `cart-guest.spec.ts` naciska Enter bez sprawdzenia fokusu
   (zatwierdzenie ilości, kliknięcie, Enter, Spacja) nic nie wysyła. Po zakończeniu zapisu działają jak dotąd.
 - Fokus zostaje tam, gdzie postawił go klient: po Enterze w polu ilości w tym polu, po `Tab` na następnej kontrolce
   (np. „Usuń”), także po odrzuconej zmianie.
-- `docs/features/cart/spec.md` (strona `/cart`) opisuje stan kontrolek w trakcie zapisu i zachowanie fokusu.
+- Opis strony `/cart` w `docs/features/cart/spec.md` zostaje prawdziwy bez zmiany (nie mówi o stanie kontrolek
+  w trakcie zapisu); nowe zachowanie opisuje ta specyfikacja.
 
 **Kryteria.**
 1. `CartPage.test.tsx`: po Enterze w polu ilości z udaną i z odrzuconą odpowiedzią `document.activeElement` to to samo
@@ -145,7 +145,7 @@ a A go nie dostaje. Strażnik niezapisanych zmian nie pyta, bo w trakcie uploadu
 - Pasek zapisu (`docs/features/admin-design/spec.md`, „Standard formularza i okien”) bez zmian: pokazuje się przy
   zmianach danych formularza; trwający upload widać na liście statusów przy zdjęciach, a akcje formularza są w tym
   czasie wyłączone jak dziś.
-- `docs/features/catalog-admin/spec.md` (sekcja zdjęć w panelu) opisuje tę regułę.
+- Sekcja zdjęć w `docs/features/catalog-admin/spec.md` zostaje prawdziwa bez zmiany; regułę opisuje ta specyfikacja.
 
 **Kryteria.**
 1. Test `useProductForm` albo `useImageUpload`: upload zakończony po `open()` innego produktu (i po `open(null)`) nie
@@ -169,8 +169,9 @@ treść, razem ze zdjęciem hero (przesunięcie układu, CLS). Profil `prod` ma 
   dialogowymi sklepu (np. powiększenie galerii, `apps/store/src/components/ui/dialog.tsx:40`).
 - Treść paska, rola `note`, warunek (`demoNotice`) i odczyt przełączników w przeglądarce bez zmian; HTML stron dalej
   nie zawiera paska (sprawdzenie w `infra/k8s/smoke/checks.py` i przeglądarkowe w `smoke.sh` przechodzą bez zmian).
-- `apps/store/CLAUDE.md` (przełączniki) i `docs/features/deploy/spec.md` („Sklep: przełączniki”) opisują położenie
-  paska.
+- `docs/features/deploy/spec.md` („Sklep: przełączniki”, `:311`) mówi „nad nagłówkiem”, co przestaje być prawdą:
+  zadanie poprawia to zdanie na położenie przy dole okna. `apps/store/CLAUDE.md:641` ma ten sam opis; to opis kodu,
+  nie zasada, więc zadanie go nie zmienia (porządki opisów w plikach `CLAUDE.md`: #737).
 
 **Kryteria.**
 1. Test E2E `e2e/tests/demo-notice.spec.ts` (Chromium, desktop i telefon) z przechwyconą, opóźnioną odpowiedzią
@@ -202,8 +203,9 @@ więc żadna z czterech nie daje zdarzenia Sentry. Listener konsoli Sentry zgła
   z jego `getCode()` (0 daje 1), więc wyjątek przekazywany dalej ma kod z tej listy. Pozostałe kody (błędne
   argumenty, rozbieżności) bez zmian.
 - `app:backfill` nie loguje już wyjątku sam (jeden wpis na błąd).
-- `docs/features/sentry/spec.md` opisuje, że komenda przerwana błędem jest zgłaszana jak nieobsłużona;
-  `apps/api/CLAUDE.md` ma tę zasadę dla komend (komenda nie połyka `\Throwable`).
+- Nowa zasada dla agentów w `apps/api/CLAUDE.md`: komenda konsoli nie połyka `\Throwable`; po komunikacie dla
+  operatora przekazuje wyjątek dalej z kodem wyjścia z dokumentacji komendy. `docs/features/sentry/spec.md` („nieobsłużone
+  wyjątki komend konsoli”) zostaje prawdziwe bez zmiany.
 
 **Kryteria.**
 1. Test z DSN i transportem testowym Sentry (wzór: `tests/Functional/Shared/Sentry`): każda z czterech komend
@@ -235,7 +237,8 @@ Przy dużym katalogu sklep pokazuje „Strona 1 z 416667” i aktywne „Następ
   (`api` i `store` startują w tej samej fali, a cache czyści dopiero `purge-caches`). Odpowiedź bez liczbowego
   `pageCount` daje listing bez paginacji, nigdy „Strona 1 z undefined”.
 - `make -C apps/api openapi` i `make api-client` aktualizują `apps/api/openapi.json` i `apps/store/src/api/schema.d.ts`.
-- `docs/features/search/spec.md` opisuje `pageCount`, paginację w oknie i stronę za oknem.
+- Zdanie o oknie w `docs/features/search/spec.md:203` zostaje prawdziwe; `pageCount` i paginację w oknie opisuje ta
+  specyfikacja.
 
 **Kryteria.**
 1. Test adaptera wyszukiwarki z małym oknem (np. 5) i testy handlera: `pageCount` dla wyników poniżej okna, równych
@@ -243,7 +246,7 @@ Przy dużym katalogu sklep pokazuje „Strona 1 z 416667” i aktywne „Następ
    ma `pageCount` w odpowiedzi. Testy nie przechodzą przed zmianą.
 2. Test `Pagination` w sklepie: `total` 10 000 000, `perPage` 24, `pageCount` 417 daje „Strona 1 z 417”, na stronie
    417 bez „Następna”, ze strony 500 „Poprzednia” prowadzi do 417; odpowiedź bez `pageCount` nie pokazuje paginacji.
-3. Wyeksportowana specyfikacja i klient są w PR; `make -C apps/api check`, `make -C apps/api test`,
+3. Wyeksportowana specyfikacja i klient są w tej samej zmianie co kod API; `make -C apps/api check`, `make -C apps/api test`,
    `make -C apps/store check` i `make -C apps/store test` przechodzą.
 
 ## Limit dysku cache ISR sklepu
@@ -262,8 +265,8 @@ odwiedzonym produktem i nieznanym slugiem, a kontener `store` nie ma limitu `eph
   pierwszym wejściu, strony prerenderowane w buildzie wracają do HTML z obrazu do rewalidacji (sekcja B1). Dysk węzła
   i pozostałe usługi nie są dotknięte. Restart poda łapie istniejąca reguła `WorkloadNotReady`; osobnego alertu
   eksmisji ten epik nie dodaje.
-- `docs/features/product-page/spec.md` (ryzyka: wpisy ISR, A6) opisuje limit, jego skutek i to, że przy skali
-  docelowej potrzebny jest wspólny cache z eksmisją (A6).
+- `docs/features/product-page/spec.md:446-447` („nic ich nie usuwa (nieograniczony przyrost…)”) przestaje być
+  prawdą: zadanie poprawia to ryzyko na limit z eksmisją poda i wspólny cache (A6) jako warunek skali docelowej.
 
 **Kryteria.**
 1. Test w `infra/k8s/tests` renderuje chart z profilami `prod`, `load` i `ci` i sprawdza `ephemeral-storage` kontenera
@@ -294,8 +297,10 @@ odwiedzonym produktem i nieznanym slugiem, a kontener `store` nie ma limitu `eph
   (`allow_no_handlers` na `event.bus`, `messenger.yaml:20-23`), a produkt indeksuje równoległe zdarzenie integracyjne.
 - `command.bus` ma middleware `CorrelationIdMiddleware` i `doctrine_transaction`; komentarze w `messenger.yaml`
   i `CorrelationIdMiddleware.php:17` nie wspominają walidacji.
-- `apps/api/CLAUDE.md` (zdarzenia integracyjne) i `docs/features/catalog-admin/spec.md` (`:81-83`, `:160-161`) nie
-  opisują zgodności wersji `ProductCreated`.
+- `apps/api/CLAUDE.md` traci wyjątek od zasady „zdarzeń domenowych Catalog nikt poza handlerem komendy nie
+  subskrybuje” (zmiana zasady: `:634-638`, wyjątek zgodności wersji `ProductCreated`), a
+  `docs/features/catalog-admin/spec.md` (`:81-83`, `:160-161`) traci zdania o publikacji i obsłudze obu
+  `ProductCreated`, które przestają być prawdą.
 
 **Kryteria.**
 1. Test: utworzenie produktu zapisuje w outboxie dokładnie jedno `ProductCreated` (integracyjne) i żadnego
@@ -336,6 +341,6 @@ Plik ładuje się po `php.ini`, więc ustawienie wygrywa także z `php.ini-produ
 - Pasek demo przypięty do dołu zajmuje na telefonie 2–3 wiersze ekranu przez cały czas oglądania sklepu demo.
 - Eksmisja poda sklepu po przekroczeniu limitu dysku to przerwa sklepu na czas startu nowego poda (jedna replika);
   przy dużym katalogu i ruchu robotów może się powtarzać. Limit chroni węzeł demo, skali docelowej nie rozwiązuje.
-- `pageCount` to nowe pole wymagane w publicznym kontrakcie; jedynym klientem jest sklep, generowany z tego samego PR,
+- `pageCount` to nowe pole wymagane w publicznym kontrakcie; jedynym klientem jest sklep, generowany w tej samej zmianie,
   a okno wdrożenia obsługuje reguła zgodności z sekcji paginacji.
 - Porzucony upload zostawia oryginał w Garage (jak dziś upload bez zapisu produktu, K7).
