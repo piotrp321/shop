@@ -8,8 +8,8 @@ Imported by night_queue.py and pairs.py; never imports night_queue. Contents:
   (30 minutes, renewed with the same token, ClaimConflict for another token), release, owners, claim_to_owner.
   Writers hold state_lock. A missing file is empty; an unreadable or wrong-shaped one is StateFileError.
 - file classification of the gate (is_app_code, is_executable_code, is_allowed, is_claude_md, common_paths),
-  GENERATED and REGISTRATION files, and the rule for tasks of one wave running at once (task_conflicts, used by
-  planner/plan_manifest.py).
+  GENERATED and REGISTRATION files, and the rule for tasks of one wave running at once (task_conflicts): defined in
+  planner/plan_manifest.py, which validates plans and must not depend on this directory, and imported from there.
 - MAX_PARALLEL: the `--max-parallel` that /ao-run passes to AO (SKILL.md, section 4); the gate reserves that many
   stacks for every active epic.
 - Docker memory snapshot (docker_snapshot with an injected runner, DockerError) and free_mib.
@@ -27,21 +27,17 @@ import time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'planner'))
 import next_epic  # noqa: E402
+# The file rule of parallel work lives in the plan validator, which must not depend on this directory; the names are
+# re-exported here for the AO helpers and their tests.
+from plan_manifest import (  # noqa: E402,F401
+    CODE_DIRS, EXECUTABLE_DIRS, GENERATED, REGISTRATION, _inside, common_paths, is_allowed, is_app_code,
+    is_claude_md, is_executable_code, task_conflicts)
 
 CLAIM_TTL = timedelta(minutes=30)
 # Task attempts AO runs at once in one epic (`ao run --max-parallel`): the stacks one active epic may hold.
 MAX_PARALLEL = 2
-
-GENERATED = ('apps/api/openapi.json', 'apps/api/openapi-admin.json', 'apps/store/src/api/schema.d.ts',
-             'apps/admin/src/api/schema.d.ts')
-# Application code files that epics only append entries to; REPAIR merges them like any other shared file.
-REGISTRATION = ('apps/admin/src/layout/AppMenu.vue', 'apps/admin/src/router/index.ts')
-# Directories of application code inside apps/<app>/.
-CODE_DIRS = ('src', 'app')
-# Directories of executable repository code outside the applications (step 19b only): tools, skills, AO hooks and
-# scripts of CI and infrastructure. Compared by segments.
-EXECUTABLE_DIRS = ('tools', '.claude/skills', '.ao', '.github/scripts', 'infra/scripts')
 
 
 class LockTimeout(Exception):
@@ -177,84 +173,6 @@ def claim_to_owner(state_dir, directory, claim, now):
     data['owners'][directory] = token
     _write_claims(state_dir, data)
     return token
-
-
-def is_app_code(path):
-    """Whether a path of the common part holds application code: it lies in apps/<app>/src or apps/<app>/app (by
-    segments), or contains such a directory (`apps`, `apps/<app>`). Generated and registration files, CLAUDE.md and
-    README.md are not code."""
-    if path in GENERATED or path in REGISTRATION or path.split('/')[-1] in ('CLAUDE.md', 'README.md'):
-        return False
-    segments = path.split('/')
-    if segments[0] != 'apps':
-        return False
-    return len(segments) <= 2 or segments[2] in CODE_DIRS
-
-
-def is_executable_code(path):
-    """Whether a path of the common part holds executable code (step 19b): application code (is_app_code), or a path in
-    one of EXECUTABLE_DIRS or containing one (`.claude`, `.github`, `infra`), compared by segments and without case.
-    Generated and registration files, CLAUDE.md and README.md are not code. Step 19a does not use it."""
-    if is_app_code(path):
-        return True
-    segments = path.casefold().split('/')
-    if path in GENERATED or path in REGISTRATION or segments[-1] in ('claude.md', 'readme.md'):
-        return False
-    for directory in EXECUTABLE_DIRS:
-        parts = directory.split('/')
-        if segments[:len(parts)] == parts or parts[:len(segments)] == segments:
-            return True
-    return False
-
-
-def is_allowed(path):
-    """Step 5 of the gate: a shared path blocks the candidate only when it is application code."""
-    return not is_app_code(path)
-
-
-def is_claude_md(path):
-    return path.split('/')[-1] == 'CLAUDE.md'
-
-
-def _inside(inner, outer):
-    return inner == outer or inner.startswith(outer + '/')
-
-
-def common_paths(a, b):
-    found = set()
-    for x in a:
-        for y in b:
-            if _inside(x, y):
-                found.add(x)
-            elif _inside(y, x):
-                found.add(y)
-    return sorted(found)
-
-
-def task_conflicts(a, b, claude_md=()):
-    """Paths that keep two tasks of one wave from running at once (step 19b), sorted: the common part of their
-    manifest `paths` (a file, or a directory with a trailing /) that is executable code (is_executable_code:
-    application code and the tool directories), a CLAUDE.md or a file, and every file of `claude_md` (the tracked
-    CLAUDE.md files of the repository) inside a common path. Two directories outside executable code may overlap (the
-    exceptions of step 5) when they hold no tracked CLAUDE.md.
-    A common path counts as a directory only when every path of both tasks that contains it is declared as a
-    directory. Paths are compared without case (casefold, as the file system of the host does); a found path keeps
-    the spelling it was declared or tracked with."""
-    declared, spelling = [{}, {}], {}
-    for d, paths in zip(declared, (a, b)):
-        for p in paths:
-            key = p.rstrip('/').casefold()
-            spelling.setdefault(key, p.rstrip('/'))
-            d[key] = d.get(key, True) and p.endswith('/')
-
-    def directory(path):
-        return all(is_dir for d in declared for p, is_dir in d.items() if _inside(path, p))
-
-    common = common_paths(*declared)
-    found = {spelling[path] for path in common
-             if is_executable_code(path) or path.split('/')[-1] == 'claude.md' or not directory(path)}
-    found.update(f for f in claude_md for path in common if _inside(f.casefold(), path))
-    return sorted(found)
 
 
 _UNITS = {'B': 1, 'KIB': 1024, 'MIB': 1024 ** 2, 'GIB': 1024 ** 3, 'TIB': 1024 ** 4,

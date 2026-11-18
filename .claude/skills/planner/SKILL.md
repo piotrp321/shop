@@ -168,8 +168,8 @@ Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja or
   wykonywanym (dokumentacja, testy, workflowy CI, konfiguracja, `infra/k8s`) są dozwolone, o ile część wspólna nie
   zawiera `CLAUDE.md` śledzonego w repo
   (np. `infra/k8s/`, `e2e/`). Gdy git nie poda listy śledzonych `CLAUDE.md`, każda para jest odrzucana. Regułę
-  sprawdza `parallel_gate.task_conflicts`
-  (`.claude/skills/ao-run/parallel_gate.py`), jedyne jej miejsce. Zadanie bez `parallel_with` (także cały manifest
+  sprawdza `plan_manifest.task_conflicts`
+  (`.claude/skills/planner/plan_manifest.py`), jedyne jej miejsce. Zadanie bez `parallel_with` (także cały manifest
   bez tych pól) idzie szeregowo.
 
 Pisz zwięźle po polsku.

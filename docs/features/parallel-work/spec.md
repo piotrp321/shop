@@ -368,7 +368,7 @@ Po werdykcie każdej pary sesja pokazuje `summary` i `code_blocked` z `pairs.py`
 - **Kod aplikacji** (blokowany): korzyść ze złagodzenia to `code_blocked` (epiki, które czekały przez wspólny kod),
   ryzyko to wiersz `code` (pary, które zmieniły wspólny kod spoza deklaracji, i ich problemy).
 
-Decyzja należy do użytkownika; zmiana reguły to PR do tej specyfikacji i `parallel_gate.py`.
+Decyzja należy do użytkownika; zmiana reguły to PR do tej specyfikacji i `plan_manifest.py` (`.claude/skills/planner/`).
 
 ### Ograniczenia
 
@@ -421,7 +421,7 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
 - **Reguła pary** (`plan_manifest.py validate` odrzuca manifest, który ją łamie): relacja jest symetryczna (każde
   zadanie pary wymienia drugie), oba zadania mają `paths`, żadne nie zależy od drugiego bezpośrednio ani przez
   `depends_on` innych zadań, a część wspólna ich `paths` (jak w „Pojęciach” 19a) nie zawiera kodu wykonywanego
-  (`parallel_gate.is_executable_code`), `CLAUDE.md` ani pliku. Kod wykonywany to kod aplikacji (`is_app_code`, jak
+  (`plan_manifest.is_executable_code`), `CLAUDE.md` ani pliku. Kod wykonywany to kod aplikacji (`is_app_code`, jak
   w kroku 5 bramki) oraz ścieżki w katalogach `tools`, `.claude/skills`, `.ao`, `.github/scripts` i `infra/scripts`
   (po segmentach, bez rozróżniania wielkości liter) i ścieżki, które taki katalog zawierają (`.claude`, `.github`,
   `infra`; tak jak `apps` zawiera kod aplikacji); pliki generowane i rejestracji, `CLAUDE.md` i `README.md`
@@ -433,7 +433,8 @@ z `/ao-run` i rezerwa pamięci bramki 19a.
   w repo (`git ls-files`, np.
   `infra/k8s/` albo `e2e/`); wtedy ten plik blokuje parę. Gdy git nie poda listy śledzonych `CLAUDE.md`, `validate`
   odrzuca każdą parę z `parallel_with`, a `parallel` kończy się kodem 2. Brak danych albo niepewność oznacza pracę
-  szeregową. Regułę ma jedno miejsce: `parallel_gate.task_conflicts`.
+  szeregową. Regułę ma jedno miejsce: `plan_manifest.task_conflicts` (`.claude/skills/planner/plan_manifest.py`;
+  `parallel_gate.py` AO importuje ją stamtąd).
 - `ao run --max-parallel N` (domyślnie 1, bez zmiany zachowania). Przy N > 1 AO uruchamia drugą próbę tylko dla
   zadania typu `plan`, którego zależności są zielone, gdy kandydat i każde trwające zadanie mają się nawzajem na
   listach `parallel_with`. AO sprawdza w `parallel_with` tylko typ i znane ID; reguły plików nie powtarza. Każda próba
@@ -506,8 +507,8 @@ i `declared_conflicts` to `null`, a pozostałe metryki są liczone.
 ## Pliki
 
 - `.claude/skills/ao-run/parallel_gate.py` i `test_parallel_gate.py`: blokada, zapis atomowy, rezerwacje z tokenem,
-  pomiar pamięci Dockera i kod aplikacji blokuje (19a i 19b), kod narzędzi tylko w 19b (`is_executable_code`); bez
-  zależności od `night_queue.py`.
+  pomiar pamięci Dockera; reguła plików (kod aplikacji blokuje w 19a i 19b, kod narzędzi tylko w 19b,
+  `is_executable_code`) jest zdefiniowana w `plan_manifest.py` i stąd importowana; bez zależności od `night_queue.py`.
 - `.claude/skills/ao-run/night_queue.py` i `test_night_queue.py`: komendy `gate`, `release`, `hold` i `unhold`
   (algorytm bramki na tablicy, zakresach i szacunkach), blokada w komendach zapisujących, pole `docker` w `start`,
   szacunek zużycia bez pomiarów nakładających się, zmiany `propose`, `approve` i `next`.
@@ -518,7 +519,7 @@ i `declared_conflicts` to `null`, a pozostałe metryki są liczone.
 - `.claude/skills/ao-run/SKILL.md`: sekcje 1, 2, 4 (także `--max-parallel 2`), 5, 6, 6a, 7, 7a, 8, „Noc”
   i „Czego nie robisz”.
 - `.claude/skills/planner/plan_manifest.py`, `test_plan_manifest.py` i `SKILL.md`: pola `paths` i `parallel_with`,
-  reguła pary (z `parallel_gate.task_conflicts`) i komenda `parallel` (z `--blocked`: także pary zablokowane).
+  reguła pary (`plan_manifest.task_conflicts`) i komenda `parallel` (z `--blocked`: także pary zablokowane).
 - `.claude/skills/delivery/SKILL.md`: kontrola spójności dokumentów, pliki generowane bez konfliktu, kontrola migracji
   i testy stanu zintegrowanego w sekcji „Konflikt z gałęzią docelową lub z `main`”.
 - Dokumentacja: `docs/features/ao-run/spec.md` (warunki startu, przebieg, „Noc”, „Czego skill nie robi”: wskazują
