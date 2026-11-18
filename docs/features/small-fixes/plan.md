@@ -8,9 +8,18 @@ i wypycha ją (CI biegnie przy każdym pushu szkicu PR). Zadania nie mają włas
 
 ## Status
 
-| Fala | Zadania | Status |
-|---|---|---|
-| 1 | SMALL-FIXES-1, SMALL-FIXES-2, SMALL-FIXES-3, SMALL-FIXES-4, SMALL-FIXES-5, SMALL-FIXES-6, SMALL-FIXES-7, SMALL-FIXES-8 | |
+Epik w toku od 2026-11-18. Gałąź epiku: `feat/small-fixes`, szkic PR do `main`.
+
+| Zadanie | Status |
+|---|---|
+| SMALL-FIXES-1 | |
+| SMALL-FIXES-2 | |
+| SMALL-FIXES-3 | |
+| SMALL-FIXES-4 | |
+| SMALL-FIXES-5 | |
+| SMALL-FIXES-6 | |
+| SMALL-FIXES-7 | |
+| SMALL-FIXES-8 | |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
