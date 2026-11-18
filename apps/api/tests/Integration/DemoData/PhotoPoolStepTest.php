@@ -75,6 +75,7 @@ final class PhotoPoolStepTest extends KernelTestCase
             $this->originals->delete($key);
         }
         PoolFixture::remove($this->dir);
+        parent::tearDown();
     }
 
     public function testAMatchingArchiveStoresEveryFileOnceAndGivesTheProductsKeysOfTheirGroups(): void
@@ -423,10 +424,17 @@ final class PhotoPoolStepTest extends KernelTestCase
         $path = $this->dir.'/source/demo-photos/v1/photos.tar';
         is_file($path) && unlink($path);
         $names = array_diff(array_map(static fn (array $file): string => $file['file'], $this->manifest['files']), $without);
-        $entries = [];
+        // The archive is written to the file entry by entry: the files of the pool are copied, never held in memory.
+        $archive = fopen($path, 'wb');
+        self::assertIsResource($archive);
         foreach (array_unique([...$names, ...array_keys($contents)]) as $name) {
-            $entries[] = TarBuilder::entry($name, $contents[$name] ?? (string) file_get_contents($this->dir.'/pool/'.$name));
+            if (isset($contents[$name])) {
+                fwrite($archive, TarBuilder::entry($name, $contents[$name]));
+            } else {
+                TarBuilder::appendFile($archive, $name, $this->dir.'/pool/'.$name);
+            }
         }
-        file_put_contents($path, TarBuilder::archive($entries));
+        TarBuilder::terminate($archive);
+        fclose($archive);
     }
 }
