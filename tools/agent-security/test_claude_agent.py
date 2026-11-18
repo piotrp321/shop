@@ -732,6 +732,151 @@ class RefusalTest(WrapperTestCase):
         self.assertIn('executor-settings.json', result.stderr)
 
 
+INHERITED_TELEMETRY = {
+    'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://evil.example:4318', 'OTEL_LOG_USER_PROMPTS': '1',
+    'OTEL_LOG_TOOL_DETAILS': '1', 'OTEL_RESOURCE_ATTRIBUTES': 'shop.task=forged',
+    'OTEL_EXPORTER_OTLP_HEADERS': 'Authorization=Bearer x', 'OTEL_LOGS_EXPORTER': 'console',
+    'OTEL_METRICS_EXPORTER': 'console', 'OTEL_SERVICE_NAME': 'forged', 'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT': 'http://e:1',
+    'OTEL_': 'x', 'CLAUDE_CODE_ENABLE_TELEMETRY': '1',
+    # values with a newline look like further variables in the output of env: nothing breaks, nothing stays
+    'WRAPPER_TEST_MULTILINE': 'a\nOTEL_EXPORTER_OTLP_ENDPOINT=http://evil.example:1\nOTEL_NOT_SET=1\nb',
+    'WRAPPER_TEST_NOT_OTEL': 'x\nCLAUDE_CODE_ENABLE_TELEMETRY=1',
+}
+TELEMETRY_BLOCK = {
+    'CLAUDE_CODE_ENABLE_TELEMETRY': '1', 'OTEL_METRICS_EXPORTER': 'otlp', 'OTEL_LOGS_EXPORTER': 'otlp',
+    'OTEL_EXPORTER_OTLP_PROTOCOL': 'http/protobuf', 'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://127.0.0.1:4318',
+    'OTEL_METRIC_EXPORT_INTERVAL': '10000', 'OTEL_LOGS_EXPORT_INTERVAL': '5000', 'OTEL_LOG_USER_PROMPTS': '0',
+    'OTEL_LOG_ASSISTANT_RESPONSES': '0', 'OTEL_LOG_TOOL_DETAILS': '0', 'OTEL_LOG_TOOL_CONTENT': '0',
+    'OTEL_LOG_RAW_API_BODIES': '0',
+    'OTEL_RESOURCE_ATTRIBUTES': 'shop.source=ao,shop.epic=x,shop.task=X-1,shop.task_kind=plan',
+}
+
+
+class TelemetryTest(WrapperTestCase):
+    """Telemetry of the executor (spec TELEMETRY R2): no inherited OTEL_* or CLAUDE_CODE_ENABLE_TELEMETRY reaches the
+    binary, the settings carry the env block of render_settings.py with the attributes of the task, and
+    AGENT_OTEL_ENDPOINT chooses the endpoint (off: no telemetry; invalid: refusal)."""
+
+    def assert_no_inherited_telemetry(self, env):
+        self.assertEqual([k for k in env if k.startswith('OTEL_')], [])
+        self.assertNotIn('CLAUDE_CODE_ENABLE_TELEMETRY', env)
+        self.assertNotIn('AGENT_OTEL_ENDPOINT', env)
+        self.assertEqual(env['WRAPPER_TEST_MULTILINE'], INHERITED_TELEMETRY['WRAPPER_TEST_MULTILINE'])
+        self.assertEqual(env['WRAPPER_TEST_NOT_OTEL'], INHERITED_TELEMETRY['WRAPPER_TEST_NOT_OTEL'])
+
+    def passed_through(self, *args, **env):
+        # --version and auth status need no system temp: they run in the executor's sandbox too
+        result = self.run_wrapper(*args, AO_TASK_ID=None, AGENT_AO_HOME=None, FAKE_TOKEN=None, **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return self.recorded()
+
+    def test_version_and_auth_status_get_no_inherited_telemetry(self):
+        for args in (('--version',), ('auth', 'status')):
+            with self.subTest(args=args):
+                record = self.passed_through(*args, AGENT_OTEL_ENDPOINT='http://127.0.0.1:9', **INHERITED_TELEMETRY)
+                self.assertEqual(record['argv'], list(args))
+                self.assert_no_inherited_telemetry(record['env'])
+                os.remove(self.record)
+
+    def test_odd_names_and_bytes_do_not_stop_the_removal(self):
+        # A name sh cannot unset (not an identifier) is left as it is; bytes that are not UTF-8 in a value do not
+        # stop the names from being read; the real OTEL_* variables are removed either way. The environment has a
+        # UTF-8 locale, as a user's shell does: the BSD sed of macOS then fails on such bytes with "illegal byte
+        # sequence" (and the wrapper refuses to start) unless the wrapper runs sed in the C locale (LC_ALL=C). Without
+        # the locale the test would pass in the C locale of the harness even without that safeguard. GNU sed has no
+        # such error, so on Linux this test does not catch a missing LC_ALL=C.
+        record = self.passed_through('--version', LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8',
+                                     **{'OTEL_A.B': '1', 'WRAPPER_TEST_BYTES': b'\xff\xfe\nOTEL_X=1',
+                                        'OTEL_EXPORTER_OTLP_ENDPOINT': 'http://evil.example:4318',
+                                        'CLAUDE_CODE_ENABLE_TELEMETRY': '1'})
+        self.assertNotIn('OTEL_EXPORTER_OTLP_ENDPOINT', record['env'])
+        self.assertNotIn('CLAUDE_CODE_ENABLE_TELEMETRY', record['env'])
+
+    def test_the_executor_gets_no_inherited_telemetry(self):
+        record = self.started(*AO_ARGS, **INHERITED_TELEMETRY)
+        self.assert_no_inherited_telemetry(record['env'])
+        self.assertEqual(self.settings(record)['env'], TELEMETRY_BLOCK)
+
+    def test_the_settings_have_the_block_with_the_default_endpoint(self):
+        record = self.started(*AO_ARGS)
+        settings = self.settings(record)
+        self.assertEqual(settings['env'], TELEMETRY_BLOCK)
+        self.assertEqual(list(settings['env']), list(TELEMETRY_BLOCK))
+
+    def test_agent_otel_endpoint_chooses_the_endpoint(self):
+        record = self.started(*AO_ARGS, AGENT_OTEL_ENDPOINT='http://127.0.0.1:43180')
+        self.assertEqual(self.settings(record)['env']['OTEL_EXPORTER_OTLP_ENDPOINT'], 'http://127.0.0.1:43180')
+        self.assertNotIn('AGENT_OTEL_ENDPOINT', record['env'])
+
+    def test_off_gives_the_settings_without_telemetry(self):
+        record = self.started(*AO_ARGS, AGENT_OTEL_ENDPOINT='off', **INHERITED_TELEMETRY)
+        settings = self.settings(record)
+        self.assertNotIn('env', settings)
+        self.assert_no_inherited_telemetry(record['env'])
+        self.assertEqual(settings['sandbox']['filesystem']['allowWrite'][0], self.work)
+
+    def test_an_invalid_endpoint_is_refused_with_the_reason(self):
+        self.require_system_tmp()   # the refusal comes from render_settings.py, after the temporary directories
+        for endpoint in ('http://evil.example:4318', 'http://127.0.0.1.nip.io:4318', 'https://127.0.0.1:4318',
+                         'http://127.0.0.1:4318/v1', 'http://127.0.0.1:0', '', 'OFF', ' off'):
+            with self.subTest(endpoint=endpoint):
+                result = self.run_wrapper(*AO_ARGS, AGENT_OTEL_ENDPOINT=endpoint)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(os.path.exists(self.record), 'the binary ran')
+                self.assertIn('claude-agent:', result.stderr)
+                self.assertIn('AGENT_OTEL_ENDPOINT', result.stderr)
+                self.assertIn('http://127.0.0.1:<port>', result.stderr)
+                self.assertIn('render_settings.py: --telemetry-endpoint', result.stderr)   # the reason itself
+                self.assertEqual(self.created_run_dirs_left(), [])
+
+    def created_run_dirs_left(self):
+        return [path for path in self.created_run_dirs() if os.path.lexists(path)]
+
+    def ao_home_named(self, name, *task_ids):
+        ao_home = os.path.join(self.home, '.local/state/ao-' + name)
+        for task_id in task_ids:
+            for sub in ('briefs', 'attempts'):
+                os.makedirs(os.path.join(ao_home, 'tasks', task_id, sub), exist_ok=True)
+        os.makedirs(os.path.join(ao_home, 'epics', name, 'integration'), exist_ok=True)
+        return ao_home
+
+    def attributes(self, name, task_id):
+        ao_home = self.ao_home_named(name, task_id)
+        if os.path.exists(self.record):
+            os.remove(self.record)
+        record = self.started(*AO_ARGS, AGENT_AO_HOME=ao_home, AO_TASK_ID=task_id)
+        value = self.settings(record)['env']['OTEL_RESOURCE_ATTRIBUTES']
+        return dict(pair.split('=', 1) for pair in value.split(','))
+
+    def test_the_kind_of_each_task(self):
+        long_task = 'X-' + '1' * 127   # 129 characters: shop.task unknown, the kind still known
+        for name, task_id, kind, task in (
+                ('x', 'X-1', 'plan', 'X-1'), ('x', 'X-12', 'plan', 'X-12'),
+                ('x', 'X-INTEGRATION-2', 'integration', 'X-INTEGRATION-2'), ('x', 'X-FIX-3', 'fix', 'X-FIX-3'),
+                ('x', 'X-REPAIR-1', 'repair', 'X-REPAIR-1'), ('x', 'X-FINALIZE', 'finalize', 'X-FINALIZE'),
+                ('admin-features', 'ADMIN-FEATURES-FIX-2', 'fix', 'ADMIN-FEATURES-FIX-2'),
+                ('admin-features', 'ADMIN-FEATURES-7', 'plan', 'ADMIN-FEATURES-7'),
+                ('x', long_task, 'plan', 'unknown')):
+            with self.subTest(name=name, task_id=task_id):
+                self.assertEqual(self.attributes(name, task_id), {'shop.source': 'ao', 'shop.epic': name,
+                                                                  'shop.task': task, 'shop.task_kind': kind})
+
+    def test_an_unknown_kind_does_not_stop_the_start(self):
+        for name, task_id in (('telemetry', 'OTHER-1'), ('x', 'X-FIX-a'), ('x', 'X-INTEGRATION-1a'),
+                              ('x', 'X-FINALIZE-1'), ('x', 'X-FIX-'), ('x', 'X-'), ('x', 'x-1'), ('x', 'XX-1'),
+                              ('x', 'X-FIX-1-2'), ('x', 'X-PLAN-1'), ('admin-features', 'ADMIN-1'),
+                              ('admin-features', 'ADMIN-FEATURES-REPAIR')):
+            with self.subTest(name=name, task_id=task_id):
+                self.assertEqual(self.attributes(name, task_id), {'shop.source': 'ao', 'shop.epic': name,
+                                                                  'shop.task': task_id, 'shop.task_kind': 'unknown'})
+
+    def test_an_epic_name_outside_the_pattern_is_unknown(self):
+        for name in ('x+y', 'x y', 'zażółć', 'a' * 129, 'x,y', 'x=y', 'x y'):
+            with self.subTest(name=name):
+                self.assertEqual(self.attributes(name, 'X-1'), {'shop.source': 'ao', 'shop.epic': 'unknown',
+                                                                'shop.task': 'X-1', 'shop.task_kind': 'unknown'})
+
+
 class ProtectedSettingsTest(WrapperTestCase):
     """P12: .claude/settings*.json and .mcp.json changed against the merge-base with main stop the wrapper."""
 
