@@ -1,6 +1,9 @@
 parameters:
     app.images_bucket: '%env(IMAGES_BUCKET)%'
     app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
+    # The rules of an uploaded original: the upload in Catalog and the photo pool of the demo data (DemoData) share them.
+    app.image_upload.max_bytes: 67108864 # 64 MB
+    app.image_upload.max_pixels: 50000000 # 50 MP
     # Seconds between the attempts of storefront:cache:purge-all (5 per layer).
     app.storefront_cache.retry_delay: 5.0
     # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
@@ -54,11 +57,41 @@ services:
                 accessKeyId: '%env(GARAGE_ACCESS_KEY_ID)%'
                 accessKeySecret: '%env(GARAGE_SECRET_ACCESS_KEY)%'
 
+    # The private R2 bucket of the demo photo pool (DemoData, read only): the bucket is in the path, R2 takes the region `auto`.
+    # The client has its own HTTP client (not the shared one, which gives every request 5 s in all: the archive of the pool
+    # is about 1.6 GB) and no logger: the shared client and the client of AsyncAws log the whole URL of a request, and that holds
+    # the endpoint and the bucket of the private pool, which must not reach a log or Sentry.
+    app.demo_photos_http_client:
+        class: Symfony\Contracts\HttpClient\HttpClientInterface
+        factory: ['Symfony\Component\HttpClient\HttpClient', 'create']
+        autowire: false
+        autoconfigure: false
+        arguments:
+            -
+                # No limit of the whole request; a request that gets no data for a minute fails.
+                timeout: 60
+                max_duration: 0
+
+    app.demo_photos_s3_client:
+        class: AsyncAws\S3\S3Client
+        autowire: false
+        autoconfigure: false
+        arguments:
+            $configuration:
+                endpoint: '%env(DEMO_PHOTOS_ENDPOINT)%'
+                region: '%env(DEMO_PHOTOS_REGION)%'
+                pathStyleEndpoint: 'true'
+                accessKeyId: '%env(DEMO_PHOTOS_ACCESS_KEY_ID)%'
+                accessKeySecret: '%env(DEMO_PHOTOS_SECRET_ACCESS_KEY)%'
+            $credentialProvider: null
+            $httpClient: '@app.demo_photos_http_client'
+            $logger: null
+
     App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
         arguments:
             $filesystem: '@product_images.storage'
-            $maxBytes: 67108864 # 64 MB
-            $maxPixels: 50000000 # 50 MP
+            $maxBytes: '%app.image_upload.max_bytes%'
+            $maxPixels: '%app.image_upload.max_pixels%'
 
     App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator:
         arguments:
@@ -290,16 +323,27 @@ when@test: &test
         test.product_images.storage:
             alias: product_images.storage
             public: true
+        # Public, so a test can check how the private bucket of the photo pool is wired.
+        test.demo_photos.storage:
+            alias: demo_photos.storage
+            public: true
         # Public, so a test can set the identifier like the request subscriber does and read it back.
         App\Shared\Infrastructure\Observability\CorrelationId:
+            public: true
+        # Keeps every log record of every channel, so a test can check what was logged (the handlers of the test drop it).
+        App\Tests\Support\RecordingLogProcessor:
+            public: true
+            tags: ['monolog.processor']
+        # Public, so a test can read the limits the photo pool is checked with (the ones of the Catalog upload).
+        App\DemoData\Photo\PhotoRules:
             public: true
         # Public (and so never inlined), so a functional test can replace the image storage with a stub that is down.
         App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
             public: true
             arguments:
                 $filesystem: '@product_images.storage'
-                $maxBytes: 67108864 # 64 MB
-                $maxPixels: 50000000 # 50 MP
+                $maxBytes: '%app.image_upload.max_bytes%'
+                $maxPixels: '%app.image_upload.max_pixels%'
         # Tests switch the search backend (a temporary index, a failing stub) through this service.
         App\Tests\Support\SwitchableProductSearch:
             public: true
