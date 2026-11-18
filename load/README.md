@@ -34,7 +34,7 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
 - Checkout: dodanie losowego wariantu możliwego do kupienia (ilość 1), odczyt koszyka i `POST /api/checkout` z losowym
   dostawcą płatności. Zamówienie z rozpoczętą płatnością (`redirectUrl`) to sukces.
 - Dane wejściowe czyta `setup()` (`lib/data.js`) z publicznego API; pusty katalog przerywa przebieg. Katalog nie jest
-  nigdy listowany w całości, więc koszt `setup()` nie rośnie z jego rozmiarem:
+  nigdy listowany w całości, więc liczba żądań w `setup()` nie zależy od jego rozmiaru:
   - kategorie: drzewo `GET /api/v1/categories` (ścieżki do stron `/c/<ścieżka>`) i dostawcy płatności;
   - produkty: z losowych porcji mapy strony. Klucze porcji daje `GET /api/v1/sitemap/product-chunks`, a produkty porcji
     `GET /api/v1/sitemap/products?chunk=…` (tylko opublikowane). Z każdej wybranej porcji losowana jest równa część
