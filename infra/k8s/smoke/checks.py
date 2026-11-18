@@ -3,8 +3,9 @@
 The pod reaches the services by their names and the ingresses through Traefik with the Host header, so no port of
 the host is involved. Usage: python - <command> [argument]
 
-  basic         the checks of a new installation (search analysis, API, store, switches, panel and its security headers, no source
-                maps served by the store and the panel, realms, store login, image, order e-mail)
+  basic         the checks of a new installation (search analysis, API, store, switches, menu of the prerendered pages,
+                panel and its security headers, no source maps served by the store and the panel, realms, store login,
+                image, order e-mail)
   snapshot      prints a JSON snapshot of what an upgrade must not change (products, realms)
   compare       compares the snapshot given as the argument with the current state
   users         prints a JSON of the users of the realms and of their credentials (ids and dates, no secrets)
@@ -325,6 +326,25 @@ def check_store_switches():
     expect(status == 200 and json.loads(text) is None, f"/auth/session of the store answers for a guest ({status}: {text[:100]})")
 
 
+MENU = re.compile(r'<nav[^>]*\saria-label="Działy"')
+
+
+def check_store_menu():
+    """The pages prerendered at build time (no API answers then, so their HTML in the image has no menu) carry the tag
+    catalog of the read of the category tree: after the job purge-caches they are rendered again with the menu of
+    departments and the links to the categories. The 404 page is the one of an address no route has."""
+    for path, expected_status in (("/cart", 200), ("/konto/zamowienia", 200), ("/smoke-no-such-page", 404)):
+        def menu():
+            status, _, text = through_ingress(path)
+            found = {"status": status, "menu": MENU.search(text) is not None, "category link": 'href="/c/' in text}
+            if found != {"status": expected_status, "menu": True, "category link": True}:
+                raise AssertionError(f"got {found}")
+            return True
+
+        retry(f"{path} of the store has the menu of departments and a link to a category", menu, seconds=60)
+        expect(True, f"{path} of the store has the menu of departments and a link to a category")
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -622,6 +642,7 @@ def main():
         check_search_analysis()
         check_api_and_store()
         check_store_switches()
+        check_store_menu()
         check_admin_config()
         check_admin_security_headers()
         check_store_and_api_security_headers()
