@@ -15,7 +15,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  * `demo-photos/v<N>/photos.tar` of the private bucket named by fixtures/demo-data/photos.yaml (spec: "Zdjęcia").
  *
  * The order is what keeps a bad pool from changing anything: the variables, the manifest and its photo groups are
- * checked first; the archive is streamed to a work directory and unpacked there (only the files of the manifest, nothing
+ * checked first; the archive is downloaded to a work directory and unpacked there (only the files of the manifest, nothing
  * outside the directory); the complete set of files, the SHA-256 of each and the rules of the upload of Catalog are
  * checked next; only then each file is stored once in the bucket of the originals under `originals/<sha256>.<extension>`
  * (one that is already there is skipped) and the products get the keys of the group of their type. The work directory is
