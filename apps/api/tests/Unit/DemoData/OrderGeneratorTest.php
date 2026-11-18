@@ -58,6 +58,8 @@ final class OrderGeneratorTest extends TestCase
         self::$catalog = null;
         self::$orders = null;
         gc_collect_cycles();
+        // The memory manager keeps the freed chunks of the catalog otherwise, and the suite runs in one process.
+        gc_mem_caches();
         parent::tearDownAfterClass();
     }
 

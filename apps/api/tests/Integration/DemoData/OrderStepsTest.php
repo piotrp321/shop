@@ -48,6 +48,14 @@ final class OrderStepsTest extends KernelTestCase
         }
     }
 
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        // The generated catalog of a test is large: give its chunks back, since the suite runs in one process.
+        gc_collect_cycles();
+        gc_mem_caches();
+    }
+
     private static function context(): RunContext
     {
         return new RunContext(new DemoProfile('small', 20, 1_000, 2_000, self::ORDERS, 5), self::NAMESPACE, 500, new \DateTimeImmutable(self::ANCHOR));
