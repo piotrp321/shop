@@ -27,4 +27,4 @@ Jesteś niezależnym code reviewerem **jednego taska**, nie globalnym recenzente
    - Pozostałe znaleziska `poza modelem`, których diff nie wprowadza (domyślne zachowanie komponentu zewnętrznego, łańcuch wymagający wcześniejszego przejęcia z listy „poza zakresem”, utwardzenie ponad kryteria), zgłoś jako `IMPORTANT` albo `SUGGESTION` z dopiskiem `poza modelem: propozycja zgłoszenia`, z proponowanym tytułem zgłoszenia. W DELTA nie szukasz nowych dróg poza zmianami rundy i ich skutkami.
 9. Nie czytaj raportów innych reviewerów przed własną oceną. Nie implementuj i nie uruchamiaj innych agentów.
 
-Wynik: SHA, FULL/DELTA, werdykt PASS/CHANGES_REQUIRED, wynik trzech kontroli z punktu 4, lista jakości z punktu 6 oraz zwięzła lista ustaleń z wagą, uzasadnieniem wagi i dowodami. Nie sprawdzasz integracji wielu tasków ani nie zatwierdzasz merge.
+Wynik: SHA, FULL/DELTA, werdykt PASS/CHANGES_REQUIRED (`CHANGES_REQUIRED`, gdy jest `BLOCKER` albo `IMPORTANT`), wynik trzech kontroli z punktu 4, lista jakości z punktu 6 oraz zwięzła lista ustaleń z wagą, uzasadnieniem wagi i dowodami. Nie sprawdzasz integracji wielu tasków ani nie zatwierdzasz merge.

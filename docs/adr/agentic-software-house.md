@@ -41,7 +41,9 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
 3. **Polityka przeglądu.** Dwie rundy to domyślny budżet, nie twardy limit. Luki bezpieczeństwa, utrata danych, błędy
    logiki biznesowej i istotne regresje muszą być naprawione; drobne uwagi, hipotetyczne przypadki brzegowe i styl
    są odraczane bez pytania właściciela; kolejna runda wymaga konkretnego uzasadnienia. Wagę nadaje reviewer według
-   skutku w normalnym użyciu; definicje są w plikach agentów, a dla AO także w skillu `/integration`.
+   skutku w normalnym użyciu; definicje są w plikach agentów, a dla AO także w skillu `/integration`. Blokują
+   `BLOCKER`, `Critical`, `IMPORTANT` i `Important` oraz werdykt `REWORK` agenta `architecture-reviewer`;
+   `SUGGESTION` i `Minor` trafiają do opisu PR jako odroczone.
 4. **Merge do `main`** zawsze należy do użytkownika albo do sesji na jego wyraźne polecenie, które wskazuje PR.
    Squash i usunięcie gałęzi. Wyjątki procedury AO (niżej) obowiązują tylko przy jej uruchomieniu.
 5. **Modele.** Sesja orkiestrująca może działać na najmocniejszym modelu; subagenci używają modelu z definicji albo
@@ -60,28 +62,35 @@ Audyt z 2026-11-18 (`docs/reports/agentic-software-house-audit-2026-11-18.md`) u
 Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
 
 1. **Start.** Specyfikacja i plan są na `main`. Sesja zakłada gałąź epiku od `origin/main` (nazwa spoza `epic/*`, np.
-   `feat/<epik>`), wypycha ją i otwiera draft PR do `main`.
+   `feat/<epik>`), wypycha ją z pierwszym commitem (np. „Status” planu: epik w toku) i otwiera draft PR do `main`.
 2. **Zlecenie zadania.** Zadanie gotowe do startu (zależności zmergowane do gałęzi epiku) dostaje subagent `developer`
    z `isolation: worktree`. Jego worktree startuje z `origin/main`, nie z gałęzi epiku, więc zlecenie każe zacząć od
    `git fetch origin && git switch -c task/<ID> origin/<gałąź epiku>`. Zlecenie podaje ID zadania, ścieżkę planu
    i specyfikacji, a gdy zadanie potrzebuje stosu (testy na bazie, kolejce, przeglądarce): nazwę projektu Compose
-   i pierwszy z 7 wolnych portów dla `.ao/setup`; stos gasi `.ao/teardown`. Subagent commituje na gałęzi zadania i nie
-   pushuje.
+   i pierwszy z 7 wolnych portów (`AO_COMPOSE_PROJECT=<nazwa> AO_PORT_BASE=<port> .ao/setup`; stos gasi
+   `AO_COMPOSE_PROJECT=<nazwa> .ao/teardown`). Subagent commituje na gałęzi zadania i nie pushuje.
 3. **Równoległość.** Naraz idą zadania jednej fali, które mają się nawzajem w `parallel_with`. Liczbę ogranicza
    pamięć hosta (zwykle 2–3 stosy) i limity subskrypcji, które sesja sprawdza przed falą; płatnych przekroczeń nie
    włącza.
-4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów. `STANDARD` i `CRITICAL`: `code-reviewer`
-   na SHA zadania. Poprawki robi `developer`, po nich przegląd różnicy.
+4. **Przegląd zadania.** `FAST`: sesja sama sprawdza diff i wyniki testów, w tym trzy kontrole z punktu 4 agenta
+   `code-reviewer` (istniejące testy, zakres, RED). `STANDARD` i `CRITICAL`: `code-reviewer` w trybie FULL; zlecenie
+   podaje worktree zadania jako katalog przeglądu, `head_sha` i `base_sha` (`git merge-base task/<ID> <gałąź epiku>`).
+   Poprawki robi `developer`, po nich przegląd różnicy (DELTA). Gdy zadanie z TDD nie ma fazy RED, sesja uruchamia
+   test na kodzie bazowym (ma nie przechodzić) i zapisuje wynik w opisie PR; RED nie odtwarza się po fakcie.
 5. **Merge zadania.** Sesja merguje gałąź zadania do gałęzi epiku (`git merge`), wypycha ją i wpisuje commit
    w „Status” planu. Czerwone CI draft PR naprawia przed kolejną falą.
 6. **Przegląd epiku.** Po ostatnim zadaniu i zielonym CI: jeden przegląd całego diffu `origin/main...<gałąź epiku>`
    agentami dobranymi do zmiany: `architecture-reviewer` przy nowym module, migracji albo zmianie granic;
    `qa-adversarial` na działającym stosie przy zmianie zachowania aplikacji; `ux-reviewer` przy zmianie frontów.
-   Znaleziska blokujące naprawia jedno zadanie, po nim przegląd różnicy (punkt 3 decyzji).
-7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje odroczone uwagi w opis PR, oznacza PR jako
-   gotowy i pisze raport. Merge do `main` robi użytkownik.
+   Stos na czole gałęzi epiku podnosi sesja w swoim worktree (`make up`, `make seed`) i podaje reviewerom jego adresy;
+   `ux-reviewer` dostaje też katalog stosu, `AGENT_DIR`, tryb i listę zmienionych plików frontów, a `qa-adversarial`
+   (własny worktree) zaczyna od `git switch --detach origin/<gałąź epiku>`. Znaleziska blokujące naprawia jedno
+   zadanie, po nim przegląd różnicy (punkt 3 decyzji).
+7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje w opis PR odroczone uwagi i `Closes #N` dla
+   issues z linii `Issues:` specyfikacji, oznacza PR jako gotowy i pisze raport. Merge do `main` robi użytkownik.
 8. **Wznowienie po przerwie.** Stan odtwarza się z sekcji „Status” planu, gałęzi `task/*`, `git worktree list` i draft
-   PR. Niedokończone zadanie podejmuje nowy subagent od commitów gałęzi `task/<ID>`.
+   PR. Niedokończone zadanie podejmuje nowy subagent: sesja usuwa stary worktree zadania (`git worktree remove`,
+   commity zostają na gałęzi), a zlecenie każe `git switch task/<ID>`.
 
 Mała zmiana (poprawka albo do trzech zadań niskiego ryzyka) nie potrzebuje tej ścieżki: jedna gałąź i jeden PR do
 `main` w zwykłej sesji.

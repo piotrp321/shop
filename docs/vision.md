@@ -427,9 +427,9 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
   usuwamy też z dokumentacji.
 - Granic architektury pilnują narzędzia (Deptrac, PHPStan, ESLint, tsc) w `make check` i w CI, a nie zaufanie
   do modelu.
-- Zadania z planu realizują subagenci Claude Code prowadzeni przez plugin Superpowers: każde zadanie ma
-  implementację i niezależne review, a PR przechodzi CI. Konfiguracja jest w repo (`.claude/settings.json`),
-  zasady pracy w `CLAUDE.md`.
+- Zadania z planu realizują natywni subagenci Claude Code prowadzeni przez główną sesję
+  (`docs/adr/agentic-software-house.md`): zadanie ma implementację i niezależne review, a PR przechodzi CI. Zasady
+  pracy są w `CLAUDE.md`.
 - Agenci pracują lokalnie, na pełnym stosie w Dockerze.
 - Zasady wspólne są w głównym `CLAUDE.md`, zasady konkretnej aplikacji w jej własnym `CLAUDE.md`,
   żeby agent pracujący nad frontem nie dostawał w kontekście zasad Doctrine i odwrotnie.
