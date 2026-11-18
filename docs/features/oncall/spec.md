@@ -210,7 +210,7 @@ i krótkie ID issues Sentry. Nie zawiera tytułów ani treści zdarzeń:
 | O7 | Fałszywe `OK` przy braku danych | K3, K4, K6, błąd źródła i brak przejścia nigdy nie dają `OK` z hypercare | testy werdyktu i przebiegu |
 
 **Poza zakresem (świadomie):**
-- `oncall.py` jest uruchamiany z głównego klonu, tak jak skrypty `/groom`. Zmieniony lokalnie skrypt działa z
+- `oncall.py` jest uruchamiany z głównego klonu. Zmieniony lokalnie skrypt działa z
   uprawnieniami użytkownika i jego tokenami tylko do odczytu; to ta sama granica co przy innych skillach.
 - Python, aplikacja Claude i endpointy Grafana Cloud i Sentry są zaufane.
 - Ograniczenie wysyłki przez jawne DSN-y to ustawienia konta Sentry (#557).
@@ -282,7 +282,7 @@ i krótkie ID issues Sentry. Nie zawiera tytułów ani treści zdarzeń:
 
 ## Zmiany innych dokumentów (razem z implementacją)
 
-- `CLAUDE.md`: jeden punkt wzorem `/groom`: `/oncall` (zadanie zaplanowane albo ręcznie) liczy deterministycznie
+- `CLAUDE.md`: jeden punkt: `/oncall` (zadanie zaplanowane albo ręcznie) liczy deterministycznie
   hypercare po wdrożeniu i wysyła push; tokeny tylko do odczytu; rollback wykonuje wyłącznie użytkownik.
 - `docs/features/agentic-software-house/plan.md`, krok 11:
   - klaster czytany z metryk Grafana Cloud zamiast celów `make -C infra/k8s` (decyzja D2);

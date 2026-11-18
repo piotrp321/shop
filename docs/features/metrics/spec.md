@@ -503,7 +503,7 @@ użytkownika.
 
 - Telemetria Claude Code w lokalnym stosie na Macu: epik TELEMETRY (#577).
 - Monitoring produkcji i dyżur agenta (krok 11), dokumentacja i studium przypadku (krok 21).
-- Pomiar `/sweep`, `/retro` i `/prepare-epic` w rekordzie epiku: mają własne sekcje `## Zużycie` (pp i czas).
+- Pomiar `/sweep` i `/retro` w rekordzie epiku: mają własne sekcje `## Zużycie` (pp i czas).
 - Automatyczne zatrzymywanie prób przy alarmie i zmiany AO (zamrożone).
 - Decyzja o 19b (kryterium w planie, pomiar par `pairs.py`) i liczba zadań naraz po 19b.
 - Evale innych ról i zmiany EVALS 2.0 (format wyników, zapis decyzji o wariancie): D1 obejmie rolę po dopisaniu jej

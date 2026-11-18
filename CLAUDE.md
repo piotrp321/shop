@@ -138,7 +138,7 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`). Lokalne ustawienia
   Claude Code są w `.claude/settings.local.json` (poza repo).
 
-Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/prepare-epic`, `/delivery`, `/sweep`, `/retro`, `/groom` jest
+Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/delivery`, `/sweep`, `/retro` jest
 zamrożony; AO zostaje uruchamialny jako rozwiązanie awaryjne. Sesja, która uruchamia AO albo któryś z tych skilli,
 najpierw czyta zasady AO: `docs/adr/agentic-software-house.md` („Zasady obowiązujące tylko przy uruchomieniu AO”),
 `docs/adr/agent-security.md` i `docs/features/ao-run/spec.md`.

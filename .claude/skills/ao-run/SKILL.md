@@ -989,7 +989,7 @@ Wyjście to jedna linia JSON jak w sekcji 1: `epic` (`dir`, `id`, `issue`, `titl
   bramki z liczbą pozostałych, np. „Brak epiku do startu: CHECKOUT (#91) wspólne pliki z CART: apps/api/src/Cart (+1 inny)”.
   Pusta `skipped`: bramka nie widzi epików nieprzygotowanych, więc weź pierwszą pozycję `skipped` z
   `python3 "$SKILL_ROOT/.claude/skills/ao-run/next_epic.py" --repo "$SHOP"`, np. „Brak przygotowanego epiku: VARIANTS
-  (#89) bez spec.md i plan.md na main, następny krok /prepare-epic (+2 inne)”, a gdy i ta jest pusta: „Brak
+  (#89) bez spec.md i plan.md na main (+2 inne)”, a gdy i ta jest pusta: „Brak
   przygotowanego epiku na tablicy” (z epikami `in_progress`, gdy są). Pełną listę podaj w rozmowie. Po sekcjach 4
   i 6 brak kandydata podajesz tylko w rozmowie, bez pushu. Pozycja `skipped` z polami `author` i `url` (a `id` równym
   `null`) to issue `epic` autora bez prawa zapisu, które bramka pochodzenia pominęła bez tytułu i treści: podaj ją
@@ -1160,7 +1160,7 @@ epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, kt
 - Nie zaczynasz epiku bez „tak” użytkownika w sesji (na „Zacząć epik?” albo na listę nocy). Kolejny epik listy
   zaczynasz bez pytania tylko wtedy, gdy zwróci go `next`.
 - Nie zapisujesz listy nocy (`approve`) bez „tak” użytkownika ani z innymi epikami niż zaproponowane.
-- Nie przygotowujesz epiku (to `/prepare-epic`) i nie zmieniasz tablicy.
+- Nie przygotowujesz epiku i nie zmieniasz tablicy.
 - Nie zakładasz issues z przeglądu bez triage użytkownika i nie uruchamiasz przeglądu ani retro równolegle z epikiem
   ani z innym przeglądem lub retro (sekcja 7a). Nie mergujesz PR retro i nie zakładasz issues z retro bez „tak”
   użytkownika (zasady `/retro`).
