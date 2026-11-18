@@ -29,7 +29,7 @@ check:
 # host or the binding of the policy on the tokens, a policy that only warns or fails open, the policies in the wave of the workloads,
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing without the absent for a metric that is gone, NodeDiskFull
-# firing at exactly 85 percent, an alert rule that PromQL cannot parse).
+# firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).
 selftest:
@@ -64,10 +64,19 @@ monitoring-smoke:
 
 # The load measurement on a throwaway k3d cluster with the production images built here and the profile `load`: the demo
 # data, the stocks raised, a warm-up, the ramp to saturation and the steady run with a checkout (the k6 scripts of
-# ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required).
-# Exit code 0: measured; 2: the environment is not fit (no LOAD_OUT, too few CPUs or too little memory in the Docker VM,
-# images missing in the node after three imports, pods not ready), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the
-# settings (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
+# ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required)
+# [LOAD_DATA=seed|medium|server|full]. LOAD_DATA=seed (the default) measures on the demo data of the Job initialize and raises
+# the stock of every variant. medium, server and full first run one Job of the suspended CronJob demo-data (bin/generate-demo
+# with that profile; it deletes the seed; hours for server and full, LOAD_DATA_TIMEOUT), then raise the stock of the variants
+# of a few random chunks of the sitemap only and give their keys to k6 (DISCOVER_CHUNKS); they read the four read variables of
+# the private bucket of the photo pool from DEMO_PHOTOS_ENV_FILE (default ~/.config/shop/demo-photos.env; the token that writes
+# never goes to the cluster) into the Secret demo-photos, without a value in a command line, the output or LOAD_OUT.
+# Exit code 0: measured; 2: the environment is not fit (no LOAD_OUT, an unknown LOAD_DATA, the photo file missing or without
+# a read variable: before any cluster is made; too few CPUs or too little memory in the Docker VM, images missing in the node
+# after three imports, pods not ready, the generator failed or did not finish in time, with its log; no chunks or no stock
+# raised), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the settings and
+# the files of LOAD_OUT (with LOAD_DATA also the times of the steps of the generator and the sizes of the tables and indexes)
+# (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
 load:
 	sh scripts/load.sh
 

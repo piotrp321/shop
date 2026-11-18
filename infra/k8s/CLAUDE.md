@@ -46,6 +46,11 @@ serwera” i „Smoke test i check”).
 - `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita); opis celów, ich zmiennych i kodów wyjścia
   jest przy celu. Testy i pomiary bez serwera: `check`, `selftest`, `smoke`, `monitoring-smoke` (poza `check` i CI)
   i `load LOAD_OUT=<katalog poza repo>`.
+- `load` z `LOAD_DATA` innym niż `seed` (`medium`, `server`, `full`) agent uruchamia tylko po zgodzie użytkownika
+  w rozmowie: generator działa godzinami, dane zajmują dziesiątki do setek GB dysku, a cel czyta dane dostępu do prywatnego
+  bucketu puli zdjęć z pliku użytkownika (`DEMO_PHOTOS_ENV_FILE`), którego agent nie czyta ani nie wypisuje. Do klastra
+  trafiają tylko cztery zmienne odczytu, nigdy token zapisu (`DEMO_PHOTOS_WRITE_*`), a ich wartości nie mogą trafić do linii
+  poleceń, wyjścia ani `LOAD_OUT` (pilnuje tego `tests/test_load_script.py`).
 - CI nie uruchamia `selftest`: wszystkie przypadki idą na żądanie (`make -C infra/k8s selftest` lokalnie albo
   `gh workflow run k8s-selftest.yml --ref <gałąź> [-f only=<regex>]`, pole `only` to `SELFTEST_ONLY`), a agent uruchamia
   lokalnie tylko przypadki, które dodał albo zmienił, i przypadki testów, które zmienił.

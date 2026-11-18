@@ -1,12 +1,16 @@
 """scripts/load.sh (make -C infra/k8s load) on a stub of docker: the refusals of the environment (exit 2, a message, no
-cluster made or the cluster deleted) of docs/features/hardening/spec.md, "Testy obciążeniowe". The measurement itself is
-not run here (it needs a cluster and takes tens of minutes); `make -C infra/k8s load` is.
+cluster made or the cluster deleted) of docs/features/hardening/spec.md, "Testy obciążeniowe", and the data of LOAD_DATA
+(docs/features/demo-data/spec.md, "k3d"): the Job of the generator, the stocks of the chunks of the sitemap, the Secret of the
+photo pool. The measurement itself is not run here (it needs a cluster and takes tens of minutes); `make -C infra/k8s load` is.
 
 k3d, kubectl and helm are shell functions of tools.sh that run `docker run <image> ...`, so a stub of docker is the
 only thing the script talks to."""
 
+import base64
+import json
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 import unittest
@@ -18,9 +22,17 @@ SCRIPT = REPO / "infra/k8s/scripts/load.sh"
 # One line of arguments per call in $STUB_LOG. Answers by the command: the resources of the Docker VM, k3d (a kubeconfig),
 # kubectl (nothing exists in the cluster: no jobs, no deployments; with STUB_READY=1 the cluster is settled, has STUB_PRODUCTS
 # products and answers the UPDATE of the stocks with STUB_UPDATE_OUT and the exit code STUB_UPDATE_STATUS), everything else
-# succeeds silently.
+# succeeds silently. The standard input of `kubectl create -f -` is kept in $STUB_STDIN_DIR (create.<n>). The Job of the
+# generator is in the state STUB_DATA_JOB (Complete by default) with the log STUB_DATA_LOG; curl answers the chunks of the
+# sitemap with STUB_CHUNKS (exit STUB_CHUNKS_STATUS); k6 writes its results to STUB_K6_OUT when it is set.
 DOCKER = r"""#!/bin/sh
-printf '%s\n' "$*" >> "$STUB_LOG"
+printf '%s\n' "$*" | tr '\n' ' ' >> "$STUB_LOG"
+echo >> "$STUB_LOG"
+case "$*" in
+  *registry.k8s.io/kubectl*"create -f -"*)
+    n="$(ls "$STUB_STDIN_DIR" | wc -l | tr -d ' ')"
+    cat > "$STUB_STDIN_DIR/create.$n" ;;
+esac
 case "$1" in
   info)
     [ -z "${STUB_NO_DOCKER:-}" ] || { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
@@ -45,11 +57,59 @@ case "$1" in
             echo "psql: stub error" >&2
             exit "${STUB_UPDATE_STATUS:-0}" ;;
           *"exec statefulset/postgres"*"count(*)"*) printf '%s\r\n' "${STUB_PRODUCTS:-5}" ;;
+          *"exec statefulset/postgres"*"pg_database_size"*) printf 'stub sizes of postgres\n' ;;
+          *"exec statefulset/elasticsearch"*"_cat/indices"*) printf 'stub indices of elasticsearch\n' ;;
+          *"get job demo-data-load"*activeDeadlineSeconds*) printf '7200' ;;
+          *"get job demo-data-load"*conditions*) printf '%s' "${STUB_DATA_JOB-Complete}" ;;
+          *"logs job/demo-data-load"*) printf '%s\n' "${STUB_DATA_LOG:-2026-11-18T10:00:00.000000000Z seeding}" ;;
+        esac ;;
+      *curlimages/curl*"/api/v1/sitemap/product-chunks"*)
+        printf '%s' "${STUB_CHUNKS:-}"
+        exit "${STUB_CHUNKS_STATUS:-0}" ;;
+      *grafana/k6*)
+        [ -n "${STUB_K6_OUT:-}" ] || exit 0
+        case "$*" in
+          *saturate.js*) echo '{}' > "$STUB_K6_OUT/ramp.json"; echo 5 > "$STUB_K6_OUT/steady-rate" ;;
+          *steady.js*) echo '{}' > "$STUB_K6_OUT/steady.json" ;;
         esac ;;
     esac ;;
 esac
 exit 0
 """
+
+# The read access of the photo pool as the file of the user has it, with the token that writes next to it.
+READ_ACCESS = {
+    "DEMO_PHOTOS_ENDPOINT": "https://endpoint-7f3a1c.r2.example.com",
+    "DEMO_PHOTOS_BUCKET": "bucket-3c4d9e-photos",
+    "DEMO_PHOTOS_ACCESS_KEY_ID": "readkeyid5e6f7a8b9c",
+    "DEMO_PHOTOS_SECRET_ACCESS_KEY": "readsecret9c0d1e2f3a4b5c6d",
+}
+WRITE_ACCESS = {
+    "DEMO_PHOTOS_WRITE_ACCESS_KEY_ID": "writekeyid1234abcd",
+    "DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY": "writesecret5678efgh",
+}
+
+
+def chunk_key(start, end):
+    """A key as SitemapChunkKey::encode() makes it: base64url without padding of {"f": start, "t": end}."""
+    text = json.dumps({"f": start, "t": end}, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(text).decode().rstrip("=")
+
+
+BOUNDARIES = [None, "1f000000-0000-4000-8000-000000000000", "3f000000-0000-4000-8000-000000000000",
+              "5f000000-0000-4000-8000-000000000000", "7f000000-0000-4000-8000-000000000000", None]
+CHUNK_KEYS = [chunk_key(BOUNDARIES[i], BOUNDARIES[i + 1]) for i in range(len(BOUNDARIES) - 1)]
+CHUNKS_ANSWER = json.dumps({"chunks": [{"key": key} for key in CHUNK_KEYS]}, separators=(",", ":"))
+
+# The log of the Job as kubectl logs --timestamps prints it: the steps end with the [OK] line of SymfonyStyle, the parts of a
+# step one line per worker.
+GENERATOR_LOG = "\n".join([
+    "2026-11-18T10:00:00.000000000Z 4",
+    "2026-11-18T10:00:30.500000000Z  [OK] categories: 10 written, 0 already there                ",
+    "2026-11-18T10:02:00.000000000Z  [OK] products (worker 0 of 2): 1 parts, 10 products, 20 variants",
+    "2026-11-18T10:02:10.000000000Z  [OK] products (worker 1 of 2): 1 parts, 10 products, 20 variants",
+    "2026-11-18T10:03:10.000000000Z  [OK] the generated data is consistent",
+])
 
 
 class LoadScript(unittest.TestCase):
@@ -65,11 +125,13 @@ class LoadScript(unittest.TestCase):
         self.log.write_text("")
         self.out = base / "out"
         self.out.mkdir()
+        self.stdin = base / "stdin"
+        self.stdin.mkdir()
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_load(self, **env):
+    def run_load(self, shell_options=(), **env):
         variables = {
             "PATH": f"{self.bin}:{os.environ['PATH']}",
             "HOME": self.tmp.name,
@@ -77,10 +139,11 @@ class LoadScript(unittest.TestCase):
             "TOOLS_CACHE": f"{self.tmp.name}/cache",
             "COMPOSE_PROJECT_NAME": "loadtest",
             "STUB_LOG": str(self.log),
+            "STUB_STDIN_DIR": str(self.stdin),
             "LOAD_POLL": "1",
             **env,
         }
-        return subprocess.run(["sh", str(SCRIPT)], env=variables, capture_output=True, text=True, timeout=120)
+        return subprocess.run(["sh", *shell_options, str(SCRIPT)], env=variables, capture_output=True, text=True, timeout=120)
 
     def calls(self):
         return self.log.read_text().splitlines()
@@ -195,6 +258,291 @@ class LoadScript(unittest.TestCase):
                 self.log.write_text("")
                 result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", STUB_READY="1", STUB_UPDATE_OUT=answer)
                 self.assert_ends_with_2_after_the_stocks_failed(result)
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # LOAD_DATA: the generator, the stocks of the chunks of the sitemap and the Secret of the photo pool
+    # -----------------------------------------------------------------------------------------------------------------
+    def photo_file(self, values=None, extra=""):
+        """The file of the user with the access of the photo pool (the read variables and the token that writes)."""
+        values = {**READ_ACCESS, **WRITE_ACCESS} if values is None else values
+        path = pathlib.Path(self.tmp.name) / "demo-photos.env"
+        path.write_text("# the photo pool\n" + "".join(f"{name}={value}\n" for name, value in values.items()) + extra)
+        return str(path)
+
+    def run_data(self, profile="medium", shell_options=(), **env):
+        """A run with LOAD_DATA=<profile> on a settled cluster to the end (k6 writes its results)."""
+        variables = {
+            "LOAD_OUT": str(self.out), "LOAD_BUILD": "0", "LOAD_COOLDOWN": "0", "LOAD_DATA_POLL": "1", "STUB_READY": "1",
+            "STUB_UPDATE_OUT": "UPDATE 12", "STUB_CHUNKS": CHUNKS_ANSWER, "STUB_DATA_LOG": GENERATOR_LOG,
+            "STUB_K6_OUT": str(self.out), "LOAD_DATA": profile,
+            **env,
+        }
+        if "DEMO_PHOTOS_ENV_FILE" not in env:
+            variables["DEMO_PHOTOS_ENV_FILE"] = self.photo_file()
+        return self.run_load(shell_options=shell_options, **variables)
+
+    def index_of(self, needle):
+        indexes = [i for i, call in enumerate(self.calls()) if needle in call]
+        self.assertTrue(indexes, f"no call with {needle!r}")
+        return indexes[0]
+
+    def k6_calls(self):
+        return [call for call in self.calls() if "grafana/k6" in call]
+
+    def update_calls(self):
+        return [call for call in self.calls() if "exec statefulset/postgres" in call and "UPDATE " in call]
+
+    def created_secrets(self):
+        documents = [json.loads(path.read_text()) for path in sorted(self.stdin.iterdir())]
+        return [d for d in documents if d.get("kind") == "Secret"]
+
+    def assert_no_docker_call(self, result, *words):
+        self.assertEqual(2, result.returncode, result.stderr)
+        for word in words:
+            self.assertIn(word, result.stderr)
+        self.assertEqual([], self.calls())
+
+    def assert_ends_with_2_and_the_cluster_is_deleted(self, result, *words):
+        self.assertEqual(2, result.returncode, result.stderr)
+        for word in words:
+            self.assertIn(word, result.stderr)
+        self.assertEqual(1, len(self.cluster_calls("create")))
+        self.assertEqual([], self.k6_calls())
+        self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
+        self.assertIn("ld-loadtest", self.cluster_calls("delete")[-1])
+
+    def test_an_unknown_load_data_ends_with_2_before_any_docker_call(self):
+        for value in ("small", "bogus", "Medium", "medium full", "seed;x"):
+            with self.subTest(value=value):
+                self.log.write_text("")
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA=value)
+                self.assert_no_docker_call(result, "LOAD_DATA", "seed, medium, server or full")
+
+    def test_without_the_photo_file_a_generated_profile_ends_with_2_before_any_docker_call(self):
+        missing = str(pathlib.Path(self.tmp.name) / "missing.env")
+        for profile in ("medium", "server", "full"):
+            with self.subTest(profile=profile):
+                self.log.write_text("")
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA=profile, DEMO_PHOTOS_ENV_FILE=missing)
+                self.assert_no_docker_call(result, missing, "DEMO_PHOTOS_ENV_FILE")
+
+    def test_the_photo_file_is_by_default_in_the_config_of_the_user(self):
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA="medium")
+        self.assert_no_docker_call(result, f"{self.tmp.name}/.config/shop/demo-photos.env")
+        default = pathlib.Path(self.tmp.name) / ".config/shop"
+        default.mkdir(parents=True)
+        (default / "demo-photos.env").write_text("".join(f"{n}={v}\n" for n, v in READ_ACCESS.items()))
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA="medium")
+        self.assertIn("not ready", result.stderr)
+        self.assertEqual(1, len(self.cluster_calls("create")))
+
+    def test_a_photo_file_without_a_read_variable_ends_with_2_before_any_docker_call(self):
+        for name in READ_ACCESS:
+            for value in (None, "", '""', "   "):
+                with self.subTest(name=name, value=value):
+                    self.log.write_text("")
+                    values = {n: v for n, v in {**READ_ACCESS, **WRITE_ACCESS}.items() if n != name}
+                    if value is not None:
+                        values[name] = value
+                    result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA="medium", DEMO_PHOTOS_ENV_FILE=self.photo_file(values))
+                    self.assert_no_docker_call(result, name)
+                    for secret in {**READ_ACCESS, **WRITE_ACCESS}.values():
+                        self.assertNotIn(secret, result.stdout + result.stderr)
+
+    def test_the_token_that_writes_does_not_stand_for_the_read_access(self):
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA="medium", DEMO_PHOTOS_ENV_FILE=self.photo_file(WRITE_ACCESS))
+        self.assert_no_docker_call(result, *READ_ACCESS)
+
+    def test_the_file_is_read_as_data_and_nothing_in_it_runs(self):
+        marker = pathlib.Path(self.tmp.name) / "ran"
+        values = {**READ_ACCESS, "DEMO_PHOTOS_BUCKET": f"$(touch {marker})`touch {marker}`"}
+        result = self.run_data(DEMO_PHOTOS_ENV_FILE=self.photo_file(values, extra=f"touch {marker}\n"))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse(marker.exists())
+        data = self.created_secrets()[0]["data"]
+        self.assertEqual(values["DEMO_PHOTOS_BUCKET"], base64.b64decode(data["DEMO_PHOTOS_BUCKET"]).decode())
+
+    def test_quotes_and_carriage_returns_of_the_file_are_not_part_of_the_values(self):
+        path = pathlib.Path(self.tmp.name) / "quoted.env"
+        names = list(READ_ACCESS)
+        path.write_text(f'{names[0]}="{READ_ACCESS[names[0]]}"\r\n{names[1]}=\'{READ_ACCESS[names[1]]}\'\r\n'
+                        f"{names[2]}={READ_ACCESS[names[2]]}\r\n{names[3]}={READ_ACCESS[names[3]]}")
+        result = self.run_data(DEMO_PHOTOS_ENV_FILE=str(path))
+        self.assertEqual(0, result.returncode, result.stderr)
+        data = self.created_secrets()[0]["data"]
+        self.assertEqual(READ_ACCESS, {k: base64.b64decode(v).decode() for k, v in data.items()})
+
+    def test_a_generated_profile_runs_the_generator_once_and_measures_the_chunks_it_raised(self):
+        result = self.run_data("server")
+        self.assertEqual(0, result.returncode, result.stderr)
+        helm = [call for call in self.calls() if "alpine/helm" in call]
+        self.assertEqual(1, len(helm))
+        self.assertIn("demoData.profile=server", helm[0])
+        self.assertIn("demoData.photosSecretName=demo-photos", helm[0])
+        jobs = [call for call in self.calls() if "create job" in call]
+        self.assertEqual(1, len(jobs), jobs)
+        self.assertIn("create job demo-data-load --from=cronjob/demo-data", jobs[0])
+        # The Secret before the Job, the Job before the stocks, the stocks before k6.
+        self.assertLess(self.index_of("create -f -"), self.index_of("create job demo-data-load"))
+        self.assertLess(self.index_of("create job demo-data-load"), self.index_of("UPDATE "))
+        self.assertLess(self.index_of("UPDATE "), self.index_of("grafana/k6"))
+        # The stocks of the variants of the products of the chunks only, three of the five of the API by default.
+        updates = self.update_calls()
+        self.assertEqual(1, len(updates))
+        self.assertIn("catalog_product_variant", updates[0])
+        chosen = [key for key in CHUNK_KEYS if key in updates[0]]
+        self.assertEqual(3, len(chosen), updates[0])
+        # Every k6 run gets the keys of the raised chunks.
+        self.assertEqual(3, len(self.k6_calls()))
+        for call in self.k6_calls():
+            given = re.search(r"-e DISCOVER_CHUNKS=(\S+)", call)
+            self.assertIsNotNone(given, call)
+            self.assertEqual(sorted(chosen), sorted(given.group(1).split(",")))
+        environment = (self.out / "environment.txt").read_text()
+        self.assertIn("LOAD_DATA: server", environment)
+        for key in chosen:
+            self.assertIn(key, environment)
+
+    def test_the_secret_of_the_photo_pool_has_the_four_read_variables_and_no_token_that_writes(self):
+        result = self.run_data()
+        self.assertEqual(0, result.returncode, result.stderr)
+        secrets = self.created_secrets()
+        self.assertEqual(1, len(secrets))
+        self.assertEqual("demo-photos", secrets[0]["metadata"]["name"])
+        decoded = {k: base64.b64decode(v).decode() for k, v in secrets[0]["data"].items()}
+        self.assertEqual(READ_ACCESS, decoded)
+        stdin = "".join(path.read_text() for path in self.stdin.iterdir())
+        for value in WRITE_ACCESS.values():
+            self.assertNotIn(value, stdin)
+            self.assertNotIn(base64.b64encode(value.encode()).decode(), stdin)
+
+    def leaked(self, result, values):
+        """The values (and their base64) found in the output, in the arguments of the calls or in a file of LOAD_OUT."""
+        places = {"output": result.stdout + result.stderr, "arguments": self.log.read_text()}
+        for path in self.out.rglob("*"):
+            if path.is_file():
+                places[f"LOAD_OUT/{path.name}"] = path.read_text(errors="replace")
+        found = []
+        for value in values:
+            for form in (value, base64.b64encode(value.encode()).decode()):
+                found += [f"{form} in {place}" for place, text in places.items() if form in text]
+        return found
+
+    def test_no_value_of_the_photo_pool_is_in_the_output_the_arguments_or_load_out(self):
+        values = [*READ_ACCESS.values(), *WRITE_ACCESS.values()]
+        for options in ((), ("-x",)):
+            with self.subTest(shell_options=options):
+                self.log.write_text("")
+                for path in self.stdin.iterdir():
+                    path.unlink()
+                result = self.run_data(shell_options=options)
+                self.assertEqual(0, result.returncode, result.stderr[-3000:])
+                self.assertEqual([], self.leaked(result, values))
+
+    def test_a_value_of_the_photo_pool_in_the_log_of_the_generator_is_masked(self):
+        secret = READ_ACCESS["DEMO_PHOTOS_SECRET_ACCESS_KEY"]
+        log = GENERATOR_LOG + f"\n2026-11-18T10:03:11.000000000Z a line with {secret} and {READ_ACCESS['DEMO_PHOTOS_BUCKET']}"
+        result = self.run_data(STUB_DATA_LOG=log)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([], self.leaked(result, READ_ACCESS.values()))
+        self.assertIn("masked", result.stderr)
+        self.assertIn("a line with", (self.out / "demo-data.log").read_text())
+
+    def test_the_failed_generator_ends_with_2_with_its_log_and_the_cluster_is_deleted(self):
+        log = GENERATOR_LOG + "\n2026-11-18T10:04:00.000000000Z [ERROR] the step of the orders broke"
+        result = self.run_data(STUB_DATA_JOB="Failed", STUB_DATA_LOG=log)
+        self.assert_ends_with_2_and_the_cluster_is_deleted(result, "generator", "the step of the orders broke")
+        self.assertEqual([], self.update_calls())
+
+    def test_a_generator_that_does_not_finish_in_time_ends_with_2_with_its_log_and_the_cluster_is_deleted(self):
+        log = "2026-11-18T10:00:00.000000000Z still generating the products"
+        result = self.run_data(STUB_DATA_JOB="", STUB_DATA_LOG=log, LOAD_DATA_TIMEOUT="2")
+        self.assert_ends_with_2_and_the_cluster_is_deleted(result, "generator", "2 s", "still generating the products")
+        self.assertEqual([], self.update_calls())
+
+    def test_the_chunks_that_cannot_be_read_end_with_2_and_the_cluster_is_deleted(self):
+        for env in ({"STUB_CHUNKS_STATUS": "22"}, {"STUB_CHUNKS": '{"chunks":[]}'}, {"STUB_CHUNKS": "<html>bad gateway</html>"}):
+            with self.subTest(env=env):
+                self.log.write_text("")
+                result = self.run_data(**env)
+                self.assert_ends_with_2_and_the_cluster_is_deleted(result, "chunks")
+                self.assertEqual([], self.update_calls())
+
+    def test_no_stock_raised_in_the_chunks_ends_with_2_and_the_cluster_is_deleted(self):
+        for env in ({"STUB_UPDATE_OUT": "UPDATE 0"}, {"STUB_UPDATE_STATUS": "1"}):
+            with self.subTest(env=env):
+                self.log.write_text("")
+                result = self.run_data(**env)
+                self.assert_ends_with_2_and_the_cluster_is_deleted(result, "stocks")
+
+    def test_the_chunks_given_in_discover_chunks_are_the_ones_raised_and_measured(self):
+        given = [CHUNK_KEYS[4], CHUNK_KEYS[1]]
+        result = self.run_data(DISCOVER_CHUNKS=",".join(given))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([], [call for call in self.calls() if "curlimages/curl" in call])
+        update = self.update_calls()[0]
+        self.assertEqual(sorted(given), sorted(key for key in CHUNK_KEYS if key in update))
+        for call in self.k6_calls():
+            self.assertIn("-e DISCOVER_CHUNKS=" + ",".join(given), call)
+
+    def test_the_count_of_chunks_is_an_option(self):
+        for count, raised in (("2", 2), ("9", 5), ("0", 1)):
+            with self.subTest(count=count):
+                self.log.write_text("")
+                result = self.run_data(DISCOVER_CHUNK_COUNT=count)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(raised, len([key for key in CHUNK_KEYS if key in self.update_calls()[0]]))
+
+    def test_wrong_options_of_the_data_end_with_2_before_any_docker_call(self):
+        for name, value in (("DISCOVER_CHUNKS", "abc def"), ("DISCOVER_CHUNKS", "abc'),('x"), ("DISCOVER_CHUNKS", "a;b"),
+                            ("DISCOVER_CHUNK_COUNT", "three"), ("DISCOVER_PRODUCTS", "-1"), ("LOAD_DATA_TIMEOUT", "1h"),
+                            ("LOAD_DATA_POLL", "x"), ("LOAD_DATA_ANCHOR", "2026-11-18,x"), ("LOAD_DATA_ANCHOR", "2026 11"),
+                            # Only what the schema of the chart takes (demoData.anchor): a date or a UTC moment.
+                            ("LOAD_DATA_ANCHOR", "2026-11-01T00:00:00+01:00"), ("LOAD_DATA_ANCHOR", "2026-11-1")):
+            with self.subTest(name=name, value=value):
+                self.log.write_text("")
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA="medium", DEMO_PHOTOS_ENV_FILE=self.photo_file(), **{name: value})
+                self.assert_no_docker_call(result, name)
+
+    def test_the_anchor_goes_to_the_generator(self):
+        result = self.run_data(LOAD_DATA_ANCHOR="2026-11-01")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("demoData.anchor=2026-11-01", [call for call in self.calls() if "alpine/helm" in call][0])
+
+    def test_load_out_has_the_times_of_the_steps_of_the_generator_and_the_sizes(self):
+        result = self.run_data()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("[OK] categories", (self.out / "demo-data.log").read_text())
+        steps = (self.out / "demo-data-steps.txt").read_text()
+        self.assertRegex(steps, r"(?m)^\s*30 s\s+categories$")
+        self.assertRegex(steps, r"(?m)^\s*100 s\s+products$")
+        self.assertRegex(steps, r"(?m)^\s*60 s\s+the generated data is consistent$")
+        self.assertRegex(steps, r"(?m)^total: 190 s")
+        sizes = (self.out / "sizes.txt").read_text()
+        self.assertIn("stub sizes of postgres", sizes)
+        self.assertIn("stub indices of elasticsearch", sizes)
+        sizes_call = self.calls()[self.index_of("pg_database_size")]
+        for what in ("pg_total_relation_size", "pg_indexes_size", "pg_relation_size"):
+            self.assertIn(what, sizes_call)
+
+    def test_seed_raises_every_stock_and_runs_no_generator(self):
+        for env in ({}, {"LOAD_DATA": "seed"}, {"LOAD_DATA": ""}):
+            with self.subTest(env=env):
+                self.log.write_text("")
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", LOAD_COOLDOWN="0", STUB_READY="1", STUB_UPDATE_OUT="UPDATE 7",
+                                       STUB_K6_OUT=str(self.out), DISCOVER_PRODUCTS="10", **env)
+                self.assertEqual(0, result.returncode, result.stderr)
+                update = self.update_calls()
+                self.assertEqual(1, len(update))
+                self.assertIn("UPDATE inventory_stock_item SET physical = physical + 100000, version = version + 1, updated_at = now() WHERE physical > 0", update[0])
+                self.assertNotIn("catalog_product_variant", update[0])
+                for word in ("create job", "create -f -", "curlimages/curl", "demoData."):
+                    self.assertEqual([], [call for call in self.calls() if word in call], word)
+                for call in self.k6_calls():
+                    self.assertIn("-e DISCOVER_PRODUCTS=10", call)
+                    self.assertNotIn("DISCOVER_CHUNKS", call)
+                self.assertIn("LOAD_DATA: seed", (self.out / "environment.txt").read_text())
+                self.assertIn("stub sizes of postgres", (self.out / "sizes.txt").read_text())
 
 
 if __name__ == "__main__":
