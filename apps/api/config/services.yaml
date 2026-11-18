@@ -56,15 +56,34 @@ services:
                 accessKeySecret: '%env(GARAGE_SECRET_ACCESS_KEY)%'
 
     # The private R2 bucket of the demo photo pool (DemoData, read only): the bucket is in the path, R2 takes the region `auto`.
-    app.demo_photos_s3_client:
-        class: AsyncAws\S3\S3Client
+    # The client has its own HTTP client (not the shared one, which gives every request 5 s in all: the archive of the pool
+    # is about 1.6 GB) and no logger: the shared client and the client of AsyncAws log the whole URL of a request, and that holds
+    # the endpoint and the bucket of the private pool, which must not reach a log or Sentry.
+    app.demo_photos_http_client:
+        class: Symfony\Contracts\HttpClient\HttpClientInterface
+        factory: ['Symfony\Component\HttpClient\HttpClient', 'create']
+        autowire: false
+        autoconfigure: false
         arguments:
             -
+                # No limit of the whole request; a request that gets no data for a minute fails.
+                timeout: 60
+                max_duration: 0
+
+    app.demo_photos_s3_client:
+        class: AsyncAws\S3\S3Client
+        autowire: false
+        autoconfigure: false
+        arguments:
+            $configuration:
                 endpoint: '%env(DEMO_PHOTOS_ENDPOINT)%'
                 region: '%env(DEMO_PHOTOS_REGION)%'
                 pathStyleEndpoint: 'true'
                 accessKeyId: '%env(DEMO_PHOTOS_ACCESS_KEY_ID)%'
                 accessKeySecret: '%env(DEMO_PHOTOS_SECRET_ACCESS_KEY)%'
+            $credentialProvider: null
+            $httpClient: '@app.demo_photos_http_client'
+            $logger: null
 
     App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
         arguments:
@@ -309,6 +328,10 @@ when@test: &test
         # Public, so a test can set the identifier like the request subscriber does and read it back.
         App\Shared\Infrastructure\Observability\CorrelationId:
             public: true
+        # Keeps every log record of every channel, so a test can check what was logged (the handlers of the test drop it).
+        App\Tests\Support\RecordingLogProcessor:
+            public: true
+            tags: ['monolog.processor']
         # Public, so a test can read the limits the photo pool is checked with (the ones of the Catalog upload).
         App\DemoData\Photo\PhotoRules:
             public: true
