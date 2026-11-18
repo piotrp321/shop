@@ -17,7 +17,6 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Application\Search\VariantFacts;
-use App\Catalog\Domain\Product\ProductCreated as ProductCreatedInCatalog;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
@@ -61,14 +60,6 @@ final class IndexProductTest extends TestCase
         self::assertCount(1, $this->indexer->indexed);
         self::assertSame(self::PRODUCT_ID, $this->indexer->indexed[0]->id);
         self::assertSame(4_900, $this->indexer->indexed[0]->fromGross);
-    }
-
-    public function testTheDomainProductCreatedOfThePreviousVersionIndexesTheProduct(): void
-    {
-        ($this->handler)(new ProductCreatedInCatalog(self::PRODUCT_ID, new \DateTimeImmutable('2026-10-29T12:00:00+00:00')));
-
-        self::assertCount(1, $this->indexer->indexed);
-        self::assertSame(self::PRODUCT_ID, $this->indexer->indexed[0]->id);
     }
 
     public function testADraftIsIndexedAsADraftDocument(): void

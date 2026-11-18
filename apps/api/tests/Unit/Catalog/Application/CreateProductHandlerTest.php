@@ -17,7 +17,6 @@ use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
-use App\Catalog\Domain\Product\ProductCreated as ProductCreatedInCatalog;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
@@ -84,8 +83,8 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame(self::VARIANT_ID, $variants[0]->id()->toString());
         self::assertSame('', $variants[0]->label());
 
-        self::assertCount(2, $this->events->published);
-        $event = $this->events->published[1];
+        self::assertCount(1, $this->events->published);
+        $event = $this->events->published[0];
         self::assertInstanceOf(ProductCreated::class, $event);
         self::assertSame(self::PRODUCT_ID, $event->productId);
     }
@@ -271,10 +270,7 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame([], $this->events->published);
     }
 
-    /**
-     * The domain ProductCreated goes out too while the previous version, which indexes only that one, may still run.
-     */
-    public function testAProductOfThePanelIsADraftSavedWithItsActorAndTimeAndBothProductCreatedArePublished(): void
+    public function testAProductOfThePanelIsADraftSavedWithItsActorAndTimeAndTheIntegrationProductCreatedIsPublished(): void
     {
         ($this->handler)($this->command(status: ProductStatus::Draft, actorId: 'staff-sub-1'));
 
@@ -284,7 +280,7 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame(1, $product->version());
         self::assertEquals(['actorId' => 'staff-sub-1', 'at' => $this->clock->now], $this->products->lastWrites[self::PRODUCT_ID]);
         self::assertEquals(
-            [new ProductCreatedInCatalog(self::PRODUCT_ID, $this->clock->now), new ProductCreated(self::PRODUCT_ID, $this->clock->now)],
+            [new ProductCreated(self::PRODUCT_ID, $this->clock->now)],
             $this->events->published,
         );
     }
@@ -297,8 +293,8 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame(ProductStatus::Published, $product->status());
         self::assertEquals($this->clock->now, $product->firstPublishedAt());
         self::assertNull($this->products->lastWrites[self::PRODUCT_ID]['actorId']);
-        self::assertCount(2, $this->events->published);
-        self::assertInstanceOf(ProductCreated::class, $this->events->published[1]);
+        self::assertCount(1, $this->events->published);
+        self::assertInstanceOf(ProductCreated::class, $this->events->published[0]);
     }
 
     public function testAnEmptySlugIsDerivedFromTheName(): void

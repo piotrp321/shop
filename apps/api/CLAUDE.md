@@ -225,9 +225,6 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Handler komendy tłumaczy
   zdarzenia domenowe na kontrakty przed publikacją przez outbox (`IntegrationEvents::translate` w Catalog). Subskrybent
   czyta to, czego potrzebuje, zapytaniami modułu właściciela; zmiana pól kontraktu dotyka wszystkich subskrybentów.
-  Wyjątek zgodności wersji (do usunięcia w kolejnej wersji): `CreateProduct` publikuje oba `ProductCreated`, domenowe
-  (poprzednia wersja indeksuje produkt tylko z niego) i integracyjne, a `IndexProduct` obsługuje też domenowe z outboxa
-  poprzedniej wersji, więc nowy produkt jest indeksowany dwa razy (reindeksacja to dopuszcza).
 - Subskrybent, który przelicza dane według stanu innego modułu (np. `RepriceOnTaxClassChange`), czyta ten stan
   zapytaniem, nigdy ze zdarzenia, więc zdarzenia w dowolnej kolejności i powtórzone kończą się stanem bieżącym.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
