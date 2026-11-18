@@ -1,0 +1,23 @@
+== 17:46:39 START read-models
+sales: 25000 hours rebuilt, up to 2026-09-25 17:00 UTC
+sales: 26000 hours rebuilt, up to 2026-11-06 09:00 UTC
+customers: 100 batches rebuilt, 50000 customers, up to 822f8de3-f502-5895-a963-e36f0ba692ef
+
+ [OK] sales: 26278 hours rebuilt, 960188 orders, 52061539733 grosze             
+                                                                                
+      customers: 98544 customers rebuilt in 198 batches, 599983 orders          
+
+== 17:47:37 END read-models rc=0
+== 17:47:37 START analyze customers
+ANALYZE
+ANALYZE
+== 17:47:38 START reindex
+
+ [OK] The alias now points to "products_20261118164738354_b3e480" (1000191      
+      documents); "products_20261118163504536_04f059" was replaced.             
+
+== 17:53:19 END reindex
+
+ [OK] Varnish and the store pages were invalidated.                             
+
+PROD_REST_DONE

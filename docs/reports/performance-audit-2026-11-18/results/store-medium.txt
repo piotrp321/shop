@@ -1,0 +1,17 @@
+store.store_home.v1             vus=1   rps=76.3     p50=11.02   p95=17.21   p99=22.86   sql/req=0.24 sqlms/req=0.002 conn/req=0.01 | postgres=0.101 elasticsearch=3.093 varnish=0.292 store=14.613 api_dev=0.059 | foreign=115.8
+store.store_category_top.v1     vus=1   rps=64.4     p50=12.38   p95=23.65   p99=97.99   sql/req=0.36 sqlms/req=0.148 conn/req=0.02 | postgres=0.357 elasticsearch=1.652 redis=0.07 varnish=0.333 store=14.796 api_dev=0.255 | foreign=1053.3
+store.store_category_leaf.v1    vus=1   rps=76.5     p50=10.13   p95=35.08   p99=66.75   sql/req=0.65 sqlms/req=0.538 conn/req=0.1 | postgres=0.928 elasticsearch=0.853 redis=0.055 varnish=0.301 store=11.926 api_dev=0.932 | foreign=23.2
+store.store_search.v1           vus=1   rps=40.5     p50=13.14   p95=92.5    p99=214.94  sql/req=1.14 sqlms/req=1.717 conn/req=0.2 | postgres=2.034 elasticsearch=13.244 redis=0.1 varnish=0.474 store=15.076 api_dev=1.908 | foreign=613.4
+store.store_product.v1          vus=1   rps=35.8     p50=38.92   p95=53.97   p99=67.14   sql/req=5.98 sqlms/req=1.111 conn/req=1.22 | postgres=7.68 elasticsearch=0.169 redis=0.14 varnish=0.622 store=12.321 api_dev=7.684 api_prod=0.056 api_prodw=0.064 | foreign=124.0
+store.store_product_one.v1      vus=1   rps=754.5    p50=1.15    p95=1.75    p99=3.98    sql/req=0.02 sqlms/req=0.001 conn/req=0.0 | store=1.201 | foreign=105.7
+store.store_site_api.v1         vus=1   rps=1718.0   p50=0.44    p95=1.05    p99=2.73    sql/req=0.01 sqlms/req=0.0 conn/req=0.0 | store=0.488 | foreign=297.8
+store.store_cart_summary_api.v1 vus=1   rps=1848.6   p50=0.43    p95=0.8     p99=2.26    sql/req=0.01 sqlms/req=0.0 conn/req=0.0 | store=0.468 | foreign=210.5
+store.store_session_api.v1      vus=1   rps=2087.1   p50=0.38    p95=0.72    p99=2.17    sql/req=0.01 sqlms/req=0.0 conn/req=0.0 | store=0.387 | foreign=247.0
+varnish mid: MAIN.client_req=10404 MAIN.cache_hit=7778 MAIN.cache_miss=621 MAIN.n_object=558 MAIN.n_lru_nuked=0 SMA.s0.g_bytes=1309822
+store.store_home.v16            vus=16  rps=91.3     p50=165.28  p95=208.76  p99=700.14  sql/req=0.19 sqlms/req=0.002 conn/req=0.0 | postgres=0.083 elasticsearch=0.483 varnish=0.311 store=12.876 | foreign=422.2
+store.store_category_top.v16    vus=16  rps=90.9     p50=168.27  p95=220.9   p99=324.97  sql/req=0.2 sqlms/req=0.004 conn/req=0.01 | postgres=0.1 elasticsearch=0.641 varnish=0.328 store=13.166 api_dev=0.092 | foreign=267.8
+store.store_category_leaf.v16   vus=16  rps=99.5     p50=158.38  p95=200.81  p99=241.99  sql/req=0.25 sqlms/req=0.016 conn/req=0.03 | postgres=0.221 elasticsearch=0.461 varnish=0.359 store=11.928 api_dev=0.362 | foreign=224.6
+store.store_search.v16          vus=16  rps=86.7     p50=169.51  p95=272.64  p99=516.95  sql/req=0.26 sqlms/req=0.024 conn/req=0.03 | postgres=0.319 elasticsearch=2.58 redis=0.052 varnish=0.449 store=13.716 api_dev=0.451 | foreign=135.8
+store.store_product_one.v16     vus=16  rps=1036.2   p50=14.08   p95=24.85   p99=32.64   sql/req=0.02 sqlms/req=0.0 conn/req=0.0 | store=0.948 | foreign=178.7
+store.store_product.v16         vus=16  rps=667.9    p50=6.2     p95=84.06   p99=140.28  sql/req=0.1 sqlms/req=0.013 conn/req=0.02 | postgres=0.105 store=1.612 api_dev=0.118 | foreign=281.2
+varnish after: MAIN.client_req=27342 MAIN.cache_hit=24463 MAIN.cache_miss=874 MAIN.n_object=768 MAIN.n_lru_nuked=0 SMA.s0.g_bytes=1894458

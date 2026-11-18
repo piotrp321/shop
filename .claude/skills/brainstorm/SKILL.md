@@ -1,8 +1,6 @@
 ---
 name: brainstorm
 description: Projektowanie funkcjonalności i zmian architektonicznych przed implementacją.
-model: opus
-effort: high
 disable-model-invocation: true
 ---
 

@@ -129,7 +129,8 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Reviewer sprawdza zgodność ze specyfikacją, błędy logiczne, architekturę, przypadki brzegowe, testy (także przebieg
   TDD na podstawie wyników obu uruchomień) i zbędną złożoność; brak prawdziwej fazy RED w zadaniu z TDD to problem
   Important. Dodatkowych reviewerów ani modeli nie uruchamiamy bez powodu. Sesja orkiestrująca może działać na
-  najmocniejszym modelu, a subagenci na modelu z definicji albo dobranym do trudności zadania.
+  najmocniejszym modelu. Model i effort w definicji agenta to wartości domyślne: sesja prowadząca dobiera je w zleceniu
+  do trudności i ryzyka zadania.
 - Orkiestrator sam rozstrzyga szczegóły implementacji. Istotne decyzje DDD (agregaty, value objecty, granice modułów,
   persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury przedstawia użytkownikowi przed implementacją.
 - Raport po PR: zakres, subagenci i ich role, wynik review, wykryte i naprawione problemy, uruchomione testy
@@ -137,7 +138,7 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`). Lokalne ustawienia
   Claude Code są w `.claude/settings.local.json` (poza repo).
 
-Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/prepare-epic`, `/delivery`, `/sweep`, `/retro`, `/groom` jest
+Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/delivery`, `/sweep`, `/retro` jest
 zamrożony; AO zostaje uruchamialny jako rozwiązanie awaryjne. Sesja, która uruchamia AO albo któryś z tych skilli,
 najpierw czyta zasady AO: `docs/adr/agentic-software-house.md` („Zasady obowiązujące tylko przy uruchomieniu AO”),
 `docs/adr/agent-security.md` i `docs/features/ao-run/spec.md`.

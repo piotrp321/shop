@@ -2,7 +2,8 @@
 
 Raporty z przeglądów i pomiarów, każdy przypięty do rewizji kodu. Raport opisuje wynik na konkretnej rewizji i po
 zapisaniu się nie zmienia; kolejny pomiar albo przegląd to nowy plik (z datą w nazwie), a nie edycja poprzedniego.
-Surowe wyniki pomiarów zostają poza repozytorium.
+Surowe wyniki pomiarów zostają poza repozytorium; wyjątkiem jest wybór wyników i skryptów potrzebny do odtworzenia
+pomiaru, dołączony w katalogu o nazwie raportu, bez danych testowych i danych uwierzytelniających.
 
 | Raport | Zakres | Rewizja |
 |---|---|---|
@@ -18,3 +19,4 @@ Surowe wyniki pomiarów zostają poza repozytorium.
 | [agentic-software-house-audit-2026-11-18](agentic-software-house-audit-2026-11-18.md) | audyt infrastruktury wokół Claude Code (AO, kod pomocniczy w `.claude/skills` i `tools`, konfiguracja, instrukcje): geneza i zmierzone koszty AO, praktycy i funkcje natywne, inwentarz komponentów z klasyfikacją, warianty architektury, docelowy workflow, plan migracji i propozycja pilota porównawczego; rekomendacja: moratorium na rozwój AO do wyniku pilota i zmiana polityki przeglądu od razu | `9ada1adb` |
 | [security-audit-2026-11-18](security-audit-2026-11-18.md) | niezależny audyt bezpieczeństwa sklepu, API, panelu, Keycloaka, infrastruktury i CI/CD przy założeniu prawdziwych klientów i płatności: model zagrożeń, mapa powierzchni ataku, testy dynamiczne na lokalnym stosie, 42 znaleziska (`SA-01`…`SA-42`), kontrola zależności, plan napraw, propozycje epików i kontroli w CI | `ef20462` |
 | [ecommerce-functional-audit-2026-11-18](ecommerce-functional-audit-2026-11-18.md) | audyt funkcjonalny sklepu, API i panelu z perspektywy sprzedawcy, obsługi i klienta oraz porównanie z Shopify, WooCommerce, Shopware, Magento, Sylius, Medusa, Saleor, Shoper i IdoSell: dojrzałość 14 obszarów, macierz funkcji, przegląd ścieżek na lokalnym stosie, braki z klasyfikacją i podstawą prawną, minimalny zakres pierwszej sprzedaży, propozycje (nie decyzje) segmentu, roadmapy i epików; notatki źródłowe i przekazanie do wspólnej roadmapy w `ecommerce-functional-audit-2026-11-18/` | `1aeb5076` |
+| [performance-audit-2026-11-18](performance-audit-2026-11-18.md) | niezależny audyt wydajności i skalowalności sklepu, API i panelu z pomiarami na własnym stosie i danych do 1 mln produktów: koszt żądania API (tryb klasyczny, trwałe połączenie, worker mode FrankenPHP), plany zapytań PostgreSQL, rozbicie kosztu zapytań Elasticsearch, ścieżka zamówienia, przetwarzanie asynchroniczne, strony sklepu i przebieg do nasycenia; rozróżnienie poprawności biznesowej, dostępności i wydajności, rekomendacje z dowodem, kosztem i pewnością, propozycje epików, początkowa infrastruktura i plan benchmarków; skrypty, wybrane surowe wyniki, raporty cząstkowe i research w `performance-audit-2026-11-18/` | `1aeb5076` |

@@ -253,7 +253,7 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo `existing_issue` (nie oba; numer otwartego issue
   w danych wejścia z `trusted: true`: po „tak” komentarz z nowymi incydentami zamiast nowego issue);
 - `files` tylko z listy dozwolonej: `CLAUDE.md` i `apps/*/CLAUDE.md`, `.claude/skills/*/SKILL.md`,
-  `.claude/agents/*.md`, `docs/features/{ao-run,prepare-epic,groom,agent-tester-ux,retro}/spec.md`; zmiana
+  `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`; zmiana
   w innym pliku to błąd (taka poprawka jest pozycją `issue` z `repo: shop`);
 - **otwarty PR:** `key` pozycji z otwartego PR retro jest dopuszczalny tylko z polem `updates` (numer tej pozycji),
   które zastępuje jej commit nowym;
@@ -292,7 +292,7 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
 
 ## Rejestry
 
-`~/.local/state/shop-retro/` (poza repo, jak stan `/groom` i `/sweep`):
+`~/.local/state/shop-retro/` (poza repo, jak stan `/sweep`):
 
 - `<epik>/`: `state.json` (stan `running`, `done`, `skipped`; próby i powody odroczeń; PR retro i jego pozycje;
   `decisions_open`), `input.json`, `proposals.json`, `report.md`, `usage-start.json` (stan limitów na starcie),
@@ -436,8 +436,6 @@ Klucze i ID w przykładzie są ilustracją.
   wtedy fakt „brak danych AO”, bez błędu.
 - PR retro zmienia `CLAUDE.md` albo skille, gdy inny epik jest w toku: możliwy konflikt w jego końcowym PR, który
   naprawia REPAIR.
-- `/groom` i retro mogą się nałożyć w zużyciu limitu; retro nie stawia stosu Docker, a `room` sprawdza limit na
-  starcie.
-- Rejestry żyją tylko na tym komputerze, jak stan `/groom` i `/sweep`.
+- Rejestry żyją tylko na tym komputerze, jak stan `/sweep`.
 - Odroczone retro wraca tylko przy przebiegu `/ao-run` albo ręcznym `/retro`; bez nich czeka w `pending`.
 - Koszt przebiegu nie jest jeszcze zmierzony; sekcja `## Zużycie` mierzy go od pierwszego przebiegu.
