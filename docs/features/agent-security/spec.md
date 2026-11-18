@@ -74,7 +74,7 @@ Decyzje zatwierdzone przez użytkownika przy akceptacji specyfikacji.
 
 ## Poza zakresem
 
-- Evale prób prompt injection (EVALS, krok 17) i bezpieczeństwo funkcji AI w sklepie (krok 20).
+- Evale prób prompt injection (krok 17) i bezpieczeństwo funkcji AI w sklepie (krok 20).
 - Zmiany w AO (repozytorium `piotrp321/agentic-orchestrator`, zamrożone). Skutki: „Model zagrożeń”, luki.
 - Sandbox sesji interaktywnych w aplikacji Claude (`/ao-run`, `/groom` z zadania zaplanowanego, `/sweep` i `/retro`
   w sesji `/ao-run`, `/prepare-epic`) (P10).
@@ -322,7 +322,7 @@ Użycie (zamiast bezpośredniego `gh … --json body,title,comments` w miejscach
 `tools/agent-security/executor-settings.json` to szablon ustawień przekazywanych wykonawcy flagą `--settings`
 (pierwszeństwo przed ustawieniami projektu i lokalnymi). Ścieżki zależne od zadania wstawia
 `tools/agent-security/render_settings.py` (Python 3.9+, biblioteka standardowa), wywoływany przez wrapper i dostępny
-osobno (interfejs modułu `render(...)` dla evali EVALS, #495, w tym samym sandboxie): `--workdir <katalog roboczy>`, `--git-common-dir
+osobno (także jako moduł `render(...)`): `--workdir <katalog roboczy>`, `--git-common-dir
 <.git>` (opcjonalnie), `--state-dir <katalog>` (powtarzalny: odczyt i zapis), `--read-dir <katalog>` (powtarzalny:
 tylko odczyt), `--claude-tmpdir <katalog>` (katalog tymczasowy Claude Code przebiegu: odczyt i zapis tylko jego
 podkatalogu `claude-<uid>`), `--deny-write <ścieżka>`
@@ -337,8 +337,8 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
   `disableAllHooks`) są tylko w szablonie i żadna opcja ich nie usuwa.
 - Zaufane źródła ścieżek dostępu: wyłącznie wywołujący poza sandboxem, z wartości, których wykonawca nie kontroluje.
   Wrapper: katalog roboczy procesu (nadaje go AO), `git rev-parse --git-common-dir` tego katalogu, `AGENT_AO_HOME`
-  (ustawia `ao-prepare`) i `AO_TASK_ID` (nadaje AO, wzorzec z listy niżej). Runner evali EVALS: katalog przypadku
-  i katalog przebiegu, które sam tworzy. Nigdy z treści repozytorium, wyjścia modelu ani plików w worktree.
+  (ustawia `ao-prepare`) i `AO_TASK_ID` (nadaje AO, wzorzec z listy niżej). Runner EVALS 2.0 (`tools/evals-pilot`): katalogi
+  przypadku, które sam tworzy. Nigdy z treści repozytorium, wyjścia modelu ani plików w worktree.
 - Walidacja każdej ścieżki dostępu (błąd kończy skrypt kodem różnym od 0, bez wyniku): ścieżka bezwzględna,
   istniejąca, katalog (`--git-common-dir`: katalog `.git`); bez komponentu będącego dowiązaniem symbolicznym
   (`os.path.realpath` równe ścieżce po normalizacji, więc dowiązanie nie przekieruje dostępu na inny katalog); nie jest
@@ -403,7 +403,7 @@ nieprawidłowe (nic na stdout), 2 błąd wywołania.
   z szablonem bez `denyRead` nadal nie widzi kanarka; wyciek pokazuje dopiero szablon bez obu).
 - Telemetria (`docs/features/telemetry/spec.md`, R1): z opcją `--telemetry-*` ustawienia dostają blok `env`
   (`render(..., telemetry={'endpoint': …, 'attributes': {…}})` w module), bez niej klucza `env` nie ma i wynik jest
-  taki sam jak bez telemetrii (runner EVALS jej nie używa). Blok: `CLAUDE_CODE_ENABLE_TELEMETRY=1`,
+  taki sam jak bez telemetrii. Blok: `CLAUDE_CODE_ENABLE_TELEMETRY=1`,
   `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`,
   `OTEL_EXPORTER_OTLP_ENDPOINT=<adres>`, `OTEL_METRIC_EXPORT_INTERVAL=10000`, `OTEL_LOGS_EXPORT_INTERVAL=5000`, jawne
   `0` dla `OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_ASSISTANT_RESPONSES`, `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`
