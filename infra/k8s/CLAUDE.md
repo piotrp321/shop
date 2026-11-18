@@ -1,7 +1,38 @@
 # CLAUDE.md – infra/k8s
 
-Zasady i cele chartu Helm, serwera i wdrożenia. Zasady ogólne (chart odzwierciedla compose, realmy, zgoda użytkownika
-na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `README.md` w tym katalogu.
+Zasady i cele chartu Helm, serwera i wdrożenia. Zasady ogólne (chart odzwierciedla compose, zgoda użytkownika
+na operacje na serwerze) są w głównym `CLAUDE.md`, ich szczegóły w sekcji „Chart a compose” niżej i w „Cele Makefile”.
+Runbook wdrożenia: `README.md` w tym katalogu.
+
+## Chart a compose
+
+- Chart `infra/k8s/charts/shop` odzwierciedla compose. Zmiana usług, obrazów i ich wersji, zmiennych środowiska,
+  transportów workera, sekretów w compose (`infra/scripts/init-env.sh`) i zmiana realmów Keycloaka
+  (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. Pilnuje tego
+  `make -C infra/k8s check` (każdy klucz z `init-env.sh` jest w szablonie sekretu, obrazy usług bez naszego kodu mają
+  tag jak w compose i digest, Elasticsearch to obraz z `infra/elasticsearch/Dockerfile` jak w compose) i test dymny;
+  nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich nie wyłapie. Nowy sekret
+  (klucz w `infra/scripts/init-env.sh`) trafia do szablonu sekretu chartu i, gdy w repo jest certyfikat Sealed Secrets,
+  zaszyfrowany `make -C infra/k8s seal-secrets` do `environments/prod/secrets/` w tym samym PR (pilnuje tego `check`). Zmiana wersji
+  obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`).
+- Nocne kopie zapasowe (CronJob `backup`: restic do Cloudflare R2) to funkcja tylko środowiska wdrożeniowego: compose się
+  nie zmienia, a obrazy `restic/restic` i `rclone/rclone` w `images.*` chartu nie mają w nim odpowiednika (digest jak
+  wyżej). Sekret `shop-backup` tworzy raz `make -C infra/k8s seal-secrets WHAT=backup`; hasło restic użytkownik trzyma
+  też poza serwerem, bo bez niego kopie są nie do odczytania. Opis: `docs/adr/backups-observability.md`.
+- Logi i metryki klastra trafiają do Grafana Cloud przez Alloy (aplikacja Argo CD `monitoring`, fala 1, po `shop`; chart
+  `k8s-monitoring` przypięty wersją, adresy i identyfikatory instancji w `argocd/apps/monitoring.yaml`, token w sekrecie
+  `grafana-cloud` z `seal-secrets WHAT=grafana`). Logi są maskowane w Alloy (jeden blok etapów dla logów podów i zdarzeń),
+  a źródło, którego nie da się zamaskować, nie jest zbierane (Mailpit: `extraDiscoveryRules`); nowa usługa z danymi klientów
+  albo sekretami w logach dostaje regułę maskowania i wiersz w korpusie `infra/k8s/tests/log-corpus` w tym samym PR. Alloy
+  czyta z klastra tylko sekret `grafana-cloud` (opis i test: „Co sprawdza `check`” niżej, `docs/adr/backups-observability.md`).
+- Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
+  nazwa Joba zależy od tych plików, `customerAccounts` i poczty Keycloaka). Brakujący realm zakłada; w istniejącym
+  `partialImport` z `ifResourceExists=SKIP` dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem
+  przy każdym uruchomieniu ustawia wartości z konfiguracji: sekret klienta `store`, `redirectUris`, `webOrigins`
+  i adresy po wylogowaniu klientów z domeny, rejestrację w realmie `shop` (`customerAccounts`), `verifyEmail` w `shop`
+  i SMTP obu realmów (`keycloak.mail`: Mailpit albo Brevo). Nigdy nie usuwa użytkowników, haseł ani zasobów. Inna
+  zmiana istniejącego klienta, roli albo ustawienia realmu w pliku do klastra nie trafi: wymaga ręcznej zmiany przez
+  `kcadm` albo nowego kroku w Jobie.
 
 ## Cele Makefile
 
@@ -242,7 +273,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
     i `deploy-push` (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`, jedyny aktor bypass to deploy key,
     typ `DeployKey`) obejmują `refs/heads/deploy` i `refs/heads/deploy-images`, bez wymogu PR. Aktor `DeployKey` to
     każdy deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia).
-    Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak rulesetu `epic` (główny `CLAUDE.md`), osobno każdy plik
+    Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak rulesetu `epic` (`docs/features/agent-security/spec.md`, R8), osobno każdy plik
     (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`). Rulesety, deploy key, środowisko `production`
     i jego sekret `DEPLOY_KEY` zakłada się według runbooka wdrożenia (sekret repozytorium `DEPLOY_KEY` użytkownik usuwa).
   - Obrazy, do których odwołują się snapshoty `deploy-images`, nie mogą być usuwane z GHCR (cofnięcie wersji to powrót do
