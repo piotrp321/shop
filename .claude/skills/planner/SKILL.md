@@ -1,13 +1,14 @@
 ---
 name: planner
-description: Podział zatwierdzonej specyfikacji epica na zadania dla /delivery (plan.md z walidowanym manifestem JSON).
+description: Podział zatwierdzonej specyfikacji epica na zadania dla subagentów (plan.md z walidowanym manifestem JSON).
 argument-hint: "[ścieżka spec.md]"
 model: opus
 effort: high
 disable-model-invocation: true
 ---
 
-Podziel zatwierdzoną specyfikację z $ARGUMENTS na zadania, z których każde `/delivery` zrealizuje jako jeden PR.
+Podziel zatwierdzoną specyfikację z $ARGUMENTS na zadania, z których każde zrealizuje jeden subagent `developer` jako
+jedną zmianę na gałęzi zadania.
 Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem zadań w jednym bloku ```` ```json ````.
 
 ## Granice odpowiedzialności
@@ -15,7 +16,7 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
 - **Wejście:** `spec.md` zapisana przez `/brainstorm` (albo inna zaakceptowana specyfikacja), `CLAUDE.md`, kod.
 - **Wyjście:** `docs/features/<epic>/plan.md`. Manifest jest jedyną definicją zadań; nie powtarzaj go prozą.
 - **Nie robisz:** projektu ani zmian specyfikacji (to `/brainstorm`), kroków implementacji, kodu i testów (to
-  `/delivery` albo `superpowers:writing-plans` przy pracy ręcznej), zgłaszania zadań do AO, push, PR ani merge.
+  sesja prowadząca epik i subagent `developer`), push, PR ani merge.
 - Gdy specyfikacja ma otwarte decyzje, sprzeczności albo brakuje w niej zachowania potrzebnego do podziału,
   zatrzymaj się: wypisz braki z rekomendacją i zaproponuj `/brainstorm`. Nie rozstrzygaj ich sam.
 
@@ -23,12 +24,14 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
 
 1. Przeczytaj specyfikację, `CLAUDE.md` (główny i aplikacji) i kod, którego dotyczy. Nie pytaj o fakty z repo.
 2. Podziel na zadania:
-   - Zadanie = jedna logiczna, weryfikowalna zmiana i jeden PR, po którym przechodzą `check` i testy dotkniętych
+   - Zadanie = jedna logiczna, weryfikowalna zmiana na własnej gałęzi, po której przechodzą `check` i testy dotkniętych
      aplikacji. Preferuj pionowe plastry (API z ekranem, który go używa) zamiast warstw bez wartości.
-   - Najmniej zadań, które dają sensowne PR. Nie dziel tylko dla równoległości ani nie łącz niezależnych zmian.
+   - Najmniej zadań, które dają sensowne, osobno przeglądane zmiany. Nie dziel tylko dla równoległości ani nie łącz
+     niezależnych zmian.
    - Maksymalizuj bezpieczną równoległość: tnij zadania po rzeczywistych granicach odpowiedzialności (moduł,
      kontrakt, aplikacja), tak żeby ich `paths` były rozłączne. Zadania z rozłącznymi `paths` i bez zależności są
-     w jednej fali i mają się nawzajem w `parallel_with`. AO prowadzi naraz najwyżej dwa (`--max-parallel 2`).
+     w jednej fali i mają się nawzajem w `parallel_with`. Ile z nich pójdzie naraz, rozstrzyga sesja prowadząca epik
+     według izolacji i zasobów.
    - `depends_on` tylko przy rzeczywistej zależności: zadanie używa kodu, kontraktu, migracji lub danych innego.
      Nie dodawaj jej dla kolejności, ostrożności ani wygody przeglądu: przesuwa zadanie do późniejszej fali.
      Zadanie zależne rusza dopiero po integracji (merge) swoich zależności.
@@ -47,9 +50,9 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
      sprawdzają. Gdy zadanie celowo zmienia istniejące zachowanie (uprawnienia, kontrakt, dane), kryterium nazywa tę
      zmianę i mówi, że testy tego zachowania zmieniają się razem z nią. Gdy specyfikacja dopuszcza wyjątki (np. dane
      sprzed wdrożenia, rekordy usuniętych obiektów), kryterium je wymienia.
-   - `risk` według `/delivery`: `FAST` (lokalna zmiana niskiego ryzyka), `STANDARD` (funkcjonalność, API,
+   - `risk`: `FAST` (lokalna zmiana niskiego ryzyka), `STANDARD` (funkcjonalność, API,
      integracja), `CRITICAL` (auth, pieniądze, migracje danych, transakcje, współbieżność, bezpieczeństwo).
-     To ocena do planu i przeglądu; `/delivery` klasyfikuje ryzyko zadania sam i jego wynik jest wiążący.
+     To ocena do planu i przeglądu: sesja prowadząca epik dobiera według niej model i głębokość przeglądu zadania.
    - `paths`: pliki i katalogi (z `/` na końcu), które zadanie zmieni, łącznie z testami i dokumentacją. Plik, który
      zadanie na pewno zmieni (np. `spec.md` epiku, każdy `CLAUDE.md`), wpisz jako plik; katalog tylko dla plików
      nieznanych z góry. Przy niepewności wpisz szerszy katalog: za wąska lista może puścić naraz zadania, które
@@ -96,7 +99,7 @@ Wynik to `plan.md` w katalogu specyfikacji, z sekcją „Status” i manifestem 
 8. Po akceptacji uruchom walidator jeszcze raz i zacommituj `plan.md` razem ze `spec.md`, jeśli specyfikacja
    nie jest jeszcze w repo (`docs(<epic>): add the spec and task plan`). Innych plików nie commituj. Bez
    akceptacji nie commituj. Zmiana planu po akceptacji wymaga ponownej akceptacji. Push i PR tylko na prośbę
-   użytkownika: AO zgłasza zadania wyłącznie z planu wypchniętego do `origin`.
+   użytkownika.
 
 ## Manifest
 
@@ -105,8 +108,11 @@ Wzór `plan.md`:
 ````markdown
 # <Epic> – plan zadań
 
-Specyfikacja: `docs/features/<epic>/spec.md`. Każde zadanie realizuje `/delivery` jako osobny PR. Plan jest
-dokumentem roboczym: po ukończeniu epica usuń go.
+Specyfikacja: `docs/features/<epic>/spec.md`. Epik prowadzi główna sesja Claude Code z natywnymi subagentami. Epik ma
+jedną gałąź (poza `epic/*`) z PR-em do `main` otwartym od początku jako szkic. Każde zadanie realizuje subagent we
+własnym worktree na gałęzi zadania; sesja orkiestrująca merguje gotowe gałęzie zadań do gałęzi epiku i wypycha ją.
+Zadania nie mają własnych PR. Zadania jednej fali z listą `parallel_with` mogą iść naraz. Plan jest dokumentem
+roboczym: po ukończeniu epiku usuń go.
 
 ## Status
 
@@ -115,7 +121,7 @@ dokumentem roboczym: po ukończeniu epica usuń go.
 | 1 | <ID>, <ID> | |
 | 2 | <ID> | |
 
-Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
+Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
 ## Praca szeregowa
 
@@ -146,15 +152,15 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
 
 - Sekcja „Praca szeregowa” jest tylko wtedy, gdy `parallel --blocked` zwraca pary; jeden wiersz na parę.
 - `epic` i `id` w formacie `[A-Za-z0-9][A-Za-z0-9._-]*`; `id` zaczyna się od `<EPIC>-` i jest unikalne. ID staje
-  się ID zadania w AO i nazwą gałęzi.
+  się nazwą gałęzi zadania.
 - `spec` to ścieżka względem katalogu głównego repo, do pliku w katalogu planu. Wszystkie pola poza `paths`
   i `parallel_with` są wymagane, innych pól nie ma.
 - `depends_on` wskazuje istniejące zadania, bez cykli i bez zależności od siebie.
 - `paths` (opcjonalne): niepusta lista ścieżek względem katalogu głównego repo, plik albo katalog zakończony `/`,
   bez ścieżek absolutnych, bez segmentów `.` i `..`, bez znaków globa (`*?[]{}`), bez `~` na początku, bez
   powtórzeń; pierwszy segment istnieje w katalogu głównym repo (z tą samą wielkością liter, bez `.git`).
-- `parallel_with` (opcjonalne): ID zadań, które AO może prowadzić naraz z tym (`ao run --max-parallel`, spec
-  `docs/features/parallel-work/spec.md`, „19b”). Para jest symetryczna (każde z dwóch zadań wymienia drugie), oba
+- `parallel_with` (opcjonalne): ID zadań, które mogą iść naraz z tym (spec `docs/features/parallel-work/spec.md`).
+  Para jest symetryczna (każde z dwóch zadań wymienia drugie), oba
   zadania mają `paths`, żadne nie zależy od drugiego (także przez `depends_on` innych zadań), a ich `paths` nie
   mają wspólnego kodu wykonywanego (kod aplikacji: `apps/<aplikacja>/src`, `apps/<aplikacja>/app`; kod narzędzi:
   `tools`, `.claude/skills`, `.ao`, `.github/scripts`, `infra/scripts`; oraz katalogi, które je zawierają, np.
@@ -162,8 +168,8 @@ Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
   wykonywanym (dokumentacja, testy, workflowy CI, konfiguracja, `infra/k8s`) są dozwolone, o ile część wspólna nie
   zawiera `CLAUDE.md` śledzonego w repo
   (np. `infra/k8s/`, `e2e/`). Gdy git nie poda listy śledzonych `CLAUDE.md`, każda para jest odrzucana. Regułę
-  sprawdza `parallel_gate.task_conflicts`
-  (`.claude/skills/ao-run/parallel_gate.py`), jedyne jej miejsce. Zadanie bez `parallel_with` (także cały manifest
-  bez tych pól) AO wykonuje szeregowo.
+  sprawdza `plan_manifest.task_conflicts`
+  (`.claude/skills/planner/plan_manifest.py`), jedyne jej miejsce. Zadanie bez `parallel_with` (także cały manifest
+  bez tych pól) idzie szeregowo.
 
 Pisz zwięźle po polsku.

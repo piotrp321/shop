@@ -6,6 +6,7 @@ namespace App\Pricing\Domain\Basket;
 
 use App\Pricing\Domain\DiscountCode\DiscountCode;
 use App\Pricing\Domain\DiscountCode\DiscountCodeRejection;
+use App\Pricing\Domain\DiscountCode\DiscountValue;
 use App\Pricing\Domain\Money\Currency;
 use App\Pricing\Domain\Money\Money;
 use App\Pricing\Domain\Price\PriceBreakdown;
@@ -65,13 +66,22 @@ final readonly class BasketQuote
         }
 
         $value = $code->value();
+
+        return self::quote($priced, $subtotal, new AppliedDiscount($code->id(), $code->code(), $value, Money::of(self::discountOf($value, $subtotal), Currency::PLN)), null);
+    }
+
+    /**
+     * D, the discount of a code that applies to a subtotal S: floor(S × p / 100) for a percent code, the amount for an
+     * amount code (whether the code applies at all is the rule of DiscountCode::rejectionFor).
+     */
+    public static function discountOf(DiscountValue $value, int $subtotal): int
+    {
         $percentOff = $value->percentOff();
-        $amount = null === $percentOff
+
+        return null === $percentOff
             ? ($value->amountOff()?->amount() ?? throw new \LogicException('A discount is a percent or an amount.'))
             // S × 90 stays far below the int range (S is at most 50 × 99 × GrossPrice::MAX).
             : intdiv($subtotal * $percentOff->value(), 100);
-
-        return self::quote($priced, $subtotal, new AppliedDiscount($code->id(), $code->code(), $value, Money::of($amount, Currency::PLN)), null);
     }
 
     /**
@@ -203,7 +213,8 @@ final readonly class BasketQuote
     }
 
     /**
-     * The largest-remainder allocation of the discount over the line values (see the class).
+     * The largest-remainder allocation of the discount over the line values (see the class). Public for the demo data
+     * generator, which splits the discount of a generated order by this rule (docs/features/demo-data/spec.md, P1a).
      *
      * @param list<int> $values   g_i
      * @param int       $subtotal S, their sum
@@ -211,7 +222,7 @@ final readonly class BasketQuote
      *
      * @return list<int> d_i, in the order of the values
      */
-    private static function allocate(array $values, int $subtotal, int $discount): array
+    public static function allocate(array $values, int $subtotal, int $discount): array
     {
         if (0 === $discount) {
             return array_fill(0, \count($values), 0);

@@ -299,6 +299,25 @@ stanami magazynowymi, kilkoma aktywnymi promocjami i kodami rabatowymi (`WITAJ10
 Do tego konta testowe w Keycloak: klient w realmie `shop`, pracownicy z każdą rolą w realmie `backoffice`. Po `make up` i `make seed`
 sklep ma wyglądać jak prawdziwy.
 
+Dane w skali docelowej daje generator (`make seed-scale [PROFILE=…]`, skrypt `apps/api/bin/generate-demo`, moduł
+`DemoData`; specyfikacja `docs/features/demo-data/spec.md`). Na seedzie dokłada długi ogon katalogu ze słowników po
+polsku (produkty, warianty, zdjęcia z puli, ceny z historią, zakończone promocje i historyczne kody rabatowe),
+wyłączone konta klientów i pracowników w Keycloak oraz zamówienia z 3 lat przed chwilą odniesienia (rosnący ruch,
+sezonowość działów, klienci i goście, statusy według wieku z historią działań, płatności, zwroty i anulowania, użycia
+kodów), a po nich stany, rezerwacje i ruchy stanów z ostatnich 90 dni. Ładuje hurtowo (`COPY`), bez API, agregatów
+i zdarzeń; te same ziarno, profil i chwila odniesienia dają te same dane (poza losowymi tokenami gości i kluczami
+idempotencji), a `demo-data:verify` sprawdza spójność na końcu. Profile (`apps/api/fixtures/demo-data/profiles.yaml`):
+
+| Profil | Pracownicy | Klienci | Produkty (ogon) | Zamówienia | Gdzie |
+|---|---|---|---|---|---|
+| `small` | 20 | 1 000 | 2 000 | 5 000 | testy API, lokalnie |
+| `medium` | 50 | 100 000 | 1 000 000 | 1 000 000 | k3d, lokalnie |
+| `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | k3d (później serwer demo) |
+| `full` | 500 | 1 000 000 | 10 000 000 | 50 000 000 | k3d |
+
+Profile inne niż `small` biorą zdjęcia z prywatnej puli w R2 (dane dostępu w pliku użytkownika poza repo). `make seed`
+po generatorze przywraca dane E2E (konta generatora w Keycloak zostają).
+
 ## Zakres MVP
 
 1. Szkielet (walking skeleton): wszystkie usługi startują jedną komendą, logowanie przez Keycloak
@@ -408,9 +427,9 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
   usuwamy też z dokumentacji.
 - Granic architektury pilnują narzędzia (Deptrac, PHPStan, ESLint, tsc) w `make check` i w CI, a nie zaufanie
   do modelu.
-- Zadania z planu realizują subagenci Claude Code prowadzeni przez plugin Superpowers: każde zadanie ma
-  implementację i niezależne review, a PR przechodzi CI. Konfiguracja jest w repo (`.claude/settings.json`),
-  zasady pracy w `CLAUDE.md`.
+- Zadania z planu realizują natywni subagenci Claude Code prowadzeni przez główną sesję
+  (`docs/adr/agentic-software-house.md`): zadanie ma implementację i niezależne review, a PR przechodzi CI. Zasady
+  pracy są w `CLAUDE.md`.
 - Agenci pracują lokalnie, na pełnym stosie w Dockerze.
 - Zasady wspólne są w głównym `CLAUDE.md`, zasady konkretnej aplikacji w jej własnym `CLAUDE.md`,
   żeby agent pracujący nad frontem nie dostawał w kontekście zasad Doctrine i odwrotnie.

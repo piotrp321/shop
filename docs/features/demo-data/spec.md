@@ -5,9 +5,9 @@ i realistycznymi danymi operacyjnymi (klienci, pracownicy, zamówienia), oraz po
 klastrze k3d. Raport z pomiaru pokazuje, jak sklep działa przy tej skali, i wskazuje wąskie gardła do poprawy przed
 wdrożeniem danych na serwer demo (worf.pl).
 
-Epik ma dwie części z osobnymi końcowymi PR, mergowane po kolei (P11): część 1 (#482, plan w `plan.md` tego katalogu)
-to generator i jego testy, część 2 (#486, DEMO-LOAD) to integracja z k3d, k6 i przebieg `medium`. Ta specyfikacja
-opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”, a jej plan powstaje w przygotowaniu #486.
+Epik ma dwie części z osobnymi końcowymi PR, mergowane po kolei (P11): część 1 (#482) to generator i jego testy,
+zaimplementowane, część 2 (#486, DEMO-LOAD) to integracja z k3d, k6 i przebieg `medium`, jeszcze niezaimplementowana.
+Ta specyfikacja opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”, a jej plan powstaje w przygotowaniu #486.
 
 Issues: #482
 Zakres: `apps/api/src/DemoData`, `apps/api/tests/Unit/DemoData`, `apps/api/tests/Integration/DemoData`, `apps/api/tests/Functional/DemoData`, `apps/api/fixtures/demo-data`, `apps/api/bin/generate-demo`, `apps/api/bin/upload-demo-photos`, `apps/api/config/packages/flysystem.yaml`, `apps/api/.env`, `apps/api/phpunit.dist.xml`, `apps/api/tests/Unit/Bin`, `make/demo-data.mk`, `apps/api/deptrac.yaml`, `apps/api/config/services.yaml`, `apps/api/CLAUDE.md`, `apps/api/src/Catalog/Application/Search`, `apps/api/src/Catalog/Infrastructure/Search`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Integration/Catalog`, `docs/vision.md`, `docs/features/search/spec.md`
@@ -38,8 +38,8 @@ Ustalone z użytkownikiem 2026-11-13 przed przygotowaniem epiku:
 - **U4. Realizm.** Obecny katalog z `apps/api/fixtures/catalog.yaml` zostaje (seed jak dziś), a generator dokłada
   długi ogon ze słowników w repo (wygenerowanych raz, po polsku), z realistycznymi rozkładami. Dane osób z otwartych
   danych GUS, e-maile wyłącznie w domenach zarezerwowanych (`example.com`, `example.net`, `example.org`).
-- **U5. Zdjęcia.** Większa pula prawdziwych zdjęć z Unsplash poza gitem (w repo lista plików z autorami i sumą
-  kontrolną archiwum), obiekty w Garage współdzielone między produktami (oryginały nigdy nie są usuwane, decyzja K7
+- **U5. Zdjęcia.** Większa pula prawdziwych zdjęć z Wikimedia Commons (CC0 1.0 i domena publiczna) poza gitem
+  (w repo lista plików z autorami, licencjami i sumami kontrolnymi), obiekty w Garage współdzielone między produktami (oryginały nigdy nie są usuwane, decyzja K7
   w `docs/features/catalog-admin/spec.md`).
 - **U6. Bez nocnego resetu.** Dane demo nie są resetowane co noc (zmiana #179 należy do osobnego epiku dostępu do
   demo); przywrócenie danych to świadome uruchomienie generatora.
@@ -70,9 +70,11 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   poświadczeń: nie da się na nie zalogować ani zamówić dla nich resetu hasła (realm `shop` ma
   `resetPasswordAllowed`, a poczta Keycloaka w `prod` idzie przez Brevo). Istnieją jako tożsamości, na które wskazują
   zamówienia i historia działań.
-- **P6. Pula zdjęć.** Około 4000 zdjęć z Unsplash (Unsplash License), w tonacji obecnych zdjęć, przypisanych do grup
-  zdjęć typów produktów (10–40 na grupę, około 33 średnio, zależnie od tego, ile pasujących zdjęć ma Unsplash),
-  wybranych i przeskalowanych do 1600 px przez zadanie epiku; tyle, żeby na stronie listy jednego typu (24 produkty)
+- **P6. Pula zdjęć.** 4317 plików JPEG z Wikimedia Commons (tylko CC0 1.0 i domena publiczna: licencje bez wymogu
+  podania autora i bez zakazu zmian), w tonacji obecnych zdjęć, przypisanych do 20 grup zdjęć typów produktów (120–258 na
+  grupę, około 216 średnio). To 1142 prawdziwe zdjęcia i ich warianty (odbicie lustrzane, kadry 80%), przeskalowane
+  do 1600 px; każdy wariant to osobny plik, więc osobny oryginał dla imgproxy i Varnisha. Commons zamiast Unsplash i Pexels: Pexels wstrzymał nowe klucze API, a regulamin API Unsplash wymaga
+  hotlinkingu, więc ich zdjęć nie wolno pobrać do własnej puli. Pula ma tyle plików, żeby na stronie listy jednego typu (24 produkty)
   zdjęcia rzadko się powtarzały, a pomiar obejmował realną liczbę różnych oryginałów w imgproxy i Varnishu; archiwum w prywatnym magazynie
   (P10), w repo manifest z autorami, licencjami i sumami kontrolnymi. Testy i profil `small` używają 37 obecnych zdjęć
   z `apps/api/fixtures/images`.
@@ -86,11 +88,11 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   nie czyta (API bierze tożsamość z tokenu, zamówienia mają kopię danych klienta, k6 się nie loguje); konta zostają,
   bo skala Keycloaka (1 mln klientów, 500 pracowników) jest częścią demo (U1), a W1 wymaga ich spójności z danymi.
 - **P10. Prywatny magazyn zdjęć.** Pula nie jest publikowana jako ogólnodostępne archiwum (bez wydania GitHub), żeby
-  nie redystrybuować kolekcji z Unsplash. Archiwum leży w prywatnym buckecie Cloudflare R2 (konto użytkownika, jak
+  nie redystrybuować kolekcji zdjęć z Commons. Archiwum leży w prywatnym buckecie Cloudflare R2 (konto użytkownika, jak
   kopie zapasowe), w niezmiennych wersjach, z weryfikacją SHA-256 (sekcja „Zdjęcia”). W repo zostaje manifest.
-- **P11. Dwa końcowe PR.** Jeden epik w specyfikacji, z dotychczasowymi kryteriami i kolejnością zależności,
+- **P11. Dwa końcowe PR.** Jeden epik w specyfikacji, z kryteriami i kolejnością zależności,
   dostarczany w dwóch częściach mergowanych po kolei, każda z własnym końcowym PR i własnymi kontrolami CI: część 1
-  (#482) generator i jego testy (zadania DEMO-DATA-1–7), część 2 (#486, DEMO-LOAD) integracja z k3d, k6 i przebieg
+  (#482) generator i jego testy, część 2 (#486, DEMO-LOAD) integracja z k3d, k6 i przebieg
   `medium`. AO prowadzi epik jako jedną gałąź i jeden końcowy PR, więc część 2 ma własne issue
   i plan, przygotowany po merge'u części 1.
 
@@ -184,7 +186,7 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
   (szkice nigdy). Popularność wariantów z rozkładu Pareto (20% produktów to około 80% sprzedaży). Cena jednostkowa
   linii to cena skuteczna wariantu w chwili złożenia; linia w okresie promocji ma kopię promocji
   (`promotion_*`, `regular_unit_gross`); rabat kodu dzielony na linie według `LineAmounts`. Statusy według wieku (P8): starsze niż 30 dni głównie `delivered`, około 4% `returned`
-  (zwrot rozliczony, jeśli jest starszy niż 14 dni), około 6% `cancelled` (nieopłacone po terminie, z historią
+  (zwrot należny po 14 dniach, rozliczony do 2 dni po terminie, jeśli to przed chwilą odniesienia), około 6% `cancelled` (nieopłacone po terminie, z historią
   `system` i zwolnionym użyciem kodu, albo anulowane przez pracownika; anulowanie po opłaceniu ma zwrot rozliczany jak
   zwrot); ostatnie dni: `paid`, `shipped`, `delivered`. Token dostępu zamówienia gościa i klucze idempotencji
   zamówień i płatności są losowe (bezpieczny generator, nie z ziarna), bo ziarno jest publiczne, a złożenie zamówienia
@@ -200,11 +202,14 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
 
 ### Moduł i komendy (P1)
 
-- Płaski moduł `apps/api/src/DemoData` (warstwa Deptrac `DemoData`: `Native`, `Vendor`, `Shared_Infrastructure`).
+- Płaski moduł `apps/api/src/DemoData` (warstwa Deptrac `DemoData`: `Native`, `Vendor`, `Shared_Infrastructure`,
+  `Catalog_Domain`, `Pricing_Domain`, `Ordering_Domain`; P1a).
   Żaden context od niego nie zależy, on od żadnego contextu.
-- Skrypt `apps/api/bin/generate-demo` (`sh`, `set -eu`, jak `bin/seed-demo`): najpierw `bin/seed-demo` (reset
-  i katalog z `catalog.yaml`), potem kroki generatora, `catalog:reindex`, `storefront:cache:purge-all`. Profil, chwila
-  odniesienia i liczba procesów z argumentów; w `prod` wymaga `--force-reset` jak seedy. Błąd kroku przerywa skrypt
+- Skrypt `apps/api/bin/generate-demo` (`sh`, `set -eu`, jak `bin/seed-demo`): najpierw sprawdzenie opcji i, dla profilu
+  innego niż `small`, puli zdjęć (`demo-data:products --list-parts`, `demo-data:photos --preflight`: nic nie jest jeszcze
+  kasowane), potem `bin/seed-demo` (reset i katalog z `catalog.yaml`), kroki generatora, `catalog:reindex`,
+  `storefront:cache:purge-all`. Profil (`--profile`, domyślnie `small`), chwila odniesienia (`--anchor`) i liczba
+  procesów (`--processes`) z argumentów; w `prod` wymaga `--force-reset` jak seedy. Błąd kroku przerywa skrypt
   z niezerowym kodem; przerwane generowanie zaczyna się od nowa (reset seedów to `TRUNCATE`).
 - Kroki (komendy `demo-data:*`) w kolejności:
   1. katalog: kategorie, produkty, warianty, przypisania kategorii;
@@ -229,15 +234,23 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
 - Generator nie publikuje zdarzeń (outbox) i nie planuje wiadomości; dane „w toku”, które ich wymagają, nie powstają
   (P8). Indeks wyszukiwarki i cache sklepu odświeża końcówka skryptu. To jawny wyjątek od „zdarzenia w tej samej
   transakcji co agregat”, ograniczony do danych demo.
-- Wyjątek od persystencji przez rekordy ORM (`apps/api/CLAUDE.md`): `DemoData` pisze przez `COPY` i SQL; zapisany
-  w `apps/api/CLAUDE.md` z listą tabel, które generator wypełnia.
+- Wyjątek od persystencji przez rekordy ORM (`apps/api/CLAUDE.md`): `DemoData` pisze przez `COPY` i SQL. Tabele, które
+  generator wypełnia: `catalog_category`, `catalog_product`, `catalog_product_variant`, `catalog_product_category`
+  (krok 1), kolumnę `images` `catalog_product` (krok 2, `UPDATE` z tabeli tymczasowej), `pricing_variant_price`,
+  `pricing_price_history` (krok 3, części), `pricing_promotion`, `pricing_promotion_variant` i `pricing_discount_code`
+  (krok 3, jeden proces), `ordering_order`, `ordering_order_line`, `ordering_order_status_change`, `payment_payment`
+  i `pricing_discount_code_usage` (krok 5, części), `inventory_reservation`, `inventory_reservation_line`,
+  `inventory_stock_movement`, `inventory_stock_item` (krok 6, SQL) i sekwencję `ordering_order_number_seq` (krok 7,
+  `setval`). Nie pisze `ordering_order_notification`, `payment_webhook_event`, tabel symulatora płatności,
+  `catalog_category_redirect`, outboxu ani kolejek.
 
 ### Identyfikatory, czas i determinizm
 
 - Chwila odniesienia: opcja `--anchor` (domyślnie początek bieżącej doby UTC). Wszystkie czasy generatora liczą się
   od niej, nie od zegara.
-- Kategorie, produkty, warianty, konta, historyczne kody: UUID v5 z nazw (`category:…`, `product:…`, `variant:…`,
-  `customer:<n>`, `staff:<n>`, `code:<n>`) w przestrzeni z `profiles.yaml`, innej niż `catalog.yaml`.
+- Kategorie, produkty, warianty, konta, promocje, historyczne kody: UUID v5 z nazw (`category:<ścieżka slugów>`,
+  `product:<i>`, `variant:<i>:<k>`, `customer:<odcisk>:<n>`, `staff:<odcisk>:<n>`, `promotion:<i>`, `code:<n>`) w przestrzeni
+  z `profiles.yaml`, innej niż `catalog.yaml`.
 - Zamówienia, linie, płatności, historia cen, rezerwacje i ruchy stanów: UUID v7 z czasem zdarzenia i bitami
   pseudolosowymi z ziarna (rosnące w czasie, jak w aplikacji).
 - Zamówienie ma globalny indeks `i`; część to ciągły zakres indeksów. Czas złożenia jest rosnącą funkcją `i`
@@ -251,7 +264,8 @@ Rzeczywiste rozmiary i czasy podaje raport pomiaru.
 
 Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastającymi po wariancie):
 - aktywna rezerwacja (klucz = id zamówienia, status `active`, linie) dla każdego zamówienia `paid`; w oknie 90 dni
-  rezerwacja `committed` dla zamówień wysłanych i `released` dla anulowanych;
+  rezerwacja `committed` dla zamówień wysłanych i `released` dla anulowanych (okno to zamówienia złożone po jego
+  początku: zamówienie z chwili początku okna, czyli chwili bilansu otwarcia, jest „zarchiwizowane”);
 - `reserved` wariantu = suma linii aktywnych rezerwacji; `physical` = stan z rozkładu, nie mniejszy niż największa
   suma rezerwacji jednocześnie aktywnych w oknie (więc żaden ruch nie narusza `physical >= reserved`, a bilans
   otwarcia wariantu z zamówieniami w oknie jest dodatni); około 8% wariantów bez zamówień w oknie ma stan 0;
@@ -275,9 +289,19 @@ Krok 6 to SQL po załadowaniu zamówień (`INSERT … SELECT` z sumami narastaj�
 - cena jednostkowa linii różni się od ceny skutecznej wariantu w chwili złożenia albo linia w okresie promocji nie ma
   jej kopii;
 - zamówienie klienta wskazuje klienta spoza wygenerowanych kont;
-- liczby w tabelach różnią się od profilu albo slug produktu z ogona nie jest unikalny.
-W profilach `medium`, `server` i `full` sprawdzenie ceny linii obejmuje deterministyczną próbkę zamówień (co k-te
-według indeksu), w `small` wszystkie; pozostałe sprawdzenia są pełne.
+- historia zamówienia nie kończy się jego statusem;
+- bieżąca cena wariantu nie jest ostatnim wpisem jego historii, a netto, VAT i stawka ceny różnią się od reguły Pricing;
+- wygenerowana promocja nie jest zakończona przed chwilą odniesienia, ma ponad 1000 wariantów, nakłada się na inną
+  promocję na wariancie albo jej wariant nie miał ceny w chwili startu lub zmienił cenę w jej trakcie; liczba promocji
+  albo kodów różni się od planu, albo kod nie jest zakończony;
+- liczby w tabelach różnią się od profilu, kategorie ogona są niekompletne, slug produktu z ogona nie jest unikalny
+  (albo slug z `catalog.yaml` należy do innego produktu);
+- w którymś realmie nie ma grupy `demo-data-generated` albo jej członkowie to nie dokładnie zbiór docelowy z bieżącymi
+  danymi (opcja `--no-accounts` pomija sprawdzenia kont).
+W `small` sprawdzenie ceny linii obejmuje wszystkie zamówienia, w większych profilach deterministyczną próbkę
+(jedno zamówienie na `zamówienia / 100000`, według indeksu); zgodność bieżącej ceny z historią obejmuje wszystkie
+warianty w `small`, w większych jeden na `produkty / 300000`, a rozbicie netto i VAT próbkę 2000 cen; pozostałe
+sprawdzenia są pełne.
 Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
 
 ### Konta w Keycloak
@@ -323,39 +347,48 @@ Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
   S3, więc wersjonowanie to niezmienne klucze): wysyłka nie nadpisuje istniejącego klucza, a nowa pula to nowa
   wersja.
 - **Manifest w repo.** `apps/api/fixtures/demo-data/photos.yaml`: wersja, klucz obiektu i lista plików z SHA-256
-  pliku (archiwum to tylko transport), grupą typu, tekstem alternatywnym, stroną źródła, autorem i licencją (Unsplash License).
-  Bez adresu bucketu i bez danych dostępu.
-- **Dostęp.** Dwa tokeny API R2 ograniczone do tego bucketu: zapis i odczyt dla wysyłki puli (zadanie epiku), tylko
-  odczyt dla generatora. Endpoint, nazwa bucketu i klucze są w pliku użytkownika poza repo (domyślnie
+  pliku (archiwum to tylko transport), grupą typu, tekstem alternatywnym, `sourceId`, `variant`, stroną źródła, autorem i licencją. `sourceId` to
+  `commons:<id strony pliku>` (dodatnia liczba całkowita), `variant` to `original`, `mirror`, `crop-left`,
+  `crop-right`, `crop-top`, `crop-bottom`, `crop-center`, `mirror-crop-left`, `mirror-crop-right` albo
+  `mirror-crop-center`, źródło to strona pliku `https://commons.wikimedia.org/wiki/File:…`, a licencja to `CC0 1.0`
+  albo `Public domain`. Para `sourceId` i `variant` jest unikalna (to samo zdjęcie może wystąpić w wielu wariantach,
+  każdy wariant ma własny plik i sumę). Schemat jest zamknięty: nieznany klucz to błąd. Bez adresu bucketu i bez
+  danych dostępu.
+- **Dostęp.** Dwa tokeny API R2 ograniczone do tego bucketu: zapis i odczyt dla wysyłki puli, tylko odczyt dla
+  generatora. Endpoint, nazwa bucketu i klucze są w pliku użytkownika poza repo (domyślnie
   `~/.config/shop/demo-photos.env`, zmienne `DEMO_PHOTOS_*`); narzędzia czytają go bez wypisywania wartości. W CI
   i profilu `small` dostęp nie jest potrzebny.
 - **Pobieranie.** Krok zdjęć dla profili innych niż `small` pobiera archiwum przez osobny filesystem Flysystem
   (adapter AsyncAws S3, już w zależnościach) z danymi odczytu ze zmiennych `DEMO_PHOTOS_*`, sprawdza SHA-256 każdego
   pliku i komplet plików z manifestu (niezgodność: błąd bez zmian w Garage i w bazie; archiwum około 1,6 GB rozpakowane
-  do katalogu tymczasowego usuwanego po kroku, także po błędzie), zapisuje każdy plik raz do Garage pod kluczem
+  do katalogu tymczasowego usuwanego po kroku, także po błędzie; opcja `--preflight` sprawdza tylko zmienne, manifest
+  i obecność archiwum w buckecie, bez zmian), zapisuje każdy plik raz do Garage pod kluczem
   `originals/<sha256>.<rozszerzenie>` (format `FlysystemProductImageStorage`; test kontraktu) i przypisuje produktom
-  klucze z grupy typu. Bez zmiennych `DEMO_PHOTOS_*` profil inny niż `small` kończy się błędem przed pierwszym krokiem.
+  klucze z grupy typu. W trakcie pobierania na dysku są dwie kopie archiwum (strumień `php://temp` adaptera i
+  `photos.tar`), a szczyt miejsca w katalogu tymczasowym to około 2 × rozmiar archiwum (pobranie i rozpakowanie).
+  Bez zmiennych `DEMO_PHOTOS_*` profil inny niż `small` kończy się błędem przed pierwszym krokiem.
   Profil `small` bierze 37 plików z `apps/api/fixtures/images` bez pobierania.
-- **Wysyłka.** Kod pobierania, weryfikacji i wysyłki powstaje i jest testowany na małym archiwum lokalnym (DEMO-DATA-6);
-  pulę wybiera osobne zadanie (DEMO-DATA-7) partiami po działach, z przerwami między pobraniami, bez duplikatów
-  (jedno zdjęcie Unsplash raz w puli). Gdy CDN zacznie blokować pobieranie, zadanie się zatrzymuje i zgłasza to, bez
-  obchodzenia ochrony. DEMO-DATA-7 pobiera zdjęcia z CDN `images.unsplash.com`, skaluje je, buduje archiwum, wysyła je
-  skryptem `apps/api/bin/upload-demo-photos` (obraz `rclone` przypięty digestem jak w chartcie, `copyto --immutable`,
-  więc istniejąca wersja nie zostanie nadpisana) z tokenem zapisu i commituje `photos.yaml`. Przed wysyłką każdy plik
-  przechodzi te same reguły co upload w Catalog (typ po zawartości, rozmiar, wymiary). Archiwum ani zdjęcia puli nie
-  trafiają do repo.
+- **Wysyłka.** Pulę (zdjęcia z Wikimedia Commons, przeskalowane, z wariantami, bez duplikatów: ta sama para `sourceId`
+  i `variant` raz w puli) wysyła na R2 skrypt `apps/api/bin/upload-demo-photos` (`make upload-demo-photos DIR=…`; obraz
+  `rclone` przypięty digestem jak w chartcie, `copyto --immutable`, więc istniejąca wersja nie zostanie nadpisana)
+  z tokenem zapisu, a `photos.yaml` opisuje wysłaną wersję. Przed wysyłką `demo-data:photos:check` sprawdza katalog
+  z manifestem (komplet plików, sumy) i każdy plik przechodzi te same reguły co upload w Catalog (typ po zawartości,
+  rozmiar, wymiary). Archiwum ani zdjęcia puli nie trafiają do repo. Nowa pula to nowa wersja manifestu; wybór zdjęć
+  z Commons idzie partiami z przerwami między pobraniami, a gdy Commons zacznie blokować pobieranie, zatrzymuje się,
+  bez obchodzenia ochrony.
 
 ### Przebudowa indeksu wyszukiwarki
 
-Dziś pojedynczy przejściowy błąd zapisu partii przerywa przebudowę i usuwa nowy indeks
-(`ProductSearchIndexRebuilder.php:137-139`), a przy 10 mln produktów przebudowa trwa godzinami. Zmiany:
-- adapter Elasticsearcha ponawia pozycje partii z wyniku `transient` (`BulkResult`) i przejściowe błędy całego
-  żądania, z narastającym odczekaniem, do 5 prób; zapis z `version_type: external_gte` jest bezpieczny do powtórzenia;
-  trwały błąd albo wyczerpane próby kończą przebudowę jak dziś;
+Przy 10 mln produktów przebudowa (`catalog:reindex`) trwa godzinami, więc pojedynczy przejściowy błąd zapisu partii
+nie może jej przerywać:
+- adapter Elasticsearcha (`ElasticsearchSearchIndexMaintenance::write`) ponawia pozycje partii z wyniku `transient`
+  (`BulkResult`) i przejściowe błędy całego żądania, z odczekaniem podwajanym po każdej próbie (1, 2, 4, 8 s), do
+  5 prób łącznie z pierwszą; zapis z `version_type: external_gte` jest bezpieczny do powtórzenia; trwały błąd albo
+  wyczerpane próby kończą przebudowę błędem: nowy indeks jest usuwany, a alias zostaje na poprzednim;
 - na czas wypełniania nowy indeks ma wyłączone odświeżanie (`refresh_interval: -1`), przywracane przed weryfikacją
   i przełączeniem aliasu;
-- postęp (liczba dokumentów, tempo) w logu co partię.
-Aktualizacja `docs/features/search/spec.md`.
+- postęp (liczba dokumentów, tempo) i każde ponowienie są w logu (postęp co partię).
+Opis szczegółowy: `docs/features/search/spec.md`.
 
 ## Środowiska
 
@@ -367,8 +400,8 @@ Aktualizacja `docs/features/search/spec.md`.
   z czyszczeniem tabel po sobie. Krok kont w testach pracuje na tymczasowych realmach zakładanych i usuwanych przez
   test, nigdy na realmach stosu deweloperskiego, z przestrzenią nazw unikalną dla przebiegu testu (identyfikatory
   użytkowników są globalne w Keycloaku). Skrypt `bin/generate-demo` testuje się jak `bin/seed-demo`
-  (`tests/Unit/Bin`, podstawiona konsola). Cały skrypt na prawdziwych usługach: w części 1 `make seed-scale
-  PROFILE=small` na stosie zadania (wynik w PR), w części 2 test dymny k3d.
+  (`tests/Unit/Bin`, podstawiona konsola). Cały skrypt na prawdziwych usługach uruchamia `make seed-scale
+  PROFILE=small` na stosie, w części 2 test dymny k3d.
 - Stos E2E nie uruchamia generatora.
 - Cel `make seed-scale [PROFILE=small]` (fragment `make/demo-data.mk`) uruchamia `bin/generate-demo` w kontenerze
   `api`, z danymi administratora Keycloaka stosu i (dla profili innych niż `small`) zmiennymi `DEMO_PHOTOS_*` z pliku
@@ -466,7 +499,7 @@ Aktualizacja `docs/features/search/spec.md`.
    zbioru docelowego z bieżącymi danymi, a konta spoza grupy (z kryterium modelu zagrożeń) są bez zmian; nazwa albo
    e-mail zajęte przez konto spoza grupy kończą krok błędem z listą.
 8. Przebudowa indeksu ponawia przejściowe błędy (pozycje partii i całe żądanie) i kończy się sukcesem po kilku
-   nieudanych próbach; trwały błąd i wyczerpane próby zachowują się jak dziś.
+   nieudanych próbach; trwały błąd i wyczerpane próby kończą przebudowę błędem (nowy indeks usunięty, alias bez zmian).
 9. (część 2) Chart: CronJob `demo-data` zawieszony, tylko z `demoData.enabled`, z zasobami i limitem czasu z wartości; profil
    `load` bez kopii; profil `prod` renderuje się tak jak przed epikiem; `make -C infra/k8s check` przechodzi,
    a selftest łapie brak `suspend`.
@@ -483,12 +516,14 @@ Aktualizacja `docs/features/search/spec.md`.
 14. Dokumentacja części 1: `docs/vision.md` („Dane demo”: generator i profile), `apps/api/CLAUDE.md` (moduł
     `DemoData`, wyjątki persystencji i outboxu, komendy, sposób testów), `docs/features/search/spec.md`. Część 2:
     `docs/vision.md` („Skala docelowa”: pomiar na danych w skali i obowiązkowy pomiar `full` przed optymalizacjami
-    i wdrożeniem na serwer; bez twierdzenia, że pełna skala jest zweryfikowana, W3), `infra/k8s/CLAUDE.md` (`LOAD_DATA`,
-    CronJob `demo-data`), `docs/features/hardening/spec.md` (opis `load`), `load/README.md`.
-15. `make seed-scale PROFILE=small` na stosie zadania kończy się kodem 0 (cały skrypt na prawdziwych usługach, wynik
-    w PR części 1), a `make seed` po nim przywraca dane E2E.
+    i wdrożeniem na serwer; bez twierdzenia, że pełna skala jest zweryfikowana, W3), runbook `infra/k8s/README.md`
+    i komentarz przy celu make (opis `LOAD_DATA` i CronJoba `demo-data`), `infra/k8s/CLAUDE.md` (tylko zasada, np.
+    wymóg zgody użytkownika), `docs/features/hardening/spec.md` (opis `load`), `load/README.md`.
+15. `make seed-scale PROFILE=small` na stosie kończy się kodem 0 (cały skrypt na prawdziwych usługach), a `make seed`
+    po nim przywraca dane E2E.
 16. Pula zdjęć (P10): obiekt archiwum w prywatnym buckecie istnieje pod kluczem z manifestu, sumy plików zgadzają
-    się z manifestem, pula ma około 4000 zdjęć bez duplikatów i 10–40 na grupę zdjęć, każdy plik spełnia reguły
+    się z manifestem, pula ma 4317 plików (1142 zdjęcia i ich warianty) bez powtórzonej pary `sourceId` i `variant` i 100–300
+    plików na grupę zdjęć (test pliku `photos.yaml`: 3500–4500 plików), każdy plik spełnia reguły
     uploadu Catalog, bucket nie ma dostępu publicznego, a skrypt wysyłki
     przekazuje `--immutable` (test skryptu z podstawionym `docker`).
 
@@ -500,9 +535,10 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
   2 s, sterta Elasticsearcha 2 GB w `prod`.
 - **H2.** Stronicowanie sklepu bez górnej granicy (`ListProductsQuery.php:40-41`, `Pagination.tsx`): przy 10 mln
   produktów setki tysięcy stron, każda z pełnym zapytaniem.
-- **H3.** Pulpit panelu co 30 s liczy `COUNT(*)` produktów i produktów bez zdjęć bez indeksu
-  (`DoctrineProductRepository.php:95-108`, `useDashboard.ts:18`).
-- **H4.** Wyszukiwarka produktów w panelu z filtrem kategorii (`DbalBackofficeProductSource.php:23-33`): warunek
+- **H3.** Pulpit panelu co 30 s (`useDashboard.ts:27`) liczy kolejki ograniczone do 1000 wierszy po indeksach list,
+  a liczbę produktów szacuje ze statystyk tabeli (`PostgresProductTableStatistics.php:20`, bez `COUNT(*)`); do sprawdzenia
+  pomiarem, czy to wystarcza przy 10 mln produktów.
+- **H4.** Wyszukiwarka produktów w panelu z filtrem kategorii (`DbalBackofficeProductSource.php:35-43`): warunek
   `OR` z `EXISTS` nie jest warunkiem indeksu.
 - **H5.** Przebudowa indeksu trwa godzinami (około 208 tys. wywołań `GetProductOffers` przy 10 mln produktów); ten
   epik zmniejsza ryzyko przerwania, nie czas.
@@ -517,14 +553,12 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
 ## Wymagane przed startem
 
 - Prywatny bucket Cloudflare R2 na pulę zdjęć (P10), bez dostępu publicznego, i dwa tokeny API ograniczone do niego:
-  zapis i odczyt (wysyłka puli, zadanie DEMO-DATA-7) oraz tylko odczyt (generator); endpoint, bucket i klucze w pliku
+  zapis i odczyt (wysyłka puli) oraz tylko odczyt (generator); endpoint, bucket i klucze w pliku
   `~/.config/shop/demo-photos.env` (zmienne `DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`,
   `DEMO_PHOTOS_WRITE_ACCESS_KEY_ID`, `DEMO_PHOTOS_WRITE_SECRET_ACCESS_KEY`, `DEMO_PHOTOS_ACCESS_KEY_ID`,
-  `DEMO_PHOTOS_SECRET_ACCESS_KEY`) — użytkownik: bucket, tokeny i plik przed `/ao-run` (wartości nigdy nie przechodzą
-  przez rozmowę).
-- Pobieranie zdjęć z CDN `images.unsplash.com` bez klucza API: istnieje (tak powstały zdjęcia VISUAL-DESIGN-11,
-  PR #357; link „Download” blokuje ochrona przed botami). Przy około 4000 zdjęć nie było sprawdzane; blokada zatrzymuje
-  DEMO-DATA-7 (sekcja „Zdjęcia”).
+  `DEMO_PHOTOS_SECRET_ACCESS_KEY`) — zakłada je użytkownik (wartości nigdy nie przechodzą przez rozmowę).
+- Pobieranie zdjęć z Wikimedia Commons (tylko CC0 1.0 i domena publiczna) bez klucza API, przez publiczne API Commons
+  z limitami zapytań i nagłówkiem `User-Agent`, potrzebne tylko do wyboru nowej puli (sekcja „Zdjęcia”).
 - (część 2) Przebieg `LOAD_DATA=medium` w zadaniu: Docker na komputerze użytkownika z co najmniej 10 CPU, 20 GiB pamięci
   (wymagania `load`) i około 32 GB wolnego miejsca (1,25 × szacunek `medium`, W2) w VM i na dysku komputera — istnieje (2026-11-13: 16 CPU, 31 GiB, w VM 873 GB wolnego,
   na dysku komputera 279 GiB wolnego).

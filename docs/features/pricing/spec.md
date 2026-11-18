@@ -610,5 +610,5 @@ z tokenem realmu `shop`: 401):
 
 - `docs/vision.md`: „kategoria podatkowa (`taxCategory`)” → „klasa podatkowa (`taxClass`)” w regułach domenowych
   i na liście decyzji; stawki dla PL w kodzie Pricing.
-- `apps/api/CLAUDE.md`: `pricing:seed-demo` w `make seed` i opis `pricing:reconcile-tax`.
+- `apps/api/CLAUDE.md`: `pricing:reconcile-tax` jako narzędzie uruchamiane świadomie.
 - `apps/api/deptrac.yaml`: warstwy Pricing oraz komentarze do reguł Pricing → Catalog i Pricing → Backoffice_Application.

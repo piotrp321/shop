@@ -1,0 +1,60 @@
+# Fictional brands of the generated tail of the catalog (invented for this project, see CREDITS.md), by department.
+# A product takes a brand of the department of its category. None of them is a real company; the test checks that
+# they are different from each other and from the brands of fixtures/catalog.yaml.
+departments:
+  bieganie:
+    [
+      "Ulkomek", "Jordra", "Zannar", "Korodor", "Vorvalen", "Fjornedar", "Galrofen", "Kelmek", "Havogon",
+      "Ravmiten", "Fjorvala", "Fjorrinar", "Corvivar", "Fjorvin", "Emkokos", "Halmila", "Lorkozen", "Zennavon",
+      "Borrik", "Jorrizen", "Ulnela", "Lornaren", "Vannavik", "Torlaik", "Ravivar", "Nivmila", "Ranagar",
+      "Yarrinik", "Korviven", "Pelren", "Lorrok", "Fenkofen", "Kalgon", "Nivinor", "Lorvamar", "Corlavane",
+      "Elkos", "Balvifen", "Elalik", "Melrola", "Jornazor", "Isnaren", "Emoven"
+    ]
+  rower:
+    [
+      "Wolridek", "Jorrivin", "Fennavon", "Havnaten", "Torvamon", "Alkola", "Kelrolen", "Lunira", "Yarrimar",
+      "Korlasen", "Zanrovik", "Valnedek", "Corlamon", "Valelen", "Melenar", "Paleik", "Sorroven", "Lunronik",
+      "Vannedor", "Nivirok", "Galarik", "Emvakos", "Sorotar", "Dalotar", "Elnazen", "Cornezor", "Emneik",
+      "Pelozen", "Norvizen", "Gordar", "Arnanor", "Tormilen", "Bornor", "Keldra", "Emvagar", "Alavar",
+      "Yarigen", "Ravnazen", "Wolakos", "Fjoravon", "Ornavon", "Melnegar", "Emvik"
+    ]
+  turystyka:
+    [
+      "Vorin", "Balvisen", "Havmidek", "Gorlaren", "Zangar", "Norrolen", "Lorgen", "Emvimon", "Lunrola",
+      "Lunvane", "Dalmek", "Isadra", "Gorrorok", "Eminor", "Ravomon", "Velven", "Ilronik", "Sorsen", "Ornalik",
+      "Velkonik", "Koridek", "Dalemon", "Doremon", "Orakos", "Calamek", "Nivlavek", "Salisen", "Melvivin",
+      "Ravaren", "Ilogen", "Salmivon", "Halkomar", "Ulador", "Toregar", "Fenmizor", "Ilkodek", "Vanlala",
+      "Calvavon", "Vanviren", "Melrozor", "Alitar", "Ilgar", "Valladar"
+    ]
+  sporty-zimowe:
+    [
+      "Lunra", "Balmiten", "Zanrirok", "Pelidek", "Talvidar", "Ilmar", "Dornefen", "Salrodar", "Vanmivek",
+      "Kelolik", "Vanin", "Vorven", "Halmiten", "Eltar", "Gorrivar", "Ravotar", "Marvarok", "Galalik",
+      "Palirok", "Zenmila", "Markorok", "Lunmidek", "Talilik", "Havnavon", "Dalkoren", "Yarenar", "Dunromon",
+      "Arneren", "Marizor", "Ravkodek", "Marnalik", "Nivvitar", "Fjordek", "Halrorok", "Sorirok", "Emmidra",
+      "Zanviten", "Kallaten", "Talrigen", "Coridar", "Olmirik", "Lunrinar", "Dalroven"
+    ]
+  fitness:
+    [
+      "Yarnar", "Havizor", "Nornanik", "Havadek", "Boravin", "Talegen", "Salnegen", "Kallafen", "Ranmidar",
+      "Elnemek", "Palriren", "Ravvimon", "Janlasen", "Calavik", "Halelik", "Ollavik", "Areten", "Ilnaten",
+      "Marvadek", "Valridor", "Galkosen", "Fenvamon", "Isven", "Olvavin", "Vanmidek", "Toronar", "Vankovar",
+      "Calroven", "Pelvaven", "Dunrofen", "Ravirik", "Emmidar", "Ulrik", "Torlavek", "Olgon", "Ollatar",
+      "Vanrila", "Pelokos", "Zanren", "Salanar", "Janmirok", "Lunvar", "Emvek"
+    ]
+  sporty-wodne:
+    [
+      "Dunegon", "Zorrimon", "Alvon", "Jorrolik", "Havovon", "Melodar", "Corlavek", "Korlalen", "Corromon",
+      "Dalaik", "Corvifen", "Velnavin", "Halvivar", "Cornevin", "Lunozor", "Alvaven", "Vorvidek", "Dalvalik",
+      "Kalnela", "Borkora", "Arefen", "Doroten", "Voragen", "Vorvilen", "Elkonor", "Arsen", "Ranirik", "Halra",
+      "Raniren", "Fjornevar", "Dorakos", "Koronor", "Olomek", "Wolnazen", "Korolik", "Corrovar", "Lorrola",
+      "Galavik", "Brerodek", "Kelnador", "Haviven", "Norvakos", "Velonar"
+    ]
+  sporty-druzynowe:
+    [
+      "Sorekos", "Meldra", "Nivnesen", "Ranronor", "Dunrilen", "Gorridor", "Corkodek", "Norovon", "Zornevik",
+      "Zoririk", "Yarvivek", "Corera", "Talvirik", "Dunadar", "Jorra", "Ulritar", "Talvin", "Armidar",
+      "Nivrola", "Zenalen", "Jorvivar", "Zorra", "Olrigon", "Oledar", "Vallaren", "Galvadra", "Rannavane",
+      "Dorodra", "Wolgen", "Sorvivin", "Ilrola", "Corvavar", "Palneten", "Wolmon", "Calneven", "Salkorik",
+      "Arnik", "Calmivek", "Armira", "Corarok", "Vannevek", "Dunmigar", "Talrilik"
+    ]

@@ -1,14 +1,18 @@
 """Tests of ao-prepare: python3 -m unittest discover -s tools/agent-security -p 'test_*.py'
 
 ao-prepare runs as a subprocess with HOME in a temporary directory, a real temporary git repository with a bare
-`origin`, a fake claude_pin.py (--pin-script) and a fake probe.py committed to origin/main (the copy runs it). No model,
-no Docker, no network.
+`origin`, a fake claude_pin.py (--pin-script) and a fake probe.py committed to origin/main (the copy runs it). The
+telemetry endpoint (AGENT_OTEL_ENDPOINT) is a local listening socket of the test, or a port nobody listens on. No
+model, no Docker, no network.
 """
 import fcntl
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -18,10 +22,20 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AO_PREPARE = os.path.join(HERE, 'ao-prepare')
-FILES = ('claude-agent', 'render_settings.py', 'executor-settings.json', 'probe.py', 'probe-cases.sh', 'bin/mktemp')
+FILES = ('claude-agent', 'render_settings.py', 'executor-settings.json', 'probe.py', 'probe-cases.sh', 'bin/mktemp',
+         'otlp_receiver.py')
 EXECUTABLE = {'claude-agent', 'render_settings.py', 'probe.py', 'probe-cases.sh', 'bin/mktemp'}
+loader = importlib.machinery.SourceFileLoader('ao_prepare', AO_PREPARE)
+spec = importlib.util.spec_from_loader('ao_prepare', loader)
+ao_prepare = importlib.util.module_from_spec(spec)
+loader.exec_module(ao_prepare)
+spec = importlib.util.spec_from_file_location('render_settings', os.path.join(HERE, 'render_settings.py'))
+render_settings = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(render_settings)
 
-# The probe committed to origin/main. FAKE_PROBE_MODE: pass, fail1, fail2, hang, noresult, badjson, failedcase.
+# The probe committed to origin/main. FAKE_PROBE_MODE: pass, fail1, fail2, hang, noresult, badjson, failedcase,
+# telemetry_warn, telemetry_warn_fail1, telemetry_fail, telemetry_bad, telemetry_pass, odd_status.
+# FAKE_PROBE_STDERR=1: the probe prints a line of its own on stderr.
 FAKE_PROBE = r'''#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
@@ -30,6 +44,9 @@ with open(os.environ['FAKE_PROBE_RECORD'], 'w') as f:
     json.dump({'file': os.path.abspath(__file__), 'argv': args, 'cwd': os.getcwd(), 'pid': os.getpid(),
                'claude_env': sorted(k for k in os.environ if k.startswith('CLAUDE')), 'version': VERSION}, f)
 mode = os.environ.get('FAKE_PROBE_MODE', 'pass')
+if os.environ.get('FAKE_PROBE_STDERR'):
+    sys.stderr.write('probe: own output\n')
+    sys.stderr.flush()
 if mode == 'noisy':
     print('AGENT_CLAUDE_BIN=/tmp/evil')
     print('probe diagnostics on stdout')
@@ -55,6 +72,28 @@ elif mode == 'failedcase':
     cases[0]['status'] = 'fail'
 elif mode == 'notdict':
     payload['cases'] = ['bash_cat_canary']
+elif mode == 'odd_status':
+    cases[0]['status'] = 'no_export'
+elif mode == 'odd_name':
+    cases.append({'name': ['telemetry_export'], 'layer': 'telemetry', 'status': 'no_export', 'reason': None})
+elif mode.startswith('telemetry_'):
+    export = {'name': 'telemetry_export', 'layer': 'telemetry', 'kind': 'work', 'status': 'pass', 'reason': None}
+    content = {'name': 'telemetry_no_content', 'layer': 'telemetry', 'kind': 'bypass', 'status': 'pass',
+               'reason': None}
+    cases += [export, content]
+    if mode in ('telemetry_warn', 'telemetry_warn_fail1'):
+        export.update(status='no_export', reason='odbiornik sondy nie dostał żądania /v1/logs')
+        content.update(status='unverifiable', reason='ciało /v1/logs nie do sprawdzenia: nieznane Content-Encoding')
+    if mode == 'telemetry_warn_fail1':
+        cases[0]['status'] = 'fail'
+        payload.update(reason='przypadek bash_cat_canary nie przeszedł')
+        code = 1
+    elif mode == 'telemetry_fail':
+        content.update(status='fail', reason='ciało /v1/logs zawiera: znacznik promptu')
+        payload.update(reason='przypadek telemetry_no_content nie przeszedł (ciało /v1/logs zawiera: znacznik promptu)')
+        code = 1
+    elif mode == 'telemetry_bad':
+        export.update(status='unverifiable', reason='x')
 if mode == 'badjson':
     open(result, 'w').write('{not json')
 elif mode != 'noresult':
@@ -100,6 +139,12 @@ class AoPrepareTest(unittest.TestCase):
     def setUp(self):
         self.tmp = os.path.realpath(tempfile.mkdtemp(prefix='ao-prepare-test.'))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        # The telemetry stack: a socket that accepts connections (the kernel completes them in the backlog).
+        self.stack = socket.socket()
+        self.addCleanup(self.stack.close)
+        self.stack.bind(('127.0.0.1', 0))
+        self.stack.listen(16)
+        self.stack_endpoint = 'http://127.0.0.1:%d' % self.stack.getsockname()[1]
         self.home = os.path.join(self.tmp, 'home')
         self.ao_home = os.path.join(self.home, '.local', 'state', 'ao-test')
         os.makedirs(self.ao_home)
@@ -149,7 +194,7 @@ class AoPrepareTest(unittest.TestCase):
     def env(self, **extra):
         env = {k: v for k, v in os.environ.items() if not k.startswith(('GIT_', 'FAKE_'))}
         env.update(HOME=self.home, FAKE_PROBE_RECORD=self.record, FAKE_PIN_BINARY=self.binary,
-                   CLAUDE_CODE_ENTRYPOINT='cli', CLAUDECODE='1')
+                   CLAUDE_CODE_ENTRYPOINT='cli', CLAUDECODE='1', AGENT_OTEL_ENDPOINT=self.stack_endpoint)
         env.update(extra)
         return env
 
@@ -201,7 +246,7 @@ class AoPrepareTest(unittest.TestCase):
         self.assertIn('sonda przeszła', err)
         self.assertIn('0.0041 USD', err)
 
-    def test_all_six_files_come_from_origin_main_after_a_fetch_not_from_the_working_tree(self):
+    def test_every_file_comes_from_origin_main_after_a_fetch_not_from_the_working_tree(self):
         code, _, err = self.prepare()
         self.assertEqual(0, code, err)
         for name in FILES:
@@ -259,6 +304,128 @@ class AoPrepareTest(unittest.TestCase):
         self.assertTrue(all(r['main'] == self.main_sha and r['seconds'] >= 0 and r['at'] for r in runs))
         with open(os.path.join(self.ao_home, 'probe-result.json')) as f:
             self.assertEqual('przypadek bash_cat_canary nie przeszedł', json.load(f)['reason'])
+
+    def test_the_copy_has_the_otlp_receiver_next_to_the_probe(self):
+        self.assertIn('otlp_receiver.py', ao_prepare.FILES)
+        code, _, err = self.prepare()
+        self.assertEqual(0, code, err)
+        with open(self.copy('otlp_receiver.py')) as f:
+            self.assertEqual(origin_content('otlp_receiver.py', 'v2'), f.read())
+        self.assertFalse(os.stat(self.copy('otlp_receiver.py')).st_mode & (stat.S_IWUSR | stat.S_IXUSR))
+
+    # ------------------------------------------------------------ telemetry (spec TELEMETRY, R5)
+
+    def closed_endpoint(self):
+        probe = socket.socket()
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        return 'http://127.0.0.1:%d' % port
+
+    @staticmethod
+    def lines(err):
+        return [line for line in err.splitlines() if line.strip()]
+
+    def no_stack_line(self, endpoint):
+        return 'ao-prepare: telemetria: brak stosu pod %s; dane tego przebiegu nie trafią do stosu' % endpoint
+
+    def test_a_closed_telemetry_port_warns_before_the_probe_and_keeps_the_start(self):
+        endpoint = self.closed_endpoint()
+        code, out, err = self.prepare(env=self.env(AGENT_OTEL_ENDPOINT=endpoint, FAKE_PROBE_STDERR='1'))
+        self.assertEqual(0, code, err)
+        self.assertEqual(self.binary, self.values(out)['AGENT_CLAUDE_BIN'])
+        lines = self.lines(err)
+        self.assertEqual(self.no_stack_line(endpoint), lines[0])
+        self.assertEqual('probe: own output', lines[1])
+        self.assertTrue(lines[-1].startswith('ao-prepare: sonda przeszła'), err)
+        self.assertEqual(1, err.count('telemetria'))
+
+    def test_a_closed_telemetry_port_keeps_a_refusal_a_refusal_with_the_refusal_last(self):
+        endpoint = self.closed_endpoint()
+        code, out, err = self.prepare(env=self.env(AGENT_OTEL_ENDPOINT=endpoint, FAKE_PROBE_MODE='fail1'))
+        self.assertEqual((1, ''), (code, out))
+        lines = self.lines(err)
+        self.assertEqual([self.no_stack_line(endpoint)], lines[:-1])
+        self.assertIn('sonda bezpieczeństwa nie przeszła (przypadek bash_cat_canary', lines[-1])
+
+    def test_an_open_telemetry_port_or_off_prints_no_telemetry_line(self):
+        for endpoint in (self.stack_endpoint, 'off'):
+            code, out, err = self.prepare(env=self.env(AGENT_OTEL_ENDPOINT=endpoint))
+            self.assertEqual(0, code, err)
+            self.assertNotIn('telemetria', err, endpoint)
+            self.assertEqual(1, len(self.lines(err)), err)
+
+    def test_off_does_not_check_the_port(self):
+        calls = []
+        original = ao_prepare.socket.create_connection
+        ao_prepare.socket.create_connection = lambda *a, **k: calls.append((a, k))
+        self.addCleanup(setattr, ao_prepare.socket, 'create_connection', original)
+        self.assertIsNone(ao_prepare.telemetry_endpoint({'AGENT_OTEL_ENDPOINT': 'off'}))
+        ao_prepare.check_telemetry_stack(None)
+        self.assertEqual([], calls)
+
+    def test_without_agent_otel_endpoint_the_default_of_render_settings_is_checked_within_two_seconds(self):
+        self.assertEqual(render_settings.DEFAULT_TELEMETRY_ENDPOINT, ao_prepare.telemetry_endpoint({}))
+        self.assertEqual(self.stack_endpoint, ao_prepare.telemetry_endpoint({'AGENT_OTEL_ENDPOINT':
+                                                                              self.stack_endpoint}))
+        calls = []
+
+        def refuse(address, timeout=None):
+            calls.append((address, timeout))
+            raise ConnectionRefusedError(61, 'Connection refused')
+        original = ao_prepare.socket.create_connection
+        ao_prepare.socket.create_connection = refuse
+        self.addCleanup(setattr, ao_prepare.socket, 'create_connection', original)
+        self.assertEqual(self.no_stack_line('http://127.0.0.1:4318')[len('ao-prepare: '):],
+                         ao_prepare.check_telemetry_stack('http://127.0.0.1:4318'))
+        self.assertEqual([(('127.0.0.1', 4318), 2)], calls)
+
+    def test_an_invalid_agent_otel_endpoint_is_a_refusal_before_the_probe(self):
+        for value in ('http://localhost:4318', 'https://127.0.0.1:4318', 'http://127.0.0.1:4318/v1',
+                      'http://127.0.0.1@evil.example:4318', 'http://127.0.0.1.nip.io:4318', 'http://[::1]:4318',
+                      'http://evil.example:4318', 'http://127.0.0.1:0', 'http://127.0.0.1:65536', 'OFF', '',
+                      'http://127.0.0.1:4318\nx'):
+            code, out, err = self.prepare(env=self.env(AGENT_OTEL_ENDPOINT=value))
+            self.assert_refused(code, out, err, 'ao-prepare: niepoprawny AGENT_OTEL_ENDPOINT ',
+                                'http://127.0.0.1:<port>')
+            self.assertFalse(os.path.exists(self.record), value)
+            self.assertFalse(os.path.exists(self.copy()), value)
+
+    def test_no_export_or_unverifiable_of_the_probe_is_a_start_with_a_line_for_each(self):
+        code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE='telemetry_warn'))
+        self.assertEqual(0, code, err)
+        self.assertEqual(self.binary, self.values(out)['AGENT_CLAUDE_BIN'])
+        self.assertEqual(['ao-prepare: telemetria: sonda telemetry_export no_export (odbiornik sondy nie dostał '
+                          'żądania /v1/logs)',
+                          'ao-prepare: telemetria: sonda telemetry_no_content unverifiable (ciało /v1/logs nie do '
+                          'sprawdzenia: nieznane Content-Encoding)'], self.lines(err)[:-1])
+        self.assertTrue(self.lines(err)[-1].startswith('ao-prepare: sonda przeszła'), err)
+
+    def test_every_telemetry_line_comes_before_the_last_line(self):
+        endpoint = self.closed_endpoint()
+        code, _, err = self.prepare(env=self.env(AGENT_OTEL_ENDPOINT=endpoint, FAKE_PROBE_MODE='telemetry_warn_fail1'))
+        self.assertEqual(1, code)
+        lines = self.lines(err)
+        self.assertEqual(self.no_stack_line(endpoint), lines[0])
+        self.assertEqual(['telemetry_export', 'telemetry_no_content'],
+                         [line.split()[3] for line in lines[1:-1]])
+        self.assertIn('sonda bezpieczeństwa nie przeszła (przypadek bash_cat_canary', lines[-1])
+
+    def test_passing_telemetry_cases_print_no_line(self):
+        code, _, err = self.prepare(env=self.env(FAKE_PROBE_MODE='telemetry_pass'))
+        self.assertEqual(0, code, err)
+        self.assertNotIn('telemetria', err)
+
+    def test_a_leak_in_the_telemetry_is_a_refusal(self):
+        code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE='telemetry_fail'))
+        self.assert_refused(code, out, err, 'sonda bezpieczeństwa nie przeszła (przypadek telemetry_no_content',
+                            'znacznik promptu')
+
+    def test_only_the_telemetry_statuses_of_their_cases_do_not_block(self):
+        for mode, case in (('telemetry_bad', 'telemetry_export'), ('odd_status', 'bash_cat_canary'),
+                           ('odd_name', "['telemetry_export']")):
+            code, out, err = self.prepare(env=self.env(FAKE_PROBE_MODE=mode))
+            self.assert_refused(code, out, err, 'kod 0, ale przypadek %s nie przeszedł' % case)
 
     # ------------------------------------------------------------ KUBE_DIR
 

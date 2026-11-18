@@ -476,7 +476,7 @@ o stanie systemu. Ten ekran jest dla administratorów.”.
   „Zdjęcia”, „Warianty”. Kolumna boczna: „Status” (etykieta, „Opublikuj” albo „Wycofaj z publikacji”, wyłączone przy
   niezapisanych zmianach z widocznym powodem „Najpierw zapisz zmiany.”; karta tylko dla zapisanego produktu),
   „Organizacja” (kategoria główna i dodatkowe).
-  Zachowanie zapisu, błędów 409/422 i ról opisuje `apps/admin/CLAUDE.md` (`src/products/`).
+  Zachowanie zapisu, błędów 409/422 i ról opisuje kod: `apps/admin/src/products/useProductForm.ts` i `permissions.ts`.
 - **Zdjęcia**: po usunięciu zdjęcia fokus przechodzi na przycisk usuwania zdjęcia, które zajęło jego miejsce, a bez
   następnego na „Dodaj zdjęcia”; po ukryciu wyniku wysyłania („Ukryj: <plik>”) na następny wynik albo „Dodaj zdjęcia”,
   nigdy na `body` (#250 F8); błąd wysyłania jest ogłaszany (`role="alert"` w wierszu pliku, #250 F14).
@@ -691,9 +691,7 @@ których specyfikacja (`docs/features/admin-screens/spec.md`) ma ich tabelę wer
   (linia `apps/admin` w „Struktura”).
 - `apps/admin/CLAUDE.md`: nagłówek ze stosem, „Struktura” (`src/components/ui`, `src/components/list`, `src/styles`,
   `src/layout`, ekran „Stan systemu”, `VITE_STORE_URL`), „Wygląd” (tokeny, reguła koloru, komponenty shadcn-vue,
-  ikony Lucide, standard listy, formularza i okien), opisy widoków (strażnik zmian, okna potwierdzenia, stan listy
-  w adresie, czyszczenie wierszy po błędzie, fokus, odczyt filtrów z adresu w listach), „Konfiguracja” (cztery
-  adresy).
+  ikony Lucide, standard listy, formularza i okien), „Konfiguracja” (cztery adresy).
 - `docs/features/walking-skeleton/spec.md`: „Layout i dashboard” (pulpit i osobny ekran „Stan systemu”) i tabela
   zależności panelu.
 - `docs/features/catalog-admin/spec.md` (wynik akcji: toast i fokus według tej specyfikacji; okno potwierdzenia

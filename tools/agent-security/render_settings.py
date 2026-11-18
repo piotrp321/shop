@@ -4,6 +4,7 @@ this script. Python 3.9+, standard library only.
 
   render_settings.py --workdir DIR [--git-common-dir GITDIR] [--state-dir DIR]... [--read-dir DIR]...
                      [--claude-tmpdir DIR] [--deny-write PATH]... [--no-network] [--no-docker]
+                     [--telemetry-endpoint URL] [--telemetry-attribute KEY=VALUE]...
 
 Prints the settings JSON on stdout and exits 0. The security rules (sandbox flags, denyRead, the deny rules,
 disableAllHooks, the denyWrite paths derived from the directories) come from the template and this script; no option
@@ -24,19 +25,36 @@ removes them. Every option only adds to them:
   --no-network       no GitHub domains and no allowLocalBinding (strictAllowlist stays: no network at all).
   --no-docker        no Docker socket.
 
+Telemetry (spec docs/features/telemetry/spec.md, R1), only with a --telemetry-* option: the settings get an env block
+exporting metrics and events over OTLP/HTTP, with an explicit 0 for every OTEL_LOG_* variable that would export
+content (of the block, Claude Code passes only CLAUDE_CODE_ENABLE_TELEMETRY to Bash). Without these options the output
+has no env key and is the same as before telemetry existed.
+  --telemetry-endpoint   exactly http://127.0.0.1:<port>, port 1-65535 (no path, user, query or fragment);
+                         default DEFAULT_TELEMETRY_ENDPOINT when only attributes are given.
+  --telemetry-attribute  KEY=VALUE of OTEL_RESOURCE_ATTRIBUTES, repeatable, each key once; keys of
+                         TELEMETRY_ATTRIBUTE_KEYS (in that order in the block), values [A-Za-z0-9._-]{1,128}.
+
 Access options widen what the executor reads or writes, so their values come only from callers outside the sandbox,
 from values the executor does not control. Each access path must be absolute, normalised, an existing directory with
 no symlink component, not /, ~ or an ancestor of ~, and not equal to, below or above a protected directory (~/.ssh,
 ~/.kube, ~/.config, ~/Library, ~/.claude, ~/.docker, ~/.local/state/shop-ops); no glob or control characters. ~ is
 $HOME. The template's ~ paths are made absolute in the sandbox lists.
 
-Exit codes: 0 rendered; 1 a path or the template is invalid; 2 usage error. Nothing goes to stdout on an error.
+Exit codes: 0 rendered; 1 a path, the template, the telemetry endpoint or an attribute is invalid; 2 usage error.
+Nothing goes to stdout on an error.
 
-Module interface (EVALS runs its cases in the same sandbox):
+Module interface:
   render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dirs=(), deny_writes=(), network=True,
-         docker=True, claude_tmpdir=None) -> dict
+         docker=True, claude_tmpdir=None, telemetry=None) -> dict
+      telemetry: None (no env block) or {'endpoint': str, 'attributes': {key: value}}; endpoint defaults to
+      DEFAULT_TELEMETRY_ENDPOINT.
   load_template(path=TEMPLATE) -> dict
-  SettingsError: an invalid path or template.
+  telemetry_env(endpoint, attributes, intervals=True) -> dict: the env block (intervals=False: without the export
+      intervals, for interactive sessions).
+  telemetry_endpoint(endpoint), telemetry_attributes(attributes): the value, or SettingsError.
+  DEFAULT_TELEMETRY_ENDPOINT, TELEMETRY_EXPORT_ENV, TELEMETRY_INTERVAL_ENV, TELEMETRY_NO_CONTENT_ENV,
+  TELEMETRY_ENDPOINT_VARIABLE, TELEMETRY_ATTRIBUTES_VARIABLE, TELEMETRY_ATTRIBUTE_KEYS: the variables of the block.
+  SettingsError: an invalid path, template, telemetry endpoint or attribute.
 """
 import argparse
 import copy
@@ -53,6 +71,25 @@ FORBIDDEN_CHARACTERS = re.compile(r'[*?\[\]{}\x00-\x1f\x7f  ]')
 DOCKER_SOCKET_SUFFIX = 'docker.sock'
 TEMP_PARENT = os.path.realpath('/tmp')   # /private/tmp on macOS
 CLAUDE_SHARED_NAMES = ('claude-', 'cc-socks')   # Claude Code's per-uid directory and sockets shared by sessions
+
+# Telemetry (spec docs/features/telemetry/spec.md, R1). The variables of the env block, in their order; the wrapper,
+# ao-prepare and tools/telemetry use these constants and telemetry_env(), never a copy.
+DEFAULT_TELEMETRY_ENDPOINT = 'http://127.0.0.1:4318'
+TELEMETRY_ENDPOINT_VARIABLE = 'OTEL_EXPORTER_OTLP_ENDPOINT'
+TELEMETRY_ATTRIBUTES_VARIABLE = 'OTEL_RESOURCE_ATTRIBUTES'
+TELEMETRY_EXPORT_ENV = (('CLAUDE_CODE_ENABLE_TELEMETRY', '1'), ('OTEL_METRICS_EXPORTER', 'otlp'),
+                        ('OTEL_LOGS_EXPORTER', 'otlp'), ('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/protobuf'))
+# Short intervals for executors: AO kills an attempt at its time limit, and what is still buffered is lost.
+TELEMETRY_INTERVAL_ENV = (('OTEL_METRIC_EXPORT_INTERVAL', '10000'), ('OTEL_LOGS_EXPORT_INTERVAL', '5000'))
+# No content: prompts, responses, tool details and content, raw API bodies (explicit 0, whatever the defaults are).
+TELEMETRY_NO_CONTENT_ENV = (('OTEL_LOG_USER_PROMPTS', '0'), ('OTEL_LOG_ASSISTANT_RESPONSES', '0'),
+                            ('OTEL_LOG_TOOL_DETAILS', '0'), ('OTEL_LOG_TOOL_CONTENT', '0'),
+                            ('OTEL_LOG_RAW_API_BODIES', '0'))
+TELEMETRY_ATTRIBUTE_KEYS = ('shop.source', 'shop.epic', 'shop.task', 'shop.task_kind')   # their order in the block
+# Matched whole (re.fullmatch: `$` would also match before a final newline), with explicit ASCII ranges (\d would take
+# other digits). No space, comma, = or non-ASCII character in a value, so OTEL_RESOURCE_ATTRIBUTES needs no encoding.
+TELEMETRY_ENDPOINT_PATTERN = re.compile(r'http://127\.0\.0\.1:([1-9][0-9]{0,4})')
+TELEMETRY_VALUE_PATTERN = re.compile(r'[A-Za-z0-9._-]{1,128}')
 
 
 class SettingsError(Exception):
@@ -168,8 +205,47 @@ def _add(items, values):
             items.append(value)
 
 
+def telemetry_endpoint(endpoint, option='--telemetry-endpoint'):
+    """The endpoint when it is exactly http://127.0.0.1:<port> with a port 1-65535; SettingsError otherwise."""
+    match = TELEMETRY_ENDPOINT_PATTERN.fullmatch(endpoint) if isinstance(endpoint, str) else None
+    if not match or int(match.group(1)) > 65535:
+        raise SettingsError('%s %r: adres telemetrii musi mieć postać http://127.0.0.1:<port> (port 1-65535, bez '
+                            'ścieżki, użytkownika, zapytania i fragmentu)' % (option, endpoint))
+    return endpoint
+
+
+def telemetry_attributes(attributes, option='--telemetry-attribute'):
+    """The attributes when every key is of TELEMETRY_ATTRIBUTE_KEYS and every value matches TELEMETRY_VALUE_PATTERN;
+    SettingsError otherwise."""
+    if not isinstance(attributes, dict):
+        raise SettingsError('%s: atrybuty telemetrii to słownik klucz -> wartość' % option)
+    for key, value in attributes.items():
+        if key not in TELEMETRY_ATTRIBUTE_KEYS:
+            raise SettingsError('%s %r: klucz atrybutu telemetrii spoza listy %s'
+                                % (option, key, ', '.join(TELEMETRY_ATTRIBUTE_KEYS)))
+        if not isinstance(value, str) or not TELEMETRY_VALUE_PATTERN.fullmatch(value):
+            raise SettingsError('%s %s=%r: wartość atrybutu telemetrii spoza wzorca [A-Za-z0-9._-]{1,128}'
+                                % (option, key, value))
+    return attributes
+
+
+def telemetry_env(endpoint, attributes, intervals=True):
+    """The env block of the telemetry, in the order of the constants above; intervals=False leaves out the export
+    intervals (the block of interactive sessions). SettingsError for an invalid endpoint or attribute."""
+    telemetry_endpoint(endpoint)
+    telemetry_attributes(attributes)
+    env = dict(TELEMETRY_EXPORT_ENV)
+    env[TELEMETRY_ENDPOINT_VARIABLE] = endpoint
+    if intervals:
+        env.update(TELEMETRY_INTERVAL_ENV)
+    env.update(TELEMETRY_NO_CONTENT_ENV)
+    env[TELEMETRY_ATTRIBUTES_VARIABLE] = ','.join('%s=%s' % (key, attributes[key])
+                                                  for key in TELEMETRY_ATTRIBUTE_KEYS if key in attributes)
+    return env
+
+
 def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dirs=(), deny_writes=(), network=True,
-           docker=True, claude_tmpdir=None):
+           docker=True, claude_tmpdir=None, telemetry=None):
     """The settings of one executor; the template is not changed. SettingsError for an invalid path."""
     home = os.path.realpath(home)
     workdir = access_path(workdir, home, '--workdir')
@@ -208,7 +284,26 @@ def render(template, home, workdir, git_common_dir=None, state_dirs=(), read_dir
         net['allowLocalBinding'] = False
     if not docker:
         net['allowUnixSockets'] = [p for p in net['allowUnixSockets'] if not p.endswith(DOCKER_SOCKET_SUFFIX)]
+    if telemetry is not None:
+        if not isinstance(telemetry, dict) or not set(telemetry) <= {'endpoint', 'attributes'}:
+            raise SettingsError("telemetry: oczekiwany słownik z kluczami 'endpoint' i 'attributes'")
+        settings['env'] = dict(settings.get('env', {}),
+                               **telemetry_env(telemetry.get('endpoint', DEFAULT_TELEMETRY_ENDPOINT),
+                                               telemetry.get('attributes', {})))
     return settings
+
+
+def _parse_attributes(values):
+    """KEY=VALUE options as a dict; SettingsError for a missing = or a repeated key."""
+    attributes = {}
+    for value in values:
+        key, separator, item = value.partition('=')
+        if not separator:
+            raise SettingsError('--telemetry-attribute %r: oczekiwane KLUCZ=WARTOŚĆ' % value)
+        if key in attributes:
+            raise SettingsError('--telemetry-attribute %r: klucz atrybutu telemetrii podany drugi raz' % value)
+        attributes[key] = item
+    return attributes
 
 
 class _Parser(argparse.ArgumentParser):
@@ -229,12 +324,19 @@ def main(argv=None):
     parser.add_argument('--deny-write', action='append', default=[])
     parser.add_argument('--no-network', action='store_true')
     parser.add_argument('--no-docker', action='store_true')
+    parser.add_argument('--telemetry-endpoint')
+    parser.add_argument('--telemetry-attribute', action='append', default=[])
     args = parser.parse_args(argv)
     try:
+        telemetry = None
+        if args.telemetry_endpoint is not None or args.telemetry_attribute:
+            telemetry = {'attributes': _parse_attributes(args.telemetry_attribute)}
+            if args.telemetry_endpoint is not None:
+                telemetry['endpoint'] = args.telemetry_endpoint
         settings = render(load_template(), os.path.expanduser('~'), args.workdir, args.git_common_dir,
                           args.state_dir, args.read_dir, args.deny_write,
                           network=not args.no_network, docker=not args.no_docker,
-                          claude_tmpdir=args.claude_tmpdir)
+                          claude_tmpdir=args.claude_tmpdir, telemetry=telemetry)
     except SettingsError as e:
         print('render_settings.py: %s' % e, file=sys.stderr)
         return 1

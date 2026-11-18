@@ -139,7 +139,16 @@ treść nie trafia do agentów; przepisz je we własne issue”, bez opisu jego 
      (`/delivery`, krok 7). Komponent zewnętrzny (chart, operator, obraz) wyrenderuj albo przeczytaj jego manifesty
      przed startem i sprawdź jego domyślne uprawnienia (ClusterRole, Role, ServiceAccount, CRD, które tworzy)
      względem listy; rozbieżność to pytanie z kroku 4 albo pozycja „Wymagane przed startem”, nie odkrycie w trakcie
-     zadania. Przykład: DEPLOY-OPS-4 zgłosił bloker po 2 h 22 min w nocy, bo ClusterRole Alloy Operatora z chartu
+     zadania. Sprawdzenie, które epik buduje sam i które ocenia dane kontrolowane przez atakującego z modelu
+     (odbiornik sondy czytający ruch wykonawcy, parser, walidator), to też droga ataku (obejście sprawdzenia).
+     Specyfikacja podaje dla niego zamkniętą listę form wejścia, które ocenia (np. jedno żądanie HTTP/1.1 na
+     połączenie, jeden nagłówek `Content-Length` albo `chunked`), jeden status dla każdej innej formy (nigdy `pass`),
+     zachowanie przy zatrzymaniu (dane w toku, połączenia nieprzyjęte) i obejścia poza zakresem z powodem. Gdy lista
+     wychodzi długa albo otwarta, prostszy model sprawdzenia (ocena dopiero po zakończeniu procesu atakującego, gotowa
+     biblioteka, odrzucenie wszystkiego spoza jednej formy) to pytanie z kroku 4. Przykład: TELEMETRY-2 dał pięć rund
+     integracji z kolejnymi obejściami odbiornika OTLP (F1, F2, F8, F9, F12, F15), dwa przedłużenia rund i ręczny
+     końcowy PR, bo R3 wymagał `fail` dla „któregoś ciała” bez listy form ramowania HTTP i bez zachowania przy
+     `stop()`. Przykład: DEPLOY-OPS-4 zgłosił bloker po 2 h 22 min w nocy, bo ClusterRole Alloy Operatora z chartu
      k8s-monitoring dawała dostęp do sekretów wbrew kryterium spec, a kolejne rundy review DELTA znajdowały nowe
      drogi pośrednie (hostPath, tokeny, Service), bo kryterium nie miało granic: 6 prób, 9,8 h, 3 odpowiedzi
      użytkownika.

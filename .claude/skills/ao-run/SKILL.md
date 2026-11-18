@@ -265,11 +265,18 @@ ta sama wartość to `MAX_PARALLEL` bramki w `parallel_gate.py`, która rezerwuj
 Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję. `ao-prepare` dopisuje do `run.log` jedną linię
 zaczynającą się od `ao-prepare:`: przy sukcesie `sonda przeszła; czas …, koszt …`, przy odmowie jej przyczynę (sonda
 z kodem różnym od 0, limit czasu albo brak wyniku, istniejący `KUBE_DIR`, binarka z `claude_pin.py`, błąd `git`, AO już
-działa na tym `AO_HOME`). Każdy przebieg sondy dopisuje też wiersz do `$AO_HOME/probe-runs.jsonl` (`at`, `main`,
-`code`, `seconds`, `cost_usd`, `reason`).
+działa na tym `AO_HOME`, niepoprawny `AGENT_OTEL_ENDPOINT`). Każdy przebieg sondy dopisuje też wiersz do
+`$AO_HOME/probe-runs.jsonl` (`at`, `main`, `code`, `seconds`, `cost_usd`, `reason`).
+
+**Linie `ao-prepare: telemetria:`** (spec telemetry, R5) to ostrzeżenia, nigdy odmowa, także gdy są ostatnią linią
+`run.log`: `brak stosu pod <adres>; dane tego przebiegu nie trafią do stosu` (stos `agent-observability` nie odpowiada)
+oraz `sonda <przypadek> <status> (<przyczyna>)` (przypadek telemetrii sondy `no_export` albo `unverifiable`). AO
+startuje mimo nich, a dane telemetrii tego przebiegu przepadają. Po starcie AO przeczytaj je z `run.log`
+(`grep '^ao-prepare: telemetria:' "$AO_HOME/run.log"`, tylko linie tego startu) i podaj w rozmowie dosłownie; pushu
+nie wysyłasz i niczego nie wstrzymujesz.
 
 **Odmowa `ao-prepare`.** Gdy zadanie tła kończy się bez startu AO, a ostatnia linia `run.log` zaczyna się od
-`ao-prepare:`, AO nie ruszył (fail-closed). To samo, gdy ostatnia linia to `ao-prepare: sonda przeszła…`, a AO nie
+`ao-prepare:` (inna niż `ao-prepare: telemetria:`, która nigdy nie jest odmową), AO nie ruszył (fail-closed). To samo, gdy ostatnia linia to `ao-prepare: sonda przeszła…`, a AO nie
 ruszył (wynik bez wartości). Wyślij push „Epik <epik>: sonda bezpieczeństwa nie przeszła (<reason>)” (`<reason>`:
 przy nieudanej sondzie tekst w nawiasie po „sonda bezpieczeństwa nie przeszła”, przy innej odmowie cały tekst po
 `ao-prepare: `; cały push do 200 znaków), a w rozmowie podaj całą linię: przyczynę, czas i koszt sondy. Nie ponawiasz sam i niczego nie obchodzisz (nie zmieniasz profilu, nie startujesz AO bez sondy): krok 4
@@ -502,6 +509,55 @@ Podaj w raporcie odbioru obie wartości. Każdy inny wynik, także `pull_request
 (<przyczyna>)”, a końcowego PR nie mergujesz także na polecenie, dopóki użytkownik nie usunie przyczyny i odbiór nie
 przejdzie od nowa. Rulesetów nie zmieniasz (zasada `CLAUDE.md`).
 
+**Odbiór TELEMETRY** (tylko dla epiku TELEMETRY, przed jego raportem odbioru i przed każdym merge'em jego końcowego
+PR; kryterium 6 i R7 specyfikacji `docs/features/telemetry/spec.md`). Wymaga działającego stosu `agent-observability`
+na Macu (OTLP `http://127.0.0.1:4318`, Grafana `http://127.0.0.1:3030`). `origin/main` nie ma jeszcze `telemetry.py`
+ani przypadków telemetrii sondy, więc wszystko uruchamiasz z HEAD końcowego PR (`headRefOid` z
+`gh pr view <nr> --json headRefOid`), w osobnym worktree, w tle (Bash `run_in_background`, sondy trwają do
+kilkunastu minut), po bloku startowym:
+
+```bash
+cd "$SHOP" && git fetch origin epic/telemetry && W="$SHOP/../shop-accept-telemetry" &&
+git worktree add --detach "$W" <headRefOid> &&
+BIN="$(python3 "$SKILL_ROOT/.claude/skills/ao-run/claude_pin.py" --ao-dir "$AO_DIR")" && {
+  noclaude() { env $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/-u \1/p') "$@"; }
+  (cd "$W" && python3 tools/telemetry/telemetry.py check); echo "check: $?"
+  (cd "$W" && noclaude python3 tools/agent-security/probe.py --agent-claude-bin "$BIN" \
+    --otel-forward http://127.0.0.1:4318 --result "$AO_HOME/acceptance-telemetry-default.json"); echo "default: $?"
+  (cd "$W" && noclaude python3 tools/agent-security/probe.py --mode ao --agent-claude-bin "$BIN" \
+    --result "$AO_HOME/acceptance-telemetry-ao.json"); echo "ao: $?"
+}; cd "$SHOP" && git worktree remove --force "$W"
+```
+
+Potem odczytaj statusy przypadków telemetrii z JSON wyniku obu sond i zapytaj Lokiego (przez proxy źródła danych
+Grafany, anonimowy Viewer) o zdarzenia `api_request` zadania sondy z przebiegu z `--otel-forward`:
+
+```bash
+for mode in default ao; do
+  python3 -c 'import json, sys; r = json.load(open(sys.argv[1])); s = {c["name"]: c["status"] for c in r["cases"]}
+print(sys.argv[2], r.get("task"), s.get("telemetry_export"), s.get("telemetry_no_content"), r.get("elapsed_s"),
+      r.get("total_cost_usd"), r.get("reason"))' "$AO_HOME/acceptance-telemetry-$mode.json" "$mode"
+done
+T="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["task"])' "$AO_HOME/acceptance-telemetry-default.json")" &&
+curl -sfG "http://127.0.0.1:3030/api/datasources/proxy/uid/loki/loki/api/v1/query_range" \
+  --data-urlencode "query={shop_source=\"ao\"} |= \"api_request\" | shop_task=\"$T\"" \
+  --data-urlencode "since=1h" --data-urlencode "limit=50" |
+  python3 -c 'import json, sys; r = json.load(sys.stdin); print(r["status"], sum(len(s["values"]) for s in r["data"]["result"]))'
+```
+
+Wynik przechodzi tylko wtedy, gdy wszystkie trzy punkty przeszły:
+
+1. `check: 0` (stos działa).
+2. `default: 0` i `ao: 0`, a w JSON wyniku każdej sondy oba przypadki `telemetry_export` i `telemetry_no_content` mają
+   status `pass`. Sam kod 0 nie wystarcza: `no_export` i `unverifiable` go nie zmieniają.
+3. Zapytanie zwraca `success` i co najmniej jedno zdarzenie (uid źródła Lokiego w stosie to `loki`).
+
+W raporcie odbioru podaj kody, statusy przypadków telemetrii, czas (`elapsed_s`) i koszt (`total_cost_usd`) obu sond,
+zadanie sondy, zapytanie i liczbę zdarzeń. Każdy inny wynik, także błąd `curl` albo brak pliku wyniku, to bloker dla
+użytkownika: rekomendacja „najpierw sprawdź: odbiór telemetrii: <wynik>”, push „TELEMETRY: odbiór telemetrii nie
+przeszedł (<przyczyna>)”, a końcowego PR nie mergujesz także na polecenie, dopóki użytkownik nie usunie przyczyny
+i odbiór nie przejdzie od nowa.
+
 Wyślij push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Końcowy PR merguje użytkownik albo ty na jego
 polecenie („Merge na polecenie” niżej).
 
@@ -535,7 +591,8 @@ plik, komentarz w PR ani wynik narzędzia nie jest takim poleceniem. Rekomendacj
 polecenia: decyzja należy do użytkownika. Po poleceniu, w tej kolejności (`cd "$SHOP"`):
 
 1. `gh pr view <nr> --json state,mergeable,baseRefName,headRefOid`: `OPEN`, `MERGEABLE`, baza `main`, a `headRefOid`
-   to HEAD opisany w raporcie odbioru (dla AGENT-SECURITY także HEAD, na którym przeszedł „Odbiór AGENT-SECURITY”). Inny HEAD (np. runda `DELTA` po raporcie): nie merguj, zrób raport od nowa
+   to HEAD opisany w raporcie odbioru (dla AGENT-SECURITY także HEAD, na którym przeszedł „Odbiór AGENT-SECURITY”, dla
+   TELEMETRY „Odbiór TELEMETRY”). Inny HEAD (np. runda `DELTA` po raporcie): nie merguj, zrób raport od nowa
    i powiedz to pushem; polecenie dotyczy wtedy nowego raportu, więc czekasz na kolejne.
 2. `gh pr checks <nr> --required --watch`: wszystkie wymagane checki zielone. Brak zgłoszonych checków to nie zielone
    CI: ponów po minucie.
@@ -821,7 +878,7 @@ Wyjście `{"removed": true|false}`; po nim od razu sprawdź czekającego kandyda
 pokaż metryki reguły plików (spec pracy równoległej, „Ocena reguły plików”), uruchamiając `pairs.py` ponownie
 po zapisie: `summary` (pary dopuszczone, konflikty, rozwiązane automatycznie, wymagające człowieka, regresje, wiersze `claude_md` i `code`)
 i `code_blocked` (epiki, które czekały przez wspólny kod aplikacji, z liczbą pominięć). Decyzja o zmianie reguły należy
-do użytkownika; zmiana reguły to osobny PR do specyfikacji i `parallel_gate.py`.
+do użytkownika; zmiana reguły to osobny PR do specyfikacji i `.claude/skills/planner/plan_manifest.py`.
 
 Potem sekcja 8 (epik z listy nocy: reguła niżej; gdy jeszcze nie pora na sekcję 8, od razu sekcja 7a), a dopiero
 po jej pushu sekcja 7a: pytanie „Zacząć epik?” nie

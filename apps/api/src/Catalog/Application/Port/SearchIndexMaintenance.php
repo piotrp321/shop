@@ -53,18 +53,22 @@ interface SearchIndexMaintenance
     public function createIndex(): string;
 
     /**
-     * Writes the documents in one bulk request directly to the physical index.
+     * Writes the documents in bulk directly to the physical index. Transient failures (of single documents or of the
+     * whole request) are retried until the attempts run out, and only the documents not yet written are repeated.
      *
      * @param list<ProductDocument> $documents
      *
+     * @return BulkResult the documents that failed, among them the transient ones that were still failing when the
+     *                    attempts ran out
+     *
      * @throws SearchIndexError  when the whole request is rejected
-     * @throws SearchUnavailable when the whole request fails transiently
+     * @throws SearchUnavailable when the whole request still fails transiently after the last attempt
      */
     public function write(string $index, array $documents): BulkResult;
 
     /**
-     * Refreshes the index and checks that it exists, has healthy shards, the current definition and the expected
-     * number of documents.
+     * Restores the default refresh interval of the index, refreshes it and checks that it exists, has healthy shards,
+     * the current definition and the expected number of documents.
      *
      * @throws SearchIndexError  when any check fails
      * @throws SearchUnavailable

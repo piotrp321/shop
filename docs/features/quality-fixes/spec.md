@@ -155,8 +155,8 @@ daje 200 i zapis.
   niedozwolony. Dotyczy wszystkich jednoliniowych pól Ordering, które go używają: notatki, danych kontaktowych (imię
   i nazwisko, e-mail), adresu zamówienia (ulica, miejscowość, kod pocztowy) w `PlaceGuestOrderRequest`
   i `PlaceCustomerOrderRequest`. `Assert\Length` pól imienia i nazwiska, ulicy, miejscowości, e-maila i notatki ma
-  `charsetMessage` z komunikatem pola, więc niepoprawny UTF-8 daje to samo naruszenie co znak niedozwolony. `docs/features/order-management/spec.md`,
-  `docs/features/checkout/spec.md` i `apps/api/CLAUDE.md` opisują regułę; opisy pól w OpenAPI
+  `charsetMessage` z komunikatem pola, więc niepoprawny UTF-8 daje to samo naruszenie co znak niedozwolony. `docs/features/order-management/spec.md`
+  i `docs/features/checkout/spec.md` opisują regułę; opisy pól w OpenAPI
   (`openapi.json`, `openapi-admin.json`) i kliencie panelu są wyeksportowane od nowa (wzorzec z `/u` nie trafia już do
   specyfikacji jako `pattern`).
 - `StaffNote::trim()` przycina białe znaki Unicode (`\s` i `\p{Z}`, także NBSP), a `StaffNote::optional()` używa go przed

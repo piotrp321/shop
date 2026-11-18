@@ -478,13 +478,13 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
 - `docs/vision.md`: klienci w panelu z modelu odczytu Ordering (sekcja „Klienci i pracownicy”, tabela contextów),
   kolejność kategorii w mega menu ustawiana przez pracownika i przekierowanie 308 starych adresów kategorii (sekcja
   SEO i „Przyjazne adresy”).
-- `infra/k8s/CLAUDE.md`: Job `backfill` po rolloucie, transport `jobs` w workerze.
+- `docs/features/deploy/spec.md` („Chart `shop`”): Job `backfill` po rolloucie. `infra/k8s/CLAUDE.md` („Chart
+  a compose”): transport `jobs` w workerze chartu jak w compose.
 - `apps/api/CLAUDE.md`: wyjątki DBAL (sprzedaż, klienci, ścieżki poddrzewa, rekordy stanów), migracje
-  `CONCURRENTLY`, transport `jobs` i łańcuch partii, liczniki ograniczone i szacunek `reltuples`, sortowanie, endpointy
-  i komendy (`app:backfill` z krokami, `ordering:read-models:rebuild`, `inventory:stock-records:sync`, kroki
-  `bin/seed-demo`).
-- `apps/admin/CLAUDE.md`: sortowanie w `ListToolbar`, moduły `categories` i `customers`, karta cen i stanów, kafle
-  sprzedaży i liczby „Do obsługi”; brak `@tanstack/vue-table` i zaznaczania wierszy.
+  `CONCURRENTLY`, transport `jobs` i łańcuch partii, reguły liczników ograniczonych, szacunku `reltuples` i sortowania,
+  `app:backfill` i zasady jego kroków.
+- `apps/admin/CLAUDE.md`: sortowanie w `ListToolbar`, moduły `categories` i `customers`; brak `@tanstack/vue-table`
+  i zaznaczania wierszy.
 - `apps/store/CLAUDE.md`: przekierowania kategorii, kolejność drzewa.
 - `docs/adr/admin-ui-library.md` i `docs/features/admin-design/spec.md`: sortowanie bez `@tanstack/vue-table`; pulpit
   (kafle sprzedaży, liczby „Do obsługi”, linki kafli); w „Dostępności” karta klienta na liście wyjątków kolejności
@@ -495,7 +495,8 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
 - `docs/features/order-management/spec.md`: fragment i zakres dat, sortowanie, `customerId`.
 - `docs/features/demo-data/spec.md`: generator woła `ordering:read-models:rebuild` i `ANALYZE` po wstawieniu danych
   i zakłada rekord stanu każdemu wariantowi.
-- `e2e/CLAUDE.md`: podział E2E na części (`E2E_SHARD_WEIGHTS`) z testami tej funkcji.
+- `.github/workflows/ci.yml` (komentarz kroku `make e2e`): podział E2E na części (`E2E_SHARD_WEIGHTS`) z testami tej
+  funkcji.
 
 ## Poza zakresem
 

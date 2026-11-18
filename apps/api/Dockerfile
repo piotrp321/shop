@@ -4,8 +4,8 @@
 # build (production dependencies and a warmed `prod` cache) -> prod (runtime + the built application). `dev` is the last
 # stage, so the Compose build (`target: dev`, and CI) is unchanged; production images are built with `--target prod`.
 
-# Pinned: FrankenPHP 1.13.4 on PHP 8.5.12 (ZTS build, Debian trixie).
-FROM dunglas/frankenphp:1.13.4-php8.5.12-trixie AS runtime
+# Pinned: FrankenPHP 1.13.5 on PHP 8.5.12 (ZTS build, Debian trixie).
+FROM dunglas/frankenphp:1.13.5-php8.5.12-trixie AS runtime
 
 # gmp: web-token converts every RSA JWK to PEM with brick/math before openssl signs or verifies; without gmp the
 # conversion runs in pure PHP (about 0.2 s per access token verification, 0.6 s per signature).

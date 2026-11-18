@@ -5,3 +5,9 @@ flysystem:
             options:
                 client: 'app.s3_client'
                 bucket: '%app.images_bucket%'
+        # The photo pool of the demo data in a private R2 bucket (DEMO_PHOTOS_* variables); read by demo-data:photos only.
+        demo_photos.storage:
+            adapter: 'asyncaws'
+            options:
+                client: 'app.demo_photos_s3_client'
+                bucket: '%env(DEMO_PHOTOS_BUCKET)%'

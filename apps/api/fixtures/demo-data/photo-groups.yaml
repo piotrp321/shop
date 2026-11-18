@@ -1,0 +1,24 @@
+# The photo groups of the product types (product-types.yaml: `photos`). `small` lists the files of fixtures/images
+# that serve a group (the profile `small` has no larger pool); the pool of the other profiles is mapped to the same
+# group names by its manifest.
+groups:
+  run-road: [runner-country-road.jpg, runner-road-fitz-roy.jpg]
+  run-trail: [trail-runner-mountain-ridge-italy.jpg, runner-mountain-edge-trail.jpg]
+  run-gear: [runner-country-road.jpg, runner-road-fitz-roy.jpg, trail-runner-mountain-ridge-italy.jpg, runner-mountain-edge-trail.jpg]
+  bike-mountain: [bikepacker-rocky-trail-pines.jpg, bikepacking-bike-mountain-trail.jpg, cyclist-dirt-road-british-columbia.jpg]
+  bike-road: [cyclist-mountain-road-romania.jpg, cyclist-path-canadian-rockies.jpg, cyclist-dirt-road-british-columbia.jpg]
+  bike-gear: [bikepacker-rocky-trail-pines.jpg, bikepacking-bike-mountain-trail.jpg, cyclist-dirt-road-british-columbia.jpg, cyclist-mountain-road-romania.jpg, cyclist-path-canadian-rockies.jpg]
+  hike-gear: [hikers-mountain-trail-group.jpg, hikers-trail-switzerland.jpg, women-hiking-crested-butte.jpg, headlamp-hiker-chamonix.jpg, hiker-yellow-backpack-meadow.jpg, hikers-trail-toward-peaks-chile.jpg]
+  hike-maps: [hiker-reading-map.jpg, hikers-mountain-trail-group.jpg]
+  camp-kitchen: [orange-tent-turquoise-lake.jpg, tent-orange-forest-mountain.jpg, sleeping-bag-alpine-meadow.jpg, hikers-trail-switzerland.jpg]
+  ski: [skier-val-disere.jpg, ski-touring-steep-slope.jpg, skis-blue-tips-snow.jpg, skis-blue-touring-stone-wall.jpg, skier-carrying-blue-skis-ascent.jpg]
+  ski-wear: [skier-val-disere.jpg, ski-hikers-snowy-trail.jpg, skier-carrying-blue-skis-ascent.jpg]
+  fitness-yoga: [yoga-park-sunset.jpg, yoga-rock-mountains.jpg]
+  fitness-gym: [yoga-park-sunset.jpg, yoga-rock-mountains.jpg, runner-country-road.jpg]
+  nutrition: [runner-country-road.jpg, cyclist-path-canadian-rockies.jpg, runner-road-fitz-roy.jpg]
+  water-sup: [paddleboards-lake-wanaka.jpg, kayak-lake-mountains.jpg]
+  water-kayak: [kayak-green-single-autumn-lake.jpg, kayak-green-single-mountain-lake.jpg, kayak-green-tandem-river-close.jpg, kayak-green-tandem-river.jpg, kayak-lake-mountains.jpg]
+  swim: [open-water-swimmer-lake.jpg, paddleboards-lake-wanaka.jpg]
+  ball-soccer: [soccer-ball-field-blue.jpg]
+  ball-indoor: [volleyball-indoor-sports-hall.jpg, basketball-outdoor-court-park.jpg]
+  team-gear: [soccer-ball-field-blue.jpg, basketball-outdoor-court-park.jpg, volleyball-indoor-sports-hall.jpg]

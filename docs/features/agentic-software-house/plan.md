@@ -1,9 +1,9 @@
 # Plan: Agentic Software House
 
-Docelowa architektura i zasady: [ADR](../../adr/agentic-software-house.md). Ten plan ustala role, proces pracy
-i kroki wdrożenia. AO jest zamrożone po v0.3.1: zmienia się tylko wtedy, gdy prawdziwy przebieg epiku stoi,
-najmniejszą poprawką i za zgodą użytkownika. Wyjątek zatwierdzony przez użytkownika: równoległe zadania epiku
-(krok 19b, piotrp321/agentic-orchestrator#50). Nowe role powstają jako skille i agenci w `shop`, bez kodu AO.
+Obowiązująca decyzja: [ADR](../../adr/agentic-software-house.md) (najpierw natywne, AO jako rozwiązanie awaryjne).
+Ten plan ustala role, proces epiku prowadzonego przez AO, kroki wdrożenia i kroki przejścia na pracę natywną. Od
+2026-11-18 obowiązuje moratorium na rozwój AO i narzędzi istniejących tylko dla niego (sekcja „Status”): AO zmienia się
+tylko wtedy, gdy prawdziwy przebieg epiku stoi, najmniejszą poprawką i za zgodą użytkownika.
 
 Cel: użytkownik poświęca około godziny dziennie na decyzje, a agenci budują sklep według „Zakresu MVP”
 z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie potwierdzony fakt.
@@ -14,15 +14,26 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 
 ## Status
 
-W toku przez `/ao-run`: DEMO-DATA (#482). Kolejność epików jest na tablicy „Backlog sklepu”.
-Blokery: brak. Ostatni zmergowany epik: METRICS (końcowy PR #674; 5 interwencji, 6 czekań na użytkownika, razem
-400 min, 4 ręczne poprawki). Retro do zrobienia: brak (retro METRICS w tym PR).
-Krok 7: CART-FIXES (#88)
-przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
-nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 111, zamkniętych 52.
-Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epików do zrobienia), teraz 17, 18 i 19b
-(w toku); 11 (warunek „po epiku SENTRY” spełniony); na końcu 20, 21 i 22.
+Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko dla niego (`/ao-run`, `/prepare-epic`,
+`/delivery`, `/sweep`, `/retro`, `/groom`) i narzędzi z nimi związanych (decyzja w ADR, podstawa w
+`docs/reports/agentic-software-house-audit-2026-11-18.md`). Wstrzymane są niedokończone kroki 17–22 i epik ONCALL
+(krok 11, `docs/features/oncall/`). Kolejność epików jest na tablicy „Backlog sklepu”.
+
+Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
+w pierwszej rundzie).
+
+Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
+
+| Krok | Zakres | Status |
+|---|---|---|
+| P1 | Zachowanie danych historycznych (transkrypty, stan i zrzuty AO) przed ich wygaśnięciem | zrobione (kopia poza repozytorium) |
+| P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
+| P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
+| P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | zrobione |
+| P5 | Trzy epiki natywnie: SMALL-FIXES → ABUSE-LIMITS → ASYNC-RELIABILITY, każdy z punktem odniesienia przed i krótkim raportem po | do zrobienia |
+| P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
+
+Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach opisują drogę AO.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -36,18 +47,18 @@ Kolejność kroków 16–22: 16 i 19a zrobione (pomiar dwóch pierwszych par epi
 | 8 | Nocna kolejka kilku epików | zrobione (sprawdzenie: pierwsza noc) |
 | 9 | Agent tester i agent UX | zrobione |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | zrobione (epik HARDENING #267, końcowy PR #402 zmergowany) |
-| 11 | Po MVP: release, monitoring i dyżur agenta | do zrobienia (warunek spełniony: epik SENTRY zmergowany, końcowy PR #539; dyżur i hypercare do zrobienia) |
+| 11 | Po MVP: release, monitoring i dyżur agenta | wstrzymane (moratorium; epik SENTRY zmergowany, końcowy PR #539; dyżur i hypercare, epik ONCALL, wstrzymane) |
 | 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione; kryterium 7 potwierdzone: `/sweep` po merge'u LIGHTHOUSE i HARDENING (raporty z nazwą epiku); kryteria 8–9 bez dowodu w przebiegach |
 | 13 | Agent porządkujący backlog (`/groom`) | zrobione (zadanie zaplanowane o 8:00 w aplikacji Claude; pierwsza lista z 2026-11-09 wykonana po decyzji użytkownika) |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
-| 17 | Evale agentów i workflowów | do zrobienia |
-| 18 | Pomiar, koszty i optymalizacja | w toku (epik METRICS #496 zrobiony, końcowy PR #674 zmergowany: pomiar epiku, `tools/metrics`; pomiar w `/retro` bez dowodu z przebiegu; epik TELEMETRY #577: telemetria Claude Code do zrobienia) |
-| 19 | Praca równoległa | 19a: zrobione, pomiar par trwa; 19b: w toku (AO `--max-parallel`, piotrp321/agentic-orchestrator#50; w `shop` pola `paths` i `parallel_with` manifestu, `--max-parallel 2` w `/ao-run`, rezerwa pamięci bramki na dwa stosy na epik) |
-| 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | do zrobienia |
-| 21 | Dokumentacja wdrożenia procesu i studium przypadku | do zrobienia |
-| 22 | Porównanie Claude Code i OpenAI Codex | do zrobienia |
+| 17 | Evale agentów i workflowów | wstrzymane (moratorium) |
+| 18 | Pomiar, koszty i optymalizacja | wstrzymane (moratorium; epik METRICS #496 zrobiony, końcowy PR #674 zmergowany: pomiar epiku, `tools/metrics`; epik TELEMETRY #577 zrobiony, końcowy PR #721 zmergowany: telemetria Claude Code do lokalnego stosu) |
+| 19 | Praca równoległa | 19a: zrobione; pomiar par i 19b (AO `--max-parallel`, piotrp321/agentic-orchestrator#50) wstrzymane (moratorium) |
+| 20 | Asystent zakupowy i serwer MCP katalogu (osobny epik poza MVP) | wstrzymane (moratorium) |
+| 21 | Dokumentacja wdrożenia procesu i studium przypadku | wstrzymane (moratorium) |
+| 22 | Porównanie Claude Code i OpenAI Codex | wstrzymane (moratorium) |
 
 ## Role
 
@@ -80,7 +91,8 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 
 ## Proces
 
-Stały proces każdego epiku. Elementy, które jeszcze nie działają, mają w nawiasie numer kroku wdrożenia.
+Proces epiku prowadzonego przez AO (rozwiązanie awaryjne; pracę natywną opisują ADR i główny `CLAUDE.md`). Elementy,
+które jeszcze nie działają, mają w nawiasie numer kroku wdrożenia.
 
 ```mermaid
 flowchart TB
@@ -446,8 +458,7 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
   z telefonu), po zielonym CI. Wyjątek bez osobnego polecenia: PR ze `spec.md` i `plan.md` z `/prepare-epic`, który
   skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie
   autonomii wymaga jego jawnej zgody.
-- **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika. Wyjątek: równoległe zadania
-  (krok 19b), zatwierdzone przez użytkownika.
+- **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika (moratorium od 2026-11-18).
 - **Produkcja:** rollback i inne operacje produkcyjne wykonuje wyłącznie użytkownik; agenci mają do produkcji dostęp
   tylko do odczytu.
 - **Krok 4:** issues epików powstają dopiero po akceptacji listy.

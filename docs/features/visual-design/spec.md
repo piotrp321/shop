@@ -480,7 +480,8 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
 - `apps/store/CLAUDE.md`: „Wygląd” (wybrany kierunek, fonty lokalne, paleta, stopka, 404), struktura (`SiteFooter`,
   `not-found.tsx`, `src/home/`, skrypt i lista zdjęć marketingowych, montowanie `/fixtures/images` w kontenerze
   `store`), nagłówek, galeria i powiększenie w „Strona produktu”.
-- `apps/api/CLAUDE.md`: zdjęcia szczegółów w rozmiarach `product` i `zoom`, `MAILER_FROM`.
+- `docs/features/product-page/spec.md`: zdjęcia szczegółów w rozmiarach `product` i `zoom`;
+  `docs/features/checkout/spec.md`: `MAILER_FROM`.
 - `README.md` i specyfikacje funkcji (`catalog-page-metadata`, `search`, `product-page`, `checkout`, `walking-skeleton`,
   w tym „Dane demo”: zdjęcia własne produktu i liczba plików zdjęć): nazwa „Worf” i odesłania do tej specyfikacji.
 - `docs/features/visual-design/mockups/README.md`: wskazówki makiety, odstępstwa od danych demo, skrypt zrzutów.
