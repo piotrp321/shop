@@ -478,8 +478,8 @@ kolejność migracji, migracje tylko schematu, Job `backfill` po rolloucie, tran
 - `docs/vision.md`: klienci w panelu z modelu odczytu Ordering (sekcja „Klienci i pracownicy”, tabela contextów),
   kolejność kategorii w mega menu ustawiana przez pracownika i przekierowanie 308 starych adresów kategorii (sekcja
   SEO i „Przyjazne adresy”).
-- `docs/features/deploy/spec.md` („Chart `shop`”): Job `backfill` po rolloucie; transport `jobs` w workerze chartu jak
-  w compose (`infra/k8s/charts/shop`, test `test_worker_consumes_the_transports_of_compose`).
+- `docs/features/deploy/spec.md` („Chart `shop`”): Job `backfill` po rolloucie. `infra/k8s/CLAUDE.md` („Chart
+  a compose”): transport `jobs` w workerze chartu jak w compose.
 - `apps/api/CLAUDE.md`: wyjątki DBAL (sprzedaż, klienci, ścieżki poddrzewa, rekordy stanów), migracje
   `CONCURRENTLY`, transport `jobs` i łańcuch partii, liczniki ograniczone i szacunek `reltuples`, sortowanie, endpointy
   i komendy (`app:backfill` z krokami, `ordering:read-models:rebuild`, `inventory:stock-records:sync`, kroki

@@ -162,7 +162,7 @@ Spec: `docs/features/sentry/spec.md`.
   `build` (domyślnie `false`, puste), token to sekret budowania `sentry_auth_token` (`RUN --mount=type=secret`, nigdy `ARG`
   ani `ENV`); flaga włączona bez tokenu, organizacji albo projektu kończy build błędem, a nie obrazem bez map. Bez flagi
   wtyczka nie jest dodawana do `plugins` i nic nie idzie do Sentry. Dockerfile na końcu usuwa każdy `.map` z `dist`. Flagę ustawia tylko
-  job `images` workflowu `deploy.yml`; dokumentacja: `infra/k8s/CLAUDE.md`.
+  job `images` workflowu `deploy.yml` (`docs/features/sentry/spec.md`, D10).
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w `src/observability/filter.ts`,
   w filtrze sklepu `apps/store/src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy
   (`infra/k8s/argocd/apps/monitoring.yaml`, korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy

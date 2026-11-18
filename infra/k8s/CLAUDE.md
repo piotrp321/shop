@@ -33,9 +33,11 @@ serwera” i „Smoke test i check”).
   (`docs/features/deploy-ops/spec.md`, O5 i O7, `docs/adr/backups-observability.md`). Lista dozwolonych metryk w tym
   manifeście ma metryki alertów i metryki, od których zależy hypercare `/oncall` (`kube_pod_container_info`,
   `kube_pod_owner`, `kube_pod_status_ready`, `kube_pod_container_status_restarts_total`; pilnuje tego `check`).
-- Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (`docs/features/deploy/spec.md`, D9). Brakujący realm
-  zakłada; w istniejącym `partialImport` z `ifResourceExists=SKIP` dodaje tylko brakujące klienty, role i grupy i niczego
-  nie nadpisuje. Potem przy każdym uruchomieniu ustawia wartości z konfiguracji. Nigdy nie usuwa użytkowników, haseł ani
+- Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
+  `docs/features/deploy/spec.md`, D9). Brakujący realm zakłada; w istniejącym `partialImport` z `ifResourceExists=SKIP`
+  dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem przy każdym uruchomieniu ustawia wartości
+  z konfiguracji: sekret klienta `store`, `redirectUris`, `webOrigins` i adresy po wylogowaniu klientów z domeny,
+  rejestrację w realmie `shop`, `verifyEmail` w `shop` i SMTP obu realmów. Nigdy nie usuwa użytkowników, haseł ani
   zasobów. Inna zmiana istniejącego klienta, roli albo ustawienia realmu w pliku do klastra nie trafi: wymaga ręcznej
   zmiany przez `kcadm` albo nowego kroku w Jobie.
 
@@ -87,7 +89,7 @@ serwera” i „Smoke test i check”).
   i `deploy-push` (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`, jedyny aktor bypass to deploy key,
   typ `DeployKey`) obejmują `refs/heads/deploy` i `refs/heads/deploy-images`, bez wymogu PR. Aktor `DeployKey` to
   każdy deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia).
-  Rulesety, deploy key, środowisko `production` i jego sekret `DEPLOY_KEY` zakłada się według runbooka wdrożenia
+  Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Rulesety, deploy key, środowisko `production` i jego sekret `DEPLOY_KEY` zakłada się według runbooka wdrożenia
   (sekcja 1).
 - Obrazy, do których odwołują się snapshoty `deploy-images`, nie mogą być usuwane z GHCR (cofnięcie wersji to powrót do
   starszego snapshotu): żadna retencja pakietów ani workflow nie usuwa ich wersji (test w `make -C infra/k8s check`).

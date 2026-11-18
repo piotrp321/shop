@@ -137,7 +137,7 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
      obraz `api`); przywraca `api`, `worker`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
      poprzedniej próbie, która je zostawiła wstrzymane), czeka na rollout, ponawia `purge-caches`, a przy Argo CD
      przywraca automatyczną synchronizację `root` w postaci sprzed odtworzenia (ten przywraca `shop`; gdy `root` jej nie
-     miał, zostaje wyłączona);
+     miał, zostaje wyłączona). Joba `backfill` nie ponawia;
   7. błąd w krokach 4–6: wypisuje, na którym kroku stanął i jaki snapshot `pre-restore` powstał; nie włącza aplikacji
      z częściowo odtworzonymi danymi; runbook opisuje dokończenie.
 
