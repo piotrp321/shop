@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import NotFound from "./not-found";
+import NotFound, { revalidate } from "./not-found";
 
 afterEach(cleanup);
 
@@ -19,5 +19,9 @@ describe("the 404 page", () => {
   it("is the main landmark of the page", () => {
     render(<NotFound />);
     expect(screen.getByRole("main")).toBeTruthy();
+  });
+
+  it("is regenerated at most once an hour, so the menu of the layout comes back after a restart of the store", () => {
+    expect(revalidate).toBe(3600);
   });
 });
