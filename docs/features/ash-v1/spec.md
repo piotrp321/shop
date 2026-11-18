@@ -1,0 +1,256 @@
+# ASH-V1: Agentic Software House v1.0
+
+Stabilna wersja procesu, w której epiki prowadzi główna sesja Claude Code z natywnymi subagentami, a AO pozostaje
+zamrożonym rozwiązaniem awaryjnym. Zostają `/brainstorm`, `/planner`, `/retro`, obecni agenci i szczegółowe metryki.
+Ta specyfikacja opisuje tylko zmiany potrzebne, żeby trzy kolejne epiki aplikacji dało się przeprowadzić bez
+przebudowy procesu i ocenić metrykami oraz retrospektywami. Przebieg epiku opisuje `docs/adr/agentic-software-house.md`
+(„Przebieg epiku”), pomiar `docs/features/metrics/spec.md`, retrospektywę `docs/features/retro/spec.md`.
+
+Każde twierdzenie o obecnym kodzie dotyczy `origin/main` z 2026-11-18 (`45671786`). Podstawa: raport
+`docs/reports/agentic-software-house-audit-2026-11-18.md`, przebieg pierwszego epiku natywnego SMALL-FIXES (opis PR
+#752) i odczyt jego transkryptów.
+
+Issues: #765, #679, #762
+Zakres: `tools/metrics`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/agents/qa-adversarial.md`, `docs/adr/agentic-software-house.md`, `docs/features/metrics/spec.md`, `docs/features/retro/spec.md`, `docs/features/agentic-software-house/plan.md`, `apps/api/Makefile`, konfiguracja testów `apps/api`
+
+## Cel i zakres
+
+- Epik prowadzony natywnie ma rekord metryk w tym samym formacie co epik AO i da się go porównać z historią (M).
+- `/retro` przyjmuje epik natywny i nie zmienia procesu w trakcie serii trzech epików (R).
+- Luki procesu zaobserwowane w SMALL-FIXES są zamknięte (F).
+- Przegląd całej zmiany zaczyna od sprawdzenia kryteriów akceptacji, a wynik widać w opisie końcowego PR (A).
+- Wersja 1.0 ma znacznik i regułę zamrożenia na czas serii (V).
+
+Stan wyjściowy:
+
+- `metrics.py epic` kończy się kodem 2, gdy nie ma katalogu przebiegu AO, bazy albo wiersza epiku
+  (`tools/metrics/metrics.py:380-391`). SMALL-FIXES nie ma rekordu ani pomiaru kosztu.
+- `/retro` odmawia epikowi bez przebiegu AO w skillu (`.claude/skills/retro/SKILL.md:90-96`) i w skrypcie
+  (`.claude/skills/retro/retro.py:1082-1085`); `pending` bierze epiki wyłącznie z katalogów `ao-<epik>`.
+- Agent `qa-adversarial` nie dostaje kryteriów akceptacji; w SMALL-FIXES QA nie uruchomiło E2E w przeglądarce, a jedno
+  kryterium dało się sprawdzić dopiero po wdrożeniu.
+- Sesja natywna zapisuje transkrypt prowadzącego w `~/.claude/projects/<katalog>/<sesja>.jsonl`, a każdego subagenta
+  w `<sesja>/subagents/agent-<id>.jsonl` z plikiem `agent-<id>.meta.json` (`agentType`, `description`, `model`,
+  `effort`). Wiadomości `assistant` mają `message.model` i `message.usage` z tymi samymi polami tokenów, które czyta
+  dzisiejszy parser. Wiadomość wpisana przez człowieka ma `origin.kind = "human"`. Sprawdzone na transkrypcie
+  SMALL-FIXES: 1 plik prowadzącego, 16 plików subagentów.
+
+## Decyzje
+
+- **D1. Jeden format rekordu.** Epik natywny dostaje rekord w `<state>/epics/<EPIK>.json` w dzisiejszym formacie
+  z polem `source` (`native`; rekordy AO: `ao`). Pole bez źródła w przebiegu natywnym ma `null` i wpis w `gaps`,
+  zgodnie z regułą „brak źródła daje `null`, nigdy zero”. Osobnego narzędzia ani drugiego formatu nie ma.
+- **D2. Punkt odniesienia zapisuje narzędzie.** Początek i koniec epiku zapisują komendy `metrics.py start`
+  i `metrics.py done`; opis PR powtarza je w formie czytelnej dla człowieka.
+- **D3. Wartość w USD z cennika w konfiguracji.** Transkrypt sesji natywnej nie ma kosztu policzonego przez CLI.
+  Wartość liczy się z tokenów ważonych istniejącymi `token_weights` i ceny wejścia modelu za milion tokenów zapisanej
+  w `tools/metrics/config.json`. Jest zawsze oznaczona jako szacunek. Model bez ceny w konfiguracji daje `null` i wpis
+  w `gaps`.
+- **D4. Zadanie z opisu zlecenia.** Przebieg subagenta należy do zadania, którego ID (`<EPIK>-<n>`) występuje
+  w `description` wywołania; rola to `agentType`. Bez ID przebieg trafia do pozycji „bez zadania”.
+- **D5. `/retro` czyta rekord i opis końcowego PR.** Incydenty epiku natywnego pochodzą z rekordu metryk i z sekcji
+  opisu końcowego PR. Progi, limity, rejestry i walidacja propozycji zostają bez zmian.
+- **D6. Zamrożenie na czas serii.** W trakcie serii `/retro` zapisuje propozycje, ale nie wprowadza poprawek procesu.
+  Wyjątek: poprawka blokady albo zagrożenia, po „tak” użytkownika wskazującym pozycję.
+- **D7. Odbiór przed szukaniem błędów.** Przegląd całej zmiany zaczyna od kryteriów akceptacji specyfikacji; wynik jest
+  tabelą w opisie końcowego PR.
+- **D8. Znacznik wersji.** Po merge'u zmian z tej specyfikacji `main` dostaje tag `ash-v1.0`. Seria to trzy epiki:
+  ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120).
+
+## Poza zakresem
+
+- Uprawnienia, tokeny i rulesety GitHuba. Sesje agentów działają dalej z tokenem właściciela; to ryzyko przyjęte przez
+  właściciela na czas v1.0 (2026-11-18), a #570 zostaje otwarte.
+- Reguła rozmiaru zadania w `/planner` (#639) i archiwizacja AO (krok P6 planu).
+- Zmiany reguł projektu z audytu uproszczeń, redukcja agentów i skilli, hooki, nowe narzędzia pomiaru.
+- Błędy pomiaru dotyczące tylko danych AO (#703, #704) i eksport rekordów do stosu telemetrii (#689).
+- `/sweep`, `/delivery`, `/integration` i `/ao-run`: bez zmian, zamrożone.
+
+## M: metryki epiku natywnego
+
+### M1. Plik przebiegu
+
+`metrics.py start <EPIK>` zapisuje `<state>/runs/<EPIK>.json`: czas startu, SHA `origin/main`, gałąź epiku, numer
+draft PR, katalog roboczy sesji prowadzącej, liczbę zadań manifestu `plan.md` i odczyt limitów podany na wejściu
+(obiekt z `get_usage`, jak dziś w `night_queue.py start`). `metrics.py done <EPIK>` dopisuje czas oznaczenia PR jako
+gotowy i drugi odczyt limitów. Wznowienie epiku w innym katalogu roboczym dopisuje ten katalog (`start --resume`).
+
+Opcje `--at`, `--worktree`, `--branch`, `--pr` i `--tasks` pozwalają zapisać plik po fakcie, także gdy `plan.md` już
+nie istnieje; bez odczytu limitów koszt subskrypcji ma `null` i wpis w `gaps`.
+
+### M2. Wybór źródła
+
+`metrics.py epic <EPIK>` buduje rekord z przebiegu AO, gdy istnieje katalog `ao-<EPIK>`; inaczej z pliku przebiegu
+natywnego. Gdy nie ma żadnego, kończy się kodem 2 z komunikatem, którego źródła brakuje. `backfill` dotyczy dalej
+tylko przebiegów AO.
+
+### M3. Pola rekordu natywnego
+
+Transkrypty epiku to pliki sesji z katalogów roboczych zapisanych w pliku przebiegu, z przedziału od startu do
+merge'u, razem z ich subagentami.
+
+| Pole | Źródło natywne | Gdy brak |
+|---|---|---|
+| `tasks`, `started_at`, `done_at` | plik przebiegu | `null`, wpis w `gaps` |
+| `final_pr`, `issue`, `merged_at`, `wall` | numer PR z pliku przebiegu i GitHub | jak dziś |
+| `value` (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`) i tokeny | `message.usage` wiadomości `assistant`; rola prowadzącego `orchestrator`, subagenta `agentType`; zadanie według D4; cena według D3 | `null` dla modelu bez ceny |
+| `attempts` | jeden wpis na przebieg subagenta: zadanie, rola, model, effort, czas od pierwszej do ostatniej wiadomości, tokeny, wartość, czy zakończony | – |
+| `by_task` | suma czasu i liczba przebiegów na zadanie | – |
+| `breakdown` | `work`: suma przedziałów, w których działa prowadzący albo subagent; `human_wait`: przerwy zakończone wiadomością człowieka; `idle`: reszta czasu do `done_at` | `limit_wait`, `ci_wait`, `host_pause`, `github_wait`: `null`; `breakdown_incomplete: true` |
+| `human` | `interventions`: liczba wiadomości człowieka po starcie, bez polecenia startu; `waits`, `wait_s` z przerw jak wyżej; lista zdarzeń z czasem i długością czekania, bez treści; `manual_fixes` z `--manual-fixes` | – |
+| `integration` | czas i liczba przebiegów ról `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról | `null` bez takich przebiegów |
+| `retries` | `fix`: liczba przeglądów zadań z werdyktem blokującym; `failed_by_outcome`: przebiegi subagentów niezakończone | `repair`, `sync_prs`: `null` |
+| `reviews` (nowe) | lista przeglądów według M4 | pusta |
+| `acceptance` (nowe) | liczby z tabeli kryteriów według M5 | `null`, wpis w `gaps` |
+| `subscription` | przyrost okien między odczytami `start` i `done` | `null` bez odczytów |
+| `ci` | przebiegi CI gałęzi epiku z pliku przebiegu; `tasks`: `null` | – |
+| `in_attempts`, `versions` | polecenia powłoki i wersja CLI z transkryptów | – |
+| `regressions`, `found_after_merge`, `bottlenecks` | jak dziś | – |
+| `parallel`, `gate_wait`, `waste` | – | `null`, wpis w `gaps` |
+
+`interventions` liczy każdą wiadomość człowieka, także pytanie o postęp, więc jest górną granicą interwencji
+koniecznych; rekord oznacza ją jako szacunek. Rekord nie zawiera treści wiadomości ani zleceń.
+
+### M4. Przeglądy
+
+Dla przebiegów ról przeglądowych rekord zapisuje każdy raport: zadanie (albo cała zmiana), rolę, tryb, werdykt i czy
+blokuje. Raport to treść, którą subagent oddaje sesji prowadzącej na końcu pracy (w transkrypcie SMALL-FIXES:
+wywołanie `SubagentHandback`). Pierwszy raport transkryptu ma tryb `FULL`, każdy kolejny (po wznowieniu subagenta)
+`DELTA`. Werdykty według kontraktów agentów: `code-reviewer` `PASS` / `CHANGES_REQUIRED`, `qa-adversarial` `PASS` /
+`INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` / `REWORK`. Blokują `CHANGES_REQUIRED`, `BLOCK`
+i `REWORK`. Raport bez rozpoznanego werdyktu (dziś `ux-reviewer`) ma werdykt `null` i wpis w `gaps`. Rekord zapisuje
+sam werdykt, bez treści raportu.
+
+### M5. Kryteria akceptacji
+
+Rekord czyta tabelę „Kryteria akceptacji” z opisu końcowego PR (A2) i zapisuje liczby: wszystkie, sprawdzone na
+stosie, sprawdzone w CI, do sprawdzenia po wdrożeniu, niezweryfikowane.
+
+### M6. Trend i raport
+
+`trend` i `render` pokazują rekordy AO i natywne w jednej tabeli z oznaczeniem źródła. Kolumny bez danych w rekordzie
+natywnym mają „brak danych”, nie zero. Przed serią historię AO uzupełnia jednorazowe `metrics.py backfill`.
+
+### M7. Testy i dane testowe
+
+Testy używają syntetycznych transkryptów z samymi polami, które czyta narzędzie. Treść prawdziwych transkryptów nie
+trafia do repozytorium. Format transkryptów nie jest stabilnym interfejsem CLI: pole, którego brakuje, daje `null`
+i wpis w `gaps`, nie błąd.
+
+## R: `/retro` dla epiku natywnego
+
+- **R1. Wykrywanie.** `pending` i `collect` znają epik natywny, gdy istnieje jego plik przebiegu i końcowy PR jest
+  zmergowany. `collect` dla epiku natywnego najpierw odświeża rekord (`metrics.py epic`). Odmowa zostaje dla epiku,
+  który nie ma ani przebiegu AO, ani pliku przebiegu natywnego.
+- **R2. Incydenty.** Dla epiku natywnego:
+
+  | Rodzaj | Źródło |
+  |---|---|
+  | `wait` | zdarzenie czekania z rekordu (`human`), z działaniem człowieka |
+  | `finding` | przegląd z werdyktem blokującym z `reviews` |
+  | `failed_attempt` | niezakończony przebieg subagenta |
+  | `escaped` | zgłoszenie `bug` z okna regresji rekordu |
+  | `unasked` | sekcja „Decyzje bez pytania” opisu końcowego PR |
+  | `reported` (nowy) | każdy punkt sekcji „Problemy i zastoje” i „Luki w instrukcjach” opisu końcowego PR |
+  | `optimization` | `metrics.py decide`, jak dziś |
+
+  `repair`, `manual_fix` i `no_sweep` nie powstają dla epiku natywnego. Brak sekcji albo pola to fakt braku danych,
+  nie błąd. Opis PR jest czytany przez bramkę pochodzenia.
+- **R3. Progi bez zmian.** `reported` liczy się do progu jak każdy incydent; klasę naprawczą może mieć nadal tylko
+  `wait` z działaniem człowieka, `manual_fix` i `repair`.
+- **R4. Skrypt pomiaru z worktree (#679).** `collect` uruchamia `metrics.py` z worktree `origin/main`, nie
+  z głównego checkoutu.
+- **R5. Pliki procesu.** Lista plików, które może zmienić pozycja `fix`, obejmuje też
+  `docs/adr/agentic-software-house.md`, bo tam jest przebieg epiku.
+- **R6. Zamrożenie (D6).** Gdy „Status” planu ASH pokazuje serię w toku, sesja `/retro` nie wprowadza pozycji `fix`:
+  zapisuje je przez `observe` i wymienia w raporcie jako odroczone do końca serii. Commit „Statusu” i propozycje
+  zgłoszeń działają jak dziś. Pozycję, którą raport oznacza jako blokadę kolejnego epiku albo zagrożenie, sesja
+  wprowadza dopiero po „tak” użytkownika wskazującym tę pozycję.
+- **R7. Agent i specyfikacja.** `retro-analyst` i `docs/features/retro/spec.md` opisują incydenty epiku natywnego.
+  `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR.
+
+## F: poprawki po SMALL-FIXES
+
+Osobny commit testu RED, odblokowanie worktree przy sprzątaniu i miejsce punktu odniesienia są już w PR #764; ta
+specyfikacja zakłada jego merge i ich nie powtarza.
+
+- **F1. Punkt odniesienia w kroku 1.** Sesja prowadząca po otwarciu draft PR uruchamia `metrics.py start`, a po
+  oznaczeniu PR jako gotowy `metrics.py done` (kroki 1 i 7 „Przebiegu epiku”).
+- **F2. Opis końcowego PR ma stałe sekcje:** „Zakres” (zadanie, ryzyko, przegląd), „Kryteria akceptacji” (A2), „Testy”,
+  „Ujawnienie TDD”, „Odroczone uwagi”, „Decyzje bez pytania”, „Problemy i zastoje”, „Luki w instrukcjach”, „Punkt
+  odniesienia i przebieg”. Sekcja bez treści zostaje z wpisem „brak”.
+- **F3. ID zadania w zleceniu.** `description` każdego wywołania subagenta zaczyna się od ID zadania; przegląd całej
+  zmiany ma w opisie nazwę epiku i rolę.
+- **F4. Zasoby przed falą.** Przed falą sesja sprawdza wolną pamięć Dockera i działające projekty Compose innych
+  sesji. Gdy pamięci nie wystarcza na planowaną liczbę stosów, zmniejsza równoległość i zapisuje to w „Problemach
+  i zastojach”.
+- **F5. Testy API przy zimnym cache (#762).** `make -C apps/api test` przechodzi po usunięciu `var/cache/test*`, bez
+  przekroczenia limitu pamięci.
+
+## A: odbiór kryteriów akceptacji
+
+- **A1. Kolejność.** Przegląd całej zmiany (krok 6) zaczyna od numerowanych kryteriów akceptacji specyfikacji epiku.
+  `qa-adversarial` dostaje je w zleceniu i sprawdza na działającym stosie przed szukaniem błędów. Epik bez QA (narzędzia,
+  dokumentacja): kryteria sprawdza sesja prowadząca.
+- **A2. Tabela w opisie PR.** Dla każdego kryterium: numer, sposób sprawdzenia i wynik. Sposoby: „stos” (polecenie
+  albo scenariusz), „CI” (nazwa testu i zielony przebieg na czole gałęzi), „po wdrożeniu”, „niezweryfikowane”
+  (z powodem).
+- **A3. Tryb stosu.** Kryterium dotyczące zachowania sklepu w obrazie produkcyjnym sprawdza się na stosie
+  `STORE_MODE=production` albo testem E2E z CI, wskazanym z nazwy.
+- **A4. Otwarte kryteria.** Kryterium „niezweryfikowane” jest na początku opisu PR jako decyzja dla użytkownika.
+  Kryteria „po wdrożeniu” sesja sprawdza po wdrożeniu zleconym przez użytkownika i dopisuje wynik w komentarzu PR.
+
+## V: wersja 1.0 i seria
+
+- **V1. Tag.** `ash-v1.0` na commicie `main` zawierającym wszystkie zmiany tej specyfikacji; zakłada go sesja na
+  polecenie użytkownika.
+- **V2. Reguła zamrożenia w ADR.** Do końca serii pliki procesu (`CLAUDE.md` w części o procesie, `.claude/`,
+  „Przebieg epiku”, `tools/metrics`, `/retro`) zmienia tylko poprawka blokady albo zagrożenia, po zgodzie
+  użytkownika. Pozostałe wnioski zbiera `/retro`.
+- **V3. „Status” planu ASH** pokazuje stan serii: w toku albo zakończona, i zmergowane epiki serii.
+- **V4. Ocena po serii.** Z rekordów: czas do gotowego PR i do merge'u, czas czekania na człowieka i liczba jego
+  wiadomości, wartość na zadanie, rolę i model, koszt subskrypcji, przeglądy z werdyktem blokującym, kryteria
+  akceptacji według sposobu sprawdzenia, regresje w oknie 14 dni. Z retrospektyw: incydenty i odroczone propozycje.
+  Punkt odniesienia: rekordy AO i rekord SMALL-FIXES.
+
+## Kryteria akceptacji epiku
+
+1. Po zapisaniu pliku przebiegu po fakcie `metrics.py epic small-fixes` kończy się kodem 0 i zapisuje rekord
+   z `source: native`: 8 zadań, 16 przebiegów subagentów (8 `developer`, 5 `code-reviewer`, po jednym `ux-reviewer`,
+   `qa-adversarial` i `general-purpose`), modele zgodne z plikami `meta.json`, wartość z oznaczeniem szacunku, siedem
+   raportów `code-reviewer`, w tym dwa `CHANGES_REQUIRED` (zadania 4 i 7), koszt subskrypcji `null` z wpisem w `gaps`.
+2. `metrics.py epic <EPIK>` bez przebiegu AO i bez pliku przebiegu kończy się kodem 2 i nie zapisuje rekordu.
+3. `metrics.py trend` po `backfill` pokazuje epiki AO i SMALL-FIXES w jednej tabeli z oznaczeniem źródła.
+4. Rekord zbudowany z transkryptu bez pola `usage`, bez `meta.json` albo z nieznanym modelem ma `null` i wpisy w `gaps`,
+   a komenda kończy się kodem 0.
+5. `retro.py pending` wymienia `small-fixes`, a `retro.py collect small-fixes` kończy się kodem 0; `input.json` ma
+   incydenty `finding` dla dwóch przeglądów blokujących i fakt braku sekcji „Luki w instrukcjach” w opisie PR #752.
+6. `retro.py collect` dla epiku bez przebiegu AO i bez pliku przebiegu kończy się kodem 2.
+7. Test regresyjny #679: `collect` z nieaktualnym głównym checkoutem i aktualnym worktree ma dane pomiaru.
+8. Skill `/retro` przy serii w toku kończy przebieg raportem i commitem „Statusu”, bez commitów pozycji `fix`.
+9. „Przebieg epiku” w ADR zawiera F1–F4, A1–A4 i V2; `qa-adversarial.md` wymaga kryteriów akceptacji w zleceniu.
+10. `make -C apps/api test` przechodzi po usunięciu `var/cache/test*` (F5).
+11. `make check` i testy skryptów przechodzą; specyfikacje metryk i retro opisują źródło natywne.
+
+## Ryzyka i ograniczenia
+
+- Format transkryptów może się zmienić z wersją CLI. Narzędzie czyta minimalny zestaw pól, a rekord zapisuje wersję
+  CLI; zmianę formatu widać jako wpisy w `gaps`.
+- Wartość w USD to szacunek z cennika, nieporównywalny co do centa z kosztem liczonym przez CLI w epikach AO.
+- Transkrypty mają retencję ustawioną lokalnie; rekord trzeba zbudować przed ich wygaśnięciem.
+- Zamrożenie procesu, ID zadania w zleceniu i sekcje opisu PR to instrukcje, nie blokady narzędzia. Ich pominięcie
+  widać w rekordzie jako „bez zadania” albo wpis w `gaps`.
+- Pierwsze `/retro` na epiku natywnym jest zarazem pierwszym sprawdzeniem tej ścieżki na prawdziwych danych.
+
+## Decyzje do potwierdzenia
+
+- **Ceny modeli (D3).** Wartości początkowe z cennika dostawcy, USD za milion tokenów wejścia: Fable 5.2 8, Opus 5.5
+  4, Sonnet 5.5 2, Haiku 5.5 0,10. Do potwierdzenia przy implementacji; alternatywa to rekord z samymi tokenami
+  i kosztem subskrypcji.
+- **Retro SMALL-FIXES jako odbiór.** Po wdrożeniu zmian użytkownik uruchamia `/retro small-fixes` jako sprawdzenie
+  ścieżki natywnej na prawdziwym epiku.
+
+## Wymagane przed startem
+
+Pozycje użytkownika: merge PR #764 i #757; wyłączenie wtyczki Superpowers na koncie (jej hook nadal działa
+w sesjach).
