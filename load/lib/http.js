@@ -9,6 +9,8 @@ export const baseOptions = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
   noConnectionReuse: false,
   userAgent: 'shop-load-k6',
+  // The setup of a run reads the products one by one, which on a big catalog takes longer than the default 60 s.
+  setupTimeout: '5m',
 };
 
 // 409 and 429 are answers of the shop that the report counts apart: they are no failed requests. What stays failed
@@ -63,10 +65,26 @@ export function storePost(ctx, path, flow, kind, payload, extra) {
   return send('POST', storeUrl, storeHost, ctx, path, flow, kind, JSON.stringify(payload), headers);
 }
 
+function apiRequest(path) {
+  const headers = apiHost === '' ? {} : { Host: apiHost };
+  return http.get(apiUrl + path, { headers, tags: { name: 'setup' }, timeout: '60s' });
+}
+
 // The public API, for the data of the run (setup).
 export function apiGet(path) {
-  const headers = apiHost === '' ? {} : { Host: apiHost };
-  const res = http.get(apiUrl + path, { headers, tags: { name: 'setup' }, timeout: '60s' });
+  const res = apiRequest(path);
+  if (res.status !== 200) {
+    throw new Error(`setup: GET ${path} answered ${res.status}`);
+  }
+  return res.json();
+}
+
+// Like apiGet, but a missing resource (404) is null.
+export function apiGetOrNull(path) {
+  const res = apiRequest(path);
+  if (res.status === 404) {
+    return null;
+  }
   if (res.status !== 200) {
     throw new Error(`setup: GET ${path} answered ${res.status}`);
   }
