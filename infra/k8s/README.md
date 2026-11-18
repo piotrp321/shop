@@ -536,11 +536,25 @@ sekret wskazany w `demoData.photosSecretName` (klucze `DEMO_PHOTOS_ENDPOINT`, `D
 3. **zgoda użytkownika** – pomiar na danych z generatora: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>
    LOAD_DATA=medium` (albo `server`, `full`; inny plik puli: `DEMO_PHOTOS_ENV_FILE=<plik>`). Generator działa godzinami
    i zajmuje dziesiątki do setek GB dysku (szacunki w specyfikacji DEMO-DATA, „Środowiska”). Cel sprawdza plik puli przed
-   utworzeniem klastra (brak pliku albo zmiennej odczytu: kod 2), zakłada sekret `demo-photos` tylko z czterema
-   zmiennymi odczytu (token zapisu `DEMO_PHOTOS_WRITE_*` nie trafia do klastra), czeka na Job generatora
-   (`LOAD_DATA_TIMEOUT`, domyślnie limit Joba i 10 minut; błąd albo przekroczenie czasu: kod 2 z logiem Joba), podnosi
-   stany tylko wariantów z losowych porcji mapy strony i przekazuje ich klucze k6. Klaster z danymi i sekretem jest usuwany
-   przy każdym wyjściu.
+   utworzeniem klastra (brak pliku albo zmiennej odczytu: kod 2), sprawdza zapas miejsca (niżej), zakłada sekret
+   `demo-photos` tylko z czterema zmiennymi odczytu (token zapisu `DEMO_PHOTOS_WRITE_*` nie trafia do klastra), czeka na
+   Job generatora (`LOAD_DATA_TIMEOUT`, domyślnie limit Joba i 10 minut; błąd albo przekroczenie czasu: kod 2 z logiem
+   Joba), podnosi stany tylko wariantów z losowych porcji mapy strony i przekazuje ich klucze k6. Klaster z danymi
+   i sekretem jest usuwany przy każdym wyjściu.
+
+   **Zapas miejsca** (`medium`, `server`, `full`; `seed` go nie sprawdza). `diskPeakGb` profilu
+   (`apps/api/fixtures/demo-data/profiles.yaml`) to szacunek szczytowego zużycia dysku całego stosu. Przed zbudowaniem
+   obrazów i utworzeniem klastra cel czyta wolne miejsce w dwóch miejscach: w VM Dockera (`df -Pk /` w kontenerze, którego
+   system plików leży na dysku z danymi Dockera) i na dysku hosta, na którym leży dysk VM (`df -Pk` katalogu z opcji
+   `LOAD_DISK_PATH`, domyślnie katalog domowy; dysk VM Dockera Desktop rośnie w miarę zapisu, więc granicą jest host).
+   Oba muszą mieć co najmniej 1,25 × `diskPeakGb` (1 GB to 10^9 bajtów); inaczej cel kończy się kodem 2 bez budowania
+   i bez klastra, podając wymagane i dostępne miejsce obu dysków. Gdy obraz VM leży poza katalogiem domowym, ustaw
+   `LOAD_DISK_PATH` na katalog z tego samego dysku. Od początku przebiegu (przed budowaniem obrazów) co
+   `LOAD_SPACE_POLL` sekund (domyślnie 30) cel czyta oba miejsca ponownie; spadek któregokolwiek poniżej 10% `diskPeakGb`
+   zatrzymuje Job generatora i k6, usuwa klaster i kończy cel kodem 2 z przyczyną. Wolnego miejsca ani `diskPeakGb` nie da
+   się odczytać (polecenie zawodzi albo odpowiada czymś innym niż liczba): kod 2, nigdy „wystarczy miejsca”. Cel
+   reaguje na spadek dopiero po zakończeniu bieżącego polecenia pierwszego planu (budowanie obrazu, import, `helm`,
+   zapytania SQL); w czasie czekania na Job generatora i na k6 reaguje od razu.
 4. **agent** – raport z wyników w `LOAD_OUT`: `environment.txt` (w nim `LOAD_DATA` i porcje), `sizes.txt` (rozmiary baz,
    tabel i indeksów Postgresa i indeksów Elasticsearcha), przy danych z generatora `demo-data.log` (log Joba z czasem
    każdej linii) i `demo-data-steps.txt` (czasy kroków generatora). Wynik `medium` i ekstrapolacja nie są pomiarem pełnej

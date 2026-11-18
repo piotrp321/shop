@@ -8,6 +8,7 @@ only thing the script talks to."""
 
 import base64
 import json
+import math
 import os
 import pathlib
 import re
@@ -24,7 +25,9 @@ SCRIPT = REPO / "infra/k8s/scripts/load.sh"
 # products and answers the UPDATE of the stocks with STUB_UPDATE_OUT and the exit code STUB_UPDATE_STATUS), everything else
 # succeeds silently. The standard input of `kubectl create -f -` is kept in $STUB_STDIN_DIR (create.<n>). The Job of the
 # generator is in the state STUB_DATA_JOB (Complete by default) with the log STUB_DATA_LOG; curl answers the chunks of the
-# sitemap with STUB_CHUNKS (exit STUB_CHUNKS_STATUS); k6 writes its results to STUB_K6_OUT when it is set.
+# sitemap with STUB_CHUNKS (exit STUB_CHUNKS_STATUS); k6 writes its results to STUB_K6_OUT when it is set, and with
+# STUB_K6_SLEEP it runs that many seconds (its pid in $STUB_SPACE_DIR/k6.pid, `docker rm -f k6-...` ends it). The free space
+# of the disks (the checks of W2) comes from STUBSPACE (see there); `df -Pk` of the host is the stub DF.
 DOCKER = r"""#!/bin/sh
 printf '%s\n' "$*" | tr '\n' ' ' >> "$STUB_LOG"
 echo >> "$STUB_LOG"
@@ -37,8 +40,13 @@ case "$1" in
   info)
     [ -z "${STUB_NO_DOCKER:-}" ] || { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
     echo "${STUB_NCPU:-16} ${STUB_MEM_BYTES:-34359738368}" ;;
+  rm)
+    case "$*" in
+      *k6-ld-loadtest*) [ ! -f "$STUB_SPACE_DIR/k6.pid" ] || kill "$(cat "$STUB_SPACE_DIR/k6.pid")" 2>/dev/null || true ;;
+    esac ;;
   run)
     case "$*" in
+      *"--entrypoint df "*) stubspace vm ;;
       *k3d-io/k3d*"kubeconfig get"*) printf 'apiVersion: v1\nclusters:\n- cluster:\n    server: https://0.0.0.0:6443\n' ;;
       *registry.k8s.io/kubectl*)
         [ -n "${STUB_READY:-}" ] || exit 0
@@ -60,13 +68,15 @@ case "$1" in
           *"exec statefulset/postgres"*"pg_database_size"*) printf 'stub sizes of postgres\n' ;;
           *"exec statefulset/elasticsearch"*"_cat/indices"*) printf 'stub indices of elasticsearch\n' ;;
           *"get job demo-data-load"*activeDeadlineSeconds*) printf '7200' ;;
-          *"get job demo-data-load"*conditions*) printf '%s' "${STUB_DATA_JOB-Complete}" ;;
+          *"get job demo-data-load"*conditions*) stubdrop job; printf '%s' "${STUB_DATA_JOB-Complete}" ;;
           *"logs job/demo-data-load"*) printf '%s\n' "${STUB_DATA_LOG:-2026-11-18T10:00:00.000000000Z seeding}" ;;
         esac ;;
       *curlimages/curl*"/api/v1/sitemap/product-chunks"*)
         printf '%s' "${STUB_CHUNKS:-}"
         exit "${STUB_CHUNKS_STATUS:-0}" ;;
       *grafana/k6*)
+        stubdrop k6
+        if [ -n "${STUB_K6_SLEEP:-}" ]; then echo $$ > "$STUB_SPACE_DIR/k6.pid"; exec sleep "$STUB_K6_SLEEP"; fi
         [ -n "${STUB_K6_OUT:-}" ] || exit 0
         case "$*" in
           *saturate.js*) echo '{}' > "$STUB_K6_OUT/ramp.json"; echo 5 > "$STUB_K6_OUT/steady-rate" ;;
@@ -75,6 +85,43 @@ case "$1" in
     esac ;;
 esac
 exit 0
+"""
+
+# The free space of the disk `vm` (the Docker VM: `docker run --entrypoint df <image> -Pk /`) or `host` (`df -Pk <path>`) as the
+# line of df, in KiB: STUB_VM_FREE_KB or STUB_HOST_FREE_KB (plenty by default), or the content of $STUB_SPACE_DIR/<disk> once
+# STUBDROP wrote it (the space that falls during the run). The value `fail` is a failing df, `none` a df that prints nothing,
+# any other text is printed as it is in the column of the free space.
+STUBSPACE = r"""#!/bin/sh
+if [ -f "$STUB_SPACE_DIR/$1" ]; then
+  value="$(cat "$STUB_SPACE_DIR/$1")"
+else
+  case "$1" in
+    vm) value="${STUB_VM_FREE_KB-900000000}" ;;
+    host) value="${STUB_HOST_FREE_KB-900000000}" ;;
+  esac
+fi
+case "$value" in
+  fail) exit 1 ;;
+  none) exit 0 ;;
+esac
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stub 1000000000 1 %s 1%% /stub mount\n' "$value"
+"""
+
+# STUBDROP <phase>: when STUB_SPACE_DROP is <phase>:<vm|host>:<value> the free space of that disk is that value from now on
+# (the phase is `job`, a poll of the Job of the generator, or `k6`, a start of k6).
+STUBDROP = r"""#!/bin/sh
+case "${STUB_SPACE_DROP:-}" in
+  "$1":*)
+    rest="${STUB_SPACE_DROP#*:}"
+    printf '%s' "${rest#*:}" > "$STUB_SPACE_DIR/${rest%%:*}" ;;
+esac
+"""
+
+# The stub of the df of the host: the call is kept in $STUB_SPACE_DIR/host.calls.
+DF = r"""#!/bin/sh
+echo "$*" >> "$STUB_SPACE_DIR/host.calls"
+exec stubspace host
 """
 
 # The read access of the photo pool as the file of the user has it, with the token that writes next to it.
@@ -94,6 +141,32 @@ def chunk_key(start, end):
     """A key as SitemapChunkKey::encode() makes it: base64url without padding of {"f": start, "t": end}."""
     text = json.dumps({"f": start, "t": end}, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(text).decode().rstrip("=")
+
+
+PROFILES_FILE = REPO / "apps/api/fixtures/demo-data/profiles.yaml"
+
+
+def disk_peak_gb(profile):
+    """diskPeakGb of a profile of profiles.yaml (the test follows the file when the measurement of medium recalibrates it)."""
+    section = re.search(rf"(?ms)^  {profile}:\n(.*?)(?=^  \w+:\n|\Z)", PROFILES_FILE.read_text())
+    return float(re.search(r"(?m)^    diskPeakGb: ([0-9.]+)$", section.group(1)).group(1))
+
+
+def kib(gb):
+    """The KiB of df -k that hold gb GB (10^9 bytes), rounded up."""
+    return math.ceil(gb * 1_000_000_000 / 1024)
+
+
+def process_alive(pid):
+    """A process that runs; a zombie (not reaped by the pid 1 of the container) is not alive."""
+    stat = pathlib.Path(f"/proc/{pid}/stat")
+    if stat.exists():
+        return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 BOUNDARIES = [None, "1f000000-0000-4000-8000-000000000000", "3f000000-0000-4000-8000-000000000000",
@@ -118,9 +191,11 @@ class LoadScript(unittest.TestCase):
         base = pathlib.Path(self.tmp.name)
         self.bin = base / "bin"
         self.bin.mkdir()
-        docker = self.bin / "docker"
-        docker.write_text(DOCKER)
-        docker.chmod(0o755)
+        for name, text in (("docker", DOCKER), ("stubspace", STUBSPACE), ("stubdrop", STUBDROP), ("df", DF)):
+            (self.bin / name).write_text(text)
+            (self.bin / name).chmod(0o755)
+        self.space = base / "space"
+        self.space.mkdir()
         self.log = base / "docker.log"
         self.log.write_text("")
         self.out = base / "out"
@@ -140,6 +215,7 @@ class LoadScript(unittest.TestCase):
             "COMPOSE_PROJECT_NAME": "loadtest",
             "STUB_LOG": str(self.log),
             "STUB_STDIN_DIR": str(self.stdin),
+            "STUB_SPACE_DIR": str(self.space),
             "LOAD_POLL": "1",
             **env,
         }
@@ -543,6 +619,214 @@ class LoadScript(unittest.TestCase):
                     self.assertNotIn("DISCOVER_CHUNKS", call)
                 self.assertIn("LOAD_DATA: seed", (self.out / "environment.txt").read_text())
                 self.assertIn("stub sizes of postgres", (self.out / "sizes.txt").read_text())
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # The room on the disks (docs/features/demo-data/spec.md, W2): before the cluster is made and while it runs
+    # -----------------------------------------------------------------------------------------------------------------
+    def run_space(self, profile="medium", **env):
+        """A run of a generated profile whose Job of the generator never ends (STUB_DATA_JOB is empty): the guard ends it."""
+        env = {"STUB_DATA_JOB": "", "LOAD_DATA_TIMEOUT": "60", "LOAD_SPACE_POLL": "1", **env}
+        return self.run_data(profile, **env)
+
+    def host_calls(self):
+        path = self.space / "host.calls"
+        return path.read_text().splitlines() if path.exists() else []
+
+    def df_calls(self):
+        return [call for call in self.calls() if "--entrypoint df" in call] + self.host_calls()
+
+    def assert_refused_before_the_cluster(self, result, *words):
+        self.assertEqual(2, result.returncode, result.stderr)
+        for word in words:
+            self.assertIn(word, result.stderr)
+        # Nothing but the reading of the Docker VM and of its space: no cluster, no image built.
+        self.assertEqual([], [call for call in self.calls() if not (call.startswith("info ") or "--entrypoint df" in call)], self.calls())
+
+    def test_a_vm_or_a_host_with_less_than_the_peak_and_a_quarter_is_refused_before_anything_is_made(self):
+        for profile in ("medium", "server", "full"):
+            required = 1.25 * disk_peak_gb(profile)
+            for disk in ("VM", "HOST"):
+                for free_gb in (required - 1, 0.5):
+                    with self.subTest(profile=profile, disk=disk, free_gb=free_gb):
+                        self.log.write_text("")
+                        (self.space / "host.calls").unlink(missing_ok=True)
+                        result = self.run_data(profile, LOAD_BUILD="1", **{f"STUB_{disk}_FREE_KB": str(kib(free_gb))})
+                        self.assert_refused_before_the_cluster(result, f"LOAD_DATA={profile}", f"{required:.2f} GB", f"{free_gb:.2f} GB")
+
+    def test_the_message_of_the_refusal_names_the_required_and_the_available_space_of_both_disks(self):
+        result = self.run_data("medium", STUB_VM_FREE_KB=str(kib(30)), STUB_HOST_FREE_KB=str(kib(400)))
+        self.assert_refused_before_the_cluster(result, "31.25 GB", "30.00 GB", "400.00 GB", "Docker VM", "host")
+        self.assertIn("1.25", result.stderr)
+        self.assertIn(self.tmp.name, result.stderr)
+
+    def test_exactly_the_peak_and_a_quarter_starts_and_a_kib_less_does_not(self):
+        for profile in ("medium", "server", "full"):
+            required_kib = kib(1.25 * disk_peak_gb(profile))
+            for disk in ("VM", "HOST"):
+                with self.subTest(profile=profile, disk=disk, boundary="exact"):
+                    self.log.write_text("")
+                    result = self.run_data(profile, LOAD_TIMEOUT="2", STUB_READY="", **{f"STUB_{disk}_FREE_KB": str(required_kib)})
+                    self.assertNotIn("free", result.stderr)
+                    self.assertIn("not ready", result.stderr)
+                    self.assertEqual(1, len(self.cluster_calls("create")))
+                with self.subTest(profile=profile, disk=disk, boundary="one KiB less"):
+                    self.log.write_text("")
+                    result = self.run_data(profile, LOAD_TIMEOUT="2", STUB_READY="", **{f"STUB_{disk}_FREE_KB": str(required_kib - 1)})
+                    self.assert_refused_before_the_cluster(result, f"LOAD_DATA={profile}")
+
+    def test_the_host_is_read_on_the_path_of_the_option_and_by_default_in_the_home_directory(self):
+        result = self.run_data("medium", STUB_READY="", LOAD_TIMEOUT="2")
+        self.assertIn("not ready", result.stderr)
+        self.assertEqual(f"-Pk {self.tmp.name}", self.host_calls()[0])
+        other = pathlib.Path(self.tmp.name) / "disk"
+        other.mkdir()
+        (self.space / "host.calls").unlink()
+        result = self.run_data("medium", STUB_READY="", LOAD_TIMEOUT="2", LOAD_DISK_PATH=str(other))
+        self.assertIn("not ready", result.stderr)
+        self.assertEqual(f"-Pk {other}", self.host_calls()[0])
+        for value in (str(other / "missing"), str(pathlib.Path(self.tmp.name) / "docker.log"), "relative/dir"):
+            with self.subTest(path=value):
+                self.log.write_text("")
+                result = self.run_data("medium", LOAD_DISK_PATH=value)
+                self.assert_no_docker_call(result, "LOAD_DISK_PATH")
+
+    def test_a_vm_or_a_host_that_cannot_be_read_ends_with_2_before_anything_is_made(self):
+        for disk, word, other in (("VM", "the Docker VM", "the disk of the host"), ("HOST", "the disk of the host", "the Docker VM")):
+            for answer in ("fail", "none", "many", "12.5", "-4", "1e9"):
+                with self.subTest(disk=disk, answer=answer):
+                    self.log.write_text("")
+                    result = self.run_data("medium", **{f"STUB_{disk}_FREE_KB": answer})
+                    self.assert_refused_before_the_cluster(result, "cannot read", word)
+                    self.assertNotIn(other, result.stderr)
+
+    def test_a_peak_that_cannot_be_read_from_the_profiles_ends_with_2_before_any_docker_call(self):
+        cases = {
+            "no file": None,
+            "no such profile": "profiles:\n  small:\n    diskPeakGb: 5\n",
+            "no peak": "profiles:\n  medium:\n    staff: 50\n",
+            "text": "profiles:\n  medium:\n    diskPeakGb: many\n",
+            "with a unit": "profiles:\n  medium:\n    diskPeakGb: 25GB\n",
+            "zero": "profiles:\n  medium:\n    diskPeakGb: 0\n",
+            "negative": "profiles:\n  medium:\n    diskPeakGb: -25\n",
+            "empty": "profiles:\n  medium:\n    diskPeakGb:\n",
+            "the peak of the next profile": "profiles:\n  medium:\n    staff: 50\n  server:\n    diskPeakGb: 100\n",
+        }
+        for name, text in cases.items():
+            with self.subTest(case=name):
+                self.log.write_text("")
+                path = pathlib.Path(self.tmp.name) / "profiles.yaml"
+                path.unlink(missing_ok=True)
+                if text is not None:
+                    path.write_text(text)
+                result = self.run_data("medium", LOAD_PROFILES_FILE=str(path))
+                self.assert_no_docker_call(result, "diskPeakGb", "medium")
+
+    def test_the_peak_of_the_profile_that_is_run_is_the_one_that_counts(self):
+        path = pathlib.Path(self.tmp.name) / "profiles.yaml"
+        path.write_text("profiles:\n  medium:\n    diskPeakGb: 10 # an estimate\n  server:\n    diskPeakGb: 12.4\n")
+        for profile, required in (("medium", "12.50 GB"), ("server", "15.50 GB")):
+            with self.subTest(profile=profile):
+                self.log.write_text("")
+                result = self.run_data(profile, LOAD_PROFILES_FILE=str(path), STUB_VM_FREE_KB="1000")
+                self.assert_refused_before_the_cluster(result, required)
+
+    def drop(self, disk, value):
+        """STUB_SPACE_DROP of the free space of a disk (vm or host) to value from the first poll of the Job on."""
+        for name in ("vm", "host", "k6.pid"):
+            (self.space / name).unlink(missing_ok=True)
+        self.log.write_text("")
+        return f"job:{disk}:{value}"
+
+    def test_a_fall_of_the_space_while_the_generator_runs_stops_the_job_and_deletes_the_cluster(self):
+        peak = disk_peak_gb("medium")
+        for disk, word, other in (("vm", "the Docker VM", "the disk of the host"), ("host", "the disk of the host", "the Docker VM")):
+            with self.subTest(disk=disk):
+                result = self.run_space("medium", STUB_SPACE_DROP=self.drop(disk, kib(peak * 0.1) - 1))
+                self.assertEqual(2, result.returncode, result.stderr)
+                for text in ("10%", f"{peak * 0.1:.2f} GB", word):
+                    self.assertIn(text, result.stderr)
+                self.assertNotIn(other, result.stderr)
+                self.assertEqual(1, len(self.cluster_calls("create")))
+                self.assertEqual([], self.k6_calls())
+                self.assertEqual([], self.update_calls())
+                self.assertEqual(1, len([call for call in self.calls() if "delete job demo-data-load" in call]), self.calls())
+                # The Job is stopped before the cluster is deleted, and the cluster is deleted last of all.
+                last_delete = max(i for i, call in enumerate(self.calls()) if "k3d-io/k3d" in call and "cluster delete" in call)
+                self.assertLess(self.index_of("delete job demo-data-load"), last_delete)
+                self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
+                self.assertIn("ld-loadtest", self.cluster_calls("delete")[-1])
+
+    def test_a_fall_of_the_space_while_k6_runs_stops_k6_and_deletes_the_cluster(self):
+        peak = disk_peak_gb("medium")
+        for disk, word, other in (("vm", "the Docker VM", "the disk of the host"), ("host", "the disk of the host", "the Docker VM")):
+            with self.subTest(disk=disk):
+                self.drop(disk, 0)
+                result = self.run_data("medium", LOAD_SPACE_POLL="1", STUB_K6_SLEEP="120", STUB_SPACE_DROP=f"k6:{disk}:0")
+                self.assertEqual(2, result.returncode, result.stderr)
+                for text in ("10%", f"{peak * 0.1:.2f} GB", word):
+                    self.assertIn(text, result.stderr)
+                self.assertNotIn(other, result.stderr)
+                self.assertEqual(1, len(self.k6_calls()))
+                self.assertEqual(1, len([call for call in self.calls() if "rm -f k6-ld-loadtest" in call]), self.calls())
+                self.assertFalse(process_alive(int((self.space / "k6.pid").read_text())), "k6 still runs")
+                self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
+                self.assertEqual(1, len(self.cluster_calls("create")))
+
+    def test_the_space_at_the_threshold_does_not_stop_the_run_and_a_kib_below_it_does(self):
+        threshold_kib = kib(disk_peak_gb("medium") * 0.1)
+        self.drop("vm", 0)
+        result = self.run_space("medium", LOAD_DATA_TIMEOUT="3", STUB_SPACE_DROP=f"job:vm:{threshold_kib}")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("did not finish", result.stderr)
+        self.assertNotIn("10%", result.stderr)
+        self.drop("vm", 0)
+        result = self.run_space("medium", LOAD_DATA_TIMEOUT="30", STUB_SPACE_DROP=f"job:vm:{threshold_kib - 1}")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("10%", result.stderr)
+        self.assertNotIn("did not finish", result.stderr)
+
+    def test_a_reading_of_the_space_that_fails_while_the_cluster_runs_ends_with_2(self):
+        for disk, word, other in (("vm", "the Docker VM", "the disk of the host"), ("host", "the disk of the host", "the Docker VM")):
+            for answer in ("fail", "none", "many"):
+                with self.subTest(disk=disk, answer=answer):
+                    result = self.run_space("medium", STUB_SPACE_DROP=self.drop(disk, answer))
+                    self.assertEqual(2, result.returncode, result.stderr)
+                    self.assertIn("cannot read", result.stderr)
+                    self.assertIn(word, result.stderr)
+                    self.assertNotIn(other, result.stderr)
+                    self.assertNotIn("did not finish", result.stderr)
+                    self.assertEqual(1, len(self.cluster_calls("create")))
+                    self.assertEqual([], self.k6_calls())
+                    self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
+
+    def test_the_guard_checks_the_space_again_and_again_and_ends_with_the_run(self):
+        """A run that ends by itself leaves no guard behind (the run returns only when every holder of its output is gone)."""
+        self.drop("vm", 0)
+        result = self.run_space("medium", LOAD_DATA_TIMEOUT="4")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertGreaterEqual(len([call for call in self.calls() if "--entrypoint df" in call]), 3)
+        self.assertGreaterEqual(len(self.host_calls()), 3)
+        self.log.write_text("")
+        result = self.run_data("medium", LOAD_SPACE_POLL="1")
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_seed_checks_no_space(self):
+        for env in ({}, {"LOAD_DATA": "seed"}):
+            with self.subTest(env=env):
+                self.log.write_text("")
+                (self.space / "host.calls").unlink(missing_ok=True)
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", LOAD_COOLDOWN="0", STUB_READY="1", STUB_UPDATE_OUT="UPDATE 7",
+                                       STUB_K6_OUT=str(self.out), STUB_VM_FREE_KB="1", STUB_HOST_FREE_KB="fail", LOAD_SPACE_POLL="1",
+                                       LOAD_PROFILES_FILE="/missing/profiles.yaml", **env)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual([], self.df_calls())
+
+    def test_a_wrong_interval_of_the_check_ends_with_2_before_any_docker_call(self):
+        for value in ("x", "-1", "0", "1.5"):
+            with self.subTest(value=value):
+                self.log.write_text("")
+                result = self.run_data("medium", LOAD_SPACE_POLL=value)
+                self.assert_no_docker_call(result, "LOAD_SPACE_POLL")
 
 
 if __name__ == "__main__":

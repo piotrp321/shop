@@ -75,8 +75,14 @@ monitoring-smoke:
 # a read variable: before any cluster is made; too few CPUs or too little memory in the Docker VM, images missing in the node
 # after three imports, pods not ready, the generator failed or did not finish in time, with its log; no chunks or no stock
 # raised), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the settings and
-# the files of LOAD_OUT (with LOAD_DATA also the times of the steps of the generator and the sizes of the tables and indexes)
-# (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
+# the files of LOAD_OUT (the sizes of the tables and indexes, sizes.txt, with every LOAD_DATA; the times of the steps of the
+# generator only with a generator) (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
+# The room on the disks (medium, server and full; docs/features/demo-data/spec.md, W2): before any image is built or cluster made,
+# both the Docker VM and the disk of the host (LOAD_DISK_PATH, a directory on the disk that holds the image of the VM; default
+# the home directory) must have at least 1.25 x diskPeakGb of the profile (apps/api/fixtures/demo-data/profiles.yaml) free, else
+# exit 2 with the needed and the free space. From the start on, every LOAD_SPACE_POLL seconds (30) both are read again; a fall
+# of either below 10% of diskPeakGb stops the Job of the generator and k6, deletes the cluster and ends with 2. A free space or
+# diskPeakGb that cannot be read is exit 2 as well. seed checks nothing.
 load:
 	sh scripts/load.sh
 

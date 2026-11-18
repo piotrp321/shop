@@ -20,23 +20,38 @@
 # the generator is masked in case it held one). The lines of the token that writes (DEMO_PHOTOS_WRITE_*) are skipped: it
 # never reaches the cluster.
 #
+# The room on the disks (docs/features/demo-data/spec.md, W2; medium, server and full only, seed checks nothing): diskPeakGb of the
+# profile (apps/api/fixtures/demo-data/profiles.yaml, the estimate of the peak disk use of the whole stack) is read before anything
+# is made. The free space is read in two places: in the Docker VM (`df -Pk /` in a container, whose root is on the disk where Docker
+# keeps its data) and on the disk of the host that holds the disk image of the VM (`df -Pk` of LOAD_DISK_PATH; the image of Docker
+# Desktop grows as it is written, so the host is the real limit). Both must have at least 1.25 x diskPeakGb (GB of 10^9 bytes),
+# else exit 2 before any image is built or cluster made, with the needed and the free space of both in the message. From the start
+# on, every LOAD_SPACE_POLL seconds the two are read again, and a fall of either below 10% of diskPeakGb stops the Job of the
+# generator and k6, deletes the cluster and ends with 2. A reading that fails or is not a number is exit 2 too, never enough room.
+#
 # Results in LOAD_OUT: environment.txt (host, Docker, versions, resources, LOAD_DATA and the data, the chunks), sizes.txt (the
 # databases, the tables and the indexes of Postgres and the indices of Elasticsearch before the measurement), ramp.json,
 # ramp.txt, steady.json, steady.txt, warmup.txt, top.log (kubectl top pods every 10 s), node-stats.log (the node container,
 # every 10 s); with a generated profile also demo-data.log (the log of the Job, with the time of every line) and
-# demo-data-steps.txt (the seconds of each step of the generator, from its [OK] lines).
+# demo-data-steps.txt (the seconds of each step of the generator, from its [OK] lines). sizes.txt is written with every
+# LOAD_DATA; the times of the steps only with a generator.
 #
 # Exit code: 0 the measurement was done (it has no thresholds of speed; a ramp that ended on saturation is the normal
 # end), 2 the environment is not fit (LOAD_OUT missing or wrong, an unknown LOAD_DATA, the file of the photo pool missing or
-# without a read variable, no Docker, too few CPUs or too little memory in the Docker VM, pods not ready, the generator failed
-# or did not finish in time, no chunks of the sitemap, the data of the demo or the stocks not prepared, the warm-up failed)
-# with a message, 1 anything else that went wrong (a failed run of k6 in the ramp or the steady run, a failed build).
+# without a read variable, no Docker, too few CPUs or too little memory in the Docker VM, too little room on the disks before the
+# start or a fall below 10% of diskPeakGb during the run, a free space or diskPeakGb that cannot be read, pods not ready, the
+# generator failed or did not finish in time, no chunks of the sitemap, the data of the demo or the stocks not prepared, the
+# warm-up failed) with a message, 1 anything else that went wrong (a failed run of k6 in the ramp or the steady run, a failed build).
 #
 #   LOAD_DATA=seed        seed, medium, server or full (above)
 #   DEMO_PHOTOS_ENV_FILE  the file of the user with the access of the photo pool (~/.config/shop/demo-photos.env)
 #   LOAD_DATA_TIMEOUT     seconds to wait for the Job of the generator; by default its activeDeadlineSeconds (the time
 #                         limit of the profile in the chart, demoData.activeDeadlineSeconds) and 600 more
 #   LOAD_DATA_POLL=30     seconds between two readings of the Job of the generator
+#   LOAD_DISK_PATH        a directory on the disk of the host that holds the disk image of the Docker VM (default: the home
+#                         directory); its free space is the one that is checked on the host
+#   LOAD_SPACE_POLL=30    seconds between two readings of the free space during the run
+#   LOAD_PROFILES_FILE    the profiles of the generator (default apps/api/fixtures/demo-data/profiles.yaml)
 #   LOAD_DATA_ANCHOR      the reference moment of the generated data (--anchor of bin/generate-demo, e.g. 2026-11-01), so
 #                         that two measurements have the same data; by default the start of the current UTC day
 #   DISCOVER_CHUNKS, DISCOVER_CHUNK_COUNT=3, DISCOVER_PRODUCTS=60   the choice of the products of k6 (load/README.md)
@@ -70,6 +85,9 @@ LOAD_MIN_MEM_GIB="${LOAD_MIN_MEM_GIB:-20}"
 LOAD_COOLDOWN="${LOAD_COOLDOWN:-60}"
 LOAD_DATA="${LOAD_DATA:-seed}"
 LOAD_DATA_POLL="${LOAD_DATA_POLL:-30}"
+LOAD_SPACE_POLL="${LOAD_SPACE_POLL:-30}"
+LOAD_DISK_PATH="${LOAD_DISK_PATH:-$HOME}"
+LOAD_PROFILES_FILE="${LOAD_PROFILES_FILE:-$TOOLS_REPO/apps/api/fixtures/demo-data/profiles.yaml}"
 DEMO_PHOTOS_ENV_FILE="${DEMO_PHOTOS_ENV_FILE:-$HOME/.config/shop/demo-photos.env}"
 namespace=shop
 # The Secret of the read access of the photo pool (demoData.photosSecretName) and the one Job of the generator.
@@ -77,6 +95,13 @@ photos_secret=demo-photos
 data_job=demo-data-load
 started="$(date +%s)"
 
+# A pause that a signal does not have to wait for: the trap of a shell runs after the foreground command, but at once in `wait`.
+nap() {
+  sleep "$1" &
+  nap_pid=$!
+  wait "$nap_pid" || true
+  nap_pid=""
+}
 log() { printf '\n== %s (%ss)\n' "$1" "$(( $(date +%s) - started ))"; }
 fail() { echo "load: $1" >&2; exit 2; }
 
@@ -207,6 +232,81 @@ generator_steps() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
+# The room on the disks (W2)
+# ---------------------------------------------------------------------------------------------------------------
+# diskPeakGb of the profile LOAD_DATA from profiles.yaml (the fixed format of the file: `  <profile>:` under `profiles:`, then
+# `    diskPeakGb: <number>`) into $disk_peak; exit 2 when it is not there or not a positive number.
+read_disk_peak() {
+  [ -f "$LOAD_PROFILES_FILE" ] && [ -r "$LOAD_PROFILES_FILE" ] \
+    || fail "diskPeakGb of the profile $LOAD_DATA cannot be read: $LOAD_PROFILES_FILE is not a readable file"
+  disk_peak="$(awk -v profile="$LOAD_DATA" '
+    /^profiles:[ \t]*$/ { inside = 1; next }
+    inside && /^[^ \t#]/ { inside = 0 }
+    inside && /^  [A-Za-z0-9_-]+:[ \t]*(#.*)?$/ { name = $0; sub(/^  /, "", name); sub(/:.*/, "", name); current = name; next }
+    inside && current == profile && /^    diskPeakGb:/ {
+      value = $0; sub(/^    diskPeakGb:[ \t]*/, "", value); sub(/[ \t]*#.*$/, "", value); sub(/[ \t\r]+$/, "", value)
+      print value; exit
+    }' "$LOAD_PROFILES_FILE")" || disk_peak=""
+  case "$disk_peak" in
+    "" | *[!0-9.]* | .* | *. | *.*.*) fail "diskPeakGb of the profile $LOAD_DATA in $LOAD_PROFILES_FILE is missing or is not a positive number (read '$disk_peak')" ;;
+  esac
+  awk -v value="$disk_peak" 'BEGIN { exit !(value + 0 > 0) }' \
+    || fail "diskPeakGb of the profile $LOAD_DATA in $LOAD_PROFILES_FILE is not a positive number (read '$disk_peak')"
+  # 1 GB is 10^9 bytes; df counts KiB, so the limits are rounded up to whole KiB (a disk that holds a KiB less has less).
+  required_kib="$(awk -v peak="$disk_peak" 'BEGIN { b = peak * 1250000000; k = int(b / 1024); if (k * 1024 < b) k++; printf "%d", k }')"
+  floor_kib="$(awk -v peak="$disk_peak" 'BEGIN { b = peak * 100000000; k = int(b / 1024); if (k * 1024 < b) k++; printf "%d", k }')"
+  required_gb="$(awk -v peak="$disk_peak" 'BEGIN { printf "%.2f", peak * 1.25 }')"
+  floor_gb="$(awk -v peak="$disk_peak" 'BEGIN { printf "%.2f", peak * 0.1 }')"
+}
+
+# The free KiB of the line of `df -Pk` on the standard input (the column before the capacity, the one with the % sign).
+df_available() {
+  awk 'NR == 2 { for (i = 3; i <= NF; i++) if ($i ~ /^[0-9]+%$/) { print $(i - 1); found = 1; exit } } END { exit found ? 0 : 1 }'
+}
+
+# free_kib vm|host: prints the free KiB of the Docker VM (the root of a container is on the disk where Docker keeps its data) or
+# of the disk of LOAD_DISK_PATH on the host; fails when df fails or answers something that is not a whole number.
+free_kib() {
+  case "$1" in
+    vm) space_answer="$(docker run --rm --entrypoint df "$PYTHON_IMAGE" -Pk / 2>/dev/null)" || return 1 ;;
+    *) space_answer="$(df -Pk "$LOAD_DISK_PATH" 2>/dev/null)" || return 1 ;;
+  esac
+  space_free="$(printf '%s\n' "$space_answer" | df_available)" || return 1
+  case "$space_free" in
+    "" | *[!0-9]*) return 1 ;;
+  esac
+  printf '%s' "$space_free"
+}
+
+gb() { awk -v kib="$1" 'BEGIN { printf "%.2f", kib * 1024 / 1000000000 }'; }
+
+vm_unreadable="cannot read the free space of the Docker VM (docker run --entrypoint df ... -Pk / failed or answered something that is not a number)"
+host_unreadable() { echo "cannot read the free space of the disk of the host ($LOAD_DISK_PATH; df -Pk failed or answered something that is not a number)"; }
+
+# Before the cluster: both disks must have required_kib; exit 2 with the needed and the free space of both otherwise.
+check_space_before_start() {
+  vm_kib="$(free_kib vm)" || fail "$vm_unreadable; LOAD_DATA=$LOAD_DATA needs to know it"
+  host_kib="$(free_kib host)" || fail "$(host_unreadable); LOAD_DATA=$LOAD_DATA needs to know it"
+  if [ "$vm_kib" -lt "$required_kib" ] || [ "$host_kib" -lt "$required_kib" ]; then
+    fail "LOAD_DATA=$LOAD_DATA needs at least $required_gb GB free in the Docker VM and on the disk of the host (1.25 x diskPeakGb $disk_peak GB of $LOAD_PROFILES_FILE); free: $(gb "$vm_kib") GB in the Docker VM, $(gb "$host_kib") GB on the disk of the host ($LOAD_DISK_PATH); make room, or point LOAD_DISK_PATH at the disk that holds the image of the Docker VM"
+  fi
+}
+
+# During the run: prints the reason and fails when a disk fell below floor_kib or cannot be read.
+check_space_once() {
+  watch_vm="$(free_kib vm)" || { echo "$vm_unreadable during the run"; return 1; }
+  watch_host="$(free_kib host)" || { echo "$(host_unreadable) during the run"; return 1; }
+  if [ "$watch_vm" -lt "$floor_kib" ]; then
+    echo "the free space of the Docker VM fell to $(gb "$watch_vm") GB, below 10% of diskPeakGb ($floor_gb GB)"
+    return 1
+  fi
+  if [ "$watch_host" -lt "$floor_kib" ]; then
+    echo "the free space of the disk of the host ($LOAD_DISK_PATH) fell to $(gb "$watch_host") GB, below 10% of diskPeakGb ($floor_gb GB)"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------------------------------------------
 # Before anything is made: the arguments and the machine
 # ---------------------------------------------------------------------------------------------------------------
 [ -n "${LOAD_OUT:-}" ] || fail "set LOAD_OUT=<directory> for the results (an existing absolute path outside the repository)"
@@ -228,12 +328,13 @@ for name in RAMP_START_RATE RAMP_RATE_STEP WARMUP_RATE CHECKOUT_THINK_SECONDS; d
 done
 for name in RAMP_STEPS RAMP_STEP_SECONDS RAMP_VUS RAMP_MAX_VUS STEADY_SECONDS STEADY_VUS STEADY_MAX_VUS WARMUP_SECONDS WARMUP_CHECKOUTS \
   LOAD_CHECKOUT_VUS LOAD_STEADY_RATE LOAD_TIMEOUT LOAD_POLL LOAD_COOLDOWN LOAD_MIN_CPUS LOAD_MIN_MEM_GIB \
-  DISCOVER_CHUNK_COUNT DISCOVER_PRODUCTS LOAD_DATA_TIMEOUT LOAD_DATA_POLL; do
+  DISCOVER_CHUNK_COUNT DISCOVER_PRODUCTS LOAD_DATA_TIMEOUT LOAD_DATA_POLL LOAD_SPACE_POLL; do
   value="$(printenv "$name" || true)"
   case "$value" in
     *[!0-9]*) fail "$name must be a whole number, got '$value'" ;;
   esac
 done
+[ "$LOAD_SPACE_POLL" -ge 1 ] || fail "LOAD_SPACE_POLL must be at least 1 second, got '$LOAD_SPACE_POLL'"
 # The keys of the chunks are base64url text (they go into the SQL of the stocks and to k6 as they are).
 case "${DISCOVER_CHUNKS:-}" in
   *[!A-Za-z0-9_,-]*) fail "DISCOVER_CHUNKS must be keys of GET /api/v1/sitemap/product-chunks (base64url) separated with commas, got '$DISCOVER_CHUNKS'" ;;
@@ -246,7 +347,10 @@ fi
 # The data: a generated profile needs the read access of the photo pool, checked before anything is made.
 case "$LOAD_DATA" in
   seed) ;;
-  medium | server | full) read_photo_access ;;
+  medium | server | full)
+    read_photo_access
+    [ -d "$LOAD_DISK_PATH" ] || fail "LOAD_DISK_PATH '$LOAD_DISK_PATH' is not an existing directory (a directory on the disk of the host that holds the image of the Docker VM)"
+    read_disk_peak ;;
   *) fail "LOAD_DATA must be seed, medium, server or full, got '$LOAD_DATA'" ;;
 esac
 
@@ -259,6 +363,11 @@ esac
 [ "$docker_cpus" -ge "$LOAD_MIN_CPUS" ] || fail "the Docker VM has $docker_cpus CPUs, the measurement needs at least $LOAD_MIN_CPUS (the pods of prod ask for about 5 vCPU; give Docker more CPUs, or lower LOAD_MIN_CPUS knowingly)"
 # MemTotal of the Docker VM is a little below what is set (Docker Desktop: 32 GiB gives 31.3 GiB), so 95% of the limit counts.
 [ "$docker_mem" -ge $(( LOAD_MIN_MEM_GIB * 1073741824 * 95 / 100 )) ] || fail "the Docker VM has $(( docker_mem / 1073741824 )) GiB of memory, the measurement needs at least $LOAD_MIN_MEM_GIB GiB (the pods of prod ask for about 8.5 GiB; give Docker more memory, or lower LOAD_MIN_MEM_GIB knowingly)"
+
+# The room on the disks, before any image is built or cluster made.
+if [ "$LOAD_DATA" != seed ]; then
+  check_space_before_start
+fi
 
 # The name of the cluster: from COMPOSE_PROJECT_NAME (or the .env of the worktree), at most 32 characters.
 project="${COMPOSE_PROJECT_NAME:-}"
@@ -278,10 +387,27 @@ KUBE_DIR="$(mktemp -d "$TOOLS_CACHE/kube-XXXXXX")"
 apps="api store admin elasticsearch"
 sampler_pids=""
 built=0
+guard_pid=""
+k6_pid=""
+nap_pid=""
+data_job_created=0
+k6_name="k6-$cluster"
+main_pid=$$
+space_reason_file="$KUBE_DIR/space-reason"
+
+# k6 (its container and the docker client that waits for it) stops; the container is removed first, so the client ends by itself.
+stop_k6() {
+  [ -z "$k6_pid" ] || docker rm -f "$k6_name" >/dev/null 2>&1 || true
+  [ -z "$k6_pid" ] || kill "$k6_pid" 2>/dev/null || true
+  k6_pid=""
+}
 
 cleanup() {
   status=$?
+  [ -z "$guard_pid" ] || kill "$guard_pid" 2>/dev/null || true
   trap - EXIT INT TERM
+  [ -z "$nap_pid" ] || kill "$nap_pid" 2>/dev/null || true
+  stop_k6
   for pid in $sampler_pids; do kill "$pid" 2>/dev/null || true; done
   echo "load: deleting the cluster $cluster"
   k3d cluster delete "$cluster" >/dev/null 2>&1 || echo "load: could not delete the cluster $cluster" >&2
@@ -297,7 +423,40 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT
-trap 'exit 143' TERM
+# TERM is also what the guard of the free space sends: it leaves its reason in a file, and then the Job of the generator is
+# stopped and the end is 2 (the cleanup stops k6 and deletes the cluster).
+on_term() {
+  if [ -s "$space_reason_file" ]; then
+    echo "load: $(cat "$space_reason_file"); the Job of the generator and k6 are stopped and the cluster is deleted" >&2
+    if [ "$data_job_created" = 1 ]; then
+      kc delete job "$data_job" --wait=false --request-timeout=30s >/dev/null 2>&1 || echo "load: the Job $data_job could not be deleted" >&2
+    fi
+    exit 2
+  fi
+  exit 143
+}
+trap on_term TERM
+
+# The guard of the free space: every LOAD_SPACE_POLL seconds it reads both disks; when one fell or cannot be read, it leaves the
+# reason in a file and sends TERM to this shell, which waits only in `wait` and in nap, so that it hears it at once.
+start_space_guard() {
+  (
+    trap - EXIT INT TERM
+    guard_sleep=""
+    trap 'kill "$guard_sleep" 2>/dev/null; exit 0' TERM
+    while :; do
+      sleep "$LOAD_SPACE_POLL" &
+      guard_sleep=$!
+      wait "$guard_sleep" || true
+      if ! guard_reason="$(check_space_once)"; then
+        printf '%s' "$guard_reason" > "$space_reason_file"
+        kill -TERM "$main_pid"
+        exit 0
+      fi
+    done
+  ) &
+  guard_pid=$!
+}
 
 kc() { kubectl -n "$namespace" "$@"; }
 
@@ -357,7 +516,7 @@ wait_ready() {
       dump_state
       fail "the pods are not ready in ${LOAD_TIMEOUT} s"
     fi
-    sleep "$LOAD_POLL"
+    nap "$LOAD_POLL"
   done
 }
 
@@ -366,7 +525,7 @@ wait_for_traefik() {
   deadline=$(( $(date +%s) + 300 ))
   until kubectl get crd middlewares.traefik.io >/dev/null 2>&1; do
     if [ "$(date +%s)" -ge "$deadline" ]; then fail "the CRDs of Traefik were not installed in 300 s (the pods are not ready)"; fi
-    sleep 3
+    nap 3
   done
   kubectl wait --for=condition=established crd/middlewares.traefik.io --timeout=120s >/dev/null
 }
@@ -394,8 +553,13 @@ run_k6() {
   shift 2
   k6_status=0
   # shellcheck disable=SC2046 # script_settings prints options
-  k6_run "$KUBE_NETWORK" "$out" "$script" -e "STORE_URL=http://$node:$traefik_port" -e STORE_HOST=localhost -e "API_URL=http://$node:$traefik_port" \
-    -e API_HOST=api.localhost -e STORE_ORIGIN=http://localhost $(script_settings) "$@" > "$out/$logname.txt" 2>&1 || k6_status=$?
+  # In the background and waited for with `wait`, so that the guard of the free space can end the wait; the container has a name,
+  # so that it can be removed (stop_k6).
+  k6_run "$KUBE_NETWORK" "$out" "$script" --name "$k6_name" -e "STORE_URL=http://$node:$traefik_port" -e STORE_HOST=localhost -e "API_URL=http://$node:$traefik_port" \
+    -e API_HOST=api.localhost -e STORE_ORIGIN=http://localhost $(script_settings) "$@" > "$out/$logname.txt" 2>&1 &
+  k6_pid=$!
+  wait "$k6_pid" || k6_status=$?
+  k6_pid=""
   cat "$out/$logname.txt"
 }
 
@@ -428,6 +592,7 @@ start_samplers() {
 run_generator() {
   create_photo_secret
   kc create job "$data_job" --from=cronjob/demo-data >/dev/null || fail "the Job $data_job of the generator could not be created from the CronJob demo-data"
+  data_job_created=1
   data_started="$(date +%s)"
   data_limit="${LOAD_DATA_TIMEOUT:-}"
   if [ -z "$data_limit" ]; then
@@ -452,7 +617,7 @@ run_generator() {
       echo "load: the generator has run $(( data_now - data_started )) s"
       data_reported="$data_now"
     fi
-    sleep "$LOAD_DATA_POLL"
+    nap "$LOAD_DATA_POLL"
   done
   data_seconds=$(( $(date +%s) - data_started ))
   save_generator_log
@@ -533,6 +698,10 @@ data_sizes() {
 # ---------------------------------------------------------------------------------------------------------------
 # The measurement
 # ---------------------------------------------------------------------------------------------------------------
+if [ "$LOAD_DATA" != seed ]; then
+  start_space_guard
+fi
+
 log "images"
 if [ "$LOAD_BUILD" = 1 ]; then
   built=1
@@ -656,7 +825,7 @@ esac
 
 steady_rate="${LOAD_STEADY_RATE:-$(cat "$out/steady-rate")}"
 echo "load: cooling down for ${LOAD_COOLDOWN} s; steady run: $steady_rate iterations/s and $checkout_vus checkout users"
-sleep "$LOAD_COOLDOWN"
+nap "$LOAD_COOLDOWN"
 
 log "steady run (70% of the saturation, with the checkout)"
 run_k6 steady.js steady -e "STEADY_RATE=$steady_rate" -e "CHECKOUT_VUS=$checkout_vus"
