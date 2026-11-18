@@ -22,4 +22,9 @@ final readonly class RunContext
     {
         return intdiv($this->profile->products + $this->partSize - 1, $this->partSize);
     }
+
+    public function orderParts(): int
+    {
+        return intdiv($this->profile->orders + $this->partSize - 1, $this->partSize);
+    }
 }

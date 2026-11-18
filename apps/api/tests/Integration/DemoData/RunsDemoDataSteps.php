@@ -76,6 +76,16 @@ trait RunsDemoDataSteps
         $this->succeeds('demo-data:analyze', [], false);
     }
 
+    /**
+     * The steps after the accounts (5 to 7): the orders, the stock after them and the number sequence.
+     */
+    private function orderSteps(): void
+    {
+        $this->succeeds('demo-data:orders');
+        $this->succeeds('demo-data:stock');
+        $this->succeeds('demo-data:order-numbers');
+    }
+
     private function pricingSteps(): void
     {
         $this->succeeds('demo-data:prices');
