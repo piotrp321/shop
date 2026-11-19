@@ -97,6 +97,11 @@ here="$(cd "$(dirname "$0")" && pwd)"
 LOAD_DIR="$TOOLS_REPO/load"
 # shellcheck source=../../../load/k6.sh
 . "$LOAD_DIR/k6.sh"
+# The functions that generate.sh uses too (the photo pool, the log and the steps of the generator, the sizes, diskPeakGb); their
+# messages begin with DEMO_DATA_TOOL.
+# shellcheck source=demo-data-lib.sh
+. "$here/demo-data-lib.sh"
+DEMO_DATA_TOOL=load
 
 LOAD_BUILD="${LOAD_BUILD:-1}"
 LOAD_TIMEOUT="${LOAD_TIMEOUT:-1200}"
@@ -126,160 +131,9 @@ nap() {
 log() { printf '\n== %s (%ss)\n' "$1" "$(( $(date +%s) - started ))"; }
 fail() { echo "load: $1" >&2; exit 2; }
 
-# The values of the photo pool never go through a traced command: trace_off stops `set -x` (sh -x load.sh) and trace_on
-# brings it back when it was on.
-trace_off() {
-  case "$-" in
-    *x*) traced=1; set +x ;;
-    *) traced="" ;;
-  esac
-}
-trace_on() { [ -z "$traced" ] || set -x; }
-blank() {
-  case "$1" in
-    *[![:space:]]*) return 1 ;;
-  esac
-}
-
-# Reads the four read variables of the photo pool from DEMO_PHOTOS_ENV_FILE as data (NAME=value lines, the value without
-# the quotes around it and the carriage return of a Windows line; nothing is evaluated) into variables of this shell that
-# are not exported. Every other line, the token that writes among them, is skipped. A missing file or variable: exit 2,
-# naming the file or the variable, never a value.
-read_photo_access() {
-  [ -f "$DEMO_PHOTOS_ENV_FILE" ] && [ -r "$DEMO_PHOTOS_ENV_FILE" ] \
-    || fail "LOAD_DATA=$LOAD_DATA takes the photos from the private bucket of the photo pool, and $DEMO_PHOTOS_ENV_FILE does not exist or cannot be read (set DEMO_PHOTOS_ENV_FILE; the variables are in docs/features/demo-data/spec.md, \"Wymagane przed startem\")"
-  trace_off
-  photos_endpoint="" photos_bucket="" photos_key_id="" photos_secret_key=""
-  photos_cr="$(printf '\r')"
-  while IFS= read -r photos_line || [ -n "$photos_line" ]; do
-    photos_line="${photos_line%"$photos_cr"}"
-    photos_value="${photos_line#*=}"
-    case "$photos_value" in
-      \"*\") photos_value="${photos_value#\"}"; photos_value="${photos_value%\"}" ;;
-      \'*\') photos_value="${photos_value#\'}"; photos_value="${photos_value%\'}" ;;
-    esac
-    case "$photos_line" in
-      DEMO_PHOTOS_ENDPOINT=*) photos_endpoint="$photos_value" ;;
-      DEMO_PHOTOS_BUCKET=*) photos_bucket="$photos_value" ;;
-      DEMO_PHOTOS_ACCESS_KEY_ID=*) photos_key_id="$photos_value" ;;
-      DEMO_PHOTOS_SECRET_ACCESS_KEY=*) photos_secret_key="$photos_value" ;;
-    esac
-  done < "$DEMO_PHOTOS_ENV_FILE"
-  photos_line="" photos_value=""
-  photos_missing=""
-  if blank "$photos_endpoint"; then photos_missing="$photos_missing DEMO_PHOTOS_ENDPOINT"; fi
-  if blank "$photos_bucket"; then photos_missing="$photos_missing DEMO_PHOTOS_BUCKET"; fi
-  if blank "$photos_key_id"; then photos_missing="$photos_missing DEMO_PHOTOS_ACCESS_KEY_ID"; fi
-  if blank "$photos_secret_key"; then photos_missing="$photos_missing DEMO_PHOTOS_SECRET_ACCESS_KEY"; fi
-  trace_on
-  [ -z "$photos_missing" ] \
-    || fail "LOAD_DATA=$LOAD_DATA takes the photos from the private bucket of the photo pool, and these read variables are missing or empty in $DEMO_PHOTOS_ENV_FILE:$photos_missing (the token that writes, DEMO_PHOTOS_WRITE_*, is not used)"
-}
-
-# The Secret of the photo pool in the cluster: the manifest goes to kubectl on its standard input, the values base64 in it.
-# The output of kubectl is not shown (an error could quote the manifest).
-create_photo_secret() {
-  trace_off
-  photos_status=0
-  printf '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s"},"type":"Opaque","data":{"DEMO_PHOTOS_ENDPOINT":"%s","DEMO_PHOTOS_BUCKET":"%s","DEMO_PHOTOS_ACCESS_KEY_ID":"%s","DEMO_PHOTOS_SECRET_ACCESS_KEY":"%s"}}' \
-    "$photos_secret" "$(printf '%s' "$photos_endpoint" | base64 | tr -d '\n')" "$(printf '%s' "$photos_bucket" | base64 | tr -d '\n')" \
-    "$(printf '%s' "$photos_key_id" | base64 | tr -d '\n')" "$(printf '%s' "$photos_secret_key" | base64 | tr -d '\n')" \
-    | kc create -f - >/dev/null 2>&1 || photos_status=$?
-  trace_on
-  [ "$photos_status" -eq 0 ] || fail "the Secret $photos_secret of the photo pool could not be created (kubectl create -f - failed; its output is not shown, it could quote a value)"
-}
-
-# The log of the Job of the generator, each line with its time, to LOAD_OUT/demo-data.log. A value of the photo pool in it
-# (the generator never prints one) is replaced with [masked]: the values reach awk on its standard input, before the log.
-save_generator_log() {
-  trace_off
-  {
-    printf '%s\n' "$photos_endpoint" "$photos_bucket" "$photos_key_id" "$photos_secret_key"
-    kc logs "job/$data_job" --container=demo-data --timestamps 2>&1 || echo "load: the log of the Job $data_job could not be read"
-  } | awk '
-    NR <= 4 { if ($0 != "") value[++values] = $0; next }
-    NR == 5 {
-      # The longest value first, so that a value inside another one does not leave a part of the other one.
-      for (i = 1; i <= values; i++) for (j = i + 1; j <= values; j++) if (length(value[j]) > length(value[i])) { v = value[i]; value[i] = value[j]; value[j] = v }
-    }
-    {
-      line = $0
-      for (i = 1; i <= values; i++) {
-        rest = line; line = ""
-        while ((at = index(rest, value[i])) > 0) { line = line substr(rest, 1, at - 1) "[masked]"; rest = substr(rest, at + length(value[i])); masked++ }
-        line = line rest
-      }
-      print line
-    }
-    END { if (masked) printf "load: the log of the generator held %d value(s) of the access of the photo pool; they are masked in demo-data.log\n", masked > "/dev/stderr" }' \
-    > "$out/demo-data.log"
-  trace_on
-}
-
-# The seconds of each step of the generator from demo-data.log: a step ends with the [OK] line of its command (SymfonyStyle;
-# the parts of a step, one line per process) and is named by the text of that line up to ":" or " ("; it lasts from the end
-# of the step before it (the first one from the first line of the log) to its last such line.
-generator_steps() {
-  echo "# seconds of each step of bin/generate-demo (from the end of the step before it to its last [OK] line; the first one from the first line of the log)"
-  awk '
-    function epoch(stamp,   y, m, d, era, yoe, mp, doe) {
-      y = substr(stamp, 1, 4) + 0; m = substr(stamp, 6, 2) + 0; d = substr(stamp, 9, 2) + 0
-      if (m <= 2) y--
-      era = int(y / 400); yoe = y - era * 400; mp = (m + 9) % 12
-      doe = yoe * 365 + int(yoe / 4) - int(yoe / 100) + int((153 * mp + 2) / 5) + d - 1
-      return (era * 146097 + doe - 719468) * 86400 + substr(stamp, 12, 2) * 3600 + substr(stamp, 15, 2) * 60 + substr(stamp, 18, 2)
-    }
-    $1 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]/ {
-      t = epoch($1)
-      if (!seen) { seen = 1; first = t; previous = t }
-      last = t
-      at = index($0, "[OK] ")
-      if (at == 0) next
-      label = substr($0, at + 5)
-      sub(/[ \t\r]+$/, "", label)
-      if ((cut = index(label, ": ")) > 0) label = substr(label, 1, cut - 1)
-      if ((cut = index(label, " (")) > 0) label = substr(label, 1, cut - 1)
-      if (label != step) {
-        if (step != "") { printf "%7d s  %s\n", ended - previous, step; previous = ended }
-        step = label
-      }
-      ended = t
-    }
-    END {
-      if (step == "") { print "no [OK] line in demo-data.log: the steps could not be timed"; exit }
-      printf "%7d s  %s\n", ended - previous, step
-      printf "total: %d s (from the first to the last line of the log)\n", last - first
-    }' "$out/demo-data.log"
-}
-
 # ---------------------------------------------------------------------------------------------------------------
 # The room on the disks (W2)
 # ---------------------------------------------------------------------------------------------------------------
-# diskPeakGb of the profile LOAD_DATA from profiles.yaml (the fixed format of the file: `  <profile>:` under `profiles:`, then
-# `    diskPeakGb: <number>`) into $disk_peak; exit 2 when it is not there or not a positive number.
-read_disk_peak() {
-  [ -f "$LOAD_PROFILES_FILE" ] && [ -r "$LOAD_PROFILES_FILE" ] \
-    || fail "diskPeakGb of the profile $LOAD_DATA cannot be read: $LOAD_PROFILES_FILE is not a readable file"
-  disk_peak="$(awk -v profile="$LOAD_DATA" '
-    /^profiles:[ \t]*$/ { inside = 1; next }
-    inside && /^[^ \t#]/ { inside = 0 }
-    inside && /^  [A-Za-z0-9_-]+:[ \t]*(#.*)?$/ { name = $0; sub(/^  /, "", name); sub(/:.*/, "", name); current = name; next }
-    inside && current == profile && /^    diskPeakGb:/ {
-      value = $0; sub(/^    diskPeakGb:[ \t]*/, "", value); sub(/[ \t]*#.*$/, "", value); sub(/[ \t\r]+$/, "", value)
-      print value; exit
-    }' "$LOAD_PROFILES_FILE")" || disk_peak=""
-  case "$disk_peak" in
-    "" | *[!0-9.]* | .* | *. | *.*.*) fail "diskPeakGb of the profile $LOAD_DATA in $LOAD_PROFILES_FILE is missing or is not a positive number (read '$disk_peak')" ;;
-  esac
-  awk -v value="$disk_peak" 'BEGIN { exit !(value + 0 > 0) }' \
-    || fail "diskPeakGb of the profile $LOAD_DATA in $LOAD_PROFILES_FILE is not a positive number (read '$disk_peak')"
-  # 1 GB is 10^9 bytes; df counts KiB, so the limits are rounded up to whole KiB (a disk that holds a KiB less has less).
-  required_kib="$(awk -v peak="$disk_peak" 'BEGIN { b = peak * 1250000000; k = int(b / 1024); if (k * 1024 < b) k++; printf "%d", k }')"
-  floor_kib="$(awk -v peak="$disk_peak" 'BEGIN { b = peak * 100000000; k = int(b / 1024); if (k * 1024 < b) k++; printf "%d", k }')"
-  required_gb="$(awk -v peak="$disk_peak" 'BEGIN { printf "%.2f", peak * 1.25 }')"
-  floor_gb="$(awk -v peak="$disk_peak" 'BEGIN { printf "%.2f", peak * 0.1 }')"
-}
-
 # The free KiB of the line of `df -Pk` on the standard input (the column before the capacity, the one with the % sign).
 df_available() {
   awk 'NR == 2 { for (i = 3; i <= NF; i++) if ($i ~ /^[0-9]+%$/) { print $(i - 1); found = 1; exit } } END { exit found ? 0 : 1 }'
@@ -468,9 +322,10 @@ fi
 case "$LOAD_DATA" in
   seed) ;;
   medium | server | full)
-    read_photo_access
+    read_photo_access "$DEMO_PHOTOS_ENV_FILE" \
+      || fail "LOAD_DATA=$LOAD_DATA takes the photos from the private bucket of the photo pool, and $demo_data_error"
     [ -d "$LOAD_DISK_PATH" ] || fail "LOAD_DISK_PATH '$LOAD_DISK_PATH' is not an existing directory (a directory on the disk of the host that holds the image of the Docker VM)"
-    read_disk_peak ;;
+    read_disk_peak "$LOAD_DATA" "$LOAD_PROFILES_FILE" || fail "$demo_data_error" ;;
   *) fail "LOAD_DATA must be seed, medium, server or full, got '$LOAD_DATA'" ;;
 esac
 
@@ -757,7 +612,7 @@ sampler_loop() {
 # One Job of the CronJob demo-data (its profile and anchor are values of the chart), waited for: Complete goes on, Failed or
 # no end in LOAD_DATA_TIMEOUT ends with 2, with the end of its log. Its whole log is in LOAD_OUT either way.
 run_generator() {
-  create_photo_secret
+  create_photo_secret "$photos_secret" || fail "$demo_data_error"
   kc create job "$data_job" --from=cronjob/demo-data >/dev/null || fail "the Job $data_job of the generator could not be created from the CronJob demo-data"
   data_job_created=1
   data_started="$(date +%s)"
@@ -787,10 +642,10 @@ run_generator() {
     nap "$LOAD_DATA_POLL"
   done
   data_seconds=$(( $(date +%s) - data_started ))
-  save_generator_log
+  save_generator_log "$data_job" "$out/demo-data.log"
   case "$data_state" in
     complete)
-      generator_steps > "$out/demo-data-steps.txt"
+      generator_steps "$out/demo-data.log" > "$out/demo-data-steps.txt"
       echo "load: the generator finished in $data_seconds s; its steps:"
       cat "$out/demo-data-steps.txt" ;;
     *)
@@ -843,23 +698,6 @@ chunk_stock_sql() {
 UPDATE inventory_stock_item s SET physical = s.physical + 100000, version = s.version + 1, updated_at = now()
 FROM catalog_product_variant v, ranges r
 WHERE v.id = s.variant_id AND s.physical > 0 AND (r.f IS NULL OR v.product_id >= r.f) AND (r.t IS NULL OR v.product_id < r.t)"
-}
-
-# The sizes of the data before the measurement (for the report): best effort, a failure is written down and the measurement
-# goes on.
-data_sizes() {
-  echo "== postgres"
-  kc exec statefulset/postgres -- psql -U shop -d shop -v ON_ERROR_STOP=1 \
-    -c '\echo == the databases (bytes)' \
-    -c "SELECT datname AS database_name, pg_database_size(datname) AS bytes, pg_size_pretty(pg_database_size(datname)) AS size FROM pg_database WHERE NOT datistemplate ORDER BY 2 DESC" \
-    -c '\echo == the tables of the database shop (bytes; estimated_rows from the statistics)' \
-    -c "SELECT c.relname AS table_name, pg_table_size(c.oid) AS table_bytes, pg_indexes_size(c.oid) AS index_bytes, pg_total_relation_size(c.oid) AS total_bytes, pg_size_pretty(pg_total_relation_size(c.oid)) AS total, c.reltuples::bigint AS estimated_rows FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r', 'p') AND n.nspname = 'public' ORDER BY total_bytes DESC" \
-    -c '\echo == the indexes of the database shop (bytes)' \
-    -c "SELECT i.indexrelid::regclass AS index_name, t.relname AS table_name, pg_relation_size(i.indexrelid) AS bytes, pg_size_pretty(pg_relation_size(i.indexrelid)) AS size FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = 'public' ORDER BY bytes DESC" \
-    2>&1 || { echo "(psql failed: the sizes of Postgres are not known)"; echo "load: the sizes of Postgres could not be read (sizes.txt)" >&2; }
-  echo "== elasticsearch: the indices (bytes) and the aliases"
-  kc exec statefulset/elasticsearch -- curl -fsS 'http://localhost:9200/_cat/indices?v&bytes=b&s=index' 'http://localhost:9200/_cat/aliases?v' \
-    2>&1 || { echo "(curl failed: the sizes of Elasticsearch are not known)"; echo "load: the sizes of Elasticsearch could not be read (sizes.txt)" >&2; }
 }
 
 # ---------------------------------------------------------------------------------------------------------------
