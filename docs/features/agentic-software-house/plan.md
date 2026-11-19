@@ -24,7 +24,7 @@ w pierwszej rundzie).
 
 W toku: brak. Przygotowane: ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DEMO-SCALE (#484). Blokery: brak.
 Ostatni zmergowany epik: ASH-V1 (końcowy PR #785; 6 interwencji, 2 czekania na użytkownika, razem 18 min, ręczne
-poprawki: brak danych). Retro do zrobienia: ASH-V1 (retro SMALL-FIXES w tym PR). Otwartych issues z etykietą `agent`
+poprawki: brak danych). Retro do zrobienia: brak (retro ASH-V1 w tym PR). Otwartych issues z etykietą `agent`
 jest 122, zamkniętych 72.
 
 Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
@@ -34,7 +34,7 @@ trzeciego epiku; w tym czasie pliki procesu zmienia tylko poprawka blokady albo 
 
 | Seria ASH v1.0 | Stan |
 |---|---|
-| Stan serii | przed startem (tag `ash-v1.0` jeszcze nie założony) |
+| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; żaden epik serii jeszcze nie ruszył) |
 | Epiki serii | ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120), w tej kolejności |
 | Zmergowane epiki serii | brak |
 
@@ -48,7 +48,7 @@ Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 | P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
 | P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
 | P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | zrobione |
-| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | seria przed startem (stan w tabeli „Seria ASH v1.0” wyżej) |
+| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | seria w toku (stan w tabeli „Seria ASH v1.0” wyżej) |
 | P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
 
 Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach opisują drogę AO.
@@ -66,7 +66,7 @@ Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach 
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | zrobione (epik HARDENING #267, końcowy PR #402 zmergowany) |
 | 11 | Po MVP: release, monitoring i dyżur agenta | wstrzymane (moratorium; epik SENTRY zmergowany, końcowy PR #539; dyżur i hypercare, epik ONCALL, wstrzymane) |
 | 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione; kryterium 7 potwierdzone: `/sweep` po merge'u LIGHTHOUSE i HARDENING (raporty z nazwą epiku); kryteria 8–9 bez dowodu w przebiegach |
-| 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
+| 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione; zweryfikowane: pełne przebiegi `/retro` po epikach natywnych SMALL-FIXES (#799) i ASH-V1 (#801) |
 | 16 | Bezpieczeństwo agentów | zrobione (epik AGENT-SECURITY #494, końcowy PR #548 zmergowany); sonda przed startem AO bez dowodu z kolejnego przebiegu |
 | 17 | Evale agentów i workflowów | wstrzymane (moratorium) |
 | 18 | Pomiar, koszty i optymalizacja | wstrzymane (moratorium; epik METRICS #496 zrobiony, końcowy PR #674 zmergowany: pomiar epiku, `tools/metrics`; epik TELEMETRY #577 zrobiony, końcowy PR #721 zmergowany: telemetria Claude Code do lokalnego stosu) |
