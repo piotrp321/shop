@@ -438,6 +438,10 @@ deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 # The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
 # expression that does what the scenarios do not allow.
 backup_missing_without_absent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'absent_over_time(kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}[30m])' 'vector(0) > 1'; }
+# RateLimitsOff (docs/features/abuse-limits/spec.md, L12) without the branch for a metric that is gone: a deleted CronJob or a silent
+# server would be no alert (the render test sees the expression without its absent).
+# shellcheck disable=SC2016 # the texts are lines of the template, with their variables
+rate_limits_off_without_absent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml '{{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "rate-limit-check" "threshold" "17 * 60") | nindent 12 }}' 'time() - max by (namespace, cronjob) (kube_cronjob_status_last_successful_time{namespace="{{ $ns }}", cronjob="rate-limit-check"}) > 17 * 60'; }
 node_disk_full_at_exactly_85_percent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml '< 0.15' '<= 0.15'; }
 alert_rule_with_a_syntax_error() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'expr: absent(kube_node_info)' 'expr: absent(kube_node_info) and'; }
 nothing_broken() { :; }
@@ -533,6 +537,7 @@ run_case "monitoring pod policy without the priority classes of the system" "tes
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" "tests" restore_without_confirmation
 run_case "demo-data CronJob that is not suspended" "test_the_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" demo_data_not_suspended
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
+run_case "RateLimitsOff without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" rate_limits_off_without_absent
 run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" "alerts" node_disk_full_at_exactly_85_percent
 run_case "alert rule with a PromQL syntax error" "parse error" "alerts" alert_rule_with_a_syntax_error
 run_case "deploy.yml missing" "deploy.yml is missing" "actionlint" deploy_workflow_missing

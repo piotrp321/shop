@@ -69,7 +69,7 @@ serwera” i „Smoke test i check”).
     z `charts/shop/templates/jobs.yaml` o nazwie `<job>-<hash>` (`garage-init`, `migrate`, `keycloak-config`,
     `initialize`, `purge-caches`, `backfill`). Te same Joby uruchamia każde wdrożenie nowej rewizji, więc ponowienie
     nie robi nic, czego nie zrobiłoby kolejne wdrożenie; `initialize` przy stanie mieszanym kończy się błędem bez zmian.
-  - Joba utworzonego z CronJoba (`restore-run-*`, `restore-reindex-*`, `backup-*`, `cart-purge-expired-*`) agent nie
+  - Joba utworzonego z CronJoba (`restore-run-*`, `restore-reindex-*`, `backup-*`, `cart-purge-expired-*`, `rate-limit-check-*`) agent nie
     ponawia przez `rerun`. `rerun` tworzy Job od nowa z tymi samymi zmiennymi, więc `restore-run-*` powtórzyłby
     odtworzenie (usunięcie i odtworzenie baz, usunięcie zdjęć spoza snapshotu, `FLUSHALL`) bez pytania o `tak`, bez
     kopii `pre-restore` i przy działających aplikacjach, a `rerun.sh` nie sprawdza, jaki Job dostał. Odtworzenie

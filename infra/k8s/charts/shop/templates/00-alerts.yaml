@@ -29,12 +29,13 @@ min_over_time(
   label_replace(vector(0), "namespace", "{{ .ns }}", "", "")
 )
 {{- end }}
-{{- /* The last success of the CronJob is older than 26 hours, or its metric has not been there for 30 minutes. Like the other
+{{- /* The last success of the CronJob is older than `.threshold` (seconds, an expression such as 26 * 3600), or its metric has not been there
+for 30 minutes. Like the other
 comparisons below it takes the maximum over the series of one object: two series that differ only in a label such as instance (a new
 pod of kube-state-metrics next to the old one) would otherwise be a many-to-many match or an alert twice. */}}
 {{- define "shop.alerts.cronjobMissing" -}}
 (
-  time() - max by (namespace, cronjob) (kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}) > 26 * 3600
+  time() - max by (namespace, cronjob) (kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}) > {{ .threshold }}
 )
 or
 absent_over_time(kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}[30m])
@@ -66,7 +67,7 @@ spec:
             description: "Job z CronJoba backup zakończył się błędem i po nim nie ma udanej kopii. Sprawdź log Joba (make -C infra/k8s status) i ponów kopię według runbooka (Eksploatacja)."
         - alert: BackupMissing
           expr: |-
-            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "backup") | nindent 12 }}
+            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "backup" "threshold" "26 * 3600") | nindent 12 }}
           labels:
             severity: critical
           annotations:
@@ -82,13 +83,28 @@ spec:
             description: "Job z CronJoba backup-verify zakończył się błędem i po nim nie ma udanej weryfikacji: repozytorium kopii może być uszkodzone albo dump nie odtwarza się. Sprawdź log Joba (make -C infra/k8s status) i ponów weryfikację według runbooka (Eksploatacja)."
         - alert: BackupVerifyMissing
           expr: |-
-            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "backup-verify") | nindent 12 }}
+            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "backup-verify" "threshold" "26 * 3600") | nindent 12 }}
           labels:
             severity: critical
           annotations:
             summary: "Brak świeżej weryfikacji kopii zapasowej"
             description: "Ostatnia udana weryfikacja jest starsza niż 26 godzin albo brak jej metryki od 30 minut (serwer albo Alloy nie działa). Runbook: Eksploatacja."
     {{- end }}
+    - name: shop-rate-limits
+      rules:
+        # The limiters of the routes fail open when their Redis is unusable (docs/features/hardening/spec.md, D7), which the probes do not
+        # see (a Redis that answers ping but refuses writes, a network that does not reach it). The CronJob rate-limit-check writes a key
+        # every five minutes (docs/features/abuse-limits/spec.md, L12): 17 minutes without a success are three periods of the schedule and
+        # two minutes for the start of a pod. One alert, however many Jobs have failed (the expression does not look at Jobs); it goes out
+        # at the next success.
+        - alert: RateLimitsOff
+          expr: |-
+            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "rate-limit-check" "threshold" "17 * 60") | nindent 12 }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "Limity żądań są wyłączone: Redis limiterów nie przyjmuje zapisu"
+            description: "Od 17 minut nie ma udanego sprawdzenia Redisa limiterów (CronJob rate-limit-check) albo brak jego metryki od 30 minut: limity tras przepuszczają ruch bez ograniczeń. Sprawdź log Joba (make -C infra/k8s status) oraz stan Redisa i jego wolumenu. Przy restore alert wycisz razem z WorkloadNotReady. Runbook: Eksploatacja."
     - name: shop-cluster
       rules:
         # A used file system of the node: more than 85% (less than 15% available) for 10 minutes; the temporary and virtual file

@@ -24,6 +24,7 @@
     "backup",
     "alerts",
     "cartPurge",
+    "rateLimitCheck",
     "storage",
     "elasticsearch",
     "keycloak",
@@ -605,6 +606,18 @@
           "minLength": 1
         },
         "timeZone": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "rateLimitCheck": {
+      "type": "object",
+      "required": [
+        "schedule"
+      ],
+      "properties": {
+        "schedule": {
           "type": "string",
           "minLength": 1
         }

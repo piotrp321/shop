@@ -28,7 +28,7 @@ check:
 # without a digest in monitoring-render.sh or with another one, stages that Alloy rejects, without the admission policy on the access to the
 # host or the binding of the policy on the tokens, a policy that only warns or fails open, the policies in the wave of the workloads,
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
-# of the nodes, the token of Alloy given to a group of service accounts, BackupMissing without the absent for a metric that is gone, NodeDiskFull
+# of the nodes, the token of Alloy given to a group of service accounts, BackupMissing and RateLimitsOff without the absent for a metric that is gone, NodeDiskFull
 # firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).
