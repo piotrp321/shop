@@ -238,8 +238,9 @@ bez roli personelu nie ma `ROLE_STAFF`, więc dostaje 403 na każdej trasie pane
 - Nieznany `taxClass` → 422. Kategoria nieistniejąca → 422 (pole kategorii), nie 404.
 - Upload: PHP `upload_max_filesize = 64M`, `post_max_size = 70M` (`apps/api/docker/php/conf.d/app.ini`). Plik ponad
   `upload_max_filesize` (błąd uploadu PHP) albo żądanie z `Content-Length` ponad `post_max_size` (PHP odrzuca wtedy
-  całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) → 422 „Plik jest za duży.”. Caddy bez własnego
-  limitu ciała poniżej 70 MB. Limity PHP nie działają w kernelu testów funkcjonalnych, więc te dwie ścieżki sprawdza
+  całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) → 422 „Plik jest za duży.”. Caddy przyjmuje
+  `POST` tej ścieżki do 71 MiB, powyżej `post_max_size` (`docs/features/abuse-limits/spec.md`, D10); większe ciało to 413
+  z Caddy bez nagłówków CORS. Limity PHP nie działają w kernelu testów funkcjonalnych, więc te dwie ścieżki sprawdza
   test HTTP na działającym stosie (E2E `catalog-admin.spec.ts`).
 - `ImageSize::Thumbnail` (1:1, szerokości 96 i 192, WebP) na liście rozmiarów; jedyny rozmiar odpowiedzi panelu.
 - OpenAPI w `openapi-admin.json`, klient panelu wygenerowany; `openapi.json` sklepu nie zawiera endpointów panelu.
