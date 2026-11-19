@@ -182,8 +182,12 @@ def lower_bounds(record):
 def upper_bounds(record):
     """The categories of `breakdown` of the record that are upper bounds (`breakdown_upper_bound`): they come after a
     lower bound in the order of the breakdown, so the skipped time may be in them (`idle` is one whenever there is a lower
-    bound)."""
-    return _category_list(record, 'breakdown_upper_bound')
+    bound). A native record has `breakdown_incomplete: true` (a bool, not a list of categories): the categories it has no
+    source for are null, their time is in `idle`, so `idle` is an upper bound and the others are exact."""
+    found = _category_list(record, 'breakdown_upper_bound')
+    if isinstance(record, dict) and record.get('breakdown_incomplete') is True:
+        found = found | {'idle'}
+    return found
 
 
 def upper_bounds_of(lower, order):
@@ -3260,16 +3264,26 @@ BOTTLENECK_SUBJECTS = {('breakdown', 'human_wait'): 'D4:human_wait', ('breakdown
                        ('gate_wait', 'gate_wait'): 'D3:gate_wait', ('review', 'review'): 'D4:review'}
 
 
+SOURCES = ('ao', 'native')
+
+
+def source_of(record):
+    """The source of a record: `native` for a record of a native epic, `ao` for the others (also a record stored before
+    the field `source` existed)."""
+    return 'native' if isinstance(record, dict) and record.get('source') == 'native' else 'ao'
+
+
 def history_of(record, records):
-    """The stored records of the other epics merged before this one (all merged ones while it is not merged): the
-    history the medians come from."""
+    """The stored records of the other epics of the same source merged before this one (all merged ones while it is not
+    merged): the history the medians come from. The sources are never mixed: the fields of a native record are counted
+    differently than in AO (spec: Trend i raport dwóch źródeł)."""
     try:
         merged = night_queue.parse_time(record['merged_at']).timestamp()
     except (KeyError, TypeError, ValueError, AttributeError):
         merged = None
     found = []
     for other in records.values():
-        if other.get('epic') == record.get('epic'):
+        if other.get('epic') == record.get('epic') or source_of(other) != source_of(record):
             continue
         try:
             when = night_queue.parse_time(other['merged_at']).timestamp()
@@ -4068,16 +4082,36 @@ def trend_estimated(record, config):
     return {column for column, flag in flags.items() if flag and values[column] is not None}
 
 
+# The columns of `trend` a native record counts as an AO one does (spec: M6): the time to the ready PR, the time to the
+# merge (and so the review between them) and the regressions. The other columns of a native record are marked: the value
+# (the price list instead of the cost of the CLI), the interventions, the breakdown of the time (`work`, `human_wait`),
+# the repeated commands and the share of the subscription limits are counted differently.
+COMPARABLE_COLUMNS = ('to_done', 'review', 'regressions')
+DIFFERENT_NOTE = 'liczone inaczej niż w AO'
+DIFFERENT_MARK = '\u2020'
+
+
+def trend_different(record, config):
+    """The columns of `trend_values` of one record that are counted differently than in AO and have a value (a native
+    record: all but COMPARABLE_COLUMNS; an AO record: none). An unknown column is not marked."""
+    if source_of(record) != 'native':
+        return set()
+    values = trend_values(record, config)
+    return {column for column in TREND_COLUMNS if column not in COMPARABLE_COLUMNS and values[column] is not None}
+
+
 def estimated_list(sets):
-    """The union of sets of estimated columns as a list in the order of TREND_COLUMNS (a median of a column is
-    estimated when one of the values it is built from is)."""
+    """The union of sets of columns (estimated ones, or ones counted differently) as a list in the order of TREND_COLUMNS
+    (a median of a column is estimated when one of the values it is built from is)."""
     union = set().union(*sets) if sets else set()
     return [column for column in TREND_COLUMNS if column in union]
 
 
-def cell_text(value, estimated):
-    """A number with two places, `≈ ` before an estimated one (as `usd_text`); `-` for an unknown one."""
-    return approx(estimated and value is not None) + pl(value, 2)
+def cell_text(value, estimated, different=False):
+    """A number with two places, `≈ ` before an estimated one (as `usd_text`) and the mark of a field counted differently
+    than in AO after it; `-` for an unknown one."""
+    return approx(estimated and value is not None) + pl(value, 2) + (DIFFERENT_MARK if different and value is not None
+                                                                     else '')
 
 
 def median_of(values):
@@ -4176,9 +4210,10 @@ def refresh_windows(records, state_dir, config, run, repo, now, errors):
 
 
 def build_trend(records, config, last, epic):
-    """The trend table: the last `last` merged epics with their columns, the medians of
-    the shown epics (nulls skipped), the position of `epic` (default: the latest; it may be older than the shown ones)
-    against them and the annotations."""
+    """The trend table: the last `last` merged epics (of both sources, each row with its `source`) with their columns,
+    the medians of the shown epics per source (nulls skipped), the position of `epic` (default: the latest; it may be
+    older than the shown ones) against the median of its own source and the annotations. `median` and `median_estimated`
+    are those of the source of the position."""
     ordered = merged_records(records)
     if not ordered:
         raise MetricsError('brak zapisanych rekordów zmergowanych epików (uruchom: metrics.py backfill)')
@@ -4190,17 +4225,30 @@ def build_trend(records, config, last, epic):
     rows = []
     for record in shown:
         index = ordered.index(record)
-        rows.append({'epic': record['epic'], 'merged_at': record.get('merged_at'), 'tasks': record.get('tasks'),
-                     'values': trend_values(record, config), 'estimated': estimated_list([trend_estimated(record, config)]),
+        rows.append({'epic': record['epic'], 'source': source_of(record), 'merged_at': record.get('merged_at'),
+                     'tasks': record.get('tasks'), 'values': trend_values(record, config),
+                     'estimated': estimated_list([trend_estimated(record, config)]),
+                     'different': estimated_list([trend_different(record, config)]),
                      'annotations': change_annotations(ordered[index - 1], record) if index else []})
-    medians = {column: median_of([row['values'][column] for row in rows]) for column in TREND_COLUMNS}
+    sources = {}
+    for name in SOURCES:
+        part = [(row, record) for row, record in zip(rows, shown) if row['source'] == name]
+        if part:
+            medians = {column: median_of([row['values'][column] for row, _ in part]) for column in TREND_COLUMNS}
+            sources[name] = {'epics': len(part), 'median': medians,
+                             'median_estimated': estimated_list([trend_estimated(r, config) for _, r in part]),
+                             'median_different': [c for c in estimated_list(
+                                 [trend_different(r, config) for _, r in part]) if medians[c] is not None]}
+    name = source_of(chosen)
+    own = sources.get(name) or {'epics': 0, 'median': {column: None for column in TREND_COLUMNS},
+                                'median_estimated': [], 'median_different': []}
     values = trend_values(chosen, config)
-    shown_estimated = [trend_estimated(record, config) for record in shown]
-    return {'columns': list(TREND_COLUMNS), 'epics': rows, 'median': medians,
-            'median_estimated': estimated_list(shown_estimated),
-            'position': {'epic': chosen['epic'], 'columns': position_of(values, medians),
+    return {'columns': list(TREND_COLUMNS), 'epics': rows, 'median': own['median'],
+            'median_estimated': own['median_estimated'], 'median_source': name, 'sources': sources,
+            'position': {'epic': chosen['epic'], 'source': name, 'columns': position_of(values, own['median']),
                          'estimated': estimated_list([trend_estimated(chosen, config)]),
-                         'median_estimated': estimated_list(shown_estimated)},
+                         'different': estimated_list([trend_different(chosen, config)]),
+                         'median_estimated': own['median_estimated'], 'median_different': own['median_different']},
             'recomputed': []}
 
 
@@ -4215,26 +4263,41 @@ def format_trend(table):
     heads = {'to_done': 'do_done', 'work': 'work', 'human_wait': 'human', 'review': 'review', 'gate_wait': 'gate',
              'repeat_runs': 'powt.', 'value': 'USD', 'pp': 'pp', 'failed': 'nieud.', 'repair': 'REPAIR',
              'interventions': 'interw.', 'regressions': 'regr.'}
+    columns = table['columns']
+
+    def texts(values, estimated, different, source):
+        # a native record has no source of some fields: `brak danych`, not a dash (and never a zero)
+        return [NO_DATA if values[c] is None and source == 'native'
+                else cell_text(values[c], c in estimated, c in different) for c in columns]
+
     width = max([len('mediana')] + [len(r['epic']) for r in table['epics']])
-    cells = [[cell_text(row['values'][c], c in row['estimated']) for c in table['columns']] for row in table['epics']]
-    middle = [cell_text(table['median'][c], c in table['median_estimated']) for c in table['columns']]
+    source_width = max([len('źródło')] + [len(r['source']) for r in table['epics']] + [len(n) for n in table['sources']])
+    lines_of = [(r['epic'], r['source'], texts(r['values'], r['estimated'], r['different'], r['source']))
+                for r in table['epics']]
+    medians = [('mediana', name, texts(entry['median'], entry['median_estimated'], entry['median_different'], name))
+               for name, entry in table['sources'].items()]
     # a column is as wide as its widest cell (an estimate with `≈ ` can be wider than 8 characters)
-    widths = [max([8, len(middle[i])] + [len(cell[i]) for cell in cells]) for i in range(len(table['columns']))]
+    widths = [max([8] + [len(cells[i]) for _, _, cells in lines_of + medians]) for i in range(len(columns))]
     lines = ['Trend (na zadanie planu; czasy w godzinach; epików: %d)' % len(table['epics']),
-             ' '.join(['epik'.ljust(width)] + [heads[c].rjust(w) for c, w in zip(table['columns'], widths)])]
-    for row, line in zip(table['epics'], cells):
-        lines.append(' '.join([row['epic'].ljust(width)] + [t.rjust(w) for t, w in zip(line, widths)]))
-    lines.append(' '.join(['mediana'.ljust(width)] + [t.rjust(w) for t, w in zip(middle, widths)]))
+             ' '.join(['epik'.ljust(width), 'źródło'.ljust(source_width)] + [heads[c].rjust(w)
+                                                                           for c, w in zip(columns, widths)])]
+    for name, source, cells in lines_of + medians:
+        lines.append(' '.join([name.ljust(width), source.ljust(source_width)] + [t.rjust(w) for t, w in zip(cells, widths)]))
     position = table['position']
-    lines.append('%s wobec mediany:' % position['epic'])
-    for column in table['columns']:
+    if any(r['different'] for r in table['epics']) or position['different'] or any(
+            e['median_different'] for e in table['sources'].values()):
+        lines.append('%s %s (cennik zamiast kosztu z CLI, wiadomości człowieka jako interwencje, rozkład czasu bez '
+                     'oczekiwania na limity, CI i GitHub, koszt subskrypcji z lokalnych transkryptów)' % (
+                         DIFFERENT_MARK, DIFFERENT_NOTE))
+    lines.append('%s wobec mediany (źródło: %s):' % (position['epic'], position['source']))
+    for column in columns:
         entry = position['columns'][column]
         if entry['diff'] is None:
             lines.append('  %s: brak danych' % heads[column])
             continue
         lines.append('  %s: %s (mediana %s%s)' % (
-            heads[column], cell_text(entry['value'], column in position['estimated']),
-            cell_text(entry['median'], column in position['median_estimated']),
+            heads[column], cell_text(entry['value'], column in position['estimated'], column in position['different']),
+            cell_text(entry['median'], column in position['median_estimated'], column in position['median_different']),
             percent_text(entry, column in position['estimated'] or column in position['median_estimated'])))
     notes = ['%s: %s' % (row['epic'], note) for row in table['epics'] for note in row['annotations']]
     if notes:
@@ -4315,6 +4378,25 @@ def usd_text(cell):
     return text + (' (suma niepełna)' if cell.get('incomplete') is True else '')
 
 
+def different_text(record, text):
+    """`text` with the note that the field is counted differently than in AO, for a native record; unchanged for AO."""
+    return '%s (%s)' % (text, DIFFERENT_NOTE) if source_of(record) == 'native' else text
+
+
+def epics_of_source(count, record):
+    """`epiku AO`, `epików natywnych`: the history after `z` (`mediana z`)."""
+    if source_of(record) == 'native':
+        return plural(count, 'epiku natywnego', 'epików natywnych', 'epików natywnych')
+    return plural(count, 'epiku AO', 'epików AO', 'epików AO')
+
+
+def epics_text(count, record):
+    """`5 epików AO`, `2 epiki natywne`: the history of a record is of its own source only."""
+    if source_of(record) == 'native':
+        return '%d %s' % (count, plural(count, 'epik natywny', 'epiki natywne', 'epików natywnych'))
+    return '%d %s' % (count, plural(count, 'epik AO', 'epiki AO', 'epików AO'))
+
+
 def plural(number, one, few, many):
     if number == 1:
         return one
@@ -4370,6 +4452,11 @@ def _breakdown_text(record, whole):
     return ', '.join(parts)
 
 
+def breakdown_label(record):
+    """`rozkład`, for a native record with the note: its breakdown has no limit, CI and GitHub waits (spec: M3)."""
+    return different_text(record, 'rozkład')
+
+
 def time_topic(record, comment):
     wall = _dict(record.get('wall'))
     to_done, to_merge = wall.get('to_done'), wall.get('to_merge')
@@ -4378,15 +4465,15 @@ def time_topic(record, comment):
     if not _is_number(to_done):
         text = 'Czas do epic_done: %s' % NO_DATA
         if record.get('breakdown_end') == 'merged_at' and isinstance(breakdown, dict) and _is_number(to_merge):
-            text += " (epik zamknięty ręcznie); rozkład do merge'u (%s): %s" % (
-                hours_text(to_merge), _breakdown_text(record, to_merge))
+            text += " (epik zamknięty ręcznie); %s do merge'u (%s): %s" % (
+                breakdown_label(record), hours_text(to_merge), _breakdown_text(record, to_merge))
         lines = [text]
     else:
         text = 'Czas do epic_done: %s' % hours_text(to_done)
         if _is_int(tasks) and tasks > 0:
             text += ' (%s na zadanie planu)' % hours_text(to_done / tasks)
         if isinstance(breakdown, dict):
-            text += '; rozkład: ' + _breakdown_text(record, to_done)
+            text += '; %s: %s' % (breakdown_label(record), _breakdown_text(record, to_done))
         lines = [text]
     if comment:
         lines.append("Czas do merge'u: %s, odbiór (review): %s" % (hours_text(wall.get('to_merge')),
@@ -4434,12 +4521,13 @@ def integration_topic(record):
         text += ' w %d %s' % (data['attempts'], plural(data['attempts'], 'próbie', 'próbach', 'próbach'))
     if _count(data.get('rounds')) is not None:
         text += ', rund: %d' % data['rounds']
-    return [text]
+    return [different_text(record, text)]
 
 
 def value_topic(record):
     value = _dict(record.get('value'))
-    head = 'Wartość tokenów (szacunek CLI według cen API, nie koszt subskrypcji): '
+    head = 'Wartość tokenów (szacunek CLI według cen API, nie koszt subskrypcji): ' if source_of(record) != 'native' \
+        else 'Wartość tokenów (szacunek według cennika API, %s; nie koszt subskrypcji): ' % DIFFERENT_NOTE
     if not isinstance(value.get('total'), dict):
         return [head + NO_DATA]
     lines = [head + 'razem ' + usd_text(value['total'])]
@@ -4464,7 +4552,8 @@ def value_topic(record):
 
 
 def subscription_topic(record):
-    head = 'Subskrypcja (punkty procentowe okien limitu, osobno od wartości tokenów): '
+    head = 'Subskrypcja (punkty procentowe okien limitu, osobno od wartości tokenów%s): ' % (
+        '; ' + DIFFERENT_NOTE if source_of(record) == 'native' else '')
     data = record.get('subscription')
     if not isinstance(data, dict):
         return [head + NO_DATA]
@@ -4513,7 +4602,13 @@ def retries_topics(record):
         causes = [_count(repair.get('final_pr_conflict')), _count(repair.get('ci_red'))]
         lines.append('REPAIR: %d (%s)' % (repair['count'], 'przyczyna nieznana' if None in causes else
                                            'konflikt końcowego PR %d, czerwone CI %d' % tuple(causes)))
-    lines.append('FIX: %s' % (_count(data.get('fix')) if _count(data.get('fix')) is not None else NO_DATA))
+    fix = _count(data.get('fix'))
+    if fix is None:
+        lines.append('FIX: %s' % NO_DATA)
+    elif source_of(record) == 'native':
+        lines.append('FIX: %d (rundy przeglądu, %s)' % (fix, DIFFERENT_NOTE))      # the blocking reports of reviews
+    else:
+        lines.append('FIX: %d' % fix)
     if not isinstance(data.get('sync_prs'), list):
         lines.append('Sync: %s' % NO_DATA)
     else:
@@ -4542,7 +4637,7 @@ def human_topic(record):
     waits, seconds = _count(human.get('waits')), human.get('wait_s')
     if waits is not None and _is_number(seconds):
         text += '; czekania na użytkownika: %d, razem %d min' % (waits, int(round(seconds / 60.0)))
-    return [text]
+    return [different_text(record, text)]
 
 
 def waste_topic(record):
@@ -4611,10 +4706,12 @@ def regressions_topic(record):
 
 def position_topic(record, history, config, comment):
     if not history:
-        return ['Pozycja na tle mediany: brak historii (zmergowanych epików przed tym: 0)']
+        return ['Pozycja na tle mediany: brak historii (zmergowanych epików %s przed tym: 0)'
+                % ('natywnych' if source_of(record) == 'native' else 'AO')]
     values = [trend_values(h, config) for h in history]
     medians = {c: median_of([v[c] for v in values]) for c in TREND_COLUMNS}
     estimated = trend_estimated(record, config)
+    different = trend_different(record, config)
     median_estimated = set(estimated_list([trend_estimated(h, config) for h in history]))
     position = position_of(trend_values(record, config), medians)
     parts = []
@@ -4625,8 +4722,12 @@ def position_topic(record, history, config, comment):
         parts.append('%s %s (mediana %s%s)' % (column, cell_text(entry['value'], column in estimated),
                                                cell_text(entry['median'], column in median_estimated),
                                                percent_text(entry, column in estimated or column in median_estimated)))
-    return ['Pozycja na tle mediany (%d %s, na zadanie planu; czasy w godzinach): %s' % (
-        len(history), plural(len(history), 'epik', 'epiki', 'epików'), '; '.join(parts) or NO_DATA)]
+    text = 'Pozycja na tle mediany (%s, na zadanie planu; czasy w godzinach): %s' % (
+        epics_text(len(history), record), '; '.join(parts) or NO_DATA)
+    marked = [c for c in TREND_COLUMNS if c in different and not (c == 'review' and not comment)]
+    if marked:
+        text += ' [%s: %s]' % (DIFFERENT_NOTE, ', '.join(marked))
+    return [text]
 
 
 def gaps_topic(record, comment):
@@ -4671,14 +4772,22 @@ def manual_fix_lines(fixes):
 def comment_head(record):
     human = _dict(record.get('human'))
     interventions, waits, seconds = _count(human.get('interventions')), _count(human.get('waits')), human.get('wait_s')
-    lines = ['Interwencje człowieka: %s' % (interventions if interventions is not None else NO_DATA)]
+    lines = [different_text(record, 'Interwencje człowieka: %s' % (interventions if interventions is not None
+                                                                   else NO_DATA))]
     if waits is None or not _is_number(seconds):
         lines.append('Czekanie na użytkownika: %s' % NO_DATA)
     else:
-        lines.append('Czekanie na użytkownika: %d %s, razem %d min%s' % (
+        lines.append(different_text(record, 'Czekanie na użytkownika: %d %s, razem %d min%s' % (
             waits, plural(waits, 'czekanie', 'czekania', 'czekań'), int(round(seconds / 60.0)),
-            ', otwarte: %d' % human['open'] if _count(human.get('open')) else ''))
+            ', otwarte: %d' % human['open'] if _count(human.get('open')) else '')))
     return lines + manual_fix_lines(human.get('manual_fixes'))
+
+
+def source_topic(record):
+    if source_of(record) == 'native':
+        return ['Źródło pomiaru: natywne (transkrypty sesji epiku); pola %s są oznaczone, historia i mediana tylko '
+                'z epików natywnych' % DIFFERENT_NOTE]
+    return ['Źródło pomiaru: AO (przebieg /ao-run); historia i mediana tylko z epików AO']
 
 
 def render_measurement(record, records, config, comment):
@@ -4691,11 +4800,11 @@ def render_measurement(record, records, config, comment):
             items = bottlenecks_of(record, history, config, Gaps())
     else:
         items = bottlenecks_of(record, history, config, Gaps(), include_review=False)
-    head = 'Wąskie gardła (mediana z %d %s)' % (len(history), plural(len(history), 'epiku', 'epików', 'epików'))
+    head = 'Wąskie gardła (mediana z %d %s)' % (len(history), epics_of_source(len(history), record))
     numbered = bottleneck_lines(items)
     topics = [[head + ':'] + numbered if numbered else
               [head + ': brak pozycji z nadwyżką co najmniej %s h ponad medianę' % pl(config['bottlenecks']['min_excess_h'])]]
-    topics += [time_topic(record, comment), attempts_time_topic(record), integration_topic(record),
+    topics += [source_topic(record), time_topic(record, comment), attempts_time_topic(record), integration_topic(record),
                value_topic(record), subscription_topic(record)]
     topics += [[line] for line in retries_topics(record)]
     topics += [gate_topic(record)]

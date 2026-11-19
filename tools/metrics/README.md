@@ -67,6 +67,21 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   `recomputed`) i listy kolumn szacowanych: `epics[].estimated` (wartości epiku), `median_estimated` (mediany tabeli),
   `position.estimated` (wartości epiku z `position.epic`) i `position.median_estimated`; liczby są te same co bez
   oznaczenia. Bez rekordów kod `2` z podpowiedzią `backfill`.
+  **Dwa źródła.** Tabela jest jedna dla rekordów AO (`source: ao`; rekord bez pola `source` jest AO) i natywnych
+  (`source: native`): kolumna „źródło” przy każdym epiku, a mediana jest osobna dla każdego źródła (linia `mediana ao`
+  i `mediana native`, z wierszy tabeli danego źródła; rekord jednego źródła nie zmienia mediany drugiego). Pozycja epiku
+  „wobec mediany (źródło: …)” jest względem mediany jego źródła; źródło bez wierszy w tabeli ma medianę `null`
+  („brak danych”). W wierszu natywnym kolumna bez danych (np. `gate_wait`, `failed`, `repair` – brak źródła
+  w transkryptach) to „brak danych”, nigdy zero (w wierszu AO nieznana wartość zostaje `-`). Bez oznaczenia są
+  porównywalne tylko kolumny `to_done`, `review` i `regressions` (jak liczba zadań, czas do gotowego PR i do merge'u,
+  CI końcowego PR); pozostałe kolumny rekordu natywnego, które mają wartość (`work`, `human_wait`, `repeat_runs`,
+  `value`, `pp`, `interventions`), mają „†” (liczone inaczej niż w AO: wartość z cennika zamiast kosztu z CLI,
+  interwencje to każda wiadomość człowieka, rozkład czasu bez oczekiwania na limity, CI i GitHub, koszt subskrypcji
+  z lokalnych transkryptów), także w medianie i w linii pozycji; pod tabelą jest legenda „† liczone inaczej niż w AO”,
+  gdy jest choć jedno oznaczenie. `--json`: `epics[].source`, `epics[].different` (kolumny oznaczone „†”),
+  `sources` (`{ao|native: {epics, median, median_estimated, median_different}}` dla źródeł z wierszami w tabeli),
+  `median` i `median_estimated` (mediana źródła pozycji, `median_source`), `position.source`, `position.different`
+  i `position.median_different`; klucze `epics`, `position` i `median`, które czyta `retro.py`, zostają.
 - `render EPIK --format report|comment`: tekst z zapisanego rekordu i historii (`<state>/epics`), bez `gh`.
   `report` (raport odbioru, przed merge'em) zaczyna się od wąskich gardeł liczonych od nowa bez `review`, potem: czas do
   `epic_done` i rozkład, czas w próbach (z możliwymi powtórzeniami testów, ponowieniami API i odmowami; przy
@@ -76,7 +91,14 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   zadań ze znaną wartością)”, gdy któreś zadanie ma wartość nieznaną albo niepełną; liczby szacowane z „≈”),
   subskrypcja w pp (osobno, nigdy w sumie z wartością tokenów; `share` przy nakładaniu), próby, REPAIR, FIX, sync, czekanie
   w bramce, interwencje, alarmy, wersje CLI i modele, CI, pozycja na tle mediany historii (epiki zmergowane przed tym) i braki
-  danych (pełny tekst `gaps`). `comment` (po merge'u): linie `Interwencje człowieka: N`, `Czekanie na użytkownika: M czekania,
+  danych (pełny tekst `gaps`). Po wąskich gardłach jest linia „Źródło pomiaru: AO” albo „natywne”; historia (mediana wąskich
+  gardeł, „Pozycja na tle mediany”) to epiki zmergowane przed tym i tego samego źródła („mediana z 5 epików AO”, „2 epiki
+  natywne”; bez nich „brak historii”). Dla rekordu natywnego pola liczone inaczej niż w AO mają dopisek „(liczone inaczej niż
+  w AO)”: rozkład czasu (jego `idle` to górna granica, bo `breakdown_incomplete: true` oznacza w rekordzie natywnym brak
+  źródła kategorii `limit_wait`, `ci_wait`, `host_pause` i `github_wait`, które mają „brak danych”), integracja (rundy
+  przeglądu), wartość (szacunek według cennika API zamiast kosztu z CLI), subskrypcja, FIX (rundy przeglądu), interwencje
+  i czekania człowieka oraz kolumny linii pozycji; pola bez źródła (próby, REPAIR, sync, bramka, alarmy) to „brak danych”.
+  `comment` (po merge'u): linie `Interwencje człowieka: N`, `Czekanie na użytkownika: M czekania,
   razem K min` i `Ręczne poprawki: N` z listą `- PR #<nr>: <opis>` albo `- <opis>` (format, który czyta `retro.py collect`; test
   używa jego parsera), pusta linia i blok `### Pomiar epiku` z tymi samymi liczbami oraz `to_merge`, `review`, wąskimi gardłami
   z `review` z rekordu i regresjami. Bez `--manual-fixes` w rekordzie linia to `Ręczne poprawki: brak danych` (bez liczby, więc
@@ -304,7 +326,10 @@ liczba zadań planu tego epiku; udział w `to_done`), zadania (`work` zadania �
 w `to_done`; kind bez historii nie jest kandydatem), `gate_wait` (udział w `gate_wait` + `to_done`; 0 bez czekania nie daje
 pozycji, a brak wpisów w `gate.jsonl` pomija kandydata z pozycją `bottlenecks.gate_wait` w `gaps`) i `review` (udział w `to_merge`;
 znany po merge'u, więc raport odbioru go pomija, a blok po merge'u ma). Historia to zapisane rekordy innych epików zmergowanych
-przed tym (gdy ten nie ma czasu merge'u: wszystkie zmergowane); mediana ignoruje `null` i epiki bez zadań planu. Przy mniej
+przed tym (gdy ten nie ma czasu merge'u: wszystkie zmergowane) i tego samego źródła (`source`: epik natywny ma historię
+tylko z epików natywnych, epik AO tylko z epików AO; to samo dotyczy `decide`); mediana ignoruje `null` i epiki bez zadań planu.
+Zadania rekordu natywnego mają `kind: null`, więc nie są kandydatami wąskich gardeł, a `decide` pomija dla nich regułę D2
+(z powodem w `skipped`); kategorie czasu, `review` i `in_attempts` działają jak dla AO. Przy mniej
 niż `min_history` (5) epikach mediana jest z dostępnych, z pozycją `bottlenecks` w `gaps`; bez historii lista jest pusta.
 Rekord liczy wąskie gardła przy zapisie (`epic`, `backfill`), więc rekord starego epiku zapisany przed jego poprzednikami ma
 je z mniejszej historii: `epic <epik>` liczy je od nowa. Szczegóły i progi: `config.json`, klucz `bottlenecks`.

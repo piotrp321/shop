@@ -396,6 +396,17 @@ transkryptów z samymi czytanymi polami; treść prawdziwych transkryptów nie t
   Wartość tokenów, pp i `repeat_runs` z szacowanego albo niepełnego źródła (`estimated`, `share_estimated`,
   `in_attempts.incomplete`) mają „≈” w tabeli, w pozycji względem mediany razem z procentem różnicy (także w raporcie odbioru)
   i znacznik w `--json`, tak samo jak w `render`.
+- **Dwa źródła** (`docs/features/ash-v1/spec.md`, M6). `trend` pokazuje rekordy AO i natywne w jednej tabeli z kolumną
+  źródła (rekord bez pola `source` jest AO). Mediany liczy się osobno dla każdego źródła, z wierszy tabeli tego źródła:
+  rekord natywny nie zmienia mediany AO ani odwrotnie, a pozycja epiku jest względem mediany jego źródła (źródło bez
+  wierszy w tabeli ma medianę `null`). W wierszu natywnym kolumna bez danych to „brak danych”, nigdy zero. Porównywalne
+  między źródłami są tylko pola o tej samej definicji: liczba zadań, czas do gotowego PR (`to_done`) i do merge'u
+  (`review` to różnica), CI końcowego PR, regresje. Pozostałe kolumny rekordu natywnego z wartością mają „†” („liczone
+  inaczej niż w AO”): `work` i `human_wait` (rozkład czasu bez oczekiwania na limity, CI i GitHub), `repeat_runs`, wartość
+  w USD (cennik zamiast kosztu z CLI, szacunek, więc razem z „≈”), `interventions` (każda wiadomość człowieka zamiast
+  odpowiedzi na blokadę) i `pp` (koszt subskrypcji z lokalnych transkryptów); raport nie zestawia ich jako równoważnych.
+  `breakdown_incomplete: true` rekordu natywnego (bool; w AO lista kategorii) oznacza, że `idle` jest górną granicą,
+  bo kategorie bez źródła mają `null`, a ich czas jest w `idle`.
 - Rekordy z otwartym oknem regresji przelicza każde `trend` (merge kolejnego epiku, start `/ao-run`).
 - Epik z inną wersją CLI albo innym zestawem modeli niż poprzedni ma w `trend` adnotację zmiany (bez korekty liczb).
 
@@ -423,7 +434,10 @@ Każda pozycja ma:
 - potencjalny efekt optymalizacji: oczekiwane skrócenie czasu zegarowego z reguły decyzji (w godzinach), a bez
   reguły nadwyżka jako górna granica z dopiskiem „bez reguły decyzji”.
 
-Bez co najmniej 5 epików w historii mediana jest z dostępnych, a rekord ma pozycję w `gaps`. Raport odbioru zaczyna
+Historia to epiki zmergowane przed tym i tego samego źródła (`source`): wąskie gardła epiku natywnego mają medianę tylko
+z epików natywnych, epiku AO tylko z AO (tak samo reguły `decide`). Zadania rekordu natywnego mają `kind: null`, więc nie
+są kandydatami wąskich gardeł i `decide` pomija dla nich regułę D2. Bez co najmniej 5 epików w historii mediana jest
+z dostępnych, a rekord ma pozycję w `gaps`. Raport odbioru zaczyna
 sekcję „Pomiar” od wąskich gardeł, przed pozostałymi liczbami, np. „1. `human_wait`: +6,2 h ponad medianę (22%
 czasu), potencjalnie −4,1 h (D4)”.
 
@@ -554,6 +568,11 @@ obliczeń agenta: mediana, rozrzut i liczebność przed i po, czas epiku, zmiany
   z „≈”), koszt subskrypcji w pp (z `share` przy nakładaniu), próby, REPAIR, FIX, sync, czekanie w bramce,
   interwencje, alarmy, wersje CLI i modele, pozycja na tle mediany, braki danych; na początku wąskie gardła. Istniejące pozycje raportu
   (interwencje, czas, koszt, czekanie) pochodzą z rekordu.
+- Raport i komentarz mówią, z jakiego źródła jest rekord (linia „Źródło pomiaru”), a historię w medianie wąskich gardeł
+  i w „Pozycji na tle mediany” biorą z epików tego samego źródła. Pola rekordu natywnego liczone inaczej niż w AO (rozkład
+  czasu, integracja i rundy przeglądu, wartość z cennika API, subskrypcja, FIX, interwencje i czekania człowieka) mają
+  dopisek „(liczone inaczej niż w AO)”; pola bez źródła w przebiegu natywnym (próby, REPAIR, sync, bramka, alarmy,
+  kategorie rozkładu bez źródła) to „brak danych”.
 - Komentarz po merge'u (`/ao-run`, punkt 6) to blok „Pomiar epiku” z `render --format comment`: te same liczby po
   merge'u (z `to_merge` i `review`) i dotychczasowe linie (interwencje, czekanie, `Ręczne poprawki: N` z listą
   w formacie czytanym przez `retro.py collect`). Render przyjmuje tylko pola liczbowe, ID zadań, nazwy ról i modeli
