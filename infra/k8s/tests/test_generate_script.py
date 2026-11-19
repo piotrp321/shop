@@ -61,8 +61,8 @@ def generator_log(summary=SUMMARY, first=None):
 
 # The stub of docker: `docker run ... <image> <arguments>`. The python image runs python itself; the curl image answers the probe;
 # the kubectl image plays the cluster of $STUB_DIR/state.json. Every call of kubectl and curl is a JSON line in $STUB_LOG
-# ({"image", "args", "stdin"}).
-DOCKER = r'''#!/usr/bin/env python3
+# ({"image", "args", "stdin"}). It runs on the python of the image of the tests without site (-S), which halves its start.
+DOCKER = r'''#!/usr/local/bin/python3 -SI
 import json, os, sys
 
 args = sys.argv[1:]
@@ -72,7 +72,11 @@ while args[i].startswith("-"):
     i += 2 if args[i] in ("-u", "-e", "-v", "-w", "--network", "--entrypoint") else 1
 image, rest = args[i], args[i + 1:]
 if image.startswith("python:"):
-    os.execvp(rest[0], rest)
+    # `py -c <code> <arguments>` of tools.sh runs in this process (a second interpreter would double the time of the tests).
+    assert rest[:3] == ["python", "-I", "-c"], rest
+    sys.argv = ["-c"] + rest[4:]
+    exec(compile(rest[3], "<py>", "exec"), {"__name__": "__main__"})
+    sys.exit(0)
 
 root = os.environ["STUB_DIR"]
 state_path = os.path.join(root, "state.json")
@@ -295,9 +299,11 @@ elif verb in ("create", "replace"):
         state["record"] = {"data": doc.get("data", {}), "version": state["next_version"], "metadata": doc["metadata"]}
         state["next_version"] += 1
         state["records"].append(doc.get("data", {}))
+        # The version of this write: a second copy that writes right after it (interfere_after) makes a newer one.
+        written = state["record"]["version"]
         event("record " + doc.get("data", {}).get("phase", "?"))
         save()
-        print(state["record"]["version"], end="")
+        print(written, end="")
     elif kind == "Secret":
         if name in state["secrets"]:
             fail(f'Error from server (AlreadyExists): secrets "{name}" already exists')
@@ -399,12 +405,15 @@ else:
     fail("unknown kubectl call " + " ".join(rest))
 '''
 
-DATE = r'''#!/usr/bin/env python3
-import os, sys, time
-with open(os.path.join(os.environ["STUB_DIR"], "clock")) as f:
-    clock = int(f.read())
-formats = [a[1:] for a in sys.argv[1:] if a.startswith("+")]
-print(clock if formats in ([], ["%s"]) and formats else time.strftime(formats[0] if formats else "%a %b %d %H:%M:%S UTC %Y", time.gmtime(clock)))
+# date of the clock: +%s is the clock, another format is the clock in UTC (busybox date of the image of the tests).
+DATE = r'''#!/bin/sh
+clock="$(cat "$STUB_DIR/clock")"
+format=""
+for argument in "$@"; do
+  case "$argument" in +*) format="$argument" ;; esac
+done
+[ "$format" != "+%s" ] || { echo "$clock"; exit 0; }
+exec /bin/date -u -d "@$clock" ${format:+"$format"}
 '''
 
 SLEEP = r'''#!/bin/sh
@@ -501,6 +510,8 @@ class Cluster:
             "GENERATE_PROBE_URL": PROBE_URLS,
             "PROFILE": "medium",
             "REPLACE": "seed",
+            # The rounds of the probe and the readings of Traefik: fewer of them in a wait of the same length.
+            "GENERATE_PROBE_POLL": "15",
         }
         variables.update(env)
         variables = {k: v for k, v in variables.items() if v is not None}
