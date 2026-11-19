@@ -1,0 +1,72 @@
+{{- /*
+The CronJob load (docs/features/demo-scale/spec.md, "Sprawdzenie po generowaniu"): k6 runs load/smoke.js against the services of the
+cluster (the store at http://store:3000 and the API at http://api, as in compose) once the demo data is generated; the measurement of
+the load can run the other scripts of load/ in the same way. The CronJob never runs by itself (suspend: true): its Jobs are created
+from it (kubectl create job --from=cronjob/load), so a run uses the scripts and the image of the deployed revision. The scripts are the
+ConfigMap load-scripts (configmaps.yaml) mounted at /load, with the subdirectory lib. The settings are those of load/lib/config.js: the
+origin of the writes is the public address of the store (the BFF of the store refuses another Origin). The pod has no secret and no
+token of the Kubernetes API. A failed run is reported, never repeated; the checkout of a run stays in the data as an order of
+load-<n>@example.com.
+*/ -}}
+{{- /* The paths under load/ of the scripts the ConfigMap carries, as a JSON list: the files of load/ and of load/lib/. */ -}}
+{{- define "shop.load.scripts" -}}
+{{- $paths := list -}}
+{{- range $path, $_ := .Files.Glob "files/load/*.js" }}{{ $paths = append $paths (trimPrefix "files/load/" $path) }}{{ end -}}
+{{- range $path, $_ := .Files.Glob "files/load/lib/*.js" }}{{ $paths = append $paths (trimPrefix "files/load/" $path) }}{{ end -}}
+{{- $paths | sortAlpha | toJson -}}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: load
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "load") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  # Never by itself: the Jobs are created from it. The schedule is required, not used.
+  schedule: "0 0 1 1 *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.load.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "load") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          containers:
+            - name: load
+              image: {{ .Values.images.k6 }}
+              args: ["run", "--quiet", "/load/smoke.js"]
+              env:
+                - name: STORE_URL
+                  value: http://store:3000
+                - name: API_URL
+                  value: http://api
+                - name: STORE_ORIGIN
+                  value: {{ include "shop.url" (dict "root" . "sub" "") }}
+                - name: HOME
+                  value: /tmp
+              volumeMounts:
+                - name: scripts
+                  mountPath: /load
+                  readOnly: true
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "k6") | nindent 16 }}
+          volumes:
+            - name: scripts
+              configMap:
+                name: load-scripts
+                items:
+                  {{- range $path := include "shop.load.scripts" . | fromJsonArray }}
+                  - key: {{ replace "/" "__" $path }}
+                    path: {{ $path }}
+                  {{- end }}

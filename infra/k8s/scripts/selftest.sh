@@ -434,6 +434,10 @@ restore_without_confirmation() { replace infra/k8s/scripts/restore.sh '[ "$answe
 # The CronJob demo-data (docs/features/demo-data/spec.md): its Jobs delete the data of every module, so a CronJob that is not suspended
 # would run on its schedule.
 demo_data_not_suspended() { replace_after infra/k8s/charts/shop/templates/demo-data.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+# The CronJob load (docs/features/demo-scale/spec.md): a Job of it checkouts an order in the data, so a CronJob that is not suspended
+# would run on its schedule; the k6 image of the chart is the one of load/k6.sh (a new k6 is changed in both places).
+load_not_suspended() { replace_after infra/k8s/charts/shop/templates/load.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+load_k6_digest_differs() { replace infra/k8s/charts/shop/values.yaml '@sha256:2dd4756ec6e1' '@sha256:2dd4756ec6e0'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 # The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
 # expression that does what the scenarios do not allow.
@@ -532,6 +536,8 @@ run_case "monitoring Service policy without the external IPs" "test_the_service_
 run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" "tests" monitoring_pods_with_priority_classes_of_the_system
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" "tests" restore_without_confirmation
 run_case "demo-data CronJob that is not suspended" "test_the_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" demo_data_not_suspended
+run_case "load CronJob that is not suspended" "test_the_load_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" load_not_suspended
+run_case "k6 image of the chart with another digest than load/k6.sh" "test_the_values_pin_the_image_of_the_runner_of_the_scripts" "tests" load_k6_digest_differs
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
 run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" "alerts" node_disk_full_at_exactly_85_percent
 run_case "alert rule with a PromQL syntax error" "parse error" "alerts" alert_rule_with_a_syntax_error

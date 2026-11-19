@@ -67,3 +67,21 @@ metadata:
     {{- include "shop.wave" "-2" | nindent 4 }}
 data:
   {{- include "shop.keycloak.realmsData" . | trim | nindent 2 }}
+---
+{{/*
+The scripts of load/ for the CronJob load: every .js file of load/ and load/lib/ (files/load is a symlink to the directory). The key
+of a file is its path under load/ with "/" as "__" (a key has no slash); the volume of the CronJob puts each file back at its path, so
+the imports of smoke.js ('./lib/data.js') resolve in the container as they do in the repository.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: load-scripts
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "load") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+data:
+  {{- range $path := include "shop.load.scripts" . | fromJsonArray }}
+  {{ replace "/" "__" $path }}: {{ $.Files.Get (printf "files/load/%s" $path) | toJson }}
+  {{- end }}

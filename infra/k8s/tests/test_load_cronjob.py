@@ -59,7 +59,7 @@ class WhereItRendersTest(unittest.TestCase):
 
 
 class CronJobTest(unittest.TestCase):
-    def test_the_cronjob_is_suspended_so_that_it_never_runs_by_itself(self):
+    def test_the_load_cronjob_is_suspended_so_that_it_never_runs_by_itself(self):
         for case in CASES:
             spec = cronjob(case)["spec"]
             self.assertIs(True, spec["suspend"], case)
