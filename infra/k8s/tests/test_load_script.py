@@ -12,6 +12,7 @@ import math
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -30,6 +31,8 @@ SCRIPT = REPO / "infra/k8s/scripts/load.sh"
 # of the disks (the checks of W2) comes from STUBSPACE (see there); `df -Pk` of the host is the stub DF. A `docker run` that
 # mounts the directory STUB_MOUNT_DENIED (-v <directory>:...) is refused as Docker Desktop refuses a path that is not shared
 # (exit 125, "mounts denied"); k6 ends with <code> when STUB_K6_FAIL is <script>:<code> (125: the docker run itself failed).
+# With STUB_DATA_JOB_AFTER=<n> the Job of the generator is Complete from the poll n + 1 on (the polls are counted in
+# $STUB_SPACE_DIR/job.polls).
 DOCKER = r"""#!/bin/sh
 # The try of the mount of LOAD_OUT is kept apart in $STUB_LOG.mount (with the number of the calls of $STUB_LOG before it), so that
 # the tests of what is made before the cluster still see only the calls that make something.
@@ -48,6 +51,7 @@ case "$1" in
   info)
     [ -z "${STUB_NO_DOCKER:-}" ] || { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
     echo "${STUB_NCPU:-16} ${STUB_MEM_BYTES:-34359738368}" ;;
+  stats) printf '1.00%% 100MiB / 1GiB\n' ;;
   rm)
     case "$*" in
       *k6-ld-loadtest*) [ ! -f "$STUB_SPACE_DIR/k6.pid" ] || kill "$(cat "$STUB_SPACE_DIR/k6.pid")" 2>/dev/null || true ;;
@@ -81,7 +85,17 @@ case "$1" in
           *"exec statefulset/postgres"*"pg_database_size"*) printf 'stub sizes of postgres\n' ;;
           *"exec statefulset/elasticsearch"*"_cat/indices"*) printf 'stub indices of elasticsearch\n' ;;
           *"get job demo-data-load"*activeDeadlineSeconds*) printf '7200' ;;
-          *"get job demo-data-load"*conditions*) stubdrop job; printf '%s' "${STUB_DATA_JOB-Complete}" ;;
+          *"get job demo-data-load"*conditions*)
+            stubdrop job
+            if [ -n "${STUB_DATA_JOB_AFTER:-}" ]; then
+              n=0
+              [ ! -f "$STUB_SPACE_DIR/job.polls" ] || n="$(cat "$STUB_SPACE_DIR/job.polls")"
+              n=$((n + 1))
+              echo "$n" > "$STUB_SPACE_DIR/job.polls"
+              [ "$n" -le "$STUB_DATA_JOB_AFTER" ] || printf 'Complete'
+            else
+              printf '%s' "${STUB_DATA_JOB-Complete}"
+            fi ;;
           *"logs job/demo-data-load"*) printf '%s\n' "${STUB_DATA_LOG:-2026-11-18T10:00:00.000000000Z seeding}" ;;
         esac ;;
       *curlimages/curl*"/api/v1/sitemap/product-chunks"*)
@@ -158,6 +172,33 @@ echo "$*" >> "$STUB_SPACE_DIR/host.calls"
 exec stubspace host
 """
 
+# The clock of the host: `date +%s` is the real time plus the number of seconds in $STUB_SPACE_DIR/skew (a host that slept, and
+# a clock that went on); STUBDROP writes the file at the moment of a phase (STUB_SPACE_DROP=<phase>:skew:<seconds>). Any other date
+# is the real one.
+DATE = r"""#!/bin/sh
+case "$*" in
+  "+%s")
+    skew=0
+    [ ! -f "$STUB_SPACE_DIR/skew" ] || skew="$(cat "$STUB_SPACE_DIR/skew")"
+    echo $(( $(/bin/date +%s) + skew )) ;;
+  *) exec /bin/date "$@" ;;
+esac
+"""
+
+# caffeinate of macOS (only the tests of the sleep lock install it): the arguments are kept in $STUB_SPACE_DIR/caffeinate.calls, and
+# a process that `-w` waits for must exist (caffeinate.waited), as with the real one. It runs, as the real one does, until it is
+# stopped (its pid in caffeinate.pid), unless STUB_CAFFEINATE_FAIL makes it fail at once.
+CAFFEINATE = r"""#!/bin/sh
+echo "$*" >> "$STUB_SPACE_DIR/caffeinate.calls"
+[ -z "${STUB_CAFFEINATE_FAIL:-}" ] || { echo "caffeinate: stub failure" >&2; exit 1; }
+while [ $# -gt 0 ]; do
+  if [ "$1" = -w ]; then shift; kill -0 "$1" && echo "$1" > "$STUB_SPACE_DIR/caffeinate.waited"; fi
+  shift
+done
+echo $$ > "$STUB_SPACE_DIR/caffeinate.pid"
+exec sleep 300
+"""
+
 # The read access of the photo pool as the file of the user has it, with the token that writes next to it.
 READ_ACCESS = {
     "DEMO_PHOTOS_ENDPOINT": "https://endpoint-7f3a1c.r2.example.com",
@@ -225,7 +266,7 @@ class LoadScript(unittest.TestCase):
         base = pathlib.Path(self.tmp.name)
         self.bin = base / "bin"
         self.bin.mkdir()
-        for name, text in (("docker", DOCKER), ("stubspace", STUBSPACE), ("stubdrop", STUBDROP), ("df", DF)):
+        for name, text in (("docker", DOCKER), ("stubspace", STUBSPACE), ("stubdrop", STUBDROP), ("df", DF), ("date", DATE)):
             (self.bin / name).write_text(text)
             (self.bin / name).chmod(0o755)
         self.space = base / "space"
@@ -1006,6 +1047,133 @@ class LoadScript(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertNotIn("old summary", (self.out / "space.log").read_text())
         self.assertEqual((900_000_000, 900_000_000), self.space_rows()[0][0][1:])
+
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # A host that slept: the times of the run are not reliable (docs/features/demo-data/spec.md, W2, space.log)
+    # -----------------------------------------------------------------------------------------------------------------
+    def sleep_run(self, skew, profile="medium", **env):
+        """A run of a generated profile whose clock jumps by `skew` seconds at the first poll of the Job (the host slept)."""
+        env = {"LOAD_SPACE_POLL": "1", "STUB_DATA_JOB_AFTER": "4", "STUB_SPACE_DROP": f"job:skew:{skew}", **env}
+        return self.run_data(profile, **env)
+
+    def pause_line(self):
+        """The `#` line of space.log about the pauses: (the number, the limit in seconds, the total in seconds), or None."""
+        match = re.search(r"(?m)^# .*slept.* (\d+) pause.* more than (\d+) s.* (\d+) s in total", (self.out / "space.log").read_text())
+        return tuple(int(group) for group in match.groups()) if match else None
+
+    def test_a_pause_of_the_host_is_written_in_space_log_warned_about_and_the_run_does_not_pass(self):
+        result = self.sleep_run(600)
+        # The measurement is there, but its times are not: not the exit 0 of a run that was done.
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertTrue((self.out / "steady.json").exists())
+        count, limit, total = self.pause_line()
+        self.assertEqual((1, 120), (count, limit))
+        self.assertTrue(600 <= total <= 660, total)
+        for text in ("slept", "not reliable", f"{total} s"):
+            self.assertIn(text, result.stderr)
+        environment = (self.out / "environment.txt").read_text()
+        self.assertRegex(environment, r"(?m)^host sleep: .*slept.*not reliable")
+        self.assertIn(f"{total} s", environment)
+        # The summary of the space stays the last lines of the file.
+        self.assertRegex((self.out / "space.log").read_text().splitlines()[-1], r"^# the peak use")
+
+    def test_a_pause_that_is_not_longer_than_the_limit_is_not_a_sleep(self):
+        result = self.sleep_run(100)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIsNone(self.pause_line())
+        self.assertNotIn("slept", result.stderr)
+        self.assertNotIn("slept", (self.out / "space.log").read_text())
+        self.assertRegex((self.out / "environment.txt").read_text(), r"(?m)^host sleep: none .*120 s")
+
+    def test_the_limit_of_a_pause_is_three_intervals_of_the_check_and_at_least_120_seconds(self):
+        # LOAD_SPACE_POLL=60: the limit is 180 s, so 140 s is no sleep and 400 s is.
+        result = self.sleep_run(140, LOAD_SPACE_POLL="60")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertRegex((self.out / "environment.txt").read_text(), r"(?m)^host sleep: none .*180 s")
+        (self.space / "skew").unlink(missing_ok=True)
+        (self.space / "job.polls").unlink(missing_ok=True)
+        result = self.sleep_run(400, LOAD_SPACE_POLL="60")
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertEqual(180, self.pause_line()[1])
+
+    def test_a_pause_is_found_in_a_run_of_seed_too_from_the_samplers(self):
+        """seed has no guard and no space.log: the readings of the samplers (every 10 s) and the end of the run tell."""
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", LOAD_COOLDOWN="0", STUB_READY="1", STUB_UPDATE_OUT="UPDATE 7",
+                               STUB_K6_OUT=str(self.out), STUB_SPACE_DROP="k6:skew:600")
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("slept", result.stderr)
+        self.assertFalse((self.out / "space.log").exists())
+        self.assertRegex((self.out / "environment.txt").read_text(), r"(?m)^host sleep: .*slept.*not reliable")
+
+    def test_a_run_that_failed_keeps_its_exit_code_and_still_names_the_pause(self):
+        result = self.run_space("medium", LOAD_DATA_TIMEOUT="60", STUB_SPACE_DROP="job:skew:600")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("did not finish", result.stderr)
+        self.assertIn("slept", result.stderr)
+        self.assertEqual(1, self.pause_line()[0])
+
+    def test_the_old_readings_of_an_earlier_run_are_not_a_pause(self):
+        """node-stats.log of an earlier run stays in LOAD_OUT until the samplers start: a run that ends before is no sleep."""
+        (self.out / "node-stats.log").write_text("1000000000 1.00% 100MiB / 1GiB\n")
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", STUB_READY="")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("not ready", result.stderr)
+        self.assertNotIn("slept", result.stderr)
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # The lock of the sleep of the host (caffeinate on macOS)
+    # -----------------------------------------------------------------------------------------------------------------
+    def install_caffeinate(self):
+        (self.bin / "caffeinate").write_text(CAFFEINATE)
+        (self.bin / "caffeinate").chmod(0o755)
+
+    def test_on_macos_caffeinate_holds_the_host_awake_for_the_whole_run_and_is_stopped_with_it(self):
+        self.install_caffeinate()
+        for data in ("seed", "medium"):
+            with self.subTest(data=data):
+                for name in ("caffeinate.calls", "caffeinate.waited", "caffeinate.pid"):
+                    (self.space / name).unlink(missing_ok=True)
+                if data == "seed":
+                    result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", LOAD_COOLDOWN="0", STUB_READY="1", STUB_UPDATE_OUT="UPDATE 7",
+                                           STUB_K6_OUT=str(self.out))
+                else:
+                    result = self.run_data(data)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertTrue((self.space / "caffeinate.calls").exists(), "caffeinate was not started")
+                words = (self.space / "caffeinate.calls").read_text().split()
+                # Idle, disk and system sleep, for as long as the shell of the script lives.
+                self.assertEqual(["-ims", "-w"], words[:2])
+                self.assertRegex(words[2], r"^[0-9]+$")
+                self.assertEqual(words[2], (self.space / "caffeinate.waited").read_text().strip(), "the process it waits for did not exist")
+                self.assertFalse(process_alive(int((self.space / "caffeinate.pid").read_text())), "caffeinate still runs")
+                self.assertRegex((self.out / "environment.txt").read_text(),
+                                 r"(?m)^sleep lock: caffeinate -ims -w [0-9]+ \(the host does not sleep during the run\)$")
+
+    def test_caffeinate_is_stopped_when_the_run_fails_too(self):
+        self.install_caffeinate()
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", STUB_READY="")
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("not ready", result.stderr)
+        self.assertTrue((self.space / "caffeinate.calls").exists(), "caffeinate was not started")
+        self.assertEqual(1, len((self.space / "caffeinate.calls").read_text().splitlines()))
+        self.assertFalse(process_alive(int((self.space / "caffeinate.pid").read_text())), "caffeinate still runs")
+
+    def test_without_caffeinate_the_run_goes_on_without_an_error_and_environment_says_so(self):
+        if shutil.which("caffeinate", path=f"{self.bin}:{os.environ['PATH']}"):
+            self.skipTest("this host has caffeinate")
+        result = self.run_data("medium")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("caffeinate", result.stderr)
+        self.assertRegex((self.out / "environment.txt").read_text(),
+                         r"(?m)^sleep lock: none \(no caffeinate on this host; nothing stops it from sleeping\)$")
+
+    def test_a_caffeinate_that_does_not_start_is_a_warning_and_the_run_goes_on(self):
+        self.install_caffeinate()
+        result = self.run_data("medium", STUB_CAFFEINATE_FAIL="1")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("caffeinate", result.stderr)
+        self.assertRegex((self.out / "environment.txt").read_text(), r"(?m)^sleep lock: none \(caffeinate did not start")
 
 
 if __name__ == "__main__":

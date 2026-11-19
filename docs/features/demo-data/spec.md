@@ -439,6 +439,15 @@ Opis szczegółowy: `docs/features/search/spec.md`.
   zużycie dysku, z którego uaktualnia się `diskPeakGb`). Próbniki pamięci i CPU (`top.log`, `node-stats.log`) działają
   od chwili, gdy klaster jest gotowy, więc obejmują generator. Szacunek z tej specyfikacji: `medium` około 25 GB, `server` około 100 GB, `full` około 225 GB;
   przebieg `medium` w zadaniu epiku uaktualnia `diskPeakGb` według zmierzonych rozmiarów.
+- **Uśpienie komputera.** Gdy komputer się usypia, VM Dockera staje razem z nim, a czasy i przepustowość pomiaru są
+  bezwartościowe, choć nic w wynikach tego nie pokazuje. Dlatego na macOS cel trzyma komputer przytomny przez cały
+  przebieg (`caffeinate -ims -w <pid skryptu>`; na innych systemach nie robi nic i bez błędu, a `environment.txt`
+  w linii `sleep lock:` mówi, co zrobiono). Na końcu cel szuka przerw w odczytach, które sam zbiera (`space.log`
+  przy generatorze, `node-stats.log` od chwili, gdy klaster jest gotowy, oraz koniec przebiegu): odstęp dłuższy niż
+  trzykrotność `LOAD_SPACE_POLL` i co najmniej 120 s to uśpienie. Przerwy trafiają do `space.log` (linia `#`: liczba,
+  łączny i najdłuższy czas), do `environment.txt` (linia `host sleep:`, także gdy ich nie było) i jako ostrzeżenie na
+  standardowe wyjście błędów, a przebieg doprowadzony do końca kończy się kodem 1, nie 0: wyniki zostają w `LOAD_OUT`,
+  ale czasów nie wolno używać. Przebieg, który i tak padł (kod 2), zachowuje swój kod i tylko nazywa przerwę.
 - Wynik `load` zawiera czasy kroków generatora i rozmiary tabel i indeksów (do raportu).
 
 ### Pomiar k6 (część 2)
