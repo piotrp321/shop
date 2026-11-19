@@ -61,7 +61,7 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
     {
       "id": "DEMO-SCALE-2",
       "title": "Chart: zawieszony CronJob load (k6 smoke na usługach klastra)",
-      "scope": "infra/k8s/charts/shop i profile prod, ci (spec: „Sprawdzenie po generowaniu”, punkt 4 i akapit o CronJobie load; kryterium 1, część load; kryterium 11). Szablon templates/load.yaml, ConfigMapa ze skryptów load/ przez dowiązanie w files/ (podkatalog lib zachowany w montowaniu), images.k6 z digestem równym temu z load/k6.sh (sprawdzenie w check), wartości i schemat, adresy http://store:3000 i http://api, STORE_ORIGIN z domeny. Nie obejmuje uruchamiania Joba (DEMO-SCALE-9, DEMO-SCALE-10) ani pomiaru obciążenia (etap 2).",
+      "scope": "infra/k8s/charts/shop i profile prod, ci (spec: „Cel make -C infra/k8s open” i akapit o CronJobie load; kryterium 1, część load; kryterium 11). Szablon templates/load.yaml, ConfigMapa ze skryptów load/ przez dowiązanie w files/ (podkatalog lib zachowany w montowaniu), images.k6 z digestem równym temu z load/k6.sh (sprawdzenie w check), wartości i schemat, adresy http://store:3000 i http://api, STORE_ORIGIN z domeny. Nie obejmuje uruchamiania Joba (DEMO-SCALE-9, DEMO-SCALE-10) ani pomiaru obciążenia (etap 2).",
       "acceptance_criteria": [
         "Render prod i ci zawiera CronJob load: suspend true, backoffLimit 0, obraz k6 z digestem, load/smoke.js jako skrypt, bez envFrom i bez odwołań do sekretów, automountServiceAccountToken false, zasoby z wartości.",
         "ConfigMapa skryptów zawiera każdy plik .js z load/ i load/lib/, a kontener widzi je pod ścieżkami, które importuje smoke.js (test renderu porównuje listę plików z katalogiem load/).",

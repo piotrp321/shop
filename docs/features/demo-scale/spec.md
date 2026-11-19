@@ -497,8 +497,9 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
 - Usunięcie podów Traefika zrywa na kilkanaście sekund cały ruch przychodzący klastra (na serwerze tylko sklep).
 - Przerwany generator zostawia dane niepełne do ponowienia albo powrotu do seeda; nic ich nie przywraca samo, a każdy
   błąd po zamknięciu zostawia sklep zamknięty do ręcznego `generate` (U8: dłuższa niedostępność jest przyjęta).
-- Nie ma celu, który tylko otwiera sklep bez nowego Joba: po zamknięciu niepotwierdzonym przez sondę (np. wyzwanie
-  Cloudflare) sklep zostaje zamknięty z danymi bez zmian i wymaga poprawy adresów sondy i ponownego `generate`.
+- Po zamknięciu niepotwierdzonym przez sondę (np. wyzwanie Cloudflare) sklep zostaje zamknięty z danymi bez zmian;
+  `make open` otwiera go na Jobie poprzedniego przebiegu, jeśli ten jest `Complete`, a ponowny `generate` wymaga
+  poprawy adresów sondy.
 - Sonda z komputera operatora przechodzi przez Cloudflare; jej kody spoza 502–504 i poniżej 500 są odczytem
   nieudanym, więc awaria Cloudflare zatrzymuje cel, a nie otwiera ani nie zamyka sklepu. Wyzwanie Cloudflare (403)
   jest dla niej kodem poniżej 500, czyli „otwarte”: skutki w „Cel `make -C infra/k8s generate`”; ochroną jest

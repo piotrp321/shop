@@ -1,4 +1,4 @@
-"""The CronJob `load` in the render (docs/features/demo-scale/spec.md, "Sprawdzenie po generowaniu", point 4): a suspended CronJob in
+"""The CronJob `load` in the render (docs/features/demo-scale/spec.md, "Cel make -C infra/k8s open"): a suspended CronJob in
 every profile (prod, ci and load), whose Jobs (created after the generation of the demo data) run load/smoke.js of k6 against the
 services of the cluster. The k6 image is the one of load/k6.sh, the scripts are the files of load/ (a ConfigMap rendered from the
 directory through a symlink in files/), and the pod has no secret and no token of the Kubernetes API.

@@ -1,5 +1,5 @@
 {{- /*
-The CronJob load (docs/features/demo-scale/spec.md, "Sprawdzenie po generowaniu"): k6 runs load/smoke.js against the services of the
+The CronJob load (docs/features/demo-scale/spec.md, "Cel make -C infra/k8s open"): k6 runs load/smoke.js against the services of the
 cluster (the store at http://store:3000 and the API at http://api, as in compose) once the demo data is generated; the measurement of
 the load can run the other scripts of load/ in the same way. The CronJob never runs by itself (suspend: true): its Jobs are created
 from it (kubectl create job --from=cronjob/load), so a run uses the scripts and the image of the deployed revision. The scripts are the

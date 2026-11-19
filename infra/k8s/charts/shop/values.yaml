@@ -211,7 +211,7 @@ keycloak:
   mailFrom: ""
   mailFromName: Worf
 
-# The suspended CronJob load (docs/features/demo-scale/spec.md, "Sprawdzenie po generowaniu"): its Jobs run load/smoke.js of k6 against
+# The suspended CronJob load (docs/features/demo-scale/spec.md, "Cel make -C infra/k8s open"): its Jobs run load/smoke.js of k6 against
 # the services of the cluster (http://store:3000, http://api) once the demo data is generated, and the measurement of the load can use
 # it too. Every profile has it, it never runs by itself and has no secret.
 load:

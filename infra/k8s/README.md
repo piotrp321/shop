@@ -595,7 +595,7 @@ seeda albo `open`. Opis rozwiązania i ochron: `docs/features/demo-scale/spec.md
 `scripts/generate.sh` i `scripts/open.sh`.
 
 **Warunek wstępny.** `generate` z profilem `medium` albo `server` na worf.pl dopiero po wdrożeniu i weryfikacji na
-serwerze poprawki L9 (cache ISR sklepu w pamięci; `docs/features/abuse-limits/spec.md`) oraz po **zgodzie użytkownika**
+serwerze poprawki L9 (cache ISR sklepu w pamięci; `docs/features/product-page/spec.md`, „Cache ISR”) oraz po **zgodzie użytkownika**
 w rozmowie, która nazywa operację (`generate`), host (worf.pl) i profil. Zgoda na `generate` nie zastępuje weryfikacji
 L9, a zakończenie ASH-V1 ani ABUSE-LIMITS nie jest warunkiem. Powrót do seeda (`PROFILE=seed`) też wymaga zgody, ale nie
 czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, która nazywa operację, host i profil.
@@ -654,9 +654,9 @@ make -C infra/k8s generate PROFILE=medium \
   i restarcie Traefika), `GENERATE_OPEN_WAIT` 300 s (czas, w którym ma podać „otwarty” po usunięciu reguły),
   `GENERATE_POLL` 30 s (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba
   całkowita sekund; inna to kod 2.
-- Przebieg `generate`: sprawdzenia bez zmian, pytanie, usunięcie Joba `demo-data-run` poprzedniego przebiegu, reguła
-  `shop-closed`, restart podów Traefika, sonda „zamknięty”, generowanie (Job `demo-data-run`; skrypt tylko czeka),
-  `open`. `open`: wyczyszczona pula `cache.sitemap`, indeksy Postgresa, alias wyszukiwarki, Job `load` ze ścieżkami
+- Przebieg `generate`: sprawdzenia bez zmian, pytanie, reguła `shop-closed`, restart podów Traefika, sonda
+  „zamknięty”, sekret puli zdjęć, usunięcie Joba `demo-data-run` poprzedniego przebiegu, generowanie (nowy Job
+  `demo-data-run`; skrypt tylko czeka), `open`. `open`: wyczyszczona pula `cache.sitemap`, indeksy Postgresa, alias wyszukiwarki, Job `load` ze ścieżkami
   sklepu (strona główna, listing, produkt, wyszukiwarka, koszyk i checkout gościa), liczby produktów i zamówień
   (obejmują zamówienie checkoutu gościa `load-<n>@example.com`, które wygasa jak każde nieopłacone) i rozmiary, usunięcie
   reguły, sonda „otwarty”. `status` w tym czasie pokazuje zamknięcie i stan Joba.
@@ -694,8 +694,9 @@ generatora: odmawia kodem 3 i wskazuje `generate`.
     około 20,7 GB wolnego) nowy indeks seeda może nie dostać shardu, dopóki Elasticsearch nie odświeży informacji
     o dysku (około 30 s): ta próba kończy się błędem, a ponowienie przechodzi. Konta generatora w Keycloaku zostają
     (wyłączone, bez poświadczeń).
-- Sonda zamknięcia bez „zamknięty” (np. wyzwanie Cloudflare): sklep zamknięty, dane bez zmian; po poprawie adresów
-  sondy ponowny `generate`. Celu, który tylko otwiera sklep bez nowego Joba, nie ma.
+- Sonda zamknięcia bez „zamknięty” (np. wyzwanie Cloudflare): sklep zamknięty, dane i Job poprzedniego przebiegu bez
+  zmian; `make open` otwiera sklep na tym Jobie, jeśli jest `Complete`, a po poprawie adresów sondy można ponowić
+  `generate`.
 - Pozostawiony sekret `demo-photos` (zabity skrypt; `status` go pokazuje): usuwa go `open`, gdy żaden Job nie działa.
 - Log Joba po restarcie serwera albo usunięciu poda: Grafana Cloud (Explore, przestrzeń `shop`).
 
