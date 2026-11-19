@@ -22,6 +22,7 @@ import http.client
 import os
 import re
 import sys
+import threading
 import time
 
 # Seconds: one request at most; between two requests; after an error (no connection); after the marker stop without a 200.
@@ -29,6 +30,8 @@ TIMEOUT = 15
 PAUSE = 0.2
 PAUSE_AFTER_ERROR = 0.5
 STOP_GRACE = 60
+# Seconds between two looks for new markers.
+WATCH = 0.05
 # The longest gap between two answers that still counts as "without a pause" (a request that times out takes TIMEOUT).
 MAX_PAUSE = 30
 MARKERS = ("closed", "checks", "open")
@@ -47,24 +50,35 @@ def new_markers(directory, seen):
 
 def run(address, host, path, directory, limit, out=sys.stdout, grace=STOP_GRACE, pause=PAUSE):
     start = time.monotonic()
-    seen = set()
-    stopped_at = None
-    opened = False
+    lock = threading.Lock()
+    done = threading.Event()
+    state = {"opened": False, "stopped_at": None}
     reopened = False
     connection = None
 
-    def emit(text):
-        print(f"{time.monotonic() - start:.1f} {text}", file=out, flush=True)
+    def emit(text, marker=None):
+        with lock:
+            print(f"{time.monotonic() - start:.1f} {text}", file=out, flush=True)
+            if marker == "mark-open":
+                state["opened"] = True
+            elif marker == "mark-stop":
+                state["stopped_at"] = time.monotonic()
 
-    try:
-        while time.monotonic() - start < limit:
+    # The markers are looked for every WATCH seconds beside the requests, not between them: through the closed shop an answer takes
+    # about a second, and a marker found only after it would follow an answer that came after the marker.
+    def watch():
+        seen = set()
+        while not done.is_set():
             for name in new_markers(directory, seen):
                 seen.add(name)
-                emit("mark:" + name[5:])
-                if name == "mark-open":
-                    opened = True
-                elif name == "mark-stop":
-                    stopped_at = time.monotonic()
+                emit("mark:" + name[5:], name)
+            done.wait(WATCH)
+
+    watcher = threading.Thread(target=watch, daemon=True)
+    watcher.start()
+    try:
+        while time.monotonic() - start < limit:
+            stopped_at = state["stopped_at"]
             if stopped_at is not None and (reopened or time.monotonic() - stopped_at >= grace):
                 return
             try:
@@ -73,6 +87,7 @@ def run(address, host, path, directory, limit, out=sys.stdout, grace=STOP_GRACE,
                 connection.request("GET", path, headers={"Host": host})
                 response = connection.getresponse()
                 response.read()
+                opened = state["opened"]
                 emit(str(response.status))
                 if response.status == 200 and opened:
                     reopened = True
@@ -88,6 +103,8 @@ def run(address, host, path, directory, limit, out=sys.stdout, grace=STOP_GRACE,
                 continue
             time.sleep(pause)
     finally:
+        done.set()
+        watcher.join()
         if connection is not None:
             connection.close()
 
