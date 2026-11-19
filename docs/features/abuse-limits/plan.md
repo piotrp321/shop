@@ -11,15 +11,17 @@ merge'u).
 Prowadzenie:
 - ABUSE-LIMITS-8 idzie jako pierwsze z zadań równoległych: od niego zależy kolejność wdrożeń z DEMO-SCALE
   (specyfikacja, „Wdrożenie i kolejność z DEMO-SCALE”).
-- ABUSE-LIMITS-7 i ABUSE-LIMITS-9 zmieniają chart, a ABUSE-LIMITS-8 komentarze wartości `prod` i `load`; te pliki
-  zmienia też DEMO-SCALE. Epik zmergowany do `main` jako drugi robi rebase.
+- ABUSE-LIMITS-7, ABUSE-LIMITS-9 i ABUSE-LIMITS-10 zmieniają chart, a ABUSE-LIMITS-8 komentarze wartości `prod`
+  i `load`; te pliki zmienia też DEMO-SCALE. Epik zmergowany do `main` jako drugi robi rebase.
+- DEMO-SCALE uruchamia `generate` z profilem `medium` albo `server` na serwerze dopiero po wdrożeniu i weryfikacji L9
+  (specyfikacja, „Wdrożenie i kolejność z DEMO-SCALE”); wynik weryfikacji trafia do komentarza w #181.
 - Kryteria w tabeli „Kryteria akceptacji” opisu PR mają numer sekcji i kryterium specyfikacji, np. `L2.3`.
 
 ## Status
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | ABUSE-LIMITS-1, ABUSE-LIMITS-2, ABUSE-LIMITS-3, ABUSE-LIMITS-4, ABUSE-LIMITS-5, ABUSE-LIMITS-6, ABUSE-LIMITS-7, ABUSE-LIMITS-8, ABUSE-LIMITS-9 | |
+| 1 | ABUSE-LIMITS-1, ABUSE-LIMITS-2, ABUSE-LIMITS-3, ABUSE-LIMITS-4, ABUSE-LIMITS-5, ABUSE-LIMITS-6, ABUSE-LIMITS-7, ABUSE-LIMITS-8, ABUSE-LIMITS-9, ABUSE-LIMITS-10 | |
 
 Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
 
@@ -85,7 +87,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
         "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -112,7 +115,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
         "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -146,7 +150,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
         "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -192,7 +197,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
         "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -222,7 +228,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
         "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -251,7 +258,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-7",
         "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -285,7 +293,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -329,7 +338,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-9"
+        "ABUSE-LIMITS-9",
+        "ABUSE-LIMITS-10"
       ]
     },
     {
@@ -360,7 +370,47 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8"
+        "ABUSE-LIMITS-8",
+        "ABUSE-LIMITS-10"
+      ]
+    },
+    {
+      "id": "ABUSE-LIMITS-10",
+      "title": "Alert wyłączonych limiterów: sprawdzenie Redisa CronJobem i reguła RateLimitsOff",
+      "scope": "apps/api i chart (spec: L12, D16): komenda konsoli w apps/api/src/Shared/UI/Console, która tym samym połączeniem Redisa co liczniki i blokady limiterów (DSN i jego limity czasu, wstrzyknięcie atrybutem, bez zmian w services.yaml) zapisuje, odczytuje i usuwa klucz kontrolny z czasem życia poza kluczami limiterów, bez warstwy fail open: każdy błąd, limit czasu albo inna wartość to kod wyjścia różny od 0 z przyczyną bez DSN i hasła; CronJob rate-limit-check w nowym szablonie chartu (co 5 minut, obraz, zmienne i sekret kontenera api, concurrencyPolicy Forbid, bez ponowień, limit czasu 60 s, historia 1 i 1, we wszystkich profilach); reguła RateLimitsOff (severity warning) w 00-alerts.yaml przy alerts.enabled: brak udanego przebiegu od 15 minut albo brak metryki przez 30 minut, jedna instancja, opis po polsku z odesłaniem do runbooka; scenariusze promtool w infra/k8s/tests/alerts; krok testu dymnego. Dokumentacja: infra/k8s/README.md (reakcja na RateLimitsOff, wyciszenie razem z WorkloadNotReady przy restore i pracach), docs/features/deploy-ops/spec.md (lista i liczba reguł alertów). Nie: alerty z treści logów, metryki aplikacji, zmiana sondy /health ani sondy Redisa, zmiana wartości środowisk (infra/k8s/environments).",
+      "acceptance_criteria": [
+        "Integracyjny na prawdziwym Redisie: komenda kończy się kodem 0 i nie zmienia licznika żadnego limitera; przy Redisie, który odrzuca połączenia, i przy Redisie, który nie odpowiada, kończy się kodem różnym od 0 w czasie limitów DSN; raport pokazuje fazę RED.",
+        "Jednostkowy: błąd odpowiedzi Redisa (odrzucone uwierzytelnienie, odrzucony zapis) i inna odczytana wartość dają kod różny od 0; wyjście nie zawiera DSN ani hasła.",
+        "Render chartu: CronJob rate-limit-check ma obraz, zmienne i sekret kontenera api, harmonogram co 5 minut, concurrencyPolicy Forbid, brak ponowień i limit czasu; w prod nie jest wstrzymany; test budżetu zasobów węzła przechodzi.",
+        "promtool test rules: RateLimitsOff milczy przy udanych przebiegach co 5 minut i po jednym nieudanym, po którym następny się udał; odpala jedną instancją, gdy ostatni sukces jest starszy niż 15 minut, także przy kilku nieudanych Jobach; gaśnie po następnym udanym; odpala przy braku metryki przez 30 minut.",
+        "Test dymny na k3d: Job utworzony z CronJoba rate-limit-check kończy się sukcesem na Redisie klastra.",
+        "make -C apps/api check i test, make -C infra/k8s check przechodzą."
+      ],
+      "risk": "STANDARD",
+      "depends_on": [],
+      "paths": [
+        "apps/api/src/Shared/UI/Console/",
+        "apps/api/tests/Unit/Shared/",
+        "apps/api/tests/Integration/Shared/",
+        "infra/k8s/charts/shop/templates/rate-limit-check.yaml",
+        "infra/k8s/charts/shop/templates/00-alerts.yaml",
+        "infra/k8s/charts/shop/templates/_helpers.tpl",
+        "infra/k8s/charts/shop/values.yaml",
+        "infra/k8s/tests/",
+        "infra/k8s/smoke/",
+        "infra/k8s/README.md",
+        "docs/features/deploy-ops/spec.md"
+      ],
+      "parallel_with": [
+        "ABUSE-LIMITS-1",
+        "ABUSE-LIMITS-2",
+        "ABUSE-LIMITS-3",
+        "ABUSE-LIMITS-4",
+        "ABUSE-LIMITS-5",
+        "ABUSE-LIMITS-6",
+        "ABUSE-LIMITS-7",
+        "ABUSE-LIMITS-8",
+        "ABUSE-LIMITS-9"
       ]
     }
   ]
