@@ -85,7 +85,7 @@ final readonly class PlaceOrderHandler
      * @throws NotFound                  the guest cart is not available (from Cart)
      * @throws IdempotencyKeyReused
      * @throws CartEmpty
-     * @throws GuestOrderTooLarge a guest cart over the size of a guest order, refused before the quote
+     * @throws GuestOrderTooLarge        a guest cart over the size of a guest order, refused before the quote
      * @throws CartNotOrderable
      * @throws DiscountCodeRejected      in the quote, or when its usage is recorded
      * @throws OrderTotalChanged

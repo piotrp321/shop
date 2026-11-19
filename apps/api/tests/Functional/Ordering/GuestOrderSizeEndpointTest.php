@@ -77,7 +77,9 @@ final class GuestOrderSizeEndpointTest extends WebTestCase
         $order = $this->place(self::PATH, $this->body($cart, 10 * 10 * 1_000));
 
         self::assertResponseStatusCodeSame(201);
-        self::assertCount(10, $order['lines'] ?? []);
+        self::assertSame(self::CONTACT, array_intersect_key($order, self::CONTACT));
+        self::assertIsArray($order['lines']);
+        self::assertCount(10, $order['lines']);
     }
 
     public function testTwoGuestCartsAreCheckedEachByItsOwnSize(): void
@@ -102,7 +104,8 @@ final class GuestOrderSizeEndpointTest extends WebTestCase
         $order = $this->place(self::CUSTOMER_PATH, self::details(50 * 99 * 1_000), token: TestTokenFactory::customer());
 
         self::assertResponseStatusCodeSame(201);
-        self::assertCount(50, $order['lines'] ?? []);
+        self::assertIsArray($order['lines']);
+        self::assertCount(50, $order['lines']);
     }
 
     /**

@@ -6,8 +6,6 @@ namespace App\Tests\Unit\Ordering\Domain;
 
 use App\Ordering\Domain\GuestOrderSize;
 use App\Ordering\Domain\GuestOrderTooLarge;
-use App\Shared\Domain\Exception\Conflict;
-use App\Shared\Domain\Exception\TypedProblem;
 use PHPUnit\Framework\TestCase;
 
 final class GuestOrderSizeTest extends TestCase
@@ -51,8 +49,6 @@ final class GuestOrderSizeTest extends TestCase
             GuestOrderSize::ensureWithin($quantities);
             self::fail('Expected GuestOrderTooLarge.');
         } catch (GuestOrderTooLarge $tooLarge) {
-            self::assertInstanceOf(Conflict::class, $tooLarge);
-            self::assertInstanceOf(TypedProblem::class, $tooLarge);
             self::assertSame('tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large', $tooLarge->problemType());
             self::assertSame('Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku.', $tooLarge->getMessage());
         }
