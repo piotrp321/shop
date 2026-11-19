@@ -3,10 +3,9 @@
 # Argo CD, the pods and the jobs of the namespace shop, and the logs of every job of the namespace that failed (the Failed
 # condition; the reaction to the alerts BackupFailed and BackupVerifyFailed): of all the pods of the job, so of every attempt
 # (backoffLimit), while they exist; the containers whose log cannot be read (the ones after a failed init container never
-# started) are skipped, the log of the others is printed. Last, the state of the demo data (docs/features/demo-scale/spec.md): data
-# and phase of the record demo-data-state (no record: data seed, phase idle), its target and reason, whether the shop is closed (the
-# NetworkPolicy shop-closed exists) and the last line of the log of the newest Job initialize (its row counts; it says so when no pod
-# of the Job is left). Changes nothing. Exit code 1 when any read failed.
+# started) are skipped, the log of the others is printed. Last, the state of the demo data (docs/features/demo-scale/spec.md):
+# whether the shop is closed (the NetworkPolicy shop-closed exists) and the last line of the log of the newest Job initialize (its row
+# counts; it says so when no pod of the Job is left). Changes nothing. Exit code 1 when any read failed.
 #
 # Usage: status.sh <user@address>      Environment: SSH_OPTS
 set -eu
@@ -63,31 +62,7 @@ else
   failed=1
 fi
 
-# The state of the demo data. The record is read as one text: a marker line when the ConfigMap exists, then data, phase, target and
-# (the rest of the text) reason; kubectl prints nothing, with exit code 0, when there is no ConfigMap (--ignore-not-found).
-# Control characters of the record are dropped (the reason is text written by a script, printed to the terminal of the operator).
-printf '\n== demo data (record demo-data-state, rule shop-closed, job initialize)\n'
-state_path='present{"\n"}{.data.data}{"\n"}{.data.phase}{"\n"}{.data.target}{"\n"}{.data.reason}'
-if state="$(remote_root k3s kubectl -n shop get configmap demo-data-state --ignore-not-found -o "jsonpath='$state_path'")"; then
-  if [ -z "$state" ]; then
-    echo "no record demo-data-state (the demo data were not generated): data seed, phase idle"
-    echo "data: seed"
-    echo "phase: idle"
-  else
-    state="$(printf '%s\n' "$state" | tr -d '\000-\010\013-\037\177')"
-    data="$(printf '%s\n' "$state" | sed -n 2p)"
-    phase="$(printf '%s\n' "$state" | sed -n 3p)"
-    target="$(printf '%s\n' "$state" | sed -n 4p)"
-    reason="$(printf '%s\n' "$state" | sed -n '5,$p')"
-    echo "data: ${data:-(empty)}"
-    echo "phase: ${phase:-(empty)}"
-    echo "target: ${target:-(none)}"
-    [ -z "$reason" ] || echo "reason: $reason"
-  fi
-else
-  echo "status: could not read the record of the demo data (ConfigMap demo-data-state)" >&2
-  failed=1
-fi
+printf '\n== demo data (rule shop-closed, job initialize)\n'
 if closed="$(remote_root k3s kubectl -n shop get networkpolicy shop-closed --ignore-not-found -o name)"; then
   if [ -n "$closed" ]; then
     echo "shop: closed (NetworkPolicy shop-closed exists; every host answers 502)"

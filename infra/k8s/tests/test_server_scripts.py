@@ -26,8 +26,7 @@ KUBECONFIG = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0
 # with their Failed condition answers with STUB_JOBS, the read of the logs of the pods of a job by its label prints a line per
 # pod of two (and exits with 1 after them with STUB_LOGS_PARTIAL_FAIL, like kubectl when a container of the pods cannot be read),
 # or nothing with STUB_NO_PODS, a call matching STUB_FAIL_MATCH fails with no output). The reads of the state of the demo data:
-# the ConfigMap demo-data-state answers with STUB_STATE (nothing when it is not there), the NetworkPolicy shop-closed with
-# STUB_CLOSED, the Jobs initialize with STUB_INIT_JOBS (one name per line, the newest last) and their log with STUB_INIT_LOG
+# the NetworkPolicy shop-closed answers with STUB_CLOSED, the Jobs initialize with STUB_INIT_JOBS (one name per line, the newest last) and their log with STUB_INIT_LOG
 # (nothing with STUB_INIT_NO_PODS).
 SSH = r"""#!/bin/sh
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$STUB_LOG"
@@ -40,7 +39,6 @@ case "$*" in
   *kubectl*)
     case "$*" in *"${STUB_FAIL_MATCH:-@@never@@}"*) echo "stub: failing" >&2; exit 1 ;; esac
     case "$*" in
-      *"get configmap demo-data-state"*) printf '%s' "${STUB_STATE:-}" ;;
       *"get networkpolicy shop-closed"*) printf '%s' "${STUB_CLOSED:-}" ;;
       *"get jobs -l app.kubernetes.io/name=initialize"*) printf '%s' "${STUB_INIT_JOBS-initialize-3fa9c1d2e4
 }" ;;
@@ -304,9 +302,9 @@ class KubeDirRegistry(ServerScripts):
 
 
 class Status(ServerScripts):
-    # The reads of the state of the demo data that follow the logs of the failed jobs: the record, the rule, the Jobs initialize and
-    # the log of the newest one (tests/test_demo_data_state.py has their results).
-    DEMO_READS = 4
+    # The reads of the state of the demo data that follow the logs of the failed jobs: the rule, the Jobs initialize and the log of
+    # the newest one (tests/test_demo_data_state.py has their results).
+    DEMO_READS = 3
 
     FAILED_JOBS = "backup-29000000 True\nbackup-verify-29000001 \nbackup-verify-29000002 True\n"
 
