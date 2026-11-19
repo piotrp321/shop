@@ -2027,6 +2027,17 @@ class NativeRefusalTest(NativeCase):
         self.write_native(run_file=dict(native_run_file(), pr=None))
         self.assertIn('final PR', self.refused(NATIVE))
 
+    def test_a_run_file_with_a_name_outside_the_pattern_is_a_refusal_also_on_a_case_insensitive_disk(self):
+        # On APFS runs/ABUSE-LIMITS.json opens as runs/abuse-limits.json; it is not a native epic of `pending` either
+        retro.write_json(os.path.join(self.metrics_state, 'runs'), 'ABUSE-LIMITS.json', native_run_file())
+        self.assertIn('ABUSE-LIMITS.json', self.refused(NATIVE))
+
+    def test_a_run_file_with_a_name_outside_the_pattern_is_a_fact_of_collect(self):
+        retro.write_json(os.path.join(self.metrics_state, 'runs'), 'Bad_Name.json', native_run_file())
+        self.assertEqual(self.collect('visual-design', metrics=FakeMetrics()), 0)
+        facts = {f['id']: f for f in self.load()['facts']}
+        self.assertIn('Bad_Name.json', facts['native/skipped/Bad_Name.json']['text'])
+
     def test_an_unreadable_run_file_is_exit_code_2(self):
         os.makedirs(os.path.join(self.metrics_state, 'runs'))
         with open(os.path.join(self.metrics_state, 'runs', NATIVE + '.json'), 'w') as f:
@@ -2543,6 +2554,16 @@ class NativePendingTest(RegistersCase):
         with open(os.path.join(self.metrics_state, 'runs', 'broken.json'), 'w') as f:
             f.write('{')
         self.assertEqual(self.pending(), ['visual-design'])
+
+    def test_skipped_run_files_are_named_on_stderr_and_the_list_stays_json(self):
+        self.run_file('Bad_Name', pr=800)
+        with open(os.path.join(self.metrics_state, 'runs', 'broken.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.cli('pending')
+        self.assertEqual(code, 0, err)
+        self.assertEqual([e['epic'] for e in json.loads(out)], ['visual-design'])
+        self.assertIn('Bad_Name.json', err)
+        self.assertIn('broken.json', err)
 
     def test_the_metrics_state_option_points_at_the_run_files(self):
         other = os.path.join(self.tmp, 'other-state')
@@ -3770,6 +3791,28 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         refusals = section(conditions, '**1. Odmowa bez zapisu**', 'Przebieg epiku rozpoznaj')
         self.assertIn('pliku przebiegu', refusals)
         self.assertIn('odmowa', section(conditions, '- `absent`', '- `none`'))
+
+    def run_condition_snippet(self, ao_home, epic, metrics_state):
+        """The read-only snippet of "Warunki przed startem" of SKILL.md, run as the session runs it."""
+        conditions = section(self.skill, '## Warunki przed startem', '**2. Trwałe pominięcie:**')
+        code = section(conditions, "<<'PY'\n", '\nPY\n')[len("<<'PY'\n"):]
+        result = subprocess.run([sys.executable, '-I', '-', ao_home, epic, metrics_state], input=code,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_the_condition_snippet_sees_a_native_epic_exactly_like_collect(self):
+        tmp = tempfile.mkdtemp(prefix='retro-snippet-')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        ao_home, state = os.path.join(tmp, 'ao'), os.path.join(tmp, 'metrics')
+        os.makedirs(ao_home)
+        retro.write_json(os.path.join(state, 'runs'), 'abuse-limits.json', native_run_file())
+        self.assertEqual(self.run_condition_snippet(ao_home, 'abuse-limits', state), {'run': 'native', 'pr': 800})
+        os.remove(os.path.join(state, 'runs', 'abuse-limits.json'))
+        # a name outside the pattern is no native epic of collect, also where the disk ignores the case
+        retro.write_json(os.path.join(state, 'runs'), 'ABUSE-LIMITS.json', native_run_file())
+        self.assertEqual(self.run_condition_snippet(ao_home, 'abuse-limits', state), {'run': 'absent'})
+        self.assertEqual([e['id'] for e in retro.native_epics(state, ao_home)], [])
 
     def test_the_skill_says_the_user_starts_the_retro_of_a_native_epic_after_the_merge(self):
         item = bullet(self.skill, '- **Epik natywny:**')
