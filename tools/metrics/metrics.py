@@ -2543,10 +2543,12 @@ def read_native(path, seen_tools):
     (human lines without a timestamp), `user_lines` and `origin_lines` (the user lines that are no tool result, and
     those of them with an `origin`: without any, a human message cannot be told apart) and `reports` [(at, verdict word
     or None)] of the `SubagentHandback` calls in file order and `launched` [(at, agent id)] of the subagents the file
-    starts (`toolUseResult.agentId` of the result of an `Agent` call); (None, reason) when the file is missing,
-    unreadable or empty."""
+    starts (`toolUseResult.agentId` of the result of an `Agent` call) and `skipped` (the lines that are no JSON object,
+    blank lines aside); (None, reason) when the file is missing, unreadable, empty or has no line that is a JSON
+    object."""
     data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': [], 'times': [],
-            'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': [], 'launched': []}
+            'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': [], 'launched': [],
+            'skipped': 0}
     versions, reports, agent_calls, lines = set(), set(), set(), 0
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
@@ -2554,8 +2556,9 @@ def read_native(path, seen_tools):
                 try:
                     line = json.loads(raw)
                 except ValueError:
-                    continue
+                    line = None
                 if not isinstance(line, dict):
+                    data['skipped'] += bool(raw.strip())
                     continue
                 lines += 1
                 _read_line(line, data, seen_tools)
@@ -2593,7 +2596,8 @@ def read_native(path, seen_tools):
     except OSError as e:
         return None, 'nieczytelny transkrypt: %s' % (e.strerror or e)
     if not lines:
-        return None, 'pusty transkrypt'
+        return None, ('uszkodzony transkrypt: żadna z %d linii nie jest obiektem JSON' % data['skipped']
+                      if data['skipped'] else 'pusty transkrypt')
     data['inits'] = [{'version': version, 'model': None} for version in sorted(versions)]
     return data, None
 
@@ -2756,6 +2760,8 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
             if kind == 'agent':
                 lost.add(agent)
             continue
+        if data['skipped']:
+            gaps.add('sessions', '%s: pominięte linie, które nie są obiektem JSON (%d)' % (label, data['skipped']))
         if kind == 'session':
             read.add(session)
             user_lines += data['user_lines']

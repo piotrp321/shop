@@ -290,14 +290,16 @@ zapisać plik po fakcie, także gdy `plan.md` już nie istnieje.
 `started_at` do merge'u końcowego PR (praca po merge'u nie wchodzi; bez znanego merge'u do końca transkryptów,
 z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie w kolejności sesji z pliku przebiegu
 (prowadzący, potem subagenci), także w sesji wznowionej albo rozgałęzionej. Wiadomość bez `timestamp` się liczy,
-z pozycją w `gaps`. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
+z pozycją w `gaps`. Linia transkryptu, która nie jest obiektem JSON, jest pomijana z pozycją `sessions` w `gaps`
+z liczbą takich linii; transkrypt bez żadnej linii będącej obiektem JSON (pusty albo całkiem uszkodzony) jest
+nieczytelny: sesja prowadząca bez przeczytanego transkryptu, subagent z utraconym. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
 bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika (przy wyniku
 wywołania `Agent` także `toolUseResult.agentId`), `origin.kind`
 i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json` `agentType`, `description`,
 `effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole `model` z `meta.json` nie jest czytane (przebieg
 uruchomiony z domyślnymi ustawieniami go nie ma). Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
 werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
-pusty albo nieczytelny, albo gdy sesja prowadząca uruchomiła go w przedziale epiku (wynik wywołania `Agent`
+nieczytelny (także pusty albo uszkodzony), albo gdy sesja prowadząca uruchomiła go w przedziale epiku (wynik wywołania `Agent`
 z `toolUseResult.agentId`), a w katalogach sesji epiku nie ma żadnego jego pliku; utracony transkrypt to pozycja
 `sessions` w `gaps` i liczy się jak brak transkryptu części sesji (niżej, „Brak transkryptów”).
 
