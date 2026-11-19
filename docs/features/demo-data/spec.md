@@ -8,7 +8,7 @@ wdrożeniem danych na serwer demo (worf.pl).
 Epik ma dwie części z osobnymi końcowymi PR, mergowane po kolei (P11): część 1 (#482) to generator i jego testy,
 zaimplementowane, część 2 (#486, DEMO-LOAD) to integracja z k3d i k6 oraz przebieg `medium`: zaimplementowana, a przebieg
 `medium` wykonany 2026-11-19 (raport `docs/reports/demo-load-medium-2026-11-19.md`, kalibracja w sekcji „Wyniki przebiegu `medium`”). Pomiar `full` (W3) jeszcze się nie odbył.
-Ta specyfikacja opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”, a jej plan jest w `plan.md`.
+Ta specyfikacja opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”.
 
 Issues: #486
 Zakres: `apps/api/src/DemoData`, `apps/api/tests/Unit/DemoData`, `apps/api/tests/Integration/DemoData`, `apps/api/tests/Functional/DemoData`, `apps/api/fixtures/demo-data`, `apps/api/bin/generate-demo`, `apps/api/bin/upload-demo-photos`, `apps/api/config/packages/flysystem.yaml`, `apps/api/.env`, `apps/api/phpunit.dist.xml`, `apps/api/tests/Unit/Bin`, `make/demo-data.mk`, `apps/api/deptrac.yaml`, `apps/api/config/services.yaml`, `apps/api/CLAUDE.md`, `apps/api/src/Catalog/Application/Search`, `apps/api/src/Catalog/Infrastructure/Search`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Integration/Catalog`, `docs/vision.md`, `docs/features/search/spec.md`, `infra/k8s`, `load`, `docs/features/hardening/spec.md`
