@@ -3825,6 +3825,35 @@ class RetroProcessDocumentsTest(unittest.TestCase):
                      'zagrożeni', '„tak”'):
             self.assertIn(text, freeze)
 
+    def series_state(self, plan_text):
+        """The output of the snippet of "Zamrożenie na czas serii" of SKILL.md on a plan with that text (None: no
+        plan file)."""
+        freeze = section(self.skill, '**Zamrożenie na czas serii.**', '6. **Wynik.**')
+        code = section(freeze, "<<'PY'\n", '\nPY\n')[len("<<'PY'\n"):]
+        tmp = tempfile.mkdtemp(prefix='retro-series-')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        plan = os.path.join(tmp, 'plan.md')
+        if plan_text is not None:
+            with open(plan, 'w', encoding='utf-8') as f:
+                f.write(plan_text)
+        result = subprocess.run([sys.executable, '-I', '-', plan], input=code, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def test_the_series_state_is_the_value_the_row_starts_with(self):
+        row = '| Seria ASH v1.0 | Stan |\n|---|---|\n| Stan serii | %s |\n'
+        for value, state in (('przed startem (tag `ash-v1.0` jeszcze nie założony)', 'przed startem'),
+                             ('w toku', 'w toku'), ('w toku (od 2026-11-25)', 'w toku'),
+                             ('zakończona', 'zakończona'), ('zakończona 2026-12-20', 'zakończona')):
+            with self.subTest(value=value):
+                self.assertEqual(self.series_state(row % value), state)
+        for text in (row % 'wstrzymana', '# Plan bez tabeli\n', None):
+            with self.subTest(text=text):
+                self.assertTrue(self.series_state(text).startswith('w toku (nieznany stan'))
+        # the plan of today: the retro of small-fixes before the tag is not frozen
+        self.assertEqual(self.series_state(repo_text('docs', 'features', 'agentic-software-house', 'plan.md')),
+                         'przed startem')
+
     def test_the_agent_and_the_specification_describe_the_incidents_of_a_native_epic(self):
         agent = repo_text('.claude', 'agents', 'retro-analyst.md')
         for where, text in (('agent', agent), ('spec', self.retro_spec)):
