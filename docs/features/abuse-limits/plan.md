@@ -9,22 +9,18 @@ Warunek przed startem: ASH-V1 zmergowany do `main` i tag `ash-v1.0` (gałąź ep
 merge'u).
 
 Prowadzenie:
-- ABUSE-LIMITS-8 idzie jako pierwsze z zadań równoległych: od niego zależy kolejność wdrożeń z DEMO-SCALE
-  (specyfikacja, „Wdrożenie i kolejność z DEMO-SCALE”).
-- ABUSE-LIMITS-7, ABUSE-LIMITS-9 i ABUSE-LIMITS-10 zmieniają chart, a ABUSE-LIMITS-8 komentarze wartości `prod`
-  i `load`; te pliki zmienia też DEMO-SCALE. Epik zmergowany do `main` jako drugi robi rebase.
+- ABUSE-LIMITS-7, ABUSE-LIMITS-9 i ABUSE-LIMITS-10 zmieniają chart, który zmienia też DEMO-SCALE. Epik zmergowany do
+  `main` jako drugi robi rebase.
 - `generate` (DEMO-SCALE) ma pomijać aktywny Job `rate-limit-check` przy sprawdzeniu aktywnych Jobów (specyfikacja,
   L12): gdy DEMO-SCALE jest na `main` przed startem ABUSE-LIMITS-10, robi to to zadanie; gdy ABUSE-LIMITS trafia do
   `main` pierwszy, sesja prowadząca przekazuje wymaganie sesji DEMO-SCALE przed merge'em.
-- DEMO-SCALE uruchamia `generate` z profilem `medium` albo `server` na serwerze dopiero po wdrożeniu i weryfikacji L9
-  (specyfikacja, „Wdrożenie i kolejność z DEMO-SCALE”); wynik weryfikacji trafia do komentarza w #181.
 - Kryteria w tabeli „Kryteria akceptacji” opisu PR mają numer sekcji i kryterium specyfikacji, np. `L2.3`.
 
 ## Status
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | ABUSE-LIMITS-1, ABUSE-LIMITS-2, ABUSE-LIMITS-3, ABUSE-LIMITS-4, ABUSE-LIMITS-5, ABUSE-LIMITS-6, ABUSE-LIMITS-7, ABUSE-LIMITS-8, ABUSE-LIMITS-9, ABUSE-LIMITS-10 | w toku (gałąź `feat/abuse-limits`); ABUSE-LIMITS-8 (L9) wydzielone do PR #800, poza epikiem |
+| 1 | ABUSE-LIMITS-1, ABUSE-LIMITS-2, ABUSE-LIMITS-3, ABUSE-LIMITS-4, ABUSE-LIMITS-5, ABUSE-LIMITS-6, ABUSE-LIMITS-7, ABUSE-LIMITS-9, ABUSE-LIMITS-10 | w toku (gałąź `feat/abuse-limits`) |
 
 Zmergowane do gałęzi epiku:
 
@@ -99,7 +95,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-9",
         "ABUSE-LIMITS-10"
       ]
@@ -127,7 +122,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-9",
         "ABUSE-LIMITS-10"
       ]
@@ -162,7 +156,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-9",
         "ABUSE-LIMITS-10"
       ]
@@ -209,7 +202,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-9",
         "ABUSE-LIMITS-10"
       ]
@@ -240,7 +232,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-4",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-9",
         "ABUSE-LIMITS-10"
       ]
@@ -270,7 +261,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-4",
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-9",
         "ABUSE-LIMITS-10"
       ]
@@ -305,52 +295,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-4",
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
-        "ABUSE-LIMITS-8",
-        "ABUSE-LIMITS-9",
-        "ABUSE-LIMITS-10"
-      ]
-    },
-    {
-      "id": "ABUSE-LIMITS-8",
-      "title": "Cache ISR strony produktu tylko w pamięci, z limitem, bez zapisu na dysk",
-      "scope": "apps/store (spec: L9, D12, E3): cache przyrostowy sklepu (wpisy stron, także 404, i cache fetch) tylko w pamięci procesu opcjami Next w next.config.ts: experimental.isrFlushToDisk false i cacheMaxMemorySize 128 MB jako stała konfiguracji, bez własnego handlera i bez nowej zależności; rewalidacja po tagach bez zmian; slug spoza isProductSlug to 404 bez odczytu API; test na buildzie produkcyjnym jako skrypt w apps/store/scripts z celem make dopisanym do CI_AFTER_E2E (jak store-dynamic-routes), test konfiguracji w Vitest i pomiar pamięci z pełnym cache. Dokumentacja: product-page spec (A6 i ryzyko: cache ISR na dysku, wpisy 404 na dysku, zdanie o eksmisji poda jako ograniczeniu przyrostu); zdania, które przestają być prawdziwe: apps/store/CLAUDE.md (cache ISR zapisywany na dysku w obrazie produkcyjnym), small-fixes spec (uzasadnienie D4), komentarze przy ephemeral-storage w wartościach prod i load, opis testu test_ephemeral_storage.py, demo-scale spec (ryzyko cache ISR na dysku i warunek kolejności). Nie: limit ephemeral-storage kontenera store (zostaje z SMALL-FIXES), Redis jako wspólny cache, liczba replik.",
-      "acceptance_criteria": [
-        "Raport zawiera wynik eksperymentu E3 przed implementacją.",
-        "Test na buildzie produkcyjnym działa w CI po E2E na stosie STORE_MODE=production (cel make w CI_AFTER_E2E): po wejściu na strony istniejących produktów i na tyle slugów nieistniejących, że wpisy przekraczają limit pamięci, katalog cache na dysku ma ten sam rozmiar co przed nimi, a pierwszy adres po przepełnieniu znów daje x-nextjs-cache MISS; test uruchomiony bez opcji isrFlushToDisk nie przechodzi (wynik obu uruchomień w raporcie).",
-        "Vitest: next.config.ts ma experimental.isrFlushToDisk równe false i cacheMaxMemorySize równe stałej 128 MB.",
-        "Raport zawiera pomiar w obrazie produkcyjnym sklepu z limitem pamięci kontenera 1 GiB: po N i po 2N unikalnych adresach, a potem w trakcie co najmniej 20 równoległych żądań stron spoza cache, proces nie został zrestartowany, RSS po 2N jest wyższy niż po N o mniej niż 10% i także pod ruchem równoległym mieści się w 768 MiB, a zajęta sterta V8 w 75% jej limitu; raport podaje RSS, zajętą stertę i limit sterty; inny wynik zatrzymuje zadanie i wraca z decyzją o rozmiarze cache.",
-        "Jednostkowy: slug z wielkimi literami, kropką albo za długi to 404 bez wywołania API.",
-        "product-page-freshness.spec.ts i inne E2E produkcyjne przechodzą bez zmian.",
-        "Limit ephemeral-storage kontenera store bez zmian: asercje infra/k8s/tests/test_ephemeral_storage.py bez zmian.",
-        "apps/store/CLAUDE.md, small-fixes spec, komentarze wartości prod i load, opis testu ephemeral-storage i demo-scale spec nie mówią już, że cache ISR rośnie na dysku.",
-        "make -C apps/store check i test, make -C infra/k8s check przechodzą."
-      ],
-      "risk": "STANDARD",
-      "depends_on": [],
-      "paths": [
-        "apps/store/app/p/",
-        "apps/store/next.config.ts",
-        "apps/store/src/catalog/",
-        "apps/store/tests/",
-        "apps/store/scripts/",
-        "apps/store/Makefile",
-        "apps/store/CLAUDE.md",
-        "make/store.mk",
-        "infra/k8s/environments/prod/values.yaml",
-        "infra/k8s/environments/load/values.yaml",
-        "infra/k8s/tests/",
-        "docs/features/product-page/spec.md",
-        "docs/features/small-fixes/spec.md",
-        "docs/features/demo-scale/spec.md"
-      ],
-      "parallel_with": [
-        "ABUSE-LIMITS-1",
-        "ABUSE-LIMITS-2",
-        "ABUSE-LIMITS-3",
-        "ABUSE-LIMITS-4",
-        "ABUSE-LIMITS-5",
-        "ABUSE-LIMITS-6",
-        "ABUSE-LIMITS-7",
         "ABUSE-LIMITS-9",
         "ABUSE-LIMITS-10"
       ]
@@ -383,7 +327,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-10"
       ]
     },
@@ -430,7 +373,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "ABUSE-LIMITS-5",
         "ABUSE-LIMITS-6",
         "ABUSE-LIMITS-7",
-        "ABUSE-LIMITS-8",
         "ABUSE-LIMITS-9"
       ]
     }

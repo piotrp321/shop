@@ -598,8 +598,8 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
   `OR` z `EXISTS` nie jest warunkiem indeksu.
 - **H5.** Przebudowa indeksu trwa godzinami (około 208 tys. wywołań `GetProductOffers` przy 10 mln produktów); ten
   epik zmniejsza ryzyko przerwania, nie czas.
-- Brak `statement_timeout` na połączeniu bazy; czyszczenie całego cache sklepu przy każdym wydaniu; cache ISR sklepu
-  na dysku poda bez limitu; `count(*)` na pełnych tabelach w Jobie `initialize` przy każdym wdrożeniu.
+- Brak `statement_timeout` na połączeniu bazy; czyszczenie całego cache sklepu przy każdym wydaniu; `count(*)` na
+  pełnych tabelach w Jobie `initialize` przy każdym wdrożeniu.
 - Rozmiary i czasy `server` i `full` to ekstrapolacja z przebiegu `medium` (sekcja „Wyniki przebiegu `medium`”), nie
   pomiar; weryfikuje je dopiero pomiar `full` (W3).
 - Usuwanie kont generatora po zmianie przestrzeni nazw albo słowników to do miliona pojedynczych wywołań REST
