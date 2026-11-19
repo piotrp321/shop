@@ -53,6 +53,9 @@ export async function runCheckout(request: NextRequest, cartDeps: CartDeps): Pro
   }
   const idempotencyKey = request.headers.get("idempotency-key");
   const body = await readJsonObject(request);
+  if (body instanceof Response) {
+    return body;
+  }
   if (!idempotencyKey || !body) {
     return invalidBody();
   }

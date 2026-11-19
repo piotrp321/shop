@@ -153,6 +153,17 @@ describe("the cart calls", () => {
     expect(await loadCart("A".repeat(65))).toEqual({ status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." });
   });
 
+  it.each([
+    ["a read with a code", () => loadCart("ABC")],
+    ["an addition", () => addCartItem(PRODUCT, 1)],
+    ["a change", () => changeCartItemQuantity(PRODUCT, 2)],
+    ["a removal", () => removeCartItem(PRODUCT)],
+  ])("maps a 429 of %s to rate_limited", async (_name, call) => {
+    stubFetch(async () => Response.json({ detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." }, { status: 429, headers: { "Retry-After": "60" } }));
+
+    expect(await call()).toEqual({ status: "rate_limited" });
+  });
+
   it("loads the summary from /api/cart/summary", async () => {
     const fetch = stubFetch(async () => Response.json({ itemCount: 3, notice: null }));
 

@@ -100,8 +100,9 @@ export type CartView = components["schemas"]["CartView"];
 /**
  * Why a call to the store's cart endpoints did not give data. `detail` is the Polish text of the API, when there is
  * one. `invalid` is the discount code of a read that the API refuses outright (too long): `detail` is for its field.
+ * `rate_limited` is a 429 of the rate limit of the API; the pages show their own text for their place (no `detail`).
  */
-export type CartFailure = { status: "conflict" | "not_found" | "unauthorized" | "invalid" | "failed"; detail?: string };
+export type CartFailure = { status: "conflict" | "not_found" | "unauthorized" | "invalid" | "rate_limited" | "failed"; detail?: string };
 
 export type CartResult<T> = { status: "ok"; data: T } | CartFailure;
 
@@ -121,6 +122,8 @@ async function callCart<T>(path: string, init: { method: string; body?: unknown 
     switch (response.status) {
       case 401:
         return { status: "unauthorized" };
+      case 429:
+        return { status: "rate_limited" };
       case 400:
       case 404:
       case 409: {

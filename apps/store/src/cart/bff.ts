@@ -2,9 +2,12 @@ import type { NextRequest } from "next/server";
 import { readSignedValue, SESSION_COOKIE, signValue } from "@/auth/cookies";
 import { clearSessionCookie, json, logFailure, noStore } from "@/auth/responses";
 import type { CartSummaryBody } from "@/api/client";
+import { withRetryAfter } from "@/checkout/api";
+import { forwardingClientIp } from "@/checkout/client-ip";
 import { type ApiResult, type CartApi, type CartView, createGuestCart, customerCart, guestCart } from "./api";
 import { CART_COOKIE, cartCookieOptions, clearCartCookie, clearMergeNotice, hasMergeNotice, NOTICE_COOKIE, readCartId } from "./cookies";
 import type { CartDeps } from "./deps";
+import { BODY_TOO_LARGE, MAX_JSON_BODY_BYTES, readBodyText } from "./json-body";
 import { applyGuestCartMerge, type GuestCartMerge, mergeGuestCart } from "./merge";
 
 export type CartCommand =
@@ -14,7 +17,7 @@ export type CartCommand =
   | { kind: "change"; variantId: string; quantity: number }
   | { kind: "remove"; variantId: string };
 
-type Outcome = { status: number; body: unknown };
+type Outcome = { status: number; body: unknown; retryAfter?: string };
 /**
  * What the answer does to the browser's cookies: the guest cart cookie (set or cleared), the merge of the guest cart
  * into the customer's (which clears it and may leave a notice), the notice shown by the summary, and the session.
@@ -47,10 +50,20 @@ export function refuseForeignWrite(request: NextRequest, storeUrl: string, withB
   return null;
 }
 
-/** The JSON object of the request body, or null when the body is not one. */
-export async function readJsonObject(request: NextRequest): Promise<Record<string, unknown> | null> {
+/**
+ * The JSON object of the request body, null when the body is not one, or the 413 to send when the body is over the
+ * limit (`MAX_JSON_BODY_BYTES`; nothing is read past it and the API is not called).
+ */
+export async function readJsonObject(request: NextRequest, maxBytes = MAX_JSON_BODY_BYTES): Promise<Record<string, unknown> | Response | null> {
+  const read = await readBodyText(request, maxBytes);
+  if (read.kind === "too_large") {
+    return noStore(json({ detail: BODY_TOO_LARGE }, 413));
+  }
+  if (read.kind === "unreadable") {
+    return null;
+  }
   try {
-    const body: unknown = await request.json();
+    const body: unknown = JSON.parse(read.text);
     return typeof body === "object" && body !== null && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
   } catch {
     return null;
@@ -68,10 +81,13 @@ export const lineMissing = () => json({ detail: LINE_MISSING }, 404);
 /**
  * Chooses the cart (the customer's with a session, otherwise the guest's from `store_cart`), runs the command on
  * it and answers for the browser: 200 with the data, 404, 409 and 422 of the API with their `detail`, 401 when the
- * session ended, 503 for everything else. With a session, a guest cart of `store_cart` is merged into the customer's
+ * session ended, 429 of the rate limit of the API with its `detail` and `Retry-After`, 503 for everything else. With a session, a guest cart of `store_cart` is merged into the customer's
  * first. Nothing here computes a price or a total.
  */
-export async function runCartCommand(request: NextRequest, deps: CartDeps, command: CartCommand): Promise<Response> {
+export async function runCartCommand(request: NextRequest, cartDeps: CartDeps, command: CartCommand): Promise<Response> {
+  // Every call of the API (the creation of a guest cart and the merge too) carries the address of the client, so that
+  // the rate limits of the API count by the customer and not by the store.
+  const deps: CartDeps = { ...cartDeps, api: (accessToken) => forwardingClientIp(cartDeps.api(accessToken), request) };
   const effects: Effects = {};
   const cartCookie = request.cookies.get(CART_COOKIE)?.value;
   let outcome: Outcome;
@@ -103,8 +119,8 @@ function withNotice(outcome: Outcome, noticeCookie: string | undefined, deps: Ca
   return { status: 200, body: { ...(outcome.body as CartSummaryBody), notice: "merge_truncated" } satisfies CartSummaryBody };
 }
 
-function finish({ status, body }: Outcome, effects: Effects, { config }: CartDeps): Response {
-  const response = json(body, status);
+function finish({ status, body, retryAfter }: Outcome, effects: Effects, { config }: CartDeps): Response {
+  const response = withRetryAfter(json(body, status), retryAfter);
   if (effects.cart === "clear") {
     clearCartCookie(response, config.storeUrl);
   } else if (effects.cart) {
@@ -146,6 +162,9 @@ function toOutcome(result: ApiResult<CartView | { itemCount: number }>, command:
   }
   if (result.status === 404 || result.status === 409 || result.status === 422) {
     return { status: result.status, body: { detail: result.detail } };
+  }
+  if (result.status === 429) {
+    return { status: 429, body: { detail: result.detail }, ...(result.retryAfter === undefined ? {} : { retryAfter: result.retryAfter }) };
   }
   if (result.status === 400 && command.kind === "read" && command.discountCode !== undefined) {
     // The code the customer typed is refused (too long, not text): the text of the API goes to the field of the code.
@@ -218,6 +237,9 @@ async function runForGuest(cookie: string | undefined, deps: CartDeps, command: 
       effects.cart = "clear";
     }
     const created = await createGuestCart(api);
+    if (!created.ok && created.status === 429) {
+      return toOutcome(created, command);
+    }
     if (!created.ok || created.data.id === null) {
       console.error("A guest cart could not be created.");
       return { status: 503, body: {} };

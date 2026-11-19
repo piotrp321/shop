@@ -15,6 +15,9 @@ export const PATCH = withCartDeps<Context>(async (request, deps, { params }) => 
     return lineMissing();
   }
   const body = await readJsonObject(request);
+  if (body instanceof Response) {
+    return body;
+  }
   if (!body || typeof body.quantity !== "number") {
     return invalidBody();
   }
