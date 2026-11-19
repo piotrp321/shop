@@ -54,7 +54,7 @@ punkcie. Limity nie zatrzymują atakującego z wieloma adresami (botnet, własna
 | Ustalenie dokładnego stanu do 99 sztuk dodaniami do koszyka (R2) | Ujawnia liczbę sztuk, nie blokuje sprzedaży; L2 spowalnia próby. |
 | Limit zmian koszyka klienta | Klient ma konto i jeden koszyk; rejestracja w `prod` jest wyłączona. |
 | Zwolnienie przez pracownika stanu zablokowanego zamówieniem `new` | Status `new` nie ma przejść pracownika (`OrderStatus.php:32`); zamówienie wygasa samo po 35 min. |
-| Sprawdzanie na originie, z której strefy Cloudflare przyszło żądanie (Authenticated Origin Pulls albo tunel, SA-35) | Nie zmienia klucza limitów: adres klienta ustawia Cloudflare także w ruchu z obcej strefy („Adres klienta”). Chroni reguły ustawiane w Cloudflare, których ten epik nie używa. |
+| Sprawdzanie na originie, z której strefy Cloudflare przyszło żądanie (Authenticated Origin Pulls albo tunel, SA-35) | SA-35: Low w audycie, nietestowane. Wymaga certyfikatu strefy w Cloudflare (krok użytkownika) i `clientAuth` w Traefiku. Bez tego jedno założenie limitów na adres jest niepotwierdzone („Adres klienta”). |
 | Generator losowych kodów w panelu i minimalna długość kodu poufnego | Panel przyjmuje kod od 3 znaków. Poufność kodu daje jego losowość („Zgadywanie kodów rabatowych”); zmiana panelu i reguły kodu to osobne zgłoszenie. |
 | Wspólny cache ISR między replikami, cache HTML listingów, koszt renderu stron pod ruchem robotów | L9 ogranicza dysk i pamięć jednego poda sklepu. Reszta: PERFORMANCE (#781, STORE-CACHE). |
 
@@ -69,7 +69,7 @@ zadanie się zatrzymuje i wraca z decyzją, zamiast obchodzić wymaganie):
 
 | ID | Założenie | Zadanie |
 |---|---|---|
-| E1 | `RateLimiterFactory` 8.1 tworzy blokadę z domyślnym TTL 300 s i czeka na nią bez limitu (`acquire(true)`); ograniczone czekanie i krótki TTL daje własny dekorator `LockFactory` przekazany jako `lock_factory`. | L1 |
+| E1 | `RateLimiterFactory` 8.1 tworzy blokadę z domyślnym TTL 300 s i czeka na nią bez limitu (`acquire(true)`), a wyniku nie sprawdza; ograniczone czekanie i krótki TTL daje własny dekorator `LockFactory` przekazany jako `lock_factory`. | L1 |
 | E2 | Caddy w FrankenPHP 1.13.5 (wersja z `main`): `request_body max_size` odrzuca treść ponad limit przed PHP także przy treści chunked; `handle_errors` zwraca problem JSON; `timeouts read_body` zamyka wolną treść. | L8 |
 | E3 | Next 16.4.6 (wersja z `main`): `experimental.isrFlushToDisk: false` wyłącza każdy zapis cache przyrostowego na dysk (wpisy stron, także 404, i cache `fetch`), `cacheMaxMemorySize` ogranicza cache w pamięci procesu, a `revalidateTag` działa. Kod tej wersji to pokazuje (`FileSystemCache.set` kończy się przed zapisem, gdy zapis na dysk jest wyłączony; rozmiar wpisu strony to długość HTML, bajty RSC i dane segmentów); eksperyment potwierdza to na buildzie produkcyjnym i mierzy pamięć. | L9 |
 | E4 | Middleware `buffering` Traefika z k3s buforuje też odpowiedź, więc jest tylko na trasach JSON (BFF sklepu `/api/`, host `api.`), nigdy na stronach HTML i RSC sklepu. | L8 |
@@ -101,7 +101,7 @@ do hosta `api.` (zawsze przez Cloudflare: `CF-Connecting-IP` ustawia Cloudflare)
 
 **Ryzyka resztkowe** (świadome): wiele adresów omija limity na adres; trasa uploadu przyjmuje anonimowo do 70 MB
 (PHP parsuje `multipart` przed firewallem); adres wewnątrz klastra jest zaufany (HARDENING D2); origin przyjmuje ruch
-z każdej strefy Cloudflare (SA-35), co nie daje wyboru adresu klienta („Adres klienta”); kod rabatowy słownikowy da się
+z każdej strefy Cloudflare (SA-35; czy daje to wybór adresu klienta, nie jest sprawdzone: „Adres klienta”); kod rabatowy słownikowy da się
 odgadnąć mimo limitu („Zgadywanie kodów rabatowych”).
 
 ## Decyzje
@@ -110,7 +110,7 @@ Wartości i zachowania w tabeli są decyzjami użytkownika.
 
 | ID | Decyzja |
 |---|---|
-| D1 | **Blokada licznika limitera (#421; nowa zależność, „Wymagane przed startem”).** `symfony/lock` (komponent Symfony 8.1, magazyn blokad w tym samym Redisie co limitery, bez nowej zmiennej środowiska) jako `lock_factory` każdego limitera w `prod` i `dev` (`when@test` bez blokady, magazyn w pamięci jednego procesu). Blokada ma czas życia 5 s, a żądanie czeka na nią najwyżej 300 ms (dekorator `LockFactory`, E1). Rywalizacja dłuższa niż 300 ms to 429 jak przekroczenie limitu (rywalizacja nie może otwierać limitu). Błąd Redisa (połączenie, odczyt) przy blokadzie działa jak D7 HARDENING: żądanie przechodzi bez limitu, a log `prod` ma wpis `warning` poza `fingers_crossed`. Blokada jest pierwszym wywołaniem Redisa w limitowanym żądaniu: po jej błędzie żądanie nie woła licznika, więc Redis, który nie odpowiada, wydłuża je najwyżej o jeden limit czasu DSN (1 s na połączenie albo 1 s na odczyt). |
+| D1 | **Blokada licznika limitera (#421; nowa zależność, „Wymagane przed startem”).** `symfony/lock` (komponent Symfony 8.1, magazyn blokad w tym samym Redisie co limitery, bez nowej zmiennej środowiska) jako `lock_factory` każdego limitera w `prod` i `dev` (`when@test` bez blokady, magazyn w pamięci jednego procesu). Blokada ma czas życia 5 s, a żądanie czeka na nią najwyżej 300 ms (dekorator `LockFactory`, E1). Rywalizacja dłuższa niż 300 ms to 429 jak przekroczenie limitu (rywalizacja nie może otwierać limitu). Błąd Redisa (połączenie, odczyt) przy blokadzie działa jak D7 HARDENING: żądanie przechodzi bez limitu, a log `prod` ma wpis `warning` poza `fingers_crossed`. Blokada jest pierwszym wywołaniem Redisa w limitowanym żądaniu: po jej błędzie żądanie nie woła licznika, więc Redis, który nie odpowiada, wydłuża je najwyżej o limit czasu połączenia i limit czasu odczytu DSN (1 s i 1 s). Limiter nie sprawdza wyniku wzięcia blokady, więc rywalizację zgłasza wyjątek dekoratora; błąd Redisa przy zwalnianiu blokady nie przerywa żądania (`warning`). |
 | D2 | **Klucz nowych limiterów: adres klienta** (`guest:<adres>` z `ClientIp`), także na trasie klienta podglądu kodu, więc przełączanie trasy gościa i klienta nie zeruje licznika. |
 | D3 | **Wartości limiterów (okno przesuwne):** `guest_cart_create` 30 na 15 min (`POST /api/v1/guest-carts`); `guest_cart_write` 300 na 15 min (`POST …/items`, `PUT` i `DELETE …/items/{variantId}` koszyka gościa); `discount_preview` 20 na 15 min (`GET /api/v1/guest-carts/{id}` i `GET /api/v1/me/cart` z parametrem `discountCode`, L3). `when@dev` po 10 000 (stos compose i E2E mają jeden adres sklepu). `when@test`: wartości powyżej liczby żądań danego rodzaju w jednym istniejącym teście (zasada z komentarza `rate_limiter.yaml`); testy limitów wykonują limit + 1 żądań. Uczciwy klient zakłada koszyk raz na przeglądarkę, zmienia go kilkadziesiąt razy i sprawdza kod kilka razy. |
 | D4 | **Osobne komunikaty odrzucenia kodu.** Podgląd i 409 zamówienia zachowują `invalid`, `used_up` i `below_minimum` z tekstami jak dziś. Wspólny komunikat nie utrudnia zgadywania; ogranicza je liczba prób (L3) i losowość kodu („Zgadywanie kodów rabatowych”). |
@@ -140,13 +140,15 @@ Limity L2, L3 i L6 liczą po adresie z `ClientIp`, jak limity HARDENING (D2 i D3
   trafiło w jeden klucz). Na worf.pl potwierdza to weryfikacja originu z 2026-11-12 (wynik w #179): pięć hostów
   z pominięciem Cloudflare odpowiada 403, żądanie z własnym `CF-Connecting-IP` nie dociera do originu, a 11. złożenie
   zamówienia z jednego adresu to 429.
-- **Nowe reguły Ingressu nie otwierają obejścia.** L8 dodaje reguły Ingressu (ścieżka uploadu, `/api/` hosta sklepu);
-  każda zachowuje `ipallowlist` i pozostałe middleware swojego hosta (kryterium L8). Sklep kopiuje nagłówek z żądania
-  przeglądarki do API (D14), a sam stoi za tą samą listą.
+- **Nowe Ingressy nie otwierają obejścia.** Middleware są adnotacją całego Ingressu, więc L8 dodaje osobne Ingressy
+  (ścieżka uploadu, `/api/` hosta sklepu); każdy ma `ipallowlist` i pozostałe middleware swojego hosta (kryterium L8).
+  Sklep kopiuje nagłówek z żądania przeglądarki do API (D14), a sam stoi za tą samą listą.
 - **Ryzyka resztkowe.** Origin nie sprawdza, z której strefy Cloudflare przyszło żądanie (SA-35: Low, nietestowane):
-  ruch z obcej strefy omija reguły strefy sklepu, ale adres klienta nadal ustawia Cloudflare, więc nie daje wyboru
-  klucza limitu. Wywołujący z wnętrza klastra może podać dowolny adres (HARDENING D2). Atakujący z wieloma prawdziwymi
-  adresami ma tyle kluczy, ile adresów IPv4 albo prefiksów /64.
+  ruch z obcej strefy przechodzi `ipAllowList` i omija reguły strefy sklepu. Nie jest sprawdzone, czy taki ruch (obca
+  strefa z nadpisanym nagłówkiem `Host` albo Worker) może nieść `CF-Connecting-IP` wybrany przez nadawcę; weryfikacja
+  z #179 objęła tylko strefę sklepu. Gdyby mógł, jedna maszyna miałaby dowolną liczbę kluczy limitów L2, L3 i L6.
+  Zamyka to sprawdzanie strefy na originie („Poza zakresem”). Wywołujący z wnętrza klastra może podać dowolny adres
+  (HARDENING D2). Atakujący z wieloma prawdziwymi adresami ma tyle kluczy, ile adresów IPv4 albo prefiksów /64.
 - **Wspólny adres.** Osoby za jednym adresem (NAT firmy albo uczelni, CGNAT operatora komórkowego) dzielą limity;
   w IPv6 urządzenie albo sieć domowa ma zwykle własny prefiks /64.
 
@@ -209,9 +211,10 @@ zmieniają ich sens.
 2. Rywalizacja: blokada klucza trzymana dłużej niż 300 ms (wstrzymany proces) — kolejne żądanie tego klucza dostaje
    429 po najwyżej ok. 300 ms, nie przechodzi; inny klucz nie czeka.
 3. Porzucona blokada (proces przerwany) przestaje blokować klucz po 5 s.
-4. Redis niedostępny (odrzuca połączenia) i Redis, który nie odpowiada: żądanie limitowanej trasy przechodzi, log ma
-   wpis `warning`, a po błędzie blokady licznik nie jest wołany, więc żądanie trwa dłużej najwyżej o jeden limit
-   czasu DSN (rozszerzenie `RedisRateLimitTest`).
+4. Redis niedostępny (odrzuca połączenia), Redis, który nie odpowiada, i Redis, który pada między wzięciem
+   a zwolnieniem blokady: żądanie limitowanej trasy przechodzi (nie 500), log ma wpis `warning`, a po błędzie wzięcia
+   blokady licznik nie jest wołany, więc żądanie trwa dłużej najwyżej o limit czasu połączenia i limit czasu odczytu
+   DSN (rozszerzenie `RedisRateLimitTest`).
 5. `RateLimitConfigurationTest` sprawdza blokadę każdego limitera w `prod` i `dev`.
 
 **Skutek dla klienta.** Brak; dwa dodatkowe wywołania Redisa na limitowane żądanie.
@@ -380,7 +383,7 @@ unikalnym indeksie, trzymając wątek FrankenPHP i połączenie; operator (symul
 żądaniach w liczbie wątków całe API stoi (audyt: 40 żądań, ok. 36 s bez odpowiedzi, także `/health`).
 
 **Wymagane.** D9. Blokada zaraz po sprawdzeniu powtórzenia, przed zakończeniem oczekującej płatności; zwalnia ją koniec
-transakcji. Powtórzenie z tym samym kluczem, gdy pierwsze żądanie jeszcze trwa, też dostaje 409 (wcześniej czekało).
+transakcji. Powtórzenie z tym samym kluczem, gdy pierwsze żądanie jeszcze trwa, też dostaje 409.
 Opis 409 w OpenAPI już obejmuje „a concurrent start”.
 
 **Kryteria akceptacji.**
@@ -444,25 +447,33 @@ optymalizator obrazów Next (`/_next/image`) nie działa przy własnym loaderze 
 może zajmować w pamięci więcej niż jego rozmiar w cache; górne oszacowanie cache to dwukrotność limitu, ok. 256 MB.
 Kontener `store` ma w `prod` limit pamięci 1536 MiB (wartość domyślna chartu: 1 GiB). Szczyt jego pamięci w pomiarze
 `medium` z prawie pustym cache to 503 MiB (`docs/reports/demo-load-medium-2026-11-19.md`), więc oszacowanie z pełnym
-cache to ok. 760 MiB. Pamięć z pełnym cache nie jest zmierzona: mierzy ją zadanie (kryterium 3).
+cache to ok. 760 MiB. HTML wpisów leży na stercie V8, której limit Node 24 ustawia według limitu pamięci kontenera:
+ok. 560 MiB przy 1 GiB i ok. 864 MiB przy 1536 MiB. Pamięć z pełnym cache nie jest zmierzona: mierzy ją zadanie
+(kryterium 3).
 
 **Kryteria akceptacji.**
-1. Test na buildzie produkcyjnym sklepu: po wejściu na N unikalnych slugów istniejących produktów i N slugów
-   nieistniejących (N tak dobrane, że wpisy przekraczają limit pamięci) katalog cache na dysku ma ten sam rozmiar co
-   przed nimi, a pierwszy slug po przepełnieniu znów daje `x-nextjs-cache: MISS`.
+1. Test na buildzie produkcyjnym sklepu, uruchamiany w CI po E2E na stosie `STORE_MODE=production` (cel `make`
+   dopisany do `CI_AFTER_E2E`, jak `store-dynamic-routes`): po wejściu na strony istniejących produktów i na tyle
+   slugów nieistniejących, że wpisy przekraczają limit pamięci (N unikalnych adresów), katalog cache na dysku ma ten
+   sam rozmiar co przed nimi, a pierwszy adres po przepełnieniu znów daje `x-nextjs-cache: MISS`.
 2. Slug spoza `isProductSlug` (np. z wielkimi literami, kropką, za długi) to 404 bez wywołania API (test jednostkowy).
 3. Pomiar w raporcie zadania (obraz produkcyjny sklepu, limit pamięci kontenera 1 GiB): po N i po 2N unikalnych
-   slugach z kryterium 1 proces sklepu nie został zrestartowany, jego pamięć (RSS) po 2N jest wyższa niż po N o mniej
-   niż 10% i mieści się w 768 MiB (limit 1 GiB z zapasem 25%). Inny wynik zatrzymuje zadanie i wraca z decyzją
-   o rozmiarze cache.
+   adresach z kryterium 1, a potem w trakcie co najmniej 20 równoległych żądań stron spoza cache, proces sklepu nie
+   został zrestartowany; pamięć (RSS) po 2N jest wyższa niż po N o mniej niż 10% i także pod ruchem równoległym mieści
+   się w 768 MiB (limit 1 GiB z zapasem 25%), a zajęta sterta V8 w 75% jej limitu. Raport podaje RSS, zajętą stertę
+   i limit sterty. Inny wynik zatrzymuje zadanie i wraca z decyzją o rozmiarze cache.
 4. Istniejące testy świeżości strony produktu i rewalidacji po tagach (`product-page-freshness.spec.ts`, E2E
    produkcyjne w CI) przechodzą bez zmian.
-5. Limit `ephemeral-storage` kontenera `store` zostaje bez zmian (`infra/k8s/tests/test_ephemeral_storage.py`
-   przechodzi bez zmian).
+5. Limit `ephemeral-storage` kontenera `store` zostaje bez zmian (asercje
+   `infra/k8s/tests/test_ephemeral_storage.py` bez zmian).
+6. Test konfiguracji (Vitest, `apps/store/tests`): `next.config.ts` ma `experimental.isrFlushToDisk` równe `false`
+   i `cacheMaxMemorySize` równe stałej 128 MB. Opcja jest eksperymentalna: jej zmianę albo usunięcie przy podbiciu
+   Next wykrywa test z kryterium 1 w CI.
 
 **Skutek dla klienta.** Brak; po restarcie poda cache startuje pusty jak dziś. Cache mieści ok. 500 stron produktu,
 więc przy katalogu w skali wejście na rzadko odwiedzaną stronę zwykle renderuje ją od nowa (ok. 39 ms CPU zamiast
-ok. 1 ms, audyt wydajności); popularne strony zostają w cache.
+ok. 1 ms, audyt wydajności). Strony odwiedzane często zostają w cache, dopóki nie wyprze ich seria unikalnych adresów
+(ok. 950 nieznanych slugów wypełnia cały cache).
 
 ## L10. Błędny token Bearer bez zdarzenia Sentry (SA-18)
 
@@ -542,7 +553,7 @@ z tabeli wybiera sklep według miejsca, jak przy kasie.
 | Sytuacja | Wynik |
 |---|---|
 | Redis niedostępny (limiter albo blokada) | żądanie bez limitu, `warning` w logu `prod` (D1) |
-| Redis nie odpowiada (połączenie albo odczyt po czasie) | żądanie bez limitu, dłuższe najwyżej o jeden limit czasu DSN (D1) |
+| Redis nie odpowiada (połączenie albo odczyt po czasie) | żądanie bez limitu, dłuższe najwyżej o limit czasu połączenia i odczytu DSN (D1) |
 | Blokada limitera zajęta dłużej niż 300 ms | 429 (D1) |
 | Proces przerwany z blokadą limitera | klucz wolny najpóźniej po 5 s (D1) |
 | Złożenie przy wyczerpanym limicie nieopłaconych, ten sam klucz idempotencji | 200 z istniejącym zamówieniem |
@@ -567,8 +578,8 @@ z tabeli wybiera sklep według miejsca, jak przy kasie.
 
 ## Dokumentacja
 
-Ta specyfikacja opisuje docelowe zachowanie, więc zadania nie opisują go drugi raz. `CLAUDE.md` aplikacji zmieniają
-tylko dwie nowe reguły dla agentów, każdą jedno zadanie, jedną linią w `apps/api/CLAUDE.md`:
+Ta specyfikacja opisuje docelowe zachowanie, więc zadania nie opisują go drugi raz. `apps/api/CLAUDE.md` dostaje dwie
+nowe reguły dla agentów, każdą jedno zadanie, jedną linią:
 
 - „Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (`RateLimit::ROUTE_DEFAULT`, wartości `prod`, `dev`
   i `test`) i test prób obejścia.” (L1–L3);
@@ -576,8 +587,15 @@ tylko dwie nowe reguły dla agentów, każdą jedno zadanie, jedną linią w `ap
   dozwolonym wyjątkiem od persystencji przez rekordy ORM w każdym module; liczenie i zapis idą przez repozytorium.”
   (L6; korzysta z niej też L7).
 
-Specyfikacje innych funkcji zmieniają się tylko tam, gdzie ich zdanie przeczy nowemu zachowaniu:
+Poza tym `CLAUDE.md` aplikacji, specyfikacje innych funkcji i komentarze zmieniają się tylko tam, gdzie ich zdanie
+przeczy nowemu zachowaniu:
 
+- `apps/api/CLAUDE.md`: limitery „bez `symfony/lock`” (L1); kolejność blokad złożenia zamówienia (L6).
+- `apps/store/CLAUDE.md`: cache ISR zapisywany na dysku w obrazie produkcyjnym (L9).
+- `docs/features/small-fixes/spec.md` (uzasadnienie D4), komentarze przy `ephemeral-storage` w
+  `infra/k8s/environments/prod/values.yaml` i `load/values.yaml`, opis testu
+  `infra/k8s/tests/test_ephemeral_storage.py`, `docs/features/demo-scale/spec.md` (ryzyko cache ISR na dysku i warunek
+  kolejności): cache ISR nie rośnie na dysku, a limit zostaje jako zabezpieczenie (L9).
 - `docs/features/hardening/spec.md`: D1 (bez `symfony/lock`), limity koszyka poza zakresem (L1–L3); D16 (L5, L6).
 - `docs/features/discount-codes/spec.md`: limit podglądu poza zakresem i ryzyko zgadywania (L3); D7, kolejność blokad
   (L6).
@@ -609,4 +627,8 @@ Specyfikacje innych funkcji zmieniają się tylko tam, gdzie ich zdanie przeczy 
   produktu, a jego zużycie pamięci jest oszacowane i mierzy je dopiero zadanie (L9, kryterium 3).
 - Do wdrożenia L9 dane w skali na serwerze demo oznaczają eksmisje poda sklepu pod ruchem robotów („Wdrożenie
   i kolejność z DEMO-SCALE”).
+- Lista rewalidowanych tagów Next jest w pamięci procesu sklepu bez limitu, poza `cacheMaxMemorySize`: rośnie o każdy
+  tag produktu rewalidowany od startu poda, jak dziś. Jej wielkość na danych w skali nie jest zmierzona
+  (PERFORMANCE, #781).
+- Nie jest sprawdzone, czy ruch z obcej strefy Cloudflare może nieść wybrany adres klienta (SA-35, „Adres klienta”).
 - Polityka haseł nie wymusza zmiany słabych haseł już ustawionych.
