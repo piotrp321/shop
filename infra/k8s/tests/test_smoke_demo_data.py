@@ -267,7 +267,8 @@ class TrafficRun(unittest.TestCase):
 # the StatefulSet elasticsearch is in a rolling update for the first STUB_ROLLING reads; a Job backfill is active for the first STUB_ACTIVE
 # reads of the Jobs, then complete; the Jobs that generate made are the lines of $STUB_DIR/jobs; the rule shop-closed exists while
 # $STUB_DIR/rule does; the database has the numbers of $STUB_DIR/db-*; the kubelet reports STUB_FREE free bytes (none when "fail"). Every
-# read of the kind STUB_FAILS (statefulsets, deployments or jobs) fails.
+# read of the kind STUB_FAILS (statefulsets, deployments or jobs) fails. STUB_RATE_LIMIT adds a running Job of the CronJob rate-limit-check.
+# The Jobs come as `<name> <conditions>` lines (jsonpath) or as JSON (-o json) with the conditions and the owner.
 KUBECTL = r"""#!/bin/sh
 printf 'kubectl %s\n' "$*" >> "$STUB_LOG"
 case "$*" in *"get ${STUB_FAILS:-none} "*) echo "The connection to the server was refused" >&2; exit 1 ;; esac
@@ -286,9 +287,20 @@ case "$*" in
   *"get deployments"*) echo "api 2 2 1 1 1"; echo "store 2 2 1 1 1" ;;
   *"get jobs"*)
     n="$(reads jobs)"
-    echo "initialize-r4 Failed"
-    if [ "${STUB_ACTIVE:-0}" = always ] || [ "$n" -le "${STUB_ACTIVE:-0}" ]; then echo "backfill-r4 "; else echo "backfill-r4 Complete"; fi
-    cat "$STUB_DIR/jobs" 2>/dev/null || true ;;
+    {
+      echo "initialize-r4 Failed"
+      if [ "${STUB_ACTIVE:-0}" = always ] || [ "$n" -le "${STUB_ACTIVE:-0}" ]; then echo "backfill-r4 "; else echo "backfill-r4 Complete"; fi
+      cat "$STUB_DIR/jobs" 2>/dev/null || true
+      [ -z "${STUB_RATE_LIMIT:-}" ] || echo "rate-limit-check-29000000 "
+    } > "$STUB_DIR/job-lines"
+    case "$*" in
+      *"-o json") awk 'BEGIN { printf "{\"items\": [" }
+        NF { c = ""; for (i = 2; i <= NF; i++) c = c (c == "" ? "" : ", ") "{\"type\": \"" $i "\", \"status\": \"True\"}"
+             o = ($1 ~ /^rate-limit-check-/) ? "{\"kind\": \"CronJob\", \"name\": \"rate-limit-check\"}" : ""
+             printf "%s{\"metadata\": {\"name\": \"%s\", \"ownerReferences\": [%s]}, \"status\": {\"conditions\": [%s]}}", (k++ ? ", " : ""), $1, o, c }
+        END { print "]}" }' "$STUB_DIR/job-lines" ;;
+      *) cat "$STUB_DIR/job-lines" ;;
+    esac ;;
   *"get networkpolicy shop-closed"*) [ ! -e "$STUB_DIR/rule" ] || echo "networkpolicy.networking.k8s.io/shop-closed" ;;
   *"get --raw"*stats/summary*)
     [ "${STUB_FREE:-}" != fail ] || { echo "the server is unavailable" >&2; exit 1; }
@@ -444,6 +456,8 @@ class Phase(unittest.TestCase):
             'tools_run() { docker run "$@"; }',
             'py() { python3 -I "$@"; }',
             "yq() { case \"$*\" in *small.products*) echo 2000 ;; *small.orders*) echo 5000 ;; *) echo \"yq: $*\" >&2; return 1 ;; esac; }",
+            # smoke.sh sources it (active_jobs, as make generate counts the active Jobs).
+            f". {K8S / 'scripts/shop-closed.sh'}",
         ]
         script = "\n".join(prelude + [cut_out(n, text) for n in FUNCTIONS] + ["check_generate"])
         variables = {
@@ -611,6 +625,13 @@ class Phase(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("not settled", result.stderr)
                 self.assertEqual([], self.runs())
+
+    def test_a_job_of_the_cronjob_rate_limit_check_does_not_hold_the_phase(self):
+        """The phase counts the active Jobs as make generate does (active_jobs of scripts/shop-closed.sh): the Job of rate-limit-check
+        (every five minutes, at most a minute) does not keep it waiting."""
+        result = self.run_phase(STUB_RATE_LIMIT="1", SMOKE_TIMEOUT="0")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(["generate small"], self.runs())
 
     def test_workloads_or_jobs_that_cannot_be_read_are_never_taken_for_settled(self):
         """A failed read is never a settled cluster: make generate does not run and the phase fails."""
