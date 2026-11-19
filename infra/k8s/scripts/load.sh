@@ -42,12 +42,23 @@
 # peak use of the disk, diskPeakGb; a file that cannot be written is a warning). sizes.txt is written with every LOAD_DATA;
 # the times of the steps and space.log only with a generator.
 #
+# A host that sleeps (a laptop: the Docker VM stops with it) makes the times of the run worthless, and nothing else in the results
+# shows it. So on macOS the script holds the host awake for the whole run (`caffeinate -ims -w <pid of this shell>`; other systems
+# have no such command and go without it, silently: environment.txt has the line `sleep lock:` with what was done), and at the end
+# it looks for pauses in the readings it took on its own: the free space (space.log) and the node (node-stats.log), every 10 to
+# LOAD_SPACE_POLL seconds. A gap between two readings of more than three times LOAD_SPACE_POLL, and at least 120 s, is a pause of
+# the host. Any pause is written as a `#` line of space.log (the number, the total and the longest), as the line `host sleep:` of
+# environment.txt (its absence too, once environment.txt is there) and as a warning on the standard error; a run that was otherwise
+# done then ends with 1. The readings of node-stats.log count once the samplers have started (a run that ended before is not looked at).
+#
 # Exit code: 0 the measurement was done (it has no thresholds of speed; a ramp that ended on saturation is the normal
-# end), 2 the environment is not fit (LOAD_OUT missing, wrong or not mountable by Docker, an unknown LOAD_DATA, the file of the photo pool missing or
+# end; a pause of the host is not, see above), 2 the environment is not fit (LOAD_OUT missing, wrong or not mountable by Docker, an unknown LOAD_DATA, the file of the photo pool missing or
 # without a read variable, no Docker, too few CPUs or too little memory in the Docker VM, too little room on the disks before the
 # start or a fall below 10% of diskPeakGb during the run, a free space or diskPeakGb that cannot be read, pods not ready, the
 # generator failed or did not finish in time, no chunks of the sitemap, the data of the demo or the stocks not prepared, the
-# warm-up failed) with a message, 1 anything else that went wrong (a failed run of k6 in the ramp or the steady run, a failed build).
+# warm-up failed) with a message, 1 anything else that went wrong (a failed run of k6 in the ramp or the steady run, a failed build,
+# a run that went to its end while the host slept: its results are in LOAD_OUT, but its times are not to be trusted; a run that
+# failed with 2 keeps 2 and only names the pause).
 # Exit 125 of `docker run` of k6 is Docker failing to start it (named so in the message), not a shop that does not answer.
 #
 #   LOAD_DATA=seed        seed, medium, server or full (above)
@@ -57,7 +68,8 @@
 #   LOAD_DATA_POLL=30     seconds between two readings of the Job of the generator
 #   LOAD_DISK_PATH        a directory on the disk of the host that holds the disk image of the Docker VM (default: the home
 #                         directory); its free space is the one that is checked on the host
-#   LOAD_SPACE_POLL=30    seconds between two readings of the free space during the run
+#   LOAD_SPACE_POLL=30    seconds between two readings of the free space during the run (also the unit of a pause of the host:
+#                         three of them, at least 120 s, between two readings count as a sleep)
 #   LOAD_PROFILES_FILE    the profiles of the generator (default apps/api/fixtures/demo-data/profiles.yaml)
 #   LOAD_DATA_ANCHOR      the reference moment of the generated data (--anchor of bin/generate-demo, e.g. 2026-11-01), so
 #                         that two measurements have the same data; by default the start of the current UTC day
@@ -319,7 +331,68 @@ space_log_summary() {
       printf "# the least free space: %.2f GB in the Docker VM (%d KiB), %.2f GB on the disk of the host (%d KiB)\n", vm_min * 1024 / 1e9, vm_min, host_min * 1024 / 1e9, host_min
       printf "# the peak use against the first reading: %.2f GB in the Docker VM, %.2f GB on the disk of the host\n", (vm_first - vm_min) * 1024 / 1e9, (host_first - host_min) * 1024 / 1e9
     }' "$out/space.log" 2>/dev/null)" || return 0
+  if [ "$sleep_gaps" -gt 0 ]; then
+    space_summary="# $(sleep_sentence)
+$space_summary"
+  fi
   { printf '%s\n' "$space_summary" >> "$out/space.log"; } 2>/dev/null || space_log_warn
+}
+
+# The pauses of the host (see the header): from the readings of space.log (a generator) and of node-stats.log (once the samplers
+# have started) and from the end of the run, which is a reading too. A gap longer than the limit is a pause; sets sleep_limit,
+# sleep_gaps, sleep_total and sleep_longest (seconds). What cannot be read is no pause.
+host_sleep_check() {
+  sleep_limit=$(( 3 * LOAD_SPACE_POLL ))
+  if [ "$LOAD_DATA" = seed ] || [ "$sleep_limit" -lt 120 ]; then sleep_limit=120; fi
+  sleep_gaps=0 sleep_total=0 sleep_longest=0
+  sleep_answer="$({
+    [ "$LOAD_DATA" = seed ] || cat "$out/space.log" 2>/dev/null || true
+    [ "$samplers_started" = 0 ] || cat "$out/node-stats.log" 2>/dev/null || true
+  } | awk '$1 ~ /^[0-9]+$/ { print $1 }' | sort -n | awk -v limit="$sleep_limit" -v end="$(date +%s)" '
+    function pause(seconds) { n++; total += seconds; if (seconds > longest) longest = seconds }
+    { if (NR > 1 && $1 - previous > limit) pause($1 - previous); previous = $1 }
+    END { if (NR > 0 && end - previous > limit) pause(end - previous); printf "%d %d %d\n", n, total, longest }' 2>/dev/null)" || sleep_answer=""
+  # shellcheck disable=SC2086 # three whole numbers
+  set -- $sleep_answer
+  case "$#:${1:-}:${2:-}:${3:-}" in
+    3:[0-9]*:[0-9]*:[0-9]*) sleep_gaps="$1" sleep_total="$2" sleep_longest="$3" ;;
+  esac
+}
+
+sleep_sentence() {
+  printf 'the host slept or stalled: %s pause(s) of more than %s s between the readings, %s s in total (the longest %s s); the times and the throughput of this run are not reliable' \
+    "$sleep_gaps" "$sleep_limit" "$sleep_total" "$sleep_longest"
+}
+
+# At the end of the run: the pauses on the standard error and in environment.txt (there only when it was written, or when there is a
+# pause to name); the cleanup turns a run that was done into exit 1.
+host_sleep_report() {
+  if [ "$sleep_gaps" -gt 0 ]; then
+    echo "load: WARNING: $(sleep_sentence)" >&2
+    { echo "host sleep: $(sleep_sentence)" >> "$out/environment.txt"; } 2>/dev/null || true
+  elif [ -f "$out/environment.txt" ]; then
+    { echo "host sleep: none (no pause of more than $sleep_limit s between the readings)" >> "$out/environment.txt"; } 2>/dev/null || true
+  fi
+}
+
+# Holds the host awake while this shell lives (macOS; -i idle sleep, -m the disk, -s the system on the mains; -w ends it with the
+# shell). Another system has no caffeinate: nothing is done and nothing is said, but environment.txt names it. A caffeinate that
+# does not start is a warning.
+start_sleep_lock() {
+  if ! command -v caffeinate >/dev/null 2>&1; then
+    sleep_lock="none (no caffeinate on this host; nothing stops it from sleeping)"
+    return 0
+  fi
+  caffeinate -ims -w "$main_pid" >/dev/null 2>&1 &
+  caffeinate_pid=$!
+  nap 1
+  if kill -0 "$caffeinate_pid" 2>/dev/null; then
+    sleep_lock="caffeinate -ims -w $main_pid (the host does not sleep during the run)"
+  else
+    caffeinate_pid=""
+    sleep_lock="none (caffeinate did not start; the host may sleep during the run)"
+    echo "load: caffeinate did not start, so nothing keeps the host awake; a sleep is looked for at the end" >&2
+  fi
 }
 
 vm_unreadable="cannot read the free space of the Docker VM (docker run --entrypoint df ... -Pk / failed or answered something that is not a number)"
@@ -443,6 +516,14 @@ guard_pid=""
 k6_pid=""
 nap_pid=""
 data_job_created=0
+caffeinate_pid=""
+sleep_lock="none (not started)"
+samplers_started=0
+sleep_gaps=0
+sleep_total=0
+sleep_longest=0
+sleep_limit=120
+sleep_failed=0
 k6_name="k6-$cluster"
 main_pid=$$
 space_reason_file="$KUBE_DIR/space-reason"
@@ -459,8 +540,17 @@ cleanup() {
   status=$?
   [ -z "$guard_pid" ] || kill "$guard_pid" 2>/dev/null || true
   trap - EXIT INT TERM
-  # The guard is stopped: its last reading is in space.log, and the summary closes it (also when the run did not succeed).
+  # The guard is stopped: its last reading is in space.log, and the summary closes it (also when the run did not succeed). The
+  # pauses of the host are looked for first, so that the summary names them.
+  host_sleep_check || true
   [ "$LOAD_DATA" = seed ] || space_log_summary || true
+  host_sleep_report || true
+  # A run that went to its end on a host that slept is not a measurement (a run that failed keeps its own code).
+  if [ "$status" -eq 0 ] && [ "$sleep_gaps" -gt 0 ]; then
+    status=1
+    sleep_failed=1
+  fi
+  [ -z "$caffeinate_pid" ] || kill "$caffeinate_pid" 2>/dev/null || true
   [ -z "$nap_pid" ] || kill "$nap_pid" 2>/dev/null || true
   stop_k6
   for pid in $sampler_pids; do kill "$pid" 2>/dev/null || true; done
@@ -472,7 +562,9 @@ cleanup() {
   rm -rf "$KUBE_DIR"
   case "$status" in
     0) echo "load: done; the results are in $out" ;;
-    *) echo "load: FAILED (exit $status)" >&2 ;;
+    *)
+      echo "load: FAILED (exit $status)" >&2
+      [ "$sleep_failed" = 0 ] || echo "load: the run went to its end and its results are in $out, but its times are not reliable (the host slept, above); do not use them" >&2 ;;
   esac
   exit "$status"
 }
@@ -633,6 +725,7 @@ sample_node() {
 # Every 10 s, from the moment the cluster is ready (before the generator, so that the logs cover it, the data phase and k6). The
 # first reading is taken here, before the Job is made; the loops go on from the second one.
 start_samplers() {
+  samplers_started=1
   : > "$out/top.log"
   : > "$out/node-stats.log"
   sample_top
@@ -770,6 +863,7 @@ data_sizes() {
 # ---------------------------------------------------------------------------------------------------------------
 # The measurement
 # ---------------------------------------------------------------------------------------------------------------
+start_sleep_lock
 if [ "$LOAD_DATA" != seed ]; then
   start_space_guard
 fi
@@ -862,6 +956,7 @@ checkout_vus="${LOAD_CHECKOUT_VUS:-$(( api_threads / 4 ))}"
   echo "host: $(uname -srm)"
   echo "docker vm: $docker_cpus CPUs, $(( docker_mem / 1048576 )) MiB, $(docker info --format '{{.OperatingSystem}}, Docker {{.ServerVersion}}' 2>/dev/null || echo unknown)"
   echo "host load: $(uptime 2>/dev/null || echo unknown)"
+  echo "sleep lock: $sleep_lock"
   if [ "$LOAD_DATA" = seed ]; then
     echo "LOAD_DATA: seed (the demo data of the Job initialize)"
   else

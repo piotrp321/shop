@@ -74,7 +74,7 @@ monitoring-smoke:
 # of a few random chunks of the sitemap only and give their keys to k6 (DISCOVER_CHUNKS); they read the four read variables of
 # the private bucket of the photo pool from DEMO_PHOTOS_ENV_FILE (default ~/.config/shop/demo-photos.env; the token that writes
 # never goes to the cluster) into the Secret demo-photos, without a value in a command line, the output or LOAD_OUT.
-# Exit code 0: measured; 2: the environment is not fit (no LOAD_OUT, an unknown LOAD_DATA, the photo file missing or without
+# Exit code 0: measured; 1: anything else that went wrong, also a run done while the host slept (below); 2: the environment is not fit (no LOAD_OUT, an unknown LOAD_DATA, the photo file missing or without
 # a read variable: before any cluster is made; too few CPUs or too little memory in the Docker VM, images missing in the node
 # after three imports, pods not ready, the generator failed or did not finish in time, with its log; no chunks or no stock
 # raised), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the settings and
@@ -88,6 +88,12 @@ monitoring-smoke:
 # diskPeakGb that cannot be read is exit 2 as well. seed checks nothing. Every reading goes to LOAD_OUT/space.log with the least
 # free space and the use against the first reading at the end (the measure of diskPeakGb); top.log and node-stats.log are taken from
 # the moment the cluster is ready, so they cover the generator.
+# A host that sleeps stops the Docker VM and makes the times worthless: on macOS the target holds the host awake for the whole run
+# (caffeinate -ims -w <pid of the script>; elsewhere it does nothing and says so in environment.txt, line `sleep lock:`). At the end
+# it looks for a gap between two readings (space.log, node-stats.log, the end of the run) of more than 3 x LOAD_SPACE_POLL and at
+# least 120 s; any such pause goes to space.log (a `#` line), to environment.txt (`host sleep:`) and to the standard error as a
+# warning, and a run that was otherwise done ends with exit 1, not 0 (its results are in LOAD_OUT, its times are not reliable). A
+# run that failed with 2 keeps 2.
 load:
 	sh scripts/load.sh
 
