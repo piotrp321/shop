@@ -90,6 +90,18 @@ describe("AddToCartButton", () => {
     expect(await screen.findByText("Nie udało się zapisać zmian. Spróbuj ponownie.")).toBeTruthy();
   });
 
+  it("shows the text of the limit of cart changes as an alert after a 429, and the button works again", async () => {
+    vi.mocked(addCartItem).mockResolvedValue({ status: "rate_limited" });
+    render(<AddToCartButton variantId={PRODUCT} />);
+
+    fireEvent.click(button());
+
+    const alert = await screen.findByText("Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(counts).toEqual([]);
+    expect(button().disabled).toBe(false);
+  });
+
   it("says the product is no longer available on a 404", async () => {
     vi.mocked(addCartItem).mockResolvedValue({ status: "not_found", detail: "Produkt nie jest już dostępny." });
     render(<AddToCartButton variantId={PRODUCT} />);

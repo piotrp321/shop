@@ -352,6 +352,23 @@ describe("CartPage changing the quantity", () => {
     expect(await screen.findByText("Nie udało się zapisać zmian. Spróbuj ponownie.")).toBeTruthy();
   });
 
+  it.each([
+    ["a change", () => vi.mocked(changeCartItemQuantity)],
+    ["a removal", () => vi.mocked(removeCartItem)],
+  ])("shows the text of the limit of cart changes at the line after a 429 of %s, and keeps the last view", async (_name, mocked) => {
+    await renderWith(before());
+    mocked().mockResolvedValue({ status: "rate_limited" });
+
+    if (_name === "a change") setQuantity("Produkt A", "9");
+    else fireEvent.click(screen.getByRole("button", { name: "Usuń: Produkt A" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.");
+    expect(qty("Produkt A").value).toBe("2");
+    expect(screen.getByTestId("cart-total").textContent).toBe(price(2000));
+    expect(announced).toEqual([]);
+  });
+
   it("shows the general message once for a failure and does not retry", async () => {
     await renderWith(before());
     vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "failed" });

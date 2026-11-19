@@ -836,6 +836,20 @@ describe("CheckoutPage discount code", () => {
     expect(loadCart).toHaveBeenLastCalledWith();
   });
 
+  it("shows the text of the limit of code checks at the field after a 429, reads the summary without the code and keeps the form", async () => {
+    await renderCheckout();
+    await apply("lato15", { status: "rate_limited" });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Zbyt wiele prób sprawdzenia kodu. Spróbuj ponownie za kilka minut.");
+    expect(codeField().getAttribute("aria-describedby")).toBe(alert.id);
+    expect(codeField().value).toBe("lato15");
+    expect(document.activeElement).toBe(codeField());
+    expect(loadCart).toHaveBeenLastCalledWith();
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(total()).toBe(price(39998));
+  });
+
   it("says the code could not be checked when the API is down, and keeps the summary", async () => {
     await renderCheckout();
     await apply("WITAJ10", { status: "failed" });
