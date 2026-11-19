@@ -138,9 +138,10 @@ class Server:
     """A local HTTP/1.1 server with keep-alive: the answers come from `codes` (the last one repeats); `connections` counts the TCP
     connections it accepted."""
 
-    def __init__(self, codes):
+    def __init__(self, codes, delay=0.0):
         server = self
         self.codes = list(codes)
+        self.delay = delay
         self.connections = 0
         self.requests = []
 
@@ -153,6 +154,7 @@ class Server:
 
             def do_GET(self):
                 server.requests.append((self.path, self.headers.get("Host")))
+                time.sleep(server.delay)
                 code = server.codes.pop(0) if len(server.codes) > 1 else server.codes[0]
                 body = b"ok"
                 self.send_response(code)
@@ -216,6 +218,21 @@ class TrafficRun(unittest.TestCase):
         lines, _ = self.run_client(server.address)
         marks = [line.split()[1] for line in lines if "mark:" in line]
         self.assertEqual(["mark:closed", "mark:checks", "mark:open", "mark:stop"], marks)
+
+    def test_a_marker_that_appears_while_a_request_waits_is_printed_before_its_answer(self):
+        """Through the closed shop Traefik answers 502 only after about a second (it cannot reach the backend), and make open deletes
+        the rule about a second after the line of the marker checks: the answer 200 of a request sent before that line came after
+        the opening and must follow the marker (smoke test of 2026-11-19: '68.2 200' before '68.4 mark:checks')."""
+        server = Server([200], delay=1.5)
+        self.addCleanup(server.close)
+        threading.Timer(0.5, self.marker, ("checks",)).start()
+        threading.Timer(2.5, self.marker, ("open",)).start()
+        threading.Timer(2.6, self.marker, ("stop",)).start()
+        lines, _ = self.run_client(server.address, limit=10)
+        first_answer = next(i for i, line in enumerate(lines) if "mark:" not in line)
+        self.assertLess(lines.index(next(line for line in lines if line.endswith("mark:checks"))), first_answer, lines)
+        checks_at = float(next(line for line in lines if line.endswith("mark:checks")).split()[0])
+        self.assertLess(checks_at, 1.2, lines)
 
     def test_after_the_marker_stop_it_ends_with_the_first_200_after_the_opening(self):
         server = Server([502, 502, 200, 200, 200])
