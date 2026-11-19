@@ -243,6 +243,10 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   udało i gdy po wczorajszym błędzie dziś jest sukces; `NodeDiskFull` milczy przy 85% i krótkim skoku;
   `WorkloadNotReady` odpala przy niedostępnej replice i przy zniknięciu workloadu, milczy przy niedostępności krótszej niż
   10 min, przy workloadzie zeskalowanym do zera i przy ciszy całego klastra.
+  Sklep zamknięty na czas generowania danych (`make -C infra/k8s generate`, NetworkPolicy `shop-closed`) nie odpala
+  `WorkloadNotReady`: pody działają i są gotowe, a reguła odcina tylko ruch z Traefika (hosty odpowiadają 502). Strażnik
+  Joba generatora zatrzymuje generator przy 32 GB wolnego, tuż przed progiem `NodeDiskFull` (85% zajętego miejsca), więc
+  generowanie normalnie go nie wywołuje; ewentualne wyciszenie alertów na czas przebiegu robi ręcznie użytkownik.
 - **O7. Logi bez sekretów i danych klientów.** Alloy przetwarza każdą linię przed wysłaniem: te same etapy
   (`extraLogProcessingStages`) dla logów podów i zdarzeń klastra (`clusterEvents`), reguły odkrywania
   (`extraDiscoveryRules`) w `valuesObject` aplikacji `monitoring`, jedno źródło reguł. Zasady:
@@ -456,7 +460,8 @@ Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
   klastra oraz token `grafana-cloud`, z kontem kube-state-metrics listę obiektów klastra (bez sekretów i ConfigMap); może też
   zatrzymać zbieranie (zmienić albo usunąć Alloy) i bez limitów przestrzeni zająć zasoby węzła. Istniejących Deploymentów
   kube-state-metrics i swojego ani DaemonSetu `monitoring-node-exporter` nie zmieni.
-- **Sieć klastra jest otwarta.** Klaster nie ma żadnej NetworkPolicy, Redis działa bez hasła i trzyma sesje sklepu z tokenami
+- **Sieć klastra jest otwarta.** Klaster nie ma stałej NetworkPolicy (jedyna, tymczasowa `shop-closed` zamyka sklep na czas
+  generowania danych: `docs/features/demo-scale/spec.md`, i nie ogranicza ruchu między podami), Redis działa bez hasła i trzyma sesje sklepu z tokenami
   OIDC klientów, a Elasticsearch działa bez security. Każdy pod w `monitoring`, także przejęty operator bez tworzenia
   czegokolwiek, sięga po sieci do `redis.shop:6379` (sesje klientów, podszycie się pod klienta) i do Elasticsearcha, tak samo
   jak każdy pod w `shop` i każdy obcy obraz tam (Keycloak, Varnish, imgproxy, Elasticsearch). Polityki dopuszczania i RBAC
