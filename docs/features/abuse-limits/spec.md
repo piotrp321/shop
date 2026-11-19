@@ -548,8 +548,9 @@ połączenia między podami nie działają (sieć, DNS). Redis nie ma hasła, wi
 - **Odtworzenie i generator.** `restore.sh` nie odmawia z powodu aktywnego Joba `rate-limit-check` (limit czasu
   60 s): wstrzymuje CronJob razem z `cart-purge-expired` i `backup`, czeka na jego aktywny Job przed skalowaniem do
   zera i przywraca go jak pozostałe, także po przerwanej próbie. Test dymny sprawdza go w pętli CronJobów odmowy
-  odtworzenia. Sprawdzenie aktywnych Jobów w `generate` (DEMO-SCALE) pomija Job `rate-limit-check`; dopisuje to
-  epik zmergowany do `main` jako drugi.
+  odtworzenia. Sprawdzenie aktywnych Jobów w `generate` (DEMO-SCALE) pomija Job `rate-limit-check`: gdy skrypt
+  generatora jest już na `main`, zmienia go ten epik (kryterium 6); w przeciwnym razie DEMO-SCALE przy scalaniu
+  z `main`.
 - **Runbook** (`infra/k8s/README.md`): reakcja na `RateLimitsOff` (log Joba przez `status`, stan Redisa i jego
   wolumenu) i wyciszenie razem z `WorkloadNotReady` na czas `restore` (CronJob jest wtedy wstrzymany)
   i planowanych prac.
@@ -574,7 +575,8 @@ Od początku awarii do alertu mija od 12 do 17 minut i czas ewaluacji reguły.
    `backup_missing_without_absent`: reguła bez gałęzi braku metryki nie przechodzi `check`.
 6. Test na atrapach (`test_restore_script.py`): `restore.sh` nie odmawia przy aktywnym Jobie `rate-limit-check`,
    wstrzymuje CronJob, czeka na jego Job i przywraca go także po przerwanej próbie; aktywny Job innego CronJoba
-   nadal daje odmowę.
+   nadal daje odmowę. Gdy `infra/k8s/scripts/generate.sh` jest na `main`: test na atrapach, że `generate` nie odmawia
+   przy aktywnym Jobie `rate-limit-check`, a przy innym aktywnym Jobie odmawia.
 7. Test dymny na k3d: Job utworzony z CronJoba `rate-limit-check` kończy się sukcesem na Redisie klastra, a odmowa
    odtworzenia nie zależy od tego, czy Job `rate-limit-check` akurat trwa.
 8. `make -C apps/api check` i `test` oraz `make -C infra/k8s check` przechodzą.
@@ -626,7 +628,8 @@ z tabeli wybiera sklep według miejsca, jak przy kasie.
 |---|---|
 | Redis niedostępny (limiter albo blokada) | żądanie bez limitu, `warning` w logu `prod` (D1); alert `RateLimitsOff` po 12–17 min (L12) |
 | Redis gotowy, ale nieużywalny dla API (odrzucane zapisy, sieć między podami) | jak wyżej; `WorkloadNotReady` milczy, `RateLimitsOff` odpala (L12) |
-| Awaria Redisa krótsza niż ok. 12 minut albo pojedyncze błędy przy działającym Redisie | bez alertu, `warning` w logu (L12) |
+| Awaria Redisa obejmująca mniej niż trzy przebiegi sprawdzenia (krótsza niż ok. 10 minut) albo pojedyncze błędy przy działającym Redisie | bez alertu, `warning` w logu (L12) |
+| Awaria Redisa obejmująca trzy przebiegi, zakończona przed progiem | alert odpala po jej końcu i gaśnie po następnym udanym przebiegu (L12) |
 | CronJob `rate-limit-check` wstrzymany, usunięty albo bez metryki | alert `RateLimitsOff` (L12) |
 | `restore` albo `generate` przy trwającym Jobie `rate-limit-check` | bez odmowy z tego powodu; `restore` wstrzymuje CronJob (L12) |
 | Redis nie odpowiada (połączenie albo odczyt po czasie) | żądanie bez limitu, dłuższe najwyżej o limit czasu połączenia i odczytu DSN (D1) |
@@ -709,9 +712,10 @@ przeczy nowemu zachowaniu:
   produktu, a jego zużycie pamięci jest oszacowane i mierzy je dopiero zadanie (L9, kryterium 3).
 - Dane w skali trafiają na serwer demo dopiero po wdrożeniu i weryfikacji L9; do tego czasu DEMO-SCALE nie uruchamia
   tam `generate` z profilem `medium` ani `server` („Wdrożenie i kolejność z DEMO-SCALE”).
-- `RateLimitsOff` sprawdza Redisa z osobnego poda z konfiguracją `api`, nie z podów `api`, co 5 minut: awaria krótsza
-  niż ok. 12 minut, pojedyncze błędy przy działającym Redisie i błąd sieci dotyczący tylko poda `api` zostają tylko
-  w logu (alerty z logów: OPS-GUARDS, #775). Po pierwszym wdrożeniu alert może odpalić do pierwszego udanego przebiegu (do 5 minut), jak `BackupMissing`
+- `RateLimitsOff` sprawdza Redisa z osobnego poda z konfiguracją `api`, nie z podów `api`, co 5 minut: awaria
+  obejmująca mniej niż trzy przebiegi (krótsza niż ok. 10 minut), pojedyncze błędy przy działającym Redisie i błąd
+  sieci dotyczący tylko poda `api` zostają tylko w logu (alerty z logów: OPS-GUARDS, #775). Awaria niewiele dłuższa
+  może dać alert już po swoim końcu. Po pierwszym wdrożeniu alert może odpalić do pierwszego udanego przebiegu (do 5 minut), jak `BackupMissing`
   przed pierwszą kopią.
 - Lista rewalidowanych tagów Next jest w pamięci procesu sklepu bez limitu, poza `cacheMaxMemorySize`: rośnie o każdy
   tag produktu rewalidowany od startu poda, jak dziś. Jej wielkość na danych w skali nie jest zmierzona
