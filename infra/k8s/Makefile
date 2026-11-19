@@ -173,8 +173,9 @@ kubeconfig:
 	@sh scripts/ao-guard.sh kubeconfig
 	sh scripts/kubeconfig.sh "$(HOST)"
 
-# The applications of Argo CD, the pods and the jobs of the shop, the logs of the failed jobs and the state of the demo data (data,
-# phase, whether the shop is closed, the last log line of the newest job initialize), read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+# The applications of Argo CD, the pods and the jobs of the shop, the logs of the failed jobs and the state of the demo data (whether
+# the shop is closed, the Job demo-data-run and its state, the active Jobs, whether the Secret of the photo pool is left, the last log
+# line of the newest job initialize), read over SSH: make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
 

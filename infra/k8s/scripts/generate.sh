@@ -43,10 +43,10 @@ refuse() {
   echo "generate: nothing was changed" >&2
   exit 1
 }
-# fail <reason>: after the closing; the shop stays closed.
+# fail <reason>: after tak; the shop is not opened again (it is closed once the rule shop-closed is made).
 fail() {
   printf 'generate: FAILED: %s\n' "$1" >&2
-  echo "generate: the shop is CLOSED (the NetworkPolicy shop-closed). Two ways out: make -C infra/k8s generate PROFILE=$profile again, or back to the seed with PROFILE=seed" >&2
+  echo "generate: the shop stays CLOSED (the NetworkPolicy shop-closed; make status). Two ways out: make -C infra/k8s generate PROFILE=$profile again, or back to the seed with PROFILE=seed" >&2
   exit 1
 }
 
@@ -164,7 +164,8 @@ echo
 [ "$answer" = tak ] || refuse "not confirmed (no 'tak')"
 
 # The run before is gone first (--wait: until the cluster deleted it): from now on make open refuses until the new Job completed.
-kc delete job "$job" --wait=true --ignore-not-found > /dev/null || refuse "the Job $job of the run before could not be deleted"
+kc delete job "$job" --wait=true --ignore-not-found > /dev/null ||
+  refuse "the Job $job of the run before could not be deleted (make status shows whether it is gone; the shop is as it was)"
 
 # 3. The closing: the rule, Traefik restarted (its pods deleted: the connections opened before the rule end), the probe.
 rule="$(kc get networkpolicy shop-closed --ignore-not-found -o name)" || fail "cannot read the NetworkPolicy shop-closed"
