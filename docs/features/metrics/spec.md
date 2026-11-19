@@ -291,11 +291,15 @@ zapisać plik po fakcie, także gdy `plan.md` już nie istnieje.
 z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie w kolejności sesji z pliku przebiegu
 (prowadzący, potem subagenci), także w sesji wznowionej albo rozgałęzionej. Wiadomość bez `timestamp` się liczy,
 z pozycją w `gaps`. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
-bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika, `origin.kind`
+bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika (przy wyniku
+wywołania `Agent` także `toolUseResult.agentId`), `origin.kind`
 i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json` `agentType`, `description`,
 `effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole `model` z `meta.json` nie jest czytane (przebieg
 uruchomiony z domyślnymi ustawieniami go nie ma). Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
-werdyktu; żaden nie trafia do rekordu.
+werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
+pusty albo nieczytelny, albo gdy sesja prowadząca uruchomiła go w przedziale epiku (wynik wywołania `Agent`
+z `toolUseResult.agentId`), a w katalogach sesji epiku nie ma żadnego jego pliku; utracony transkrypt to pozycja
+`sessions` w `gaps` i liczy się jak brak transkryptu części sesji (niżej, „Brak transkryptów”).
 
 **Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania; przebieg subagenta to rola z `agentType`
 i zadanie, którego ID (`<EPIK>-<n>`, wielkość liter bez znaczenia) występuje w `description` jako pierwsze. Bez ID
@@ -354,7 +358,8 @@ identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `int
 `manual_fixes`, `retries.fix`, `retries.failed_by_outcome`, `subscription.share`) mają `null` z pozycją w `gaps`, nigdy
 zero; wartość zapisana wcześniej w rekordzie natywnym zostaje (odświeżenie rekordu, np. przez `/retro collect`, jej nie
 zastępuje), z pozycją w `gaps`. Tak samo zostają zapisane `attempts`, `by_task`, `value`, `in_attempts` i `versions`;
-bez zapisanego rekordu są puste (`attempts` `[]`, `by_task` `{}`, `value.total` `null`) albo `null` z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji, te pola mają wartości z dostępnych
+bez zapisanego rekordu są puste (`attempts` `[]`, `by_task` `{}`, `value.total` `null`) albo `null` z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji albo transkryptu subagenta
+przeczytanej sesji, te pola oraz `attempts`, `by_task`, `value` i `in_attempts` mają wartości z dostępnych
 transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna).
 
 **Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,

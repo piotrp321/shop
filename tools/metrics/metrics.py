@@ -2491,9 +2491,11 @@ def cmd_done(args, now, stdin):
 PRICE_OF_TOKEN = {'input': 'input', 'output': 'output', 'cache_read': 'cache_read', 'cw5': 'cache_write_5m',
                   'cw1': 'cache_write_1h'}
 AGENT_FILE = re.compile(r'^agent-(.+)\.jsonl$')
+AGENT_META = re.compile(r'^agent-(.+)\.meta\.json$')
 
 
 HANDBACK = 'SubagentHandback'               # the tool call with which a subagent hands its report back (M4)
+AGENT_CALL = 'Agent'                        # the tool call with which the lead session starts a subagent
 VERDICT_TOKENS = ('CHANGES_REQUIRED', 'INVESTIGATE', 'SIMPLIFY', 'REWORK', 'BLOCK', 'PASS', 'KEEP')
 _VERDICT_WORDS = '|'.join(VERDICT_TOKENS)
 _VERDICT_LABEL = r'(?i:werdykt|verdict)'
@@ -2540,10 +2542,12 @@ def read_native(path, seen_tools):
     key)] of the user and assistant lines with a timestamp (`line_mark`; key: the `uuid` of a human line), `untimed_human`
     (human lines without a timestamp), `user_lines` and `origin_lines` (the user lines that are no tool result, and
     those of them with an `origin`: without any, a human message cannot be told apart) and `reports` [(at, verdict word
-    or None)] of the `SubagentHandback` calls in file order; (None, reason) when the file is missing or unreadable."""
+    or None)] of the `SubagentHandback` calls in file order and `launched` [(at, agent id)] of the subagents the file
+    starts (`toolUseResult.agentId` of the result of an `Agent` call); (None, reason) when the file is missing,
+    unreadable or empty."""
     data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': [], 'times': [],
-            'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': []}
-    versions, reports = set(), set()
+            'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': [], 'launched': []}
+    versions, reports, agent_calls, lines = set(), set(), set(), 0
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
             for raw in f:
@@ -2553,6 +2557,7 @@ def read_native(path, seen_tools):
                     continue
                 if not isinstance(line, dict):
                     continue
+                lines += 1
                 _read_line(line, data, seen_tools)
                 if isinstance(line.get('version'), str):
                     versions.add(line['version'])
@@ -2569,8 +2574,16 @@ def read_native(path, seen_tools):
                 elif mark == 'human':
                     data['untimed_human'] += 1
                 message = line.get('message') if isinstance(line.get('message'), dict) else {}
+                launch = line.get('toolUseResult') if isinstance(line.get('toolUseResult'), dict) else {}
                 for block in message.get('content') if isinstance(message.get('content'), list) else []:
-                    if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('name') == HANDBACK \
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get('type') == 'tool_use' and block.get('name') == AGENT_CALL:
+                        agent_calls.add(block.get('id'))
+                    if block.get('type') == 'tool_result' and block.get('tool_use_id') in agent_calls \
+                            and isinstance(launch.get('agentId'), str):
+                        data['launched'].append((at, launch['agentId']))
+                    if block.get('type') == 'tool_use' and block.get('name') == HANDBACK \
                             and block.get('id') not in reports:
                         reports.add(block.get('id'))
                         tool_input = block.get('input') if isinstance(block.get('input'), dict) else {}
@@ -2579,6 +2592,8 @@ def read_native(path, seen_tools):
         return None, 'brak pliku transkryptu'
     except OSError as e:
         return None, 'nieczytelny transkrypt: %s' % (e.strerror or e)
+    if not lines:
+        return None, 'pusty transkrypt'
     data['inits'] = [{'version': version, 'model': None} for version in sorted(versions)]
     return data, None
 
@@ -2685,8 +2700,9 @@ def native_items(task, known, unknown):
 
 def native_transcripts(projects, sessions, gaps):
     """[(kind, session, agent_id, path, meta path)] of the epic: every session of the run file (its `<id>.jsonl` in
-    any project directory under `projects`) and its subagents (`<id>/subagents/agent-<agent>.jsonl`). Nothing else:
-    another session of the same working directory is not part of the epic."""
+    any project directory under `projects`) and its subagents (`<id>/subagents/agent-<agent>.jsonl`, also one with
+    only `agent-<agent>.meta.json`: its transcript is lost). Nothing else: another session of the same working
+    directory is not part of the epic."""
     found, agents = [], set()
     for session in sessions:
         paths = sorted(glob.glob(os.path.join(glob.escape(projects), '*', '%s.jsonl' % session)))
@@ -2700,14 +2716,14 @@ def native_transcripts(projects, sessions, gaps):
         except OSError:
             names = []
         for name in names:
-            match = AGENT_FILE.match(name)
+            match = AGENT_FILE.match(name) or AGENT_META.match(name)
             if not match:
                 continue
             agent = match.group(1)
             if not SAFE_NAME.match(agent) or agent in agents:
                 continue
             agents.add(agent)
-            found.append(('agent', session, agent, os.path.join(directory, name),
+            found.append(('agent', session, agent, os.path.join(directory, 'agent-%s.jsonl' % agent),
                           os.path.join(directory, 'agent-%s.meta.json' % agent)))
     return found
 
@@ -2723,22 +2739,28 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     `orchestrator` without a task, every subagent run one attempt with its role (agentType), task (D4), model and
     effort. `marks`: the marks of every transcript (`read_native`, not cut to the interval); `reviews`: the reports
     of the review roles in the interval (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`:
-    `none` (no transcript of a session of the run file was read), `partial` (only some) or `full`; `no_origin`: the
-    lead sessions have user lines but none with an `origin` (a change of the transcript format)."""
+    `none` (no transcript of a session of the run file was read), `partial` (only some, or a subagent transcript of a
+    session read is lost: missing, empty or unreadable, also one the lead session started in the interval without
+    any file of it) or `full`; `no_origin`: the lead sessions have user lines but none with an `origin` (a change of
+    the transcript format)."""
     pricing = config['pricing']
     seen_ids, seen_tools = set(), set()
     attempts, items, datas, marks, reviews, messages = [], [], [], [], [], {}
-    untimed_human, user_lines, origin_lines, read = 0, 0, 0, set()
-    for kind, session, agent, path, meta_path in native_transcripts(projects, sessions, gaps):
+    untimed_human, user_lines, origin_lines, read, lost, launched = 0, 0, 0, set(), set(), set()
+    transcripts = native_transcripts(projects, sessions, gaps)
+    for kind, session, agent, path, meta_path in transcripts:
         label = 'sesja %s' % session if kind == 'session' else 'agent %s' % agent
         data, reason = read_native(path, seen_tools)
         if data is None:
             gaps.add('sessions', '%s: %s' % (label, reason))
+            if kind == 'agent':
+                lost.add(agent)
             continue
         if kind == 'session':
             read.add(session)
             user_lines += data['user_lines']
             origin_lines += data['origin_lines']
+            launched.update(a for at, a in data['launched'] if in_window(at, started, until) and SAFE_NAME.match(a))
         fresh = {i: m for i, m in data['messages'].items() if i not in seen_ids}
         seen_ids.update(data['messages'])
         data['messages'] = {i: m for i, m in fresh.items() if in_window(m['at'], started, until)}
@@ -2781,6 +2803,9 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
                          'effort': meta['effort'], 'started_at': iso(start), 'ended_at': iso(end),
                          'wall_s': None if start is None else round(end - start, 3), 'value': value, 'estimated': True,
                          'tokens': None if usage_missing else _tokens_out(tokens), 'finished': meta['finished']})
+    for agent in sorted(launched - {t[2] for t in transcripts}):
+        gaps.add('sessions', 'agent %s: uruchomiony w sesji prowadzącej, brak jego transkryptu i meta.json' % agent)
+        lost.add(agent)
     by_task = {}
     for attempt in attempts:
         entry = by_task.setdefault(attempt['task'] or NO_TASK, {'kind': None, 'work': 0.0, 'attempts': 0})
@@ -2798,7 +2823,7 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     return {'attempts': attempts, 'by_task': by_task, 'value': value_sections(items),
             'in_attempts': in_attempts, 'versions': versions_of(datas) if datas else None, 'marks': marks,
             'untimed_human': untimed_human, 'messages': messages,
-            'coverage': 'none' if not read else 'partial' if len(read) < len(set(sessions)) else 'full',
+            'coverage': 'none' if not read else 'partial' if len(read) < len(set(sessions)) or lost else 'full',
             'no_origin': user_lines > 0 and origin_lines == 0,
             'reviews': sorted(reviews, key=lambda r: (r['at'] is None, r['at'] or '', r['agent_id']))}
 
@@ -3111,8 +3136,8 @@ TRANSCRIPT_PATHS = (('breakdown',), ('reviews',), ('integration',), ('human', 'i
                     ('human', 'wait_s'), ('human', 'events'), ('retries', 'fix'), ('retries', 'failed_by_outcome'),
                     ('subscription', 'share'))
 NO_TRANSCRIPTS = 'brak transkryptów sesji epiku (retencja albo zły identyfikator sesji): wartość nieznana'
-PARTIAL_TRANSCRIPTS = ('transkrypt części sesji epiku niedostępny: wartość z dostępnych transkryptów niepełna (dolna '
-                       'granica; idle górna)')
+PARTIAL_TRANSCRIPTS = ('transkrypt części sesji albo subagentów epiku niedostępny: wartość z dostępnych transkryptów '
+                       'niepełna (dolna granica; idle górna)')
 HUMAN_EVENT_PATHS = (('human', 'interventions'), ('human', 'waits'), ('human', 'wait_s'), ('human', 'events'))
 # The fields of a native record from the transcripts that are empty, not null, without them (`attempts` [], `by_task`
 # {}, `value` without a total; `in_attempts` and `versions` null): kept from the stored native record the same way.
@@ -3141,7 +3166,7 @@ def apply_transcript_coverage(record, coverage, no_origin, previous, gaps):
         return
     if coverage == 'partial':
         for field in ('breakdown', 'human', 'integration', 'reviews', 'retries.fix', 'retries.failed_by_outcome',
-                      'subscription.share'):
+                      'subscription.share', 'attempts', 'by_task', 'value', 'in_attempts'):
             if _get(record, tuple(field.split('.'))) is not None:
                 gaps.add(field, PARTIAL_TRANSCRIPTS)
     if no_origin:

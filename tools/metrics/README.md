@@ -269,7 +269,10 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   błędzie albo `--no-gh` z zapisanego rekordu; bez niego bez górnej granicy, pozycja `sessions` w `gaps`), każdy
   `message.id` raz (pierwsze wystąpienie w kolejności sesji, prowadzący przed subagentami). Wywołania narzędzi poza tym
   przedziałem nie wchodzą do `in_attempts`. Czytanie wierszami jak w transkryptach prób (`_read_line`), linia, która nie
-  jest JSON, jest pomijana; transkrypt bez wiadomości i linii w przedziale epiku nie daje wpisu.
+  jest JSON, jest pomijana; transkrypt bez wiadomości i linii w przedziale epiku nie daje wpisu. Transkrypt subagenta
+  utracony (sam `meta.json`, plik pusty albo nieczytelny, a także subagent uruchomiony w przedziale epiku przez sesję
+  prowadzącą: wynik wywołania `Agent` z `toolUseResult.agentId`, bez żadnego pliku w katalogach sesji epiku) to
+  pozycja `sessions` w `gaps` i pokrycie `partial`, jak brak transkryptu sesji.
 - **Rola i zadanie:** prowadzący `orchestrator` bez zadania; subagent: rola `agentType`, zadanie to pierwsze
   `<EPIK>-<n>` w `description` (bez rozróżniania wielkości liter, zapisane wielkimi literami), bez niego `no_task`.
   `meta.json` brakujący albo nieczytelny daje `role`, `task`, `effort`, `finished` `null` i pozycję `attempts.<agent>`
@@ -297,8 +300,8 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   pola z `TRANSCRIPT_PATHS` (`breakdown`, `reviews`, `integration`, pola zdarzeń `human`, `retries.fix`,
   `retries.failed_by_outcome`, `subscription.share`) są `null` z pozycją w `gaps`, a wartości zapisanego rekordu
   natywnego zostają, także `TRANSCRIPT_KEPT` (`attempts`, `by_task`, `value`, `in_attempts`, `versions`; pozycja
-  „zachowano poprzednią wartość”); bez transkryptu części sesji te pola mają pozycję
-  w `gaps` o dolnej granicy.
+  „zachowano poprzednią wartość”); bez transkryptu części sesji albo subagentów (pokrycie `partial`) te pola oraz
+  `attempts`, `by_task`, `value` i `in_attempts` mają pozycję w `gaps` o dolnej granicy.
 - **Przeglądy:** każde wywołanie `SubagentHandback` w transkrypcie roli `code-reviewer`, `qa-adversarial`,
   `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, role, agent_id, at, mode,
   verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to słowo
