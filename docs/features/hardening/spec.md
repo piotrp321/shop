@@ -68,7 +68,7 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
   jego IPv4, a żądanie bez żadnego adresu ma wspólny klucz `unknown`.
 - Zmienna `CLIENT_IP_HEADER`: compose jej nie ustawia, chart według D3. Domyślna wartość w API przez
   `%env(default::CLIENT_IP_HEADER)%`.
-- Sklep: wywołania API z BFF kasy i płatności (`src/checkout/`) dostają nagłówek `CLIENT_IP_HEADER` skopiowany
+- Sklep: wywołania API z BFF kasy, płatności i koszyka (`src/checkout/`, `src/cart/`) dostają nagłówek `CLIENT_IP_HEADER` skopiowany
   z żądania przeglądarki (gdy zmienna jest ustawiona i nagłówek jest w żądaniu). Logowanie w sklepie (`/auth/login`)
   bierze adres z tego samego nagłówka; bez niego wszystkie żądania mają wspólny klucz.
 
