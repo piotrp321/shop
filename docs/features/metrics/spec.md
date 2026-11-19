@@ -278,7 +278,10 @@ wejście to `null`), `done_at` i `usage_done` (`null`). `metrics.py done <epik>`
 oznaczenia PR jako gotowy (teraz albo `--at`; kolejne wywołanie go zastępuje) i drugi odczyt limitów. `start --resume`
 dopisuje do `sessions` nową sesję z jej katalogiem roboczym (raz). Bez gałęzi, PR, liczby zadań albo transkryptu sesji
 `start` kończy się kodem 2 z nazwą opcji, która to poda; drugi `start` bez `--resume` i `--resume` albo `done` bez pliku
-przebiegu też dają kod 2, bez zapisu. Opcje `--at`, `--worktree`, `--branch`, `--pr`, `--tasks` i `--session` pozwalają
+przebiegu też dają kod 2, bez zapisu. Nazwa epiku w `start` (także z `--resume`) i `done` musi pasować do
+`^[a-z0-9][a-z0-9-]*$`, tego samego wzorca co `EPIC_NAME` w `/retro` (wielkie litery, `.` i `_` dają kod 2 z polskim
+komunikatem, bez zapisu): `/retro` rozpoznaje plik przebiegu tylko po tej nazwie. `epic` i pozostałe komendy przyjmują
+też dłuższy zestaw znaków identyfikatora (rekordy AO). Opcje `--at`, `--worktree`, `--branch`, `--pr`, `--tasks` i `--session` pozwalają
 zapisać plik po fakcie, także gdy `plan.md` już nie istnieje.
 
 **Transkrypty epiku.** Tylko sesje z pliku przebiegu: `<id>.jsonl` w katalogu projektów Claude Code
@@ -290,7 +293,8 @@ z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie 
 z pozycją w `gaps`. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
 bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika, `origin.kind`
 i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json` `agentType`, `description`,
-`model`, `effort`, `finished`. Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
+`effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole `model` z `meta.json` nie jest czytane (przebieg
+uruchomiony z domyślnymi ustawieniami go nie ma). Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
 werdyktu; żaden nie trafia do rekordu.
 
 **Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania; przebieg subagenta to rola z `agentType`
@@ -314,7 +318,7 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `tasks`, `started_at`, `done_at` | plik przebiegu (brak: `null` i pozycja w `gaps`) |
 | `final_pr`, `issue`, `merged_at`, `wall` | `pr` z pliku przebiegu i `gh pr view`, jak w AO; `to_done` to `started_at` → `done_at` |
 | `value` | przekroje jak w AO (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`), wartość z cennika |
-| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task`, `role` (`agentType`), `model` (najczęstszy model jego wiadomości), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia wiadomość w przedziale epiku), `wall_s`, `tokens`, `value`, `estimated`, `finished` (z `meta.json`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`) |
+| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task`, `role` (`agentType`), `model` (najczęstszy model jego wiadomości; `null` z pozycją w `gaps`, gdy żadna wiadomość go nie ma), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia wiadomość w przedziale epiku), `wall_s`, `tokens`, `value`, `estimated`, `finished` (z `meta.json`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`) |
 | `by_task` | `{zadanie: {kind: null, work, attempts}}`: suma `wall_s` i liczba przebiegów na zadanie (`no_task` dla przebiegów bez zadania) |
 | `in_attempts`, `versions` | polecenia powłoki i wersja CLI ze wszystkich transkryptów epiku (prowadzący i subagenci), reguły jak w AO |
 | `ci` | `final`: przebiegi CI gałęzi `branch` z pliku przebiegu i PR `pr`; `tasks`: `null` |
@@ -534,6 +538,10 @@ w danych kandydata mają oznaczenie; D1 na wartości roli szacowanej podaje to w
 | D3 | `gate_wait` | epiki | h |
 | D4 | udział kategorii czekania z reguły w jej mianowniku | epiki | pp |
 
+Okna liczy się z rekordów jednego źródła (`ao` albo `native`, jak mediany `trend` i historia `bottlenecks`): źródła
+epików rozpoczętych po `--at` (większości, przy remisie najwcześniej rozpoczętego; bez takich epików źródła ostatnio
+zmergowanego). Rekordy drugiego źródła nie wchodzą do żadnego okna, do czasu epiku ani do `spanning` i `unmerged_after`,
+a wynik ma pozycję w `gaps` z ich liczbą.
 Okno „po” to epiki rozpoczęte po `--at` (`started_at > --at`); epiki rozpoczęte przed `--at` i zmergowane po nim
 pomijamy, bo pracowały na gałęzi sprzed poprawki. Okno „przed” to tyle samo epików zmergowanych przed `--at`,
 najbliższych tej chwili; gdy zmergowanych przed `--at` jest mniej niż w oknie „po”, okno „przed” ma wszystkie, jest

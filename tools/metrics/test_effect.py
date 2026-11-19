@@ -442,7 +442,8 @@ class SourceTest(EffectEnv):
         self.assertTrue(any('okno po: 2 epików' in r for r in result['reasons']), result['reasons'])
 
     def test_epics_of_the_other_source_are_neither_spanning_nor_unmerged(self):
-        store_records(self.state, *self.mixed(), epic('ao-span', 8, 13), epic('ao-open', 15, None))
+        few = [r for r in self.mixed() if r['epic'] != 'ao-a2']                  # the native epics stay the majority
+        store_records(self.state, *few, epic('ao-span', 8, 13), epic('ao-open', 15, None))
         result = self.result('D3:gate_wait')
         self.assertEqual((result['spanning'], result['unmerged_after']), ([], []))
 

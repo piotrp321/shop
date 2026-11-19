@@ -183,10 +183,12 @@ class StartDoneTest(NativeEnv):
     def test_an_epic_name_that_retro_would_not_recognise_is_refused_by_start_resume_and_done(self):
         for bad in ('SMALL-FIXES', 'small.fixes', 'small_fixes', 'Demo'):
             with self.subTest(epic=bad):
-                for command in (['start', bad, '--worktree', WORKTREE, '--session', 's1', '--tasks', '3'],
-                                ['start', bad, '--resume', '--worktree', WORKTREE, '--session', 's1', '--tasks', '3'],
+                for command in (['start', bad, '--projects', self.projects, '--worktree', WORKTREE, '--session', 's1',
+                                 '--tasks', '3'],
+                                ['start', bad, '--projects', self.projects, '--resume', '--worktree', WORKTREE,
+                                 '--session', 's1', '--tasks', '3'],
                                 ['done', bad]):
-                    code, out, err = run_cli(command + ['--state', self.state, '--projects', self.projects], Git())
+                    code, out, err = run_cli(command + ['--state', self.state], Git())
                     self.assertEqual((code, out), (2, ''), (command, err))
                     self.assertIn('nazwa epiku', err)
                     self.assertIn('^[a-z0-9][a-z0-9-]*$', err)

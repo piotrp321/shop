@@ -2333,6 +2333,19 @@ def checked_id(value, what):
     return value
 
 
+NATIVE_EPIC_NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')       # the pattern of EPIC_NAME in .claude/skills/retro/retro.py
+
+
+def native_epic_id(value):
+    """The name of a native epic: the run file is named after it and `/retro` finds the file only by this pattern."""
+    checked_id(value, 'epiku')
+    if not NATIVE_EPIC_NAME.match(value):
+        raise MetricsError('nazwa epiku %r poza wzorcem %s (małe litery, cyfry i `-`, zaczyna się od litery albo cyfry): '
+                           'plik przebiegu o innej nazwie nie zostałby rozpoznany przez /retro'
+                           % (value, NATIVE_EPIC_NAME.pattern))
+    return value
+
+
 def read_run_file(path):
     """The run file as a dict, None when it does not exist; MetricsError when it cannot be read or is not an object."""
     try:
@@ -2413,7 +2426,7 @@ def manifest_tasks(run, worktree, epic_id):
 
 
 def cmd_start(args, run, now, stdin):
-    epic_id = checked_id(args.epic, 'epiku')
+    epic_id = native_epic_id(args.epic)
     path = run_path(_expand(args.state), epic_id)
     at = parse_at(args.at) if args.at else now
     worktree = _expand(args.worktree) if args.worktree else os.getcwd()
@@ -2462,7 +2475,7 @@ def cmd_start(args, run, now, stdin):
 
 
 def cmd_done(args, now, stdin):
-    path = run_path(_expand(args.state), checked_id(args.epic, 'epiku'))
+    path = run_path(_expand(args.state), native_epic_id(args.epic))
     data = read_run_file(path)
     if data is None:
         raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
@@ -2559,9 +2572,10 @@ def read_native(path, seen_tools):
 
 
 def read_meta(path, label, gaps):
-    """{role, description, model, effort, finished} of `agent-<id>.meta.json`; a missing file or field is None with
-    a gap (the description is only read for the task id, never stored)."""
-    found = {'role': None, 'description': None, 'model': None, 'effort': None, 'finished': None}
+    """{role, description, effort, finished} of `agent-<id>.meta.json`; a missing file or field is None with a gap (the
+    description is only read for the task id, never stored). The model is not read: that of a run comes from its
+    messages, and `launchedWithDefaults` runs have none in the file."""
+    found = {'role': None, 'description': None, 'effort': None, 'finished': None}
     try:
         with open(path, encoding='utf-8') as f:
             meta = json.load(f)
@@ -2573,7 +2587,7 @@ def read_meta(path, label, gaps):
     except (OSError, ValueError):
         gaps.add(label, 'nieczytelny meta.json: rola, zadanie, effort i zakończenie nieznane')
         return found
-    for field, key in (('role', 'agentType'), ('model', 'model'), ('effort', 'effort')):
+    for field, key in (('role', 'agentType'), ('effort', 'effort')):
         if isinstance(meta.get(key), str) and SAFE_NAME.match(meta[key]):
             found[field] = meta[key]
         else:
@@ -2740,6 +2754,8 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
             if message['model']:
                 models[message['model']] = models.get(message['model'], 0) + 1
         model = max(sorted(models), key=lambda m: models[m]) if models else None
+        if model is None:
+            gaps.add('attempts.%s' % agent, 'brak message.model w wiadomościach przebiegu: model nieznany')
         tokens = dict(ZERO_TOKENS)
         for cells in (known, unknown):
             for cell in cells.get(role, {}).values():
@@ -3789,9 +3805,33 @@ def percentile(ordered, fraction):
     return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
 
 
+def effect_source(records, at):
+    """The source the windows of `effect` are taken from: the one of most of the epics started after `at` (the first
+    started one when equal), without any such epic the one of the epic merged last; `ao` for no records. The sources
+    are never mixed (as in `history_of`)."""
+    after, merged = [], []
+    for record in records.values():
+        started, done = _epoch(record, 'started_at'), _epoch(record, 'merged_at')
+        if started is not None and started > at:
+            after.append((started, str(record.get('epic')), source_of(record)))
+        if done is not None:
+            merged.append((done, str(record.get('epic')), source_of(record)))
+    if after:
+        found = [source for _, _, source in sorted(after)]
+        return max(dict.fromkeys(found), key=found.count)
+    return sorted(merged)[-1][2] if merged else 'ao'
+
+
 def effect_windows(records, at, gaps):
     """(before, after, before_pool, spanning, unmerged): the records of the two windows (oldest first), the whole pool of
-    epics merged at or before `at` (its closest ones give the epic time) and the ids left out."""
+    epics merged at or before `at` (its closest ones give the epic time) and the ids left out. Only the records of one
+    source (`effect_source`) are used; the others are a gap."""
+    source = effect_source(records, at)
+    others = sorted(str(r.get('epic')) for r in records.values() if source_of(r) != source)
+    if others:
+        gaps.add('effect', 'pominięto %d epików innego źródła niż %s (okna liczy się osobno dla każdego źródła): %s'
+                           % (len(others), source, ', '.join(others)))
+    records = {key: r for key, r in records.items() if source_of(r) == source}
     pool, after, spanning, unmerged = [], [], [], []
     for record in records.values():
         started, merged = _epoch(record, 'started_at'), _epoch(record, 'merged_at')

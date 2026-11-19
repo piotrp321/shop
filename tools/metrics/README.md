@@ -33,7 +33,9 @@ Wspólne opcje: `--config FILE` (domyślnie `config.json` obok skryptu), `--stat
 każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
 
 - `start EPIK`: zapisuje plik przebiegu epiku natywnego `<state>/runs/<epik>.json` (zapis atomowy) i wypisuje go jako
-  jedną linię JSON (zob. „Epik natywny”). `--resume` dopisuje nową sesję do istniejącego pliku. `--projects`: katalog
+  jedną linię JSON (zob. „Epik natywny”). Nazwa epiku musi pasować do `^[a-z0-9][a-z0-9-]*$` (wzorzec `EPIC_NAME`
+  z `/retro`, który inaczej nie rozpozna pliku przebiegu): wielkie litery, `.` i `_` dają kod `2` z komunikatem, bez
+  zapisu; dotyczy też `--resume` i `done`, a `epic` oraz pozostałych komend nie. `--resume` dopisuje nową sesję do istniejącego pliku. `--projects`: katalog
   projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów z wejścia standardowego: obiekt `plan`
   z `get_usage` albo cały obiekt `get_usage` (`{"plan": …, "context": …}`, brany jest `plan`; `plan`, który nie jest
   obiektem, daje `{"status": "unreadable"}`); terminal albo puste wejście to brak odczytu (`null`).
@@ -118,7 +120,7 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
 - `fixture_scan.py`: skan fixture'ów (zob. niżej).
 
 Kody wyjścia: `0` sukces; `2` nic nie zapisano ani nie wypisano (złe argumenty albo `config.json`, brak katalogu AO
-i pliku przebiegu, nieczytelny plik przebiegu, `start` bez gałęzi, PR, liczby zadań albo transkryptu sesji, drugi `start`
+i pliku przebiegu, nieczytelny plik przebiegu, nazwa epiku spoza wzorca w `start` albo `done`, `start` bez gałęzi, PR, liczby zadań albo transkryptu sesji, drugi `start`
 bez `--resume`, `--resume` albo `done` bez pliku przebiegu,
 nieczytelna albo zablokowana baza, brak wiersza epiku, nieczytelny plik `--manual-fixes`, stan niezapisywalny,
 nieczytelny `waste.json` w `waste`, zły klucz albo `--at` w `effect`; komunikat po polsku na stderr, stdout pusty); `3` rekord wypisano i zapisano, ale źródło zawiodło (błąd `gh`: brak programu, kod ≠ 0,
@@ -271,7 +273,9 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
 - **Rola i zadanie:** prowadzący `orchestrator` bez zadania; subagent: rola `agentType`, zadanie to pierwsze
   `<EPIK>-<n>` w `description` (bez rozróżniania wielkości liter, zapisane wielkimi literami), bez niego `no_task`.
   `meta.json` brakujący albo nieczytelny daje `role`, `task`, `effort`, `finished` `null` i pozycję `attempts.<agent>`
-  w `gaps`; brakujące pole tak samo dla tego pola. `description` nie trafia do rekordu.
+  w `gaps`; brakujące pole tak samo dla tego pola. `description` nie trafia do rekordu. Pola `model` z `meta.json` nie
+  czyta się (przebiegi uruchomione z domyślnymi ustawieniami go nie mają): `model` próby to najczęstszy model jej
+  wiadomości, a gdy żadna go nie ma, `null` z pozycją `attempts.<agent>` w `gaps`.
 - **Wartość:** suma po rodzajach tokenów wiadomości razy stawka `pricing.models.<model>` (USD za milion;
   `cache_write_5m` i `cache_write_1h` z `usage.cache_creation`). Każda komórka ma `estimated: true`, rekord ma
   `pricing` (`source`, `read_at`). Wartość nieznana (brak `message.usage`, `message.model`, stawek modelu, stawki
@@ -486,6 +490,10 @@ Katalog wyników EVALS 2.0 jest czytany raz na wywołanie.
 | `D3:gate_wait` | `gate_wait.wait_s` | epik | h |
 | `D4:<human_wait\|ci\|limit_wait\|review>` | udział kategorii w jej mianowniku (jak w `decide`) | epik | pp |
 
+Okna liczy się z rekordów jednego źródła (`ao` albo `native`, jak mediany `trend`): źródła większości epików
+rozpoczętych po `CZAS` (przy remisie najwcześniej rozpoczętego; bez takich epików źródła ostatnio zmergowanego epiku).
+Rekordy drugiego źródła nie wchodzą do żadnego okna, do `epic_time`, `spanning` ani `unmerged_after`; ich liczba i nazwy
+są pozycją w `gaps`. Kształt wyniku się nie zmienia.
 W oknach są tylko epiki zmergowane. Okno „po” to epiki z `started_at` > `CZAS` (ściśle), uporządkowane po starcie. Okno „przed” to
 tyle samo epików zmergowanych najpóźniej w `CZAS` (włącznie), najbliższych tej chwili; gdy takich epików jest mniej niż w oknie „po”, okno „przed” ma
 wszystkie, ma `estimated: true` i pozycję w `gaps` („okna nie są w pełni porównywalne”). Epik rozpoczęty w `CZAS` lub przed
