@@ -13,6 +13,9 @@ Projekt ma dwa cele:
    zasady projektu, niezależne review i CI. Zasady pracy z agentami (`CLAUDE.md`, `.claude/`) są równie ważnym
    rezultatem jak sam kod.
 
+Zakres MVP (sekcja niżej) jest zrealizowany. Kolejny cel to pełnoprawny sklep komercyjny: stan, w którym rzeczywisty
+polski sprzedawca może uruchomić sklep i prowadzić sprzedaż produkcyjną (sekcja „Zakres po MVP”).
+
 ## Aplikacje
 
 | Aplikacja | Stos | Rola |
@@ -336,6 +339,23 @@ po generatorze przywraca dane E2E (konta generatora w Keycloak zostają).
 9. Rezerwacja stanów bez sprzedaży ponad stan przy równoległych zakupach.
 10. Promocje i kody rabatowe, z ceną Omnibus.
 
+## Zakres po MVP
+
+Cel: sprzedaż produkcyjna. Epiki i ich kolejność są na tablicy „Backlog sklepu”; tu jest tylko zakres.
+
+1. Odporność i niezawodność: limity nadużyć oraz przetwarzanie w tle, które domyka zamówienia i płatności niezależnie
+   od zaległości kolejki.
+2. Ścieżka sprzedaży: dostawa (metody, koszt, numer przesyłki, potem punkty odbioru), prawdziwy operator płatności ze
+   zwrotami, strony prawne i zgody, obsługa żądań RODO, zakup na firmę i faktury, pełne dane produktu z importem
+   i eksportem.
+3. Przed danymi prawdziwych klientów: kopie zapasowe i osłony operacji na produkcji, izolacja sekretów i sieci
+   w klastrze, utwardzenie Keycloaka, bezpieczniki operacyjne i sygnały bezpieczeństwa.
+4. Operacje sprzedawcy i konto klienta: narzędzia panelu, książka adresowa, edycja i usunięcie konta.
+
+Tam, gdzie istnieje dojrzałe rozwiązanie zewnętrzne (operator płatności, przewoźnik albo broker, system faktur,
+dostawca poczty), specyfikacja epiku zaczyna od porównania integracji z własną budową. Wymagania wydajności i dużych
+wolumenów z sekcji „Wymagania niefunkcjonalne” pozostają celem; prace nad nimi są w backlogu.
+
 ## Środowisko wdrożeniowe
 
 Pierwsze wdrożenie poza komputerem dewelopera: jeden serwer, jeden klaster, jeden pipeline. Na start działa jako
@@ -377,12 +397,12 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
 
 Kolejne kroki, osobne zgłoszenia:
 
-- **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
-  uploadów.
+- **Tryb publicznego demo** (#179): publiczny dostęp i konta demo podane na stronie logowania, limity uploadów; bez
+  nocnego resetu danych.
 
 ## Poza zakresem (na razie)
 
-Wiele walut, wiele języków, prawdziwi dostawcy płatności, integracje z kurierami, faktury, funkcje marketplace.
+Wiele walut, wiele języków, funkcje marketplace.
 
 ## Decyzje architektoniczne (docs/adr/)
 
