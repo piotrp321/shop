@@ -6,6 +6,7 @@ namespace App\Shared\UI\Console;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\AutowireServiceClosure;
 
@@ -43,12 +44,14 @@ final readonly class RateLimitCheckCommand
         try {
             $this->check();
         } catch (\Throwable $failure) {
-            $io->error('The Redis of the rate limiters failed: '.$failure->getMessage());
+            // One line each, not the wrapping blocks of SymfonyStyle: in a pod (no terminal) a block wraps at about 74 characters, and
+            // the smoke test and the runbook look for these texts in the log of the Job.
+            $io->writeln('<error>The Redis of the rate limiters failed: '.OutputFormatter::escape($failure->getMessage()).'</error>');
 
             return self::ERROR;
         }
 
-        $io->success('The Redis of the rate limiters accepted, returned and deleted the control key.');
+        $io->writeln('<info>The Redis of the rate limiters accepted, returned and deleted the control key.</info>');
 
         return Command::SUCCESS;
     }
