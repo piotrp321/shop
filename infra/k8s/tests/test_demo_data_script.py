@@ -375,58 +375,67 @@ class GuardTest(Script):
 
 
 class SeedFloorTest(Script):
-    """The seed (DEMO_DATA_CONFIRM=seed) has half the floor: after a stop by the guard the free space stays just below demoData.minFreeGb,
-    and the way back to the seed (it starts with TRUNCATE) must not be blocked. Half of 32 GB is 16 GB, 15625000 KiB."""
+    """The seed (DEMO_DATA_CONFIRM=seed) has no floor of the free space: it is the one way back that make offers, it starts with
+    TRUNCATE (it frees room at once) and needs less than 2 GiB, so a refusal would leave the operator with nothing to do. It needs a
+    reading that is a number before the start, and the guard stops it only after three failed readings in a row or a reading that is
+    no number. A profile keeps the whole floor (demoData.minFreeGb)."""
 
-    # KiB: 20.48 GB (between the half and the whole floor), 15.36 GB (below the half).
-    BETWEEN = "20000000"
-    BELOW_HALF = "15000000"
+    # KiB: 20.48 GB (below the floor of 32 GB of a profile).
+    BELOW_FLOOR = "20000000"
 
-    def test_the_seed_starts_between_the_half_and_the_whole_floor(self):
-        for reading in (self.BETWEEN, "15625000"):
+    def test_the_seed_starts_below_the_floor_however_little_room_there_is(self):
+        for reading in (self.BELOW_FLOOR, "1000", "0"):
             with self.subTest(reading=reading):
                 self.calls_file.write_text("")
                 (self.base / "df.log").write_text("")
                 code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=reading)
                 self.assertEqual(0, code, out)
                 self.assertEqual(["seed-demo "], self.started())
+                self.assertIn("the floor is none (the seed)", out)
                 fields, _ = self.summary(out)
-                self.assertEqual("16 GB (15625000 KiB)", fields["floor of the free space"])
+                self.assertEqual("none (the seed)", fields["floor of the free space"])
+                self.reason(0)
 
-    def test_the_seed_refuses_with_74_below_the_half_of_the_floor(self):
-        for reading in (self.BELOW_HALF, "15624999"):
+    def test_the_seed_without_a_reading_that_is_a_number_refuses_with_74(self):
+        for reading in ("fail", "none", "n/a", "12G"):
             with self.subTest(reading=reading):
                 self.calls_file.write_text("")
                 (self.base / "df.log").write_text("")
                 code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=reading)
                 self.assertEqual(74, code, out)
                 self.assertEqual([], self.started())
-                self.assertIn("16 GB", self.reason(74))
                 fields, _ = self.summary(out)
-                self.assertEqual("16 GB (15625000 KiB)", fields["floor of the free space"])
+                self.assertEqual("none (the seed)", fields["floor of the free space"])
+                self.reason(74)
 
-    def test_the_guard_of_the_seed_stops_it_below_the_half_of_the_floor(self):
-        code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=f"{self.BETWEEN} {self.BETWEEN} {self.BELOW_HALF}",
-                                       STUB_STEPS="Seed:0", STUB_CONSOLE_SECONDS="60", STUB_CONSOLE_IGNORES_TERM="1")
-        self.assertEqual(75, code, out)
-        self.assert_the_group_is_gone()
-        self.assert_the_rest_is_untouched()
-        self.assertIn("16 GB", self.reason(75))
+    def test_the_guard_of_the_seed_does_not_stop_it_on_a_low_reading(self):
+        code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF="1000 500 0", STUB_CONSOLE_SECONDS="4")
+        self.assertEqual(0, code, out)
+        self.assertGreaterEqual(len((self.base / "df.log").read_text().splitlines()), 3, out)
+        fields, _ = self.summary(out)
+        self.assertIn("(0 KiB)", fields["lowest free space"])
+        self.reason(0)
 
-    def test_the_profile_keeps_the_whole_floor(self):
-        code, out, _ = self.run_script(STUB_DF=self.BETWEEN)
+    def test_the_guard_of_the_seed_stops_it_after_three_failed_readings_or_one_that_is_no_number(self):
+        for readings, words in (("1000 fail fail fail", "3 times in a row"), ("1000 12abc", "12abc")):
+            with self.subTest(readings=readings):
+                self.calls_file.write_text("")
+                (self.base / "df.log").write_text("")
+                (self.base / "console.pid").unlink(missing_ok=True)
+                code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=readings, STUB_CONSOLE_SECONDS="60",
+                                               STUB_CONSOLE_IGNORES_TERM="1")
+                self.assertEqual(75, code, out)
+                self.assert_the_group_is_gone()
+                self.assert_the_rest_is_untouched()
+                self.assertIn(words, self.reason(75))
+
+    def test_a_profile_keeps_the_whole_floor(self):
+        code, out, _ = self.run_script(STUB_DF=self.BELOW_FLOOR)
         self.assertEqual(74, code, out)
         self.assertEqual([], self.started())
-        self.assertIn("32 GB", self.reason(74))
+        self.assertIn("32 GB (demoData.minFreeGb)", self.reason(74))
         fields, _ = self.summary(out)
         self.assertEqual("32 GB (31250000 KiB)", fields["floor of the free space"])
-
-    def test_an_odd_floor_halves_to_a_fraction_of_a_gb_rounded_up_in_kib(self):
-        # 11 GB / 2 = 5.5 GB = 5500000000 bytes = 5371093.75 KiB, rounded up.
-        code, out, _ = self.run_script(("--profile=medium", "--min-free-gb=11"), DEMO_DATA_CONFIRM="seed", STUB_DF="5371093")
-        self.assertEqual(74, code, out)
-        fields, _ = self.summary(out)
-        self.assertEqual("5.5 GB (5371094 KiB)", fields["floor of the free space"])
 
 
 class SummaryTest(Script):
