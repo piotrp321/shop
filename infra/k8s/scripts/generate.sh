@@ -45,11 +45,13 @@ refuse() {
   echo "generate: nothing was changed" >&2
   exit 1
 }
-# fail <reason>: after tak; what it says depends on the stage: closed (the data untouched) or replacing (the Job before deleted).
-stage=closed
+# fail <reason>: after tak; what it says depends on the stage: open (no rule made yet), closed (the data untouched) or replacing (the
+# Job before deleted).
+stage=open
 fail() {
   printf 'generate: FAILED: %s\n' "$1" >&2
   case "$stage" in
+    open) echo "generate: the shop is not closed by this run (the rule shop-closed was not made; make status shows whether one is left from a run before) and the data is as it was" >&2 ;;
     closed) echo "generate: the shop stays CLOSED (the NetworkPolicy shop-closed; make status) and the data is as it was: make -C infra/k8s open opens it again on the Job demo-data-run of the run before when that one completed, or make -C infra/k8s generate PROFILE=$profile again" >&2 ;;
     *) echo "generate: the shop stays CLOSED (the NetworkPolicy shop-closed; make status). Two ways out: make -C infra/k8s generate PROFILE=$profile again, or back to the seed with PROFILE=seed" >&2 ;;
   esac
@@ -173,6 +175,7 @@ echo
 # 3. The closing: the rule, Traefik restarted (its pods deleted: the connections opened before the rule end), the probe.
 rule="$(kc get networkpolicy shop-closed --ignore-not-found -o name)" || fail "cannot read the NetworkPolicy shop-closed"
 [ -n "$rule" ] || printf '%s' "$rule_manifest" | kc create -f - > /dev/null || fail "the NetworkPolicy shop-closed could not be made"
+stage=closed
 kubectl -n kube-system delete pods -l app.kubernetes.io/name=traefik --wait=true > /dev/null ||
   fail "the pods of Traefik could not be deleted (the connections opened before the rule may stay open)"
 probe closed "$close_wait" || fail "the probe does not say closed in $close_wait s: $probe_report"
