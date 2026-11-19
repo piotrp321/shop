@@ -41,9 +41,9 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 
 - Agent wykonuje operacje na serwerze wyłącznie celami `infra/k8s/Makefile`. Cele, które kasują albo zastępują dane,
   zakładają konto albo zmieniają serwer (`reinitialize`, `restore`, `generate`, `create-admin`, `bootstrap`), uruchamia
-  tylko po zgodzie użytkownika w rozmowie, która nazywa tę operację, host i (dla `generate`) profil danych.
-  Co uruchamia sam i czego nie ponawia przez `rerun`: `infra/k8s/CLAUDE.md`, „Cele Makefile”. Wdrożenie (`gh workflow run deploy.yml --ref main`) uruchamia tylko na
-  wyraźne polecenie użytkownika w rozmowie; zatwierdzenia w środowisku `production` nie wykonuje. Kroki runbooka
+  tylko po zgodzie użytkownika w rozmowie, która nazywa tę operację, host i (dla `generate`) profil danych. Co
+  uruchamia sam i czego nie ponawia przez `rerun`: `infra/k8s/CLAUDE.md`, „Cele Makefile”. Wdrożenie
+  (`gh workflow run deploy.yml --ref main`) uruchamia tylko na wyraźne polecenie użytkownika w rozmowie; zatwierdzenia w środowisku `production` nie wykonuje. Kroki runbooka
   `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje po zgodzie w rozmowie, oznaczone „użytkownik” nigdy.
 - Gałęzie `deploy` i `deploy-images` przesuwa wyłącznie workflow `.github/workflows/deploy.yml`; nikt ich nie edytuje
   ręcznie. Obrazów, do których odwołują się snapshoty `deploy-images`, nie wolno usuwać z GHCR.
