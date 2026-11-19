@@ -561,9 +561,11 @@ sekret wskazany w `demoData.photosSecretName` (klucze `DEMO_PHOTOS_ENDPOINT`, `D
    nieudanego, plik dostaje podsumowanie: najmniejsze wolne miejsce obu dysków i zużycie względem pierwszego odczytu
    w GB, z którego uaktualnia się `diskPeakGb`. Plik, którego nie da się zapisać, to ostrzeżenie, nie koniec przebiegu.
 
-   **Uśpienie komputera.** Usypiający się komputer zatrzymuje VM Dockera i unieważnia czasy, więc na macOS cel trzyma go
-   przytomnego przez cały przebieg (`caffeinate -ims -w <pid>`; gdzie indziej nic nie robi, `environment.txt` ma wtedy
-   w linii `sleep lock:` wzmiankę, że nic nie blokuje uśpienia). Na końcu cel szuka przerw w odczytach (`space.log`,
+   **Uśpienie komputera.** Usypiający się komputer zatrzymuje VM Dockera i unieważnia czasy, więc na macOS cel przez cały
+   przebieg blokuje uśpienie z bezczynności, a na zasilaniu sieciowym także systemowe (`caffeinate -ims -w <pid>`).
+   Nie chroni przed zamkniętą klapą ani uśpieniem ręcznym: przy pomiarze klapa ma zostać otwarta, a komputer podłączony
+   do prądu. Gdzie indziej cel nic nie blokuje, a `environment.txt` ma w linii `sleep lock:` wzmiankę, że nic nie
+   blokuje uśpienia. Na końcu cel szuka przerw w odczytach (`space.log`,
    `node-stats.log`, koniec przebiegu): odstęp dłuższy niż 3 × `LOAD_SPACE_POLL` i co najmniej 120 s to uśpienie. Zapisuje
    je w `space.log` (linia `#`) i w `environment.txt` (`host sleep:`), ostrzega na standardowym wyjściu błędów i kończy
    przebieg kodem 1 zamiast 0: wyniki są w `LOAD_OUT`, ale czasów ani przepustowości z takiego przebiegu nie podajemy.

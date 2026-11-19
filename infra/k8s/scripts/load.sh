@@ -43,8 +43,10 @@
 # the times of the steps and space.log only with a generator.
 #
 # A host that sleeps (a laptop: the Docker VM stops with it) makes the times of the run worthless, and nothing else in the results
-# shows it. So on macOS the script holds the host awake for the whole run (`caffeinate -ims -w <pid of this shell>`; other systems
-# have no such command and go without it, silently: environment.txt has the line `sleep lock:` with what was done), and at the end
+# shows it. So on macOS the script holds off the idle sleep and, on the mains only, the system sleep for the whole run
+# (`caffeinate -ims -w <pid of this shell>`; it does not hold a closed lid or a sleep by hand, so keep the lid open and the mains
+# plugged in; other systems have no such command and go without it, silently: environment.txt has the line `sleep lock:` with
+# what was done), and at the end
 # it looks for pauses in the readings it took on its own: the free space (space.log) and the node (node-stats.log), every 10 to
 # LOAD_SPACE_POLL seconds. A gap between two readings of more than three times LOAD_SPACE_POLL, and at least 120 s, is a pause of
 # the host. Any pause is written as a `#` line of space.log (the number, the total and the longest), as the line `host sleep:` of
@@ -387,7 +389,7 @@ start_sleep_lock() {
   caffeinate_pid=$!
   nap 1
   if kill -0 "$caffeinate_pid" 2>/dev/null; then
-    sleep_lock="caffeinate -ims -w $main_pid (the host does not sleep during the run)"
+    sleep_lock="caffeinate -ims -w $main_pid (holds off idle sleep, and system sleep on the mains only; not a closed lid or a sleep by hand)"
   else
     caffeinate_pid=""
     sleep_lock="none (caffeinate did not start; the host may sleep during the run)"

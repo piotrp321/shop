@@ -780,8 +780,10 @@ class LoadScript(unittest.TestCase):
                         self.assert_refused_before_the_cluster(result, f"LOAD_DATA={profile}", f"{required:.2f} GB", f"{free_gb:.2f} GB")
 
     def test_the_message_of_the_refusal_names_the_required_and_the_available_space_of_both_disks(self):
-        result = self.run_data("medium", STUB_VM_FREE_KB=str(kib(30)), STUB_HOST_FREE_KB=str(kib(400)))
-        self.assert_refused_before_the_cluster(result, "31.25 GB", "30.00 GB", "400.00 GB", "Docker VM", "host")
+        required = 1.25 * disk_peak_gb("medium")
+        vm_free = required - 1
+        result = self.run_data("medium", STUB_VM_FREE_KB=str(kib(vm_free)), STUB_HOST_FREE_KB=str(kib(400)))
+        self.assert_refused_before_the_cluster(result, f"{required:.2f} GB", f"{vm_free:.2f} GB", "400.00 GB", "Docker VM", "host")
         self.assertIn("1.25", result.stderr)
         self.assertIn(self.tmp.name, result.stderr)
 
@@ -1147,8 +1149,11 @@ class LoadScript(unittest.TestCase):
                 self.assertRegex(words[2], r"^[0-9]+$")
                 self.assertEqual(words[2], (self.space / "caffeinate.waited").read_text().strip(), "the process it waits for did not exist")
                 self.assertFalse(process_alive(int((self.space / "caffeinate.pid").read_text())), "caffeinate still runs")
-                self.assertRegex((self.out / "environment.txt").read_text(),
-                                 r"(?m)^sleep lock: caffeinate -ims -w [0-9]+ \(the host does not sleep during the run\)$")
+                environment = (self.out / "environment.txt").read_text()
+                # What it holds off, and what it does not: not an unconditional promise that the host stays awake.
+                self.assertRegex(environment, r"(?m)^sleep lock: caffeinate -ims -w [0-9]+ \(holds off idle sleep, and system sleep "
+                                              r"on the mains only; not a closed lid or a sleep by hand\)$")
+                self.assertNotIn("does not sleep", environment)
 
     def test_caffeinate_is_stopped_when_the_run_fails_too(self):
         self.install_caffeinate()
