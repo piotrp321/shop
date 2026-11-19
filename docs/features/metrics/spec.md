@@ -290,12 +290,18 @@ zapisać plik po fakcie, także gdy `plan.md` już nie istnieje.
 `started_at` do merge'u końcowego PR (praca po merge'u nie wchodzi; bez znanego merge'u do końca transkryptów,
 z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie w kolejności sesji z pliku przebiegu
 (prowadzący, potem subagenci), także w sesji wznowionej albo rozgałęzionej. Wiadomość bez `timestamp` się liczy,
-z pozycją w `gaps`. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
-bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika, `origin.kind`
+z pozycją w `gaps`. Linia transkryptu, która nie jest obiektem JSON, jest pomijana z pozycją `sessions` w `gaps`
+z liczbą takich linii; transkrypt bez żadnej linii będącej obiektem JSON (pusty albo całkiem uszkodzony) jest
+nieczytelny: sesja prowadząca bez przeczytanego transkryptu, subagent z utraconym. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
+bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika (przy wyniku
+wywołania `Agent` także `toolUseResult.agentId`), `origin.kind`
 i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json` `agentType`, `description`,
 `effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole `model` z `meta.json` nie jest czytane (przebieg
 uruchomiony z domyślnymi ustawieniami go nie ma). Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
-werdyktu; żaden nie trafia do rekordu.
+werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
+nieczytelny (także pusty albo uszkodzony), albo gdy sesja prowadząca uruchomiła go w przedziale epiku (wynik wywołania `Agent`
+z `toolUseResult.agentId`), a w katalogach sesji epiku nie ma żadnego jego pliku; utracony transkrypt to pozycja
+`sessions` w `gaps` i liczy się jak brak transkryptu części sesji (niżej, „Brak transkryptów”).
 
 **Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania; przebieg subagenta to rola z `agentType`
 i zadanie, którego ID (`<EPIK>-<n>`, wielkość liter bez znaczenia) występuje w `description` jako pierwsze. Bez ID
@@ -324,6 +330,7 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `ci` | `final`: przebiegi CI gałęzi `branch` z pliku przebiegu i PR `pr`; `tasks`: `null` |
 | `regressions`, `found_after_merge`, `bottlenecks` | jak w AO |
 | `sessions` | identyfikatory sesji z pliku przebiegu (bez katalogów roboczych) |
+| `transcripts_read` | liczba przeczytanych transkryptów epiku (sesje i subagenci; niżej, „Brak transkryptów”) |
 | `pricing` | `source` i `read_at` cennika, z którego policzono wartość |
 | `breakdown` | `work`, `human_wait`, `idle` od `started_at` do `done_at` (niżej, „Czas i człowiek”); `limit_wait`, `ci_wait`, `host_pause`, `github_wait` `null` z pozycją w `gaps`, rekord ma `breakdown_incomplete: true`; bez `started_at` albo `done_at` całe `null` |
 | `human` | `interventions` (szacunek, `interventions_estimated: true`), `waits`, `wait_s`, `events` (`[{at, wait_s}]`), `manual_fixes` z `--manual-fixes` (bez opcji `null` z pozycją w `gaps`) |
@@ -354,8 +361,12 @@ identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `int
 `manual_fixes`, `retries.fix`, `retries.failed_by_outcome`, `subscription.share`) mają `null` z pozycją w `gaps`, nigdy
 zero; wartość zapisana wcześniej w rekordzie natywnym zostaje (odświeżenie rekordu, np. przez `/retro collect`, jej nie
 zastępuje), z pozycją w `gaps`. Tak samo zostają zapisane `attempts`, `by_task`, `value`, `in_attempts` i `versions`;
-bez zapisanego rekordu są puste (`attempts` `[]`, `by_task` `{}`, `value.total` `null`) albo `null` z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji, te pola mają wartości z dostępnych
-transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna).
+bez zapisanego rekordu są puste (`attempts` `[]`, `by_task` `{}`, `value.total` `null`) albo `null` z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji albo transkryptu subagenta
+przeczytanej sesji, te pola oraz `attempts`, `by_task`, `value` i `in_attempts` mają wartości z dostępnych
+transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna). Odświeżenie, które przeczytało mniej
+transkryptów niż zapisany rekord natywny (`transcripts_read`; retencja albo utracony plik), zachowuje jego wartości
+tych pól i jego liczbę, z pozycją w `gaps` („zachowano poprzednią wartość”), zamiast je zmniejszyć; rekord bez
+`transcripts_read` tego porównania nie ma.
 
 **Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,
 `qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task` (zadanie według D4,
@@ -365,7 +376,8 @@ kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to s
 pogrubienie, znaki nagłówka i jedno słowo `to`, `jest` albo `is`). Raport podaje werdykt na początku, więc wygrywa
 pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia), także gdy dalej cytuje
 inne werdykty; gdy żadnej etykiety na początku linii nie ma, liczy się ostatnia etykieta w tekście, bo raport może
-przytoczyć werdykt poprzedniej rundy; słowo werdyktu bez etykiety się nie liczy. Werdykt jest przyjęty tylko z kontraktu roli: `code-reviewer` `PASS` /
+przytoczyć werdykt poprzedniej rundy; słowo werdyktu bez etykiety się nie liczy, tak jak etykieta tuż po cudzysłowie
+albo odwróconym apostrofie (cytat przykładu w raporcie). Werdykt jest przyjęty tylko z kontraktu roli: `code-reviewer` `PASS` /
 `CHANGES_REQUIRED`, `qa-adversarial` `PASS` / `INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` /
 `REWORK`; blokują `CHANGES_REQUIRED`, `BLOCK` i `REWORK`. Raport bez rozpoznanego werdyktu (dziś zawsze `ux-reviewer`,
 który nie ma werdyktu) ma `verdict` i `blocking` `null` z pozycją `reviews` w `gaps`; przebieg roli przeglądowej bez

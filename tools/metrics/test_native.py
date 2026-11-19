@@ -587,6 +587,33 @@ class MissingFieldsTest(NativeEnv):
         self.write_session('s1', [json.dumps(Native().assistant(5, model=OPUS, input=MILLION).lines[0]), '{cut'])
         self.assertAlmostEqual(self.native_record()['value']['total']['usd'], 4.0)
 
+    def test_skipped_lines_are_a_gap_with_their_number(self):
+        self.write_run()
+        good = Native().assistant(5, model=OPUS, input=MILLION).lines[0]
+        self.write_session('s1', [json.dumps(good), '{cut', '', '[1, 2]', '"text"'])
+        record = self.native_record()
+        self.assertAlmostEqual(record['value']['total']['usd'], 4.0)
+        skipped = [g for g in record['gaps'] if g.startswith('sessions') and 'sesja s1' in g]
+        self.assertEqual(len(skipped), 1, record['gaps'])
+        self.assertIn('(3)', skipped[0])
+        self.assertFalse(any('dolna granica' in g for g in record['gaps']), record['gaps'])
+
+    def test_lead_transcript_without_any_json_line_is_unreadable(self):
+        self.write_run()
+        self.write_session('s1', ['{cut', 'not json', '[1]'])
+        record = self.native_record()
+        self.assertIsNone(record['breakdown'])
+        self.assertIsNone(record['human']['interventions'])
+        self.assertIsNone(record['value']['total'])
+        self.assertTrue(any('sesja s1' in g for g in record['gaps'] if g.startswith('sessions')), record['gaps'])
+
+    def test_subagent_transcript_without_any_json_line_is_lost(self):
+        record = self.single(['{cut', 'not json'], {'agentType': 'developer', 'description': 'DEMO-1',
+                                                    'effort': 'high', 'finished': True})
+        self.assertEqual(record['attempts'], [])
+        self.assertTrue(any('agent a1' in g for g in record['gaps'] if g.startswith('sessions')), record['gaps'])
+        self.assertTrue(any('dolna granica' in g for g in record['gaps'] if g.startswith('value')), record['gaps'])
+
 
 class PricingConfigTest(unittest.TestCase):
     """D3: the shipped rates of every model of the SMALL-FIXES transcripts and of the agent definitions."""

@@ -334,6 +334,56 @@ class MissingTranscriptsTest(ProcessEnv):
         for field in ('attempts', 'by_task', 'value', 'in_attempts', 'versions'):
             self.assertTrue(any('zachowano' in g for g in gaps_of(after, field)), (field, after['gaps']))
 
+    def subagent_file(self, agent, suffix):
+        return os.path.join(testkit.project_dir(self.projects, self.worktree), 's1', 'subagents',
+                            'agent-%s%s' % (agent, suffix))
+
+    def test_refresh_after_losing_a_subagent_transcript_keeps_the_stored_values(self):
+        for lost in (('.jsonl',), ('.jsonl', '.meta.json')):
+            with self.subTest(lost=lost):
+                self.setUp()
+                self.write_run()
+                self.write_session('s1', self.lead())
+                self.reviewed()
+                self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+                before = self.native_record()
+                self.assertEqual(len(before['attempts']), 2)
+                for suffix in lost:
+                    os.remove(self.subagent_file('ad1', suffix))
+                after = self.native_record()
+                for field in ('attempts', 'by_task', 'value', 'reviews', 'retries', 'integration', 'breakdown',
+                              'in_attempts'):
+                    self.assertEqual(after[field], before[field], field)
+                for field in ('attempts', 'value', 'by_task'):
+                    self.assertTrue(any('zachowano' in g for g in gaps_of(after, field)), (field, after['gaps']))
+                again = self.native_record()
+                self.assertEqual(again['attempts'], before['attempts'])
+                self.assertEqual(again['value'], before['value'])
+
+    def test_refresh_after_losing_a_session_keeps_the_stored_values(self):
+        self.write_run(sessions=('s1', 's2'))
+        self.write_session('s1', self.lead())
+        path = self.write_session('s2', Native("s2").assistant(1000, input=1000000).human(1500).assistant(1510))
+        before = self.native_record()
+        self.assertEqual(before['human']['interventions'], 2)
+        os.remove(path)
+        after = self.native_record()
+        self.assertEqual(after['human'], before['human'])
+        self.assertEqual(after['value'], before['value'])
+        self.assertTrue(any('zachowano' in g for g in gaps_of(after, 'value')), after['gaps'])
+
+    def test_refresh_with_more_transcripts_takes_the_new_values(self):
+        self.write_run()
+        self.write_session('s1', self.lead())
+        self.reviewed()
+        before = self.native_record()
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        after = self.native_record()
+        self.assertEqual(len(before['attempts']), 1)
+        self.assertEqual(len(after['attempts']), 2)
+        self.assertGreater(after['value']['total']['usd'], before['value']['total']['usd'])
+        self.assertFalse(any('zachowano' in g for g in after['gaps']), after['gaps'])
+
     def test_without_transcripts_and_without_a_stored_record_attempts_are_empty_with_gaps(self):
         self.write_run(sessions=('gone',))
         record = self.native_record()
@@ -359,6 +409,91 @@ class MissingTranscriptsTest(ProcessEnv):
         record = self.native_record()
         self.assertEqual(record['human']['interventions'], 0)
         self.assertFalse(any('origin' in g for g in gaps_of(record, 'human')), record['gaps'])
+
+
+LOWER_BOUND_FIELDS = ('value', 'attempts', 'by_task', 'reviews', 'retries.fix')
+
+
+class SubagentTranscriptsTest(ProcessEnv):
+    """M3, M7 and D1: a subagent whose transcript is missing, empty or unreadable while the lead session is read makes
+    the values from the transcripts a lower bound with a gap, as a missing session does; it is never silently complete.
+    A subagent without any file is seen by its launch in the lead session (`toolUseResult.agentId`)."""
+
+    def agent_file(self, agent, suffix='.jsonl', session='s1'):
+        return os.path.join(testkit.project_dir(self.projects, self.worktree), session, 'subagents',
+                            'agent-%s%s' % (agent, suffix))
+
+    def epic(self, lead=None):
+        self.write_run()
+        self.write_session('s1', lead or Native('s1').assistant(10, input=5).launch(20, 'ar1').launch(30, 'ad1')
+                           .assistant(900, input=5))
+        self.subagent('ar1', 'code-reviewer', 'Review DEMO-1', ['Werdykt: CHANGES_REQUIRED', 'Werdykt: PASS'], 100)
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+
+    def assert_lower_bound(self, record, agent):
+        for field in LOWER_BOUND_FIELDS:
+            self.assertTrue(any('dolna granica' in g for g in gaps_of(record, field)), (field, record['gaps']))
+        self.assertTrue(any(agent in g for g in gaps_of(record, 'sessions')), record['gaps'])
+
+    def test_every_subagent_read_is_no_lower_bound(self):
+        self.epic()
+        record = self.native_record()
+        self.assertEqual(len(record['attempts']), 2)
+        self.assertFalse(any('dolna granica' in g for g in record['gaps']), record['gaps'])
+
+    def test_meta_json_without_the_transcript(self):
+        self.epic()
+        os.remove(self.agent_file('ad1'))
+        self.assert_lower_bound(self.native_record(), 'ad1')
+
+    def test_empty_transcript_of_a_subagent(self):
+        self.epic()
+        open(self.agent_file('ad1'), 'w').close()
+        self.assert_lower_bound(self.native_record(), 'ad1')
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root reads every file')
+    def test_unreadable_transcript_of_a_subagent(self):
+        self.epic()
+        os.chmod(self.agent_file('ad1'), 0)
+        try:
+            record = self.native_record()
+        finally:
+            os.chmod(self.agent_file('ad1'), 0o600)
+        self.assert_lower_bound(record, 'ad1')
+
+    def test_subagent_launched_by_the_lead_without_any_file(self):
+        self.epic()
+        os.remove(self.agent_file('ad1'))
+        os.remove(self.agent_file('ad1', '.meta.json'))
+        record = self.native_record()
+        self.assertEqual([a['agent_id'] for a in record['attempts']], ['ar1'])
+        self.assert_lower_bound(record, 'ad1')
+
+    def test_subagent_launched_before_the_start_without_any_file_is_no_gap(self):
+        self.write_run(started=100)
+        self.write_session('s1', Native('s1').launch(10, 'old').assistant(150, input=5).launch(160, 'ad1')
+                           .assistant(900, input=5))
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        record = self.native_record()
+        self.assertFalse(any('dolna granica' in g for g in record['gaps']), record['gaps'])
+        self.assertFalse(any('old' in g for g in gaps_of(record, 'sessions')), record['gaps'])
+
+    def test_subagent_of_another_session_of_the_epic_is_found(self):
+        self.write_run(sessions=('s1', 's2'))
+        self.write_session('s1', Native('s1').assistant(10, input=5).launch(20, 'ad1'))
+        self.write_session('s2', Native('s2').assistant(500, input=5).launch(510, 'ad1'))
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        record = self.native_record()
+        self.assertFalse(any('dolna granica' in g for g in record['gaps']), record['gaps'])
+
+    def test_lost_session_makes_the_value_and_the_attempts_a_lower_bound(self):
+        self.write_run(sessions=('s1', 'gone'))
+        self.write_session('s1', Native('s1').assistant(10, input=5).launch(20, 'ar1').launch(30, 'ad1'))
+        self.subagent('ar1', 'code-reviewer', 'Review DEMO-1', ['Werdykt: CHANGES_REQUIRED', 'Werdykt: PASS'], 100)
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        record = self.native_record()
+        for field in LOWER_BOUND_FIELDS:
+            self.assertTrue(any('dolna granica' in g for g in gaps_of(record, field)), (field, record['gaps']))
 
 
 class VerdictTokenTest(unittest.TestCase):
@@ -400,6 +535,16 @@ class VerdictTokenTest(unittest.TestCase):
     def test_a_report_without_a_label_has_no_verdict(self):
         self.assertIsNone(metrics.verdict_token('## Przegląd DELTA ASH-V1-6: PASS\n\nBrak uwag, bez wpływu na werdykt.'))
         self.assertIsNone(metrics.verdict_token('Werdykt tak PASS'))
+
+    def test_a_quoted_label_is_no_verdict(self):
+        report = ('## Review DEMO-3: FULL, CHANGES_REQUIRED\n\n- Tak samo dla code-reviewer: „…cytat `verdict: PASS`…”.\n'
+                  '- **Odtworzenie:** `parse("Werdykt: PASS")` zwraca zły wynik.')
+        self.assertIsNone(metrics.verdict_token(report))
+        for text in ('Przykład „Werdykt: PASS” w teście.', "Cytat 'Verdict: KEEP' z raportu.", 'Wzorzec “werdykt BLOCK”.'):
+            self.assertIsNone(metrics.verdict_token(text), text)
+        for text, verdict in (('Uwagi.\nWerdykt: `PASS`', 'PASS'), ('(Werdykt: BLOCK)', 'BLOCK'),
+                              ('Opis — werdykt: REWORK.', 'REWORK')):
+            self.assertEqual(metrics.verdict_token(text), verdict, text)
 
     def test_no_label_no_verdict(self):
         for text in ('PASS', 'Werdykt: brak', 'werdyktem PASS', None):

@@ -528,6 +528,19 @@ class Native:
         self.assistant(start, model=model, tools=[('Bash', {'command': command})], **tokens)
         return self.tool_result(self.last_tools[0], end)
 
+    def launch(self, at, agent_id, model=FABLE):
+        """The lead session starts a subagent: an `Agent` tool call and its result, whose `toolUseResult` names the
+        `agentId` (as Claude Code writes an asynchronous launch)."""
+        self.assistant(at, model=model, tools=[('Agent', {'description': 'TAJNE-ZLECENIE', 'prompt': 'TAJNE-ZLECENIE',
+                                                          'subagent_type': 'developer'})])
+        line = self._line('user', None if at is None else at + 1)
+        line['message'] = {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': self.last_tools[0],
+                                                        'content': 'TAJNY-WYNIK'}]}
+        line['toolUseResult'] = {'status': 'async_launched', 'agentId': agent_id, 'isAsync': True,
+                                 'description': 'TAJNE-ZLECENIE', 'prompt': 'TAJNE-ZLECENIE'}
+        self.lines.append(line)
+        return self
+
     def handback(self, at, text, model=FABLE, **tokens):
         """The report a subagent hands back to the lead session: a `SubagentHandback` tool call with its text."""
         return self.assistant(at, model=model, tools=[('SubagentHandback', {'message': text})], **tokens)
