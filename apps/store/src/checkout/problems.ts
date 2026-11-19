@@ -6,6 +6,7 @@ export type OrderConflictType = components["schemas"]["OrderConflictProblem"]["t
 /** What the checkout does about a 409; `unknown` is any other `type` (or none), handled as a failure to retry. */
 export type OrderConflictReason =
   | "cart_empty"
+  | "guest_order_too_large"
   | "cart_not_orderable"
   | "insufficient_stock"
   | "total_changed"
@@ -19,6 +20,7 @@ export const CART_EMPTY_TYPE: OrderConflictType = "tag:piotrp321.github.io,2026:
 // `satisfies` makes the compiler demand one reason for every type the schema lists, so a new type cannot be forgotten.
 const REASONS = {
   "tag:piotrp321.github.io,2026:shop/problems/cart-empty": "cart_empty",
+  "tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large": "guest_order_too_large",
   "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable": "cart_not_orderable",
   "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order": "insufficient_stock",
   "tag:piotrp321.github.io,2026:shop/problems/order-total-changed": "total_changed",

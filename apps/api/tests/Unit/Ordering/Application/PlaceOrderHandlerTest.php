@@ -12,6 +12,7 @@ use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
 use App\Ordering\Domain\DiscountCodeRejected;
+use App\Ordering\Domain\GuestOrderTooLarge;
 use App\Ordering\Domain\IdempotencyKeyReused;
 use App\Ordering\Domain\InsufficientStockForOrder;
 use App\Ordering\Domain\InvalidOrderInput;
@@ -55,6 +56,7 @@ final class PlaceOrderHandlerTest extends TestCase
     private const string CODE_ID = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c6d00';
     /** 10 % of TOTAL */
     private const int DISCOUNT = 7_580;
+    private const string TOO_LARGE = 'Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku.';
     private const string INVALID = 'tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid';
     private const string USED_UP = 'tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up';
 
@@ -401,6 +403,76 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->assertRefused(CartEmpty::class, 'Koszyk jest pusty.', self::command(cart: CartReference::customer(self::CUSTOMER), key: 'key-2'));
 
         self::assertSame([], $this->customers->orders, 'a guest is no customer');
+    }
+
+    public function testAGuestCartOfElevenLinesIsRefusedAfterTheLockBeforeAnyQuoteCodeNumberOrReservation(): void
+    {
+        $this->carts->put(self::guest(), $this->lines(11, 1));
+
+        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command(discountCode: 'WITAJ10'));
+        self::assertSame(['find', 'lock', 'find'], $this->journal->calls);
+        self::assertSame([], $this->redemptions->redeemed);
+        self::assertSame([], $this->stock->reservations);
+        self::assertSame([], $this->expiry->scheduled);
+    }
+
+    public function testAGuestCartWithElevenUnitsOfOneLineIsRefused(): void
+    {
+        $this->carts->put(self::guest(), [self::SHOES => 11]);
+
+        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command());
+        self::assertSame(['find', 'lock', 'find'], $this->journal->calls);
+    }
+
+    public function testAGuestCartOfTenLinesOfTenUnitsIsPlaced(): void
+    {
+        $this->carts->put(self::guest(), $this->lines(10, 10));
+
+        $placed = $this->place(self::command(expectedTotalGross: 10 * 10 * 2_000));
+
+        self::assertCount(10, $placed->order->lines);
+    }
+
+    public function testAnEmptyGuestCartIsRefusedAsEmptyNotAsTooLarge(): void
+    {
+        $this->carts->put(self::guest(), []);
+
+        $this->assertRefused(CartEmpty::class, 'Koszyk jest pusty.', self::command());
+    }
+
+    public function testTheSizeIsCheckedBeforeTheOtherRefusalsOfTheCart(): void
+    {
+        // 11 lines, the last one without a price (not orderable): the size comes first (D5).
+        $this->carts->put(self::guest(), $this->lines(10, 1) + ['0192f0c4-7c1a-7c4e-9a6e-0000000000ff' => 1]);
+
+        $this->assertRefused(GuestOrderTooLarge::class, self::TOO_LARGE, self::command());
+    }
+
+    public function testACustomerOrderIsNotLimitedToTheSizeOfAGuest(): void
+    {
+        $customer = CartReference::customer(self::CUSTOMER);
+        $this->carts->put($customer, $this->lines(11, 11));
+
+        $placed = $this->place(self::command(cart: $customer, expectedTotalGross: 11 * 11 * 2_000));
+
+        self::assertCount(11, $placed->order->lines);
+    }
+
+    /**
+     * @return array<string, int> quantity by variant id, each variant priced at 2 000 gross
+     */
+    private function lines(int $count, int $quantity): array
+    {
+        $lines = [];
+        for ($i = 1; $i <= $count; ++$i) {
+            $id = \sprintf('0192f0c4-7c1a-7c4e-9a6e-1%011d', $i);
+            $this->prices->price($id, 1_626, 374);
+            $this->catalog->variant($id, \sprintf('c0ffee00-7c1a-7c4e-9a6e-1%011d', $i), 'Produkt '.$i, '');
+            $this->stock->stock($id, 100);
+            $lines[$id] = $quantity;
+        }
+
+        return $lines;
     }
 
     public function testAnEmptyCartIsRefusedBeforeAnyCopyNumberOrReservation(): void

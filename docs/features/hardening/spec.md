@@ -30,7 +30,7 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
 - Sentry i trace'y (#180), tryb publicznego demo (#179), monitoring i kopie zapasowe (DEPLOY-OPS, #178).
 - Pozostałe punkty #181: blokowanie stanów fikcyjnymi zamówieniami poza samym limitem liczby zamówień (D16), polityka
   prywatności, włączenie rejestracji (`customerAccounts`) i wysyłki przez Brevo (`orderMail`).
-- RODO i anonimizacja zamówień (#119) oraz limit rezerwowanego towaru na zamówienie gościa (D11, D16): blokery trybu publicznego demo (D19).
+- RODO i anonimizacja zamówień (#119): bloker trybu publicznego demo (D19).
 - Limity na koszyku gościa i podglądzie kodu rabatowego: `docs/features/abuse-limits/spec.md` (L2, L3). Pozostałe
   publiczne endpointy: przegląd bezpieczeństwa ocenia ich ryzyko i ewentualnie proponuje zgłoszenie.
 - Przeniesienie symulatora płatności do osobnej usługi (D14).
@@ -56,10 +56,10 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
 | D13 | Raporty (przeglądu i pomiaru) są przypięte do rewizji jak w `docs/experiments/`: nagłówek z datą i SHA, po zapisaniu się nie zmieniają; kolejny pomiar to nowy plik. Miejsce: `docs/reports/` z `README.md` jak w `docs/experiments/` (decyzja użytkownika). |
 | D14 | Testy obciążeniowe: k6 (obraz `grafana/k6` przypięty tagiem i digestem, uruchamiany w kontenerze, bez instalacji na hoście ani w zależnościach aplikacji). Skrypty w `load/`. |
 | D15 | Środowisko pomiaru (decyzja użytkownika): klaster k3d jak w teście dymnym, z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `environments/load` (`ci` plus zasoby podów z `prod`, sterty JVM Elasticsearcha i Keycloaka jak w `prod`, `clientIpHeader: CF-Connecting-IP`, `clientIpHeaderWithoutAllowList: true`); `make -C infra/k8s load`. Stos deweloperski (`APP_ENV=dev`) nie nadaje się do pomiaru. Inne stosy na tej samej maszynie zaszumiają wynik, więc przed pomiarem stos compose jest zatrzymany, a pomiar zapisuje obciążenie hosta (inne kontenery, średnie obciążenie; `environment.txt`). Pomiar można powtórzyć tą samą komendą (nowy raport, D13). Raport: `docs/reports/load-test-2026-11-10.md`. |
-| D16 | Blokowanie stanów fikcyjnymi zamówieniami: limity (D5) ograniczają tylko liczbę zamówień. Jedno zamówienie gościa może zarezerwować do 50 linii po 99 sztuk (`Order::MAX_LINES`, `OrderLine::MAX_QUANTITY`) na 35 min. Limit sztuk albo linii na zamówienie gościa zmienia reguły Cart i Ordering, więc jest osobnym zgłoszeniem (#332), będącym blokerem trybu publicznego demo (D19): publiczne demo nie może pozwalać na masowe blokowanie stanów. |
+| D16 | Blokowanie stanów fikcyjnymi zamówieniami: limity (D5) ograniczają tylko liczbę zamówień, nie ich wielkość. Zamówienie gościa ma najwyżej 10 linii po 10 sztuk (reguła `GuestOrderSize`, 409 `guest-order-too-large`; `docs/features/abuse-limits/spec.md`, L5), a zamówienie klienta nadal do 50 linii po 99 sztuk (`Order::MAX_LINES`, `OrderLine::MAX_QUANTITY`), rezerwowanych na 35 min. |
 | D17 | Logowanie hasłem odbywa się w Keycloaku. Oba realmy mają `bruteForceProtected: true` z wartościami domyślnymi Keycloaka (blokada konta po 30 nieudanych próbach, czas rosnący do 15 min). Funkcja ich nie zmienia (decyzja użytkownika); `docs/features/deploy/spec.md` („Keycloak i konta”) to odnotowuje. |
 | D18 | Checkout w teście obciążeniowym przechodzi przez `POST /api/checkout` sklepu, czyli złożenie zamówienia i rozpoczęcie płatności w symulatorze, który działa w kontenerze API (ryzyko samoblokady wątków FrankenPHP). Scenariusz checkoutu ma równoległość ograniczoną poniżej połowy wątków API, a raport to opisuje (decyzja użytkownika). Wynik checkoutu przy tej równoległości nie jest benchmarkiem checkoutu ani przepustowości systemu (sekcja „Testy obciążeniowe”). |
-| D19 | Blokery trybu publicznego demo (#179): RODO dla danych gości (#119); limit rezerwowanego towaru na zamówienie gościa (#332, D16); weryfikacja na serwerze, że origin odrzuca ruch z pominięciem Cloudflare (runbook `infra/k8s/README.md`); zgłoszenia znalezisk `Critical` i `High` z raportu przeglądu (sekcja „Blokery publicznego demo”; zgłoszenia zakłada użytkownik). Funkcja niczego z tej listy nie implementuje. |
+| D19 | Blokery trybu publicznego demo (#179): RODO dla danych gości (#119); weryfikacja na serwerze, że origin odrzuca ruch z pominięciem Cloudflare (runbook `infra/k8s/README.md`); zgłoszenia znalezisk `Critical` i `High` z raportu przeglądu (sekcja „Blokery publicznego demo”; zgłoszenia zakłada użytkownik). Funkcja niczego z tej listy nie implementuje. |
 
 ## Adres IP klienta
 
@@ -280,7 +280,7 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 - Adres klienta wewnątrz klastra jest zaufany: pod w klastrze może podać dowolny `CF-Connecting-IP`.
 - Klienci za wspólnym NAT (firma, operator komórkowy) dzielą limit gościa.
 - Fail open (D7) wyłącza limity na czas awarii Redisa; widać to w logu i health checku, a na serwerze alert `WorkloadNotReady` zgłasza niegotowego Redisa po 10 minutach, a alert `RateLimitsOff` Redisa nieużywalnego dla API (`docs/features/abuse-limits/spec.md`, L12; nie ostrzeżenia w logu).
-- Limit liczby zamówień nie chroni przed rezerwacją dużych ilości jednym zamówieniem (D16).
+- Limit liczby zamówień nie chroni przed rezerwacją dużych ilości jednym zamówieniem klienta (D16); zamówienie gościa ma limit wielkości.
 - W `prod` logi udanych żądań nie są zapisywane, więc correlation ID pomaga tylko przy błędach.
 - `CorrelationIdStamp` jest nadawany od wersji, która go wprowadza, wbrew zasadzie „Zgodność wersji”
   w `apps/api/CLAUDE.md`, bo przed tą wersją nie było wdrożenia. Gdyby przy wymianie podów działał worker bez tej klasy,

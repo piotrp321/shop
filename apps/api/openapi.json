@@ -2084,7 +2084,7 @@
                         }
                     },
                     "409": {
-                        "description": "The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
+                        "description": "The cart is empty, has more than 10 lines or more than 10 units of a line (a guest order is limited so that it cannot reserve much stock), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -4195,7 +4195,7 @@
                 "type": "object"
             },
             "OrderConflictProblem": {
-                "description": "A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart.",
+                "description": "A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more than 10 lines or 10 units of a line), checked before anything else about the cart.",
                 "required": [
                     "type",
                     "title",
@@ -4207,6 +4207,7 @@
                         "type": "string",
                         "enum": [
                             "tag:piotrp321.github.io,2026:shop/problems/cart-empty",
+                            "tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large",
                             "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable",
                             "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order",
                             "tag:piotrp321.github.io,2026:shop/problems/order-total-changed",

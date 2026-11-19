@@ -465,6 +465,7 @@ describe("placeOrder", () => {
     [422, { violations }, { status: "invalid", detail: undefined, violations }],
     [422, { detail: "Nieprawidłowe dane." }, { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }],
     [409, { type: `${PROBLEMS}cart-empty`, detail: "Koszyk jest pusty." }, { status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." }],
+    [409, { type: `${PROBLEMS}guest-order-too-large`, detail: "x" }, { status: "conflict", reason: "guest_order_too_large", detail: "x" }],
     [409, { type: `${PROBLEMS}cart-not-orderable`, detail: "x" }, { status: "conflict", reason: "cart_not_orderable", detail: "x" }],
     [409, { type: `${PROBLEMS}insufficient-stock-for-order`, detail: "x" }, { status: "conflict", reason: "insufficient_stock", detail: "x" }],
     [409, { type: `${PROBLEMS}order-total-changed`, detail: "x" }, { status: "conflict", reason: "total_changed", detail: "x" }],
