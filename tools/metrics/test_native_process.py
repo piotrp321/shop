@@ -375,6 +375,32 @@ class VerdictTokenTest(unittest.TestCase):
         self.assertEqual(metrics.verdict_token('poprzedni werdykt CHANGES_REQUIRED, teraz Werdykt: PASS'), 'PASS')
         self.assertEqual(metrics.verdict_token('CHANGES_REQUIRED w poprzedniej rundzie.\nWerdykt: PASS'), 'PASS')
 
+    def test_the_first_label_at_the_start_of_a_line_wins(self):
+        report = ('- **Werdykt: CHANGES_REQUIRED.** Są dwa ustalenia. Przykłady w tekście: Werdykt: `PASS`, '
+                  'nagłówek ## Werdykt\n\n`PASS` oraz „poprzedni werdykt CHANGES_REQUIRED, teraz Werdykt: PASS”.')
+        self.assertEqual(metrics.verdict_token(report), 'CHANGES_REQUIRED')
+        self.assertEqual(metrics.verdict_token('Werdykt: PASS\n\nWerdykt: CHANGES_REQUIRED'), 'PASS')
+        self.assertEqual(metrics.verdict_token('Werdykt: brak\nWerdykt: PASS\nWerdykt: BLOCK'), 'PASS')
+
+    def test_the_label_at_the_start_of_a_line_after_markers(self):
+        for text, verdict in (('> Werdykt: PASS\nWerdykt: BLOCK', 'PASS'), ('  * __Verdict__ KEEP\nWerdykt: BLOCK', 'KEEP'),
+                              ('### **Werdykt:** REWORK\nWerdykt: PASS', 'REWORK'),
+                              ('Opis. Werdykt: BLOCK\n- Verdict: PASS\nWerdykt: KEEP', 'PASS')):
+            self.assertEqual(metrics.verdict_token(text), verdict, text)
+
+    def test_a_connecting_word_between_the_label_and_the_verdict(self):
+        for text, verdict in (('Werdykt to **CHANGES_REQUIRED**, bo są dwa zgłoszenia IMPORTANT.', 'CHANGES_REQUIRED'),
+                              ('Werdykt jest PASS.', 'PASS'), ('Verdict is `BLOCK`', 'BLOCK'),
+                              ('Opis.\n\nWerdykt to **CHANGES_REQUIRED**, bo...\nWerdykt: PASS', 'CHANGES_REQUIRED')):
+            self.assertEqual(metrics.verdict_token(text), verdict, text)
+
+    def test_the_label_inside_a_line_without_a_label_at_the_start_keeps_the_last_one(self):
+        self.assertEqual(metrics.verdict_token('Opis. Werdykt: BLOCK, potem werdykt to PASS'), 'PASS')
+
+    def test_a_report_without_a_label_has_no_verdict(self):
+        self.assertIsNone(metrics.verdict_token('## Przegląd DELTA ASH-V1-6: PASS\n\nBrak uwag, bez wpływu na werdykt.'))
+        self.assertIsNone(metrics.verdict_token('Werdykt tak PASS'))
+
     def test_no_label_no_verdict(self):
         for text in ('PASS', 'Werdykt: brak', 'werdyktem PASS', None):
             self.assertIsNone(metrics.verdict_token(text), text)
