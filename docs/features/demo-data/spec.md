@@ -422,7 +422,9 @@ Opis szczegółowy: `docs/features/search/spec.md`.
   per profil (`small` 30 min, `medium` 1 h, `server` 9 h, `full` 20 h: około dwukrotność czasu generatora, w górę do
   pełnej godziny; `medium` z pomiaru, `server` i `full` z ekstrapolacji, niezweryfikowanej), bez ponowień.
 - Test dymny (`make -C infra/k8s smoke`, w CI w `deploy.yml`) uruchamia Job z tego CronJoba z profilem `small`
-  i sprawdza kod 0.
+  i sprawdza kod 0. Job powstaje dopiero, gdy wszystkie StatefulSety zakończą rollout: poprzednia faza (upgrade r4)
+  kończy się celowo nieudanym `initialize`, a nowa rewizja zmienia obraz Elasticsearcha, więc jego pod jest wtedy
+  jeszcze wymieniany, a generator zaczyna od resetu indeksu wyszukiwarki.
 - `make -C infra/k8s load`: opcja `LOAD_DATA=seed|medium|server|full` (domyślnie `seed`, jak dziś). Dla pozostałych
   po `initialize` uruchamia Job generatora i czeka na niego (osobny limit czasu), potem pomiar jak dziś. Zamiast
   podnoszenia stanu wszystkich wariantów (dziś jedno `UPDATE` na każdym wariancie ze stanem, około 30 mln wierszy

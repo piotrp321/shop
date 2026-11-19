@@ -29,8 +29,9 @@
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
-# nothing). The last phase runs the demo data generator (docs/features/demo-data/spec.md): ONE Job from the suspended CronJob
-# demo-data (bin/generate-demo --profile=small), waited for up to the time limit of the CronJob plus SMOKE_DEMO_DATA_MARGIN seconds
+# nothing). The last phase runs the demo data generator (docs/features/demo-data/spec.md): it waits until every StatefulSet is rolled
+# out (the upgrade before it ends on a failed job, with Elasticsearch still on its way to the new image), then ONE Job from the
+# suspended CronJob demo-data (bin/generate-demo --profile=small), waited for up to the time limit of the CronJob plus SMOKE_DEMO_DATA_MARGIN seconds
 # (120); a Job that fails or does not finish fails the test with its log, and a Job that succeeded must have replaced the data of the
 # shop (at least the products and orders of the profile). The generator deletes the data of every module and generates its own, so
 # it comes after every phase that reads the seed, the backups and the restore (they count products and orders) and nothing runs on the
@@ -277,6 +278,18 @@ check_failures() {
   fi
 }
 
+# The StatefulSets whose rolling update has not ended, one line each (nothing when every one is rolled out): the controller has seen
+# the last spec, every replica runs the update revision (currentRevision = updateRevision) and is ready.
+# name generation observedGeneration replicas readyReplicas updatedReplicas currentRevision updateRevision
+# A failed read is a line too: it must never pass for a rolled-out cluster.
+statefulsets_in_rollout() {
+  statefulsets="$(kc get statefulsets -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.generation}{" "}{.status.observedGeneration}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.status.updatedReplicas}{" "}{.status.currentRevision}{" "}{.status.updateRevision}{"\n"}{end}')" || {
+    echo "(cannot read the StatefulSets)"
+    return 0
+  }
+  printf '%s\n' "$statefulsets" | awk 'NF && (NF != 8 || $2 != $3 || $5 != $4 || $6 != $4 || $7 != $8) {print}'
+}
+
 # Every version job complete (there must be six, backfill among them; a running job has no succeeded, and its line must
 # count), all deployments and statefulsets rolled out with the new pods ready.
 all_ready() {
@@ -288,8 +301,7 @@ all_ready() {
   not_ready="$(kc get deployments -o jsonpath='{range .items[*]}{.metadata.generation}{" "}{.status.observedGeneration}{" "}{.status.replicas}{" "}{.status.updatedReplicas}{" "}{.status.readyReplicas}{" "}{.status.availableReplicas}{"\n"}{end}' \
     | awk 'NF != 6 || $1 != $2 || $3 != 1 || $4 != 1 || $5 != 1 || $6 != 1 {print}')"
   [ -z "$not_ready" ] || return 1
-  not_ready="$(kc get statefulsets -o jsonpath='{range .items[*]}{.status.readyReplicas}{" "}{.status.updatedReplicas}{"\n"}{end}' | awk '$1 != 1 || $2 != 1 {print}')"
-  [ -z "$not_ready" ]
+  [ -z "$(statefulsets_in_rollout)" ]
 }
 
 wait_ready() {
@@ -610,6 +622,27 @@ YAML
 
 # run_cronjob_job <cronjob> <job> [seconds]: a Job from a CronJob, waited for up to 900 s (or the seconds given; SMOKE_POLL, 5, is the
 # time between two readings); a failure prints the logs of all its containers.
+# wait_statefulsets <what>: waits up to SMOKE_TIMEOUT for every StatefulSet to be rolled out. A phase that follows an upgrade which
+# ends on a failed job on purpose (r3, r4) needs it: the upgrade changed the image of Elasticsearch (its tag is the revision), and its
+# pod is still being replaced when the failed job is seen.
+wait_statefulsets() {
+  deadline=$(( $(date +%s) + ${SMOKE_TIMEOUT:-900} ))
+  while :; do
+    rolling="$(statefulsets_in_rollout)"
+    if [ -z "$rolling" ]; then
+      echo "smoke: every StatefulSet rolled out ($1)"
+      return 0
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: StatefulSets not rolled out in ${SMOKE_TIMEOUT:-900} s ($1):" >&2
+      echo "$rolling" >&2
+      return 1
+    fi
+    echo "smoke: waiting for the rollout of $(echo "$rolling" | awk '{print $1}' | tr '\n' ' ')($1)"
+    sleep "${SMOKE_POLL:-5}"
+  done
+}
+
 run_cronjob_job() {
   kc create job "$2" --from="cronjob/$1" > /dev/null
   limit="${3:-900}"
@@ -867,6 +900,9 @@ check_demo_data() {
     kc patch cronjob demo-data --type=json \
       -p "[{\"op\": \"test\", \"path\": \"$generator_arg\", \"value\": \"--profile=small\"}, {\"op\": \"replace\", \"path\": \"$generator_arg\", \"value\": \"--profile=smoke-unknown\"}]" > /dev/null
   fi
+  # The upgrade r4 before this phase gave Elasticsearch a new image and ended on the failed initialize, not on a settled cluster:
+  # the generator resets the search index first and fails at once on an Elasticsearch whose pod is being replaced.
+  wait_statefulsets "before the generator"
   demo_data_limit="$(kc get cronjob demo-data -o jsonpath='{.spec.jobTemplate.spec.activeDeadlineSeconds}')"
   run_cronjob_job demo-data demo-data-smoke $(( demo_data_limit + ${SMOKE_DEMO_DATA_MARGIN:-120} ))
   # The generator ran its own consistency check (demo-data:verify) before it ended with 0; here only that it replaced the data.
