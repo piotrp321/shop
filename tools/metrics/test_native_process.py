@@ -270,6 +270,91 @@ class BreakdownHumanTest(ProcessEnv):
         self.assertEqual(record['human']['interventions'], 1)
 
 
+class MissingTranscriptsTest(ProcessEnv):
+    """M3 and M7: without the transcripts of the epic the process fields are unknown (null with a gap), never zero;
+    without some of them a lower bound with a gap; a refresh without them keeps the stored values."""
+
+    def lead(self):
+        return Native('s1').assistant(10, input=5).human(500).assistant(510)
+
+    def reviewed(self):
+        self.subagent('ar1', 'code-reviewer', 'Review DEMO-1', ['Werdykt: CHANGES_REQUIRED', 'Werdykt: PASS'], 100)
+
+    def test_without_any_transcript_the_process_fields_are_null(self):
+        self.write_run(sessions=('gone',), usage_start=START, usage_done=DONE)
+        record = self.native_record()
+        self.assertIsNone(record['breakdown'])
+        for field in ('interventions', 'waits', 'wait_s', 'events'):
+            self.assertIsNone(record['human'][field], field)
+        self.assertIsNone(record['retries']['fix'])
+        self.assertIsNone(record['retries']['failed_by_outcome'])
+        self.assertIsNone(record['reviews'])
+        self.assertIsNone(record['subscription']['share'])
+        self.assertEqual(record['subscription']['windows'], {WEEKLY: 6, 'Session': None})
+        for field in ('breakdown', 'human', 'retries.fix', 'retries.failed_by_outcome', 'reviews',
+                      'subscription.share'):
+            self.assertTrue(any('transkrypt' in g for g in gaps_of(record, field)), (field, record['gaps']))
+
+    def test_without_the_transcript_of_some_sessions_the_values_are_lower_bounds(self):
+        self.write_run(sessions=('s1', 'gone'))
+        self.write_session('s1', self.lead())
+        self.reviewed()
+        record = self.native_record()
+        self.assertEqual(record['human']['interventions'], 1)
+        self.assertEqual(record['retries']['fix'], 1)
+        self.assertIsNotNone(record['breakdown'])
+        for field in ('breakdown', 'human', 'retries.fix', 'reviews'):
+            self.assertTrue(any('dolna granica' in g for g in gaps_of(record, field)), (field, record['gaps']))
+
+    def test_refresh_without_the_transcripts_keeps_the_stored_values(self):
+        self.write_run()
+        path = self.write_session('s1', self.lead())
+        self.reviewed()
+        before = self.native_record()
+        os.remove(path)
+        after = self.native_record()
+        for field in ('breakdown', 'reviews'):
+            self.assertEqual(after[field], before[field], field)
+        self.assertEqual(after['human']['interventions'], 1)
+        self.assertEqual(after['human']['events'], before['human']['events'])
+        self.assertEqual(after['retries']['fix'], 1)
+        self.assertTrue(any('zachowano' in g for g in gaps_of(after, 'breakdown')), after['gaps'])
+
+    def test_user_lines_without_origin_make_the_interventions_unknown(self):
+        self.write_run()
+        lead = Native('s1').assistant(10, input=5).notice(100, None).notice(200, None).assistant(210)
+        self.write_session('s1', lead)
+        record = self.native_record()
+        self.assertIsNone(record['human']['interventions'])
+        self.assertTrue(any('origin' in g for g in gaps_of(record, 'human')), record['gaps'])
+
+    def test_user_lines_with_origin_but_no_human_are_zero_interventions(self):
+        self.write_run()
+        self.write_session('s1', Native('s1').assistant(10, input=5).notice(100, 'peer').assistant(110))
+        record = self.native_record()
+        self.assertEqual(record['human']['interventions'], 0)
+        self.assertFalse(any('origin' in g for g in gaps_of(record, 'human')), record['gaps'])
+
+
+class VerdictTokenTest(unittest.TestCase):
+    """M4: the verdict is the word after the label `Werdykt` or `Verdict` (the last labelled one), never the first verdict
+    word anywhere in the text."""
+
+    def test_forms_of_the_label(self):
+        for text, verdict in (('Werdykt: `CHANGES_REQUIRED`', 'CHANGES_REQUIRED'), ('## Werdykt\n\n`PASS`', 'PASS'),
+                              ('**Werdykt:** **CHANGES_REQUIRED**', 'CHANGES_REQUIRED'), ('werdykt PASS', 'PASS'),
+                              ('Verdict — REWORK', 'REWORK'), ('Brak BLOCKER. Werdykt: **PASS**.', 'PASS')):
+            self.assertEqual(metrics.verdict_token(text), verdict, text)
+
+    def test_the_last_labelled_verdict_counts(self):
+        self.assertEqual(metrics.verdict_token('poprzedni werdykt CHANGES_REQUIRED, teraz Werdykt: PASS'), 'PASS')
+        self.assertEqual(metrics.verdict_token('CHANGES_REQUIRED w poprzedniej rundzie.\nWerdykt: PASS'), 'PASS')
+
+    def test_no_label_no_verdict(self):
+        for text in ('PASS', 'Werdykt: brak', 'werdyktem PASS', None):
+            self.assertIsNone(metrics.verdict_token(text), text)
+
+
 ACCEPTANCE_BODY = '''## Zakres
 
 TAJNY-OPIS-PR zadania.
