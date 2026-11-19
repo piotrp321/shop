@@ -88,8 +88,9 @@ monitoring-smoke:
 # diskPeakGb that cannot be read is exit 2 as well. seed checks nothing. Every reading goes to LOAD_OUT/space.log with the least
 # free space and the use against the first reading at the end (the measure of diskPeakGb); top.log and node-stats.log are taken from
 # the moment the cluster is ready, so they cover the generator.
-# A host that sleeps stops the Docker VM and makes the times worthless: on macOS the target holds the host awake for the whole run
-# (caffeinate -ims -w <pid of the script>; elsewhere it does nothing and says so in environment.txt, line `sleep lock:`). At the end
+# A host that sleeps stops the Docker VM and makes the times worthless: on macOS the target holds off the idle sleep and, on the mains
+# only, the system sleep for the whole run (caffeinate -ims -w <pid of the script>; not a closed lid or a sleep by hand: keep the lid
+# open and the mains plugged in; elsewhere it does nothing and says so in environment.txt, line `sleep lock:`). At the end
 # it looks for a gap between two readings (space.log, node-stats.log, the end of the run) of more than 3 x LOAD_SPACE_POLL and at
 # least 120 s; any such pause goes to space.log (a `#` line), to environment.txt (`host sleep:`) and to the standard error as a
 # warning, and a run that was otherwise done ends with exit 1, not 0 (its results are in LOAD_OUT, its times are not reliable). A

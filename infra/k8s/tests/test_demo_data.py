@@ -78,7 +78,7 @@ class CronJobTest(unittest.TestCase):
             self.assertEqual("Never", job["template"]["spec"]["restartPolicy"], case)
 
     def test_the_time_limit_follows_the_profile_of_the_generator(self):
-        limits = {"ci": 1800, "load": 1800, "ci-demo-data-medium": 7200, "ci-demo-data-server": 28800, "ci-demo-data-full": 57600}
+        limits = {"ci": 1800, "load": 1800, "ci-demo-data-medium": 3600, "ci-demo-data-server": 32400, "ci-demo-data-full": 72000}
         for case, seconds in limits.items():
             self.assertEqual(seconds, demo_data(case)["spec"]["jobTemplate"]["spec"]["activeDeadlineSeconds"], case)
 
