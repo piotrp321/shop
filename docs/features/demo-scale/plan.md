@@ -10,8 +10,8 @@ roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | DEMO-SCALE-1, DEMO-SCALE-2, DEMO-SCALE-3 | w toku; DEMO-SCALE-1 (`cf2ac610`) i DEMO-SCALE-3 (`b4276bd5`) zmergowane |
-| 2 | DEMO-SCALE-4 | |
+| 1 | DEMO-SCALE-1, DEMO-SCALE-2, DEMO-SCALE-3 | zmergowane: DEMO-SCALE-1 `cf2ac610`, DEMO-SCALE-2 `fcfb9ef5`, DEMO-SCALE-3 `b4276bd5` |
+| 2 | DEMO-SCALE-4 | w toku |
 | 3 | DEMO-SCALE-5 | |
 | 4 | DEMO-SCALE-6 | |
 | 5 | DEMO-SCALE-7, DEMO-SCALE-8 | |
