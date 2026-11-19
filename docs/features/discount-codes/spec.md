@@ -43,7 +43,7 @@ Decyzje użytkownika (z przygotowania PROMOTIONS #96, opis issue #225):
 | D4 | Każde anulowanie nieopłaconego zamówienia zwraca użycie kodu, idempotentnie. |
 | D5 | E-mail z potwierdzeniem: pozycje po cenie promocyjnej (przed rabatem kodu), linia „Kod <KOD>: −X zł”, suma po rabacie. |
 | D6 | Podgląd kodu ma jeden komunikat dla kodu nieznanego, wyłączonego, jeszcze nieobowiązującego i wygasłego; osobne komunikaty „wykorzystany” i „za mała suma”. |
-| D7 | Użycie kodu zapisuje zagnieżdżona komenda Pricing w transakcji złożenia, pod blokadą wiersza kodu tylko dla kodu z limitem; kolejność blokad: koszyk → kod → stany. |
+| D7 | Użycie kodu zapisuje zagnieżdżona komenda Pricing w transakcji złożenia, pod blokadą wiersza kodu tylko dla kodu z limitem; kolejność blokad: koszyk → adres → tożsamość (limit nieopłaconych zamówień, `docs/features/abuse-limits/spec.md`, D8) → kod → stany. |
 | D8 | Netto i VAT każdej linii zamówienia (także bez kodu) są liczone z brutto linii po rabacie. Istniejące zamówienia zachowują zapisane kwoty. |
 | D9 | Widok koszyka wycenia linie i sumy jedną wyceną Pricing, tą samą co przy złożeniu. |
 

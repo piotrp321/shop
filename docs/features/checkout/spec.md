@@ -158,13 +158,14 @@ Komunikaty `detail` (po polsku, bez danych wejściowych) i `type` problemu (RFC 
 |---|---|---|---|
 | `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” | `…/cart-empty` |
 | `GuestOrderTooLarge` | `Conflict` (409) | „Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku.” | `…/guest-order-too-large` |
+| `TooManyUnpaidOrders` | `Conflict` (409) | „Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.” (ten sam dla limitu adresu, e-maila i konta) | `…/too-many-unpaid-orders` |
 | `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” | `…/cart-not-orderable` |
 | `InsufficientStockForOrder` | `Conflict` (409) | „Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.” | `…/insufficient-stock-for-order` |
 | `OrderTotalChanged` | `Conflict` (409) | „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.” | `…/order-total-changed` |
 | `IdempotencyKeyReused` | `Conflict` (409) | „Ten klucz żądania był już użyty dla innego zamówienia.” | `…/idempotency-key-reused` |
 | `CartNotFound` (z Cart) | `NotFound` (404) | „Koszyk nie jest już dostępny.” (bez zmian) | `about:blank` |
 
-Pięć wyjątków Ordering implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType(): string`) i trzyma
+Wyjątki Ordering z tabeli (bez `CartNotFound`) implementują `App\Shared\Domain\Exception\TypedProblem` (`problemType(): string`) i trzymają
 swój `type` w stałej `TYPE`; `ProblemDetailsSubscriber` wpisuje go do odpowiedzi. Wyjątki bez tego interfejsu i każda
 inna odpowiedź błędu mają `type: about:blank`. Klient rozróżnia przyczyny 409 wyłącznie po `type`; `detail` jest
 tekstem dla człowieka i może się zmienić. `type` to identyfikator (URI `tag:`), nie adres, pod którym coś jest
@@ -172,7 +173,7 @@ serwowane.
 
 ## Złożenie zamówienia (`PlaceOrder`)
 
-Komenda `PlaceOrder(cartRef, contact, address, expectedTotalGross, idempotencyKey, discountCode | null)` na
+Komenda `PlaceOrder(cartRef, contact, address, expectedTotalGross, idempotencyKey, discountCode | null, clientAddress)` na
 `command.bus` (kod normalizuje `DiscountCodeText`; pusty albo biały to brak kodu), gdzie `cartRef`
 to `guest(cartId)` albo `customer(customerId)`; wynik `PlacedOrder {order: OrderView, replayed: bool}`. Jedna
 transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
@@ -197,6 +198,11 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
 3. Brak linii: `CartEmpty` (409). Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po `CartEmpty`, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
+3a. **Limit nieopłaconych zamówień** (`docs/features/abuse-limits/spec.md`, L6, D6–D8; `UnpaidOrderLimit`). Blokady
+   doradcze transakcji na adres klienta (`ClientIp`, z kontrolera w komendzie, poza odciskiem żądania), potem na
+   tożsamość (`email:<klucz>` gościa albo `customer:<sub>`), i pod nimi liczenie roszczeń z `expires_at` po teraz:
+   co najmniej 5 z adresu albo 3 tej tożsamości (`config/packages/ordering.yaml`): `TooManyUnpaidOrders` (409), przed
+   wyceną, kodem, numerem i rezerwacją. Powtórzenie (kroki 0 i 2) wraca przed limitem.
 4. **Kopie danych.** Porty `OrderPrices::quote(lines, discountCode)` (Pricing `QuoteBasket`: ceny skuteczne bez ceny
    Omnibus, promocje, rabat kodu rozłożony na linie, netto i VAT linii z brutto po rabacie; tylko w PLN)
    i `OrderCatalog::variants(variantIds)` (Catalog `GetVariantSummaries`), po jednym wywołaniu. Wariant bez aktualnej
@@ -218,8 +224,9 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    z Inventory): `InsufficientStockForOrder` (409) bez liczby sztuk, cała transakcja wycofana. Rezerwacja jest
    ostatnią operacją przed zapisem zamówienia, więc wiersze stanów (najbardziej obciążone przy popularnym wariancie)
    są zablokowane możliwie krótko.
-9. **Zapis.** `Order::place(…)`, `OrderRepository::add(order)` i zdarzenie `OrderPlaced` w outboxie
-   (`DomainEventPublisher`), w tej samej transakcji. Zapis zamówienia jest ostatnim krokiem, więc `flush` komend
+9. **Zapis.** `Order::place(…)`, `OrderRepository::add(order)`, roszczenie nieopłaconego zamówienia (adres, tożsamość,
+   `expires_at` = wygaszenie zamówienia) i zdarzenie `OrderPlaced` w outboxie (`DomainEventPublisher`), w tej samej
+   transakcji. Zapis zamówienia jest ostatnim krokiem, więc `flush` komend
    zagnieżdżonych nie zapisuje niczego z Ordering.
 
 Zasady transakcji (zapisywane w `apps/api/CLAUDE.md`):
@@ -230,8 +237,9 @@ Zasady transakcji (zapisywane w `apps/api/CLAUDE.md`):
   bazę jak przed żądaniem. Koszyk ma te same linie, `reserved` żadnego wariantu się nie zmienia (Inventory
   rezerwuje „wszystko albo nic”, a wycofanie transakcji cofa każdy zapis), nie ma zamówienia, linii ani wiersza
   outboxa. Jedyny ślad to luka w numeracji.
-- Kolejność blokad: wiersz koszyka, potem wiersz kodu rabatowego (tylko kod z limitem, `RedeemDiscountCode`), potem
-  wiersze stanów (rosnąco po `variant_id`, `lockMany` Inventory). Inne komendy Cart blokują tylko koszyki (scalenie:
+- Kolejność blokad: wiersz koszyka, blokada doradcza adresu, blokada doradcza tożsamości (limit nieopłaconych
+  zamówień), potem wiersz kodu rabatowego (tylko kod z limitem, `RedeemDiscountCode`), potem
+  wiersze stanów (rosnąco po `variant_id`, `lockMany` Inventory). Blokady adresu i tożsamości bierze tylko złożenie. Inne komendy Cart blokują tylko koszyki (scalenie:
   gość, potem klient), Inventory tylko stany i rezerwacje, a zwolnienie użycia przy wygaśnięciu nie blokuje kodu, więc
   nie ma cyklu blokad. Złożenie klienta blokuje tylko koszyk klienta. Dwa złożenia z ostatnim wolnym użyciem kodu
   z limitem szereguje blokada kodu: drugie dostaje 409 `discount-code-used-up`. Kod bez limitu nie jest blokowany;

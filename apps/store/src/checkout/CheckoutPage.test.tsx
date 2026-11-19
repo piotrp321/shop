@@ -466,6 +466,29 @@ describe("CheckoutPage placing the order", () => {
     expect(push).toHaveBeenCalledWith("/checkout/confirmation");
   });
 
+  it("on a 409 of too many unpaid orders shows the detail without a link, keeps the form and the key, and does not order again by itself", async () => {
+    const detail = "Nie możemy teraz przyjąć kolejnego zamówienia, bo z tych danych albo z tej sieci czeka już kilka nieopłaconych. Spróbuj ponownie za ok. 35 minut.";
+    await renderCheckout();
+    fillGuestForm();
+    const used = key(keys);
+    const reads = vi.mocked(loadCart).mock.calls.length;
+    await submit({ status: "conflict", reason: "too_many_unpaid_orders", detail });
+    await act(async () => {});
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(detail);
+    expect(within(alert).queryByRole("link")).toBeNull();
+    expect(document.activeElement).toBe(alert);
+    expect(field("E-mail").value).toBe("anna.nowak@example.com");
+    expect(screen.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeTruthy();
+    expect(vi.mocked(loadCart).mock.calls.length).toBe(reads);
+    expect(push).not.toHaveBeenCalled();
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    await submit({ status: "failed" });
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[1])).toEqual([used, used]);
+  });
+
   it.each<[string, string | undefined, string]>([
     ["with a detail", "Coś poszło nie tak.", "Coś poszło nie tak."],
     ["without a detail", undefined, SUBMIT_FAILED],

@@ -24,6 +24,19 @@ class LoadFilesTest(unittest.TestCase):
         self.assertIn("include $(sort $(wildcard make/*.mk))", (REPO / "Makefile").read_text())
         self.assertRegex((REPO / "infra/k8s/Makefile").read_text(), r"(?m)^load:\n(?:\t@.*\n)?\tsh scripts/load\.sh$")
 
+    def test_the_checkout_uses_an_email_unique_in_every_iteration(self):
+        # The limit of unpaid orders (docs/features/abuse-limits/spec.md, L6) counts 3 per email: an email per virtual
+        # user would hit it in a measurement at the values of prod. The email is made of the key of the request, which
+        # is new in every checkout of every iteration.
+        flows = (REPO / "load/lib/flows.js").read_text()
+        checkout = flows[flows.index("export function checkout(") : flows.index("\n}\n", flows.index("export function checkout("))]
+        key = re.search(r"(?m)^  const key = `([^`]*)`;$", checkout)
+        self.assertIsNotNone(key, "the checkout makes its Idempotency-Key")
+        for unique in ("${exec.vu.idInTest}", "${exec.vu.iterationInInstance}", "${counter}"):
+            self.assertIn(unique, key.group(1))
+        emails = re.findall(r"(?m)^\s+email: (.*),$", checkout)
+        self.assertEqual(["`${key}@example.com`"], emails)
+
     def test_the_workflow_runs_the_smoke_run_after_the_e2e_tests_under_the_same_condition(self):
         workflow = (REPO / ".github/workflows/ci.yml").read_text()
         e2e = workflow.index("      - name: make e2e\n")

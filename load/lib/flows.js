@@ -93,7 +93,8 @@ export function checkout(ctx, data) {
     'checkout',
     'checkout',
     {
-      email: `load-${exec.vu.idInTest}@example.com`,
+      // Unique in every checkout: the API allows 3 unpaid orders per email (ABUSE-LIMITS, L6).
+      email: `${key}@example.com`,
       fullName: 'Jan Kowalski',
       phone: '600100200',
       street: 'Długa 5/3',

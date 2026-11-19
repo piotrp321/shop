@@ -8,8 +8,9 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * The address of the client as the rate limits count it (spec: docs/features/hardening/spec.md, D2 and D4), used by
- * nothing else.
+ * The address of the client as the rate limits count it (spec: docs/features/hardening/spec.md, D2 and D4), and as
+ * the limit of unpaid orders of Ordering counts it (OrderPlacement passes it in PlaceOrder; spec:
+ * docs/features/abuse-limits/spec.md, L6); used by nothing else.
  *
  * With CLIENT_IP_HEADER set (`CF-Connecting-IP` behind Cloudflare, where the ingress takes traffic from Cloudflare only
  * and Cloudflare always overwrites the header), the address is the value of that header when it is one valid IP

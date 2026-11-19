@@ -910,7 +910,10 @@ nelmio_api_doc:
                                 its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum
                                 (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the
                                 rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more
-                                than 10 lines or 10 units of a line), checked before anything else about the cart.
+                                than 10 lines or 10 units of a line), checked before anything else about the cart. Too many
+                                orders wait for their payment (`too-many-unpaid-orders`): from the address of the client, of the
+                                email of a guest or of the account, with the same `detail` for all of them; a repeated request with
+                                the same `Idempotency-Key` and content still answers 200 with its order.
                             required: [type, title, status, detail]
                             properties:
                                 type:
@@ -918,6 +921,7 @@ nelmio_api_doc:
                                     enum:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/cart-empty'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/too-many-unpaid-orders'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/order-total-changed'
