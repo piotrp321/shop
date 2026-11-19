@@ -8,13 +8,6 @@ origin of the writes is the public address of the store (the BFF of the store re
 token of the Kubernetes API. A failed run is reported, never repeated; the checkout of a run stays in the data as an order of
 load-<n>@example.com.
 */ -}}
-{{- /* The paths under load/ of the scripts the ConfigMap carries, as a JSON list: the files of load/ and of load/lib/. */ -}}
-{{- define "shop.load.scripts" -}}
-{{- $paths := list -}}
-{{- range $path, $_ := .Files.Glob "files/load/*.js" }}{{ $paths = append $paths (trimPrefix "files/load/" $path) }}{{ end -}}
-{{- range $path, $_ := .Files.Glob "files/load/lib/*.js" }}{{ $paths = append $paths (trimPrefix "files/load/" $path) }}{{ end -}}
-{{- $paths | sortAlpha | toJson -}}
-{{- end }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
