@@ -331,7 +331,7 @@ def fake_record(epic, merged='2026-11-10T10:00:00Z', tasks=10, to_done=36000.0, 
         return None if value is None else make(value)
 
     record = {
-        'epic': epic, 'issue': 1, 'final_pr': final_pr, 'tasks': tasks, 'started_at': '2026-11-09T10:00:00Z',
+        'epic': epic, 'source': 'ao', 'issue': 1, 'final_pr': final_pr, 'tasks': tasks, 'started_at': '2026-11-09T10:00:00Z',
         'done_at': '2026-11-10T08:00:00Z', 'merged_at': merged,
         'wall': {'to_done': to_done, 'to_merge': maybe(to_done, lambda v: v + (review or 0)), 'review': review},
         'breakdown': None if to_done is None else {'work': work, 'human_wait': human_wait, 'limit_wait': 0.0,
