@@ -34,14 +34,16 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
 
 - `start EPIK`: zapisuje plik przebiegu epiku natywnego `<state>/runs/<epik>.json` (zapis atomowy) i wypisuje go jako
   jedną linię JSON (zob. „Epik natywny”). `--resume` dopisuje nową sesję do istniejącego pliku. `--projects`: katalog
-  projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów (obiekt `get_usage`) z wejścia standardowego;
-  terminal albo puste wejście to brak odczytu (`null`).
-- `done EPIK`: wpisuje do pliku przebiegu `done_at` (teraz albo `--at`) i drugi odczyt limitów z wejścia (`usage_done`).
+  projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów z wejścia standardowego: obiekt `plan`
+  z `get_usage` albo cały obiekt `get_usage` (`{"plan": …, "context": …}`, brany jest `plan`; `plan`, który nie jest
+  obiektem, daje `{"status": "unreadable"}`); terminal albo puste wejście to brak odczytu (`null`).
+- `done EPIK`: wpisuje do pliku przebiegu `done_at` (teraz albo `--at`) i drugi odczyt limitów z wejścia (`usage_done`,
+  te same kształty co w `start`).
 - `epic`: wypisuje rekord przebiegu jako jedną linię JSON i zapisuje go w `<state>/epics/<epik>.json` (zapis
   atomowy). Przebieg AO to `--ao-home` (domyślnie `ao-<epik>` pod `$SHOP_METRICS_AO_ROOT` albo `~/.local/state`); gdy
   tego katalogu nie ma, rekord powstaje z pliku przebiegu `<state>/runs/<epik>.json` i transkryptów sesji pod
   `--projects` (rekord natywny, `source: native`); bez obu kod `2` z komunikatem, którego źródła brakuje.
-  `--manual-fixes FILE`: lista ręcznych poprawek od sesji `/ao-run`, jedna na linię (`- PR #12: tekst` albo `- tekst`;
+  `--manual-fixes FILE`: lista ręcznych poprawek od sesji `/ao-run` albo sesji prowadzącej epik natywny, jedna na linię (`- PR #12: tekst` albo `- tekst`;
   pusta linia i nagłówek `Ręczne poprawki: N` są pomijane). `--no-gh` pomija `gh`.
 - `backfill`: rekord każdego przebiegu `ao-*` pod `--ao-root` (domyślnie jak wyżej), którego baza ma wiersz epiku
   z końcowym PR w stanie `MERGED` według `gh` (także przy stanie AO `INTEGRATING` i `BLOCKED`). Pomija epiki w toku
@@ -225,8 +227,10 @@ tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie z
 
 ### Epik natywny: plik przebiegu, transkrypty sesji i cennik
 
-Epik prowadzony przez główną sesję Claude Code (`docs/features/ash-v1/spec.md`, M1–M3). Szczegóły i tabela pól:
-spec, „Epik natywny”.
+Epik prowadzony przez główną sesję Claude Code (`docs/features/ash-v1/spec.md`, M1–M5). Szczegóły i tabela pól:
+spec, „Epik natywny”. Katalog stanu (plik przebiegu i rekordy) wskazuje `--state` (albo `$SHOP_METRICS_STATE`), katalog
+transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stanu: `start` z `--at`, `--worktree`,
+`--branch`, `--pr`, `--tasks`, `--session`, potem `done --at` i `epic`, każde z tym samym `--state`.
 
 - **Plik przebiegu** `<state>/runs/<epik>.json`: `epic`, `started_at`, `base_sha` (`git rev-parse origin/main`, przy
   `--at` `git rev-list -1 --first-parent --before=<CZAS> origin/main`; błąd gita: `null` i ostrzeżenie na stderr),
@@ -252,11 +256,39 @@ spec, „Epik natywny”.
   użytego rodzaju albo rozbicia zapisu cache) trafia do przekrojów jako część nieznana (`usd: null` albo `incomplete:
   true`), a próba ma `value: null` (bez `message.usage` także `tokens: null`); powód w `gaps` (`value: sesja|agent <id>:
   …`). Wiadomość bez tokenów (np. model `<synthetic>`) jest pomijana.
-- **Pola bez źródła:** `parallel`, `gate_wait`, `waste` (`brak źródła w przebiegu natywnym`) oraz `breakdown`, `human`,
-  `integration`, `retries`, `reviews`, `acceptance`, `subscription` (`nie liczone dla przebiegu natywnego`) są `null`
-  z pozycją w `gaps`. `--manual-fixes` jest czytane (zły plik: kod 2), ale rekord natywny go jeszcze nie używa.
-- **Prywatność:** rekord ma identyfikatory sesji i agentów, nazwy ról i modeli oraz liczby; bez treści wiadomości,
-  zleceń, poleceń i ścieżek (test: teksty z transkryptu i `meta.json` nie trafiają do wyjścia).
+- **Rozkład czasu i człowiek:** linie `user` i `assistant` z `timestamp` każdego transkryptu epiku, w kolejności czasu;
+  przerwa przed linią asystenta albo `tool_result` to praca, przed linią z `origin.kind = "human"` czekanie na
+  człowieka, przed inną linią użytkownika (raport subagenta `peer`, `task-notification`, wznowienie `coordinator`,
+  linia meta) ani jedno, ani drugie. `breakdown` od `started_at` do `done_at`: `work` (unia pracy prowadzącego
+  i subagentów), `human_wait` (przerwy przed wiadomością człowieka bez części pokrytej pracą), `idle` (reszta);
+  `limit_wait`, `ci_wait`, `host_pause`, `github_wait` `null` (pozycje `breakdown.<kategoria>` w `gaps`),
+  `breakdown_incomplete: true`; bez `started_at` albo `done_at` `breakdown: null`. `human`: `interventions`
+  (wiadomości człowieka po `started_at` do merge'u końcowego PR, każda raz według `uuid`, `interventions_estimated:
+  true`), `events` (`[{at, wait_s}]`, bez treści), `waits` (zdarzenia z `wait_s` > 0), `wait_s` (ich suma),
+  `manual_fixes` (`--manual-fixes`; bez opcji `null` i pozycja `human.manual_fixes`).
+- **Przeglądy:** każde wywołanie `SubagentHandback` w transkrypcie roli `code-reviewer`, `qa-adversarial`,
+  `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, role, agent_id, at, mode,
+  verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to pierwsze
+  słowo werdyktu po „Werdykt”/„Verdict” (`verdict_token`), przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
+  `blocking` dla `CHANGES_REQUIRED`, `BLOCK`, `REWORK`; bez rozpoznanego werdyktu (`ux-reviewer`) `null` i pozycja
+  `reviews` w `gaps`. `integration`: `work_s`, `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`,
+  `ux-reviewer` i `rounds` (największa liczba raportów jednej z tych ról); bez nich `null`. `retries`: `fix` (przeglądy
+  z zadaniem i werdyktem blokującym), `failed_by_outcome` (`{unfinished: n}` przebiegów z `finished: false`),
+  `attempts`, `repair`, `sync_prs` `null`.
+- **Kryteria akceptacji:** opis końcowego PR przez bramkę pochodzenia (`github_trust.Gate.prs(state='all',
+  head=<gałąź>, fields=('body',))`, runner metryk przez `gate_runner`); w sekcji „Kryteria akceptacji” tabela `| Numer
+  | Sposób | Wynik |`. `acceptance`: `{total, stack, ci, after_deploy, unverified}`. Autor bez prawa zapisu, brak PR,
+  opisu, sekcji, tabeli albo wierszy i `--no-gh`: `null` z pozycją `acceptance` w `gaps`; błąd bramki także kod 3.
+  Poprzednia wartość zostaje przy chwilowo niedostępnym źródle.
+- **Subskrypcja:** bez `usage_start` albo `usage_done` `subscription: null`. Inaczej `windows` z `subscription_of`
+  (`night_queue._window_deltas`; odczyty sprawdzane ponownie `night_queue.parse_usage`), `overlap: null`, `share`:
+  tokeny epiku od `started_at` do `done_at` przez tokeny wszystkich wiadomości tego przedziału we wszystkich
+  `<projects>/*/*.jsonl` i `<projects>/*/*/subagents/agent-*.jsonl` (każdy `message.id` raz, ważone `token_weights`;
+  pliki zmodyfikowane przed `started_at` są pomijane), `share_estimated: true`.
+- **Pola bez źródła:** `parallel`, `gate_wait`, `waste` (`brak źródła w przebiegu natywnym`) są `null` z pozycją
+  w `gaps`.
+- **Prywatność:** rekord ma identyfikatory sesji i agentów, nazwy ról i modeli, werdykty oraz liczby; bez treści
+  wiadomości, zleceń, raportów, opisu PR, poleceń i ścieżek (test: teksty z transkryptu i `meta.json` nie trafiają do wyjścia).
 
 ### Wąskie gardła i historia
 
@@ -532,7 +564,8 @@ tekstów, ścieżek bezwzględnych i poleceń.
 DEPLOY-OPS, CATALOG-ADMIN-INTEGRATION-1 i -2, CATALOG-ADMIN-4, ADMIN-DESIGN-3): pola z listy dozwolonych,
 polecenia powłoki zastąpione kanonicznym poleceniem kategorii z numerem `# c<n>` (taki sam numer = ten sam klucz
 `repeat_runs`). `testkit.py` ma też `Transcript`, który buduje syntetyczny transkrypt.
-Epik natywny (`test_native.py`) ma syntetyczne transkrypty sesji budowane w teście (`testkit.Native`, `NativeEnv`:
+Epik natywny (`test_native.py`, `test_native_process.py`) ma syntetyczne transkrypty sesji budowane w teście
+(`testkit.Native` z `human`, `notice`, `handback`, `NativeEnv`:
 katalog projektów i plik przebiegu w katalogu tymczasowym), z samymi czytanymi polami; prawdziwe transkrypty nie trafiają
 do repozytorium.
 `fixture_scan.py` (test: `test_fixture_scan.py`) sprawdza każdy plik pod `fixtures/`: brak ścieżek bezwzględnych

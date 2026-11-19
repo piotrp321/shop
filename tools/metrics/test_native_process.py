@@ -419,6 +419,15 @@ class SubscriptionTest(ProcessEnv):
         self.assertEqual(record['sessions'], ['s1'])                     # the other session is no part of the epic
         self.assertEqual(record['value']['total']['tokens']['input'], 800)
 
+    def test_lines_of_another_session_that_are_no_objects_are_skipped(self):
+        self.write_run(started=0, done=4000, usage_start=START, usage_done=DONE)
+        self.write_session('s1', Native('s1').assistant(10, input=300))
+        other = ['["assistant"]', '"assistant"', '{"type": "assistant", "message": "assistant"}', '{cut "assistant"',
+                 json.dumps(Native('o1').assistant(20, input=700).lines[0])]
+        self.write_session('o1', other, worktree='/work/other')
+        self.touch()
+        self.assertEqual(self.native_record()['subscription']['share'], 0.3)
+
     def test_share_weighs_the_kinds_of_tokens(self):
         self.write_run(started=0, done=4000, usage_start=START, usage_done=DONE)
         self.write_session('s1', Native('s1').assistant(10, output=100))              # 100 x 5
