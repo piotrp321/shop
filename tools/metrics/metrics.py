@@ -2495,15 +2495,27 @@ AGENT_FILE = re.compile(r'^agent-(.+)\.jsonl$')
 
 HANDBACK = 'SubagentHandback'               # the tool call with which a subagent hands its report back (M4)
 VERDICT_TOKENS = ('CHANGES_REQUIRED', 'INVESTIGATE', 'SIMPLIFY', 'REWORK', 'BLOCK', 'PASS', 'KEEP')
-VERDICT = re.compile(r'(?<![A-Za-z])(?i:werdykt|verdict)[\s:*_#.()`\-\u2013\u2014]*(%s)(?![A-Za-z0-9_])'
-                     % '|'.join(VERDICT_TOKENS))
+_VERDICT_WORDS = '|'.join(VERDICT_TOKENS)
+_VERDICT_LABEL = r'(?i:werdykt|verdict)'
+_VERDICT_GAP = r'[\s:*_#.()`\-\u2013\u2014]*(?:(?i:to|jest|is)(?![A-Za-z])[\s:*_#.()`\-\u2013\u2014]*)?'
+_VERDICT_TAIL = r'(%s)(?![A-Za-z0-9_])' % _VERDICT_WORDS
+# the label at the start of a line (after list, heading, quote and bold markers) and anywhere in the text
+VERDICT_LINE = re.compile(r'^[ \t>#*_\-]*%s%s%s' % (_VERDICT_LABEL, _VERDICT_GAP, _VERDICT_TAIL), re.MULTILINE)
+VERDICT = re.compile(r'(?<![A-Za-z])%s%s%s' % (_VERDICT_LABEL, _VERDICT_GAP, _VERDICT_TAIL))
 
 
 def verdict_token(text):
-    """The verdict word right after the label `Werdykt` or `Verdict` (the last labelled one when there are several: a
-    report may quote the verdict of an earlier round first), or None; a verdict word without the label is no verdict.
-    The text itself is never kept."""
-    found = VERDICT.findall(text) if isinstance(text, str) else []
+    """The verdict word right after the label `Werdykt` or `Verdict` (only `to`, `jest`, `is`, separators and bold
+    markers between them), or None; a verdict word without the label is no verdict. Reports state the verdict at the
+    start, so the first label at the start of a line wins (a report may quote other verdicts later in its sentences);
+    without such a label the last labelled one in the text counts (a report may quote the verdict of an earlier round
+    first). The text itself is never kept."""
+    if not isinstance(text, str):
+        return None
+    first = VERDICT_LINE.search(text)
+    if first:
+        return first.group(1)
+    found = VERDICT.findall(text)
     return found[-1] if found else None
 
 
