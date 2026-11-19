@@ -3082,6 +3082,9 @@ NO_TRANSCRIPTS = 'brak transkryptów sesji epiku (retencja albo zły identyfikat
 PARTIAL_TRANSCRIPTS = ('transkrypt części sesji epiku niedostępny: wartość z dostępnych transkryptów niepełna (dolna '
                        'granica; idle górna)')
 HUMAN_EVENT_PATHS = (('human', 'interventions'), ('human', 'waits'), ('human', 'wait_s'), ('human', 'events'))
+# The fields of a native record from the transcripts that are empty, not null, without them (`attempts` [], `by_task`
+# {}, `value` without a total; `in_attempts` and `versions` null): kept from the stored native record the same way.
+TRANSCRIPT_KEPT = (('attempts',), ('by_task',), ('value',), ('in_attempts',), ('versions',))
 
 
 def _clear(record, paths, gaps, reason):
@@ -3093,14 +3096,14 @@ def _clear(record, paths, gaps, reason):
 
 def apply_transcript_coverage(record, coverage, no_origin, previous, gaps):
     """The process fields of `record` by the transcripts read (`native_fields`): `none` makes them null with a gap and
-    keeps the values of the stored native record, `partial` adds the gap of a lower bound; `no_origin` (no user line of
+    keeps the values of the stored native record (also of `TRANSCRIPT_KEPT`), `partial` adds the gap of a lower bound; `no_origin` (no user line of
     the lead sessions has an `origin`) makes the human messages and `human_wait` unknown."""
     if coverage == 'none':
         _clear(record, TRANSCRIPT_PATHS, gaps, NO_TRANSCRIPTS)
         stored = previous if isinstance(previous, dict) and previous.get('source') == 'native' else None
-        for path in TRANSCRIPT_PATHS:
+        for path in TRANSCRIPT_PATHS + TRANSCRIPT_KEPT:
             old = _get(stored, path)
-            if old is not None and isinstance(_get(record, path[:-1]), dict):
+            if old is not None and old != _get(record, path) and isinstance(_get(record, path[:-1]), dict):
                 _set(record, path, old)
                 gaps.add('.'.join(path), 'brak transkryptów sesji epiku: zachowano poprzednią wartość')
         return

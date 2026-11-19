@@ -270,7 +270,8 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
 - **Brak transkryptów** (`apply_transcript_coverage`): bez przeczytanego transkryptu żadnej sesji z pliku przebiegu
   pola z `TRANSCRIPT_PATHS` (`breakdown`, `reviews`, `integration`, pola zdarzeń `human`, `retries.fix`,
   `retries.failed_by_outcome`, `subscription.share`) są `null` z pozycją w `gaps`, a wartości zapisanego rekordu
-  natywnego zostają (pozycja „zachowano poprzednią wartość”); bez transkryptu części sesji te pola mają pozycję
+  natywnego zostają, także `TRANSCRIPT_KEPT` (`attempts`, `by_task`, `value`, `in_attempts`, `versions`; pozycja
+  „zachowano poprzednią wartość”); bez transkryptu części sesji te pola mają pozycję
   w `gaps` o dolnej granicy.
 - **Przeglądy:** każde wywołanie `SubagentHandback` w transkrypcie roli `code-reviewer`, `qa-adversarial`,
   `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, role, agent_id, at, mode,

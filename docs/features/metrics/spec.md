@@ -349,7 +349,8 @@ i `breakdown.human_wait` mają `null` z pozycją w `gaps` (czas czekania jest w 
 identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `integration`, `human` poza
 `manual_fixes`, `retries.fix`, `retries.failed_by_outcome`, `subscription.share`) mają `null` z pozycją w `gaps`, nigdy
 zero; wartość zapisana wcześniej w rekordzie natywnym zostaje (odświeżenie rekordu, np. przez `/retro collect`, jej nie
-zastępuje), z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji, te pola mają wartości z dostępnych
+zastępuje), z pozycją w `gaps`. Tak samo zostają zapisane `attempts`, `by_task`, `value`, `in_attempts` i `versions`;
+bez zapisanego rekordu są puste (`attempts` `[]`, `by_task` `{}`, `value.total` `null`) albo `null` z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji, te pola mają wartości z dostępnych
 transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna).
 
 **Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,
