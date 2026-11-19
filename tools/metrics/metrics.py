@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Measurement of AO epic runs (spec docs/features/metrics/spec.md). Python 3.9+, standard library only.
+"""Measurement of AO and native epic runs (spec docs/features/metrics/spec.md). Python 3.9+, standard library only.
 
-  metrics.py epic EPIC [--ao-home DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
+  metrics.py start EPIC [--resume] [--at TIME] [--worktree DIR] [--branch NAME] [--pr N] [--tasks N] [--session ID]
+                        [--projects DIR] [COMMON] < get_usage reading
+  metrics.py done EPIC [--at TIME] [COMMON] < get_usage reading
+  metrics.py epic EPIC [--ao-home DIR] [--projects DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
   metrics.py backfill [--ao-root DIR] [COMMON]
   metrics.py trend [--last N] [--epic EPIC] [--json] [--no-gh] [COMMON]
   metrics.py render EPIC [--format report|comment] [COMMON]
@@ -14,9 +17,20 @@ COMMON: --config FILE (default: config.json next to this script), --state DIR (d
 --busy-timeout-ms N (default: config.json), --repo OWNER/NAME (passed to every `gh` as -R; default: the repository of
 the working directory).
 
+start, done: the run file <state>/runs/<EPIC>.json of a native epic (one led by a Claude Code session with native
+subagents, spec docs/features/ash-v1/spec.md, M1): start writes the start time (now or --at), the SHA of origin/main,
+the branch, the draft PR, the number of tasks of the plan.md manifest (night_queue.task_count), the lead session
+(--session or the newest transcript of the working directory under --projects, default ~/.claude/projects) and the
+limits read from stdin (night_queue.parse_usage; a terminal or an empty input is no reading); --resume appends a new session; done
+records the time the PR was marked ready and the second reading. Exit 2 without a branch, PR, number of tasks or
+session, on a second start without --resume, and on --resume or done without a run file.
+
 epic: prints the record of the epic run as one JSON line and stores it in <state>/epics/<EPIC>.json. The run is the
-directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state). Fields from the AO database
-and events (`orchestrator.db` is opened read only, `ao` is never run), from measurements.jsonl and gate.jsonl, and
+AO directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state), `source: ao`; without it the
+run file of a native epic, `source: native` (the transcripts of its sessions and their subagents only, the messages
+from the start to the merge of the final PR, every message id once, the value from the API price list `pricing` of
+config.json, always an estimate; fields without a native source are null with a gap); without both exit 2. Fields
+of an AO record from the AO database and events (`orchestrator.db` is opened read only, `ao` is never run), from measurements.jsonl and gate.jsonl, and
 from GitHub (`gh`, read only, also for `ci`, `regressions` and `found_after_merge`; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
 zero. A value from GitHub or from --manual-fixes that is `null` now but not in the stored record is kept (a transient
 error never replaces it); the gap says so. An epic closed by hand (no epic_done, the final PR merged) has its breakdown
@@ -88,6 +102,7 @@ or --at or without a stored record of a merged epic.
 """
 import argparse
 import fcntl
+import glob
 import json
 import os
 import re
@@ -222,6 +237,22 @@ def _evals(value):
             and isinstance(value['results_dir'], str) and bool(value['results_dir']))
 
 
+# The kinds of tokens of the price list (USD per million tokens); a model may lack a kind (its tokens have no value).
+PRICE_KINDS = ('input', 'output', 'cache_read', 'cache_write_5m', 'cache_write_1h')
+
+
+def _pricing(value):
+    if not isinstance(value, dict) or set(value) != {'source', 'read_at', 'models'}:
+        return False
+    if not isinstance(value['source'], str) or not value['source'] or not isinstance(value['read_at'], str):
+        return False
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', value['read_at']) or not isinstance(value['models'], dict):
+        return False
+    return all(isinstance(model, str) and model and isinstance(rates, dict) and rates and set(rates) <= set(PRICE_KINDS)
+               and all(_is_number(rate) and rate >= 0 for rate in rates.values())
+               for model, rates in value['models'].items())
+
+
 DECISION_SHARES = ('d1_role_share', 'd4_human_wait_share', 'd4_ci_share', 'd4_limit_wait_share', 'd4_review_share')
 DECISION_COUNTS = ('d2_failed_attempts', 'report_max', 'effect_min_tasks', 'effect_min_task_epics', 'effect_min_epics')
 DECISION_POSITIVE = ('d2_work_multiple', 'd3_gate_wait_h')
@@ -266,6 +297,8 @@ CONFIG_SCHEMA = {
     'ci_jobs': (_string_list, 'niepusta lista nazw zadań CI (przedrostki grup, np. checks i e2e)'),
     'trend_last': (lambda v: _is_int(v) and v > 0, 'liczba epików (całkowita, dodatnia)'),
     'weekly_window_label': (lambda v: isinstance(v, str) and bool(v), 'etykieta okna tygodniowego z get_usage'),
+    'pricing': (_pricing, 'obiekt {source, read_at (RRRR-MM-DD), models: {model: {%s: USD za milion tokenów, '
+                          'liczba nieujemna}}}' % ', '.join(PRICE_KINDS)),
 }
 
 
@@ -746,6 +779,17 @@ def _message_tokens(usage):
             'cw5': cw5, 'cw1': cw1, 'output': _int(usage.get('output_tokens'))}
 
 
+def _lifetime_known(usage):
+    """Whether the `usage` of a message says how long its cache write lives: no write at all, or the split
+    `cache_creation` (5 minutes, 1 hour) that sums to it. Without it `_message_tokens` takes all as a 5 minute write."""
+    if not isinstance(usage, dict):
+        return False
+    written = _int(usage.get('cache_creation_input_tokens'))
+    split = usage.get('cache_creation')
+    return written == 0 or (isinstance(split, dict) and _int(split.get('ephemeral_5m_input_tokens'))
+                            + _int(split.get('ephemeral_1h_input_tokens')) == written)
+
+
 def _model_tokens(used):
     used = used if isinstance(used, dict) else {}
     written = _int(used.get('cacheCreationInputTokens'))
@@ -795,7 +839,9 @@ def _read_line(line, data, seen_tools):
                 'role': role if isinstance(role, str) and SAFE_NAME.match(role) else None,
                 'orchestrator': line.get('parent_tool_use_id') is None,
                 'model': message['model'] if isinstance(message.get('model'), str) else None,
-                'tokens': _message_tokens(message.get('usage'))}
+                'tokens': _message_tokens(message.get('usage')),
+                'at': _timestamp(line.get('timestamp')), 'usage': isinstance(message.get('usage'), dict),
+                'lifetime': _lifetime_known(message.get('usage'))}
         for block in message.get('content') if isinstance(message.get('content'), list) else []:
             if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('id') not in seen_tools:
                 seen_tools.add(block.get('id'))
@@ -2212,6 +2258,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     lower = set()
     record = {
         'epic': epic_id,
+        'source': 'ao',
         'issue': github['pr']['issue'] if github['pr'] else None,
         'final_pr': final_pr,
         'tasks': None if gaps.lacks('tasks.kind') else sum(1 for t in ao_run['tasks'] if t['kind'] == 'plan'),
@@ -2250,6 +2297,511 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
                                  now, previous, gaps, errors))
     if waste[0] is None:
         gaps.add('waste', waste[1])
+    keep_stored_values(record, previous, gaps)
+    record['bottlenecks'] = bottlenecks_of(record, history_of(record, records), config, gaps)
+    record['gaps'] = gaps.render()
+    return record, errors
+
+
+# ------------------------------------------------------------------------------------- native epics: the run file
+
+# An epic led by a native Claude Code session (docs/features/ash-v1/spec.md, M1-M3): `start` and `done` write the run
+# file <state>/runs/<EPIC>.json, `epic` builds the record from it and from the transcripts of its sessions.
+NO_TASK = 'no_task'                         # the task of the lead session and of a subagent without a task id (D4)
+LEAD_ROLE = 'orchestrator'                  # the role of the lead session
+NATIVE_SOURCE = 'brak źródła w przebiegu natywnym'
+NATIVE_LATER = 'nie liczone dla przebiegu natywnego'
+
+
+def run_path(state_dir, epic_id):
+    return os.path.join(state_dir, 'runs', '%s.json' % epic_id)
+
+
+def checked_id(value, what):
+    if not isinstance(value, str) or not SAFE_ID.match(value):
+        raise MetricsError('zły identyfikator %s %r: oczekiwano liter, cyfr, `.`, `_` i `-` (do 64 znaków)'
+                           % (what, value))
+    return value
+
+
+def read_run_file(path):
+    """The run file as a dict, None when it does not exist; MetricsError when it cannot be read or is not an object."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        raise MetricsError('błąd odczytu pliku przebiegu %s: %s' % (path, getattr(e, 'strerror', None) or e))
+    if not isinstance(data, dict):
+        raise MetricsError('błąd odczytu pliku przebiegu %s: oczekiwano obiektu JSON' % path)
+    return data
+
+
+def project_dir(projects, worktree):
+    """The directory of the session transcripts of a working directory (Claude Code turns every character that is
+    not a letter or a digit into `-`)."""
+    return os.path.join(projects, re.sub(r'[^A-Za-z0-9]', '-', worktree))
+
+
+def newest_session(projects, worktree):
+    """The id of the newest session transcript (`<id>.jsonl`, by modification time) of the working directory."""
+    directory = project_dir(projects, worktree)
+    try:
+        found = [(os.path.getmtime(os.path.join(directory, name)), name[:-len('.jsonl')])
+                 for name in os.listdir(directory) if name.endswith('.jsonl')]
+    except OSError:
+        found = []
+    if not found:
+        raise MetricsError('brak transkryptu sesji w %s: podaj --session' % directory)
+    return max(found)[1]
+
+
+def read_usage(stream):
+    """The limits read from the standard input (the `get_usage` object, night_queue.parse_usage); None without
+    a reading (a terminal, no input or an empty one)."""
+    try:
+        if stream is None or stream.isatty():
+            return None
+        text = stream.read()
+    except (OSError, UnicodeDecodeError, ValueError):
+        return {'status': 'unreadable'}
+    return night_queue.parse_usage(text) if text.strip() else None
+
+
+def _command_text(run, command):
+    """(stdout, None) of a command, or (None, reason) when it fails."""
+    try:
+        result = run(command)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, str(getattr(e, 'strerror', None) or e)
+    if result.returncode != 0:
+        return None, (result.stderr or '').strip()[:200] or 'kod %s' % result.returncode
+    return result.stdout, None
+
+
+def manifest_tasks(run, worktree, epic_id):
+    """The number of tasks of the manifest of origin/main:docs/features/<epic>/plan.md (night_queue.task_count)."""
+    def text(command):
+        out, reason = _command_text(run, ['git', '-C', worktree] + command[1:])
+        if out is None:
+            raise MetricsError(reason)
+        return out
+    try:
+        return night_queue.task_count(text, epic_id)
+    except (MetricsError, night_queue.StateError) as e:
+        raise MetricsError('liczba zadań z plan.md epiku %s nieznana (%s): podaj --tasks' % (epic_id, e))
+
+
+def cmd_start(args, run, now, stdin):
+    epic_id = checked_id(args.epic, 'epiku')
+    path = run_path(_expand(args.state), epic_id)
+    at = parse_at(args.at) if args.at else now
+    worktree = _expand(args.worktree) if args.worktree else os.getcwd()
+    session = checked_id(args.session or newest_session(_expand(args.projects), worktree), 'sesji')
+    current = read_run_file(path)
+    entry = {'id': session, 'worktree': worktree, 'at': iso(at)}
+    if args.resume:
+        if current is None:
+            raise MetricsError('brak pliku przebiegu %s: wznowienie wymaga wcześniejszego start' % path)
+        sessions = current.get('sessions') if isinstance(current.get('sessions'), list) else []
+        if not any(isinstance(s, dict) and s.get('id') == session for s in sessions):
+            current['sessions'] = sessions + [entry]
+        data = current
+    else:
+        if current is not None:
+            raise MetricsError('plik przebiegu %s już istnieje: nowa sesja to start --resume' % path)
+        branch = args.branch
+        if branch is None:
+            out, reason = _command_text(run, ['git', '-C', worktree, 'rev-parse', '--abbrev-ref', 'HEAD'])
+            branch = (out or '').strip()
+            if not branch or branch == 'HEAD':
+                raise MetricsError('gałąź epiku nieznana (%s): podaj --branch' % (reason or 'odłączony HEAD'))
+        tasks = args.tasks if args.tasks is not None else manifest_tasks(run, worktree, epic_id)
+        pr = args.pr
+        if pr is None:
+            try:
+                found = gh_json(run, ['pr', 'view', branch, '--json', 'number'], args.repo)
+                pr = found['number'] if isinstance(found, dict) and _is_int(found.get('number')) else None
+            except GhError as e:
+                raise MetricsError('numer PR gałęzi %s nieznany (%s): podaj --pr' % (branch, e))
+            if pr is None:
+                raise MetricsError('numer PR gałęzi %s nieznany: podaj --pr' % branch)
+        base = (['rev-list', '-1', '--first-parent', '--before=%s' % iso(at), 'origin/main'] if args.at
+                else ['rev-parse', 'origin/main'])
+        out, reason = _command_text(run, ['git', '-C', worktree] + base)
+        sha = (out or '').strip()
+        if not SHA_PATTERN.match(sha):
+            print('metrics: SHA origin/main nieznany (%s): base_sha null' % (reason or 'pusta odpowiedź'),
+                  file=sys.stderr)
+            sha = None
+        data = {'epic': epic_id, 'started_at': iso(at), 'base_sha': sha, 'branch': branch, 'pr': pr, 'tasks': tasks,
+                'sessions': [entry], 'usage_start': read_usage(stdin), 'done_at': None, 'usage_done': None}
+    write_record(path, data)
+    print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+def cmd_done(args, now, stdin):
+    path = run_path(_expand(args.state), checked_id(args.epic, 'epiku'))
+    data = read_run_file(path)
+    if data is None:
+        raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    data['done_at'] = iso(parse_at(args.at) if args.at else now)
+    data['usage_done'] = read_usage(stdin)
+    write_record(path, data)
+    print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+# ------------------------------------------------------------------------------ native epics: transcripts and value
+
+PRICE_OF_TOKEN = {'input': 'input', 'output': 'output', 'cache_read': 'cache_read', 'cw5': 'cache_write_5m',
+                  'cw1': 'cache_write_1h'}
+AGENT_FILE = re.compile(r'^agent-(.+)\.jsonl$')
+
+
+def read_native(path, seen_tools):
+    """(data, None) of a transcript of a native session or subagent in the shape of `read_transcript` (the messages,
+    the tools; `seen_tools` is shared by the files of the epic, so a copied tool call counts once), plus `times` (the
+    timestamps of the user and assistant lines) and `inits` from the CLI `version` of the lines; (None, reason) when
+    the file is missing or unreadable."""
+    data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': [], 'times': []}
+    versions = set()
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for raw in f:
+                try:
+                    line = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(line, dict):
+                    continue
+                _read_line(line, data, seen_tools)
+                if isinstance(line.get('version'), str):
+                    versions.add(line['version'])
+                if line.get('type') in ('user', 'assistant'):
+                    at = _timestamp(line.get('timestamp'))
+                    if at is not None:
+                        data['times'].append(at)
+    except FileNotFoundError:
+        return None, 'brak pliku transkryptu'
+    except OSError as e:
+        return None, 'nieczytelny transkrypt: %s' % (e.strerror or e)
+    data['inits'] = [{'version': version, 'model': None} for version in sorted(versions)]
+    return data, None
+
+
+def read_meta(path, label, gaps):
+    """{role, description, model, effort, finished} of `agent-<id>.meta.json`; a missing file or field is None with
+    a gap (the description is only read for the task id, never stored)."""
+    found = {'role': None, 'description': None, 'model': None, 'effort': None, 'finished': None}
+    try:
+        with open(path, encoding='utf-8') as f:
+            meta = json.load(f)
+        if not isinstance(meta, dict):
+            raise ValueError('not an object')
+    except FileNotFoundError:
+        gaps.add(label, 'brak meta.json: rola, zadanie, effort i zakończenie nieznane')
+        return found
+    except (OSError, ValueError):
+        gaps.add(label, 'nieczytelny meta.json: rola, zadanie, effort i zakończenie nieznane')
+        return found
+    for field, key in (('role', 'agentType'), ('model', 'model'), ('effort', 'effort')):
+        if isinstance(meta.get(key), str) and SAFE_NAME.match(meta[key]):
+            found[field] = meta[key]
+        else:
+            gaps.add(label, 'meta.json bez %s' % key)
+    if isinstance(meta.get('description'), str):
+        found['description'] = meta['description']
+    else:
+        gaps.add(label, 'meta.json bez description: zadanie nieznane')
+    if isinstance(meta.get('finished'), bool):
+        found['finished'] = meta['finished']
+    else:
+        gaps.add(label, 'meta.json bez finished: zakończenie nieznane')
+    return found
+
+
+def task_of(description, epic_id):
+    """The task of a subagent run (D4): the first `<EPIC>-<n>` in the description of its call, else None."""
+    if not isinstance(description, str):
+        return None
+    found = re.search(r'(?<![A-Za-z0-9])%s-(\d+)(?![0-9])' % re.escape(epic_id), description, re.IGNORECASE)
+    return '%s-%s' % (epic_id.upper(), found.group(1)) if found else None
+
+
+def message_value(message, pricing):
+    """(USD, None) of an assistant message from the price list (every kind of tokens with its own rate), or (None,
+    reason) when the model, the lifetime of the cache write or a rate of a used kind is unknown."""
+    model, tokens = message['model'], message['tokens']
+    if model is None:
+        return None, 'wiadomość bez message.model: wartość nieznana'
+    if (tokens['cw5'] or tokens['cw1']) and not message['lifetime']:
+        return None, ('zapis cache bez rozbicia usage.cache_creation (czas życia 5 min albo 1 h nieznany): wartość '
+                      'nieznana')
+    shown = model if SAFE_NAME.match(model) else 'unknown'
+    rates = pricing['models'].get(model)
+    if rates is None:
+        return None, 'brak stawek modelu %s w cenniku (config.json, pricing): wartość nieznana' % shown
+    usd = 0.0
+    for raw, kind in PRICE_OF_TOKEN.items():
+        if tokens[raw]:
+            if kind not in rates:
+                return None, ('brak stawki %s modelu %s w cenniku (config.json, pricing): wartość nieznana'
+                              % (kind, shown))
+            usd += tokens[raw] * rates[kind] / 1e6
+    return usd, None
+
+
+def _native_cell(known):
+    return {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0 if known else None, 'shared': True,
+            'no_cli': True}
+
+
+def native_cells(messages, role, pricing, label, gaps):
+    """(known, unknown, usage_missing) cells {role: {model: cell}} of the messages of one transcript: the value of a
+    message from the price list (always an estimate: `shared` and `no_cli` mark every section estimated); a message
+    whose value is unknown goes to `unknown` (its section is incomplete, never short by a silent zero). A message
+    without tokens needs no rate."""
+    known, unknown, usage_missing = {}, {}, False
+    for message in messages:
+        model = message['model'] if message['model'] and SAFE_NAME.match(message['model']) else 'unknown'
+        if not message['usage']:
+            usage_missing = True
+            gaps.add('value', '%s: wiadomość bez message.usage: tokeny i wartość nieznane' % label)
+            unknown.setdefault(role, {}).setdefault(model, _native_cell(False))
+            continue
+        if not any(message['tokens'].values()):
+            continue
+        usd, problem = message_value(message, pricing)
+        if problem:
+            gaps.add('value', '%s: %s' % (label, problem))
+        cell = (unknown if problem else known).setdefault(role, {}).setdefault(model, _native_cell(not problem))
+        for key in ZERO_TOKENS:
+            cell['tokens'][key] += message['tokens'][key]
+        if not problem:
+            cell['usd'] += usd
+    return known, unknown, usage_missing
+
+
+def native_items(task, known, unknown):
+    """The items of `value_sections` of one transcript: the known cells and the unknown ones (an incomplete part)."""
+    items = [(task, known)] if known or not unknown else []
+    return items + ([(task, unknown)] if unknown else [])
+
+
+def native_transcripts(projects, sessions, gaps):
+    """[(kind, session, agent_id, path, meta path)] of the epic: every session of the run file (its `<id>.jsonl` in
+    any project directory under `projects`) and its subagents (`<id>/subagents/agent-<agent>.jsonl`). Nothing else:
+    another session of the same working directory is not part of the epic."""
+    found, agents = [], set()
+    for session in sessions:
+        paths = sorted(glob.glob(os.path.join(glob.escape(projects), '*', '%s.jsonl' % session)))
+        if not paths:
+            gaps.add('sessions', 'brak transkryptu sesji %s w %s' % (session, os.path.basename(projects)))
+            continue
+        found.append(('session', session, None, paths[0], None))
+        directory = os.path.join(os.path.dirname(paths[0]), session, 'subagents')
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            names = []
+        for name in names:
+            match = AGENT_FILE.match(name)
+            if not match:
+                continue
+            agent = match.group(1)
+            if not SAFE_NAME.match(agent) or agent in agents:
+                continue
+            agents.add(agent)
+            found.append(('agent', session, agent, os.path.join(directory, name),
+                          os.path.join(directory, 'agent-%s.meta.json' % agent)))
+    return found
+
+
+def in_window(at, low, high):
+    return at is None or ((low is None or at >= low) and (high is None or at <= high))
+
+
+def native_fields(epic_id, projects, sessions, started, until, config, gaps):
+    """{attempts, by_task, value, in_attempts, versions} of a native epic from the transcripts of its sessions: the
+    messages from `started` to `until` (the merge of the final PR; None: no bound), every message id once (its first
+    occurrence, also in a resumed or forked session), the lead session as `orchestrator` without a task, every
+    subagent run one attempt with its role (agentType), task (D4), model and effort."""
+    pricing = config['pricing']
+    seen_ids, seen_tools = set(), set()
+    attempts, items, datas = [], [], []
+    for kind, session, agent, path, meta_path in native_transcripts(projects, sessions, gaps):
+        label = 'sesja %s' % session if kind == 'session' else 'agent %s' % agent
+        data, reason = read_native(path, seen_tools)
+        if data is None:
+            gaps.add('sessions', '%s: %s' % (label, reason))
+            continue
+        fresh = {i: m for i, m in data['messages'].items() if i not in seen_ids}
+        seen_ids.update(data['messages'])
+        data['messages'] = {i: m for i, m in fresh.items() if in_window(m['at'], started, until)}
+        data['tools'] = [t for t in data['tools'] if t[0] != 'use' or in_window(t[5], started, until)]
+        data['times'] = [t for t in data['times'] if in_window(t, started, until)]
+        if any(m['at'] is None for m in data['messages'].values()):
+            gaps.add('sessions', '%s: wiadomość bez timestamp: liczona bez sprawdzenia przedziału epiku' % label)
+        if not data['messages'] and not data['times']:
+            continue                                # nothing of this transcript lies in the epic
+        datas.append(data)
+        if kind == 'session':
+            known, unknown, _ = native_cells(data['messages'].values(), LEAD_ROLE, pricing, label, gaps)
+            items += native_items(NO_TASK, known, unknown)
+            continue
+        meta = read_meta(meta_path, 'attempts.%s' % agent, gaps)
+        task = task_of(meta['description'], epic_id)
+        role = meta['role'] or SUBAGENT
+        known, unknown, usage_missing = native_cells(data['messages'].values(), role, pricing, label, gaps)
+        items += native_items(task or NO_TASK, known, unknown)
+        models = {}
+        for message in data['messages'].values():
+            if message['model']:
+                models[message['model']] = models.get(message['model'], 0) + 1
+        model = max(sorted(models), key=lambda m: models[m]) if models else None
+        tokens = dict(ZERO_TOKENS)
+        for cells in (known, unknown):
+            for cell in cells.get(role, {}).values():
+                for key in ZERO_TOKENS:
+                    tokens[key] += cell['tokens'][key]
+        start, end = (min(data['times']), max(data['times'])) if data['times'] else (None, None)
+        value = None if unknown else _round_usd(sum(c['usd'] for c in known.get(role, {}).values()))
+        attempts.append({'agent_id': agent, 'task': task, 'role': meta['role'],
+                         'model': model if model is None or SAFE_NAME.match(model) else 'unknown',
+                         'effort': meta['effort'], 'started_at': iso(start), 'ended_at': iso(end),
+                         'wall_s': None if start is None else round(end - start, 3), 'value': value, 'estimated': True,
+                         'tokens': None if usage_missing else _tokens_out(tokens), 'finished': meta['finished']})
+    by_task = {}
+    for attempt in attempts:
+        entry = by_task.setdefault(attempt['task'] or NO_TASK, {'kind': None, 'work': 0.0, 'attempts': 0})
+        entry['attempts'] += 1
+        if attempt['wall_s'] is None:
+            entry['incomplete'] = True
+            gaps.add('by_task', 'przebieg %s bez czasu wiadomości: pominięty w czasie' % attempt['agent_id'])
+        else:
+            entry['work'] = round(entry['work'] + attempt['wall_s'], 3)
+    compiled = compile_categories(config)
+    in_attempts = in_attempts_of([commands_of(d, config, compiled) for d in datas])
+    if not datas:
+        gaps.add('in_attempts', 'brak transkryptów sesji epiku')
+        gaps.add('versions', 'brak transkryptów sesji epiku')
+    return {'attempts': attempts, 'by_task': by_task, 'value': value_sections(items),
+            'in_attempts': in_attempts, 'versions': versions_of(datas) if datas else None}
+
+
+def _run_time(run_file, field, gaps, reason):
+    try:
+        return night_queue.parse_time(run_file.get(field)).timestamp()
+    except (TypeError, ValueError, AttributeError):
+        gaps.add(field, reason)
+        return None
+
+
+def build_native_record(epic_id, run_file, config, projects, now, run=None, no_gh=True, repo=None, previous=None,
+                        records=None):
+    """(record, errors): the record of a native epic (spec ash-v1, M3) in the format of the AO record, `source:
+    native`. A field without a native source is null with a gap; `errors` are the messages of failed GitHub calls."""
+    records, gaps, errors = records or {}, Gaps(), []
+    started = _run_time(run_file, 'started_at', gaps,
+                        'brak czasu startu w pliku przebiegu: wiadomości bez dolnej granicy')
+    done = _run_time(run_file, 'done_at', gaps, 'brak wywołania metrics.py done w pliku przebiegu')
+    tasks = run_file.get('tasks') if _is_int(run_file.get('tasks')) and run_file['tasks'] > 0 else None
+    if tasks is None:
+        gaps.add('tasks', 'brak liczby zadań w pliku przebiegu')
+    final_pr = run_file.get('pr') if _is_int(run_file.get('pr')) else None
+    branch = run_file.get('branch') if isinstance(run_file.get('branch'), str) and run_file['branch'] else None
+    sessions = []
+    for entry in run_file.get('sessions') if isinstance(run_file.get('sessions'), list) else []:
+        session = entry.get('id') if isinstance(entry, dict) else None
+        if isinstance(session, str) and SAFE_ID.match(session) and session not in sessions:
+            sessions.append(session)
+        else:
+            gaps.add('sessions', 'wpis sesji bez poprawnego identyfikatora w pliku przebiegu: pominięty')
+    if not sessions:
+        gaps.add('sessions', 'plik przebiegu bez sesji')
+    pr = None
+    if final_pr is None:
+        gaps.add('final_pr', 'brak numeru PR w pliku przebiegu')
+    if no_gh:
+        for field in ('issue', 'merged_at'):
+            gaps.add(field, 'pominięto gh (--no-gh)')
+    elif final_pr is not None:
+        try:
+            pr = fetch_pr(run, final_pr, repo)
+        except GhError as e:
+            errors.append(str(e))
+            gaps.add('issue', 'błąd gh: %s' % e)
+            gaps.add('merged_at', 'błąd gh: %s' % e)
+    merged = pr['merged_at'] if pr else None
+    if pr is not None:
+        if merged is None:
+            gaps.add('merged_at', 'końcowy PR nie jest zmergowany (stan %s)' % pr['state'])
+        if pr['issue'] is None:
+            gaps.add('issue', 'końcowy PR nie zamyka żadnego issue')
+    known_merge = merged if merged is not None else _stored_merged(previous)
+    if known_merge is None:
+        gaps.add('sessions', "czas merge'u końcowego PR nieznany: wiadomości liczone do końca transkryptów")
+    fields = native_fields(epic_id, projects, sessions, started, known_merge, config, gaps)
+    if any(a['value'] is None for a in fields['attempts']) or _get(fields['value'], ('total', 'incomplete')):
+        gaps.add('value', 'część wiadomości bez wartości: suma niepełna')
+    record = {
+        'epic': epic_id,
+        'source': 'native',
+        'issue': pr['issue'] if pr else None,
+        'final_pr': final_pr,
+        'tasks': tasks,
+        'started_at': iso(started),
+        'done_at': iso(done),
+        'merged_at': iso(merged),
+        'wall': {
+            'to_done': round(done - started, 3) if done is not None and started is not None else None,
+            'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
+            'review': round(merged - done, 3) if merged is not None and done is not None else None,
+        },
+        'breakdown': None, 'integration': None, 'retries': None, 'parallel': None, 'subscription': None,
+        'gate_wait': None, 'human': None,
+        'in_attempts': fields['in_attempts'],
+        'by_task': fields['by_task'],
+        'versions': fields['versions'],
+        'attempts': fields['attempts'],
+        'value': fields['value'],
+        'waste': None, 'reviews': None, 'acceptance': None,
+        'sessions': sessions,
+        'pricing': {'source': config['pricing']['source'], 'read_at': config['pricing']['read_at']},
+    }
+    for field in ('parallel', 'gate_wait', 'waste'):
+        gaps.add(field, NATIVE_SOURCE)
+    for field in ('breakdown', 'human', 'integration', 'retries', 'reviews', 'acceptance', 'subscription'):
+        gaps.add(field, NATIVE_LATER)
+    record['ci'] = None
+    if no_gh:
+        for field in ('ci', 'regressions', 'found_after_merge'):
+            gaps.add(field, 'pominięto gh (--no-gh)')
+    else:
+        if final_pr is None or branch is None:
+            gaps.add('ci', 'brak numeru PR albo gałęzi epiku w pliku przebiegu')
+        else:
+            try:
+                record['ci'] = {'final': ci_entry(run, repo, config, final_pr, branch), 'tasks': None}
+                if not record['ci']['final']['runs']:
+                    gaps.add('ci', 'brak przebiegów CI gałęzi: %s' % branch)
+            except GhError as e:
+                errors.append(str(e))
+                gaps.add('ci', 'błąd gh: %s' % e)
+        record['regressions'] = record['found_after_merge'] = None
+        if known_merge is None or final_pr is None:
+            for field in ('regressions', 'found_after_merge'):
+                gaps.add(field, 'końcowy PR nie jest zmergowany albo jego stan nieznany: okno regresji nie '
+                                'zaczęło się')
+        else:
+            sha = pr['merge_sha'] if pr else _get(previous, ('regressions', 'merge_commit'))
+            record['regressions'], record['found_after_merge'] = regressions_of(
+                run, repo, config, epic_id, final_pr, sha, known_merge, now, previous, gaps, errors)
+    record.setdefault('regressions', None)
+    record.setdefault('found_after_merge', None)
     keep_stored_values(record, previous, gaps)
     record['bottlenecks'] = bottlenecks_of(record, history_of(record, records), config, gaps)
     record['gaps'] = gaps.render()
@@ -3778,10 +4330,21 @@ def cmd_epic(args, config, run, now):
     busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
     manual_fixes = read_manual_fixes(_expand(args.manual_fixes)) if args.manual_fixes else None
     path = state_path(_expand(args.state), args.epic)
-    record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now, run=run,
-                                  no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
-                                  records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home),
-                                  waste=waste_of_epic(_expand(args.state), args.epic))
+    if os.path.isdir(ao_home):
+        record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now,
+                                      run=run, no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
+                                      records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home),
+                                      waste=waste_of_epic(_expand(args.state), args.epic))
+    else:
+        # M2 of docs/features/ash-v1/spec.md: without the AO run directory the epic is native (its run file)
+        run_file_path = run_path(_expand(args.state), checked_id(args.epic, 'epiku'))
+        run_file = read_run_file(run_file_path)
+        if run_file is None:
+            raise MetricsError('brak katalogu AO %s i brak pliku przebiegu %s (metrics.py start)'
+                               % (ao_home, run_file_path))
+        record, errors = build_native_record(args.epic, run_file, config, _expand(args.projects), now, run=run,
+                                             no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
+                                             records=read_records(_expand(args.state)))
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
@@ -4217,9 +4780,23 @@ def build_parser():
     common.add_argument('--night', default='~/.local/state/ao-night')
     common.add_argument('--busy-timeout-ms', type=int, default=None)
     common.add_argument('--repo', default=None)
-    parser = argparse.ArgumentParser(description='Measurement of AO epic runs')
+    projects = argparse.ArgumentParser(add_help=False)
+    projects.add_argument('--projects', default='~/.claude/projects')
+    parser = argparse.ArgumentParser(description='Measurement of AO and native epic runs')
     sub = parser.add_subparsers(dest='command', required=True)
-    epic = sub.add_parser('epic', parents=[common])
+    start = sub.add_parser('start', parents=[common, projects])
+    start.add_argument('epic')
+    start.add_argument('--resume', action='store_true')
+    start.add_argument('--at')
+    start.add_argument('--worktree')
+    start.add_argument('--branch')
+    start.add_argument('--pr', type=_positive_int)
+    start.add_argument('--tasks', type=_positive_int)
+    start.add_argument('--session')
+    done = sub.add_parser('done', parents=[common])
+    done.add_argument('epic')
+    done.add_argument('--at')
+    epic = sub.add_parser('epic', parents=[common, projects])
     epic.add_argument('epic')
     epic.add_argument('--ao-home')
     epic.add_argument('--manual-fixes')
@@ -4255,6 +4832,10 @@ def main(argv=None, run=None, now=None):
     try:
         config = load_config(_expand(args.config))
         runner = run or (lambda command: default_runner(command, config['gh_timeout_s']))
+        if args.command == 'start':
+            return cmd_start(args, runner, now, sys.stdin)
+        if args.command == 'done':
+            return cmd_done(args, now, sys.stdin)
         if args.command == 'epic':
             return cmd_epic(args, config, runner, now)
         if args.command == 'backfill':
