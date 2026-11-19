@@ -667,7 +667,9 @@ make -C infra/k8s generate PROFILE=medium \
   ```
 
   `open` odmawia przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż `Complete`; `generate` usuwa Job
-  poprzedniego przebiegu zaraz po `tak`, więc sukces poprzedniego przebiegu nie otworzy sklepu po przerwanym nowym.
+  poprzedniego przebiegu tuż przed nowym (po zamknięciu), więc sukces poprzedniego przebiegu nie otworzy sklepu po
+  przerwanym nowym. Gdy `generate` skończył się przed tym usunięciem (np. sonda nie potwierdziła zamknięcia), dane są
+  nietknięte, a `open` otwiera sklep na Jobie poprzedniego przebiegu, jeśli jest `Complete`.
 
 **Kody wyjścia.** `generate`: `0` dane wygenerowane, sprawdzone, sklep otwarty; `1` odmowa bez zmian, brak `tak` albo
 błąd (komunikat mówi, czy sklep jest zamknięty); `2` złe argumenty albo środowisko (`PROFILE`, `GENERATE_PROBE_URL`,

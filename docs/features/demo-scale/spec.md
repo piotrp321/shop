@@ -114,9 +114,11 @@ Stan nie jest zapisywany w osobnym obiekcie; wynika z obiektów klastra:
   jest częścią chartu i nie ma etykiet ani adnotacji śledzenia Argo CD, więc wdrożenie ani synchronizacja jej nie
   usuną (Z7). Cel `status` pokazuje, czy reguła istnieje.
 - **Blokadą i śladem przebiegu jest Job `demo-data-run`** (stała nazwa, tworzony z CronJoba `demo-data` przez
-  `kubectl create job --from`, poza chartem, bez śledzenia Argo CD). `generate` po `tak` usuwa Job poprzedniego
-  przebiegu, zanim cokolwiek zmieni, więc `open` po przerwaniu nowego generowania nie ma żadnego Joba i odmawia: sukces
-  poprzedniego przebiegu nie może zostać wzięty za sukces bieżącego. `open` otwiera sklep tylko po Jobie `demo-data-run`,
+  `kubectl create job --from`, poza chartem, bez śledzenia Argo CD). Dane zmienia wyłącznie nowy Job, a ten nie powstanie,
+  dopóki istnieje stary o tej samej nazwie. `generate` usuwa Job poprzedniego przebiegu (razem z podem) tuż przed
+  utworzeniem nowego: do tej chwili dane są nietknięte i stary Job je opisuje, a od niej do sukcesu nowego Joba nie ma
+  żadnego `Complete`, więc `open` po przerwaniu nowego generowania odmawia: sukces poprzedniego przebiegu nie może
+  zostać wzięty za sukces bieżącego. `open` otwiera sklep tylko po Jobie `demo-data-run`,
   który jest `Complete`. Przebieg trwa, dopóki Job jest aktywny; `generate` i `open` odmawiają przy aktywnym Jobie
   przestrzeni (poza Jobami CronJoba `rate-limit-check`, który działa co 5 minut przez najwyżej minutę: zgodność
   z ABUSE-LIMITS, L12).
@@ -149,7 +151,7 @@ skrypt pyta o słowo `tak`.
 **Wyzwanie Cloudflare.** Sonda liczy każdy kod poniżej 500 jako „otwarty”, a nie odróżnia odpowiedzi sklepu od
 wyzwania Cloudflare (Bot Fight Mode, reguła WAF). Gdy Cloudflare odpowiada curlowi operatora 403 z wyzwaniem, zamknięcia
 w kroku 3 sonda nie potwierdzi nigdy: cel kończy się kodem 1, dane są bez zmian, ale sklep zostaje zamknięty (reguła
-jest już założona). Adresy sondy muszą więc dostawać z Cloudflare odpowiedź sklepu (bez nagłówka `cf-mitigated`);
+jest już założona; `make open` otworzy go na Jobie poprzedniego przebiegu, jeśli ten jest `Complete`). Adresy sondy muszą więc dostawać z Cloudflare odpowiedź sklepu (bez nagłówka `cf-mitigated`);
 jeśli ją dostają, to ustawienie Cloudflare (wyjątek od wyzwania dla adresu operatora albo dla tych dwóch adresów)
 i należy do użytkownika. Runbook ma sprawdzenie przed uruchomieniem.
 
@@ -170,28 +172,31 @@ Przebieg:
      miejsce jest poniżej `minFreeGb`, a powrót do seeda (zaczyna od `TRUNCATE`) to jedyna droga naprawy.
 2. **Pytanie.** Skrypt wypisuje host klastra, liczby produktów i zamówień w bazie teraz, profil docelowy, wolne miejsce
    węzłów, że sklep będzie niedostępny do udanego `make open`, i czeka na `tak` (bez `tak` odmowa, nic bez zmian).
-3. **Zamknięcie.** Zaraz po `tak` usuwa Job `demo-data-run` poprzedniego przebiegu (blokada, wyżej); zakłada regułę
-   `shop-closed` (jeśli jej nie ma), usuwa pody Traefika (`kube-system`) i czeka, aż sonda poda „zamknięty”
-   (`GENERATE_CLOSE_WAIT` sekund, 120). Bez potwierdzenia: kod 1, Job niezałożony, dane bez zmian, sklep zamknięty.
+3. **Zamknięcie.** Zakłada regułę `shop-closed` (jeśli jej nie ma), usuwa pody Traefika (`kube-system`) i czeka, aż
+   sonda poda „zamknięty” (`GENERATE_CLOSE_WAIT` sekund, 120). Bez potwierdzenia: kod 1, dane bez zmian, sklep
+   zamknięty, Job poprzedniego przebiegu bez zmian (`make open` otwiera sklep na nim, jeśli jest `Complete`).
 4. **Generowanie.** Dla profilu z sekretem puli zdjęć tworzy sekret `demo-photos` z czterech zmiennych odczytu (przez
-   stdin, bez wartości w linii poleceń i wyjściu); tworzy Job `demo-data-run` z CronJoba ze zmienną
+   stdin, bez wartości w linii poleceń i wyjściu). Czyta aktywne Joby jeszcze raz (działający Job innej kopii celu:
+   odmowa, nic nie usunięte), usuwa Job `demo-data-run` poprzedniego przebiegu razem z podem
+   (`--cascade=foreground --wait`) i tworzy nowy Job `demo-data-run` z CronJoba ze zmienną
    `DEMO_DATA_CONFIRM=<PROFILE>` (także dla `seed`: ten sam Job uruchamia wtedy `bin/seed-demo`) i czeka na jego
    koniec (`GENERATE_POLL` sekund, 30; do `activeDeadlineSeconds` Joba). Skrypt tylko czeka: niczego, co ma zostać po
    przebiegu, nie zbiera (zapis logów i metryk nie zależy od komputera operatora, „Logi i metryki”).
 5. **Po Jobie.** Job `Complete`: uruchamia `open.sh` (niżej). Job nieudany albo po czasie: kod 1, sklep zamknięty,
    komunikat z powodem z logu zakończenia poda (`/dev/termination-log`; bez poda: log w Grafana Cloud).
 
-Sekret `demo-photos` jest usuwany przy każdym wyjściu celu (także po błędzie, INT i TERM); po zabiciu skryptu sygnałem
-KILL usuwa go `open` (bez aktywnego Joba), a `status` go pokazuje. Każdy błąd po zamknięciu zostawia sklep
-zamknięty i podaje dwie drogi: ponowić `generate PROFILE=<profil>` albo wrócić do seeda (`PROFILE=seed`).
+Sekret `demo-photos` jest usuwany przy każdym wyjściu celu (także po błędzie, HUP, INT i TERM); po zabiciu skryptu
+sygnałem KILL usuwa go `open` (bez aktywnego Joba), a `status` go pokazuje. Każdy błąd po zamknięciu zostawia sklep
+zamknięty; komunikat mówi, czy dane są jeszcze nietknięte (wtedy także `make open`), i podaje dwie drogi: ponowić
+`generate PROFILE=<profil>` albo wrócić do seeda (`PROFILE=seed`).
 
 Kody wyjścia: 0 dane wygenerowane, sprawdzone, sklep otwarty; 1 odmowa, brak `tak` albo błąd (komunikat mówi, czy sklep
 jest zamknięty); 2 złe argumenty albo środowisko.
 
 Przerwany skrypt (sygnał, utrata połączenia, uśpiony komputer) niczego nie sprząta poza sekretem: jeśli Job działa dalej,
 `make status` pokazuje go jako aktywny, a po jego końcu (`Complete`) sklep otwiera ręcznie `make open`; po `Failed`
-albo gdy Jobu nie ma, wraca się do `generate`. Job poprzedniego przebiegu jest usunięty zaraz po `tak`, więc `open` nie przyjmie jego sukcesu
-za sukces przerwanego przebiegu.
+albo gdy Jobu nie ma, wraca się do `generate`. Przerwanie przed usunięciem Joba poprzedniego przebiegu zostawia dane
+nietknięte i ten Job (`open` otwiera sklep na nim); po usunięciu `open` odmawia do sukcesu nowego Joba.
 
 CronJob `cart-purge-expired` działa w trakcie bez zmian: usuwa tylko wygasłe koszyki, których generator nie pisze.
 
@@ -205,7 +210,7 @@ operację, host i profil, tak jak `generate`. Jest idempotentny. Przebieg:
 1. **Odmowa przy aktywnym Jobie** przestrzeni, bez zmian.
 2. **Sekret puli zdjęć** pozostawiony (zabity `generate`) jest usuwany, gdy żaden Job nie działa.
 3. **Odmowy bez dalszych zmian:** brak Joba `demo-data-run` albo Job inny niż `Complete` (np. po nowym `generate`,
-   który przerwano po `tak`).
+   który przerwano po usunięciu Joba poprzedniego przebiegu).
 4. **Sprawdzenia** (każde nieudane: kod 1, sklep zamknięty). Pula `cache.sitemap` wyczyszczona w każdym podzie `api`
    (`bin/console cache:pool:clear`); żaden indeks bazy `shop` nie jest nieważny (`pg_index.indisvalid`, `indisready`);
    alias katalogu wskazuje dokładnie jeden indeks, który ma dokumenty, stan klastra Elasticsearcha nie jest `red`, nie
@@ -343,7 +348,8 @@ Odzyskiwanie jest ręczne (U8): `make status`, potem ponowny `generate`, powrót
 | Zdarzenie | Co się dzieje | Dalsze kroki |
 |---|---|---|
 | Przerwany skrypt, utrata połączenia albo uśpienie komputera operatora | Job działa dalej, strażnik i zbieranie logów działają w klastrze; sklep zamknięty | Po końcu Joba `Complete`: `make open`; `Failed`: ponowny `generate` albo seed |
-| `generate` przerwany po `tak`, przed końcem nowego Joba | Job poprzedniego przebiegu już usunięty | `open` odmawia (brak Joba albo Job niezakończony); ponowny `generate` |
+| `generate` przerwany po `tak`, przed usunięciem Joba poprzedniego przebiegu | Dane nietknięte, Job poprzedniego przebiegu zostaje, sklep może być zamknięty | `make open` (jeśli ten Job jest `Complete`) albo ponowny `generate` |
+| `generate` przerwany po usunięciu Joba poprzedniego przebiegu, przed końcem nowego | Joba `Complete` nie ma | `open` odmawia (brak Joba albo Job niezakończony); ponowny `generate` |
 | Usunięty albo zabity pod Joba (brak pamięci, eksmisja, limit czasu) | Job kończy się błędem i nie startuje ponownie (Z9); przy TERM skrypt zatrzymuje generator; sesje bazy generatora kończą się same także po zabiciu bez sygnału (Z11) | Dane niepełne, sklep zamknięty; ponowny `generate` albo seed; log z Grafana Cloud |
 | Restart Postgresa, Elasticsearcha albo Keycloaka w trakcie | Krok generatora kończy się błędem (przebudowa indeksu ponawia tylko błędy przejściowe), Job kończy się błędem | Jak wyżej |
 | Restart Traefika | Reguła działa dla nowych połączeń | Sklep nadal zamknięty |
@@ -379,7 +385,7 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
     Job bez `DEMO_DATA_CONFIRM` (kod 64, dane bez zmian), `generate` bez `tak`, `rerun` Joba generatora;
   - sklep otwarty na niepełnych danych: reguła poza chartem, restart Traefika, sonda przed zastąpieniem danych,
     otwarcie tylko przez `open` po Jobie `Complete` i udanych sprawdzeniach, a Job poprzedniego przebiegu usuwany
-    po `tak`; test dymny z ciągłym ruchem przez ingress w trakcie zamykania, testy nieudanego Joba, przerwanego
+    tuż przed nowym; test dymny z ciągłym ruchem przez ingress w trakcie zamykania, testy nieudanego Joba, przerwanego
     generowania (`open` odmawia) i nieudanego sprawdzenia (sklep zamknięty), brak śledzenia Argo CD na obiektach celu;
   - zapełnienie dysku: strażnik w podzie niezależny od komputera operatora, zatrzymanie całej grupy procesów,
     sesje bazy kończone przez serwer po zniknięciu klienta; testy skryptu z podstawionym `df` (próg, odczyt nieudany,
@@ -424,13 +430,14 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
    pliku puli zdjęć albo zmiennej odczytu (tylko gdy CronJob ma sekret puli i profil nie jest `seed`), za mało
    wolnego miejsca (próg `minFreeGb` dla każdego profilu poza `seed`, próg `diskPeakGb` tylko dla `medium` i `server`;
    `seed` odmawia tylko przy nieczytelnym odczycie), nieczytelny odczyt miejsca, brak `KUBE_DIR`.
-4. `generate` na ścieżce poprawnej (profil i `seed`): po `tak` usuwa poprzedni Job `demo-data-run`, zakłada regułę,
-   usuwa pody Traefika, czeka na „zamknięty” od każdego adresu sondy, tworzy sekret (gdy wymagany) i Job
+4. `generate` na ścieżce poprawnej (profil i `seed`): po `tak` zakłada regułę, usuwa pody Traefika, czeka na
+   „zamknięty” od każdego adresu sondy, tworzy sekret (gdy wymagany), usuwa poprzedni Job `demo-data-run` i tworzy Job
    z `DEMO_DATA_CONFIRM`, czeka na niego, woła `open` i usuwa sekret przy wyjściu; kod 0. Sonda bez „zamknięty”
    (adres z kodem poniżej 500 albo nieczytelny), Job nieudany (także bez poda) albo po czasie, kod 75 Joba: kod 1,
    reguła zostaje, sekret usunięty, komunikat z powodem i dwiema drogami wyjścia; przy sondzie zamknięcia Job nie
-   powstaje. Sekret jest usunięty także po INT i TERM; Job z poprzedniego przebiegu nigdy nie przechodzi
-   do `open` jako sukces tego przebiegu.
+   powstaje, a Job poprzedniego przebiegu zostaje. Sekret jest usunięty także po HUP, INT i TERM; Job z poprzedniego
+   przebiegu nigdy nie przechodzi do `open` jako sukces tego przebiegu (po jego usunięciu `open` odmawia do sukcesu
+   nowego Joba).
 5. `open` odmawia bez zmian przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż `Complete`; usuwa
    pozostawiony sekret puli zdjęć; po nieudanym sprawdzeniu (nieważny indeks, alias na zero albo wiele indeksów, stan
    `red`, indeks bez aliasu, nieudany Job `load`) kończy się kodem 1 z regułą na miejscu; po udanych sprawdzeniach

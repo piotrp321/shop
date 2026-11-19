@@ -1,6 +1,6 @@
 #!/bin/sh
 # shellcheck disable=SC2154 # usage is defined by the script that sources this file
-# Sourced by generate.sh and open.sh after tools.sh (docs/features/demo-scale/spec.md): what both read before the cluster, the cluster
+# Sourced by generate.sh, open.sh and smoke.sh after tools.sh (docs/features/demo-scale/spec.md): what both read before the cluster, the cluster
 # through kubectl (KUBE_DIR, KUBE_NETWORK) in the namespace $namespace, and the probe of the public addresses. The caller defines usage
 # <message> (exit 2).
 #

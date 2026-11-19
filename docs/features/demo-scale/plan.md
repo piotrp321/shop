@@ -13,8 +13,8 @@ roboczym: po ukończeniu epiku usuń go.
 | 1 | DEMO-SCALE-1, DEMO-SCALE-2, DEMO-SCALE-3 | zmergowane: DEMO-SCALE-1 `cf2ac610`, DEMO-SCALE-2 `fcfb9ef5`, DEMO-SCALE-3 `b4276bd5` |
 | 2 | DEMO-SCALE-4 | zmergowane `23df42db` |
 | 3 | DEMO-SCALE-8 | zmergowane `47dbab53` |
-| 4 | DEMO-SCALE-9 | gotowe na gałęzi `task/DEMO-SCALE-9` (`da5ef7a2`), czeka na merge |
-| 5 | DEMO-SCALE-10, DEMO-SCALE-11 | w toku |
+| 4 | DEMO-SCALE-9 | zmergowane `e9252415` |
+| 5 | DEMO-SCALE-10, DEMO-SCALE-11 | zmergowane: DEMO-SCALE-10 `40edbde2`, DEMO-SCALE-11 `13fa3a9a` |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 Numery 5–7 nie są używane.
@@ -181,7 +181,7 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
       "scope": "infra/k8s/scripts/generate.sh, open.sh, shop-closed.sh, Makefile (z ao-guard.sh) i testy na atrapach kubectl (spec: „Stan sklepu i blokada”, „Cel make -C infra/k8s generate”, „Cel make -C infra/k8s open”; kryteria 3–6). generate: odmowy bez zmian, pytanie o tak, usunięcie Joba demo-data-run poprzedniego przebiegu, reguła shop-closed, restart Traefika, sonda zamknięcia, sekret puli zdjęć (usuwany przy każdym wyjściu), Job demo-data-run z CronJoba, oczekiwanie, wywołanie open. open: odmowy (aktywny Job, brak Joba albo Job inny niż Complete), usunięcie pozostawionego sekretu, czyszczenie puli cache.sitemap, indeksy Postgresa, alias wyszukiwarki, Job load, otwarcie i sonda. Decyzja U8: bez zapisu stanu, faz, wznawiania i zmian w Argo CD.",
       "acceptance_criteria": [
         "Każda odmowa z kryterium 3 specyfikacji kończy generate bez zmian w klastrze i z komunikatem nazywającym przyczynę; złe argumenty i środowisko dają kod 2, pozostałe odmowy kod 1; Joby CronJoba rate-limit-check nie liczą się jako aktywne.",
-        "Ścieżka poprawna (profil i seed) wykonuje kroki w kolejności specyfikacji; Job poprzedniego przebiegu jest usunięty zaraz po tak, a open po przerwaniu nowego generowania odmawia (brak Joba albo Job niezakończony); sekret puli zdjęć jest usunięty przy każdym wyjściu generate (także INT i TERM), a po zabiciu skryptu przez open.",
+        "Ścieżka poprawna (profil i seed) wykonuje kroki w kolejności specyfikacji; Job poprzedniego przebiegu jest usunięty tuż przed nowym (po zamknięciu i sekrecie), a open po przerwaniu nowego generowania po tym usunięciu odmawia (brak Joba albo Job niezakończony); sekret puli zdjęć jest usunięty przy każdym wyjściu generate (także HUP, INT i TERM), a po zabiciu skryptu przez open.",
         "Sonda zamknięcia bez zgody wszystkich adresów, Job nieudany (także bez poda) albo po czasie i kod 75 kończą generate kodem 1 ze sklepem zamkniętym i dwiema drogami wyjścia; nieudane sprawdzenie w open zostawia regułę; sonda bez „otwarty” po usunięciu reguły to kod 1.",
         "Wartości DEMO_PHOTOS_* nie pojawiają się w wyjściu (także z sh -x) ani linii poleceń; reguła, Job demo-data-run i sekret nie mają etykiet ani adnotacji śledzenia Argo CD.",
         "Bez słowa tak nic się nie zmienia; generate i open wołają ao-guard.sh i odmawiają przy działającym AO.",

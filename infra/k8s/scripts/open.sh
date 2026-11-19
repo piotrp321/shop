@@ -1,7 +1,7 @@
 #!/bin/sh
 # Checks the data that the Job demo-data-run of make generate gave and opens the shop: make -C infra/k8s open GENERATE_PROBE_URL='<url>
 # ...' KUBE_DIR=<directory>; make generate runs it after a Job that completed. Idempotent. It refuses while a Job runs and without a Job
-# demo-data-run that completed (make generate deletes the one of the run before right after tak); a Secret of the photo pool that is
+# demo-data-run that completed (make generate deletes the one of the run before right before its new Job); a Secret of the photo pool that is
 # left (make generate killed) is deleted once no Job runs. The checks and the opening: docs/features/demo-scale/spec.md, "Cel make -C
 # infra/k8s open".
 #
@@ -55,7 +55,7 @@ fi
 
 run="$(kc get job "$job" --ignore-not-found -o json)" || refuse "cannot read the Job $job"
 [ -n "$run" ] ||
-  refuse "there is no Job $job (make generate deletes the one of the run before right after tak): make -C infra/k8s generate PROFILE=<profile> again, or PROFILE=seed"
+  refuse "there is no Job $job (make generate deletes the one of the run before right before its new Job): make -C infra/k8s generate PROFILE=<profile> again, or PROFILE=seed"
 run_state="$(printf '%s' "$run" | job_state)"
 [ "${run_state%% *}" = Complete ] ||
   refuse "the Job $job is ${run_state%% *}, not Complete (make status): make -C infra/k8s generate PROFILE=<profile> again, or PROFILE=seed"

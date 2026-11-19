@@ -82,7 +82,7 @@ class CronJobTest(unittest.TestCase):
 
     def test_the_job_of_a_run_stays_until_the_next_make_generate_deletes_it(self):
         """make open opens the shop only after the Job demo-data-run completed, and make generate deletes that Job of the run before
-        right after tak: no ttlSecondsAfterFinished may delete it earlier (make open would refuse) or keep a stale one."""
+        right before its new Job: no ttlSecondsAfterFinished may delete it earlier (make open would refuse) or keep a stale one."""
         for case in ALL_CASES:
             spec = demo_data(case)["spec"]
             self.assertNotIn("ttlSecondsAfterFinished", spec["jobTemplate"]["spec"], case)
