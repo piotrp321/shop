@@ -763,7 +763,7 @@ run_generator() {
   if [ -z "$data_limit" ]; then
     data_deadline="$(kc get job "$data_job" -o jsonpath='{.spec.activeDeadlineSeconds}' 2>/dev/null || true)"
     case "$data_deadline" in
-      "" | *[!0-9]*) data_deadline=57600 ;;
+      "" | *[!0-9]*) data_deadline=72000 ;;
     esac
     data_limit=$(( data_deadline + 600 ))
   fi

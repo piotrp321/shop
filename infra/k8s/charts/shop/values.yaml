@@ -137,12 +137,14 @@ demoData:
   profile: small
   # The reference moment of every generated time (--anchor of the generator: a date or a UTC moment); empty: the start of the current UTC day.
   anchor: ""
-  # The time limit of a Job, in seconds, per profile (the run of the profile medium calibrates them).
+  # The time limit of a Job, in seconds, per profile: about twice the time of the generator, rounded up to a whole hour
+  # (small: not measured). medium: measured, 1731 s on 2026-11-19 (revision aceeab48). server and full: extrapolated from
+  # that run (about 4 h and 10 h) and NOT verified by a measurement (docs/features/demo-data/spec.md, "k3d").
   activeDeadlineSeconds:
     small: 1800
-    medium: 7200
-    server: 28800
-    full: 57600
+    medium: 3600
+    server: 32400
+    full: 72000
   # The Secret with the read access to the private bucket of the photo pool (DEMO_PHOTOS_ENDPOINT, DEMO_PHOTOS_BUCKET,
   # DEMO_PHOTOS_ACCESS_KEY_ID, DEMO_PHOTOS_SECRET_ACCESS_KEY), created outside the chart; only the container of the CronJob reads it.
   # The profiles other than small need it; empty: no reference to it.
