@@ -266,25 +266,29 @@ Komenda `StartPayment(orderId, access, provider, idempotencyKey)` (`access` jak 
    unikalnym indeksie z wątkiem i połączeniem. Zwalnia ją koniec transakcji. Jawny wyjątek DBAL od persystencji przez
    rekordy (tylko blokada, jak `PostgresPromotionWriteLock` w Pricing). Rozpoczęcia różnych zamówień nie czekają na
    siebie; dwa zamówienia o tym samym skrócie dzielą blokadę (409, ponowienie przechodzi).
-4. Zamówienie `paid`: `OrderAlreadyPaid` (409). `cancelled` albo po terminie: `PaymentDeadlinePassed` (409).
-5. Oczekująca płatność zamówienia (najwyżej jedna): blokada jej wiersza (`PESSIMISTIC_WRITE`, jak w webhooku), potem
+4. Powtórzenie jeszcze raz, pod blokadą, tymi samymi regułami co krok 2: rozpoczęcie z tym samym kluczem mogło
+   zatwierdzić płatność i zwolnić blokadę między krokiem 2 a 3, a krok 6 anulowałby wtedy u dostawcy sesję tej
+   płatności (anulowania nie cofa żaden rollback, a unikalny indeks klucza odrzuciłby dopiero zapis kroku 8). Powtórzenie
+   z kroku 2 zostaje przed blokadą: zakończone rozpoczęcie nie potrzebuje blokady.
+5. Zamówienie `paid`: `OrderAlreadyPaid` (409). `cancelled` albo po terminie: `PaymentDeadlinePassed` (409).
+6. Oczekująca płatność zamówienia (najwyżej jedna): blokada jej wiersza (`PESSIMISTIC_WRITE`, jak w webhooku), potem
    `PaymentProvider::cancelSession` u jej dostawcy (P5):
-   - `cancelled` → `Payment::cancel`, zapis, dalej krok 6;
+   - `cancelled` → `Payment::cancel`, zapis, dalej krok 7;
    - `alreadyRejected` → `Payment::fail` (webhook odmowy przyjdzie albo przyszedł i trafi na deduplikację albo
-     bez zmian), zapis, dalej krok 6;
+     bez zmian), zapis, dalej krok 7;
    - `alreadyPaid` → `PaymentInProgress` (409, „Płatność została już wykonana. Czekamy na jej potwierdzenie.”),
      bez zmian; potwierdzenie przyniesie webhook;
    - błąd dostawcy → `PaymentProviderUnavailable` (503), bez zmian.
-6. Stan zamówienia z kroku 4 jest sprawdzany ponownie na świeżym odczycie `PayableOrders::find` (po blokadzie
-   z kroku 5): webhook poprzedniej płatności, który trzymał blokadę jej wiersza, mógł w tym czasie zatwierdzić
-   płatność `succeeded` i zamówienie `paid`, a wtedy krok 5 nie znajduje oczekującej płatności. Zamówienie `paid`:
+7. Stan zamówienia z kroku 5 jest sprawdzany ponownie na świeżym odczycie `PayableOrders::find` (po blokadzie
+   z kroku 6): webhook poprzedniej płatności, który trzymał blokadę jej wiersza, mógł w tym czasie zatwierdzić
+   płatność `succeeded` i zamówienie `paid`, a wtedy krok 6 nie znajduje oczekującej płatności. Zamówienie `paid`:
    `OrderAlreadyPaid` (409), `cancelled` albo po terminie: `PaymentDeadlinePassed` (409), bez zmian.
-7. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
+8. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
    i `attachProviderSession`, zapis. Wywołania HTTP są w transakcji (5 s limit każde): błąd dostawcy wycofuje całość
    (także lokalne anulowanie poprzedniej płatności). Sesja anulowana u dostawcy zostaje anulowana, a anulowanie
-   u dostawcy jest idempotentne (anulowana sesja: znów `200`), więc ponowienie przechodzi krok 5 tak samo.
+   u dostawcy jest idempotentne (anulowana sesja: znów `200`), więc ponowienie przechodzi krok 6 tak samo.
    Równoległe rozpoczęcia jednego zamówienia odrzuca od razu blokada z kroku 3, póki pierwsze trwa; po jego
-   zatwierdzeniu ten sam klucz dostaje powtórzenie (krok 2). Unikalny indeks `idempotency_key` i częściowy unikalny
+   zatwierdzeniu ten sam klucz dostaje powtórzenie (krok 2, a gdy zatwierdziło się po nim: krok 4). Unikalny indeks `idempotency_key` i częściowy unikalny
    indeks „jedna płatność `pending` na zamówienie” zostają ostatnim zabezpieczeniem (naruszenie →
    `PaymentInProgress`, 409).
 
@@ -323,7 +327,7 @@ Zapytanie `GetPaymentStatus(orderId, access)` → `PaymentStatusView {orderNumbe
 paymentDeadline, totalGross, currency, canStartPayment, latestPayment: {provider, status, resumeUrl} | null}`.
 `orderStatus` to `statusForPayment` zamówienia (wysłane, dostarczone i zwrócone są `paid`). Dostęp przez
 `PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
-przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 5). `resumeUrl` =
+przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 6). `resumeUrl` =
 `Payment::resumeUrl(payable)`.
 Odczyty idą bez transakcji, więc najpierw czytana jest najnowsza płatność, dopiero potem zamówienie: webhook zmienia
 płatność i zamówienie w jednej transakcji, więc zamówienie odczytane po płatności uwzględnia już każdy webhook, który tę
