@@ -431,9 +431,26 @@ monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yam
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 restore_without_confirmation() { replace infra/k8s/scripts/restore.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
-# The CronJob demo-data (docs/features/demo-data/spec.md): its Jobs delete the data of every module, so a CronJob that is not suspended
-# would run on its schedule.
+# The CronJob demo-data (docs/features/demo-data/spec.md, docs/features/demo-scale/spec.md): its Jobs delete the data of every module,
+# so a CronJob that is not suspended (everywhere, or only with the images of a release, the server) would run on its schedule. Its
+# script runs the generator only with DEMO_DATA_CONFIRM (here: without either check), stops it with a guard of the free space (here: no
+# guard) and stops its whole process group, also the command it runs in the foreground (here: only the generator).
 demo_data_not_suspended() { replace_after infra/k8s/charts/shop/templates/demo-data.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
+# shellcheck disable=SC2016 # the texts are lines of the template
+demo_data_not_suspended_in_prod() {
+  replace_after infra/k8s/charts/shop/templates/demo-data.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: {{ not .Values.image.requireDigests }}'
+}
+# shellcheck disable=SC2016 # the texts are lines of the script
+demo_data_script_without_the_confirmation() {
+  replace infra/k8s/charts/shop/files/scripts/demo-data.sh 'if [ -z "$confirm" ]; then' 'if false; then'
+  replace infra/k8s/charts/shop/files/scripts/demo-data.sh 'elif [ "$confirm" = "$profile" ]; then' 'elif :; then'
+}
+demo_data_script_without_the_guard() { replace infra/k8s/charts/shop/files/scripts/demo-data.sh 'guard &' ': guard &'; }
+# shellcheck disable=SC2016 # the texts are lines of the script
+demo_data_script_stops_only_the_generator() {
+  replace infra/k8s/charts/shop/files/scripts/demo-data.sh 'kill -TERM "-$gen_pid"' 'kill -TERM "$gen_pid"'
+  replace infra/k8s/charts/shop/files/scripts/demo-data.sh 'kill -KILL "-$gen_pid"' 'kill -KILL "$gen_pid"'
+}
 # The CronJob load (docs/features/demo-scale/spec.md): a Job of it checkouts an order in the data, so a CronJob that is not suspended
 # would run on its schedule; the k6 image of the chart is the one of load/k6.sh (a new k6 is changed in both places).
 load_not_suspended() { replace_after infra/k8s/charts/shop/templates/load.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
@@ -536,6 +553,14 @@ run_case "monitoring Service policy without the external IPs" "test_the_service_
 run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" "tests" monitoring_pods_with_priority_classes_of_the_system
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" "tests" restore_without_confirmation
 run_case "demo-data CronJob that is not suspended" "test_the_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" demo_data_not_suspended
+run_case "demo-data CronJob that is not suspended in prod" "test_the_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" \
+  demo_data_not_suspended_in_prod
+run_case "demo-data script without the check of DEMO_DATA_CONFIRM" "test_without_the_confirmation_nothing_starts_and_the_code_is_64" "tests" \
+  demo_data_script_without_the_confirmation
+run_case "demo-data script without the space guard" \
+  "test_the_space_falling_below_the_floor_stops_the_whole_group_with_the_command_in_the_foreground" "tests" demo_data_script_without_the_guard
+run_case "demo-data script that stops only the generator and not its process group" "test_term_stops_the_group_with_the_command_in_the_foreground" \
+  "tests" demo_data_script_stops_only_the_generator
 run_case "load CronJob that is not suspended" "test_the_load_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" load_not_suspended
 run_case "k6 image of the chart with another digest than load/k6.sh" "test_the_values_pin_the_image_of_the_runner_of_the_scripts" "tests" load_k6_digest_differs
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
