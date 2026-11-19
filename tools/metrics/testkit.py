@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -360,10 +361,10 @@ def store_records(state, *records):
             json.dump(record, f)
 
 
-def run_cli(argv, runner=None, now=1800000000.0):
-    """(exit code, stdout, stderr) of metrics.main."""
+def run_cli(argv, runner=None, now=1800000000.0, stdin=''):
+    """(exit code, stdout, stderr) of metrics.main; `stdin` is the text on the standard input (never the real one)."""
     out, err = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), mock.patch('sys.stdin', io.StringIO(stdin)):
         code = metrics.main(argv, run=runner, now=now)
     return code, out.getvalue(), err.getvalue()
 
@@ -421,3 +422,157 @@ class AttemptEnv(Env):
 
     def cell(self, record, role, model):
         return record['value']['by_role_model'][role][model]
+
+
+# --------------------------------------------------------------------------- native sessions (Claude Code transcripts)
+
+FABLE = 'claude-fable-5-2'
+CLI_VERSION = '2.1.325'
+PR_NUMBER = 752
+
+
+def iso_at(seconds):
+    """The ISO time (UTC, `Z`) `seconds` after T0, as the run file stores it."""
+    return metrics.iso(T0 + seconds)
+
+
+def project_dir(projects, worktree):
+    """The directory of the session transcripts of a working directory: every character that is not a letter or a
+    digit becomes `-` (as Claude Code names it)."""
+    return os.path.join(projects, re.sub(r'[^A-Za-z0-9]', '-', worktree))
+
+
+def native_usage(input=0, output=0, cache_read=0, cache_write=0, cache_write_1h=0, split=True):
+    """The `usage` of a native assistant message; without `split` it has no `cache_creation` (TTL of the write
+    unknown)."""
+    usage = {'input_tokens': input, 'output_tokens': output, 'cache_read_input_tokens': cache_read,
+             'cache_creation_input_tokens': cache_write + cache_write_1h, 'service_tier': 'standard'}
+    if split:
+        usage['cache_creation'] = {'ephemeral_5m_input_tokens': cache_write,
+                                   'ephemeral_1h_input_tokens': cache_write_1h}
+    return usage
+
+
+class Native:
+    """The lines of a synthetic transcript of a native session (agent_id None) or of one of its subagents, with only
+    the fields the tool reads plus texts that must never reach the record. Every method returns self."""
+
+    def __init__(self, session='s1', agent_id=None, version=CLI_VERSION):
+        self.session, self.agent_id, self.version = session, agent_id, version
+        self.lines = []
+        self._n = 0
+        self.last_tools = []
+
+    def _line(self, kind, at):
+        line = {'type': kind, 'sessionId': self.session, 'isSidechain': self.agent_id is not None}
+        if self.version is not None:
+            line['version'] = self.version
+        if at is not None:
+            line['timestamp'] = stamp(at)
+        if self.agent_id is not None:
+            line['agentId'] = self.agent_id
+        return line
+
+    def assistant(self, at, model=FABLE, message_id=None, blocks=1, usage=True, split=True, tools=(),
+                  text='TAJNA-TRESC odpowiedzi', **tokens):
+        """An assistant message written as `blocks` lines with the same id and usage (one per content block). at
+        None: no `timestamp`; model None: no `message.model`; usage False: no `message.usage`; tools: [(name, input)]
+        tool_use blocks."""
+        self._n += 1
+        message_id = message_id or '%s-msg-%d' % (self.agent_id or self.session, self._n)
+        contents = []
+        self.last_tools = []
+        for name, tool_input in tools:
+            tool_id = 'toolu-%s-%d-%d' % (self.agent_id or self.session, self._n, len(contents))
+            self.last_tools.append(tool_id)
+            contents.append({'type': 'tool_use', 'id': tool_id, 'name': name, 'input': tool_input})
+        contents += [{'type': 'text', 'text': text}] * max(0, blocks - len(contents))
+        for content in contents:
+            message = {'id': message_id, 'role': 'assistant', 'type': 'message', 'content': [content]}
+            if model is not None:
+                message['model'] = model
+            if usage:
+                message['usage'] = native_usage(split=split, **tokens)
+            line = self._line('assistant', at)
+            line['message'] = message
+            self.lines.append(line)
+        return self
+
+    def human(self, at, text='TAJNE-POLECENIE uzytkownika'):
+        line = self._line('user', at)
+        line.update(origin={'kind': 'human'}, message={'role': 'user', 'content': text})
+        self.lines.append(line)
+        return self
+
+    def tool_result(self, tool_id, at):
+        line = self._line('user', at)
+        line['message'] = {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': tool_id,
+                                                        'content': 'TAJNY-WYNIK'}]}
+        self.lines.append(line)
+        return self
+
+    def bash(self, command, start, end, model=FABLE, **tokens):
+        self.assistant(start, model=model, tools=[('Bash', {'command': command})], **tokens)
+        return self.tool_result(self.last_tools[0], end)
+
+
+def write_lines(path, lines):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        for line in lines:
+            f.write((line if isinstance(line, str) else json.dumps(line)) + '\n')
+    return path
+
+
+class NativeEnv(Env):
+    """A native epic: the transcripts under the temporary `~/.claude/projects` and the run file in the state."""
+
+    def setUp(self):
+        super().setUp()
+        self.projects = os.path.join(self.root, '.claude', 'projects')
+        self.worktree = '/work/shop/.claude/worktrees/epic-demo'
+
+    def write_session(self, session, transcript, worktree=None, mtime=None):
+        path = write_lines(os.path.join(project_dir(self.projects, worktree or self.worktree), '%s.jsonl' % session),
+                           transcript.lines if isinstance(transcript, Native) else transcript)
+        if mtime is not None:
+            os.utime(path, (mtime, mtime))
+        return path
+
+    def write_subagent(self, session, agent_id, transcript, meta=None, worktree=None):
+        """meta: a dict (agent-<id>.meta.json), a str (its raw text) or None (no meta file)."""
+        directory = os.path.join(project_dir(self.projects, worktree or self.worktree), session, 'subagents')
+        write_lines(os.path.join(directory, 'agent-%s.jsonl' % agent_id),
+                    transcript.lines if isinstance(transcript, Native) else transcript)
+        if meta is not None:
+            with open(os.path.join(directory, 'agent-%s.meta.json' % agent_id), 'w', encoding='utf-8') as f:
+                f.write(meta if isinstance(meta, str) else json.dumps(meta))
+
+    def write_run(self, epic='demo', sessions=('s1',), started=0, done=4000, pr=PR_NUMBER, branch='feat/demo', tasks=8,
+                  **over):
+        """<state>/runs/<epic>.json as `metrics.py start` and `done` write it; started and done in seconds after T0
+        (None: not recorded)."""
+        data = {'epic': epic, 'started_at': None if started is None else iso_at(started), 'base_sha': 'b' * 40,
+                'branch': branch, 'pr': pr, 'tasks': tasks,
+                'sessions': [{'id': s, 'worktree': self.worktree, 'at': iso_at(started or 0)} for s in sessions],
+                'usage_start': None, 'done_at': None if done is None else iso_at(done), 'usage_done': None}
+        data.update(over)
+        os.makedirs(os.path.join(self.state, 'runs'), exist_ok=True)
+        with open(os.path.join(self.state, 'runs', '%s.json' % epic), 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+        return data
+
+    def native(self, epic='demo', *extra, runner=None, no_gh=True, config=None):
+        """(exit code, stdout, stderr) of `epic` for a native epic (the transcripts from self.projects, no AO run)."""
+        argv = ['epic', epic, '--state', self.state, '--night', self.night, '--projects', self.projects]
+        if config is not None:
+            argv += ['--config', config]
+        if no_gh:
+            argv.append('--no-gh')
+        with mock.patch.dict(os.environ, {'SHOP_METRICS_AO_ROOT': os.path.join(self.root, 'ao')}):
+            return run_cli(argv + list(extra), runner)
+
+    def native_record(self, epic='demo', *extra, runner=None, no_gh=True, config=None):
+        code, out, err = self.native(epic, *extra, runner=runner, no_gh=no_gh, config=config)
+        self.assertEqual(code, 0, err)
+        return json.loads(out)

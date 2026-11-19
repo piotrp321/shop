@@ -70,8 +70,13 @@ class ErrorPathTest(Env):
     def test_missing_ao_directory(self):
         missing = os.path.join(self.root, 'nope')
         self.assert_fails(['epic', 'x', '--ao-home', missing, '--state', self.state, '--night', self.night,
-                           '--no-gh'], 'brak katalogu AO', missing)
+                           '--no-gh'], 'brak katalogu AO', missing, 'brak pliku przebiegu',
+                          os.path.join(self.state, 'runs', 'x.json'))
         self.assertFalse(os.path.exists(os.path.join(self.state, 'epics', 'x.json')))
+
+    def test_ao_record_has_source_ao(self):
+        home = testkit.synthetic_home(self.root, epic='demo')
+        self.assertEqual(self.record('demo', home=home)['source'], 'ao')
 
     def test_directory_without_database(self):
         home = os.path.join(self.root, 'ao-x')
