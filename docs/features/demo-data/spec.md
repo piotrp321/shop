@@ -56,7 +56,7 @@ Przyjęte przez użytkownika 2026-11-13 (rekomendacje z przygotowania epiku):
   zależy). Generator woła istniejące reguły i value objecty dla wartości (`PriceBreakdown`, `PromotionalPrice`,
   `LineAmounts`, `OrderNumber`, `Slug`), nigdy agregatów ani repozytoriów. Testy kontraktu zostają tylko dla reguł
   spoza Domain (klucz zdjęcia, `values_key`, ścieżka kategorii).
-- **P2. Kolejność prac** (zmieniona decyzją użytkownika z 2026-11-19, DEMO-SCALE U1).
+- **P2. Kolejność prac** (decyzja użytkownika z 2026-11-19, DEMO-SCALE U1).
   1. Ten epik (części 1 i 2, P11): generator, pomiar `medium` na k3d i przebudowa indeksu odporna na błędy.
   2. Dane w skali na serwerze demo: `medium`, po analizie jego wyników i osobnej zgodzie `server`
      (`docs/features/demo-scale/spec.md`, #786). Wynik jest pomiarem tego serwera i tego profilu.
