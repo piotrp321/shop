@@ -11,6 +11,7 @@ import os
 import pathlib
 import subprocess
 import tempfile
+import time
 import unittest
 
 from support import REPO
@@ -118,6 +119,10 @@ def event(text):
     if interfere and text.startswith(interfere):
         state["interfere_after"] = None
         bump()
+    for prefix, changes in list(state.get("on_event", {}).items()):
+        if text.startswith(prefix):
+            del state["on_event"][prefix]
+            state.update(changes)
 
 
 def closed():
@@ -407,6 +412,12 @@ clock="$(cat "$STUB_DIR/clock")"
 echo $((clock + ${1%.*})) > "$STUB_DIR/clock"
 '''
 
+# The target never uses SSH: a call of it is kept.
+SSH = r'''#!/bin/sh
+echo "ssh $*" >> "$STUB_DIR/ssh.log"
+exit 255
+'''
+
 
 def demo_data_cronjob(profile="medium", photos="demo-photos", min_free=32, deadline=21600, anchor="2026-11-19T00:00:00Z"):
     command = ["sh", "/scripts/demo-data.sh", f"--profile={profile}"] + ([f"--anchor={anchor}"] if anchor else []) + [f"--min-free-gb={min_free}"]
@@ -461,7 +472,7 @@ class Cluster:
         self.root = pathlib.Path(tmp)
         self.bin = self.root / "bin"
         self.bin.mkdir()
-        for name, text in (("docker", DOCKER), ("date", DATE), ("sleep", SLEEP)):
+        for name, text in (("docker", DOCKER), ("date", DATE), ("sleep", SLEEP), ("ssh", SSH)):
             (self.bin / name).write_text(text)
             (self.bin / name).chmod(0o755)
         (self.root / "clock").write_text(str(START))
@@ -823,6 +834,484 @@ class Confirmation(GenerateCase):
         before = result.stdout.split("type tak")[0]
         self.assertIn("bin/seed-demo", before)
         self.assertIn("data medium", before)
+
+
+STAMP = time.strftime("%Y%m%d%H%M%S", time.gmtime(START))
+JOB = f"demo-data-{STAMP}"
+LOAD_JOB = f"load-{STAMP}"
+ROOT_BACK = 'patch root {"prune": true, "selfHeal": true}'
+CLOSED = {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": {"name": "shop-closed"}}
+
+
+def closing_events(argocd=True, rule=True):
+    return (["record closing"] + (["patch root null", "patch shop null"] if argocd else [])
+            + (["create networkpolicy shop-closed"] if rule else []) + ["delete pods traefik"])
+
+
+def run_events(photos=True):
+    return ["record running"] + (["delete secret demo-photos", "create secret demo-photos"] if photos else []) + [f"create job {JOB}"]
+
+
+def check_events():
+    return ["record checking", "delete secret demo-photos", "exec api-7c9f-a cache:pool:clear cache.sitemap",
+            "exec api-7c9f-b cache:pool:clear cache.sitemap", f"create job {LOAD_JOB}"]
+
+
+def open_events(argocd=True):
+    return ["record opening", "delete networkpolicy shop-closed"] + ([ROOT_BACK] if argocd else []) + ["record idle"]
+
+
+def happy_events(argocd=True, photos=True, rule=True):
+    return closing_events(argocd, rule) + run_events(photos) + check_events() + open_events(argocd)
+
+
+def failure_tail(argocd=True, rule_missing=False):
+    return (["delete secret demo-photos"] + (["create networkpolicy shop-closed", "delete pods traefik"] if rule_missing else [])
+            + ([ROOT_BACK] if argocd else []) + ["record idle"])
+
+
+FAILED_START = {"record": record("failed", reason="exit 75: an earlier run"), "netpol": CLOSED, "traefik_restart_seq": 1}
+
+
+class RunCase(GenerateCase):
+    def run_generate(self, cluster, **env):
+        env.setdefault("GENERATE_POLL", "300")
+        return cluster.run(**env)
+
+    def assert_common(self, cluster, result):
+        """What every run keeps: no Job deleted, no SSH, the objects of the target without the tracking of Argo CD."""
+        events = cluster.events()
+        self.assertEqual([], [e for e in events if e.startswith(("delete job", "delete jobs"))], result.stderr)
+        self.assertFalse((cluster.root / "ssh.log").exists())
+        state = cluster.state()
+        objects = [d for d in [state["netpol"], *state["secrets"].values()] if d] + ([state["record"]] if state["record"] else [])
+        for doc in objects:
+            metadata = doc.get("metadata", {})
+            self.assertEqual({}, metadata.get("labels", {}), doc)
+            self.assertEqual({}, metadata.get("annotations", {}), doc)
+        for created in [json.loads(c["stdin"]) for c in cluster.calls() if c["stdin"] and '"kind"' in c["stdin"]]:
+            if created["kind"] in ("ConfigMap", "Secret", "NetworkPolicy"):
+                text = json.dumps(created)
+                self.assertNotIn("app.kubernetes.io/instance", text)
+                self.assertNotIn("argocd.argoproj.io", text)
+
+    def assert_closed_failed(self, cluster, result, reason, argocd=True):
+        """Step 7: exit 1, the shop closed, data failed with the reason, no rootAutomated, no Secret, the two ways out."""
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        state = cluster.state()
+        self.assertIsNotNone(state["netpol"])
+        self.assertEqual({}, state["secrets"])
+        final = state["record"]["data"]
+        self.assertEqual(("failed", "idle"), (final["data"], final["phase"]))
+        self.assertIn(reason, final["reason"])
+        self.assertNotIn("rootAutomated", final)
+        if argocd:
+            self.assertEqual(AUTOMATED, state["apps"]["root"]["automated"])
+        self.assertIn("closed", result.stderr)
+        self.assertIn("PROFILE=medium REPLACE=failed", result.stderr)
+        self.assertIn("PROFILE=seed REPLACE=failed", result.stderr)
+        self.assertIn(reason, result.stderr)
+        self.assert_common(cluster, result)
+
+
+class HappyPath(RunCase):
+    def test_a_profile_with_argo_cd_runs_the_steps_and_the_writes_in_the_order_of_the_specification(self):
+        cluster = self.cluster()
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(happy_events(), cluster.events())
+        state = cluster.state()
+        self.assertEqual(AUTOMATED, state["apps"]["root"]["automated"])
+        self.assertIsNone(state["netpol"])
+        self.assertEqual({}, state["secrets"])
+        self.assertEqual("medium", state["jobs"][JOB]["env"]["DEMO_DATA_CONFIRM"])
+        self.assertEqual("demo-data", state["jobs"][JOB]["labels"]["app.kubernetes.io/name"])
+        self.assertEqual("load", state["jobs"][LOAD_JOB]["labels"]["app.kubernetes.io/name"])
+        self.assert_common(cluster, result)
+
+    def test_the_records_of_a_profile_with_argo_cd(self):
+        cluster = self.cluster()
+        self.run_generate(cluster)
+        closing, running, checking, opening, idle = cluster.state()["records"]
+        root = '{"prune":true,"selfHeal":true}'
+        self.assertEqual({"data": "seed", "phase": "closing", "target": "medium", "rootAutomated": root},
+                         {k: closing[k] for k in ("data", "phase", "target", "rootAutomated")})
+        self.assertIn("started", closing)
+        self.assertEqual({"data": "failed", "phase": "running", "target": "medium", "job": JOB, "anchor": "2026-11-19T00:00:00Z",
+                          "revision": "0123456789abcdef0123456789abcdef01234567", "rootAutomated": root},
+                         {k: running.get(k) for k in ("data", "phase", "target", "job", "anchor", "revision", "rootAutomated")})
+        self.assertEqual(("failed", "checking", root), (checking["data"], checking["phase"], checking["rootAutomated"]))
+        self.assertEqual(("medium", "opening", root), (opening["data"], opening["phase"], opening["rootAutomated"]))
+        self.assertEqual(("medium", "idle", "1000191", "1000001", JOB), (idle["data"], idle["phase"], idle["products"], idle["orders"], idle["job"]))
+        self.assertIn("finished", idle)
+        self.assertNotIn("rootAutomated", idle)
+        self.assertNotIn("reason", idle)
+
+    def test_a_profile_without_argo_cd(self):
+        for state in ({"argocd": False}, {"argocd": True, "apps": {}}):
+            with self.subTest(state=state):
+                cluster = self.cluster(**state)
+                result = self.run_generate(cluster)
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertEqual(happy_events(argocd=False), cluster.events())
+                for written in cluster.state()["records"]:
+                    self.assertNotIn("rootAutomated", written)
+                self.assertNotIn("patch", " ".join(" ".join(c) for c in cluster.kubectl_calls()))
+                self.assert_common(cluster, result)
+
+    def test_the_seed_runs_the_same_job_without_the_photo_pool(self):
+        for argocd in (True, False):
+            with self.subTest(argocd=argocd):
+                cluster = self.cluster(argocd=argocd, **FAILED_START)
+                cluster.photos.unlink()
+                result = self.run_generate(cluster, PROFILE="seed", REPLACE="failed")
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertEqual(happy_events(argocd=argocd, photos=False, rule=False), cluster.events())
+                state = cluster.state()
+                self.assertEqual("seed", state["jobs"][JOB]["env"]["DEMO_DATA_CONFIRM"])
+                self.assertEqual(("seed", "idle"), (state["record"]["data"]["data"], state["record"]["data"]["phase"]))
+                self.assertNotIn("reason", state["record"]["data"])
+                self.assertIsNone(state["netpol"])
+                self.assert_common(cluster, result)
+
+    def test_the_log_the_summary_and_the_sizes_are_in_generate_out(self):
+        cluster = self.cluster()
+        log = generator_log(first=SUMMARY[:3] + ["exit code: 75"])
+        cluster_state = cluster.state()
+        cluster_state["outcomes"]["demo-data-"]["log"] = log
+        (cluster.root / "state.json").write_text(json.dumps(cluster_state))
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        folder = cluster.out / JOB
+        self.assertEqual(log, (folder / "demo-data.log").read_text())
+        # The last whole block of the summary, without the times of kubectl.
+        self.assertEqual("\n".join(SUMMARY) + "\n", (folder / "summary.txt").read_text())
+        self.assertIn("stub sizes of postgres", (folder / "sizes.txt").read_text())
+        self.assertIn("stub indices of elasticsearch", (folder / "sizes.txt").read_text())
+        logs = [c for c in cluster.kubectl_calls() if "logs" in c]
+        self.assertIn(["-n", "shop", "logs", f"job/{JOB}", "--container=demo-data", "--timestamps"], logs)
+
+    def test_a_job_whose_pod_is_gone_is_noted_and_the_run_goes_on(self):
+        cluster = self.cluster()
+        cluster_state = cluster.state()
+        cluster_state["outcomes"]["demo-data-"]["pod"] = None
+        (cluster.root / "state.json").write_text(json.dumps(cluster_state))
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("pod", result.stdout + result.stderr)
+        self.assertEqual(happy_events(), cluster.events())
+
+    def test_the_wait_only_reads_the_job_and_prints_the_time_every_ten_minutes(self):
+        cluster = self.cluster()
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        calls = cluster.calls()
+        start = next(i for i, c in enumerate(calls) if c["args"][2:4] == ["create", "-f"] and JOB in c["stdin"] and '"Job"' in c["stdin"])
+        end = next(i for i, c in enumerate(calls) if i > start and c["args"][:5] != ["-n", "shop", "get", "job", JOB])
+        # Between the creation of the Job and the record checking: only readings of the Job (no log, no node, no pod, no probe).
+        self.assertGreater(end - start, 5)
+        self.assertIn('"checking"', calls[end]["stdin"])
+        # 3700 s of the Job, read every 300 s: the time at 10, 20, ... 60 minutes.
+        reports = [line for line in result.stdout.splitlines() if "running for" in line]
+        self.assertEqual(6, len(reports), result.stdout)
+        self.assertIn("0 h 10 min", reports[0])
+        self.assertIn("1 h 0 min", reports[-1])
+
+    def test_traefik_is_waited_for_before_the_probe(self):
+        cluster = self.cluster(traefik_not_ready_after_restart=3)
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        calls = cluster.calls()
+        restart = next(i for i, c in enumerate(calls) if c["args"][2:4] == ["delete", "pods"])
+        traefik_reads = [i for i, c in enumerate(calls) if c["args"][:4] == ["-n", "kube-system", "get", "pods"] and i > restart]
+        first_probe = next(i for i, c in enumerate(calls) if i > restart and c["image"] == "curlimages/curl")
+        self.assertGreaterEqual(len([i for i in traefik_reads if i < first_probe]), 4)
+
+    def test_the_closure_is_confirmed_only_when_every_address_says_closed(self):
+        # The API closes at once; the store only at its second reading of the closing (Cloudflare still had a connection): the run
+        # waits for it. The readings of the store: the check of step 1, two of the closing, the opening.
+        cluster = self.cluster(probes={API_URL: "auto", STORE_URL: ["200", "200", "502", "200"]})
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(happy_events(), [e for e in cluster.events()])
+
+    def test_a_record_with_root_automated_keeps_it(self):
+        # A record that already has rootAutomated (a run stopped before the synchronization came back) keeps the value of before the
+        # first switch-off, not the current one, and brings it back at the end.
+        old = {"prune": False, "selfHeal": True}
+        cluster = self.cluster(record=record("seed", rootAutomated=json.dumps(old, separators=(",", ":"), sort_keys=True)),
+                               apps={"root": {"automated": None}, "shop": {"automated": None}})
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual('{"prune":false,"selfHeal":true}', cluster.state()["records"][0]["rootAutomated"])
+        self.assertEqual('patch root {"prune": false, "selfHeal": true}', cluster.events()[-2])
+        self.assertEqual(old, cluster.state()["apps"]["root"]["automated"])
+        self.assertNotIn("rootAutomated", cluster.state()["record"]["data"])
+
+
+class Rollback(RunCase):
+    def rolled_back(self, cluster, result, data="seed"):
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual([], [e for e in cluster.events() if e.startswith("create job")])
+        final = cluster.state()["record"]["data"]
+        self.assertEqual((data, "idle"), (final["data"], final["phase"]))
+        self.assertNotIn("rootAutomated", final)
+        self.assertEqual({}, cluster.state()["secrets"])
+        self.assertEqual("record idle", cluster.events()[-1])
+        self.assert_common(cluster, result)
+
+    def test_a_store_page_from_a_cache_while_the_api_is_closed_rolls_back(self):
+        cluster = self.cluster(probes={API_URL: "auto", STORE_URL: "200"})
+        result = self.run_generate(cluster)
+        self.rolled_back(cluster, result)
+        self.assertEqual(closing_events() + ["delete secret demo-photos", "delete networkpolicy shop-closed", ROOT_BACK, "record idle"], cluster.events())
+        self.assertIsNone(cluster.state()["netpol"])
+        self.assertEqual(AUTOMATED, cluster.state()["apps"]["root"]["automated"])
+        self.assertIn(STORE_URL, result.stderr)
+        self.assertGreaterEqual(cluster.clock() - START, 120)
+
+    def test_an_address_that_cannot_be_read_rolls_back(self):
+        for code in ("000", "500", "520"):
+            with self.subTest(code=code):
+                cluster = self.cluster(probes={API_URL: "auto", STORE_URL: ["200", code]})
+                result = self.run_generate(cluster)
+                self.rolled_back(cluster, result)
+                self.assertIsNone(cluster.state()["netpol"])
+
+    def test_the_wait_for_the_closure_is_generate_close_wait(self):
+        cluster = self.cluster(probes={API_URL: "auto", STORE_URL: "200"})
+        result = self.run_generate(cluster, GENERATE_CLOSE_WAIT="600")
+        self.rolled_back(cluster, result)
+        self.assertGreaterEqual(cluster.clock() - START, 600)
+
+    def test_a_synchronization_that_started_after_the_switch_off_rolls_back(self):
+        for after in ({"app": "shop", "set": {"operation": True}}, {"app": "root", "set": {"phase": "Running"}},
+                      {"app": "shop", "set": {"automated": dict(AUTOMATED)}}):
+            with self.subTest(after=after):
+                cluster = self.cluster(after_patch={"shop": after})
+                result = self.run_generate(cluster)
+                self.rolled_back(cluster, result)
+                self.assertEqual(["record closing", "patch root null", "patch shop null", "delete secret demo-photos",
+                                  "delete networkpolicy shop-closed", ROOT_BACK, "record idle"], cluster.events())
+                self.assertIn("synchroniz", result.stderr)
+
+    def test_a_rollback_from_data_failed_keeps_the_rule(self):
+        cluster = self.cluster(after_patch={"shop": {"app": "shop", "set": {"operation": True}}}, **FAILED_START)
+        result = self.run_generate(cluster, PROFILE="seed", REPLACE="failed")
+        self.rolled_back(cluster, result, data="failed")
+        self.assertEqual(["record closing", "patch root null", "patch shop null", "delete secret demo-photos", ROOT_BACK, "record idle"],
+                         cluster.events())
+        self.assertIsNotNone(cluster.state()["netpol"])
+        self.assertIn("exit 75: an earlier run", cluster.state()["record"]["data"]["reason"])
+
+    def test_a_secret_left_by_an_earlier_run_is_deleted_by_the_rollback(self):
+        cluster = self.cluster(secrets={"demo-photos": {"kind": "Secret", "metadata": {"name": "demo-photos"}}}, probes={API_URL: "auto", STORE_URL: "200"})
+        result = self.run_generate(cluster)
+        self.rolled_back(cluster, result)
+
+    def test_a_job_that_started_after_the_checks_is_waited_for(self):
+        # A Job that starts once the checks are done (a CronJob of the chart) runs on: the closing waits for it.
+        late = {"labels": {}, "env": {}, "deadline": 600, "created_at": START, "duration": 900, "outcome": "Complete", "pod": None, "log": ""}
+        cluster = self.cluster(on_event={"record closing": {"jobs": {**initial_state()["jobs"], "cart-purge-expired-1": late}}})
+        result = self.run_generate(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(happy_events(), cluster.events())
+        self.assertIn("cart-purge-expired-1", result.stdout)
+
+    def test_a_job_that_does_not_end_in_the_wait_rolls_back(self):
+        late = {"labels": {}, "env": {}, "deadline": 600, "created_at": START, "duration": 10**7, "outcome": "Complete", "pod": None, "log": ""}
+        cluster = self.cluster(on_event={"record closing": {"jobs": {**initial_state()["jobs"], "cart-purge-expired-1": late}}})
+        result = self.run_generate(cluster, GENERATE_ACTIVE_JOBS_WAIT="900")
+        self.rolled_back(cluster, result)
+        self.assertIn("cart-purge-expired-1", result.stderr)
+
+
+class Failure(RunCase):
+    def with_outcome(self, cluster, prefix, **outcome):
+        state = cluster.state()
+        state["outcomes"][prefix] = {**state["outcomes"][prefix], **outcome}
+        (cluster.root / "state.json").write_text(json.dumps(state))
+
+    def test_a_failed_job_with_the_reason_of_its_pod(self):
+        cluster = self.cluster()
+        reason = "exit 75: the free space of / fell to 31.74 GB (31000000 KiB), below the floor of 32 GB (demoData.minFreeGb); the generator was stopped"
+        self.with_outcome(cluster, "demo-data-", outcome="Failed", duration=1800, pod={"container": "demo-data", "exit": 75, "message": reason + "\n"})
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events() + run_events() + failure_tail(), cluster.events())
+        self.assert_closed_failed(cluster, result, reason)
+        self.assertTrue((cluster.out / JOB / "demo-data.log").exists())
+        self.assertTrue((cluster.out / JOB / "summary.txt").exists())
+
+    def test_a_failed_job_without_its_pod(self):
+        cluster = self.cluster()
+        self.with_outcome(cluster, "demo-data-", outcome="Failed", duration=600, pod=None)
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events() + run_events() + failure_tail(), cluster.events())
+        self.assert_closed_failed(cluster, result, "the pod of the Job does not exist")
+
+    def test_a_job_failed_by_kubernetes_without_a_message_of_the_pod(self):
+        cluster = self.cluster()
+        self.with_outcome(cluster, "demo-data-", outcome="Failed", duration=600, reason="DeadlineExceeded",
+                          reason_message="Job was active longer than specified deadline", pod={"container": "demo-data", "exit": 137, "message": ""})
+        result = self.run_generate(cluster)
+        self.assert_closed_failed(cluster, result, "DeadlineExceeded")
+
+    def test_a_job_that_does_not_finish_in_its_time(self):
+        crons = initial_state()["cronjobs"]
+        crons["demo-data"]["deadline"] = 1200
+        cluster = self.cluster(cronjobs=crons)
+        self.with_outcome(cluster, "demo-data-", outcome="Running")
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events() + run_events() + failure_tail(), cluster.events())
+        self.assert_closed_failed(cluster, result, "did not finish")
+        self.assertGreaterEqual(cluster.clock() - START, 1200)
+
+    def test_a_job_that_cannot_be_created(self):
+        cluster = self.cluster()
+        self.with_outcome(cluster, "demo-data-", create_fails=True)
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events() + run_events()[:-1] + failure_tail(), cluster.events())
+        self.assert_closed_failed(cluster, result, "could not be created")
+
+    def test_every_failed_check_after_the_job(self):
+        for changes, reason in (
+            ({"pg": {"estimates": "191|0", "invalid": "catalog_product_pkey\n", "counts": "1|1"}}, "catalog_product_pkey"),
+            ({"es": {"health": "green", "alias": [], "indices": {}}}, "alias products"),
+            ({"es": {"health": "green", "alias": ["products_1", "products_2"], "indices": {"products_1": 5, "products_2": 5}}}, "alias products"),
+            ({"es": {"health": "green", "alias": ["products_1"], "indices": {"products_1": 0}}}, "no documents"),
+            ({"es": {"health": "red", "alias": ["products_1"], "indices": {"products_1": 5}}}, "red"),
+            ({"es": {"health": "yellow", "alias": ["products_1"], "indices": {"products_1": 5, "products_0": 3}}}, "products_0"),
+            ({"es": {"fail": True}}, "Elasticsearch"),
+            ({"pg": {"fail": True, "estimates": "", "invalid": "", "counts": ""}}, "Postgres"),
+            ({"pg": {"estimates": "191|0", "invalid": "", "counts": "x"}}, "numbers of products and orders"),
+        ):
+            with self.subTest(reason=reason):
+                cluster = self.cluster(on_event={"record checking": changes})
+                result = self.run_generate(cluster)
+                self.assert_closed_failed(cluster, result, reason)
+                self.assertEqual([], [e for e in cluster.events() if e.startswith(("record opening", "delete networkpolicy"))])
+
+    def test_a_failed_job_of_the_cronjob_load(self):
+        cluster = self.cluster()
+        self.with_outcome(cluster, "load-", outcome="Failed", log="     ✗ checkout of a guest\n")
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events() + run_events() + check_events() + failure_tail(), cluster.events())
+        self.assert_closed_failed(cluster, result, LOAD_JOB)
+
+    def test_a_rule_that_is_gone_is_made_again_with_traefik(self):
+        cluster = self.cluster(on_event={f"create job {JOB}": {"netpol": None}})
+        self.with_outcome(cluster, "demo-data-", outcome="Failed", pod=None)
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events() + run_events() + failure_tail(rule_missing=True), cluster.events())
+        self.assert_closed_failed(cluster, result, "the pod of the Job does not exist")
+
+    def test_a_failure_without_argo_cd(self):
+        cluster = self.cluster(argocd=False)
+        self.with_outcome(cluster, "demo-data-", outcome="Failed", pod=None)
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events(argocd=False) + run_events() + failure_tail(argocd=False), cluster.events())
+        self.assert_closed_failed(cluster, result, "the pod of the Job does not exist", argocd=False)
+
+    def test_a_cache_that_cannot_be_cleared_stops_in_the_phase_checking(self):
+        cluster = self.cluster(cache_clear_fails=["api-7c9f-b"])
+        result = self.run_generate(cluster)
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertEqual(closing_events() + run_events() + check_events()[:-1], cluster.events())
+        state = cluster.state()
+        self.assertEqual(("failed", "checking"), (state["record"]["data"]["data"], state["record"]["data"]["phase"]))
+        self.assertIsNotNone(state["netpol"])
+        self.assertIn("api-7c9f-b", result.stderr)
+        self.assertIn("closed", result.stderr)
+        self.assert_common(cluster, result)
+
+    def test_a_probe_that_does_not_say_open_leaves_the_phase_opening(self):
+        cluster = self.cluster(on_event={"delete networkpolicy": {"probes": {API_URL: "auto", STORE_URL: "000"}}})
+        result = self.run_generate(cluster, GENERATE_OPEN_WAIT="200")
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertEqual(happy_events()[:-1], cluster.events())
+        final = cluster.state()["record"]["data"]
+        self.assertEqual(("medium", "opening"), (final["data"], final["phase"]))
+        self.assertIn(STORE_URL, result.stderr)
+        self.assert_common(cluster, result)
+
+
+class OneWriter(RunCase):
+    def test_a_record_written_between_the_read_and_the_first_write_stops_it_without_changes(self):
+        for rec in (None, record("seed")):
+            with self.subTest(record=rec):
+                cluster = self.cluster(record=rec, interfere_on_read=1)
+                result = self.run_generate(cluster)
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertEqual([], cluster.events())
+                self.assertIn("another copy", result.stderr)
+                self.assertEqual(AUTOMATED, cluster.state()["apps"]["shop"]["automated"])
+
+    def test_a_record_written_between_two_changes_stops_it_before_the_next_one(self):
+        events = happy_events()
+        for point in ("record closing", "patch root null", "patch shop null", "create networkpolicy", "delete pods traefik", "record running",
+                      "create secret", f"create job {JOB}", "record checking", "exec api-7c9f-a", f"create job {LOAD_JOB}", "record opening",
+                      "delete networkpolicy", ROOT_BACK):
+            with self.subTest(point=point):
+                cluster = self.cluster(interfere_after=point)
+                result = self.run_generate(cluster)
+                self.assertEqual(1, result.returncode, result.stderr)
+                upto = next(i for i, e in enumerate(events) if e.startswith(point))
+                self.assertEqual(events[:upto + 1], cluster.events())
+                self.assertIn("another copy", result.stderr)
+
+    def test_a_write_in_the_failure_path_is_conditional_too(self):
+        cluster = self.cluster(interfere_after="delete secret demo-photos")
+        state = cluster.state()
+        state["outcomes"]["demo-data-"].update(outcome="Failed", pod=None)
+        state["interfere_after"] = None
+        state["on_event"] = {f"create job {JOB}": {"interfere_after": "delete secret demo-photos"}}
+        (cluster.root / "state.json").write_text(json.dumps(state))
+        result = self.run_generate(cluster)
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertEqual(closing_events() + run_events() + ["delete secret demo-photos"], cluster.events())
+        self.assertIn("another copy", result.stderr)
+
+
+class PhotoPool(RunCase):
+    def leaks(self, cluster, result):
+        values = list(READ_ACCESS.values()) + list(WRITE_ACCESS.values())
+        texts = [result.stdout, result.stderr] + [" ".join(c["args"]) for c in cluster.calls()]
+        texts += [p.read_text() for p in cluster.out.rglob("*") if p.is_file()]
+        return [v for v in values for text in texts if v in text]
+
+    def test_the_values_are_neither_in_the_output_nor_in_a_command_line_nor_in_generate_out(self):
+        for options in ((), ("-x",)):
+            with self.subTest(options=options):
+                cluster = self.cluster()
+                state = cluster.state()
+                # The log of the generator holds a value: it is masked in GENERATE_OUT.
+                state["outcomes"]["demo-data-"]["log"] = generator_log(first=[f"stub error with {READ_ACCESS['DEMO_PHOTOS_SECRET_ACCESS_KEY']}"])
+                (cluster.root / "state.json").write_text(json.dumps(state))
+                result = self.run_generate(cluster, shell_options=options)
+                self.assertEqual(0, result.returncode, result.stderr[-3000:])
+                self.assertEqual([], self.leaks(cluster, result))
+                self.assertIn("[masked]", (cluster.out / JOB / "demo-data.log").read_text())
+
+    def test_the_secret_has_the_four_read_values_and_never_the_token_that_writes(self):
+        cluster = self.cluster()
+        self.run_generate(cluster)
+        (secret,) = [json.loads(c["stdin"]) for c in cluster.calls() if '"Secret"' in c["stdin"]]
+        self.assertEqual("demo-photos", secret["metadata"]["name"])
+        self.assertEqual({k: base64.b64encode(v.encode()).decode() for k, v in READ_ACCESS.items()}, secret["data"])
+        text = json.dumps(secret)
+        for value in WRITE_ACCESS.values():
+            self.assertNotIn(value, text)
+            self.assertNotIn(base64.b64encode(value.encode()).decode(), text)
+
+    def test_the_secret_is_deleted_after_a_failure_too(self):
+        cluster = self.cluster()
+        state = cluster.state()
+        state["outcomes"]["demo-data-"].update(outcome="Failed", pod=None)
+        (cluster.root / "state.json").write_text(json.dumps(state))
+        result = self.run_generate(cluster)
+        self.assertEqual(1, result.returncode)
+        self.assertEqual({}, cluster.state()["secrets"])
+        self.assertEqual([], self.leaks(cluster, result))
 
 
 if __name__ == "__main__":
