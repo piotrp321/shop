@@ -2,43 +2,48 @@
 """Facts and registers for the /retro skill (retrospective after an epic). Python 3.9+, standard library only.
 
 Every command takes `--repo DIR` (where `gh` and `git` run, default: the current directory), `--ao-home`,
-`--retro-home` and `--sweep-home` (paths below). Results are printed as one JSON document on stdout (`collect`
-prints the path of the file) and diagnostics as `retro: ...` on stderr. Exit codes: 0 success; 1 a `gh` or `git`
-command failed or a file could not be written (nothing is half-written: files are replaced atomically); 2 invalid
-arguments or a refusal (a bad epic name, a retro in the state `done` or `skipped`, another run's fresh lock, an item
-that does not exist) and, for `validate`, proposals that do not pass.
+`--retro-home`, `--sweep-home` and `--metrics-state` (paths below). Results are printed as one JSON document on stdout
+(`collect` prints the path of the file) and diagnostics as `retro: ...` on stderr. Exit codes: 0 success; 1 a `gh` or
+`git` command failed or a file could not be written (nothing is half-written: files are replaced atomically); 2
+invalid arguments or a refusal (a bad epic name, a retro in the state `done` or `skipped`, another run's fresh lock,
+an item that does not exist) and, for `validate`, proposals that do not pass.
 
-  retro.py collect EPIC [--out DIR]
+  retro.py collect EPIC [--out DIR] [--worktree DIR]
       Writes DIR/input.json (default DIR: <retro-home>/EPIC) and prints its path. input.json has the incidents of the
-      whole history of AO runs (docs/features/retro/spec.md, "Incydenty"), the facts of the plan "Status"
-      (`status/in-progress`, `status/last-epic`, `status/agent-issues`, `status/pending-retro`), the registers, the
-      items of the open retro PR and the open issues to check duplicates against. The measurement of
-      tools/metrics/metrics.py (run as `python3 tools/metrics/metrics.py` in --repo through an injectable runner)
-      is added too: `decide EPIC --history` gives the incidents of the kind `optimization` (ID
-      `<epic>/optimization/<key>`, one per candidate of an epic of the history), `trend --json --epic EPIC --no-gh`
-      and the decide result of the epic are the facts `<epic>/measurement/{trend,record,decide}` (with `data`), and
-      `optimization_effects` [{key, applied_key, pr, merged_at, at, effect}] holds, for every row of applied.jsonl
-      with an `optimization` incident, the output of `metrics.py effect KEY --at <merge of the fix>` as it is (null
-      when the call failed). A missing script, a non-zero exit code, a timeout or an output that is not the expected
-      JSON is the fact `<epic>/measurement/missing/<call>`: "brak danych pomiaru" and the category of the failure in
-      Polish ("kod wyjścia N", ...), never the stderr of the script (local paths, tracebacks); the other incidents
-      are collected anyway.
-      GitHub content (epic issues and
-      their comments, PRs into epic/*, the open retro PR, open issues) comes through the origin gate
-      tools/agent-security/github_trust.py, AO issues judged by the permission in the AO repository: a measurement
-      comment counts only from a trusted author, an untrusted epic issue, comment or task PR is only an entry of
-      `external` {source, number, author, url} and an untrusted open issue is {number, author, url, trusted: false}.
-      A failing gate (gh, unknown permission) is exit code 1 like a failing `gh`.
+      whole history of AO runs and native epics (docs/features/retro/spec.md, "Incydenty"; a native epic is a run file
+      <metrics-state>/runs/EPIC.json of `metrics.py start` with a final PR and no ao-EPIC directory: its incidents
+      come from its record <metrics-state>/epics/EPIC.json, refreshed first with `metrics.py epic EPIC` for the
+      collected epic, and from the sections of the description of its final PR read through the gate), the facts of
+      the plan "Status" (`status/in-progress`, `status/last-epic`, `status/agent-issues`, `status/pending-retro`), the
+      registers, the items of the open retro PR and the open issues to check duplicates against. The measurement of
+      tools/metrics/metrics.py (the script of --worktree, the checkout of origin/main, default --repo, run in --repo
+      with SHOP_METRICS_STATE=--metrics-state through an injectable runner) is added too: `decide EPIC --history`
+      gives the incidents of the kind `optimization` (ID `<epic>/optimization/<key>`, one per candidate of an epic of
+      the history), `trend --json --epic EPIC --no-gh` and the decide result of the epic are the facts
+      `<epic>/measurement/{trend,record,decide}` (with `data`), and `optimization_effects` [{key, applied_key, pr,
+      merged_at, at, effect}] holds, for every row of applied.jsonl with an `optimization` incident, the output of
+      `metrics.py effect KEY --at <merge of the fix>` as it is (null when the call failed). A missing script, a
+      non-zero exit code, a timeout or an output that is not the expected JSON is the fact
+      `<epic>/measurement/missing/<call>`: "brak danych pomiaru" and the category of the failure in Polish ("kod
+      wyjścia N", ...), never the stderr of the script (local paths, tracebacks); the other incidents are collected
+      anyway.
+      GitHub content (epic issues and their comments, PRs into epic/*, final PRs of native epics, the open retro PR,
+      open issues) comes through the origin gate tools/agent-security/github_trust.py, AO issues judged by the
+      permission in the AO repository: a measurement comment counts only from a trusted author, an untrusted epic
+      issue, comment, task PR or final PR is only an entry of `external` {source, number, author, url} and an
+      untrusted open issue is {number, author, url, trusted: false}. A failing gate (gh, unknown permission) is exit
+      code 1 like a failing `gh`.
   retro.py validate DIR
       Checks DIR/proposals.json against DIR/input.json ("Walidacja"; the plan without a manifest for `status` items
       is looked up in `--repo`). Prints {"ok": bool, "errors": [{"item": n|null, "code", "message"}]}; exit 0 when
       ok, 2 otherwise. Codes: proposals, schema, limit, field, file, unknown_incident, class, threshold, open_pr,
       rejected, applied, existing_issue (also an open issue without `trusted: true`), status. A missing input.json
       is exit 2 with a message on stderr.
-  retro.py observe DIR [--pr N --branch B]
+  retro.py observe DIR [--pr N --branch B [--committed none|N[,N...]]]
       Appends to observations.jsonl the observations of DIR/proposals.json and the key and incidents of every `fix`
       and `issue` item (no row twice). Records in <retro-home>/<epic>/state.json the `issue` items as
-      `decisions_open` and, with --pr, the `fix` items as `pr` {number, branch, items} (the retro PR of this run).
+      `decisions_open` and, with --pr, the `fix` items as `pr` {number, branch, items} (the retro PR of this run);
+      --committed limits them to the fix items committed in the PR (`none` while the series is in progress).
   retro.py reject (--key KEY | --all | --pr N) --reason TEXT [--epic EPIC]
       A conscious rejection, written to rejected.jsonl (the only command that writes it): `--key` takes the undecided
       item with the key (an item of an unresolved retro PR or an issue proposal in `decisions_open`); `--all` takes
@@ -55,8 +60,9 @@ that does not exist) and, for `validate`, proposals that do not pass.
       done by the `key` of the item, so a second run repeats nothing; a failing item (also a NUL in its text) does
       not stop the others (exit 1 at the end).
   retro.py pending
-      [{"epic", "merged_at", "attempts", "reason"}] of the epics whose final PR was merged after RETRO_SINCE and
-      whose retro is neither `done` nor `skipped`, from the oldest merge; attempts and reason are the deferrals.
+      [{"epic", "merged_at", "attempts", "reason"}] of the epics (AO runs and native epics) whose final PR was merged
+      after RETRO_SINCE and whose retro is neither `done` nor `skipped`, from the oldest merge; attempts and reason
+      are the deferrals.
   retro.py defer EPIC --reason TEXT     records an attempt and a reason (to 200 characters); the epic stays pending
   retro.py skip EPIC --reason TEXT      state `skipped`: the epic leaves `pending` for good
   retro.py lock EPIC [--run-id ID]      takes <retro-home>/lock {run_id, epic, at} and marks the epic `running`. The
@@ -81,6 +87,7 @@ Paths (defaults as in the specification, each can be overridden by an option or 
   AO_STATE_HOME     ~/.local/state            directories ao-<epic>/
   SHOP_RETRO_HOME   ~/.local/state/shop-retro registers and per-epic state.json
   SHOP_SWEEP_HOME   ~/.local/state/shop-sweep <date>-<sha7>-<epic>/report.md of /sweep
+  SHOP_METRICS_STATE ~/.local/state/shop-metrics runs/<epic>.json and epics/<epic>.json of tools/metrics
 
 Files in SHOP_RETRO_HOME (docs/features/retro/spec.md, "Rejestry"); times are epoch seconds:
   <epic>/state.json   `state` (running, done, skipped; absent for a deferred or not started retro), `deferrals`
@@ -148,6 +155,7 @@ def default_paths():
         'ao_home': os.environ.get('AO_STATE_HOME') or home,
         'retro_home': os.environ.get('SHOP_RETRO_HOME') or os.path.join(home, 'shop-retro'),
         'sweep_home': os.environ.get('SHOP_SWEEP_HOME') or os.path.join(home, 'shop-sweep'),
+        'metrics_state': os.environ.get('SHOP_METRICS_STATE') or os.path.join(home, 'shop-metrics'),
     }
 
 
@@ -728,19 +736,35 @@ def sweep_incidents(epic_id, merged_at, text):
 
 # ------------------------------------------------------------------------------ "Decyzje bez pytania" of task PRs
 
-def unasked_decisions(body):
-    """[(position, text)] of the section `Decyzje bez pytania` of a PR description. A decision is an item of the top
-    level list (no indentation, numbered or bulleted); indented lines, also indented bullets, continue the current
-    item. A numbered item keeps its number, a bullet takes the next ordinal among the items; a number that was
-    already used (also by a bullet) is replaced by the ordinal, so the positions of one description are unique."""
+def section_lines(body, name):
+    """The lines of the section `name` of a PR description (a heading of any level, in any case) up to the next
+    heading, or None when the description has no such section."""
     lines = (body or '').splitlines()
-    start = next((i for i, l in enumerate(lines) if re.match(r'^#{1,6}\s*decyzje bez pytania\s*$', l, re.I)), None)
+    heading = re.compile(r'^#{1,6}\s*%s\s*$' % re.escape(name), re.I)
+    start = next((i for i, l in enumerate(lines) if heading.match(l)), None)
     if start is None:
-        return []
-    items, used, current, blank = [], set(), None, False
+        return None
+    found = []
     for line in lines[start + 1:]:
         if re.match(r'^#{1,6}\s', line):
             break
+        found.append(line)
+    return found
+
+
+def unasked_decisions(body):
+    """[(position, text)] of the section `Decyzje bez pytania` of a PR description (list_items)."""
+    lines = section_lines(body, 'decyzje bez pytania')
+    return [] if lines is None else list_items(lines)
+
+
+def list_items(lines):
+    """[(position, text)] of the items of a section. An item is an item of the top level list (no indentation,
+    numbered or bulleted); indented lines, also indented bullets, continue the current item. A numbered item keeps
+    its number, a bullet takes the next ordinal among the items; a number that was already used (also by a bullet) is
+    replaced by the ordinal, so the positions of one description are unique."""
+    items, used, current, blank = [], set(), None, False
+    for line in lines:
         if not line.strip():
             blank = True
             continue
@@ -773,6 +797,239 @@ def unasked_incidents(epic_id, prs):
                 {'pr': number, 'position': position, 'text': cut(text, 500), 'title': pr.get('title')},
                 [{'source': 'pr %s' % number, 'text': cut(text, 500)}]))
     return incidents
+
+
+# ------------------------------------------------------------------------------- native epics (docs/features/ash-v1)
+
+# The fixed sections of the description of the final PR of a native epic (docs/adr/agentic-software-house.md,
+# "Przebieg epiku", step 7) read by /retro: (key part of the incident, heading, kind of incident).
+NATIVE_PR_SECTIONS = (('decisions', 'Decyzje bez pytania', 'unasked'), ('problems', 'Problemy i zastoje', 'reported'),
+                      ('gaps', 'Luki w instrukcjach', 'reported'))
+
+
+def no_entry(text):
+    """True for the entry "brak" of an empty section ("brak", "Brak.", in any case, with punctuation)."""
+    return re.sub(r'[\W_]+', '', text).lower() == 'brak'
+
+
+def pr_section_points(body, name):
+    """[(position, text)] of the points of the section `name` of a PR description: the items of its list
+    (list_items) or, for a section of prose without a list, its whole text as one point; the entry "brak" is no point.
+    None when the description has no such section (a fact of missing data, not an error)."""
+    lines = section_lines(body, name)
+    if lines is None:
+        return None
+    items = list_items(lines)
+    if not items:
+        text = ' '.join(line.strip() for line in lines if line.strip())
+        items = [(1, text)] if text else []
+    return [(position, text) for position, text in items if not no_entry(text)]
+
+
+def final_pr_of(run_file):
+    pr = run_file.get('pr') if isinstance(run_file, dict) else None
+    return pr if isinstance(pr, int) and not isinstance(pr, bool) and pr > 0 else None
+
+
+def load_run_file(metrics_state, epic_id):
+    """The run file `<metrics_state>/runs/<epic>.json` of `metrics.py start` as a dict, None when there is none;
+    ValueError when it cannot be read as a JSON object."""
+    path = os.path.join(metrics_state, 'runs', '%s.json' % epic_id)
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        raise ValueError('the native run file %s cannot be read: %s' % (path, getattr(e, 'strerror', None) or e))
+    if not isinstance(data, dict):
+        raise ValueError('the native run file %s is not a JSON object' % path)
+    return data
+
+
+def native_epics(metrics_state, ao_home):
+    """The finished native epics: a run file `<metrics_state>/runs/<epic>.json` with a valid epic name and a final PR,
+    and no AO run directory `ao-<epic>` (metrics.py epic builds the record of such an epic from AO). Unreadable run
+    files are skipped. [{id, final_pr_number, created_at, branch, source}] by epic ID."""
+    try:
+        names = sorted(os.listdir(os.path.join(metrics_state, 'runs'))) if metrics_state else []
+    except OSError:
+        names = []
+    found = []
+    for name in names:
+        epic_id, extension = os.path.splitext(name)
+        if extension != '.json' or not EPIC_NAME.match(epic_id) \
+                or os.path.isdir(os.path.join(ao_home, 'ao-' + epic_id)):
+            continue
+        try:
+            run_file = load_run_file(metrics_state, epic_id)
+        except ValueError:
+            continue
+        if final_pr_of(run_file) is None:
+            continue
+        branch = run_file.get('branch')
+        found.append({'id': epic_id, 'final_pr_number': final_pr_of(run_file),
+                      'created_at': parse_time(run_file.get('started_at')),
+                      'branch': branch if filled(branch) else None, 'source': 'native'})
+    return found
+
+
+def check_collectable(epic_id, paths):
+    """Refuses (ValueError, exit 2) an epic that is neither a finished AO run nor a native epic with a final PR."""
+    if os.path.isdir(os.path.join(paths['ao_home'], 'ao-' + epic_id)):
+        raise ValueError('ao-%s is not the run of a finished epic (DONE with a final PR) in %s'
+                         % (epic_id, paths['ao_home']))
+    state = paths.get('metrics_state')
+    run_file = load_run_file(state, epic_id) if state else None
+    if run_file is None:
+        raise ValueError('%s has neither an AO run (ao-%s in %s) nor a native run file (runs/%s.json in %s, '
+                         'metrics.py start)' % (epic_id, epic_id, paths['ao_home'], epic_id, state))
+    if final_pr_of(run_file) is None:
+        raise ValueError('the native run file of %s has no final PR (metrics.py start --pr)' % epic_id)
+
+
+def read_native_record(metrics_state, epic_id):
+    """The record `<metrics_state>/epics/<epic>.json` of metrics.py, or None when it is missing or unreadable."""
+    try:
+        with open(os.path.join(metrics_state, 'epics', '%s.json' % epic_id), encoding='utf-8') as f:
+            record = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _unique(key, seen):
+    candidate, n = key, 1
+    while candidate in seen:
+        n += 1
+        candidate = '%s-%d' % (key, n)
+    seen.add(candidate)
+    return candidate
+
+
+def _number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _epoch(value):
+    at = parse_time(value)
+    return int(at) if at is not None else None
+
+
+def native_record_incidents(epic_id, record):
+    """(incidents, facts) of the metrics record of a native epic (docs/features/ash-v1/spec.md, R2): `wait` per human
+    event (a human action), `finding` per blocking review, `failed_attempt` per unfinished subagent run, `escaped` per
+    `bug` issue of the regression window. A missing record or field is a fact, never an error."""
+    if record is None:
+        return [], [{'id': '%s/missing/record' % epic_id,
+                     'text': 'brak rekordu metryk epiku natywnego (metrics.py epic %s): brak incydentów z rekordu'
+                             % epic_id}]
+    incidents, facts, seen = [], [], set()
+
+    def field(name, value):
+        if not isinstance(value, list):
+            facts.append({'id': '%s/missing/record/%s' % (epic_id, name),
+                          'text': 'rekord metryk bez pola %s: brak incydentów z tego źródła' % name})
+            return []
+        return [v for v in value if isinstance(v, dict)]
+
+    human = record.get('human')
+    for event in field('human', human.get('events') if isinstance(human, dict) else None):
+        at, wait = _epoch(event.get('at')), event.get('wait_s')
+        if at is None or not _number(wait):
+            continue
+        data = {'event': 'human_message', 'task_id': None, 'start': int(at - wait), 'end': at, 'open': False,
+                'wait_s': wait, 'action': 'human_message', 'human_action': True, 'can_be_corrective': True}
+        incidents.append(_incident(epic_id, 'wait', _unique('human@%d' % at, seen), at, data,
+                                   [{'source': 'rekord metryk', 'at': at,
+                                     'text': 'wiadomość człowieka po %d s czekania' % round(wait)}]))
+
+    for review in field('reviews', record.get('reviews')):
+        if review.get('blocking') is not True:
+            continue
+        at = _epoch(review.get('at'))
+        task = review.get('task') if filled(review.get('task')) else None
+        role = cut(review.get('role'), 100)
+        key = _unique('%s:%s@%s' % (task or 'epik', role, at if at is not None else 'brak-czasu'), seen)
+        data = {'task': task, 'role': role, 'agent_id': review.get('agent_id'), 'mode': review.get('mode'),
+                'verdict': review.get('verdict'), 'blocking': True, 'can_be_corrective': False}
+        text = 'przegląd %s %s (%s): werdykt %s' % (role, 'zadania %s' % task if task else 'całej zmiany',
+                                                    review.get('mode'), review.get('verdict'))
+        incidents.append(_incident(epic_id, 'finding', key, at, data, [{'source': 'rekord metryk', 'text': text}]))
+
+    for attempt in field('attempts', record.get('attempts')):
+        if attempt.get('finished') is not False:
+            continue
+        task = attempt.get('task') if filled(attempt.get('task')) else None
+        key = _unique('%s:%s' % (task or 'bez-zadania', attempt.get('agent_id')), seen)
+        data = {name: attempt.get(name) for name in ('task', 'role', 'model', 'agent_id', 'started_at', 'ended_at')}
+        data['can_be_corrective'] = False
+        text = 'przebieg subagenta %s (%s) %s niezakończony' % (attempt.get('agent_id'), attempt.get('role'),
+                                                                'zadania %s' % task if task else 'bez zadania')
+        incidents.append(_incident(epic_id, 'failed_attempt', key, _epoch(attempt.get('ended_at')), data,
+                                   [{'source': 'rekord metryk', 'text': text}]))
+
+    regressions = record.get('regressions') if isinstance(record.get('regressions'), dict) else {}
+    issues = regressions.get('issues')
+    if not isinstance(issues, list):
+        field('regressions', None)
+    for number in issues if isinstance(issues, list) else []:
+        if isinstance(number, int) and not isinstance(number, bool):
+            incidents.append(_incident(epic_id, 'escaped', 'issue%d' % number, None,
+                                       {'issue': number, 'can_be_corrective': False},
+                                       [{'source': 'rekord metryk',
+                                         'text': 'zgłoszenie bug #%d z okna regresji epiku' % number}]))
+    if regressions.get('open') is True:
+        facts.append({'id': '%s/native/regression-window' % epic_id,
+                      'text': 'okno regresji otwarte do %s: zgłoszenia bug mogą jeszcze dojść'
+                              % cut(regressions.get('until'), 40)})
+    return incidents, facts
+
+
+def native_pr_incidents(epic_id, number, record):
+    """(incidents, facts) of the description of the final PR (a trusted record of the origin gate): `unasked` per
+    point of "Decyzje bez pytania", `reported` per point of "Problemy i zastoje" and "Luki w instrukcjach"; a missing
+    section is a fact."""
+    incidents, facts = [], []
+    for slug, name, kind in NATIVE_PR_SECTIONS:
+        points = pr_section_points(record.get('body'), name)
+        if points is None:
+            facts.append({'id': '%s/missing/pr-section/%s' % (epic_id, slug),
+                          'text': 'brak sekcji „%s” w opisie końcowego PR #%s' % (name, number)})
+            continue
+        for position, text in points:
+            if kind == 'unasked':
+                key = 'pr%s#%d' % (number, position)
+                data = {'pr': number, 'position': position, 'text': cut(text, 500), 'title': record.get('title')}
+            else:
+                key = '%s#%d' % (slug, position)
+                data = {'pr': number, 'section': name, 'position': position, 'text': cut(text, 500),
+                        'can_be_corrective': False}
+            incidents.append(_incident(epic_id, kind, key, None, data,
+                                       [{'source': 'pr %s' % number, 'text': cut(text, 500)}]))
+    return incidents, facts
+
+
+def final_pr_record(gate, epic):
+    """The record of the origin gate for the final PR of a native epic (listed by the branch of its run file), or
+    None when the run file has no branch or the gate does not list that PR."""
+    if not epic.get('branch'):
+        return None
+    for record in gate.prs(state='all', head=epic['branch'], limit=30, fields=('title', 'body')):
+        if record['number'] == epic['final_pr_number']:
+            return record
+    return None
+
+
+def native_numbers(record):
+    """The numbers of `status/last-epic` from the `human` of a native record ({} without it)."""
+    human = record.get('human') if isinstance(record, dict) else None
+    if not isinstance(human, dict):
+        return {}
+    wait_s, fixes = human.get('wait_s'), human.get('manual_fixes')
+    return {'interventions': human.get('interventions'), 'waits': human.get('waits'),
+            'wait_min': round(wait_s / 60) if _number(wait_s) else None,
+            'manual_count': len(fixes) if isinstance(fixes, list) else None}
 
 
 # ---------------------------------------------------------------------------------------------- GitHub and registers
@@ -912,7 +1169,7 @@ def blocked_in_runs(ao_home, in_progress):
 
 
 KIND_ORDER = ('wait', 'failed_attempt', 'finding', 'repair', 'manual_fix', 'escaped', 'no_sweep', 'unasked',
-              'optimization')
+              'reported', 'optimization')
 
 # ------------------------------------------------------------------------------- measurement (tools/metrics/metrics.py)
 
@@ -928,19 +1185,23 @@ class MeasurementError(Exception):
     what the script wrote, because its stderr has local paths and tracebacks and goes to input.json."""
 
 
-def make_metrics_runner(repo):
-    """A runner of `python3 tools/metrics/metrics.py` (path relative to the repository root `repo`): takes the arguments
-    after the script and returns the standard output. A missing script, a non-zero exit code and a timeout are a
-    MeasurementError with the category only; the stderr of the script is dropped."""
-    script = os.path.join(os.path.abspath(repo), METRICS_SCRIPT)
+def make_metrics_runner(repo, root=None, state=None):
+    """A runner of `python3 tools/metrics/metrics.py`: takes the arguments after the script and returns the standard
+    output. The script is taken from the checkout `root` (the worktree of origin/main, #679; default: `repo`) and runs
+    in the repository `repo` (where `gh` finds the repository) with `SHOP_METRICS_STATE` set to `state` when given, so
+    the data and the measurement state stay where they are. A missing script, a non-zero exit code and a timeout are
+    a MeasurementError with the category only; the stderr of the script is dropped."""
+    script = os.path.join(os.path.abspath(root or repo), METRICS_SCRIPT)
     run = next_epic.make_runner(repo, timeout=METRICS_TIMEOUT_S)
+    environment = 'SHOP_METRICS_STATE="$1"; export SHOP_METRICS_STATE; shift; ' if state else ''
 
     def metrics(args):
         if not os.path.isfile(script):
             raise MeasurementError('brak skryptu %s' % METRICS_SCRIPT)
         # The shell drops the stderr of the script (`exec` keeps the timeout aimed at the script itself), so the detail
         # of a failure is always the plain "exit code N" of the runner and never a path or a traceback.
-        command = ['/bin/sh', '-c', 'exec "$@" 2>/dev/null', 'sh', sys.executable, script] + list(args)
+        command = ['/bin/sh', '-c', environment + 'exec "$@" 2>/dev/null', 'sh'] + ([state] if state else []) \
+            + [sys.executable, script] + list(args)
         try:
             return run(command)
         except next_epic.CommandError as e:
@@ -1078,11 +1339,12 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
     (default: make_gates(run)); a record of an author without write access gives only `external` or an untrusted
     record ({number, author, url, trusted: false}). `gh` calls without content (states, merge dates, counts) do not
     use the gate. `metrics` is the runner of tools/metrics/metrics.py (make_metrics_runner); without it, or when a
-    call fails, the measurement is the fact "brak danych pomiaru" and the rest is collected as usual."""
+    call fails, the measurement is the fact "brak danych pomiaru" and the rest is collected as usual. The native epics
+    (native_epics, in `paths['metrics_state']`) are a part of the history next to the AO runs."""
     epics = discover_epics(paths['ao_home'])
+    natives = native_epics(paths.get('metrics_state'), paths['ao_home'])
     if epic_id not in [e['id'] for e in epics]:
-        raise ValueError('ao-%s is not the run of a finished epic (DONE with a final PR) in %s'
-                         % (epic_id, paths['ao_home']))
+        check_collectable(epic_id, paths)
     gates = gates or make_gates(run)
     shop = gates[SHOP]
     commit = run(['git', 'rev-parse', 'origin/main']).strip()
@@ -1102,13 +1364,21 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
         issues.setdefault(epic_title_id(issue.get('title')), {'number': issue['number'], 'comments': comments})
 
     entries, incidents, facts, measurements = [], [], [], {}
+    if epic_id in [e['id'] for e in natives]:
+        # R1: the record of a native epic is refreshed first (decide and trend read it); a failed refresh leaves the
+        # saved record, which is read below
+        try:
+            metrics_json(metrics, ['epic', epic_id], ())
+        except MeasurementError as e:
+            facts.append(no_measurement(epic_id, 'epic', e))
     history, measured = measurement_of(epic_id, metrics)
     facts += measured
     for epic in epics:
         name = epic['id']
         state, merged_at = final_pr(run, epic['final_pr_number'])
-        entries.append({'id': name, 'final_pr': epic['final_pr_number'], 'pr_state': state, 'merged_at': merged_at,
-                        'created_at': epic['created_at'], 'issue': (issues.get(name) or {}).get('number')})
+        entries.append({'id': name, 'source': 'ao', 'final_pr': epic['final_pr_number'], 'pr_state': state,
+                        'merged_at': merged_at, 'created_at': epic['created_at'],
+                        'issue': (issues.get(name) or {}).get('number')})
         if state != 'MERGED':
             facts.append({'id': '%s/missing/merge' % name,
                           'text': 'końcowy PR #%s nie jest zmergowany (stan %s)' % (epic['final_pr_number'], state)})
@@ -1130,6 +1400,38 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
             found += unasked_incidents(name, [p for p in task_prs if p['trusted']])
         found += optimization_incidents(name, history.get(name), merged_at)
         incidents += sorted(found, key=lambda i: (KIND_ORDER.index(i['kind']), i['at'] or 0, i['key']))
+    records = {}
+    for epic in natives:
+        # R2: a native epic has the incidents of its metrics record and of the description of its final PR (through
+        # the gate), no repair, manual_fix or no_sweep
+        name, number = epic['id'], epic['final_pr_number']
+        state, merged_at = final_pr(run, number)
+        record = records[name] = read_native_record(paths['metrics_state'], name)
+        issue = record.get('issue') if record else None
+        entries.append({'id': name, 'source': 'native', 'final_pr': number, 'pr_state': state, 'merged_at': merged_at,
+                        'created_at': epic['created_at'],
+                        'issue': issue if isinstance(issue, int) else (issues.get(name) or {}).get('number')})
+        if state != 'MERGED':
+            facts.append({'id': '%s/missing/merge' % name,
+                          'text': 'końcowy PR #%s nie jest zmergowany (stan %s)' % (number, state)})
+        found, missing = native_record_incidents(name, record)
+        facts += missing
+        described = final_pr_record(shop, epic)
+        if described is None:
+            facts.append({'id': '%s/missing/pr-description' % name,
+                          'text': 'brak opisu końcowego PR #%s (bramka pochodzenia nie zwróciła PR gałęzi %s)'
+                                  % (number, epic['branch'] or 'brak gałęzi w pliku przebiegu')})
+        elif not described['trusted']:
+            external.append(external_record('final_pr', number, described))
+            facts.append({'id': '%s/missing/pr-description' % name,
+                          'text': 'opis końcowego PR #%s od autora bez prawa zapisu: tylko numer, autor i link '
+                                  '(external)' % number})
+        else:
+            described_found, described_facts = native_pr_incidents(name, number, described)
+            found += described_found
+            facts += described_facts
+        found += optimization_incidents(name, history.get(name), merged_at)
+        incidents += sorted(found, key=lambda i: (KIND_ORDER.index(i['kind']), i['at'] or 0, i['key']))
     entries.sort(key=lambda e: (e['merged_at'] is None, e['merged_at'] or 0, e['created_at'] or 0, e['id']))
     order = {e['id']: n for n, e in enumerate(entries)}
     incidents.sort(key=lambda i: order[i['epic']])   # stable: keeps the order inside an epic
@@ -1140,7 +1442,10 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
     running = [e for e in board if e['state'] in ('in_progress', 'prepared') and e['number'] in trusted_epics]
     merged = [e for e in entries if e['merged_at'] is not None]
     last = max(merged, key=lambda e: (e['merged_at'], e['id'])) if merged else None
-    last_numbers = (measurements.get(last['id']) or {}) if last else {}
+    if last and last['source'] == 'native':
+        last_numbers = native_numbers(records.get(last['id']))
+    else:
+        last_numbers = (measurements.get(last['id']) or {}) if last else {}
     status = [
         {'id': 'status/in-progress',
          'epics': [{'id': e['id'], 'issue': e['number'], 'title': e['title'], 'state': e['state']} for e in running],
@@ -1301,9 +1606,10 @@ def cmd_skip(args):
 
 def cmd_pending(args, run):
     """[{epic, merged_at, attempts, reason}] from the oldest merge: the epics of `pending_epics`, with the number of
-    deferrals and the last reason. Epics with a finished retro cost no `gh` call."""
+    deferrals and the last reason. Epics with a finished retro cost no `gh` call. The epics are the AO runs and the
+    native epics (a run file with a final PR in --metrics-state)."""
     entries = []
-    for epic in discover_epics(args.ao_home):
+    for epic in discover_epics(args.ao_home) + native_epics(args.metrics_state, args.ao_home):
         if read_state(args.retro_home, epic['id']).get('state') in FINISHED_STATES:
             continue
         entries.append({'id': epic['id'], 'merged_at': final_pr(run, epic['final_pr_number'])[1]})
@@ -1453,6 +1759,26 @@ def load_proposals(directory):
     return proposals
 
 
+def committed_numbers(value, items):
+    """The numbers of the fix items committed in the retro PR given by `--committed` (`none` or `N[,N...]`), or None
+    without the option (every fix item is in the PR). While the series is in progress the deferred fix items are not
+    committed, so they never become items of the PR (docs/features/ash-v1/spec.md, R6)."""
+    if value is None:
+        return None
+    if value.strip() == 'none':
+        return set()
+    fixes = {i.get('n') for i in items if isinstance(i, dict) and i.get('kind') == 'fix'}
+    names = value.split(',')
+    if not all(re.fullmatch(r'\s*[0-9]+\s*', name) for name in names):
+        raise Refusal('--committed is `none` or numbers of fix items such as 1,3 (got %r)' % value)
+    numbers = {int(name) for name in names}
+    if not numbers <= fixes:
+        raise Refusal('--committed names no fix item of proposals.json: %s (fix items: %s)'
+                      % (', '.join(str(n) for n in sorted(numbers - fixes)),
+                         ', '.join(str(n) for n in sorted(fixes)) or 'none'))
+    return numbers
+
+
 def cmd_observe(args):
     """Appends to observations.jsonl the observations of proposals.json and the key and incidents of every `fix` and
     `issue` item (a row already there, same key, epic and incidents, is not repeated). Records in the state of the
@@ -1460,7 +1786,10 @@ def cmd_observe(args):
     the carried register, since they are reported again)."""
     if args.pr is not None and not filled(args.branch):
         raise Refusal('--pr needs --branch')
+    if args.committed is not None and args.pr is None:
+        raise Refusal('--committed needs --pr')
     proposals = load_proposals(args.directory)
+    committed = committed_numbers(args.committed, proposals['items'])
     epic_id, moment = proposals['epic'], now()
     state = read_state_strict(args.retro_home, epic_id)   # before anything is written
     rows, fixes, issues = [], [], []
@@ -1480,7 +1809,8 @@ def cmd_observe(args):
         entry = {'n': item.get('n'), 'kind': item['kind'], 'key': item['key'], 'title': item.get('title') or '',
                  'incidents': incidents, 'epic': epic_id}
         if item['kind'] == 'fix':
-            fixes.append(entry)
+            if committed is None or item.get('n') in committed:
+                fixes.append(entry)
         else:
             issues.append(dict(entry, repo=item.get('repo'), existing_issue=item.get('existing_issue')))
     path = register_path(args.retro_home, 'observations')
@@ -1719,7 +2049,8 @@ LIMITS = {'fix': 5, 'issue': 3}
 CLASSES = ('corrective', 'planned', 'product')
 ALLOWED_FILES = [re.compile(pattern) for pattern in (
     r'CLAUDE\.md', r'apps/[^/]+/CLAUDE\.md', r'\.claude/skills/[^/]+/SKILL\.md', r'\.claude/agents/[^/]+\.md',
-    r'docs/features/(?:ao-run|prepare-epic|groom|agent-tester-ux|retro)/spec\.md')]
+    r'docs/features/(?:ao-run|prepare-epic|groom|agent-tester-ux|retro)/spec\.md',
+    r'docs/adr/agentic-software-house\.md')]
 
 
 def allowed_file(path):
@@ -2053,11 +2384,15 @@ def build_parser():
     common.add_argument('--ao-home', default=paths['ao_home'], help='directory with the ao-<epic> runs')
     common.add_argument('--retro-home', default=paths['retro_home'], help='registers and per-epic state of /retro')
     common.add_argument('--sweep-home', default=paths['sweep_home'], help='reports of /sweep')
+    common.add_argument('--metrics-state', default=paths['metrics_state'],
+                        help='state of tools/metrics: run files of native epics and records')
     parser = argparse.ArgumentParser(description='Facts and registers for the /retro skill')
     commands = parser.add_subparsers(dest='command', required=True)
     collecting = commands.add_parser('collect', parents=[common], help='write input.json for an epic')
     collecting.add_argument('epic')
     collecting.add_argument('--out', help='directory for input.json (default: <retro-home>/<epic>)')
+    collecting.add_argument('--worktree', help='checkout of origin/main whose tools/metrics/metrics.py is run '
+                                               '(default: --repo)')
     commands.add_parser('pending', parents=[common], help='epics whose retro is still to do')
     for name, text in (('defer', 'defer the retro of an epic (it stays pending)'),
                        ('skip', 'skip the retro of an epic for good')):
@@ -2074,6 +2409,8 @@ def build_parser():
     observing.add_argument('directory')
     observing.add_argument('--pr', type=int, help='number of the retro PR of the run (records its fix items)')
     observing.add_argument('--branch', default='', help='branch of that PR')
+    observing.add_argument('--committed', help='fix items committed in that PR: `none` or N[,N...] (default: all); '
+                                               'the others are deferred while the series is in progress')
     rejecting = commands.add_parser('reject', parents=[common], help='record a conscious rejection')
     rejecting.add_argument('--key', default='', help='key of the item')
     rejecting.add_argument('--all', action='store_true', help='every item of the unresolved retro PRs (odrzuć wszystko)')
@@ -2099,11 +2436,12 @@ def main(argv=None, run=None, metrics=None):
     try:
         if args.command == 'collect':
             check_epic_name(args.epic)
-            paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home}
+            paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home,
+                     'metrics_state': args.metrics_state}
             # The gate's own runner keeps the output of a failed `gh api --include`, so a 404 is an untrusted author.
             gates = None if run else make_gates(github_trust.make_runner(args.repo))
             data = collect(args.epic, paths, run or next_epic.make_runner(args.repo), gates,
-                           metrics or make_metrics_runner(args.repo))
+                           metrics or make_metrics_runner(args.repo, root=args.worktree, state=args.metrics_state))
             print(write_json(args.out or os.path.join(args.retro_home, args.epic), 'input.json', data))
         elif args.command == 'pending':
             print_json(cmd_pending(args, run or next_epic.make_runner(args.repo)))
