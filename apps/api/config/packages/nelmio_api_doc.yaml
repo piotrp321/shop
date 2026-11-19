@@ -909,13 +909,15 @@ nelmio_api_doc:
                                 discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`),
                                 its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum
                                 (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the
-                                rejected code in the cart.
+                                rejected code in the cart. Only the order of a guest can be too large (`guest-order-too-large`: more
+                                than 10 lines or 10 units of a line), checked before anything else about the cart.
                             required: [type, title, status, detail]
                             properties:
                                 type:
                                     type: string
                                     enum:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/cart-empty'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/order-total-changed'
