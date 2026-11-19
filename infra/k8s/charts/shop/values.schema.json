@@ -21,6 +21,7 @@
     "initialize",
     "jobs",
     "demoData",
+    "load",
     "backup",
     "alerts",
     "cartPurge",
@@ -161,7 +162,8 @@
         "alpine",
         "kubectl",
         "restic",
-        "rclone"
+        "rclone",
+        "k6"
       ]
     },
     "ingress": {
@@ -444,6 +446,20 @@
         }
       }
     },
+    "load": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activeDeadlineSeconds"
+      ],
+      "properties": {
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The time limit of a Job of the CronJob load, in seconds."
+        }
+      }
+    },
     "demoData": {
       "type": "object",
       "additionalProperties": false,
@@ -683,7 +699,8 @@
         "varnish",
         "backup",
         "job",
-        "demoData"
+        "demoData",
+        "k6"
       ],
       "properties": {
         "postgres": {
@@ -957,6 +974,24 @@
           }
         },
         "demoData": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "k6": {
           "type": "object",
           "required": [
             "requests"
