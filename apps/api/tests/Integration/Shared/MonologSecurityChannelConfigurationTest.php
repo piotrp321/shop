@@ -31,13 +31,7 @@ final class MonologSecurityChannelConfigurationTest extends TestCase
         self::assertSame(StreamHandler::class, $handler->getClass());
         self::assertSame('php://stderr', $handler->getArgument(0));
         self::assertSame('warning', $handler->getArgument(1));
-        $formatters = [];
-        foreach ($handler->getMethodCalls() as [$method, $arguments]) {
-            if ('setFormatter' === $method) {
-                $formatters[] = (string) $arguments[0];
-            }
-        }
-        self::assertSame(['monolog.formatter.json'], $formatters, 'JSON lines');
+        self::assertSame(['monolog.formatter.json'], self::argumentsOfCalls($handler, 'setFormatter'), 'JSON lines');
     }
 
     public function testTheOtherChannelsKeepTheSentryHandlerAndTheBuffer(): void
@@ -71,14 +65,27 @@ final class MonologSecurityChannelConfigurationTest extends TestCase
     {
         self::definitions();
         self::assertArrayHasKey($logger, self::$definitions);
-        $handlers = [];
-        foreach (self::$definitions[$logger]->getMethodCalls() as [$method, $arguments]) {
-            if ('pushHandler' === $method) {
-                $handlers[] = (string) $arguments[0];
+
+        return self::argumentsOfCalls(self::$definitions[$logger], 'pushHandler');
+    }
+
+    /**
+     * @return list<string> the first argument (the id of a reference) of every call of the method
+     */
+    private static function argumentsOfCalls(Definition $definition, string $method): array
+    {
+        $arguments = [];
+        foreach ($definition->getMethodCalls() as $call) {
+            self::assertIsArray($call);
+            if ($method === ($call[0] ?? null)) {
+                self::assertIsArray($call[1] ?? null);
+                $first = $call[1][0] ?? null;
+                self::assertTrue($first instanceof Reference || \is_string($first));
+                $arguments[] = (string) $first;
             }
         }
 
-        return $handlers;
+        return $arguments;
     }
 
     private static function definitions(): void
