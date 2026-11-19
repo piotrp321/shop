@@ -1,7 +1,7 @@
 # `/retro`: retrospektywa po epiku
 
 Krok 15 planu [Agentic Software House](../agentic-software-house/plan.md). Po merge'u epiku skill zbiera dane
-przebiegu i całej historii przebiegów AO, a agent szuka w nich przyczyn problemów, które się powtarzają albo
+przebiegu i całej historii przebiegów AO i epików natywnych (`docs/features/ash-v1/spec.md`, R1–R7), a agent szuka w nich przyczyn problemów, które się powtarzają albo
 wymagały interwencji naprawczej. Wynik to jeden PR do `main` z poprawkami procesu (każda z dowodem) i aktualną sekcją
 „Status” planu Agentic Software House oraz propozycje issues do zatwierdzenia. Skrypt `retro.py` zbiera fakty,
 sprawdza propozycje i prowadzi trwałe rejestry. Kod AO się nie zmienia.
@@ -22,9 +22,10 @@ Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, .claude/skills/ao
 
 ## Zakres
 
-- **Wejście:** dane zakończonych przebiegów AO w `~/.local/state/ao-<epik>/` (historia od CART), ze szczególnym
-  uwzględnieniem retrospektywowanego epiku, raporty `/sweep`, komentarz z pomiarem w issue epiku, PR zadań
-  bieżącego epiku, otwarty PR retro i rejestry.
+- **Wejście:** dane zakończonych przebiegów AO w `~/.local/state/ao-<epik>/` (historia od CART) i epików natywnych
+  (plik przebiegu i rekord `tools/metrics`, opis końcowego PR), ze szczególnym uwzględnieniem retrospektywowanego
+  epiku, raporty `/sweep`, komentarz z pomiarem w issue epiku, PR zadań bieżącego epiku AO, otwarty PR retro
+  i rejestry.
 - **Wynik:**
   - poprawki procesu w PR: tylko instrukcje tekstowe (lista plików w „Walidacja”);
   - sekcja „Status” w planach bez manifestu AO (dziś tylko `docs/features/agentic-software-house/plan.md`); gdy
@@ -76,6 +77,23 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
 - **Przeglądy:** raport `/sweep` z nazwą epiku (`~/.local/state/shop-sweep/<data>-<sha7>-<epik>/report.md`).
 - **Decyzje bez pytania:** sekcja o tej nazwie w opisach PR zadań bieżącego epiku (przez bramkę), tylko w PR
   zaufanych autorów.
+- **Epiki natywne** (prowadzone przez główną sesję według „Przebiegu epiku” w `docs/adr/agentic-software-house.md`):
+  plik przebiegu `metrics.py start` w `<stan pomiaru>/runs/<epik>.json` (`--metrics-state`, domyślnie
+  `$SHOP_METRICS_STATE` albo `~/.local/state/shop-metrics`) z numerem końcowego PR, bez katalogu `ao-<epik>` (katalog
+  AO ma pierwszeństwo, jak w `metrics.py epic`). Plik bez numeru PR to epik w toku, nieczytelny albo z nazwą spoza
+  `^[a-z0-9][a-z0-9-]*$` (np. `SMALL-FIXES.json`) nie jest epikiem: to fakt `native/skipped/<plik>` w `input.json`
+  i ostrzeżenie `pending` na stderr. O istnieniu pliku decyduje lista katalogu `runs`, nie otwarcie ścieżki (na dysku
+  bez rozróżniania wielkości liter `runs/small-fixes.json` otwiera `SMALL-FIXES.json`), więc `collect` takiego epiku
+  odmawia kodem 2. Start epiku to `started_at` pliku przebiegu, merge jak przy AO. Incydenty
+  pochodzą z rekordu `<stan pomiaru>/epics/<epik>.json` (pola `human.events`, `reviews`, `attempts`, `regressions`;
+  `collect` retrospektywowanego epiku natywnego najpierw odświeża go `metrics.py epic <epik>`, a przy nieudanym
+  odświeżeniu czyta zapisany rekord) i z opisu końcowego PR, czytanego przez bramkę (`prs --state all --head
+  <gałąź z pliku przebiegu>`): sekcje „Decyzje bez pytania”, „Problemy i zastoje”, „Luki w instrukcjach” (krok 7
+  „Przebiegu epiku”). Opis od niezaufanego autora to wpis `external` (`source`: `final_pr`) i fakt
+  `<epik>/missing/pr-description`, bez treści. Brak rekordu, pola rekordu, PR albo sekcji to fakt
+  (`<epik>/missing/record`, `<epik>/missing/record/<pole>`, `<epik>/missing/pr-description`,
+  `<epik>/missing/pr-section/<decisions|problems|gaps>`), nie błąd. Wpis epiku w `input.json` (`epics`) ma `source`
+  (`ao` albo `native`).
 
 ## Uruchamianie
 
@@ -84,18 +102,21 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
   z procesem AO tej sesji ani z procedurą sync (reguły sekcji „Przegląd po merge'u” w
   `docs/features/ao-run/spec.md`). Retro nie czeka na triage `/sweep`: czyta jego raport. Pominięty przegląd nie
   pomija retro.
+- **Epik natywny:** `/retro <epik>` uruchamia użytkownik po merge'u końcowego PR; sesja prowadząca epik go nie
+  uruchamia.
 - **Ręcznie:** `/retro [epik]` w sesji Claude Code (`disable-model-invocation: true`). Bez argumentu najpierw pokazuje
   nierozstrzygnięte decyzje poprzednich przebiegów (krok 7), potem bierze najstarszy epik z `retro.py pending`.
   Z argumentem działa dla każdego zmergowanego epiku, także sprzed wdrożenia (pierwszy przebieg: `visual-design`).
-- **Do zrobienia (`retro.py pending`)** to lista wyliczana z danych, nie zapisywana kolejka: epiki (sekcja
+- **Do zrobienia (`retro.py pending`)** to lista wyliczana z danych, nie zapisywana kolejka: epiki AO i natywne (sekcja
   „Źródła”) z końcowym PR `MERGED` po dacie `RETRO_SINCE` (stała w `retro.py`: 2026-11-10 00:00 UTC, świadomie ustalona
   data; od niej automatyczne retro obejmuje m.in. VISUAL-DESIGN, LIGHTHOUSE i HARDENING) i bez stanu `done` albo `skipped` w `~/.local/state/shop-retro/<epik>/state.json`, od najstarszego
   merge'u. Wpisu nie da się zgubić, bo nie ma czego zgubić.
 - **Warunki przed startem**, po kolei:
   1. Odmowa bez zapisu (komunikat w rozmowie): nazwa epiku nie pasuje do `^[a-z0-9][a-z0-9-]*$`; retro tego epiku ma
-     stan `done` albo `skipped`; epik nie jest jeszcze zmergowany (brak końcowego PR, PR `OPEN`, epik w toku); epik nie jest przebiegiem AO albo
-     jeszcze nie ruszył (brak katalogu `ao-<epik>`, bazy `orchestrator.db` albo wiersza epiku): `skipped` jest
-     nieodwracalne, więc retro takiego epiku nie może przepaść.
+     stan `done` albo `skipped`; epik nie jest jeszcze zmergowany (brak końcowego PR, PR `OPEN`, epik w toku); epik nie jest przebiegiem AO ani
+     epikiem natywnym albo jeszcze nie ruszył (brak katalogu `ao-<epik>`, bazy `orchestrator.db` albo wiersza epiku
+     i brak pliku przebiegu natywnego; plik bez numeru PR to epik w toku): `skipped` jest nieodwracalne, więc retro
+     takiego epiku nie może przepaść. `retro.py collect` odmawia takiemu epikowi kodem 2 bez zapisu `input.json`.
   2. Trwałe pominięcie (`retro.py skip <epik> --reason …`: stan `skipped` z przyczyną, push „Retro `<epik>`
      pominięte trwale: <powód>”): końcowy PR jest `CLOSED` bez merge'u albo jest decyzja użytkownika w rozmowie
      („pomiń retro X: <powód>”). Nic innego nie pomija retro trwale.
@@ -185,10 +206,30 @@ deterministyczne i stabilne między przebiegami; czasy w kluczach to pełne seku
   nie daje incydentu.
 - `ao_events.py` ma funkcję `waits()` (lista okien czekania); `summarize` liczy sumy z jej wyniku.
 
+Wiersze tabeli wyżej poza `optimization` dotyczą epików AO. Epik natywny (sekcja „Źródła”) ma tylko te rodzaje:
+
+| Rodzaj | Kotwica i klucz | Fakty dołączane do incydentu |
+|---|---|---|
+| `wait` | zdarzenie `human.events` rekordu (wiadomość człowieka, `wait_s`: czekanie przed nią); działanie człowieka (`human_action`), więc może być naprawczy; klucz `human@<czas wiadomości>` | czas czekania |
+| `finding` | przegląd z `reviews` z `blocking: true` (`CHANGES_REQUIRED`, `BLOCK`, `REWORK`); klucz `<zadanie albo epik>:<rola>@<czas raportu>` | rola, zadanie, tryb (`FULL`/`DELTA`), werdykt |
+| `failed_attempt` | przebieg subagenta z `attempts` z `finished: false` (`null` nie daje incydentu); klucz `<zadanie albo bez-zadania>:<agent>` | rola |
+| `escaped` | numer zgłoszenia `bug` z `regressions.issues` (okno regresji rekordu); klucz `issue<numer>` | numer; otwarte okno to fakt `<epik>/native/regression-window` |
+| `unasked` | punkt sekcji „Decyzje bez pytania” opisu końcowego PR; klucz `pr<numer>#<pozycja>` | PR |
+| `reported` | punkt sekcji „Problemy i zastoje” (klucz `problems#<pozycja>`) albo „Luki w instrukcjach” (`gaps#<pozycja>`) opisu końcowego PR | PR, sekcja |
+| `optimization` | jak wyżej | jak wyżej |
+
+Punkt sekcji to pozycja listy (jak w „Decyzjach bez pytania” PR zadań), a sekcja z samym tekstem bez listy to jeden
+punkt. Wpis „brak” (także „Brak.”, „- brak”) nie daje incydentu. `repair`, `manual_fix` i `no_sweep` nie powstają dla
+epiku natywnego. Opis końcowego PR jest czytany dla każdego epiku natywnego historii, nie tylko retrospektywowanego,
+bo inaczej punkty „Problemów i zastojów” z dwóch epików nie spotkałyby się w jednym `input.json`.
+
 ## Pomiar i decyzje optymalizacyjne
 
-`collect` uruchamia `python3 tools/metrics/metrics.py` (ścieżka względem `--repo`, przez wstrzykiwany runner) i dodaje do
-`input.json`:
+`collect` uruchamia `python3 tools/metrics/metrics.py` z checkoutu `--worktree` (worktree `origin/main` przebiegu, bez
+opcji: `--repo`), przez wstrzykiwany runner, w katalogu `--repo` i ze zmienną `SHOP_METRICS_STATE` równą
+`--metrics-state`: skrypt jest aktualny także przy nieaktualnym głównym checkoucie (#679), a dane AO i stan pomiaru są
+w dotychczasowych miejscach. Dla retrospektywowanego epiku natywnego pierwsze wywołanie to `epic <epik>` (odświeżenie
+rekordu; nieudane: fakt `<epik>/measurement/missing/epic` i zapisany rekord). `collect` dodaje do `input.json`:
 
 - incydenty `optimization` z jednego wywołania `decide <epik> --history` (sekcja „Incydenty”);
 - fakty `<epik>/measurement/trend` (wynik `trend --json --epic <epik> --no-gh`), `<epik>/measurement/record` (wiersz
@@ -229,7 +270,8 @@ Incydent jest **naprawczy**, gdy działanie człowieka było konieczne z powodu 
 awarii procesu (np. `--add-qa-rounds` po `FINALIZE` zmieniającym tylko dokumentację, `ao release` po przejściowym
 błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do planu).
 
-- **Warunek skryptu:** naprawczy może być tylko incydent `wait` z `human_action`, `manual_fix` albo `repair`.
+- **Warunek skryptu:** naprawczy może być tylko incydent `wait` z `human_action` (także `wait` epiku natywnego),
+  `manual_fix` albo `repair`. `reported` liczy się do progu jak każdy incydent, ale naprawczy nie jest.
 - **Ocena agenta:** każdy taki incydent cytowany w `evidence` ma w `classes` jedną klasę: `corrective`
   (z `corrective_reason`: co było nieprzewidziane albo zawiodło), `planned` (decyzja przewidziana w specyfikacji
   epiku: cytat ze `spec.md`) albo `product` (nieprzewidziana decyzja produktowa lub architektoniczna).
@@ -253,7 +295,8 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo `existing_issue` (nie oba; numer otwartego issue
   w danych wejścia z `trusted: true`: po „tak” komentarz z nowymi incydentami zamiast nowego issue);
 - `files` tylko z listy dozwolonej: `CLAUDE.md` i `apps/*/CLAUDE.md`, `.claude/skills/*/SKILL.md`,
-  `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`; zmiana
+  `.claude/agents/*.md`, `docs/features/{ao-run,agent-tester-ux,retro}/spec.md`, `docs/adr/agentic-software-house.md`
+  („Przebieg epiku”); zmiana
   w innym pliku to błąd (taka poprawka jest pozycją `issue` z `repo: shop`);
 - **otwarty PR:** `key` pozycji z otwartego PR retro jest dopuszczalny tylko z polem `updates` (numer tej pozycji),
   które zastępuje jej commit nowym;
@@ -289,6 +332,27 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   - **PR zamknięty bez merge'u** to zamknięcie techniczne: pozycje bez świadomego odrzucenia trafiają do
     `carried.jsonl` i kolejne retro zgłasza je ponownie. Do `rejected.jsonl` trafiają wyłącznie pozycje świadomie
     odrzucone w rozmowie („bez N”, „odrzuć N”, „odrzuć wszystko”).
+
+## Zamrożenie na czas serii
+
+Seria ASH v1.0 (`docs/features/ash-v1/spec.md`, D6, R6) jest w toku, gdy wiersz „Stan serii” tabeli „Seria ASH v1.0”
+w „Statusie” planu `docs/features/agentic-software-house/plan.md` (worktree `origin/main`) zaczyna się od „w toku”
+(stan to wartość, od której zaczyna się komórka: „przed startem (tag …)” to „przed startem”); brak planu, wiersza albo
+wartość, która nie zaczyna się od „przed startem”, „w toku” ani „zakończona”, sesja traktuje jak „w toku”, z adnotacją
+w raporcie. Stan odczytuje fragment w `SKILL.md` (krok 5). Wtedy:
+
+- sesja nie wprowadza pozycji `fix` (bez commitów); PR powstaje tylko przy zmianie „Statusu”, a commit „Statusu”
+  i propozycje issues działają jak poza serią;
+- `retro.py observe` zapisuje pozycje `fix` w `observations.jsonl`, przy PR z `--committed none`: nie są pozycjami PR
+  retro, więc `sync` nie wpisze ich do `applied.jsonl`;
+- raport ma sekcję `## Odroczone do końca serii` (numer, tytuł, pliki) i przy każdej pozycji ocenę, czy jest blokadą
+  kolejnego epiku serii albo zagrożeniem;
+- pozycję oznaczoną jako blokada albo zagrożenie sesja wprowadza dopiero po „tak” użytkownika wskazującym tę pozycję,
+  potem `observe --pr <nr> --branch <gałąź> --committed <numery wprowadzonych pozycji>`. Ponowne `observe` tego
+  samego `proposals.json` zmienia tylko PR retro: decyzje o propozycjach issues (`issues`, `reject`) zostają.
+
+Pierwsze sprawdzenie w praktyce to retrospektywa pierwszego epiku serii. `/retro small-fixes` (odbiór ścieżki natywnej)
+biegnie przed tagiem `ash-v1.0`, więc bez zamrożenia.
 
 ## Rejestry
 
@@ -352,7 +416,9 @@ Klucze i ID w przykładzie są ilustracją.
 - `.claude/skills/retro/SKILL.md`: instrukcja sesji (`disable-model-invocation: true`).
 - `.claude/agents/retro-analyst.md`: agent.
 - `.claude/skills/retro/retro.py` (Python 3.9+, bez zależności) i `test_retro.py`: `pending`, `defer`, `skip`,
-  `lock`, `unlock`, `sync`, `collect`, `validate`, `observe`, `reject`, `issues`. Komendy `gh` i `git` przez
+  `lock`, `unlock`, `sync`, `collect`, `validate`, `observe`, `reject`, `issues`; wspólna opcja `--metrics-state`
+  (pliki przebiegu i rekordy epików natywnych), `collect --worktree` (skrypt pomiaru z `origin/main`),
+  `observe --committed` (pozycje `fix` w PR retro przy serii w toku). Komendy `gh` i `git` przez
   wstrzykiwany runner `next_epic.make_runner`, `metrics.py` przez osobny wstrzykiwany runner (`make_metrics_runner`); `retro.py` importuje `next_epic` (tablica) i `ao_events` (`waits`)
   bez kopii ich kodu; `night_queue.py room` (limit) uruchamia sesja, a wynik podaje jako powód `defer`.
 - `.claude/skills/ao-run/ao_events.py` i `test_ao_events.py`: funkcja `waits()` i `summarize` liczące z niej sumy
@@ -402,7 +468,11 @@ Klucze i ID w przykładzie są ilustracją.
      tylko rekordem bramki z `trusted: false`; issue AO oceniane uprawnieniem w repozytorium AO; gałąź `retro/…`
      niezaufanego autora nie jest otwartym PR retro; `existing_issue` niezaufanego issue to błąd `validate`; błąd
      bramki → kod 1 bez `input.json`;
-   - `ao_events.waits()`: okna jak w dotychczasowych testach `summary`, `summary` bez zmiany wyniku.
+   - `ao_events.waits()`: okna jak w dotychczasowych testach `summary`, `summary` bez zmiany wyniku;
+   - epik natywny (syntetyczny plik przebiegu, rekord i opis PR): `pending` po merge'u końcowego PR, `collect`
+     odświeża rekord, każdy rodzaj incydentu natywnego, brak sekcji opisu PR i pola rekordu jako fakt, opis
+     niezaufanego autora tylko jako `external`, odmowa (kod 2) bez przebiegu AO i pliku przebiegu, skrypt pomiaru
+     z `--worktree` przy nieaktualnym `--repo` (#679), `observe --committed`.
 
    CI uruchamia testy `retro` nową linią w `ci.yml`.
 2. Warunki startu na ścieżce błędu: limit (≥ 95% z `/ao-run`, ≥ 80% ręcznie) i działający AO przy przebiegu ręcznym odraczają (epik

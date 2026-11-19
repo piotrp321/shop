@@ -6,10 +6,6 @@ Ta specyfikacja opisuje tylko zmiany potrzebne, żeby trzy kolejne epiki aplikac
 przebudowy procesu i ocenić metrykami oraz retrospektywami. Przebieg epiku opisuje `docs/adr/agentic-software-house.md`
 („Przebieg epiku”), pomiar `docs/features/metrics/spec.md`, retrospektywę `docs/features/retro/spec.md`.
 
-Każde twierdzenie o obecnym kodzie dotyczy `origin/main` z 2026-11-18 (`45671786`). Podstawa: raport
-`docs/reports/agentic-software-house-audit-2026-11-18.md`, przebieg pierwszego epiku natywnego SMALL-FIXES (opis PR
-#752) i odczyt jego transkryptów.
-
 Issues: #765, #679, #762
 Zakres: `CLAUDE.md`, `tools/metrics`, `.claude/skills/retro`, `.claude/agents/retro-analyst.md`, `.claude/agents/qa-adversarial.md`, `docs/adr/agentic-software-house.md`, `docs/features/metrics/spec.md`, `docs/features/retro/spec.md`, `docs/features/telemetry/spec.md`, `docs/features/agentic-software-house/plan.md`, `apps/api/Makefile`, konfiguracja testów `apps/api`
 
@@ -22,20 +18,6 @@ Zakres: `CLAUDE.md`, `tools/metrics`, `.claude/skills/retro`, `.claude/agents/re
 - Telemetria w lokalnym stosie działa także dla sesji natywnych i pozwala rozpoznać epik, zadanie, model
   i subagenta (T).
 - Wersja 1.0 ma znacznik i regułę zamrożenia na czas serii (V).
-
-Stan wyjściowy:
-
-- `metrics.py epic` kończy się kodem 2, gdy nie ma katalogu przebiegu AO, bazy albo wiersza epiku
-  (`tools/metrics/metrics.py:380-391`). SMALL-FIXES nie ma rekordu ani pomiaru kosztu.
-- `/retro` odmawia epikowi bez przebiegu AO w skillu (`.claude/skills/retro/SKILL.md:90-96`) i w skrypcie
-  (`.claude/skills/retro/retro.py:1082-1085`); `pending` bierze epiki wyłącznie z katalogów `ao-<epik>`.
-- Agent `qa-adversarial` nie dostaje kryteriów akceptacji; w SMALL-FIXES QA nie uruchomiło E2E w przeglądarce, a jedno
-  kryterium dało się sprawdzić dopiero po wdrożeniu.
-- Sesja natywna zapisuje transkrypt prowadzącego w `~/.claude/projects/<katalog>/<sesja>.jsonl`, a każdego subagenta
-  w `<sesja>/subagents/agent-<id>.jsonl` z plikiem `agent-<id>.meta.json` (`agentType`, `description`, `model`,
-  `effort`). Wiadomości `assistant` mają `message.model` i `message.usage` z tymi samymi polami tokenów, które czyta
-  dzisiejszy parser. Wiadomość wpisana przez człowieka ma `origin.kind = "human"`. Sprawdzone na transkrypcie
-  SMALL-FIXES: 1 plik prowadzącego, 16 plików subagentów.
 
 ## Decyzje
 
@@ -206,8 +188,10 @@ specyfikacja zakłada jego merge i ich nie powtarza.
 ## A: odbiór kryteriów akceptacji
 
 - **A1. Kolejność.** Przegląd całej zmiany (krok 6) zaczyna od numerowanych kryteriów akceptacji specyfikacji epiku.
-  `qa-adversarial` dostaje je w zleceniu i sprawdza na działającym stosie przed szukaniem błędów. Epik bez QA (narzędzia,
-  dokumentacja): kryteria sprawdza sesja prowadząca.
+  `qa-adversarial` dostaje je w zleceniu i sprawdza przed szukaniem błędów: na działającym stosie, a kryteria
+  narzędzia jego komendami na danych i stanie tymczasowym. Epik bez QA (dokumentacja, instrukcje, narzędzie niskiego
+  ryzyka): kryteria sprawdza sesja prowadząca. QA zmiany narzędzia sesja dobiera proporcjonalnie do ryzyka (krok 6
+  „Przebiegu epiku”).
 - **A2. Tabela w opisie PR.** Dla każdego kryterium: numer, sposób sprawdzenia i wynik. Sposoby: „stos” (polecenie
   albo scenariusz), „CI” (nazwa testu i zielony przebieg na czole gałęzi), „po wdrożeniu”, „niezweryfikowane”
   (z powodem).
@@ -218,11 +202,10 @@ specyfikacja zakłada jego merge i ich nie powtarza.
 
 ## T: telemetria sesji natywnej
 
-Stan: stos `agent-observability` działa, ale eksportują do niego tylko wykonawcy AO, którym wrapper ustawia
-`shop.source=ao`, `shop.epic` i `shop.task`. Sesja natywna nie eksportuje nic, bo `~/.claude/settings.json` nie ma
-zmiennych telemetrii. Subagenci działają w procesie sesji prowadzącej, więc nie da się im nadać własnych atrybutów
-zasobu. Stos ma już to, czego potrzeba do powiązania: `session_id` i `model` są etykietami metryk i polami zdarzeń,
-a zdarzenia mają `agent_id`, `agent_type` i `query_source`.
+Subagenci działają w procesie sesji prowadzącej, więc nie da się im nadać własnych atrybutów zasobu. Powiązanie
+daje stos: `session_id` i `model` są etykietami metryk i polami zdarzeń, a zdarzenia w Lokim mają `agent_id`;
+`agent_id` nie jest etykietą metryk w Prometheusie. Sesje aplikacji desktop eksportują jako `claude-code-desktop`
+bez atrybutu `shop.source` (szczegóły: `docs/features/telemetry/spec.md`, R8).
 
 - **T1. Eksport z sesji natywnych.** Włącza go istniejący blok z `python3 tools/telemetry/telemetry.py snippet`
   w `~/.claude/settings.json` (krok użytkownika), sprawdzany przez `telemetry.py check`. Sesje mają
@@ -294,8 +277,3 @@ Bez zmian w dashboardach, w konfiguracji stosu i bez eksportu rekordów do stosu
 - Wartość w USD według cennika API (D3), ze stawkami za wszystkie rodzaje tokenów.
 - `/retro small-fixes` jest odbiorem ścieżki natywnej: po wdrożeniu zmian uruchamia je użytkownik.
 - Uprawnienia GitHuba bez zmian, AO zamrożony, bez dodatkowych mechanizmów tam, gdzie wystarczają istniejące.
-
-## Wymagane przed startem
-
-Pozycje użytkownika: merge PR #764 i #757; wyłączenie wtyczki Superpowers na koncie (jej hook nadal działa
-w sesjach); wklejenie bloku z `python3 tools/telemetry/telemetry.py snippet` do `~/.claude/settings.json` (T1).

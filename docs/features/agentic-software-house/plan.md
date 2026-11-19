@@ -15,12 +15,25 @@ przede wszystkim czas zegarowy epiku, pilnując jakości, liczby napraw, interwe
 ## Status
 
 Od 2026-11-18 obowiązuje moratorium na rozwój AO, skilli istniejących tylko dla niego (`/ao-run`, `/delivery`,
-`/sweep`, `/retro`) i narzędzi z nimi związanych (decyzja w ADR, podstawa w
+`/sweep`) i narzędzi z nimi związanych (decyzja w ADR, podstawa w
 `docs/reports/agentic-software-house-audit-2026-11-18.md`). Wstrzymane są niedokończone kroki 17–22 i epik ONCALL
 (krok 11, `docs/features/oncall/`). Kolejność epików jest na tablicy „Backlog sklepu”.
 
 Ostatni epik prowadzony przez AO: DEMO-DATA (#482), zakończony w AO 2026-11-18 (końcowy PR #744; integracja przeszła
 w pierwszej rundzie).
+
+Seria ASH v1.0 (specyfikacja `docs/features/ash-v1/spec.md`): trzy epiki prowadzone natywnie według „Przebiegu epiku”
+w ADR, ocenianie metrykami i retrospektywami `/retro`. Seria jest w toku od założenia tagu `ash-v1.0` do retrospektywy
+trzeciego epiku; w tym czasie pliki procesu zmienia tylko poprawka blokady albo zagrożenia, po zgodzie użytkownika
+(reguła w ADR, koniec „Przebiegu epiku”).
+
+| Seria ASH v1.0 | Stan |
+|---|---|
+| Stan serii | przed startem (tag `ash-v1.0` jeszcze nie założony) |
+| Epiki serii | ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120), w tej kolejności |
+| Zmergowane epiki serii | brak |
+
+Stan serii przyjmuje jedną z wartości: „przed startem”, „w toku”, „zakończona”.
 
 Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 
@@ -30,7 +43,7 @@ Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 | P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
 | P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
 | P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | zrobione |
-| P5 | Trzy epiki natywnie: SMALL-FIXES → ABUSE-LIMITS → ASYNC-RELIABILITY, każdy z punktem odniesienia przed i krótkim raportem po (oba w opisie PR epiku) | w toku: SMALL-FIXES zrobiony (końcowy PR #752 zmergowany 2026-11-18); następny ABUSE-LIMITS |
+| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | seria przed startem (stan w tabeli „Seria ASH v1.0” wyżej) |
 | P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
 
 Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach opisują drogę AO.

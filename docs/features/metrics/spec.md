@@ -78,6 +78,9 @@ rzeczywiste skrócenie czasu AO):
   epiku w AO (PRODUCT-PAGE i DEPLOY mają `INTEGRATING`, PAYMENT `BLOCKED`). `/retro` ma węższą definicję (`DONE`) na
   swoje potrzeby i jej nie zmieniamy. Bazę czytamy tylko do odczytu (`file:…?mode=ro`, `busy_timeout`), `ao` nie
   jest uruchamiane (`ao report` nadpisuje pliki, a komenda w katalogu bez bazy zakłada nową).
+- **Przebieg natywny:** epik prowadzony przez główną sesję Claude Code z natywnymi subagentami
+  (`docs/features/ash-v1/spec.md`). Źródłem jest plik przebiegu `runs/<epik>.json` w stanie pomiaru i transkrypty
+  sesji w nim zapisanych (sekcja „Epik natywny”). Rekord przebiegu AO ma `source: ao`, rekord natywny `source: native`.
 - **Próba:** wiersz tabeli `attempts`; **zadanie:** wiersz `tasks` (`kind`: `plan`, `repair`, `integration`, `fix`,
   `finalize`).
 - **Próba udana:** `outcome = result` i `executor_status` różny od `FAILED` i `BLOCKED`. **Próba zablokowana:**
@@ -93,17 +96,17 @@ rzeczywiste skrócenie czasu AO):
   cen cennikowych (`costBasis: list`), nie opłata. Ostatni wynik z zerowym `total_cost_usd` i zerowym `modelUsage`
   przy niezerowych tokenach wiadomości (wynik po awarii) to próba bez wyniku CLI; `costBasis: unknown` daje pozycję
   w `gaps`.
-- **Koszt subskrypcji:** przyrost procentu okien limitu z `get_usage` (`measurements.jsonl`), w punktach
-  procentowych (pp).
+- **Koszt subskrypcji:** przyrost procentu okien limitu z `get_usage` (`measurements.jsonl`, w epiku natywnym
+  odczyty z pliku przebiegu), w punktach procentowych (pp).
 - **Rekord epiku:** wynik `metrics.py epic` (JSON, format niżej), liczony z danych przebiegu.
 
 ## Pomiar epiku
 
 `tools/metrics/metrics.py` (Python 3.9+, biblioteka standardowa) z `tools/metrics/config.json` (kategorie poleceń,
-wagi tokenów, progi alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 dla D1; zmiana progu nie wymaga zmiany
-kodu). Stan lokalny w
+wagi tokenów, progi alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 dla D1, cennik API epików natywnych;
+zmiana progu nie wymaga zmiany kodu). Stan lokalny w
 `~/.local/state/shop-metrics/` (poza katalogami `ao-*`, które są `AO_HOME` epików): `epics/<epik>.json` (rekordy),
-`waste.json` (wysłane alarmy), `waste.lock`.
+`runs/<epik>.json` (pliki przebiegu epików natywnych), `waste.json` (wysłane alarmy), `waste.lock`.
 
 Kod wspólny przez import, bez kopii reguł: interwały czekania na człowieka z `ao_events.waits`, przyrosty okien
 z `night_queue._window_deltas` i przedziały epików z `night_queue` (jak robi to `pairs.py`); `pairs.py` (tymczasowy)
@@ -120,6 +123,10 @@ nie jest używany.
 | Czekanie w bramce pracy równoległej | `~/.local/state/ao-night/gate.jsonl` |
 | Merge końcowego PR, CI PR, PR `sync/<epik>-main`, regresje | `gh` (tylko odczyt) |
 | Ręczne poprawki | lista podana przez sesję `/ao-run` przy merge'u (`--manual-fixes FILE`; jak dziś do komentarza) |
+| Epik natywny: start, gotowość PR, gałąź, PR, sesje, odczyty limitów | plik przebiegu `runs/<epik>.json` (`metrics.py start`, `done`) |
+| Epik natywny: tokeny, wartość, przebiegi subagentów, polecenia, wersja CLI, rozkład czasu, wiadomości człowieka, przeglądy | transkrypty sesji z pliku przebiegu w `~/.claude/projects/*/` i ich `subagents/` (sekcja „Epik natywny”), cennik `pricing` w `config.json` |
+| Epik natywny: kryteria akceptacji | opis końcowego PR przez bramkę pochodzenia `tools/agent-security/github_trust.py` |
+| Epik natywny: udział w limitach | transkrypty wszystkich sesji lokalnych w `~/.claude/projects` z przedziału epiku |
 
 Brak źródła nie zatrzymuje pomiaru: pole dostaje `null` i powód w `gaps` (np. „brak `events.jsonl`” dla CART,
 „próba bez wyniku CLI”, „błąd `gh`”). Zera bez danych są zakazane. Zapis rekordu nie zastępuje wartości niepustej
@@ -128,9 +135,12 @@ wartością `null` z błędu źródła (przejściowy błąd `gh`, `--no-gh`): zo
 ### Rekord epiku
 
 `metrics.py epic <epik> [--ao-home DIR] [--manual-fixes FILE] [--no-gh]` wypisuje jedną linię JSON i zapisuje rekord.
-Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
+Źródło: przebieg AO, gdy istnieje katalog `ao-<epik>` (albo `--ao-home`), inaczej plik przebiegu natywnego
+`runs/<epik>.json` (sekcja „Epik natywny”); bez obu kod 2 z komunikatem, którego źródła brakuje, i bez zapisu.
+`backfill` dotyczy tylko przebiegów AO. Poniżej pola rekordu AO; rekord natywny ma ten sam format. Czasy w sekundach,
+kwoty w USD, przyrosty limitu w pp:
 
-- `epic`, `issue`, `final_pr`, `tasks` (liczba zadań planu), `started_at` (`epics.created_at`), `done_at`
+- `epic`, `source` (`ao`), `issue`, `final_pr`, `tasks` (liczba zadań planu), `started_at` (`epics.created_at`), `done_at`
   (pierwsze `epic_done`; bez niego `null` i pozycja w `gaps`), `merged_at`;
 - `wall` (miara główna): `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge,
   odbiór użytkownika);
@@ -251,6 +261,149 @@ prób” i „≈” przy każdej liczbie. Wąskie gardło, kandydat `decide`, o
 `median_estimated`) zbudowane z takiej liczby (także z mediany historii, w której jest choć jedna) są oznaczone jako
 szacowane; prognoza `expected_effect` jest szacowana tylko wtedy, gdy dane, z których wynika, są szacowane lub niepełne.
 
+### Epik natywny
+
+Epik prowadzony natywnie (`docs/features/ash-v1/spec.md`, M1–M5) nie ma bazy AO. Punkt odniesienia zapisuje sesja
+prowadząca komendami `start` i `done`, a rekord powstaje z transkryptów jej sesji.
+
+**Plik przebiegu.** `metrics.py start <epik>` zapisuje `runs/<epik>.json`: `started_at` (teraz albo `--at`), `base_sha`
+(SHA `origin/main`: `git rev-parse`, przy `--at` ostatni commit `origin/main` sprzed tej chwili; błąd gita daje `null`
+i ostrzeżenie), `branch` (gałąź epiku: `--branch` albo bieżąca gałąź katalogu roboczego), `pr` (numer draft PR: `--pr`
+albo `gh pr view <gałąź>`), `tasks` (`--tasks` albo liczba zadań manifestu `origin/main:docs/features/<epik>/plan.md`,
+ta sama funkcja co `night_queue.py start`), `sessions` (`[{id, worktree, at}]`: identyfikator sesji prowadzącej,
+`--session` albo najnowszy transkrypt `<id>.jsonl` w katalogu sesji katalogu roboczego `--worktree`, domyślnie
+bieżącego), `usage_start` (odczyt limitów z wejścia standardowego czytany jak w `night_queue.py start`: obiekt `plan`
+z `get_usage` albo cały obiekt `get_usage` `{"plan": …, "context": …}`, z którego brany jest `plan`; terminal albo puste
+wejście to `null`), `done_at` i `usage_done` (`null`). `metrics.py done <epik>` wpisuje czas
+oznaczenia PR jako gotowy (teraz albo `--at`; kolejne wywołanie go zastępuje) i drugi odczyt limitów. `start --resume`
+dopisuje do `sessions` nową sesję z jej katalogiem roboczym (raz). Bez gałęzi, PR, liczby zadań albo transkryptu sesji
+`start` kończy się kodem 2 z nazwą opcji, która to poda; drugi `start` bez `--resume` i `--resume` albo `done` bez pliku
+przebiegu też dają kod 2, bez zapisu. Nazwa epiku w `start` (także z `--resume`) i `done` musi pasować do
+`^[a-z0-9][a-z0-9-]*$`, tego samego wzorca co `EPIC_NAME` w `/retro` (wielkie litery, `.` i `_` dają kod 2 z polskim
+komunikatem, bez zapisu): `/retro` rozpoznaje plik przebiegu tylko po tej nazwie. `epic` i pozostałe komendy przyjmują
+też dłuższy zestaw znaków identyfikatora (rekordy AO). Opcje `--at`, `--worktree`, `--branch`, `--pr`, `--tasks` i `--session` pozwalają
+zapisać plik po fakcie, także gdy `plan.md` już nie istnieje.
+
+**Transkrypty epiku.** Tylko sesje z pliku przebiegu: `<id>.jsonl` w katalogu projektów Claude Code
+(`~/.claude/projects/*/`, opcja `--projects`) i ich subagenci `<id>/subagents/agent-<agent>.jsonl` z
+`agent-<agent>.meta.json`. Inna sesja w tym samym katalogu roboczym do epiku nie należy. Liczą się wiadomości od
+`started_at` do merge'u końcowego PR (praca po merge'u nie wchodzi; bez znanego merge'u do końca transkryptów,
+z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie w kolejności sesji z pliku przebiegu
+(prowadzący, potem subagenci), także w sesji wznowionej albo rozgałęzionej. Wiadomość bez `timestamp` się liczy,
+z pozycją w `gaps`. Linia transkryptu, która nie jest obiektem JSON, jest pomijana z pozycją `sessions` w `gaps`
+z liczbą takich linii; transkrypt bez żadnej linii będącej obiektem JSON (pusty albo całkiem uszkodzony) jest
+nieczytelny: sesja prowadząca bez przeczytanego transkryptu, subagent z utraconym. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
+bloki `tool_use`, w tym `SubagentHandback` z tekstem raportu), `tool_result` w wiadomościach użytkownika (przy wyniku
+wywołania `Agent` także `toolUseResult.agentId`), `origin.kind`
+i `uuid` linii użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json` `agentType`, `description`,
+`effort`, `finished`; model przebiegu pochodzi z jego wiadomości, a pole `model` z `meta.json` nie jest czytane (przebieg
+uruchomiony z domyślnymi ustawieniami go nie ma). Opis zlecenia służy tylko do ustalenia zadania, a tekst raportu tylko do odczytu
+werdyktu; żaden nie trafia do rekordu. Transkrypt subagenta jest utracony, gdy jest tylko jego `meta.json`, plik jest
+nieczytelny (także pusty albo uszkodzony), albo gdy sesja prowadząca uruchomiła go w przedziale epiku (wynik wywołania `Agent`
+z `toolUseResult.agentId`), a w katalogach sesji epiku nie ma żadnego jego pliku; utracony transkrypt to pozycja
+`sessions` w `gaps` i liczy się jak brak transkryptu części sesji (niżej, „Brak transkryptów”).
+
+**Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania; przebieg subagenta to rola z `agentType`
+i zadanie, którego ID (`<EPIK>-<n>`, wielkość liter bez znaczenia) występuje w `description` jako pierwsze. Bez ID
+przebieg należy do pozycji `no_task` („bez zadania”), tak jak sesja prowadząca.
+
+**Wartość (D3).** Transkrypt sesji natywnej nie ma kosztu policzonego przez CLI, więc wartość wiadomości to suma tokenów
+każdego rodzaju razy stawka cennika API z `config.json` (`pricing`: dla każdego modelu USD za milion tokenów wejścia,
+wyjścia, odczytu cache, zapisu cache 5 min i zapisu cache 1 h; ze źródłem i datą odczytu, zapisanymi w rekordzie jako
+`pricing`). Zapis cache dzieli `usage.cache_creation` (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`).
+Wartość jest zawsze szacunkiem (`estimated: true` w każdej komórce), nieporównywalnym co do centa z kosztem z CLI
+w epikach AO. Wiadomość bez `message.usage`, bez modelu, z modelem bez stawek, z rodzajem tokenów bez stawki albo
+z zapisem cache bez rozbicia ma wartość nieznaną: komórka `usd: null` albo przekrój z `incomplete: true` (znana część
+w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`) stawki nie potrzebuje.
+
+**Pola rekordu natywnego.**
+
+| Pole | Źródło natywne |
+|---|---|
+| `source` | `native` |
+| `tasks`, `started_at`, `done_at` | plik przebiegu (brak: `null` i pozycja w `gaps`) |
+| `final_pr`, `issue`, `merged_at`, `wall` | `pr` z pliku przebiegu i `gh pr view`, jak w AO; `to_done` to `started_at` → `done_at` |
+| `value` | przekroje jak w AO (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`), wartość z cennika |
+| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task`, `role` (`agentType`), `model` (najczęstszy model jego wiadomości; `null` z pozycją w `gaps`, gdy żadna wiadomość go nie ma), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia wiadomość w przedziale epiku), `wall_s`, `tokens`, `value`, `estimated`, `finished` (z `meta.json`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`) |
+| `by_task` | `{zadanie: {kind: null, work, attempts}}`: suma `wall_s` i liczba przebiegów na zadanie (`no_task` dla przebiegów bez zadania) |
+| `in_attempts`, `versions` | polecenia powłoki i wersja CLI ze wszystkich transkryptów epiku (prowadzący i subagenci), reguły jak w AO |
+| `ci` | `final`: przebiegi CI gałęzi `branch` z pliku przebiegu i PR `pr`; `tasks`: `null` |
+| `regressions`, `found_after_merge`, `bottlenecks` | jak w AO |
+| `sessions` | identyfikatory sesji z pliku przebiegu (bez katalogów roboczych) |
+| `transcripts_read` | liczba przeczytanych transkryptów epiku (sesje i subagenci; niżej, „Brak transkryptów”) |
+| `pricing` | `source` i `read_at` cennika, z którego policzono wartość |
+| `breakdown` | `work`, `human_wait`, `idle` od `started_at` do `done_at` (niżej, „Czas i człowiek”); `limit_wait`, `ci_wait`, `host_pause`, `github_wait` `null` z pozycją w `gaps`, rekord ma `breakdown_incomplete: true`; bez `started_at` albo `done_at` całe `null` |
+| `human` | `interventions` (szacunek, `interventions_estimated: true`), `waits`, `wait_s`, `events` (`[{at, wait_s}]`), `manual_fixes` z `--manual-fixes` (bez opcji `null` z pozycją w `gaps`) |
+| `reviews` | lista przeglądów (niżej, „Przeglądy”); pusta bez przebiegów ról przeglądowych |
+| `integration` | `work_s` (suma `wall_s`) i `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`, `ux-reviewer`; `rounds`: największa liczba raportów jednej z tych ról; bez takich przebiegów `null` z pozycją w `gaps` |
+| `retries` | `fix`: przeglądy zadań (`reviews` z zadaniem) z werdyktem blokującym; `failed_by_outcome`: `{unfinished: n}` przebiegów z `finished: false` (`{}` bez nich; przebieg bez `finished` to pozycja w `gaps`, liczba jest dolną granicą); `attempts`, `repair`, `sync_prs` `null` z pozycją w `gaps` |
+| `acceptance` | liczby z tabeli kryteriów opisu końcowego PR (niżej, „Kryteria akceptacji”); brak: `null` z pozycją w `gaps` |
+| `subscription` | `windows`: przyrost każdego okna limitu między `usage_start` i `usage_done` (reguły `night_queue._window_deltas`: okno odnowione między odczytami albo stan inny niż `ok` daje `null` z pozycją w `gaps`); `share`: udział tokenów epiku w tokenach sesji lokalnych (niżej), `share_estimated: true`; `overlap` `null` z pozycją w `gaps`; bez obu odczytów całe `null` z pozycją w `gaps` |
+| `parallel`, `gate_wait`, `waste` | `null`, pozycja w `gaps` („brak źródła w przebiegu natywnym”) |
+
+**Czas i człowiek.** Każda linia użytkownika albo asystenta z `timestamp` mówi, co działo się w przerwie przed nią,
+od poprzedniej linii tego samego transkryptu: wiadomość asystenta albo `tool_result` to praca (prowadzący albo subagent
+działał), wiadomość z `origin.kind = "human"` to przerwa zakończona wiadomością człowieka, każda inna linia użytkownika
+(raport subagenta, powiadomienie zadania w tle, wznowienie subagenta, linia meta) to czekanie, które nie jest pracą.
+`work` to długość sumy (unii) przedziałów pracy wszystkich transkryptów epiku, `human_wait` to przerwy przed
+wiadomością człowieka bez części pokrytej pracą (pytanie o postęp, gdy subagenci pracują, nie jest czekaniem), `idle` to reszta czasu
+`started_at` → `done_at`. `human.interventions` liczy wiadomości człowieka po `started_at` (polecenie startu jest
+przed `metrics.py start`) do merge'u końcowego PR, każdą raz (`uuid` linii, bez niego czas; sesja wznowiona powtarza
+linie), więc jest górną granicą interwencji koniecznych. Zdarzenie w `events` ma czas wiadomości i `wait_s`: część
+przerwy przed nią od `started_at`, której nie pokrywa praca; `waits` to zdarzenia z `wait_s` > 0, `wait_s` ich suma
+(zdarzenia po `done_at` liczą się tu, ale nie w `breakdown`). Wiadomość człowieka bez `timestamp` jest pomijana
+z pozycją `human` w `gaps`. Gdy żadna linia użytkownika sesji prowadzących poza `tool_result` nie ma pola `origin`
+(zmiana formatu CLI), wiadomości człowieka nie da się rozpoznać: `interventions`, `waits`, `wait_s`, `events`
+i `breakdown.human_wait` mają `null` z pozycją w `gaps` (czas czekania jest w `idle`).
+
+**Brak transkryptów.** Gdy nie da się przeczytać transkryptu żadnej sesji z pliku przebiegu (retencja, zły
+identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `integration`, `human` poza
+`manual_fixes`, `retries.fix`, `retries.failed_by_outcome`, `subscription.share`) mają `null` z pozycją w `gaps`, nigdy
+zero; wartość zapisana wcześniej w rekordzie natywnym zostaje (odświeżenie rekordu, np. przez `/retro collect`, jej nie
+zastępuje), z pozycją w `gaps`. Tak samo zostają zapisane `attempts`, `by_task`, `value`, `in_attempts` i `versions`;
+bez zapisanego rekordu są puste (`attempts` `[]`, `by_task` `{}`, `value.total` `null`) albo `null` z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji albo transkryptu subagenta
+przeczytanej sesji, te pola oraz `attempts`, `by_task`, `value` i `in_attempts` mają wartości z dostępnych
+transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna). Odświeżenie, które przeczytało mniej
+transkryptów niż zapisany rekord natywny (`transcripts_read`; retencja albo utracony plik), zachowuje jego wartości
+tych pól i jego liczbę, z pozycją w `gaps` („zachowano poprzednią wartość”), zamiast je zmniejszyć; rekord bez
+`transcripts_read` tego porównania nie ma.
+
+**Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,
+`qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task` (zadanie według D4,
+`null` dla przeglądu całej zmiany), `role`, `agent_id`, `at`, `mode` (pierwszy raport transkryptu `FULL`, każdy
+kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to słowo werdyktu tuż po etykiecie
+„Werdykt” albo „Verdict” w tekście raportu (między nimi tylko odstępy, dwukropek, myślnik, odwrócone apostrofy,
+pogrubienie, znaki nagłówka i jedno słowo `to`, `jest` albo `is`). Raport podaje werdykt na początku, więc wygrywa
+pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia), także gdy dalej cytuje
+inne werdykty; gdy żadnej etykiety na początku linii nie ma, liczy się ostatnia etykieta w tekście, bo raport może
+przytoczyć werdykt poprzedniej rundy; słowo werdyktu bez etykiety się nie liczy, tak jak etykieta tuż po cudzysłowie
+albo odwróconym apostrofie (cytat przykładu w raporcie). Werdykt jest przyjęty tylko z kontraktu roli: `code-reviewer` `PASS` /
+`CHANGES_REQUIRED`, `qa-adversarial` `PASS` / `INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` /
+`REWORK`; blokują `CHANGES_REQUIRED`, `BLOCK` i `REWORK`. Raport bez rozpoznanego werdyktu (dziś zawsze `ux-reviewer`,
+który nie ma werdyktu) ma `verdict` i `blocking` `null` z pozycją `reviews` w `gaps`; przebieg roli przeglądowej bez
+`SubagentHandback` też jest pozycją w `gaps`. Lista jest w kolejności czasu. Tekst raportu nie trafia do rekordu.
+
+**Kryteria akceptacji (M5).** Opis końcowego PR rekord czyta wyłącznie przez bramkę pochodzenia
+(`tools/agent-security/github_trust.py`, `prs --head <gałąź> --state all`, pole `body`): od autora bez prawa zapisu
+bramka nie podaje opisu i `acceptance` ma `null` z pozycją w `gaps`. W opisie liczy się tabela `| Numer | Sposób |
+Wynik |` w sekcji z nagłówkiem „Kryteria akceptacji” (do następnego nagłówka; format: `docs/adr/agentic-software-house.md`,
+„Przebieg epiku”, krok 7). `acceptance`: `total` (wiersze tabeli), `stack`, `ci`, `after_deploy`, `unverified`
+(kolumna „Sposób” zaczyna się od „stos”, „CI”, „po wdrożeniu”, „niezweryfikowane”, wielkość liter, odwrócone apostrofy
+i pogrubienie bez znaczenia). Wiersz z innym sposobem liczy się tylko w `total`, z pozycją w `gaps`. Brak sekcji,
+tabeli albo wierszy, opis pusty, PR niezwrócony przez bramkę albo `--no-gh` dają `null` z pozycją w `gaps`; błąd bramki
+także kod 3. Rekord zapisuje same liczby; wartość zapisana wcześniej zostaje, gdy źródło jest chwilowo niedostępne.
+
+**Udział w limitach (`share`).** Limity subskrypcji są na konto, więc mianownikiem są tokeny wszystkich lokalnych
+sesji i ich subagentów ze wszystkich projektów w katalogu `--projects` (`~/.claude/projects`) od `started_at` do
+`done_at`, także równoległych sesji innych prac; licznikiem tokeny epiku z tego przedziału. Każdy `message.id` liczy
+się raz, tokeny są ważone `token_weights` (wejście 1, zapis cache 5 min 1,25 i 1 h 2, odczyt cache 0,1, wyjście 5).
+Transkrypt zmodyfikowany ostatnio przed `started_at` nie jest czytany. Użycia z innych urządzeń nie widać, więc `share`
+jest szacunkiem (`share_estimated: true`); bez tokenów w przedziale `share` ma `null` z pozycją w `gaps`.
+
+Rekord natywny nie zawiera treści wiadomości, zleceń, raportów, opisu PR, poleceń ani ścieżek katalogów roboczych. Format transkryptów nie
+jest stabilnym interfejsem CLI: brak pola daje `null` i pozycję w `gaps`, nie błąd. Testy używają syntetycznych
+transkryptów z samymi czytanymi polami; treść prawdziwych transkryptów nie trafia do repozytorium.
+
 ### Historia i trend
 
 - `metrics.py backfill`: rekord każdego przebiegu epiku w `~/.local/state/ao-*` z końcowym PR `MERGED`; braki
@@ -261,6 +414,17 @@ szacowane; prognoza `expected_effect` jest szacowana tylko wtedy, gdy dane, z kt
   Wartość tokenów, pp i `repeat_runs` z szacowanego albo niepełnego źródła (`estimated`, `share_estimated`,
   `in_attempts.incomplete`) mają „≈” w tabeli, w pozycji względem mediany razem z procentem różnicy (także w raporcie odbioru)
   i znacznik w `--json`, tak samo jak w `render`.
+- **Dwa źródła** (`docs/features/ash-v1/spec.md`, M6). `trend` pokazuje rekordy AO i natywne w jednej tabeli z kolumną
+  źródła (rekord bez pola `source` jest AO). Mediany liczy się osobno dla każdego źródła, z wierszy tabeli tego źródła:
+  rekord natywny nie zmienia mediany AO ani odwrotnie, a pozycja epiku jest względem mediany jego źródła (źródło bez
+  wierszy w tabeli ma medianę `null`). W wierszu natywnym kolumna bez danych to „brak danych”, nigdy zero. Porównywalne
+  między źródłami są tylko pola o tej samej definicji: liczba zadań, czas do gotowego PR (`to_done`) i do merge'u
+  (`review` to różnica), CI końcowego PR, regresje. Pozostałe kolumny rekordu natywnego z wartością mają „†” („liczone
+  inaczej niż w AO”): `work` i `human_wait` (rozkład czasu bez oczekiwania na limity, CI i GitHub), `repeat_runs`, wartość
+  w USD (cennik zamiast kosztu z CLI, szacunek, więc razem z „≈”), `interventions` (każda wiadomość człowieka zamiast
+  odpowiedzi na blokadę) i `pp` (koszt subskrypcji z lokalnych transkryptów); raport nie zestawia ich jako równoważnych.
+  `breakdown_incomplete: true` rekordu natywnego (bool; w AO lista kategorii) oznacza, że `idle` jest górną granicą,
+  bo kategorie bez źródła mają `null`, a ich czas jest w `idle`.
 - Rekordy z otwartym oknem regresji przelicza każde `trend` (merge kolejnego epiku, start `/ao-run`).
 - Epik z inną wersją CLI albo innym zestawem modeli niż poprzedni ma w `trend` adnotację zmiany (bez korekty liczb).
 
@@ -288,7 +452,10 @@ Każda pozycja ma:
 - potencjalny efekt optymalizacji: oczekiwane skrócenie czasu zegarowego z reguły decyzji (w godzinach), a bez
   reguły nadwyżka jako górna granica z dopiskiem „bez reguły decyzji”.
 
-Bez co najmniej 5 epików w historii mediana jest z dostępnych, a rekord ma pozycję w `gaps`. Raport odbioru zaczyna
+Historia to epiki zmergowane przed tym i tego samego źródła (`source`): wąskie gardła epiku natywnego mają medianę tylko
+z epików natywnych, epiku AO tylko z AO (tak samo reguły `decide`). Zadania rekordu natywnego mają `kind: null`, więc nie
+są kandydatami wąskich gardeł i `decide` pomija dla nich regułę D2. Bez co najmniej 5 epików w historii mediana jest
+z dostępnych, a rekord ma pozycję w `gaps`. Raport odbioru zaczyna
 sekcję „Pomiar” od wąskich gardeł, przed pozostałymi liczbami, np. „1. `human_wait`: +6,2 h ponad medianę (22%
 czasu), potencjalnie −4,1 h (D4)”.
 
@@ -385,6 +552,10 @@ w danych kandydata mają oznaczenie; D1 na wartości roli szacowanej podaje to w
 | D3 | `gate_wait` | epiki | h |
 | D4 | udział kategorii czekania z reguły w jej mianowniku | epiki | pp |
 
+Okna liczy się z rekordów jednego źródła (`ao` albo `native`, jak mediany `trend` i historia `bottlenecks`): źródła
+epików rozpoczętych po `--at` (większości, przy remisie najwcześniej rozpoczętego; bez takich epików źródła ostatnio
+zmergowanego). Rekordy drugiego źródła nie wchodzą do żadnego okna, do czasu epiku ani do `spanning` i `unmerged_after`,
+a wynik ma pozycję w `gaps` z ich liczbą.
 Okno „po” to epiki rozpoczęte po `--at` (`started_at > --at`); epiki rozpoczęte przed `--at` i zmergowane po nim
 pomijamy, bo pracowały na gałęzi sprzed poprawki. Okno „przed” to tyle samo epików zmergowanych przed `--at`,
 najbliższych tej chwili; gdy zmergowanych przed `--at` jest mniej niż w oknie „po”, okno „przed” ma wszystkie, jest
@@ -419,6 +590,11 @@ obliczeń agenta: mediana, rozrzut i liczebność przed i po, czas epiku, zmiany
   z „≈”), koszt subskrypcji w pp (z `share` przy nakładaniu), próby, REPAIR, FIX, sync, czekanie w bramce,
   interwencje, alarmy, wersje CLI i modele, pozycja na tle mediany, braki danych; na początku wąskie gardła. Istniejące pozycje raportu
   (interwencje, czas, koszt, czekanie) pochodzą z rekordu.
+- Raport i komentarz mówią, z jakiego źródła jest rekord (linia „Źródło pomiaru”), a historię w medianie wąskich gardeł
+  i w „Pozycji na tle mediany” biorą z epików tego samego źródła. Pola rekordu natywnego liczone inaczej niż w AO (rozkład
+  czasu, integracja i rundy przeglądu, wartość z cennika API, subskrypcja, FIX, interwencje i czekania człowieka) mają
+  dopisek „(liczone inaczej niż w AO)”; pola bez źródła w przebiegu natywnym (próby, REPAIR, sync, bramka, alarmy,
+  kategorie rozkładu bez źródła) to „brak danych”.
 - Komentarz po merge'u (`/ao-run`, punkt 6) to blok „Pomiar epiku” z `render --format comment`: te same liczby po
   merge'u (z `to_merge` i `review`) i dotychczasowe linie (interwencje, czekanie, `Ręczne poprawki: N` z listą
   w formacie czytanym przez `retro.py collect`). Render przyjmuje tylko pola liczbowe, ID zadań, nazwy ról i modeli

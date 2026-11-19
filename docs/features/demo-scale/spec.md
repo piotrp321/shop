@@ -371,8 +371,9 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
 
 1. Wdrożenie `main` (polecenie i zatwierdzenie użytkownika); `status`.
 2. Użytkownik podaje stan automatycznej kopii OVH; trafia do raportu jako fakt (U3).
-3. `generate PROFILE=medium REPLACE=seed` (zgoda). Eksport logu i metryk z Grafana Cloud, porównanie z logiem
-   kontenera (pierwsza i ostatnia linia, liczba linii `[OK]`), raport `medium` na serwerze. Przegląd sklepu i panelu.
+3. `generate PROFILE=medium REPLACE=seed` (zgoda), po wdrożeniu i weryfikacji L9 z „Wymagane przed startem”.
+   Eksport logu i metryk z Grafana Cloud, porównanie z logiem kontenera (pierwsza i ostatnia linia, liczba linii
+   `[OK]`), raport `medium` na serwerze. Przegląd sklepu i panelu.
 4. Analiza przed `server`: czas `medium` na serwerze × 10 wobec limitu 24 h, rozmiary `medium` × 10 (produkty)
    i × 5 (zamówienia) wobec wolnego miejsca, szczyty pamięci Postgresa i Elasticsearcha wobec limitów, restarty
    kontenerów. To projekcja do decyzji użytkownika, nie weryfikacja.
@@ -516,8 +517,11 @@ Zmieniana razem z implementacją:
   serwera w trakcie przebiegu to jedyna kopia logu. Przebieg `medium` porównuje ją z logiem kontenera, co nie dowodzi
   kompletności przy wielkości logu `server`.
 - Brak przecieku ruchu po restarcie węzła (Z10) potwierdziła jedna próba na k3d; na serwerze nie był sprawdzany.
-- Cache ISR sklepu na dysku poda (limit 2 GiB) i `count(*)` w `initialize` przy 10 mln produktów: obserwowane
-  w krokach na serwerze, poprawki poza tym etapem.
+- Cache ISR sklepu rośnie na dysku poda o ok. 262 KB na unikalną stronę produktu (limit 2 GiB): przy danych w skali
+  ruch robotów prowadzi do eksmisji jedynego poda sklepu co ok. 8 tys. stron, dopóki nie jest wdrożony cache ISR
+  w pamięci (`docs/features/abuse-limits/spec.md`, L9). Dlatego dane w skali trafiają na serwer dopiero po tym
+  wdrożeniu (warunek w „Wymagane przed startem”).
+- `count(*)` w `initialize` przy 10 mln produktów: obserwowane w krokach na serwerze, poprawka poza tym etapem.
 
 ## Wymagane przed startem
 
@@ -525,3 +529,6 @@ Zmieniana razem z implementacją:
 - Plik `~/.config/shop/demo-photos.env` z czterema zmiennymi odczytu na komputerze, z którego idzie `generate`
   (istnieje; wartości nie przechodzą przez rozmowę).
 - Przed krokami na serwerze: wdrożenie `main` z tym epikiem i zgody użytkownika z „Przebieg na serwerze”.
+- Przed `generate` z profilem `medium` albo `server` na serwerze: wdrożenie zawiera cache ISR w pamięci
+  (ABUSE-LIMITS, L9) i jego weryfikacja na serwerze przeszła (`docs/features/abuse-limits/spec.md`, „Wdrożenie
+  i kolejność z DEMO-SCALE”). Zgoda na `generate` nie zastępuje tego warunku.

@@ -140,7 +140,7 @@ zachowaj istniejący `CLAUDE.md` w jej katalogu.
 - Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`). Lokalne ustawienia
   Claude Code są w `.claude/settings.local.json` (poza repo).
 
-Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/delivery`, `/sweep`, `/retro` jest
+Rozwój AO (Agentic Orchestrator) i skilli `/ao-run`, `/delivery`, `/sweep` jest
 zamrożony; AO zostaje uruchamialny jako rozwiązanie awaryjne. Sesja, która uruchamia AO albo któryś z tych skilli,
 najpierw czyta zasady AO: `docs/adr/agentic-software-house.md` („Zasady obowiązujące tylko przy uruchomieniu AO”),
 `docs/adr/agent-security.md` i `docs/features/ao-run/spec.md`.
@@ -158,7 +158,8 @@ Obowiązuje autora i reviewera, w części, której dotyczy zmiana:
 - **Klawiatura, focus, etykiety:** każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd)
   focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.
-- **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
+- **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana; brak, utrata
+  i uszkodzenie danych wejściowych, powtórne uruchomienie.
 
 ## Dokumentacja
 
