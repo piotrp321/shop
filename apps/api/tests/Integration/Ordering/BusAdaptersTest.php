@@ -95,7 +95,7 @@ final class BusAdaptersTest extends KernelTestCase
         }
     }
 
-    public function testClearAfterOrderEmptiesTheCartAndRenewsItsExpiry(): void
+    public function testClearAfterOrderEmptiesTheCartWhichThenLivesOneDayAsAnEmptyGuestCart(): void
     {
         $cart = CartFixture::cart($this->connection, expiresAt: '+3 days', lines: [[Uuid::v7()->toRfc4122(), 1]]);
         $this->cart()->lockForOrder(CartReference::guest($cart));
@@ -105,7 +105,8 @@ final class BusAdaptersTest extends KernelTestCase
         self::assertSame([], CartFixture::lines($this->connection, $cart));
         $expiresAt = $this->connection->fetchOne('SELECT expires_at FROM cart_cart WHERE id = ?', [$cart]);
         self::assertIsString($expiresAt);
-        self::assertGreaterThan(new \DateTimeImmutable('+29 days'), new \DateTimeImmutable($expiresAt));
+        self::assertGreaterThan(new \DateTimeImmutable('+23 hours'), new \DateTimeImmutable($expiresAt), 'touched by the clear');
+        self::assertLessThanOrEqual(new \DateTimeImmutable('+1 day +1 minute'), new \DateTimeImmutable($expiresAt), 'an empty guest cart lives one day');
     }
 
     public function testPricingQuotesTheLinesWithCurrentPricesOnly(): void

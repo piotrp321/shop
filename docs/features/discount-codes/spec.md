@@ -27,7 +27,6 @@ Poza zakresem:
 - łączenie kilku kodów w jednym zamówieniu;
 - kody jednorazowe generowane seriami;
 - limit użyć na klienta;
-- rate limiting sprawdzania kodów (T2 CHECKOUT, przed publicznym demo);
 - programy lojalnościowe;
 - kod zapisany w koszyku (kod istnieje tylko w kasie);
 - kod na wybrane produkty lub kategorie (kod dotyczy całego zamówienia).
@@ -466,5 +465,7 @@ pozostali 403; odczyt: każdy pracownik):
 - Kod z limitem szereguje złożenia z tym kodem (blokada wiersza na czas transakcji złożenia). Popularny kod z limitem
   w szczycie wydłuża złożenia; kod bez limitu nie blokuje. Wydajność nie jest potwierdzona testami obciążeniowymi.
 - Liczba aktywnych użyć jest liczona zapytaniem (indeks częściowy) przy każdej wycenie kodu z limitem.
-- Bez rate limitingu (T2) kody można zgadywać przez podgląd koszyka.
+- Podgląd kodu ma limit prób na adres klienta (`discount_preview`, `docs/features/abuse-limits/spec.md`, L3): limit
+  spowalnia zgadywanie, ale kod słownikowy da się odgadnąć z wielu adresów; poufność kodu daje tylko jego losowość
+  („Zgadywanie kodów rabatowych” tamtej specyfikacji).
 - Zmiana netto linii bez kodu (D8) może różnić się o grosze od dotychczasowego „netto jednostkowe × ilość”.

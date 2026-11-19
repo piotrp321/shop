@@ -7,12 +7,15 @@ namespace App\Tests\Integration\Shared\RateLimit;
 use App\Kernel;
 use Symfony\Component\Config\Loader\LoaderInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Reference;
 
 /**
  * The `test` kernel (its small limits) with the state of the rate limiters in the Redis pool of production: `when@test`
- * keeps it in memory, this kernel takes the storage of the production configuration back (the pool cache.rate_limiter
- * of config/packages/rate_limiter.yaml, REDIS_HOST with the timeouts of the DSN). Its container is cached apart from
- * the `test` one.
+ * keeps it in memory without a lock, this kernel takes the storage and the lock of the production configuration back
+ * (the pool cache.rate_limiter of config/packages/rate_limiter.yaml and rate_limiter.lock_factory, REDIS_HOST with the
+ * timeouts of the DSN). Its container is cached apart from
+ * the `test` one. The storage of order_placement is an InterruptibleStorage, so a test can break Redis between the
+ * lock of a key and its counter.
  */
 final class RedisPoolKernel extends Kernel
 {
@@ -26,9 +29,12 @@ final class RedisPoolKernel extends Kernel
         parent::registerContainerConfiguration($loader);
         $loader->load(static function (ContainerBuilder $container): void {
             $container->loadFromExtension('framework', ['rate_limiter' => array_fill_keys(
-                ['order_placement', 'payment_start', 'payment_webhook'],
-                ['policy' => 'sliding_window', 'storage_service' => null],
+                ['order_placement', 'payment_start', 'payment_webhook', 'guest_cart_create', 'guest_cart_write', 'discount_preview'],
+                ['policy' => 'sliding_window', 'storage_service' => null, 'lock_factory' => 'rate_limiter.lock_factory'],
             )]);
+            $container->register('test.interruptible_storage', InterruptibleStorage::class)
+                ->setDecoratedService('limiter.storage.order_placement')
+                ->setArguments([new Reference('.inner')]);
         });
     }
 }
