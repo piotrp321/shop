@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -127,6 +127,17 @@ create-admin:
 restore:
 	@sh scripts/ao-guard.sh restore
 	SNAPSHOT="$(SNAPSHOT)" PRE_RESTORE="$(PRE_RESTORE)" sh scripts/restore.sh
+
+# Replaces the data of the shop with the demo data of a profile, or with the seed again (docs/features/demo-scale/spec.md, "Cel
+# make -C infra/k8s generate"): make -C infra/k8s generate PROFILE=<seed|profile> REPLACE=<data of the record> GENERATE_OUT=<directory
+# outside the repository> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>. Only after the consent
+# of the user in the conversation that names the operation, the host and the profile. PROFILE is seed or the profile of the CronJob
+# demo-data (demoData.profile), REPLACE the data of the record demo-data-state (seed without a record). Refuses without changes (exit 1;
+# exit 2 for wrong arguments, the environment, the file of the photo pool), says what it will do and asks for the word tak. The run,
+# the variables and the probe of the public addresses are in the header of scripts/generate.sh.
+generate:
+	@sh scripts/ao-guard.sh generate
+	PROFILE="$(PROFILE)" REPLACE="$(REPLACE)" sh scripts/generate.sh
 
 # The snapshots of the repository of the backups (identifier, time, host, tags, revision), the oldest first; only reads:
 # make -C infra/k8s backups. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
