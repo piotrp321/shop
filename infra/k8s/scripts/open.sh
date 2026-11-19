@@ -1,7 +1,9 @@
 #!/bin/sh
 # Checks the data that the Job demo-data-run of make generate gave and opens the shop: make -C infra/k8s open GENERATE_PROBE_URL='<url>
-# ...' KUBE_DIR=<directory>; make generate runs it after a Job that completed. Idempotent. The checks and the opening:
-# docs/features/demo-scale/spec.md, "Cel make -C infra/k8s open".
+# ...' KUBE_DIR=<directory>; make generate runs it after a Job that completed. Idempotent. It refuses while a Job runs and without a Job
+# demo-data-run that completed (make generate deletes the one of the run before right after tak); a Secret of the photo pool that is
+# left (make generate killed) is deleted once no Job runs. The checks and the opening: docs/features/demo-scale/spec.md, "Cel make -C
+# infra/k8s open".
 #
 # Environment: GENERATE_PROBE_URL, GENERATE_PROBE_HOST, KUBE_DIR (required), KUBE_NETWORK, KUBE_NAMESPACE, GENERATE_OPEN_WAIT (300),
 # GENERATE_POLL (30), GENERATE_PROBE_POLL (5), as for make generate.
@@ -39,9 +41,24 @@ fail() {
 
 read_environment
 exec < /dev/null
+job=demo-data-run
 
 active="$(active_jobs)" || refuse "cannot read the Jobs of the namespace $namespace"
 [ -z "$active" ] || refuse "Jobs are active in the namespace $namespace: $active (make open runs after them)"
+
+secret="$(kc get cronjob demo-data --ignore-not-found -o 'jsonpath={.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=="DEMO_PHOTOS_ENDPOINT")].valueFrom.secretKeyRef.name}')" ||
+  refuse "cannot read the CronJob demo-data"
+if [ -n "$secret" ] && [ -n "$(kc get secret "$secret" --ignore-not-found -o name)" ]; then
+  kc delete secret "$secret" --ignore-not-found > /dev/null || refuse "the Secret $secret of the photo pool could not be deleted"
+  echo "open: the Secret $secret of the photo pool that was left is deleted"
+fi
+
+run="$(kc get job "$job" --ignore-not-found -o json)" || refuse "cannot read the Job $job"
+[ -n "$run" ] ||
+  refuse "there is no Job $job (make generate deletes the one of the run before right after tak): make -C infra/k8s generate PROFILE=<profile> again, or PROFILE=seed"
+run_state="$(printf '%s' "$run" | job_state)"
+[ "${run_state%% *}" = Complete ] ||
+  refuse "the Job $job is ${run_state%% *}, not Complete (make status): make -C infra/k8s generate PROFILE=<profile> again, or PROFILE=seed"
 
 # The pool cache.sitemap (a file, one per pod of the api), so that the checks read the new catalog.
 api_pods="$(kc get pods -l app.kubernetes.io/name=api --field-selector=status.phase=Running -o 'jsonpath={.items[*].metadata.name}')" ||

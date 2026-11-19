@@ -13,6 +13,9 @@
 #   GENERATE_PROFILES_FILE  diskPeakGb of the profiles (apps/api/fixtures/demo-data/profiles.yaml)
 #   GENERATE_CLOSE_WAIT (120), GENERATE_OPEN_WAIT (300), GENERATE_POLL (30), GENERATE_PROBE_POLL (5)   seconds
 #
+# Right after tak it deletes the Job demo-data-run of the run before, so that make open never takes its success for that of this run.
+# The Secret of the photo pool is deleted on every exit (INT and TERM too); after a KILL make open deletes it.
+#
 # Exit codes: 0 generated, checked, the shop open; 1 refused, not confirmed or failed (the message says whether the shop is closed);
 # 2 wrong arguments or environment.
 set -eu
@@ -55,6 +58,20 @@ DEMO_PHOTOS_ENV_FILE="${DEMO_PHOTOS_ENV_FILE:-$HOME/.config/shop/demo-photos.env
 # The answer is read from the standard input of the script; every other command reads nothing (docker run -i would take it).
 exec 3<&0 < /dev/null
 job=demo-data-run
+secret_made=0 job_made=0
+cleanup() {
+  status=$?
+  trap - EXIT
+  if [ "$secret_made" = 1 ] && ! kc delete secret "$cron_secret" --ignore-not-found > /dev/null 2>&1; then
+    echo "generate: the Secret $cron_secret of the photo pool could not be deleted: make open deletes it (make status shows it)" >&2
+  fi
+  [ "$status" -lt 128 ] || [ "$job_made" = 0 ] ||
+    echo "generate: stopped; the Job $job may run on and the shop stays closed: make status, then make open once it completed" >&2
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 # Ingress to every pod of the namespace only from its pods: Traefik gets 502, the probes of the kubelet and the traffic between the pods
 # go on. No labels and no annotations: Argo CD does not track it.
 rule_manifest='{"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy","metadata":{"name":"shop-closed"},"spec":{"podSelector":{},"policyTypes":["Ingress"],"ingress":[{"from":[{"podSelector":{}}]}]}}'
@@ -146,6 +163,9 @@ IFS= read -r answer <&3 || answer=""
 echo
 [ "$answer" = tak ] || refuse "not confirmed (no 'tak')"
 
+# The run before is gone first (--wait: until the cluster deleted it): from now on make open refuses until the new Job completed.
+kc delete job "$job" --wait=true --ignore-not-found > /dev/null || refuse "the Job $job of the run before could not be deleted"
+
 # 3. The closing: the rule, Traefik restarted (its pods deleted: the connections opened before the rule end), the probe.
 rule="$(kc get networkpolicy shop-closed --ignore-not-found -o name)" || fail "cannot read the NetworkPolicy shop-closed"
 [ -n "$rule" ] || printf '%s' "$rule_manifest" | kc create -f - > /dev/null || fail "the NetworkPolicy shop-closed could not be made"
@@ -156,14 +176,15 @@ echo "generate: the shop is closed: $probe_report"
 
 # 4. The generation.
 if [ "$photos_needed" = 1 ]; then
+  secret_made=1
   kc delete secret "$cron_secret" --ignore-not-found > /dev/null || fail "the Secret $cron_secret could not be deleted"
   create_photo_secret "$cron_secret" || fail "$demo_data_error"
 fi
+job_made=1
 cronjob_job demo-data "$job" "DEMO_DATA_CONFIRM=$profile" || fail "the Job $job could not be created from the CronJob demo-data"
 echo "generate: the Job $job runs (its log and the metrics go to Grafana Cloud); this target only waits"
 job_ok=1
 RESTORE_POLL_SECONDS="$poll" wait_job "$job" || job_ok=0
-[ -z "$cron_secret" ] || kc delete secret "$cron_secret" --ignore-not-found > /dev/null || true
 if [ "$job_ok" = 0 ]; then
   reason="$(kc get pods -l "batch.kubernetes.io/job-name=$job" -o 'jsonpath={.items[*].status.containerStatuses[*].state.terminated.message}' 2>/dev/null)" || reason=""
   fail "the Job $job did not complete: ${reason:-no reason in the termination log of its pod (the log is in Grafana Cloud)}"

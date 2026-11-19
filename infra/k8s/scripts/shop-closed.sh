@@ -7,7 +7,8 @@
 #   read_environment            KUBE_DIR, KUBE_NETWORK, KUBE_NAMESPACE, GENERATE_PROBE_URL, GENERATE_PROBE_HOST and the seconds of
 #                               GENERATE_CLOSE_WAIT (120), GENERATE_OPEN_WAIT (300), GENERATE_POLL (30), GENERATE_PROBE_POLL (5)
 #   kc <arguments>              kubectl in the namespace
-#   active_jobs                 the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces
+#   active_jobs                 the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces; a Job owned by
+#                               the CronJob rate-limit-check (every 5 minutes, at most a minute) is not counted
 #   probe <closed|open> <s>     0 once every address says <state> in one round, 1 when <s> seconds passed first (probe_report: the
 #                               last round). 502, 503 and 504 are closed, a code below 500 is open; any other code and no answer are
 #                               a failed reading, tried again, never closed or open.
@@ -48,7 +49,8 @@ active_jobs() {
   kc get jobs -o json | py -c '
 import json, sys
 print(" ".join(j["metadata"]["name"] for j in json.load(sys.stdin)["items"]
-    if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}))'
+    if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"}
+    and not any(o.get("kind") == "CronJob" and o.get("name") == "rate-limit-check" for o in j["metadata"].get("ownerReferences") or [])))'
 }
 
 probe_round() {
