@@ -519,6 +519,42 @@ class LoadScript(unittest.TestCase):
         self.assertIn("not ready", result.stderr)
         self.assertEqual(1, len(self.cluster_calls("create")))
 
+    def test_a_photo_file_without_a_read_variable_ends_with_2_before_any_docker_call(self):
+        for name in READ_ACCESS:
+            for value in (None, "", '""', "   "):
+                with self.subTest(name=name, value=value):
+                    self.log.write_text("")
+                    values = {n: v for n, v in {**READ_ACCESS, **WRITE_ACCESS}.items() if n != name}
+                    if value is not None:
+                        values[name] = value
+                    result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA="medium", DEMO_PHOTOS_ENV_FILE=self.photo_file(values))
+                    self.assert_no_docker_call(result, name)
+                    for secret in {**READ_ACCESS, **WRITE_ACCESS}.values():
+                        self.assertNotIn(secret, result.stdout + result.stderr)
+
+    def test_the_token_that_writes_does_not_stand_for_the_read_access(self):
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", LOAD_DATA="medium", DEMO_PHOTOS_ENV_FILE=self.photo_file(WRITE_ACCESS))
+        self.assert_no_docker_call(result, *READ_ACCESS)
+
+    def test_the_file_is_read_as_data_and_nothing_in_it_runs(self):
+        marker = pathlib.Path(self.tmp.name) / "ran"
+        values = {**READ_ACCESS, "DEMO_PHOTOS_BUCKET": f"$(touch {marker})`touch {marker}`"}
+        result = self.run_data(DEMO_PHOTOS_ENV_FILE=self.photo_file(values, extra=f"touch {marker}\n"))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse(marker.exists())
+        data = self.created_secrets()[0]["data"]
+        self.assertEqual(values["DEMO_PHOTOS_BUCKET"], base64.b64decode(data["DEMO_PHOTOS_BUCKET"]).decode())
+
+    def test_quotes_and_carriage_returns_of_the_file_are_not_part_of_the_values(self):
+        path = pathlib.Path(self.tmp.name) / "quoted.env"
+        names = list(READ_ACCESS)
+        path.write_text(f'{names[0]}="{READ_ACCESS[names[0]]}"\r\n{names[1]}=\'{READ_ACCESS[names[1]]}\'\r\n'
+                        f"{names[2]}={READ_ACCESS[names[2]]}\r\n{names[3]}={READ_ACCESS[names[3]]}")
+        result = self.run_data(DEMO_PHOTOS_ENV_FILE=str(path))
+        self.assertEqual(0, result.returncode, result.stderr)
+        data = self.created_secrets()[0]["data"]
+        self.assertEqual(READ_ACCESS, {k: base64.b64decode(v).decode() for k, v in data.items()})
+
     def test_a_generated_profile_runs_the_generator_once_and_measures_the_chunks_it_raised(self):
         result = self.run_data("server")
         self.assertEqual(0, result.returncode, result.stderr)
