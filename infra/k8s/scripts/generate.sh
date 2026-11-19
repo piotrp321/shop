@@ -16,7 +16,7 @@
 # Only the new Job changes the data: until it is made the data is untouched and the Job demo-data-run of the run before describes it
 # (make open may open the shop on it again). Right before the new Job, after the closing and the Secret, the active Jobs are read again
 # and the Job of the run before is deleted with its pod, so make open never takes its success for that of this run. The Secret of
-# the photo pool is deleted on every exit (INT and TERM too); after a KILL make open deletes it.
+# the photo pool is deleted on every exit (HUP, INT and TERM too); after a KILL make open deletes it.
 #
 # Exit codes: 0 generated, checked, the shop open; 1 refused, not confirmed or failed (the message says whether the shop is closed);
 # 2 wrong arguments or environment.
@@ -76,6 +76,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 # Ingress to every pod of the namespace only from its pods: Traefik gets 502, the probes of the kubelet and the traffic between the pods
