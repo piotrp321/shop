@@ -405,6 +405,8 @@ atrybutów z `OTEL_RESOURCE_ATTRIBUTES` ustawień jej zasób nie dostaje, więc 
   `orchestrator`, bez zadania).
 - **Model:** `model` jest etykietą metryk i polem zdarzeń, bez łączenia z rekordem; rekord ma model każdego przebiegu
   subagenta w `attempts` i przekrój `value.by_model`.
+- **Subagent w metrykach:** `agent_id` nie jest etykietą metryk w Prometheusie (tokeny i koszt są tam na sesję
+  i model); podział na subagenta i zadanie dają tylko zdarzenia w Lokim i rekord METRICS.
 
 Powiązanie jest sprawdzone na stosie (2026-11-19, sesja aplikacji desktop z dwoma subagentami): `session_id` z pliku
 przebiegu jest etykietą metryk w Prometheusie, a `agent_id` zdarzeń w Lokim jest równy `attempts[].agent_id` rekordu.
