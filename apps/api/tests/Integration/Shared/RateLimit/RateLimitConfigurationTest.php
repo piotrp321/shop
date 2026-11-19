@@ -40,6 +40,9 @@ final class RateLimitConfigurationTest extends TestCase
     {
         self::assertSame(
             [
+                'discount_preview' => ['policy' => 'sliding_window', 'limit' => 20, 'interval' => '15 minutes'],
+                'guest_cart_create' => ['policy' => 'sliding_window', 'limit' => 30, 'interval' => '15 minutes'],
+                'guest_cart_write' => ['policy' => 'sliding_window', 'limit' => 300, 'interval' => '15 minutes'],
                 'order_placement' => ['policy' => 'sliding_window', 'limit' => 10, 'interval' => '15 minutes'],
                 'payment_start' => ['policy' => 'sliding_window', 'limit' => 20, 'interval' => '15 minutes'],
                 'payment_webhook' => ['policy' => 'sliding_window', 'limit' => 300, 'interval' => '1 minute'],
@@ -100,7 +103,7 @@ final class RateLimitConfigurationTest extends TestCase
     {
         $limits = self::limits('dev');
 
-        self::assertSame(['order_placement', 'payment_start', 'payment_webhook'], array_keys($limits));
+        self::assertSame(['discount_preview', 'guest_cart_create', 'guest_cart_write', 'order_placement', 'payment_start', 'payment_webhook'], array_keys($limits));
         foreach ($limits as $name => $limit) {
             self::assertGreaterThanOrEqual(10_000, $limit['limit'], $name);
         }
