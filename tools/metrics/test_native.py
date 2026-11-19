@@ -180,6 +180,33 @@ class StartDoneTest(NativeEnv):
         self.assertEqual(out, '')
         self.assertIn('pliku przebiegu', err)
 
+    def test_an_epic_name_that_retro_would_not_recognise_is_refused_by_start_resume_and_done(self):
+        for bad in ('SMALL-FIXES', 'small.fixes', 'small_fixes', 'Demo'):
+            with self.subTest(epic=bad):
+                for command in (['start', bad, '--projects', self.projects, '--worktree', WORKTREE, '--session', 's1',
+                                 '--tasks', '3'],
+                                ['start', bad, '--projects', self.projects, '--resume', '--worktree', WORKTREE,
+                                 '--session', 's1', '--tasks', '3'],
+                                ['done', bad]):
+                    code, out, err = run_cli(command + ['--state', self.state], Git())
+                    self.assertEqual((code, out), (2, ''), (command, err))
+                    self.assertIn('nazwa epiku', err)
+                    self.assertIn('^[a-z0-9][a-z0-9-]*$', err)
+        self.assertFalse(os.path.isdir(os.path.join(self.state, 'runs')) and os.listdir(
+            os.path.join(self.state, 'runs')))
+
+    def test_a_valid_epic_name_is_accepted(self):
+        for name in ('small-fixes', 'ash-v1', '2fa'):
+            with self.subTest(epic=name):
+                code, out, err = self.start('--worktree', WORKTREE, '--session', 's1', '--tasks', '3', epic=name)
+                self.assertEqual(code, 0, err)
+                self.assertEqual(self.run_file(name)['epic'], name)
+
+    def test_the_epic_command_keeps_accepting_the_ao_names(self):
+        code, out, err = self.native('SMALL.FIXES_1')
+        self.assertEqual(code, 2)
+        self.assertNotIn('nazwa epiku', err)
+
     def test_bad_arguments_fail_without_writing(self):
         for extra, epic in ((['--at', '2026-11-18 16:36'], 'demo'), (['--session', '../x'], 'demo'),
                             (['--session', 's1'], '../x'), (['--session', 's1', '--tasks', '0'], 'demo'),
@@ -481,6 +508,31 @@ class MissingFieldsTest(NativeEnv):
         self.assertIsNone(attempt['task'])
         self.assertIsNone(attempt['effort'])
         self.assertTrue(any('description' in g for g in record['gaps']), record['gaps'])
+
+    def test_a_meta_json_without_model_is_no_gap_because_the_model_comes_from_the_messages(self):
+        record = self.single(Native('s1', 'a1').assistant(10, model=OPUS, input=5),
+                             {'agentType': 'developer', 'description': 'DEMO-1', 'effort': 'high', 'finished': True})
+        self.assertEqual(record['attempts'][0]['model'], OPUS)
+        self.assertFalse(any('meta.json bez model' in g for g in record['gaps']), record['gaps'])
+
+    def test_the_model_of_meta_json_is_not_used(self):
+        record = self.single(Native('s1', 'a1').assistant(10, model=OPUS, input=5),
+                             {'agentType': 'developer', 'description': 'DEMO-1', 'model': 'sonnet', 'effort': 'high',
+                              'finished': True})
+        self.assertEqual(record['attempts'][0]['model'], OPUS)
+        self.assertFalse(any(g.startswith('attempts.a1') for g in record['gaps']), record['gaps'])
+
+    def test_a_run_without_the_model_in_every_message_has_a_null_model_and_a_gap(self):
+        record = self.single(Native('s1', 'a1').assistant(10, model=None).assistant(20, model=None),
+                             {'agentType': 'developer', 'description': 'DEMO-1', 'effort': 'high', 'finished': True})
+        self.assertIsNone(record['attempts'][0]['model'])
+        self.assertTrue(any('attempts.a1' in g and 'message.model' in g for g in record['gaps']), record['gaps'])
+
+    def test_a_meta_json_without_effort_is_still_a_null_effort_and_a_gap(self):
+        record = self.single(Native('s1', 'a1').assistant(10, model=OPUS, input=5),
+                             {'agentType': 'developer', 'description': 'DEMO-1', 'finished': True})
+        self.assertIsNone(record['attempts'][0]['effort'])
+        self.assertTrue(any('meta.json bez effort' in g for g in record['gaps']), record['gaps'])
 
     def test_unknown_model(self):
         record = self.single(Native('s1', 'a1').assistant(10, model='claude-new-9', input=5),

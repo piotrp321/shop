@@ -403,6 +403,68 @@ class ContextTest(EffectEnv):
         self.assertEqual(sorted(os.listdir(self.state)), ['epics'])
 
 
+class SourceTest(EffectEnv):
+    """The windows hold the records of one source only (spec ASH-V1: M6), as `history_of` does."""
+
+    def mixed(self):
+        """Native epics around the fix (b1-b3 before, n1-n3 after) and AO epics of other values between them."""
+        records = [epic('b%d' % i, i, i + 1, gate_wait=v * H, source='native') for i, v in enumerate((4, 5, 6), 1)]
+        records += [epic('ao-b%d' % i, 3 + i, 4 + i, gate_wait=90 * H) for i in (1, 2, 3)]       # merged closest before
+        records += [epic('n%d' % i, 10 + i, 12 + i, gate_wait=v * H, source='native') for i, v in enumerate((1, 0, 2), 1)]
+        records += [epic('ao-a%d' % i, 10 + i, 12 + i, gate_wait=70 * H) for i in (1, 2)]
+        return records
+
+    def test_the_windows_hold_only_the_records_of_the_source_of_the_epics_after_the_fix(self):
+        store_records(self.state, *self.mixed())
+        result = self.result('D3:gate_wait')
+        self.assertEqual(result['after']['epics'], ['n1', 'n2', 'n3'])
+        self.assertEqual(result['before']['epics'], ['b1', 'b2', 'b3'])
+        self.assertEqual((result['before']['median'], result['after']['median']), (5.0, 1.0))
+
+    def test_ao_records_are_measured_without_the_native_ones(self):
+        records = [epic('ao-b%d' % i, i, i + 1, gate_wait=v * H) for i, v in enumerate((4, 5, 6), 1)]
+        records += [epic('ao-a%d' % i, 10 + i, 12 + i, gate_wait=v * H) for i, v in enumerate((1, 0, 2), 1)]
+        records += [epic('n%d' % i, 3 + i, 4 + i, gate_wait=90 * H, source='native') for i in (1, 2)]
+        records += [epic('n-a1', 11, 13, gate_wait=70 * H, source='native')]
+        store_records(self.state, *records)
+        result = self.result('D3:gate_wait')
+        self.assertEqual(result['after']['epics'], ['ao-a1', 'ao-a2', 'ao-a3'])
+        self.assertEqual(result['before']['epics'], ['ao-b1', 'ao-b2', 'ao-b3'])
+
+    def test_epics_of_the_other_source_do_not_fill_the_after_window(self):
+        records = [epic('b%d' % i, i, i + 1, gate_wait=5 * H, source='native') for i in (1, 2, 3)]
+        records += [epic('n%d' % i, 10 + i, 12 + i, gate_wait=1 * H, source='native') for i in (1, 2)]
+        records += [epic('ao-a1', 11, 13, gate_wait=1 * H)]
+        store_records(self.state, *records)
+        result = self.result('D3:gate_wait')
+        self.assertEqual(result['after']['epics'], ['n1', 'n2'])
+        self.assertEqual((result['message'], result['diff']), ('za mało danych', None))
+        self.assertTrue(any('okno po: 2 epików' in r for r in result['reasons']), result['reasons'])
+
+    def test_epics_of_the_other_source_are_neither_spanning_nor_unmerged(self):
+        few = [r for r in self.mixed() if r['epic'] != 'ao-a2']                  # the native epics stay the majority
+        store_records(self.state, *few, epic('ao-span', 8, 13), epic('ao-open', 15, None))
+        result = self.result('D3:gate_wait')
+        self.assertEqual((result['spanning'], result['unmerged_after']), ([], []))
+
+    def test_the_epic_time_comes_from_the_same_source(self):
+        store_records(self.state, *self.mixed())
+        time = self.result('D3:gate_wait')['epic_time']
+        self.assertEqual(time['before']['epics'], ['b1', 'b2', 'b3'])
+        self.assertEqual(time['after']['epics'], ['n1', 'n2', 'n3'])
+
+    def test_the_other_source_left_out_is_a_gap(self):
+        store_records(self.state, *self.mixed())
+        self.assertTrue(any('źródł' in g for g in self.result('D3:gate_wait')['gaps']))
+
+    def test_one_source_has_no_gap_and_the_shape_of_the_result_is_the_same(self):
+        self.gate_epics([4, 5, 6], [1, 0, 2])
+        plain = self.result('D3:gate_wait')
+        self.assertFalse(any('źródł' in g for g in plain['gaps']), plain['gaps'])
+        store_records(self.state, *self.mixed())
+        self.assertEqual(sorted(self.result('D3:gate_wait')), sorted(plain))
+
+
 class ErrorPathTest(EffectEnv):
     def setUp(self):
         super().setUp()
