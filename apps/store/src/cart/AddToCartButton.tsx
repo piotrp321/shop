@@ -27,7 +27,7 @@ export function AddToCartButton({ variantId, size = "sm", className }: { variant
   }
 
   async function add() {
-    if (variantId === null) {
+    if (variantId === null || pending) {
       return;
     }
     setPending(true);
@@ -44,7 +44,15 @@ export function AddToCartButton({ variantId, size = "sm", className }: { variant
 
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <Button type="button" size={size} disabled={pending || variantId === null} onClick={() => void add()}>
+      {/* A running request blocks with `aria-disabled`, not `disabled`: a disabled button loses the keyboard focus. */}
+      <Button
+        type="button"
+        size={size}
+        disabled={variantId === null}
+        aria-disabled={pending ? true : undefined}
+        className={pending ? "opacity-50" : undefined}
+        onClick={() => void add()}
+      >
         Do koszyka
       </Button>
       {feedback?.kind === "added" && feedback.variantId === variantId ? (
