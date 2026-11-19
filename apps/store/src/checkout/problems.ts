@@ -7,6 +7,7 @@ export type OrderConflictType = components["schemas"]["OrderConflictProblem"]["t
 export type OrderConflictReason =
   | "cart_empty"
   | "guest_order_too_large"
+  | "too_many_unpaid_orders"
   | "cart_not_orderable"
   | "insufficient_stock"
   | "total_changed"
@@ -21,6 +22,7 @@ export const CART_EMPTY_TYPE: OrderConflictType = "tag:piotrp321.github.io,2026:
 const REASONS = {
   "tag:piotrp321.github.io,2026:shop/problems/cart-empty": "cart_empty",
   "tag:piotrp321.github.io,2026:shop/problems/guest-order-too-large": "guest_order_too_large",
+  "tag:piotrp321.github.io,2026:shop/problems/too-many-unpaid-orders": "too_many_unpaid_orders",
   "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable": "cart_not_orderable",
   "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order": "insufficient_stock",
   "tag:piotrp321.github.io,2026:shop/problems/order-total-changed": "total_changed",

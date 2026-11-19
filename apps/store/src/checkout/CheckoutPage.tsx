@@ -298,6 +298,11 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           setCodeError(`${detail} ${CODE_NOT_REMOVED}`);
           return CODE_REMOVE_ID;
         }
+        if (result.reason === "too_many_unpaid_orders") {
+          // Nothing was placed and the cart is fine: the customer tries again later with the same request.
+          setFailure({ kind: "conflict", detail, offersCart: false });
+          return FAILURE_ID;
+        }
         if (result.reason === "key_reused") {
           // The key belongs to another request: the form is fine, the next click is a new attempt.
           setIdempotencyKey(newIdempotencyKey());
