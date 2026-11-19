@@ -302,7 +302,10 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   `retries.failed_by_outcome`, `subscription.share`) są `null` z pozycją w `gaps`, a wartości zapisanego rekordu
   natywnego zostają, także `TRANSCRIPT_KEPT` (`attempts`, `by_task`, `value`, `in_attempts`, `versions`; pozycja
   „zachowano poprzednią wartość”); bez transkryptu części sesji albo subagentów (pokrycie `partial`) te pola oraz
-  `attempts`, `by_task`, `value` i `in_attempts` mają pozycję w `gaps` o dolnej granicy.
+  `attempts`, `by_task`, `value` i `in_attempts` mają pozycję w `gaps` o dolnej granicy. Rekord ma
+  `transcripts_read` (przeczytane transkrypty sesji i subagentów); odświeżenie z mniejszą liczbą niż w zapisanym
+  rekordzie natywnym zachowuje jego wartości tych pól i jego liczbę (`_keep_stored`, pozycja „zachowano poprzednią
+  wartość”), a pozycja o dolnej granicy dotyczy tylko pól niezachowanych.
 - **Przeglądy:** każde wywołanie `SubagentHandback` w transkrypcie roli `code-reviewer`, `qa-adversarial`,
   `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, role, agent_id, at, mode,
   verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to słowo

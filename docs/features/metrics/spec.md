@@ -330,6 +330,7 @@ w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`
 | `ci` | `final`: przebiegi CI gałęzi `branch` z pliku przebiegu i PR `pr`; `tasks`: `null` |
 | `regressions`, `found_after_merge`, `bottlenecks` | jak w AO |
 | `sessions` | identyfikatory sesji z pliku przebiegu (bez katalogów roboczych) |
+| `transcripts_read` | liczba przeczytanych transkryptów epiku (sesje i subagenci; niżej, „Brak transkryptów”) |
 | `pricing` | `source` i `read_at` cennika, z którego policzono wartość |
 | `breakdown` | `work`, `human_wait`, `idle` od `started_at` do `done_at` (niżej, „Czas i człowiek”); `limit_wait`, `ci_wait`, `host_pause`, `github_wait` `null` z pozycją w `gaps`, rekord ma `breakdown_incomplete: true`; bez `started_at` albo `done_at` całe `null` |
 | `human` | `interventions` (szacunek, `interventions_estimated: true`), `waits`, `wait_s`, `events` (`[{at, wait_s}]`), `manual_fixes` z `--manual-fixes` (bez opcji `null` z pozycją w `gaps`) |
@@ -362,7 +363,10 @@ zero; wartość zapisana wcześniej w rekordzie natywnym zostaje (odświeżenie 
 zastępuje), z pozycją w `gaps`. Tak samo zostają zapisane `attempts`, `by_task`, `value`, `in_attempts` i `versions`;
 bez zapisanego rekordu są puste (`attempts` `[]`, `by_task` `{}`, `value.total` `null`) albo `null` z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji albo transkryptu subagenta
 przeczytanej sesji, te pola oraz `attempts`, `by_task`, `value` i `in_attempts` mają wartości z dostępnych
-transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna).
+transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna). Odświeżenie, które przeczytało mniej
+transkryptów niż zapisany rekord natywny (`transcripts_read`; retencja albo utracony plik), zachowuje jego wartości
+tych pól i jego liczbę, z pozycją w `gaps` („zachowano poprzednią wartość”), zamiast je zmniejszyć; rekord bez
+`transcripts_read` tego porównania nie ma.
 
 **Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,
 `qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task` (zadanie według D4,

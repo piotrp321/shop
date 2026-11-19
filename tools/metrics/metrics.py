@@ -2746,11 +2746,13 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     `none` (no transcript of a session of the run file was read), `partial` (only some, or a subagent transcript of a
     session read is lost: missing, empty or unreadable, also one the lead session started in the interval without
     any file of it) or `full`; `no_origin`: the lead sessions have user lines but none with an `origin` (a change of
-    the transcript format)."""
+    the transcript format); `transcripts_read`: the number of transcripts read (sessions and subagents, also those
+    without a line in the interval)."""
     pricing = config['pricing']
     seen_ids, seen_tools = set(), set()
     attempts, items, datas, marks, reviews, messages = [], [], [], [], [], {}
     untimed_human, user_lines, origin_lines, read, lost, launched = 0, 0, 0, set(), set(), set()
+    transcripts_read = 0
     transcripts = native_transcripts(projects, sessions, gaps)
     for kind, session, agent, path, meta_path in transcripts:
         label = 'sesja %s' % session if kind == 'session' else 'agent %s' % agent
@@ -2760,6 +2762,7 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
             if kind == 'agent':
                 lost.add(agent)
             continue
+        transcripts_read += 1
         if data['skipped']:
             gaps.add('sessions', '%s: pominięte linie, które nie są obiektem JSON (%d)' % (label, data['skipped']))
         if kind == 'session':
@@ -2830,7 +2833,7 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
             'in_attempts': in_attempts, 'versions': versions_of(datas) if datas else None, 'marks': marks,
             'untimed_human': untimed_human, 'messages': messages,
             'coverage': 'none' if not read else 'partial' if len(read) < len(set(sessions)) or lost else 'full',
-            'no_origin': user_lines > 0 and origin_lines == 0,
+            'no_origin': user_lines > 0 and origin_lines == 0, 'transcripts_read': transcripts_read,
             'reviews': sorted(reviews, key=lambda r: (r['at'] is None, r['at'] or '', r['agent_id']))}
 
 
@@ -3157,29 +3160,58 @@ def _clear(record, paths, gaps, reason):
             gaps.add('.'.join(path), reason)
 
 
+def _keep_stored(record, stored, gaps, reason):
+    """Puts the values of `TRANSCRIPT_PATHS` and `TRANSCRIPT_KEPT` of the stored native record back into `record` (a
+    changed one with a gap); the paths with a stored value."""
+    kept = set()
+    for path in TRANSCRIPT_PATHS + TRANSCRIPT_KEPT:
+        old = _get(stored, path)
+        if old is None or not isinstance(_get(record, path[:-1]), dict):
+            continue
+        kept.add(path)
+        if old != _get(record, path):
+            _set(record, path, old)
+            gaps.add('.'.join(path), reason)
+    return kept
+
+
+def _within(field, kept):
+    """Whether the path `field` (dotted) is one of the `kept` paths, lies in one or holds one."""
+    path = tuple(field.split('.'))
+    return any(p[:len(path)] == path or path[:len(p)] == p for p in kept)
+
+
 def apply_transcript_coverage(record, coverage, no_origin, previous, gaps):
     """The process fields of `record` by the transcripts read (`native_fields`): `none` makes them null with a gap and
-    keeps the values of the stored native record (also of `TRANSCRIPT_KEPT`), `partial` adds the gap of a lower bound; `no_origin` (no user line of
-    the lead sessions has an `origin`) makes the human messages and `human_wait` unknown."""
+    keeps the values of the stored native record (also of `TRANSCRIPT_KEPT`); fewer transcripts read than for the
+    stored native record (`transcripts_read`: retention, a lost file) keep its values the same way and its number;
+    `partial` adds the gap of a lower bound to the rest; `no_origin` (no user line of the lead sessions has an `origin`)
+    makes the human messages and `human_wait` unknown, unless they are kept."""
+    stored = previous if isinstance(previous, dict) and previous.get('source') == 'native' else None
+    stored_read = stored.get('transcripts_read') if stored is not None and _is_int(stored.get('transcripts_read')) \
+        else None
     if coverage == 'none':
         _clear(record, TRANSCRIPT_PATHS, gaps, NO_TRANSCRIPTS)
-        stored = previous if isinstance(previous, dict) and previous.get('source') == 'native' else None
-        for path in TRANSCRIPT_PATHS + TRANSCRIPT_KEPT:
-            old = _get(stored, path)
-            if old is not None and old != _get(record, path) and isinstance(_get(record, path[:-1]), dict):
-                _set(record, path, old)
-                gaps.add('.'.join(path), 'brak transkryptów sesji epiku: zachowano poprzednią wartość')
+        _keep_stored(record, stored, gaps, 'brak transkryptów sesji epiku: zachowano poprzednią wartość')
+        if stored_read is not None and stored_read > record['transcripts_read']:
+            record['transcripts_read'] = stored_read
         return
+    kept = set()
+    if stored_read is not None and stored_read > record['transcripts_read']:
+        kept = _keep_stored(record, stored, gaps, 'przeczytano mniej transkryptów epiku (%d) niż dla zapisanego rekordu '
+                                                  '(%d): zachowano poprzednią wartość'
+                                                  % (record['transcripts_read'], stored_read))
+        record['transcripts_read'] = stored_read
     if coverage == 'partial':
         for field in ('breakdown', 'human', 'integration', 'reviews', 'retries.fix', 'retries.failed_by_outcome',
                       'subscription.share', 'attempts', 'by_task', 'value', 'in_attempts'):
-            if _get(record, tuple(field.split('.'))) is not None:
+            if _get(record, tuple(field.split('.'))) is not None and not _within(field, kept):
                 gaps.add(field, PARTIAL_TRANSCRIPTS)
     if no_origin:
         reason = 'linie użytkownika bez pola origin (zmiana formatu CLI): wiadomości człowieka nierozpoznane'
-        _clear(record, HUMAN_EVENT_PATHS, gaps, reason)
+        _clear(record, [p for p in HUMAN_EVENT_PATHS if p not in kept], gaps, reason)
         breakdown = record.get('breakdown')
-        if isinstance(breakdown, dict) and _is_number(breakdown.get('human_wait')):
+        if ('breakdown',) not in kept and isinstance(breakdown, dict) and _is_number(breakdown.get('human_wait')):
             breakdown['idle'] = round(breakdown['idle'] + breakdown['human_wait'], 3)
             _clear(record, (('breakdown', 'human_wait'),), gaps, reason + ': czas w idle')
 
@@ -3272,6 +3304,7 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
         'reviews': fields['reviews'],
         'acceptance': native_acceptance(run, no_gh, repo, final_pr, branch, gaps, errors),
         'sessions': sessions,
+        'transcripts_read': fields['transcripts_read'],
         'pricing': {'source': config['pricing']['source'], 'read_at': config['pricing']['read_at']},
     }
     for field in ('parallel', 'gate_wait', 'waste'):
