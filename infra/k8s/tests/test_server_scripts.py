@@ -394,7 +394,7 @@ class Status(ServerScripts):
 
 class Reinitialize(ServerScripts):
     def execs(self):
-        return [call for call in self.calls() if " exec " in call]
+        return [call for call in self.calls() if "exec deploy/api" in call]
 
     def test_without_the_word_tak_nothing_runs(self):
         for answer in ("", "nie\n", "TAK\n", "tak tak\n", "yes\n"):

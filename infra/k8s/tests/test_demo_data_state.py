@@ -112,7 +112,7 @@ class StatusDemoData(ServerScripts):
     def test_the_reads_only_read(self):
         self.status(STUB_STATE=record("seed", "idle"), STUB_CLOSED=CLOSED)
         reads = [c for c in self.calls() if "demo-data-state" in c or "shop-closed" in c or "name=initialize" in c]
-        self.assertEqual(3, len(reads))
+        self.assertEqual(4, len(reads))
         for call in reads:
             call = call.split("k3s kubectl", 1)[1]
             self.assertRegex(call, r" (get|logs) ")
@@ -125,7 +125,7 @@ class ReinitializeDemoData(ServerScripts):
         return self.run_script("reinitialize.sh", HOST, stdin=answer, **env)
 
     def execs(self):
-        return [call for call in self.calls() if " exec " in call]
+        return [call for call in self.calls() if "exec deploy/api" in call]
 
     def assert_refused_before_the_question(self, result):
         self.assertEqual(1, result.returncode, result.stdout)
@@ -177,7 +177,7 @@ class ReinitializeDemoData(ServerScripts):
         calls = self.calls()
         self.assertEqual(2, len(calls), calls)
         self.assertIn("get configmap demo-data-state", calls[0])
-        self.assertIn(" exec ", calls[1])
+        self.assertIn("exec deploy/api", calls[1])
 
 
 class RerunDemoData(unittest.TestCase):

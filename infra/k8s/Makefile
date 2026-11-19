@@ -98,7 +98,8 @@ monitoring-smoke:
 load:
 	sh scripts/load.sh
 
-# Runs a job of a version again under its name (a finished or failed one): make -C infra/k8s rerun JOB=<name>.
+# Runs a job of a version again under its name (a finished or failed one): make -C infra/k8s rerun JOB=<name>. A Job of the
+# generator of the demo data (label app.kubernetes.io/name: demo-data) is refused (exit 3): the data are replaced by make generate.
 # KUBE_DIR is the directory with the kubeconfig of the cluster (required), KUBE_NETWORK the Docker network of kubectl.
 rerun:
 	@sh scripts/ao-guard.sh rerun
@@ -153,11 +154,13 @@ kubeconfig:
 	@sh scripts/ao-guard.sh kubeconfig
 	sh scripts/kubeconfig.sh "$(HOST)"
 
-# The applications of Argo CD, the pods and the jobs of the shop, and the logs of the failed jobs, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+# The applications of Argo CD, the pods and the jobs of the shop, the logs of the failed jobs and the state of the demo data (data,
+# phase, whether the shop is closed, the last log line of the newest job initialize), read over SSH: make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
 
-# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak.
+# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Only for the seed data in
+# the phase idle (no record of the demo data is that too); otherwise it refuses with exit 1 before the question (make generate PROFILE=seed).
 # make -C infra/k8s reinitialize HOST=<user>@<address>
 reinitialize:
 	sh scripts/reinitialize.sh "$(HOST)"
