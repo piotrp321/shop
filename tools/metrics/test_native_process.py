@@ -361,6 +361,91 @@ class MissingTranscriptsTest(ProcessEnv):
         self.assertFalse(any('origin' in g for g in gaps_of(record, 'human')), record['gaps'])
 
 
+LOWER_BOUND_FIELDS = ('value', 'attempts', 'by_task', 'reviews', 'retries.fix')
+
+
+class SubagentTranscriptsTest(ProcessEnv):
+    """M3, M7 and D1: a subagent whose transcript is missing, empty or unreadable while the lead session is read makes
+    the values from the transcripts a lower bound with a gap, as a missing session does; it is never silently complete.
+    A subagent without any file is seen by its launch in the lead session (`toolUseResult.agentId`)."""
+
+    def agent_file(self, agent, suffix='.jsonl', session='s1'):
+        return os.path.join(testkit.project_dir(self.projects, self.worktree), session, 'subagents',
+                            'agent-%s%s' % (agent, suffix))
+
+    def epic(self, lead=None):
+        self.write_run()
+        self.write_session('s1', lead or Native('s1').assistant(10, input=5).launch(20, 'ar1').launch(30, 'ad1')
+                           .assistant(900, input=5))
+        self.subagent('ar1', 'code-reviewer', 'Review DEMO-1', ['Werdykt: CHANGES_REQUIRED', 'Werdykt: PASS'], 100)
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+
+    def assert_lower_bound(self, record, agent):
+        for field in LOWER_BOUND_FIELDS:
+            self.assertTrue(any('dolna granica' in g for g in gaps_of(record, field)), (field, record['gaps']))
+        self.assertTrue(any(agent in g for g in gaps_of(record, 'sessions')), record['gaps'])
+
+    def test_every_subagent_read_is_no_lower_bound(self):
+        self.epic()
+        record = self.native_record()
+        self.assertEqual(len(record['attempts']), 2)
+        self.assertFalse(any('dolna granica' in g for g in record['gaps']), record['gaps'])
+
+    def test_meta_json_without_the_transcript(self):
+        self.epic()
+        os.remove(self.agent_file('ad1'))
+        self.assert_lower_bound(self.native_record(), 'ad1')
+
+    def test_empty_transcript_of_a_subagent(self):
+        self.epic()
+        open(self.agent_file('ad1'), 'w').close()
+        self.assert_lower_bound(self.native_record(), 'ad1')
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root reads every file')
+    def test_unreadable_transcript_of_a_subagent(self):
+        self.epic()
+        os.chmod(self.agent_file('ad1'), 0)
+        try:
+            record = self.native_record()
+        finally:
+            os.chmod(self.agent_file('ad1'), 0o600)
+        self.assert_lower_bound(record, 'ad1')
+
+    def test_subagent_launched_by_the_lead_without_any_file(self):
+        self.epic()
+        os.remove(self.agent_file('ad1'))
+        os.remove(self.agent_file('ad1', '.meta.json'))
+        record = self.native_record()
+        self.assertEqual([a['agent_id'] for a in record['attempts']], ['ar1'])
+        self.assert_lower_bound(record, 'ad1')
+
+    def test_subagent_launched_before_the_start_without_any_file_is_no_gap(self):
+        self.write_run(started=100)
+        self.write_session('s1', Native('s1').launch(10, 'old').assistant(150, input=5).launch(160, 'ad1')
+                           .assistant(900, input=5))
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        record = self.native_record()
+        self.assertFalse(any('dolna granica' in g for g in record['gaps']), record['gaps'])
+        self.assertFalse(any('old' in g for g in gaps_of(record, 'sessions')), record['gaps'])
+
+    def test_subagent_of_another_session_of_the_epic_is_found(self):
+        self.write_run(sessions=('s1', 's2'))
+        self.write_session('s1', Native('s1').assistant(10, input=5).launch(20, 'ad1'))
+        self.write_session('s2', Native('s2').assistant(500, input=5).launch(510, 'ad1'))
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        record = self.native_record()
+        self.assertFalse(any('dolna granica' in g for g in record['gaps']), record['gaps'])
+
+    def test_lost_session_makes_the_value_and_the_attempts_a_lower_bound(self):
+        self.write_run(sessions=('s1', 'gone'))
+        self.write_session('s1', Native('s1').assistant(10, input=5).launch(20, 'ar1').launch(30, 'ad1'))
+        self.subagent('ar1', 'code-reviewer', 'Review DEMO-1', ['Werdykt: CHANGES_REQUIRED', 'Werdykt: PASS'], 100)
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        record = self.native_record()
+        for field in LOWER_BOUND_FIELDS:
+            self.assertTrue(any('dolna granica' in g for g in gaps_of(record, field)), (field, record['gaps']))
+
+
 class VerdictTokenTest(unittest.TestCase):
     """M4: the verdict is the word after the label `Werdykt` or `Verdict` (the last labelled one), never the first verdict
     word anywhere in the text."""
