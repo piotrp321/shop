@@ -318,7 +318,8 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   sterty po GC). Tagi rewaliduje tylko worker API przy zmianie produktu, ceny, poziomu dostępności albo promocji
   (`product-<id>`, `product-slug-<slug>`, `catalog`); generator danych demo nie publikuje zdarzeń. Górna granica to
   ok. dwa tagi na produkt zmieniony od startu poda: przy 1 mln produktów ok. 350 MiB, przy 10 mln więcej niż sterta
-  poda `prod`, więc przed taką skalą lista potrzebuje ograniczenia (PERFORMANCE, #781). Poza tym bez limitu są tylko
+  poda `prod`. Przy `medium` to przyjęte ograniczenie, które sprawdza test masowej rewalidacji tagów (PERFORMANCE,
+  #781); ograniczenie wzrostu listy jest warunkiem danych w skali `server`. Poza tym bez limitu są tylko
   obiekty krótkotrwałe (renderowania w toku); bufor odpowiedzi Next z limitem 150 wpisów działa tylko w trybie
   `minimalMode`, którego sklep nie używa.
 - Testy: `tests/isr-cache.test.ts` (konfiguracja) i `make -C apps/store check-isr-memory-cache` na buildzie produkcyjnym
@@ -488,7 +489,8 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
   ją od nowa (ok. 39 ms CPU zamiast ok. 1 ms, audyt wydajności), a seria unikalnych adresów (1000–2000 nieznanych
   slugów) wypycha z cache także strony odwiedzane często. Koszt CPU renderu pod ruchem robotów: PERFORMANCE (#781).
 - Lista rewalidowanych tagów Next (`tagsManifest`) jest w pamięci procesu poza limitem cache i rośnie o każdy unikalny
-  tag rewalidowany od startu procesu (pomiar: „Cache ISR”); znika przy restarcie poda.
+  tag rewalidowany od startu procesu (pomiar: „Cache ISR”); znika przy restarcie poda. Przyjęte przy danych `medium`,
+  przed danymi `server` lista musi mieć ograniczenie (PERFORMANCE, #781).
 - Seed publikuje zdarzenie dla każdej ceny i zmiany poziomu (ok. 2 tys. wiadomości); konsument potwierdza je bez
   wywołań HTTP.
 - Wydajność nie jest potwierdzona testami obciążeniowymi.
