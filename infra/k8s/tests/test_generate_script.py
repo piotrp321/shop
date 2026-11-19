@@ -852,6 +852,21 @@ class Secret(Case):
         cluster = self.cluster(secrets={"demo-photos": {"kind": "Secret", "metadata": {"name": "demo-photos"}}})
         self.assert_unchanged(cluster, cluster.run(answer="nie\n"))
 
+    def test_a_hangup_of_the_terminal_deletes_the_secret_too(self):
+        """HUP (the terminal or the SSH session of the operator closed) ends make generate like INT and TERM."""
+        outcomes = {**initial_state()["outcomes"], "demo-data-": {"outcome": "Running", "duration": 0}}
+        whole = self.cluster(outcomes=outcomes)
+        whole.run(GENERATE_POLL="3600")
+        kubectl = [c for c in whole.calls() if c["image"] == "registry.k8s.io/kubectl"]
+        (made,) = [i for i, c in enumerate(kubectl) if '"Secret"' in c["stdin"]]
+        for call in (made + 1, made + 4):
+            with self.subTest(after=kubectl[call - 1]["args"]):
+                cluster = self.cluster(outcomes=outcomes, trigger={"call": call, "action": "HUP"})
+                result = cluster.run(GENERATE_POLL="3600")
+                self.assertEqual(129, result.returncode, result.stderr)
+                self.assertIn("create Secret demo-photos", cluster.events())
+                self.assertEqual({}, cluster.state()["secrets"])
+
     def test_a_secret_left_by_a_killed_run_is_replaced(self):
         cluster = self.cluster(secrets={"demo-photos": {"kind": "Secret", "metadata": {"name": "demo-photos"}}})
         result = cluster.run()
