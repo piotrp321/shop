@@ -5,6 +5,16 @@ początku. Każde zadanie realizuje subagent we własnym worktree na gałęzi za
 gałęzie zadań do gałęzi epiku i ją wypycha (CI biegnie przy każdym pushu draft PR). Zadania nie mają własnych PR.
 Plan jest dokumentem roboczym: po ukończeniu epiku usuń go.
 
+Warunek przed startem: ASH-V1 zmergowany do `main` i tag `ash-v1.0` (gałąź epiku powstaje od `origin/main` po tym
+merge'u).
+
+Prowadzenie:
+- ABUSE-LIMITS-8 idzie jako pierwsze z zadań równoległych: od niego zależy kolejność wdrożeń z DEMO-SCALE
+  (specyfikacja, „Wdrożenie i kolejność z DEMO-SCALE”).
+- ABUSE-LIMITS-7 i ABUSE-LIMITS-9 zmieniają chart, który zmienia też DEMO-SCALE: gałąź zadania powstaje od aktualnej
+  gałęzi epiku, a epik zmergowany do `main` jako drugi robi rebase.
+- Kryteria w tabeli „Kryteria akceptacji” opisu PR mają numer sekcji i kryterium specyfikacji, np. `L2.3`.
+
 ## Status
 
 | Fala | Zadania | Status |
@@ -33,12 +43,12 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
     {
       "id": "ABUSE-LIMITS-1",
       "title": "Limitery API: blokada licznika, koszyk gościa i podgląd kodu rabatowego",
-      "scope": "apps/api (spec: L1, L2, L3, D1–D3, D15, „Wymagane przed startem” E1): symfony/lock (zgoda użytkownika z „Wymaganych przed startem”) z magazynem w Redisie i dekoratorem LockFactory (TTL 5 s, czekanie najwyżej 300 ms, rywalizacja to 429, błąd Redisa fail open z warning) jako lock_factory wszystkich limiterów w prod i dev; nowe limitery guest_cart_create, guest_cart_write, discount_preview w config/packages/rate_limiter.yaml z kluczem adresu klienta; warunek parametru discountCode w mechanizmie limiterów tras (RateLimit, RateLimitSubscriber); trasy GuestCartController i CustomerCartController (odczyt z kodem); pusty koszyk gościa wygasa po 1 dniu (Cart::touch, założenie); 429 w OpenAPI tras koszyka, eksport openapi.json i klient TS sklepu. Dokumentacja: reguła dla agentów w apps/api/CLAUDE.md, jedna linia: „Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (RateLimit::ROUTE_DEFAULT, wartości prod, dev i test) i test prób obejścia.”; zdania specyfikacji, którym zadanie zmienia zachowanie: hardening spec (D1 bez symfony/lock, limity koszyka poza zakresem), discount-codes spec (limit podglądu poza zakresem, ryzyko zgadywania), cart spec (decyzja 5: czas życia, rate limiting koszyków poza zakresem). Definicje serwisów blokady w config/packages/lock.yaml, nie w services.yaml; błąd blokady loguje warning w kanale cache, więc monolog.yaml bez zmian. Nie: BFF i UI sklepu (ABUSE-LIMITS-2), komunikaty odrzucenia kodu (D4 bez zmian).",
+      "scope": "apps/api (spec: L1, L2, L3, D1–D3, D15, „Wymagane przed startem” E1): symfony/lock (zgoda użytkownika z „Wymaganych przed startem”) z magazynem w Redisie i dekoratorem LockFactory (TTL 5 s, czekanie najwyżej 300 ms, rywalizacja to 429, błąd Redisa fail open z warning i bez wywołania licznika po błędzie blokady) jako lock_factory wszystkich limiterów w prod i dev; nowe limitery guest_cart_create, guest_cart_write, discount_preview w config/packages/rate_limiter.yaml z kluczem adresu klienta; warunek parametru discountCode w mechanizmie limiterów tras (RateLimit, RateLimitSubscriber); trasy GuestCartController i CustomerCartController (odczyt z kodem); pusty koszyk gościa wygasa po 1 dniu (Cart::touch, założenie); 429 w OpenAPI tras koszyka, eksport openapi.json i klient TS sklepu. Dokumentacja: reguła dla agentów w apps/api/CLAUDE.md, jedna linia: „Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (RateLimit::ROUTE_DEFAULT, wartości prod, dev i test) i test prób obejścia.”; zdania specyfikacji, którym zadanie zmienia zachowanie: hardening spec (D1 bez symfony/lock, limity koszyka poza zakresem), discount-codes spec (limit podglądu poza zakresem, ryzyko zgadywania), cart spec (decyzja 5: czas życia, rate limiting koszyków poza zakresem). Definicje serwisów blokady w config/packages/lock.yaml, nie w services.yaml; błąd blokady loguje warning w kanale cache, więc monolog.yaml bez zmian. Nie: BFF i UI sklepu (ABUSE-LIMITS-2), komunikaty odrzucenia kodu (D4 bez zmian).",
       "acceptance_criteria": [
         "Raport zawiera wynik eksperymentu E1 (zachowanie blokady RateLimiter 8.1) przed implementacją.",
         "Integracyjny na prawdziwym Redisie: co najmniej 20 równoległych procesów do limitera o limicie L daje najwyżej L przyjętych; raport pokazuje fazę RED przy lock_factory: null.",
         "Blokada klucza trzymana dłużej niż 300 ms daje kolejnemu żądaniu tego klucza 429 po najwyżej ok. 300 ms; inny klucz nie czeka; porzucona blokada przestaje blokować po 5 s.",
-        "Redis niedostępny: żądanie limitowanej trasy przechodzi w limitach czasu DSN i log ma warning (RedisRateLimitTest).",
+        "Redis niedostępny (odrzuca połączenia) i Redis, który nie odpowiada: żądanie limitowanej trasy przechodzi, log ma warning, licznik nie jest wołany po błędzie blokady i żądanie trwa dłużej najwyżej o jeden limit czasu DSN (RedisRateLimitTest).",
         "Funkcjonalne (when@test): zakładanie koszyka gościa i zmiany jego linii ponad limit to 429 z Retry-After przed kontrolerem; POST, PUT i DELETE liczą się do jednego licznika; inny adres przechodzi; 429 nie zakłada koszyka ani nie zmienia linii.",
         "Próby obejścia L2 i L3: inny koszyk tego samego adresu, adres z tego samego /64, CF-Connecting-IP przy pustym CLIENT_IP_HEADER, nagłówek z dwoma adresami albo śmieciem, wielkość liter id koszyka, żądanie odrzucone walidacją (422) i discountCode za długi albo jako tablica (400) zużywają limit.",
         "Podgląd kodu ponad limit to 429 przed wyceną na trasie gościa i klienta, a przełączanie tras z jednego adresu nie zeruje licznika; kod małymi literami, z odstępami ASCII i NBSP zużywa ten sam licznik; ?discountCode= i odczyt bez parametru nie zużywają limitu.",
@@ -149,6 +159,8 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "Próby obejścia: e-mail wielkimi literami, z odstępami i z +tag liczy się do tego samego limitu; konto klienta składa zamówienie mimo 3 nieopłaconych zamówień gościa z jego e-mailem.",
         "Integracyjny (PostgreSQL, procesy równoległe): N równoległych złożeń jednego adresu z różnymi e-mailami tworzy dokładnie tyle zamówień, ile pozwala limit adresu; to samo dla jednego e-maila i różnych adresów; raport pokazuje fazę RED.",
         "Powtórzenie złożenia (ten sam Idempotency-Key i treść) przy wyczerpanym limicie, także z innego adresu, zwraca 200 z istniejącym zamówieniem.",
+        "Przy wyczerpanym limicie adresu i e-maila rozpoczęcie płatności istniejącego zamówienia new i jej ponowienie po nieudanej próbie działają jak dziś, a po opłaceniu kolejne złożenie przechodzi.",
+        "Zamówienia opłacone i anulowane nie liczą się bez względu na liczbę: klient z 10 wygasłymi zamówieniami z tym samym e-mailem i adresem składa kolejne.",
         "Zamówienie między terminem płatności a wygaszeniem liczy się; roszczenie po expires_at nie liczy się, nawet gdy zamówienie jest wciąż new; po markPaid i po wygaśnięciu roszczenia nie ma; żaden widok API ani panelu nie zwraca adresu.",
         "Istniejące testy (PlaceOrderConcurrencyTest i inne z jednym e-mailem) przechodzą na wartościach when@test.",
         "Test plików k6 (infra/k8s/tests/test_load_files.py): e-mail checkoutu jest unikalny w iteracji; make load-smoke przechodzi.",
@@ -245,13 +257,13 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
     {
       "id": "ABUSE-LIMITS-7",
       "title": "Limit rozmiaru i czasu treści żądania w API i na ingressie",
-      "scope": "apps/api Caddy i chart (spec: L8, D10, E2, E4): FrankenPHP ≥ 1.13.5 w apps/api/Dockerfile, gdy na main jest starszy; Caddyfile: request_body 1 MB, wyjątek 71 MB tylko dla POST na dokładnej ścieżce /api/v1/admin/product-images, timeouts read_header 10 s i read_body 60 s, 413 jako problem JSON z polskim detail (handle_errors); chart: middleware buffering na hoście api (1 MiB, osobna ścieżka uploadu 71 MiB) i na ścieżce /api/ hosta sklepu (1 MiB), bez buforowania stron HTML; testy renderu, test dymny, E2E na compose. Dokumentacja: brak zmian dokumentów poza komentarzami w Caddyfile i szablonach chartu. Nie: limit w BFF (ABUSE-LIMITS-2).",
+      "scope": "apps/api Caddy i chart (spec: L8, D10, E2, E4): Caddyfile: request_body 1 MB, wyjątek 71 MB tylko dla POST na dokładnej ścieżce /api/v1/admin/product-images, timeouts read_header 10 s i read_body 60 s, 413 jako problem JSON z polskim detail (handle_errors); chart: middleware buffering na hoście api (1 MiB, osobna ścieżka uploadu 71 MiB) i na ścieżce /api/ hosta sklepu (1 MiB), bez buforowania stron HTML, każda nowa reguła Ingressu z tymi samymi middleware co jej host (w tym ipallowlist); testy renderu, test dymny, E2E na compose. Dokumentacja: brak zmian dokumentów poza komentarzami w Caddyfile i szablonach chartu. Nie: limit w BFF (ABUSE-LIMITS-2).",
       "acceptance_criteria": [
         "Raport zawiera wyniki eksperymentów E2 i E4 przed implementacją.",
         "E2E e2e/tests/request-body-limit.spec.ts na compose: JSON 1 MB + 1 bajt do POST /api/v1/orders to 413 z polskim detail bez wpisu błędu PHP; 1 MB przechodzi do walidacji; zdjęcie 20 MB do POST /api/v1/admin/product-images przechodzi, a 70 MB + 1 bajt daje dzisiejsze 422.",
         "Próby obejścia: treść chunked bez Content-Length, zaniżony Content-Length, ścieżka uploadu inną wielkością liter, z dopisanym segmentem i metodą PUT dostają limit 1 MB.",
         "Compose: wolna treść kończy się zamknięciem połączenia najpóźniej po 60 s, a /health odpowiada najpóźniej po tym czasie.",
-        "Render chartu: ingress api ma buffering 1 MiB, ścieżka uploadu 71 MiB, ścieżka /api/ hosta sklepu 1 MiB; reszta hosta sklepu, admin, auth i img bez buffering.",
+        "Render chartu: ingress api ma buffering 1 MiB, ścieżka uploadu 71 MiB, ścieżka /api/ hosta sklepu 1 MiB; reszta hosta sklepu, admin, auth i img bez buffering; każdy Ingress i każda jego reguła w renderze prod, także nowe, ma ipallowlist.",
         "Test dymny k3d: 2 MiB do /api/checkout sklepu i do /api/v1/orders przez ingress to 413; przy wolnych treściach w liczbie większej niż wątki API /health przez ingress odpowiada od razu; strona produktu dalej przychodzi.",
         "make -C apps/api check i test, make -C infra/k8s check przechodzą."
       ],
@@ -259,7 +271,6 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
       "depends_on": [],
       "paths": [
         "apps/api/docker/frankenphp/Caddyfile",
-        "apps/api/Dockerfile",
         "infra/k8s/charts/shop/templates/ingress.yaml",
         "infra/k8s/charts/shop/templates/middlewares.yaml",
         "infra/k8s/tests/",
@@ -279,15 +290,16 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
     },
     {
       "id": "ABUSE-LIMITS-8",
-      "title": "Cache ISR strony produktu ograniczony w pamięci, bez zapisu na dysk",
-      "scope": "apps/store i chart (spec: L9, D12, E3): cache ISR i fetch ograniczony do 128 MB w pamięci poda bez zapisu na dysk (opcje Next albo własny handler w pamięci w apps/store/src/isr-cache/, bez nowej zależności), rewalidacja po tagach bez zmian; slug spoza isProductSlug to 404 bez odczytu API; limit ephemeral-storage 1Gi kontenera store w chartcie. Dokumentacja: product-page spec (A6 i ryzyko: cache ISR na dysku, wpisy 404 na dysku). Nie: Redis jako wspólny cache, liczba replik.",
+      "title": "Cache ISR strony produktu tylko w pamięci, z limitem, bez zapisu na dysk",
+      "scope": "apps/store (spec: L9, D12, E3): cache przyrostowy sklepu (wpisy stron, także 404, i cache fetch) tylko w pamięci procesu opcjami Next w next.config.ts: experimental.isrFlushToDisk false i cacheMaxMemorySize 128 MB jako stała konfiguracji, bez własnego handlera i bez nowej zależności; rewalidacja po tagach bez zmian; slug spoza isProductSlug to 404 bez odczytu API; test na buildzie produkcyjnym i pomiar pamięci z pełnym cache. Dokumentacja: product-page spec (A6 i ryzyko: cache ISR na dysku, wpisy 404 na dysku, zdanie o eksmisji poda jako ograniczeniu przyrostu). Nie: limit ephemeral-storage kontenera store (zostaje z SMALL-FIXES), Redis jako wspólny cache, liczba replik.",
       "acceptance_criteria": [
         "Raport zawiera wynik eksperymentu E3 przed implementacją.",
-        "Test na buildzie produkcyjnym: po N unikalnych slugach przekraczających limit pamięci katalog cache na dysku ma ten sam rozmiar co przed nimi, a pierwszy slug po przepełnieniu znów daje x-nextjs-cache MISS.",
+        "Test na buildzie produkcyjnym: po N unikalnych slugach istniejących produktów i N slugach nieistniejących (wpisy przekraczają limit pamięci) katalog cache na dysku ma ten sam rozmiar co przed nimi, a pierwszy slug po przepełnieniu znów daje x-nextjs-cache MISS.",
+        "Raport zawiera pomiar w obrazie produkcyjnym sklepu z limitem pamięci kontenera 1 GiB: po N i po 2N unikalnych slugach proces nie został zrestartowany, RSS po 2N jest wyższy niż po N o mniej niż 10% i mieści się w 768 MiB; inny wynik zatrzymuje zadanie i wraca z decyzją o rozmiarze cache.",
         "Jednostkowy: slug z wielkimi literami, kropką albo za długi to 404 bez wywołania API.",
         "product-page-freshness.spec.ts i inne E2E produkcyjne przechodzą bez zmian.",
-        "Render chartu: kontener store ma limits.ephemeral-storage 1Gi, inne kontenery bez zmian.",
-        "make -C apps/store check i test, make -C infra/k8s check przechodzą."
+        "Limit ephemeral-storage kontenera store bez zmian: infra/k8s/tests/test_ephemeral_storage.py przechodzi bez zmian.",
+        "make -C apps/store check i test przechodzą."
       ],
       "risk": "STANDARD",
       "depends_on": [],
@@ -295,11 +307,7 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
         "apps/store/app/p/",
         "apps/store/next.config.ts",
         "apps/store/src/catalog/",
-        "apps/store/src/isr-cache/",
         "apps/store/tests/",
-        "apps/store/Dockerfile",
-        "infra/k8s/charts/shop/values.yaml",
-        "infra/k8s/tests/",
         "docs/features/product-page/spec.md"
       ],
       "parallel_with": [
