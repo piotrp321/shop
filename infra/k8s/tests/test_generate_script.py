@@ -256,9 +256,13 @@ elif verb == "get":
     elif kind in ("jobs", "job"):
         if names:
             if names[0] not in state["jobs"]:
+                if "--ignore-not-found" in rest:
+                    sys.exit(0)
                 fail(f'Error from server (NotFound): jobs.batch "{names[0]}" not found')
             doc = job_doc(names[0])
-            if output == "json":
+            if output == "name":
+                print("job.batch/" + names[0])
+            elif output == "json":
                 print(json.dumps(doc))
             elif "activeDeadlineSeconds" in output:
                 print(doc["spec"]["activeDeadlineSeconds"], end="")

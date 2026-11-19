@@ -53,8 +53,8 @@ def stopped(phase, data="failed", job=None, root=ROOT, **changes):
     return state
 
 
-def check_tail():
-    return ["exec api-7c9f-a cache:pool:clear cache.sitemap", "exec api-7c9f-b cache:pool:clear cache.sitemap", f"create job {LOAD_JOB}"]
+def check_tail(load_job=LOAD_JOB):
+    return ["exec api-7c9f-a cache:pool:clear cache.sitemap", "exec api-7c9f-b cache:pool:clear cache.sitemap", f"create job {load_job}"]
 
 
 def open_tail():
@@ -67,14 +67,13 @@ class ResumeCase(g.RunCase):
         env.setdefault("REPLACE", None)
         return self.run_generate(cluster, answer="", **env)
 
-    def assert_resumed(self, cluster, result, events=None):
+    def assert_resumed(self, cluster, result, after=0, after_calls=0):
         """What every resume keeps: no question, no Job of the generator and no Secret made, neither the free space nor the active
         Jobs read, and none of the rules of the rule shop-closed broken."""
-        if events is None:
-            events = cluster.events()
+        events = cluster.events()[after:]
         self.assertNotIn("type tak", result.stdout)
         self.assertEqual([], [e for e in events if e.startswith(("create job demo-data", "create secret"))])
-        for call in cluster.kubectl_calls():
+        for call in [c["args"] for c in cluster.calls()[after_calls:] if c["image"] != "curlimages/curl"]:
             self.assertNotIn("--raw", call)
             self.assertNotEqual(["get", "nodes"], call[:2])
             self.assertNotEqual(["-n", "shop", "get", "jobs"], call[:4])
@@ -183,7 +182,7 @@ class Checking(ResumeCase):
         cluster = self.cluster(**stopped("checking", job=generator_job("Complete", created_at=START - 4000, pod=RUNNING_POD)),
                                es={"health": "green", "alias": [], "indices": {}})
         result = self.resume(cluster)
-        self.assertEqual(["delete secret demo-photos"] + check_tail()[:2] + [ROOT_BACK, "record idle"], cluster.events())
+        self.assertEqual(["delete secret demo-photos"] + check_tail()[:2] + ["delete secret demo-photos", ROOT_BACK, "record idle"], cluster.events())
         self.assert_closed_failed(cluster, result, "alias products")
         self.assert_resumed(cluster, result)
 
@@ -275,10 +274,12 @@ class Signals(ResumeCase):
                 self.assertIn(f"make -C infra/k8s generate PROFILE=medium GENERATE_OUT={cluster.out} GENERATE_PROBE_URL='{g.PROBE_URLS}' KUBE_DIR={cluster.kube}",
                               stderr)
                 # Then the resume ends the run.
+                calls = len(cluster.calls())
+                load_job = "load-" + time.strftime("%Y%m%d%H%M%S", time.gmtime(cluster.clock()))
                 result = self.resume(cluster)
                 self.assert_open(cluster, result)
-                self.assertEqual(at_signal + ["record checking", "delete secret demo-photos"] + check_tail() + open_tail(), cluster.events())
-                self.assert_resumed(cluster, result, cluster.events()[len(at_signal):])
+                self.assertEqual(at_signal + ["record checking", "delete secret demo-photos"] + check_tail(load_job) + open_tail(), cluster.events())
+                self.assert_resumed(cluster, result, after=len(at_signal), after_calls=calls)
 
 
 def outcomes(**generator):

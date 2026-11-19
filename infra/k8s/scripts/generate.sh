@@ -81,9 +81,18 @@
 #   In the steps that end a run (the rollback, 6 and 7) the write of the record is the last thing, and each step can be done again.
 #   The target never deletes a Job.
 #
-# A record in another phase is a run that stopped (a signal, a lost connection, a failure of the cluster): this version of the target
-# refuses it without any change. A signal ends the script without any cleanup: the Job runs on, the rule and the switched-off
-# synchronization stay, and the record names the phase.
+# A record in another phase is a run that stopped (a signal, a lost connection, a restart of the server or of this computer), and the
+# target run again resumes it. The resume needs KUBE_DIR, GENERATE_OUT, GENERATE_PROBE_URL and PROFILE equal to the target of the
+# record (another one is refused without any change); it asks nothing, needs no REPLACE, checks neither the free space nor the active
+# Jobs and makes neither the Secret nor a Job of the generator. Until its first write, every change checks the version of the record
+# read at the start. By the phase:
+#   closing   the rollback of step 3 (exit 1; the next run starts anew);
+#   running   it waits for the Job of the record or reads its result, then step 5 or 7; without that Job (the run stopped before it was
+#             made, or it was deleted) step 7; a Job that failed without its pod is step 7 with "the pod of the Job does not exist";
+#   checking  step 5 again from the deletion of the Secret (a pod of the Job that is gone is no failure), then step 6 or 7;
+#   opening   step 6 from the deletion of the rule, without the checks.
+# A signal (INT, TERM) ends the script without any cleanup: the Job runs on, the rule and the switched-off synchronization stay, the
+# record names the phase, and the message gives the command that resumes the run.
 #
 # Exit codes: 0 generated, checked, the shop open; 1 refused, not confirmed, rolled back, a conflict of the record or a failure (the
 # message says whether the shop is closed); 2 wrong arguments or environment (PROFILE, REPLACE, GENERATE_OUT, GENERATE_PROBE_URL,
@@ -201,9 +210,30 @@ on_exit() {
   rm -rf "$work"
   if [ "$status" -ne 0 ] && [ -n "$stopped_note" ]; then
     printf 'generate: stopped (exit %s) in the phase %s of the record %s: %s\n' "$status" "$cur_phase" "$record_name" "$stopped_note" >&2
-    echo "generate: this version of the target does not resume a run that stopped (docs/features/demo-scale/spec.md, \"Przerwanie i wznowienie\")" >&2
+    resume_hint
   fi
   exit "$status"
+}
+
+# resume_command: the target that resumes the run of the record: the same PROFILE (the target of the record), no REPLACE.
+resume_command() {
+  resume_hosts=""
+  [ -z "$probe_hosts" ] || resume_hosts=" GENERATE_PROBE_HOST='$probe_hosts'"
+  printf "make -C infra/k8s generate PROFILE=%s GENERATE_OUT=%s GENERATE_PROBE_URL='%s'%s KUBE_DIR=%s" "${rec_target:-$profile}" "$out_dir" \
+    "$probe_urls" "$resume_hosts" "$KUBE_DIR"
+}
+
+# resume_hint: what resumes the run that stopped in the phase cur_phase, and what the resume does.
+resume_hint() {
+  case "$cur_phase" in
+    closing) resume_does="rolls the closing back (nothing was replaced)" ;;
+    running) resume_does="waits for the Job ${rec_job:-of the record} or reads its result, then checks the data and opens the shop, or leaves it closed with data failed" ;;
+    checking) resume_does="repeats the checks after the generation, then opens the shop, or leaves it closed with data failed" ;;
+    opening) resume_does="finishes the opening, without the checks" ;;
+    *) return 0 ;;
+  esac
+  printf 'generate: to resume (no REPLACE, no tak): %s\n' "$(resume_command)" >&2
+  printf 'generate: the resume %s\n' "$resume_does" >&2
 }
 trap on_exit EXIT
 # A signal ends the script through the trap EXIT too (sh runs it only on a normal exit), without any cleanup.
@@ -606,13 +636,19 @@ traefik_ready() {
 }
 
 # restart_traefik: deletes the pods of Traefik, which ends the connections opened before the rule (Z2), and waits until it is ready
-# again; 1 when it is not in traefik_wait seconds.
+# again; 1 when its pods cannot be deleted or it is not ready in traefik_wait seconds (traefik_error says which).
 restart_traefik() {
   check_record "restarting Traefik"
-  kubectl -n "$traefik_namespace" delete pods -l "$traefik_selector" --wait=true > /dev/null
+  if ! kubectl -n "$traefik_namespace" delete pods -l "$traefik_selector" --wait=true > /dev/null; then
+    traefik_error="the pods of Traefik could not be deleted (the connections opened before the rule stay open)"
+    return 1
+  fi
   traefik_until=$(($(date +%s) + traefik_wait))
   until [ "$(traefik_ready)" = yes ]; do
-    [ "$(date +%s)" -lt "$traefik_until" ] || return 1
+    if [ "$(date +%s)" -ge "$traefik_until" ]; then
+      traefik_error="Traefik is not ready $traefik_wait s after its pods were deleted"
+      return 1
+    fi
     sleep "$probe_poll"
   done
 }
@@ -658,7 +694,7 @@ close_shop() {
     [ -z "$sync_problem" ] || undo_closing "$sync_problem"
   fi
   make_rule || undo_closing "the NetworkPolicy $rule_name could not be made"
-  restart_traefik || undo_closing "Traefik is not ready $traefik_wait s after its pods were deleted"
+  restart_traefik || undo_closing "$traefik_error"
   echo "generate: the rule $rule_name is there and Traefik was restarted; the probe (at most $close_wait s)"
   probe closed "$close_wait" || undo_closing "the probe does not say closed in $close_wait s: $probe_report"
   echo "generate: the shop is closed: $probe_report"
@@ -853,6 +889,7 @@ stop_checking() {
   stopped_note=""
   echo "generate: $1" >&2
   echo "generate: the shop stays CLOSED (the rule $rule_name) and the record stays in the phase checking (data failed); the checks are not done" >&2
+  resume_hint
   exit 1
 }
 
@@ -930,6 +967,7 @@ finish_opening() {
     stopped_note=""
     echo "generate: the probe does not say open in $open_wait s: $probe_report" >&2
     echo "generate: the data $rec_data is generated and checked and the rule $rule_name is deleted, but the shop does not answer as open; the record stays in the phase opening" >&2
+    resume_hint
     exit 1
   fi
   rec_root_automated="" rec_reason="" rec_finished="$(now_utc)"
@@ -950,7 +988,7 @@ fail_run() {
   delete_photo_secret
   make_rule
   if [ "$rule_made" = 1 ]; then
-    restart_traefik || echo "generate: Traefik is not ready $traefik_wait s after its pods were deleted (the rule $rule_name is there)" >&2
+    restart_traefik || echo "generate: $traefik_error (the rule $rule_name is there)" >&2
   fi
   restore_sync
   rec_data=failed rec_root_automated="" rec_finished="$(now_utc)"
@@ -965,6 +1003,59 @@ fail_run() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
+# The resume of a run that stopped (the record in a phase other than idle)
+# ---------------------------------------------------------------------------------------------------------------
+# resume: no question, no REPLACE, no check of the free space or of the active Jobs, no Secret and no Job of the generator; the
+# changes check the version of the record read at the start until the first write of this process.
+resume() {
+  case "$rec_phase" in
+    closing | running | checking | opening) ;;
+    *) refuse "the record $record_name says phase $rec_phase, which make generate never writes: there is nothing to resume" ;;
+  esac
+  [ -n "$rec_target" ] || refuse "the record $record_name says phase $rec_phase without a target: it was not written by make generate"
+  if [ "$profile" != "$rec_target" ]; then
+    refuse "PROFILE=$profile is not the target $rec_target of the run that stopped in the phase $rec_phase (the record $record_name): resume that run first with $(resume_command) (no REPLACE, no tak); another profile only after it"
+  fi
+  read_cronjob || refuse "cannot read the CronJob demo-data"
+  if [ "$cron_found" = 0 ] && [ "$rec_phase" != opening ]; then
+    refuse "there is no CronJob demo-data in the namespace $namespace: the Secret of the photo pool it names cannot be known, so the run that stopped in the phase $rec_phase is not resumed (the shop stays as it is)"
+  fi
+  detect_argocd || refuse "cannot read the applications of Argo CD"
+  # The name of the Job load of the checks.
+  stamp="$(date -u +%Y%m%d%H%M%S)"
+  echo "generate: resuming the run of PROFILE=$profile that stopped in the phase $rec_phase (the record $record_name${rec_job:+, the Job $rec_job}): no question, no new Job of the generator"
+  case "$rec_phase" in
+    closing)
+      stopped_note="nothing was replaced; the rule shop-closed and the switched-off synchronization of Argo CD may be left (the shop may be closed)"
+      undo_closing "the run stopped in the phase closing" ;;
+    running)
+      stopped_note="the data is failed (being replaced) and the shop is closed; the Job $rec_job may run on"
+      resume_running ;;
+    checking)
+      stopped_note="the data is generated but not checked (failed) and the shop is closed"
+      after_generator ;;
+    opening)
+      stopped_note="the data $rec_data is generated and checked; the shop may still be closed"
+      finish_opening ;;
+  esac
+}
+
+# resume_running: the Job of the record: waited for, or its result read; then step 5 or 7. Without it, step 7.
+resume_running() {
+  [ -n "$rec_job" ] || fail_run "the record $record_name in the phase running names no Job of the generator: the data is taken as incomplete"
+  job_found="$(kc get job "$rec_job" --ignore-not-found -o name)" || refuse "cannot read the Job $rec_job of the record"
+  [ -n "$job_found" ] ||
+    fail_run "the Job $rec_job of the record does not exist (the run stopped before it was made, or it was deleted): the data is taken as incomplete"
+  echo "generate: the Job $rec_job is there: its result, or a wait for it (its log and the metrics go to Grafana Cloud, this target only waits)"
+  if await_job "$rec_job" 1; then
+    echo "generate: the Job $rec_job completed"
+    check_generated
+  else
+    fail_run "$job_reason"
+  fi
+}
+
+# ---------------------------------------------------------------------------------------------------------------
 # The run
 # ---------------------------------------------------------------------------------------------------------------
 read_record || refuse "cannot read the record $record_name (ConfigMap of the namespace $namespace)"
@@ -973,16 +1064,17 @@ cur_phase="$rec_phase"
 printf '%s\n' "$rec_data" | grep -Eqx '[a-z][a-z0-9-]{0,30}' ||
   refuse "the record $record_name says data '$rec_data', which is neither seed, failed nor a profile: it was not written by make generate"
 if [ "$rec_phase" != idle ]; then
-  refuse "the record $record_name says phase $rec_phase (target ${rec_target:-?}): an earlier run of make generate stopped there; this version of the target does not resume it yet (docs/features/demo-scale/spec.md, \"Przerwanie i wznowienie\")"
-fi
-check_idle
-confirm
-stamp="$(date -u +%Y%m%d%H%M%S)"
-close_shop
-start_generator
-if await_job "$rec_job" 1; then
-  echo "generate: the Job $rec_job completed"
-  check_generated
+  resume
 else
-  fail_run "$job_reason"
+  check_idle
+  confirm
+  stamp="$(date -u +%Y%m%d%H%M%S)"
+  close_shop
+  start_generator
+  if await_job "$rec_job" 1; then
+    echo "generate: the Job $rec_job completed"
+    check_generated
+  else
+    fail_run "$job_reason"
+  fi
 fi
