@@ -398,7 +398,7 @@ class RestoreScriptTest(unittest.TestCase):
         """The check of Redis runs every five minutes for at most 60 s: refusing for it would make restore a matter of luck."""
         for argocd in (False, True):
             jobs = initial_state()["jobs"]
-            jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check", complete_after_lists=4)
+            jobs["rate-limit-check-29341234"] = self.running("rate-limit-check", "rate-limit-check", complete_after_lists=8)  # read by step 1 and the three Jobs of the version first
             cluster = self.stub(argocd=argocd, jobs=jobs)
             result = self.restore(cluster)
             self.assertEqual(0, result.returncode, (argocd, result.stderr))
