@@ -39,7 +39,7 @@ use Symfony\Component\Uid\Uuid;
  *    its payment is not committed yet, also one with the same key) → 409 at once, instead of waiting on the unique
  *    indexes of step 8 with the thread and the connection; the end of the transaction releases it;
  * 4. the replay again, under the lock: a start with the same key may have committed and released the lock between
- *    step 2 and step 3, and step 5 would cancel its session at the provider (no rollback undoes that); the same
+ *    step 2 and step 3, and step 6 would cancel its session at the provider (no rollback undoes that); the same
  *    rules as in step 2;
  * 5. the state of the order: paid, cancelled or past the deadline is a 409;
  * 6. the pending payment of the order, under the lock of its row, is cancelled at its provider first: cancelled
