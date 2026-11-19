@@ -227,12 +227,15 @@ class FakeGh:
     runs: {commit or branch: [run, ...]} for `gh run list --commit/--branch`; jobs: {run id: [job, ...]} for
     `gh run view`; commits: the list answered for `gh api repos/.../commits` (cut to the `page` and `per_page` of the query); editors: {issue number: login of the last editor} for `gh api graphql` (a number without an entry was never edited); repo_view: the answer of `gh repo view --json owner,name`; issues: {label: [issue, ...]} for
     `gh issue list --label`; permissions: {login: role} for `gh api .../collaborators/<login>/permission` (a login
-    without an entry is a non-collaborator: HTTP 404); fail: when set, every command ends with exit code 1 and that
+    without an entry is a non-collaborator: HTTP 404; also with `--include`, as the origin gate calls it); heads:
+    {branch: [pr, ...]} answered for `gh pr list --head <branch>` (the final PR of a native epic through the gate);
+    fail: when set, every command ends with exit code 1 and that
     stderr; fail_on: the command prefixes, e.g. ('run', 'list') or ('api',), that end with that error."""
 
     def __init__(self, prs=None, sync=None, fail=None, runs=None, jobs=None, commits=None, issues=None,
-                 permissions=None, fail_on=(), editors=None, repo_view=None, final=None):
+                 permissions=None, fail_on=(), editors=None, repo_view=None, final=None, heads=None):
         self.prs = prs or {}
+        self.heads = heads or {}
         self.final = final or []
         self.sync = sync or []
         self.fail = fail
@@ -262,6 +265,8 @@ class FakeGh:
                 return result(1, '', 'no pull requests found for %d' % number)
             return result(0, json.dumps(self.prs[number]))
         if command[:3] == ['gh', 'pr', 'list']:
+            if self._option(command, '--head') in self.heads:
+                return result(0, json.dumps(self.heads[self._option(command, '--head')]))
             if (self._option(command, '--head') or '').startswith('epic/'):
                 return result(0, json.dumps(self.final))
             return result(0, json.dumps(self.sync))
@@ -284,6 +289,14 @@ class FakeGh:
             issue = {'lastEditedAt': None, 'editor': None} if login is None else {
                 'lastEditedAt': '2026-11-14T12:00:00Z', 'editor': {'login': login}}
             return result(0, json.dumps({'data': {'repository': {'issue': issue}}}))
+        if command[:3] == ['gh', 'api', '--include'] and '/collaborators/' in command[3]:
+            # the origin gate (github_trust.py) reads the HTTP status from the output of `gh api --include`
+            login = command[3].split('/collaborators/')[1].split('/')[0]
+            if login not in self.permissions:
+                return result(1, 'HTTP/2.0 404 Not Found\n\n{"message": "Not Found"}', 'gh: Not Found (HTTP 404)')
+            role = self.permissions[login]
+            legacy = {'maintain': 'write', 'triage': 'read'}.get(role, role)
+            return result(0, 'HTTP/2.0 200 OK\n\n' + json.dumps({'permission': legacy, 'role_name': role}))
         if command[:2] == ['gh', 'api']:
             path = command[2]
             if '/commits' in path:
@@ -514,6 +527,20 @@ class Native:
     def bash(self, command, start, end, model=FABLE, **tokens):
         self.assistant(start, model=model, tools=[('Bash', {'command': command})], **tokens)
         return self.tool_result(self.last_tools[0], end)
+
+    def handback(self, at, text, model=FABLE, **tokens):
+        """The report a subagent hands back to the lead session: a `SubagentHandback` tool call with its text."""
+        return self.assistant(at, model=model, tools=[('SubagentHandback', {'message': text})], **tokens)
+
+    def notice(self, at, kind='peer', text='TAJNE-POWIADOMIENIE'):
+        """A user line the session gets without a human: a subagent report (`peer`), a background task
+        (`task-notification`), a resume of a subagent (`coordinator`); kind None: a meta line without `origin`."""
+        line = self._line('user', at)
+        line.update(isMeta=True, message={'role': 'user', 'content': text})
+        if kind is not None:
+            line['origin'] = {'kind': kind}
+        self.lines.append(line)
+        return self
 
 
 def write_lines(path, lines):
