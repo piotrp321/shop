@@ -536,6 +536,16 @@ class VerdictTokenTest(unittest.TestCase):
         self.assertIsNone(metrics.verdict_token('## Przegląd DELTA ASH-V1-6: PASS\n\nBrak uwag, bez wpływu na werdykt.'))
         self.assertIsNone(metrics.verdict_token('Werdykt tak PASS'))
 
+    def test_a_quoted_label_is_no_verdict(self):
+        report = ('## Review DEMO-3: FULL, CHANGES_REQUIRED\n\n- Tak samo dla code-reviewer: „…cytat `verdict: PASS`…”.\n'
+                  '- **Odtworzenie:** `parse("Werdykt: PASS")` zwraca zły wynik.')
+        self.assertIsNone(metrics.verdict_token(report))
+        for text in ('Przykład „Werdykt: PASS” w teście.', "Cytat 'Verdict: KEEP' z raportu.", 'Wzorzec “werdykt BLOCK”.'):
+            self.assertIsNone(metrics.verdict_token(text), text)
+        for text, verdict in (('Uwagi.\nWerdykt: `PASS`', 'PASS'), ('(Werdykt: BLOCK)', 'BLOCK'),
+                              ('Opis — werdykt: REWORK.', 'REWORK')):
+            self.assertEqual(metrics.verdict_token(text), verdict, text)
+
     def test_no_label_no_verdict(self):
         for text in ('PASS', 'Werdykt: brak', 'werdyktem PASS', None):
             self.assertIsNone(metrics.verdict_token(text), text)
