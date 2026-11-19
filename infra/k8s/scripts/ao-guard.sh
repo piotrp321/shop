@@ -1,6 +1,6 @@
 #!/bin/sh
 # Refuses, without any change, while an AO run or one of its executors is alive: `sh scripts/ao-guard.sh <make target>`. The
-# targets that write or mount KUBE_DIR (kubeconfig, rerun, create-admin, restore, generate, backups) call it first in the Makefile
+# targets that write or mount KUBE_DIR (kubeconfig, rerun, create-admin, restore, generate, open, backups) call it first in the Makefile
 # (docs/features/agent-security/spec.md, R5 and path 14). KUBE_DIR holds the kubeconfig of production, the credentials of the
 # cluster administrator, in a directory that the executors and their Docker can read, so it must not exist while one runs.
 #
@@ -16,7 +16,7 @@
 #
 # Fail closed: no list (ps fails, is missing or prints nothing) is a refusal. There is no switch that turns the check off, and
 # it reads nothing from the standard input (the word `tak` of create-admin and restore stays there for their scripts). It is
-# not in rerun.sh, create-admin.sh, restore.sh, generate.sh and backups.sh themselves, because smoke.sh runs those directly, also
+# not in rerun.sh, create-admin.sh, restore.sh, generate.sh, open.sh and backups.sh themselves, because smoke.sh runs those directly, also
 # from an agent's run of AO, and the smoke test must work as before.
 #
 # Usage: ao-guard.sh <make target>   Exit codes: 0 nothing of AO runs; 1 refused; 2 no target.
