@@ -392,8 +392,9 @@ describe("CheckoutPage placing the order", () => {
     expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
   });
 
-  it.each<[string, "cart_empty" | "cart_not_orderable" | "insufficient_stock", string]>([
+  it.each<[string, "cart_empty" | "guest_order_too_large" | "cart_not_orderable" | "insufficient_stock", string]>([
     ["CartEmpty", "cart_empty", "Koszyk jest pusty."],
+    ["GuestOrderTooLarge", "guest_order_too_large", "Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku."],
     ["CartNotOrderable", "cart_not_orderable", "Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk."],
     ["InsufficientStockForOrder", "insufficient_stock", "Nie mamy już tylu sztuk części produktów. Sprawdź koszyk."],
   ])("on a 409 %s shows the detail with a link back to the cart, keeps the form and the key, and does not order again by itself", async (_name, reason, detail) => {
