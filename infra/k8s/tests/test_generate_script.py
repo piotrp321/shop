@@ -250,6 +250,8 @@ elif verb == "exec":
             print(json.dumps([{"index": i, "docs.count": str(n)} for i, n in state["es"]["indices"].items()]))
     else:
         assert command == ["bin/console", "cache:pool:clear", "cache.sitemap"], command
+        if target in state.get("cache_clear_fails", []):
+            fail("command terminated with exit code 1")
         event("clear " + target)
         save()
 elif verb == "logs":
@@ -485,6 +487,14 @@ class Refusals(Case):
                 self.assert_unchanged(cluster, result)
                 self.assertIn(refused or "not confirmed", result.stderr)
 
+    def test_a_cronjob_without_the_floor_of_the_free_space_is_refused(self):
+        demo = demo_data_cronjob()
+        demo["command"] = [a for a in demo["command"] if not a.startswith("--min-free-gb")]
+        cluster = self.cluster(cronjobs={**initial_state()["cronjobs"], "demo-data": demo})
+        result = cluster.run()
+        self.assert_unchanged(cluster, result)
+        self.assertIn("--min-free-gb", result.stderr)
+
     def test_every_node_must_have_the_room(self):
         cluster = self.cluster(nodes={"server-0": 175 * GB, "agent-1": 10 * GB})
         result = cluster.run()
@@ -559,6 +569,17 @@ class Run(Case):
                 self.assertIn("CLOSED", result.stderr)
                 self.assertIn("PROFILE=medium", result.stderr)
                 self.assertIn("PROFILE=seed", result.stderr)
+
+    def test_the_probe_sends_the_host_headers_pairwise_with_the_addresses(self):
+        """GENERATE_PROBE_HOST: on k3d the addresses are the node and the hosts name the ingress (the smoke test)."""
+        cluster = self.cluster()
+        result = cluster.run(GENERATE_PROBE_URL="http://node-a/ http://node-b/", GENERATE_PROBE_HOST="api.localhost localhost")
+        self.assertEqual(0, result.returncode, result.stderr)
+        probes = [c["args"] for c in cluster.calls() if c["image"] == "curlimages/curl"]
+        self.assertTrue(probes)
+        for args in probes:
+            host = args[args.index("-H") + 1]
+            self.assertEqual({"http://node-a/": "Host: api.localhost", "http://node-b/": "Host: localhost"}[args[-1]], host, args)
 
     def test_the_rule_and_the_job_carry_no_tracking_of_argo_cd(self):
         """Argo CD 3 (argo-cd chart 10.x, no resourceTrackingMethod in argocd/install/argocd.yaml) tracks by the annotation
@@ -653,6 +674,15 @@ class Open(Case):
         # A Job that runs may still need it.
         cluster = self.opened(jobs={**initial_state()["jobs"], JOB: finished_job("Running")}, secrets={"demo-photos": secret})
         self.assert_unchanged(cluster, cluster.open())
+
+    def test_a_cache_of_the_sitemap_that_cannot_be_cleared_leaves_the_shop_closed(self):
+        cluster = self.opened(cache_clear_fails=["api-7c9f-b"])
+        result = cluster.open()
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("api-7c9f-b", result.stderr)
+        self.assertIn("CLOSED", result.stderr)
+        self.assertIsNotNone(cluster.state()["netpol"])
+        self.assertEqual(["clear api-7c9f-a"], cluster.events())
 
     def test_a_probe_that_does_not_say_open_is_exit_1(self):
         cluster = self.opened(probes={API_URL: "auto", STORE_URL: "000"})
