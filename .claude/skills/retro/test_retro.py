@@ -3037,6 +3037,34 @@ class ObserveTest(RunDirCase):
         self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3')
         self.assertEqual([i['key'] for i in self.state('e3')['pr']['items']], ['fx'])
 
+    def test_committed_none_keeps_the_deferred_fix_items_out_of_the_pr(self):
+        # R6: while the series is in progress the fix items are deferred: observed, but no item of the retro PR (with
+        # the Status only), so `sync` never moves them to applied.jsonl
+        self.write_proposals(fix(1, key='fx'), fix(2, key='gx'), issue_item(3, key='is'))
+        code, out, err = self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3', '--committed', 'none')
+        self.assertEqual(code, 0, err)
+        state = self.state('e3')
+        self.assertEqual((state['pr']['number'], state['pr']['items']), (11, []))
+        self.assertEqual([r['key'] for r in self.rows('observations')], ['fx', 'gx', 'is'])
+        self.assertEqual(len(state['decisions_open']), 1)
+        self.assertEqual(json.loads(out)['pr_items'], 0)
+
+    def test_committed_numbers_are_the_only_fix_items_of_the_pr(self):
+        # a blocker approved with "tak 2" is committed; item 1 stays deferred
+        self.write_proposals(fix(1, key='fx'), fix(2, key='gx'))
+        code, _, err = self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3', '--committed', '2')
+        self.assertEqual(code, 0, err)
+        self.assertEqual([i['key'] for i in self.state('e3')['pr']['items']], ['gx'])
+
+    def test_committed_without_a_pr_or_with_a_number_of_no_fix_item_is_a_refusal(self):
+        self.write_proposals(fix(1, key='fx'), issue_item(2, key='is'))
+        self.refused('observe', self.run_dir, '--committed', 'none', text='--committed needs --pr')
+        for value in ('2', '7', 'x', '1,,', ''):
+            with self.subTest(value=value):
+                self.refused('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3', '--committed', value,
+                             text='--committed')
+        self.assertFalse(os.path.exists(self.retro_home))
+
     def test_fixes_put_into_a_pr_leave_the_carried_register(self):
         self.write_rows('carried', [{'key': 'fx', 'incidents': [F1], 'pr': 4}, {'key': 'other', 'incidents': [F1]}])
         self.write_proposals(fix(1, key='fx'))
