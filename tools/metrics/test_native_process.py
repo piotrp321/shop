@@ -320,6 +320,31 @@ class MissingTranscriptsTest(ProcessEnv):
         self.assertEqual(after['retries']['fix'], 1)
         self.assertTrue(any('zachowano' in g for g in gaps_of(after, 'breakdown')), after['gaps'])
 
+    def test_refresh_without_the_transcripts_keeps_attempts_value_and_commands(self):
+        self.write_run()
+        lead = self.lead().bash('make test', 600, 660, input=50)
+        path = self.write_session('s1', lead)
+        self.reviewed()
+        before = self.native_record()
+        self.assertTrue(before['attempts'] and before['value']['total']['usd'] and before['versions'])
+        os.remove(path)
+        after = self.native_record()
+        for field in ('attempts', 'by_task', 'value', 'in_attempts', 'versions', 'sessions'):
+            self.assertEqual(after[field], before[field], field)
+        for field in ('attempts', 'by_task', 'value', 'in_attempts', 'versions'):
+            self.assertTrue(any('zachowano' in g for g in gaps_of(after, field)), (field, after['gaps']))
+
+    def test_without_transcripts_and_without_a_stored_record_attempts_are_empty_with_gaps(self):
+        self.write_run(sessions=('gone',))
+        record = self.native_record()
+        self.assertEqual(record['attempts'], [])
+        self.assertEqual(record['by_task'], {})
+        self.assertIsNone(record['value']['total'])
+        for field in ('in_attempts', 'versions'):
+            self.assertIsNone(record[field], field)
+            self.assertTrue(gaps_of(record, field), (field, record['gaps']))
+        self.assertFalse(any('zachowano' in g for g in record['gaps']), record['gaps'])
+
     def test_user_lines_without_origin_make_the_interventions_unknown(self):
         self.write_run()
         lead = Native('s1').assistant(10, input=5).notice(100, None).notice(200, None).assistant(210)
