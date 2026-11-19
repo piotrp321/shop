@@ -16,11 +16,13 @@ import unittest
 from support import REPO
 
 SMOKE = REPO / "infra/k8s/scripts/smoke.sh"
-FUNCTIONS = ("kc", "count", "run_cronjob_job", "check_demo_data")
+FUNCTIONS = ("kc", "count", "statefulsets_in_rollout", "wait_statefulsets", "run_cronjob_job", "check_demo_data")
 
 # One line per call in $STUB_LOG. The CronJob demo-data has the command bin/generate-demo --profile=$STUB_PROFILE --force-reset and the
 # time limit $STUB_DEADLINE; the Job made from it ends as STUB_JOB says (succeeded, failed, running); the database has STUB_PRODUCTS
 # products and STUB_ORDERS orders; STUB_PATCH_FAILS makes the Job fail once the CronJob was patched (the break of the test).
+# The StatefulSet elasticsearch is in a rolling update (a new revision changes its image) for the first STUB_ROLLING reads of the
+# StatefulSets (all of them when STUB_ROLLING is "always"), then rolled out; the line of a read is that of statefulsets_in_rollout.
 KUBECTL = r"""#!/bin/sh
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$*" in
@@ -40,6 +42,17 @@ case "$*" in
   *"SELECT count(*) FROM catalog_product"*) printf '%s\n' "${STUB_PRODUCTS:-2040}" ;;
   *"SELECT count(*) FROM ordering_order"*) printf '%s\n' "${STUB_ORDERS:-5000}" ;;
   *"get pods"*) echo "demo-data-smoke-abcde Running" ;;
+  *"get statefulsets"*)
+    if [ -n "${STUB_STS_FAILS:-}" ]; then echo "The connection to the server was refused" >&2; exit 1; fi
+    reads=$(( $(cat "$STUB_DIR/sts-reads" 2>/dev/null || echo 0) + 1 ))
+    echo "$reads" > "$STUB_DIR/sts-reads"
+    echo "postgres 1 1 1 1 1 postgres-1 postgres-1"
+    if [ "${STUB_ROLLING:-0}" = always ] || [ "$reads" -le "${STUB_ROLLING:-0}" ]; then
+      echo "elasticsearch 3 3 1 0 0 elasticsearch-r3 elasticsearch-r4"
+      echo "rolling" >> "$STUB_LOG"
+    else
+      echo "elasticsearch 3 3 1 1 1 elasticsearch-r4 elasticsearch-r4"
+    fi ;;
 esac
 exit 0
 """
@@ -139,6 +152,32 @@ class Phase(unittest.TestCase):
         self.assertIn("--profile=smoke-unknown", patches[0])
         self.assertLess(self.calls().index(patches[0]), self.calls().index(self.creates()[0]))
         self.assertIn("demo-data: the generator log of the Job", result.stderr)
+
+    def test_the_job_is_created_only_after_the_statefulsets_in_rollout(self):
+        """The upgrade r4 before the phase gives the image of Elasticsearch a new tag, so its StatefulSet is still replacing its pod
+        when the phase starts (the upgrade ends with the failed initialize, not with a settled cluster). A Job created then reaches
+        no Elasticsearch: the generator stops at the reset of the search index (Connection timed out, PR #756)."""
+        result = self.run_phase(STUB_ROLLING="2")
+        self.assertEqual(0, result.returncode, result.stderr)
+        calls = self.calls()
+        self.assertEqual(2, calls.count("rolling"), calls)
+        last_rolling = len(calls) - 1 - calls[::-1].index("rolling")
+        self.assertGreater(calls.index(self.creates()[0]), last_rolling, calls)
+        self.assertIn("elasticsearch", result.stdout)
+
+    def test_statefulsets_that_do_not_roll_out_in_time_fail_the_phase_without_a_job(self):
+        result = self.run_phase(STUB_ROLLING="always", SMOKE_TIMEOUT="0")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("elasticsearch", result.stderr)
+        self.assertIn("not rolled out", result.stderr)
+        self.assertEqual([], self.creates())
+
+    def test_statefulsets_that_cannot_be_read_are_not_taken_for_rolled_out(self):
+        result = self.run_phase(STUB_STS_FAILS="1", SMOKE_TIMEOUT="0")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("not rolled out", result.stderr)
+        self.assertIn("cannot read the StatefulSets", result.stderr)
+        self.assertEqual([], self.creates())
 
     def test_without_the_break_the_cronjob_is_not_patched(self):
         self.run_phase()
