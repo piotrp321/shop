@@ -19,13 +19,19 @@
 # The run:
 #   1. DEMO_DATA_CONFIRM empty, or neither the profile of --profile nor `seed`, or wrong arguments: exit 64, nothing ran.
 #   2. The free space of / (`df -Pk /`, column Available: the file system of the node, which holds the volumes local-path) below
-#      --min-free-gb, or not read (df failed, printed no line, or no number): exit 74, nothing ran.
+#      --min-free-gb (a profile; in KiB rounded up), or not read (df failed, printed no line, or no number): exit 74, nothing ran.
+#      The seed has no floor, only a reading that is a number: going back to the seed is the one repair that make offers (after a
+#      stop by the guard the space stays just below the floor), it starts with TRUNCATE, which frees the room of the tables at once,
+#      and needs less than 2 GiB. A failed try leaves the state a refusal would (data: failed, the shop closed), while a refusal
+#      would leave the operator with nothing to do. Below the high watermark of Elasticsearch (90% used, about 20.7 GB free on the
+#      server) the new index of the seed may get no shard until Elasticsearch refreshes what it knows of the disk
+#      (cluster.info.update.interval, 30 s): that try fails, and trying again should pass.
 #   3. The generator (or the seed) runs in a process group of its own (setsid); its output goes on to the log of the container, and
 #      the script notes the time of each of its [OK] lines. Every DEMO_DATA_SPACE_POLL seconds a guard reads the free space; the
-#      first reading (before the start) and every tenth one is printed as "demo-data: free space of /: <GB> GB (<KiB> KiB) ...
-#      (reading <n>)".
-#   4. The free space below the floor, three failed readings in a row or a reading that is no number stop the whole group of the
-#      generator: TERM, then KILL after DEMO_DATA_STOP_GRACE seconds to whatever of the group still runs (the command the generator
+#      first reading (before the start) and every tenth one is printed as "demo-data: free space of /: <GB> GB (<KiB> KiB), the floor
+#      is <GB> GB | none (the seed) (reading <n>)".
+#   4. The free space below the floor (a profile only), three failed readings in a row or a reading that is no number stop the whole
+#      group of the generator: TERM, then KILL after DEMO_DATA_STOP_GRACE seconds to whatever of the group still runs (the command the generator
 #      runs in the foreground, whose end its own trap of TERM waits for, among them); exit 75. The script ends no session of the
 #      database (PGOPTIONS of the CronJob makes Postgres end those of a client that is gone) and signals no process outside that group.
 #   5. TERM to the script (the time limit of the Job, the pod deleted) does the same: exit 75.
@@ -46,6 +52,7 @@
 #   step: <seconds> <label>                   (one line per step, in order; none when no [OK] line came)
 #   total seconds: <from the start of the generator to its end; 0 when it did not start>
 #   lowest free space: <GB, two decimals> GB (<KiB> KiB) | unknown
+#   floor of the free space: <GB> GB (<KiB> KiB) | none (the seed) | unknown (refused before the floor was known)
 #   readings of the free space: <number>
 #   ==== end of the demo-data summary
 #
@@ -63,7 +70,7 @@ grace="${DEMO_DATA_STOP_GRACE:-30}"
 termination_log="${DEMO_DATA_TERMINATION_LOG:-/dev/termination-log}"
 
 work="" command_line="none" generator_status="not started" gen_pid="" gen_started="" gen_ended="" guard_pid="" reader_pid=""
-generator_done="" term_seen="" trapped="" self_pgid=""
+generator_done="" term_seen="" trapped="" self_pgid="" floor_kib="" floor_text="" floor_summary="unknown"
 
 say() { printf 'demo-data: %s\n' "$*"; }
 
@@ -116,6 +123,7 @@ report() {
   fi
   echo "total seconds: $finish_total"
   echo "lowest free space: $finish_min"
+  echo "floor of the free space: $floor_summary"
   echo "readings of the free space: $finish_readings"
   echo "==== end of the demo-data summary"
   [ -z "$work" ] || rm -rf "$work"
@@ -156,9 +164,9 @@ note_reading() {
   fi
 }
 
-below_floor() { awk -v a="$1" -v b="$floor_kib" 'BEGIN { exit !(a + 0 < b + 0) }'; }
+below_floor() { [ -n "$floor_kib" ] && awk -v a="$1" -v b="$floor_kib" 'BEGIN { exit !(a + 0 < b + 0) }'; }
 
-print_reading() { say "free space of /: $(gb "$1") GB ($1 KiB), the floor is $min_free_gb GB (reading $2)"; }
+print_reading() { say "free space of /: $(gb "$1") GB ($1 KiB), the floor is $floor_text (reading $2)"; }
 
 # The first cause of a stop wins (the guard and TERM may both come).
 stop_reason() {
@@ -305,8 +313,13 @@ else
 fi
 command_line="$*"
 
-# 2. The room before the start.
-floor_kib=$(((min_free_gb * 1000000000 + 1023) / 1024))
+# 2. The room before the start: the floor of a profile (in KiB rounded up); the seed has none (see the header).
+if [ "$confirm" = seed ]; then
+  floor_text="none (the seed)" floor_summary="none (the seed)"
+else
+  floor_kib=$(((min_free_gb * 1000000000 + 1023) / 1024))
+  floor_text="$min_free_gb GB" floor_summary="$min_free_gb GB ($floor_kib KiB)"
+fi
 work="$(mktemp -d "${TMPDIR:-/tmp}/demo-data.XXXXXX")" || { work=""; finish 74 "no work directory (mktemp -d failed); nothing was started"; }
 read_space
 note_reading 1 "$space_kib"
