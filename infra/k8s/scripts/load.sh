@@ -60,7 +60,7 @@
 # generator failed or did not finish in time, no chunks of the sitemap, the data of the demo or the stocks not prepared, the
 # warm-up failed) with a message, 1 anything else that went wrong (a failed run of k6 in the ramp or the steady run, a failed build,
 # a run that went to its end while the host slept: its results are in LOAD_OUT, but its times are not to be trusted; a run that
-# failed with 2 keeps 2 and only names the pause).
+# failed with 2 keeps 2 and only names the pause), 130 after INT (Ctrl-C) and 143 after TERM (the cluster is deleted on both).
 # Exit 125 of `docker run` of k6 is Docker failing to start it (named so in the message), not a shop that does not answer.
 #
 #   LOAD_DATA=seed        seed, medium, server or full (above)

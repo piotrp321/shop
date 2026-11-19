@@ -94,7 +94,7 @@ monitoring-smoke:
 # it looks for a gap between two readings (space.log, node-stats.log, the end of the run) of more than 3 x LOAD_SPACE_POLL and at
 # least 120 s; any such pause goes to space.log (a `#` line), to environment.txt (`host sleep:`) and to the standard error as a
 # warning, and a run that was otherwise done ends with exit 1, not 0 (its results are in LOAD_OUT, its times are not reliable). A
-# run that failed with 2 keeps 2.
+# run that failed with 2 keeps 2. INT ends the run with 130 and TERM with 143, the cluster deleted on both.
 load:
 	sh scripts/load.sh
 
