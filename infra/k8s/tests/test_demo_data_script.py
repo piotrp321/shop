@@ -2,8 +2,8 @@
 serwerze (chart)") against stubs of df, bin/generate-demo, bin/seed-demo, bin/console and psql: it refuses without DEMO_DATA_CONFIRM
 (64) and with too little room before the start (74), runs the generator of the profile or the seed in a process group of its own,
 stops that whole group (with the command it runs in the foreground, which may ignore TERM) when the free space falls below the floor,
-cannot be read three times in a row or is no number, and on TERM (75), and touches nothing else. Every path ends with the summary
-block and one line of the reason in the termination log.
+cannot be read three times in a row or is no number, and on TERM (75), and touches nothing else. Every path writes one line of the
+reason to the termination log and to the end of the log.
 
 The stubs log one line per call ("<tool> <arguments>") in $STUB_DIR/calls. The generator stub behaves like bin/generate-demo: its
 trap of TERM waits for the command in the foreground (bin/console), and the console stub ignores TERM with STUB_CONSOLE_IGNORES_TERM.
@@ -32,8 +32,6 @@ PROFILE_ARGS = ("--profile=medium", f"--anchor={ANCHOR}", "--min-free-gb=32")
 # KiB: 40.96 GB and 31.74 GB around the floor of 32 GB (31250000 KiB).
 PLENTY = "40000000"
 LOW = "31000000"
-SUMMARY_START = "==== demo-data summary"
-SUMMARY_END = "==== end of the demo-data summary"
 
 # df -Pk /: the reading n takes the n-th word of STUB_DF (the last one stays): a number of KiB, `fail` (df fails), `none` (df prints
 # nothing) or any other text, printed in the column Available.
@@ -182,26 +180,13 @@ class Script(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"{path.name} did not appear in {seconds} s")
 
-    def summary(self, out):
-        """The fields of the summary block (the last lines of the output) and its steps as (label, seconds)."""
-        lines = out.splitlines()
-        self.assertIn(SUMMARY_START, lines, out)
-        self.assertEqual(SUMMARY_END, lines[-1], "the summary block is the end of the log")
-        block = lines[lines.index(SUMMARY_START) + 1 : -1]
-        fields, steps = {}, []
-        for line in block:
-            key, _, value = line.partition(": ")
-            if key == "step":
-                seconds, _, label = value.partition(" ")
-                steps.append((label, int(seconds)))
-            else:
-                fields[key] = value
-        return fields, steps
-
-    def reason(self, code):
+    def reason(self, code, out=None):
+        """The one line of the termination log; with <out>, also the last line of the log."""
         lines = self.termination_log.read_text().splitlines()
         self.assertEqual(1, len(lines), lines)
         self.assertTrue(lines[0].startswith(f"exit {code}: "), lines[0])
+        if out is not None:
+            self.assertEqual(f"demo-data: {lines[0]}", out.splitlines()[-1], "the reason is the end of the log")
         return lines[0]
 
     def assert_the_rest_is_untouched(self):
@@ -230,11 +215,7 @@ class RefusalTest(Script):
                 self.assertEqual(64, code, out)
                 self.assertEqual([], self.started())
                 self.assertEqual([], [call for call in self.calls() if call.startswith("df")], "nothing at all runs before the confirmation")
-                fields, steps = self.summary(out)
-                self.assertEqual("64", fields["exit code"])
-                self.assertEqual("not started", fields["generator exit code"])
-                self.assertEqual([], steps)
-                self.assertIn("DEMO_DATA_CONFIRM", self.reason(64))
+                self.assertIn("DEMO_DATA_CONFIRM", self.reason(64, out))
 
     def test_wrong_arguments_refuse_like_a_missing_confirmation(self):
         for args, env in (
@@ -249,8 +230,7 @@ class RefusalTest(Script):
                 code, out, _ = self.run_script(args, **env)
                 self.assertEqual(64, code, out)
                 self.assertEqual([], self.started())
-                self.summary(out)
-                self.reason(64)
+                self.reason(64, out)
 
     def test_too_little_room_or_a_failed_reading_before_the_start_gives_74_and_nothing_starts(self):
         for reading in (LOW, "31249999", "fail", "none", "n/a", "12G"):
@@ -259,14 +239,11 @@ class RefusalTest(Script):
                 code, out, _ = self.run_script(STUB_DF=reading)
                 self.assertEqual(74, code, out)
                 self.assertEqual([], self.started())
-                fields, _ = self.summary(out)
-                self.assertEqual("74", fields["exit code"])
-                self.assertEqual("not started", fields["generator exit code"])
                 self.assertIn("df -Pk /", self.calls())
-                line = self.reason(74)
+                line = self.reason(74, out)
                 if reading in (LOW, "31249999"):
                     self.assertIn("32 GB", line)
-                    self.assertIn(reading, fields["lowest free space"])
+                    self.assertIn(reading, line)
 
 
 class RunTest(Script):
@@ -275,10 +252,8 @@ class RunTest(Script):
         self.assertEqual(0, code, out)
         self.assertEqual([f"generate-demo --profile=medium --anchor={ANCHOR} --force-reset"], self.started())
         self.assertIn("generate-demo: done", out, "the output of the generator is in the log")
-        fields, _ = self.summary(out)
-        self.assertEqual("0", fields["exit code"])
-        self.assertEqual("0", fields["generator exit code"])
-        self.reason(0)
+        self.assertIn(" [OK] Seeded: done (stub)", out)
+        self.reason(0, out)
         self.assert_the_rest_is_untouched()
 
     def test_without_an_anchor_the_generator_gets_none(self):
@@ -290,21 +265,15 @@ class RunTest(Script):
         code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_STEPS="Seeded:0")
         self.assertEqual(0, code, out)
         self.assertEqual(["seed-demo "], self.started())
-        fields, _ = self.summary(out)
-        self.assertEqual("bin/seed-demo", fields["command"])
-        self.reason(0)
+        self.assertIn("bin/seed-demo ended with 0", self.reason(0, out))
 
     def test_the_code_of_the_generator_is_the_code_of_the_script(self):
         for exit_code in ("1", "2", "3"):
             with self.subTest(exit_code=exit_code):
                 code, out, _ = self.run_script(STUB_EXIT=exit_code, STUB_STEPS="Seed:0 Products:0")
                 self.assertEqual(int(exit_code), code, out)
-                fields, steps = self.summary(out)
-                self.assertEqual(exit_code, fields["exit code"])
-                self.assertEqual(exit_code, fields["generator exit code"])
-                self.assertEqual("Products", fields["last finished step"])
-                self.assertEqual(["Seed", "Products"], [label for label, _ in steps])
-                self.assertIn(f"exit {exit_code}", self.reason(exit_code))
+                self.assertIn(" [OK] Products: done (stub)", out)
+                self.assertIn(f"ended with {exit_code}", self.reason(exit_code, out))
 
     def test_the_generator_runs_in_a_process_group_of_its_own(self):
         process = self.start(STUB_CONSOLE_SECONDS="3")
@@ -323,11 +292,8 @@ class GuardTest(Script):
         self.assertEqual(75, code, out)
         self.assert_the_group_is_gone()
         self.assert_the_rest_is_untouched()
-        fields, _ = self.summary(out)
-        self.assertEqual("75", fields["exit code"])
-        self.assertEqual("Seed", fields["last finished step"])
-        self.assertIn(LOW, fields["lowest free space"])
-        line = self.reason(75)
+        line = self.reason(75, out)
+        self.assertIn(LOW, line)
         self.assertIn("32 GB", line)
         self.assertIn("demoData.minFreeGb", line)
 
@@ -336,8 +302,7 @@ class GuardTest(Script):
         self.assertEqual(75, code, out)
         self.assert_the_group_is_gone()
         self.assert_the_rest_is_untouched()
-        self.assertIn("3 times in a row", self.reason(75))
-        self.summary(out)
+        self.assertIn("3 times in a row", self.reason(75, out))
 
     def test_failed_readings_that_are_not_three_in_a_row_do_not_stop_it(self):
         code, out, _ = self.run_script(STUB_DF=f"{PLENTY} fail fail {PLENTY} fail fail {PLENTY}", STUB_CONSOLE_SECONDS="7")
@@ -361,9 +326,7 @@ class GuardTest(Script):
         self.assertEqual(75, code, out)
         self.assert_the_group_is_gone()
         self.assert_the_rest_is_untouched()
-        self.assertIn("TERM", self.reason(75))
-        fields, _ = self.summary(out)
-        self.assertEqual("Seed", fields["last finished step"])
+        self.assertIn("TERM", self.reason(75, out))
 
     def test_every_tenth_reading_is_in_the_log(self):
         code, out, _ = self.run_script(STUB_CONSOLE_SECONDS="13")
@@ -392,9 +355,7 @@ class SeedFloorTest(Script):
                 self.assertEqual(0, code, out)
                 self.assertEqual(["seed-demo "], self.started())
                 self.assertIn("the floor is none (the seed)", out)
-                fields, _ = self.summary(out)
-                self.assertEqual("none (the seed)", fields["floor of the free space"])
-                self.reason(0)
+                self.reason(0, out)
 
     def test_the_seed_without_a_reading_that_is_a_number_refuses_with_74(self):
         for reading in ("fail", "none", "n/a", "12G"):
@@ -404,17 +365,13 @@ class SeedFloorTest(Script):
                 code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=reading)
                 self.assertEqual(74, code, out)
                 self.assertEqual([], self.started())
-                fields, _ = self.summary(out)
-                self.assertEqual("none (the seed)", fields["floor of the free space"])
-                self.reason(74)
+                self.reason(74, out)
 
     def test_the_guard_of_the_seed_does_not_stop_it_on_a_low_reading(self):
         code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF="1000 500 0", STUB_CONSOLE_SECONDS="4")
         self.assertEqual(0, code, out)
         self.assertGreaterEqual(len((self.base / "df.log").read_text().splitlines()), 3, out)
-        fields, _ = self.summary(out)
-        self.assertIn("(0 KiB)", fields["lowest free space"])
-        self.reason(0)
+        self.reason(0, out)
 
     def test_the_guard_of_the_seed_stops_it_after_three_failed_readings_or_one_that_is_no_number(self):
         for readings, words in (("1000 fail fail fail", "3 times in a row"), ("1000 12abc", "12abc")):
@@ -433,36 +390,7 @@ class SeedFloorTest(Script):
         code, out, _ = self.run_script(STUB_DF=self.BELOW_FLOOR)
         self.assertEqual(74, code, out)
         self.assertEqual([], self.started())
-        self.assertIn("32 GB (demoData.minFreeGb)", self.reason(74))
-        fields, _ = self.summary(out)
-        self.assertEqual("32 GB (31250000 KiB)", fields["floor of the free space"])
-
-
-class SummaryTest(Script):
-    def test_the_steps_are_timed_from_the_ok_lines(self):
-        code, out, _ = self.run_script(STUB_STEPS="Seed_the_catalog:1 Products:2 Products:0 Prices:1")
-        self.assertEqual(0, code, out)
-        fields, steps = self.summary(out)
-        self.assertEqual(["Seed the catalog", "Products", "Prices"], [label for label, _ in steps])
-        for (label, seconds), expected in zip(steps, (1, 2, 1)):
-            self.assertLessEqual(abs(seconds - expected), 1, (label, seconds))
-        self.assertEqual("Prices", fields["last finished step"])
-        self.assertLessEqual(abs(int(fields["total seconds"]) - 4), 2, fields)
-        self.assertIn(PLENTY, fields["lowest free space"])
-        self.assertIn("40.96 GB", fields["lowest free space"])
-
-    def test_the_lowest_free_space_is_the_lowest_reading(self):
-        code, out, _ = self.run_script(STUB_DF=f"{PLENTY} 35000000 38000000", STUB_CONSOLE_SECONDS="3")
-        self.assertEqual(0, code, out)
-        fields, _ = self.summary(out)
-        self.assertIn("35000000 KiB", fields["lowest free space"])
-
-    def test_no_ok_line_means_no_step(self):
-        code, out, _ = self.run_script(STUB_EXIT="1")
-        self.assertEqual(1, code, out)
-        fields, steps = self.summary(out)
-        self.assertEqual([], steps)
-        self.assertEqual("none", fields["last finished step"])
+        self.assertIn("32 GB (demoData.minFreeGb)", self.reason(74, out))
 
 
 if __name__ == "__main__":
