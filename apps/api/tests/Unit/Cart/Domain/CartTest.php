@@ -35,7 +35,7 @@ final class CartTest extends TestCase
         $this->now = new \DateTimeImmutable('2026-11-03 12:00:00+00:00');
     }
 
-    public function testNewGuestCartIsOpenEmptyAndExpiresIn30Days(): void
+    public function testNewGuestCartIsOpenEmptyAndExpiresInOneDay(): void
     {
         $cart = Cart::createForGuest(CartId::fromString(self::CART), $this->now);
 
@@ -47,7 +47,7 @@ final class CartTest extends TestCase
         self::assertSame([], $cart->lines());
         self::assertEquals($this->now, $cart->createdAt());
         self::assertEquals($this->now, $cart->updatedAt());
-        self::assertEquals(new \DateTimeImmutable('2026-12-03 12:00:00+00:00'), $cart->expiresAt());
+        self::assertEquals(new \DateTimeImmutable('2026-11-04 12:00:00+00:00'), $cart->expiresAt(), 'an empty guest cart lives one day');
     }
 
     public function testNewCustomerCartExpiresIn180Days(): void
@@ -315,6 +315,52 @@ final class CartTest extends TestCase
 
         self::assertSame([[self::V2, 1]], self::lines($cart));
         self::assertEquals($later, $cart->updatedAt());
+        self::assertEquals($later->modify('+30 days'), $cart->expiresAt(), 'a guest cart with a line lives 30 days');
+    }
+
+    public function testAGuestCartWithoutItsLastLineExpiresOneDayAfterTheRemoval(): void
+    {
+        $cart = $this->guestCart();
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
+        $later = $this->now->modify('+3 days');
+
+        $cart->remove(self::variant(self::V1), $later);
+
+        self::assertSame([], $cart->lines());
+        self::assertEquals($later, $cart->updatedAt());
+        self::assertEquals($later->modify('+1 day'), $cart->expiresAt());
+    }
+
+    public function testAnEmptyGuestCartGetsThirtyDaysWithItsFirstLine(): void
+    {
+        $cart = $this->guestCart();
+        $later = $this->now->modify('+6 hours');
+
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $later);
+
+        self::assertEquals($later->modify('+30 days'), $cart->expiresAt());
+    }
+
+    public function testAnEmptyGuestCartExpiresAfterOneDay(): void
+    {
+        $cart = $this->guestCart();
+
+        self::assertFalse($cart->isExpired($this->now->modify('+1 day')));
+        self::assertTrue($cart->isExpired($this->now->modify('+1 day +1 second')));
+        $this->expectException(CartNotFound::class);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now->modify('+1 day +1 second'));
+    }
+
+    public function testACustomerCartWithoutItsLastLineStillExpiresIn180Days(): void
+    {
+        $cart = Cart::createForCustomer(CartId::fromString(self::CART), 'kc-sub-1', $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
+        $later = $this->now->modify('+3 days');
+
+        $cart->remove(self::variant(self::V1), $later);
+
+        self::assertSame([], $cart->lines());
+        self::assertEquals($later->modify('+180 days'), $cart->expiresAt());
     }
 
     public function testRemoveOfAMissingLineChangesNothing(): void

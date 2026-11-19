@@ -40,7 +40,7 @@ final class CartClearAfterOrderTest extends TestCase
         self::assertSame([], $cart->lines());
         self::assertSame(CartStatus::Open, $cart->status());
         self::assertEquals($this->now, $cart->updatedAt());
-        self::assertEquals($this->now->modify('+30 days'), $cart->expiresAt());
+        self::assertEquals($this->now->modify('+1 day'), $cart->expiresAt(), 'an empty guest cart lives one day');
     }
 
     public function testACustomerCartLosesEveryLineAndIsTouched(): void
