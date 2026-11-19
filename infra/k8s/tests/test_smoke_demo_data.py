@@ -415,6 +415,11 @@ class Phase(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def fresh(self):
+        """New stubs for the next case of a loop; the directory of the case before is removed."""
+        self.tearDown()
+        self.setUp()
+
     def run_phase(self, **env):
         text = SMOKE.read_text()
         work = self.base / "work"
@@ -550,7 +555,7 @@ class Phase(unittest.TestCase):
     def test_a_job_of_the_generator_or_of_load_that_did_not_complete_fails_the_phase(self):
         for variables, job in (({"STUB_RUN": "Failed"}, "demo-data-run"), ({"STUB_LOAD": "Failed"}, "load")):
             with self.subTest(variables):
-                self.setUp()
+                self.fresh()
                 result = self.run_phase(**variables)
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(job, result.stderr)
@@ -561,7 +566,7 @@ class Phase(unittest.TestCase):
         for variables in ({"STUB_PRODUCTS": "2000"}, {"STUB_PRODUCTS": "2041"}, {"STUB_ORDERS": "5000"}, {"STUB_ORDERS": "5002"},
                           {"STUB_PRODUCTS": " "}, {"STUB_ORDERS": "error"}):
             with self.subTest(variables):
-                self.setUp()
+                self.fresh()
                 result = self.run_phase(**variables)
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("not 2040 and 5001", result.stderr)
@@ -570,7 +575,7 @@ class Phase(unittest.TestCase):
         """SMOKE_REUSE starts after the backup, so the number of products of the seed is not known."""
         result = self.run_phase(STUB_SEED_COUNT="", STUB_PRODUCTS="2077")
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.setUp()
+        self.fresh()
         result = self.run_phase(STUB_SEED_COUNT="", STUB_ORDERS="5000")
         self.assertNotEqual(0, result.returncode)
 
@@ -599,7 +604,7 @@ class Phase(unittest.TestCase):
     def test_a_cluster_that_does_not_settle_in_time_fails_the_phase_without_generate(self):
         for variables in ({"STUB_ROLLING": "always"}, {"STUB_ACTIVE": "always"}):
             with self.subTest(variables):
-                self.setUp()
+                self.fresh()
                 result = self.run_phase(SMOKE_TIMEOUT="0", **variables)
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("not settled", result.stderr)
@@ -648,7 +653,7 @@ class Phase(unittest.TestCase):
         for variables, words in (({"STUB_FAILED_INGRESS": "503"}, "not 502"), ({"STUB_FAILED_INGRESS": "200"}, "not 502"),
                                  ({"STUB_FAILED_INGRESS": "000"}, "not 502"), ({"STUB_NO_RULE": "1"}, "no NetworkPolicy shop-closed")):
             with self.subTest(variables):
-                self.setUp()
+                self.fresh()
                 result = self.run_break(**variables)
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(words, result.stderr)
@@ -681,7 +686,7 @@ class Phase(unittest.TestCase):
     def test_the_break_with_data_other_than_the_seed_after_the_seed_fails(self):
         for variables in ({"STUB_SEED_PRODUCTS": "2040"}, {"STUB_SEED_ORDERS": "5001"}, {"STUB_SEED_ORDERS": "0"}):
             with self.subTest(variables):
-                self.setUp()
+                self.fresh()
                 result = self.run_break(**variables)
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("not 40 and 1", result.stderr)
