@@ -1,5 +1,7 @@
 """status.sh, rerun.sh and reinitialize.sh know the state of the demo data (docs/features/demo-scale/spec.md): the NetworkPolicy
-shop-closed (the shop is closed) and the label app.kubernetes.io/name: demo-data of the Job of the generator.
+shop-closed (the shop is closed), the Job demo-data-run of make generate, the active Jobs (make generate and make open refuse while one
+runs), a Secret of the photo pool that is left (make generate deletes it on every exit it can catch, make open after a KILL) and the
+label app.kubernetes.io/name: demo-data of the Job of the generator.
 status and reinitialize run against the stub of ssh of test_server_scripts.py, rerun against the stub of kubectl of
 test_restore_script.py; the refusals change nothing, a failing read is an error."""
 
@@ -22,6 +24,31 @@ class StatusDemoData(ServerScripts):
         result = self.status()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("shop: open", result.stdout)
+
+    def test_it_names_the_state_of_the_job_demo_data_run_and_the_active_jobs(self):
+        for states, run, active in (
+            ("", "demo-data-run: none (make generate never ran, or it deleted the previous one)", "active jobs: none"),
+            ("migrate-1 SuccessCriteriaMet Complete\ndemo-data-run SuccessCriteriaMet Complete\n", "demo-data-run: Complete", "active jobs: none"),
+            ("demo-data-run FailureTarget Failed\ncart-purge-expired-2 \n", "demo-data-run: Failed", "active jobs: cart-purge-expired-2"),
+            ("demo-data-run \nload-1 \n", "demo-data-run: running", "active jobs: demo-data-run load-1"),
+        ):
+            with self.subTest(states=states):
+                result = self.status(STUB_JOB_STATES=states)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn(run, result.stdout)
+                self.assertIn(active, result.stdout)
+
+    def test_it_says_whether_the_secret_of_the_photo_pool_is_left(self):
+        result = self.status(STUB_SECRET="secret/demo-photos\n")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("the Secret demo-photos of the photo pool: LEFT", result.stdout)
+        self.assertIn("make open", result.stdout)
+        result = self.status()
+        self.assertIn("the Secret demo-photos of the photo pool: none", result.stdout)
+        secrets = [call for call in self.calls() if "get secret " in call]
+        self.assertIn("-n shop get secret demo-photos --ignore-not-found -o name", secrets[-1])
+        result = self.status(STUB_PHOTO_SECRET="")
+        self.assertIn("the CronJob demo-data reads no Secret of the photo pool", result.stdout)
 
     def test_the_rule_shop_closed_means_the_shop_is_closed(self):
         result = self.status(STUB_CLOSED=CLOSED)
@@ -63,9 +90,12 @@ class StatusDemoData(ServerScripts):
     def test_a_failing_read_of_any_of_them_is_exit_code_1_and_the_others_still_run(self):
         # The calls before the demo data: the applications, the pods, the jobs, the failed jobs (no failed job, so no log): 4.
         for match, message, calls in (
-            ("get networkpolicy shop-closed", "could not read the rule shop-closed", 7),
-            ("get jobs -l app.kubernetes.io/name=initialize", "could not read the jobs initialize", 6),
-            ("--container=initialize", "could not read the log of the job initialize-3fa9c1d2e4", 7),
+            ("get networkpolicy shop-closed", "could not read the rule shop-closed", 10),
+            (".type}", "could not read the states of the jobs", 10),
+            ("get cronjob demo-data", "could not read the Secret of the photo pool", 9),
+            ("get secret ", "could not read the Secret of the photo pool", 10),
+            ("get jobs -l app.kubernetes.io/name=initialize", "could not read the jobs initialize", 9),
+            ("--container=initialize", "could not read the log of the job initialize-3fa9c1d2e4", 10),
         ):
             with self.subTest(match=match):
                 self.log.write_text("")
@@ -79,8 +109,8 @@ class StatusDemoData(ServerScripts):
 
     def test_the_reads_only_read(self):
         self.status(STUB_CLOSED=CLOSED)
-        reads = [c for c in self.calls() if "shop-closed" in c or "name=initialize" in c]
-        self.assertEqual(3, len(reads))
+        reads = self.calls()[4:]
+        self.assertEqual(6, len(reads), reads)
         for call in reads:
             call = call.split("k3s kubectl", 1)[1]
             self.assertRegex(call, r" (get|logs) ")

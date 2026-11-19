@@ -27,7 +27,9 @@ KUBECONFIG = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0
 # pod of two (and exits with 1 after them with STUB_LOGS_PARTIAL_FAIL, like kubectl when a container of the pods cannot be read),
 # or nothing with STUB_NO_PODS, a call matching STUB_FAIL_MATCH fails with no output). The reads of the state of the demo data:
 # the NetworkPolicy shop-closed answers with STUB_CLOSED, the Jobs initialize with STUB_INIT_JOBS (one name per line, the newest last) and their log with STUB_INIT_LOG
-# (nothing with STUB_INIT_NO_PODS).
+# (nothing with STUB_INIT_NO_PODS), the Jobs with the types of their true conditions with STUB_JOB_STATES ("<name> <types>" lines),
+# the Secret of the photo pool that the CronJob demo-data reads with STUB_PHOTO_SECRET (demo-photos) and that Secret with
+# STUB_SECRET.
 SSH = r"""#!/bin/sh
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$STUB_LOG"
 n="$(wc -l < "$STUB_LOG" | tr -d ' ')"
@@ -44,6 +46,9 @@ case "$*" in
 }" ;;
       *" logs -l job-name="*"--container=initialize"*)
         [ -n "${STUB_INIT_NO_PODS:-}" ] || printf '%s\n' "${STUB_INIT_LOG:-initialize: 120 products, 40 orders}" ;;
+      *"get jobs -o jsonpath"*".type}"*) printf '%s' "${STUB_JOB_STATES:-}" ;;
+      *"get cronjob demo-data"*) printf '%s' "${STUB_PHOTO_SECRET-demo-photos}" ;;
+      *"get secret "*) printf '%s' "${STUB_SECRET:-}" ;;
       *"get jobs -o jsonpath"*) printf '%s' "${STUB_JOBS:-}" ;;
       *" logs -l job-name="*)
         [ -n "${STUB_NO_PODS:-}" ] || printf '%s\n' "[pod/first/main] stub log line of the failed job" "[pod/second/main] stub log line of the failed job"
@@ -302,9 +307,10 @@ class KubeDirRegistry(ServerScripts):
 
 
 class Status(ServerScripts):
-    # The reads of the state of the demo data that follow the logs of the failed jobs: the rule, the Jobs initialize and the log of
-    # the newest one (tests/test_demo_data_state.py has their results).
-    DEMO_READS = 3
+    # The reads of the state of the demo data that follow the logs of the failed jobs: the rule, the states of the Jobs, the Secret
+    # of the photo pool (its name in the CronJob, then the Secret), the Jobs initialize and the log of the newest one
+    # (tests/test_demo_data_state.py has their results).
+    DEMO_READS = 6
 
     FAILED_JOBS = "backup-29000000 True\nbackup-verify-29000001 \nbackup-verify-29000002 True\n"
 

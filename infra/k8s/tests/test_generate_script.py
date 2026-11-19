@@ -78,6 +78,14 @@ def option(name):
 
 def event(text):
     state["events"].append(text)
+    # Another copy of the target makes its Job right after this event.
+    inject = state.get("inject_job_after")
+    if inject and inject["event"] == text:
+        state["jobs"][JOB] = inject["job"]
+        state["inject_job_after"] = None
+
+
+JOB = "demo-data-run"
 
 
 def job_state(job):
@@ -103,9 +111,9 @@ if image.startswith("curlimages/curl"):
     sys.exit(0)
 
 state["kubectl_calls"] += 1
+save()
 trigger = state.get("trigger") or {}
 if trigger.get("call") == state["kubectl_calls"]:
-    save()
     if trigger["action"] == "fail":
         fail("The connection to the server was refused - did you specify the right host or port?")
     def interrupt(sig=getattr(signal, "SIG" + trigger["action"].upper())):
@@ -206,17 +214,20 @@ elif verb == "create":
     event(f"create {kind} {name}")
     save()
 elif verb == "delete":
+    # An event only for what was there (--ignore-not-found deletes nothing else).
     kind = rest[1]
     if kind == "pods":
         assert namespace == "kube-system" and option("-l") == "app.kubernetes.io/name=traefik" and "--wait=true" in rest, rest
         state["traefik_restarts"] = len(state["events"]) + 1
+        existed = True
     elif kind == "networkpolicy":
-        state["netpol"] = None
+        existed, state["netpol"] = state["netpol"] is not None, None
     elif kind == "secret":
-        state["secrets"].pop(words[0], None)
+        existed = state["secrets"].pop(words[0], None) is not None
     elif kind == "job":
-        state["jobs"].pop(words[0], None)
-    event("delete " + " ".join([kind] + words[:1]))
+        existed = state["jobs"].pop(words[0], None) is not None
+    if existed:
+        event("delete " + " ".join([kind] + words[:1]))
     save()
 elif verb == "exec":
     target, command = rest[1], rest[rest.index("--") + 1:]
@@ -372,8 +383,10 @@ class Case(unittest.TestCase):
 
 
 CLOSING = ["create NetworkPolicy shop-closed", "delete pods"]
-GENERATION = ["delete secret demo-photos", "create Secret demo-photos", f"create Job {JOB}", "delete secret demo-photos"]
+GENERATION = ["create Secret demo-photos", f"create Job {JOB}"]
 OPENING = ["clear api-7c9f-a", "clear api-7c9f-b", "create Job load", "delete networkpolicy shop-closed"]
+# The Secret of the photo pool is deleted when the target ends; after a Job that completed make open (run by make generate) deletes it.
+SECRET_GONE = ["delete secret demo-photos"]
 
 
 def without_stamps(events):
@@ -500,7 +513,7 @@ class Run(Case):
         cluster = self.cluster()
         result = cluster.run()
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual(CLOSING + GENERATION + OPENING, without_stamps(cluster.events()))
+        self.assertEqual(CLOSING + GENERATION + SECRET_GONE + OPENING, without_stamps(cluster.events()))
         state = cluster.state()
         self.assertIsNone(state["netpol"])
         self.assertEqual({}, state["secrets"])
@@ -541,7 +554,7 @@ class Run(Case):
                 cluster = self.cluster(outcomes={**initial_state()["outcomes"], "demo-data-": outcome})
                 result = cluster.run()
                 self.assertEqual(1, result.returncode, result.stderr)
-                self.assertEqual(CLOSING + GENERATION, cluster.events())
+                self.assertEqual(CLOSING + GENERATION + SECRET_GONE, cluster.events())
                 self.assertIn(words, result.stderr)
                 self.assertIn("CLOSED", result.stderr)
                 self.assertIn("PROFILE=medium", result.stderr)
@@ -598,7 +611,8 @@ class Open(Case):
         self.assertEqual(0, cluster.open().returncode)
         result = cluster.open()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(OPENING + OPENING, without_stamps(cluster.events()))
+        # The second time there is no rule to delete.
+        self.assertEqual(OPENING + OPENING[:-1], without_stamps(cluster.events()))
 
     def test_every_failed_check_leaves_the_shop_closed(self):
         for changes, words in (({"pg": {"invalid": "catalog_product_pkey", "counts": "1|1"}}, "catalog_product_pkey"),
@@ -616,11 +630,166 @@ class Open(Case):
                 self.assertIn(words, result.stderr)
                 self.assertIn("CLOSED", result.stderr)
 
+    def test_without_a_job_demo_data_run_that_completed_it_refuses(self):
+        for run, words in ((None, "no Job demo-data-run"), (finished_job("Failed"), "Failed")):
+            with self.subTest(run=run):
+                jobs = {**initial_state()["jobs"], **({JOB: run} if run else {})}
+                cluster = self.opened(jobs=jobs)
+                result = cluster.open()
+                self.assert_unchanged(cluster, result)
+                self.assertIn(words, result.stderr)
+                self.assertIsNotNone(cluster.state()["netpol"])
+
+    def test_a_secret_of_the_photo_pool_that_is_left_is_deleted_once_no_job_runs(self):
+        secret = {"kind": "Secret", "metadata": {"name": "demo-photos"}}
+        for run, code in ((finished_job(), 0), (finished_job("Failed"), 1), (None, 1)):
+            with self.subTest(run=run):
+                jobs = {**initial_state()["jobs"], **({JOB: run} if run else {})}
+                cluster = self.opened(jobs=jobs, secrets={"demo-photos": secret})
+                result = cluster.open()
+                self.assertEqual(code, result.returncode, result.stderr)
+                self.assertEqual({}, cluster.state()["secrets"])
+                self.assertEqual("delete secret demo-photos", cluster.events()[0])
+        # A Job that runs may still need it.
+        cluster = self.opened(jobs={**initial_state()["jobs"], JOB: finished_job("Running")}, secrets={"demo-photos": secret})
+        self.assert_unchanged(cluster, cluster.open())
+
     def test_a_probe_that_does_not_say_open_is_exit_1(self):
         cluster = self.opened(probes={API_URL: "auto", STORE_URL: "000"})
         result = cluster.open(GENERATE_OPEN_WAIT="60")
         self.assertEqual(1, result.returncode, result.stderr)
         self.assertIn("does not say open", result.stderr)
+
+
+class PreviousRun(Case):
+    """make open must not take the success of an earlier Job for that of a generation that stopped: make generate deletes the Job
+    demo-data-run of the run before (and waits until it is gone) right after tak, before any other change. From then on until the new
+    Job completed there is no Job demo-data-run that completed."""
+
+    def with_previous(self, **changes):
+        return self.cluster(jobs={**initial_state()["jobs"], JOB: finished_job(previous=True)}, netpol=CLOSED, **changes)
+
+    def test_the_previous_run_is_deleted_right_after_tak_before_the_closing(self):
+        cluster = self.with_previous()
+        result = cluster.run()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(f"delete job {JOB}", cluster.events()[0])
+        self.assertNotIn("previous", cluster.state()["jobs"][JOB])
+        deletion = [c for c in cluster.kubectl_calls() if c[2:4] == ["delete", "job"]]
+        self.assertEqual([["-n", "shop", "delete", "job", JOB, "--wait=true", "--ignore-not-found"]], deletion)
+
+    def test_without_tak_the_previous_run_stays(self):
+        cluster = self.with_previous()
+        self.assert_unchanged(cluster, cluster.run(answer="nie\n"))
+        self.assertTrue(cluster.state()["jobs"][JOB]["previous"])
+
+    def test_a_job_of_the_same_name_made_meanwhile_ends_the_run_without_a_second_one(self):
+        """The fixed name is the lock: the Job demo-data-run of another make generate is not replaced."""
+        other = dict(finished_job("Running"), other=True)
+        cluster = self.with_previous(inject_job_after={"event": "create Secret demo-photos", "job": other})
+        result = cluster.run()
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn("could not be created", result.stderr)
+        self.assertTrue(cluster.state()["jobs"][JOB]["other"])
+        self.assertEqual({}, cluster.state()["secrets"])
+
+
+def run_all(runs):
+    """The runs (callables) in parallel: the stub is cheap, the targets mostly wait on it."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(4, (os.cpu_count() or 2) * 2)) as pool:
+        return list(pool.map(lambda run: run(), runs))
+
+
+class Interruptions(Case):
+    """make generate stopped at every call of kubectl: by INT or TERM (its trap), by KILL (no trap) or by a call that fails (a lost
+    connection). The Job of the new run fails after a minute, so make open, run after it, could only take the success of the run
+    before: a signal before tak changes nothing; after it make open refuses, unless the deletion of the previous run itself never
+    reached the cluster (then nothing changed at all). The Secret of the photo pool is gone after make generate on every path it can catch, and
+    after make open on the others (KILL, or its deletion failed)."""
+
+    ACTIONS = ("INT", "TERM", "KILL", "fail")
+
+    def setUp(self):
+        super().setUp()
+        failing = {**initial_state()["outcomes"], "demo-data-": {"outcome": "Failed", "duration": 60, "message": "exit 1: the generator failed"}}
+        self.start = initial_state(jobs={**initial_state()["jobs"], JOB: finished_job(previous=True)}, outcomes=failing)
+        asked = Cluster(tempfile.mkdtemp(dir=self.tmp.name), self.start)
+        asked.run(answer="nie\n", GENERATE_POLL="30")
+        self.before_tak = asked.state()["kubectl_calls"]
+        whole = Cluster(tempfile.mkdtemp(dir=self.tmp.name), self.start)
+        self.assertEqual(1, whole.run(GENERATE_POLL="30").returncode)
+        self.calls = whole.kubectl_calls()
+
+    def interrupted(self, call, action):
+        def run():
+            cluster = Cluster(tempfile.mkdtemp(dir=self.tmp.name), dict(self.start, trigger={"call": call, "action": action}))
+            generated = cluster.run(GENERATE_POLL="30")
+            after = cluster.state()
+            cluster.change(trigger=None)
+            cluster.advance(3600)
+            opened = cluster.open(GENERATE_POLL="30")
+            return call, action, generated, after, opened, cluster.state()
+        return run
+
+    def test_make_open_never_takes_the_previous_run_and_the_secret_does_not_stay(self):
+        self.assertGreater(len(self.calls), self.before_tak + 5, self.calls)
+        runs = [self.interrupted(call, action) for call in range(1, len(self.calls) + 1) for action in self.ACTIONS]
+        for call, action, generated, after, opened, final in run_all(runs):
+            kubectl = self.calls[call - 1]
+            with self.subTest(call=call, action=action, kubectl=kubectl):
+                self.assertNotEqual(0, generated.returncode, generated.stderr)
+                if not after["events"]:
+                    # Nothing changed: before tak, or the deletion of the previous run failed (it never reached the cluster).
+                    self.assertTrue(call <= self.before_tak or (action == "fail" and kubectl[2:4] == ["delete", "job"]), generated.stderr)
+                    self.assertTrue(after["jobs"][JOB].get("previous"))
+                    continue
+                # A signal before tak ends it without a change; a read before tak that fails only says less in the question.
+                self.assertTrue(call > self.before_tak or action == "fail", after["events"])
+                self.assertEqual(f"delete job {JOB}", after["events"][0])
+                self.assertEqual(1, opened.returncode, opened.stdout + opened.stderr)
+                self.assertNotIn("delete networkpolicy shop-closed", final["events"], opened.stderr)
+                self.assertFalse(final["jobs"].get(JOB, {}).get("previous"))
+                if action in ("INT", "TERM") or (action == "fail" and kubectl[2:4] != ["delete", "secret"]):
+                    self.assertEqual({}, after["secrets"], generated.stderr)
+                self.assertEqual({}, final["secrets"], opened.stderr)
+
+
+class Secret(Case):
+    def test_the_secret_is_deleted_after_a_failure_and_not_touched_before_tak(self):
+        outcomes = {**initial_state()["outcomes"], "demo-data-": {"outcome": "Failed", "duration": 60, "message": "exit 75: no room"}}
+        cluster = self.cluster(outcomes=outcomes)
+        self.assertEqual(1, cluster.run().returncode)
+        self.assertEqual({}, cluster.state()["secrets"])
+        self.assertEqual("delete secret demo-photos", cluster.events()[-1])
+        cluster = self.cluster(secrets={"demo-photos": {"kind": "Secret", "metadata": {"name": "demo-photos"}}})
+        self.assert_unchanged(cluster, cluster.run(answer="nie\n"))
+
+    def test_a_secret_left_by_a_killed_run_is_replaced(self):
+        cluster = self.cluster(secrets={"demo-photos": {"kind": "Secret", "metadata": {"name": "demo-photos"}}})
+        result = cluster.run()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(CLOSING + ["delete secret demo-photos"] + GENERATION, without_stamps(cluster.events())[:5])
+
+
+class RateLimitCheck(Case):
+    """The Jobs of the CronJob rate-limit-check (every 5 minutes, one minute at most) run all the time: they block neither target.
+    The owner decides, not the name."""
+
+    def test_only_a_job_owned_by_the_cronjob_rate_limit_check_is_not_an_active_job(self):
+        for job, blocks in ((finished_job("Running", "rate-limit-check"), False), (finished_job("Running", None), True),
+                            (finished_job("Running", "cart-purge-expired"), True)):
+            for script in (GENERATE, OPEN):
+                with self.subTest(owner=job["owner"], script=script.name):
+                    jobs = {**initial_state()["jobs"], "rate-limit-check-29000000": job, JOB: finished_job()}
+                    cluster = self.cluster(jobs=jobs, netpol=CLOSED)
+                    result = cluster.run(script, answer="nie\n")
+                    if blocks:
+                        self.assert_unchanged(cluster, result)
+                        self.assertIn("rate-limit-check-29000000", result.stderr)
+                    else:
+                        self.assertNotIn("rate-limit-check-29000000", result.stderr)
+                        self.assertEqual(1 if script == GENERATE else 0, result.returncode, result.stderr)
 
 
 if __name__ == "__main__":
