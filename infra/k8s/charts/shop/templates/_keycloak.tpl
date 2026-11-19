@@ -4,8 +4,9 @@ The files of the job keycloak-config (D9): the data of the ConfigMap keycloak-re
   <realm>.json              the realm file of the repository without the section `users` (the demo accounts must not
                             exist in the cluster) and with the addresses of this environment; the job creates the realm
                             from it, or adds what is missing to an existing one (partialImport, existing resources skipped)
-  <realm>.settings.json     the values of the realm the job sets on every run: the SMTP of keycloak.mail; for shop also
-                            the registration (customerAccounts) and the e-mail verification
+  <realm>.settings.json     the values of the realm the job sets on every run: the SMTP of keycloak.mail and the
+                            passwordPolicy of the realm file (an existing realm does not take it from the file); for shop
+                            also the registration (customerAccounts) and the e-mail verification
   <realm>.client.<id>.json  per client of the realm file, set on every run: redirectUris, webOrigins and the post-logout
                             redirect URIs (the addresses of the domain) and, for the confidential client, its secret
 
@@ -22,7 +23,7 @@ so no secret is in the ConfigMap. The argument is the top-level context.
 {{- $_ := unset $document "users" }}
 {{ $realm }}.json: |
   {{- toPrettyJson $document | nindent 2 }}
-{{- $settings := dict "smtpServer" $smtp }}
+{{- $settings := dict "smtpServer" $smtp "passwordPolicy" (required (printf "files/realms/%s.json has no passwordPolicy" $realm) $document.passwordPolicy) }}
 {{- if eq $realm "shop" }}
 {{- $_ := set $settings "registrationAllowed" $.Values.customerAccounts }}
 {{- $_ := set $settings "verifyEmail" true }}
