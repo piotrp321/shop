@@ -105,7 +105,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
   `users` i z podstawionymi adresami (Helm `fromJson`). Job `keycloak-config` (obraz Keycloaka, `kcadm`) zakłada realm,
   gdy go nie ma, a gdy jest, robi `partialImport` z `ifResourceExists=SKIP` (dodaje brakujące klienty, role i grupy,
   niczego nie nadpisuje). Potem zawsze ustawia wartości sterowane konfiguracją: sekret klienta `store`, `redirectUris`
-  i `webOrigins` z domeny, rejestrację, `verifyEmail`, SMTP. Nie usuwa użytkowników, haseł ani zasobów. Pliki
+  i `webOrigins` z domeny, rejestrację, `verifyEmail`, politykę haseł z pliku realmu, SMTP. Nie usuwa użytkowników, haseł ani zasobów. Pliki
   realmów w repo (publicznym) mają konta demo z hasłami i sekretami TOTP, więc w klastrze nie trafiają do realmów.
   Lokalny `--import-realm` z kontami demo działa jak w compose.
 - **D10. Ograniczenia startowe są wartościami chartu** (`environments/prod/values.yaml`): `demoNotice`, `noindex`,

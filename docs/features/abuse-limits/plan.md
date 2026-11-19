@@ -26,6 +26,13 @@ Prowadzenie:
 |---|---|---|
 | 1 | ABUSE-LIMITS-1, ABUSE-LIMITS-2, ABUSE-LIMITS-3, ABUSE-LIMITS-4, ABUSE-LIMITS-5, ABUSE-LIMITS-6, ABUSE-LIMITS-7, ABUSE-LIMITS-8, ABUSE-LIMITS-9, ABUSE-LIMITS-10 | w toku (gałąź `feat/abuse-limits`); ABUSE-LIMITS-8 (L9) wydzielone do PR #800, poza epikiem |
 
+Zmergowane do gałęzi epiku:
+
+- ABUSE-LIMITS-6: `147107f5`
+- ABUSE-LIMITS-5: `4d718dd4`
+- ABUSE-LIMITS-9: `1bc5a5a2`
+- ABUSE-LIMITS-7: `fd58d990`
+
 Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
 
 ## Praca szeregowa

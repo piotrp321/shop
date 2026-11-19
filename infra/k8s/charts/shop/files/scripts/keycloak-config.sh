@@ -4,7 +4,7 @@
 #   1. a realm that does not exist is created from <realm>.json; in an existing one, partialImport with
 #      ifResourceExists=SKIP adds the clients, roles and groups that are missing and leaves the existing ones as they are;
 #   2. then, on every run, the values of the configuration are set: <realm>.settings.json (registration, e-mail
-#      verification, SMTP) and <realm>.client.<clientId>.json (addresses of the domain, the secret of the store).
+#      verification, password policy, SMTP) and <realm>.client.<clientId>.json (addresses of the domain, the secret of the store).
 # Nothing is ever deleted: no user, password or resource. The secrets (the password of the administrator, the secret of
 # the store client, the SMTP login and key) are never arguments of a command and never printed: the bodies go to kcadm
 # on its standard input (-f -) and the password in KC_CLI_PASSWORD.

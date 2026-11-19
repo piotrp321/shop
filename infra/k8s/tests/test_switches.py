@@ -3,7 +3,7 @@
 import json
 import unittest
 
-from support import WORKLOADS, by_logical, containers, env_of, logical, name, of_kind, pod_spec
+from support import REPO, WORKLOADS, by_logical, containers, env_of, logical, name, of_kind, pod_spec
 
 # case of scripts/render.sh: (demoNotice, customerAccounts, orderMail, keycloak.mail). The cases prod and ci are the
 # profiles as they are.
@@ -21,6 +21,7 @@ BREVO_SECRET = {case: "shop-brevo-smtp" for case in SWITCHES if case.startswith(
 BREVO_DSN = "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@smtp-relay.brevo.com:587?timeout=10"
 MAILPIT_DSN = "smtp://mailpit:1025?timeout=10"
 DOMAIN = {"prod": "worf.pl", "ci": "localhost"}
+REALMS = REPO / "infra/keycloak/realms"
 
 
 def profile(case):
@@ -111,19 +112,31 @@ class RealmSettingsTest(unittest.TestCase):
             "password": "${SMTP_PASSWORD}",
         }
 
-    def test_the_shop_realm_gets_registration_from_customer_accounts_email_verification_and_smtp(self):
+    def test_the_shop_realm_gets_registration_from_customer_accounts_email_verification_password_policy_and_smtp(self):
         for case, (_, accounts, _, keycloak_mail) in SWITCHES.items():
             settings = json.loads(realm_data(case)["shop.settings.json"])
             self.assertEqual(
-                {"registrationAllowed": accounts, "verifyEmail": True, "smtpServer": self.expected_smtp(case, keycloak_mail)},
+                {
+                    "registrationAllowed": accounts,
+                    "verifyEmail": True,
+                    "passwordPolicy": json.loads((REALMS / "shop.json").read_text())["passwordPolicy"],
+                    "smtpServer": self.expected_smtp(case, keycloak_mail),
+                },
                 settings,
                 case,
             )
 
-    def test_the_backoffice_realm_gets_only_the_smtp(self):
+    def test_the_backoffice_realm_gets_only_the_password_policy_and_the_smtp(self):
         for case, (_, _, _, keycloak_mail) in SWITCHES.items():
             settings = json.loads(realm_data(case)["backoffice.settings.json"])
-            self.assertEqual({"smtpServer": self.expected_smtp(case, keycloak_mail)}, settings, case)
+            self.assertEqual(
+                {
+                    "passwordPolicy": json.loads((REALMS / "backoffice.json").read_text())["passwordPolicy"],
+                    "smtpServer": self.expected_smtp(case, keycloak_mail),
+                },
+                settings,
+                case,
+            )
 
     def test_the_clients_get_their_addresses_from_the_domain_and_the_store_its_secret(self):
         for case, store, admin in (
