@@ -13,8 +13,8 @@ roboczym: po ukończeniu epiku usuń go.
 | 1 | DEMO-SCALE-1, DEMO-SCALE-2, DEMO-SCALE-3 | zmergowane: DEMO-SCALE-1 `cf2ac610`, DEMO-SCALE-2 `fcfb9ef5`, DEMO-SCALE-3 `b4276bd5` |
 | 2 | DEMO-SCALE-4 | zmergowane `23df42db` |
 | 3 | DEMO-SCALE-5 | zmergowane `eb0ae236` |
-| 4 | DEMO-SCALE-6 | w toku |
-| 5 | DEMO-SCALE-7, DEMO-SCALE-8 | |
+| 4 | DEMO-SCALE-6 | zmergowane `444198da` |
+| 5 | DEMO-SCALE-7, DEMO-SCALE-8 | w toku |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
 
