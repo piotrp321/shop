@@ -10,6 +10,7 @@ use App\Ordering\Domain\UnpaidOrderIdentity;
 use App\Ordering\Infrastructure\Persistence\Doctrine\PostgresUnpaidOrderLock;
 use App\Tests\Integration\Pricing\Promotion\TestDatabase;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\DriverException;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -67,8 +68,8 @@ final class PostgresUnpaidOrderLockTest extends TestCase
         try {
             new PostgresUnpaidOrderLock($this->other)->lock(self::ADDRESS, self::guest('ewa@example.com'));
             self::fail('Expected the lock of the address to wait.');
-        } catch (\Doctrine\DBAL\Exception\LockWaitTimeoutException) {
-            $this->addToAssertionCount(1);
+        } catch (DriverException $timeout) {
+            self::assertSame('55P03', $timeout->getSQLState(), 'canceled by lock_timeout');
         }
     }
 
@@ -80,7 +81,7 @@ final class PostgresUnpaidOrderLockTest extends TestCase
             [PostgresUnpaidOrderLock::ADDRESS_NAMESPACE, self::hash(self::ADDRESS)],
             [PostgresUnpaidOrderLock::IDENTITY_NAMESPACE, self::hash('customer:kc-sub-1')],
         ], array_map(
-            static fn (array $row): array => [(int) $row[0], (int) $row[1]],
+            static fn (array $row): array => [is_numeric($row[0]) ? (int) $row[0] : null, is_numeric($row[1]) ? (int) $row[1] : null],
             $this->connection->fetchAllNumeric("SELECT classid::bigint, CAST(objid::bigint AS bigint) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND objsubid = 2 ORDER BY classid"),
         ));
     }

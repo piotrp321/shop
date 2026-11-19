@@ -272,7 +272,7 @@ final class PlaceOrderHandlerTest extends TestCase
                 self::assertSame(self::INVALID, $rejected->problemType());
                 self::assertSame('Ten kod jest nieprawidłowy albo nieaktywny.', $rejected->getMessage());
             }
-            self::assertSame(['find', 'lock', 'find', 'prices', 'catalog'], $this->journal->calls, 'no usage, number, clear or reservation');
+            self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog'], $this->journal->calls, 'no usage, number, clear or reservation');
             self::assertSame([], $this->orders->all());
             self::assertSame([], $this->redemptions->redeemed);
             self::assertSame([self::SHOES => 2, self::CAP => 1], $this->carts->lines(self::guest()));
@@ -284,7 +284,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->redemptions->redeemFailure = DiscountCodeRejected::of(self::USED_UP, 'Ten kod został już wykorzystany.', null);
 
         $this->assertRefused(DiscountCodeRejected::class, 'Ten kod został już wykorzystany.', self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'WITAJ10'));
-        self::assertSame(['find', 'lock', 'find', 'prices', 'catalog', 'redeem'], $this->journal->calls, 'no number, clear or reservation');
+        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'redeem'], $this->journal->calls, 'no number, clear or reservation');
         self::assertSame([], $this->stock->reservations);
         self::assertSame([], $this->events->published);
         self::assertSame([], $this->expiry->scheduled);
@@ -604,7 +604,7 @@ final class PlaceOrderHandlerTest extends TestCase
             $this->setUp();
 
             $this->assertRefused(OrderTotalChanged::class, 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', self::command(expectedTotalGross: $expected));
-            self::assertSame(['find', 'lock', 'find', 'prices', 'catalog'], $this->journal->calls, 'no number, no clear, no reservation');
+            self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog'], $this->journal->calls, 'no number, no clear, no reservation');
             self::assertSame([self::SHOES => 2, self::CAP => 1], $this->carts->lines(self::guest()));
         }
     }
@@ -627,7 +627,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->assertRefused(InsufficientStockForOrder::class, 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', self::command());
         self::assertSame([], $this->stock->reservations);
         self::assertSame([], $this->events->published);
-        self::assertSame(['find', 'lock', 'find', 'prices', 'catalog', 'number', 'clear', 'reserve'], $this->journal->calls, 'the bus transaction rolls back the cleared cart');
+        self::assertSame(['find', 'lock', 'find', 'lock-unpaid', 'count-address', 'count-identity', 'prices', 'catalog', 'number', 'clear', 'reserve'], $this->journal->calls, 'the bus transaction rolls back the cleared cart');
     }
 
     public function testARepeatedRequestGivesTheSameOrderWithoutTheCartLockOrAnyChange(): void

@@ -15,6 +15,7 @@ use App\Ordering\Application\Port\OrderPrices;
 use App\Ordering\Application\Port\OrderQuote;
 use App\Ordering\Application\Port\StockReservations;
 use App\Ordering\Application\Port\UnpaidOrderExpiry;
+use App\Ordering\Application\UnpaidOrderLimit;
 use App\Ordering\Application\View\OrderView;
 use App\Ordering\Domain\AccessToken;
 use App\Ordering\Domain\CartEmpty;
@@ -37,6 +38,8 @@ use App\Ordering\Domain\OrderTotalChanged;
 use App\Ordering\Domain\OrderTotals;
 use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
+use App\Ordering\Domain\TooManyUnpaidOrders;
+use App\Ordering\Domain\UnpaidOrderIdentity;
 use App\Ordering\Domain\VariantId;
 use App\Shared\Domain\Event\DomainEventPublisher;
 use App\Shared\Domain\Exception\NotFound;
@@ -46,8 +49,8 @@ use Symfony\Component\Uid\Uuid;
 /**
  * Places an order in the one transaction of command.bus: the cart lock, the copies of the quote and the names, the
  * usage of the discount code, the reservation, the order with its OrderPlaced in the outbox, its delayed
- * ExpireUnpaidOrder (due five minutes after the payment deadline) and, for an order of a customer, its addition to the
- * customer summary are written together or not at all. A replay schedules nothing, records no second usage and adds
+ * ExpireUnpaidOrder (due five minutes after the payment deadline), its claim of the limit of unpaid orders and, for an
+ * order of a customer, its addition to the customer summary are written together or not at all. A replay schedules nothing, records no second usage and adds
  * nothing to the customer. The commands of Cart, Pricing and Inventory run nested in this
  * transaction (through the ports); their exceptions are never caught to go on writing: Inventory's shortage becomes
  * InsufficientStockForOrder and a rejection of the code DiscountCodeRejected of Ordering, both thrown on, every other
@@ -57,8 +60,9 @@ use Symfony\Component\Uid\Uuid;
  * works also once the guest cart expired or was merged), the lock, the replay check under the lock (a concurrent
  * request with the same key may have placed the order meanwhile), the copies from one quote of Pricing with the code
  * (a rejected code is refused before the total is compared; the size of a guest order is checked right after the
- * empty cart, before the quote), the total after the discount, the order id and the usage
- * of the code (Pricing locks a code with a limit: the locks are taken cart, code, stock), the number, the cleared
+ * empty cart, then the limit of unpaid orders under the locks of the address and of the identity, before the quote),
+ * the total after the discount, the order id and the usage of the code (Pricing locks a code with a limit: the locks
+ * are taken cart, address, identity, code, stock), the number, the cleared
  * cart, the reservation (the stock rows stay locked as briefly as possible) and the order last (so the flush of the
  * nested commands writes nothing of Ordering).
  */
@@ -77,6 +81,7 @@ final readonly class PlaceOrderHandler
         private DomainEventPublisher $events,
         private Clock $clock,
         private CustomerSummaries $customers,
+        private UnpaidOrderLimit $unpaidOrders,
     ) {
     }
 
@@ -86,6 +91,7 @@ final readonly class PlaceOrderHandler
      * @throws IdempotencyKeyReused
      * @throws CartEmpty
      * @throws GuestOrderTooLarge        a guest cart over the size of a guest order, refused before the quote
+     * @throws TooManyUnpaidOrders       the address, the email of the guest or the account has its limit of unpaid orders
      * @throws CartNotOrderable
      * @throws DiscountCodeRejected      in the quote, or when its usage is recorded
      * @throws OrderTotalChanged
@@ -122,6 +128,8 @@ final readonly class PlaceOrderHandler
         if ($owner->isGuest()) {
             GuestOrderSize::ensureWithin(array_map(static fn (CartLineToOrder $line): int => $line->quantity, $cartLines));
         }
+        $identity = UnpaidOrderIdentity::of($owner, $contact->email());
+        $this->unpaidOrders->ensureRoomFor($command->clientAddress, $identity);
 
         $quote = $this->prices->quote($cartLines, $code);
         $lines = $this->copies($cartLines, $quote);
@@ -142,6 +150,7 @@ final readonly class PlaceOrderHandler
 
         $order = Order::place($id, $number, $owner, $owner->isGuest() ? self::newAccessToken() : null, $contact, $address, $lines, $quote->discount, $key, $fingerprint, $this->clock->now());
         $this->orders->add($order);
+        $this->unpaidOrders->claim($order->id(), $command->clientAddress, $identity, $order->expiryDueAt());
         $this->events->publish(...$order->releaseEvents());
         $this->expiry->schedule($order->id(), $order->expiryDueAt());
         $customerId = $owner->customerId();

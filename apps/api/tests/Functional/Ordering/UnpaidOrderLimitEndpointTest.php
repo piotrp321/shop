@@ -14,8 +14,10 @@ use App\Tests\Integration\Cart\CartFixture;
 use App\Tests\Integration\Ordering\OrderingFixture;
 use App\Tests\Support\Security\TestTokenFactory;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
+use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
@@ -209,7 +211,7 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
             [$address, 'email:'.self::EMAIL, new \DateTimeImmutable($guest['paymentDeadline'])->modify('+5 minutes')->getTimestamp()],
             [...$this->connection->fetchFirstColumn('SELECT address_key FROM ordering_unpaid_order_claim WHERE order_id = ?', [$guest['orderId']]),
                 $this->connection->fetchOne('SELECT identity_key FROM ordering_unpaid_order_claim WHERE order_id = ?', [$guest['orderId']]),
-                (int) $this->connection->fetchOne('SELECT extract(epoch FROM expires_at) FROM ordering_unpaid_order_claim WHERE order_id = ?', [$guest['orderId']])],
+                OrderingFixture::count($this->connection, 'SELECT CAST(extract(epoch FROM expires_at) AS int) FROM ordering_unpaid_order_claim WHERE order_id = ?', [$guest['orderId']])],
             'the claim expires with the order (paymentDeadline + 5 minutes)',
         );
 
@@ -336,7 +338,8 @@ final class UnpaidOrderLimitEndpointTest extends WebTestCase
     {
         $this->connection->executeStatement("UPDATE ordering_order SET payment_deadline = now() - interval '6 minutes' WHERE id = ?", [$placed->order->orderId]);
         $this->entityManager->clear();
-        $this->dispatch(new ExpireUnpaidOrder($placed->order->orderId));
+        // As the worker receives it from its transport (dispatched without the stamp, it would be sent there).
+        $this->dispatch(new Envelope(new ExpireUnpaidOrder($placed->order->orderId), [new ReceivedStamp('scheduled')]));
         $this->entityManager->clear();
     }
 

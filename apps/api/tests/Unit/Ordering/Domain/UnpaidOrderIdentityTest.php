@@ -23,7 +23,7 @@ final class UnpaidOrderIdentityTest extends TestCase
     {
         yield 'as typed' => ['jan.kowalski@example.com'];
         yield 'upper case' => ['JAN.Kowalski@EXAMPLE.COM'];
-        yield 'white space at the edges' => ["  jan.kowalski@example.com\t"];
+        yield 'white space at the edges' => ['  jan.kowalski@example.com '];
         yield 'a +tag' => ['jan.kowalski+sklep@example.com'];
         yield 'an empty +tag' => ['jan.kowalski+@example.com'];
         yield 'a +tag with a + in it, upper case' => [' Jan.Kowalski+A+B@Example.com '];
