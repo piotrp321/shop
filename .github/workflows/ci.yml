@@ -586,8 +586,8 @@ jobs:
 
       # The checks on the running stack after the E2E tests of the part with `after_e2e`: every target a make/*.mk
       # fragment adds to CI_AFTER_E2E (Lighthouse on the production build, the robots and sitemap routes, the ISR cache in
-      # memory, the k6 smoke run, the init-env.sh tests). A new check goes to its fragment, not here. Only the Lighthouse SEO score fails the
-      # measurement; its medians are in the step summary and the reports in the artifact below.
+      # memory, the k6 smoke run, the init-env.sh tests). A new check goes to its fragment, not here. Only the Lighthouse
+      # SEO score fails the measurement; its medians are in the step summary and the reports in the artifact below.
       - name: make ci-after-e2e
         if: env.FULL_CI == 'true' && matrix.after_e2e
         run: make ci-after-e2e RUN="docker compose exec -T" E2E_FLAGS=-T E2E_BUILD=
