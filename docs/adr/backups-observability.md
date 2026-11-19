@@ -104,8 +104,11 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   Ruler metryk stosu odpada: nowe stosy Grafana Cloud nie mają Alertmanagera dla reguł źródła danych, więc jego alerty nie
   trafiały do nikogo. Import wymaga osobnego tokenu konta serwisowego Grafany (`shop-alloy-rules`, tylko reguły, foldery
   i odczyt źródeł danych), bo token access policy Grafana Cloud nie działa w API Grafany.
-  Siedem reguł: `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `NodeDiskFull`, `ClusterSilent`,
-  `WorkloadNotReady`. Alerty kopii patrzą na Job z `kube_job_owner` o dokładnej nazwie CronJoba (`backup` nie łapie
+  Osiem reguł: `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `RateLimitsOff`, `NodeDiskFull`,
+  `ClusterSilent`, `WorkloadNotReady`. `RateLimitsOff` liczy udane przebiegi CronJoba `rate-limit-check` (co 5 minut: komenda API
+  zapisuje, odczytuje i usuwa klucz kontrolny w Redisie limiterów; próg 17 minut, brak metryki przez 30 minut), bo limitery tras
+  przepuszczają ruch przy nieużywalnym Redisie, którego ani sonda `ping`, ani `/health` nie widzą; `restore` wstrzymuje ten CronJob.
+  Alerty kopii patrzą na Job z `kube_job_owner` o dokładnej nazwie CronJoba (`backup` nie łapie
   `backup-verify`) i na `kube_cronjob_status_last_successful_time` (26 godzin); `BackupFailed` odpala dla Joba `Failed` nowszego niż
   ostatnia udana kopia, więc nieudany pod z udanym ponowieniem go nie wywołuje, a sukces gasi alert. `WorkloadNotReady` ma `absent`
   dla każdego Deploymentu i StatefulSetu renderu (lista z tego samego renderu, więc nowy workload dostaje regułę sam), tylko gdy
