@@ -32,6 +32,7 @@ Zmergowane do gałęzi epiku:
 - ABUSE-LIMITS-10: `ebe8e44a`
 - ABUSE-LIMITS-3: `626552af`
 - ABUSE-LIMITS-4: `cddc682d`
+- ABUSE-LIMITS-2: `c98aef4e`
 
 Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
 
