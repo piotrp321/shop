@@ -2501,9 +2501,11 @@ _VERDICT_WORDS = '|'.join(VERDICT_TOKENS)
 _VERDICT_LABEL = r'(?i:werdykt|verdict)'
 _VERDICT_GAP = r'[\s:*_#.()`\-\u2013\u2014]*(?:(?i:to|jest|is)(?![A-Za-z])[\s:*_#.()`\-\u2013\u2014]*)?'
 _VERDICT_TAIL = r'(%s)(?![A-Za-z0-9_])' % _VERDICT_WORDS
-# the label at the start of a line (after list, heading, quote and bold markers) and anywhere in the text
+# the label at the start of a line (after list, heading, quote and bold markers) and anywhere in the text, but not
+# right after a quotation mark or a backtick: a quoted label (an example in the report) is no verdict
 VERDICT_LINE = re.compile(r'^[ \t>#*_\-]*%s%s%s' % (_VERDICT_LABEL, _VERDICT_GAP, _VERDICT_TAIL), re.MULTILINE)
-VERDICT = re.compile(r'(?<![A-Za-z])%s%s%s' % (_VERDICT_LABEL, _VERDICT_GAP, _VERDICT_TAIL))
+VERDICT = re.compile(r'(?<![A-Za-z"\'`\u201e\u201c\u201d\u2018\u2019\u00ab\u00bb])%s%s%s'
+                     % (_VERDICT_LABEL, _VERDICT_GAP, _VERDICT_TAIL))
 
 
 def verdict_token(text):
@@ -2511,7 +2513,8 @@ def verdict_token(text):
     markers between them), or None; a verdict word without the label is no verdict. Reports state the verdict at the
     start, so the first label at the start of a line wins (a report may quote other verdicts later in its sentences);
     without such a label the last labelled one in the text counts (a report may quote the verdict of an earlier round
-    first). The text itself is never kept."""
+    first); a label right after a quotation mark or a backtick is a quotation, not a verdict. The text itself is never
+    kept."""
     if not isinstance(text, str):
         return None
     first = VERDICT_LINE.search(text)

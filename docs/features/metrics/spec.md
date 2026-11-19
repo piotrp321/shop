@@ -376,7 +376,8 @@ kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to s
 pogrubienie, znaki nagłówka i jedno słowo `to`, `jest` albo `is`). Raport podaje werdykt na początku, więc wygrywa
 pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia), także gdy dalej cytuje
 inne werdykty; gdy żadnej etykiety na początku linii nie ma, liczy się ostatnia etykieta w tekście, bo raport może
-przytoczyć werdykt poprzedniej rundy; słowo werdyktu bez etykiety się nie liczy. Werdykt jest przyjęty tylko z kontraktu roli: `code-reviewer` `PASS` /
+przytoczyć werdykt poprzedniej rundy; słowo werdyktu bez etykiety się nie liczy, tak jak etykieta tuż po cudzysłowie
+albo odwróconym apostrofie (cytat przykładu w raporcie). Werdykt jest przyjęty tylko z kontraktu roli: `code-reviewer` `PASS` /
 `CHANGES_REQUIRED`, `qa-adversarial` `PASS` / `INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` /
 `REWORK`; blokują `CHANGES_REQUIRED`, `BLOCK` i `REWORK`. Raport bez rozpoznanego werdyktu (dziś zawsze `ux-reviewer`,
 który nie ma werdyktu) ma `verdict` i `blocking` `null` z pozycją `reviews` w `gaps`; przebieg roli przeglądowej bez

@@ -311,7 +311,8 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to słowo
   werdyktu tuż po etykiecie „Werdykt”/„Verdict” (`verdict_token`; między nimi separatory, pogrubienie i jedno słowo
   `to`/`jest`/`is`): wygrywa pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia),
-  a gdy żadnej takiej nie ma, ostatnia etykieta w tekście; przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
+  a gdy żadnej takiej nie ma, ostatnia etykieta w tekście poza cytatem (etykieta tuż po cudzysłowie albo odwróconym
+  apostrofie się nie liczy); przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
   `blocking` dla `CHANGES_REQUIRED`, `BLOCK`, `REWORK`; bez rozpoznanego werdyktu (`ux-reviewer`) `null` i pozycja
   `reviews` w `gaps`. `integration`: `work_s`, `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`,
   `ux-reviewer` i `rounds` (największa liczba raportów jednej z tych ról); bez nich `null`. `retries`: `fix` (przeglądy
