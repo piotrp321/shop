@@ -11,7 +11,7 @@
 #   DEMO_DATA_TOOL      the name of the caller in the messages these functions print ("load: ..."); load by default
 #   photos_endpoint, photos_bucket, photos_key_id, photos_secret_key
 #                       the four read variables of the photo pool, set by read_photo_access (not exported) and read by
-#                       create_photo_secret and save_generator_log
+#                       create_photo_secret and save_generator_log (which also works when they were never set: nothing to mask)
 #
 # A function that cannot do its job returns 1 and leaves the reason, without a value of the photo pool, in demo_data_error: the
 # caller decides what to do with it (load.sh: `|| fail "$demo_data_error"`, which ends with 2). Every function that touches a
@@ -104,7 +104,9 @@ save_generator_log() {
   demo_job="$1" demo_log_file="$2" demo_tool="${DEMO_DATA_TOOL:-load}"
   trace_off
   {
-    printf '%s\n' "$photos_endpoint" "$photos_bucket" "$photos_key_id" "$photos_secret_key"
+    # Empty when read_photo_access never ran (a Job of the seed): `set -u` of the caller would end this part of the pipeline
+    # before the log, and the file would be empty while the function returns 0.
+    printf '%s\n' "${photos_endpoint-}" "${photos_bucket-}" "${photos_key_id-}" "${photos_secret_key-}"
     kc logs "job/$demo_job" --container=demo-data --timestamps 2>&1 || echo "$demo_tool: the log of the Job $demo_job could not be read"
   } | awk -v tool="$demo_tool" '
     NR <= 4 { if ($0 != "") value[++values] = $0; next }
