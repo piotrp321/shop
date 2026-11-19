@@ -190,6 +190,22 @@ services:
         arguments:
             $inner: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalSitemapProductSource'
 
+    # The logs of a token that cannot be verified (an error each, from the caller's input) go to the `security` channel,
+    # which neither the Sentry handler nor the `fingers_crossed` buffer of `prod` takes (config/packages/monolog.yaml;
+    # spec docs/features/abuse-limits/spec.md, D13). The abstract parent of the handlers of both firewalls, as the
+    # security bundle defines it, with the logger changed (arguments 0-3 are set by each firewall).
+    security.access_token_handler.oidc:
+        class: Symfony\Component\Security\Http\AccessToken\Oidc\OidcTokenHandler
+        abstract: true
+        arguments:
+            - ~
+            - ~
+            - ~
+            - ~
+            - 'sub'
+            - '@monolog.logger.security'
+            - '@clock'
+
     # A key source that cannot be read is a 503, not a 401 (see the class).
     app.security.shop_token_handler:
         class: App\Shared\Infrastructure\Security\KeySourceOutageTokenHandler

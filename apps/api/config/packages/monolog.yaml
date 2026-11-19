@@ -7,11 +7,14 @@ monolog:
         # The explicit logs of the application from `error` up are Sentry events (spec: docs/features/sentry/spec.md, P6
         # and D5), in every environment; without SENTRY_DSN nothing is sent. The channels of the framework repeat an
         # exception reported by its own channel (request, console, messenger) or are no error of the application.
+        # The `security` channel (a token that cannot be verified is logged as an error on each request with a bad token,
+        # spec docs/features/abuse-limits/spec.md, D13) is no event: a caller could use up the event limit and delay the
+        # responses with the synchronous send.
         # No handler of breadcrumbs: no log becomes one.
         sentry:
             type: service
             id: app.sentry.monolog_handler
-            channels: ['!request', '!console', '!messenger', '!php', '!deprecation', '!cache']
+            channels: ['!request', '!console', '!messenger', '!php', '!deprecation', '!cache', '!security']
 
 when@dev:
     monolog:
@@ -41,7 +44,7 @@ when@prod:
                 action_level: error
                 handler: stderr_json
                 excluded_http_codes: [404, 405]
-                channels: ['!event', '!cache', '!search_rebuild']
+                channels: ['!event', '!cache', '!search_rebuild', '!security']
                 buffer_size: 50
             # A failing cache pool (Redis of the rate limits down: the limits are off, spec docs/features/hardening/
             # spec.md, D7) is logged by the pool as a warning and the request goes on; outside the buffer above, so
@@ -56,6 +59,14 @@ when@prod:
             # spec.md) are logs of info and warning of a command that ends without an error, so the buffer above would
             # drop them; outside it they are written always. The channel stays in the Sentry handler: an error there
             # would be an event, and none is logged (warning and info never are).
+            # The logs of a token that cannot be verified (error of every request with a bad token) are written alone,
+            # without the buffer that a log of the level error would dump with the debug logs of the request.
+            security_stderr:
+                type: stream
+                path: php://stderr
+                level: warning
+                formatter: monolog.formatter.json
+                channels: ['security']
             search_rebuild_stderr:
                 type: stream
                 path: php://stderr
