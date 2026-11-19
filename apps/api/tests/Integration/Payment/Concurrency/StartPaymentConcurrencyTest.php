@@ -196,6 +196,7 @@ final class StartPaymentConcurrencyTest extends KernelTestCase
             [$otherId, $otherToken] = $this->order();
             $operator = $this->pausedOperator();
             $starts = [];
+            $outcomes = [];
             try {
                 $starts[] = $this->startInBackground(new StartPayment($orderId, PaymentAccess::guest($token), 'demo-transfer', 'l7-a-'.Uuid::v7()->toRfc4122()));
                 $this->waitUntilStartsWaitAtTheOperator(1, $starts[0]);
