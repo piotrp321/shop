@@ -24,8 +24,8 @@ Zakres: `tools/agent-security`, `tools/telemetry`, `.claude/skills/ao-run/SKILL.
 
   Opóźnienie przy stosie, który przyjmuje połączenie, ale nie odpowiada, nie zostało zmierzone. Sonda (R3) i odbiór
   (R7) sprawdzają eksport na przypiętej wersji.
-- Sesje interaktywne użytkownika trafiają do tego samego stosu z `shop.source=interactive` po wklejeniu bloku
-  z `telemetry.py snippet` do `~/.claude/settings.json`.
+- Sesje interaktywne użytkownika trafiają do tego samego stosu po wklejeniu bloku z `telemetry.py snippet`
+  do `~/.claude/settings.json`: sesje CLI z `shop.source=interactive`, sesje aplikacji desktop bez tego atrybutu (R8).
 - Do stosu nie trafia treść: promptów, odpowiedzi, poleceń, argumentów i wyników narzędzi ani surowe ciała żądań API.
   Zostają długości, nazwy narzędzi, wynik (`success`, `error_type`) i liczby.
 - Brak danych telemetrii nie zatrzymuje AO. Ani niedziałający stos, ani brak eksportu (np. po zmianie wersji
@@ -36,7 +36,8 @@ Zakres: `tools/agent-security`, `tools/telemetry`, `.claude/skills/ao-run/SKILL.
     zła wartość mogłaby skierować eksport poza Maca, więc wrapper i `ao-prepare` odmawiają (R2, R5).
 - Dane w stosie nie są gwarantowane co do integralności. Wykonawca AO może dopisać fałszywe punkty i, przez Dockera,
   usunąć wolumeny stosu (model zagrożeń). Liczby z dashboardu to obraz pomocniczy, a nie dowód. Źródłem prawdy
-  o przebiegach epików zostaje METRICS (baza AO i wyniki CLI).
+  o przebiegach epików zostaje METRICS (baza AO i wyniki CLI, a dla epiku natywnego plik przebiegu i transkrypty
+  sesji).
 - Eksport idzie wyłącznie na adres pętli zwrotnej Maca. Dane zostają na Macu, także `user.email`, który Claude Code
   dołącza do każdego punktu i którego nie da się wyłączyć.
 
@@ -381,6 +382,34 @@ epik TELEMETRY i działa przed raportem odbioru i przed merge'em końcowego PR, 
 
 Wyniki (kody, czas, koszt sondy, zapytanie) trafiają do raportu odbioru. Nieudany punkt to brak merge'a, także na
 polecenie, do czasu usunięcia przyczyny, jak w „Odbiorze AGENT-SECURITY”.
+
+### R8. Sesja natywna: epik, zadanie, model i subagent
+
+Epik prowadzony natywnie (`docs/features/ash-v1/spec.md`, T1–T4) eksportuje przez blok z `telemetry.py snippet`
+w `~/.claude/settings.json` (krok użytkownika, sprawdzany `telemetry.py check`). Eksportuje sesja uruchomiona po
+wklejeniu bloku; sesja otwarta wcześniej nie ma punktów w stosie. Punkty nie mają `shop.epic` ani `shop.task`:
+ustawienie użytkownika objęłoby wszystkie równoległe sesje, a subagenci działają w procesie sesji prowadzącej, więc
+nie mają własnych atrybutów zasobu. Sesja CLI (`claude`) ma `service_name="claude-code"` i `shop_source="interactive"`.
+Sesja aplikacji desktop (karta Code) ma `service_name="claude-code-desktop"` (`job` tak samo) i nie ma `shop_source`:
+atrybutów z `OTEL_RESOURCE_ATTRIBUTES` ustawień jej zasób nie dostaje, więc filtr po `service_name="claude-code"` albo
+`shop_source` jej nie obejmuje, a epik rozpoznaje się wyłącznie po `session_id`. Powiązanie daje rekord METRICS epiku
+(`docs/features/metrics/spec.md`, „Epik natywny”):
+
+- **Epik:** `session_id` sesji z pliku przebiegu `~/.local/state/shop-metrics/runs/<epik>.json` (`sessions[].id`, sesja
+  prowadząca i sesje wznowione), wymienione też w rekordzie jako `sessions`; przedział czasu to `started_at` do
+  `merged_at` rekordu. Metryki i zdarzenia epiku to punkty z tymi `session_id` w tym przedziale.
+- **Zadanie i subagent:** wpis `attempts` rekordu natywnego ma `agent_id` (z nazwy pliku `agent-<id>.jsonl`), `task`,
+  `role`, `model` i `effort`. Zdarzenia subagenta w Lokim mają `agent_id` równy temu identyfikatorowi; po nim łączy
+  się je z zadaniem i rolą z rekordu. `agent_type` zdarzeń nie jest rolą z `meta.json` (zwykle pusty albo `custom`),
+  więc rolę daje tylko rekord. Zdarzenia sesji z pliku przebiegu bez `agent_id` to sesja prowadząca (rola
+  `orchestrator`, bez zadania).
+- **Model:** `model` jest etykietą metryk i polem zdarzeń, bez łączenia z rekordem; rekord ma model każdego przebiegu
+  subagenta w `attempts` i przekrój `value.by_model`.
+- **Subagent w metrykach:** `agent_id` nie jest etykietą metryk w Prometheusie (tokeny i koszt są tam na sesję
+  i model); podział na subagenta i zadanie dają tylko zdarzenia w Lokim i rekord METRICS.
+
+Powiązanie jest sprawdzone na stosie (2026-11-19, sesja aplikacji desktop z dwoma subagentami): `session_id` z pliku
+przebiegu jest etykietą metryk w Prometheusie, a `agent_id` zdarzeń w Lokim jest równy `attempts[].agent_id` rekordu.
 
 ## Scenariusze błędów
 

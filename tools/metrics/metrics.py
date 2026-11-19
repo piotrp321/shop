@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Measurement of AO epic runs (spec docs/features/metrics/spec.md). Python 3.9+, standard library only.
+"""Measurement of AO and native epic runs (spec docs/features/metrics/spec.md). Python 3.9+, standard library only.
 
-  metrics.py epic EPIC [--ao-home DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
+  metrics.py start EPIC [--resume] [--at TIME] [--worktree DIR] [--branch NAME] [--pr N] [--tasks N] [--session ID]
+                        [--projects DIR] [COMMON] < get_usage reading
+  metrics.py done EPIC [--at TIME] [COMMON] < get_usage reading
+  metrics.py epic EPIC [--ao-home DIR] [--projects DIR] [--manual-fixes FILE] [--no-gh] [COMMON]
   metrics.py backfill [--ao-root DIR] [COMMON]
   metrics.py trend [--last N] [--epic EPIC] [--json] [--no-gh] [COMMON]
   metrics.py render EPIC [--format report|comment] [COMMON]
@@ -14,9 +17,24 @@ COMMON: --config FILE (default: config.json next to this script), --state DIR (d
 --busy-timeout-ms N (default: config.json), --repo OWNER/NAME (passed to every `gh` as -R; default: the repository of
 the working directory).
 
+start, done: the run file <state>/runs/<EPIC>.json of a native epic (one led by a Claude Code session with native
+subagents, spec docs/features/ash-v1/spec.md, M1): start writes the start time (now or --at), the SHA of origin/main,
+the branch, the draft PR, the number of tasks of the plan.md manifest (night_queue.task_count), the lead session
+(--session or the newest transcript of the working directory under --projects, default ~/.claude/projects) and the
+limits read from stdin (night_queue.parse_usage; a terminal or an empty input is no reading); --resume appends a new session; done
+records the time the PR was marked ready and the second reading. Exit 2 without a branch, PR, number of tasks or
+session, on a second start without --resume, and on --resume or done without a run file.
+
 epic: prints the record of the epic run as one JSON line and stores it in <state>/epics/<EPIC>.json. The run is the
-directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state). Fields from the AO database
-and events (`orchestrator.db` is opened read only, `ao` is never run), from measurements.jsonl and gate.jsonl, and
+AO directory --ao-home (default: ao-<EPIC> under $SHOP_METRICS_AO_ROOT or ~/.local/state), `source: ao`; without it the
+run file of a native epic, `source: native` (the transcripts of its sessions and their subagents only, the messages
+from the start to the merge of the final PR, every message id once, the value from the API price list `pricing` of
+config.json, always an estimate; the time breakdown and the human messages from the lines of the transcripts, the
+reviews from the `SubagentHandback` reports of the review roles (the verdict only), the acceptance criteria from the
+description of the final PR read through the origin gate (numbers only), the subscription from the two readings of
+the run file and the tokens of all local sessions; fields without a native source are null with a gap); without
+both exit 2. Fields
+of an AO record from the AO database and events (`orchestrator.db` is opened read only, `ao` is never run), from measurements.jsonl and gate.jsonl, and
 from GitHub (`gh`, read only, also for `ci`, `regressions` and `found_after_merge`; --no-gh skips it). A source that is missing gives `null` and an entry in `gaps`, never
 zero. A value from GitHub or from --manual-fixes that is `null` now but not in the stored record is kept (a transient
 error never replaces it); the gap says so. An epic closed by hand (no epic_done, the final PR merged) has its breakdown
@@ -88,6 +106,7 @@ or --at or without a stored record of a merged epic.
 """
 import argparse
 import fcntl
+import glob
 import json
 import os
 import re
@@ -102,6 +121,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '.claude', 'skills', 'ao-run'))
 import ao_events  # noqa: E402  (waits: the windows of waiting for the user, shared with /ao-run and /retro)
 import night_queue  # noqa: E402  (window deltas, measurement intervals and their time format)
+sys.path.insert(0, os.path.join(HERE, '..', 'agent-security'))
+import github_trust  # noqa: E402  (the origin gate: the description of the final PR of a native epic)
 
 DEFAULT_CONFIG = os.path.join(HERE, 'config.json')
 EXIT_FATAL = 2
@@ -161,8 +182,12 @@ def lower_bounds(record):
 def upper_bounds(record):
     """The categories of `breakdown` of the record that are upper bounds (`breakdown_upper_bound`): they come after a
     lower bound in the order of the breakdown, so the skipped time may be in them (`idle` is one whenever there is a lower
-    bound)."""
-    return _category_list(record, 'breakdown_upper_bound')
+    bound). A native record has `breakdown_incomplete: true` (a bool, not a list of categories): the categories it has no
+    source for are null, their time is in `idle`, so `idle` is an upper bound and the others are exact."""
+    found = _category_list(record, 'breakdown_upper_bound')
+    if isinstance(record, dict) and record.get('breakdown_incomplete') is True:
+        found = found | {'idle'}
+    return found
 
 
 def upper_bounds_of(lower, order):
@@ -222,6 +247,22 @@ def _evals(value):
             and isinstance(value['results_dir'], str) and bool(value['results_dir']))
 
 
+# The kinds of tokens of the price list (USD per million tokens); a model may lack a kind (its tokens have no value).
+PRICE_KINDS = ('input', 'output', 'cache_read', 'cache_write_5m', 'cache_write_1h')
+
+
+def _pricing(value):
+    if not isinstance(value, dict) or set(value) != {'source', 'read_at', 'models'}:
+        return False
+    if not isinstance(value['source'], str) or not value['source'] or not isinstance(value['read_at'], str):
+        return False
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', value['read_at']) or not isinstance(value['models'], dict):
+        return False
+    return all(isinstance(model, str) and model and isinstance(rates, dict) and rates and set(rates) <= set(PRICE_KINDS)
+               and all(_is_number(rate) and rate >= 0 for rate in rates.values())
+               for model, rates in value['models'].items())
+
+
 DECISION_SHARES = ('d1_role_share', 'd4_human_wait_share', 'd4_ci_share', 'd4_limit_wait_share', 'd4_review_share')
 DECISION_COUNTS = ('d2_failed_attempts', 'report_max', 'effect_min_tasks', 'effect_min_task_epics', 'effect_min_epics')
 DECISION_POSITIVE = ('d2_work_multiple', 'd3_gate_wait_h')
@@ -266,6 +307,8 @@ CONFIG_SCHEMA = {
     'ci_jobs': (_string_list, 'niepusta lista nazw zadań CI (przedrostki grup, np. checks i e2e)'),
     'trend_last': (lambda v: _is_int(v) and v > 0, 'liczba epików (całkowita, dodatnia)'),
     'weekly_window_label': (lambda v: isinstance(v, str) and bool(v), 'etykieta okna tygodniowego z get_usage'),
+    'pricing': (_pricing, 'obiekt {source, read_at (RRRR-MM-DD), models: {model: {%s: USD za milion tokenów, '
+                          'liczba nieujemna}}}' % ', '.join(PRICE_KINDS)),
 }
 
 
@@ -746,6 +789,17 @@ def _message_tokens(usage):
             'cw5': cw5, 'cw1': cw1, 'output': _int(usage.get('output_tokens'))}
 
 
+def _lifetime_known(usage):
+    """Whether the `usage` of a message says how long its cache write lives: no write at all, or the split
+    `cache_creation` (5 minutes, 1 hour) that sums to it. Without it `_message_tokens` takes all as a 5 minute write."""
+    if not isinstance(usage, dict):
+        return False
+    written = _int(usage.get('cache_creation_input_tokens'))
+    split = usage.get('cache_creation')
+    return written == 0 or (isinstance(split, dict) and _int(split.get('ephemeral_5m_input_tokens'))
+                            + _int(split.get('ephemeral_1h_input_tokens')) == written)
+
+
 def _model_tokens(used):
     used = used if isinstance(used, dict) else {}
     written = _int(used.get('cacheCreationInputTokens'))
@@ -795,7 +849,9 @@ def _read_line(line, data, seen_tools):
                 'role': role if isinstance(role, str) and SAFE_NAME.match(role) else None,
                 'orchestrator': line.get('parent_tool_use_id') is None,
                 'model': message['model'] if isinstance(message.get('model'), str) else None,
-                'tokens': _message_tokens(message.get('usage'))}
+                'tokens': _message_tokens(message.get('usage')),
+                'at': _timestamp(line.get('timestamp')), 'usage': isinstance(message.get('usage'), dict),
+                'lifetime': _lifetime_known(message.get('usage'))}
         for block in message.get('content') if isinstance(message.get('content'), list) else []:
             if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('id') not in seen_tools:
                 seen_tools.add(block.get('id'))
@@ -2094,7 +2150,7 @@ def _set(record, path, value):
 # from the source never replaces the stored value.
 KEPT_PATHS = (('issue',), ('merged_at',), ('wall', 'to_merge'), ('wall', 'review'), ('retries', 'sync_prs'),
               ('parallel', 'sync_prs'), ('human', 'manual_fixes'), ('ci',), ('regressions',), ('found_after_merge',),
-              ('waste',))
+              ('waste',), ('acceptance',))
 
 
 def keep_stored_values(record, previous, gaps):
@@ -2212,6 +2268,7 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     lower = set()
     record = {
         'epic': epic_id,
+        'source': 'ao',
         'issue': github['pr']['issue'] if github['pr'] else None,
         'final_pr': final_pr,
         'tasks': None if gaps.lacks('tasks.kind') else sum(1 for t in ao_run['tasks'] if t['kind'] == 'plan'),
@@ -2256,6 +2313,1038 @@ def build_record(epic_id, ao_home, config, busy_timeout_ms, night_dir, manual_fi
     return record, errors
 
 
+# ------------------------------------------------------------------------------------- native epics: the run file
+
+# An epic led by a native Claude Code session (docs/features/ash-v1/spec.md, M1-M3): `start` and `done` write the run
+# file <state>/runs/<EPIC>.json, `epic` builds the record from it and from the transcripts of its sessions.
+NO_TASK = 'no_task'                         # the task of the lead session and of a subagent without a task id (D4)
+LEAD_ROLE = 'orchestrator'                  # the role of the lead session
+NATIVE_SOURCE = 'brak źródła w przebiegu natywnym'
+
+
+def run_path(state_dir, epic_id):
+    return os.path.join(state_dir, 'runs', '%s.json' % epic_id)
+
+
+def checked_id(value, what):
+    if not isinstance(value, str) or not SAFE_ID.match(value):
+        raise MetricsError('zły identyfikator %s %r: oczekiwano liter, cyfr, `.`, `_` i `-` (do 64 znaków)'
+                           % (what, value))
+    return value
+
+
+NATIVE_EPIC_NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')       # the pattern of EPIC_NAME in .claude/skills/retro/retro.py
+
+
+def native_epic_id(value):
+    """The name of a native epic: the run file is named after it and `/retro` finds the file only by this pattern."""
+    checked_id(value, 'epiku')
+    if not NATIVE_EPIC_NAME.match(value):
+        raise MetricsError('nazwa epiku %r poza wzorcem %s (małe litery, cyfry i `-`, zaczyna się od litery albo cyfry): '
+                           'plik przebiegu o innej nazwie nie zostałby rozpoznany przez /retro'
+                           % (value, NATIVE_EPIC_NAME.pattern))
+    return value
+
+
+def read_run_file(path):
+    """The run file as a dict, None when it does not exist; MetricsError when it cannot be read or is not an object."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        raise MetricsError('błąd odczytu pliku przebiegu %s: %s' % (path, getattr(e, 'strerror', None) or e))
+    if not isinstance(data, dict):
+        raise MetricsError('błąd odczytu pliku przebiegu %s: oczekiwano obiektu JSON' % path)
+    return data
+
+
+def project_dir(projects, worktree):
+    """The directory of the session transcripts of a working directory (Claude Code turns every character that is
+    not a letter or a digit into `-`)."""
+    return os.path.join(projects, re.sub(r'[^A-Za-z0-9]', '-', worktree))
+
+
+def newest_session(projects, worktree):
+    """The id of the newest session transcript (`<id>.jsonl`, by modification time) of the working directory."""
+    directory = project_dir(projects, worktree)
+    try:
+        found = [(os.path.getmtime(os.path.join(directory, name)), name[:-len('.jsonl')])
+                 for name in os.listdir(directory) if name.endswith('.jsonl')]
+    except OSError:
+        found = []
+    if not found:
+        raise MetricsError('brak transkryptu sesji w %s: podaj --session' % directory)
+    return max(found)[1]
+
+
+def read_usage(stream):
+    """The limits read from the standard input (night_queue.parse_usage): the `plan` object of `get_usage`, or the
+    whole `get_usage` object (`{"plan": {...}, "context": {...}}`), whose `plan` is taken; None without a reading (a
+    terminal, no input or an empty one)."""
+    try:
+        if stream is None or stream.isatty():
+            return None
+        text = stream.read()
+    except (OSError, UnicodeDecodeError, ValueError):
+        return {'status': 'unreadable'}
+    if not text.strip():
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict) and 'plan' in data:
+        return night_queue.parse_usage(json.dumps(data['plan'])) if isinstance(data['plan'], dict) \
+            else {'status': 'unreadable'}
+    return night_queue.parse_usage(text)
+
+
+def _command_text(run, command):
+    """(stdout, None) of a command, or (None, reason) when it fails."""
+    try:
+        result = run(command)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, str(getattr(e, 'strerror', None) or e)
+    if result.returncode != 0:
+        return None, (result.stderr or '').strip()[:200] or 'kod %s' % result.returncode
+    return result.stdout, None
+
+
+def manifest_tasks(run, worktree, epic_id):
+    """The number of tasks of the manifest of origin/main:docs/features/<epic>/plan.md (night_queue.task_count)."""
+    def text(command):
+        out, reason = _command_text(run, ['git', '-C', worktree] + command[1:])
+        if out is None:
+            raise MetricsError(reason)
+        return out
+    try:
+        return night_queue.task_count(text, epic_id)
+    except (MetricsError, night_queue.StateError) as e:
+        raise MetricsError('liczba zadań z plan.md epiku %s nieznana (%s): podaj --tasks' % (epic_id, e))
+
+
+def cmd_start(args, run, now, stdin):
+    epic_id = native_epic_id(args.epic)
+    path = run_path(_expand(args.state), epic_id)
+    at = parse_at(args.at) if args.at else now
+    worktree = _expand(args.worktree) if args.worktree else os.getcwd()
+    session = checked_id(args.session or newest_session(_expand(args.projects), worktree), 'sesji')
+    current = read_run_file(path)
+    entry = {'id': session, 'worktree': worktree, 'at': iso(at)}
+    if args.resume:
+        if current is None:
+            raise MetricsError('brak pliku przebiegu %s: wznowienie wymaga wcześniejszego start' % path)
+        sessions = current.get('sessions') if isinstance(current.get('sessions'), list) else []
+        if not any(isinstance(s, dict) and s.get('id') == session for s in sessions):
+            current['sessions'] = sessions + [entry]
+        data = current
+    else:
+        if current is not None:
+            raise MetricsError('plik przebiegu %s już istnieje: nowa sesja to start --resume' % path)
+        branch = args.branch
+        if branch is None:
+            out, reason = _command_text(run, ['git', '-C', worktree, 'rev-parse', '--abbrev-ref', 'HEAD'])
+            branch = (out or '').strip()
+            if not branch or branch == 'HEAD':
+                raise MetricsError('gałąź epiku nieznana (%s): podaj --branch' % (reason or 'odłączony HEAD'))
+        tasks = args.tasks if args.tasks is not None else manifest_tasks(run, worktree, epic_id)
+        pr = args.pr
+        if pr is None:
+            try:
+                found = gh_json(run, ['pr', 'view', branch, '--json', 'number'], args.repo)
+                pr = found['number'] if isinstance(found, dict) and _is_int(found.get('number')) else None
+            except GhError as e:
+                raise MetricsError('numer PR gałęzi %s nieznany (%s): podaj --pr' % (branch, e))
+            if pr is None:
+                raise MetricsError('numer PR gałęzi %s nieznany: podaj --pr' % branch)
+        base = (['rev-list', '-1', '--first-parent', '--before=%s' % iso(at), 'origin/main'] if args.at
+                else ['rev-parse', 'origin/main'])
+        out, reason = _command_text(run, ['git', '-C', worktree] + base)
+        sha = (out or '').strip()
+        if not SHA_PATTERN.match(sha):
+            print('metrics: SHA origin/main nieznany (%s): base_sha null' % (reason or 'pusta odpowiedź'),
+                  file=sys.stderr)
+            sha = None
+        data = {'epic': epic_id, 'started_at': iso(at), 'base_sha': sha, 'branch': branch, 'pr': pr, 'tasks': tasks,
+                'sessions': [entry], 'usage_start': read_usage(stdin), 'done_at': None, 'usage_done': None}
+    write_record(path, data)
+    print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+def cmd_done(args, now, stdin):
+    path = run_path(_expand(args.state), native_epic_id(args.epic))
+    data = read_run_file(path)
+    if data is None:
+        raise MetricsError('brak pliku przebiegu %s: najpierw metrics.py start' % path)
+    data['done_at'] = iso(parse_at(args.at) if args.at else now)
+    data['usage_done'] = read_usage(stdin)
+    write_record(path, data)
+    print(json.dumps(data, ensure_ascii=False))
+    return 0
+
+
+# ------------------------------------------------------------------------------ native epics: transcripts and value
+
+PRICE_OF_TOKEN = {'input': 'input', 'output': 'output', 'cache_read': 'cache_read', 'cw5': 'cache_write_5m',
+                  'cw1': 'cache_write_1h'}
+AGENT_FILE = re.compile(r'^agent-(.+)\.jsonl$')
+AGENT_META = re.compile(r'^agent-(.+)\.meta\.json$')
+
+
+HANDBACK = 'SubagentHandback'               # the tool call with which a subagent hands its report back (M4)
+AGENT_CALL = 'Agent'                        # the tool call with which the lead session starts a subagent
+VERDICT_TOKENS = ('CHANGES_REQUIRED', 'INVESTIGATE', 'SIMPLIFY', 'REWORK', 'BLOCK', 'PASS', 'KEEP')
+_VERDICT_WORDS = '|'.join(VERDICT_TOKENS)
+_VERDICT_LABEL = r'(?i:werdykt|verdict)'
+_VERDICT_GAP = r'[\s:*_#.()`\-\u2013\u2014]*(?:(?i:to|jest|is)(?![A-Za-z])[\s:*_#.()`\-\u2013\u2014]*)?'
+_VERDICT_TAIL = r'(%s)(?![A-Za-z0-9_])' % _VERDICT_WORDS
+# the label at the start of a line (after list, heading, quote and bold markers) and anywhere in the text, but not
+# right after a quotation mark or a backtick: a quoted label (an example in the report) is no verdict
+VERDICT_LINE = re.compile(r'^[ \t>#*_\-]*%s%s%s' % (_VERDICT_LABEL, _VERDICT_GAP, _VERDICT_TAIL), re.MULTILINE)
+VERDICT = re.compile(r'(?<![A-Za-z"\'`\u201e\u201c\u201d\u2018\u2019\u00ab\u00bb])%s%s%s'
+                     % (_VERDICT_LABEL, _VERDICT_GAP, _VERDICT_TAIL))
+
+
+def verdict_token(text):
+    """The verdict word right after the label `Werdykt` or `Verdict` (only `to`, `jest`, `is`, separators and bold
+    markers between them), or None; a verdict word without the label is no verdict. Reports state the verdict at the
+    start, so the first label at the start of a line wins (a report may quote other verdicts later in its sentences);
+    without such a label the last labelled one in the text counts (a report may quote the verdict of an earlier round
+    first); a label right after a quotation mark or a backtick is a quotation, not a verdict. The text itself is never
+    kept."""
+    if not isinstance(text, str):
+        return None
+    first = VERDICT_LINE.search(text)
+    if first:
+        return first.group(1)
+    found = VERDICT.findall(text)
+    return found[-1] if found else None
+
+
+def line_mark(line):
+    """What a user or assistant line says about the time before it (M3 `breakdown`): `work` (an assistant message or
+    a tool result: the session or the subagent was working), `human` (a message typed by a human, `origin.kind`
+    `human`), `wait` (any other user line: a subagent report, a background task, a resume, a meta line, an order)."""
+    if line.get('type') == 'assistant':
+        return 'work'
+    message = line.get('message') if isinstance(line.get('message'), dict) else {}
+    content = message.get('content')
+    if isinstance(content, list) and any(isinstance(b, dict) and b.get('type') == 'tool_result' for b in content):
+        return 'work'
+    origin = line.get('origin')
+    return 'human' if isinstance(origin, dict) and origin.get('kind') == 'human' else 'wait'
+
+
+def read_native(path, seen_tools):
+    """(data, None) of a transcript of a native session or subagent in the shape of `read_transcript` (the messages,
+    the tools; `seen_tools` is shared by the files of the epic, so a copied tool call counts once), plus `times` (the
+    timestamps of the user and assistant lines), `inits` from the CLI `version` of the lines, `marks` [(at, mark,
+    key)] of the user and assistant lines with a timestamp (`line_mark`; key: the `uuid` of a human line), `untimed_human`
+    (human lines without a timestamp), `user_lines` and `origin_lines` (the user lines that are no tool result, and
+    those of them with an `origin`: without any, a human message cannot be told apart) and `reports` [(at, verdict word
+    or None)] of the `SubagentHandback` calls in file order and `launched` [(at, agent id)] of the subagents the file
+    starts (`toolUseResult.agentId` of the result of an `Agent` call) and `skipped` (the lines that are no JSON object,
+    blank lines aside); (None, reason) when the file is missing, unreadable, empty or has no line that is a JSON
+    object."""
+    data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': [], 'times': [],
+            'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': [], 'launched': [],
+            'skipped': 0}
+    versions, reports, agent_calls, lines = set(), set(), set(), 0
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for raw in f:
+                try:
+                    line = json.loads(raw)
+                except ValueError:
+                    line = None
+                if not isinstance(line, dict):
+                    data['skipped'] += bool(raw.strip())
+                    continue
+                lines += 1
+                _read_line(line, data, seen_tools)
+                if isinstance(line.get('version'), str):
+                    versions.add(line['version'])
+                if line.get('type') not in ('user', 'assistant'):
+                    continue
+                at = _timestamp(line.get('timestamp'))
+                mark = line_mark(line)
+                if line['type'] == 'user' and mark != 'work':
+                    data['user_lines'] += 1
+                    data['origin_lines'] += isinstance(line.get('origin'), dict)
+                if at is not None:
+                    data['times'].append(at)
+                    data['marks'].append((at, mark, line.get('uuid') if isinstance(line.get('uuid'), str) else None))
+                elif mark == 'human':
+                    data['untimed_human'] += 1
+                message = line.get('message') if isinstance(line.get('message'), dict) else {}
+                launch = line.get('toolUseResult') if isinstance(line.get('toolUseResult'), dict) else {}
+                for block in message.get('content') if isinstance(message.get('content'), list) else []:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get('type') == 'tool_use' and block.get('name') == AGENT_CALL:
+                        agent_calls.add(block.get('id'))
+                    if block.get('type') == 'tool_result' and block.get('tool_use_id') in agent_calls \
+                            and isinstance(launch.get('agentId'), str):
+                        data['launched'].append((at, launch['agentId']))
+                    if block.get('type') == 'tool_use' and block.get('name') == HANDBACK \
+                            and block.get('id') not in reports:
+                        reports.add(block.get('id'))
+                        tool_input = block.get('input') if isinstance(block.get('input'), dict) else {}
+                        data['reports'].append((at, verdict_token(tool_input.get('message'))))
+    except FileNotFoundError:
+        return None, 'brak pliku transkryptu'
+    except OSError as e:
+        return None, 'nieczytelny transkrypt: %s' % (e.strerror or e)
+    if not lines:
+        return None, ('uszkodzony transkrypt: żadna z %d linii nie jest obiektem JSON' % data['skipped']
+                      if data['skipped'] else 'pusty transkrypt')
+    data['inits'] = [{'version': version, 'model': None} for version in sorted(versions)]
+    return data, None
+
+
+def read_meta(path, label, gaps):
+    """{role, description, effort, finished} of `agent-<id>.meta.json`; a missing file or field is None with a gap (the
+    description is only read for the task id, never stored). The model is not read: that of a run comes from its
+    messages, and `launchedWithDefaults` runs have none in the file."""
+    found = {'role': None, 'description': None, 'effort': None, 'finished': None}
+    try:
+        with open(path, encoding='utf-8') as f:
+            meta = json.load(f)
+        if not isinstance(meta, dict):
+            raise ValueError('not an object')
+    except FileNotFoundError:
+        gaps.add(label, 'brak meta.json: rola, zadanie, effort i zakończenie nieznane')
+        return found
+    except (OSError, ValueError):
+        gaps.add(label, 'nieczytelny meta.json: rola, zadanie, effort i zakończenie nieznane')
+        return found
+    for field, key in (('role', 'agentType'), ('effort', 'effort')):
+        if isinstance(meta.get(key), str) and SAFE_NAME.match(meta[key]):
+            found[field] = meta[key]
+        else:
+            gaps.add(label, 'meta.json bez %s' % key)
+    if isinstance(meta.get('description'), str):
+        found['description'] = meta['description']
+    else:
+        gaps.add(label, 'meta.json bez description: zadanie nieznane')
+    if isinstance(meta.get('finished'), bool):
+        found['finished'] = meta['finished']
+    else:
+        gaps.add(label, 'meta.json bez finished: zakończenie nieznane')
+    return found
+
+
+def task_of(description, epic_id):
+    """The task of a subagent run (D4): the first `<EPIC>-<n>` in the description of its call, else None."""
+    if not isinstance(description, str):
+        return None
+    found = re.search(r'(?<![A-Za-z0-9])%s-(\d+)(?![0-9])' % re.escape(epic_id), description, re.IGNORECASE)
+    return '%s-%s' % (epic_id.upper(), found.group(1)) if found else None
+
+
+def message_value(message, pricing):
+    """(USD, None) of an assistant message from the price list (every kind of tokens with its own rate), or (None,
+    reason) when the model, the lifetime of the cache write or a rate of a used kind is unknown."""
+    model, tokens = message['model'], message['tokens']
+    if model is None:
+        return None, 'wiadomość bez message.model: wartość nieznana'
+    if (tokens['cw5'] or tokens['cw1']) and not message['lifetime']:
+        return None, ('zapis cache bez rozbicia usage.cache_creation (czas życia 5 min albo 1 h nieznany): wartość '
+                      'nieznana')
+    shown = model if SAFE_NAME.match(model) else 'unknown'
+    rates = pricing['models'].get(model)
+    if rates is None:
+        return None, 'brak stawek modelu %s w cenniku (config.json, pricing): wartość nieznana' % shown
+    usd = 0.0
+    for raw, kind in PRICE_OF_TOKEN.items():
+        if tokens[raw]:
+            if kind not in rates:
+                return None, ('brak stawki %s modelu %s w cenniku (config.json, pricing): wartość nieznana'
+                              % (kind, shown))
+            usd += tokens[raw] * rates[kind] / 1e6
+    return usd, None
+
+
+def _native_cell(known):
+    return {'tokens': dict(ZERO_TOKENS), 'estimated': set(), 'usd': 0.0 if known else None, 'shared': True,
+            'no_cli': True}
+
+
+def native_cells(messages, role, pricing, label, gaps):
+    """(known, unknown, usage_missing) cells {role: {model: cell}} of the messages of one transcript: the value of a
+    message from the price list (always an estimate: `shared` and `no_cli` mark every section estimated); a message
+    whose value is unknown goes to `unknown` (its section is incomplete, never short by a silent zero). A message
+    without tokens needs no rate."""
+    known, unknown, usage_missing = {}, {}, False
+    for message in messages:
+        model = message['model'] if message['model'] and SAFE_NAME.match(message['model']) else 'unknown'
+        if not message['usage']:
+            usage_missing = True
+            gaps.add('value', '%s: wiadomość bez message.usage: tokeny i wartość nieznane' % label)
+            unknown.setdefault(role, {}).setdefault(model, _native_cell(False))
+            continue
+        if not any(message['tokens'].values()):
+            continue
+        usd, problem = message_value(message, pricing)
+        if problem:
+            gaps.add('value', '%s: %s' % (label, problem))
+        cell = (unknown if problem else known).setdefault(role, {}).setdefault(model, _native_cell(not problem))
+        for key in ZERO_TOKENS:
+            cell['tokens'][key] += message['tokens'][key]
+        if not problem:
+            cell['usd'] += usd
+    return known, unknown, usage_missing
+
+
+def native_items(task, known, unknown):
+    """The items of `value_sections` of one transcript: the known cells and the unknown ones (an incomplete part)."""
+    items = [(task, known)] if known or not unknown else []
+    return items + ([(task, unknown)] if unknown else [])
+
+
+def native_transcripts(projects, sessions, gaps):
+    """[(kind, session, agent_id, path, meta path)] of the epic: every session of the run file (its `<id>.jsonl` in
+    any project directory under `projects`) and its subagents (`<id>/subagents/agent-<agent>.jsonl`, also one with
+    only `agent-<agent>.meta.json`: its transcript is lost). Nothing else: another session of the same working
+    directory is not part of the epic."""
+    found, agents = [], set()
+    for session in sessions:
+        paths = sorted(glob.glob(os.path.join(glob.escape(projects), '*', '%s.jsonl' % session)))
+        if not paths:
+            gaps.add('sessions', 'brak transkryptu sesji %s w %s' % (session, os.path.basename(projects)))
+            continue
+        found.append(('session', session, None, paths[0], None))
+        directory = os.path.join(os.path.dirname(paths[0]), session, 'subagents')
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            names = []
+        for name in names:
+            match = AGENT_FILE.match(name) or AGENT_META.match(name)
+            if not match:
+                continue
+            agent = match.group(1)
+            if not SAFE_NAME.match(agent) or agent in agents:
+                continue
+            agents.add(agent)
+            found.append(('agent', session, agent, os.path.join(directory, 'agent-%s.jsonl' % agent),
+                          os.path.join(directory, 'agent-%s.meta.json' % agent)))
+    return found
+
+
+def in_window(at, low, high):
+    return at is None or ((low is None or at >= low) and (high is None or at <= high))
+
+
+def native_fields(epic_id, projects, sessions, started, until, config, gaps):
+    """{attempts, by_task, value, in_attempts, versions, marks, untimed_human, reviews, messages} of a native epic
+    from the transcripts of its sessions: the messages from `started` to `until` (the merge of the final PR; None: no
+    bound), every message id once (its first occurrence, also in a resumed or forked session), the lead session as
+    `orchestrator` without a task, every subagent run one attempt with its role (agentType), task (D4), model and
+    effort. `marks`: the marks of every transcript (`read_native`, not cut to the interval); `reviews`: the reports
+    of the review roles in the interval (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`:
+    `none` (no transcript of a session of the run file was read), `partial` (only some, or a subagent transcript of a
+    session read is lost: missing, empty or unreadable, also one the lead session started in the interval without
+    any file of it) or `full`; `no_origin`: the lead sessions have user lines but none with an `origin` (a change of
+    the transcript format); `transcripts_read`: the number of transcripts read (sessions and subagents, also those
+    without a line in the interval)."""
+    pricing = config['pricing']
+    seen_ids, seen_tools = set(), set()
+    attempts, items, datas, marks, reviews, messages = [], [], [], [], [], {}
+    untimed_human, user_lines, origin_lines, read, lost, launched = 0, 0, 0, set(), set(), set()
+    transcripts_read = 0
+    transcripts = native_transcripts(projects, sessions, gaps)
+    for kind, session, agent, path, meta_path in transcripts:
+        label = 'sesja %s' % session if kind == 'session' else 'agent %s' % agent
+        data, reason = read_native(path, seen_tools)
+        if data is None:
+            gaps.add('sessions', '%s: %s' % (label, reason))
+            if kind == 'agent':
+                lost.add(agent)
+            continue
+        transcripts_read += 1
+        if data['skipped']:
+            gaps.add('sessions', '%s: pominięte linie, które nie są obiektem JSON (%d)' % (label, data['skipped']))
+        if kind == 'session':
+            read.add(session)
+            user_lines += data['user_lines']
+            origin_lines += data['origin_lines']
+            launched.update(a for at, a in data['launched'] if in_window(at, started, until) and SAFE_NAME.match(a))
+        fresh = {i: m for i, m in data['messages'].items() if i not in seen_ids}
+        seen_ids.update(data['messages'])
+        data['messages'] = {i: m for i, m in fresh.items() if in_window(m['at'], started, until)}
+        data['tools'] = [t for t in data['tools'] if t[0] != 'use' or in_window(t[5], started, until)]
+        data['times'] = [t for t in data['times'] if in_window(t, started, until)]
+        if any(m['at'] is None for m in data['messages'].values()):
+            gaps.add('sessions', '%s: wiadomość bez timestamp: liczona bez sprawdzenia przedziału epiku' % label)
+        if not data['messages'] and not data['times']:
+            continue                                # nothing of this transcript lies in the epic
+        datas.append(data)
+        marks.append(data['marks'])
+        untimed_human += data['untimed_human']
+        messages.update((i, m['at']) for i, m in data['messages'].items())
+        if kind == 'session':
+            known, unknown, _ = native_cells(data['messages'].values(), LEAD_ROLE, pricing, label, gaps)
+            items += native_items(NO_TASK, known, unknown)
+            continue
+        meta = read_meta(meta_path, 'attempts.%s' % agent, gaps)
+        task = task_of(meta['description'], epic_id)
+        role = meta['role'] or SUBAGENT
+        known, unknown, usage_missing = native_cells(data['messages'].values(), role, pricing, label, gaps)
+        items += native_items(task or NO_TASK, known, unknown)
+        models = {}
+        for message in data['messages'].values():
+            if message['model']:
+                models[message['model']] = models.get(message['model'], 0) + 1
+        model = max(sorted(models), key=lambda m: models[m]) if models else None
+        if model is None:
+            gaps.add('attempts.%s' % agent, 'brak message.model w wiadomościach przebiegu: model nieznany')
+        tokens = dict(ZERO_TOKENS)
+        for cells in (known, unknown):
+            for cell in cells.get(role, {}).values():
+                for key in ZERO_TOKENS:
+                    tokens[key] += cell['tokens'][key]
+        start, end = (min(data['times']), max(data['times'])) if data['times'] else (None, None)
+        value = None if unknown else _round_usd(sum(c['usd'] for c in known.get(role, {}).values()))
+        reviews += reviews_of_run(agent, task, meta['role'], data['reports'], started, until, gaps)
+        attempts.append({'agent_id': agent, 'task': task, 'role': meta['role'],
+                         'model': model if model is None or SAFE_NAME.match(model) else 'unknown',
+                         'effort': meta['effort'], 'started_at': iso(start), 'ended_at': iso(end),
+                         'wall_s': None if start is None else round(end - start, 3), 'value': value, 'estimated': True,
+                         'tokens': None if usage_missing else _tokens_out(tokens), 'finished': meta['finished']})
+    for agent in sorted(launched - {t[2] for t in transcripts}):
+        gaps.add('sessions', 'agent %s: uruchomiony w sesji prowadzącej, brak jego transkryptu i meta.json' % agent)
+        lost.add(agent)
+    by_task = {}
+    for attempt in attempts:
+        entry = by_task.setdefault(attempt['task'] or NO_TASK, {'kind': None, 'work': 0.0, 'attempts': 0})
+        entry['attempts'] += 1
+        if attempt['wall_s'] is None:
+            entry['incomplete'] = True
+            gaps.add('by_task', 'przebieg %s bez czasu wiadomości: pominięty w czasie' % attempt['agent_id'])
+        else:
+            entry['work'] = round(entry['work'] + attempt['wall_s'], 3)
+    compiled = compile_categories(config)
+    in_attempts = in_attempts_of([commands_of(d, config, compiled) for d in datas])
+    if not datas:
+        gaps.add('in_attempts', 'brak transkryptów sesji epiku')
+        gaps.add('versions', 'brak transkryptów sesji epiku')
+    return {'attempts': attempts, 'by_task': by_task, 'value': value_sections(items),
+            'in_attempts': in_attempts, 'versions': versions_of(datas) if datas else None, 'marks': marks,
+            'untimed_human': untimed_human, 'messages': messages,
+            'coverage': 'none' if not read else 'partial' if len(read) < len(set(sessions)) or lost else 'full',
+            'no_origin': user_lines > 0 and origin_lines == 0, 'transcripts_read': transcripts_read,
+            'reviews': sorted(reviews, key=lambda r: (r['at'] is None, r['at'] or '', r['agent_id']))}
+
+
+# --------------------------------------------------------------------- native epics: time, human, reviews, limits
+
+# M4: the verdicts of the review roles by their agent contracts (.claude/agents); a role without verdicts (ux-reviewer)
+# has none. The blocking ones send the task or the change back.
+REVIEW_VERDICTS = {'code-reviewer': ('PASS', 'CHANGES_REQUIRED'), 'qa-adversarial': ('PASS', 'INVESTIGATE', 'BLOCK'),
+                   'architecture-reviewer': ('KEEP', 'SIMPLIFY', 'REWORK'), 'ux-reviewer': ()}
+BLOCKING_VERDICTS = ('CHANGES_REQUIRED', 'BLOCK', 'REWORK')
+INTEGRATION_ROLES = ('architecture-reviewer', 'qa-adversarial', 'ux-reviewer')     # the review of the whole change
+NO_BREAKDOWN_SOURCE = ('limit_wait', 'ci_wait', 'host_pause', 'github_wait')
+
+
+def reviews_of_run(agent, task, role, reports, started, until, gaps):
+    """The reviews (M4) of one subagent run of a review role: one per report handed back in the interval, the first
+    report of the transcript `FULL`, every later one (after a resume) `DELTA`; the verdict only when it is one of the
+    role's contract (else None with a gap), never the text."""
+    if role not in REVIEW_VERDICTS:
+        return []
+    if not reports:
+        gaps.add('reviews', 'przebieg %s (%s) bez raportu %s' % (agent, role, HANDBACK))
+        return []
+    found = []
+    for index, (at, token) in enumerate(reports):
+        if not in_window(at, started, until):
+            continue
+        verdict = token if token in REVIEW_VERDICTS[role] else None
+        if verdict is None:
+            gaps.add('reviews', 'raport %s (%s) bez rozpoznanego werdyktu: werdykt null' % (agent, role))
+        found.append({'task': task, 'role': role, 'agent_id': agent, 'at': iso(at), 'mode': 'DELTA' if index else 'FULL',
+                      'verdict': verdict, 'blocking': None if verdict is None else verdict in BLOCKING_VERDICTS})
+    return found
+
+
+def work_intervals(marks):
+    """The intervals of work of every transcript: the time before a line marked `work` (`line_mark`), from the line
+    before it in the same transcript."""
+    found = []
+    for lines in marks:
+        ordered = sorted(lines, key=lambda m: m[0])
+        found += [(prev[0], line[0]) for prev, line in zip(ordered, ordered[1:]) if line[1] == 'work']
+    return found
+
+
+def human_gaps(marks):
+    """[(start, at, key)] of every human line of every transcript: the pause before it, from the line before it in the
+    same transcript (none before it: an empty pause); key: the `uuid` of the line, else its time, so a line repeated in a
+    resumed session is one."""
+    found = []
+    for lines in marks:
+        ordered = sorted(lines, key=lambda m: m[0])
+        for index, (at, mark, key) in enumerate(ordered):
+            if mark == 'human':
+                found.append((ordered[index - 1][0] if index else at, at, key or ('at', at)))
+    return found
+
+
+def native_breakdown(work, pauses, started, done, config, gaps):
+    """M3 `breakdown` of a native epic from the start to `done`: `work` the union of the intervals of work of the lead
+    and the subagents, `human_wait` the pauses before a human line that no work covers, `idle` the rest; the other
+    categories have no native source (null)."""
+    if started is None or done is None:
+        gaps.add('breakdown', 'brak czasu startu albo wywołania metrics.py done: rozkład czasu niemożliwy')
+        return None
+    busy = clip_merge(work, started, done)
+    waiting = subtract(clip_merge(pauses, started, done), busy)
+    found = {name: None for name in config['breakdown_order']}
+    found['work'], found['human_wait'] = round(total(busy), 3), round(total(waiting), 3)
+    found['idle'] = round(done - started - total(busy) - total(waiting), 3)
+    for name in NO_BREAKDOWN_SOURCE:
+        gaps.add('breakdown.%s' % name, '%s: czas tej kategorii jest w work i idle' % NATIVE_SOURCE)
+    return found
+
+
+def native_human(pauses, work, untimed, started, until, manual_fixes, gaps):
+    """M3 `human` of a native epic: every human line after the start (the start command comes before it) up to the
+    merge is an intervention (an estimate: also a question about the progress counts); its event has the time and the
+    part of the pause before it that no work covers (`wait_s`), never the text."""
+    busy = clip_merge(work, float('-inf'), float('inf'))
+    events, seen = [], set()
+    for start, at, key in sorted(pauses, key=lambda p: p[1]):
+        if key in seen or (started is not None and at <= started) or (until is not None and at > until):
+            continue
+        seen.add(key)
+        low = start if started is None else max(start, started)
+        events.append({'at': iso(at), 'wait_s': round(total(subtract(clip_merge([(low, at)], low, at), busy)), 3)})
+    if untimed:
+        gaps.add('human', 'wiadomość człowieka bez timestamp (%d): pominięta' % untimed)
+    if manual_fixes is None:
+        gaps.add('human.manual_fixes', 'nie podano --manual-fixes')
+    return {'interventions': len(events), 'interventions_estimated': True,
+            'waits': sum(1 for e in events if e['wait_s'] > 0), 'wait_s': round(sum(e['wait_s'] for e in events), 3),
+            'events': events, 'manual_fixes': manual_fixes}
+
+
+def native_integration(attempts, reviews, gaps):
+    """M3 `integration`: the time and the number of the runs of the review roles of the whole change; `rounds` the
+    largest number of reports of one of these roles. None without such runs."""
+    runs = [a for a in attempts if a['role'] in INTEGRATION_ROLES]
+    if not runs:
+        gaps.add('integration', 'brak przebiegów %s' % ', '.join(INTEGRATION_ROLES))
+        return None
+    counts = {}
+    for review in reviews:
+        if review['role'] in INTEGRATION_ROLES:
+            counts[review['role']] = counts.get(review['role'], 0) + 1
+    found = {'work_s': round(sum(a['wall_s'] for a in runs if a['wall_s'] is not None), 3), 'attempts': len(runs),
+             'rounds': max(counts.values(), default=0)}
+    if any(a['wall_s'] is None for a in runs):
+        found['incomplete'] = True
+        gaps.add('integration', 'przebieg bez czasu wiadomości: pominięty w czasie')
+    return found
+
+
+def native_retries(attempts, reviews, gaps):
+    """M3 `retries`: `fix` the reviews of tasks with a blocking verdict, `failed_by_outcome` the subagent runs that did
+    not finish (`unfinished`); `attempts`, `repair` and `sync_prs` have no native source."""
+    unfinished = sum(1 for a in attempts if a['finished'] is False)
+    if any(a['finished'] is None for a in attempts):
+        gaps.add('retries.failed_by_outcome', 'przebieg bez finished w meta.json: liczba niezakończonych to dolna '
+                                              'granica')
+    tasks = [r for r in reviews if r['task'] is not None]
+    if any(r['verdict'] is None for r in tasks):
+        gaps.add('retries.fix', 'przegląd zadania bez rozpoznanego werdyktu: liczba to dolna granica')
+    for field in ('attempts', 'repair', 'sync_prs'):
+        gaps.add('retries.%s' % field, NATIVE_SOURCE)
+    return {'attempts': None, 'failed_by_outcome': {'unfinished': unfinished} if unfinished else {}, 'repair': None,
+            'fix': sum(1 for r in tasks if r['blocking'] is True), 'sync_prs': None}
+
+
+# M5: the table of the section "Kryteria akceptacji" of the description of the final PR (docs/adr/
+# agentic-software-house.md, "Przebieg epiku", step 7): | Numer | Sposób | Wynik |, the way one of these.
+ACCEPTANCE_SECTION = 'kryteria akceptacji'
+ACCEPTANCE_HEADER = ['numer', 'sposób', 'wynik']
+ACCEPTANCE_WAYS = (('stack', 'stos'), ('ci', 'ci'), ('after_deploy', 'po wdrożeniu'), ('unverified', 'niezweryfikowane'))
+HEADING = re.compile(r'^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$')
+
+
+def _cells(line):
+    """The cells of a table row (lower case, without backticks and emphasis), or None for a line that is no row."""
+    text = line.strip()
+    if not text.startswith('|'):
+        return None
+    return [re.sub(r'[`*_]', '', cell).strip().lower() for cell in text.strip('|').split('|')]
+
+
+def way_of(cell):
+    for key, prefix in ACCEPTANCE_WAYS:
+        if cell == prefix or (cell.startswith(prefix) and not cell[len(prefix)].isalnum()):
+            return key
+    return None
+
+
+def _acceptance_heading(line):
+    found = HEADING.match(line)
+    return found is not None and found.group(1).strip().lower().startswith(ACCEPTANCE_SECTION)
+
+
+def criteria_counts(body, gaps):
+    """{total, stack, ci, after_deploy, unverified} of the table of acceptance criteria of a PR description, or None
+    with a gap without the section, the table or its rows. A row of an unknown way counts only in `total`."""
+    lines = body.splitlines()
+    start = next((i + 1 for i, line in enumerate(lines) if _acceptance_heading(line)), None)
+    if start is None:
+        gaps.add('acceptance', 'opis końcowego PR bez sekcji „Kryteria akceptacji”')
+        return None
+    end = next((i for i in range(start, len(lines)) if HEADING.match(lines[i])), len(lines))
+    section = lines[start:end]
+    header = next((i for i, line in enumerate(section) if (_cells(line) or [])[:3] == ACCEPTANCE_HEADER), None)
+    if header is None:
+        gaps.add('acceptance', 'sekcja „Kryteria akceptacji” bez tabeli | Numer | Sposób | Wynik |')
+        return None
+    counts = {'total': 0, **{key: 0 for key, _ in ACCEPTANCE_WAYS}}
+    for line in section[header + 1:]:
+        cells = _cells(line)
+        if cells is None:
+            break
+        if all(re.match(r'^:?-+:?$', cell) for cell in cells if cell):
+            continue                                        # the separator row
+        counts['total'] += 1
+        way = way_of(cells[1]) if len(cells) > 1 else None
+        if way is None:
+            gaps.add('acceptance', 'wiersz %d tabeli kryteriów: sposób nierozpoznany (liczony tylko w total)'
+                     % counts['total'])
+        else:
+            counts[way] += 1
+    if not counts['total']:
+        gaps.add('acceptance', 'tabela kryteriów akceptacji bez wierszy')
+        return None
+    return counts
+
+
+def gate_runner(run):
+    """The runner of the origin gate (run(argv) -> stdout, raising on a failure with the output kept, so a 404 of the
+    permission call is told apart) over the command runner of metrics.py."""
+    def call(args):
+        try:
+            result = run(args)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise github_trust.CommandError(args, str(getattr(e, 'strerror', None) or e))
+        if result.returncode != 0:
+            raise github_trust.CommandError(args, (result.stderr or '').strip()[:200] or 'kod %s' % result.returncode,
+                                            result.stdout or '')
+        return result.stdout
+    return call
+
+
+def native_acceptance(run, no_gh, repo, final_pr, branch, gaps, errors):
+    """M5 `acceptance`: the numbers of the criteria table of the description of the final PR, read only through the
+    origin gate (github_trust.py): the description of an author without write access never reaches the tool."""
+    if no_gh:
+        gaps.add('acceptance', 'pominięto gh (--no-gh)')
+        return None
+    if final_pr is None or branch is None:
+        gaps.add('acceptance', 'brak numeru PR albo gałęzi epiku w pliku przebiegu')
+        return None
+    try:
+        gate = github_trust.Gate(gate_runner(run), repo=repo or github_trust.REPOSITORY)
+        prs = gate.prs(state='all', head=branch, limit=30, fields=('body',))
+    except (github_trust.GateError, ValueError) as e:
+        errors.append('bramka pochodzenia: %s' % e)
+        gaps.add('acceptance', 'błąd bramki pochodzenia: opis PR niedostępny')
+        return None
+    pr = next((p for p in prs if p.get('number') == final_pr), None)
+    if pr is None:
+        gaps.add('acceptance', 'bramka pochodzenia nie zwróciła PR #%d gałęzi epiku' % final_pr)
+        return None
+    if pr.get('trusted') is not True:
+        gaps.add('acceptance', 'autor PR #%d bez prawa zapisu: bramka pochodzenia nie podaje opisu' % final_pr)
+        return None
+    if not isinstance(pr.get('body'), str) or not pr['body'].strip():
+        gaps.add('acceptance', 'końcowy PR bez opisu')
+        return None
+    return criteria_counts(pr['body'], gaps)
+
+
+def _assistant_usage(raw):
+    """(message id, timestamp, usage) of a transcript line of an assistant message with an id and a usage, else None."""
+    if '"assistant"' not in raw:
+        return None
+    try:
+        line = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(line, dict) or line.get('type') != 'assistant':
+        return None
+    message = line.get('message')
+    if not isinstance(message, dict) or not isinstance(message.get('id'), str) \
+            or not isinstance(message.get('usage'), dict):
+        return None
+    return message['id'], _timestamp(line.get('timestamp')), message['usage']
+
+
+def local_tokens(projects, low, high, weights, gaps):
+    """{message id: tokens weighted by `token_weights`} of the assistant messages from `low` to `high` of every session
+    and subagent transcript of every project under `projects` (the limits are per account), every id once; a
+    transcript last modified before `low` holds none of them and is not read."""
+    paths = glob.glob(os.path.join(glob.escape(projects), '*', '*.jsonl')) + glob.glob(
+        os.path.join(glob.escape(projects), '*', '*', 'subagents', 'agent-*.jsonl'))
+    found, unreadable = {}, 0
+    for path in sorted(paths):
+        try:
+            if os.path.getmtime(path) < low:
+                continue
+            with open(path, encoding='utf-8', errors='replace') as f:
+                for raw in f:
+                    item = _assistant_usage(raw)
+                    if item and item[0] not in found and item[1] is not None and low <= item[1] <= high:
+                        found[item[0]] = weighted(_message_tokens(item[2]), weights)
+        except OSError:
+            unreadable += 1
+    if unreadable:
+        gaps.add('subscription.share', 'nieczytelne transkrypty (%d): pominięte w mianowniku' % unreadable)
+    return found
+
+
+def native_subscription(run_file, started, done, projects, messages, config, gaps):
+    """M3 `subscription`: the increase of every limit window between the readings of `start` and `done`
+    (night_queue._window_deltas: a window renewed between them is null with a gap) and `share`, the tokens of the epic
+    from the start to done by the tokens of all local sessions of that interval (an estimate: the use of other devices
+    is not seen). None without both readings."""
+    before, after = run_file.get('usage_start'), run_file.get('usage_done')
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        gaps.add('subscription', 'brak odczytu limitów w pliku przebiegu (start albo done): koszt subskrypcji nieznany')
+        return None
+    before, after = (night_queue.parse_usage(json.dumps(reading)) for reading in (before, after))
+    found = subscription_of({'start': {'usage': before}, 'done': {'usage': after}}, {}, gaps)
+    found['overlap'] = None
+    gaps.add('subscription.overlap', NATIVE_SOURCE)
+    found['share'], found['share_estimated'] = None, True
+    if started is None or done is None:
+        gaps.add('subscription.share', 'brak czasu startu albo done: przedział nieznany')
+        return found
+    every = local_tokens(projects, started, done, config['token_weights'], gaps)
+    whole = sum(every.values())
+    mine = sum(every.get(i, 0) for i, at in messages.items() if at is not None and started <= at <= done)
+    if whole <= 0:
+        gaps.add('subscription.share', 'brak tokenów sesji lokalnych w przedziale')
+    else:
+        found['share'] = round(mine / whole, 4)
+    return found
+
+
+# The process fields of a native record that come from the transcripts (M3, M4): without any transcript of the epic
+# they are unknown, never zero, and a stored value stays (a refresh after the retention of the transcripts, e.g. by
+# /retro collect, must not replace it); without the transcripts of some sessions they are a lower bound.
+TRANSCRIPT_PATHS = (('breakdown',), ('reviews',), ('integration',), ('human', 'interventions'), ('human', 'waits'),
+                    ('human', 'wait_s'), ('human', 'events'), ('retries', 'fix'), ('retries', 'failed_by_outcome'),
+                    ('subscription', 'share'))
+NO_TRANSCRIPTS = 'brak transkryptów sesji epiku (retencja albo zły identyfikator sesji): wartość nieznana'
+PARTIAL_TRANSCRIPTS = ('transkrypt części sesji albo subagentów epiku niedostępny: wartość z dostępnych transkryptów '
+                       'niepełna (dolna granica; idle górna)')
+HUMAN_EVENT_PATHS = (('human', 'interventions'), ('human', 'waits'), ('human', 'wait_s'), ('human', 'events'))
+# The fields of a native record from the transcripts that are empty, not null, without them (`attempts` [], `by_task`
+# {}, `value` without a total; `in_attempts` and `versions` null): kept from the stored native record the same way.
+TRANSCRIPT_KEPT = (('attempts',), ('by_task',), ('value',), ('in_attempts',), ('versions',))
+
+
+def _clear(record, paths, gaps, reason):
+    for path in paths:
+        if isinstance(_get(record, path[:-1]), dict):
+            _set(record, path, None)
+            gaps.add('.'.join(path), reason)
+
+
+def _keep_stored(record, stored, gaps, reason):
+    """Puts the values of `TRANSCRIPT_PATHS` and `TRANSCRIPT_KEPT` of the stored native record back into `record` (a
+    changed one with a gap); the paths with a stored value."""
+    kept = set()
+    for path in TRANSCRIPT_PATHS + TRANSCRIPT_KEPT:
+        old = _get(stored, path)
+        if old is None or not isinstance(_get(record, path[:-1]), dict):
+            continue
+        kept.add(path)
+        if old != _get(record, path):
+            _set(record, path, old)
+            gaps.add('.'.join(path), reason)
+    return kept
+
+
+def _within(field, kept):
+    """Whether the path `field` (dotted) is one of the `kept` paths, lies in one or holds one."""
+    path = tuple(field.split('.'))
+    return any(p[:len(path)] == path or path[:len(p)] == p for p in kept)
+
+
+def apply_transcript_coverage(record, coverage, no_origin, previous, gaps):
+    """The process fields of `record` by the transcripts read (`native_fields`): `none` makes them null with a gap and
+    keeps the values of the stored native record (also of `TRANSCRIPT_KEPT`); fewer transcripts read than for the
+    stored native record (`transcripts_read`: retention, a lost file) keep its values the same way and its number;
+    `partial` adds the gap of a lower bound to the rest; `no_origin` (no user line of the lead sessions has an `origin`)
+    makes the human messages and `human_wait` unknown, unless they are kept."""
+    stored = previous if isinstance(previous, dict) and previous.get('source') == 'native' else None
+    stored_read = stored.get('transcripts_read') if stored is not None and _is_int(stored.get('transcripts_read')) \
+        else None
+    if coverage == 'none':
+        _clear(record, TRANSCRIPT_PATHS, gaps, NO_TRANSCRIPTS)
+        _keep_stored(record, stored, gaps, 'brak transkryptów sesji epiku: zachowano poprzednią wartość')
+        if stored_read is not None and stored_read > record['transcripts_read']:
+            record['transcripts_read'] = stored_read
+        return
+    kept = set()
+    if stored_read is not None and stored_read > record['transcripts_read']:
+        kept = _keep_stored(record, stored, gaps, 'przeczytano mniej transkryptów epiku (%d) niż dla zapisanego rekordu '
+                                                  '(%d): zachowano poprzednią wartość'
+                                                  % (record['transcripts_read'], stored_read))
+        record['transcripts_read'] = stored_read
+    if coverage == 'partial':
+        for field in ('breakdown', 'human', 'integration', 'reviews', 'retries.fix', 'retries.failed_by_outcome',
+                      'subscription.share', 'attempts', 'by_task', 'value', 'in_attempts'):
+            if _get(record, tuple(field.split('.'))) is not None and not _within(field, kept):
+                gaps.add(field, PARTIAL_TRANSCRIPTS)
+    if no_origin:
+        reason = 'linie użytkownika bez pola origin (zmiana formatu CLI): wiadomości człowieka nierozpoznane'
+        _clear(record, [p for p in HUMAN_EVENT_PATHS if p not in kept], gaps, reason)
+        breakdown = record.get('breakdown')
+        if ('breakdown',) not in kept and isinstance(breakdown, dict) and _is_number(breakdown.get('human_wait')):
+            breakdown['idle'] = round(breakdown['idle'] + breakdown['human_wait'], 3)
+            _clear(record, (('breakdown', 'human_wait'),), gaps, reason + ': czas w idle')
+
+
+def _run_time(run_file, field, gaps, reason):
+    try:
+        return night_queue.parse_time(run_file.get(field)).timestamp()
+    except (TypeError, ValueError, AttributeError):
+        gaps.add(field, reason)
+        return None
+
+
+def build_native_record(epic_id, run_file, config, projects, now, run=None, no_gh=True, repo=None, previous=None,
+                        records=None, manual_fixes=None):
+    """(record, errors): the record of a native epic (spec ash-v1, M3) in the format of the AO record, `source:
+    native`. A field without a native source is null with a gap; `errors` are the messages of failed GitHub calls (and
+    of the origin gate). manual_fixes: the list of --manual-fixes or None."""
+    records, gaps, errors = records or {}, Gaps(), []
+    started = _run_time(run_file, 'started_at', gaps,
+                        'brak czasu startu w pliku przebiegu: wiadomości bez dolnej granicy')
+    done = _run_time(run_file, 'done_at', gaps, 'brak wywołania metrics.py done w pliku przebiegu')
+    tasks = run_file.get('tasks') if _is_int(run_file.get('tasks')) and run_file['tasks'] > 0 else None
+    if tasks is None:
+        gaps.add('tasks', 'brak liczby zadań w pliku przebiegu')
+    final_pr = run_file.get('pr') if _is_int(run_file.get('pr')) else None
+    branch = run_file.get('branch') if isinstance(run_file.get('branch'), str) and run_file['branch'] else None
+    sessions = []
+    for entry in run_file.get('sessions') if isinstance(run_file.get('sessions'), list) else []:
+        session = entry.get('id') if isinstance(entry, dict) else None
+        if isinstance(session, str) and SAFE_ID.match(session) and session not in sessions:
+            sessions.append(session)
+        else:
+            gaps.add('sessions', 'wpis sesji bez poprawnego identyfikatora w pliku przebiegu: pominięty')
+    if not sessions:
+        gaps.add('sessions', 'plik przebiegu bez sesji')
+    pr = None
+    if final_pr is None:
+        gaps.add('final_pr', 'brak numeru PR w pliku przebiegu')
+    if no_gh:
+        for field in ('issue', 'merged_at'):
+            gaps.add(field, 'pominięto gh (--no-gh)')
+    elif final_pr is not None:
+        try:
+            pr = fetch_pr(run, final_pr, repo)
+        except GhError as e:
+            errors.append(str(e))
+            gaps.add('issue', 'błąd gh: %s' % e)
+            gaps.add('merged_at', 'błąd gh: %s' % e)
+    merged = pr['merged_at'] if pr else None
+    if pr is not None:
+        if merged is None:
+            gaps.add('merged_at', 'końcowy PR nie jest zmergowany (stan %s)' % pr['state'])
+        if pr['issue'] is None:
+            gaps.add('issue', 'końcowy PR nie zamyka żadnego issue')
+    known_merge = merged if merged is not None else _stored_merged(previous)
+    if known_merge is None:
+        gaps.add('sessions', "czas merge'u końcowego PR nieznany: wiadomości liczone do końca transkryptów")
+    fields = native_fields(epic_id, projects, sessions, started, known_merge, config, gaps)
+    if any(a['value'] is None for a in fields['attempts']) or _get(fields['value'], ('total', 'incomplete')):
+        gaps.add('value', 'część wiadomości bez wartości: suma niepełna')
+    work, pauses = work_intervals(fields['marks']), human_gaps(fields['marks'])
+    record = {
+        'epic': epic_id,
+        'source': 'native',
+        'issue': pr['issue'] if pr else None,
+        'final_pr': final_pr,
+        'tasks': tasks,
+        'started_at': iso(started),
+        'done_at': iso(done),
+        'merged_at': iso(merged),
+        'wall': {
+            'to_done': round(done - started, 3) if done is not None and started is not None else None,
+            'to_merge': round(merged - started, 3) if merged is not None and started is not None else None,
+            'review': round(merged - done, 3) if merged is not None and done is not None else None,
+        },
+        'breakdown': native_breakdown(work, [p[:2] for p in pauses], started, done, config, gaps),
+        'breakdown_incomplete': True,
+        'integration': native_integration(fields['attempts'], fields['reviews'], gaps),
+        'retries': native_retries(fields['attempts'], fields['reviews'], gaps),
+        'parallel': None,
+        'subscription': native_subscription(run_file, started, done, projects, fields['messages'], config, gaps),
+        'gate_wait': None,
+        'human': native_human(pauses, work, fields['untimed_human'], started, known_merge, manual_fixes, gaps),
+        'in_attempts': fields['in_attempts'],
+        'by_task': fields['by_task'],
+        'versions': fields['versions'],
+        'attempts': fields['attempts'],
+        'value': fields['value'],
+        'waste': None,
+        'reviews': fields['reviews'],
+        'acceptance': native_acceptance(run, no_gh, repo, final_pr, branch, gaps, errors),
+        'sessions': sessions,
+        'transcripts_read': fields['transcripts_read'],
+        'pricing': {'source': config['pricing']['source'], 'read_at': config['pricing']['read_at']},
+    }
+    for field in ('parallel', 'gate_wait', 'waste'):
+        gaps.add(field, NATIVE_SOURCE)
+    record['ci'] = None
+    if no_gh:
+        for field in ('ci', 'regressions', 'found_after_merge'):
+            gaps.add(field, 'pominięto gh (--no-gh)')
+    else:
+        if final_pr is None or branch is None:
+            gaps.add('ci', 'brak numeru PR albo gałęzi epiku w pliku przebiegu')
+        else:
+            try:
+                record['ci'] = {'final': ci_entry(run, repo, config, final_pr, branch), 'tasks': None}
+                if not record['ci']['final']['runs']:
+                    gaps.add('ci', 'brak przebiegów CI gałęzi: %s' % branch)
+            except GhError as e:
+                errors.append(str(e))
+                gaps.add('ci', 'błąd gh: %s' % e)
+        record['regressions'] = record['found_after_merge'] = None
+        if known_merge is None or final_pr is None:
+            for field in ('regressions', 'found_after_merge'):
+                gaps.add(field, 'końcowy PR nie jest zmergowany albo jego stan nieznany: okno regresji nie '
+                                'zaczęło się')
+        else:
+            sha = pr['merge_sha'] if pr else _get(previous, ('regressions', 'merge_commit'))
+            record['regressions'], record['found_after_merge'] = regressions_of(
+                run, repo, config, epic_id, final_pr, sha, known_merge, now, previous, gaps, errors)
+    record.setdefault('regressions', None)
+    record.setdefault('found_after_merge', None)
+    apply_transcript_coverage(record, fields['coverage'], fields['no_origin'], previous, gaps)
+    keep_stored_values(record, previous, gaps)
+    record['bottlenecks'] = bottlenecks_of(record, history_of(record, records), config, gaps)
+    record['gaps'] = gaps.render()
+    return record, errors
+
+
 # ------------------------------------------------------------------------------------------------- bottlenecks
 
 # The decision rule of a candidate (spec: Wąskie gardła): D2 for a plan task, D3 for gate_wait, D4 for the waiting
@@ -2270,16 +3359,26 @@ BOTTLENECK_SUBJECTS = {('breakdown', 'human_wait'): 'D4:human_wait', ('breakdown
                        ('gate_wait', 'gate_wait'): 'D3:gate_wait', ('review', 'review'): 'D4:review'}
 
 
+SOURCES = ('ao', 'native')
+
+
+def source_of(record):
+    """The source of a record: `native` for a record of a native epic, `ao` for the others (also a record stored before
+    the field `source` existed)."""
+    return 'native' if isinstance(record, dict) and record.get('source') == 'native' else 'ao'
+
+
 def history_of(record, records):
-    """The stored records of the other epics merged before this one (all merged ones while it is not merged): the
-    history the medians come from."""
+    """The stored records of the other epics of the same source merged before this one (all merged ones while it is not
+    merged): the history the medians come from. The sources are never mixed: the fields of a native record are counted
+    differently than in AO (spec: Trend i raport dwóch źródeł)."""
     try:
         merged = night_queue.parse_time(record['merged_at']).timestamp()
     except (KeyError, TypeError, ValueError, AttributeError):
         merged = None
     found = []
     for other in records.values():
-        if other.get('epic') == record.get('epic'):
+        if other.get('epic') == record.get('epic') or source_of(other) != source_of(record):
             continue
         try:
             when = night_queue.parse_time(other['merged_at']).timestamp()
@@ -2785,9 +3884,33 @@ def percentile(ordered, fraction):
     return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
 
 
+def effect_source(records, at):
+    """The source the windows of `effect` are taken from: the one of most of the epics started after `at` (the first
+    started one when equal), without any such epic the one of the epic merged last; `ao` for no records. The sources
+    are never mixed (as in `history_of`)."""
+    after, merged = [], []
+    for record in records.values():
+        started, done = _epoch(record, 'started_at'), _epoch(record, 'merged_at')
+        if started is not None and started > at:
+            after.append((started, str(record.get('epic')), source_of(record)))
+        if done is not None:
+            merged.append((done, str(record.get('epic')), source_of(record)))
+    if after:
+        found = [source for _, _, source in sorted(after)]
+        return max(dict.fromkeys(found), key=found.count)
+    return sorted(merged)[-1][2] if merged else 'ao'
+
+
 def effect_windows(records, at, gaps):
     """(before, after, before_pool, spanning, unmerged): the records of the two windows (oldest first), the whole pool of
-    epics merged at or before `at` (its closest ones give the epic time) and the ids left out."""
+    epics merged at or before `at` (its closest ones give the epic time) and the ids left out. Only the records of one
+    source (`effect_source`) are used; the others are a gap."""
+    source = effect_source(records, at)
+    others = sorted(str(r.get('epic')) for r in records.values() if source_of(r) != source)
+    if others:
+        gaps.add('effect', 'pominięto %d epików innego źródła niż %s (okna liczy się osobno dla każdego źródła): %s'
+                           % (len(others), source, ', '.join(others)))
+    records = {key: r for key, r in records.items() if source_of(r) == source}
     pool, after, spanning, unmerged = [], [], [], []
     for record in records.values():
         started, merged = _epoch(record, 'started_at'), _epoch(record, 'merged_at')
@@ -3078,16 +4201,36 @@ def trend_estimated(record, config):
     return {column for column, flag in flags.items() if flag and values[column] is not None}
 
 
+# The columns of `trend` a native record counts as an AO one does (spec: M6): the time to the ready PR, the time to the
+# merge (and so the review between them) and the regressions. The other columns of a native record are marked: the value
+# (the price list instead of the cost of the CLI), the interventions, the breakdown of the time (`work`, `human_wait`),
+# the repeated commands and the share of the subscription limits are counted differently.
+COMPARABLE_COLUMNS = ('to_done', 'review', 'regressions')
+DIFFERENT_NOTE = 'liczone inaczej niż w AO'
+DIFFERENT_MARK = '\u2020'
+
+
+def trend_different(record, config):
+    """The columns of `trend_values` of one record that are counted differently than in AO and have a value (a native
+    record: all but COMPARABLE_COLUMNS; an AO record: none). An unknown column is not marked."""
+    if source_of(record) != 'native':
+        return set()
+    values = trend_values(record, config)
+    return {column for column in TREND_COLUMNS if column not in COMPARABLE_COLUMNS and values[column] is not None}
+
+
 def estimated_list(sets):
-    """The union of sets of estimated columns as a list in the order of TREND_COLUMNS (a median of a column is
-    estimated when one of the values it is built from is)."""
+    """The union of sets of columns (estimated ones, or ones counted differently) as a list in the order of TREND_COLUMNS
+    (a median of a column is estimated when one of the values it is built from is)."""
     union = set().union(*sets) if sets else set()
     return [column for column in TREND_COLUMNS if column in union]
 
 
-def cell_text(value, estimated):
-    """A number with two places, `≈ ` before an estimated one (as `usd_text`); `-` for an unknown one."""
-    return approx(estimated and value is not None) + pl(value, 2)
+def cell_text(value, estimated, different=False):
+    """A number with two places, `≈ ` before an estimated one (as `usd_text`) and the mark of a field counted differently
+    than in AO after it; `-` for an unknown one."""
+    return approx(estimated and value is not None) + pl(value, 2) + (DIFFERENT_MARK if different and value is not None
+                                                                     else '')
 
 
 def median_of(values):
@@ -3186,9 +4329,10 @@ def refresh_windows(records, state_dir, config, run, repo, now, errors):
 
 
 def build_trend(records, config, last, epic):
-    """The trend table: the last `last` merged epics with their columns, the medians of
-    the shown epics (nulls skipped), the position of `epic` (default: the latest; it may be older than the shown ones)
-    against them and the annotations."""
+    """The trend table: the last `last` merged epics (of both sources, each row with its `source`) with their columns,
+    the medians of the shown epics per source (nulls skipped), the position of `epic` (default: the latest; it may be
+    older than the shown ones) against the median of its own source and the annotations. `median` and `median_estimated`
+    are those of the source of the position."""
     ordered = merged_records(records)
     if not ordered:
         raise MetricsError('brak zapisanych rekordów zmergowanych epików (uruchom: metrics.py backfill)')
@@ -3200,17 +4344,30 @@ def build_trend(records, config, last, epic):
     rows = []
     for record in shown:
         index = ordered.index(record)
-        rows.append({'epic': record['epic'], 'merged_at': record.get('merged_at'), 'tasks': record.get('tasks'),
-                     'values': trend_values(record, config), 'estimated': estimated_list([trend_estimated(record, config)]),
+        rows.append({'epic': record['epic'], 'source': source_of(record), 'merged_at': record.get('merged_at'),
+                     'tasks': record.get('tasks'), 'values': trend_values(record, config),
+                     'estimated': estimated_list([trend_estimated(record, config)]),
+                     'different': estimated_list([trend_different(record, config)]),
                      'annotations': change_annotations(ordered[index - 1], record) if index else []})
-    medians = {column: median_of([row['values'][column] for row in rows]) for column in TREND_COLUMNS}
+    sources = {}
+    for name in SOURCES:
+        part = [(row, record) for row, record in zip(rows, shown) if row['source'] == name]
+        if part:
+            medians = {column: median_of([row['values'][column] for row, _ in part]) for column in TREND_COLUMNS}
+            sources[name] = {'epics': len(part), 'median': medians,
+                             'median_estimated': estimated_list([trend_estimated(r, config) for _, r in part]),
+                             'median_different': [c for c in estimated_list(
+                                 [trend_different(r, config) for _, r in part]) if medians[c] is not None]}
+    name = source_of(chosen)
+    own = sources.get(name) or {'epics': 0, 'median': {column: None for column in TREND_COLUMNS},
+                                'median_estimated': [], 'median_different': []}
     values = trend_values(chosen, config)
-    shown_estimated = [trend_estimated(record, config) for record in shown]
-    return {'columns': list(TREND_COLUMNS), 'epics': rows, 'median': medians,
-            'median_estimated': estimated_list(shown_estimated),
-            'position': {'epic': chosen['epic'], 'columns': position_of(values, medians),
+    return {'columns': list(TREND_COLUMNS), 'epics': rows, 'median': own['median'],
+            'median_estimated': own['median_estimated'], 'median_source': name, 'sources': sources,
+            'position': {'epic': chosen['epic'], 'source': name, 'columns': position_of(values, own['median']),
                          'estimated': estimated_list([trend_estimated(chosen, config)]),
-                         'median_estimated': estimated_list(shown_estimated)},
+                         'different': estimated_list([trend_different(chosen, config)]),
+                         'median_estimated': own['median_estimated'], 'median_different': own['median_different']},
             'recomputed': []}
 
 
@@ -3225,26 +4382,41 @@ def format_trend(table):
     heads = {'to_done': 'do_done', 'work': 'work', 'human_wait': 'human', 'review': 'review', 'gate_wait': 'gate',
              'repeat_runs': 'powt.', 'value': 'USD', 'pp': 'pp', 'failed': 'nieud.', 'repair': 'REPAIR',
              'interventions': 'interw.', 'regressions': 'regr.'}
+    columns = table['columns']
+
+    def texts(values, estimated, different, source):
+        # a native record has no source of some fields: `brak danych`, not a dash (and never a zero)
+        return [NO_DATA if values[c] is None and source == 'native'
+                else cell_text(values[c], c in estimated, c in different) for c in columns]
+
     width = max([len('mediana')] + [len(r['epic']) for r in table['epics']])
-    cells = [[cell_text(row['values'][c], c in row['estimated']) for c in table['columns']] for row in table['epics']]
-    middle = [cell_text(table['median'][c], c in table['median_estimated']) for c in table['columns']]
+    source_width = max([len('źródło')] + [len(r['source']) for r in table['epics']] + [len(n) for n in table['sources']])
+    lines_of = [(r['epic'], r['source'], texts(r['values'], r['estimated'], r['different'], r['source']))
+                for r in table['epics']]
+    medians = [('mediana', name, texts(entry['median'], entry['median_estimated'], entry['median_different'], name))
+               for name, entry in table['sources'].items()]
     # a column is as wide as its widest cell (an estimate with `≈ ` can be wider than 8 characters)
-    widths = [max([8, len(middle[i])] + [len(cell[i]) for cell in cells]) for i in range(len(table['columns']))]
+    widths = [max([8] + [len(cells[i]) for _, _, cells in lines_of + medians]) for i in range(len(columns))]
     lines = ['Trend (na zadanie planu; czasy w godzinach; epików: %d)' % len(table['epics']),
-             ' '.join(['epik'.ljust(width)] + [heads[c].rjust(w) for c, w in zip(table['columns'], widths)])]
-    for row, line in zip(table['epics'], cells):
-        lines.append(' '.join([row['epic'].ljust(width)] + [t.rjust(w) for t, w in zip(line, widths)]))
-    lines.append(' '.join(['mediana'.ljust(width)] + [t.rjust(w) for t, w in zip(middle, widths)]))
+             ' '.join(['epik'.ljust(width), 'źródło'.ljust(source_width)] + [heads[c].rjust(w)
+                                                                           for c, w in zip(columns, widths)])]
+    for name, source, cells in lines_of + medians:
+        lines.append(' '.join([name.ljust(width), source.ljust(source_width)] + [t.rjust(w) for t, w in zip(cells, widths)]))
     position = table['position']
-    lines.append('%s wobec mediany:' % position['epic'])
-    for column in table['columns']:
+    if any(r['different'] for r in table['epics']) or position['different'] or any(
+            e['median_different'] for e in table['sources'].values()):
+        lines.append('%s %s (cennik zamiast kosztu z CLI, wiadomości człowieka jako interwencje, rozkład czasu bez '
+                     'oczekiwania na limity, CI i GitHub, koszt subskrypcji z lokalnych transkryptów)' % (
+                         DIFFERENT_MARK, DIFFERENT_NOTE))
+    lines.append('%s wobec mediany (źródło: %s):' % (position['epic'], position['source']))
+    for column in columns:
         entry = position['columns'][column]
         if entry['diff'] is None:
             lines.append('  %s: brak danych' % heads[column])
             continue
         lines.append('  %s: %s (mediana %s%s)' % (
-            heads[column], cell_text(entry['value'], column in position['estimated']),
-            cell_text(entry['median'], column in position['median_estimated']),
+            heads[column], cell_text(entry['value'], column in position['estimated'], column in position['different']),
+            cell_text(entry['median'], column in position['median_estimated'], column in position['median_different']),
             percent_text(entry, column in position['estimated'] or column in position['median_estimated'])))
     notes = ['%s: %s' % (row['epic'], note) for row in table['epics'] for note in row['annotations']]
     if notes:
@@ -3325,6 +4497,25 @@ def usd_text(cell):
     return text + (' (suma niepełna)' if cell.get('incomplete') is True else '')
 
 
+def different_text(record, text):
+    """`text` with the note that the field is counted differently than in AO, for a native record; unchanged for AO."""
+    return '%s (%s)' % (text, DIFFERENT_NOTE) if source_of(record) == 'native' else text
+
+
+def epics_of_source(count, record):
+    """`epiku AO`, `epików natywnych`: the history after `z` (`mediana z`)."""
+    if source_of(record) == 'native':
+        return plural(count, 'epiku natywnego', 'epików natywnych', 'epików natywnych')
+    return plural(count, 'epiku AO', 'epików AO', 'epików AO')
+
+
+def epics_text(count, record):
+    """`5 epików AO`, `2 epiki natywne`: the history of a record is of its own source only."""
+    if source_of(record) == 'native':
+        return '%d %s' % (count, plural(count, 'epik natywny', 'epiki natywne', 'epików natywnych'))
+    return '%d %s' % (count, plural(count, 'epik AO', 'epiki AO', 'epików AO'))
+
+
 def plural(number, one, few, many):
     if number == 1:
         return one
@@ -3380,6 +4571,11 @@ def _breakdown_text(record, whole):
     return ', '.join(parts)
 
 
+def breakdown_label(record):
+    """`rozkład`, for a native record with the note: its breakdown has no limit, CI and GitHub waits (spec: M3)."""
+    return different_text(record, 'rozkład')
+
+
 def time_topic(record, comment):
     wall = _dict(record.get('wall'))
     to_done, to_merge = wall.get('to_done'), wall.get('to_merge')
@@ -3388,15 +4584,15 @@ def time_topic(record, comment):
     if not _is_number(to_done):
         text = 'Czas do epic_done: %s' % NO_DATA
         if record.get('breakdown_end') == 'merged_at' and isinstance(breakdown, dict) and _is_number(to_merge):
-            text += " (epik zamknięty ręcznie); rozkład do merge'u (%s): %s" % (
-                hours_text(to_merge), _breakdown_text(record, to_merge))
+            text += " (epik zamknięty ręcznie); %s do merge'u (%s): %s" % (
+                breakdown_label(record), hours_text(to_merge), _breakdown_text(record, to_merge))
         lines = [text]
     else:
         text = 'Czas do epic_done: %s' % hours_text(to_done)
         if _is_int(tasks) and tasks > 0:
             text += ' (%s na zadanie planu)' % hours_text(to_done / tasks)
         if isinstance(breakdown, dict):
-            text += '; rozkład: ' + _breakdown_text(record, to_done)
+            text += '; %s: %s' % (breakdown_label(record), _breakdown_text(record, to_done))
         lines = [text]
     if comment:
         lines.append("Czas do merge'u: %s, odbiór (review): %s" % (hours_text(wall.get('to_merge')),
@@ -3444,12 +4640,13 @@ def integration_topic(record):
         text += ' w %d %s' % (data['attempts'], plural(data['attempts'], 'próbie', 'próbach', 'próbach'))
     if _count(data.get('rounds')) is not None:
         text += ', rund: %d' % data['rounds']
-    return [text]
+    return [different_text(record, text)]
 
 
 def value_topic(record):
     value = _dict(record.get('value'))
-    head = 'Wartość tokenów (szacunek CLI według cen API, nie koszt subskrypcji): '
+    head = 'Wartość tokenów (szacunek CLI według cen API, nie koszt subskrypcji): ' if source_of(record) != 'native' \
+        else 'Wartość tokenów (szacunek według cennika API, %s; nie koszt subskrypcji): ' % DIFFERENT_NOTE
     if not isinstance(value.get('total'), dict):
         return [head + NO_DATA]
     lines = [head + 'razem ' + usd_text(value['total'])]
@@ -3474,7 +4671,8 @@ def value_topic(record):
 
 
 def subscription_topic(record):
-    head = 'Subskrypcja (punkty procentowe okien limitu, osobno od wartości tokenów): '
+    head = 'Subskrypcja (punkty procentowe okien limitu, osobno od wartości tokenów%s): ' % (
+        '; ' + DIFFERENT_NOTE if source_of(record) == 'native' else '')
     data = record.get('subscription')
     if not isinstance(data, dict):
         return [head + NO_DATA]
@@ -3523,7 +4721,13 @@ def retries_topics(record):
         causes = [_count(repair.get('final_pr_conflict')), _count(repair.get('ci_red'))]
         lines.append('REPAIR: %d (%s)' % (repair['count'], 'przyczyna nieznana' if None in causes else
                                            'konflikt końcowego PR %d, czerwone CI %d' % tuple(causes)))
-    lines.append('FIX: %s' % (_count(data.get('fix')) if _count(data.get('fix')) is not None else NO_DATA))
+    fix = _count(data.get('fix'))
+    if fix is None:
+        lines.append('FIX: %s' % NO_DATA)
+    elif source_of(record) == 'native':
+        lines.append('FIX: %d (rundy przeglądu, %s)' % (fix, DIFFERENT_NOTE))      # the blocking reports of reviews
+    else:
+        lines.append('FIX: %d' % fix)
     if not isinstance(data.get('sync_prs'), list):
         lines.append('Sync: %s' % NO_DATA)
     else:
@@ -3552,7 +4756,7 @@ def human_topic(record):
     waits, seconds = _count(human.get('waits')), human.get('wait_s')
     if waits is not None and _is_number(seconds):
         text += '; czekania na użytkownika: %d, razem %d min' % (waits, int(round(seconds / 60.0)))
-    return [text]
+    return [different_text(record, text)]
 
 
 def waste_topic(record):
@@ -3621,10 +4825,12 @@ def regressions_topic(record):
 
 def position_topic(record, history, config, comment):
     if not history:
-        return ['Pozycja na tle mediany: brak historii (zmergowanych epików przed tym: 0)']
+        return ['Pozycja na tle mediany: brak historii (zmergowanych epików %s przed tym: 0)'
+                % ('natywnych' if source_of(record) == 'native' else 'AO')]
     values = [trend_values(h, config) for h in history]
     medians = {c: median_of([v[c] for v in values]) for c in TREND_COLUMNS}
     estimated = trend_estimated(record, config)
+    different = trend_different(record, config)
     median_estimated = set(estimated_list([trend_estimated(h, config) for h in history]))
     position = position_of(trend_values(record, config), medians)
     parts = []
@@ -3635,8 +4841,12 @@ def position_topic(record, history, config, comment):
         parts.append('%s %s (mediana %s%s)' % (column, cell_text(entry['value'], column in estimated),
                                                cell_text(entry['median'], column in median_estimated),
                                                percent_text(entry, column in estimated or column in median_estimated)))
-    return ['Pozycja na tle mediany (%d %s, na zadanie planu; czasy w godzinach): %s' % (
-        len(history), plural(len(history), 'epik', 'epiki', 'epików'), '; '.join(parts) or NO_DATA)]
+    text = 'Pozycja na tle mediany (%s, na zadanie planu; czasy w godzinach): %s' % (
+        epics_text(len(history), record), '; '.join(parts) or NO_DATA)
+    marked = [c for c in TREND_COLUMNS if c in different and not (c == 'review' and not comment)]
+    if marked:
+        text += ' [%s: %s]' % (DIFFERENT_NOTE, ', '.join(marked))
+    return [text]
 
 
 def gaps_topic(record, comment):
@@ -3681,14 +4891,22 @@ def manual_fix_lines(fixes):
 def comment_head(record):
     human = _dict(record.get('human'))
     interventions, waits, seconds = _count(human.get('interventions')), _count(human.get('waits')), human.get('wait_s')
-    lines = ['Interwencje człowieka: %s' % (interventions if interventions is not None else NO_DATA)]
+    lines = [different_text(record, 'Interwencje człowieka: %s' % (interventions if interventions is not None
+                                                                   else NO_DATA))]
     if waits is None or not _is_number(seconds):
         lines.append('Czekanie na użytkownika: %s' % NO_DATA)
     else:
-        lines.append('Czekanie na użytkownika: %d %s, razem %d min%s' % (
+        lines.append(different_text(record, 'Czekanie na użytkownika: %d %s, razem %d min%s' % (
             waits, plural(waits, 'czekanie', 'czekania', 'czekań'), int(round(seconds / 60.0)),
-            ', otwarte: %d' % human['open'] if _count(human.get('open')) else ''))
+            ', otwarte: %d' % human['open'] if _count(human.get('open')) else '')))
     return lines + manual_fix_lines(human.get('manual_fixes'))
+
+
+def source_topic(record):
+    if source_of(record) == 'native':
+        return ['Źródło pomiaru: natywne (transkrypty sesji epiku); pola %s są oznaczone, historia i mediana tylko '
+                'z epików natywnych' % DIFFERENT_NOTE]
+    return ['Źródło pomiaru: AO (przebieg /ao-run); historia i mediana tylko z epików AO']
 
 
 def render_measurement(record, records, config, comment):
@@ -3701,11 +4919,11 @@ def render_measurement(record, records, config, comment):
             items = bottlenecks_of(record, history, config, Gaps())
     else:
         items = bottlenecks_of(record, history, config, Gaps(), include_review=False)
-    head = 'Wąskie gardła (mediana z %d %s)' % (len(history), plural(len(history), 'epiku', 'epików', 'epików'))
+    head = 'Wąskie gardła (mediana z %d %s)' % (len(history), epics_of_source(len(history), record))
     numbered = bottleneck_lines(items)
     topics = [[head + ':'] + numbered if numbered else
               [head + ': brak pozycji z nadwyżką co najmniej %s h ponad medianę' % pl(config['bottlenecks']['min_excess_h'])]]
-    topics += [time_topic(record, comment), attempts_time_topic(record), integration_topic(record),
+    topics += [source_topic(record), time_topic(record, comment), attempts_time_topic(record), integration_topic(record),
                value_topic(record), subscription_topic(record)]
     topics += [[line] for line in retries_topics(record)]
     topics += [gate_topic(record)]
@@ -3778,10 +4996,21 @@ def cmd_epic(args, config, run, now):
     busy = config['busy_timeout_ms'] if args.busy_timeout_ms is None else args.busy_timeout_ms
     manual_fixes = read_manual_fixes(_expand(args.manual_fixes)) if args.manual_fixes else None
     path = state_path(_expand(args.state), args.epic)
-    record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now, run=run,
-                                  no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
-                                  records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home),
-                                  waste=waste_of_epic(_expand(args.state), args.epic))
+    if os.path.isdir(ao_home):
+        record, errors = build_record(args.epic, ao_home, config, busy, _expand(args.night), manual_fixes, now,
+                                      run=run, no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
+                                      records=read_records(_expand(args.state)), ao_root=os.path.dirname(ao_home),
+                                      waste=waste_of_epic(_expand(args.state), args.epic))
+    else:
+        # M2 of docs/features/ash-v1/spec.md: without the AO run directory the epic is native (its run file)
+        run_file_path = run_path(_expand(args.state), checked_id(args.epic, 'epiku'))
+        run_file = read_run_file(run_file_path)
+        if run_file is None:
+            raise MetricsError('brak katalogu AO %s i brak pliku przebiegu %s (metrics.py start)'
+                               % (ao_home, run_file_path))
+        record, errors = build_native_record(args.epic, run_file, config, _expand(args.projects), now, run=run,
+                                             no_gh=args.no_gh, repo=args.repo, previous=read_previous(path),
+                                             records=read_records(_expand(args.state)), manual_fixes=manual_fixes)
     write_record(path, record)
     print(json.dumps(record, ensure_ascii=False))
     for error in errors:
@@ -4217,9 +5446,23 @@ def build_parser():
     common.add_argument('--night', default='~/.local/state/ao-night')
     common.add_argument('--busy-timeout-ms', type=int, default=None)
     common.add_argument('--repo', default=None)
-    parser = argparse.ArgumentParser(description='Measurement of AO epic runs')
+    projects = argparse.ArgumentParser(add_help=False)
+    projects.add_argument('--projects', default='~/.claude/projects')
+    parser = argparse.ArgumentParser(description='Measurement of AO and native epic runs')
     sub = parser.add_subparsers(dest='command', required=True)
-    epic = sub.add_parser('epic', parents=[common])
+    start = sub.add_parser('start', parents=[common, projects])
+    start.add_argument('epic')
+    start.add_argument('--resume', action='store_true')
+    start.add_argument('--at')
+    start.add_argument('--worktree')
+    start.add_argument('--branch')
+    start.add_argument('--pr', type=_positive_int)
+    start.add_argument('--tasks', type=_positive_int)
+    start.add_argument('--session')
+    done = sub.add_parser('done', parents=[common])
+    done.add_argument('epic')
+    done.add_argument('--at')
+    epic = sub.add_parser('epic', parents=[common, projects])
     epic.add_argument('epic')
     epic.add_argument('--ao-home')
     epic.add_argument('--manual-fixes')
@@ -4255,6 +5498,10 @@ def main(argv=None, run=None, now=None):
     try:
         config = load_config(_expand(args.config))
         runner = run or (lambda command: default_runner(command, config['gh_timeout_s']))
+        if args.command == 'start':
+            return cmd_start(args, runner, now, sys.stdin)
+        if args.command == 'done':
+            return cmd_done(args, now, sys.stdin)
         if args.command == 'epic':
             return cmd_epic(args, config, runner, now)
         if args.command == 'backfill':
