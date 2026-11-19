@@ -252,6 +252,16 @@ class DemoDataLib(unittest.TestCase):
         self.assertIn("generate: the log of the generator held 1 value(s)", result.stderr)
         self.assertNotIn("load:", result.stderr)
 
+    def test_the_log_is_saved_when_the_photo_pool_was_never_read(self):
+        # generate.sh saves the log of a Job of the seed, which needs no photo pool: photos_* are not set at all, and under
+        # `set -u` the log must still be the whole log, not an empty file with exit 0.
+        target = self.dir / "demo-data.log"
+        result = self.run_lib(f'DEMO_DATA_TOOL=generate\nsave_generator_log demo-data-seed "{target}"\necho saved', KC_LOG=GENERATOR_LOG)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(GENERATOR_LOG + "\n", target.read_text())
+        self.assertEqual("saved\n", result.stdout)
+        self.assertEqual("", result.stderr)
+
     def test_a_log_that_cannot_be_read_leaves_a_line_that_says_so_and_does_not_end_the_caller(self):
         target = self.dir / "demo-data.log"
         script = f'kc() {{ echo "kubectl error with {READ_ACCESS["DEMO_PHOTOS_BUCKET"]}" >&2; return 1; }}\nsave_generator_log demo-data-load "{target}"'
