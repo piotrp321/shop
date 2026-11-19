@@ -2,6 +2,8 @@
 
 Raporty z przeglądów i pomiarów, każdy przypięty do rewizji kodu. Raport opisuje wynik na konkretnej rewizji i po
 zapisaniu się nie zmienia; kolejny pomiar albo przegląd to nowy plik (z datą w nazwie), a nie edycja poprzedniego.
+Raport z przeglądu źródeł zewnętrznych, który nie dotyczy kodu (np. ogłoszeń o pracę), zamiast rewizji podaje datę
+odczytu źródeł.
 Surowe wyniki pomiarów zostają poza repozytorium; wyjątkiem jest wybór wyników i skryptów potrzebny do odtworzenia
 pomiaru, dołączony w katalogu o nazwie raportu, bez danych testowych i danych uwierzytelniających.
 
@@ -22,3 +24,4 @@ pomiaru, dołączony w katalogu o nazwie raportu, bez danych testowych i danych 
 | [performance-audit-2026-11-18](performance-audit-2026-11-18.md) | niezależny audyt wydajności i skalowalności sklepu, API i panelu z pomiarami na własnym stosie i danych do 1 mln produktów: koszt żądania API (tryb klasyczny, trwałe połączenie, worker mode FrankenPHP), plany zapytań PostgreSQL, rozbicie kosztu zapytań Elasticsearch, ścieżka zamówienia, przetwarzanie asynchroniczne, strony sklepu i przebieg do nasycenia; rozróżnienie poprawności biznesowej, dostępności i wydajności, rekomendacje z dowodem, kosztem i pewnością, propozycje epików, początkowa infrastruktura i plan benchmarków; skrypty, wybrane surowe wyniki, raporty cząstkowe i research w `performance-audit-2026-11-18/` | `1aeb5076` |
 | [simplification-audit-2026-11-18](simplification-audit-2026-11-18.md) | audyt uproszczeń aplikacji, część 1: inwentaryzacja kodu i zależności, martwy i zbędny kod, własne implementacje a mechanizmy natywne, architektura i abstrakcje, testy, infrastruktura i dane demo, szacowana redukcja, plan uproszczeń i propozycje epików; załącznik z researchem alternatyw w `simplification-audit-2026-11-18/` | `1aeb5076` |
 | [simplification-audit-2026-11-18-part-2](simplification-audit-2026-11-18-part-2.md) | audyt uproszczeń, część 2: trzy warianty kolejki zdarzeń z pomiarem, ryzyka produkcyjne (dane demo, kopie zapasowe, zmienne środowiska), interfejsy z jedną implementacją, przyczyny narastania złożoności, szacunki netto i ostateczna propozycja epików; tam, gdzie zmienia rekomendację części 1, obowiązuje ta część | `5d1e9e1c` |
+| [ai-engineering-job-market-2026-11-18](ai-engineering-job-market-2026-11-18.md) | przegląd ogłoszeń o pracę na justjoin.it dla ról związanych z tworzeniem oprogramowania przy użyciu agentów AI: 56 ofert przeczytanych w całości (z 1903 pobranych opisów), wymagane kompetencje, narzędzia, praktyki inżynierskie, organizacja pracy i podział odpowiedzialności człowiek–agent; same fakty z ogłoszeń, bez rekomendacji | nie dotyczy kodu; ogłoszenia według stanu z 2026-11-18 |
