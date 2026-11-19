@@ -3056,6 +3056,36 @@ class ObserveTest(RunDirCase):
         self.assertEqual(code, 0, err)
         self.assertEqual([i['key'] for i in self.state('e3')['pr']['items']], ['gx'])
 
+    def test_observing_the_same_proposals_again_keeps_the_settled_issue_decisions(self):
+        # "tak 1" for a deferred blocker after the issues were decided: the second observe updates only the PR
+        self.write_proposals(fix(1, key='fx'), issue_item(2, key='is'), issue_item(3, key='is3'))
+        self.assertEqual(self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3',
+                                  '--committed', 'none')[0], 0)
+        self.assertEqual(self.cli('issues', self.run_dir, '--approve', '2')[0], 0)
+        self.assertEqual(self.cli('reject', '--key', 'is3', '--reason', 'celowo', '--epic', 'e3')[0], 0)
+        self.assertEqual(self.state('e3')['decisions_open'], [])
+        code, _, err = self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3', '--committed', '1')
+        self.assertEqual(code, 0, err)
+        state = self.state('e3')
+        self.assertEqual(state['decisions_open'], [])
+        self.assertEqual([i['key'] for i in state['pr']['items']], ['fx'])
+        self.refused('issues', self.run_dir, '--approve', '3', text='was rejected')
+
+    def test_observing_the_same_proposals_without_a_pr_and_then_with_one_keeps_the_decisions(self):
+        self.write_proposals(fix(1, key='fx'), issue_item(2, key='is'))
+        self.cli('observe', self.run_dir)
+        self.cli('reject', '--key', 'is', '--reason', 'celowo', '--epic', 'e3')
+        self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3', '--committed', '1')
+        self.assertEqual(self.state('e3')['decisions_open'], [])
+
+    def test_observing_other_proposals_replaces_the_decisions(self):
+        self.write_proposals(issue_item(1, key='old'))
+        self.cli('observe', self.run_dir)
+        self.cli('reject', '--key', 'old', '--reason', 'celowo', '--epic', 'e3')
+        self.write_proposals(issue_item(1, key='new'))
+        self.cli('observe', self.run_dir)
+        self.assertEqual([d['key'] for d in self.state('e3')['decisions_open']], ['new'])
+
     def test_committed_without_a_pr_or_with_a_number_of_no_fix_item_is_a_refusal(self):
         self.write_proposals(fix(1, key='fx'), issue_item(2, key='is'))
         self.refused('observe', self.run_dir, '--committed', 'none', text='--committed needs --pr')
