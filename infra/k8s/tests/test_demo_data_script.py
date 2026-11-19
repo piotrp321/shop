@@ -7,8 +7,13 @@ block and one line of the reason in the termination log.
 
 The stubs log one line per call ("<tool> <arguments>") in $STUB_DIR/calls. The generator stub behaves like bin/generate-demo: its
 trap of TERM waits for the command in the foreground (bin/console), and the console stub ignores TERM with STUB_CONSOLE_IGNORES_TERM.
-The tests run the script with the sh of the image that runs them (busybox in python:3.13-alpine); the image of the api runs it with
-dash, the same tests pass there (the report of DEMO-SCALE-4)."""
+The tests run the script with the sh of the image that runs them (busybox in python:3.13-alpine, make -C infra/k8s check); the image
+of the api runs it with dash and mawk, which CI does not test. The same tests with the shell and the tools of the image of the api
+(Debian trixie: dash, util-linux setsid, mawk), from the root of the repository:
+
+  docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo:ro" -w /repo/infra/k8s python:3.13-slim-trixie \\
+    python -I -m unittest discover -s tests -p 'test_demo_data_script.py'
+"""
 
 import os
 import pathlib
@@ -367,6 +372,61 @@ class GuardTest(Script):
         self.assertGreaterEqual(readings, 11, out)
         printed = [int(n) for n in re.findall(r"\(reading (\d+)\)", out)]
         self.assertEqual([1, 10], printed, out)
+
+
+class SeedFloorTest(Script):
+    """The seed (DEMO_DATA_CONFIRM=seed) has half the floor: after a stop by the guard the free space stays just below demoData.minFreeGb,
+    and the way back to the seed (it starts with TRUNCATE) must not be blocked. Half of 32 GB is 16 GB, 15625000 KiB."""
+
+    # KiB: 20.48 GB (between the half and the whole floor), 15.36 GB (below the half).
+    BETWEEN = "20000000"
+    BELOW_HALF = "15000000"
+
+    def test_the_seed_starts_between_the_half_and_the_whole_floor(self):
+        for reading in (self.BETWEEN, "15625000"):
+            with self.subTest(reading=reading):
+                self.calls_file.write_text("")
+                (self.base / "df.log").write_text("")
+                code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=reading)
+                self.assertEqual(0, code, out)
+                self.assertEqual(["seed-demo "], self.started())
+                fields, _ = self.summary(out)
+                self.assertEqual("16 GB (15625000 KiB)", fields["floor of the free space"])
+
+    def test_the_seed_refuses_with_74_below_the_half_of_the_floor(self):
+        for reading in (self.BELOW_HALF, "15624999"):
+            with self.subTest(reading=reading):
+                self.calls_file.write_text("")
+                (self.base / "df.log").write_text("")
+                code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=reading)
+                self.assertEqual(74, code, out)
+                self.assertEqual([], self.started())
+                self.assertIn("16 GB", self.reason(74))
+                fields, _ = self.summary(out)
+                self.assertEqual("16 GB (15625000 KiB)", fields["floor of the free space"])
+
+    def test_the_guard_of_the_seed_stops_it_below_the_half_of_the_floor(self):
+        code, out, _ = self.run_script(DEMO_DATA_CONFIRM="seed", STUB_DF=f"{self.BETWEEN} {self.BETWEEN} {self.BELOW_HALF}",
+                                       STUB_STEPS="Seed:0", STUB_CONSOLE_SECONDS="60", STUB_CONSOLE_IGNORES_TERM="1")
+        self.assertEqual(75, code, out)
+        self.assert_the_group_is_gone()
+        self.assert_the_rest_is_untouched()
+        self.assertIn("16 GB", self.reason(75))
+
+    def test_the_profile_keeps_the_whole_floor(self):
+        code, out, _ = self.run_script(STUB_DF=self.BETWEEN)
+        self.assertEqual(74, code, out)
+        self.assertEqual([], self.started())
+        self.assertIn("32 GB", self.reason(74))
+        fields, _ = self.summary(out)
+        self.assertEqual("32 GB (31250000 KiB)", fields["floor of the free space"])
+
+    def test_an_odd_floor_halves_to_a_fraction_of_a_gb_rounded_up_in_kib(self):
+        # 11 GB / 2 = 5.5 GB = 5500000000 bytes = 5371093.75 KiB, rounded up.
+        code, out, _ = self.run_script(("--profile=medium", "--min-free-gb=11"), DEMO_DATA_CONFIRM="seed", STUB_DF="5371093")
+        self.assertEqual(74, code, out)
+        fields, _ = self.summary(out)
+        self.assertEqual("5.5 GB (5371094 KiB)", fields["floor of the free space"])
 
 
 class SummaryTest(Script):
