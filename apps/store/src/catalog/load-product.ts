@@ -49,15 +49,19 @@ function isDetails(value: ProductDetails | undefined): value is ProductDetails {
 }
 
 /**
- * The details of the product by its slug, then its offer (price, level, variants). A 404 for the slug is `not-found`.
- * The read of the details carries the tag of the slug (only for a slug in the format of a product slug, which is the
- * only one a product can have), so the publication of a product revalidates the 404 page of its slug.
+ * The details of the product by its slug, then its offer (price, level, variants). A slug outside the format of a
+ * product slug is `not-found` without a call to the API (no product can have it); a 404 for the slug is `not-found`
+ * too.
+ * The read of the details carries the tag of the slug, so the publication of a product revalidates the 404 page of its
+ * slug.
  * Any other failure (status, network, an unexpected body) of the details or of the offer is thrown, so the page is an
  * error page that the ISR cache does not keep, not a page without a price.
  */
 export async function loadProduct(slug: string): Promise<ProductResult> {
-  const detailsTags = isProductSlug(slug) ? ["catalog", `product-slug-${slug}`] : ["catalog"];
-  const detailsResponse = await catalogClient(detailsTags).GET("/api/v1/products/{slug}", { params: { path: { slug } } });
+  if (!isProductSlug(slug)) {
+    return { kind: "not-found" };
+  }
+  const detailsResponse = await catalogClient(["catalog", `product-slug-${slug}`]).GET("/api/v1/products/{slug}", { params: { path: { slug } } });
   if (detailsResponse.response.status === 404) {
     return { kind: "not-found" };
   }

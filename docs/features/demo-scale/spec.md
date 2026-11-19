@@ -548,10 +548,15 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
   serwera w trakcie przebiegu to jedyna kopia logu. Przebieg `medium` porównuje ją z logiem kontenera, co nie dowodzi
   kompletności przy wielkości logu `server`.
 - Brak przecieku ruchu po restarcie węzła (Z10) potwierdziła jedna próba na k3d; na serwerze nie był sprawdzany.
-- Cache ISR sklepu rośnie na dysku poda o ok. 262 KB na unikalną stronę produktu (limit 2 GiB): przy danych w skali
-  ruch robotów prowadzi do eksmisji jedynego poda sklepu co ok. 8 tys. stron, dopóki nie jest wdrożony cache ISR
-  w pamięci (`docs/features/abuse-limits/spec.md`, L9). Dlatego dane w skali trafiają na serwer dopiero po tym
-  wdrożeniu (warunek w „Wymagane przed startem”).
+- Mapa strony podaje adres każdego produktu, a `robots.txt` pozwala na strony produktów, więc dane w skali sprowadzają
+  ruch robotów po unikalnych stronach. Cache ISR sklepu zapisywany na dysku poda (ok. 262 KB na stronę produktu, limit
+  `ephemeral-storage` 2 GiB) eksmitowałby jedyny pod sklepu co ok. 8 tys. stron; cache ISR tylko w pamięci, z limitem
+  (`docs/features/product-page/spec.md`, „Cache ISR”, poprawka L9 z PR #800), nie zapisuje na dysk, a pamięć sklepu pod takim
+  ruchem stabilizuje się poniżej limitu kontenera. Dlatego dane w skali trafiają na serwer dopiero po wdrożeniu tej
+  poprawki i jej weryfikacji (warunek w „Wymagane przed startem”). Poza limitem cache zostaje lista rewalidowanych
+  tagów (ok. 180 B na tag, do restartu poda): przy `medium` najwyżej ok. 350 MiB, przyjęte ograniczenie; przy `server`
+  więcej niż sterta poda sklepu, jeśli od startu poda zmieni się większość produktów (product-page spec, „Cache ISR”),
+  dlatego `server` czeka na ograniczenie tej listy (warunek w „Wymagane przed startem”).
 - `count(*)` w `initialize` przy 10 mln produktów: obserwowane w krokach na serwerze, poprawka poza tym etapem.
 
 ## Wymagane przed startem
@@ -560,6 +565,19 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
 - Plik `~/.config/shop/demo-photos.env` z czterema zmiennymi odczytu na komputerze, z którego idzie `generate`
   (istnieje; wartości nie przechodzą przez rozmowę).
 - Przed krokami na serwerze: wdrożenie `main` z tym epikiem i zgody użytkownika z „Przebieg na serwerze”.
-- Przed `generate` z profilem `medium` albo `server` na serwerze: wdrożenie zawiera cache ISR w pamięci
-  (ABUSE-LIMITS, L9) i jego weryfikacja na serwerze przeszła (`docs/features/abuse-limits/spec.md`, „Wdrożenie
-  i kolejność z DEMO-SCALE”). Zgoda na `generate` nie zastępuje tego warunku.
+- Przed `generate` z profilem `medium` albo `server` na serwerze: wdrożona rewizja zawiera poprawkę L9 (PR #800: cache
+  ISR tylko w pamięci, `docs/features/product-page/spec.md`, „Cache ISR”) i jej weryfikacja na serwerze przeszła. Warunek
+  nie wymaga zakończenia ASH-V1 ani ABUSE-LIMITS, a zgoda na `generate` go nie zastępuje. Weryfikacja po wdrożeniu,
+  wynik w komentarzu w #181:
+  - odczyt bez zgody: `make -C infra/k8s status` pokazuje wdrożoną rewizję z poprawką i pod sklepu bez restartów;
+  - próba po zgodzie użytkownika, jak inne sprawdzenia po wdrożeniu: 3000 żądań przez `https://<domena>/p/<slug>`
+    z unikalnymi, nieistniejącymi slugami w formacie sluga produktu, najwyżej 10 na sekundę (więcej wpisów 404, niż
+    mieści limit cache);
+  - odczyt w Grafana Cloud (tylko do odczytu) w czasie próby i godzinę po niej: brak plików cache na dysku poda, czyli
+    wolne miejsce węzła (`node_filesystem_avail_bytes`) spada o mniej niż 200 MB (bez poprawki próba zapisałaby ok.
+    400 MB wpisów 404); pamięć kontenera `store` (`container_memory_working_set_bytes`) przestaje rosnąć i zostaje
+    poniżej 1 GiB przy limicie 1536 MiB; liczba restartów poda sklepu (`kube_pod_container_status_restarts_total`)
+    się nie zmienia.
+- Przed `generate` z profilem `server` na serwerze dodatkowo: wdrożone i zweryfikowane na serwerze ograniczenie wzrostu
+  listy rewalidowanych tagów cache ISR sklepu (PERFORMANCE, #781). Przy `medium` lista bez limitu jest przyjętym
+  ograniczeniem.

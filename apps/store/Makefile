@@ -1,4 +1,4 @@
-.PHONY: shell check lint typecheck test test-unit check-dynamic-routes
+.PHONY: shell check lint typecheck test test-unit check-dynamic-routes check-isr-memory-cache
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -26,3 +26,9 @@ test-unit:
 # exits with 2 for any failed recipe; the code of the script is in the `Error N` line.
 check-dynamic-routes:
 	$(RUN) store node scripts/check-dynamic-routes.mjs
+
+# Needs the seeded stack with STORE_MODE=production: visits product pages and unique 404 slugs until the ISR cache
+# overflows its memory limit and fails when a cache file was written to disk or the oldest entry was not evicted
+# (script exit code 1), or when it cannot tell: not production, no build or API, an unexpected status (exit code 2).
+check-isr-memory-cache:
+	$(RUN) store node scripts/check-isr-memory-cache.mjs

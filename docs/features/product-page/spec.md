@@ -51,7 +51,7 @@ Poza zakresem:
 | A3 | Zdarzenia przez istniejący outbox: `VariantPriceChanged` przy każdym zapisie ceny; `StockLevelChanged` tylko przy zmianie poziomu dostępności wariantu; oba ze źródłem zmiany, a zdarzenia ze źródła `seed` nie unieważniają cache (robi to `purge-all`). |
 | A4 | Konsumenci w `Infrastructure` contextu, który publikuje zdarzenie; jeden konsument robi kolejno purge Varnisha i rewalidację sklepu; ponowienia Messengera, obsługa idempotentna. Unieważnienie produktu obejmuje stronę produktu i każdą listę z tym produktem. |
 | A5 | E2E w CI na buildzie produkcyjnym sklepu (`next build` + `next start`); lokalnie domyślnie `next dev`. |
-| A6 | Cache ISR na dysku jednej instancji sklepu (domyślny w Next.js); współdzielony cache to osobne zadanie przy skalowaniu. |
+| A6 | Cache ISR w pamięci procesu każdej instancji sklepu, z limitem, bez zapisu na dysk („Cache ISR”); współdzielony cache to osobne zadanie przy skalowaniu. |
 
 ## Przepływ danych
 
@@ -219,8 +219,9 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 - Dane: `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba przez
   `API_CATALOG_URL`, wspólne dla `generateMetadata` i strony (`React.cache`). Tagi przekazuje opcja `tags`
   klienta (`createApiClient` w `src/api/client.ts`, do `fetch` jako `next: { tags }`): odczyt szczegółów ma tagi
-  `catalog` i `product-slug-<slug>` (id nie jest jeszcze znane; tag sluga tylko dla sluga w formacie `Slug`, ten sam
-  wzorzec co w `/api/revalidate`, inny napis ma tylko `catalog`), odczyt oferty `catalog` i `product-<id>`. Strona
+  `catalog` i `product-slug-<slug>` (id nie jest jeszcze znane), odczyt oferty `catalog` i `product-<id>`. Slug spoza
+  formatu `Slug` (ten sam wzorzec co w `/api/revalidate`: małe litery i cyfry w grupach łączonych pojedynczym `-`, do
+  200 znaków) to strona 404 bez odczytu API, bo żaden produkt nie może go mieć. Strona
   dziedziczy sumę tagów odczytów, także strona 404 sluga, więc rewalidacja `product-<id>`, `product-slug-<slug>` albo
   `catalog` unieważnia HTML, a następne wejście pobiera od nowa oba odczyty (przez Varnish, już po purge).
   Odczyty nie trafiają do data cache Next na dłużej niż HTML strony. Layout czyta też drzewo kategorii dla menu
@@ -285,6 +286,46 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 - Brak lub zły sekret: 401; zła treść lub inny `Content-Type` niż JSON: 400; brak `STORE_REVALIDATE_SECRET`
   w środowisku: 503. Wszystkie odpowiedzi `private, no-store`. Nie loguje sekretu.
 
+### Cache ISR
+
+- Cache przyrostowy sklepu (strony ISR, także 404, i cache `fetch`) jest tylko w pamięci procesu:
+  `experimental.isrFlushToDisk: false` i `cacheMaxMemorySize` 128 MB (stała w `next.config.ts`, nie zmienna
+  środowiska), bez własnego `cacheHandler`, Redisa i nowej zależności. Strony i `fetch` dzielą jeden limit; ponad nim
+  Next wypiera najdawniej używane wpisy (LRU), a wypchnięta strona renderuje się od nowa przy następnym wejściu
+  (`x-nextjs-cache: MISS`). Z dysku Next czyta tylko strony prerenderowane w buildzie (`/cart`, 404) i niczego nie
+  zapisuje. Rewalidacja po tagach (`/api/revalidate`, P5) działa na wpisach w pamięci, także na stronie 404 sluga,
+  który właśnie został opublikowany.
+- Rozmiar wpisu liczy Next: długość HTML w znakach, bajty RSC i dane segmentów. Strona produktu to ok. 250 KB
+  (128 MB ≈ 500 stron, audyt wydajności). Strona 404 ma menu działów, więc jej wpis rośnie z drzewem kategorii: ok.
+  65 KB przy danych `make seed` (najstarszy wpis znika po ok. 2000 unikalnych stronach 404) i ok. 120 KB przy danych
+  `small` (po ok. 1100). Cache jest osobny w każdym podzie i znika przy restarcie.
+- Poza cache przyrostowym sklep nie ma rosnących zapisów na dysk: optymalizator obrazów Next (`/_next/image`) nie
+  działa przy własnym loaderze (`forbidden-loader`), a logi idą na stdout. Limit `ephemeral-storage` kontenera `store`
+  (`docs/features/small-fixes/spec.md`, D4: 2 GiB w `prod`) zostaje zabezpieczeniem dysku węzła.
+- **Pamięć.** Pomiar na obrazie produkcyjnym sklepu (Docker, limit pamięci kontenera bez swapu, dane `small`: 2145
+  produktów, ruch przez Varnish do API): N = 4145 unikalnych adresów (wszystkie strony produktów i 2000 nieznanych
+  slugów w formacie `Slug`), potem drugie tyle nowych (2N), potem 90 s po 24 równoległe żądania stron spoza cache.
+  Przy limicie 1 GiB (sterta V8 Node 24: 560 MiB) RSS po N to 480 MiB, po 2N 494 MiB (+3%), szczyt pod ruchem
+  równoległym 584 MiB (working set 543 MiB), zajęta sterta najwyżej 268 MiB (48% limitu), bez restartu i bez OOM;
+  po ruchu RSS wraca do ok. 430 MiB. Pamięć stabilizuje się, bo limit cache ogranicza HTML na stercie (V8) i bufory
+  RSC poza nią; resztę szczytu dają renderowania w toku, ograniczone liczbą równoległych żądań. Przy limicie `prod`
+  1536 MiB (sterta 864 MiB) szczyt RSS to 635 MiB (working set 596 MiB, 39% limitu), sterta najwyżej 286 MiB (33%),
+  szczyt po 2N nie wyższy niż po N, bez restartu. Ten sam ruch z cache na dysku (50 MB w pamięci) daje niższy RSS (do
+  376 MiB), ale working set kontenera rośnie z każdą fazą (383, 478, 599 MiB) o pamięć podręczną plików cache, a na
+  dysk trafia 85 822 plików.
+- Poza limitem cache jest lista rewalidowanych tagów Next (`tagsManifest`, mapa w pamięci procesu): każdy unikalny tag
+  rewalidowany od startu procesu zostaje w niej do restartu: ok. 180 B na tag (1 mln unikalnych tagów to 174 MiB
+  sterty po GC). Tagi rewaliduje tylko worker API przy zmianie produktu, ceny, poziomu dostępności albo promocji
+  (`product-<id>`, `product-slug-<slug>`, `catalog`); generator danych demo nie publikuje zdarzeń. Górna granica to
+  ok. dwa tagi na produkt zmieniony od startu poda: przy 1 mln produktów ok. 350 MiB, przy 10 mln więcej niż sterta
+  poda `prod`. Przy `medium` to przyjęte ograniczenie, które sprawdza test masowej rewalidacji tagów (PERFORMANCE,
+  #781); ograniczenie wzrostu listy jest warunkiem danych w skali `server`. Poza tym bez limitu są tylko
+  obiekty krótkotrwałe (renderowania w toku); bufor odpowiedzi Next z limitem 150 wpisów działa tylko w trybie
+  `minimalMode`, którego sklep nie używa.
+- Testy: `tests/isr-cache.test.ts` (konfiguracja) i `make -C apps/store check-isr-memory-cache` na buildzie produkcyjnym
+  w CI po E2E (`scripts/check-isr-memory-cache.mjs`): po stronach produktów i unikalnych stronach 404 ponad limit pliki
+  w `.next/server` i `.next/cache` są takie same jak przed nimi, a najstarszy wpis 404 znów daje `MISS`.
+
 ## Infrastruktura i środowisko
 
 - Sekrety w `infra/scripts/init-env.sh` (generowane jak inne): `STORE_REVALIDATE_SECRET` (czytają go `api`,
@@ -304,6 +345,7 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 | Sytuacja | Wynik |
 |---|---|
 | Nieznany slug | API 404; sklep: strona 404 z `noindex` |
+| Slug spoza formatu `Slug` | strona 404 z `noindex` bez odczytu API |
 | Błąd oferty albo szczegółów na stronie produktu | strona błędu, niecache'owana; przy odświeżeniu w tle (`revalidate = 3600`) zostaje poprzednia wersja |
 | Varnish niedostępny | odczyty katalogu sklepu kończą się błędem (lista: `app/error.tsx`); koszyk działa |
 | Purge albo rewalidacja nie powiodła się | ponowienia Messengera, potem `failed`; do tego czasu dane do 1 h stare |
@@ -426,7 +468,7 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
 
 ## Ryzyka i ograniczenia
 
-- Cache ISR jest na dysku jednej instancji sklepu (A6): przy kilku instancjach rewalidacja trafia tylko do jednej.
+- Cache ISR jest w pamięci jednej instancji sklepu (A6): przy kilku instancjach rewalidacja trafia tylko do jednej.
   Skalowanie poziome sklepu wymaga współdzielonego cache (np. `cacheHandler` na Redisie). Zgłoszone świadomie.
 - ISR działa tylko na buildzie produkcyjnym; `next dev` renderuje przy każdym żądaniu, więc lokalne E2E w trybie dev
   nie sprawdzają cache ISR (sprawdza je CI).
@@ -443,11 +485,12 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
   ponownego `make seed` lub ręcznego `purge-all`).
 - Sekret `PURGE` jest porównywany w VCL zwykłym porównaniem napisów (nie w stałym czasie); Varnish jest dostępny
   tylko w sieci compose, a ACL zawęża nadawców.
-- Każdy nieznany slug zostawia wpis ISR 404 na dysku instancji; wpisy unieważnia `catalog` albo tag ich sluga
-  (publikacja produktu z tym slugiem), a nic ich nie usuwa. Przyrost ogranicza limit `ephemeral-storage` kontenera
-  `store` w profilu `prod` (żądanie 256 MiB, limit 2 GiB): po jego przekroczeniu kubelet eksmituje pod, a nowy startuje
-  z pustym cache (strony ISR renderują się od nowa przy pierwszym wejściu). To ochrona dysku węzła demo; przy skali
-  docelowej potrzebny jest wspólny cache ISR z eksmisją (A6).
+- Cache ISR mieści ok. 500 stron produktu: przy katalogu w skali wejście na rzadko odwiedzaną stronę zwykle renderuje
+  ją od nowa (ok. 39 ms CPU zamiast ok. 1 ms, audyt wydajności), a seria unikalnych adresów (1000–2000 nieznanych
+  slugów) wypycha z cache także strony odwiedzane często. Koszt CPU renderu pod ruchem robotów: PERFORMANCE (#781).
+- Lista rewalidowanych tagów Next (`tagsManifest`) jest w pamięci procesu poza limitem cache i rośnie o każdy unikalny
+  tag rewalidowany od startu procesu (pomiar: „Cache ISR”); znika przy restarcie poda. Przyjęte przy danych `medium`,
+  przed danymi `server` lista musi mieć ograniczenie (PERFORMANCE, #781).
 - Seed publikuje zdarzenie dla każdej ceny i zmiany poziomu (ok. 2 tys. wiadomości); konsument potwierdza je bez
   wywołań HTTP.
 - Wydajność nie jest potwierdzona testami obciążeniowymi.

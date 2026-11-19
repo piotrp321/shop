@@ -37,6 +37,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/store <cel>`:
   (manifest po wcześniejszym buildzie zostaje na bind moucie także w trybie `dev`) albo manifestu brak lub jest
   nieczytelny; `make` pokazuje kod skryptu w wierszu `Error N` (sam kończy się kodem 2 przy każdym błędzie przepisu). CI
   uruchamia go w jobie `e2e` po starcie stosu.
+- `check-isr-memory-cache` – na buildzie produkcyjnym z danymi (`make seed`) odwiedza strony produktów i unikalne
+  nieistniejące slugi, aż wpisy przepełnią limit cache ISR (`scripts/check-isr-memory-cache.mjs`, ok. 1–2 min); kod 1,
+  gdy w `.next/server` albo `.next/cache` zmienił się choć jeden plik albo najstarszy wpis nie został wypchnięty, kod 2,
+  gdy nie da się tego sprawdzić (tryb inny niż `production`, brak buildu, API albo nieoczekiwany status strony). CI
+  uruchamia go po E2E (`CI_AFTER_E2E`).
 
 Klienta API generuje `make api-client` z katalogu głównego.
 
@@ -48,9 +53,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   "standalone"`; lokalny `STORE_MODE=production` (`next build` i `next start` w compose) buduje jak dotąd, bez standalone.
   Nie ustawiaj `STORE_STANDALONE` nigdzie poza Dockerfile.
 - `prod` zawiera tylko serwer standalone (prześledzone zależności, `.next/static`, `public`), działa jako użytkownik
-  `node` (`.next` jest jego, bo cache ISR zapisuje się w czasie działania) i startuje `node server.js`
-  (`HOSTNAME=0.0.0.0`, `PORT=3000`). Konfigurację (`API_CATALOG_URL`, `API_INTERNAL_URL`, `STORE_URL`, `REDIS_URL`,
-  `KEYCLOAK_*`, sekrety) czyta ze zmiennych środowiska przy starcie, nic nie jest wbudowane w obraz.
+  `node` i startuje `node server.js` (`HOSTNAME=0.0.0.0`, `PORT=3000`). Konfigurację (`API_CATALOG_URL`,
+  `API_INTERNAL_URL`, `STORE_URL`, `REDIS_URL`, `KEYCLOAK_*`, sekrety) czyta ze zmiennych środowiska przy starcie, nic
+  nie jest wbudowane w obraz.
 - Build nie woła API: strony prerenderowane w buildzie (`/cart`, 404) powstają bez menu (komunikat o drzewie kategorii
   w logu buildu to stan oczekiwany), a menu dostają przy pierwszej rewalidacji tagu `catalog`
   (`storefront:cache:purge-all`).
@@ -159,13 +164,18 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - ISR: `revalidate = 3600` (siatka bezpieczeństwa), `generateStaticParams` zwraca `[]` (strony powstają przy pierwszym
   wejściu, nie przy buildzie). HTML nie zależy od sesji. Cache ISR istnieje tylko w buildzie produkcyjnym
   (`STORE_MODE=production`); `next dev` renderuje przy każdym żądaniu.
+- Cache ISR (strony, także 404, i cache `fetch`) jest tylko w pamięci procesu: `experimental.isrFlushToDisk: false`
+  i `cacheMaxMemorySize` (stała 128 MB w `next.config.ts`, nie zmienna środowiska). Nie włączaj zapisu na dysk i nie
+  zmieniaj limitu bez nowego pomiaru pamięci wobec limitu pamięci kontenera `store` w chartcie; działanie i pomiar:
+  `docs/features/product-page/spec.md`, „Cache ISR”. Pilnują tego `tests/isr-cache.test.ts` i `check-isr-memory-cache`
+  (opcja jest eksperymentalna: jej zmianę przy podbiciu Next wykrywa test w CI).
 - Dane (`loadProduct` w `src/catalog/load-product.ts`, wspólne dla `generateMetadata` i strony przez `React.cache`
   jako `loadProductForRequest`): `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba
-  przez `API_CATALOG_URL`. Tagi cache Next to te same nazwy, które API wystawia w `xkey`: szczegóły `catalog`
-  i `product-slug-<slug>` (tylko dla sluga w formacie sluga produktu, `isProductSlug` w `load-product.ts`, ten sam
-  wzorzec co w `/api/revalidate`; inny napis tylko `catalog`), oferta `catalog` i `product-<id>` (UUID małymi
-  literami). Strona dziedziczy sumę tagów odczytów, więc `revalidateTag` tych nazw unieważnia jej HTML, także strony
-  404 sluga, który właśnie został opublikowany.
+  przez `API_CATALOG_URL`. Slug spoza formatu sluga produktu (`isProductSlug` w `load-product.ts`, ten sam wzorzec co
+  w `/api/revalidate`) to 404 bez wywołania API. Tagi cache Next to te same nazwy, które API wystawia w `xkey`:
+  szczegóły `catalog` i `product-slug-<slug>`, oferta `catalog` i `product-<id>` (UUID małymi literami). Strona
+  dziedziczy sumę tagów odczytów, więc `revalidateTag` tych nazw unieważnia jej HTML, także strony 404 sluga, który
+  właśnie został opublikowany.
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
