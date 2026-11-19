@@ -271,9 +271,10 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   przedziałem nie wchodzą do `in_attempts`. Czytanie wierszami jak w transkryptach prób (`_read_line`), linia, która nie
   jest obiektem JSON, jest pomijana z pozycją `sessions` w `gaps` z ich liczbą (puste linie się nie liczą); transkrypt
   bez żadnej takiej linii jest nieczytelny; transkrypt bez wiadomości i linii w przedziale epiku nie daje wpisu.
-  Transkrypt subagenta utracony (sam `meta.json`, plik pusty, uszkodzony albo nieczytelny, a także subagent uruchomiony w przedziale epiku przez sesję
-  prowadzącą: wynik wywołania `Agent` z `toolUseResult.agentId`, bez żadnego pliku w katalogach sesji epiku) to
-  pozycja `sessions` w `gaps` i pokrycie `partial`, jak brak transkryptu sesji.
+  Transkrypt subagenta utracony (sam `meta.json`, plik pusty, uszkodzony albo nieczytelny, a także subagent
+  uruchomiony w przedziale epiku przez sesję prowadzącą: wynik wywołania `Agent` z `toolUseResult.agentId`, bez
+  żadnego pliku w katalogach sesji epiku) to pozycja `sessions` w `gaps` i pokrycie `partial`, jak brak transkryptu
+  sesji.
 - **Rola i zadanie:** prowadzący `orchestrator` bez zadania; subagent: rola `agentType`, zadanie to pierwsze
   `<EPIK>-<n>` w `description` (bez rozróżniania wielkości liter, zapisane wielkimi literami), bez niego `no_task`.
   `meta.json` brakujący albo nieczytelny daje `role`, `task`, `effort`, `finished` `null` i pozycję `attempts.<agent>`
