@@ -6,9 +6,13 @@
 # (1 s to connect, 1 s to read): a Redis that is down fails the calls of the pool, which the pool turns into a miss
 # and a `warning` of the `cache` channel (monolog.yaml), so the request passes without a limit (fail open, D7).
 # No lock (lock_factory: null): concurrent requests may pass the limit by the number of requests in flight.
+parameters:
+    # The Redis of the limiters, shared by their counters and their locks (config/packages/lock.yaml).
+    rate_limiter.redis_dsn: 'redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1'
+
 framework:
     cache:
-        default_redis_provider: 'redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1'
+        default_redis_provider: '%rate_limiter.redis_dsn%'
         pools:
             cache.rate_limiter:
                 adapter: cache.adapter.redis
