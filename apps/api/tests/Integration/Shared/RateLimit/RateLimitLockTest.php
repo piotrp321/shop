@@ -67,13 +67,15 @@ final class RateLimitLockTest extends WebTestCase
             };
         });
 
+        // A request of the kernel of the test writes its caches (the routes) before the participants read them.
+        self::assertSame(422, self::placeFrom($this->client(), self::randomAddress()));
         $outcomes = ParallelProcesses::run($this->control(), $participants);
 
         $statuses = array_merge(...array_map(static fn (string $outcome): array => explode(',', $outcome), $outcomes));
-        $counts = array_count_values($statuses);
-        self::assertSame([], array_diff(array_keys($counts), ['422', '429']), 'every request is either let through (422) or refused (429): '.implode('; ', $outcomes));
-        self::assertLessThanOrEqual(self::ORDER_LIMIT, $counts['422'] ?? 0, \sprintf('%d of %d parallel requests passed a limit of %d', $counts['422'] ?? 0, \count($statuses), self::ORDER_LIMIT));
-        self::assertGreaterThan(0, $counts['422'] ?? 0, 'the limit lets requests through');
+        self::assertSame([], array_values(array_diff($statuses, ['422', '429'])), 'every request is either let through (422) or refused (429): '.implode('; ', $outcomes));
+        $passed = \count(array_keys($statuses, '422', true));
+        self::assertLessThanOrEqual(self::ORDER_LIMIT, $passed, \sprintf('%d of %d parallel requests passed a limit of %d', $passed, \count($statuses), self::ORDER_LIMIT));
+        self::assertGreaterThan(0, $passed, 'the limit lets requests through');
     }
 
     public function testAKeyHeldLongerThanTheWaitIsRefusedAfterTheWaitAndAnotherKeyDoesNotWait(): void
@@ -138,8 +140,7 @@ final class RateLimitLockTest extends WebTestCase
     }
 
     /**
-     * A connection of its own to the shop_test database for the start barrier of ParallelProcesses; boots the kernel
-     * first, so its cache is warm before the participants boot theirs.
+     * A connection of its own to the shop_test database for the start barrier of ParallelProcesses.
      */
     private function control(): Connection
     {

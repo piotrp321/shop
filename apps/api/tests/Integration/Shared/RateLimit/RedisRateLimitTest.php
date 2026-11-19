@@ -120,11 +120,10 @@ final class RedisRateLimitTest extends WebTestCase
         $redis = $_SERVER['REDIS_HOST'] ?? $_ENV['REDIS_HOST'] ?? getenv('REDIS_HOST');
         self::assertIsString($redis);
         // Before the kernel opens any connection: the forwarder inherits the memory of the test.
-        $this->forwarder = RedisForwarder::start('127.0.0.1:6379', $redis.':6379');
+        $this->forwarder = $forwarder = RedisForwarder::start('127.0.0.1:6379', $redis.':6379');
         $this->redisAt('127.0.0.1');
         $client = $this->client();
         $logs = $this->cacheLogs();
-        $forwarder = $this->forwarder;
         InterruptibleStorage::$beforeFetch = static function () use ($forwarder): void {
             $forwarder->stop(); // after the lock is taken, before the counter is read
         };

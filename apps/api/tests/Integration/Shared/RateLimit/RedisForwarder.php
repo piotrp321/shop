@@ -55,11 +55,11 @@ final class RedisForwarder
     }
 
     /**
-     * Never returns.
+     * Never returns: forwards until the process is killed.
      *
      * @param resource $server
      */
-    private static function forward($server, string $redis): void
+    private static function forward($server, string $redis): never
     {
         ini_set('display_errors', '0');
         register_shutdown_function(static function (): void {
@@ -69,7 +69,7 @@ final class RedisForwarder
         $peers = [];
         /** @var array<int, resource> $sockets */
         $sockets = [];
-        while (true) {
+        while (\is_resource($server)) {
             $read = [$server, ...array_values($sockets)];
             $write = $except = null;
             if (false === @stream_select($read, $write, $except, 1)) {
@@ -102,5 +102,7 @@ final class RedisForwarder
                 @fwrite($peer, $data);
             }
         }
+        posix_kill(posix_getpid(), \SIGKILL);
+        exit(1);
     }
 }

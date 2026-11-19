@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Shared\RateLimit;
 
+use App\Shared\Infrastructure\Http\RateLimitLockFactory;
 use Monolog\Handler\FingersCrossedHandler;
 use Monolog\Handler\StreamHandler;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sentry\Monolog\LogToSentryIssueHandler;
 use Symfony\Component\Cache\Adapter\RedisAdapter;
@@ -14,8 +16,9 @@ use Symfony\Component\DependencyInjection\Reference;
 
 /**
  * The limits and the pool as the `prod` and `dev` containers are built from config/ (spec:
- * docs/features/hardening/spec.md, D1, D5 and D7): sliding windows with the values of the specification and no lock,
- * the pool on Redis with timeouts of 1 s, high limits for the compose stack and the E2E tests (every request of the
+ * docs/features/hardening/spec.md, D1, D5 and D7; docs/features/abuse-limits/spec.md, D1 and D3): sliding windows with
+ * the values of the specifications, each locking its key in the Redis of the counters, the pool on Redis with
+ * timeouts of 1 s, high limits for the compose stack and the E2E tests (every request of the
  * store comes from one address there), and in `prod` the warnings of the `cache` channel (a failing pool) on stderr
  * as JSON, outside the `fingers_crossed` buffer that keeps only the logs of failed requests.
  */
@@ -26,6 +29,9 @@ final class RateLimitConfigurationTest extends TestCase
      * the definition of cache.rate_limiter itself is the inner service of the decorator.
      */
     private const string POOL = 'cache.rate_limiter.traceable';
+
+    private const string LOCK_FACTORY = 'rate_limiter.lock_factory';
+    private const string DSN = 'redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1';
 
     /** @var array<string, array<string, Definition>> */
     private static array $definitions = [];
@@ -42,17 +48,38 @@ final class RateLimitConfigurationTest extends TestCase
         );
     }
 
-    public function testTheLimitersTakeNoLockAndKeepTheirStateInTheRateLimiterPool(): void
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function environmentsWithRedis(): iterable
     {
-        $definitions = self::definitions('prod');
-        foreach (['order_placement', 'payment_start', 'payment_webhook'] as $name) {
-            self::assertArrayHasKey('limiter.'.$name, $definitions);
+        yield 'prod' => ['prod'];
+        yield 'dev' => ['dev'];
+    }
+
+    #[DataProvider('environmentsWithRedis')]
+    public function testEveryLimiterLocksItsKeyAndKeepsItsStateInTheRateLimiterPool(string $environment): void
+    {
+        $definitions = self::definitions($environment);
+        $limiters = array_keys(self::limits($environment));
+        self::assertNotEmpty($limiters);
+        foreach ($limiters as $name) {
             $limiter = $definitions['limiter.'.$name];
-            self::assertNull($limiter->getArgument(2), $name.' has no lock factory');
+            self::assertEquals(new Reference(self::LOCK_FACTORY), $limiter->getArgument(2), $name.' locks its key');
             $storage = $limiter->getArgument(1);
             self::assertInstanceOf(Reference::class, $storage);
             self::assertEquals([new Reference(self::POOL)], $definitions[(string) $storage]->getArguments(), $name.' stores in cache.rate_limiter');
         }
+    }
+
+    #[DataProvider('environmentsWithRedis')]
+    public function testTheLocksAreInTheRedisOfTheCountersAndWarnInTheCacheChannel(string $environment): void
+    {
+        $definitions = self::definitions($environment);
+        $factory = $definitions[self::LOCK_FACTORY];
+        self::assertSame(RateLimitLockFactory::class, $factory->getClass());
+        self::assertEquals([new Reference('rate_limiter.lock_connection'), new Reference('monolog.logger.cache')], $factory->getArguments());
+        self::assertSame([self::DSN, ['lazy' => true]], $definitions['rate_limiter.lock_connection']->getArguments(), 'the DSN and timeouts of the counters, a lazy connection');
     }
 
     public function testThePoolIsOnRedisWithTimeoutsOfOneSecond(): void
@@ -63,7 +90,7 @@ final class RateLimitConfigurationTest extends TestCase
         $connection = $pool->getArgument(0);
         self::assertInstanceOf(Reference::class, $connection);
         self::assertSame(
-            ['redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1', ['lazy' => true]],
+            [self::DSN, ['lazy' => true]],
             $definitions[(string) $connection]->getArguments(),
             'a lazy connection: a Redis that is down fails the calls of the pool, which the pool logs, never the request',
         );
