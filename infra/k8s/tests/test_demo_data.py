@@ -100,6 +100,12 @@ class CronJobTest(unittest.TestCase):
         self.assertEqual(["sh", "/scripts/demo-data.sh", "--profile=server", f"--anchor={PROD_ANCHOR}", "--min-free-gb=32"],
                          container("prod-demo-data-server")["command"])
 
+    def test_the_break_of_the_smoke_test_patches_the_argument_of_the_profile(self):
+        """SMOKE_BREAK=demo-data replaces --profile=small at a fixed index of the command (a JSON patch with a test of the value)."""
+        smoke = (REPO / "infra/k8s/scripts/smoke.sh").read_text()
+        index = container("ci")["command"].index("--profile=small")
+        self.assertIn(f"generator_arg=/spec/jobTemplate/spec/template/spec/containers/0/command/{index}\n", smoke)
+
     def test_the_anchor_is_passed_only_when_the_values_give_one(self):
         self.assertFalse([argument for argument in container("ci")["command"] if argument.startswith("--anchor")])
         self.assertIn("--anchor=2026-11-01", container("ci-demo-data-medium")["command"])

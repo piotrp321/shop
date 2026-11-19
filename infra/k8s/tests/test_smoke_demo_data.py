@@ -16,6 +16,8 @@ import unittest
 from support import REPO
 
 SMOKE = REPO / "infra/k8s/scripts/smoke.sh"
+# smoke.sh sources it: cronjob_job creates the Job of the generator with DEMO_DATA_CONFIRM.
+KUBE_JOBS = REPO / "infra/k8s/scripts/kube-jobs.sh"
 FUNCTIONS = ("kc", "count", "statefulsets_in_rollout", "wait_statefulsets", "run_cronjob_job", "check_demo_data")
 
 # One line per call in $STUB_LOG. The CronJob demo-data has the command bin/generate-demo --profile=$STUB_PROFILE --force-reset and the
@@ -86,7 +88,8 @@ class Phase(unittest.TestCase):
 
     def run_phase(self, **env):
         text = SMOKE.read_text()
-        script = "\n".join(["set -eu", "namespace=shop", 'SMOKE_BREAK="${SMOKE_BREAK:-}"'] + [cut_out(n, text) for n in FUNCTIONS] + ["check_demo_data"])
+        script = "\n".join(["set -eu", "namespace=shop", 'SMOKE_BREAK="${SMOKE_BREAK:-}"', KUBE_JOBS.read_text()]
+                           + [cut_out(n, text) for n in FUNCTIONS] + ["check_demo_data"])
         variables = {
             "PATH": f"{self.base / 'bin'}:{os.environ['PATH']}",
             "STUB_LOG": str(self.log),
@@ -102,11 +105,28 @@ class Phase(unittest.TestCase):
     def creates(self):
         return [call for call in self.calls() if "create job" in call]
 
+    def confirmations(self):
+        return [call for call in self.calls() if "set env --local" in call]
+
+    def assert_the_job_is_created_with_the_confirmation(self, profile):
+        """The Job is made from the template of the CronJob (dry run), gets DEMO_DATA_CONFIRM=<profile> and only then is created: the
+        script of the Job refuses without it (exit 64)."""
+        self.assertEqual(1, len(self.creates()), self.calls())
+        self.assertIn("--dry-run=client", self.creates()[0])
+        self.assertEqual(1, len(self.confirmations()), self.calls())
+        self.assertIn(f"DEMO_DATA_CONFIRM={profile}", self.confirmations()[0].split())
+        calls = self.calls()
+        created = [i for i, call in enumerate(calls) if call.endswith("create -f -")]
+        self.assertEqual(1, len(created), calls)
+        self.assertLess(calls.index(self.creates()[0]), calls.index(self.confirmations()[0]))
+        self.assertLess(calls.index(self.confirmations()[0]), created[0])
+
     def test_a_job_from_the_cronjob_succeeds_and_is_created_exactly_once(self):
         result = self.run_phase()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(1, len(self.creates()), self.calls())
         self.assertIn("--from=cronjob/demo-data", self.creates()[0])
+        self.assert_the_job_is_created_with_the_confirmation("small")
         self.assertIn("ok:", result.stdout)
 
     def test_no_job_is_created_for_another_profile_than_small(self):
@@ -151,6 +171,8 @@ class Phase(unittest.TestCase):
         self.assertEqual(1, len(patches), self.calls())
         self.assertIn("--profile=smoke-unknown", patches[0])
         self.assertLess(self.calls().index(patches[0]), self.calls().index(self.creates()[0]))
+        # The Job confirms the profile it was given, so that the generator itself refuses it (and not the script, with 64).
+        self.assert_the_job_is_created_with_the_confirmation("smoke-unknown")
         self.assertIn("demo-data: the generator log of the Job", result.stderr)
 
     def test_the_job_is_created_only_after_the_statefulsets_in_rollout(self):

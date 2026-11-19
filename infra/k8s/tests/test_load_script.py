@@ -24,7 +24,8 @@ SCRIPT = REPO / "infra/k8s/scripts/load.sh"
 # One line of arguments per call in $STUB_LOG. Answers by the command: the resources of the Docker VM, k3d (a kubeconfig),
 # kubectl (nothing exists in the cluster: no jobs, no deployments; with STUB_READY=1 the cluster is settled, has STUB_PRODUCTS
 # products and answers the UPDATE of the stocks with STUB_UPDATE_OUT and the exit code STUB_UPDATE_STATUS), everything else
-# succeeds silently. The standard input of `kubectl create -f -` is kept in $STUB_STDIN_DIR (create.<n>). The Job of the
+# succeeds silently. The standard input of `kubectl create -f -` is kept in $STUB_STDIN_DIR (create.<n>); the dry run of the Job of
+# the generator answers with a Job and `kubectl set env --local` gives its input back. The Job of the
 # generator is in the state STUB_DATA_JOB (Complete by default) with the log STUB_DATA_LOG; curl answers the chunks of the
 # sitemap with STUB_CHUNKS (exit STUB_CHUNKS_STATUS); k6 writes its results to STUB_K6_OUT when it is set, and with
 # STUB_K6_SLEEP it runs that many seconds (its pid in $STUB_SPACE_DIR/k6.pid, `docker rm -f k6-...` ends it). The free space
@@ -68,6 +69,8 @@ case "$1" in
       *registry.k8s.io/kubectl*)
         [ -n "${STUB_READY:-}" ] || exit 0
         case "$*" in
+          *"create job demo-data-load"*"--dry-run=client"*) printf '{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"demo-data-load"}}' ;;
+          *"set env --local"*) cat ;;
           *"get crd"*) ;;
           *"get jobs"*succeeded*)
             # The version jobs as "name=succeeded" (a running job has no value); a jsonpath without the name gets the values only.
@@ -561,7 +564,14 @@ class LoadScript(unittest.TestCase):
         self.assertIn("demoData.photosSecretName=demo-photos", helm[0])
         jobs = [call for call in self.calls() if "create job" in call]
         self.assertEqual(1, len(jobs), jobs)
-        self.assertIn("create job demo-data-load --from=cronjob/demo-data", jobs[0])
+        self.assertIn("create job demo-data-load --from=cronjob/demo-data --dry-run=client -o json", jobs[0])
+        # The Job confirms the profile (the script of the Job refuses without DEMO_DATA_CONFIRM) and is created from that manifest.
+        confirmations = [call for call in self.calls() if "set env --local" in call]
+        self.assertEqual(1, len(confirmations), self.calls())
+        self.assertIn("DEMO_DATA_CONFIRM=server", confirmations[0].split())
+        manifests = [json.loads(path.read_text()) for path in sorted(self.stdin.iterdir())]
+        self.assertEqual(["Secret", "Job"], [manifest["kind"] for manifest in manifests])
+        self.assertLess(self.index_of("create job demo-data-load"), self.index_of("set env --local"))
         # The Secret before the Job, the Job before the stocks, the stocks before k6.
         self.assertLess(self.index_of("create -f -"), self.index_of("create job demo-data-load"))
         self.assertLess(self.index_of("create job demo-data-load"), self.index_of("UPDATE "))
