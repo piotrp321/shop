@@ -13,6 +13,7 @@ use App\Cart\Application\Query\CartSummary;
 use App\Cart\Application\Query\GetCart;
 use App\Cart\Application\Query\GetCartSummary;
 use App\Cart\Application\View\CartView;
+use App\Shared\Infrastructure\Http\RateLimit;
 use OpenApi\Attributes as OA;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -40,15 +41,16 @@ final readonly class GuestCartController
     ) {
     }
 
-    #[Route('/api/v1/guest-carts', name: 'cart_guest_create', methods: ['POST'])]
+    #[Route('/api/v1/guest-carts', name: 'cart_guest_create', methods: ['POST'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::GUEST_CART_CREATE])]
     #[OA\Post(
         operationId: 'createGuestCart',
         summary: 'Create a guest cart',
-        description: 'A new, empty cart with a random id, which is also the key to it. It expires 30 days after its last change. No body is read.',
+        description: 'A new, empty cart with a random id, which is also the key to it. A cart without lines expires 1 day after its last change, a cart with lines 30 days after it. No body is read.',
         tags: ['Cart'],
         responses: [
             new OA\Response(response: 201, description: 'The empty cart; `Location` is its address.', headers: [new OA\Header(header: 'Location', description: 'Address of the cart.', schema: new OA\Schema(type: 'string'))], content: new OA\JsonContent(ref: '#/components/schemas/CartView')),
             new OA\Response(response: 401, description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many new guest carts from the address of the client: the rate limit of the creation. No cart is made. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]
@@ -62,7 +64,7 @@ final readonly class GuestCartController
         ]);
     }
 
-    #[Route('/api/v1/guest-carts/{cartId}', name: 'cart_guest_get', requirements: ['cartId' => self::UUID], methods: ['GET'])]
+    #[Route('/api/v1/guest-carts/{cartId}', name: 'cart_guest_get', requirements: ['cartId' => self::UUID], methods: ['GET'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::DISCOUNT_PREVIEW, RateLimit::QUERY_ROUTE_DEFAULT => 'discountCode'])]
     #[OA\Get(
         operationId: 'getGuestCart',
         summary: 'Guest cart',
@@ -77,6 +79,7 @@ final readonly class GuestCartController
             new OA\Response(response: 400, description: 'The discount code is not text, is not UTF-8 or has more than 64 characters (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 401, description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 404, description: 'No such cart: unknown, expired or merged, or the id is not a UUID (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many previews of a discount code from the address of the client (the guest and the customer cart together; every read with a `discountCode` other than the empty string counts, also one refused with 400): the rate limit of the preview, before the cart is priced. A read without the code is not limited. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]
@@ -109,7 +112,7 @@ final readonly class GuestCartController
         return new JsonResponse($summary);
     }
 
-    #[Route('/api/v1/guest-carts/{cartId}/items', name: 'cart_guest_add_item', requirements: ['cartId' => self::UUID], methods: ['POST'])]
+    #[Route('/api/v1/guest-carts/{cartId}/items', name: 'cart_guest_add_item', requirements: ['cartId' => self::UUID], methods: ['POST'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::GUEST_CART_WRITE])]
     #[OA\Post(
         operationId: 'addGuestCartItem',
         summary: 'Add a variant of a product to a guest cart',
@@ -125,6 +128,7 @@ final readonly class GuestCartController
             new OA\Response(response: 409, description: 'More than 99 units of the variant, a 51st variant, a variant without a current price or available units, or more units than available (problem details with a Polish `detail`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 415, description: 'The body is not JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 422, description: 'A key is missing, of a wrong type, the quantity is out of 1–99 or the variant id is not a UUID (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]
@@ -139,7 +143,7 @@ final readonly class GuestCartController
         return new JsonResponse($this->dispatch($this->commandBus, new AddCartItem(CartRef::guest($cartId), $item->variantId, $item->quantity)));
     }
 
-    #[Route('/api/v1/guest-carts/{cartId}/items/{variantId}', name: 'cart_guest_change_item', requirements: ['cartId' => self::UUID, 'variantId' => self::UUID], methods: ['PUT'])]
+    #[Route('/api/v1/guest-carts/{cartId}/items/{variantId}', name: 'cart_guest_change_item', requirements: ['cartId' => self::UUID, 'variantId' => self::UUID], methods: ['PUT'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::GUEST_CART_WRITE])]
     #[OA\Put(
         operationId: 'changeGuestCartItemQuantity',
         summary: 'Change the quantity of a line of a guest cart',
@@ -157,6 +161,7 @@ final readonly class GuestCartController
             new OA\Response(response: 409, description: 'An increase of a variant without a current price or available units, or above the available units (problem details with a Polish `detail`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 415, description: 'The body is not JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 422, description: 'The quantity is missing, not an integer or out of 1–99 (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]
@@ -171,7 +176,7 @@ final readonly class GuestCartController
         return new JsonResponse($this->dispatch($this->commandBus, new ChangeCartItemQuantity(CartRef::guest($cartId), $variantId, $change->quantity)));
     }
 
-    #[Route('/api/v1/guest-carts/{cartId}/items/{variantId}', name: 'cart_guest_remove_item', requirements: ['cartId' => self::UUID, 'variantId' => self::UUID], methods: ['DELETE'])]
+    #[Route('/api/v1/guest-carts/{cartId}/items/{variantId}', name: 'cart_guest_remove_item', requirements: ['cartId' => self::UUID, 'variantId' => self::UUID], methods: ['DELETE'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::GUEST_CART_WRITE])]
     #[OA\Delete(
         operationId: 'removeGuestCartItem',
         summary: 'Remove a line of a guest cart',
@@ -185,6 +190,7 @@ final readonly class GuestCartController
             new OA\Response(response: 200, description: 'The cart after the change.', content: new OA\JsonContent(ref: '#/components/schemas/CartView')),
             new OA\Response(response: 401, description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 404, description: 'No such cart: unknown, expired or merged, or an id is not a UUID (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]

@@ -8,6 +8,7 @@ use App\Tests\Integration\Ordering\Concurrency\ParallelProcesses;
 use Doctrine\DBAL\Configuration as DbalConfiguration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Cache\Adapter\RedisAdapter;
@@ -19,12 +20,11 @@ use Symfony\Component\Lock\Store\RedisStore;
  * The lock of the key of a limiter on a real Redis (spec: docs/features/abuse-limits/spec.md, D1 and L1): parallel
  * requests, each in a process of its own (as on several replicas of the API), pass at most the limit; a key held by
  * another request for longer than 300 ms refuses the request with a 429 after about 300 ms, while another key does
- * not wait; and a lock that its holder abandoned stops blocking after 5 s. The `test` limit of order_placement (10 in
- * 15 minutes, config/packages/rate_limiter.yaml) on the Redis of production (RedisPoolKernel).
+ * not wait; and a lock that its holder abandoned stops blocking after 5 s. The `test` limits (config/packages/
+ * rate_limiter.yaml) on the Redis and the lock of production (RedisPoolKernel).
  */
 final class RateLimitLockTest extends WebTestCase
 {
-    private const int ORDER_LIMIT = 10;
     private const int PROCESSES = 24;
     private const int REQUESTS_PER_PROCESS = 3;
 
@@ -47,20 +47,32 @@ final class RateLimitLockTest extends WebTestCase
         parent::tearDown();
     }
 
-    public function testParallelRequestsFromOneAddressPassAtMostTheLimit(): void
+    /**
+     * @return iterable<string, array{string, string, int, int}> the method, the path, the status of a request let
+     *                                                           through and the `test` limit
+     */
+    public static function limitedRoutes(): iterable
+    {
+        yield 'order placement' => ['POST', '/api/v1/orders', 422, 10];
+        // An unknown cart: the limit of the preview counts before the controller looks the cart up.
+        yield 'preview of a discount code' => ['GET', '/api/v1/guest-carts/0199a0b0-0000-7000-8000-000000000999?discountCode=WITAJ10', 404, 20];
+    }
+
+    #[DataProvider('limitedRoutes')]
+    public function testParallelRequestsFromOneAddressPassAtMostTheLimit(string $method, string $path, int $passed, int $limit): void
     {
         $address = self::randomAddress();
-        $participants = array_fill(0, self::PROCESSES, static function () use ($address): \Closure {
+        $participants = array_fill(0, self::PROCESSES, static function () use ($address, $method, $path): \Closure {
             $kernel = new RedisPoolKernel('test', false);
             $kernel->boot();
             $client = $kernel->getContainer()->get('test.client');
             \assert($client instanceof KernelBrowser);
             $client->disableReboot();
 
-            return static function () use ($client, $address): string {
+            return static function () use ($client, $address, $method, $path): string {
                 $statuses = [];
                 for ($request = 1; $request <= self::REQUESTS_PER_PROCESS; ++$request) {
-                    $statuses[] = self::placeFrom($client, $address);
+                    $statuses[] = self::requestFrom($client, $address, $method, $path);
                 }
 
                 return implode(',', $statuses);
@@ -68,14 +80,14 @@ final class RateLimitLockTest extends WebTestCase
         });
 
         // A request of the kernel of the test writes its caches (the routes) before the participants read them.
-        self::assertSame(422, self::placeFrom($this->client(), self::randomAddress()));
+        self::assertSame($passed, self::requestFrom($this->client(), self::randomAddress(), $method, $path));
         $outcomes = ParallelProcesses::run($this->control(), $participants);
 
         $statuses = array_merge(...array_map(static fn (string $outcome): array => explode(',', $outcome), $outcomes));
-        self::assertSame([], array_values(array_diff($statuses, ['422', '429'])), 'every request is either let through (422) or refused (429): '.implode('; ', $outcomes));
-        $passed = \count(array_keys($statuses, '422', true));
-        self::assertLessThanOrEqual(self::ORDER_LIMIT, $passed, \sprintf('%d of %d parallel requests passed a limit of %d', $passed, \count($statuses), self::ORDER_LIMIT));
-        self::assertGreaterThan(0, $passed, 'the limit lets requests through');
+        self::assertSame([], array_values(array_diff($statuses, [(string) $passed, '429'])), \sprintf('every request is either let through (%d) or refused (429): %s', $passed, implode('; ', $outcomes)));
+        $through = \count(array_keys($statuses, (string) $passed, true));
+        self::assertLessThanOrEqual($limit, $through, \sprintf('%d of %d parallel requests passed a limit of %d', $through, \count($statuses), $limit));
+        self::assertGreaterThan(0, $through, 'the limit lets requests through');
     }
 
     public function testAKeyHeldLongerThanTheWaitIsRefusedAfterTheWaitAndAnotherKeyDoesNotWait(): void
@@ -154,7 +166,12 @@ final class RateLimitLockTest extends WebTestCase
 
     private static function placeFrom(KernelBrowser $client, string $address): int
     {
-        $client->request('POST', '/api/v1/orders', server: ['REMOTE_ADDR' => $address, 'CONTENT_TYPE' => 'application/json', 'HTTP_IDEMPOTENCY_KEY' => 'lock-limit'], content: '{}');
+        return self::requestFrom($client, $address, 'POST', '/api/v1/orders');
+    }
+
+    private static function requestFrom(KernelBrowser $client, string $address, string $method, string $path): int
+    {
+        $client->request($method, $path, server: ['REMOTE_ADDR' => $address, 'CONTENT_TYPE' => 'application/json', 'HTTP_IDEMPOTENCY_KEY' => 'lock-limit'], content: 'POST' === $method ? '{}' : null);
 
         return $client->getResponse()->getStatusCode();
     }

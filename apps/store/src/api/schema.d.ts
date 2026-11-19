@@ -119,7 +119,7 @@ export interface paths {
         put?: never;
         /**
          * Create a guest cart
-         * @description A new, empty cart with a random id, which is also the key to it. It expires 30 days after its last change. No body is read.
+         * @description A new, empty cart with a random id, which is also the key to it. A cart without lines expires 1 day after its last change, a cart with lines 30 days after it. No body is read.
          */
         post: operations["createGuestCart"];
         delete?: never;
@@ -1576,6 +1576,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many previews of a discount code from the address of the client (the guest and the customer cart together; every read with a `discountCode` other than the empty string counts, also one refused with 400): the rate limit of the preview, before the cart is priced. A read without the code is not limited. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -1950,6 +1961,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many new guest carts from the address of the client: the rate limit of the creation. No cart is made. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2006,6 +2028,17 @@ export interface operations {
             /** @description No such cart: unknown, expired or merged, or the id is not a UUID (problem details). */
             404: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many previews of a discount code from the address of the client (the guest and the customer cart together; every read with a `discountCode` other than the empty string counts, also one refused with 400): the rate limit of the preview, before the cart is priced. A read without the code is not limited. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2152,6 +2185,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2244,6 +2288,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2290,6 +2345,17 @@ export interface operations {
             /** @description No such cart: unknown, expired or merged, or an id is not a UUID (problem details). */
             404: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many changes of guest carts from the address of the client (all its guest carts, add, change and remove together): the rate limit of the changes, before the cart is read. Nothing changes. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {

@@ -1,5 +1,6 @@
 # Rate limits of the order placement, the payment start and the webhooks (spec: docs/features/hardening/spec.md,
-# D1, D4–D7). RateLimitSubscriber (src/Shared/Infrastructure/Http) applies the limiter that a route names in its
+# D1, D4–D7), of the guest carts and of the preview of a discount code (docs/features/abuse-limits/spec.md, L2, L3,
+# D2, D3). RateLimitSubscriber (src/Shared/Infrastructure/Http) applies the limiter that a route names in its
 # RateLimit::ROUTE_DEFAULT, before the controller. Sliding windows; the defaults are the production values.
 #
 # The state is in Redis (pool cache.rate_limiter). The connection is lazy and bounded by the timeouts of the DSN
@@ -38,6 +39,25 @@ framework:
             limit: 300
             interval: '1 minute'
             lock_factory: rate_limiter.lock_factory
+        # The creation of a guest cart, per address (guest:<address>).
+        guest_cart_create:
+            policy: sliding_window
+            limit: 30
+            interval: '15 minutes'
+            lock_factory: rate_limiter.lock_factory
+        # Every change of the lines of a guest cart (add, change, remove; one counter), per address, whatever the cart.
+        guest_cart_write:
+            policy: sliding_window
+            limit: 300
+            interval: '15 minutes'
+            lock_factory: rate_limiter.lock_factory
+        # A read of the guest or the customer cart with a discount code to preview, per address on both routes, so
+        # switching them does not reset it.
+        discount_preview:
+            policy: sliding_window
+            limit: 20
+            interval: '15 minutes'
+            lock_factory: rate_limiter.lock_factory
 
 # The compose stack and the E2E tests: every request of the store comes from the one address of its container.
 when@dev:
@@ -46,6 +66,9 @@ when@dev:
             order_placement: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
             payment_start: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
             payment_webhook: { policy: sliding_window, limit: 10000, interval: '1 minute', lock_factory: rate_limiter.lock_factory }
+            guest_cart_create: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
+            guest_cart_write: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
+            discount_preview: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
 
 # Small limits for the tests of the limits, above the requests of a kind that any other test makes (7 at most). Their
 # state is in memory, kept as long as the kernel of one test (an array pool would not do: the kernel resets it after
@@ -57,6 +80,9 @@ when@test: &test
             order_placement: { policy: sliding_window, limit: 10, interval: '15 minutes', lock_factory: null, storage_service: rate_limiter.test_storage }
             payment_start: { policy: sliding_window, limit: 10, interval: '15 minutes', lock_factory: null, storage_service: rate_limiter.test_storage }
             payment_webhook: { policy: sliding_window, limit: 10, interval: '1 minute', lock_factory: null, storage_service: rate_limiter.test_storage }
+            guest_cart_create: { policy: sliding_window, limit: 10, interval: '15 minutes', lock_factory: null, storage_service: rate_limiter.test_storage }
+            guest_cart_write: { policy: sliding_window, limit: 30, interval: '15 minutes', lock_factory: null, storage_service: rate_limiter.test_storage }
+            discount_preview: { policy: sliding_window, limit: 20, interval: '15 minutes', lock_factory: null, storage_service: rate_limiter.test_storage }
     services:
         rate_limiter.test_storage:
             class: Symfony\Component\RateLimiter\Storage\InMemoryStorage

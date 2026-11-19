@@ -29,7 +29,7 @@ final class RedisPoolKernel extends Kernel
         parent::registerContainerConfiguration($loader);
         $loader->load(static function (ContainerBuilder $container): void {
             $container->loadFromExtension('framework', ['rate_limiter' => array_fill_keys(
-                ['order_placement', 'payment_start', 'payment_webhook'],
+                ['order_placement', 'payment_start', 'payment_webhook', 'guest_cart_create', 'guest_cart_write', 'discount_preview'],
                 ['policy' => 'sliding_window', 'storage_service' => null, 'lock_factory' => 'rate_limiter.lock_factory'],
             )]);
             $container->register('test.interruptible_storage', InterruptibleStorage::class)

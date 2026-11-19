@@ -13,6 +13,7 @@ use App\Cart\Application\Query\CartSummary;
 use App\Cart\Application\Query\GetCart;
 use App\Cart\Application\Query\GetCartSummary;
 use App\Customer\Application\Security\AuthenticatedCustomer;
+use App\Shared\Infrastructure\Http\RateLimit;
 use Nelmio\ApiDocBundle\Attribute\Security;
 use OpenApi\Attributes as OA;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -38,7 +39,7 @@ final readonly class CustomerCartController
     ) {
     }
 
-    #[Route('/api/v1/me/cart', name: 'cart_customer_get', methods: ['GET'])]
+    #[Route('/api/v1/me/cart', name: 'cart_customer_get', methods: ['GET'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::DISCOUNT_PREVIEW, RateLimit::KEY_ROUTE_DEFAULT => RateLimit::BY_GUEST, RateLimit::QUERY_ROUTE_DEFAULT => 'discountCode'])]
     #[OA\Get(
         operationId: 'getCustomerCart',
         summary: 'Cart of the customer',
@@ -51,6 +52,7 @@ final readonly class CustomerCartController
             new OA\Response(response: 200, description: 'The cart.', content: new OA\JsonContent(ref: '#/components/schemas/CartView')),
             new OA\Response(response: 400, description: 'The discount code is not text, is not UTF-8 or has more than 64 characters (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 401, description: 'Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many previews of a discount code from the address of the client (the guest and the customer cart together; every read with a `discountCode` other than the empty string counts, also one refused with 400): the rate limit of the preview, before the cart is priced. A read without the code is not limited. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'The keys of the token issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]

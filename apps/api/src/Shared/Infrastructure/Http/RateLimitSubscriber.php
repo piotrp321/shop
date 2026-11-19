@@ -25,6 +25,8 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
  * D1): a key held by another request for the whole wait is refused the same way (`Retry-After: 1`), and a failure of
  * Redis at the lock lets the request through without a limit (fail open, D7 of HARDENING).
  *
+ * With RateLimit::QUERY_ROUTE_DEFAULT, only a request whose query has that parameter with a non-empty value counts.
+ *
  * The key (RateLimit::KEY_ROUTE_DEFAULT): `guest:<address>`, `customer:<sub>` or `<provider>:<address>`, with the
  * address of ClientIp; the prefixes keep the spaces of guests and customers apart. A customer route without a user
  * (the firewall refuses it first) counts by the guest address.
@@ -55,6 +57,10 @@ final readonly class RateLimitSubscriber implements EventSubscriberInterface
         $request = $event->getRequest();
         $name = $request->attributes->get(RateLimit::ROUTE_DEFAULT);
         if (!$event->isMainRequest() || !\is_string($name)) {
+            return;
+        }
+        $parameter = $request->attributes->get(RateLimit::QUERY_ROUTE_DEFAULT);
+        if (\is_string($parameter) && '' === ($request->query->all()[$parameter] ?? '')) {
             return;
         }
 

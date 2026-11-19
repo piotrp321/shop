@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Cart;
 
-use App\Tests\Factory\DiscountCodeFactory;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeRepository;
+use App\Tests\Factory\DiscountCodeFactory;
 use App\Tests\Integration\Cart\CartFixture;
 use App\Tests\Support\InputConformance\InputValues;
 use App\Tests\Support\Security\TestTokenFactory;
