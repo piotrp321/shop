@@ -726,7 +726,7 @@ class PreviousRun(Case):
         self.assertIsNotNone(state["netpol"])
         self.assertTrue(state["jobs"].get(JOB, {}).get("previous"), state["events"])
         self.assertEqual(CLOSING, state["events"])
-        self.assertIn("make open", result.stderr)
+        self.assertIn("make -C infra/k8s open opens it again", result.stderr)
         cluster.change(probes={API_URL: "auto", STORE_URL: "auto"})
         opened = cluster.open()
         self.assertEqual(0, opened.returncode, opened.stderr)

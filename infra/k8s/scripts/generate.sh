@@ -13,8 +13,10 @@
 #   GENERATE_PROFILES_FILE  diskPeakGb of the profiles (apps/api/fixtures/demo-data/profiles.yaml)
 #   GENERATE_CLOSE_WAIT (120), GENERATE_OPEN_WAIT (300), GENERATE_POLL (30), GENERATE_PROBE_POLL (5)   seconds
 #
-# Right after tak it deletes the Job demo-data-run of the run before, so that make open never takes its success for that of this run.
-# The Secret of the photo pool is deleted on every exit (INT and TERM too); after a KILL make open deletes it.
+# Only the new Job changes the data: until it is made the data is untouched and the Job demo-data-run of the run before describes it
+# (make open may open the shop on it again). Right before the new Job, after the closing and the Secret, the active Jobs are read again
+# and the Job of the run before is deleted with its pod, so make open never takes its success for that of this run. The Secret of
+# the photo pool is deleted on every exit (INT and TERM too); after a KILL make open deletes it.
 #
 # Exit codes: 0 generated, checked, the shop open; 1 refused, not confirmed or failed (the message says whether the shop is closed);
 # 2 wrong arguments or environment.
@@ -43,10 +45,14 @@ refuse() {
   echo "generate: nothing was changed" >&2
   exit 1
 }
-# fail <reason>: after tak; the shop is not opened again (it is closed once the rule shop-closed is made).
+# fail <reason>: after tak; what it says depends on the stage: closed (the data untouched) or replacing (the Job before deleted).
+stage=closed
 fail() {
   printf 'generate: FAILED: %s\n' "$1" >&2
-  echo "generate: the shop stays CLOSED (the NetworkPolicy shop-closed; make status). Two ways out: make -C infra/k8s generate PROFILE=$profile again, or back to the seed with PROFILE=seed" >&2
+  case "$stage" in
+    closed) echo "generate: the shop stays CLOSED (the NetworkPolicy shop-closed; make status) and the data is as it was: make -C infra/k8s open opens it again on the Job demo-data-run of the run before when that one completed, or make -C infra/k8s generate PROFILE=$profile again" >&2 ;;
+    *) echo "generate: the shop stays CLOSED (the NetworkPolicy shop-closed; make status). Two ways out: make -C infra/k8s generate PROFILE=$profile again, or back to the seed with PROFILE=seed" >&2 ;;
+  esac
   exit 1
 }
 
@@ -163,10 +169,6 @@ IFS= read -r answer <&3 || answer=""
 echo
 [ "$answer" = tak ] || refuse "not confirmed (no 'tak')"
 
-# The run before is gone first (--wait: until the cluster deleted it): from now on make open refuses until the new Job completed.
-kc delete job "$job" --wait=true --ignore-not-found > /dev/null ||
-  refuse "the Job $job of the run before could not be deleted (make status shows whether it is gone; the shop is as it was)"
-
 # 3. The closing: the rule, Traefik restarted (its pods deleted: the connections opened before the rule end), the probe.
 rule="$(kc get networkpolicy shop-closed --ignore-not-found -o name)" || fail "cannot read the NetworkPolicy shop-closed"
 [ -n "$rule" ] || printf '%s' "$rule_manifest" | kc create -f - > /dev/null || fail "the NetworkPolicy shop-closed could not be made"
@@ -181,6 +183,12 @@ if [ "$photos_needed" = 1 ]; then
   kc delete secret "$cron_secret" --ignore-not-found > /dev/null || fail "the Secret $cron_secret could not be deleted"
   create_photo_secret "$cron_secret" || fail "$demo_data_error"
 fi
+# Another copy of make generate may run its Job now; the Job of the run before goes with its pod, and from now on make open refuses until
+# the new Job completed.
+active="$(active_jobs)" || fail "cannot read the Jobs of the namespace $namespace"
+[ -z "$active" ] || fail "Jobs are active in the namespace $namespace: $active (another make generate?); no Job is deleted"
+stage=replacing
+kc delete job "$job" --cascade=foreground --wait=true --ignore-not-found > /dev/null || fail "the Job $job of the run before could not be deleted"
 job_made=1
 cronjob_job demo-data "$job" "DEMO_DATA_CONFIRM=$profile" || fail "the Job $job could not be created from the CronJob demo-data"
 echo "generate: the Job $job runs (its log and the metrics go to Grafana Cloud); this target only waits"

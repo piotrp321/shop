@@ -454,7 +454,7 @@ demo_data_script_stops_only_the_generator() {
 # make generate deletes the Job demo-data-run of the run before right before the new one (here: it keeps it), and make open refuses without a
 # Job demo-data-run that completed (here: it opens after any Job): either way make open could take an earlier success.
 # shellcheck disable=SC2016 # the texts are lines of the scripts
-generate_keeps_the_previous_run() { replace infra/k8s/scripts/generate.sh 'kc delete job "$job" --wait=true' ': kc delete job "$job" --wait=true'; }
+generate_keeps_the_previous_run() { replace infra/k8s/scripts/generate.sh 'kc delete job "$job" --cascade' ': kc delete job "$job" --cascade'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts
 open_without_the_check_of_the_run() { replace infra/k8s/scripts/open.sh '[ "${run_state%% *}" = Complete ] ||' ': ||'; }
 # The CronJob load (docs/features/demo-scale/spec.md): a Job of it checkouts an order in the data, so a CronJob that is not suspended
