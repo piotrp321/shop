@@ -119,6 +119,19 @@ def bump(by="another copy"):
 
 def event(text):
     state["events"].append(text)
+    # What no interruption may break (docs/features/demo-scale/spec.md, criterion 5), checked after every change: the rule goes only
+    # in the opening (step 6) or in the rollback of a closing that did not start from data failed; data failed always has the rule.
+    current = (state["record"] or {}).get("data") or {}
+    if text.startswith("delete networkpolicy") and not (
+            current.get("phase") == "opening" or (current.get("phase") == "closing" and current.get("data") != "failed")):
+        state["violations"].append(f"{text} with the record in the phase {current.get('phase')}, data {current.get('data')}")
+    if current.get("data") == "failed" and state["netpol"] is None:
+        state["violations"].append(f"data failed without the rule shop-closed after: {text}")
+    hold = state.get("hold_after")
+    if hold and text.startswith(hold):
+        # From now on the stub of sleep waits until the test deletes the file: the target is caught in a wait.
+        state["hold_after"] = None
+        open(os.path.join(root, "hold"), "w").close()
     interfere = state.get("interfere_after")
     if interfere and text.startswith(interfere):
         state["interfere_after"] = None
@@ -162,6 +175,24 @@ if image.startswith("curlimages/curl"):
         code = spec
     sys.stdout.write(code)
     sys.exit(7 if code == "000" else 0)
+
+def interrupt():
+    """The interruption after the call took effect: the whole process group of the target ends at once (SIGKILL, so no trap of the
+    script runs), as a lost connection or a restarted computer leaves it."""
+    import signal
+    if str(os.getpgrp()) == os.environ.get("STUB_RUNNER_PGID"):
+        sys.stderr.write("stub: the target does not run in a session of its own, it is not killed\n")
+        os._exit(99)
+    os.killpg(os.getpgrp(), signal.SIGKILL)
+
+
+# kill_after <n>: the n-th call of kubectl (counted over every run of the target on this state) ends the target after it.
+if state.get("kill_after"):
+    state["kubectl_count"] = state.get("kubectl_count", 0) + 1
+    save()
+    if state["kubectl_count"] == state["kill_after"]:
+        import atexit
+        atexit.register(interrupt)
 
 if rest[:1] == ["-n"]:
     namespace, rest = rest[1], rest[2:]
@@ -225,9 +256,13 @@ elif verb == "get":
     elif kind in ("jobs", "job"):
         if names:
             if names[0] not in state["jobs"]:
+                if "--ignore-not-found" in rest:
+                    sys.exit(0)
                 fail(f'Error from server (NotFound): jobs.batch "{names[0]}" not found')
             doc = job_doc(names[0])
-            if output == "json":
+            if output == "name":
+                print("job.batch/" + names[0])
+            elif output == "json":
                 print(json.dumps(doc))
             elif "activeDeadlineSeconds" in output:
                 print(doc["spec"]["activeDeadlineSeconds"], end="")
@@ -352,6 +387,8 @@ elif verb == "delete":
         event("delete secret " + rest[2])
     elif kind == "pods":
         assert namespace == "kube-system" and option("-l") == "app.kubernetes.io/name=traefik", rest
+        if state.get("traefik_delete_fails"):
+            fail('Error from server (Forbidden): pods is forbidden: User "operator" cannot delete resource "pods" in the namespace "kube-system"')
         event("delete pods traefik")
         state["traefik_restart_seq"] = len(state["events"])
         state["traefik_not_ready_reads"] = state.get("traefik_not_ready_after_restart", 0)
@@ -416,7 +453,12 @@ done
 exec /bin/date -u -d "@$clock" ${format:+"$format"}
 '''
 
+# While the file hold exists (made at the event hold_after), sleep waits for real and says so in the file held.
 SLEEP = r'''#!/bin/sh
+if [ -e "$STUB_DIR/hold" ]; then
+  : > "$STUB_DIR/held"
+  while [ -e "$STUB_DIR/hold" ]; do /bin/sleep 0.05; done
+fi
 clock="$(cat "$STUB_DIR/clock")"
 echo $((clock + ${1%.*})) > "$STUB_DIR/clock"
 '''
@@ -467,6 +509,7 @@ def initial_state(argocd=True, record=None, profile="medium", **changes):
         "pg": {"estimates": "191|0", "invalid": "", "counts": "1000191|1000001"},
         "es": {"health": "green", "alias": ["products_20261119110000000_a1b2c3"], "indices": {"products_20261119110000000_a1b2c3": 1000191}},
         "events": [],
+        "violations": [],
     }
     state.update(changes)
     return state
@@ -498,7 +541,7 @@ class Cluster:
         self.log.write_text("")
         (self.root / "state.json").write_text(json.dumps(state))
 
-    def run(self, answer="tak\n", shell_options=(), **env):
+    def environment(self, **env):
         variables = {
             "PATH": f"{self.bin}:{os.environ['PATH']}",
             "HOME": str(self.home),
@@ -512,10 +555,16 @@ class Cluster:
             "REPLACE": "seed",
             # The rounds of the probe and the readings of Traefik: fewer of them in a wait of the same length.
             "GENERATE_PROBE_POLL": "15",
+            # The stub never kills the process group of the tests (kill_after).
+            "STUB_RUNNER_PGID": str(os.getpgrp()),
         }
         variables.update(env)
-        variables = {k: v for k, v in variables.items() if v is not None}
-        return subprocess.run(["sh", *shell_options, str(SCRIPT)], input=answer, env=variables, capture_output=True, text=True, timeout=600)
+        return {k: v for k, v in variables.items() if v is not None}
+
+    def run(self, answer="tak\n", shell_options=(), new_session=False, **env):
+        """The target; new_session runs it in a process group of its own, which kill_after ends."""
+        return subprocess.run(["sh", *shell_options, str(SCRIPT)], input=answer, env=self.environment(**env), capture_output=True, text=True,
+                              timeout=600, start_new_session=new_session)
 
     def state(self):
         return json.loads((self.root / "state.json").read_text())
@@ -798,15 +847,19 @@ class Refusals(GenerateCase):
         self.assertIn(["-H", "Host: api.localhost"], [p[i:i + 2] for p in probes for i in range(len(p))])
         self.assertIn(["-H", "Host: localhost"], [p[i:i + 2] for p in probes for i in range(len(p))])
 
-    def test_a_phase_other_than_idle_is_refused_until_the_resume_is_there(self):
+    def test_a_resume_with_a_profile_other_than_the_target_is_refused(self):
+        # The resume itself: tests/test_generate_resume.py.
         for phase in ("closing", "running", "checking", "opening"):
-            with self.subTest(phase=phase):
-                cluster = self.cluster(record=record("failed", phase, target="medium", rootAutomated=json.dumps(AUTOMATED)),
-                                       netpol={"kind": "NetworkPolicy"})
-                result = cluster.run(REPLACE="failed")
-                self.assert_unchanged(cluster, result)
-                self.assertIn(f"phase {phase}", result.stderr)
-                self.assertIn("resum", result.stderr)
+            for profile in ("seed", "server"):
+                with self.subTest(phase=phase, profile=profile):
+                    cluster = self.cluster(record=record("failed", phase, target="medium", rootAutomated=json.dumps(AUTOMATED)),
+                                           netpol={"kind": "NetworkPolicy"})
+                    result = cluster.run(PROFILE=profile, REPLACE="failed")
+                    self.assert_unchanged(cluster, result)
+                    self.assertIn(f"phase {phase}", result.stderr)
+                    self.assertIn(f"PROFILE={profile}", result.stderr)
+                    self.assertIn("target medium", result.stderr)
+                    self.assertIn("PROFILE=medium", result.stderr)
 
     def test_a_record_that_cannot_be_read_is_refused(self):
         cluster = self.cluster(broken=True)
@@ -1115,6 +1168,19 @@ class Rollback(RunCase):
         self.assertIsNotNone(cluster.state()["netpol"])
         self.assertIn("exit 75: an earlier run", cluster.state()["record"]["data"]["reason"])
 
+    def test_pods_of_traefik_that_cannot_be_deleted_roll_back_at_once(self):
+        # The connections opened before the rule are not ended: no probe can confirm the closure.
+        cluster = self.cluster(traefik_delete_fails=True)
+        result = self.run_generate(cluster)
+        self.rolled_back(cluster, result)
+        self.assertEqual(["record closing", "patch root null", "patch shop null", "create networkpolicy shop-closed", "delete secret demo-photos",
+                          "delete networkpolicy shop-closed", ROOT_BACK, "record idle"], cluster.events())
+        self.assertIn("the pods of Traefik could not be deleted", result.stderr)
+        calls = cluster.calls()
+        delete = next(i for i, c in enumerate(calls) if c["args"][2:4] == ["delete", "pods"])
+        self.assertEqual([], [c["args"] for c in calls[delete + 1:] if c["image"] == "curlimages/curl" or c["args"][:4] == ["-n", "kube-system", "get", "pods"]])
+        self.assertLess(cluster.clock() - START, 120)
+
     def test_a_secret_left_by_an_earlier_run_is_deleted_by_the_rollback(self):
         cluster = self.cluster(secrets={"demo-photos": {"kind": "Secret", "metadata": {"name": "demo-photos"}}}, probes={API_URL: "auto", STORE_URL: "200"})
         result = self.run_generate(cluster)
@@ -1215,6 +1281,15 @@ class Failure(RunCase):
         result = self.run_generate(cluster)
         self.assertEqual(closing_events() + run_events() + failure_tail(rule_missing=True), cluster.events())
         self.assert_closed_failed(cluster, result, "the pod of the Job does not exist")
+
+    def test_pods_of_traefik_that_cannot_be_deleted_after_the_rule_is_made_again_are_said(self):
+        cluster = self.cluster(on_event={f"create job {JOB}": {"netpol": None, "traefik_delete_fails": True}})
+        self.with_outcome(cluster, "demo-data-", outcome="Failed", pod=None)
+        result = self.run_generate(cluster)
+        self.assertEqual(closing_events() + run_events() + ["delete secret demo-photos", "create networkpolicy shop-closed", ROOT_BACK, "record idle"],
+                         cluster.events())
+        self.assert_closed_failed(cluster, result, "the pod of the Job does not exist")
+        self.assertIn("the pods of Traefik could not be deleted", result.stderr)
 
     def test_a_failure_without_argo_cd(self):
         cluster = self.cluster(argocd=False)

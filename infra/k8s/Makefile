@@ -133,8 +133,9 @@ restore:
 # outside the repository> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>. Only after the consent
 # of the user in the conversation that names the operation, the host and the profile. PROFILE is seed or the profile of the CronJob
 # demo-data (demoData.profile), REPLACE the data of the record demo-data-state (seed without a record). Refuses without changes (exit 1;
-# exit 2 for wrong arguments, the environment, the file of the photo pool), says what it will do and asks for the word tak. The run,
-# the variables and the probe of the public addresses are in the header of scripts/generate.sh.
+# exit 2 for wrong arguments, the environment, the file of the photo pool), says what it will do and asks for the word tak. A record in
+# a phase other than idle (a run that stopped) is resumed by the same target with PROFILE equal to its target, without REPLACE and
+# without tak. The run, the resume, the variables and the probe of the public addresses are in the header of scripts/generate.sh.
 generate:
 	@sh scripts/ao-guard.sh generate
 	PROFILE="$(PROFILE)" REPLACE="$(REPLACE)" sh scripts/generate.sh
