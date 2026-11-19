@@ -216,7 +216,8 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   dane sklepu danymi profilu generatora albo seedem, więc sam się nie uruchamia, a skrypt `files/scripts/demo-data.sh`
   odmawia bez `DEMO_DATA_CONFIRM` (kod 64). W `prod` (`medium`, po zgodzie `server`) Job powstaje wyłącznie z celu
   `make -C infra/k8s generate` po zgodzie użytkownika: zamyka sklep NetworkPolicy `shop-closed` (jedyna, tymczasowa;
-  poza chartem), sprawdza dane i otwiera go; nieudany przebieg zostawia sklep zamknięty. Strażnik wolnego miejsca
+  poza chartem), a po udanym Jobie `make -C infra/k8s open` sprawdza dane i otwiera go; nieudany przebieg zostawia
+  sklep zamknięty. Strażnik wolnego miejsca
   zatrzymuje generator tuż przed progiem alertu `NodeDiskFull`. Opis: `docs/features/demo-scale/spec.md`,
   `docs/features/demo-data/spec.md`.
 - CronJob `load` (każdy profil): zawieszony, obraz k6 z digestem w `images.k6`, Job uruchamia `load/smoke.js` na usługach
@@ -478,12 +479,11 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   z nową rewizją (`initialize` i `keycloak-config` nie zmieniają danych ani realmów), upgrade z klientem dodanym do pliku
   realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, upgrade ze zepsutą
   migracją (poprzednie `api` i `worker` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
-  się błędem stanu mieszanego bez zmian). Ostatnia faza uruchamia cel `generate` z profilem `small` (zamknięcie sklepu, Job z CronJoba
-  `demo-data`, sprawdzenie danych, Job `load`, otwarcie; `docs/features/demo-scale/spec.md`, kryterium 7): żądania przez
-  ingress wysyłane bez przerwy przestają dostawać 200 po zamknięciu, a po przebiegu sklep odpowiada, zapis stanu to
-  `idle` z `data: small` i liczby produktów i zamówień są te z profilu. `SMOKE_BREAK=demo-data` psuje generator celowo:
-  cel kończy się kodem 1, ingress odpowiada 502, `data: failed`, a `generate PROFILE=seed REPLACE=failed` otwiera sklep
-  na danych seeda.
+  się błędem stanu mieszanego bez zmian). Ostatnia faza uruchamia `generate PROFILE=small` i `open` (zamknięcie sklepu, Job `demo-data-run`
+  z CronJoba `demo-data`, sprawdzenie danych, Job `load`, otwarcie; `docs/features/demo-scale/spec.md`, kryterium 7),
+  z żądaniami przez ingress wysyłanymi bez przerwy: przestają dostawać 200 po zamknięciu, a po przebiegu sklep
+  odpowiada. `SMOKE_BREAK=demo-data` psuje generator celowo: `generate` kończy się kodem 1, sklep jest zamknięty,
+  `open` odmawia, a `generate PROFILE=seed` kończy się kodem 0 i otwiera sklep na danych seeda.
   Wypisuje szczytowe zużycie pamięci i dysku. Na koniec usuwa klaster (także po
   błędzie). Z `SMOKE_VALUES=<values-images.yaml>` (workflow na `main`) pierwsza instalacja używa tego
   pliku zamiast obrazów lokalnych: k3d pobiera `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z GHCR (uwierzytelnienie

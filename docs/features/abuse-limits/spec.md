@@ -534,7 +534,7 @@ Od początku awarii do alertu mija od 12 do 17 minut i czas ewaluacji reguły.
 
 ## Wdrożenie
 
-- **Wdrożenie epiku** nie zaczyna się w trakcie `generate` (faza w zapisie stanu `demo-data-state` inna niż `idle`):
+- **Wdrożenie epiku** nie zaczyna się w trakcie `generate` (aktywny Job `demo-data-run` albo zamknięty sklep w `make status`):
   restartuje pody, których generator potrzebuje. Migracja L6 tworzy pustą tabelę, więc nie zależy od liczby zamówień.
 - **Po wdrożeniu**, po zgodzie użytkownika jak przy weryfikacji originu (kryteria „po wdrożeniu” w opisie PR): 21.
   podgląd kodu z jednego adresu w 15 minut przez `api.<domena>` to 429, a treść 2 MiB do `/api/v1/orders` to 413.

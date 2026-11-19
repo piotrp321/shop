@@ -420,8 +420,8 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 ### k3d (chart w profilach `ci` i `load`; część 2)
 
 - Zawieszony CronJob `demo-data` (wzorzec CronJoba `restore`) tylko gdy `demoData.enabled` (profile `ci`, `load` i
-  `prod`; na serwerze Job powstaje wyłącznie z celu `make -C infra/k8s generate`, który zamyka sklep, sprawdza dane
-  i otwiera go: `docs/features/demo-scale/spec.md`): obraz api, skrypt chartu `files/scripts/demo-data.sh`, który
+  `prod`; na serwerze Job powstaje wyłącznie z celu `make -C infra/k8s generate`, który zamyka sklep, a po Jobie
+  `make -C infra/k8s open` sprawdza dane i otwiera go: `docs/features/demo-scale/spec.md`): obraz api, skrypt chartu `files/scripts/demo-data.sh`, który
   uruchamia `bin/generate-demo` z profilem i chwilą odniesienia z wartości (dla `seed` `bin/seed-demo`) i odmawia
   (kod 64) bez zmiennej `DEMO_DATA_CONFIRM` równej profilowi albo `seed` (ustawiają ją tylko `generate`, `load`
   i test dymny, więc Job utworzony ręcznie niczego nie kasuje), z strażnikiem wolnego miejsca (`demoData.minFreeGb`:
