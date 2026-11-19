@@ -70,10 +70,10 @@ when@dev:
             guest_cart_write: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
             discount_preview: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: rate_limiter.lock_factory }
 
-# Small limits for the tests of the limits, above the requests of a kind that any other test makes (7 at most). Their
-# state is in memory, kept as long as the kernel of one test (an array pool would not do: the kernel resets it after
-# every request), without a lock: one process. tests/Integration/Shared/RateLimit puts it back on the Redis pool and
-# the lock of production.
+# Small limits for the tests of the limits, above the requests of a kind that any other test makes from one address.
+# Their state is in memory, kept as long as the kernel of one test (an array pool would not do: the kernel resets it
+# after every request), without a lock: one process. tests/Integration/Shared/RateLimit puts it back on the Redis pool
+# and the lock of production.
 when@test: &test
     framework:
         rate_limiter:

@@ -292,10 +292,13 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   użyty dla innego koszyka, zamówienia lub dostawcy (przy dostępie do zasobu żądania) to 409 bez danych zasobu, który
   go użył. Klucze są zapisane na
   zawsze (unikalny indeks). Szczegóły: specyfikacje `inventory`, `checkout`, `payment`.
-- Rate limiting (`docs/features/hardening/spec.md`, D1–D8, `config/packages/rate_limiter.yaml`): bez `symfony/lock`
-  (równoległe żądania mogą przekroczyć limit o liczbę żądań w locie). Trasa wskazuje limiter domyślną wartością
-  `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`; nowa trasa z limitem ma 429 w OpenAPI. Redis
-  niedostępny: żądanie przechodzi bez limitu (fail open, D7). Adres klienta bierze wyłącznie `ClientIp::of(Request)`.
+- Rate limiting (`docs/features/hardening/spec.md`, D1–D8, `docs/features/abuse-limits/spec.md`, D1–D3,
+  `config/packages/rate_limiter.yaml`): każdy limiter w `prod` i `dev` ma `lock_factory: rate_limiter.lock_factory`
+  (`symfony/lock` w Redisie liczników, `config/packages/lock.yaml`), `when@test` bez blokady. Trasa wskazuje limiter
+  domyślną wartością `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`; nowa trasa z limitem ma 429
+  w OpenAPI. Redis niedostępny: żądanie przechodzi bez limitu (fail open, D7). Adres klienta bierze wyłącznie
+  `ClientIp::of(Request)`.
+- Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (`RateLimit::ROUTE_DEFAULT`, wartości `prod`, `dev` i `test`) i test prób obejścia.
   Kontener testów ma `APP_DEBUG=0`, więc po zmianie konfiguracji lokalnie usuń `var/cache/test*`.
 - Nagłówki bezpieczeństwa API ustawia `SecurityHeadersSubscriber` na każdej odpowiedzi; HSTS należy do ingressu
   (`docs/features/hardening/spec.md`, D10).

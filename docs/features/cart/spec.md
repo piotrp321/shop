@@ -13,7 +13,8 @@ Cena wariantu w koszyku i w ofercie listy to cena skuteczna z Pricing (w aktywne
 z jednej wyceny Pricing (`QuoteBasket`, ta sama co przy złożeniu zamówienia), a odczyt koszyka przyjmuje kod rabatowy
 do podglądu w kasie (`docs/features/discount-codes/spec.md`); kod nie jest zapisywany w koszyku. Poza zakresem:
 rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, koszty dostawy, strona produktu, panel
-administracyjny, rate limiting tworzenia koszyków.
+administracyjny. Zakładanie koszyków gościa, zmiany ich pozycji i podgląd kodu mają limity na adres klienta
+(`docs/features/abuse-limits/spec.md`, L2, L3).
 
 ## Decyzje biznesowe
 
@@ -366,22 +367,22 @@ Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da 
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | |
-| `GET /api/v1/guest-carts/{cartId}?discountCode=` | 200 `CartView` (z podglądem kodu) | 400 (kod nie jest tekstem, nie jest UTF-8 albo ma ponad 64 znaki), 404 |
+| `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | 429 limit zakładania koszyków z adresu (`guest_cart_create`) |
+| `GET /api/v1/guest-carts/{cartId}?discountCode=` | 200 `CartView` (z podglądem kodu) | 400 (kod nie jest tekstem, nie jest UTF-8 albo ma ponad 64 znaki), 404; 429 limit podglądów kodu z adresu (`discount_preview`, tylko odczyt z `discountCode` innym niż pusty napis) |
 | `GET /api/v1/guest-carts/{cartId}/summary` | 200 `{itemCount}` | 404 |
-| `POST /api/v1/guest-carts/{cartId}/items`, body `{variantId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo wariant; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej) |
+| `POST /api/v1/guest-carts/{cartId}/items`, body `{variantId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo wariant; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej); 429 limit zmian koszyków gościa z adresu (`guest_cart_write`, wspólny dla dodania, zmiany i usunięcia) |
 | `PUT /api/v1/guest-carts/{cartId}/items/{variantId}`, body `{quantity: int}` | 200 `CartView` | jak wyżej oraz 404 `CartLineNotFound` |
-| `DELETE /api/v1/guest-carts/{cartId}/items/{variantId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk |
+| `DELETE /api/v1/guest-carts/{cartId}/items/{variantId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk; 429 jak wyżej |
 
 Klient (token realmu `shop`; bez tokena albo z tokenem realmu `backoffice`: 401; gdy nie da się pobrać kluczy
 wystawcy tokenu: 503):
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `GET /api/v1/me/cart?discountCode=` | 200 `CartView` (bez koszyka: pusty, `id: null`; z podglądem kodu) | 400 (jak wyżej), 401 |
+| `GET /api/v1/me/cart?discountCode=` | 200 `CartView` (bez koszyka: pusty, `id: null`; z podglądem kodu) | 400 (jak wyżej), 401; 429 jak u gościa (ten sam limit adresu) |
 | `GET /api/v1/me/cart/summary` | 200 `{itemCount}` | 401 |
-| `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko wariant) |
-| `PUT /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 oraz jak u gościa (404 wariant albo linia) |
+| `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko wariant, bez 429) |
+| `PUT /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 oraz jak u gościa (404 wariant albo linia, bez 429) |
 | `DELETE /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 |
 | `POST /api/v1/me/cart/merge`, body `{guestCartId: uuid}` | 200 `{cart: CartView, result: "merged" \| "already_merged" \| "nothing_to_merge", truncated: bool}` | 400, 401, 415, 422 (z `violations`, jak niżej) |
 
@@ -726,12 +727,13 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 
 ## Ryzyka i ograniczenia
 
-- Tworzenie koszyka gościa jest publiczne, bez rate limitu; tabelę można zaśmiecić pustymi koszykami do czasu ich
-  wygaśnięcia.
+- Tworzenie koszyka gościa jest publiczne z limitem na adres klienta (L2 ABUSE-LIMITS); atakujący z wieloma adresami
+  zaśmieca tabelę pustymi koszykami, które wygasają po 1 dniu.
 - Identyfikator koszyka gościa jest w ścieżce URL API, więc trafia do logów API. Koszyk nie zawiera danych osobowych.
 - Licznik w nagłówku to jedno zapytanie do PostgreSQL na odsłonę strony, widok koszyka z linią możliwą do kupienia to
   koszyk, Catalog, Pricing (ceny i promocje), Inventory i wycena Pricing (ceny, promocje, kod i liczba użyć kodu
-  z limitem). Bez rate limitingu kody można zgadywać przez podgląd koszyka. Wydajność przy 60 tys. aktywnych użytkowników nie jest potwierdzona testami
+  z limitem). Podgląd kodu ma limit prób na adres klienta (L3 ABUSE-LIMITS), więc zgadywanie kodów jest wolne, ale
+  możliwe z wielu adresów. Wydajność przy 60 tys. aktywnych użytkowników nie jest potwierdzona testami
   obciążeniowymi.
 - Dodanie powtórzone po zgubionej odpowiedzi może zwiększyć ilość dwa razy (bez `Idempotency-Key`), a zmiana ilości
   z nieaktualnej karty nadpisuje nowszą. Obie konsekwencje są świadome.
