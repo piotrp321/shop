@@ -9,7 +9,9 @@ use App\Catalog\Domain\Product\ProductId;
 /**
  * The range of product ids of one sitemap chunk: from `from` inclusive to `to` exclusive, either end open (null).
  * Handed out as opaque text, base64url without padding of a JSON object `{"f": id|null, "t": id|null}`, so the
- * way chunks are cut can change without changing the API.
+ * way chunks are cut can change without changing the API. The text is opaque to the clients of the API only: the
+ * measurement script infra/k8s/scripts/load.sh decodes it in SQL (chunk_stock_sql), so a change of the format needs
+ * a change of that function and of the tests of the format (SitemapChunkKeyTest, infra/k8s/tests/test_load_script.py).
  */
 final readonly class SitemapChunkKey
 {

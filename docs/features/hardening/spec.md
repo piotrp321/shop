@@ -192,7 +192,8 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
   trzech importach, pody niegotowe, generator zakończony błędem albo po czasie, brak porcji mapy strony, dane demo albo
   stany niegotowe, nieudane rozgrzanie, za mało miejsca na dysku VM albo hosta, `LOAD_OUT` niemontowalny przez Docker),
   1 – inny błąd (nieudany przebieg k6, budowa obrazów) albo przebieg doprowadzony do końca, podczas którego komputer
-  spał (wyniki są w `LOAD_OUT`, ale czasów nie wolno używać; szczegóły: `docs/features/demo-data/spec.md`, „k3d”). VM Dockera ma mieć co
+  spał (wyniki są w `LOAD_OUT`, ale czasów nie wolno używać; szczegóły: `docs/features/demo-data/spec.md`, „k3d”),
+  130 po INT i 143 po TERM (klaster usunięty w obu przypadkach). VM Dockera ma mieć co
   najmniej 10 vCPU i 20 GiB RAM (`LOAD_MIN_CPUS`, `LOAD_MIN_MEM_GIB`; pody `prod` żądają około 5 vCPU i 8,5 GiB).
 - Dane pomiaru wybiera `LOAD_DATA` (`docs/features/demo-data/spec.md`, „k3d”): `seed` (domyślnie) – dane demo Joba
   `initialize`; `medium`, `server`, `full` – po gotowości klastra jeden Job z zawieszonego CronJoba `demo-data`
