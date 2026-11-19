@@ -318,7 +318,7 @@ W szkielecie katalog nie ma edycji ani usuwania, istnieje tylko tworzenie.
 
 ### Zdarzenia: outbox → RabbitMQ → handler
 
-Szyny Messengera: `command.bus` (middleware walidacji i `doctrine_transaction`, szyna domyślna), `query.bus`,
+Szyny Messengera: `command.bus` (`CorrelationIdMiddleware` i `doctrine_transaction`, szyna domyślna), `query.bus`,
 `event.bus` (zdarzenie bez odbiorcy nie jest błędem: `allow_no_handlers`).
 
 Transporty:

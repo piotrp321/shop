@@ -1,0 +1,26 @@
+Wed Nov 18 17:34:25 CET 2026
+17:34:28  [OK] photos: the pool version 1 (4317 files) can be loaded for the profile     
+17:34:39  [OK] categories: 44, products: 191, indexed: 191                               
+17:34:52  [OK] prices: 1012, promotions: 3, discount codes: 3                            
+17:34:54  [OK] payment simulator transactions removed                                    
+17:34:56  [OK] payments removed                                                          
+17:34:57  [OK] orders removed                                                            
+17:35:11  [OK] stocks: 1012, stock records written: 1012                                 
+17:35:11  [OK] The alias now points to "products_20261118163504536_04f059" (191          
+17:35:11  [OK] Varnish and the store pages were invalidated.                             
+17:35:11  [OK] Backfill complete.                                                        
+17:35:11  [OK] categories: 136 written, 7 already there                                  
+17:36:37  [OK] products (worker 2 of 4): 500 parts, 250000 products, 752066 variants     
+17:36:37  [OK] products (worker 1 of 4): 500 parts, 250000 products, 752608 variants     
+17:36:38  [OK] products (worker 3 of 4): 500 parts, 250000 products, 750682 variants     
+17:36:38  [OK] products (worker 0 of 4): 500 parts, 250000 products, 752982 variants     
+17:39:06  [OK] photos: 4317 files in the bucket, 1000000 products, 1617932 photos        
+17:39:39  [OK] prices (worker 2 of 4): 500 parts, 752066 variants, 977145 history entries
+17:39:40  [OK] prices (worker 1 of 4): 500 parts, 752608 variants, 978326 history entries
+17:39:40  [OK] prices (worker 0 of 4): 500 parts, 752982 variants, 978647 history entries
+17:39:40  [OK] prices (worker 3 of 4): 500 parts, 750682 variants, 975925 history entries
+17:39:41  [OK] promotions: 40 promotions with 6705 variants, 14 discount codes           
+17:39:47  [ERROR] shop: A request to the realm shop failed: Operation timed out after    
+17:39:47          5002 milliseconds with 0 bytes received for "http://keycloak:8080/admin/realms/shop/partialImport".
+17:39:47 make: *** [seed-scale] Error 1
+Wed Nov 18 17:39:47 CET 2026

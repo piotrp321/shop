@@ -17,7 +17,7 @@ const metaProps = (query: Query = {}) => props(query) as unknown as Parameters<t
 
 const okPage = (page = 1, items = [makeProduct(1)]) => ({
   kind: "ok" as const,
-  products: { items, page, perPage: 24, total: items.length, facets: EMPTY_FACETS },
+  products: { items, page, perPage: 24, total: items.length, pageCount: 1, facets: EMPTY_FACETS },
   offers: { [makeProduct(1).id]: makeOffer(1) },
 });
 
@@ -93,7 +93,7 @@ describe("Home page", () => {
     });
 
     it("shows the filters in the page: active filters, sort and the pagination keep them", async () => {
-      vi.mocked(loadCatalog).mockResolvedValue({ ...okPage(2), products: { ...okPage(2).products, total: 60 } });
+      vi.mocked(loadCatalog).mockResolvedValue({ ...okPage(2), products: { ...okPage(2).products, total: 60, pageCount: 3 } });
       const markup = renderToStaticMarkup(await Home(props(FILTERED)));
       expect(markup).toContain("Usuń filtr: Kolor: czarne");
       expect(markup).toMatch(/<option[^>]*selected=""[^>]*>Cena rosnąco<\/option>/);

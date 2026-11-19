@@ -30,7 +30,7 @@ Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 | P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
 | P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
 | P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | zrobione |
-| P5 | Trzy epiki natywnie: SMALL-FIXES → ABUSE-LIMITS → ASYNC-RELIABILITY, każdy z punktem odniesienia przed i krótkim raportem po | do zrobienia |
+| P5 | Trzy epiki natywnie: SMALL-FIXES → ABUSE-LIMITS → ASYNC-RELIABILITY, każdy z punktem odniesienia przed i krótkim raportem po (oba w opisie PR epiku) | w toku: SMALL-FIXES zrobiony (końcowy PR #752 zmergowany 2026-11-18); następny ABUSE-LIMITS |
 | P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
 
 Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach opisują drogę AO.
@@ -123,8 +123,12 @@ flowchart TB
 ```
 
 1. **Backlog: GitHub Issues** w `piotrp321/shop`.
-   - Etykieta `epic` to funkcja z „Zakresu MVP”, `bug` to błąd, `ux` to problem użyteczności albo wyglądu,
-     `tech-debt` to porządki w kodzie, bazie albo dokumentacji bez zmiany zachowania.
+   - Etykieta `epic` to epik z roadmapy (spójna grupa zmian z własną specyfikacją), `bug` to błąd, `ux` to problem
+     użyteczności albo wyglądu, `tech-debt` to porządki w kodzie, bazie albo dokumentacji bez zmiany zachowania.
+   - Każde zgłoszenie należy do jednego backlogu: `app` (sklep, API, panel i ich infrastruktura), `ash` (proces,
+     agenci, skille, narzędzia i CI repozytorium) albo `ao-frozen` (AO i skille istniejące tylko dla niego, bez
+     priorytetu do decyzji o archiwizacji). Zgłoszenie epiku zawiera listę swoich pozycji i identyfikatory znalezisk
+     z raportów w `docs/reports/`.
    - Zgłaszają: użytkownik, agent tester i agent UX. Zgłoszenia agentów mają etykietę `agent` i limit
      na jeden przebieg. Do backlogu trafiają dopiero po triage użytkownika.
    - Zgłoszenia `bug`, `ux` i `tech-debt` mają pola: środowisko, kroki odtworzenia (jeden krok w linii), wynik
@@ -132,7 +136,8 @@ flowchart TB
      w `.github/ISSUE_TEMPLATE/`, agenci wypełniają te same pola. Zgłoszenie z brakami dostaje etykietę
      `needs-info` i nie idzie do przygotowania.
    - Kolejność ustala użytkownik na tablicy GitHub Projects
-     [„Backlog sklepu”](https://github.com/users/piotrp321/projects/1): epik na górze idzie pierwszy.
+     [„Backlog sklepu”](https://github.com/users/piotrp321/projects/1): epik na górze idzie pierwszy. Na tablicy są
+     tylko epiki i pozycje do zrobienia przed nimi; pole „Backlog” odróżnia aplikację od ASH.
 2. **Przygotowanie (użytkownik, w dzień).**
    - Issue z góry listy → `/brainstorm` → `spec.md`, `/planner` → `plan.md`.
    - Decyzje produktowe (zakres, reguły, limity, zachowanie klienta) podejmuje wyłącznie użytkownik. Agenci ich

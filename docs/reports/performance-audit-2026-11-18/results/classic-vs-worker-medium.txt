@@ -1,0 +1,26 @@
+api-prod.health.v1              vus=1   rps=602.8    p50=1.35    p95=2.84    p99=5.31    sql/req=0.0 sqlms/req=0.0 conn/req=0.0 | api_prod=1.451 | foreign=254.4
+api-prod.product.v1             vus=1   rps=80.6     p50=11.31   p95=18.46   p99=23.04   sql/req=4.0 sqlms/req=0.358 conn/req=1.0 | postgres=5.829 elasticsearch=0.117 redis=0.065 api_dev=0.175 api_prod=5.781 | foreign=256.9
+api-prod.offers_24.v1           vus=1   rps=53.5     p50=16.9    p95=27.88   p99=42.72   sql/req=5.0 sqlms/req=2.14 conn/req=1.0 | postgres=8.928 elasticsearch=0.115 redis=0.082 varnish=0.057 api_dev=0.384 api_prod=8.186 | foreign=284.7
+api-prod.categories.v1          vus=1   rps=74.6     p50=12.13   p95=19.9    p99=27.78   sql/req=2.0 sqlms/req=0.6 conn/req=1.0 | postgres=5.271 elasticsearch=0.09 redis=0.063 api_dev=0.184 api_prod=7.613 | foreign=388.9
+api-prod.listing_leaf_category.v1 vus=1   rps=33.1     p50=29.87   p95=43.2    p99=64.41   sql/req=3.0 sqlms/req=0.563 conn/req=1.01 | postgres=5.402 elasticsearch=15.428 redis=0.147 varnish=0.1 api_dev=0.415 api_prod=10.74 | foreign=182.7
+api-prod.admin_orders.v1        vus=1   rps=81.3     p50=11.52   p95=17.33   p99=21.12   sql/req=3.0 sqlms/req=0.722 conn/req=1.0 | postgres=5.883 elasticsearch=0.076 api_dev=0.13 api_prod=6.286 | foreign=370.2
+api-prod.health.v16             vus=16  rps=2993.4   p50=3.79    p95=14.33   p99=23.82   sql/req=0.0 sqlms/req=0.0 conn/req=0.0 | api_prod=1.094 | foreign=295.0
+api-prod.product.v16            vus=16  rps=445.4    p50=30.74   p95=68.96   p99=110.78  sql/req=4.0 sqlms/req=0.212 conn/req=1.0 | postgres=5.487 api_prod=10.538 | foreign=277.8
+api-prod.offers_24.v16          vus=16  rps=445.0    p50=32.02   p95=63.26   p99=95.11   sql/req=5.0 sqlms/req=2.586 conn/req=1.0 | postgres=7.239 api_prod=11.61 | foreign=190.9
+api-prod.categories.v16         vus=16  rps=456.3    p50=30.51   p95=65.08   p99=111.9   sql/req=2.0 sqlms/req=0.99 conn/req=1.0 | postgres=4.806 api_prod=12.337 | foreign=270.6
+api-prod.listing_leaf_category.v16 vus=16  rps=164.8    p50=81.34   p95=214.07  p99=284.78  sql/req=3.0 sqlms/req=0.813 conn/req=1.0 | postgres=5.342 elasticsearch=14.505 api_dev=0.103 api_prod=12.361 | foreign=304.7
+api-prod.admin_orders.v16       vus=16  rps=460.5    p50=30.78   p95=61.23   p99=104.22  sql/req=3.0 sqlms/req=1.235 conn/req=1.0 | postgres=5.796 api_prod=11.864 | foreign=233.2
+api-prod.product.v64            vus=64  rps=494.7    p50=121.12  p95=196.01  p99=255.95  sql/req=4.0 sqlms/req=0.292 conn/req=1.0 | postgres=5.458 api_prod=14.403 | foreign=262.0
+api-prodw.health.v1             vus=1   rps=1524.5   p50=0.5     p95=1.2     p99=2.98    sql/req=0.0 sqlms/req=0.0 conn/req=0.0 | api_prodw=0.497 | foreign=402.8
+api-prodw.product.v1            vus=1   rps=464.4    p50=1.73    p95=4.3     p99=7.76    sql/req=3.0 sqlms/req=0.081 conn/req=0.0 | postgres=0.49 api_prodw=1.244 | foreign=362.4
+api-prodw.offers_24.v1          vus=1   rps=190.0    p50=4.6     p95=8.47    p99=11.63   sql/req=4.0 sqlms/req=1.225 conn/req=0.0 | postgres=1.968 api_dev=0.07 api_prodw=2.699 | foreign=384.6
+api-prodw.categories.v1         vus=1   rps=267.8    p50=3.18    p95=6.23    p99=10.06   sql/req=1.0 sqlms/req=0.5 conn/req=0.0 | postgres=0.618 api_dev=0.057 api_prodw=2.694 | foreign=587.3
+api-prodw.listing_leaf_category.v1 vus=1   rps=49.0     p50=19.57   p95=34.51   p99=53.32   sql/req=2.0 sqlms/req=0.519 conn/req=0.01 | postgres=0.826 elasticsearch=13.483 redis=0.084 api_dev=0.353 api_prodw=5.37 | foreign=581.6
+api-prodw.admin_orders.v1       vus=1   rps=312.5    p50=2.66    p95=5.6     p99=9.32    sql/req=2.0 sqlms/req=0.634 conn/req=0.0 | postgres=0.956 api_prodw=1.775 | foreign=321.2
+api-prodw.health.v16            vus=16  rps=6715.7   p50=1.49    p95=6.67    p99=13.61   sql/req=0.0 sqlms/req=0.0 conn/req=0.0 | api_prodw=0.324 | foreign=424.2
+api-prodw.product.v16           vus=16  rps=2976.1   p50=3.84    p95=13.44   p99=24.79   sql/req=3.0 sqlms/req=0.142 conn/req=0.0 | postgres=0.38 api_prodw=0.862 | foreign=499.1
+api-prodw.offers_24.v16         vus=16  rps=1300.2   p50=9.93    p95=28.32   p99=42.95   sql/req=4.0 sqlms/req=2.887 conn/req=0.0 | postgres=1.627 api_prodw=2.213 | foreign=305.0
+api-prodw.categories.v16        vus=16  rps=1682.4   p50=7.31    p95=22.5    p99=34.06   sql/req=1.0 sqlms/req=0.944 conn/req=0.0 | postgres=0.609 api_prodw=2.42 | foreign=218.0
+api-prodw.listing_leaf_category.v16 vus=16  rps=281.3    p50=42.62   p95=150.86  p99=224.33  sql/req=2.0 sqlms/req=0.675 conn/req=0.0 | postgres=0.815 elasticsearch=13.87 api_dev=0.053 api_prodw=5.032 | foreign=136.7
+api-prodw.admin_orders.v16      vus=16  rps=1649.6   p50=7.02    p95=23.37   p99=35.98   sql/req=2.0 sqlms/req=3.86 conn/req=0.0 | postgres=2.201 api_prodw=1.35 | foreign=171.8
+api-prodw.product.v64           vus=64  rps=4976.9   p50=10.57   p95=29.32   p99=44.91   sql/req=3.0 sqlms/req=0.121 conn/req=0.0 | postgres=0.353 api_prodw=0.774 | foreign=148.1

@@ -19,11 +19,13 @@ final class FakeProductSearch implements ProductSearch
 
     /**
      * @param list<ProductDocument> $items
+     * @param int|null              $reachable the matches inside the result window; all of them when null
      */
     public function __construct(
         private readonly array $items = [],
         private readonly int $total = 0,
         private readonly SearchFacets $facets = new SearchFacets([], [], null, 0),
+        private readonly ?int $reachable = null,
     ) {
     }
 
@@ -31,6 +33,6 @@ final class FakeProductSearch implements ProductSearch
     {
         $this->lastCriteria = $criteria;
 
-        return new SearchResult($this->items, $this->total, $this->facets);
+        return new SearchResult($this->items, $this->total, $this->reachable ?? $this->total, $this->facets);
     }
 }

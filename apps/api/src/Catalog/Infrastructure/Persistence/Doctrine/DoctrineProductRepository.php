@@ -75,23 +75,6 @@ final readonly class DoctrineProductRepository implements ProductRepository
         return $this->toDomain($record);
     }
 
-    public function all(): iterable
-    {
-        $records = $this->entityManager->createQueryBuilder()
-            ->select('product', 'additional', 'variant')
-            ->from(ProductRecord::class, 'product')
-            ->leftJoin('product.additionalCategories', 'additional')
-            ->leftJoin('product.variants', 'variant')
-            ->orderBy('product.slug')
-            ->addOrderBy('variant.position')
-            ->getQuery()
-            ->getResult();
-
-        foreach ($records as $record) {
-            yield $this->toDomain($record);
-        }
-    }
-
     /**
      * A variant id that another product of this EntityManager already holds would collide in its identity map before
      * the primary key of the table is reached (the case of a seed that saves many products in one process).

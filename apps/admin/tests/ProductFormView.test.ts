@@ -806,6 +806,76 @@ describe("ProductFormView", () => {
     });
   });
 
+  describe("an image upload in progress (B4)", () => {
+    const stored = (key: string) => ({ data: { key, preview: { size: "thumbnail", aspectRatio: "1:1", variants: {} } }, response: { status: 201 } });
+    const rows = () => document.body.querySelectorAll("[data-testid=image-row]").length;
+    const entries = () => document.body.querySelectorAll("[data-testid=upload-entry]").length;
+
+    function sendOne() {
+      let finish!: (value: unknown) => void;
+      mocks.post.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+      return (key: string) => finish(stored(key));
+    }
+
+    it("counts as an unsaved change: the question opens, and staying keeps the upload, which ends in the same form", async () => {
+      mounted = await mountForm("/products/p-1");
+      const finish = sendOne();
+      await files(mounted.wrapper, [new File(["x"], "c.jpg")]);
+      await flushPromises();
+      expect(saveBar()).toBeNull();
+
+      const navigation = mounted.router.push("/products/new");
+      await flushPromises();
+
+      expect(dialog()?.textContent).toContain("Masz niezapisane zmiany");
+      expect(mounted.router.currentRoute.value.name).toBe("product");
+      dialogButton("Zostań")!.click();
+      await navigation;
+      await flushPromises();
+      expect(entries()).toBe(1);
+
+      finish("originals/c.jpg");
+      await flushPromises();
+
+      expect(mounted.router.currentRoute.value.name).toBe("product");
+      expect(rows()).toBe(3);
+    });
+
+    it("drops the result when the staff member leaves without saving to a new product", async () => {
+      mounted = await mountForm("/products/p-1");
+      const finish = sendOne();
+      await files(mounted.wrapper, [new File(["x"], "c.jpg"), new File(["y"], "d.jpg")]);
+      await flushPromises();
+
+      const navigation = mounted.router.push("/products/new");
+      await flushPromises();
+      dialogButton("Opuść bez zapisu")!.click();
+      await navigation;
+      await flushPromises();
+      expect(mounted.router.currentRoute.value.name).toBe("product-new");
+      expect(entries()).toBe(0);
+
+      finish("originals/c.jpg");
+      await flushPromises();
+
+      expect(rows()).toBe(0);
+      expect(entries()).toBe(0);
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("warns the browser when the tab is closed during an upload", async () => {
+      mounted = await mountForm("/products/p-1");
+      sendOne();
+      await files(mounted.wrapper, [new File(["x"], "c.jpg")]);
+      await flushPromises();
+
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+    });
+  });
+
   describe("signing out", () => {
     it("does not hold back a sign-out with the warning about unsaved changes", async () => {
       mounted = await mountForm("/products/p-1");

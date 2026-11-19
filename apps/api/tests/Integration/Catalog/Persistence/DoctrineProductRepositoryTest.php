@@ -77,22 +77,20 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         );
     }
 
-    public function testAllReturnsAdditionalCategoriesSortedById(): void
+    public function testGetOfAStoredProductReturnsAdditionalCategoriesSortedById(): void
     {
         [$main] = $this->savedCategories(1);
         $last = CategoryFactory::createOne(['id' => 'ffffffff-ffff-4fff-bfff-ffffffffffff']);
         $first = CategoryFactory::createOne(['id' => '11111111-1111-4111-8111-111111111111']);
         $this->categories->save($last);
         $this->categories->save($first);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$last, $first]]), null, null, new \DateTimeImmutable());
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$last, $first]]);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
-        $products = [...$this->products->all()];
-
-        self::assertCount(1, $products);
         self::assertSame(
             [$first->id()->toString(), $last->id()->toString()],
-            array_map(static fn ($id): string => $id->toString(), $products[0]->categories()->additional()),
+            array_map(static fn ($id): string => $id->toString(), $this->products->get($product->id())->categories()->additional()),
         );
     }
 
@@ -156,14 +154,14 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $this->products->get(ProductId::fromString('99999999-9999-4999-8999-999999999999'));
     }
 
-    public function testAllReturnsEveryProductSaved(): void
+    public function testEveryProductSavedIsStored(): void
     {
         [$main] = $this->savedCategories(1);
         $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'imageAlts' => ['front']]), null, null, new \DateTimeImmutable());
         $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
         $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
 
-        self::assertCount(3, [...$this->products->all()]);
+        self::assertSame(3, $this->connection->fetchOne('SELECT count(*) FROM catalog_product'));
     }
 
     public function testDuplicateSlugThrowsSlugAlreadyTakenAndLeavesNoRows(): void
@@ -323,17 +321,19 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         );
     }
 
-    public function testAllReturnsTheVariantsOfEveryProduct(): void
+    public function testGetReturnsTheVariantsOfEachStoredProduct(): void
     {
         [$main] = $this->savedCategories(1);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Rozmiar'], 'variants' => [
+        $two = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Rozmiar'], 'variants' => [
             ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['S']],
             ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['M']],
-        ]]), null, null, new \DateTimeImmutable());
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
+        ]]);
+        $one = ProductFactory::createOne(['mainCategory' => $main]);
+        $this->products->save($two, null, null, new \DateTimeImmutable());
+        $this->products->save($one, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
-        $counts = array_map(static fn (Product $p): int => $p->variants()->count(), [...$this->products->all()]);
+        $counts = array_map(fn (Product $p): int => $this->products->get($p->id())->variants()->count(), [$two, $one]);
         sort($counts);
 
         self::assertSame([1, 2], $counts);

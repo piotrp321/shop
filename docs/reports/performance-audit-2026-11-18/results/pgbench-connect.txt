@@ -1,0 +1,28 @@
+== pgbench -n -h 127.0.0.1 -U shop -f select1.sql  -c 1 -T 6 shop
+pgbench (18.6 (Debian 18.6-1.pgdg13+2))
+transaction type: /tmp/select1.sql
+scaling factor: 1
+query mode: simple
+number of clients: 1
+number of threads: 1
+maximum number of tries: 1
+duration: 6 s
+number of transactions actually processed: 237936
+number of failed transactions: 0 (0.000%)
+latency average = 0.025 ms
+initial connection time = 1.500 ms
+tps = 39665.354413 (without initial connection time)
+== pgbench -n -h 127.0.0.1 -U shop -f select1.sql -C -c 1 -T 6 shop
+pgbench (18.6 (Debian 18.6-1.pgdg13+2))
+transaction type: /tmp/select1.sql
+scaling factor: 1
+query mode: simple
+number of clients: 1
+number of threads: 1
+maximum number of tries: 1
+duration: 6 s
+number of transactions actually processed: 3442
+number of failed transactions: 0 (0.000%)
+latency average = 1.743 ms
+average connection time = 1.590 ms
+tps = 573.585218 (including reconnection times)

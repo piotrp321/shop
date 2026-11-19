@@ -6,7 +6,6 @@ namespace App\Shared\UI\Console;
 
 use App\Shared\Infrastructure\Backfill\BackfillLog;
 use App\Shared\Infrastructure\Backfill\BackfillStep;
-use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
@@ -18,7 +17,8 @@ use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
  * end of bin/seed-demo): runs the registered BackfillSteps in their order and records each completed one in
  * app_backfill, so later runs skip it; --force runs every step again. A failing step is not recorded and stops the
  * run, the steps after it wait for the next one.
- * Exit codes: 0 every step completed (or was skipped), 1 a step failed or two steps share a name (nothing ran).
+ * Exit codes: 0 every step completed (or was skipped), 1 a step failed (the command prints a message and hands the
+ * error on to the console) or two steps share a name (nothing ran).
  */
 #[AsCommand(name: 'app:backfill', description: 'Runs the backfill steps of the migrations that have not completed yet.')]
 final readonly class BackfillCommand
@@ -30,7 +30,6 @@ final readonly class BackfillCommand
         #[AutowireIterator(BackfillStep::TAG)]
         private iterable $steps,
         private BackfillLog $log,
-        private LoggerInterface $logger,
     ) {
     }
 
@@ -62,10 +61,10 @@ final readonly class BackfillCommand
                     $io->writeln(\sprintf('%s: %s', $name, $line));
                 });
             } catch (\Throwable $e) {
-                $this->logger->error('The backfill step {step} failed.', ['step' => $name, 'exception' => $e]);
                 $io->error(\sprintf('%s: failed: %s. The steps after it did not run.', $name, $e->getMessage()));
 
-                return Command::FAILURE;
+                // Handed on, not swallowed: the console reports it (a log with the exception, an event of Sentry) and ends with 1.
+                throw new \RuntimeException(\sprintf('The backfill step %s failed: %s', $name, $e->getMessage()), Command::FAILURE, $e);
             }
             $this->log->record($name);
             $io->writeln(\sprintf('%s: completed', $name));

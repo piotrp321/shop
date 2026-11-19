@@ -9,6 +9,7 @@ use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Command\CreateProductHandler;
 use App\Catalog\Application\Event\ProductCreated;
 use App\Catalog\Application\EventHandler\IndexProduct;
+use App\Catalog\Domain\Product\ProductCreated as ProductCreatedInCatalog;
 use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchClientFactory;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
@@ -50,8 +51,7 @@ final class EventFlowTest extends MessagingKernelTestCase
     public function testCreatedProductReachesTheIndexThroughTheOutboxAndRabbitMq(): void
     {
         $this->createProduct();
-        // Both ProductCreated: the domain one for the previous version and the contract.
-        self::assertSame(2, $this->rows('outbox'));
+        self::assertSame(1, $this->rows('outbox'));
 
         $this->consumeOutboxAndEvents();
 
@@ -98,6 +98,34 @@ final class EventFlowTest extends MessagingKernelTestCase
         $count = self::esClient()->count(['index' => $this->alias()]);
         \assert($count instanceof Elasticsearch);
         self::assertSame(1, $count['count']);
+    }
+
+    /**
+     * The ProductCreated of the aggregate is no contract any more: the outbox or the queue of the previous version may
+     * still hold it, and the worker acknowledges it without a handler, an error or indexing (allow_no_handlers).
+     */
+    public function testTheDomainProductCreatedOfThePreviousVersionIsAcknowledgedWithoutIndexing(): void
+    {
+        $this->createProduct();
+        // Only the contract is in the outbox; the product exists in the database but not in the index.
+        $outbox = $this->transport('outbox');
+        foreach ([...$outbox->get()] as $envelope) {
+            $outbox->ack($envelope);
+        }
+        $this->transport('events')->send(new Envelope(
+            new ProductCreatedInCatalog(self::PRODUCT_ID, new \DateTimeImmutable()),
+            [new BusNameStamp('event.bus')],
+        ));
+
+        $this->consume('events');
+
+        usleep(300_000);
+        self::assertSame(0, $this->eventsInQueue());
+        self::assertSame(0, $this->rows('failed'));
+        self::esClient()->indices()->refresh(['index' => $this->alias()]);
+        $count = self::esClient()->count(['index' => $this->alias()]);
+        \assert($count instanceof Elasticsearch);
+        self::assertSame(0, $count['count']);
     }
 
     /**
@@ -183,10 +211,10 @@ final class EventFlowTest extends MessagingKernelTestCase
         self::assertSame($requestId, $byMessage['{class} was handled successfully (acknowledging to transport).'] ?? null, 'the identifier of the entry of the worker');
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
 
-        // The retries (one per ProductCreated) come back to the queue after their delay (100 ms ±10 %); they must not
-        // reach a later test.
-        $this->awaitEventsInQueue(2);
-        self::assertCount(2, $this->drainEvents());
+        // The retry of the ProductCreated comes back to the queue after its delay (100 ms ±10 %); it must not reach a
+        // later test.
+        $this->awaitEventsInQueue(1);
+        self::assertCount(1, $this->drainEvents());
     }
 
     private function createProduct(): void
@@ -214,8 +242,8 @@ final class EventFlowTest extends MessagingKernelTestCase
     {
         self::assertNotNull(self::$kernel);
         $tester = new CommandTester((new Application(self::$kernel))->find('messenger:consume'));
-        // The relay of both ProductCreated, then their handling.
-        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 4, '--time-limit' => 10, '--sleep' => 0.05]);
+        // The relay of the ProductCreated, then its handling.
+        $tester->execute(['receivers' => ['outbox', 'events'], '--limit' => 2, '--time-limit' => 10, '--sleep' => 0.05]);
         $tester->assertCommandIsSuccessful();
     }
 }

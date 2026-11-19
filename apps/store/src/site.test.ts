@@ -11,7 +11,7 @@ import { SiteHeader } from "./catalog/SiteHeader";
 import { buildHomeJsonLd } from "./seo/home-json-ld";
 
 const STORE = "http://store.test";
-const ok = { kind: "ok" as const, products: { items: [makeProduct(1)], page: 1, perPage: 24, total: 1, facets: EMPTY_FACETS }, offers: {} };
+const ok = { kind: "ok" as const, products: { items: [makeProduct(1)], page: 1, perPage: 24, total: 1, pageCount: 1, facets: EMPTY_FACETS }, offers: {} };
 
 // The store name is one constant (`STORE_NAME`); changing it changes every place that shows it.
 describe("STORE_NAME", () => {

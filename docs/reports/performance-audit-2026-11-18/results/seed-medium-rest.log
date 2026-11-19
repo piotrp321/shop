@@ -1,0 +1,41 @@
+== 16:40:28 START orders (4 workers)
+ [OK] orders (worker 3 of 4): 500 parts, 250000 orders, 474365 lines            
+ [OK] orders (worker 1 of 4): 500 parts, 250000 orders, 474884 lines            
+ [OK] orders (worker 0 of 4): 500 parts, 250000 orders, 474868 lines            
+ [OK] orders (worker 2 of 4): 500 parts, 250000 orders, 475537 lines            
+== 16:42:58 END orders
+== 16:42:58 START bin/console demo-data:stock --demo-profile=medium --anchor=2026-11-18T00:00:00Z
+ [OK] stock: 3008338 stock records, 121100 reservations, 3237474 movements      
+== 16:44:24 END bin/console demo-data:stock
+== 16:44:24 START bin/console demo-data:order-numbers --demo-profile=medium --anchor=2026-11-18T00:00:00Z
+ [OK] the next order number follows R-1100000                                   
+== 16:44:25 END bin/console demo-data:order-numbers
+== 16:44:25 START bin/console ordering:read-models:rebuild
+#0 /app/vendor/sentry/sentry-symfony/src/Tracing/Doctrine/DBAL/AbstractTracingStatement.php(90): Symfony\Bridge\Doctrine\Middleware\Debug\Statement->execute()
+#1 {main}
+In StopwatchEvent.php line 94:
+  Error: Allowed memory size of 268435456 bytes exhausted (tried to allocate   
+  2097152 bytes)                                                               
+ordering:read-models:rebuild
+== 16:44:42 END bin/console ordering:read-models:rebuild
+== 16:44:42 START bin/console demo-data:analyze
+      catalog_product_category, pricing_variant_price, pricing_price_history,   
+      pricing_promotion, pricing_promotion_variant, pricing_discount_code,      
+      ordering_order, ordering_order_line, ordering_order_status_change,        
+      payment_payment, pricing_discount_code_usage, inventory_stock_item,       
+      inventory_reservation, inventory_reservation_line,                        
+      inventory_stock_movement                                                  
+== 16:44:46 END bin/console demo-data:analyze
+== 16:44:46 START bin/console catalog:reindex
+#0 /app/vendor/nyholm/psr7/src/Stream.php(270): stream_get_contents(Resource id #5553)
+#1 {main}
+In Stream.php line 270:
+  Error: Allowed memory size of 268435456 bytes exhausted (tried to allocate   
+  2097152 bytes)                                                               
+catalog:reindex [--batch-size BATCH-SIZE]
+== 16:46:17 END bin/console catalog:reindex
+== 16:46:17 START bin/console storefront:cache:purge-all
+ [OK] Varnish and the store pages were invalidated.                             
+== 16:46:17 END bin/console storefront:cache:purge-all
+REST_DONE
+EXIT=0
