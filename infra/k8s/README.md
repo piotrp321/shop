@@ -9,7 +9,7 @@ Uruchomienie środowiska wdrożeniowego (`docs/features/deploy/spec.md`) po merg
   backup VPS-a); agent tego nie wykonuje i nie podejmuje tych decyzji.
 
 Agent wykonuje operacje na serwerze wyłącznie celami `make -C infra/k8s …` (`bootstrap`, `kubeconfig`, `status`, `rerun`,
-`create-admin`, `restore`, `backups`, `reinitialize`, `generate`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
+`create-admin`, `restore`, `backups`, `reinitialize`, `generate`, `open`, `seal-secrets`, `cloudflare-ips`). Nie łączy się z serwerem inaczej i nie uruchamia `kubectl` ani
 `helm` na serwerze. Wszystkie cele potrzebują tylko Dockera (oraz `ssh` na komputerze użytkownika). Opcje `ssh` (klucz, port):
 `SSH_OPTS="-i ~/.ssh/shop -p 2222"`.
 
@@ -522,7 +522,7 @@ Gdy klaster dostanie NetworkPolicy dla ruchu wychodzącego, trzeba dopuścić ru
 Pomiar `make -C infra/k8s load` działa na jednorazowym klastrze k3d na komputerze użytkownika, nie na serwerze
 (`docs/features/hardening/spec.md`, „Testy obciążeniowe”; dane: `docs/features/demo-data/spec.md`, „k3d”). Opcje, pliki
 wyniku i kody wyjścia: komentarz celu w `Makefile` i nagłówek `scripts/load.sh`. Dane w skali na serwerze generuje
-osobny cel `generate` (od „Generowanie danych na serwerze” niżej); pomiaru k6 na serwerze jeszcze nie ma.
+osobne cele `generate` i `open` (od „Generowanie danych na serwerze” niżej); pomiaru k6 na serwerze jeszcze nie ma.
 
 Profile `prod`, `ci` i `load` chartu mają zawieszony CronJob `demo-data` (`suspend: true`), który sam nigdy się nie
 uruchamia, a każdy profil ma zawieszony CronJob `load` (k6, `load/smoke.js` na usługach klastra, bez sekretów). Job
@@ -585,49 +585,51 @@ pomiaru zakłada go `load`, a na serwerze `generate` na czas przebiegu.
    skali; `server` i `full` uznaje się za zweryfikowane dopiero po ich własnym przebiegu
    (`docs/features/demo-data/spec.md`, W3).
 
-### Generowanie danych na serwerze (`generate`)
+### Generowanie danych na serwerze (`generate` i `open`)
 
 `make -C infra/k8s generate` zastępuje dane sklepu na serwerze danymi profilu `medium` albo `server` (generator
-`docs/features/demo-data/spec.md`) albo wraca do seeda. Sklep jest od startu do udanego sprawdzenia danych zamknięty
-(wszystkie hosty odpowiadają 502), a nieudany albo przerwany przebieg zostawia go zamkniętego. Pełny opis kroków,
-zapisu stanu i ochron: `docs/features/demo-scale/spec.md`; zmienne, kroki i kody wyjścia: nagłówek `scripts/generate.sh`.
+`docs/features/demo-data/spec.md`) albo wraca do seeda; po udanym Jobie woła `make -C infra/k8s open`, który sprawdza
+dane i otwiera sklep. Sklep jest od startu do udanego `open` zamknięty (wszystkie hosty odpowiadają 502), a nieudany
+albo przerwany przebieg zostawia go zamkniętego. Odzyskiwanie po awarii jest ręczne: ponowny `generate`, powrót do
+seeda albo `open`. Opis rozwiązania i ochron: `docs/features/demo-scale/spec.md`; zmienne i kody wyjścia: nagłówki
+`scripts/generate.sh` i `scripts/open.sh`.
 
 **Warunek wstępny.** `generate` z profilem `medium` albo `server` na worf.pl dopiero po wdrożeniu i weryfikacji na
 serwerze poprawki L9 (cache ISR sklepu w pamięci; `docs/features/abuse-limits/spec.md`) oraz po **zgodzie użytkownika**
 w rozmowie, która nazywa operację (`generate`), host (worf.pl) i profil. Zgoda na `generate` nie zastępuje weryfikacji
 L9, a zakończenie ASH-V1 ani ABUSE-LIMITS nie jest warunkiem. Powrót do seeda (`PROFILE=seed`) też wymaga zgody, ale nie
-czeka na L9.
+czeka na L9. `open` zmienia serwer (otwiera sklep), więc też wymaga zgody, która nazywa operację, host i profil.
 
 **Przygotowanie.**
 
 1. **użytkownik** – plik `~/.config/shop/demo-photos.env` z czterema zmiennymi odczytu puli zdjęć na komputerze, z którego
    idzie `generate` (inny plik: `DEMO_PHOTOS_ENV_FILE=<plik>`). Wartości nie przechodzą przez rozmowę, a agent nie czyta
    pliku. Do klastra trafiają tylko cztery zmienne odczytu, nigdy token zapisu (`DEMO_PHOTOS_WRITE_*`), jako sekret
-   `demo-photos` na czas przebiegu (usuwany po nim, także po błędzie). Profil `seed` pliku nie potrzebuje.
+   `demo-photos` na czas przebiegu (usuwany przy każdym wyjściu `generate`, także po błędzie; po jego zabiciu usuwa go
+   `open`). Profil `seed` pliku nie potrzebuje.
 2. **agent** – wdrożona rewizja ma ten profil: `generate` przyjmuje `seed` albo `demoData.profile` CronJoba
    (`environments/prod/values.yaml`; `medium`, a `server` po zmianie wartości w PR i zwykłym wdrożeniu). Wdrożenie:
-   sekcja 7 (zgoda użytkownika).
-3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: `data` i `phase` zapisu stanu (bez zapisu: `seed`, `idle`),
-   sklep otwarty, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty i StatefulSety gotowe (generator potrzebuje
-   Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden Job nie jest aktywny.
+   sekcja 7 (zgoda użytkownika); nie w trakcie generowania, bo restartuje pody, których generator potrzebuje.
+3. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: sklep otwarty, Job `demo-data-run` (poprzedniego
+   przebiegu), aktywne Joby, aplikacje `Synced` i `Healthy`, wszystkie Deploymenty i StatefulSety gotowe (generator
+   potrzebuje Elasticsearcha, Postgresa, Keycloaka, `worker`, Varnisha i sklepu), żaden Job nie jest aktywny.
 4. **agent** – wolne miejsce: `medium` wymaga co najmniej 32 GB (`demoData.minFreeGb`; 1,25 × `diskPeakGb` `medium`, czyli
    26,25 GB, jest mniejsze), `server` co najmniej 120 GB (1,25 × `diskPeakGb` 96 GB; to szacunek z ekstrapolacji, nie
    pomiar). Odczytem miejsca jest kubelet; `generate` sam odmawia bez zapasu. Strażnik w Jobie zatrzymuje generator, gdy
    wolne miejsce spadnie poniżej 32 GB.
-5. **agent** – adresy sondy: `generate` pyta z komputera operatora o `https://api.worf.pl/` i `https://worf.pl/` przez
-   Cloudflare (502, 503 i 504 to „zamknięty”, kod poniżej 500 „otwarty”, każdy inny kod i brak odpowiedzi to odczyt
-   nieudany, ponawiany do limitu czasu). **Uwaga:** sonda liczy każdy kod poniżej 500 jako „otwarty”, więc odpowiedź 403
-   z wyzwania Cloudflare (Bot Fight Mode, reguła WAF) dla curla operatora wygląda jak otwarty sklep: zamknięcia nigdy nie
-   potwierdzi i cel cofa je po `GENERATE_CLOSE_WAIT` (kod 1, dane bez zmian), a przy `data: failed` odmawia już w kroku 1.
-   Adresów sondy nie da się obejść adresem origin: `ipAllowList` odpowiada 403 każdemu adresowi spoza Cloudflare
-   (`GENERATE_PROBE_HOST` służy klastrowi testowemu, w którym adresem jest węzeł). Przed uruchomieniem sprawdź, że
-   żądanie z komputera operatora dostaje odpowiedź sklepu, a nie wyzwanie: `curl -sSI https://worf.pl/` i
-   `curl -sSI https://api.worf.pl/` bez nagłówka `cf-mitigated`. Wyjątek od wyzwania dla adresu operatora albo dla tych
-   dwóch adresów ustawia w Cloudflare **użytkownik**.
-6. **agent** – `GENERATE_OUT`: istniejący, trwały katalog poza repo, w którym można pisać (np. `~/shop-generate`);
-   wyniki zostają do raportu i nie trafiają do gita. `KUBE_DIR`: jak w sekcji 2, krok 6 (`kubeconfig`), ale katalog
-   zostaje do końca przebiegu i ewentualnego wznowienia (przebieg trwa godziny), a potem `rm -rf "$KUBE_DIR"`. Cel woła
-   `scripts/ao-guard.sh` i odmawia, gdy działa AO albo jego wykonawca.
+5. **agent** – adresy sondy: `generate` i `open` pytają z komputera operatora o `https://api.worf.pl/` i
+   `https://worf.pl/` przez Cloudflare (502, 503 i 504 to „zamknięty”, kod poniżej 500 „otwarty”, każdy inny kod i brak
+   odpowiedzi to odczyt nieudany, ponawiany do limitu czasu). **Uwaga:** sonda liczy każdy kod poniżej 500 jako
+   „otwarty”, więc odpowiedź 403 z wyzwania Cloudflare (Bot Fight Mode, reguła WAF) dla curla operatora wygląda jak
+   otwarty sklep: zamknięcia sonda nigdy nie potwierdzi, a `generate` kończy się po `GENERATE_CLOSE_WAIT` kodem 1 ze
+   sklepem zamkniętym i danymi bez zmian. Adresów sondy nie da się obejść adresem origin: `ipAllowList` odpowiada 403
+   każdemu adresowi spoza Cloudflare (`GENERATE_PROBE_HOST` służy klastrowi testowemu, w którym adresem jest węzeł).
+   Przed uruchomieniem sprawdź, że żądanie z komputera operatora dostaje odpowiedź sklepu, a nie wyzwanie:
+   `curl -sSI https://worf.pl/` i `curl -sSI https://api.worf.pl/` bez nagłówka `cf-mitigated`. Wyjątek od wyzwania dla
+   adresu operatora albo dla tych dwóch adresów ustawia w Cloudflare **użytkownik**.
+6. **agent** – `KUBE_DIR`: jak w sekcji 2, krok 6 (`kubeconfig`), ale katalog zostaje do końca przebiegu i ewentualnego
+   `open` (przebieg trwa godziny), a potem `rm -rf "$KUBE_DIR"`. Cele wołają `scripts/ao-guard.sh` i odmawiają, gdy
+   działa AO albo jego wykonawca.
 7. Stan kopii: kopie restic w klastrze są w `prod` wyłączone (`backup.enabled: false`). Nie zakładamy, że automatyczny
    backup VPS-a od OVH jest włączony, dopóki **użytkownik** tego nie potwierdzi; zabezpieczenia generowania na nim nie
    polegają: dane generatora odtwarza ponowne generowanie tego samego profilu, a zamówienia złożone po generowaniu
@@ -638,93 +640,72 @@ czeka na L9.
 ```sh
 KUBE_DIR="$(mktemp -d)"
 make -C infra/k8s kubeconfig HOST=<user>@<adres> KUBE_DIR="$KUBE_DIR"
-make -C infra/k8s generate PROFILE=medium REPLACE=seed GENERATE_OUT=~/shop-generate \
+make -C infra/k8s generate PROFILE=medium \
   GENERATE_PROBE_URL='https://api.worf.pl/ https://worf.pl/' KUBE_DIR="$KUBE_DIR"
 ```
 
-- `PROFILE` to `seed` albo profil CronJoba, `REPLACE` to `data` z zapisu stanu (`seed` bez zapisu, nazwa profilu albo
-  `failed`): to, co zostanie zastąpione. Pierwsze generowanie: `REPLACE=seed`; `server` po `medium`:
-  `PROFILE=server REPLACE=medium` (wdrożona rewizja musi mieć wtedy `demoData.profile: server`). Zły `REPLACE` kończy
-  się odmową, która podaje `data` i szacowane liczby produktów i zamówień.
+- `PROFILE` to `seed` albo profil CronJoba (`server` po `medium`: wdrożona rewizja musi mieć wtedy
+  `demoData.profile: server`).
 - `GENERATE_PROBE_HOST='<host> ...'` (po jednym nagłówku `Host` na adres) tylko w klastrze testowym.
-- Cel wypisuje host klastra, `data`, profil docelowy, szacunek miejsca i że sklep będzie niedostępny, i czeka na
-  słowo `tak` na standardowym wejściu; agent podaje je dopiero po zgodzie użytkownika (`printf 'tak\n' | make … generate …`).
+- Cel wypisuje host klastra, liczby produktów i zamówień w bazie, profil docelowy, wolne miejsce i że sklep będzie
+  niedostępny, i czeka na słowo `tak` na standardowym wejściu; agent podaje je dopiero po zgodzie użytkownika
+  (`printf 'tak\n' | make … generate …`).
 - Zmienne dodatkowe (wartości domyślne): `GENERATE_CLOSE_WAIT` 120 s (czas, w którym sonda ma podać „zamknięty” po regule
   i restarcie Traefika), `GENERATE_OPEN_WAIT` 300 s (czas, w którym ma podać „otwarty” po usunięciu reguły),
-  `GENERATE_ACTIVE_JOBS_WAIT` 1800 s (czekanie na Joby, które ruszyły po sprawdzeniach kroku 1), `GENERATE_POLL` 30 s
-  (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba całkowita sekund; inna to
-  kod 2.
-- Przebieg: sprawdzenia bez zmian, pytanie, zamknięcie (zapis stanu `closing`, wyłączenie automatycznej synchronizacji
-  Argo CD `root`, potem `shop`, reguła `shop-closed`, restart podów Traefika, sonda), generowanie (Job
-  `demo-data-<znacznik czasu>`; skrypt tylko czeka i co 10 minut wypisuje czas przebiegu), sprawdzenie (log,
-  podsumowanie i rozmiary zapisane w `GENERATE_OUT`, wyczyszczona pula `cache.sitemap`, indeksy Postgresa, alias
-  wyszukiwarki, Job `load` ze ścieżkami sklepu: strona główna, listing, produkt, wyszukiwarka, koszyk i checkout gościa,
-  liczby produktów i zamówień) i otwarcie (usunięcie reguły, przywrócenie synchronizacji, sonda „otwarty”). `status`
-  pokazuje w tym czasie `data`, `phase` i zamknięcie.
-- **Wyniki** w `GENERATE_OUT/<job>/`: `demo-data.log` (log kontenera Joba z czasem każdej linii, tyle, ile ma kubelet),
-  `summary.txt` (blok podsumowania: kod, ostatni ukończony krok, czas każdego kroku, najmniejsze wolne miejsce),
-  `sizes.txt` (rozmiary tabel, indeksów i Elasticsearcha) i `load.log` (log Joba `load`). Liczby produktów i zamówień
-  w zapisie stanu pochodzą z `count(*)` po Jobie `load`, więc obejmują jego zamówienie checkoutu gościa
-  (`load-<n>@example.com`; wygasa jak każde nieopłacone).
+  `GENERATE_POLL` 30 s (odstęp odczytów Joba), `GENERATE_PROBE_POLL` 5 s (odstęp rund sondy). Wartością jest liczba
+  całkowita sekund; inna to kod 2.
+- Przebieg `generate`: sprawdzenia bez zmian, pytanie, usunięcie Joba `demo-data-run` poprzedniego przebiegu, reguła
+  `shop-closed`, restart podów Traefika, sonda „zamknięty”, generowanie (Job `demo-data-run`; skrypt tylko czeka),
+  `open`. `open`: wyczyszczona pula `cache.sitemap`, indeksy Postgresa, alias wyszukiwarki, Job `load` ze ścieżkami
+  sklepu (strona główna, listing, produkt, wyszukiwarka, koszyk i checkout gościa), liczby produktów i zamówień
+  (obejmują zamówienie checkoutu gościa `load-<n>@example.com`, które wygasa jak każde nieopłacone) i rozmiary, usunięcie
+  reguły, sonda „otwarty”. `status` w tym czasie pokazuje zamknięcie i stan Joba.
+- `open` ręcznie, po przebiegu przerwanym przed otwarciem (Job `demo-data-run` jest `Complete`; po zgodzie):
 
-**Kody wyjścia celu.** `0` dane wygenerowane, sprawdzone, sklep otwarty. `1` odmowa bez zmian, brak `tak`, cofnięcie
-zamknięcia, konflikt zapisu stanu (druga kopia celu) albo błąd w trakcie; komunikat mówi, czy sklep jest zamknięty. `2`
-złe argumenty albo środowisko (`PROFILE`, `REPLACE`, `GENERATE_OUT`, `GENERATE_PROBE_URL`, `GENERATE_PROBE_HOST`,
-`KUBE_DIR`, zmienna czasu, brak pliku puli zdjęć albo zmiennej odczytu, `diskPeakGb`). Job generatora kończy się kodem
-`64` (odmowa bez zmian: brak albo zły `DEMO_DATA_CONFIRM`), `74` (za mało wolnego miejsca albo nieczytelny odczyt przed
-startem, nic nie ruszyło; `seed` nie ma progu, tylko wymóg liczbowego odczytu) albo `75` (strażnik albo TERM zatrzymał
-generator: dane niepełne); inny kod to kod generatora. Powód z Joba trafia do zapisu stanu i komunikatu celu.
+  ```sh
+  make -C infra/k8s open GENERATE_PROBE_URL='https://api.worf.pl/ https://worf.pl/' KUBE_DIR="$KUBE_DIR"
+  ```
 
-**Przerwanie i wznowienie.** Sygnał, utrata połączenia, uśpiony komputer albo restart serwera kończy skrypt (albo go
-wstrzymuje) bez sprzątania: Job działa dalej, reguła zostaje, synchronizacja pozostaje wyłączona, a zapis stanu mówi,
-w której fazie (`closing`, `running`, `checking`, `opening`). Komunikat skryptu drukuje komendę, która wznawia przebieg:
-to ta sama komenda z `PROFILE` równym `target` z zapisu, bez `REPLACE` i bez pytania o `tak`:
+  `open` odmawia przy aktywnym Jobie, bez Joba `demo-data-run` i z Jobem innym niż `Complete`; `generate` usuwa Job
+  poprzedniego przebiegu zaraz po `tak`, więc sukces poprzedniego przebiegu nie otworzy sklepu po przerwanym nowym.
 
-```sh
-make -C infra/k8s generate PROFILE=<target z zapisu> GENERATE_OUT=<katalog> GENERATE_PROBE_URL='<adresy>' KUBE_DIR="$KUBE_DIR"
-```
+**Kody wyjścia.** `generate`: `0` dane wygenerowane, sprawdzone, sklep otwarty; `1` odmowa bez zmian, brak `tak` albo
+błąd (komunikat mówi, czy sklep jest zamknięty); `2` złe argumenty albo środowisko (`PROFILE`, `GENERATE_PROBE_URL`,
+`GENERATE_PROBE_HOST`, `KUBE_DIR`, zmienna czasu, brak pliku puli zdjęć albo zmiennej odczytu, `diskPeakGb`). `open`:
+`0` sprawdzone, sklep otwarty; `1` odmowa, nieudane sprawdzenie (sklep zostaje zamknięty) albo sonda bez „otwarty”
+(reguła już usunięta, ponowne `open` kończy); `2` złe argumenty. Job generatora kończy się kodem `64` (odmowa bez zmian:
+brak albo zły `DEMO_DATA_CONFIRM`), `74` (za mało wolnego miejsca albo nieczytelny odczyt przed startem, nic nie ruszyło;
+`seed` nie ma progu, tylko wymóg liczbowego odczytu) albo `75` (strażnik albo TERM zatrzymał generator: dane niepełne);
+inny kod to kod generatora. Powód z Joba (`/dev/termination-log`) jest w komunikacie celu. `rerun` nie ponawia Joba
+generatora: odmawia kodem 3 i wskazuje `generate`.
 
-Wznowienie `closing` cofa zamknięcie (nic nie zastąpiono; kolejne uruchomienie zaczyna od nowa), `running` dołącza do
-Joba z zapisu albo czyta jego wynik (bez Joba albo z Jobem nieudanym bez poda: dane niepełne), `checking` powtarza
-sprawdzenia (także gdy poda Joba już nie ma), `opening` kończy otwarcie. Inny `PROFILE` niż `target` to odmowa, która
-podaje komendę wznowienia. `rerun` nie ponawia Joba generatora: odmawia kodem 3 i wskazuje `generate`.
+**Po błędzie albo przerwaniu.** `make status`, potem:
 
-**Błąd generowania.** Nieudany Job (także bez poda), Job po czasie (`demoData.activeDeadlineSeconds`: `medium` 6 h,
-`server` 24 h), kod 75 i nieudane sprawdzenie kończą się tak samo: log zapisany, sekret usunięty, reguła `shop-closed` na
-miejscu (założona, jeśli jej nie było), synchronizacja przywrócona, zapis `idle` z `data: failed` i powodem, kod 1.
-**Sklep zostaje zamknięty.** Skrypt podaje dwie drogi:
-
-- ponowienie: `PROFILE=<profil> REPLACE=failed` (po zatrzymaniu przez strażnika miejsca skończy się tak samo, więc najpierw
-  decyzja użytkownika: inny profil albo zwolnienie miejsca);
-- powrót do seeda: `PROFILE=seed REPLACE=failed`. Ten sam przebieg i ten sam Job (zamknięcie, `bin/seed-demo`,
-  sprawdzenie, otwarcie), minuty, bez pliku puli zdjęć i bez progu wolnego miejsca (po zatrzymaniu przez strażnika
-  miejsce zostaje poniżej progu, a seed zaczyna od `TRUNCATE` i zwalnia je od razu). Przy wysokim zapełnieniu dysku
-  (powyżej 90%, na serwerze około 20,7 GB wolnego) nowy indeks seeda może nie dostać shardu, dopóki Elasticsearch nie
-  odświeży informacji o dysku (około 30 s): ta próba kończy się błędem, a ponowienie przechodzi. Konta generatora
-  w Keycloaku zostają (wyłączone, bez poświadczeń).
+- Job `demo-data-run` nadal aktywny: czekać (strażnik i zbieranie logów działają w klastrze); po `Complete` `open`.
+- Job `Failed` (także bez poda, po czasie `demoData.activeDeadlineSeconds`: `medium` 6 h, `server` 24 h, albo po kodzie
+  75), brak Joba albo nieudane sprawdzenie w `open`: sklep zostaje zamknięty, a dane są niepełne. Dwie drogi:
+  - ponowienie: `generate PROFILE=<profil>` (po zatrzymaniu przez strażnika miejsca skończy się tak samo, więc najpierw
+    decyzja użytkownika: inny profil albo zwolnienie miejsca);
+  - powrót do seeda: `generate PROFILE=seed`. Ten sam przebieg i ten sam Job (zamknięcie, `bin/seed-demo`, `open`),
+    minuty, bez pliku puli zdjęć i bez progu wolnego miejsca (po zatrzymaniu przez strażnika miejsce zostaje poniżej
+    progu, a seed zaczyna od `TRUNCATE` i zwalnia je od razu). Przy wysokim zapełnieniu dysku (powyżej 90%, na serwerze
+    około 20,7 GB wolnego) nowy indeks seeda może nie dostać shardu, dopóki Elasticsearch nie odświeży informacji
+    o dysku (około 30 s): ta próba kończy się błędem, a ponowienie przechodzi. Konta generatora w Keycloaku zostają
+    (wyłączone, bez poświadczeń).
+- Sonda zamknięcia bez „zamknięty” (np. wyzwanie Cloudflare): sklep zamknięty, dane bez zmian; po poprawie adresów
+  sondy ponowny `generate`. Celu, który tylko otwiera sklep bez nowego Joba, nie ma.
+- Pozostawiony sekret `demo-photos` (zabity skrypt; `status` go pokazuje): usuwa go `open`, gdy żaden Job nie działa.
+- Log Joba po restarcie serwera albo usunięciu poda: Grafana Cloud (Explore, przestrzeń `shop`).
 
 Po błędzie wymagającym poprawki kodu kolejność to: powrót do seeda (sklep otwarty na seedzie), wdrożenie poprawki,
-ponowne generowanie. Wdrożenie przy `data: failed` jest możliwe (reguła zostaje), ale Job `initialize` może skończyć się
-błędem stanu mieszanego i zatrzymać synchronizację przed `purge-caches` i `backfill`; po udanym generowaniu albo
+ponowne generowanie. Wdrożenie przy zamkniętym sklepie jest możliwe (reguła zostaje), ale Job `initialize` może skończyć
+się błędem stanu mieszanego i zatrzymać synchronizację przed `purge-caches` i `backfill`; po udanym generowaniu albo
 powrocie do seeda domyka ją kolejne wdrożenie albo ręczna synchronizacja aplikacji `shop` w Argo CD (**użytkownik**).
 
-**Powrót do `medium` z `server`.** PR z `demoData.profile: medium`, wdrożenie, potem `generate PROFILE=medium
-REPLACE=server`. Krok kont usuwa wtedy do 900 tys. kont pojedynczymi wywołaniami, a jego czas jest niezmierzony.
-`make -C infra/k8s reinitialize` działa tylko przy danych `seed` w fazie `idle`; w innym stanie odmawia i wskazuje
+**Powrót do `medium` z `server`.** PR z `demoData.profile: medium`, wdrożenie, potem `generate PROFILE=medium`. Krok kont
+usuwa wtedy do 900 tys. kont pojedynczymi wywołaniami, a jego czas jest niezmierzony. `make -C infra/k8s reinitialize`
+odmawia kodem 1 przed pytaniem, dopóki sklep jest zamknięty (reguła `shop-closed`); wraca się wtedy przez
 `generate PROFILE=seed`.
-
-**Scenariusze awarii** (szczegóły: `docs/features/demo-scale/spec.md`, „Scenariusze awarii”).
-
-| Zdarzenie | Skutek i dalsze kroki |
-|---|---|
-| Przerwany skrypt, utrata połączenia, uśpiony komputer | Job działa dalej, strażnik działa w klastrze; sklep zamknięty; wznowienie komendą ze skryptu |
-| Usunięty albo zabity pod Joba (brak pamięci, eksmisja, limit czasu) | Job nieudany bez nowego poda; wznowienie ustawia `data: failed`; potem ponowienie albo seed |
-| Restart Postgresa, Elasticsearcha albo Keycloaka w trakcie | krok generatora kończy się błędem; jak wyżej |
-| Restart serwera w `closing` | wznowienie cofa zamknięcie, dane bez zmian |
-| Restart serwera w `running` | pod Joba i jego log znikają; reguła, zapis i wyłączona synchronizacja zostają; wznowienie ustawia `data: failed`; log z Grafana Cloud |
-| Restart serwera w `checking` albo `opening` | dane kompletne; wznowienie powtarza sprawdzenie i otwiera, albo kończy otwarcie |
-| Dwie kopie celu naraz | zapis stanu drugiej kończy się konfliktem wersji; ta kopia wychodzi (kod 1), działa jedna |
-| Awaria Cloudflare albo sieci operatora w trakcie sondy | odczyt nieudany, ponawiany do limitu; przed generowaniem cofnięcie bez zmian danych, przy otwieraniu faza `opening` i kod 1 |
 
 W trakcie zamknięcia pody działają, więc alert `WorkloadNotReady` się nie odzywa, a strażnik zatrzymuje generator tuż
 przed progiem alertu `NodeDiskFull` (85% zajętego miejsca). Ewentualne wyciszenie alertów na czas przebiegu robi ręcznie
@@ -733,17 +714,16 @@ przed progiem alertu `NodeDiskFull` (85% zajętego miejsca). Ewentualne wyciszen
 **Wdrożenie po generowaniu.** Pierwsze zwykłe wdrożenie po `medium` i po `server` (zgoda użytkownika, sekcja 7) nie rusza
 wygenerowanych danych (`initialize` kończy się bez zmian przy niepustych produktach, cenach i stanach). **Agent**
 sprawdza po nim `status`: aplikacje `Synced` i `Healthy`, Joby wersji `Complete`, czas Joba `initialize` z kolumny
-`DURATION` listy Jobów, liczby z ostatniej linii jego logu równe liczbom produktów i zamówień z zapisu stanu (plus
+`DURATION` listy Jobów, liczby z ostatniej linii jego logu równe liczbom produktów i zamówień z wyniku `open` (plus
 zamówienia złożone od tamtej pory) i sklep otwarty. Czas `initialize` dłuższy niż 5 minut na danych `server` to
 zgłoszenie do backlogu (limit Joba to 30 minut; `initialize` liczy `count(*)` czterech tabel przy każdym wdrożeniu).
 Wynik trafia do raportu. Migracja na tabeli z milionami wierszy musi zmieścić się w limicie Joba `migrate` (30 minut).
 
-**Eksport logu i metryk.** Pełny log Joba i metryki zbiera Alloy do Grafana Cloud (retencja logów 14 dni; kopia nie zależy
+**Logi i metryki.** Pełny log Joba i metryki zbiera Alloy do Grafana Cloud (retencja logów 14 dni; kopia nie zależy
 od rotacji logu kontenera ani od istnienia poda, a po restarcie serwera w trakcie przebiegu jest jedyną kopią logu).
-**Agent** w ciągu retencji eksportuje z Grafana Cloud (Explore: logi przestrzeni `shop` poda Joba
-`demo-data-<znacznik czasu>`; metryki węzła, pamięć i CPU kontenerów, restarty) pełny log i szczyty (dysk, pamięć i CPU
-Postgresa i Elasticsearcha, restarty kontenerów), porównuje log z `demo-data.log` (pierwsza i ostatnia linia, liczba
-linii `[OK]`; Alloy pomija linie `DETAIL:` i `STATEMENT:`, więc pełna liczba linii może się różnić) i zapisuje raport
-w `docs/reports/` (czasy kroków, rozmiary, szczyt dysku, wynik sprawdzenia). Liczby z raportu opisują ten serwer i ten
-profil; liczby `server` przed jego przebiegiem i wszystkie liczby `full` to ekstrapolacja z `medium`, a pełna skala
-(10 mln produktów, 50 mln zamówień) nie jest zweryfikowana.
+**Agent** w ciągu retencji eksportuje z Grafana Cloud (Explore: logi przestrzeni `shop` poda Joba `demo-data-run`;
+metryki węzła, pamięć i CPU kontenerów, restarty) pełny log i szczyty (dysk, pamięć i CPU Postgresa i Elasticsearcha,
+restarty kontenerów) i zapisuje raport w `docs/reports/` (czasy kroków z linii `[OK]` generatora, rozmiary, szczyt
+dysku, wynik sprawdzenia). Liczby z raportu opisują ten serwer i ten profil; liczby `server` przed jego przebiegiem
+i wszystkie liczby `full` to ekstrapolacja z `medium`, a pełna skala (10 mln produktów, 50 mln zamówień) nie jest
+zweryfikowana.

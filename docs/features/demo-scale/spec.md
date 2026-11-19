@@ -300,10 +300,9 @@ Zapis powstaje w klastrze i poza serwerem, bez udziału komputera operatora i be
 Raport z przebiegu powstaje z Grafana Cloud po przebiegu, w dowolnej chwili w czasie retencji: sesja prowadząca
 eksportuje pełny log i szczyty metryk i zapisuje raport w `docs/reports/` (czasy kroków z linii `[OK]` generatora,
 rozmiary z podsumowania `open`, szczyt dysku, szczyty pamięci i CPU, restarty kontenerów, wynik sprawdzenia; liczby
-opisują ten serwer i ten profil). Przebieg `medium` na serwerze sprawdza, że kopia w Grafana Cloud jest kompletna
-(pierwsza i ostatnia linia logu Joba oraz liczba linii `[OK]`), zanim ruszy przebieg `server`, dopóki pod Joba istnieje
-i da się porównać z logiem kontenera (Alloy pomija linie `DETAIL:` i `STATEMENT:`, więc pełna liczba linii może się
-różnić). To nie dowodzi kompletności przy wielkości logu `server`.
+opisują ten serwer i ten profil). Przebieg `medium` na serwerze sprawdza przed przebiegiem `server`, że log Joba
+w Grafana Cloud jest kompletny (od pierwszej linii do końcowej linii `exit <kod>: <powód>`, z liniami `[OK]` wszystkich
+kroków; Alloy pomija linie `DETAIL:` i `STATEMENT:`). To nie dowodzi kompletności przy wielkości logu `server`.
 
 Funkcje odczytu pliku puli zdjęć, tworzenia sekretu i rozmiarów są we wspólnym pliku `scripts/demo-data-lib.sh`,
 używanym przez `load.sh`, `generate.sh` i `open.sh`.
@@ -362,8 +361,7 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
 1. Wdrożenie `main` (polecenie i zatwierdzenie użytkownika); `status`.
 2. Użytkownik podaje stan automatycznej kopii OVH; trafia do raportu jako fakt (U3).
 3. `generate PROFILE=medium` (zgoda), po wdrożeniu i weryfikacji L9 z „Wymagane przed startem”. Eksport logu
-   i metryk z Grafana Cloud, porównanie z logiem kontenera (pierwsza i ostatnia linia, liczba linii `[OK]`), raport
-   `medium` na serwerze. Przegląd sklepu i panelu.
+   i metryk z Grafana Cloud, sprawdzenie kompletności logu, raport `medium` na serwerze. Przegląd sklepu i panelu.
 4. Analiza przed `server`: czas `medium` na serwerze × 10 wobec limitu 24 h, rozmiary `medium` × 10 (produkty)
    i × 5 (zamówienia) wobec wolnego miejsca, szczyty pamięci Postgresa i Elasticsearcha wobec limitów, restarty
    kontenerów. To projekcja do decyzji użytkownika, nie weryfikacja.
@@ -502,8 +500,8 @@ Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasa
   utworzeniem Joba drugi `generate` usunąłby Job pierwszego. Operator uruchamia jeden.
 - Konta generatora zostają w Keycloaku po powrocie do seeda; przejście z `server` do `medium` usuwa je pojedynczo.
 - Retencja Grafana Cloud (14 dni) ogranicza czas na eksport pełnego logu i odczyt szczytów do raportu; po restarcie
-  serwera w trakcie przebiegu to jedyna kopia logu. Przebieg `medium` porównuje ją z logiem kontenera, co nie dowodzi
-  kompletności przy wielkości logu `server`.
+  serwera w trakcie przebiegu to jedyna kopia logu. Kompletność logu `medium` nie dowodzi kompletności przy wielkości
+  logu `server`.
 - Brak przecieku ruchu po restarcie węzła (Z10) potwierdziła jedna próba na k3d; na serwerze nie był sprawdzany.
 - Mapa strony podaje adres każdego produktu, a `robots.txt` pozwala na strony produktów, więc dane w skali sprowadzają
   ruch robotów po unikalnych stronach. Cache ISR sklepu zapisywany na dysku poda (ok. 262 KB na stronę produktu, limit
