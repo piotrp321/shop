@@ -188,8 +188,10 @@ specyfikacja zakłada jego merge i ich nie powtarza.
 ## A: odbiór kryteriów akceptacji
 
 - **A1. Kolejność.** Przegląd całej zmiany (krok 6) zaczyna od numerowanych kryteriów akceptacji specyfikacji epiku.
-  `qa-adversarial` dostaje je w zleceniu i sprawdza na działającym stosie przed szukaniem błędów. Epik bez QA (narzędzia,
-  dokumentacja): kryteria sprawdza sesja prowadząca.
+  `qa-adversarial` dostaje je w zleceniu i sprawdza przed szukaniem błędów: na działającym stosie, a kryteria
+  narzędzia jego komendami na danych i stanie tymczasowym. Epik bez QA (dokumentacja, instrukcje, narzędzie niskiego
+  ryzyka): kryteria sprawdza sesja prowadząca. QA zmiany narzędzia sesja dobiera proporcjonalnie do ryzyka (krok 6
+  „Przebiegu epiku”).
 - **A2. Tabela w opisie PR.** Dla każdego kryterium: numer, sposób sprawdzenia i wynik. Sposoby: „stos” (polecenie
   albo scenariusz), „CI” (nazwa testu i zielony przebieg na czole gałęzi), „po wdrożeniu”, „niezweryfikowane”
   (z powodem).

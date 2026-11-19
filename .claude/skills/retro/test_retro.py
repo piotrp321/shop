@@ -3852,9 +3852,10 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         for text in (row % 'wstrzymana', '# Plan bez tabeli\n', None):
             with self.subTest(text=text):
                 self.assertTrue(self.series_state(text).startswith('w toku (nieznany stan'))
-        # the plan of today: the retro of small-fixes before the tag is not frozen
+        # the plan of today: the tag ash-v1.0 is set, so a retro during the series defers its fix items (the plain
+        # state, not the annotated "w toku (nieznany stan …)" of an unreadable row)
         self.assertEqual(self.series_state(repo_text('docs', 'features', 'agentic-software-house', 'plan.md')),
-                         'przed startem')
+                         'w toku')
 
     def test_the_agent_and_the_specification_describe_the_incidents_of_a_native_epic(self):
         agent = repo_text('.claude', 'agents', 'retro-analyst.md')
