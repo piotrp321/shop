@@ -287,6 +287,35 @@ class RunTest(Script):
         self.assertEqual(0, code, out)
 
 
+class QuickEndTest(unittest.TestCase):
+    """A generator that ends at once (it refuses its arguments, or the seed of a test) ends the script at once: the guard, which
+    starts a moment before, may get the TERM of the script before it set its own trap, and that TERM is lost (dash and busybox ash
+    alike), so the guard must stop by itself too. Many runs at once make the race likely."""
+
+    RUNS = 24
+
+    def test_the_guard_never_outlives_a_generator_that_ended_at_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def once(_):
+            case = Script("run_script")
+            case.setUp()
+            try:
+                process = case.start(DEMO_DATA_CONFIRM="seed", STUB_DF="1000")
+                try:
+                    process.communicate(timeout=15)
+                    return process.returncode
+                except subprocess.TimeoutExpired:
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                    process.communicate()
+                    return "the script did not end in 15 s"
+            finally:
+                case.tearDown()
+
+        with ThreadPoolExecutor(self.RUNS) as pool:
+            self.assertEqual([0] * self.RUNS, list(pool.map(once, range(self.RUNS))))
+
+
 class GuardTest(Script):
     def test_the_space_falling_below_the_floor_stops_the_whole_group_with_the_command_in_the_foreground(self):
         code, out, _ = self.run_script(STUB_DF=f"{PLENTY} {PLENTY} {LOW}", STUB_STEPS="Seed:0", STUB_CONSOLE_SECONDS="60",
