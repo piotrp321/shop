@@ -31,7 +31,8 @@
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
 # nothing). The last phase runs the demo data generator (docs/features/demo-data/spec.md): it waits until every StatefulSet is rolled
 # out (the upgrade before it ends on a failed job, with Elasticsearch still on its way to the new image), then ONE Job from the
-# suspended CronJob demo-data (bin/generate-demo --profile=small), waited for up to the time limit of the CronJob plus SMOKE_DEMO_DATA_MARGIN seconds
+# suspended CronJob demo-data with DEMO_DATA_CONFIRM=small (its script runs bin/generate-demo --profile=small, no photo pool), waited
+# for up to the time limit of the CronJob plus SMOKE_DEMO_DATA_MARGIN seconds
 # (120); a Job that fails or does not finish fails the test with its log, and a Job that succeeded must have replaced the data of the
 # shop (at least the products and orders of the profile). The generator deletes the data of every module and generates its own, so
 # it comes after every phase that reads the seed, the backups and the restore (they count products and orders) and nothing runs on the
@@ -50,6 +51,9 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
+# cronjob_job: the Job of the generator with DEMO_DATA_CONFIRM, without which its script refuses.
+# shellcheck source=kube-jobs.sh
+. "$here/kube-jobs.sh"
 
 SMOKE_BREAK="${SMOKE_BREAK:-}"
 SMOKE_BUILD="${SMOKE_BUILD:-1}"
@@ -620,8 +624,9 @@ YAML
   kc wait --for=condition=Ready pod/smoke-backup-tools --timeout=300s > /dev/null
 }
 
-# run_cronjob_job <cronjob> <job> [seconds]: a Job from a CronJob, waited for up to 900 s (or the seconds given; SMOKE_POLL, 5, is the
-# time between two readings); a failure prints the logs of all its containers.
+# run_cronjob_job <cronjob> <job> [seconds [VAR=value...]]: a Job from a CronJob (with the variables, when given, in every container),
+# waited for up to 900 s (or the seconds given; SMOKE_POLL, 5, is the time between two readings); a failure prints the logs of all its
+# containers.
 # wait_statefulsets <what>: waits up to SMOKE_TIMEOUT for every StatefulSet to be rolled out. A phase that follows an upgrade which
 # ends on a failed job on purpose (r3, r4) needs it: the upgrade changed the image of Elasticsearch (its tag is the revision), and its
 # pod is still being replaced when the failed job is seen.
@@ -644,7 +649,16 @@ wait_statefulsets() {
 }
 
 run_cronjob_job() {
-  kc create job "$2" --from="cronjob/$1" > /dev/null
+  if [ "$#" -gt 3 ]; then
+    # The variables after the seconds go into every container of the Job (cronjob_job of kube-jobs.sh).
+    run_source="$1" run_name="$2"
+    limit="$3"
+    shift 3
+    cronjob_job "$run_source" "$run_name" "$@"
+    set -- "$run_source" "$run_name" "$limit"
+  else
+    kc create job "$2" --from="cronjob/$1" > /dev/null
+  fi
   limit="${3:-900}"
   deadline=$(( $(date +%s) + limit ))
   while :; do
@@ -885,9 +899,11 @@ YAML
 
 # The demo data generator (docs/features/demo-data/spec.md, "k3d (chart w profilach ci i load; część 2)"): ONE Job from the CronJob demo-data,
 # which the chart renders suspended with the profile small. It is created exactly once (concurrencyPolicy does not guard against two
-# Jobs made by hand). The Job deletes the data of every module and generates the profile on top of the seed (bin/generate-demo), so
-# the phase runs last. Kubernetes fails the Job at its activeDeadlineSeconds; the wait ends a little after that (a Job that never
-# starts is no Job at all). SMOKE_BREAK=demo-data gives the generator a profile it refuses, before it changes anything.
+# Jobs made by hand). Its script (files/scripts/demo-data.sh) runs only with DEMO_DATA_CONFIRM equal to the profile, which the Job gets
+# here (cronjob_job), and needs no photo pool for small. The Job deletes the data of every module and generates the profile on top of
+# the seed (bin/generate-demo), so the phase runs last. Kubernetes fails the Job at its activeDeadlineSeconds; the wait ends a little
+# after that (a Job that never starts is no Job at all). SMOKE_BREAK=demo-data gives the generator a profile it refuses, before it
+# changes anything (the Job confirms that profile, so that the generator refuses it, not the script).
 check_demo_data() {
   demo_data_started="$(date +%s)"
   generator="$(kc get cronjob demo-data -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].command}')"
@@ -895,16 +911,19 @@ check_demo_data() {
     *--profile=small*) ;;
     *) echo "smoke: the CronJob demo-data does not run the profile small (--profile=small): $generator" >&2; return 1 ;;
   esac
+  demo_data_profile=small
   if [ "$SMOKE_BREAK" = demo-data ]; then
-    generator_arg=/spec/jobTemplate/spec/template/spec/containers/0/command/1
+    demo_data_profile=smoke-unknown
+    # The command is sh /scripts/demo-data.sh --profile=small ... (tests/test_demo_data.py checks the index).
+    generator_arg=/spec/jobTemplate/spec/template/spec/containers/0/command/2
     kc patch cronjob demo-data --type=json \
-      -p "[{\"op\": \"test\", \"path\": \"$generator_arg\", \"value\": \"--profile=small\"}, {\"op\": \"replace\", \"path\": \"$generator_arg\", \"value\": \"--profile=smoke-unknown\"}]" > /dev/null
+      -p "[{\"op\": \"test\", \"path\": \"$generator_arg\", \"value\": \"--profile=small\"}, {\"op\": \"replace\", \"path\": \"$generator_arg\", \"value\": \"--profile=$demo_data_profile\"}]" > /dev/null
   fi
   # The upgrade r4 before this phase gave Elasticsearch a new image and ended on the failed initialize, not on a settled cluster:
   # the generator resets the search index first and fails at once on an Elasticsearch whose pod is being replaced.
   wait_statefulsets "before the generator"
   demo_data_limit="$(kc get cronjob demo-data -o jsonpath='{.spec.jobTemplate.spec.activeDeadlineSeconds}')"
-  run_cronjob_job demo-data demo-data-smoke $(( demo_data_limit + ${SMOKE_DEMO_DATA_MARGIN:-120} ))
+  run_cronjob_job demo-data demo-data-smoke $(( demo_data_limit + ${SMOKE_DEMO_DATA_MARGIN:-120} )) "DEMO_DATA_CONFIRM=$demo_data_profile"
   # The generator ran its own consistency check (demo-data:verify) before it ended with 0; here only that it replaced the data.
   demo_data_products="$(count catalog_product)"
   demo_data_orders="$(count ordering_order)"

@@ -29,7 +29,8 @@ check:
 # host or the binding of the policy on the tokens, a policy that only warns or fails open, the policies in the wave of the workloads,
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing without the absent for a metric that is gone, NodeDiskFull
-# firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended,
+# firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended (also only in prod),
+# its script without the check of DEMO_DATA_CONFIRM, without the space guard or stopping only the generator and not its process group,
 # a load CronJob that is not suspended, a k6 image of the chart with another digest than load/k6.sh).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).
@@ -43,8 +44,9 @@ selftest:
 # checked; the time of that phase is printed. Then the restore on an empty cluster: the namespace shop is deleted with its volumes,
 # the chart installed again and make restore brings the snapshot back (checked: the administrator, the customer, the numbers of
 # products and orders, an image, the search, the snapshot pre-restore), and refuses a snapshot newer than the code; the later
-# phases run on the restored cluster. The last phase runs a Job from the CronJob demo-data (the generator, profile small) and checks that
-# it ended with 0 and replaced the data. SMOKE_BREAK=migration|image|demo-data makes it fail on purpose. Needs only Docker.
+# phases run on the restored cluster. The last phase runs a Job from the CronJob demo-data with DEMO_DATA_CONFIRM=small (the generator,
+# profile small, no photo pool) and checks that it ended with 0 and replaced the data. SMOKE_BREAK=migration|image|demo-data makes it
+# fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
 
@@ -70,10 +72,10 @@ monitoring-smoke:
 # must be able to mount it for writing, on Docker Desktop it must be shared in Settings > Resources > File Sharing, which is
 # tried before any image is built: exit 2)
 # [LOAD_DATA=seed|medium|server|full]. LOAD_DATA=seed (the default) measures on the demo data of the Job initialize and raises
-# the stock of every variant. medium, server and full first run one Job of the suspended CronJob demo-data (bin/generate-demo
-# with that profile; it deletes the seed; hours for server and full, LOAD_DATA_TIMEOUT), then raise the stock of the variants
-# of a few random chunks of the sitemap only and give their keys to k6 (DISCOVER_CHUNKS); they read the four read variables of
-# the private bucket of the photo pool from DEMO_PHOTOS_ENV_FILE (default ~/.config/shop/demo-photos.env; the token that writes
+# the stock of every variant. medium, server and full first run one Job of the suspended CronJob demo-data with DEMO_DATA_CONFIRM of
+# that profile (its script runs bin/generate-demo with it; it deletes the seed; hours for server and full, LOAD_DATA_TIMEOUT), then
+# raise the stock of the variants of a few random chunks of the sitemap only and give their keys to k6 (DISCOVER_CHUNKS); they read
+# the four read variables of the private bucket of the photo pool from DEMO_PHOTOS_ENV_FILE (default ~/.config/shop/demo-photos.env; the token that writes
 # never goes to the cluster) into the Secret demo-photos, without a value in a command line, the output or LOAD_OUT.
 # Exit code 0: measured; 1: anything else that went wrong, also a run done while the host slept (below); 2: the environment is not fit (no LOAD_OUT, an unknown LOAD_DATA, the photo file missing or without
 # a read variable: before any cluster is made; too few CPUs or too little memory in the Docker VM, images missing in the node

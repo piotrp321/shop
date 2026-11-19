@@ -37,11 +37,13 @@ def java_options(case):
 
 class LoadProfileTest(unittest.TestCase):
     def test_every_pod_has_the_resources_it_has_in_prod(self):
-        # The load profile has no backup, like prod (see test_there_is_no_backup_in_the_load_profile). The CronJob demo-data is the
-        # one workload prod does not have: the generator is sized for the measurement (test_the_generator_has_resources_of_its_own).
+        # The load profile has no backup, like prod (see test_there_is_no_backup_in_the_load_profile). The CronJob demo-data is in
+        # both, sized differently: for the measurement (test_the_generator_has_resources_of_its_own) and for the server (prod).
         load, prod = resources("load"), resources("prod")
         generator = {key: load.pop(key) for key in [key for key in load if key.startswith("demo-data/")]}
         self.assertEqual({"demo-data/demo-data"}, set(generator))
+        self.assertEqual({"demo-data/demo-data"}, {key for key in prod if key.startswith("demo-data/")})
+        prod.pop("demo-data/demo-data")
         self.assertEqual(set(prod), set(load))
         for key in prod:
             self.assertEqual(prod[key], load[key], key)

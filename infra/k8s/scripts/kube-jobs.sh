@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck disable=SC2154 # namespace is set by the script that sources this file
-# Sourced by rerun.sh, restore.sh and backups.sh after tools.sh: the Jobs of a cluster through kubectl (KUBE_DIR, KUBE_NETWORK)
-# in the namespace $namespace.
+# Sourced by rerun.sh, restore.sh, backups.sh, load.sh and smoke.sh after tools.sh: the Jobs of a cluster through kubectl (KUBE_DIR,
+# KUBE_NETWORK) in the namespace $namespace.
 #
 #   rerun_job <job>                        deletes a Job and creates it again under the same name (rerun, restore)
 #   cronjob_job <cronjob> <job> [VAR=value...]

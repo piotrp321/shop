@@ -11,8 +11,8 @@
 #
 # The data (LOAD_DATA, docs/features/demo-data/spec.md, "k3d"): seed (the default) measures on the demo data that the Job
 # initialize loads and raises the stock of every variant. medium, server and full run, once the cluster is ready, one Job of
-# the suspended CronJob demo-data (bin/generate-demo --profile=<LOAD_DATA>: it deletes the seed and generates the profile; hours
-# for server and full) and wait for it; then the stock is raised only for the variants of the products of a few chunks of the
+# the suspended CronJob demo-data (files/scripts/demo-data.sh, confirmed with DEMO_DATA_CONFIRM=<LOAD_DATA>, runs bin/generate-demo
+# --profile=<LOAD_DATA>: it deletes the seed and generates the profile; hours for server and full) and wait for it; then the stock is raised only for the variants of the products of a few chunks of the
 # sitemap (DISCOVER_CHUNKS, or DISCOVER_CHUNK_COUNT of them chosen at random from GET /api/v1/sitemap/product-chunks), and k6
 # reads its products from those chunks (DISCOVER_CHUNKS is passed to it). Those profiles take their photos from the private
 # bucket of the photo pool: the four read variables (DEMO_PHOTOS_ENDPOINT, DEMO_PHOTOS_BUCKET, DEMO_PHOTOS_ACCESS_KEY_ID,
@@ -102,6 +102,9 @@ LOAD_DIR="$TOOLS_REPO/load"
 # shellcheck source=demo-data-lib.sh
 . "$here/demo-data-lib.sh"
 DEMO_DATA_TOOL=load
+# cronjob_job: the Job of the generator with DEMO_DATA_CONFIRM, without which its script refuses.
+# shellcheck source=kube-jobs.sh
+. "$here/kube-jobs.sh"
 
 LOAD_BUILD="${LOAD_BUILD:-1}"
 LOAD_TIMEOUT="${LOAD_TIMEOUT:-1200}"
@@ -613,7 +616,8 @@ sampler_loop() {
 # no end in LOAD_DATA_TIMEOUT ends with 2, with the end of its log. Its whole log is in LOAD_OUT either way.
 run_generator() {
   create_photo_secret "$photos_secret" || fail "$demo_data_error"
-  kc create job "$data_job" --from=cronjob/demo-data >/dev/null || fail "the Job $data_job of the generator could not be created from the CronJob demo-data"
+  cronjob_job demo-data "$data_job" "DEMO_DATA_CONFIRM=$LOAD_DATA" \
+    || fail "the Job $data_job of the generator could not be created from the CronJob demo-data"
   data_job_created=1
   data_started="$(date +%s)"
   data_limit="${LOAD_DATA_TIMEOUT:-}"

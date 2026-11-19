@@ -64,8 +64,11 @@ backup:
 
 # The suspended CronJob of the demo data generator (docs/features/demo-data/spec.md): the smoke test and make -C infra/k8s load create
 # Jobs from it. The profile small needs no photo pool; the profiles of make load take the Secret of the read access (photosSecretName).
+# The floor of the free space is 2 GB (the runner of the smoke test has 14 GB of disk; make load checks the room itself before); the
+# profile load inherits it.
 demoData:
   enabled: true
+  minFreeGb: 2
 
 # The cluster of the smoke test has no CRD of the Prometheus Operator, so no PrometheusRule (the render is tested with promtool by check).
 alerts:

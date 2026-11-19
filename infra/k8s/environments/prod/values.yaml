@@ -77,6 +77,22 @@ backup:
   s3Region: auto
   secretName: shop-backup
 
+# The demo data in scale on the server (docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)"): the suspended CronJob
+# demo-data, whose Job only make -C infra/k8s generate creates (after the consent of the owner). First medium, then server after the
+# analysis of medium and another consent (U2): changing the profile is a PR with this value and a deployment. The anchor stays the same,
+# so that generating again gives the same data. The Secret of the photo pool exists only for a run (make generate creates and deletes
+# it). The guard stops the generator at 32 GB free (just above the alert NodeDiskFull and the watermarks of Elasticsearch). The time
+# limits: medium 6 h, server 24 h (U6); both are estimates, not measurements on this server.
+demoData:
+  enabled: true
+  profile: medium
+  anchor: "2026-11-19T00:00:00Z"
+  photosSecretName: demo-photos
+  minFreeGb: 32
+  activeDeadlineSeconds:
+    medium: 21600
+    server: 86400
+
 # The alert rules (docs/features/deploy-ops/spec.md, O6): a PrometheusRule that the application monitoring forwards to its ruler; the
 # CRD comes with the application prometheus-crds, which Argo CD applies before the shop.
 alerts:
@@ -107,3 +123,5 @@ resources:
   varnish: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
   backup: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   job: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+  # The generator of the demo data (a Job, outside the budget of the steady state above).
+  demoData: { requests: { cpu: 500m, memory: 1Gi }, limits: { memory: 4Gi } }
