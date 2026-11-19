@@ -121,62 +121,45 @@ class StatusDemoData(ServerScripts):
 
 
 class ReinitializeDemoData(ServerScripts):
+    """reinitialize loads the seed only while the shop is open: the rule shop-closed is the shop closed by make generate (data being
+    replaced, or a failed run), which make generate PROFILE=seed brings back with the checks."""
+
     def reinitialize(self, answer="tak\n", **env):
         return self.run_script("reinitialize.sh", HOST, stdin=answer, **env)
 
     def execs(self):
         return [call for call in self.calls() if "exec deploy/api" in call]
 
-    def assert_refused_before_the_question(self, result):
+    def test_the_rule_shop_closed_is_refused_before_the_question_even_with_tak_on_the_input(self):
+        result = self.reinitialize(STUB_CLOSED=CLOSED)
         self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("shop-closed", result.stderr)
         self.assertIn("generate PROFILE=seed", result.stderr)
         self.assertNotIn("type tak", result.stdout)
         self.assertEqual([], self.execs())
 
-    def test_data_other_than_seed_is_refused_before_the_question_even_with_tak_on_the_input(self):
-        for data, phase in (("medium", "idle"), ("server", "idle"), ("failed", "idle"), ("failed", "running")):
-            with self.subTest(data=data, phase=phase):
-                self.log.write_text("")
-                self.assert_refused_before_the_question(self.reinitialize(STUB_STATE=record(data, phase)))
-
-    def test_a_phase_other_than_idle_is_refused_also_for_seed(self):
-        for phase in ("closing", "running", "checking", "opening", ""):
-            with self.subTest(phase=phase):
-                self.log.write_text("")
-                self.assert_refused_before_the_question(self.reinitialize(STUB_STATE=record("seed", phase)))
-
-    def test_a_record_without_data_is_refused(self):
-        self.assert_refused_before_the_question(self.reinitialize(STUB_STATE=record("", "idle")))
-
-    def test_a_failing_read_of_the_record_is_a_refusal(self):
-        result = self.reinitialize(STUB_FAIL_MATCH="get configmap demo-data-state")
+    def test_a_failing_read_of_the_rule_is_a_refusal(self):
+        result = self.reinitialize(STUB_FAIL_MATCH="get networkpolicy shop-closed")
         self.assertEqual(1, result.returncode)
-        self.assertIn("could not read the record of the demo data", result.stderr)
+        self.assertIn("could not read the rule shop-closed", result.stderr)
         self.assertNotIn("type tak", result.stdout)
         self.assertEqual([], self.execs())
 
-    def test_without_a_record_it_goes_on_as_before(self):
+    def test_an_open_shop_goes_on_as_before_and_still_needs_the_word_tak(self):
         result = self.reinitialize()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(1, len(self.execs()))
         self.assertIn("reinitialize: done", result.stdout)
-
-    def test_data_seed_in_phase_idle_goes_on_as_before(self):
-        result = self.reinitialize(STUB_STATE=record("seed", "idle"))
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(1, len(self.execs()))
-
-    def test_data_seed_in_phase_idle_still_needs_the_word_tak(self):
-        result = self.reinitialize(answer="nie\n", STUB_STATE=record("seed", "idle"))
+        self.log.write_text("")
+        result = self.reinitialize(answer="nie\n")
         self.assertEqual(1, result.returncode)
-        self.assertIn("nothing changed", result.stderr)
         self.assertEqual([], self.execs())
 
-    def test_the_record_is_read_before_anything_is_run(self):
-        self.reinitialize(STUB_STATE=record("seed", "idle"))
+    def test_the_rule_is_read_before_anything_is_run(self):
+        self.reinitialize()
         calls = self.calls()
         self.assertEqual(2, len(calls), calls)
-        self.assertIn("get configmap demo-data-state", calls[0])
+        self.assertIn("get networkpolicy shop-closed", calls[0])
         self.assertIn("exec deploy/api", calls[1])
 
 
