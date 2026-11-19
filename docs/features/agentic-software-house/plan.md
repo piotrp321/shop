@@ -34,7 +34,7 @@ trzeciego epiku; w tym czasie pliki procesu zmienia tylko poprawka blokady albo 
 
 | Seria ASH v1.0 | Stan |
 |---|---|
-| Stan serii | przed startem (tag `ash-v1.0` jeszcze nie założony) |
+| Stan serii | w toku (tag `ash-v1.0` założony 2026-11-19; żaden epik serii jeszcze nie ruszył) |
 | Epiki serii | ABUSE-LIMITS (#181), ASYNC-RELIABILITY (#768), DELIVERY etap 1 (#120), w tej kolejności |
 | Zmergowane epiki serii | brak |
 
@@ -48,7 +48,7 @@ Kroki przejścia na pracę natywną (obowiązują teraz, w tej kolejności):
 | P2 | Pilne porządki z raportu audytu | w toku (pozostałości na dysku czekają na decyzję użytkownika) |
 | P3 | DEMO-DATA kończy się w AO, ze skróconym `apps/api/CLAUDE.md` i nową polityką przeglądu | zrobione |
 | P4 | Uproszczenie instrukcji i konfiguracji: `CLAUDE.md` główny i obszarów, agenci, `/planner`, `/brainstorm`, konfiguracja | zrobione |
-| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | seria przed startem (stan w tabeli „Seria ASH v1.0” wyżej) |
+| P5 | Seria ASH v1.0: trzy epiki natywnie (ABUSE-LIMITS → ASYNC-RELIABILITY → DELIVERY etap 1), każdy z punktem odniesienia i opisem końcowego PR | seria w toku (stan w tabeli „Seria ASH v1.0” wyżej) |
 | P6 | Decyzja o archiwizacji AO i usunięciu jego narzędzi | do zrobienia (po P5) |
 
 Tabela niżej to stan kroków wdrożenia AO; role i proces w kolejnych sekcjach opisują drogę AO.
