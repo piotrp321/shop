@@ -41,6 +41,6 @@ resources:
   varnish: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
   backup: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   job: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
-  # The generator of the demo data (CronJob demo-data, enabled by the profile ci): not a pod of prod, so its resources are an initial
-  # estimate (several PHP processes at once) that the run of the profile medium calibrates.
+  # The generator of the demo data (CronJob demo-data, enabled by the profile ci): not a pod of prod. The run of the profile medium
+  # used 187 MiB of the 4 GiB limit; the limit stays as a reserve for server and full, whose memory use has not been measured.
   demoData: { requests: { cpu: "1", memory: 1Gi }, limits: { memory: 4Gi } }

@@ -138,8 +138,8 @@ demoData:
   # The reference moment of every generated time (--anchor of the generator: a date or a UTC moment); empty: the start of the current UTC day.
   anchor: ""
   # The time limit of a Job, in seconds, per profile: about twice the time of the generator, rounded up to a whole hour
-  # (small: not measured). medium: measured, 1731 s on 2026-11-19 (revision aceeab48). server and full: extrapolated from
-  # that run (about 4 h and 10 h) and NOT verified by a measurement (docs/features/demo-data/spec.md, "k3d").
+  # (small: not measured). medium: measured (docs/reports/demo-load-medium-2026-11-19.md). server and full: extrapolated from
+  # that run and NOT verified by a measurement (docs/features/demo-data/spec.md, "k3d").
   activeDeadlineSeconds:
     small: 1800
     medium: 3600

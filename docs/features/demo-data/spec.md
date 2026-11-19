@@ -7,7 +7,7 @@ wdrożeniem danych na serwer demo (worf.pl).
 
 Epik ma dwie części z osobnymi końcowymi PR, mergowane po kolei (P11): część 1 (#482) to generator i jego testy,
 zaimplementowane, część 2 (#486, DEMO-LOAD) to integracja z k3d i k6 oraz przebieg `medium`: zaimplementowana, a przebieg
-`medium` wykonany 2026-11-19 (liczby w sekcji „Wyniki przebiegu `medium`”). Pomiar `full` (W3) jeszcze się nie odbył.
+`medium` wykonany 2026-11-19 (raport `docs/reports/demo-load-medium-2026-11-19.md`, kalibracja w sekcji „Wyniki przebiegu `medium`”). Pomiar `full` (W3) jeszcze się nie odbył.
 Ta specyfikacja opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”, a jej plan jest w `plan.md`.
 
 Issues: #486
@@ -142,7 +142,7 @@ rozmiar części są w tym pliku wspólne dla wszystkich profili, więc profile 
 | `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | k3d (później serwer demo) |
 | `full` | 500 | 1 000 000 | 10 000 000 | 50 000 000 | k3d |
 
-Rozmiary `medium` są zmierzone (sekcja „Wyniki przebiegu `medium`”): produkt z wariantami, cenami, historią cen
+Rozmiary `medium` są zmierzone (raport `docs/reports/demo-load-medium-2026-11-19.md`): produkt z wariantami, cenami, historią cen
 i stanem zajmuje około 5,4 KB (tabele produktowe 5,42 GB na 1 mln produktów), zamówienie ze wszystkimi tabelami
 zamówieniowymi około 3,4 KB (3,44 GB na 1 mln zamówień), indeks Elasticsearcha około 1,06 GB na 1 mln produktów.
 Rozmiary `server` i `full` to ekstrapolacja liniowa z tych liczb, niezweryfikowana pomiarem:
@@ -451,6 +451,7 @@ Opis szczegółowy: `docs/features/search/spec.md`.
   łączny i najdłuższy czas), do `environment.txt` (linia `host sleep:`, także gdy ich nie było) i jako ostrzeżenie na
   standardowe wyjście błędów, a przebieg doprowadzony do końca kończy się kodem 1, nie 0: wyniki zostają w `LOAD_OUT`,
   ale czasów nie wolno używać. Przebieg, który i tak padł (kod 2), zachowuje swój kod i tylko nazywa przerwę.
+  INT kończy przebieg kodem 130, a TERM kodem 143 (klaster usunięty w obu przypadkach).
 - Wynik `load` zawiera czasy kroków generatora i rozmiary tabel i indeksów (do raportu).
 
 ### Pomiar k6 (część 2)
@@ -462,33 +463,18 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 
 ### Wyniki przebiegu `medium` (część 2)
 
-Pomiar: `make -C infra/k8s load LOAD_DATA=medium`, k3d na komputerze użytkownika (VM Dockera: 16 CPU, 31,3 GiB),
-rewizja `aceeab48`, 2026-11-19, przebieg r5 (przebieg kontrolny z 2026-11-18 dał podobne czasy generatora; przebieg,
-podczas którego komputer zasnął, jest odrzucony). Poniższe liczby opisują `medium` (1 mln produktów, 1 mln zamówień,
-100 tys. klientów) na tej maszynie, nie skalę docelową. Pełne wyniki, w tym k6, pamięć i CPU poszczególnych podów
-oraz rozmiary tabel, są w raporcie `docs/reports/demo-load-medium-2026-11-19.md`; tu zostaje to, z czego skalibrowano
-`diskPeakGb` i limity czasu.
+Pomiar `make -C infra/k8s load LOAD_DATA=medium` (1 mln produktów, 1 mln zamówień, 100 tys. klientów, k3d na komputerze
+użytkownika) opisuje raport `docs/reports/demo-load-medium-2026-11-19.md`: czasy kroków i tempo generatora, rozmiary tabel
+i indeksów, dysk, pamięć i CPU podów oraz wyniki k6. Z pomiaru wynikają:
 
-- **Generator** (Job 1731 s). Kroki: zgodność danych (`demo-data:verify`) 596 s, przebudowa indeksu 447 s, konta 162 s,
-  zdjęcia 139 s, zamówienia 138 s, stany 75 s, produkty 49 s, ceny 40 s, sprzedaż godzinowa 35 s. Tempo: produkty
-  około 20 tys. na sekundę, ceny około 98 tys. wierszy historii na sekundę, stany około 40 tys. pozycji na sekundę,
-  zamówienia około 7 tys. na sekundę (z liniami, zmianami statusu i płatnościami), konta około 600 na sekundę,
-  przebudowa indeksu około 2,2 tys. produktów (20 tys. dokumentów) na sekundę.
-- **Rozmiary.** Baza `shop` 8587 MB (9,00 GB), `keycloak` 141 MB, indeks Elasticsearcha 1,06 GB (8,89 mln dokumentów).
-  Tabele produktowe (produkty, warianty, stany, ruchy, ceny, historia cen, kategorie) 5,42 GB, zamówieniowe 3,44 GB,
-  klienci 0,14 GB.
-- **Dysk.** Szczyt zużycia w VM Dockera względem odczytu sprzed startu: 20,52 GB (host: 20,69 GB). Około 9,2 GB zajmują
-  obrazy i klaster przed startem generatora, około 10,2 GB dane (Postgres, Keycloak, Elasticsearch), około 1,2 GB reszta
-  (pula zdjęć w Garage, WAL). Pomiar wykonano przy obrazach z cache: zimna budowa dodaje warstwy obrazów.
-- **Pamięć.** Szczyt całego węzła 7,47 GiB. Job generatora zajął 187 MiB (limit 4 GiB), więc `resources.demoData`
-  zostaje bez zmian: limit jest zapasem dla `server` i `full`, których zużycia pamięci nie zmierzono.
-- **Obciążenie k6.** Rampa nasyciła się w kroku 18, najwyżej 177,7 iteracji na sekundę; bieg ciągły 124 iteracji
-  na sekundę z checkoutem × 8 nie miał błędów 5xx. W rampie łącznie z krokami nasycenia 16–18 p95 strony głównej,
-  kategorii i wyszukiwarki wynosi 1,4–1,6 s (w krokach 0–15 zbiorcze p95 wszystkich żądań nie przekracza 167 ms).
-  To zgodne z H1, ale pomiar jej nie rozstrzyga: przyczyny nie zbadano. Liczby: raport.
+- **`diskPeakGb`.** Szczyt zużycia dysku w VM Dockera względem odczytu sprzed startu (`space.log`), zaokrąglony w górę
+  do pełnego GB: `medium` 21 GB. Zmierzono go przy obrazach z cache, więc zimna budowa dodaje warstwy obrazów.
+- **Limit Joba.** Około dwukrotność czasu Joba generatora (`medium`: 1731 s), w górę do pełnej godziny: `medium` 1 h.
+- **Limit pamięci Joba** (`resources.demoData`) zostaje zapasem dla `server` i `full`, których zużycia pamięci nie
+  zmierzono.
 
-**Ekstrapolacja `server` i `full` (niezweryfikowana pomiarem).** Liniowa z liczb `medium`; produkty, warianty, klienci
-i konta ×10 (oba profile), zamówienia ×5 (`server`) albo ×50 (`full`):
+**Ekstrapolacja `server` i `full` (niezweryfikowana pomiarem).** Liniowa z wartości `medium`; produkty, warianty,
+klienci i konta ×10 (oba profile), zamówienia ×5 (`server`) albo ×50 (`full`):
 
 | Składnik `medium` | `medium` | `server` | `full` |
 |---|---|---|---|
@@ -504,10 +490,9 @@ przypada na produkty, a połowa na zamówienia) ×7,5 albo ×30. Wychodzi około
 35 700 s (10 h) dla `full`; limity Joba (9 h i 20 h) dają około dwukrotny zapas. Założenia nie sprawdzono:
 indeksy B-drzewa, scalanie segmentów Elasticsearcha i weryfikacja mogą rosnąć szybciej niż liniowo.
 
-Założenia rachunku dysku: `diskPeakGb` `medium` zmierzono przy obrazach z cache, więc zimna budowa dodaje warstwy
-obrazów. Część ruchów magazynowych (rezerwacja, zatwierdzenie, zwolnienie) skaluje się z zamówieniami, nie
-z produktami, a rachunek skaluje wszystkie ruchy z produktami (×10): dla `full` to niedoszacowanie rzędu kilku GB,
-w granicach zapasu 1,25.
+Założenia rachunku dysku: część ruchów magazynowych (rezerwacja, zatwierdzenie, zwolnienie) skaluje się
+z zamówieniami, nie z produktami, a rachunek skaluje wszystkie ruchy z produktami (×10): dla `full` to niedoszacowanie
+rzędu kilku GB, w granicach zapasu 1,25.
 
 ## Model zagrożeń
 
