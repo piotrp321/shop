@@ -12,11 +12,12 @@ roboczym: po ukończeniu epiku usuń go.
 |---|---|---|
 | 1 | DEMO-SCALE-1, DEMO-SCALE-2, DEMO-SCALE-3 | zmergowane: DEMO-SCALE-1 `cf2ac610`, DEMO-SCALE-2 `fcfb9ef5`, DEMO-SCALE-3 `b4276bd5` |
 | 2 | DEMO-SCALE-4 | zmergowane `23df42db` |
-| 3 | DEMO-SCALE-5 | zmergowane `eb0ae236` |
-| 4 | DEMO-SCALE-6 | zmergowane `444198da` |
-| 5 | DEMO-SCALE-7, DEMO-SCALE-8 | w toku |
+| 3 | DEMO-SCALE-8 | zmergowane `47dbab53` |
+| 4 | DEMO-SCALE-9 | gotowe na gałęzi `task/DEMO-SCALE-9` (`da5ef7a2`), czeka na merge |
+| 5 | DEMO-SCALE-10, DEMO-SCALE-11 | w toku |
 
 Kolumnę „Status” (zmergowane do gałęzi epiku, commit) uzupełnia sesja orkiestrująca po merge'u gałęzi zadania.
+Numery 5–7 nie są używane.
 
 Warunek przed startem: PR #756 zmergowany do `main` (gałąź epiku powstaje od `origin/main` po tym merge'u).
 
@@ -24,7 +25,7 @@ Kroki na serwerze (wdrożenia, `generate PROFILE=medium`, analiza, `generate PRO
 generowaniu, raporty) nie są zadaniami: wykonuje je sesja prowadząca po merge'u epiku, każdy po osobnej zgodzie
 użytkownika (specyfikacja, „Przebieg na serwerze”).
 
-Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-state`, `demo-photos`, zmienna
+Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-run`, `demo-photos`, zmienna
 `DEMO_DATA_CONFIRM`, kody 64, 74 i 75, etykieta Joba generatora (`app.kubernetes.io/name: demo-data`), CronJob `load`.
 
 ## Zadania
@@ -60,7 +61,7 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
     {
       "id": "DEMO-SCALE-2",
       "title": "Chart: zawieszony CronJob load (k6 smoke na usługach klastra)",
-      "scope": "infra/k8s/charts/shop i profile prod, ci (spec: „Sprawdzenie po generowaniu”, punkt 4 i akapit o CronJobie load; kryterium 1, część load; kryterium 11). Szablon templates/load.yaml, ConfigMapa ze skryptów load/ przez dowiązanie w files/ (podkatalog lib zachowany w montowaniu), images.k6 z digestem równym temu z load/k6.sh (sprawdzenie w check), wartości i schemat, adresy http://store:3000 i http://api, STORE_ORIGIN z domeny. Nie obejmuje uruchamiania Joba (DEMO-SCALE-5, DEMO-SCALE-7) ani pomiaru obciążenia (etap 2).",
+      "scope": "infra/k8s/charts/shop i profile prod, ci (spec: „Sprawdzenie po generowaniu”, punkt 4 i akapit o CronJobie load; kryterium 1, część load; kryterium 11). Szablon templates/load.yaml, ConfigMapa ze skryptów load/ przez dowiązanie w files/ (podkatalog lib zachowany w montowaniu), images.k6 z digestem równym temu z load/k6.sh (sprawdzenie w check), wartości i schemat, adresy http://store:3000 i http://api, STORE_ORIGIN z domeny. Nie obejmuje uruchamiania Joba (DEMO-SCALE-9, DEMO-SCALE-10) ani pomiaru obciążenia (etap 2).",
       "acceptance_criteria": [
         "Render prod i ci zawiera CronJob load: suspend true, backoffLimit 0, obraz k6 z digestem, load/smoke.js jako skrypt, bez envFrom i bez odwołań do sekretów, automountServiceAccountToken false, zasoby z wartości.",
         "ConfigMapa skryptów zawiera każdy plik .js z load/ i load/lib/, a kontener widzi je pod ścieżkami, które importuje smoke.js (test renderu porównuje listę plików z katalogiem load/).",
@@ -91,13 +92,13 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
     },
     {
       "id": "DEMO-SCALE-3",
-      "title": "status, rerun i reinitialize znają stan danych demo",
-      "scope": "infra/k8s/scripts/status.sh, rerun.sh, reinitialize.sh i ich testy (spec: „Stan sklepu i zapis stanu”, „Ochrona przed przypadkowym uruchomieniem”, „Powrót do seed albo medium”, ostatni punkt, „Kolejne wdrożenia”, drugi punkt; kryteria 8 i 9). status wypisuje bieżące dane i fazę z ConfigMapy demo-data-state, obecność reguły shop-closed i ostatnią linię logu najnowszego Joba initialize; rerun odmawia Joba z etykietą generatora; reinitialize działa tylko przy danych seed w fazie idle (także bez zapisu stanu). Nazwy zasobów i etykieta: kontrakty z planu.",
+      "title": "status, rerun i reinitialize znają zamknięcie sklepu i Job generatora",
+      "scope": "infra/k8s/scripts/status.sh, rerun.sh, reinitialize.sh i ich testy (spec: „Stan sklepu i blokada”, „Ochrona przed przypadkowym uruchomieniem”, „Powrót do seed albo medium”, ostatni punkt, „Kolejne wdrożenia”; kryteria 8 i 9). status wypisuje, czy istnieje reguła shop-closed, Job demo-data-run i jego stan, aktywne Joby, pozostawiony sekret puli zdjęć i ostatnią linię logu najnowszego Joba initialize; rerun odmawia Joba z etykietą generatora; reinitialize odmawia, dopóki istnieje reguła shop-closed. Nazwy zasobów i etykieta: kontrakty z planu.",
       "acceptance_criteria": [
-        "status bez zapisu stanu wypisuje data seed, phase idle i sklep otwarty; z zapisem wypisuje data, phase, target i powód błędu; z regułą shop-closed wypisuje, że sklep jest zamknięty; błąd odczytu któregokolwiek z nich daje kod 1 jak inne odczyty status.",
+        "status wypisuje, czy sklep jest zamknięty (reguła shop-closed), Job demo-data-run i jego stan (albo że go nie ma), aktywne Joby i czy sekret puli zdjęć został; błąd odczytu któregokolwiek z nich daje kod 1 jak inne odczyty status.",
         "status wypisuje ostatnią linię logu najnowszego Joba initialize, a gdy jego podów już nie ma, mówi to wprost.",
-        "rerun Joba z etykietą generatora kończy się kodem różnym od 0 z komunikatem wskazującym make generate i nie usuwa ani nie tworzy Joba; Job wersji ponawia jak dziś.",
-        "reinitialize przy zapisie stanu z data innym niż seed albo fazą inną niż idle kończy się kodem 1 przed pytaniem o tak i wskazuje generate PROFILE=seed; bez zapisu i przy data seed w fazie idle działa jak dziś; błąd odczytu zapisu to odmowa.",
+        "rerun Joba z etykietą generatora kończy się kodem 3 z komunikatem wskazującym make generate i nie usuwa ani nie tworzy Joba; Job wersji ponawia jak dziś.",
+        "reinitialize przy regule shop-closed kończy się kodem 1 przed pytaniem o tak i wskazuje generate PROFILE=seed; bez reguły działa jak dziś; błąd odczytu reguły to odmowa.",
         "make -C infra/k8s check przechodzi."
       ],
       "risk": "STANDARD",
@@ -111,9 +112,7 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
       ],
       "parallel_with": [
         "DEMO-SCALE-1",
-        "DEMO-SCALE-2",
-        "DEMO-SCALE-5",
-        "DEMO-SCALE-6"
+        "DEMO-SCALE-2"
       ]
     },
     {
@@ -149,105 +148,18 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
       "parallel_with": []
     },
     {
-      "id": "DEMO-SCALE-5",
-      "title": "Cel generate: odmowy, zamknięcie sklepu, Job, sprawdzenie, otwarcie i ścieżki błędu",
-      "scope": "infra/k8s/scripts/generate.sh, cel generate w infra/k8s/Makefile (z ao-guard.sh) i testy na atrapach kubectl (spec: „Stan sklepu i zapis stanu”; „Cel make -C infra/k8s generate”, przebieg przy fazie idle, kroki 1–7, i kody wyjścia; „Sprawdzenie po generowaniu”; „Powrót do seed albo medium”, pierwszy punkt; kryteria 3, 4 i 6). Obejmuje PROFILE=seed tym samym Jobem, sondę listy adresów GENERATE_PROBE_URL z GENERATE_PROBE_HOST, zapisy stanu warunkowe względem resourceVersion, ścieżkę bez Argo CD (jak restore), regułę shop-closed z restartem poda Traefika, wyłączenie i przywrócenie automatycznej synchronizacji Argo CD, zapis stanu, sekret puli zdjęć, zapis logu kontenera, podsumowania i rozmiarów po zakończeniu Joba (bez zbierania czegokolwiek w trakcie). Nie obejmuje wznowienia (DEMO-SCALE-6): przy fazie innej niż idle cel w tym zadaniu odmawia bez zmian.",
-      "acceptance_criteria": [
-        "Każda odmowa z kryterium 3 specyfikacji kończy cel bez zmian w klastrze i z komunikatem nazywającym przyczynę (w tym niegotowy Deployment albo StatefulSet); złe argumenty i środowisko dają kod 2, pozostałe odmowy kod 1; odmowa REPLACE podaje data z zapisu stanu i szacowane liczby produktów i zamówień; plik puli zdjęć jest wymagany tylko wtedy, gdy CronJob ma sekret puli i profil nie jest seed; próg 1,25 × diskPeakGb obowiązuje tylko medium i server, minFreeGb zawsze.",
-        "Sonda pyta każdy adres z GENERATE_PROBE_URL: 502, 503 i 504 to „zamknięty”, kod poniżej 500 to „otwarty”, każdy inny kod i brak odpowiedzi to odczyt nieudany, ponawiany do limitu i nigdy nie liczony jako zamknięty ani otwarty; wynik całości wymaga zgody wszystkich adresów (test: API zamknięte, strona sklepu z kodem 200 z cache daje cofnięcie).",
-        "Ścieżka poprawna dla profilu z CronJoba i dla seed wykonuje kroki w kolejności specyfikacji: zapis closing z rootAutomated przed pierwszą zmianą; synchronizacja root, potem shop, wyłączona; oczekiwanie na Joby, które ruszyły po sprawdzeniu; ponowne sprawdzenie, że żadna operacja synchronizacji root ani shop nie trwa i że shop nie ma z powrotem automatycznej synchronizacji; reguła; usunięcie podów Traefika i jego gotowość; sonda zamknięcia; zapis running z nazwą Joba i data failed; sekret (gdy wymagany); Job z DEMO_DATA_CONFIRM; zapis checking; usunięcie sekretu; zapis logu kontenera, podsumowania i sizes.txt w GENERATE_OUT; czyszczenie puli cache.sitemap w każdym podzie api; cztery sprawdzenia; zapis opening z data równym profilowi; usunięcie reguły; przywrócenie synchronizacji; sonda otwarcia; na końcu zapis idle z liczbami i bez rootAutomated; kod 0. W klastrze bez CRD Application albo bez aplikacji shop kroki synchronizacji są pominięte, reszta bez zmian.",
-        "Cofnięcie (sonda bez potwierdzenia zamknięcia w GENERATE_CLOSE_WAIT albo synchronizacja, która ruszyła po wyłączeniu) kończy cel kodem 1, zanim powstanie Job: sekret usunięty, jeśli istnieje, reguła usunięta tylko przy data innym niż failed (test startu z data failed: reguła zostaje), synchronizacja przywrócona, na końcu zapis idle bez zmiany data.",
-        "Job nieudany (także bez poda: powód „pod Joba nie istnieje”), Job po czasie, kod 75 Joba i każde nieudane sprawdzenie (nieważny indeks Postgresa, alias na zero albo wiele indeksów, stan red, indeks bez aliasu, nieudany Job load) dają w tej kolejności: log zapisany, sekret usunięty, reguła shop-closed istnieje (założona z restartem Traefika, jeśli jej nie było), synchronizacja przywrócona do rootAutomated, na końcu zapis idle z data failed i powodem (linia z termination-log, gdy jest); kod 1 i komunikat z dwiema drogami wyjścia. Nieudana sonda otwarcia zostawia fazę opening i kod 1.",
-        "W trakcie oczekiwania na Job cel wypisuje tylko czas przebiegu; nie czyta logu na bieżąco, nie próbkuje węzła i nie używa SSH; cel nie usuwa żadnego Joba.",
-        "Gdy zapis stanu ma już rootAutomated, start nie nadpisuje go bieżącym ustawieniem; pole znika tym samym zapisem, który następuje po przywróceniu synchronizacji (test: start po przebiegu przerwanym przed przywróceniem).",
-        "Każdy zapis stanu jest warunkowy względem resourceVersion odczytanego przez proces, a przed każdą zmianą w klastrze (synchronizacja, reguła, Traefik, sekret, Job) proces czyta zapis ponownie i sprawdza, że wersja jest tą z jego ostatniego zapisu; konflikt albo inna wersja kończy cel kodem 1 bez dalszych zmian (testy: zapis zmieniony przez drugi proces między odczytem a zapisem oraz między dwiema zmianami w klastrze).",
-        "Reguła, zapis stanu i sekret tworzone przez cel nie mają etykiet ani adnotacji śledzenia Argo CD (app.kubernetes.io/instance, argocd.argoproj.io/tracking-id).",
-        "Wartości DEMO_PHOTOS_* nie pojawiają się w wyjściu (także z sh -x), linii poleceń ani GENERATE_OUT; token zapisu nie trafia do klastra.",
-        "Bez słowa tak nic się nie zmienia; cel woła ao-guard.sh i odmawia przy działającym AO.",
-        "make -C infra/k8s check przechodzi; raport zadania pokazuje wynik ścieżki poprawnej i ścieżek błędu."
-      ],
-      "risk": "CRITICAL",
-      "depends_on": [
-        "DEMO-SCALE-1",
-        "DEMO-SCALE-2",
-        "DEMO-SCALE-4"
-      ],
-      "paths": [
-        "infra/k8s/scripts/generate.sh",
-        "infra/k8s/scripts/kube-jobs.sh",
-        "infra/k8s/scripts/ao-guard.sh",
-        "infra/k8s/Makefile",
-        "infra/k8s/tests/test_generate_script.py",
-        "infra/k8s/tests/test_ao_guard.py"
-      ],
-      "parallel_with": [
-        "DEMO-SCALE-3"
-      ]
-    },
-    {
-      "id": "DEMO-SCALE-6",
-      "title": "Cel generate: wznowienie po przerwaniu i zachowanie na sygnał",
-      "scope": "infra/k8s/scripts/generate.sh i jego testy (spec: „Cel make -C infra/k8s generate”, „Przerwanie i wznowienie”; „Scenariusze awarii”; kryterium 5). Wznowienie z faz closing, running, checking i opening, Job nieudany bez poda, zachowanie na sygnał.",
-      "acceptance_criteria": [
-        "Wznowienie (faza inna niż idle) wymaga KUBE_DIR, GENERATE_OUT, GENERATE_PROBE_URL i PROFILE równego target z zapisu; nie pyta o tak, nie wymaga REPLACE, nie sprawdza miejsca ani aktywnych Jobów, nie tworzy sekretu ani Joba; PROFILE inny niż target to odmowa bez zmian.",
-        "closing: cofnięcie jak w kroku 3 specyfikacji (sekret usunięty, reguła usunięta tylko przy data innym niż failed), kod 1. running: dołączenie do Joba z zapisu albo odczyt jego wyniku, potem krok 5 albo 7; bez tego Joba albo z Jobem nieudanym bez poda krok 7. checking: powtórzenie kroku 5 od usunięcia sekretu (brak poda Joba nie jest błędem), potem krok 6 albo 7. opening: dokończenie kroku 6 bez powtarzania sprawdzeń.",
-        "Testy przerywają skrypt po każdym wywołaniu kubectl na ścieżce poprawnej, ścieżce błędu i cofnięciu (atrapa kończy proces po n-tym wywołaniu) i uruchamiają cel ponownie: po żadnym przerwaniu reguła nie znika przed krokiem 6, przy data failed reguła istnieje, a po zakończeniu sekretu nie ma, rootAutomated nie ma w zapisie i synchronizacja jest równa wartości sprzed pierwszego wyłączenia.",
-        "INT i TERM w trakcie oczekiwania kończą skrypt bez usunięcia Joba, bez usunięcia reguły i bez przywrócenia synchronizacji; komunikat mówi, jak wznowić.",
-        "make -C infra/k8s check przechodzi; raport zadania pokazuje wynik wznowienia z każdej fazy i przerwania sygnałem."
-      ],
-      "risk": "CRITICAL",
-      "depends_on": [
-        "DEMO-SCALE-5"
-      ],
-      "paths": [
-        "infra/k8s/scripts/generate.sh",
-        "infra/k8s/Makefile",
-        "infra/k8s/tests/test_generate_script.py",
-        "infra/k8s/tests/test_generate_resume.py"
-      ],
-      "parallel_with": [
-        "DEMO-SCALE-3"
-      ]
-    },
-    {
-      "id": "DEMO-SCALE-7",
-      "title": "Test dymny k3d przechodzi przez cel generate",
-      "scope": "infra/k8s/scripts/smoke.sh, infra/k8s/smoke i ich testy (spec: kryterium 7; „Założenia techniczne”, Z1 i Z2). Ostatnia faza testu dymnego uruchamia cel generate z profilem small zamiast samego Joba z CronJoba, z ciągłym ruchem przez ingress w trakcie zamykania; SMOKE_BREAK=demo-data sprawdza nieudany generator i powrót do seeda.",
-      "acceptance_criteria": [
-        "make -C infra/k8s smoke (bez pliku puli zdjęć i bez Argo CD, jak w deploy.yml): żądania przez ingress wysyłane bez przerwy przestają dostawać 200 po zamknięciu i dostają je znowu po otwarciu; po przebiegu zapis stanu to idle z data small, Job load zakończył się sukcesem, a liczby produktów i zamówień są te z profilu small; faza wypisuje wolne miejsce węzła przed startem.",
-        "SMOKE_BREAK=demo-data: cel generate kończy się kodem 1, ingress odpowiada 502, zapis stanu ma data failed; potem generate PROFILE=seed REPLACE=failed kończy się kodem 0, sklep odpowiada, a dane to seed.",
-        "Pozostałe fazy testu dymnego przechodzą bez zmiany swoich sprawdzeń; czas fazy generatora jest wypisany.",
-        "Raport zadania zawiera wynik pełnego make -C infra/k8s smoke i przebiegu z SMOKE_BREAK=demo-data."
-      ],
-      "risk": "STANDARD",
-      "depends_on": [
-        "DEMO-SCALE-3",
-        "DEMO-SCALE-6"
-      ],
-      "paths": [
-        "infra/k8s/scripts/smoke.sh",
-        "infra/k8s/smoke/",
-        "infra/k8s/tests/test_smoke_demo_data.py"
-      ],
-      "parallel_with": [
-        "DEMO-SCALE-8"
-      ]
-    },
-    {
       "id": "DEMO-SCALE-8",
       "title": "Dokumentacja: zmiana kolejności, runbook generowania i zasady zgody",
-      "scope": "Dokumenty z sekcji „Dokumentacja” specyfikacji (kryterium 12), opisujące stan po epiku bez historii zmian: docs/features/demo-data/spec.md (P2 i W3 według U1, „Po epiku”, „Poza zakresem”, „Model zagrożeń”, opis CronJoba ze skryptem, DEMO_DATA_CONFIRM i strażnikiem), docs/vision.md („Skala docelowa”, „Dane demo”), infra/k8s/README.md (sekcja 11: CronJoby demo-data i load we wszystkich profilach, runbook generowania danych na serwerze: warunek wstępny L9 i osobna zgoda, przygotowanie, pełne polecenia generate z KUBE_DIR, GENERATE_OUT, GENERATE_PROBE_URL i zmiennymi dodatkowymi, potwierdzenie tak, wznowienie, błędy i kody wyjścia celu i Joba, powrót do seeda i do medium, scenariusze awarii, wdrożenie po generowaniu, eksport logu i metryk z Grafana Cloud, adresy sondy przez Cloudflare i wyzwanie Cloudflare), infra/k8s/CLAUDE.md i główny CLAUDE.md (generate na liście celów wymagających zgody, która nazywa operację, host i profil; rerun nie ponawia Joba generatora: kod 3), docs/features/deploy/spec.md i docs/features/deploy-ops/spec.md (CronJoby demo-data i load, zamknięcie sklepu a alerty, smoke przez generate), docs/adr/backups-observability.md (tymczasowa NetworkPolicy), docs/features/demo-scale/spec.md (stan po implementacji: seed bez progu wolnego miejsca, CronJob load w każdym profilu, wyniki w GENERATE_OUT/<job>/; bez zmian punktu o cache ISR w „Ryzyka” i warunku w „Wymagane przed startem”), nagłówek infra/k8s/scripts/rerun.sh (kod wyjścia 3; jedyna zmiana kodu).",
+      "scope": "Dokumenty z sekcji „Dokumentacja” specyfikacji (kryterium 12), opisujące stan po epiku bez historii zmian: docs/features/demo-data/spec.md, docs/vision.md, infra/k8s/README.md (sekcja 11: CronJoby demo-data i load, runbook generowania danych na serwerze), infra/k8s/CLAUDE.md i główny CLAUDE.md (zgoda nazywająca operację, host i profil; rerun nie ponawia Joba generatora: kod 3), docs/features/deploy/spec.md, docs/features/deploy-ops/spec.md, docs/adr/backups-observability.md, docs/features/demo-scale/spec.md, nagłówek infra/k8s/scripts/rerun.sh. DEMO-SCALE-11 przycina je do wariantu minimalnego.",
       "acceptance_criteria": [
         "Każdy dokument z listy opisuje stan po epiku, bez historii zmian; zasady w obu CLAUDE.md mówią, że generate wymaga zgody użytkownika w rozmowie, która nazywa operację, host i profil, a rerun nie ponawia Joba generatora (kod 3).",
         "Żaden tekst nie przedstawia pełnej skali jako zweryfikowanej ani automatycznej kopii OVH jako aktywnej; liczby server i full są opisane jako ekstrapolacja.",
-        "Runbook podaje pełne polecenia celu generate z KUBE_DIR, GENERATE_OUT i GENERATE_PROBE_URL, warunek wstępny (wdrożona i zweryfikowana poprawka L9 oraz osobna zgoda), wznowienie, kody wyjścia, powrót do seeda i medium, ostrzeżenie o wyzwaniu Cloudflare przy sondzie oraz sprawdzenie wdrożenia po generowaniu (czas initialize, liczby, próg 5 minut).",
         "Specyfikacja opisuje PROFILE=seed bez progu wolnego miejsca (cel i Job) i CronJob load w każdym profilu; punkt o cache ISR w „Ryzyka” i warunek w „Wymagane przed startem” bez zmian.",
         "make -C infra/k8s check przechodzi (testy dokumentów i zasad, które czytają te pliki)."
       ],
       "risk": "FAST",
       "depends_on": [
-        "DEMO-SCALE-3",
-        "DEMO-SCALE-6"
+        "DEMO-SCALE-3"
       ],
       "paths": [
         "docs/features/demo-data/spec.md",
@@ -261,8 +173,89 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
         "infra/k8s/scripts/rerun.sh",
         "CLAUDE.md"
       ],
+      "parallel_with": []
+    },
+    {
+      "id": "DEMO-SCALE-9",
+      "title": "Cele generate i open w wariancie minimalnym",
+      "scope": "infra/k8s/scripts/generate.sh, open.sh, shop-closed.sh, Makefile (z ao-guard.sh) i testy na atrapach kubectl (spec: „Stan sklepu i blokada”, „Cel make -C infra/k8s generate”, „Cel make -C infra/k8s open”; kryteria 3–6). generate: odmowy bez zmian, pytanie o tak, usunięcie Joba demo-data-run poprzedniego przebiegu, reguła shop-closed, restart Traefika, sonda zamknięcia, sekret puli zdjęć (usuwany przy każdym wyjściu), Job demo-data-run z CronJoba, oczekiwanie, wywołanie open. open: odmowy (aktywny Job, brak Joba albo Job inny niż Complete), usunięcie pozostawionego sekretu, czyszczenie puli cache.sitemap, indeksy Postgresa, alias wyszukiwarki, Job load, otwarcie i sonda. Decyzja U8: bez zapisu stanu, faz, wznawiania i zmian w Argo CD.",
+      "acceptance_criteria": [
+        "Każda odmowa z kryterium 3 specyfikacji kończy generate bez zmian w klastrze i z komunikatem nazywającym przyczynę; złe argumenty i środowisko dają kod 2, pozostałe odmowy kod 1; Joby CronJoba rate-limit-check nie liczą się jako aktywne.",
+        "Ścieżka poprawna (profil i seed) wykonuje kroki w kolejności specyfikacji; Job poprzedniego przebiegu jest usunięty zaraz po tak, a open po przerwaniu nowego generowania odmawia (brak Joba albo Job niezakończony); sekret puli zdjęć jest usunięty przy każdym wyjściu generate (także INT i TERM), a po zabiciu skryptu przez open.",
+        "Sonda zamknięcia bez zgody wszystkich adresów, Job nieudany (także bez poda) albo po czasie i kod 75 kończą generate kodem 1 ze sklepem zamkniętym i dwiema drogami wyjścia; nieudane sprawdzenie w open zostawia regułę; sonda bez „otwarty” po usunięciu reguły to kod 1.",
+        "Wartości DEMO_PHOTOS_* nie pojawiają się w wyjściu (także z sh -x) ani linii poleceń; reguła, Job demo-data-run i sekret nie mają etykiet ani adnotacji śledzenia Argo CD.",
+        "Bez słowa tak nic się nie zmienia; generate i open wołają ao-guard.sh i odmawiają przy działającym AO.",
+        "make -C infra/k8s check przechodzi; raport zadania pokazuje wynik ścieżki poprawnej i ścieżek błędu."
+      ],
+      "risk": "CRITICAL",
+      "depends_on": [
+        "DEMO-SCALE-1",
+        "DEMO-SCALE-2",
+        "DEMO-SCALE-3",
+        "DEMO-SCALE-4"
+      ],
+      "paths": [
+        "infra/k8s/scripts/generate.sh",
+        "infra/k8s/scripts/open.sh",
+        "infra/k8s/scripts/shop-closed.sh",
+        "infra/k8s/scripts/kube-jobs.sh",
+        "infra/k8s/scripts/ao-guard.sh",
+        "infra/k8s/Makefile",
+        "infra/k8s/tests/test_generate_script.py",
+        "infra/k8s/tests/test_ao_guard.py"
+      ],
+      "parallel_with": []
+    },
+    {
+      "id": "DEMO-SCALE-10",
+      "title": "Test dymny k3d przechodzi przez generate i open",
+      "scope": "infra/k8s/scripts/smoke.sh, infra/k8s/smoke i ich testy (spec: kryterium 7; Z1 i Z2). Ostatnia faza testu dymnego uruchamia generate PROFILE=small i open zamiast samego Joba z CronJoba, z ruchem przez ingress; SMOKE_BREAK=demo-data sprawdza nieudany generator i powrót do seeda.",
+      "acceptance_criteria": [
+        "make -C infra/k8s smoke (bez pliku puli zdjęć i bez Argo CD): żądania przez ingress wysyłane bez przerwy przestają dostawać 200 po zamknięciu i dostają je znowu po otwarciu; Job load przeszedł.",
+        "SMOKE_BREAK=demo-data: generate kończy się kodem 1, sklep jest zamknięty, open odmawia, a generate PROFILE=seed kończy się kodem 0 i otwiera sklep.",
+        "Pozostałe fazy testu dymnego przechodzą bez zmiany swoich sprawdzeń; czas fazy generatora jest wypisany.",
+        "Raport zadania zawiera wynik pełnego make -C infra/k8s smoke i przebiegu z SMOKE_BREAK=demo-data."
+      ],
+      "risk": "STANDARD",
+      "depends_on": [
+        "DEMO-SCALE-9"
+      ],
+      "paths": [
+        "infra/k8s/scripts/smoke.sh",
+        "infra/k8s/smoke/",
+        "infra/k8s/tests/test_smoke_demo_data.py"
+      ],
       "parallel_with": [
-        "DEMO-SCALE-7"
+        "DEMO-SCALE-11"
+      ]
+    },
+    {
+      "id": "DEMO-SCALE-11",
+      "title": "Dokumentacja przycięta do wariantu minimalnego",
+      "scope": "Dokumenty z sekcji „Dokumentacja” specyfikacji: specyfikacja, plan i runbook opisują dwa polecenia, generate i open, bez zapisu stanu, faz, wznawiania, przełączania Argo CD, REPLACE i GENERATE_OUT; CLAUDE.md (główny i infra/k8s): generate i open wymagają zgody nazywającej operację, host i profil. Tylko dokumentacja, bez zmian kodu.",
+      "acceptance_criteria": [
+        "Żaden dokument poza docs/reports/ nie opisuje zapisu stanu, faz, wznawiania, przełączania Argo CD, REPLACE ani GENERATE_OUT (przeszukanie repo).",
+        "Runbook (sekcja 11) podaje polecenia generate i open z KUBE_DIR, GENERATE_PROBE_URL i GENERATE_PROBE_HOST, warunek wstępny (L9 i osobna zgoda), kody wyjścia, postępowanie po błędzie, ostrzeżenie o wyzwaniu Cloudflare i sprawdzenie wdrożenia po generowaniu.",
+        "make -C infra/k8s check przechodzi."
+      ],
+      "risk": "FAST",
+      "depends_on": [
+        "DEMO-SCALE-9"
+      ],
+      "paths": [
+        "docs/features/demo-scale/spec.md",
+        "docs/features/demo-scale/plan.md",
+        "docs/features/demo-data/spec.md",
+        "docs/features/deploy/spec.md",
+        "docs/features/deploy-ops/spec.md",
+        "docs/adr/backups-observability.md",
+        "docs/vision.md",
+        "infra/k8s/README.md",
+        "infra/k8s/CLAUDE.md",
+        "CLAUDE.md"
+      ],
+      "parallel_with": [
+        "DEMO-SCALE-10"
       ]
     }
   ]

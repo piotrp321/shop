@@ -330,8 +330,8 @@ Profile inne niż `small` biorą zdjęcia z prywatnej puli w R2 (dane dostępu w
 po generatorze przywraca dane E2E (konta generatora w Keycloak zostają).
 
 Na serwerze demo generator uruchamia wyłącznie `make -C infra/k8s generate` po zgodzie użytkownika (zawieszony CronJob
-`demo-data`, strażnik wolnego miejsca, sklep zamknięty do sprawdzenia danych, powrót do seeda przy każdym błędzie;
-runbook `infra/k8s/README.md`, sekcja 11). Dane w skali na serwerze nie są resetowane co noc: zastępuje je tylko
+`demo-data`, strażnik wolnego miejsca, sklep zamknięty do sprawdzenia danych przez `make -C infra/k8s open`; po błędzie
+sklep zostaje zamknięty do ponownego generowania albo powrotu do seeda; runbook `infra/k8s/README.md`, sekcja 11). Dane w skali na serwerze nie są resetowane co noc: zastępuje je tylko
 świadome ponowne generowanie albo powrót do seeda.
 
 ## Zakres MVP

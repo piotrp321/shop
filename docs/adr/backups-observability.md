@@ -189,7 +189,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   przejmie ruchu przez `externalIPs` i nie wywłaszczy podów sklepu klasą priorytetu systemu (polityki dopuszczania) i nie
   czyta sekretów `shop-backup` ani `shop-secrets` (RBAC); kolektor też nie.
 - Klaster nie ma stałej NetworkPolicy, więc każdy pod sięga po sieci do każdej usługi każdej przestrzeni. Jedyna reguła to
-  tymczasowa `shop-closed` w przestrzeni `shop`, którą zakłada i usuwa wyłącznie cel `make -C infra/k8s generate`, żeby
+  tymczasowa `shop-closed` w przestrzeni `shop`, którą zakłada `make -C infra/k8s generate`, a usuwa `make -C infra/k8s open`, żeby
   zamknąć sklep na czas generowania danych (ruch przychodzący do podów tylko z podów przestrzeni; poza chartem, bez
   śledzenia Argo CD; `docs/features/demo-scale/spec.md`); istnieje tylko przy zamkniętym sklepie i nie jest
   zabezpieczeniem sieci. Redis działa bez
