@@ -373,7 +373,8 @@ Spec: `docs/features/sentry/spec.md`.
   `prod` nigdy ich nie ma; test dymny (`infra/k8s/smoke/checks.py`) sprawdza, że sklep ich nie serwuje. Flagę ustawia tylko job
   `images` workflowu `deploy.yml` (`docs/features/sentry/spec.md`, D10).
 - Nowy format danych klienta w logach albo wyjątkach wymaga wzorca w filtrze Sentry (`MASKS` w
-  `src/observability/filter.ts` i `SentryEventFilter::MASKS` w api) i w Alloy (`infra/k8s/argocd/apps/monitoring.yaml`,
+  `src/observability/filter.ts`, w filtrze panelu `apps/admin/src/observability/filter.ts` i
+  `SentryEventFilter::MASKS` w api) i w Alloy (`infra/k8s/argocd/apps/monitoring.yaml`,
   korpus `infra/k8s/tests/log-corpus`) w tym samym PR. Test filtra ma kopię wierszy korpusu `store.log`, `api.log`
   i `postgres.log` (kontener sklepu widzi tylko `apps/store`): zmiana korpusu zmienia też kopię.
 
@@ -402,8 +403,8 @@ Spec: `docs/features/sentry/spec.md`.
 - Kolory, typografia, promienie i cienie wyłącznie z tokenów w `src/styles/tokens.css`. Żadnych kolorów
   „na sztywno”: bez wartości arbitralnych (`bg-[#…]`, `text-[rgb(…)]`), bez kolorów w `style` i bez klas spoza
   tokenów (`bg-black`, `text-red-500`). Domyślna paleta Tailwinda jest wyłączona, a ESLint to pilnuje.
-- Paletę (`--palette-*`) i istniejące tokeny zmienia tylko VISUAL-DESIGN-5; kolejne zadania wyglądu mogą dopisać nowy
-  token semantyczny wskazujący istniejącą paletę.
+- Paleta (`--palette-*`) i istniejące tokeny są ustalone w `docs/features/visual-design/spec.md` („Wybrany kierunek”):
+  ich zmiana to zmiana specyfikacji. Zadanie może dopisać nowy token semantyczny wskazujący istniejącą paletę.
 - Komponenty używają warstwy semantycznej (zmienne motywu shadcn/ui: `background`, `foreground`, `primary`,
   `muted`, `border` i pozostałe, oraz tokeny kierunku: `link`, `success` („Dostępny”), `warning` („Ostatnie sztuki”),
   `inverse*` (stopka), `hero-overlay`), nigdy palety bezpośrednio. Błędy pól i komunikaty używają `destructive` (to ten
@@ -440,8 +441,8 @@ Spec: `docs/features/sentry/spec.md`.
 - `scripts/marketing-images.mjs` czyta listę (Node usuwa typy z `.ts`), a z niej generuje pliki i moduł. Uruchamia się
   w kontenerze `store`: `make -C apps/store shell`, potem `node scripts/marketing-images.mjs`. Źródła są pod
   `/fixtures/images` z montowania tylko do odczytu `./apps/api/fixtures/images:/fixtures/images:ro` usługi `store`
-  (`infra/docker-compose.yml`, tylko środowisko deweloperskie: obraz produkcyjny ma commitowane pliki WebP; po dodaniu
-  montowania odtwórz kontener `docker compose up -d store`). Używa `sharp`, który instaluje Next.js (bez zmiany
+  (`infra/docker-compose.yml`, tylko środowisko deweloperskie: obraz produkcyjny ma commitowane pliki WebP). Używa
+  `sharp`, który instaluje Next.js (bez zmiany
   `package.json`). Najpierw sprawdza i koduje wszystko w pamięci, dopiero potem zapisuje (kasuje też stare pliki `.webp`
   spoza listy). Kody wyjścia: 0 gotowe; 1 błędna lista albo wynik (szerokość ponad kadr, czyli powiększanie źródła;
   plik ponad budżet; brak budżetu szerokości; plik źródłowy, którego `sharp` nie czyta albo nie przekonwertuje);
