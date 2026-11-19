@@ -36,7 +36,8 @@ Zakres: `tools/agent-security`, `tools/telemetry`, `.claude/skills/ao-run/SKILL.
     zła wartość mogłaby skierować eksport poza Maca, więc wrapper i `ao-prepare` odmawiają (R2, R5).
 - Dane w stosie nie są gwarantowane co do integralności. Wykonawca AO może dopisać fałszywe punkty i, przez Dockera,
   usunąć wolumeny stosu (model zagrożeń). Liczby z dashboardu to obraz pomocniczy, a nie dowód. Źródłem prawdy
-  o przebiegach epików zostaje METRICS (baza AO i wyniki CLI).
+  o przebiegach epików zostaje METRICS (baza AO i wyniki CLI, a dla epiku natywnego plik przebiegu i transkrypty
+  sesji).
 - Eksport idzie wyłącznie na adres pętli zwrotnej Maca. Dane zostają na Macu, także `user.email`, który Claude Code
   dołącza do każdego punktu i którego nie da się wyłączyć.
 
@@ -381,6 +382,27 @@ epik TELEMETRY i działa przed raportem odbioru i przed merge'em końcowego PR, 
 
 Wyniki (kody, czas, koszt sondy, zapytanie) trafiają do raportu odbioru. Nieudany punkt to brak merge'a, także na
 polecenie, do czasu usunięcia przyczyny, jak w „Odbiorze AGENT-SECURITY”.
+
+### R8. Sesja natywna: epik, zadanie, model i subagent
+
+Epik prowadzony natywnie (`docs/features/ash-v1/spec.md`, T1–T4) eksportuje przez blok z `telemetry.py snippet`
+w `~/.claude/settings.json` (krok użytkownika, sprawdzany `telemetry.py check`). Jego punkty mają
+`shop.source=interactive` i nie mają `shop.epic` ani `shop.task`: ustawienie użytkownika objęłoby wszystkie równoległe
+sesje, a subagenci działają w procesie sesji prowadzącej, więc nie mają własnych atrybutów zasobu. Powiązanie daje
+rekord METRICS epiku (`docs/features/metrics/spec.md`, „Epik natywny”):
+
+- **Epik:** `session_id` sesji z pliku przebiegu `~/.local/state/shop-metrics/runs/<epik>.json` (`sessions[].id`, sesja
+  prowadząca i sesje wznowione), wymienione też w rekordzie jako `sessions`; przedział czasu to `started_at` do
+  `merged_at` rekordu. Metryki i zdarzenia epiku to punkty z tymi `session_id` w tym przedziale.
+- **Zadanie i subagent:** wpis `attempts` rekordu natywnego ma `agent_id` (z nazwy pliku `agent-<id>.jsonl`), `task`,
+  `role`, `model` i `effort`. Zdarzenia subagenta w Lokim mają `agent_id` i `agent_type`; po `agent_id` łączy się je
+  z zadaniem i rolą z rekordu. Zdarzenia sesji z pliku przebiegu bez `agent_id` to sesja prowadząca (rola
+  `orchestrator`, bez zadania).
+- **Model:** `model` jest etykietą metryk i polem zdarzeń, bez łączenia z rekordem; rekord ma model każdego przebiegu
+  subagenta w `attempts` i przekrój `value.by_model`.
+
+Zgodność `agent_id` zdarzeń w Lokim z identyfikatorem z nazwy pliku transkryptu nie jest jeszcze sprawdzona na stosie;
+sprawdza ją odbiór epiku ASH-V1 (kryterium 14 jego specyfikacji).
 
 ## Scenariusze błędów
 

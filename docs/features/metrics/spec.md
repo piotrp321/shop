@@ -78,6 +78,9 @@ rzeczywiste skrócenie czasu AO):
   epiku w AO (PRODUCT-PAGE i DEPLOY mają `INTEGRATING`, PAYMENT `BLOCKED`). `/retro` ma węższą definicję (`DONE`) na
   swoje potrzeby i jej nie zmieniamy. Bazę czytamy tylko do odczytu (`file:…?mode=ro`, `busy_timeout`), `ao` nie
   jest uruchamiane (`ao report` nadpisuje pliki, a komenda w katalogu bez bazy zakłada nową).
+- **Przebieg natywny:** epik prowadzony przez główną sesję Claude Code z natywnymi subagentami
+  (`docs/features/ash-v1/spec.md`). Źródłem jest plik przebiegu `runs/<epik>.json` w stanie pomiaru i transkrypty
+  sesji w nim zapisanych (sekcja „Epik natywny”). Rekord przebiegu AO ma `source: ao`, rekord natywny `source: native`.
 - **Próba:** wiersz tabeli `attempts`; **zadanie:** wiersz `tasks` (`kind`: `plan`, `repair`, `integration`, `fix`,
   `finalize`).
 - **Próba udana:** `outcome = result` i `executor_status` różny od `FAILED` i `BLOCKED`. **Próba zablokowana:**
@@ -100,10 +103,10 @@ rzeczywiste skrócenie czasu AO):
 ## Pomiar epiku
 
 `tools/metrics/metrics.py` (Python 3.9+, biblioteka standardowa) z `tools/metrics/config.json` (kategorie poleceń,
-wagi tokenów, progi alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 dla D1; zmiana progu nie wymaga zmiany
-kodu). Stan lokalny w
+wagi tokenów, progi alarmów i reguł decyzji, role i katalog wyników EVALS 2.0 dla D1, cennik API epików natywnych;
+zmiana progu nie wymaga zmiany kodu). Stan lokalny w
 `~/.local/state/shop-metrics/` (poza katalogami `ao-*`, które są `AO_HOME` epików): `epics/<epik>.json` (rekordy),
-`waste.json` (wysłane alarmy), `waste.lock`.
+`runs/<epik>.json` (pliki przebiegu epików natywnych), `waste.json` (wysłane alarmy), `waste.lock`.
 
 Kod wspólny przez import, bez kopii reguł: interwały czekania na człowieka z `ao_events.waits`, przyrosty okien
 z `night_queue._window_deltas` i przedziały epików z `night_queue` (jak robi to `pairs.py`); `pairs.py` (tymczasowy)
@@ -120,6 +123,8 @@ nie jest używany.
 | Czekanie w bramce pracy równoległej | `~/.local/state/ao-night/gate.jsonl` |
 | Merge końcowego PR, CI PR, PR `sync/<epik>-main`, regresje | `gh` (tylko odczyt) |
 | Ręczne poprawki | lista podana przez sesję `/ao-run` przy merge'u (`--manual-fixes FILE`; jak dziś do komentarza) |
+| Epik natywny: start, gotowość PR, gałąź, PR, sesje, odczyty limitów | plik przebiegu `runs/<epik>.json` (`metrics.py start`, `done`) |
+| Epik natywny: tokeny, wartość, przebiegi subagentów, polecenia, wersja CLI | transkrypty sesji z pliku przebiegu w `~/.claude/projects/*/` i ich `subagents/` (sekcja „Epik natywny”), cennik `pricing` w `config.json` |
 
 Brak źródła nie zatrzymuje pomiaru: pole dostaje `null` i powód w `gaps` (np. „brak `events.jsonl`” dla CART,
 „próba bez wyniku CLI”, „błąd `gh`”). Zera bez danych są zakazane. Zapis rekordu nie zastępuje wartości niepustej
@@ -128,9 +133,12 @@ wartością `null` z błędu źródła (przejściowy błąd `gh`, `--no-gh`): zo
 ### Rekord epiku
 
 `metrics.py epic <epik> [--ao-home DIR] [--manual-fixes FILE] [--no-gh]` wypisuje jedną linię JSON i zapisuje rekord.
-Czasy w sekundach, kwoty w USD, przyrosty limitu w pp:
+Źródło: przebieg AO, gdy istnieje katalog `ao-<epik>` (albo `--ao-home`), inaczej plik przebiegu natywnego
+`runs/<epik>.json` (sekcja „Epik natywny”); bez obu kod 2 z komunikatem, którego źródła brakuje, i bez zapisu.
+`backfill` dotyczy tylko przebiegów AO. Poniżej pola rekordu AO; rekord natywny ma ten sam format. Czasy w sekundach,
+kwoty w USD, przyrosty limitu w pp:
 
-- `epic`, `issue`, `final_pr`, `tasks` (liczba zadań planu), `started_at` (`epics.created_at`), `done_at`
+- `epic`, `source` (`ao`), `issue`, `final_pr`, `tasks` (liczba zadań planu), `started_at` (`epics.created_at`), `done_at`
   (pierwsze `epic_done`; bez niego `null` i pozycja w `gaps`), `merged_at`;
 - `wall` (miara główna): `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge,
   odbiór użytkownika);
@@ -250,6 +258,71 @@ czas integracji i czas poleceń w próbach (`in_attempts`) bez części prób (b
 prób” i „≈” przy każdej liczbie. Wąskie gardło, kandydat `decide`, okno `effect` i alarm `waste` (`estimated` albo
 `median_estimated`) zbudowane z takiej liczby (także z mediany historii, w której jest choć jedna) są oznaczone jako
 szacowane; prognoza `expected_effect` jest szacowana tylko wtedy, gdy dane, z których wynika, są szacowane lub niepełne.
+
+### Epik natywny
+
+Epik prowadzony natywnie (`docs/features/ash-v1/spec.md`, M1–M3) nie ma bazy AO. Punkt odniesienia zapisuje sesja
+prowadząca komendami `start` i `done`, a rekord powstaje z transkryptów jej sesji.
+
+**Plik przebiegu.** `metrics.py start <epik>` zapisuje `runs/<epik>.json`: `started_at` (teraz albo `--at`), `base_sha`
+(SHA `origin/main`: `git rev-parse`, przy `--at` ostatni commit `origin/main` sprzed tej chwili; błąd gita daje `null`
+i ostrzeżenie), `branch` (gałąź epiku: `--branch` albo bieżąca gałąź katalogu roboczego), `pr` (numer draft PR: `--pr`
+albo `gh pr view <gałąź>`), `tasks` (`--tasks` albo liczba zadań manifestu `origin/main:docs/features/<epik>/plan.md`,
+ta sama funkcja co `night_queue.py start`), `sessions` (`[{id, worktree, at}]`: identyfikator sesji prowadzącej,
+`--session` albo najnowszy transkrypt `<id>.jsonl` w katalogu sesji katalogu roboczego `--worktree`, domyślnie
+bieżącego), `usage_start` (odczyt limitów z wejścia standardowego, obiekt `get_usage` czytany jak w `night_queue.py
+start`; terminal albo puste wejście to `null`), `done_at` i `usage_done` (`null`). `metrics.py done <epik>` wpisuje czas
+oznaczenia PR jako gotowy (teraz albo `--at`; kolejne wywołanie go zastępuje) i drugi odczyt limitów. `start --resume`
+dopisuje do `sessions` nową sesję z jej katalogiem roboczym (raz). Bez gałęzi, PR, liczby zadań albo transkryptu sesji
+`start` kończy się kodem 2 z nazwą opcji, która to poda; drugi `start` bez `--resume` i `--resume` albo `done` bez pliku
+przebiegu też dają kod 2, bez zapisu. Opcje `--at`, `--worktree`, `--branch`, `--pr`, `--tasks` i `--session` pozwalają
+zapisać plik po fakcie, także gdy `plan.md` już nie istnieje.
+
+**Transkrypty epiku.** Tylko sesje z pliku przebiegu: `<id>.jsonl` w katalogu projektów Claude Code
+(`~/.claude/projects/*/`, opcja `--projects`) i ich subagenci `<id>/subagents/agent-<agent>.jsonl` z
+`agent-<agent>.meta.json`. Inna sesja w tym samym katalogu roboczym do epiku nie należy. Liczą się wiadomości od
+`started_at` do merge'u końcowego PR (praca po merge'u nie wchodzi; bez znanego merge'u do końca transkryptów,
+z pozycją `sessions` w `gaps`), każdy `message.id` raz: pierwsze wystąpienie w kolejności sesji z pliku przebiegu
+(prowadzący, potem subagenci), także w sesji wznowionej albo rozgałęzionej. Wiadomość bez `timestamp` się liczy,
+z pozycją w `gaps`. Czytane pola: wiadomości `assistant` (`message.id`, `message.model`, `message.usage`, `timestamp`,
+bloki `tool_use`), `tool_result` w wiadomościach użytkownika, `timestamp` linii i `version` (wersja CLI); z `meta.json`
+`agentType`, `description`, `model`, `effort`, `finished`. Opis zlecenia służy tylko do ustalenia zadania i nie trafia
+do rekordu.
+
+**Rola i zadanie (D4).** Sesja prowadząca to rola `orchestrator` bez zadania; przebieg subagenta to rola z `agentType`
+i zadanie, którego ID (`<EPIK>-<n>`, wielkość liter bez znaczenia) występuje w `description` jako pierwsze. Bez ID
+przebieg należy do pozycji `no_task` („bez zadania”), tak jak sesja prowadząca.
+
+**Wartość (D3).** Transkrypt sesji natywnej nie ma kosztu policzonego przez CLI, więc wartość wiadomości to suma tokenów
+każdego rodzaju razy stawka cennika API z `config.json` (`pricing`: dla każdego modelu USD za milion tokenów wejścia,
+wyjścia, odczytu cache, zapisu cache 5 min i zapisu cache 1 h; ze źródłem i datą odczytu, zapisanymi w rekordzie jako
+`pricing`). Zapis cache dzieli `usage.cache_creation` (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`).
+Wartość jest zawsze szacunkiem (`estimated: true` w każdej komórce), nieporównywalnym co do centa z kosztem z CLI
+w epikach AO. Wiadomość bez `message.usage`, bez modelu, z modelem bez stawek, z rodzajem tokenów bez stawki albo
+z zapisem cache bez rozbicia ma wartość nieznaną: komórka `usd: null` albo przekrój z `incomplete: true` (znana część
+w sumie) i pozycja `value` w `gaps`; wiadomość bez tokenów (np. `<synthetic>`) stawki nie potrzebuje.
+
+**Pola rekordu natywnego.**
+
+| Pole | Źródło natywne |
+|---|---|
+| `source` | `native` |
+| `tasks`, `started_at`, `done_at` | plik przebiegu (brak: `null` i pozycja w `gaps`) |
+| `final_pr`, `issue`, `merged_at`, `wall` | `pr` z pliku przebiegu i `gh pr view`, jak w AO; `to_done` to `started_at` → `done_at` |
+| `value` | przekroje jak w AO (`total`, `by_role`, `by_model`, `by_task`, `by_role_model`, `by_task_role`), wartość z cennika |
+| `attempts` | jeden wpis na przebieg subagenta: `agent_id`, `task`, `role` (`agentType`), `model` (najczęstszy model jego wiadomości), `effort`, `started_at` i `ended_at` (pierwsza i ostatnia wiadomość w przedziale epiku), `wall_s`, `tokens`, `value`, `estimated`, `finished` (z `meta.json`); bez `meta.json` rola, zadanie, effort i `finished` to `null` z pozycją w `gaps` (w przekrojach `value` rola `subagent`) |
+| `by_task` | `{zadanie: {kind: null, work, attempts}}`: suma `wall_s` i liczba przebiegów na zadanie (`no_task` dla przebiegów bez zadania) |
+| `in_attempts`, `versions` | polecenia powłoki i wersja CLI ze wszystkich transkryptów epiku (prowadzący i subagenci), reguły jak w AO |
+| `ci` | `final`: przebiegi CI gałęzi `branch` z pliku przebiegu i PR `pr`; `tasks`: `null` |
+| `regressions`, `found_after_merge`, `bottlenecks` | jak w AO |
+| `sessions` | identyfikatory sesji z pliku przebiegu (bez katalogów roboczych) |
+| `pricing` | `source` i `read_at` cennika, z którego policzono wartość |
+| `parallel`, `gate_wait`, `waste` | `null`, pozycja w `gaps` („brak źródła w przebiegu natywnym”) |
+| `breakdown`, `human`, `integration`, `retries`, `reviews`, `acceptance`, `subscription` | `null`, pozycja w `gaps` („nie liczone dla przebiegu natywnego”) |
+
+Rekord natywny nie zawiera treści wiadomości, zleceń, poleceń ani ścieżek katalogów roboczych. Format transkryptów nie
+jest stabilnym interfejsem CLI: brak pola daje `null` i pozycję w `gaps`, nie błąd. Testy używają syntetycznych
+transkryptów z samymi czytanymi polami; treść prawdziwych transkryptów nie trafia do repozytorium.
 
 ### Historia i trend
 

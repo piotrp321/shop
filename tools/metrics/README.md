@@ -1,10 +1,12 @@
 # tools/metrics
 
-Pomiar przebiegów epików AO (specyfikacja: `docs/features/metrics/spec.md`). Python 3.9+, tylko biblioteka standardowa.
-Skrypt czyta dane AO, miary limitów nocnej kolejki i GitHub (`gh`, tylko odczyt), nie czyta sklepu. Baza AO jest
+Pomiar przebiegów epików AO i epików natywnych (specyfikacja: `docs/features/metrics/spec.md`). Python 3.9+, tylko
+biblioteka standardowa. Skrypt czyta dane AO, miary limitów nocnej kolejki, plik przebiegu i transkrypty sesji Claude
+Code epiku natywnego oraz GitHub (`gh`, tylko odczyt), nie czyta sklepu. Baza AO jest
 otwierana tylko do odczytu (`mode=ro`, `busy_timeout`), a `ao` nie jest nigdy uruchamiane.
 
-Komendy: `epic` (rekord przebiegu z danych AO, transkryptów prób i GitHuba), `backfill` (rekordy zmergowanych
+Komendy: `start` i `done` (plik przebiegu epiku natywnego), `epic` (rekord przebiegu z danych AO, transkryptów prób
+i GitHuba albo z pliku przebiegu i transkryptów sesji epiku natywnego), `backfill` (rekordy zmergowanych
 przebiegów), `render` (raport odbioru i komentarz w issue), `trend` (tabela i mediany ostatnich epików), `decide`
 (decyzje optymalizacyjne), `effect` (zmierzony efekt decyzji) i `waste` (alarmy bezproduktywnego zużycia w trakcie
 przebiegu).
@@ -12,7 +14,10 @@ przebiegu).
 ## Komendy
 
 ```
-python3 tools/metrics/metrics.py epic EPIK [--ao-home DIR] [--manual-fixes FILE] [--no-gh] [WSPÓLNE]
+python3 tools/metrics/metrics.py start EPIK [--resume] [--at CZAS] [--worktree DIR] [--branch NAZWA] [--pr N]
+    [--tasks N] [--session ID] [--projects DIR] [WSPÓLNE] < odczyt get_usage
+python3 tools/metrics/metrics.py done EPIK [--at CZAS] [WSPÓLNE] < odczyt get_usage
+python3 tools/metrics/metrics.py epic EPIK [--ao-home DIR] [--projects DIR] [--manual-fixes FILE] [--no-gh] [WSPÓLNE]
 python3 tools/metrics/metrics.py backfill [--ao-root DIR] [WSPÓLNE]
 python3 tools/metrics/metrics.py trend [--last N] [--epic EPIK] [--json] [--no-gh] [WSPÓLNE]
 python3 tools/metrics/metrics.py render EPIK [--format report|comment] [WSPÓLNE]
@@ -27,8 +32,15 @@ Wspólne opcje: `--config FILE` (domyślnie `config.json` obok skryptu), `--stat
 `~/.local/state/ao-night`), `--busy-timeout-ms N` (domyślnie z `config.json`), `--repo OWNER/NAZWA` (przekazywane do
 każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
 
+- `start EPIK`: zapisuje plik przebiegu epiku natywnego `<state>/runs/<epik>.json` (zapis atomowy) i wypisuje go jako
+  jedną linię JSON (zob. „Epik natywny”). `--resume` dopisuje nową sesję do istniejącego pliku. `--projects`: katalog
+  projektów Claude Code (domyślnie `~/.claude/projects`). Odczyt limitów (obiekt `get_usage`) z wejścia standardowego;
+  terminal albo puste wejście to brak odczytu (`null`).
+- `done EPIK`: wpisuje do pliku przebiegu `done_at` (teraz albo `--at`) i drugi odczyt limitów z wejścia (`usage_done`).
 - `epic`: wypisuje rekord przebiegu jako jedną linię JSON i zapisuje go w `<state>/epics/<epik>.json` (zapis
-  atomowy). Przebieg to `--ao-home` (domyślnie `ao-<epik>` pod `$SHOP_METRICS_AO_ROOT` albo `~/.local/state`).
+  atomowy). Przebieg AO to `--ao-home` (domyślnie `ao-<epik>` pod `$SHOP_METRICS_AO_ROOT` albo `~/.local/state`); gdy
+  tego katalogu nie ma, rekord powstaje z pliku przebiegu `<state>/runs/<epik>.json` i transkryptów sesji pod
+  `--projects` (rekord natywny, `source: native`); bez obu kod `2` z komunikatem, którego źródła brakuje.
   `--manual-fixes FILE`: lista ręcznych poprawek od sesji `/ao-run`, jedna na linię (`- PR #12: tekst` albo `- tekst`;
   pusta linia i nagłówek `Ręczne poprawki: N` są pomijane). `--no-gh` pomija `gh`.
 - `backfill`: rekord każdego przebiegu `ao-*` pod `--ao-root` (domyślnie jak wyżej), którego baza ma wiersz epiku
@@ -81,7 +93,9 @@ każdego `gh` jako `-R`; domyślnie repozytorium katalogu roboczego).
   `CZAS` to czas ISO 8601 z `Z` albo przesunięciem UTC.
 - `fixture_scan.py`: skan fixture'ów (zob. niżej).
 
-Kody wyjścia: `0` sukces; `2` nic nie zapisano ani nie wypisano (złe argumenty albo `config.json`, brak katalogu AO,
+Kody wyjścia: `0` sukces; `2` nic nie zapisano ani nie wypisano (złe argumenty albo `config.json`, brak katalogu AO
+i pliku przebiegu, nieczytelny plik przebiegu, `start` bez gałęzi, PR, liczby zadań albo transkryptu sesji, drugi `start`
+bez `--resume`, `--resume` albo `done` bez pliku przebiegu,
 nieczytelna albo zablokowana baza, brak wiersza epiku, nieczytelny plik `--manual-fixes`, stan niezapisywalny,
 nieczytelny `waste.json` w `waste`, zły klucz albo `--at` w `effect`; komunikat po polsku na stderr, stdout pusty); `3` rekord wypisano i zapisano, ale źródło zawiodło (błąd `gh`: brak programu, kod ≠ 0,
 przekroczony czas, odpowiedź inna niż JSON; w `backfill` także pominięty przebieg z błędem bazy albo `gh`). Błąd `gh`
@@ -94,6 +108,7 @@ Czasy w sekundach, znaczniki czasu w UTC (`2026-11-12T21:56:10Z`). Brak źródł
 
 | Pole | Treść |
 |---|---|
+| `source` | `ao` (rekord z przebiegu AO, ta tabela) albo `native` (zob. „Epik natywny”) |
 | `epic`, `issue`, `final_pr`, `tasks` | ID epiku; pierwszy issue zamykany przez końcowy PR (`gh pr view`, `closingIssuesReferences`); numer końcowego PR (`epics.final_pr_number`; gdy pusty, jedyny zmergowany PR `epic/<epik>` → `main` z `gh pr list`, z pozycją `final_pr` w `gaps`; brak albo kilka takich PR: `null`); liczba zadań planu (`tasks.kind = plan`) |
 | `started_at`, `done_at`, `merged_at` | `epics.created_at`; pierwsze zdarzenie `epic_done` (bez niego `null`); `mergedAt` końcowego PR z `gh` |
 | `wall` | `to_done` (start → `epic_done`), `to_merge` (start → merge), `review` (`epic_done` → merge) |
@@ -207,6 +222,41 @@ tylko do porównania w pamięci i nigdy nie trafia do rekordu (test: polecenie z
   Bez nakładania `1` (`share_estimated: false`); przy nakładaniu `share_estimated: true`, a gdy nakładający się epik nie
   ma ani rekordu, ani katalogu przebiegu, jego próby nie mają wartości albo własna wartość jest nieznana: `null`
   z pozycją w `gaps`. Surowy przyrost (`windows`) zostaje obok i obejmuje cały przedział pomiaru.
+
+### Epik natywny: plik przebiegu, transkrypty sesji i cennik
+
+Epik prowadzony przez główną sesję Claude Code (`docs/features/ash-v1/spec.md`, M1–M3). Szczegóły i tabela pól:
+spec, „Epik natywny”.
+
+- **Plik przebiegu** `<state>/runs/<epik>.json`: `epic`, `started_at`, `base_sha` (`git rev-parse origin/main`, przy
+  `--at` `git rev-list -1 --first-parent --before=<CZAS> origin/main`; błąd gita: `null` i ostrzeżenie na stderr),
+  `branch` (`--branch` albo `git rev-parse --abbrev-ref HEAD` katalogu roboczego), `pr` (`--pr` albo `gh pr view
+  <gałąź> --json number`), `tasks` (`--tasks` albo `night_queue.task_count` na
+  `origin/main:docs/features/<epik>/plan.md`), `sessions` (`[{id, worktree, at}]`; `--session` albo najnowszy według
+  czasu modyfikacji `<id>.jsonl` w `<projects>/<katalog roboczy z każdym znakiem innym niż litera i cyfra zamienionym na
+  `-`>`), `usage_start`, `done_at`, `usage_done`. Polecenia gita działają w `--worktree` (domyślnie bieżący katalog).
+  Identyfikatory epiku i sesji: litery, cyfry, `.`, `_`, `-`, do 64 znaków.
+- **Transkrypty:** dla każdej sesji z pliku przebiegu `<projects>/*/<id>.jsonl` i `<id>/subagents/agent-<agent>.jsonl`
+  z `agent-<agent>.meta.json`; inne sesje nie wchodzą. Wiadomości od `started_at` do merge'u końcowego PR (z `gh`, a przy
+  błędzie albo `--no-gh` z zapisanego rekordu; bez niego bez górnej granicy, pozycja `sessions` w `gaps`), każdy
+  `message.id` raz (pierwsze wystąpienie w kolejności sesji, prowadzący przed subagentami). Wywołania narzędzi poza tym
+  przedziałem nie wchodzą do `in_attempts`. Czytanie wierszami jak w transkryptach prób (`_read_line`), linia, która nie
+  jest JSON, jest pomijana; transkrypt bez wiadomości i linii w przedziale epiku nie daje wpisu.
+- **Rola i zadanie:** prowadzący `orchestrator` bez zadania; subagent: rola `agentType`, zadanie to pierwsze
+  `<EPIK>-<n>` w `description` (bez rozróżniania wielkości liter, zapisane wielkimi literami), bez niego `no_task`.
+  `meta.json` brakujący albo nieczytelny daje `role`, `task`, `effort`, `finished` `null` i pozycję `attempts.<agent>`
+  w `gaps`; brakujące pole tak samo dla tego pola. `description` nie trafia do rekordu.
+- **Wartość:** suma po rodzajach tokenów wiadomości razy stawka `pricing.models.<model>` (USD za milion;
+  `cache_write_5m` i `cache_write_1h` z `usage.cache_creation`). Każda komórka ma `estimated: true`, rekord ma
+  `pricing` (`source`, `read_at`). Wartość nieznana (brak `message.usage`, `message.model`, stawek modelu, stawki
+  użytego rodzaju albo rozbicia zapisu cache) trafia do przekrojów jako część nieznana (`usd: null` albo `incomplete:
+  true`), a próba ma `value: null` (bez `message.usage` także `tokens: null`); powód w `gaps` (`value: sesja|agent <id>:
+  …`). Wiadomość bez tokenów (np. model `<synthetic>`) jest pomijana.
+- **Pola bez źródła:** `parallel`, `gate_wait`, `waste` (`brak źródła w przebiegu natywnym`) oraz `breakdown`, `human`,
+  `integration`, `retries`, `reviews`, `acceptance`, `subscription` (`nie liczone dla przebiegu natywnego`) są `null`
+  z pozycją w `gaps`. `--manual-fixes` jest czytane (zły plik: kod 2), ale rekord natywny go jeszcze nie używa.
+- **Prywatność:** rekord ma identyfikatory sesji i agentów, nazwy ról i modeli oraz liczby; bez treści wiadomości,
+  zleceń, poleceń i ścieżek (test: teksty z transkryptu i `meta.json` nie trafiają do wyjścia).
 
 ### Wąskie gardła i historia
 
@@ -463,6 +513,7 @@ zapisany rekord jest pomijany.
 | `regression_window_days`, `trend_last` | okno regresji (14 dni), domyślna liczba epików w `trend` (10) |
 | `ci_workflow`, `ci_jobs` | plik workflowu CI (`ci.yml`) i grupy zadań, których czas liczy `ci` (`checks`, `e2e`: zadania o tej nazwie i `<nazwa> …`) |
 | `weekly_window_label` | etykieta okna limitu z `get_usage` brana do kolumny `pp` w `trend` (`Weekly · all models`) |
+| `pricing` | cennik API wartości epiku natywnego: `source` (strona cennika), `read_at` (data odczytu, `RRRR-MM-DD`), `models` (`{model: {input, output, cache_read, cache_write_5m, cache_write_1h}}`, USD za milion tokenów, liczby nieujemne; rodzaju może brakować). Dziś `claude-fable-5-2`, `claude-opus-5-5` i `claude-sonnet-5-5` ze wszystkimi pięcioma stawkami (odczyt 2026-11-19); test sprawdza też, że model każdej definicji agenta (`.claude/agents/*.md`, np. `opus`) ma stawki. Zmiana cennika to edycja tych liczb, źródła i daty |
 
 ## Testy i fixture'y
 
@@ -481,6 +532,9 @@ tekstów, ścieżek bezwzględnych i poleceń.
 DEPLOY-OPS, CATALOG-ADMIN-INTEGRATION-1 i -2, CATALOG-ADMIN-4, ADMIN-DESIGN-3): pola z listy dozwolonych,
 polecenia powłoki zastąpione kanonicznym poleceniem kategorii z numerem `# c<n>` (taki sam numer = ten sam klucz
 `repeat_runs`). `testkit.py` ma też `Transcript`, który buduje syntetyczny transkrypt.
+Epik natywny (`test_native.py`) ma syntetyczne transkrypty sesji budowane w teście (`testkit.Native`, `NativeEnv`:
+katalog projektów i plik przebiegu w katalogu tymczasowym), z samymi czytanymi polami; prawdziwe transkrypty nie trafiają
+do repozytorium.
 `fixture_scan.py` (test: `test_fixture_scan.py`) sprawdza każdy plik pod `fixtures/`: brak ścieżek bezwzględnych
 (`/Users/`, `/private/`, `~`), adresów e-mail, wzorców tokenów (`ghp_`, `gho_`, `github_pat_`, `sk-`, `Bearer`,
 `Basic`), ciągów base64 od 32 znaków (poza SHA i UUID; ciąg musi mieć cyfrę albo mieszane litery, a ścieżka ze samych
