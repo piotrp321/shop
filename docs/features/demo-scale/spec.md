@@ -520,7 +520,7 @@ Zmieniana razem z implementacją:
 - Mapa strony podaje adres każdego produktu, a `robots.txt` pozwala na strony produktów, więc dane w skali sprowadzają
   ruch robotów po unikalnych stronach. Cache ISR sklepu zapisywany na dysku poda (ok. 262 KB na stronę produktu, limit
   `ephemeral-storage` 2 GiB) eksmitowałby jedyny pod sklepu co ok. 8 tys. stron; cache ISR tylko w pamięci, z limitem
-  (`docs/features/product-page/spec.md`, „Cache ISR”, poprawka L9), nie zapisuje na dysk, a pamięć sklepu pod takim
+  (`docs/features/product-page/spec.md`, „Cache ISR”, poprawka L9 z PR #800), nie zapisuje na dysk, a pamięć sklepu pod takim
   ruchem stabilizuje się poniżej limitu kontenera. Dlatego dane w skali trafiają na serwer dopiero po wdrożeniu tej
   poprawki i jej weryfikacji (warunek w „Wymagane przed startem”). Poza limitem cache zostaje lista rewalidowanych
   tagów (ok. 180 B na tag, do restartu poda): przy `medium` najwyżej ok. 350 MiB, przy `server` więcej niż sterta poda
@@ -533,8 +533,8 @@ Zmieniana razem z implementacją:
 - Plik `~/.config/shop/demo-photos.env` z czterema zmiennymi odczytu na komputerze, z którego idzie `generate`
   (istnieje; wartości nie przechodzą przez rozmowę).
 - Przed krokami na serwerze: wdrożenie `main` z tym epikiem i zgody użytkownika z „Przebieg na serwerze”.
-- Przed `generate` z profilem `medium` albo `server` na serwerze: wdrożona rewizja zawiera poprawkę L9 (cache ISR
-  tylko w pamięci, `docs/features/product-page/spec.md`, „Cache ISR”) i jej weryfikacja na serwerze przeszła. Warunek
+- Przed `generate` z profilem `medium` albo `server` na serwerze: wdrożona rewizja zawiera poprawkę L9 (PR #800: cache
+  ISR tylko w pamięci, `docs/features/product-page/spec.md`, „Cache ISR”) i jej weryfikacja na serwerze przeszła. Warunek
   nie wymaga zakończenia ASH-V1 ani ABUSE-LIMITS, a zgoda na `generate` go nie zastępuje. Weryfikacja po wdrożeniu,
   wynik w komentarzu w #181:
   - odczyt bez zgody: `make -C infra/k8s status` pokazuje wdrożoną rewizję z poprawką i pod sklepu bez restartów;

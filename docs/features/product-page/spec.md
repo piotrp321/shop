@@ -296,8 +296,9 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   zapisuje. Rewalidacja po tagach (`/api/revalidate`, P5) działa na wpisach w pamięci, także na stronie 404 sluga,
   który właśnie został opublikowany.
 - Rozmiar wpisu liczy Next: długość HTML w znakach, bajty RSC i dane segmentów. Strona produktu to ok. 250 KB
-  (128 MB ≈ 500 stron), strona 404 ok. 65 KB (na danych `small` najstarszy wpis znika po ok. 2000 unikalnych stronach
-  404). Cache jest osobny w każdym podzie i znika przy restarcie.
+  (128 MB ≈ 500 stron, audyt wydajności). Strona 404 ma menu działów, więc jej wpis rośnie z drzewem kategorii: ok.
+  65 KB przy danych `make seed` (najstarszy wpis znika po ok. 2000 unikalnych stronach 404) i ok. 120 KB przy danych
+  `small` (po ok. 1100). Cache jest osobny w każdym podzie i znika przy restarcie.
 - Poza cache przyrostowym sklep nie ma rosnących zapisów na dysk: optymalizator obrazów Next (`/_next/image`) nie
   działa przy własnym loaderze (`forbidden-loader`), a logi idą na stdout. Limit `ephemeral-storage` kontenera `store`
   (`docs/features/small-fixes/spec.md`, D4: 2 GiB w `prod`) zostaje zabezpieczeniem dysku węzła.
@@ -484,7 +485,7 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
 - Sekret `PURGE` jest porównywany w VCL zwykłym porównaniem napisów (nie w stałym czasie); Varnish jest dostępny
   tylko w sieci compose, a ACL zawęża nadawców.
 - Cache ISR mieści ok. 500 stron produktu: przy katalogu w skali wejście na rzadko odwiedzaną stronę zwykle renderuje
-  ją od nowa (ok. 39 ms CPU zamiast ok. 1 ms, audyt wydajności), a seria unikalnych adresów (ok. 2000 nieznanych
+  ją od nowa (ok. 39 ms CPU zamiast ok. 1 ms, audyt wydajności), a seria unikalnych adresów (1000–2000 nieznanych
   slugów) wypycha z cache także strony odwiedzane często. Koszt CPU renderu pod ruchem robotów: PERFORMANCE (#781).
 - Lista rewalidowanych tagów Next (`tagsManifest`) jest w pamięci procesu poza limitem cache i rośnie o każdy unikalny
   tag rewalidowany od startu procesu (pomiar: „Cache ISR”); znika przy restarcie poda.

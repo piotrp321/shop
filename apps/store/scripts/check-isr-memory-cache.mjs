@@ -21,6 +21,9 @@ const PROBES = 100;
 // HTML), so a cache that never evicts fails instead of running forever.
 const OVERFLOW_FACTOR = 1.25;
 const TIMEOUT_MS = 30_000;
+// A network error or a 5xx of one request (e.g. a busy Varnish or API) is retried this many times before the check
+// gives up; the cache does not change on such answers, so a retry cannot hide a write to disk.
+const RETRIES = 2;
 
 function cannot(message) {
   console.error(`check-isr-memory-cache: ${message}`);
@@ -36,7 +39,7 @@ if (process.env.STORE_MODE !== "production") {
   cannot(`STORE_MODE is "${process.env.STORE_MODE ?? ""}", not "production": there is no ISR cache to check.`);
 }
 
-/** Every file under the cache directories with its size, so an added, removed or rewritten file shows. */
+/** Every file under the cache directories with its size, so an added, removed or resized file shows. */
 function cacheFiles() {
   const files = new Map();
   const walk = (dir) => {
@@ -73,15 +76,23 @@ try {
 if (!Number.isInteger(limit) || limit <= 0) cannot(`the build has no positive cacheMaxMemorySize (got ${limit}).`);
 
 async function visit(path, expectedStatus) {
-  let response;
-  try {
-    response = await fetch(STORE + path, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "manual" });
-  } catch (error) {
-    cannot(`GET ${path} failed (${error instanceof Error ? error.message : "unknown error"}).`);
+  for (let attempt = 0; ; attempt++) {
+    let status;
+    let cache;
+    let html;
+    let failure = null;
+    try {
+      const response = await fetch(STORE + path, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "manual" });
+      status = response.status;
+      cache = response.headers.get("x-nextjs-cache");
+      html = await response.text();
+    } catch (error) {
+      failure = `failed (${error instanceof Error ? error.message : "unknown error"})`;
+    }
+    if (failure === null && status === expectedStatus) return { cache, length: html.length };
+    const retryable = failure !== null || status >= 500;
+    if (!retryable || attempt >= RETRIES) cannot(`GET ${path} ${failure ?? `answered ${status}, expected ${expectedStatus}`}.`);
   }
-  const html = await response.text();
-  if (response.status !== expectedStatus) cannot(`GET ${path} answered ${response.status}, expected ${expectedStatus}.`);
-  return { cache: response.headers.get("x-nextjs-cache"), length: html.length };
 }
 
 async function productSlugs() {

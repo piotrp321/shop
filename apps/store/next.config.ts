@@ -16,7 +16,8 @@ const SECURITY_HEADERS = [
 
 /**
  * The limit of the ISR cache in the memory of the process (spec: docs/features/product-page/spec.md, "Cache ISR"):
- * about 500 product pages or 950 404 pages; the least recently used entries are evicted over it.
+ * about 500 product pages or 1000 to 2000 404 pages (their size grows with the menu); the least recently used entries
+ * are evicted over it.
  */
 const ISR_CACHE_MAX_MEMORY_BYTES = 128 * 1024 * 1024;
 
