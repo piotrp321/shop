@@ -66,7 +66,9 @@ for step in ${STUB_STEPS:-}; do
   printf ' [OK] %s: done (stub)\n' "$label"
 done
 if [ -n "${STUB_CONSOLE_SECONDS:-}" ]; then
-  bin/console demo-data:stub --from-generator
+  # Not on the output and the errors of the script: a console that outlived a stop would hold them open, and the test would wait
+  # for its end instead of seeing that it still runs.
+  bin/console demo-data:stub --from-generator > /dev/null 2>&1
 fi
 echo "${0##*/}: done"
 exit "${STUB_EXIT:-0}"
