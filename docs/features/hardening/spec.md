@@ -179,17 +179,32 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
   limity działają na adres klienta jak w produkcji, a pomiar nie trafia w limit jednego adresu. 429 jest liczony
   osobno; każdy 429 w pomiarze to znalezisko raportu.
 - Checkout: losowy wariant możliwy do kupienia, ilość 1; 409 braku stanu liczony osobno jako wynik biznesowy.
-  Przed pomiarem `make -C infra/k8s load` podnosi stan fizyczny każdego wariantu ze stanem > 0 o 100 000 sztuk
+  Przed pomiarem `make -C infra/k8s load` podnosi stan fizyczny wariantów ze stanem > 0 o 100 000 sztuk
   bezpośrednim SQL w bazie klastra pomiaru (klaster jednorazowy, usuwany po pomiarze; wyjątek od zapisu przez
-  komendy Inventory tylko dla danych pomiaru), więc checkout nie wyczerpuje stanów. Raport podaje udział 409.
-  Równoległość checkoutu według D18.
+  komendy Inventory tylko dla danych pomiaru), więc checkout nie wyczerpuje stanów: na danych z seeda każdego takiego
+  wariantu, na danych z generatora tylko wariantów produktów z porcji mapy strony, z których k6 bierze produkty.
+  Raport podaje udział 409. Równoległość checkoutu według D18.
 - `make -C infra/k8s load` (D15): klaster, dane demo, podniesienie stanów, rozgrzanie, przebieg stopniowo
   rosnącego obciążenia do nasycenia (p95 powyżej 2 s albo błędy 5xx i sieci powyżej 1%) i przebieg stały na 70%
   nasycenia, zbiór wyników do katalogu poza repo (`LOAD_OUT`, wymagany), usunięcie klastra przy każdym wyjściu. Kod
-  wyjścia: 0 – pomiar wykonany (bez progów zaliczenia), 2 – błąd środowiska z komunikatem (brak `LOAD_OUT`, za mało
-  zasobów VM Dockera, obrazy nieobecne w węźle po trzech importach, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie), 1 – inny błąd (nieudany
-  przebieg k6, budowa obrazów). VM Dockera ma mieć co najmniej 10 vCPU i 20 GiB RAM (`LOAD_MIN_CPUS`,
-  `LOAD_MIN_MEM_GIB`; pody `prod` żądają około 5 vCPU i 8,5 GiB).
+  wyjścia: 0 – pomiar wykonany (bez progów zaliczenia), 2 – błąd środowiska z komunikatem (brak `LOAD_OUT`, nieznane
+  `LOAD_DATA`, brak pliku puli zdjęć albo zmiennej odczytu, za mało zasobów VM Dockera, obrazy nieobecne w węźle po
+  trzech importach, pody niegotowe, generator zakończony błędem albo po czasie, brak porcji mapy strony, dane demo albo
+  stany niegotowe, nieudane rozgrzanie, za mało miejsca na dysku VM albo hosta, `LOAD_OUT` niemontowalny przez Docker),
+  1 – inny błąd (nieudany przebieg k6, budowa obrazów) albo przebieg doprowadzony do końca, podczas którego komputer
+  spał (wyniki są w `LOAD_OUT`, ale czasów nie wolno używać; szczegóły: `docs/features/demo-data/spec.md`, „k3d”),
+  130 po INT i 143 po TERM (klaster usunięty w obu przypadkach). VM Dockera ma mieć co
+  najmniej 10 vCPU i 20 GiB RAM (`LOAD_MIN_CPUS`, `LOAD_MIN_MEM_GIB`; pody `prod` żądają około 5 vCPU i 8,5 GiB).
+- Dane pomiaru wybiera `LOAD_DATA` (`docs/features/demo-data/spec.md`, „k3d”): `seed` (domyślnie) – dane demo Joba
+  `initialize`; `medium`, `server`, `full` – po gotowości klastra jeden Job z zawieszonego CronJoba `demo-data`
+  (`bin/generate-demo` z tym profilem, osobny limit czasu `LOAD_DATA_TIMEOUT`, domyślnie limit Joba z chartu i 10 minut),
+  potem pomiar jak wyżej na losowych porcjach mapy strony (`DISCOVER_CHUNKS` przekazane k6). Te profile biorą zdjęcia
+  z prywatnego bucketu puli: cztery zmienne odczytu z pliku użytkownika (`DEMO_PHOTOS_ENV_FILE`, domyślnie
+  `~/.config/shop/demo-photos.env`) trafiają do sekretu `demo-photos` klastra przez standardowe wejście `kubectl`, bez
+  wartości w linii poleceń, w wyjściu i w `LOAD_OUT`; token zapisu nie trafia do klastra. Wynik zawiera wtedy też log
+  Joba z czasami linii, czasy kroków generatora (`demo-data-steps.txt`) i rozmiary baz, tabel i indeksów Postgresa oraz
+  indeksów Elasticsearcha (`sizes.txt`, przy każdym `LOAD_DATA`). Pełna skala (`server`, `full`) nie jest
+  zweryfikowana pomiarem (`docs/features/demo-data/spec.md`, W3).
 - Przebieg rosnący do nasycenia obejmuje scenariusze odczytu i koszyka, bez checkoutu: to jest maksymalna zmierzona
   przepustowość systemu. Checkout biegnie osobno, ze stałą, ograniczoną równoległością (D18), równolegle do ruchu
   odczytu na 70% nasycenia.
@@ -220,6 +235,8 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 | `/auth/login` ponad limit | 429, bez stanu w Redisie |
 | `clientIpHeader` bez `ipAllowList` i bez potwierdzenia | render chartu kończy się błędem |
 | `make -C infra/k8s load` bez `LOAD_OUT` albo z podami w `Pending` | kod 2 z komunikatem, klaster usunięty |
+| `make -C infra/k8s load` z nieznanym `LOAD_DATA` albo bez pliku puli zdjęć | kod 2 przed utworzeniem klastra |
+| Job generatora (`LOAD_DATA` inne niż `seed`) zakończony błędem albo po czasie | kod 2 z logiem Joba, klaster usunięty |
 
 ## Kryteria akceptacji
 

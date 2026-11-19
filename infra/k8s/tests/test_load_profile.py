@@ -11,6 +11,8 @@ from support import WORKLOADS, containers, env_of, images, logical, name, of_kin
 
 HEADER = "CF-Connecting-IP"
 IPALLOWLIST = "shop-ipallowlist@kubernetescrd"
+# What the profile ci has for the backup and the profile load does not (it has no backup).
+BACKUP_CRONJOBS = ("backup", "backup-verify", "restore")
 
 
 def resources(case):
@@ -35,11 +37,30 @@ def java_options(case):
 
 class LoadProfileTest(unittest.TestCase):
     def test_every_pod_has_the_resources_it_has_in_prod(self):
-        # prod-backup: the load profile has the backup (ci), prod has it off until it is configured.
-        load, prod = resources("load"), resources("prod-backup")
+        # The load profile has no backup, like prod (see test_there_is_no_backup_in_the_load_profile). The CronJob demo-data is the
+        # one workload prod does not have: the generator is sized for the measurement (test_the_generator_has_resources_of_its_own).
+        load, prod = resources("load"), resources("prod")
+        generator = {key: load.pop(key) for key in [key for key in load if key.startswith("demo-data/")]}
+        self.assertEqual({"demo-data/demo-data"}, set(generator))
         self.assertEqual(set(prod), set(load))
         for key in prod:
             self.assertEqual(prod[key], load[key], key)
+
+    def test_the_generator_has_resources_of_its_own(self):
+        generator = resources("load")["demo-data/demo-data"]
+        self.assertIn("cpu", generator["requests"])
+        self.assertIn("memory", generator["requests"])
+        self.assertIn("memory", generator["limits"])
+        self.assertNotEqual(resources("load")["cart-purge-expired/cart-purge-expired"], generator)
+
+    def test_there_is_no_backup_in_the_load_profile(self):
+        """The measurement does not take backups: the cluster has no repository to take them to, and a restore is never wanted in it."""
+        crons = {logical(doc) for doc in of_kind("load", "CronJob")}
+        self.assertFalse(crons & set(BACKUP_CRONJOBS), crons)
+        self.assertIn("demo-data", crons)
+        self.assertFalse([doc for doc in of_kind("load", "Secret", "PersistentVolumeClaim") if "backup" in name(doc)])
+        # ci keeps its backup: the smoke test checks it.
+        self.assertTrue(set(BACKUP_CRONJOBS) <= {logical(doc) for doc in of_kind("ci", "CronJob")})
 
     def test_the_jvm_services_have_the_heap_of_prod(self):
         self.assertEqual(java_options("prod"), java_options("load"))
@@ -62,7 +83,7 @@ class LoadProfileTest(unittest.TestCase):
 
     def test_the_images_are_those_of_ci(self):
         """The measurement runs the production images built here, as the smoke test: the profile adds no digests."""
-        ci = {logical(doc): sorted(images(doc)) for doc in of_kind("ci", *WORKLOADS)}
+        ci = {logical(doc): sorted(images(doc)) for doc in of_kind("ci", *WORKLOADS) if logical(doc) not in BACKUP_CRONJOBS}
         load = {logical(doc): sorted(images(doc)) for doc in of_kind("load", *WORKLOADS)}
         self.assertEqual(ci, load)
 

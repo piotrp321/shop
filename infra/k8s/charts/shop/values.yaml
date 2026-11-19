@@ -128,6 +128,28 @@ cartPurge:
   schedule: "0 * * * *"
   timeZone: Europe/Warsaw
 
+# The demo data generator (docs/features/demo-data/spec.md, "k3d (chart w profilach ci i load; część 2)"): the suspended CronJob
+# demo-data, whose Jobs run bin/generate-demo and so DELETE the data of every module. Only the profiles ci and load switch it on; the
+# schema refuses it with the images of a release (image.requireDigests, prod).
+demoData:
+  enabled: false
+  # The profile of apps/api/fixtures/demo-data/profiles.yaml: small, medium, server or full.
+  profile: small
+  # The reference moment of every generated time (--anchor of the generator: a date or a UTC moment); empty: the start of the current UTC day.
+  anchor: ""
+  # The time limit of a Job, in seconds, per profile: about twice the time of the generator, rounded up to a whole hour
+  # (small: not measured). medium: measured (docs/reports/demo-load-medium-2026-11-19.md). server and full: extrapolated from
+  # that run and NOT verified by a measurement (docs/features/demo-data/spec.md, "k3d").
+  activeDeadlineSeconds:
+    small: 1800
+    medium: 3600
+    server: 32400
+    full: 72000
+  # The Secret with the read access to the private bucket of the photo pool (DEMO_PHOTOS_ENDPOINT, DEMO_PHOTOS_BUCKET,
+  # DEMO_PHOTOS_ACCESS_KEY_ID, DEMO_PHOTOS_SECRET_ACCESS_KEY), created outside the chart; only the container of the CronJob reads it.
+  # The profiles other than small need it; empty: no reference to it.
+  photosSecretName: ""
+
 # The nightly backup (docs/features/deploy-ops/spec.md, O1 and O2): the databases and the product images, encrypted by restic
 # into a repository in S3 (Cloudflare R2 in prod). The repository is created by the first backup.
 backup:
@@ -199,3 +221,5 @@ resources:
   backup: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   # Jobs, the cron job and the waiting initContainers.
   job: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 1Gi } }
+  # The generator of the demo data (CronJob demo-data): several PHP processes at once, each with the memory limit of the api.
+  demoData: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 2Gi } }

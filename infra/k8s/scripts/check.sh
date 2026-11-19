@@ -132,6 +132,21 @@ do_schema() {
       --set 'clientIpHeader=CF Connecting IP'
     expect_failure "clientIpHeaderWithoutAllowList that is not a boolean" "/clientIpHeaderWithoutAllowList" \
       -f environments/ci/values.yaml --set image.tag=$rev --set-string clientIpHeaderWithoutAllowList=true
+    # The CronJob demo-data (docs/features/demo-data/spec.md, "Model zagrożeń"): its Jobs delete the data of every module, so no
+    # deployment with the images of a release may switch it on, and its profile, anchor and Secret are checked values.
+    expect_failure "prod with demoData.enabled" "/demoData/enabled" $prod --set image.tag=$rev $digests --set demoData.enabled=true
+    expect_failure "demoData.enabled with requireDigests" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev $digests \
+      --set image.requireDigests=true
+    expect_failure "demoData.enabled that is not a boolean" "/demoData/enabled" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set-string demoData.enabled=true
+    expect_failure "a profile of the generator that does not exist" "/demoData/profile" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set demoData.profile=huge
+    expect_failure "an anchor that is not a date" "/demoData/anchor" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set 'demoData.anchor=2026-11-01 --profile=full'
+    expect_failure "a Secret of the photo pool that is no name" "/demoData/photosSecretName" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set 'demoData.photosSecretName=Photo Pool'
+    expect_failure "a time limit that is not a number" "/demoData/activeDeadlineSeconds/small" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set-string demoData.activeDeadlineSeconds.small=soon
     # Sentry (docs/features/sentry/spec.md, D1 and D3): the sample rate is a fraction, a DSN has the shape https://<key>@<host>/<project>.
     expect_failure "sentry.tracesSampleRate above 1" "maximum: got 1.5, want 1" $prod --set image.tag=$rev $digests \
       --set-json sentry.tracesSampleRate=1.5

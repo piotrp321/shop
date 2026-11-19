@@ -515,3 +515,66 @@ organizacji `worf` (krok 3); profil `ci` ich nie ma nigdy. DSN nie jest sekretem
    repozytorium.
 
 Gdy klaster dostanie NetworkPolicy dla ruchu wychodzącego, trzeba dopuścić ruch do `*.ingest.de.sentry.io`.
+
+## 11. Pomiar obciążenia na k3d i dane demo w skali
+
+Pomiar `make -C infra/k8s load` działa na jednorazowym klastrze k3d na komputerze użytkownika, nie na serwerze
+(`docs/features/hardening/spec.md`, „Testy obciążeniowe”; dane: `docs/features/demo-data/spec.md`, „k3d”). Opcje, pliki
+wyniku i kody wyjścia: komentarz celu w `Makefile` i nagłówek `scripts/load.sh`.
+
+Profile `ci` i `load` chartu mają zawieszony CronJob `demo-data` (`suspend: true`, w `prod` go nie ma), który sam nigdy
+się nie uruchamia. Jego Job (`kubectl create job --from=cronjob/demo-data`) kasuje dane każdego modułu i generuje profil
+`demoData.profile` (`bin/generate-demo --force-reset`) z limitem czasu `demoData.activeDeadlineSeconds` profilu, bez
+ponowień. Job tworzą wyłącznie test dymny (profil `small`) i `load` (jeden Job na przebieg); `concurrencyPolicy` nie
+chroni przed dwoma Jobami utworzonymi ręcznie. Profile inne niż `small` czytają zdjęcia z prywatnego bucketu puli przez
+sekret wskazany w `demoData.photosSecretName` (klucze `DEMO_PHOTOS_ENDPOINT`, `DEMO_PHOTOS_BUCKET`,
+`DEMO_PHOTOS_ACCESS_KEY_ID`, `DEMO_PHOTOS_SECRET_ACCESS_KEY`); chart go nie tworzy, w klastrze pomiaru zakłada go `load`.
+
+1. **użytkownik** – zakłada prywatny bucket puli zdjęć, tokeny i plik `~/.config/shop/demo-photos.env`
+   (`docs/features/demo-data/spec.md`, „Wymagane przed startem”); wartości nie przechodzą przez rozmowę, a agent nie czyta
+   tego pliku.
+2. **agent** – pomiar na danych z seeda: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (`LOAD_DATA=seed`,
+   domyślnie; dziesiątki minut, VM Dockera co najmniej 10 CPU i 20 GiB).
+   `LOAD_OUT` musi być katalogiem, który Docker może zamontować do zapisu (Docker Desktop: udostępniony w Settings →
+   Resources → File Sharing); cel sprawdza to przed budowaniem obrazów i inaczej kończy się kodem 2.
+3. **zgoda użytkownika** – pomiar na danych z generatora: `make -C infra/k8s load LOAD_OUT=<katalog poza repo>
+   LOAD_DATA=medium` (albo `server`, `full`; inny plik puli: `DEMO_PHOTOS_ENV_FILE=<plik>`). Generator działa godzinami
+   i zajmuje dziesiątki do setek GB dysku (szacunki w specyfikacji DEMO-DATA, „Środowiska”). Cel sprawdza plik puli przed
+   utworzeniem klastra (brak pliku albo zmiennej odczytu: kod 2), sprawdza zapas miejsca (niżej), zakłada sekret
+   `demo-photos` tylko z czterema zmiennymi odczytu (token zapisu `DEMO_PHOTOS_WRITE_*` nie trafia do klastra), czeka na
+   Job generatora (`LOAD_DATA_TIMEOUT`, domyślnie limit Joba i 10 minut; błąd albo przekroczenie czasu: kod 2 z logiem
+   Joba), podnosi stany tylko wariantów z losowych porcji mapy strony i przekazuje ich klucze k6. Klaster z danymi
+   i sekretem jest usuwany przy każdym wyjściu.
+
+   **Zapas miejsca** (`medium`, `server`, `full`; `seed` go nie sprawdza). `diskPeakGb` profilu
+   (`apps/api/fixtures/demo-data/profiles.yaml`) to szacunek szczytowego zużycia dysku całego stosu. Przed zbudowaniem
+   obrazów i utworzeniem klastra cel czyta wolne miejsce w dwóch miejscach: w VM Dockera (`df -Pk /` w kontenerze, którego
+   system plików leży na dysku z danymi Dockera) i na dysku hosta, na którym leży dysk VM (`df -Pk` katalogu z opcji
+   `LOAD_DISK_PATH`, domyślnie katalog domowy; dysk VM Dockera Desktop rośnie w miarę zapisu, więc granicą jest host).
+   Oba muszą mieć co najmniej 1,25 × `diskPeakGb` (1 GB to 10^9 bajtów); inaczej cel kończy się kodem 2 bez budowania
+   i bez klastra, podając wymagane i dostępne miejsce obu dysków. Gdy obraz VM leży poza katalogiem domowym, ustaw
+   `LOAD_DISK_PATH` na katalog z tego samego dysku. Od początku przebiegu (przed budowaniem obrazów) co
+   `LOAD_SPACE_POLL` sekund (domyślnie 30) cel czyta oba miejsca ponownie; spadek któregokolwiek poniżej 10% `diskPeakGb`
+   zatrzymuje Job generatora i k6, usuwa klaster i kończy cel kodem 2 z przyczyną. Wolnego miejsca ani `diskPeakGb` nie da
+   się odczytać (polecenie zawodzi albo odpowiada czymś innym niż liczba): kod 2, nigdy „wystarczy miejsca”. Cel
+   reaguje na spadek dopiero po zakończeniu bieżącego polecenia pierwszego planu (budowanie obrazu, import, `helm`,
+   zapytania SQL); w czasie czekania na Job generatora i na k6 reaguje od razu. Każdy odczyt (także ten sprzed startu,
+   jako pierwszy wiersz) trafia do `LOAD_OUT/space.log` (czas, wolne KiB w VM i na hoście); na końcu przebiegu, także
+   nieudanego, plik dostaje podsumowanie: najmniejsze wolne miejsce obu dysków i zużycie względem pierwszego odczytu
+   w GB, z którego uaktualnia się `diskPeakGb`. Plik, którego nie da się zapisać, to ostrzeżenie, nie koniec przebiegu.
+
+   **Uśpienie komputera.** Usypiający się komputer zatrzymuje VM Dockera i unieważnia czasy, więc na macOS cel przez cały
+   przebieg blokuje uśpienie z bezczynności, a na zasilaniu sieciowym także systemowe (`caffeinate -ims -w <pid>`).
+   Nie chroni przed zamkniętą klapą ani uśpieniem ręcznym: przy pomiarze klapa ma zostać otwarta, a komputer podłączony
+   do prądu. Gdzie indziej cel nic nie blokuje, a `environment.txt` ma w linii `sleep lock:` wzmiankę, że nic nie
+   blokuje uśpienia. Na końcu cel szuka przerw w odczytach (`space.log`,
+   `node-stats.log`, koniec przebiegu): odstęp dłuższy niż 3 × `LOAD_SPACE_POLL` i co najmniej 120 s to uśpienie. Zapisuje
+   je w `space.log` (linia `#`) i w `environment.txt` (`host sleep:`), ostrzega na standardowym wyjściu błędów i kończy
+   przebieg kodem 1 zamiast 0: wyniki są w `LOAD_OUT`, ale czasów ani przepustowości z takiego przebiegu nie podajemy.
+4. **agent** – raport z wyników w `LOAD_OUT`: `environment.txt` (w nim `LOAD_DATA` i porcje), `sizes.txt` (rozmiary baz,
+   tabel i indeksów Postgresa i indeksów Elasticsearcha), `top.log` i `node-stats.log` (próbkowane co 10 s od chwili, gdy
+   klaster jest gotowy, więc obejmują także Job generatora i fazę danych: stąd szczyt pamięci Postgresa i Joba), przy danych
+   z generatora `demo-data.log` (log Joba z czasem każdej linii), `demo-data-steps.txt` (czasy kroków generatora)
+   i `space.log` (wolne miejsce w czasie przebiegu i szczytowe zużycie dysku). Wynik `medium` i ekstrapolacja nie są pomiarem pełnej
+   skali; `server` i `full` uznaje się za zweryfikowane dopiero po ich własnym przebiegu
+   (`docs/features/demo-data/spec.md`, W3).

@@ -6,8 +6,9 @@ klastrze k3d. Raport z pomiaru pokazuje, jak sklep działa przy tej skali, i wsk
 wdrożeniem danych na serwer demo (worf.pl).
 
 Epik ma dwie części z osobnymi końcowymi PR, mergowane po kolei (P11): część 1 (#482) to generator i jego testy,
-zaimplementowane, część 2 (#486, DEMO-LOAD) to integracja z k3d, k6 i przebieg `medium`, jeszcze niezaimplementowana.
-Ta specyfikacja opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”, a jej plan jest w `plan.md`.
+zaimplementowane, część 2 (#486, DEMO-LOAD) to integracja z k3d i k6 oraz przebieg `medium`: zaimplementowana, a przebieg
+`medium` wykonany 2026-11-19 (raport `docs/reports/demo-load-medium-2026-11-19.md`, kalibracja w sekcji „Wyniki przebiegu `medium`”). Pomiar `full` (W3) jeszcze się nie odbył.
+Ta specyfikacja opisuje obie; sekcje i kryteria części 2 są oznaczone „część 2”.
 
 Issues: #486
 Zakres: `apps/api/src/DemoData`, `apps/api/tests/Unit/DemoData`, `apps/api/tests/Integration/DemoData`, `apps/api/tests/Functional/DemoData`, `apps/api/fixtures/demo-data`, `apps/api/bin/generate-demo`, `apps/api/bin/upload-demo-photos`, `apps/api/config/packages/flysystem.yaml`, `apps/api/.env`, `apps/api/phpunit.dist.xml`, `apps/api/tests/Unit/Bin`, `make/demo-data.mk`, `apps/api/deptrac.yaml`, `apps/api/config/services.yaml`, `apps/api/CLAUDE.md`, `apps/api/src/Catalog/Application/Search`, `apps/api/src/Catalog/Infrastructure/Search`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Integration/Catalog`, `docs/vision.md`, `docs/features/search/spec.md`, `infra/k8s`, `load`, `docs/features/hardening/spec.md`
@@ -141,16 +142,17 @@ rozmiar części są w tym pliku wspólne dla wszystkich profili, więc profile 
 | `server` | 500 | 1 000 000 | 10 000 000 | 5 000 000 | k3d (później serwer demo) |
 | `full` | 500 | 1 000 000 | 10 000 000 | 50 000 000 | k3d |
 
-Szacunek rozmiaru z pomiaru na schemacie z migracji (Postgres 18, ładowanie do tabel z indeksami): około 1,1 KB na
-produkt, około 1,2 KB na wariant z ceną, historią i stanem, około 2,6 KB na zamówienie poza oknem ruchów i około
-4,6 KB w oknie:
+Rozmiary `medium` są zmierzone (raport `docs/reports/demo-load-medium-2026-11-19.md`): produkt z wariantami, cenami, historią cen
+i stanem zajmuje około 5,4 KB (tabele produktowe 5,42 GB na 1 mln produktów), zamówienie ze wszystkimi tabelami
+zamówieniowymi około 3,4 KB (3,44 GB na 1 mln zamówień), indeks Elasticsearcha około 1,06 GB na 1 mln produktów.
+Rozmiary `server` i `full` to ekstrapolacja liniowa z tych liczb, niezweryfikowana pomiarem:
 
-| Profil | Postgres | Elasticsearch (szacunek) | Keycloak |
+| Profil | Postgres (ekstrapolacja) | Elasticsearch (ekstrapolacja) | Keycloak (ekstrapolacja) |
 |---|---|---|---|
-| `server` | około 62 GB | około 20 GB | około 1,7 GB |
-| `full` | około 190 GB | około 20 GB | około 1,7 GB |
+| `server` | około 73 GB | około 10,6 GB | około 1,5 GB |
+| `full` | około 227 GB | około 10,6 GB | około 1,5 GB |
 
-Rzeczywiste rozmiary i czasy podaje raport pomiaru.
+Rzeczywiste rozmiary `server` i `full` poda raport pomiaru `full` (po epiku).
 
 ### Realizm
 
@@ -310,6 +312,11 @@ Ograniczenia `CHECK` w tabelach odrzucają wiersz już przy `COPY`.
   Keycloaka (`partialImport`, `ifResourceExists=SKIP`, paczki po 2000, 4 strumienie), z identyfikatorem wyliczonym.
   Eksperyment na Keycloak 26.6.0 z Postgresem: identyfikator z importu zostaje, około 770 kont/s na komputerze
   użytkownika (1 mln w około 22 min).
+- Żądania kroku do Keycloaka idą własnym klientem HTTP (nie domyślnym klientem aplikacji z limitem 5 s na żądanie):
+  `partialImport` paczki to jedna transakcja Keycloaka i nie odpowiada, dopóki się nie skończy, a na klastrze przy
+  4 strumieniach trwa dłużej niż 5 s. Limit bezczynności żądania to 120 s, limit całego żądania 300 s (parametry
+  `app.demo_data.keycloak_idle_timeout` i `app.demo_data.keycloak_max_duration` w `config/services.yaml`), więc
+  zawieszony Keycloak nadal kończy krok błędem.
 - Konta wyłączone i bez poświadczeń (P5). Adres Keycloaka, login i hasło administratora z opcji albo zmiennych
   (`DEMO_DATA_KEYCLOAK_URL`, domyślnie `http://keycloak:8080`; login domyślnie `admin` jak w compose i Jobie
   `keycloak-config`; hasło z `KC_BOOTSTRAP_ADMIN_PASSWORD` sekretu stosu). Nazwy realmów są opcjami kroku
@@ -412,8 +419,8 @@ Opis szczegółowy: `docs/features/search/spec.md`.
 - Zawieszony CronJob `demo-data` (wzorzec CronJoba `restore`) tylko gdy `demoData.enabled` (profile `ci` i `load`;
   `prod` bez zmian): obraz api, `bin/generate-demo` z profilem i chwilą odniesienia z wartości, sekret stosu,
   login administratora Keycloaka jak w Jobie `keycloak-config`, zasoby `resources.demoData`, limit czasu z wartości
-  per profil (początkowo `small` 30 min, `medium` 2 h, `server` 8 h, `full` 16 h; przebieg `medium` je kalibruje), bez
-  ponowień.
+  per profil (`small` 30 min, `medium` 1 h, `server` 9 h, `full` 20 h: około dwukrotność czasu generatora, w górę do
+  pełnej godziny; `medium` z pomiaru, `server` i `full` z ekstrapolacji, niezweryfikowanej), bez ponowień.
 - Test dymny (`make -C infra/k8s smoke`, w CI w `deploy.yml`) uruchamia Job z tego CronJoba z profilem `small`
   i sprawdza kod 0.
 - `make -C infra/k8s load`: opcja `LOAD_DATA=seed|medium|server|full` (domyślnie `seed`, jak dziś). Dla pozostałych
@@ -429,8 +436,22 @@ Opis szczegółowy: `docs/features/search/spec.md`.
   Dockera Desktop rośnie w miarę zapisu, więc granicą jest host). Oba muszą mieć co najmniej 1,25 × `diskPeakGb`;
   inaczej cel kończy się kodem 2 bez startu, z wymaganym i dostępnym miejscem w komunikacie. W trakcie cel co 30 s
   sprawdza oba miejsca i przy spadku poniżej 10% `diskPeakGb` zatrzymuje Job generatora i k6, usuwa klaster i kończy
-  się kodem 2. Szacunek z tej specyfikacji: `medium` około 25 GB, `server` około 100 GB, `full` około 225 GB;
-  przebieg `medium` w zadaniu epiku uaktualnia `diskPeakGb` według zmierzonych rozmiarów.
+  się kodem 2. Każdy odczyt trafia do `space.log` w wynikach (pierwszy wiersz to odczyt sprzed startu), a na końcu
+  przebiegu plik dostaje podsumowanie z najmniejszym wolnym miejscem i zużyciem względem pierwszego odczytu (szczytowe
+  zużycie dysku, z którego uaktualnia się `diskPeakGb`). Próbniki pamięci i CPU (`top.log`, `node-stats.log`) działają
+  od chwili, gdy klaster jest gotowy, więc obejmują generator. Wartości `diskPeakGb`: `medium` 21 GB (zmierzone: 20,52 GB, w górę do pełnego GB), `server` 96 GB i `full` 250 GB
+  (ekstrapolacja z rozmiarów `medium`, niezweryfikowana pomiarem; rachunek w „Wyniki przebiegu `medium`”).
+- **Uśpienie komputera.** Gdy komputer się usypia, VM Dockera staje razem z nim, a czasy i przepustowość pomiaru są
+  bezwartościowe, choć nic w wynikach tego nie pokazuje. Dlatego na macOS cel przez cały przebieg blokuje uśpienie
+  z bezczynności, a na zasilaniu sieciowym także systemowe (`caffeinate -ims -w <pid skryptu>`); nie chroni przed
+  zamkniętą klapą ani uśpieniem ręcznym, więc przy pomiarze klapa ma być otwarta, a komputer podłączony do prądu.
+  Na innych systemach cel nic nie blokuje i bez błędu, a `environment.txt` w linii `sleep lock:` mówi, co zrobiono. Na końcu cel szuka przerw w odczytach, które sam zbiera (`space.log`
+  przy generatorze, `node-stats.log` od chwili, gdy klaster jest gotowy, oraz koniec przebiegu): odstęp dłuższy niż
+  trzykrotność `LOAD_SPACE_POLL` i co najmniej 120 s to uśpienie. Przerwy trafiają do `space.log` (linia `#`: liczba,
+  łączny i najdłuższy czas), do `environment.txt` (linia `host sleep:`, także gdy ich nie było) i jako ostrzeżenie na
+  standardowe wyjście błędów, a przebieg doprowadzony do końca kończy się kodem 1, nie 0: wyniki zostają w `LOAD_OUT`,
+  ale czasów nie wolno używać. Przebieg, który i tak padł (kod 2), zachowuje swój kod i tylko nazywa przerwę.
+  INT kończy przebieg kodem 130, a TERM kodem 143 (klaster usunięty w obu przypadkach).
 - Wynik `load` zawiera czasy kroków generatora i rozmiary tabel i indeksów (do raportu).
 
 ### Pomiar k6 (część 2)
@@ -439,6 +460,39 @@ Opis szczegółowy: `docs/features/search/spec.md`.
   produkty z losowych porcji (`/api/v1/sitemap/products?chunk=…`), nazwy do fraz wyszukiwania z danych tych
   produktów w API, a facety z listingu kategorii, nie z listingu całego katalogu; liczba porcji i produktów z opcji.
   Na danych z seeda wynik jak dziś (`make load-smoke`).
+
+### Wyniki przebiegu `medium` (część 2)
+
+Pomiar `make -C infra/k8s load LOAD_DATA=medium` (1 mln produktów, 1 mln zamówień, 100 tys. klientów, k3d na komputerze
+użytkownika) opisuje raport `docs/reports/demo-load-medium-2026-11-19.md`: czasy kroków i tempo generatora, rozmiary tabel
+i indeksów, dysk, pamięć i CPU podów oraz wyniki k6. Z pomiaru wynikają:
+
+- **`diskPeakGb`.** Szczyt zużycia dysku w VM Dockera względem odczytu sprzed startu (`space.log`), zaokrąglony w górę
+  do pełnego GB: `medium` 21 GB. Zmierzono go przy obrazach z cache, więc zimna budowa dodaje warstwy obrazów.
+- **Limit Joba.** Około dwukrotność czasu Joba generatora (`medium`: 1731 s), w górę do pełnej godziny: `medium` 1 h.
+- **Limit pamięci Joba** (`resources.demoData`) zostaje zapasem dla `server` i `full`, których zużycia pamięci nie
+  zmierzono.
+
+**Ekstrapolacja `server` i `full` (niezweryfikowana pomiarem).** Liniowa z wartości `medium`; produkty, warianty,
+klienci i konta ×10 (oba profile), zamówienia ×5 (`server`) albo ×50 (`full`):
+
+| Składnik `medium` | `medium` | `server` | `full` |
+|---|---|---|---|
+| tabele produktowe i Elasticsearch (×10) | 6,48 GB | 64,8 GB | 64,8 GB |
+| tabele zamówieniowe | 3,44 GB | 17,2 GB | 171,7 GB |
+| klienci i Keycloak (×10) | 0,29 GB | 2,9 GB | 2,9 GB |
+| stały narzut (obrazy, klaster, pula zdjęć, WAL) | 10,31 GB | 10,31 GB | 10,31 GB |
+| razem (`diskPeakGb`, w górę do pełnego GB) | 20,52 GB (21) | 95,2 GB (96) | 249,7 GB (250) |
+
+Czas generatora: kroki produktowe (produkty, zdjęcia, ceny, stany: 303 s) ×10, konta (162 s) ×10, przebudowa indeksu
+(447 s) ×10, zamówienia i sprzedaż (173 s) ×5 albo ×50, a `demo-data:verify` (596 s, przy założeniu, że połowa
+przypada na produkty, a połowa na zamówienia) ×7,5 albo ×30. Wychodzi około 14 500 s (4 h) dla `server` i około
+35 700 s (10 h) dla `full`; limity Joba (9 h i 20 h) dają około dwukrotny zapas. Założenia nie sprawdzono:
+indeksy B-drzewa, scalanie segmentów Elasticsearcha i weryfikacja mogą rosnąć szybciej niż liniowo.
+
+Założenia rachunku dysku: część ruchów magazynowych (rezerwacja, zatwierdzenie, zwolnienie) skaluje się
+z zamówieniami, nie z produktami, a rachunek skaluje wszystkie ruchy z produktami (×10): dla `full` to niedoszacowanie
+rzędu kilku GB, w granicach zapasu 1,25.
 
 ## Model zagrożeń
 
@@ -544,11 +598,11 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
   epik zmniejsza ryzyko przerwania, nie czas.
 - Brak `statement_timeout` na połączeniu bazy; czyszczenie całego cache sklepu przy każdym wydaniu; cache ISR sklepu
   na dysku poda bez limitu; `count(*)` na pełnych tabelach w Jobie `initialize` przy każdym wdrożeniu.
-- Szacunki rozmiaru i czasu pochodzą z eksperymentów na komputerze użytkownika (SQL po stronie serwera, bez PHP);
-  przebieg `medium` w zadaniu epiku je kalibruje, ale nie weryfikuje pełnej skali (W3).
+- Rozmiary i czasy `server` i `full` to ekstrapolacja z przebiegu `medium` (sekcja „Wyniki przebiegu `medium`”), nie
+  pomiar; weryfikuje je dopiero pomiar `full` (W3).
 - Usuwanie kont generatora po zmianie przestrzeni nazw albo słowników to do miliona pojedynczych wywołań REST
-  Keycloaka, a każdy przebieg kroku kont przegląda pełną listę członków grupy (czas nieznany, zmierzy go przebieg
-  `medium` w części 2).
+  Keycloaka, a każdy przebieg kroku kont przegląda pełną listę członków grupy. Dla 100 tys. kont krok kont trwał
+  162 s; czasu dla miliona kont nie zmierzono.
 
 ## Wymagane przed startem
 
@@ -560,14 +614,14 @@ Hipotezy z analizy kodu do sprawdzenia pomiarem (P2), z miejscami w kodzie:
 - Pobieranie zdjęć z Wikimedia Commons (tylko CC0 1.0 i domena publiczna) bez klucza API, przez publiczne API Commons
   z limitami zapytań i nagłówkiem `User-Agent`, potrzebne tylko do wyboru nowej puli (sekcja „Zdjęcia”).
 - (część 2) Przebieg `LOAD_DATA=medium` w zadaniu: Docker na komputerze użytkownika z co najmniej 10 CPU, 20 GiB pamięci
-  (wymagania `load`) i około 32 GB wolnego miejsca (1,25 × szacunek `medium`, W2) w VM i na dysku komputera — istnieje (2026-11-13: 16 CPU, 31 GiB, w VM 873 GB wolnego,
-  na dysku komputera 279 GiB wolnego).
+  (wymagania `load`) i około 27 GB wolnego miejsca (1,25 × `diskPeakGb` `medium`, W2) w VM i na dysku komputera; przebieg `medium` z 2026-11-19
+  miał 16 CPU, 31 GiB pamięci, w VM około 894 GB i na dysku komputera około 185 GB wolnego.
 
 ## Po epiku
 
 Kroki sesji za zgodą użytkownika po części 2, nie zadania AO:
 1. Obowiązkowy pomiar `full` (W3) na k3d: `make -C infra/k8s load LOAD_DATA=full` na komputerze użytkownika, raport
    w `docs/reports/`, zgłoszenia wąskich gardeł do epiku poprawek (P2, krok 2). Dopiero po nim zaczynają się
-   optymalizacje i przygotowanie #484. Cel sam odmówi startu bez zapasu miejsca (W2): przy szacunku `full` około
-   225 GB potrzeba około 281 GB wolnego na dysku komputera, a 2026-11-13 wolne było 279 GiB (około 300 GB), więc zapas
-   może wymagać zwolnienia miejsca po kalibracji z przebiegu `medium`.
+   optymalizacje i przygotowanie #484. Cel sam odmówi startu bez zapasu miejsca (W2): przy `diskPeakGb` `full` równym
+   250 GB (ekstrapolacja) potrzeba około 313 GB wolnego na dysku komputera, a przy przebiegu `medium` 2026-11-19 wolne
+   było około 185 GB, więc przed pomiarem `full` trzeba zwolnić miejsce albo wskazać inny dysk.

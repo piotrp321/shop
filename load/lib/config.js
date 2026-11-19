@@ -1,7 +1,7 @@
 // The settings of a run, read from the environment of the k6 container (the runners in load/k6.sh and
 // infra/k8s/scripts/load.sh pass them with `-e`). A missing or malformed required setting stops the run before it starts.
 
-function text(name, fallback) {
+export function text(name, fallback) {
   const value = __ENV[name];
   if (value === undefined || value === '') {
     if (fallback === undefined) {

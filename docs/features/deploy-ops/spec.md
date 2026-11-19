@@ -349,7 +349,7 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   5. `restore` ze snapshotem z migracją nieznaną kodowi (snapshot z manifestem z dodatkową wersją) kończy się odmową bez
      zmian danych i bez wyłączania aplikacji.
 
-  Dalsze fazy (r2–r4) działają na odtworzonym klastrze. Smoke test wypisuje czas faz kopii i odtworzenia oraz szczytowe
+  Dalsze fazy (r2–r4 i generator danych demo na końcu) działają na odtworzonym klastrze. Smoke test wypisuje czas faz kopii i odtworzenia oraz szczytowe
   zużycie dysku.
 - Alloy i Grafana Cloud nie działają w smoke teście (brak kont w CI); sprawdza je `check` (render, maskowanie, reguły)
   i runbook (serwer).

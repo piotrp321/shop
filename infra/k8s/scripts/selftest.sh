@@ -431,6 +431,9 @@ monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yam
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 restore_without_confirmation() { replace infra/k8s/scripts/restore.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
+# The CronJob demo-data (docs/features/demo-data/spec.md): its Jobs delete the data of every module, so a CronJob that is not suspended
+# would run on its schedule.
+demo_data_not_suspended() { replace_after infra/k8s/charts/shop/templates/demo-data.yaml 'schedule: "0 0 1 1 *"' 'suspend: true' 'suspend: false'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 # The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
 # expression that does what the scenarios do not allow.
@@ -528,6 +531,7 @@ run_case "monitoring Service policy letting NodePort through" "test_the_service_
 run_case "monitoring Service policy without the external IPs" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" "tests" monitoring_service_policy_without_external_ips
 run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" "tests" monitoring_pods_with_priority_classes_of_the_system
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" "tests" restore_without_confirmation
+run_case "demo-data CronJob that is not suspended" "test_the_cronjob_is_suspended_so_that_it_never_runs_by_itself" "tests" demo_data_not_suspended
 run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
 run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" "alerts" node_disk_full_at_exactly_85_percent
 run_case "alert rule with a PromQL syntax error" "parse error" "alerts" alert_rule_with_a_syntax_error

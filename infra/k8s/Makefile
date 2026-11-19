@@ -29,7 +29,7 @@ check:
 # host or the binding of the policy on the tokens, a policy that only warns or fails open, the policies in the wave of the workloads,
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
 # of the nodes, the token of Alloy given to a group of service accounts, BackupMissing without the absent for a metric that is gone, NodeDiskFull
-# firing at exactly 85 percent, an alert rule that PromQL cannot parse).
+# firing at exactly 85 percent, an alert rule that PromQL cannot parse, a demo-data CronJob that is not suspended).
 # Cases run in parallel (SELFTEST_JOBS=<n>, default the CPUs of the Docker daemon; SELFTEST_ONLY='<regex>' picks cases). On demand
 # only: CI does not run it (workflow k8s-selftest.yml, started by hand).
 selftest:
@@ -42,7 +42,8 @@ selftest:
 # checked; the time of that phase is printed. Then the restore on an empty cluster: the namespace shop is deleted with its volumes,
 # the chart installed again and make restore brings the snapshot back (checked: the administrator, the customer, the numbers of
 # products and orders, an image, the search, the snapshot pre-restore), and refuses a snapshot newer than the code; the later
-# phases run on the restored cluster. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
+# phases run on the restored cluster. The last phase runs a Job from the CronJob demo-data (the generator, profile small) and checks that
+# it ended with 0 and replaced the data. SMOKE_BREAK=migration|image|demo-data makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
 
@@ -64,10 +65,36 @@ monitoring-smoke:
 
 # The load measurement on a throwaway k3d cluster with the production images built here and the profile `load`: the demo
 # data, the stocks raised, a warm-up, the ramp to saturation and the steady run with a checkout (the k6 scripts of
-# ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required).
-# Exit code 0: measured; 2: the environment is not fit (no LOAD_OUT, too few CPUs or too little memory in the Docker VM,
-# images missing in the node after three imports, pods not ready), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the
-# settings (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
+# ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required; Docker
+# must be able to mount it for writing, on Docker Desktop it must be shared in Settings > Resources > File Sharing, which is
+# tried before any image is built: exit 2)
+# [LOAD_DATA=seed|medium|server|full]. LOAD_DATA=seed (the default) measures on the demo data of the Job initialize and raises
+# the stock of every variant. medium, server and full first run one Job of the suspended CronJob demo-data (bin/generate-demo
+# with that profile; it deletes the seed; hours for server and full, LOAD_DATA_TIMEOUT), then raise the stock of the variants
+# of a few random chunks of the sitemap only and give their keys to k6 (DISCOVER_CHUNKS); they read the four read variables of
+# the private bucket of the photo pool from DEMO_PHOTOS_ENV_FILE (default ~/.config/shop/demo-photos.env; the token that writes
+# never goes to the cluster) into the Secret demo-photos, without a value in a command line, the output or LOAD_OUT.
+# Exit code 0: measured; 1: anything else that went wrong, also a run done while the host slept (below); 2: the environment is not fit (no LOAD_OUT, an unknown LOAD_DATA, the photo file missing or without
+# a read variable: before any cluster is made; too few CPUs or too little memory in the Docker VM, images missing in the node
+# after three imports, pods not ready, the generator failed or did not finish in time, with its log; no chunks or no stock
+# raised), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the settings and
+# the files of LOAD_OUT (the sizes of the tables and indexes, sizes.txt, with every LOAD_DATA; the times of the steps of the
+# generator only with a generator) (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
+# The room on the disks (medium, server and full; docs/features/demo-data/spec.md, W2): before any image is built or cluster made,
+# both the Docker VM and the disk of the host (LOAD_DISK_PATH, a directory on the disk that holds the image of the VM; default
+# the home directory) must have at least 1.25 x diskPeakGb of the profile (apps/api/fixtures/demo-data/profiles.yaml) free, else
+# exit 2 with the needed and the free space. From the start on, every LOAD_SPACE_POLL seconds (30) both are read again; a fall
+# of either below 10% of diskPeakGb stops the Job of the generator and k6, deletes the cluster and ends with 2. A free space or
+# diskPeakGb that cannot be read is exit 2 as well. seed checks nothing. Every reading goes to LOAD_OUT/space.log with the least
+# free space and the use against the first reading at the end (the measure of diskPeakGb); top.log and node-stats.log are taken from
+# the moment the cluster is ready, so they cover the generator.
+# A host that sleeps stops the Docker VM and makes the times worthless: on macOS the target holds off the idle sleep and, on the mains
+# only, the system sleep for the whole run (caffeinate -ims -w <pid of the script>; not a closed lid or a sleep by hand: keep the lid
+# open and the mains plugged in; elsewhere it does nothing and says so in environment.txt, line `sleep lock:`). At the end
+# it looks for a gap between two readings (space.log, node-stats.log, the end of the run) of more than 3 x LOAD_SPACE_POLL and at
+# least 120 s; any such pause goes to space.log (a `#` line), to environment.txt (`host sleep:`) and to the standard error as a
+# warning, and a run that was otherwise done ends with exit 1, not 0 (its results are in LOAD_OUT, its times are not reliable). A
+# run that failed with 2 keeps 2. INT ends the run with 130 and TERM with 143, the cluster deleted on both.
 load:
 	sh scripts/load.sh
 

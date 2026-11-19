@@ -5,6 +5,8 @@
 #   smoke.sh                       the whole test
 #   SMOKE_BREAK=migration smoke.sh the api image gets a migration that fails: the test must fail
 #   SMOKE_BREAK=image smoke.sh     the store image is unable to start: the test must fail
+#   SMOKE_BREAK=demo-data smoke.sh the CronJob demo-data gets a profile the generator refuses: the Job fails, the test must fail
+#                                  (with the log of the Job) in the last phase, after all the others passed
 #   SMOKE_BUILD=0 smoke.sh         use the images shop-smoke-<cluster>/<app>:r1 that are already there
 #   SMOKE_VALUES=<file> smoke.sh   install r1 with the images values file of the deployment (scripts/images-values.sh: the
 #                                  revision and the digests) instead of the local images: the cluster pulls
@@ -27,8 +29,13 @@
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
-# nothing). The peak memory and disk of the cluster are printed at the end. The cluster is deleted on every exit
-# (success, error, interrupt).
+# nothing). The last phase runs the demo data generator (docs/features/demo-data/spec.md): ONE Job from the suspended CronJob
+# demo-data (bin/generate-demo --profile=small), waited for up to the time limit of the CronJob plus SMOKE_DEMO_DATA_MARGIN seconds
+# (120); a Job that fails or does not finish fails the test with its log, and a Job that succeeded must have replaced the data of the
+# shop (at least the products and orders of the profile). The generator deletes the data of every module and generates its own, so
+# it comes after every phase that reads the seed, the backups and the restore (they count products and orders) and nothing runs on the
+# data after it. The time of the phase is printed. The peak memory and disk of the cluster are printed at the end. The cluster is
+# deleted on every exit (success, error, interrupt).
 #
 # The images (api, store, admin and elasticsearch from infra/elasticsearch/Dockerfile) are tagged
 # shop-smoke-<cluster>/<app>:r1..r4 (a registry name of their own per cluster) and removed at the end, so runs from
@@ -48,8 +55,8 @@ SMOKE_BUILD="${SMOKE_BUILD:-1}"
 SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-900}"
 SMOKE_VALUES="${SMOKE_VALUES:-}"
 case "$SMOKE_BREAK" in
-  "" | migration | image) ;;
-  *) echo "smoke: SMOKE_BREAK must be empty, migration or image, got '$SMOKE_BREAK'" >&2; exit 2 ;;
+  "" | migration | image | demo-data) ;;
+  *) echo "smoke: SMOKE_BREAK must be empty, migration, image or demo-data, got '$SMOKE_BREAK'" >&2; exit 2 ;;
 esac
 if [ -n "$SMOKE_VALUES" ]; then
   [ -f "$SMOKE_VALUES" ] || { echo "smoke: SMOKE_VALUES '$SMOKE_VALUES' is not a file" >&2; exit 2; }
@@ -601,11 +608,12 @@ YAML
   kc wait --for=condition=Ready pod/smoke-backup-tools --timeout=300s > /dev/null
 }
 
-# run_cronjob_job <cronjob> <job>: a Job from a CronJob of the backups, waited for up to 900 s; a failure prints the logs of all
-# its containers.
+# run_cronjob_job <cronjob> <job> [seconds]: a Job from a CronJob, waited for up to 900 s (or the seconds given; SMOKE_POLL, 5, is the
+# time between two readings); a failure prints the logs of all its containers.
 run_cronjob_job() {
   kc create job "$2" --from="cronjob/$1" > /dev/null
-  deadline=$(( $(date +%s) + 900 ))
+  limit="${3:-900}"
+  deadline=$(( $(date +%s) + limit ))
   while :; do
     state="$(kc get job "$2" -o jsonpath='{.status.succeeded}{" "}{.status.conditions[?(@.type=="Failed")].status}')"
     case "$state" in
@@ -616,12 +624,12 @@ run_cronjob_job() {
         return 1 ;;
     esac
     if [ "$(date +%s)" -ge "$deadline" ]; then
-      echo "smoke: the Job $2 of the CronJob $1 did not finish in 900 s" >&2
+      echo "smoke: the Job $2 of the CronJob $1 did not finish in $limit s" >&2
       kc get pods >&2 || true
       kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
       return 1
     fi
-    sleep 5
+    sleep "${SMOKE_POLL:-5}"
   done
 }
 
@@ -842,6 +850,43 @@ spec:
 YAML
 }
 
+# The demo data generator (docs/features/demo-data/spec.md, "k3d (chart w profilach ci i load; część 2)"): ONE Job from the CronJob demo-data,
+# which the chart renders suspended with the profile small. It is created exactly once (concurrencyPolicy does not guard against two
+# Jobs made by hand). The Job deletes the data of every module and generates the profile on top of the seed (bin/generate-demo), so
+# the phase runs last. Kubernetes fails the Job at its activeDeadlineSeconds; the wait ends a little after that (a Job that never
+# starts is no Job at all). SMOKE_BREAK=demo-data gives the generator a profile it refuses, before it changes anything.
+check_demo_data() {
+  demo_data_started="$(date +%s)"
+  generator="$(kc get cronjob demo-data -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].command}')"
+  case "$generator" in
+    *--profile=small*) ;;
+    *) echo "smoke: the CronJob demo-data does not run the profile small (--profile=small): $generator" >&2; return 1 ;;
+  esac
+  if [ "$SMOKE_BREAK" = demo-data ]; then
+    generator_arg=/spec/jobTemplate/spec/template/spec/containers/0/command/1
+    kc patch cronjob demo-data --type=json \
+      -p "[{\"op\": \"test\", \"path\": \"$generator_arg\", \"value\": \"--profile=small\"}, {\"op\": \"replace\", \"path\": \"$generator_arg\", \"value\": \"--profile=smoke-unknown\"}]" > /dev/null
+  fi
+  demo_data_limit="$(kc get cronjob demo-data -o jsonpath='{.spec.jobTemplate.spec.activeDeadlineSeconds}')"
+  run_cronjob_job demo-data demo-data-smoke $(( demo_data_limit + ${SMOKE_DEMO_DATA_MARGIN:-120} ))
+  # The generator ran its own consistency check (demo-data:verify) before it ended with 0; here only that it replaced the data.
+  demo_data_products="$(count catalog_product)"
+  demo_data_orders="$(count ordering_order)"
+  # A count that cannot be read (a failed exec gives an empty answer) is a failure, never a pass.
+  for demo_data_count in "$demo_data_products" "$demo_data_orders"; do
+    case "$demo_data_count" in
+      "" | *[!0-9]*) echo "smoke: cannot read the numbers of products and orders after the generator ('$demo_data_products', '$demo_data_orders')" >&2; return 1 ;;
+    esac
+  done
+  if [ "$demo_data_products" -lt 2000 ] || [ "$demo_data_orders" -lt 5000 ]; then
+    echo "smoke: the Job of the generator ended with 0 but did not replace the data: $demo_data_products products and $demo_data_orders orders (the profile small: 2000 products and 5000 orders besides the seed)" >&2
+    kc logs job/demo-data-smoke --all-containers --prefix --tail=40 >&2 || true
+    return 1
+  fi
+  echo "ok: the generator (profile small) ended with 0: $demo_data_products products and $demo_data_orders orders"
+  echo "smoke: the demo data phase took $(( $(date +%s) - demo_data_started )) s"
+}
+
 if [ "${SMOKE_REUSE:-}" = 1 ]; then
   # A debugging aid: go on with the phases after the upgrade on the cluster that SMOKE_KEEP=1 left after a failed run.
   log "cluster $cluster (reused, at the state after the upgrade to r2)"
@@ -973,6 +1018,9 @@ job_log "$failed_initialize" | grep -q 'mixed state' || { echo "smoke: initializ
 [ "$(count catalog_product)" = 0 ] || { echo "smoke: initialize loaded products into a database with orders" >&2; exit 1; }
 [ "$(count ordering_order)" = "$orders_before" ] || { echo "smoke: initialize changed the orders" >&2; exit 1; }
 echo "smoke: initialize refused to load the data (0 products, $orders_before orders) and changed nothing"
+
+log "demo data generator (profile small)"
+check_demo_data
 
 log "peaks"
 report_peaks

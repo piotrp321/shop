@@ -59,6 +59,46 @@ final class SitemapChunkKeyTest extends TestCase
         );
     }
 
+    /**
+     * infra/k8s/scripts/load.sh (chunk_stock_sql) decodes this key in SQL: base64url without padding of the JSON object
+     * {"f": ..., "t": ...} in this order. A change of the format has to change that SQL and its test
+     * (infra/k8s/tests/test_load_script.py) together with this one.
+     */
+    #[DataProvider('knownKeys')]
+    public function testEncodedKeyKeepsTheFormatThatTheLoadScriptDecodes(?string $from, ?string $to, string $json, string $text): void
+    {
+        $encoded = SitemapChunkKey::between($from, $to)->encode();
+
+        self::assertSame($text, $encoded);
+        self::assertSame($json, (string) base64_decode(strtr($encoded, '-_', '+/'), true));
+    }
+
+    /**
+     * @return iterable<string, array{?string, ?string, string, string}>
+     */
+    public static function knownKeys(): iterable
+    {
+        yield 'both ends' => [
+            self::LOW,
+            self::HIGH,
+            '{"f":"00000000-0000-4000-8000-000000000001","t":"ffffffff-0000-4000-8000-000000000002"}',
+            'eyJmIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwidCI6ImZmZmZmZmZmLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMiJ9',
+        ];
+        yield 'open end' => [
+            self::LOW,
+            null,
+            '{"f":"00000000-0000-4000-8000-000000000001","t":null}',
+            'eyJmIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwidCI6bnVsbH0',
+        ];
+        yield 'open start' => [
+            null,
+            self::HIGH,
+            '{"f":null,"t":"ffffffff-0000-4000-8000-000000000002"}',
+            'eyJmIjpudWxsLCJ0IjoiZmZmZmZmZmYtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAyIn0',
+        ];
+        yield 'both ends open' => [null, null, '{"f":null,"t":null}', 'eyJmIjpudWxsLCJ0IjpudWxsfQ'];
+    }
+
     public function testEndsAreLowerCased(): void
     {
         $decoded = SitemapChunkKey::decode(SitemapChunkKey::between(strtoupper(self::LOW), strtoupper(self::HIGH))->encode());
