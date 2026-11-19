@@ -23,6 +23,8 @@ use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\DiscountCodeRejected;
 use App\Ordering\Domain\DiscountCodeText;
 use App\Ordering\Domain\EmailAddress;
+use App\Ordering\Domain\GuestOrderSize;
+use App\Ordering\Domain\GuestOrderTooLarge;
 use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\IdempotencyKeyReused;
 use App\Ordering\Domain\InsufficientStockForOrder;
@@ -54,7 +56,8 @@ use Symfony\Component\Uid\Uuid;
  * The steps follow the specification ("Złożenie zamówienia"): the replay check before the cart lock (so a replay
  * works also once the guest cart expired or was merged), the lock, the replay check under the lock (a concurrent
  * request with the same key may have placed the order meanwhile), the copies from one quote of Pricing with the code
- * (a rejected code is refused before the total is compared), the total after the discount, the order id and the usage
+ * (a rejected code is refused before the total is compared; the size of a guest order is checked right after the
+ * empty cart, before the quote), the total after the discount, the order id and the usage
  * of the code (Pricing locks a code with a limit: the locks are taken cart, code, stock), the number, the cleared
  * cart, the reservation (the stock rows stay locked as briefly as possible) and the order last (so the flush of the
  * nested commands writes nothing of Ordering).
@@ -82,6 +85,7 @@ final readonly class PlaceOrderHandler
      * @throws NotFound                  the guest cart is not available (from Cart)
      * @throws IdempotencyKeyReused
      * @throws CartEmpty
+     * @throws GuestOrderTooLarge a guest cart over the size of a guest order, refused before the quote
      * @throws CartNotOrderable
      * @throws DiscountCodeRejected      in the quote, or when its usage is recorded
      * @throws OrderTotalChanged
@@ -114,6 +118,9 @@ final readonly class PlaceOrderHandler
 
         if ([] === $cartLines) {
             throw new CartEmpty();
+        }
+        if ($owner->isGuest()) {
+            GuestOrderSize::ensureWithin(array_map(static fn (CartLineToOrder $line): int => $line->quantity, $cartLines));
         }
 
         $quote = $this->prices->quote($cartLines, $code);
