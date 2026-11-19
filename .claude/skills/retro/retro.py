@@ -848,23 +848,36 @@ def load_run_file(metrics_state, epic_id):
     return data
 
 
-def native_epics(metrics_state, ao_home):
-    """The finished native epics: a run file `<metrics_state>/runs/<epic>.json` with a valid epic name and a final PR,
-    and no AO run directory `ao-<epic>` (metrics.py epic builds the record of such an epic from AO). Unreadable run
-    files are skipped. [{id, final_pr_number, created_at, branch, source}] by epic ID."""
+def run_file_names(metrics_state):
+    """The names of the files in `<metrics_state>/runs` as the directory lists them ([] without it). Membership in this
+    list, never opening a path, decides which run files exist: on a disk that ignores the case (APFS) the path
+    runs/small-fixes.json opens runs/SMALL-FIXES.json."""
     try:
-        names = sorted(os.listdir(os.path.join(metrics_state, 'runs'))) if metrics_state else []
+        return sorted(os.listdir(os.path.join(metrics_state, 'runs'))) if metrics_state else []
     except OSError:
-        names = []
-    found = []
-    for name in names:
+        return []
+
+
+def scan_native(metrics_state, ao_home):
+    """(epics, skipped) of the run files of `<metrics_state>/runs`. epics: the finished native epics, a run file
+    `<epic>.json` with a name of the pattern of EPIC_NAME and a final PR and no AO run directory `ao-<epic>` (metrics.py
+    epic builds the record of such an epic from AO): [{id, final_pr_number, created_at, branch, source}] by epic ID.
+    skipped: [(file name, SKIPPED_RUN_FILE key)] of the run files that are no epic because of their name or content (a run
+    file without a final PR is an epic in progress, not skipped)."""
+    found, skipped = [], []
+    for name in run_file_names(metrics_state):
         epic_id, extension = os.path.splitext(name)
-        if extension != '.json' or not EPIC_NAME.match(epic_id) \
-                or os.path.isdir(os.path.join(ao_home, 'ao-' + epic_id)):
+        if extension != '.json':
+            continue
+        if not EPIC_NAME.match(epic_id):
+            skipped.append((name, 'name'))
+            continue
+        if os.path.isdir(os.path.join(ao_home, 'ao-' + epic_id)):
             continue
         try:
             run_file = load_run_file(metrics_state, epic_id)
         except ValueError:
+            skipped.append((name, 'unreadable'))
             continue
         if final_pr_of(run_file) is None:
             continue
@@ -872,21 +885,47 @@ def native_epics(metrics_state, ao_home):
         found.append({'id': epic_id, 'final_pr_number': final_pr_of(run_file),
                       'created_at': parse_time(run_file.get('started_at')),
                       'branch': branch if filled(branch) else None, 'source': 'native'})
-    return found
+    return found, skipped
+
+
+def native_epics(metrics_state, ao_home):
+    """The finished native epics of scan_native."""
+    return scan_native(metrics_state, ao_home)[0]
+
+
+# Why a run file is no native epic: (fact of input.json in Polish, message of `pending` on stderr).
+SKIPPED_RUN_FILE = {
+    'name': ('nazwa spoza wzorca ^[a-z0-9][a-z0-9-]*$ (metrics.py start z nazwą epiku małymi literami)',
+             'a name outside ^[a-z0-9][a-z0-9-]*$ (metrics.py start with the epic name in lower case)'),
+    'unreadable': ('plik nieczytelny albo nie jest obiektem JSON', 'unreadable or not a JSON object'),
+}
+
+
+def skipped_facts(skipped):
+    return [{'id': 'native/skipped/%s' % cut(name, 100),
+             'text': 'plik przebiegu %s pominięty: %s' % (cut(name, 100), SKIPPED_RUN_FILE[why][0])}
+            for name, why in skipped]
 
 
 def check_collectable(epic_id, paths):
-    """Refuses (ValueError, exit 2) an epic that is neither a finished AO run nor a native epic with a final PR."""
+    """Raises the refusal (ValueError, exit 2) for an epic that is neither a finished AO run nor a native epic of
+    scan_native, with the reason: an AO run that has not finished, a run file without a final PR, unreadable or with
+    a name outside the pattern, or neither."""
     if os.path.isdir(os.path.join(paths['ao_home'], 'ao-' + epic_id)):
         raise ValueError('ao-%s is not the run of a finished epic (DONE with a final PR) in %s'
                          % (epic_id, paths['ao_home']))
     state = paths.get('metrics_state')
-    run_file = load_run_file(state, epic_id) if state else None
-    if run_file is None:
-        raise ValueError('%s has neither an AO run (ao-%s in %s) nor a native run file (runs/%s.json in %s, '
-                         'metrics.py start)' % (epic_id, epic_id, paths['ao_home'], epic_id, state))
-    if final_pr_of(run_file) is None:
-        raise ValueError('the native run file of %s has no final PR (metrics.py start --pr)' % epic_id)
+    names = run_file_names(state)
+    wanted = '%s.json' % epic_id
+    if wanted in names:
+        if final_pr_of(load_run_file(state, epic_id)) is None:
+            raise ValueError('the native run file of %s has no final PR (metrics.py start --pr)' % epic_id)
+    other = [n for n in names if n.lower() == wanted.lower() and n != wanted]
+    if other:
+        raise ValueError('the run file %s has a name outside ^[a-z0-9][a-z0-9-]*$: it is no native epic (metrics.py '
+                         'start with the epic name in lower case writes %s)' % (other[0], wanted))
+    raise ValueError('%s has neither an AO run (ao-%s in %s) nor a native run file (runs/%s in %s, metrics.py start)'
+                     % (epic_id, epic_id, paths['ao_home'], wanted, state))
 
 
 def read_native_record(metrics_state, epic_id):
@@ -1343,8 +1382,8 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
     call fails, the measurement is the fact "brak danych pomiaru" and the rest is collected as usual. The native epics
     (native_epics, in `paths['metrics_state']`) are a part of the history next to the AO runs."""
     epics = discover_epics(paths['ao_home'])
-    natives = native_epics(paths.get('metrics_state'), paths['ao_home'])
-    if epic_id not in [e['id'] for e in epics]:
+    natives, skipped = scan_native(paths.get('metrics_state'), paths['ao_home'])
+    if epic_id not in [e['id'] for e in epics + natives]:
         check_collectable(epic_id, paths)
     gates = gates or make_gates(run)
     shop = gates[SHOP]
@@ -1364,7 +1403,7 @@ def collect(epic_id, paths, run, gates=None, metrics=None):
                 external.append(external_record('epic_comment', issue['number'], c))
         issues.setdefault(epic_title_id(issue.get('title')), {'number': issue['number'], 'comments': comments})
 
-    entries, incidents, facts, measurements = [], [], [], {}
+    entries, incidents, facts, measurements = [], [], skipped_facts(skipped), {}
     if epic_id in [e['id'] for e in natives]:
         # R1: the record of a native epic is refreshed first (decide and trend read it); a failed refresh leaves the
         # saved record, which is read below
@@ -1610,7 +1649,10 @@ def cmd_pending(args, run):
     deferrals and the last reason. Epics with a finished retro cost no `gh` call. The epics are the AO runs and the
     native epics (a run file with a final PR in --metrics-state)."""
     entries = []
-    for epic in discover_epics(args.ao_home) + native_epics(args.metrics_state, args.ao_home):
+    natives, skipped = scan_native(args.metrics_state, args.ao_home)
+    for name, why in skipped:
+        print('retro: run file %s skipped: %s' % (name, SKIPPED_RUN_FILE[why][1]), file=sys.stderr)
+    for epic in discover_epics(args.ao_home) + natives:
         if read_state(args.retro_home, epic['id']).get('state') in FINISHED_STATES:
             continue
         entries.append({'id': epic['id'], 'merged_at': final_pr(run, epic['final_pr_number'])[1]})

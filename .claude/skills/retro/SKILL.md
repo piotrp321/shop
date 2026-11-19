@@ -125,10 +125,14 @@ if os.path.isfile(db):
             out = {'run': 'done' if done else 'in_progress', 'pr': data.get('final_pr_number')}
     except sqlite3.Error as e:
         out = {'run': 'none'} if 'no such table' in str(e) else {'run': 'error', 'message': str(e)}
-run_file = os.path.join(metrics_state, 'runs', epic + '.json')
-if not os.path.isdir(os.path.join(home, 'ao-' + epic)) and os.path.isfile(run_file):
+runs = os.path.join(metrics_state, 'runs')
+try:
+    listed = os.listdir(runs)   # the listing, not isfile: on APFS runs/x.json also opens runs/X.json
+except OSError:
+    listed = []
+if not os.path.isdir(os.path.join(home, 'ao-' + epic)) and epic + '.json' in listed:
     try:
-        data = json.load(open(run_file, encoding='utf-8'))
+        data = json.load(open(os.path.join(runs, epic + '.json'), encoding='utf-8'))
         pr = data.get('pr') if isinstance(data, dict) else None
         ok = isinstance(pr, int) and not isinstance(pr, bool) and pr > 0
         out = {'run': 'native', 'pr': pr} if ok else {'run': 'native_in_progress'}
@@ -138,7 +142,9 @@ print(json.dumps(out))
 PY
 ```
 
-- `absent` (brak katalogu `ao-<epik>` albo bazy i brak pliku przebiegu natywnego): odmowa bez zapisu (punkt 1);
+- `absent` (brak katalogu `ao-<epik>` albo bazy i brak pliku przebiegu natywnego o nazwie dokładnie `<epik>.json`;
+  plik z inną wielkością liter, np. `SMALL-FIXES.json`, nie jest epikiem, jak w `retro.py`): odmowa bez zapisu (punkt
+  1);
 - `none` (baza istnieje, ale bez tabeli `epics`, bez kolumny `epic_id` albo `status`, albo bez wiersza tego epiku, np.
   `ao-night`; tak samo jak `discover_runs` w `retro.py`): odmowa bez zapisu jak przy `absent` (punkt 1): epik nie jest
   przebiegiem AO albo jeszcze nie ruszył, więc jego retro nie może przepaść;

@@ -81,7 +81,10 @@ limit API, nieznane uprawnienie autora) kończy `collect` kodem 1 bez zapisu `in
   plik przebiegu `metrics.py start` w `<stan pomiaru>/runs/<epik>.json` (`--metrics-state`, domyślnie
   `$SHOP_METRICS_STATE` albo `~/.local/state/shop-metrics`) z numerem końcowego PR, bez katalogu `ao-<epik>` (katalog
   AO ma pierwszeństwo, jak w `metrics.py epic`). Plik bez numeru PR to epik w toku, nieczytelny albo z nazwą spoza
-  `^[a-z0-9][a-z0-9-]*$` nie jest epikiem. Start epiku to `started_at` pliku przebiegu, merge jak przy AO. Incydenty
+  `^[a-z0-9][a-z0-9-]*$` (np. `SMALL-FIXES.json`) nie jest epikiem: to fakt `native/skipped/<plik>` w `input.json`
+  i ostrzeżenie `pending` na stderr. O istnieniu pliku decyduje lista katalogu `runs`, nie otwarcie ścieżki (na dysku
+  bez rozróżniania wielkości liter `runs/small-fixes.json` otwiera `SMALL-FIXES.json`), więc `collect` takiego epiku
+  odmawia kodem 2. Start epiku to `started_at` pliku przebiegu, merge jak przy AO. Incydenty
   pochodzą z rekordu `<stan pomiaru>/epics/<epik>.json` (pola `human.events`, `reviews`, `attempts`, `regressions`;
   `collect` retrospektywowanego epiku natywnego najpierw odświeża go `metrics.py epic <epik>`, a przy nieudanym
   odświeżeniu czyta zapisany rekord) i z opisu końcowego PR, czytanego przez bramkę (`prs --state all --head
