@@ -157,6 +157,7 @@ Komunikaty `detail` (po polsku, bez danych wejściowych) i `type` problemu (RFC 
 | Wyjątek | Rodzaj | `detail` | `type` (prefiks `tag:piotrp321.github.io,2026:shop/problems/`) |
 |---|---|---|---|
 | `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” | `…/cart-empty` |
+| `GuestOrderTooLarge` | `Conflict` (409) | „Zamówienie bez konta może mieć najwyżej 10 różnych produktów, po 10 sztuk każdego. Zmniejsz ilości w koszyku.” | `…/guest-order-too-large` |
 | `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” | `…/cart-not-orderable` |
 | `InsufficientStockForOrder` | `Conflict` (409) | „Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.” | `…/insufficient-stock-for-order` |
 | `OrderTotalChanged` | `Conflict` (409) | „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.” | `…/order-total-changed` |
@@ -195,7 +196,7 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    kodami rabatowymi.
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
-3. Brak linii: `CartEmpty` (409).
+3. Brak linii: `CartEmpty` (409). Zamówienie gościa większe niż 10 linii albo 10 sztuk jednej linii: `GuestOrderTooLarge` (409, reguła domeny `GuestOrderSize`), zaraz po `CartEmpty`, przed wyceną, kodem, numerem i rezerwacją, więc przed `CartNotOrderable`, `DiscountCodeRejected`, `OrderTotalChanged` i niedoborem. Zamówienie klienta nie podlega tej regule (do 50 linii po 99 sztuk, jak koszyk).
 4. **Kopie danych.** Porty `OrderPrices::quote(lines, discountCode)` (Pricing `QuoteBasket`: ceny skuteczne bez ceny
    Omnibus, promocje, rabat kodu rozłożony na linie, netto i VAT linii z brutto po rabacie; tylko w PLN)
    i `OrderCatalog::variants(variantIds)` (Catalog `GetVariantSummaries`), po jednym wywołaniu. Wariant bez aktualnej
@@ -354,7 +355,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
+| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `GuestOrderTooLarge` tylko dla gościa, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
 | `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
 
 `OrderView`:
@@ -501,7 +502,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | 422 | komunikaty przy polach (`violations`) |
 | 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania z tym samym kodem (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
 | 409 `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (Q6) | `detail` przy polu kodu, kod zdjęty, podsumowanie wczytane bez kodu (nowa kwota), nowy klucz, nic nie składa się samo: zamówienie składa dopiero kolejne kliknięcie; gdy podsumowania nie da się wczytać, ekran zostaje taki jak był (kod zastosowany, „Usuń kod” z fokusem) z `detail` i komunikatem o odświeżeniu, a 401 pokazuje komunikat sesji |
-| 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
+| 409 `CartEmpty`, `GuestOrderTooLarge`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
 | 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
 | 409 nieznany (inny `type` albo brak) | `detail` (bez niego „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) i link „Wróć do koszyka”, klucz zostaje, bez automatycznego ponawiania |
 | 404 koszyka | „Koszyk nie jest już dostępny.” i link do sklepu |
