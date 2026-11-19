@@ -16,7 +16,7 @@ Zakres: `apps/store/Dockerfile`, `apps/store/src/cart`, `apps/store/src/componen
 - Pasek sklepu demonstracyjnego nie przesuwa strony, gdy się pojawia (B8).
 - Komenda konsoli przerwana błędem daje zdarzenie Sentry (ze śladem stosu) i wpis w logu z wyjątkiem (audyt 2.5, Z8
   raportu 08).
-- Paginacja listingu nie prowadzi poza okno wyników API, a cache ISR sklepu ma limit dysku (R17, część).
+- Paginacja listingu nie prowadzi poza okno wyników API, a kontener sklepu ma limit dysku (R17, część).
 - Z kodu znika `ProductRepository::all()`, tymczasowa zgodność `ProductCreated` i middleware `validation`.
 - `zend.assertions` jest ustawione jawnie we wszystkich obrazach API.
 
@@ -29,7 +29,7 @@ Specyfikacja przyjmuje rekomendacje poniżej; użytkownik potwierdza je w PR spe
 | D1 | Gdzie stoi pasek demo (B8) | Przypięty do dołu okna (poza przepływem), strona ma pod treścią miejsce na jego wysokość, więc nic nie zostaje nim trwale zasłonięte | Pasek zawsze renderowany z zarezerwowanym miejscem (pusty pas we wdrożeniach bez demo); pasek w HTML z serwera (łamie zasadę „HTML stron jest taki sam w każdym wdrożeniu”, `apps/store/CLAUDE.md:637-640`) |
 | D2 | Trwający upload zdjęcia przy przejściu do innego produktu (B4) | Trwający albo oczekujący upload liczy się jak niezapisana zmiana: strażnik pyta „Masz niezapisane zmiany”; po „Opuść bez zapisu” wyniki tych uploadów są porzucane | Ciche porzucenie uploadu bez pytania |
 | D3 | Skąd sklep wie, ile stron listingu da się przeczytać (R17) | Nowe pole `pageCount` w odpowiedzi `ProductPage` (publiczne OpenAPI): liczba stron osiągalnych w oknie wyników; `total` zostaje dokładne | Stała okna (10 000) w sklepie (front liczyłby pochodną danych API) |
-| D4 | Limit dysku cache ISR (R17) | `ephemeral-storage` kontenera `store` w profilu `prod` (i jego kopii `load`): żądanie 256 MiB, limit 2 GiB; przekroczenie to eksmisja poda sklepu (przerwa na start nowego poda, jedna replika) i nowy pod z pustym cache. To ochrona dysku węzła demo, nie rozwiązanie dla skali docelowej (10 mln produktów): tam potrzebny jest wspólny cache ISR z eksmisją (A6), osobny epik | Brak limitu do czasu wspólnego cache ISR (A6 strony produktu) |
+| D4 | Limit dysku kontenera sklepu (R17) | `ephemeral-storage` kontenera `store` w profilu `prod` (i jego kopii `load`): żądanie 256 MiB, limit 2 GiB; przekroczenie to eksmisja poda sklepu (przerwa na start nowego poda, jedna replika) i nowy pod z pustym cache. Cache ISR jest tylko w pamięci procesu (`docs/features/product-page/spec.md`, „Cache ISR”), więc limit jest zabezpieczeniem dysku węzła przed zapisami w warstwie zapisywalnej kontenera, nie ograniczeniem cache | Brak limitu dysku kontenera |
 | D5 | Wartość `zend.assertions` | `1` (asercje działają, jak dziś, bo obraz nie ma `php.ini`) w `app.ini`, wspólnym dla wszystkich obrazów | `-1` w obrazie produkcyjnym (wyłącza ok. 200 `\assert()`, które zawężają typy) |
 
 ## Poza zakresem
@@ -46,7 +46,8 @@ Specyfikacja przyjmuje rekomendacje poniżej; użytkownik potwierdza je w PR spe
   wymaga zmiany mapowania relacji (model persystencji), więc pasuje do SIMPLIFY-BACKEND, nie do drobnych poprawek.
 - B3, B6, B7 (inne epiki: ASYNC-RELIABILITY, ABUSE-LIMITS, BACKUPS-ON).
 - Limit czasu wywołań API ze sklepu (pierwsza część R17, R11): OPS-GUARDS.
-- Wpisy ISR 404 nieznanych slugów i wspólny cache ISR (A6 strony produktu): tylko limit dysku wchodzi tutaj.
+- Cache ISR sklepu (`docs/features/product-page/spec.md`, „Cache ISR”) i wspólny cache ISR (A6 strony produktu): tylko
+  limit dysku kontenera wchodzi tutaj.
 - Ogłaszanie nowej sumy koszyka w `role="status"` i fokus po usunięciu ostatniej pozycji (#392).
 - Sprzątanie oryginałów zdjęć w Garage po porzuconym uploadzie (K7 CATALOG-ADMIN: oryginałów się nie usuwa).
 - Inne komendy konsoli niż cztery wymienione w sekcji „Komendy konsoli”: pozostałe nie łapią `\Throwable`
@@ -254,30 +255,24 @@ Przy dużym katalogu sklep pokazuje „Strona 1 z 416667” i aktywne „Następ
 
 ## Limit dysku cache ISR sklepu
 
-**Problem.** Strona produktu jest w ISR (`apps/store/app/p/[slug]/page.tsx:10`), cache plikowy rośnie z każdym
-odwiedzonym produktem i nieznanym slugiem, a kontener `store` nie ma limitu `ephemeral-storage`
-(`infra/k8s/charts/shop/values.yaml:194`, `infra/k8s/environments/prod/values.yaml:103`). Ruch po losowych adresach
-`/p/…` zapełnia dysk jedynego węzła, na którym stoją też baza i pozostałe usługi.
+**Problem.** Warstwa zapisywalna kontenera `store` leży na dysku jedynego węzła, na którym stoją też baza i pozostałe
+usługi; bez limitu `ephemeral-storage` rosnący zapis w kontenerze może ten dysk zapełnić. Cache ISR sklepu nie zapisuje
+na dysk (`docs/features/product-page/spec.md`, „Cache ISR”).
 
 **Zachowanie (D4).**
 - Kontener `store` w profilu `prod` (i w jego kopii w `load`, której zgodność z `prod` pilnuje
   `tests/test_load_profile.py`) ma `ephemeral-storage`: żądanie 256 MiB, limit 2 GiB. Wartości domyślne chartu i profil
   `ci` bez `ephemeral-storage` (helm scala mapy, więc wpis w wartościach domyślnych trafiłby też do `ci`).
-- Przekroczenie limitu to eksmisja poda sklepu przez kubelet (warstwa zapisywalna kontenera, w której leży
-  `.next/cache`, liczy się do `ephemeral-storage`) i nowy pod z pustym cache: strony ISR renderują się od nowa przy
+- Przekroczenie limitu to eksmisja poda sklepu przez kubelet (warstwa zapisywalna kontenera liczy się do
+  `ephemeral-storage`) i nowy pod z pustym cache: strony ISR renderują się od nowa przy
   pierwszym wejściu, strony prerenderowane w buildzie wracają do HTML z obrazu do rewalidacji (sekcja B1). Dysk węzła
   i pozostałe usługi nie są dotknięte. Restart poda łapie istniejąca reguła `WorkloadNotReady`; osobnego alertu
   eksmisji ten epik nie dodaje.
-- `docs/features/product-page/spec.md:446-447` („nic ich nie usuwa (nieograniczony przyrost…)”) przestaje być
-  prawdą: zadanie poprawia to ryzyko na limit z eksmisją poda i wspólny cache (A6) jako warunek skali docelowej.
 
 **Kryteria.**
 1. Test w `infra/k8s/tests` renderuje chart z profilami `prod`, `load` i `ci` i sprawdza `ephemeral-storage` kontenera
    `store` (żądanie i limit w `prod` i `load`, brak w `ci`); `test_load_profile.py` przechodzi.
-2. Raport zadania podaje średni rozmiar wpisu ISR strony produktu zmierzony na stosie compose w trybie produkcyjnym
-   (rozmiar katalogu cache po N wejściach na różne produkty) i wynikającą z niego liczbę wpisów mieszczących się
-   w limicie.
-3. `make -C infra/k8s check` przechodzi (bez fazy RED: konfiguracja).
+2. `make -C infra/k8s check` przechodzi (bez fazy RED: konfiguracja).
 
 ## Usunięcie martwego kodu API
 
@@ -342,11 +337,8 @@ Plik ładuje się po `php.ini`, więc ustawienie wygrywa także z `php.ini-produ
   Next.js pilnuje go test dymny klastra (menu na `/cart`, `/konto/zamowienia` i stronie 404 po `purge-caches`).
 - Po restarcie poda sklepu strony prerenderowane w buildzie mogą być bez menu do godziny (rewalidacja czasowa).
 - Pasek demo przypięty do dołu zajmuje na telefonie 2–3 wiersze ekranu przez cały czas oglądania sklepu demo.
-- Eksmisja poda sklepu po przekroczeniu limitu dysku to przerwa sklepu na czas startu nowego poda (jedna replika);
-  przy dużym katalogu i ruchu robotów może się powtarzać. Limit chroni węzeł demo, skali docelowej nie rozwiązuje.
-  Pomiar na stosie compose w trybie produkcyjnym (70 różnych stron produktów): wpis ISR strony produktu to 7 plików,
-  średnio ok. 140 KiB, więc w limicie 2 GiB mieści się ok. 15 tys. wpisów (mniej o logi i inne zapisy poda; wpisy 404
-  nieznanych slugów nie były mierzone).
+- Eksmisja poda sklepu po przekroczeniu limitu dysku to przerwa sklepu na czas startu nowego poda (jedna replika).
+  Cache ISR nie rośnie na dysku, więc limit dotyczy tylko innych zapisów w kontenerze.
 - `pageCount` to nowe pole wymagane w publicznym kontrakcie; jedynym klientem jest sklep, generowany w tej samej zmianie,
   a okno wdrożenia obsługuje reguła zgodności z sekcji paginacji.
 - Porzucony upload zostawia oryginał w Garage (jak dziś upload bez zapisu produktu, K7).
