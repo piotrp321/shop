@@ -10,7 +10,7 @@ roboczym: po ukończeniu epiku usuń go.
 
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | DEMO-SCALE-1, DEMO-SCALE-2, DEMO-SCALE-3 | |
+| 1 | DEMO-SCALE-1, DEMO-SCALE-2, DEMO-SCALE-3 | w toku |
 | 2 | DEMO-SCALE-4 | |
 | 3 | DEMO-SCALE-5 | |
 | 4 | DEMO-SCALE-6 | |
