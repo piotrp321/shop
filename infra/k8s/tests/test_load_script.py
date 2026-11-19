@@ -1081,7 +1081,8 @@ class LoadScript(unittest.TestCase):
         self.assertRegex((self.out / "space.log").read_text().splitlines()[-1], r"^# the peak use")
 
     def test_a_pause_that_is_not_longer_than_the_limit_is_not_a_sleep(self):
-        result = self.sleep_run(100)
+        # 60 s, well below the limit of 120 s: the real time that a loaded machine adds to the skew of the stub does not make it a sleep.
+        result = self.sleep_run(60)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIsNone(self.pause_line())
         self.assertNotIn("slept", result.stderr)
@@ -1089,15 +1090,17 @@ class LoadScript(unittest.TestCase):
         self.assertRegex((self.out / "environment.txt").read_text(), r"(?m)^host sleep: none .*120 s")
 
     def test_the_limit_of_a_pause_is_three_intervals_of_the_check_and_at_least_120_seconds(self):
-        # LOAD_SPACE_POLL=60: the limit is 180 s, so 140 s is no sleep and 400 s is.
-        result = self.sleep_run(140, LOAD_SPACE_POLL="60")
+        # LOAD_SPACE_POLL=100: the limit is 300 s, so 140 s is no sleep (it is above the 120 s of the default limit, so only the
+        # three intervals keep it from being one) and 600 s is. The margins are wide, as the stub adds the real time of a loaded
+        # machine to its skew.
+        result = self.sleep_run(140, LOAD_SPACE_POLL="100")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertRegex((self.out / "environment.txt").read_text(), r"(?m)^host sleep: none .*180 s")
+        self.assertRegex((self.out / "environment.txt").read_text(), r"(?m)^host sleep: none .*300 s")
         (self.space / "skew").unlink(missing_ok=True)
         (self.space / "job.polls").unlink(missing_ok=True)
-        result = self.sleep_run(400, LOAD_SPACE_POLL="60")
+        result = self.sleep_run(600, LOAD_SPACE_POLL="100")
         self.assertEqual(1, result.returncode, result.stderr)
-        self.assertEqual(180, self.pause_line()[1])
+        self.assertEqual(300, self.pause_line()[1])
 
     def test_a_pause_is_found_in_a_run_of_seed_too_from_the_samplers(self):
         """seed has no guard and no space.log: the readings of the samplers (every 10 s) and the end of the run tell."""
