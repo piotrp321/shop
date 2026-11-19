@@ -833,16 +833,22 @@ SH
   # A Job of the CronJob rate-limit-check that is running (a copy of the Job of the CronJob with the command `sleep`, so that it
   # lasts) is no reason for make restore to refuse: the refusal below comes from the snapshot, after the check of the active Jobs.
   kc create job rate-limit-check-busy --from=cronjob/rate-limit-check --dry-run=client -o yaml \
-    | sed -e 's#^\( *\)- bin/console$#\1- sleep#' -e 's#^\( *\)- rate-limit:check$#\1- "120"#' -e 's#activeDeadlineSeconds: 60$#activeDeadlineSeconds: 600#' \
+    | sed -e 's#^\( *\)- bin/console$#\1- sleep#' -e 's#^\( *\)- rate-limit:check$#\1- "400"#' -e 's#activeDeadlineSeconds: 60$#activeDeadlineSeconds: 600#' \
     | kc create -f - > /dev/null
-  [ "$(kc get job rate-limit-check-busy -o jsonpath='{.spec.template.spec.containers[0].command[0]}')" = sleep ] \
-    || { echo "smoke: could not make a long Job of the CronJob rate-limit-check" >&2; return 1; }
-  if restore_with tak "$newer" newer; then
+  if [ "$(kc get job rate-limit-check-busy -o jsonpath='{.spec.template.spec.containers[0].command[0]}')" != sleep ]; then
+    kc delete job rate-limit-check-busy --now --ignore-not-found > /dev/null || true
+    echo "smoke: could not make a long Job of the CronJob rate-limit-check" >&2; return 1
+  fi
+  # The Job sleeps 400 s, far longer than the restore below takes even on a slow runner; it is read right after the restore and removed
+  # at once, whatever the restore did.
+  if restore_with tak "$newer" newer; then restore_exit=0; else restore_exit=1; fi
+  busy_state="$(kc get job rate-limit-check-busy -o jsonpath='{.metadata.name}{" "}{.status.succeeded}{.status.failed}' || true)"
+  kc delete job rate-limit-check-busy --now --ignore-not-found > /dev/null || true
+  if [ "$restore_exit" = 0 ]; then
     echo "smoke: make restore accepted a snapshot newer than the code:" >&2; cat "$work/restore-newer.log" >&2; return 1
   fi
-  [ -n "$(kc get job rate-limit-check-busy -o jsonpath='{.metadata.name}')" ] && [ -z "$(kc get job rate-limit-check-busy -o jsonpath='{.status.succeeded}{.status.failed}')" ] \
-    || { echo "smoke: the Job rate-limit-check-busy was not running while make restore refused" >&2; return 1; }
-  kc delete job rate-limit-check-busy --now > /dev/null
+  [ "$busy_state" = "rate-limit-check-busy " ] \
+    || { echo "smoke: the Job rate-limit-check-busy was not running while make restore refused (state: '$busy_state')" >&2; return 1; }
   if ! grep -q 'newer than the deployed code' "$work/restore-newer.log" || ! grep -q 'nothing changed' "$work/restore-newer.log"; then
     echo "smoke: make restore of a newer snapshot failed for another reason:" >&2; cat "$work/restore-newer.log" >&2; return 1
   fi

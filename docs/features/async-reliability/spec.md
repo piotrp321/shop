@@ -165,9 +165,9 @@ Specyfikacja przyjmuje rekomendacje poniżej. Kolejność od najważniejszej.
   (`:15-31`) daje osobną instancję alertu na każdy nieudany Job. Ostatnia nieudana próba daje zdarzenie Sentry
   (`apps/api/config/packages/sentry.yaml:36-37`). `messenger:failed:*` nie występuje w celach make ani w runbooku;
   jedyna wzmianka to `docs/features/payment/spec.md:651-652`.
-- **Odtworzenie.** `restore.sh` odmawia, gdy w przestrzeni jest aktywny Job (`:128-135`), skaluje do zera `api worker
-  store keycloak` (`:67`) i wstrzymuje CronJoby `cart-purge-expired` i `backup`; test dymny sprawdza te CronJoby
-  (`smoke.sh:790`).
+- **Odtworzenie.** `restore.sh` odmawia, gdy w przestrzeni jest aktywny Job poza Jobem `rate-limit-check` (`:129-140`), skaluje do zera `api worker
+  store keycloak` (`:68`) i wstrzymuje CronJoby `cart-purge-expired`, `backup` i `rate-limit-check`; test dymny sprawdza te CronJoby
+  (`smoke.sh:864`).
 - **Reindeksacja przy uzgodnieniu VAT.** `ReindexProductOnPriceChange.php:47` i `InvalidateStorefrontOnPriceChange.php:43`
   pomijają tylko źródło `seed`; `pricing:reconcile-tax --apply` i zmiana klasy podatkowej (`reprice`, to samo brutto,
   źródło `tax_reconciliation`) dają po jednej reindeksacji i jednym unieważnieniu na cenę. Odpowiedzi katalogu sklepu
