@@ -6,7 +6,6 @@ namespace App\Shared\Infrastructure\Http;
 
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Lock\Exception\LockAcquiringException;
-use Symfony\Component\Lock\Exception\LockReleasingException;
 use Symfony\Component\Lock\SharedLockInterface;
 
 /**
@@ -77,7 +76,9 @@ final readonly class RateLimitLock implements SharedLockInterface
     {
         try {
             $this->lock->release();
-        } catch (LockReleasingException $failure) {
+        } catch (\Exception $failure) {
+            // Also a failure after the delete (Lock::release() checks the key again outside its own try): any error of
+            // Redis at the release keeps the request going (spec docs/features/abuse-limits/spec.md, D1).
             $this->logger->warning('Failed to release the lock of the rate limit "{resource}"; it expires by itself.', ['resource' => $this->resource, 'exception' => $failure]);
         }
     }

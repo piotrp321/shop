@@ -298,8 +298,8 @@ Każdy wyjątek jest opisany w specyfikacji funkcji; nowy wyjątek dopisz tutaj 
   domyślną wartością `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`; nowa trasa z limitem ma 429
   w OpenAPI. Redis niedostępny: żądanie przechodzi bez limitu (fail open, D7). Adres klienta bierze wyłącznie
   `ClientIp::of(Request)`.
-- Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (`RateLimit::ROUTE_DEFAULT`, wartości `prod`, `dev` i `test`) i test prób obejścia.
   Kontener testów ma `APP_DEBUG=0`, więc po zmianie konfiguracji lokalnie usuń `var/cache/test*`.
+- Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (`RateLimit::ROUTE_DEFAULT`, wartości `prod`, `dev` i `test`) i test prób obejścia.
 - Nagłówki bezpieczeństwa API ustawia `SecurityHeadersSubscriber` na każdej odpowiedzi; HSTS należy do ingressu
   (`docs/features/hardening/spec.md`, D10).
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
