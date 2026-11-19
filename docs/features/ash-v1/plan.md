@@ -8,9 +8,11 @@ roboczym: po ukończeniu epiku usuń go.
 
 ## Status
 
+Epik w toku od 2026-11-19 (gałąź `feat/ash-v1`).
+
 | Fala | Zadania | Status |
 |---|---|---|
-| 1 | ASH-V1-1, ASH-V1-2, ASH-V1-3 | |
+| 1 | ASH-V1-1, ASH-V1-2, ASH-V1-3 | w toku |
 | 2 | ASH-V1-4, ASH-V1-5 | |
 | 3 | ASH-V1-6 | |
 
