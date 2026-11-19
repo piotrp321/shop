@@ -2478,14 +2478,16 @@ AGENT_FILE = re.compile(r'^agent-(.+)\.jsonl$')
 
 HANDBACK = 'SubagentHandback'               # the tool call with which a subagent hands its report back (M4)
 VERDICT_TOKENS = ('CHANGES_REQUIRED', 'INVESTIGATE', 'SIMPLIFY', 'REWORK', 'BLOCK', 'PASS', 'KEEP')
-VERDICT = re.compile(r'(?i:werdykt|verdict)[\s:*_#.()\-\u2013\u2014]*(%s)(?![A-Za-z0-9_])' % '|'.join(VERDICT_TOKENS))
+VERDICT = re.compile(r'(?<![A-Za-z])(?i:werdykt|verdict)[\s:*_#.()`\-\u2013\u2014]*(%s)(?![A-Za-z0-9_])'
+                     % '|'.join(VERDICT_TOKENS))
 
 
 def verdict_token(text):
-    """The first verdict word right after `Werdykt` or `Verdict` in the text of a report, or None (the text itself is
-    never kept)."""
-    found = VERDICT.search(text) if isinstance(text, str) else None
-    return found.group(1) if found else None
+    """The verdict word right after the label `Werdykt` or `Verdict` (the last labelled one when there are several: a
+    report may quote the verdict of an earlier round first), or None; a verdict word without the label is no verdict.
+    The text itself is never kept."""
+    found = VERDICT.findall(text) if isinstance(text, str) else []
+    return found[-1] if found else None
 
 
 def line_mark(line):
@@ -2507,10 +2509,11 @@ def read_native(path, seen_tools):
     the tools; `seen_tools` is shared by the files of the epic, so a copied tool call counts once), plus `times` (the
     timestamps of the user and assistant lines), `inits` from the CLI `version` of the lines, `marks` [(at, mark,
     key)] of the user and assistant lines with a timestamp (`line_mark`; key: the `uuid` of a human line), `untimed_human`
-    (human lines without a timestamp) and `reports` [(at, verdict word or None)] of the `SubagentHandback` calls in file
-    order; (None, reason) when the file is missing or unreadable."""
+    (human lines without a timestamp), `user_lines` and `origin_lines` (the user lines that are no tool result, and
+    those of them with an `origin`: without any, a human message cannot be told apart) and `reports` [(at, verdict word
+    or None)] of the `SubagentHandback` calls in file order; (None, reason) when the file is missing or unreadable."""
     data = {'messages': {}, 'inits': [], 'results': [], 'retries': [], 'denials': {}, 'tools': [], 'times': [],
-            'marks': [], 'untimed_human': 0, 'reports': []}
+            'marks': [], 'untimed_human': 0, 'user_lines': 0, 'origin_lines': 0, 'reports': []}
     versions, reports = set(), set()
     try:
         with open(path, encoding='utf-8', errors='replace') as f:
@@ -2528,6 +2531,9 @@ def read_native(path, seen_tools):
                     continue
                 at = _timestamp(line.get('timestamp'))
                 mark = line_mark(line)
+                if line['type'] == 'user' and mark != 'work':
+                    data['user_lines'] += 1
+                    data['origin_lines'] += isinstance(line.get('origin'), dict)
                 if at is not None:
                     data['times'].append(at)
                     data['marks'].append((at, mark, line.get('uuid') if isinstance(line.get('uuid'), str) else None))
@@ -2686,17 +2692,23 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     bound), every message id once (its first occurrence, also in a resumed or forked session), the lead session as
     `orchestrator` without a task, every subagent run one attempt with its role (agentType), task (D4), model and
     effort. `marks`: the marks of every transcript (`read_native`, not cut to the interval); `reviews`: the reports
-    of the review roles in the interval (M4); `messages`: {message id: timestamp} of the counted messages."""
+    of the review roles in the interval (M4); `messages`: {message id: timestamp} of the counted messages; `coverage`:
+    `none` (no transcript of a session of the run file was read), `partial` (only some) or `full`; `no_origin`: the
+    lead sessions have user lines but none with an `origin` (a change of the transcript format)."""
     pricing = config['pricing']
     seen_ids, seen_tools = set(), set()
     attempts, items, datas, marks, reviews, messages = [], [], [], [], [], {}
-    untimed_human = 0
+    untimed_human, user_lines, origin_lines, read = 0, 0, 0, set()
     for kind, session, agent, path, meta_path in native_transcripts(projects, sessions, gaps):
         label = 'sesja %s' % session if kind == 'session' else 'agent %s' % agent
         data, reason = read_native(path, seen_tools)
         if data is None:
             gaps.add('sessions', '%s: %s' % (label, reason))
             continue
+        if kind == 'session':
+            read.add(session)
+            user_lines += data['user_lines']
+            origin_lines += data['origin_lines']
         fresh = {i: m for i, m in data['messages'].items() if i not in seen_ids}
         seen_ids.update(data['messages'])
         data['messages'] = {i: m for i, m in fresh.items() if in_window(m['at'], started, until)}
@@ -2754,6 +2766,8 @@ def native_fields(epic_id, projects, sessions, started, until, config, gaps):
     return {'attempts': attempts, 'by_task': by_task, 'value': value_sections(items),
             'in_attempts': in_attempts, 'versions': versions_of(datas) if datas else None, 'marks': marks,
             'untimed_human': untimed_human, 'messages': messages,
+            'coverage': 'none' if not read else 'partial' if len(read) < len(set(sessions)) else 'full',
+            'no_origin': user_lines > 0 and origin_lines == 0,
             'reviews': sorted(reviews, key=lambda r: (r['at'] is None, r['at'] or '', r['agent_id']))}
 
 
@@ -3058,6 +3072,52 @@ def native_subscription(run_file, started, done, projects, messages, config, gap
     return found
 
 
+# The process fields of a native record that come from the transcripts (M3, M4): without any transcript of the epic
+# they are unknown, never zero, and a stored value stays (a refresh after the retention of the transcripts, e.g. by
+# /retro collect, must not replace it); without the transcripts of some sessions they are a lower bound.
+TRANSCRIPT_PATHS = (('breakdown',), ('reviews',), ('integration',), ('human', 'interventions'), ('human', 'waits'),
+                    ('human', 'wait_s'), ('human', 'events'), ('retries', 'fix'), ('retries', 'failed_by_outcome'),
+                    ('subscription', 'share'))
+NO_TRANSCRIPTS = 'brak transkryptów sesji epiku (retencja albo zły identyfikator sesji): wartość nieznana'
+PARTIAL_TRANSCRIPTS = ('transkrypt części sesji epiku niedostępny: wartość z dostępnych transkryptów niepełna (dolna '
+                       'granica; idle górna)')
+HUMAN_EVENT_PATHS = (('human', 'interventions'), ('human', 'waits'), ('human', 'wait_s'), ('human', 'events'))
+
+
+def _clear(record, paths, gaps, reason):
+    for path in paths:
+        if isinstance(_get(record, path[:-1]), dict):
+            _set(record, path, None)
+            gaps.add('.'.join(path), reason)
+
+
+def apply_transcript_coverage(record, coverage, no_origin, previous, gaps):
+    """The process fields of `record` by the transcripts read (`native_fields`): `none` makes them null with a gap and
+    keeps the values of the stored native record, `partial` adds the gap of a lower bound; `no_origin` (no user line of
+    the lead sessions has an `origin`) makes the human messages and `human_wait` unknown."""
+    if coverage == 'none':
+        _clear(record, TRANSCRIPT_PATHS, gaps, NO_TRANSCRIPTS)
+        stored = previous if isinstance(previous, dict) and previous.get('source') == 'native' else None
+        for path in TRANSCRIPT_PATHS:
+            old = _get(stored, path)
+            if old is not None and isinstance(_get(record, path[:-1]), dict):
+                _set(record, path, old)
+                gaps.add('.'.join(path), 'brak transkryptów sesji epiku: zachowano poprzednią wartość')
+        return
+    if coverage == 'partial':
+        for field in ('breakdown', 'human', 'integration', 'reviews', 'retries.fix', 'retries.failed_by_outcome',
+                      'subscription.share'):
+            if _get(record, tuple(field.split('.'))) is not None:
+                gaps.add(field, PARTIAL_TRANSCRIPTS)
+    if no_origin:
+        reason = 'linie użytkownika bez pola origin (zmiana formatu CLI): wiadomości człowieka nierozpoznane'
+        _clear(record, HUMAN_EVENT_PATHS, gaps, reason)
+        breakdown = record.get('breakdown')
+        if isinstance(breakdown, dict) and _is_number(breakdown.get('human_wait')):
+            breakdown['idle'] = round(breakdown['idle'] + breakdown['human_wait'], 3)
+            _clear(record, (('breakdown', 'human_wait'),), gaps, reason + ': czas w idle')
+
+
 def _run_time(run_file, field, gaps, reason):
     try:
         return night_queue.parse_time(run_file.get(field)).timestamp()
@@ -3176,6 +3236,7 @@ def build_native_record(epic_id, run_file, config, projects, now, run=None, no_g
                 run, repo, config, epic_id, final_pr, sha, known_merge, now, previous, gaps, errors)
     record.setdefault('regressions', None)
     record.setdefault('found_after_merge', None)
+    apply_transcript_coverage(record, fields['coverage'], fields['no_origin'], previous, gaps)
     keep_stored_values(record, previous, gaps)
     record['bottlenecks'] = bottlenecks_of(record, history_of(record, records), config, gaps)
     record['gaps'] = gaps.render()

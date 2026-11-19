@@ -341,13 +341,24 @@ przed `metrics.py start`) do merge'u końcowego PR, każdą raz (`uuid` linii, b
 linie), więc jest górną granicą interwencji koniecznych. Zdarzenie w `events` ma czas wiadomości i `wait_s`: część
 przerwy przed nią od `started_at`, której nie pokrywa praca; `waits` to zdarzenia z `wait_s` > 0, `wait_s` ich suma
 (zdarzenia po `done_at` liczą się tu, ale nie w `breakdown`). Wiadomość człowieka bez `timestamp` jest pomijana
-z pozycją `human` w `gaps`.
+z pozycją `human` w `gaps`. Gdy żadna linia użytkownika sesji prowadzących poza `tool_result` nie ma pola `origin`
+(zmiana formatu CLI), wiadomości człowieka nie da się rozpoznać: `interventions`, `waits`, `wait_s`, `events`
+i `breakdown.human_wait` mają `null` z pozycją w `gaps` (czas czekania jest w `idle`).
+
+**Brak transkryptów.** Gdy nie da się przeczytać transkryptu żadnej sesji z pliku przebiegu (retencja, zły
+identyfikator sesji), pola procesu z transkryptów (`breakdown`, `reviews`, `integration`, `human` poza
+`manual_fixes`, `retries.fix`, `retries.failed_by_outcome`, `subscription.share`) mają `null` z pozycją w `gaps`, nigdy
+zero; wartość zapisana wcześniej w rekordzie natywnym zostaje (odświeżenie rekordu, np. przez `/retro collect`, jej nie
+zastępuje), z pozycją w `gaps`. Gdy brakuje transkryptu tylko części sesji, te pola mają wartości z dostępnych
+transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` górna).
 
 **Przeglądy (M4).** Raport to wywołanie `SubagentHandback` w transkrypcie subagenta roli `code-reviewer`,
 `qa-adversarial`, `architecture-reviewer` albo `ux-reviewer`, w przedziale epiku. Wpis: `task` (zadanie według D4,
 `null` dla przeglądu całej zmiany), `role`, `agent_id`, `at`, `mode` (pierwszy raport transkryptu `FULL`, każdy
-kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to pierwsze słowo werdyktu tuż po
-„Werdykt” albo „Verdict” w tekście raportu, przyjęte tylko z kontraktu roli: `code-reviewer` `PASS` /
+kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to słowo werdyktu tuż po etykiecie
+„Werdykt” albo „Verdict” w tekście raportu (między nimi tylko odstępy, dwukropek, myślnik, odwrócone apostrofy,
+pogrubienie i znaki nagłówka; przy kilku etykietach ostatnia, bo raport może przytoczyć werdykt poprzedniej rundy;
+słowo werdyktu bez etykiety się nie liczy), przyjęte tylko z kontraktu roli: `code-reviewer` `PASS` /
 `CHANGES_REQUIRED`, `qa-adversarial` `PASS` / `INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` /
 `REWORK`; blokują `CHANGES_REQUIRED`, `BLOCK` i `REWORK`. Raport bez rozpoznanego werdyktu (dziś zawsze `ux-reviewer`,
 który nie ma werdyktu) ma `verdict` i `blocking` `null` z pozycją `reviews` w `gaps`; przebieg roli przeglądowej bez

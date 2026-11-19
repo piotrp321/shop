@@ -265,11 +265,17 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
   `breakdown_incomplete: true`; bez `started_at` albo `done_at` `breakdown: null`. `human`: `interventions`
   (wiadomości człowieka po `started_at` do merge'u końcowego PR, każda raz według `uuid`, `interventions_estimated:
   true`), `events` (`[{at, wait_s}]`, bez treści), `waits` (zdarzenia z `wait_s` > 0), `wait_s` (ich suma),
-  `manual_fixes` (`--manual-fixes`; bez opcji `null` i pozycja `human.manual_fixes`).
+  `manual_fixes` (`--manual-fixes`; bez opcji `null` i pozycja `human.manual_fixes`). Żadna linia użytkownika sesji
+  prowadzących bez pola `origin`: pola wiadomości człowieka i `breakdown.human_wait` `null` z pozycją w `gaps`.
+- **Brak transkryptów** (`apply_transcript_coverage`): bez przeczytanego transkryptu żadnej sesji z pliku przebiegu
+  pola z `TRANSCRIPT_PATHS` (`breakdown`, `reviews`, `integration`, pola zdarzeń `human`, `retries.fix`,
+  `retries.failed_by_outcome`, `subscription.share`) są `null` z pozycją w `gaps`, a wartości zapisanego rekordu
+  natywnego zostają (pozycja „zachowano poprzednią wartość”); bez transkryptu części sesji te pola mają pozycję
+  w `gaps` o dolnej granicy.
 - **Przeglądy:** każde wywołanie `SubagentHandback` w transkrypcie roli `code-reviewer`, `qa-adversarial`,
   `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, role, agent_id, at, mode,
-  verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to pierwsze
-  słowo werdyktu po „Werdykt”/„Verdict” (`verdict_token`), przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
+  verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to słowo
+  werdyktu tuż po etykiecie „Werdykt”/„Verdict”, przy kilku etykietach po ostatniej (`verdict_token`), przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
   `blocking` dla `CHANGES_REQUIRED`, `BLOCK`, `REWORK`; bez rozpoznanego werdyktu (`ux-reviewer`) `null` i pozycja
   `reviews` w `gaps`. `integration`: `work_s`, `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`,
   `ux-reviewer` i `rounds` (największa liczba raportów jednej z tych ról); bez nich `null`. `retries`: `fix` (przeglądy
