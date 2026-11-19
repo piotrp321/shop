@@ -38,7 +38,7 @@ serwera” i „Smoke test i check”).
   `docs/features/deploy/spec.md`, D9). Brakujący realm zakłada; w istniejącym `partialImport` z `ifResourceExists=SKIP`
   dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem przy każdym uruchomieniu ustawia wartości
   z konfiguracji: sekret klienta `store`, `redirectUris`, `webOrigins` i adresy po wylogowaniu klientów z domeny,
-  rejestrację w realmie `shop`, `verifyEmail` w `shop` i SMTP obu realmów. Nigdy nie usuwa użytkowników, haseł ani
+  rejestrację w realmie `shop`, `verifyEmail` w `shop`, politykę haseł i SMTP obu realmów. Nigdy nie usuwa użytkowników, haseł ani
   zasobów. Inna zmiana istniejącego klienta, roli albo ustawienia realmu w pliku do klastra nie trafi: wymaga ręcznej
   zmiany przez `kcadm` albo nowego kroku w Jobie.
 
