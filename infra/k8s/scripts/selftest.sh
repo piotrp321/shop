@@ -451,7 +451,7 @@ demo_data_script_stops_only_the_generator() {
   replace infra/k8s/charts/shop/files/scripts/demo-data.sh 'kill -TERM "-$gen_pid"' 'kill -TERM "$gen_pid"'
   replace infra/k8s/charts/shop/files/scripts/demo-data.sh 'kill -KILL "-$gen_pid"' 'kill -KILL "$gen_pid"'
 }
-# make generate deletes the Job demo-data-run of the run before right after tak (here: it keeps it), and make open refuses without a
+# make generate deletes the Job demo-data-run of the run before right before the new one (here: it keeps it), and make open refuses without a
 # Job demo-data-run that completed (here: it opens after any Job): either way make open could take an earlier success.
 # shellcheck disable=SC2016 # the texts are lines of the scripts
 generate_keeps_the_previous_run() { replace infra/k8s/scripts/generate.sh 'kc delete job "$job" --wait=true' ': kc delete job "$job" --wait=true'; }
@@ -567,7 +567,7 @@ run_case "demo-data script without the space guard" \
   "test_the_space_falling_below_the_floor_stops_the_whole_group_with_the_command_in_the_foreground" "tests" demo_data_script_without_the_guard
 run_case "demo-data script that stops only the generator and not its process group" "test_term_stops_the_group_with_the_command_in_the_foreground" \
   "tests" demo_data_script_stops_only_the_generator
-run_case "make generate that keeps the Job demo-data-run of the run before" "test_the_previous_run_is_deleted_right_after_tak_before_the_closing" \
+run_case "make generate that keeps the Job demo-data-run of the run before" "test_the_previous_run_is_deleted_right_before_the_new_job_after_the_closing_and_the_secret" \
   "tests" generate_keeps_the_previous_run
 run_case "make open after a Job demo-data-run that did not complete" "test_without_a_job_demo_data_run_that_completed_it_refuses" "tests" \
   open_without_the_check_of_the_run

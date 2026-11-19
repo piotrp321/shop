@@ -692,21 +692,72 @@ class Open(Case):
 
 
 class PreviousRun(Case):
-    """make open must not take the success of an earlier Job for that of a generation that stopped: make generate deletes the Job
-    demo-data-run of the run before (and waits until it is gone) right after tak, before any other change. From then on until the new
-    Job completed there is no Job demo-data-run that completed."""
+    """make open must not take the success of an earlier Job for that of a generation that stopped. Only the new Job changes the data,
+    so make generate deletes the Job demo-data-run of the run before (with its pod: --cascade=foreground --wait=true) right before it
+    makes the new one, after the closing was confirmed and the Secret made: until then the data is untouched and the Job before
+    describes it (make open may open the shop on it again); from the deletion until the new Job completed there is no Job
+    demo-data-run that completed."""
 
     def with_previous(self, **changes):
-        return self.cluster(jobs={**initial_state()["jobs"], JOB: finished_job(previous=True)}, netpol=CLOSED, **changes)
+        changes.setdefault("netpol", CLOSED)
+        return self.cluster(jobs={**initial_state()["jobs"], JOB: finished_job(previous=True)}, **changes)
 
-    def test_the_previous_run_is_deleted_right_after_tak_before_the_closing(self):
+    def test_the_previous_run_is_deleted_right_before_the_new_job_after_the_closing_and_the_secret(self):
         cluster = self.with_previous()
         result = cluster.run()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(f"delete job {JOB}", cluster.events()[0])
+        events = cluster.events()
+        deleted = events.index(f"delete job {JOB}")
+        self.assertEqual(f"create Job {JOB}", events[deleted + 1])
+        self.assertLess(events.index("delete pods"), deleted)
+        self.assertLess(events.index("create Secret demo-photos"), deleted)
         self.assertNotIn("previous", cluster.state()["jobs"][JOB])
-        deletion = [c for c in cluster.kubectl_calls() if c[2:4] == ["delete", "job"]]
-        self.assertEqual([["-n", "shop", "delete", "job", JOB, "--wait=true", "--ignore-not-found"]], deletion)
+        calls = cluster.kubectl_calls()
+        (at,) = [i for i, c in enumerate(calls) if c[2:4] == ["delete", "job"]]
+        self.assertEqual(["-n", "shop", "delete", "job", JOB, "--cascade=foreground", "--wait=true", "--ignore-not-found"], calls[at])
+        # The active Jobs are read again right before it (another copy of make generate may run its Job).
+        self.assertEqual(["-n", "shop", "get", "jobs", "-o", "json"], calls[at - 1])
+
+    def test_a_closing_that_the_probe_does_not_confirm_keeps_the_previous_run_and_open_opens_on_it_once_the_probe_works(self):
+        cluster = self.with_previous(netpol=None, probes={API_URL: "auto", STORE_URL: "403"})
+        result = cluster.run(GENERATE_CLOSE_WAIT="60")
+        self.assertEqual(1, result.returncode, result.stderr)
+        state = cluster.state()
+        self.assertIsNotNone(state["netpol"])
+        self.assertTrue(state["jobs"].get(JOB, {}).get("previous"), state["events"])
+        self.assertEqual(CLOSING, state["events"])
+        self.assertIn("make open", result.stderr)
+        cluster.change(probes={API_URL: "auto", STORE_URL: "auto"})
+        opened = cluster.open()
+        self.assertEqual(0, opened.returncode, opened.stderr)
+        self.assertIsNone(cluster.state()["netpol"])
+
+    def test_after_the_new_job_was_made_open_refuses_until_it_completed(self):
+        outcomes = {**initial_state()["outcomes"], "demo-data-": {"outcome": "Complete", "duration": 7200, "message": "exit 0: done"}}
+        whole = self.with_previous(outcomes=outcomes)
+        whole.run()
+        kubectl = [c for c in whole.calls() if c["image"] == "registry.k8s.io/kubectl"]
+        (made,) = [i for i, c in enumerate(kubectl) if c["args"][-3:] == ["create", "-f", "-"] and f'"name": "{JOB}"' in c["stdin"]]
+        cluster = self.with_previous(outcomes=outcomes, trigger={"call": made + 1, "action": "KILL"})
+        self.assertNotEqual(0, cluster.run().returncode)
+        cluster.change(trigger=None)
+        refused = cluster.open()
+        self.assertEqual(1, refused.returncode, refused.stderr)
+        self.assertIn(JOB, refused.stderr)
+        self.assertIsNotNone(cluster.state()["netpol"])
+        cluster.advance(7200)
+        opened = cluster.open()
+        self.assertEqual(0, opened.returncode, opened.stderr)
+
+    def test_a_running_job_of_another_copy_right_before_the_deletion_is_refused_without_deleting_it(self):
+        other = dict(finished_job("Running"), other=True)
+        cluster = self.with_previous(inject_job_after={"event": "create Secret demo-photos", "job": other})
+        result = cluster.run()
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn(f"Jobs are active in the namespace shop: {JOB}", result.stderr)
+        self.assertTrue(cluster.state()["jobs"][JOB]["other"])
+        self.assertNotIn(f"delete job {JOB}", cluster.events())
+        self.assertEqual({}, cluster.state()["secrets"])
 
     def test_without_tak_the_previous_run_stays(self):
         cluster = self.with_previous()
@@ -716,7 +767,7 @@ class PreviousRun(Case):
     def test_a_job_of_the_same_name_made_meanwhile_ends_the_run_without_a_second_one(self):
         """The fixed name is the lock: the Job demo-data-run of another make generate is not replaced."""
         other = dict(finished_job("Running"), other=True)
-        cluster = self.with_previous(inject_job_after={"event": "create Secret demo-photos", "job": other})
+        cluster = self.with_previous(inject_job_after={"event": f"delete job {JOB}", "job": other})
         result = cluster.run()
         self.assertEqual(1, result.returncode, result.stderr)
         self.assertIn("could not be created", result.stderr)
@@ -733,10 +784,10 @@ def run_all(runs):
 
 class Interruptions(Case):
     """make generate stopped at every call of kubectl: by INT or TERM (its trap), by KILL (no trap) or by a call that fails (a lost
-    connection). The Job of the new run fails after a minute, so make open, run after it, could only take the success of the run
-    before: a signal before tak changes nothing; after it make open refuses, unless the deletion of the previous run itself never
-    reached the cluster (then nothing changed at all). The Secret of the photo pool is gone after make generate on every path it can catch, and
-    after make open on the others (KILL, or its deletion failed)."""
+    connection). The Job of the new run fails after a minute: a signal before tak changes nothing; before the Job of the run before is
+    deleted the data is untouched, and make open opens the shop on that Job again; once it is deleted make open refuses (the new Job
+    failed). The Secret of the photo pool is gone after make generate on every path it can catch, and after make open on the others
+    (KILL, or its deletion failed)."""
 
     ACTIONS = ("INT", "TERM", "KILL", "fail")
 
@@ -769,17 +820,23 @@ class Interruptions(Case):
             kubectl = self.calls[call - 1]
             with self.subTest(call=call, action=action, kubectl=kubectl):
                 self.assertNotEqual(0, generated.returncode, generated.stderr)
-                if not after["events"]:
-                    # Nothing changed: before tak, or the deletion of the previous run failed (it never reached the cluster).
-                    self.assertTrue(call <= self.before_tak or (action == "fail" and kubectl[2:4] == ["delete", "job"]), generated.stderr)
-                    self.assertTrue(after["jobs"][JOB].get("previous"))
-                    continue
                 # A signal before tak ends it without a change; a read before tak that fails only says less in the question.
-                self.assertTrue(call > self.before_tak or action == "fail", after["events"])
-                self.assertEqual(f"delete job {JOB}", after["events"][0])
-                self.assertEqual(1, opened.returncode, opened.stdout + opened.stderr)
-                self.assertNotIn("delete networkpolicy shop-closed", final["events"], opened.stderr)
-                self.assertFalse(final["jobs"].get(JOB, {}).get("previous"))
+                self.assertTrue(call > self.before_tak or action == "fail" or not after["events"], after["events"])
+                if f"delete job {JOB}" not in after["events"]:
+                    # The data is untouched (no new Job), the Job before describes it: make open opens the shop on it.
+                    self.assertNotIn(f"create Job {JOB}", after["events"])
+                    self.assertTrue(after["jobs"][JOB].get("previous"))
+                    self.assertEqual(0, opened.returncode, opened.stdout + opened.stderr)
+                    self.assertIsNone(final["netpol"])
+                    self.assertTrue(final["jobs"][JOB].get("previous"))
+                else:
+                    events = after["events"]
+                    self.assertLess(events.index("delete pods"), events.index(f"delete job {JOB}"))
+                    self.assertLess(events.index("create Secret demo-photos"), events.index(f"delete job {JOB}"))
+                    self.assertEqual(1, opened.returncode, opened.stdout + opened.stderr)
+                    self.assertNotIn("delete networkpolicy shop-closed", final["events"], opened.stderr)
+                    self.assertIsNotNone(final["netpol"])
+                    self.assertFalse(final["jobs"].get(JOB, {}).get("previous"))
                 if action in ("INT", "TERM") or (action == "fail" and kubectl[2:4] != ["delete", "secret"]):
                     self.assertEqual({}, after["secrets"], generated.stderr)
                 self.assertEqual({}, final["secrets"], opened.stderr)
