@@ -66,7 +66,7 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
 
 1. **Start.** Specyfikacja i plan są na `main`. Sesja zakłada gałąź epiku od `origin/main` (nazwa spoza `epic/*`, np.
    `feat/<epik>`), wypycha ją z pierwszym commitem (np. „Status” planu: epik w toku) i otwiera draft PR do `main`. Po otwarciu PR zapisuje
-   punkt odniesienia: `python3 tools/metrics/metrics.py start <EPIK>` z odczytem limitów subskrypcji (obiekt
+   punkt odniesienia: `python3 tools/metrics/metrics.py start <epik>` (nazwa epiku małymi literami, jak w `/retro <epik>`) z odczytem limitów subskrypcji (obiekt
    z `get_usage`). Opcje, w tym wznowienie epiku w nowej sesji, opisuje `tools/metrics/README.md`.
 2. **Zlecenie zadania.** Zadanie gotowe do startu (zależności zmergowane do gałęzi epiku) dostaje subagent `developer`
    z `isolation: worktree`. Jego worktree startuje z `origin/main`, nie z gałęzi epiku, więc zlecenie każe zacząć od
@@ -102,7 +102,7 @@ Sesja prowadząca pracuje w swoim worktree na gałęzi epiku.
    zadanie, po nim przegląd różnicy (punkt 3 decyzji).
 7. **Koniec.** Sesja aktualizuje specyfikację, usuwa `plan.md`, wpisuje w opis PR odroczone uwagi i `Closes #N` dla
    issues z linii `Issues:` specyfikacji, oznacza PR jako gotowy, zapisuje drugi punkt odniesienia
-   (`python3 tools/metrics/metrics.py done <EPIK>` z drugim odczytem limitów) i pisze raport. Merge do `main` robi
+   (`python3 tools/metrics/metrics.py done <epik>` z drugim odczytem limitów) i pisze raport. Merge do `main` robi
    użytkownik.
 
    Opis końcowego PR ma stałe sekcje o tych nazwach, w tej kolejności: „Zakres” (zadanie, ryzyko, przegląd),
