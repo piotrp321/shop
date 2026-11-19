@@ -302,7 +302,9 @@ transkryptów `--projects`; pomiar epiku z przeszłości w osobnym katalogu stan
 - **Przeglądy:** każde wywołanie `SubagentHandback` w transkrypcie roli `code-reviewer`, `qa-adversarial`,
   `architecture-reviewer`, `ux-reviewer` w przedziale epiku to wpis `reviews` `{task, role, agent_id, at, mode,
   verdict, blocking}`: `mode` `FULL` dla pierwszego raportu transkryptu, `DELTA` dla kolejnych; `verdict` to słowo
-  werdyktu tuż po etykiecie „Werdykt”/„Verdict”, przy kilku etykietach po ostatniej (`verdict_token`), przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
+  werdyktu tuż po etykiecie „Werdykt”/„Verdict” (`verdict_token`; między nimi separatory, pogrubienie i jedno słowo
+  `to`/`jest`/`is`): wygrywa pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia),
+  a gdy żadnej takiej nie ma, ostatnia etykieta w tekście; przyjęte tylko z kontraktu roli (`REVIEW_VERDICTS`),
   `blocking` dla `CHANGES_REQUIRED`, `BLOCK`, `REWORK`; bez rozpoznanego werdyktu (`ux-reviewer`) `null` i pozycja
   `reviews` w `gaps`. `integration`: `work_s`, `attempts` przebiegów `architecture-reviewer`, `qa-adversarial`,
   `ux-reviewer` i `rounds` (największa liczba raportów jednej z tych ról); bez nich `null`. `retries`: `fix` (przeglądy

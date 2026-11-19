@@ -362,8 +362,10 @@ transkryptów z pozycją w `gaps`, że są niepełne (dolna granica; `idle` gór
 `null` dla przeglądu całej zmiany), `role`, `agent_id`, `at`, `mode` (pierwszy raport transkryptu `FULL`, każdy
 kolejny, po wznowieniu subagenta, `DELTA`), `verdict` i `blocking`. Werdykt to słowo werdyktu tuż po etykiecie
 „Werdykt” albo „Verdict” w tekście raportu (między nimi tylko odstępy, dwukropek, myślnik, odwrócone apostrofy,
-pogrubienie i znaki nagłówka; przy kilku etykietach ostatnia, bo raport może przytoczyć werdykt poprzedniej rundy;
-słowo werdyktu bez etykiety się nie liczy), przyjęte tylko z kontraktu roli: `code-reviewer` `PASS` /
+pogrubienie, znaki nagłówka i jedno słowo `to`, `jest` albo `is`). Raport podaje werdykt na początku, więc wygrywa
+pierwsza etykieta na początku linii (po znaczniku listy, nagłówka, cytatu lub pogrubienia), także gdy dalej cytuje
+inne werdykty; gdy żadnej etykiety na początku linii nie ma, liczy się ostatnia etykieta w tekście, bo raport może
+przytoczyć werdykt poprzedniej rundy; słowo werdyktu bez etykiety się nie liczy. Werdykt jest przyjęty tylko z kontraktu roli: `code-reviewer` `PASS` /
 `CHANGES_REQUIRED`, `qa-adversarial` `PASS` / `INVESTIGATE` / `BLOCK`, `architecture-reviewer` `KEEP` / `SIMPLIFY` /
 `REWORK`; blokują `CHANGES_REQUIRED`, `BLOCK` i `REWORK`. Raport bez rozpoznanego werdyktu (dziś zawsze `ux-reviewer`,
 który nie ma werdyktu) ma `verdict` i `blocking` `null` z pozycją `reviews` w `gaps`; przebieg roli przeglądowej bez
