@@ -8,7 +8,7 @@ treściami żądań, zapełnić dysk węzła cache ISR i oślepić Sentry. Epik 
 i ingressu. Każdy limit ma test prób obejścia (zasada projektu dla zadań ustawiających reguły).
 
 Issues: #332, #406, #407, #421
-Zakres: `apps/api/src/Shared/Infrastructure/Http`, `apps/api/src/Cart/Domain`, `apps/api/src/Cart/UI/Http`, `apps/api/src/Ordering`, `apps/api/src/Payment`, `apps/api/config`, `apps/api/migrations`, `apps/api/docker/frankenphp`, `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/tests`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/cart`, `apps/store/src/checkout`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app/api`, `apps/store/app/p`, `apps/store/next.config.ts`, `apps/store/tests`, `infra/keycloak/realms`, `infra/k8s/charts/shop`, `infra/k8s/tests`, `infra/k8s/smoke`, `load/lib`, `e2e/tests`, `apps/api/CLAUDE.md`, `docs/features/hardening/spec.md`, `docs/features/cart/spec.md`, `docs/features/checkout/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `apps/api/src/Shared/UI/Console`, `infra/k8s/README.md`, `docs/features/deploy-ops/spec.md`
+Zakres: `apps/api/src/Shared/Infrastructure/Http`, `apps/api/src/Cart/Domain`, `apps/api/src/Cart/UI/Http`, `apps/api/src/Ordering`, `apps/api/src/Payment`, `apps/api/config`, `apps/api/migrations`, `apps/api/docker/frankenphp`, `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/tests`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/cart`, `apps/store/src/checkout`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app/api`, `apps/store/app/p`, `apps/store/next.config.ts`, `apps/store/tests`, `infra/keycloak/realms`, `infra/k8s/charts/shop`, `infra/k8s/tests`, `infra/k8s/smoke`, `load/lib`, `e2e/tests`, `apps/api/CLAUDE.md`, `docs/features/hardening/spec.md`, `docs/features/cart/spec.md`, `docs/features/checkout/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `apps/api/src/Shared/UI/Console`, `infra/k8s/scripts`, `infra/k8s/README.md`, `docs/features/deploy-ops/spec.md`, `docs/features/async-reliability/spec.md`, `docs/adr/backups-observability.md`, `docs/vision.md`
 
 **Zależności.** HARDENING (#267): `ClientIp`, `RateLimitSubscriber`, limitery w Redisie, przekazywanie
 `CF-Connecting-IP` przez sklep i Cloudflare przed originem (`ipAllowList`). CHECKOUT, PAYMENT, DISCOUNT-CODES,
@@ -26,7 +26,7 @@ Po epiku, przy wartościach produkcyjnych:
 - zgadywanie kodów to najwyżej 20 prób na 15 minut z adresu (dziś ok. 50 prób na sekundę);
 - koszyki gościa: najwyżej 30 nowych i 300 zmian na 15 minut z adresu, a pusty koszyk wygasa po dniu;
 - limity nie przepuszczają setek żądań przy ruchu równoległym (#421);
-- Redis nieużywalny dla API, czyli wyłączone limitery tras, daje alert e-mail najpóźniej po ok. 15 minutach;
+- Redis nieużywalny dla API, czyli wyłączone limitery tras, daje alert e-mail najpóźniej po ok. 17 minutach;
 - równoległe rozpoczęcia płatności jednego zamówienia nie zajmują wątków API;
 - treść żądania ma limit rozmiaru i czasu w API, BFF sklepu i ingressie;
 - cache ISR strony produktu nie zapisuje niczego na dysku poda i ma limit pamięci;
@@ -112,7 +112,7 @@ Wartości i zachowania w tabeli są decyzjami użytkownika.
 
 | ID | Decyzja |
 |---|---|
-| D1 | **Blokada licznika limitera (#421; nowa zależność, „Wymagane przed startem”).** `symfony/lock` (komponent Symfony 8.1, magazyn blokad w tym samym Redisie co limitery, bez nowej zmiennej środowiska) jako `lock_factory` każdego limitera w `prod` i `dev` (`when@test` bez blokady, magazyn w pamięci jednego procesu). Blokada ma czas życia 5 s, a żądanie czeka na nią najwyżej 300 ms (dekorator `LockFactory`, E1). Rywalizacja dłuższa niż 300 ms to 429 jak przekroczenie limitu (rywalizacja nie może otwierać limitu). Błąd Redisa (połączenie, odczyt) przy blokadzie działa jak D7 HARDENING: żądanie przechodzi bez limitu, a log `prod` ma wpis `warning` poza `fingers_crossed`. Blokada jest pierwszym wywołaniem Redisa w limitowanym żądaniu: po jej błędzie żądanie nie woła licznika, więc Redis, który nie odpowiada, wydłuża je najwyżej o limit czasu połączenia i limit czasu odczytu DSN (1 s i 1 s). Limiter nie sprawdza wyniku wzięcia blokady, więc rywalizację zgłasza wyjątek dekoratora; błąd Redisa przy zwalnianiu blokady nie przerywa żądania (`warning`). |
+| D1 | **Blokada licznika limitera (#421; nowa zależność, „Wymagane przed startem”).** `symfony/lock` (komponent Symfony 8.1, magazyn blokad w tym samym Redisie i z tym samym DSN co limitery (`default_redis_provider`), bez nowej zmiennej środowiska) jako `lock_factory` każdego limitera w `prod` i `dev` (`when@test` bez blokady, magazyn w pamięci jednego procesu). Blokada ma czas życia 5 s, a żądanie czeka na nią najwyżej 300 ms (dekorator `LockFactory`, E1). Rywalizacja dłuższa niż 300 ms to 429 jak przekroczenie limitu (rywalizacja nie może otwierać limitu). Błąd Redisa (połączenie, odczyt) przy blokadzie działa jak D7 HARDENING: żądanie przechodzi bez limitu, a log `prod` ma wpis `warning` poza `fingers_crossed`. Blokada jest pierwszym wywołaniem Redisa w limitowanym żądaniu: po jej błędzie żądanie nie woła licznika, więc Redis, który nie odpowiada, wydłuża je najwyżej o limit czasu połączenia i limit czasu odczytu DSN (1 s i 1 s). Limiter nie sprawdza wyniku wzięcia blokady, więc rywalizację zgłasza wyjątek dekoratora; błąd Redisa przy zwalnianiu blokady nie przerywa żądania (`warning`). |
 | D2 | **Klucz nowych limiterów: adres klienta** (`guest:<adres>` z `ClientIp`), także na trasie klienta podglądu kodu, więc przełączanie trasy gościa i klienta nie zeruje licznika. |
 | D3 | **Wartości limiterów (okno przesuwne):** `guest_cart_create` 30 na 15 min (`POST /api/v1/guest-carts`); `guest_cart_write` 300 na 15 min (`POST …/items`, `PUT` i `DELETE …/items/{variantId}` koszyka gościa); `discount_preview` 20 na 15 min (`GET /api/v1/guest-carts/{id}` i `GET /api/v1/me/cart` z parametrem `discountCode`, L3). `when@dev` po 10 000 (stos compose i E2E mają jeden adres sklepu). `when@test`: wartości powyżej liczby żądań danego rodzaju w jednym istniejącym teście (zasada z komentarza `rate_limiter.yaml`); testy limitów wykonują limit + 1 żądań. Uczciwy klient zakłada koszyk raz na przeglądarkę, zmienia go kilkadziesiąt razy i sprawdza kod kilka razy. |
 | D4 | **Osobne komunikaty odrzucenia kodu.** Podgląd i 409 zamówienia zachowują `invalid`, `used_up` i `below_minimum` z tekstami jak dziś. Wspólny komunikat nie utrudnia zgadywania; ogranicza je liczba prób (L3) i losowość kodu („Zgadywanie kodów rabatowych”). |
@@ -127,7 +127,7 @@ Wartości i zachowania w tabeli są decyzjami użytkownika.
 | D13 | **Błędny token bez zdarzenia Sentry i bez zrzutu logów (SA-18):** logi weryfikacji tokenu dostępu trafiają do kanału Monologa `security`, który pomija handler `sentry` i który nie uruchamia zrzutu `fingers_crossed` w `prod` (osobny handler JSON od `warning`, jak kanał `cache`). |
 | D14 | **Sklep przekazuje adres klienta w każdym wywołaniu API koszyka** (`forwardingClientIp`, jak kasa i płatność), bo L2 i L3 liczą po adresie. Bez tego w `prod` wszystkie koszyki dzieliłyby jeden limit adresu sklepu. |
 | D15 | **Pusty koszyk gościa wygasa po 1 dniu (#406):** koszyk gościa bez linii ma `expiresAt` = ostatnia zmiana + 1 dzień, z liniami 30 dni jak dziś; reguła w `Cart::touch` i przy założeniu. Usuwa go istniejące `cart:purge-expired`. |
-| D16 | **Alert wyłączonych limiterów.** Fail open limiterów ma dawać alert istniejącym monitoringiem. Reguły alertów widzą tylko metryki klastra, a `/health` API nie zależy od Redisa, więc sygnałem jest wynik CronJoba, jak przy kopiach: CronJob `rate-limit-check` co 5 minut uruchamia w obrazie i ze środowiskiem `api` komendę, która zapisuje, odczytuje i usuwa klucz kontrolny tym samym połączeniem Redisa (DSN, limity czasu), którego używają liczniki i blokady limiterów, bez warstwy fail open; błąd albo limit czasu kończy ją kodem różnym od 0. Reguła `RateLimitsOff` w `00-alerts.yaml` odpala, gdy od 15 minut nie ma udanego przebiegu, i gaśnie po następnym udanym. Bez nowej usługi, zależności i metryk aplikacji. Alert z treści logów (pojedyncze błędy przy działającym Redisie) należy do OPS-GUARDS (#775). |
+| D16 | **Alert wyłączonych limiterów.** Fail open limiterów ma dawać alert istniejącym monitoringiem. Reguły alertów widzą tylko metryki klastra, a `/health` API nie zależy od Redisa, więc sygnałem jest wynik CronJoba, jak przy kopiach: CronJob `rate-limit-check` co 5 minut uruchamia w obrazie i ze środowiskiem `api` komendę, która zapisuje, odczytuje i usuwa klucz kontrolny połączeniem z DSN limiterów (`default_redis_provider`, wspólny dla liczników i blokad, D1), bez warstwy fail open; błąd albo limit czasu kończy ją kodem różnym od 0, bez wyjątku i bez zdarzenia Sentry. Reguła `RateLimitsOff` w `00-alerts.yaml` odpala, gdy od 17 minut nie ma udanego przebiegu, i gaśnie po następnym udanym. Bez nowej usługi, zależności i metryk aplikacji. Alert z treści logów (pojedyncze błędy przy działającym Redisie) należy do OPS-GUARDS (#775). |
 
 ## Założenia wspólne limitów
 
@@ -170,7 +170,7 @@ porównać z liczbą odpowiedzi 429; liczniki 429 należą do OPS-GUARDS (#775).
 
 | Mechanizm | Stan | Żądania równoległe | Wiele replik API | Ponowienie żądania | Redis niedostępny |
 |---|---|---|---|---|---|
-| Limitery tras (L1–L3 i limity HARDENING) | Redis | blokada klucza (D1): przyjętych jest najwyżej tyle, ile wynosi limit | licznik i blokada są w Redisie wspólnym dla replik | każde żądanie zużywa limit, także odrzucone walidacją; żądanie odrzucone 429 go nie zużywa, więc ponawianie nie wydłuża blokady | limit nie działa (fail open), `warning` w logu; alert `RateLimitsOff` po ok. 15 min (L12) i `WorkloadNotReady` po 10 min, gdy pod Redisa nie jest gotowy (HARDENING D7) |
+| Limitery tras (L1–L3 i limity HARDENING) | Redis | blokada klucza (D1): przyjętych jest najwyżej tyle, ile wynosi limit | licznik i blokada są w Redisie wspólnym dla replik | każde żądanie zużywa limit, także odrzucone walidacją; żądanie odrzucone 429 go nie zużywa, więc ponawianie nie wydłuża blokady | limit nie działa (fail open), `warning` w logu; alert `RateLimitsOff` po 12–17 min (L12) i `WorkloadNotReady` po 10 min, gdy pod Redisa nie jest gotowy (HARDENING D7) |
 | Wielkość zamówienia gościa (L5) | brak (linie koszyka) | każde złożenie sprawdza swój koszyk pod jego blokadą | nie zależy od repliki | powtórzenie z tym samym kluczem zwraca istniejące zamówienie | działa |
 | Nieopłacone zamówienia (L6) | PostgreSQL (tabela roszczeń) | blokady doradcze adresu i tożsamości (D8) | blokady i tabela są w jednej bazie | powtórzenie z tym samym kluczem wraca przed limitem (200) | działa |
 | Rozpoczęcie płatności (L7) | PostgreSQL | próba blokady bez czekania, 409 | blokada jest w bazie | w trakcie pierwszego rozpoczęcia 409, po nim działa jak dziś | działa |
@@ -524,42 +524,60 @@ to kont pracowników (łagodzi TOTP).
 **Stan.** Przy błędzie Redisa limitery tras przepuszczają ruch (HARDENING D7, D1). Widać to w logu (`warning`),
 a alert `WorkloadNotReady` przychodzi po 10 minutach, ale tylko gdy pod Redisa nie jest gotowy (sonda
 `redis-cli ping`). `/health` API nie zależy od Redisa, a reguły alertów widzą tylko metryki klastra
-(`infra/k8s/charts/shop/templates/00-alerts.yaml`). Redis gotowy, ale nieużywalny dla API (hasło odrzucone po zmianie
-sekretu, limity czasu, odrzucane zapisy) wyłącza więc limity bez alertu.
+(`infra/k8s/charts/shop/templates/00-alerts.yaml`). Redis gotowy, ale nieużywalny dla API wyłącza więc limity bez
+alertu: Redis odrzuca zapisy po nieudanym zapisie na pełny wolumen (`MISCONF`; `ping` nadal przechodzi) albo
+połączenia między podami nie działają (sieć, DNS). Redis nie ma hasła, więc błąd uwierzytelnienia nie występuje.
 
 **Wymagane.** D16.
-- **Komenda konsoli API** sprawdza Redisa tak, jak używa go limiter: tym samym połączeniem (DSN i jego limity czasu)
-  zapisuje klucz kontrolny z czasem życia, odczytuje go i usuwa. Błąd połączenia, limit czasu, błąd odpowiedzi
-  (odrzucone uwierzytelnienie, odrzucony zapis) albo inna odczytana wartość kończy ją kodem różnym od 0 z przyczyną
-  na wyjściu, bez DSN i hasła. Klucz kontrolny jest poza kluczami liczników i blokad: komenda nie zużywa żadnego
-  limitu.
-- **CronJob `rate-limit-check`** w chartcie: co 5 minut, obraz, zmienne i sekret kontenera `api`, bez równoległych
-  przebiegów (`concurrencyPolicy: Forbid`), bez ponowień, z limitem czasu Joba 60 s i historią jednego Joba udanego
-  i jednego nieudanego. Jest w każdym profilu chartu; compose nie ma odpowiednika (funkcja serwera, jak kopie).
+- **Komenda konsoli API** sprawdza Redisa tak, jak używa go limiter: połączeniem z DSN `default_redis_provider`
+  (z jego limitami czasu) zapisuje klucz kontrolny z czasem życia, odczytuje go i usuwa. Błąd połączenia, limit
+  czasu, błąd odpowiedzi (odrzucony zapis) albo inna odczytana wartość kończy ją kodem różnym od 0 z przyczyną na
+  wyjściu. Komenda łapie błąd sama: nie rzuca wyjątku i nie tworzy zdarzenia Sentry. Klucz kontrolny jest poza
+  kluczami liczników i blokad: komenda nie zużywa żadnego limitu.
+- **CronJob `rate-limit-check`** w chartcie, z parametrami CronJobów sprawdzających z ASYNC-RELIABILITY (W9): co
+  5 minut, `concurrencyPolicy: Forbid`, `startingDeadlineSeconds: 240`, `backoffLimit: 0`,
+  `activeDeadlineSeconds: 60`, historia 1 udany i 3 nieudane, zasoby `job`, środowisko `shop.apiEnv`. Harmonogram
+  jest w wartościach chartu, jak `cartPurge`. CronJob jest w każdym profilu chartu; compose nie ma odpowiednika
+  (funkcja serwera, jak kopie).
 - **Reguła `RateLimitsOff`** (`severity: warning`) w `00-alerts.yaml`, przy `alerts.enabled`: brak udanego przebiegu
-  `rate-limit-check` od 15 minut albo brak jego metryki przez 30 minut. Jedna instancja alertu bez względu na liczbę
-  nieudanych Jobów; gaśnie po następnym udanym przebiegu. Metryka
-  (`kube_cronjob_status_last_successful_time`) jest już na liście przepuszczanych. Powiadomienie idzie istniejącą
-  drogą (reguła zarządzana przez Grafanę, punkt kontaktowy e-mail).
-- **Runbook** (`infra/k8s/README.md`): reakcja na `RateLimitsOff` (log Joba przez `status`, stan Redisa, sekret)
-  i wyciszenie razem z `WorkloadNotReady` na czas `restore` i planowanych prac.
+  `rate-limit-check` od 17 minut albo brak jego metryki przez 30 minut (`cronjobMissing` z progiem jako parametrem;
+  alerty kopii zostają przy 26 h). Jedna instancja alertu bez względu na liczbę nieudanych Jobów; gaśnie po
+  następnym udanym przebiegu. Metryka (`kube_cronjob_status_last_successful_time`) jest już na liście
+  przepuszczanych. Powiadomienie idzie istniejącą drogą (reguła zarządzana przez Grafanę, punkt kontaktowy e-mail).
+  Próg to trzy okresy harmonogramu i 2 minuty zapasu na start poda.
+- **Odtworzenie i generator.** `restore.sh` nie odmawia z powodu aktywnego Joba `rate-limit-check` (limit czasu
+  60 s): wstrzymuje CronJob razem z `cart-purge-expired` i `backup`, czeka na jego aktywny Job przed skalowaniem do
+  zera i przywraca go jak pozostałe, także po przerwanej próbie. Test dymny sprawdza go w pętli CronJobów odmowy
+  odtworzenia. Sprawdzenie aktywnych Jobów w `generate` (DEMO-SCALE) pomija Job `rate-limit-check`; dopisuje to
+  epik zmergowany do `main` jako drugi.
+- **Runbook** (`infra/k8s/README.md`): reakcja na `RateLimitsOff` (log Joba przez `status`, stan Redisa i jego
+  wolumenu) i wyciszenie razem z `WorkloadNotReady` na czas `restore` (CronJob jest wtedy wstrzymany)
+  i planowanych prac.
 
-Od początku awarii do alertu mija od 10 do 15 minut i czas ewaluacji reguły.
+Od początku awarii do alertu mija od 12 do 17 minut i czas ewaluacji reguły.
 
 **Kryteria akceptacji.**
 1. Integracyjny na prawdziwym Redisie: komenda kończy się kodem 0 i nie zmienia licznika żadnego limitera; przy
    Redisie, który odrzuca połączenia, i przy Redisie, który nie odpowiada, kończy się kodem różnym od 0 w czasie
    limitów DSN. Raport zadania pokazuje fazę RED.
-2. Jednostkowy: błąd odpowiedzi Redisa (odrzucone uwierzytelnienie, odrzucony zapis) i inna odczytana wartość dają
-   kod różny od 0; wyjście nie zawiera DSN ani hasła.
-3. Render chartu: CronJob `rate-limit-check` ma obraz, zmienne i sekret kontenera `api`, harmonogram co 5 minut,
-   `concurrencyPolicy: Forbid`, brak ponowień i limit czasu; w `prod` nie jest wstrzymany; test budżetu zasobów
-   węzła przechodzi.
-4. `promtool test rules`: `RateLimitsOff` milczy przy udanych przebiegach co 5 minut i po jednym nieudanym, po którym
-   następny się udał; odpala jedną instancją, gdy ostatni sukces jest starszy niż 15 minut, także przy kilku
-   nieudanych Jobach; gaśnie po następnym udanym; odpala przy braku metryki przez 30 minut.
-5. Test dymny na k3d: Job utworzony z CronJoba `rate-limit-check` kończy się sukcesem na Redisie klastra.
-6. `make -C apps/api check` i `test` oraz `make -C infra/k8s check` przechodzą.
+2. Jednostkowy: błąd odpowiedzi Redisa (odrzucony zapis) i inna odczytana wartość dają kod różny od 0 z przyczyną na
+   wyjściu, bez wyjątku; funkcjonalny z licznikiem zdarzeń transportu Sentry: niepowodzenie komendy nie daje
+   zdarzenia.
+3. Render chartu: CronJob `rate-limit-check` ma obraz i środowisko kontenera `api`, zasoby `job`, harmonogram co
+   5 minut z wartości chartu (schemat wartości odrzuca brak harmonogramu), `concurrencyPolicy: Forbid`,
+   `backoffLimit: 0` i limity czasu; w `prod` nie jest wstrzymany.
+4. `promtool test rules`: `RateLimitsOff` milczy przy udanych przebiegach co 5 minut, po jednym nieudanym, po którym
+   następny się udał, i po dwóch nieudanych, gdy trzeci kończy się sukcesem z opóźnieniem do 2 minut; odpala jedną
+   instancją, gdy ostatni sukces jest starszy niż 17 minut, także przy kilku nieudanych Jobach; gaśnie po następnym
+   udanym; odpala przy braku metryki przez 30 minut. Alerty kopii zachowują próg 26 h.
+5. Selftest (`infra/k8s/scripts/selftest.sh`) ma przypadek dla `RateLimitsOff` na wzór
+   `backup_missing_without_absent`: reguła bez gałęzi braku metryki nie przechodzi `check`.
+6. Test na atrapach (`test_restore_script.py`): `restore.sh` nie odmawia przy aktywnym Jobie `rate-limit-check`,
+   wstrzymuje CronJob, czeka na jego Job i przywraca go także po przerwanej próbie; aktywny Job innego CronJoba
+   nadal daje odmowę.
+7. Test dymny na k3d: Job utworzony z CronJoba `rate-limit-check` kończy się sukcesem na Redisie klastra, a odmowa
+   odtworzenia nie zależy od tego, czy Job `rate-limit-check` akurat trwa.
+8. `make -C apps/api check` i `test` oraz `make -C infra/k8s check` przechodzą.
 
 **Skutek dla klienta.** Brak. Koszt: jeden krótki pod z obrazem `api` co 5 minut.
 
@@ -575,9 +593,10 @@ Od początku awarii do alertu mija od 10 do 15 minut i czas ewaluacji reguły.
   wdrożeniu, które zawiera L9, i po weryfikacji L9 na serwerze (niżej). Jedno wdrożenie może zawierać oba epiki.
   Zgoda użytkownika na `generate` nie zastępuje tego warunku.
 - **Weryfikacja L9 na serwerze**, po zgodzie użytkownika jak pozostałe sprawdzenia po wdrożeniu: wdrożona rewizja
-  zawiera L9 (`make -C infra/k8s status`); co najmniej 4000 unikalnych adresów stron produktu (istniejące
-  i nieistniejące slugi o poprawnym formacie; bez L9 to ok. 0,5 GiB na dysku) nie daje widocznego przyrostu zajętości
-  dysku węzła w Grafana Cloud ani restartu albo eksmisji poda sklepu. Wynik trafia do komentarza w #181.
+  zawiera L9 (`make -C infra/k8s status`); 4000 żądań `curl` przez `https://<domena>/p/<slug>` z unikalnymi,
+  nieistniejącymi slugami o poprawnym formacie, najwyżej 10 na sekundę (bez L9 to ok. 560 MB wpisów 404 na dysku).
+  Wynik jest dobry, gdy wolne miejsce na dysku węzła (`node_filesystem_avail_bytes` w Grafana Cloud) spada w czasie
+  próby o mniej niż 200 MB, a pod sklepu jest ten sam i bez restartu (`status`). Wynik trafia do komentarza w #181.
 - **Po L9** ruch robotów nie zużywa dysku, a pamięć cache ma limit. Zostaje koszt CPU renderu stron spoza cache
   i listingów bez cache HTML: PERFORMANCE (#781).
 - **Wdrożenie epiku** nie zaczyna się w trakcie `generate` (faza w zapisie stanu `demo-data-state` inna niż `idle`):
@@ -605,10 +624,11 @@ z tabeli wybiera sklep według miejsca, jak przy kasie.
 
 | Sytuacja | Wynik |
 |---|---|
-| Redis niedostępny (limiter albo blokada) | żądanie bez limitu, `warning` w logu `prod` (D1); alert `RateLimitsOff` po 10–15 min (L12) |
-| Redis gotowy, ale nieużywalny dla API (odrzucone hasło, odrzucane zapisy) | jak wyżej; `WorkloadNotReady` milczy, `RateLimitsOff` odpala (L12) |
-| Awaria Redisa krótsza niż ok. 10 minut albo pojedyncze błędy przy działającym Redisie | bez alertu, `warning` w logu (L12) |
+| Redis niedostępny (limiter albo blokada) | żądanie bez limitu, `warning` w logu `prod` (D1); alert `RateLimitsOff` po 12–17 min (L12) |
+| Redis gotowy, ale nieużywalny dla API (odrzucane zapisy, sieć między podami) | jak wyżej; `WorkloadNotReady` milczy, `RateLimitsOff` odpala (L12) |
+| Awaria Redisa krótsza niż ok. 12 minut albo pojedyncze błędy przy działającym Redisie | bez alertu, `warning` w logu (L12) |
 | CronJob `rate-limit-check` wstrzymany, usunięty albo bez metryki | alert `RateLimitsOff` (L12) |
+| `restore` albo `generate` przy trwającym Jobie `rate-limit-check` | bez odmowy z tego powodu; `restore` wstrzymuje CronJob (L12) |
 | Redis nie odpowiada (połączenie albo odczyt po czasie) | żądanie bez limitu, dłuższe najwyżej o limit czasu połączenia i odczytu DSN (D1) |
 | Blokada limitera zajęta dłużej niż 300 ms | 429 (D1) |
 | Proces przerwany z blokadą limitera | klucz wolny najpóźniej po 5 s (D1) |
@@ -626,8 +646,8 @@ z tabeli wybiera sklep według miejsca, jak przy kasie.
   (wartości `when@test`), integracyjne na prawdziwym Redisie (L1, L12) i PostgreSQL z procesami równoległymi (L6, L7),
   test konfiguracji `prod` i `dev` (`RateLimitConfigurationTest`), testy kanałów Monologa (L10).
 - Sklep: Vitest dla L4 i sluga z L9; test i pomiar pamięci na buildzie produkcyjnym dla L9.
-- Chart: testy renderu (`infra/k8s/tests`) dla L8, L11 i L12; `promtool test rules` dla L12; test plików k6 (L6);
-  test dymny dla L8 i L12.
+- Chart: testy renderu (`infra/k8s/tests`) dla L8, L11 i L12; `promtool test rules`, selftest i test skryptu
+  odtworzenia na atrapach dla L12; test plików k6 (L6); test dymny dla L8 i L12.
 - E2E: `checkout-guest-limits.spec.ts` (L5), `request-body-limit.spec.ts` (L8), `registration.spec.ts` (L11);
   wszystkie istniejące scenariusze przechodzą na wartościach `when@dev`.
 - Każde zadanie zmieniające regułę ma w raporcie wyniki fazy RED i GREEN; zmiany konfiguracji i infrastruktury
@@ -653,8 +673,11 @@ przeczy nowemu zachowaniu:
   `infra/k8s/environments/prod/values.yaml` i `load/values.yaml`, opis testu
   `infra/k8s/tests/test_ephemeral_storage.py`, `docs/features/demo-scale/spec.md` (ryzyko cache ISR na dysku i warunek
   kolejności): cache ISR nie rośnie na dysku, a limit zostaje jako zabezpieczenie (L9).
-- `docs/features/hardening/spec.md`: D1 (bez `symfony/lock`), limity koszyka poza zakresem (L1–L3); D16 (L5, L6).
-- `docs/features/deploy-ops/spec.md`: lista i liczba reguł alertów (L12).
+- `docs/features/hardening/spec.md`: D1 (bez `symfony/lock`), limity koszyka poza zakresem (L1–L3); D7 i ryzyko
+  fail open: sygnałem jest też alert `RateLimitsOff` (L12); D16 (L5, L6).
+- `docs/features/deploy-ops/spec.md`, `docs/adr/backups-observability.md`, `docs/vision.md`: lista i liczba reguł
+  alertów; `docs/features/deploy-ops/spec.md` także CronJoby wstrzymywane przez `restore` (L12).
+- `docs/features/async-reliability/spec.md`: liczba reguł alertów w „Stanie” i w W9 (L12).
 - `infra/k8s/README.md`: reakcja na `RateLimitsOff` i jego wyciszanie (L12).
 - `docs/features/discount-codes/spec.md`: limit podglądu poza zakresem i ryzyko zgadywania (L3); D7, kolejność blokad
   (L6).
@@ -687,8 +710,8 @@ przeczy nowemu zachowaniu:
 - Dane w skali trafiają na serwer demo dopiero po wdrożeniu i weryfikacji L9; do tego czasu DEMO-SCALE nie uruchamia
   tam `generate` z profilem `medium` ani `server` („Wdrożenie i kolejność z DEMO-SCALE”).
 - `RateLimitsOff` sprawdza Redisa z osobnego poda z konfiguracją `api`, nie z podów `api`, co 5 minut: awaria krótsza
-  niż ok. 10 minut i pojedyncze błędy przy działającym Redisie zostają tylko w logu (alerty z logów: OPS-GUARDS,
-  #775). Po pierwszym wdrożeniu alert może odpalić do pierwszego udanego przebiegu (do 5 minut), jak `BackupMissing`
+  niż ok. 12 minut, pojedyncze błędy przy działającym Redisie i błąd sieci dotyczący tylko poda `api` zostają tylko
+  w logu (alerty z logów: OPS-GUARDS, #775). Po pierwszym wdrożeniu alert może odpalić do pierwszego udanego przebiegu (do 5 minut), jak `BackupMissing`
   przed pierwszą kopią.
 - Lista rewalidowanych tagów Next jest w pamięci procesu sklepu bez limitu, poza `cacheMaxMemorySize`: rośnie o każdy
   tag produktu rewalidowany od startu poda, jak dziś. Jej wielkość na danych w skali nie jest zmierzona

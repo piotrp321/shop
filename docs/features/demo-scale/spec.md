@@ -371,8 +371,9 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
 
 1. Wdrożenie `main` (polecenie i zatwierdzenie użytkownika); `status`.
 2. Użytkownik podaje stan automatycznej kopii OVH; trafia do raportu jako fakt (U3).
-3. `generate PROFILE=medium REPLACE=seed` (zgoda). Eksport logu i metryk z Grafana Cloud, porównanie z logiem
-   kontenera (pierwsza i ostatnia linia, liczba linii `[OK]`), raport `medium` na serwerze. Przegląd sklepu i panelu.
+3. `generate PROFILE=medium REPLACE=seed` (zgoda), po wdrożeniu i weryfikacji L9 z „Wymagane przed startem”.
+   Eksport logu i metryk z Grafana Cloud, porównanie z logiem kontenera (pierwsza i ostatnia linia, liczba linii
+   `[OK]`), raport `medium` na serwerze. Przegląd sklepu i panelu.
 4. Analiza przed `server`: czas `medium` na serwerze × 10 wobec limitu 24 h, rozmiary `medium` × 10 (produkty)
    i × 5 (zamówienia) wobec wolnego miejsca, szczyty pamięci Postgresa i Elasticsearcha wobec limitów, restarty
    kontenerów. To projekcja do decyzji użytkownika, nie weryfikacja.

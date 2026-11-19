@@ -13,6 +13,8 @@ Prowadzenie:
   (specyfikacja, „Wdrożenie i kolejność z DEMO-SCALE”).
 - ABUSE-LIMITS-7, ABUSE-LIMITS-9 i ABUSE-LIMITS-10 zmieniają chart, a ABUSE-LIMITS-8 komentarze wartości `prod`
   i `load`; te pliki zmienia też DEMO-SCALE. Epik zmergowany do `main` jako drugi robi rebase.
+- Epik zmergowany do `main` jako drugi dopisuje w `generate` (DEMO-SCALE) pominięcie aktywnego Joba
+  `rate-limit-check` przy sprawdzeniu aktywnych Jobów (specyfikacja, L12).
 - DEMO-SCALE uruchamia `generate` z profilem `medium` albo `server` na serwerze dopiero po wdrożeniu i weryfikacji L9
   (specyfikacja, „Wdrożenie i kolejność z DEMO-SCALE”); wynik weryfikacji trafia do komentarza w #181.
 - Kryteria w tabeli „Kryteria akceptacji” opisu PR mają numer sekcji i kryterium specyfikacji, np. `L2.3`.
@@ -45,7 +47,7 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
     {
       "id": "ABUSE-LIMITS-1",
       "title": "Limitery API: blokada licznika, koszyk gościa i podgląd kodu rabatowego",
-      "scope": "apps/api (spec: L1, L2, L3, D1–D3, D15, „Wymagane przed startem” E1): symfony/lock (zgoda użytkownika z „Wymaganych przed startem”) z magazynem w Redisie i dekoratorem LockFactory (TTL 5 s, czekanie najwyżej 300 ms, rywalizacja to 429, rywalizacja zgłaszana wyjątkiem, bo limiter nie sprawdza wyniku acquire; błąd Redisa przy wzięciu i przy zwolnieniu blokady fail open z warning, bez wywołania licznika po błędzie wzięcia) jako lock_factory wszystkich limiterów w prod i dev; nowe limitery guest_cart_create, guest_cart_write, discount_preview w config/packages/rate_limiter.yaml z kluczem adresu klienta; warunek parametru discountCode w mechanizmie limiterów tras (RateLimit, RateLimitSubscriber); trasy GuestCartController i CustomerCartController (odczyt z kodem); pusty koszyk gościa wygasa po 1 dniu (Cart::touch, założenie); 429 w OpenAPI tras koszyka, eksport openapi.json i klient TS sklepu. Dokumentacja: reguła dla agentów w apps/api/CLAUDE.md, jedna linia: „Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (RateLimit::ROUTE_DEFAULT, wartości prod, dev i test) i test prób obejścia.”; zdanie apps/api/CLAUDE.md o limiterach bez symfony/lock; zdania specyfikacji, którym zadanie zmienia zachowanie: hardening spec (D1 bez symfony/lock, limity koszyka poza zakresem), discount-codes spec (limit podglądu poza zakresem, ryzyko zgadywania), cart spec (decyzja 5: czas życia, rate limiting koszyków poza zakresem). Definicje serwisów blokady w config/packages/lock.yaml, nie w services.yaml; błąd blokady loguje warning w kanale cache, więc monolog.yaml bez zmian. Nie: BFF i UI sklepu (ABUSE-LIMITS-2), komunikaty odrzucenia kodu (D4 bez zmian).",
+      "scope": "apps/api (spec: L1, L2, L3, D1–D3, D15, „Wymagane przed startem” E1): symfony/lock (zgoda użytkownika z „Wymaganych przed startem”) z magazynem w Redisie (ten sam DSN default_redis_provider co liczniki) i dekoratorem LockFactory (TTL 5 s, czekanie najwyżej 300 ms, rywalizacja to 429, rywalizacja zgłaszana wyjątkiem, bo limiter nie sprawdza wyniku acquire; błąd Redisa przy wzięciu i przy zwolnieniu blokady fail open z warning, bez wywołania licznika po błędzie wzięcia) jako lock_factory wszystkich limiterów w prod i dev; nowe limitery guest_cart_create, guest_cart_write, discount_preview w config/packages/rate_limiter.yaml z kluczem adresu klienta; warunek parametru discountCode w mechanizmie limiterów tras (RateLimit, RateLimitSubscriber); trasy GuestCartController i CustomerCartController (odczyt z kodem); pusty koszyk gościa wygasa po 1 dniu (Cart::touch, założenie); 429 w OpenAPI tras koszyka, eksport openapi.json i klient TS sklepu. Dokumentacja: reguła dla agentów w apps/api/CLAUDE.md, jedna linia: „Każda nowa publiczna trasa zapisu bez logowania dostaje limiter (RateLimit::ROUTE_DEFAULT, wartości prod, dev i test) i test prób obejścia.”; zdanie apps/api/CLAUDE.md o limiterach bez symfony/lock; zdania specyfikacji, którym zadanie zmienia zachowanie: hardening spec (D1 bez symfony/lock, limity koszyka poza zakresem, D7 i ryzyko fail open: sygnałem jest też alert RateLimitsOff z L12), discount-codes spec (limit podglądu poza zakresem, ryzyko zgadywania), cart spec (decyzja 5: czas życia, rate limiting koszyków poza zakresem). Definicje serwisów blokady w config/packages/lock.yaml, nie w services.yaml; błąd blokady loguje warning w kanale cache, więc monolog.yaml bez zmian. Nie: BFF i UI sklepu (ABUSE-LIMITS-2), komunikaty odrzucenia kodu (D4 bez zmian).",
       "acceptance_criteria": [
         "Raport zawiera wynik eksperymentu E1 (zachowanie blokady RateLimiter 8.1) przed implementacją.",
         "Integracyjny na prawdziwym Redisie: co najmniej 20 równoległych procesów do limitera o limicie L daje najwyżej L przyjętych; raport pokazuje fazę RED przy lock_factory: null.",
@@ -377,13 +379,15 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
     {
       "id": "ABUSE-LIMITS-10",
       "title": "Alert wyłączonych limiterów: sprawdzenie Redisa CronJobem i reguła RateLimitsOff",
-      "scope": "apps/api i chart (spec: L12, D16): komenda konsoli w apps/api/src/Shared/UI/Console, która tym samym połączeniem Redisa co liczniki i blokady limiterów (DSN i jego limity czasu, wstrzyknięcie atrybutem, bez zmian w services.yaml) zapisuje, odczytuje i usuwa klucz kontrolny z czasem życia poza kluczami limiterów, bez warstwy fail open: każdy błąd, limit czasu albo inna wartość to kod wyjścia różny od 0 z przyczyną bez DSN i hasła; CronJob rate-limit-check w nowym szablonie chartu (co 5 minut, obraz, zmienne i sekret kontenera api, concurrencyPolicy Forbid, bez ponowień, limit czasu 60 s, historia 1 i 1, we wszystkich profilach); reguła RateLimitsOff (severity warning) w 00-alerts.yaml przy alerts.enabled: brak udanego przebiegu od 15 minut albo brak metryki przez 30 minut, jedna instancja, opis po polsku z odesłaniem do runbooka; scenariusze promtool w infra/k8s/tests/alerts; krok testu dymnego. Dokumentacja: infra/k8s/README.md (reakcja na RateLimitsOff, wyciszenie razem z WorkloadNotReady przy restore i pracach), docs/features/deploy-ops/spec.md (lista i liczba reguł alertów). Nie: alerty z treści logów, metryki aplikacji, zmiana sondy /health ani sondy Redisa, zmiana wartości środowisk (infra/k8s/environments).",
+      "scope": "apps/api i chart (spec: L12, D16): komenda konsoli w apps/api/src/Shared/UI/Console, która połączeniem z DSN default_redis_provider (wspólnym dla liczników i blokad limiterów, z jego limitami czasu; wstrzyknięcie atrybutem, bez zmian w services.yaml) zapisuje, odczytuje i usuwa klucz kontrolny z czasem życia poza kluczami limiterów, bez warstwy fail open: każdy błąd, limit czasu albo inna wartość to kod wyjścia różny od 0 z przyczyną na wyjściu, bez wyjątku i bez zdarzenia Sentry; CronJob rate-limit-check w nowym szablonie chartu z parametrami jak W9 ASYNC-RELIABILITY (co 5 minut, harmonogram w wartościach chartu i schemacie jak cartPurge, Forbid, startingDeadlineSeconds 240, backoffLimit 0, activeDeadlineSeconds 60, historia 1 i 3, zasoby job, środowisko shop.apiEnv, we wszystkich profilach); reguła RateLimitsOff (severity warning) w 00-alerts.yaml przy alerts.enabled: cronjobMissing z progiem jako parametrem (17 minut; alerty kopii zostają przy 26 h), jedna instancja, opis po polsku z odesłaniem do runbooka; scenariusze promtool w infra/k8s/tests/alerts i przypadek selftest; restore.sh nie odmawia przy aktywnym Jobie rate-limit-check, wstrzymuje CronJob razem z cart-purge-expired i backup, czeka na jego Job i przywraca go także po przerwanej próbie; krok testu dymnego w scripts/smoke.sh (Job z CronJoba, pętla CronJobów odmowy odtworzenia). Dokumentacja: infra/k8s/README.md (reakcja na RateLimitsOff, wyciszenie razem z WorkloadNotReady przy restore i pracach), lista i liczba reguł alertów w docs/features/deploy-ops/spec.md (także CronJoby wstrzymywane przez restore), docs/adr/backups-observability.md i docs/vision.md, liczba reguł w docs/features/async-reliability/spec.md („Stan” i W9). Nie: alerty z treści logów, metryki aplikacji, zmiana sondy /health ani sondy Redisa, zmiana wartości środowisk (infra/k8s/environments), zdanie D7 specyfikacji HARDENING (ABUSE-LIMITS-1), sprawdzenie Jobów w generate DEMO-SCALE (notatka w „Prowadzeniu”).",
       "acceptance_criteria": [
         "Integracyjny na prawdziwym Redisie: komenda kończy się kodem 0 i nie zmienia licznika żadnego limitera; przy Redisie, który odrzuca połączenia, i przy Redisie, który nie odpowiada, kończy się kodem różnym od 0 w czasie limitów DSN; raport pokazuje fazę RED.",
-        "Jednostkowy: błąd odpowiedzi Redisa (odrzucone uwierzytelnienie, odrzucony zapis) i inna odczytana wartość dają kod różny od 0; wyjście nie zawiera DSN ani hasła.",
-        "Render chartu: CronJob rate-limit-check ma obraz, zmienne i sekret kontenera api, harmonogram co 5 minut, concurrencyPolicy Forbid, brak ponowień i limit czasu; w prod nie jest wstrzymany; test budżetu zasobów węzła przechodzi.",
-        "promtool test rules: RateLimitsOff milczy przy udanych przebiegach co 5 minut i po jednym nieudanym, po którym następny się udał; odpala jedną instancją, gdy ostatni sukces jest starszy niż 15 minut, także przy kilku nieudanych Jobach; gaśnie po następnym udanym; odpala przy braku metryki przez 30 minut.",
-        "Test dymny na k3d: Job utworzony z CronJoba rate-limit-check kończy się sukcesem na Redisie klastra.",
+        "Jednostkowy: błąd odpowiedzi Redisa (odrzucony zapis) i inna odczytana wartość dają kod różny od 0 z przyczyną na wyjściu, bez wyjątku; funkcjonalny z licznikiem zdarzeń transportu Sentry: niepowodzenie komendy nie daje zdarzenia.",
+        "Render chartu: CronJob rate-limit-check ma obraz i środowisko kontenera api, zasoby job, harmonogram co 5 minut z wartości chartu (schemat wartości odrzuca brak harmonogramu), concurrencyPolicy Forbid, backoffLimit 0 i limity czasu; w prod nie jest wstrzymany.",
+        "promtool test rules: RateLimitsOff milczy przy udanych przebiegach co 5 minut, po jednym nieudanym, po którym następny się udał, i po dwóch nieudanych, gdy trzeci kończy się sukcesem z opóźnieniem do 2 minut; odpala jedną instancją, gdy ostatni sukces jest starszy niż 17 minut, także przy kilku nieudanych Jobach; gaśnie po następnym udanym; odpala przy braku metryki przez 30 minut; alerty kopii zachowują próg 26 h.",
+        "Selftest (infra/k8s/scripts/selftest.sh) ma przypadek dla RateLimitsOff na wzór backup_missing_without_absent: reguła bez gałęzi braku metryki nie przechodzi check.",
+        "Test na atrapach (test_restore_script.py): restore.sh nie odmawia przy aktywnym Jobie rate-limit-check, wstrzymuje CronJob, czeka na jego Job i przywraca go także po przerwanej próbie; aktywny Job innego CronJoba nadal daje odmowę.",
+        "Test dymny na k3d: Job utworzony z CronJoba rate-limit-check kończy się sukcesem na Redisie klastra, a odmowa odtworzenia nie zależy od tego, czy Job rate-limit-check akurat trwa.",
         "make -C apps/api check i test, make -C infra/k8s check przechodzą."
       ],
       "risk": "STANDARD",
@@ -391,15 +395,23 @@ Stan zadań prowadzi sesja orkiestrująca w tej tabeli.
       "paths": [
         "apps/api/src/Shared/UI/Console/",
         "apps/api/tests/Unit/Shared/",
+        "apps/api/tests/Functional/Shared/",
         "apps/api/tests/Integration/Shared/",
         "infra/k8s/charts/shop/templates/rate-limit-check.yaml",
         "infra/k8s/charts/shop/templates/00-alerts.yaml",
         "infra/k8s/charts/shop/templates/_helpers.tpl",
         "infra/k8s/charts/shop/values.yaml",
+        "infra/k8s/charts/shop/values.schema.json",
+        "infra/k8s/scripts/restore.sh",
+        "infra/k8s/scripts/smoke.sh",
+        "infra/k8s/scripts/selftest.sh",
         "infra/k8s/tests/",
         "infra/k8s/smoke/",
         "infra/k8s/README.md",
-        "docs/features/deploy-ops/spec.md"
+        "docs/features/deploy-ops/spec.md",
+        "docs/features/async-reliability/spec.md",
+        "docs/adr/backups-observability.md",
+        "docs/vision.md"
       ],
       "parallel_with": [
         "ABUSE-LIMITS-1",
