@@ -14,7 +14,7 @@ from support import REPO
 
 K8S = REPO / "infra/k8s"
 SCRIPTS = K8S / "scripts"
-TARGETS = ("kubeconfig", "rerun", "create-admin", "restore", "backups", "generate")
+TARGETS = ("kubeconfig", "rerun", "create-admin", "restore", "backups", "generate", "open")
 PYTHON = "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
 KUBECONFIG = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n  name: default\nusers:\n- user:\n    client-key-data: ADMINCREDENTIAL\n  name: default\n"
 
@@ -126,8 +126,6 @@ class AoGuardCase(unittest.TestCase):
         self.kube = base / "kube"
         self.kube.mkdir()
         (self.kube / "config").write_text(KUBECONFIG)
-        self.out = base / "out"
-        self.out.mkdir()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -173,8 +171,8 @@ class AoGuardCase(unittest.TestCase):
             "create-admin": {"LOGIN": "anna", "EMAIL": "anna@example.net", "KUBE_DIR": str(self.kube)},
             "restore": {"SNAPSHOT": "9e050a3d", "KUBE_DIR": str(self.kube)},
             "backups": {"KUBE_DIR": str(self.kube)},
-            "generate": {"PROFILE": "medium", "REPLACE": "seed", "GENERATE_OUT": str(self.out), "GENERATE_PROBE_URL": "https://api.worf.pl/ https://worf.pl/",
-                         "KUBE_DIR": str(self.kube)},
+            "generate": {"PROFILE": "medium", "GENERATE_PROBE_URL": "https://api.worf.pl/ https://worf.pl/", "KUBE_DIR": str(self.kube)},
+            "open": {"GENERATE_PROBE_URL": "https://api.worf.pl/ https://worf.pl/", "KUBE_DIR": str(self.kube)},
         }[target]
 
 
@@ -334,7 +332,7 @@ class Targets(AoGuardCase):
         self.assertIn("ADMINCREDENTIAL", (self.kube / "new" / "config").read_text())
         for target, message in (
             ("rerun", "set KUBE_DIR"), ("backups", "set KUBE_DIR"), ("restore", "set KUBE_DIR"), ("create-admin", "set KUBE_DIR"),
-            ("generate", "set KUBE_DIR"),
+            ("generate", "set KUBE_DIR"), ("open", "set KUBE_DIR"),
         ):
             with self.subTest(target=target):
                 arguments = {**self.arguments(target), "KUBE_DIR": ""}

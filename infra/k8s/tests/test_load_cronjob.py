@@ -108,6 +108,36 @@ class SettingsTest(unittest.TestCase):
             self.assertTrue({"STORE_URL", "API_URL"} <= set(env_of(container(case))), case)
 
 
+class WaitForTheApiTest(unittest.TestCase):
+    """The Job of make generate runs while the shop is closed: under the NetworkPolicy shop-closed a pod that was just created gets
+    "connection refused" for its first connections to a service of the namespace (about 0.1 s on k3d, until the controller of the
+    policies knows its address), and k6 asks the API once in its setup, without a retry. So the pod first waits in an init container
+    until the API answers from it; only then does k6 start, in the same network of the pod."""
+
+    def init_containers(self, case):
+        return pod_spec(cronjob(case)).get("initContainers", [])
+
+    def test_k6_starts_only_after_the_api_answered_from_the_pod(self):
+        for case in CASES:
+            with self.subTest(case):
+                (wait,) = self.init_containers(case)
+                # Not a wait-for-<workload> (tests/test_waves.py): no synchronization of Argo CD starts a pod of a suspended
+                # CronJob, so it is no dependency of the waves.
+                self.assertEqual("api-reachable", wait["name"])
+                script = " ".join(wait.get("command", []) + wait.get("args", []))
+                self.assertIn("until", script)
+                self.assertIn("http://api/health", script)
+                self.assertEqual(env_of(container(case))["API_URL"] + "/health", "http://api/health")
+
+    def test_the_wait_has_no_secret_either(self):
+        for case in CASES:
+            with self.subTest(case):
+                (wait,) = self.init_containers(case)
+                self.assertNotIn("envFrom", wait)
+                self.assertNotIn("env", wait)
+                self.assertIn("resources", wait)
+
+
 class NoAccessTest(unittest.TestCase):
     def test_it_has_no_secret_and_no_environment_from_a_source(self):
         for case in CASES:

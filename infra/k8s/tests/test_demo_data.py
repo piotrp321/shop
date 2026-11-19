@@ -80,6 +80,29 @@ class CronJobTest(unittest.TestCase):
             labels = demo_data(case)["spec"]["jobTemplate"].get("metadata", {}).get("labels", {})
             self.assertEqual("demo-data", labels.get("app.kubernetes.io/name"), case)
 
+    def test_the_job_of_a_run_stays_until_the_next_make_generate_deletes_it(self):
+        """make open opens the shop only after the Job demo-data-run completed, and make generate deletes that Job of the run before
+        right after tak: no ttlSecondsAfterFinished may delete it earlier (make open would refuse) or keep a stale one."""
+        for case in ALL_CASES:
+            spec = demo_data(case)["spec"]
+            self.assertNotIn("ttlSecondsAfterFinished", spec["jobTemplate"]["spec"], case)
+            # The CronJob keeps its newest Job that completed: the only Job demo-data-run of a run.
+            self.assertGreaterEqual(spec["successfulJobsHistoryLimit"], 1, case)
+
+    def test_the_jobs_get_nothing_that_argo_cd_tracks(self):
+        """A Job made with kubectl create job --from=cronjob/demo-data gets the labels and the annotations of the jobTemplate. Argo CD 3
+        (argocd/install/argocd.yaml sets no application.resourceTrackingMethod, so the annotation argocd.argoproj.io/tracking-id tracks)
+        puts its annotation only on the CronJob, so the Job is no resource of the application shop and no synchronization prunes it."""
+        for case in ALL_CASES:
+            metadata = demo_data(case)["spec"]["jobTemplate"].get("metadata", {})
+            self.assertEqual({}, metadata.get("annotations", {}), case)
+        install = (REPO / "infra/k8s/argocd/install/argocd.yaml").read_text()
+        self.assertNotIn("resourceTrackingMethod", install)
+        self.assertNotIn("instanceLabelKey", install)
+        # The chart argo-cd 8.0 brought Argo CD 3.0, whose default tracking is the annotation.
+        (version,) = [line.split(":", 1)[1].strip() for line in install.splitlines() if line.startswith("  version:")]
+        self.assertGreaterEqual(int(version.split(".")[0]), 8, version)
+
     def test_the_time_limit_follows_the_profile_of_the_generator(self):
         limits = {"ci": 1800, "load": 1800, "ci-demo-data-medium": 3600, "ci-demo-data-server": 32400, "ci-demo-data-full": 72000,
                   "prod": 6 * 3600, "prod-demo-data-server": 24 * 3600}

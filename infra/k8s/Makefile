@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore generate open backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -128,17 +128,21 @@ restore:
 	@sh scripts/ao-guard.sh restore
 	SNAPSHOT="$(SNAPSHOT)" PRE_RESTORE="$(PRE_RESTORE)" sh scripts/restore.sh
 
-# Replaces the data of the shop with the demo data of a profile, or with the seed again (docs/features/demo-scale/spec.md, "Cel
-# make -C infra/k8s generate"): make -C infra/k8s generate PROFILE=<seed|profile> REPLACE=<data of the record> GENERATE_OUT=<directory
-# outside the repository> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>. Only after the consent
-# of the user in the conversation that names the operation, the host and the profile. PROFILE is seed or the profile of the CronJob
-# demo-data (demoData.profile), REPLACE the data of the record demo-data-state (seed without a record). Refuses without changes (exit 1;
-# exit 2 for wrong arguments, the environment, the file of the photo pool), says what it will do and asks for the word tak. A record in
-# a phase other than idle (a run that stopped) is resumed by the same target with PROFILE equal to its target, without REPLACE and
-# without tak. The run, the resume, the variables and the probe of the public addresses are in the header of scripts/generate.sh.
+# Replaces the data of the shop with the demo data of a profile, or with the seed again (docs/features/demo-scale/spec.md):
+# make -C infra/k8s generate PROFILE=<seed|profile of the CronJob demo-data> GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...']
+# KUBE_DIR=<directory>. Only after the consent of the user in the conversation that names the operation, the host and the profile. Checks
+# without changes, says what it will do and asks for the word tak; then closes the shop, runs the Job demo-data-run and, after it
+# completed, make open. A failure leaves the shop closed (exit 1; 2 for wrong arguments). The variables: the header of scripts/generate.sh.
 generate:
 	@sh scripts/ao-guard.sh generate
-	PROFILE="$(PROFILE)" REPLACE="$(REPLACE)" sh scripts/generate.sh
+	PROFILE="$(PROFILE)" sh scripts/generate.sh
+
+# Checks the data of the Job demo-data-run of make generate (that completed) and opens the shop; make generate runs it, by hand after a
+# run that stopped: make -C infra/k8s open GENERATE_PROBE_URL='<url> ...' [GENERATE_PROBE_HOST='<host> ...'] KUBE_DIR=<directory>.
+# Idempotent; refuses while a Job runs. Exit 1 when a check fails (the shop stays closed). The variables: the header of scripts/open.sh.
+open:
+	@sh scripts/ao-guard.sh open
+	sh scripts/open.sh
 
 # The snapshots of the repository of the backups (identifier, time, host, tags, revision), the oldest first; only reads:
 # make -C infra/k8s backups. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
@@ -169,13 +173,14 @@ kubeconfig:
 	@sh scripts/ao-guard.sh kubeconfig
 	sh scripts/kubeconfig.sh "$(HOST)"
 
-# The applications of Argo CD, the pods and the jobs of the shop, the logs of the failed jobs and the state of the demo data (data,
-# phase, whether the shop is closed, the last log line of the newest job initialize), read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+# The applications of Argo CD, the pods and the jobs of the shop, the logs of the failed jobs and the state of the demo data (whether
+# the shop is closed, the Job demo-data-run and its state, the active Jobs, whether the Secret of the photo pool is left, the last log
+# line of the newest job initialize), read over SSH: make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
 
-# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Only for the seed data in
-# the phase idle (no record of the demo data is that too); otherwise it refuses with exit 1 before the question (make generate PROFILE=seed).
+# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Refuses with exit 1 before the
+# question while the shop is closed (the NetworkPolicy shop-closed of make generate; make generate PROFILE=seed goes back to the seed).
 # make -C infra/k8s reinitialize HOST=<user>@<address>
 reinitialize:
 	sh scripts/reinitialize.sh "$(HOST)"

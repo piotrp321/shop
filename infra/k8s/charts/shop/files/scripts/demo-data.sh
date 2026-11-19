@@ -16,61 +16,19 @@
 #   DEMO_DATA_STOP_GRACE=30    seconds between TERM and KILL to the process group of the generator
 #   DEMO_DATA_TERMINATION_LOG  the file of the line of the reason (/dev/termination-log; the tests point it elsewhere)
 #
-# The run:
-#   1. DEMO_DATA_CONFIRM empty, or neither the profile of --profile nor `seed`, or wrong arguments: exit 64, nothing ran.
-#   2. The free space of / (`df -Pk /`, column Available: the file system of the node, which holds the volumes local-path) below
-#      --min-free-gb (a profile; in KiB rounded up), or not read (df failed, printed no line, or no number): exit 74, nothing ran.
-#      The seed has no floor, only a reading that is a number: going back to the seed is the one repair that make offers (after a
-#      stop by the guard the space stays just below the floor), it starts with TRUNCATE, which frees the room of the tables at once,
-#      and needs less than 2 GiB. A failed try leaves the state a refusal would (data: failed, the shop closed), while a refusal
-#      would leave the operator with nothing to do. Below the high watermark of Elasticsearch (90% used, about 20.7 GB free on the
-#      server) the new index of the seed may get no shard until Elasticsearch refreshes what it knows of the disk
-#      (cluster.info.update.interval, 30 s): that try fails, and trying again should pass.
-#   3. The generator (or the seed) runs in a process group of its own (setsid); its output goes on to the log of the container, and
-#      the script notes the time of each of its [OK] lines. Every DEMO_DATA_SPACE_POLL seconds a guard reads the free space; the
-#      first reading (before the start) and every tenth one is printed as "demo-data: free space of /: <GB> GB (<KiB> KiB), the floor
-#      is <GB> GB | none (the seed) (reading <n>)".
-#   4. The free space below the floor (a profile only), three failed readings in a row or a reading that is no number stop the whole
-#      group of the generator: TERM, then KILL after DEMO_DATA_STOP_GRACE seconds to whatever of the group still runs (the command the generator
-#      runs in the foreground, whose end its own trap of TERM waits for, among them); exit 75. The script ends no session of the
-#      database (PGOPTIONS of the CronJob makes Postgres end those of a client that is gone) and signals no process outside that group.
-#   5. TERM to the script (the time limit of the Job, the pod deleted) does the same: exit 75.
-#   6. Otherwise the exit code of the generator (0: the data is generated and its check passed).
-#
-# Exit codes: 0 done; 64 refused before anything ran (DEMO_DATA_CONFIRM or the arguments); 74 too little room or no reading before the
-# start, nothing ran; 75 stopped by the guard or by TERM (the data is incomplete); any other: the exit code of the generator.
-#
-# Every path ends the log with the summary block: its first and its last line are fixed, every line between is "<key>: <value>"
-# (kubectl logs --timestamps puts the time and a space before each line):
-#
-#   ==== demo-data summary
-#   exit code: <the exit code of the script>
-#   reason: <the line of the reason, without "exit <code>: ">
-#   command: bin/generate-demo --profile=<profile> [--anchor=<anchor>] --force-reset | bin/seed-demo | none
-#   generator exit code: <its exit code> | not started
-#   last finished step: <label of the last [OK] line> | none
-#   step: <seconds> <label>                   (one line per step, in order; none when no [OK] line came)
-#   total seconds: <from the start of the generator to its end; 0 when it did not start>
-#   lowest free space: <GB, two decimals> GB (<KiB> KiB) | unknown
-#   floor of the free space: <GB> GB (<KiB> KiB) | none (the seed) | unknown (refused before the floor was known)
-#   readings of the free space: <number>
-#   ==== end of the demo-data summary
-#
-# A step ends with the [OK] line of its command (SymfonyStyle; the parts of a step, one line per process) and is named by the text of
-# that line after "[OK] " up to ": " or " ("; it lasts from the end of the step before it (the first one from the start of the
-# generator) to its last such line.
-#
-# The termination log (/dev/termination-log, which Kubernetes puts in .status.containerStatuses[].state.terminated.message) gets one
-# line on every path: "exit <code>: <reason>", e.g. "exit 75: the free space of / fell to 31.74 GB (31000000 KiB), below the floor of
-# 32 GB (demoData.minFreeGb); the generator was stopped".
+# Exit codes: 0 done; 64 refused before anything ran (DEMO_DATA_CONFIRM or the arguments); 74 too little room (below --min-free-gb;
+# the seed has no floor) or no reading of `df -Pk /` before the start, nothing ran; 75 stopped by the guard of the free space (below
+# the floor, three failed readings in a row, a reading that is no number) or by TERM, the whole process group of the generator stopped
+# (the data is incomplete); any other: the exit code of the generator. Every path writes one line "exit <code>: <reason>" to the
+# termination log. The run: docs/features/demo-scale/spec.md, "Job generatora na serwerze (chart)".
 set -u
 
 poll="${DEMO_DATA_SPACE_POLL:-30}"
 grace="${DEMO_DATA_STOP_GRACE:-30}"
 termination_log="${DEMO_DATA_TERMINATION_LOG:-/dev/termination-log}"
 
-work="" command_line="none" generator_status="not started" gen_pid="" gen_started="" gen_ended="" guard_pid="" reader_pid=""
-generator_done="" term_seen="" trapped="" self_pgid="" floor_kib="" floor_text="" floor_summary="unknown"
+work="" command_line="none" generator_status="not started" gen_pid="" guard_pid=""
+generator_done="" term_seen="" trapped="" self_pgid="" floor_kib="" floor_text=""
 
 say() { printf 'demo-data: %s\n' "$*"; }
 
@@ -84,50 +42,15 @@ nap() {
   wait "$nap_pid" 2> /dev/null || :
 }
 
-# report <code> <reason>: the line of the reason and the summary block, the last thing of every path; returns <code>, which the
-# last command of the script passes on as its exit code. finish: report, then exit with <code> (the paths that end early).
+# report <code> <reason>: the line of the reason in the termination log and at the end of the log; returns <code>, which the last
+# command of the script passes on as its exit code. finish: report, then exit with <code> (the paths that end early).
 report() {
-  finish_code="$1"
   finish_reason="$(printf '%s' "$2" | tr '\n\r' '  ')"
-  [ -n "$gen_ended" ] || gen_ended="$(date +%s)"
-  finish_min="unknown" finish_readings=0 finish_last="none" finish_total=0
-  if [ -n "$work" ]; then
-    if [ -s "$work/min" ]; then
-      finish_kib="$(cat "$work/min")"
-      finish_min="$(gb "$finish_kib") GB ($finish_kib KiB)"
-    fi
-    [ ! -s "$work/readings" ] || finish_readings="$(cat "$work/readings")"
-    [ ! -s "$work/steps" ] || finish_last="$(tail -n 1 "$work/steps" | sed 's/^[0-9]* //')"
-  fi
-  [ -z "$gen_started" ] || finish_total=$((gen_ended - gen_started))
-  # The line of the reason first, so that the summary stays the end of the log even when it cannot be written.
-  printf 'exit %s: %s\n' "$finish_code" "$finish_reason" > "$termination_log" 2> /dev/null \
+  printf 'exit %s: %s\n' "$1" "$finish_reason" > "$termination_log" 2> /dev/null \
     || say "the reason could not be written to $termination_log"
-  echo "==== demo-data summary"
-  echo "exit code: $finish_code"
-  echo "reason: $finish_reason"
-  echo "command: $command_line"
-  echo "generator exit code: $generator_status"
-  echo "last finished step: $finish_last"
-  if [ -n "$work" ] && [ -s "$work/steps" ]; then
-    awk -v previous="$gen_started" '
-      {
-        label = $0; sub(/^[0-9]+ /, "", label)
-        if (label != step) {
-          if (step != "") { printf "step: %d %s\n", ended - previous, step; previous = ended }
-          step = label
-        }
-        ended = $1
-      }
-      END { if (step != "") printf "step: %d %s\n", ended - previous, step }' "$work/steps"
-  fi
-  echo "total seconds: $finish_total"
-  echo "lowest free space: $finish_min"
-  echo "floor of the free space: $floor_summary"
-  echo "readings of the free space: $finish_readings"
-  echo "==== end of the demo-data summary"
+  say "exit $1: $finish_reason"
   [ -z "$work" ] || rm -rf "$work"
-  return "$finish_code"
+  return "$1"
 }
 finish() {
   report "$@"
@@ -152,16 +75,6 @@ read_space() {
     "" | *[!0-9]*) space_state=nan ;;
     *) space_state=ok; space_kib="$space_text" ;;
   esac
-}
-
-# Notes the reading <n> (and its KiB when it is a number) for the summary.
-note_reading() {
-  [ -z "$work" ] || echo "$1" > "$work/readings"
-  [ -n "$2" ] || return 0
-  [ -z "$work" ] && return 0
-  if [ ! -s "$work/min" ] || [ "$(awk -v a="$2" -v b="$(cat "$work/min")" 'BEGIN { print (a + 0 < b + 0) }')" = 1 ]; then
-    echo "$2" > "$work/min"
-  fi
 }
 
 below_floor() { [ -n "$floor_kib" ] && awk -v a="$1" -v b="$floor_kib" 'BEGIN { exit !(a + 0 < b + 0) }'; }
@@ -217,8 +130,9 @@ stop_group() {
   say "processes of the group $gen_pid still run after KILL; they end with the container" >&2
 }
 
-# The guard: a reading every DEMO_DATA_SPACE_POLL seconds until the script stops it (TERM) or it stops the generator. A TERM that comes
-# while it stops the group does not cut the stop short.
+# The guard: a reading every DEMO_DATA_SPACE_POLL seconds until the script stops it (TERM, and the file stop-guard: a TERM that comes
+# before the guard set its trap is lost) or it stops the generator. A TERM that comes while it stops the group does not cut the stop
+# short.
 guard() {
   guard_quit="" guard_failures=0 guard_n=1
   trap 'guard_quit=1' TERM
@@ -227,13 +141,12 @@ guard() {
     sleep "$poll" &
     guard_sleep=$!
     wait "$guard_sleep" 2> /dev/null || :
-    if [ -n "$guard_quit" ]; then
+    if [ -n "$guard_quit" ] || [ -e "$work/stop-guard" ]; then
       kill "$guard_sleep" 2> /dev/null || :
       exit 0
     fi
     guard_n=$((guard_n + 1))
     read_space
-    note_reading "$guard_n" "$space_kib"
     case "$space_state" in
       ok)
         guard_failures=0
@@ -313,16 +226,16 @@ else
 fi
 command_line="$*"
 
-# 2. The room before the start: the floor of a profile (in KiB rounded up); the seed has none (see the header).
+# 2. The room before the start: the floor of a profile (in KiB rounded up); the seed has none (it is the way back after a stop by
+# the guard, when the space is below the floor; it starts with TRUNCATE and needs less than 2 GiB).
 if [ "$confirm" = seed ]; then
-  floor_text="none (the seed)" floor_summary="none (the seed)"
+  floor_text="none (the seed)"
 else
   floor_kib=$(((min_free_gb * 1000000000 + 1023) / 1024))
-  floor_text="$min_free_gb GB" floor_summary="$min_free_gb GB ($floor_kib KiB)"
+  floor_text="$min_free_gb GB"
 fi
 work="$(mktemp -d "${TMPDIR:-/tmp}/demo-data.XXXXXX")" || { work=""; finish 74 "no work directory (mktemp -d failed); nothing was started"; }
 read_space
-note_reading 1 "$space_kib"
 case "$space_state" in
   failed) finish 74 "the free space of / could not be read (df -Pk /); nothing was started" ;;
   nan) finish 74 "the free space of / read as '$space_text', which is no number (df -Pk /); nothing was started" ;;
@@ -332,33 +245,11 @@ if below_floor "$space_kib"; then
   finish 74 "the free space of / is $(gb "$space_kib") GB ($space_kib KiB), below the floor of $min_free_gb GB (demoData.minFreeGb); nothing was started"
 fi
 
-# 3. The run, in a process group of its own; its output through the reader, which notes the time of each [OK] line.
+# 3. The run, in a process group of its own; its output goes to the log of the container.
 read_proc $$
 self_pgid="$proc_group"
-mkfifo "$work/output" || finish 74 "no pipe for the output of the generator (mkfifo failed); nothing was started"
-# mawk (the awk of the image of the api) reads a pipe in blocks: without -W interactive it would see the [OK] lines, and pass the
-# output on to the log, only when a block is full or at the end. Other awks read line by line (busybox warns about -W).
-awk_line_by_line=""
-case "$(awk -W version 2>&1 | head -n 1)" in
-  mawk*) awk_line_by_line="-W interactive" ;;
-esac
-# shellcheck disable=SC2086 # empty or two words
-awk $awk_line_by_line -v steps="$work/steps" '
-  { print; fflush() }
-  (at = index($0, "[OK] ")) > 0 {
-    label = substr($0, at + 5)
-    sub(/[ \t\r]+$/, "", label)
-    if ((cut = index(label, ": ")) > 0) label = substr(label, 1, cut - 1)
-    if ((cut = index(label, " (")) > 0) label = substr(label, 1, cut - 1)
-    "date +%s" | getline now
-    close("date +%s")
-    print now " " label > steps
-    fflush(steps)
-  }' < "$work/output" &
-reader_pid=$!
 say "running $command_line (a process group of its own; the free space is read every $poll s)"
-gen_started="$(date +%s)"
-setsid "$@" < /dev/null > "$work/output" 2>&1 &
+setsid "$@" < /dev/null &
 gen_pid=$!
 # setsid makes the group a moment after the start: until then a stop would find no group.
 # A generator that is already gone (a zombie keeps its group) or never made its group (setsid failed) is waited for below.
@@ -388,21 +279,18 @@ while :; do
   break
 done
 generator_done=1
-gen_ended="$(date +%s)"
 # The guard ends after a stop it began; the rest of the group (a process the generator left) is stopped as well.
+: > "$work/stop-guard"
 kill -TERM "$guard_pid" 2> /dev/null || :
 wait "$guard_pid" 2> /dev/null || :
 stop_group
-# The reader ends when the last process of the group has closed the pipe; one that survived KILL would keep it open.
-group_alive && kill "$reader_pid" 2> /dev/null
-wait "$reader_pid" 2> /dev/null || :
 
-# 6. The exit code: that of report, the last command.
+# 6. The exit code.
 if [ -s "$work/reason" ]; then
   final_code=75 final_reason="$(cat "$work/reason")"
 elif [ "$generator_status" = 0 ]; then
   final_code=0 final_reason="$command_line ended with 0"
 else
-  final_code="$generator_status" final_reason="$command_line ended with $generator_status (the last finished step is in the summary)"
+  final_code="$generator_status" final_reason="$command_line ended with $generator_status (the last finished step is in the log)"
 fi
 report "$final_code" "$final_reason"

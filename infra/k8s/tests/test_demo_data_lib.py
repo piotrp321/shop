@@ -1,4 +1,4 @@
-"""scripts/demo-data-lib.sh (the functions of the demo data that load.sh and generate.sh share): the file of the photo pool, the
+"""scripts/demo-data-lib.sh (the functions of the demo data that load.sh, generate.sh and open.sh share): the file of the photo pool, the
 Secret demo-photos, the log of the Job with the values masked, the times of the steps from its [OK] lines, the sizes of the
 data and diskPeakGb of a profile. Each function is run on its own in `sh`, with the input the header of the library names (the
 arguments, DEMO_DATA_TOOL, photos_*, and kc as a function of the test) and nothing that load.sh sets; the behaviour of load.sh
@@ -253,7 +253,7 @@ class DemoDataLib(unittest.TestCase):
         self.assertNotIn("load:", result.stderr)
 
     def test_the_log_is_saved_when_the_photo_pool_was_never_read(self):
-        # generate.sh saves the log of a Job of the seed, which needs no photo pool: photos_* are not set at all, and under
+        # A caller that never read the photo pool (a Job without photos): photos_* are not set at all, and under
         # `set -u` the log must still be the whole log, not an empty file with exit 0.
         target = self.dir / "demo-data.log"
         result = self.run_lib(f'DEMO_DATA_TOOL=generate\nsave_generator_log demo-data-seed "{target}"\necho saved', KC_LOG=GENERATOR_LOG)

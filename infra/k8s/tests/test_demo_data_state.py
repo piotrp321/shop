@@ -1,6 +1,7 @@
-"""status.sh, rerun.sh and reinitialize.sh know the state of the demo data (docs/features/demo-scale/spec.md: "Stan sklepu i zapis
-stanu", "Ochrona przed przypadkowym uruchomieniem", "Kolejne wdrożenia"): the ConfigMap demo-data-state (no record: data seed, phase
-idle), the NetworkPolicy shop-closed (the shop is closed) and the label app.kubernetes.io/name: demo-data of the Job of the generator.
+"""status.sh, rerun.sh and reinitialize.sh know the state of the demo data (docs/features/demo-scale/spec.md): the NetworkPolicy
+shop-closed (the shop is closed), the Job demo-data-run of make generate, the active Jobs (make generate and make open refuse while one
+runs), a Secret of the photo pool that is left (make generate deletes it on every exit it can catch, make open after a KILL) and the
+label app.kubernetes.io/name: demo-data of the Job of the generator.
 status and reinitialize run against the stub of ssh of test_server_scripts.py, rerun against the stub of kubectl of
 test_restore_script.py; the refusals change nothing, a failing read is an error."""
 
@@ -15,42 +16,39 @@ HOST = "deploy@203.0.113.7"
 CLOSED = "networkpolicy.networking.k8s.io/shop-closed\n"
 
 
-def record(data, phase, target="", reason=""):
-    """What the read of the ConfigMap prints (the stub answers with it): the marker, data, phase, target, then the reason (the rest)."""
-    return f"present\n{data}\n{phase}\n{target}\n{reason}"
-
-
 class StatusDemoData(ServerScripts):
     def status(self, **env):
         return self.run_script("status.sh", HOST, **env)
 
-    def test_without_a_record_it_says_data_seed_phase_idle_and_the_shop_open(self):
+    def test_without_the_rule_the_shop_is_open(self):
         result = self.status()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("data: seed", result.stdout)
-        self.assertIn("phase: idle", result.stdout)
         self.assertIn("shop: open", result.stdout)
-        self.assertIn("no record", result.stdout)
 
-    def test_a_record_gives_data_phase_target_and_the_reason(self):
-        result = self.status(STUB_STATE=record("failed", "running", "server", "the Job demo-data-1 failed: no space left"))
+    def test_it_names_the_state_of_the_job_demo_data_run_and_the_active_jobs(self):
+        for states, run, active in (
+            ("", "demo-data-run: none (make generate never ran, or it deleted the previous one)", "active jobs: none"),
+            ("migrate-1 SuccessCriteriaMet Complete\ndemo-data-run SuccessCriteriaMet Complete\n", "demo-data-run: Complete", "active jobs: none"),
+            ("demo-data-run FailureTarget Failed\ncart-purge-expired-2 \n", "demo-data-run: Failed", "active jobs: cart-purge-expired-2"),
+            ("demo-data-run \nload-1 \n", "demo-data-run: running", "active jobs: demo-data-run load-1"),
+        ):
+            with self.subTest(states=states):
+                result = self.status(STUB_JOB_STATES=states)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn(run, result.stdout)
+                self.assertIn(active, result.stdout)
+
+    def test_it_says_whether_the_secret_of_the_photo_pool_is_left(self):
+        result = self.status(STUB_SECRET="secret/demo-photos\n")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("data: failed", result.stdout)
-        self.assertIn("phase: running", result.stdout)
-        self.assertIn("target: server", result.stdout)
-        self.assertIn("reason: the Job demo-data-1 failed: no space left", result.stdout)
-        self.assertNotIn("data: seed", result.stdout)
-
-    def test_a_record_of_a_finished_run_has_no_reason_line(self):
-        result = self.status(STUB_STATE=record("medium", "idle", "medium"))
-        self.assertIn("data: medium", result.stdout)
-        self.assertIn("phase: idle", result.stdout)
-        self.assertNotIn("reason:", result.stdout)
-
-    def test_control_characters_of_the_record_are_not_printed(self):
-        result = self.status(STUB_STATE=record("failed", "idle", "", "bad \x1b[31mred\x1b[0m text"))
-        self.assertNotIn("\x1b", result.stdout)
-        self.assertIn("bad [31mred[0m text", result.stdout)
+        self.assertIn("the Secret demo-photos of the photo pool: LEFT", result.stdout)
+        self.assertIn("make open", result.stdout)
+        result = self.status()
+        self.assertIn("the Secret demo-photos of the photo pool: none", result.stdout)
+        secrets = [call for call in self.calls() if "get secret " in call]
+        self.assertIn("-n shop get secret demo-photos --ignore-not-found -o name", secrets[-1])
+        result = self.status(STUB_PHOTO_SECRET="")
+        self.assertIn("the CronJob demo-data reads no Secret of the photo pool", result.stdout)
 
     def test_the_rule_shop_closed_means_the_shop_is_closed(self):
         result = self.status(STUB_CLOSED=CLOSED)
@@ -92,10 +90,12 @@ class StatusDemoData(ServerScripts):
     def test_a_failing_read_of_any_of_them_is_exit_code_1_and_the_others_still_run(self):
         # The calls before the demo data: the applications, the pods, the jobs, the failed jobs (no failed job, so no log): 4.
         for match, message, calls in (
-            ("get configmap demo-data-state", "could not read the record of the demo data", 8),
-            ("get networkpolicy shop-closed", "could not read the rule shop-closed", 8),
-            ("get jobs -l app.kubernetes.io/name=initialize", "could not read the jobs initialize", 7),
-            ("--container=initialize", "could not read the log of the job initialize-3fa9c1d2e4", 8),
+            ("get networkpolicy shop-closed", "could not read the rule shop-closed", 10),
+            (".type}", "could not read the states of the jobs", 10),
+            ("get cronjob demo-data", "could not read the Secret of the photo pool", 9),
+            ("get secret ", "could not read the Secret of the photo pool", 10),
+            ("get jobs -l app.kubernetes.io/name=initialize", "could not read the jobs initialize", 9),
+            ("--container=initialize", "could not read the log of the job initialize-3fa9c1d2e4", 10),
         ):
             with self.subTest(match=match):
                 self.log.write_text("")
@@ -104,15 +104,13 @@ class StatusDemoData(ServerScripts):
                 self.assertIn(message, result.stderr)
                 self.assertEqual(calls, len(self.calls()), self.calls())
                 # a failed read does not print a state it did not read as if it were one
-                if "configmap" in match:
-                    self.assertNotIn("data: seed", result.stdout)
                 if "networkpolicy" in match:
                     self.assertNotIn("shop: open", result.stdout)
 
     def test_the_reads_only_read(self):
-        self.status(STUB_STATE=record("seed", "idle"), STUB_CLOSED=CLOSED)
-        reads = [c for c in self.calls() if "demo-data-state" in c or "shop-closed" in c or "name=initialize" in c]
-        self.assertEqual(4, len(reads))
+        self.status(STUB_CLOSED=CLOSED)
+        reads = self.calls()[4:]
+        self.assertEqual(6, len(reads), reads)
         for call in reads:
             call = call.split("k3s kubectl", 1)[1]
             self.assertRegex(call, r" (get|logs) ")
@@ -121,62 +119,45 @@ class StatusDemoData(ServerScripts):
 
 
 class ReinitializeDemoData(ServerScripts):
+    """reinitialize loads the seed only while the shop is open: the rule shop-closed is the shop closed by make generate (data being
+    replaced, or a failed run), which make generate PROFILE=seed brings back with the checks."""
+
     def reinitialize(self, answer="tak\n", **env):
         return self.run_script("reinitialize.sh", HOST, stdin=answer, **env)
 
     def execs(self):
         return [call for call in self.calls() if "exec deploy/api" in call]
 
-    def assert_refused_before_the_question(self, result):
+    def test_the_rule_shop_closed_is_refused_before_the_question_even_with_tak_on_the_input(self):
+        result = self.reinitialize(STUB_CLOSED=CLOSED)
         self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("shop-closed", result.stderr)
         self.assertIn("generate PROFILE=seed", result.stderr)
         self.assertNotIn("type tak", result.stdout)
         self.assertEqual([], self.execs())
 
-    def test_data_other_than_seed_is_refused_before_the_question_even_with_tak_on_the_input(self):
-        for data, phase in (("medium", "idle"), ("server", "idle"), ("failed", "idle"), ("failed", "running")):
-            with self.subTest(data=data, phase=phase):
-                self.log.write_text("")
-                self.assert_refused_before_the_question(self.reinitialize(STUB_STATE=record(data, phase)))
-
-    def test_a_phase_other_than_idle_is_refused_also_for_seed(self):
-        for phase in ("closing", "running", "checking", "opening", ""):
-            with self.subTest(phase=phase):
-                self.log.write_text("")
-                self.assert_refused_before_the_question(self.reinitialize(STUB_STATE=record("seed", phase)))
-
-    def test_a_record_without_data_is_refused(self):
-        self.assert_refused_before_the_question(self.reinitialize(STUB_STATE=record("", "idle")))
-
-    def test_a_failing_read_of_the_record_is_a_refusal(self):
-        result = self.reinitialize(STUB_FAIL_MATCH="get configmap demo-data-state")
+    def test_a_failing_read_of_the_rule_is_a_refusal(self):
+        result = self.reinitialize(STUB_FAIL_MATCH="get networkpolicy shop-closed")
         self.assertEqual(1, result.returncode)
-        self.assertIn("could not read the record of the demo data", result.stderr)
+        self.assertIn("could not read the rule shop-closed", result.stderr)
         self.assertNotIn("type tak", result.stdout)
         self.assertEqual([], self.execs())
 
-    def test_without_a_record_it_goes_on_as_before(self):
+    def test_an_open_shop_goes_on_as_before_and_still_needs_the_word_tak(self):
         result = self.reinitialize()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(1, len(self.execs()))
         self.assertIn("reinitialize: done", result.stdout)
-
-    def test_data_seed_in_phase_idle_goes_on_as_before(self):
-        result = self.reinitialize(STUB_STATE=record("seed", "idle"))
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(1, len(self.execs()))
-
-    def test_data_seed_in_phase_idle_still_needs_the_word_tak(self):
-        result = self.reinitialize(answer="nie\n", STUB_STATE=record("seed", "idle"))
+        self.log.write_text("")
+        result = self.reinitialize(answer="nie\n")
         self.assertEqual(1, result.returncode)
-        self.assertIn("nothing changed", result.stderr)
         self.assertEqual([], self.execs())
 
-    def test_the_record_is_read_before_anything_is_run(self):
-        self.reinitialize(STUB_STATE=record("seed", "idle"))
+    def test_the_rule_is_read_before_anything_is_run(self):
+        self.reinitialize()
         calls = self.calls()
         self.assertEqual(2, len(calls), calls)
-        self.assertIn("get configmap demo-data-state", calls[0])
+        self.assertIn("get networkpolicy shop-closed", calls[0])
         self.assertIn("exec deploy/api", calls[1])
 
 

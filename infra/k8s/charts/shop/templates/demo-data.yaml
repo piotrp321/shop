@@ -51,7 +51,7 @@ spec:
           restartPolicy: Never
           enableServiceLinks: false
           automountServiceAccountToken: false
-          # The time the script has after TERM to stop the group of the generator (TERM, KILL after 30 s) and to write its summary.
+          # The time the script has after TERM to stop the group of the generator (TERM, KILL after 30 s) and to write the line of its reason.
           terminationGracePeriodSeconds: {{ .Values.demoData.terminationGracePeriodSeconds }}
           containers:
             - name: demo-data

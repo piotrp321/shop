@@ -1,5 +1,5 @@
 #!/bin/sh
-# The functions of the demo data that load.sh (make -C infra/k8s load) and generate.sh (make -C infra/k8s generate) share. It is
+# The functions of the demo data that load.sh (make -C infra/k8s load), generate.sh and open.sh (make generate, make open) share. It is
 # sourced (`. "$here/demo-data-lib.sh"`), not run, and sets no shell option: the callers run under `set -eu`, and so do these
 # functions. docs/features/demo-scale/spec.md, "Logi i metryki".
 #

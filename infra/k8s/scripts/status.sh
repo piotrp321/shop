@@ -3,10 +3,11 @@
 # Argo CD, the pods and the jobs of the namespace shop, and the logs of every job of the namespace that failed (the Failed
 # condition; the reaction to the alerts BackupFailed and BackupVerifyFailed): of all the pods of the job, so of every attempt
 # (backoffLimit), while they exist; the containers whose log cannot be read (the ones after a failed init container never
-# started) are skipped, the log of the others is printed. Last, the state of the demo data (docs/features/demo-scale/spec.md): data
-# and phase of the record demo-data-state (no record: data seed, phase idle), its target and reason, whether the shop is closed (the
-# NetworkPolicy shop-closed exists) and the last line of the log of the newest Job initialize (its row counts; it says so when no pod
-# of the Job is left). Changes nothing. Exit code 1 when any read failed.
+# started) are skipped, the log of the others is printed. Last, the state of the demo data (docs/features/demo-scale/spec.md):
+# whether the shop is closed (the NetworkPolicy shop-closed exists), the Job demo-data-run of make generate and its state, the active
+# Jobs (make generate and make open refuse while one runs), whether the Secret of the photo pool is left (make open deletes it) and the
+# last line of the log of the newest Job initialize (its row counts; it says so when no pod of the Job is left). Changes nothing. Exit
+# code 1 when any read failed.
 #
 # Usage: status.sh <user@address>      Environment: SSH_OPTS
 set -eu
@@ -63,31 +64,7 @@ else
   failed=1
 fi
 
-# The state of the demo data. The record is read as one text: a marker line when the ConfigMap exists, then data, phase, target and
-# (the rest of the text) reason; kubectl prints nothing, with exit code 0, when there is no ConfigMap (--ignore-not-found).
-# Control characters of the record are dropped (the reason is text written by a script, printed to the terminal of the operator).
-printf '\n== demo data (record demo-data-state, rule shop-closed, job initialize)\n'
-state_path='present{"\n"}{.data.data}{"\n"}{.data.phase}{"\n"}{.data.target}{"\n"}{.data.reason}'
-if state="$(remote_root k3s kubectl -n shop get configmap demo-data-state --ignore-not-found -o "jsonpath='$state_path'")"; then
-  if [ -z "$state" ]; then
-    echo "no record demo-data-state (the demo data were not generated): data seed, phase idle"
-    echo "data: seed"
-    echo "phase: idle"
-  else
-    state="$(printf '%s\n' "$state" | tr -d '\000-\010\013-\037\177')"
-    data="$(printf '%s\n' "$state" | sed -n 2p)"
-    phase="$(printf '%s\n' "$state" | sed -n 3p)"
-    target="$(printf '%s\n' "$state" | sed -n 4p)"
-    reason="$(printf '%s\n' "$state" | sed -n '5,$p')"
-    echo "data: ${data:-(empty)}"
-    echo "phase: ${phase:-(empty)}"
-    echo "target: ${target:-(none)}"
-    [ -z "$reason" ] || echo "reason: $reason"
-  fi
-else
-  echo "status: could not read the record of the demo data (ConfigMap demo-data-state)" >&2
-  failed=1
-fi
+printf '\n== demo data (rule shop-closed, job demo-data-run, active jobs, secret of the photo pool, job initialize)\n'
 if closed="$(remote_root k3s kubectl -n shop get networkpolicy shop-closed --ignore-not-found -o name)"; then
   if [ -n "$closed" ]; then
     echo "shop: closed (NetworkPolicy shop-closed exists; every host answers 502)"
@@ -97,6 +74,38 @@ if closed="$(remote_root k3s kubectl -n shop get networkpolicy shop-closed --ign
 else
   echo "status: could not read the rule shop-closed" >&2
   failed=1
+fi
+# Every Job with the types of its true conditions (Complete, Failed; none while it runs), one per line.
+states_path='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.status=="True")].type}{"\n"}{end}'
+if states="$(remote_root k3s kubectl -n shop get jobs -o "jsonpath='$states_path'")"; then
+  states="$(printf '%s\n' "$states" | tr -d '\000-\011\013-\037\177')"
+  printf '%s\n' "$states" | awk '
+    $1 == "demo-data-run" { run = "running"; for (i = 2; i <= NF; i++) if ($i == "Complete" || $i == "Failed") run = $i }
+    NF { done = 0; for (i = 2; i <= NF; i++) if ($i == "Complete" || $i == "Failed") done = 1; if (!done) active = active " " $1 }
+    END {
+      print "demo-data-run: " (run == "" ? "none (make generate never ran, or it deleted the previous one)" : run)
+      print "active jobs:" (active == "" ? " none" : active)
+    }'
+else
+  echo "status: could not read the states of the jobs" >&2
+  failed=1
+fi
+secret_path='{.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=="DEMO_PHOTOS_ENDPOINT")].valueFrom.secretKeyRef.name}'
+if ! secret="$(remote_root k3s kubectl -n shop get cronjob demo-data --ignore-not-found -o "jsonpath='$secret_path'")"; then
+  echo "status: could not read the Secret of the photo pool (the CronJob demo-data)" >&2
+  failed=1
+elif [ -z "$secret" ]; then
+  echo "the CronJob demo-data reads no Secret of the photo pool"
+elif ! printf '%s' "$secret" | grep -Eqx '[a-z0-9.-]+'; then
+  echo "status: skipped a Secret of the photo pool with an unexpected name" >&2
+  failed=1
+elif ! left="$(remote_root k3s kubectl -n shop get secret "$secret" --ignore-not-found -o name)"; then
+  echo "status: could not read the Secret of the photo pool $secret" >&2
+  failed=1
+elif [ -n "$left" ]; then
+  echo "the Secret $secret of the photo pool: LEFT (make open deletes it once no Job runs)"
+else
+  echo "the Secret $secret of the photo pool: none"
 fi
 # The newest Job initialize (listed by the time of creation, so the last name) and the last line of its log: the container is named,
 # because the init containers that wait for the rollouts have logs too.

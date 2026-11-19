@@ -6,7 +6,8 @@ from it (kubectl create job --from=cronjob/load), so a run uses the scripts and 
 ConfigMap load-scripts (configmaps.yaml) mounted at /load, with the subdirectory lib. The settings are those of load/lib/config.js: the
 origin of the writes is the public address of the store (the BFF of the store refuses another Origin). The pod has no secret and no
 token of the Kubernetes API. A failed run is reported, never repeated; the checkout of a run stays in the data as an order of
-load-<n>@example.com.
+load-<n>@example.com. An init container waits until the API answers from the pod (the NetworkPolicy shop-closed refuses the first
+connections of a new pod).
 */ -}}
 apiVersion: batch/v1
 kind: CronJob
@@ -35,6 +36,16 @@ spec:
           restartPolicy: Never
           enableServiceLinks: false
           automountServiceAccountToken: false
+          # The Job of make generate runs while the shop is closed: under the NetworkPolicy shop-closed the first connections of a
+          # pod that was just created are refused (until the controller of the policies knows its address), and k6 asks the API
+          # once in its setup. k6 starts once the API answered from this pod. It is no wait-for-<workload> of the waves of Argo CD:
+          # the CronJob is suspended, so a synchronization starts no pod of it; the limit is activeDeadlineSeconds of the Job.
+          initContainers:
+            - name: api-reachable
+              image: {{ .Values.images.alpine }}
+              command: ["sh", "-c", "until wget -T 3 -qO /dev/null http://api/health; do echo 'load: waiting until the API answers from this pod'; sleep 1; done"]
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 16 }}
           containers:
             - name: load
               image: {{ .Values.images.k6 }}
