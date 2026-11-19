@@ -5,8 +5,8 @@ najpierw profil `medium`, po analizie wyników i zgodzie użytkownika profil `se
 zamknięty i wraca do publicznej dostępności dopiero po sprawdzeniu danych, wyszukiwarki, listingu i checkoutu.
 
 Etap 1 (#786) jest wydzielony z #484, które obejmuje resztę (pomiar k6 na serwerze, kopie przy dużej bazie,
-konfiguracja usług). Wymaga zmergowanego PR #756 (CronJob `demo-data`, `LOAD_DATA`, kalibracja
-`medium`): opisy „dziś” w tej specyfikacji dotyczą `main` po tym PR.
+konfiguracja usług). Opiera się na PR #756 (CronJob `demo-data`, `LOAD_DATA`, kalibracja `medium`). Specyfikacja opisuje
+stan po tym etapie.
 
 Issues: #786
 Zakres: `infra/k8s`, `load`, `docs/features/demo-scale`, `docs/features/demo-data/spec.md`, `docs/features/deploy/spec.md`, `docs/features/deploy-ops/spec.md`, `docs/adr/backups-observability.md`, `docs/vision.md`, `docs/reports`, `CLAUDE.md`
@@ -14,7 +14,7 @@ Zakres: `infra/k8s`, `load`, `docs/features/demo-scale`, `docs/features/demo-dat
 ## Cel i zakres
 
 - Generator danych demo działa na serwerze jako Job z zawieszonego CronJoba `demo-data`, uruchamiany wyłącznie celem
-  `make -C infra/k8s generate` po zgodzie użytkownika.
+  `make -C infra/k8s generate` po zgodzie użytkownika w rozmowie, która nazywa operację, host i profil.
 - Sklep jest zamknięty od startu generowania do udanego sprawdzenia po nim. Nieudane albo przerwane generowanie
   zostawia sklep zamknięty.
 - Generator sam przerywa pracę, zanim skończy się miejsce na dysku serwera.
@@ -119,7 +119,7 @@ Przyjęte przez sesję; każde sprawdzone w kodzie albo eksperymentem na jednora
   - `phase`: `idle`, `closing` (nic jeszcze nie zastąpione), `running` (Job utworzony), `checking` albo `opening`
     (dane sprawdzone, trwa otwieranie);
   - `target`, `job`, `anchor`, `revision` (tag obrazu), chwile startu i końca, `reason` (powód błędu), liczby
-    produktów i zamówień po udanym przebiegu;
+    produktów i zamówień po udanym przebiegu (`count(*)` po Jobie `load`, więc obejmują jego zamówienie);
   - `rootAutomated`: ustawienie automatycznej synchronizacji aplikacji `root` sprzed jej wyłączenia; zapisane raz
     i usuwane tym samym zapisem, który następuje po jej przywróceniu.
   Brak zapisu znaczy: dane `seed`, faza `idle`.
@@ -143,7 +143,15 @@ po zgodzie użytkownika w rozmowie, która nazywa operację, host i profil; skry
 `https://worf.pl/`), o które skrypt pyta z komputera operatora: 502, 503 i 504 znaczą „zamknięty”, kod poniżej 500
 „otwarty”, każdy inny kod i brak odpowiedzi to odczyt nieudany (ponawiany do limitu czasu, nigdy nie liczony jako
 „zamknięty” ani „otwarty”). Sklep jest zamknięty albo otwarty dopiero wtedy, gdy mówi to każdy adres z listy.
-`GENERATE_PROBE_HOST` ustawia nagłówki `Host` (klaster testowy, gdzie adresem jest węzeł).
+`GENERATE_PROBE_HOST` ustawia nagłówki `Host` (klaster testowy, gdzie adresem jest węzeł); na serwerze nie pomaga, bo
+`ipAllowList` Traefika odpowiada 403 każdemu adresowi spoza Cloudflare, więc sonda zawsze przechodzi przez Cloudflare.
+**Wyzwanie Cloudflare.** Sonda liczy każdy kod poniżej 500 jako „otwarty”, a nie odróżnia odpowiedzi sklepu od
+wyzwania Cloudflare (Bot Fight Mode, reguła WAF). Gdy Cloudflare odpowiada curlowi operatora 403 z wyzwaniem, krok 1
+widzi „otwarty” (zgodnie z zapisem stanu), ale zamknięcia w kroku 3 nie potwierdzi nigdy i skończy się ono cofnięciem
+(kod 1, nic nie zastąpiono); przy `data: failed` krok 1 odmawia, bo „zamknięty” nigdy nie nadejdzie. Adresy sondy muszą
+więc dostawać z Cloudflare odpowiedź sklepu (bez nagłówka `cf-mitigated`); jeśli ją dostają, to ustawienie Cloudflare
+(wyjątek od wyzwania dla adresu operatora albo dla tych dwóch adresów) i należy do użytkownika. Runbook ma sprawdzenie
+przed uruchomieniem.
 
 W klastrze bez Argo CD (brak CRD `Application` albo aplikacji `shop`; test dymny k3d) kroki synchronizacji są
 pomijane, jak w `restore`.
@@ -163,9 +171,11 @@ Przebieg przy fazie `idle`:
      kończy się błędem, gdy Elasticsearch, Postgres, Keycloak, `worker`, Varnish albo sklep nie odpowiada);
    - gdy profil nie jest `seed`, a CronJob ma sekret puli zdjęć (`photosSecretName`): plik puli zdjęć
      (`DEMO_PHOTOS_ENV_FILE`, domyślnie `~/.config/shop/demo-photos.env`) ma cztery zmienne odczytu;
-   - wolne miejsce węzła (kubelet, `/api/v1/nodes/<węzeł>/proxy/stats/summary`) to co najmniej `demoData.minFreeGb`,
-     a dla profili `medium` i `server` także co najmniej 1,25 × `diskPeakGb` profilu (obowiązuje większa z dwóch
-     liczb; GB to 10^9 bajtów, jak w `load`); odczyt nieudany albo nieliczbowy to odmowa;
+   - wolne miejsce węzła (kubelet, `/api/v1/nodes/<węzeł>/proxy/stats/summary`) da się odczytać jako liczbę (odczyt
+     nieudany albo nieliczbowy to odmowa) i dla profilu innego niż `seed` to co najmniej `demoData.minFreeGb`,
+     a dla `medium` i `server` także co najmniej 1,25 × `diskPeakGb` profilu (obowiązuje większa z dwóch liczb;
+     GB to 10^9 bajtów, jak w `load`). **`seed` nie ma progu wolnego miejsca**: po zatrzymaniu przez strażnika wolne
+     miejsce jest poniżej `minFreeGb`, a powrót do seeda (zaczyna od `TRUNCATE`) to jedyna droga naprawy;
    - `GENERATE_OUT` istnieje, jest poza repo i da się w nim pisać; sonda zgadza się ze stanem: przy `data: failed`
      „zamknięty” i reguła istnieje, w pozostałych przypadkach „otwarty” i reguły nie ma.
 2. **Pytanie.** Skrypt wypisuje host klastra, `data` i szacowane liczby, profil docelowy, że sklep będzie niedostępny
@@ -249,11 +259,12 @@ synchronizacja aplikacji `shop` w Argo CD (krok użytkownika).
   1. odmawia bez zmian (kod 64), gdy `DEMO_DATA_CONFIRM` nie jest nazwą profilu CronJoba ani słowem `seed`. Zmienną
      ustawia tylko cel `generate` (oraz `load` i test dymny na k3d), więc Job utworzony ręcznie z CronJoba
      (`kubectl create job --from`) niczego nie kasuje;
-  2. odmawia bez zmian (kod 74), gdy wolne miejsce (`df -Pk /`, Z3) jest poniżej `minFreeGb` albo odczyt się nie udał;
+  2. odmawia bez zmian (kod 74), gdy wolne miejsce (`df -Pk /`, Z3) jest poniżej `minFreeGb` albo odczyt się nie udał
+     albo nie jest liczbą; dla `seed` nie ma progu, tylko wymóg liczbowego odczytu (nieczytelny odczyt to kod 74);
   3. uruchamia w osobnej grupie procesów `bin/generate-demo --profile=… --anchor=… --force-reset` (dla `seed`:
      `bin/seed-demo`) i co `DEMO_DATA_SPACE_POLL` sekund (30) czyta wolne miejsce; co dziesiąty odczyt wypisuje;
-  4. przy wolnym miejscu poniżej `minFreeGb`, trzech nieudanych odczytach z rzędu albo odczycie nieliczbowym
-     zatrzymuje wyłącznie grupę procesów generatora (także polecenie działające właśnie na pierwszym planie)
+  4. przy wolnym miejscu poniżej `minFreeGb` (nie dla `seed`), trzech nieudanych odczytach z rzędu albo odczycie
+     nieliczbowym zatrzymuje wyłącznie grupę procesów generatora (także polecenie działające właśnie na pierwszym planie)
      i kończy się kodem 75. Sesje bazy generatora kończą się same (`PGOPTIONS`); sesji `api` i `worker`, innych
      podów ani usług skrypt nie rusza;
   5. to samo zatrzymanie wykonuje po sygnale TERM (limit czasu Joba, usunięcie poda);
@@ -268,6 +279,14 @@ synchronizacja aplikacji `shop` w Argo CD (krok użytkownika).
   miejsce: powrót do seeda zaczyna od `TRUNCATE` (pliki tabel znikają od razu), a przebudowa indeksu najpierw usuwa
   indeksy bez aliasu (Z5). Ponowne generowanie tego samego profilu po zatrzymaniu przez strażnika skończyłoby się
   tak samo, więc decyzję (inny profil, zwolnienie miejsca) podejmuje użytkownik.
+- **Seed bez progu miejsca.** Po zatrzymaniu przez strażnika wolne miejsce jest poniżej `minFreeGb`, a seed to jedyna
+  droga naprawy, więc ani krok 1 celu `generate`, ani Job nie stosują do `PROFILE=seed` progu `minFreeGb`
+  (wymagany jest tylko liczbowy odczyt miejsca) i strażnik w Jobie seeda nie zatrzymuje go z powodu progu (zatrzymują
+  go nieudane i nieliczbowe odczyty oraz TERM). Odmowa tam zostawiłaby operatora bez żadnego działania, a nieudana próba
+  zostawia stan taki jak odmowa (`data: failed`, sklep zamknięty). Seed potrzebuje mniej niż 2 GiB. Ryzyko: poniżej
+  górnej granicy (high watermark) Elasticsearcha (zajęte 90%, na serwerze około 20,7 GB wolnego) nowy indeks seeda może
+  nie dostać shardu, dopóki Elasticsearch nie odświeży informacji o dysku (`cluster.info.update.interval`, 30 s):
+  taka próba kończy się błędem, a ponowienie przechodzi.
 - Wdrożony profil to deklaracja w repo: zmiana `medium` na `server` to PR z wartościami i zwykłe wdrożenie.
 
 ### Sprawdzenie po generowaniu
@@ -284,7 +303,7 @@ Wykonywane przy zamkniętym sklepie; każde nieudane zostawia sklep zamknięty (
    sztuki z rozpoczętą płatnością. Każda odpowiedź inna niż oczekiwana kończy Job błędem. Checkout zostawia w danych
    jedno zamówienie `load-<n>@example.com`, które wygasa jak każde nieopłacone.
 
-CronJob `load` (chart, profile `prod` i `ci`): zawieszony, obraz k6 przypięty digestem w `images.k6` (ten sam co
+CronJob `load` (chart, wszystkie profile: `prod`, `ci` i `load`): zawieszony, obraz k6 przypięty digestem w `images.k6` (ten sam co
 w `load/k6.sh`; pilnuje tego `check`), skrypty z ConfigMapy renderowanej z `load/` (dowiązanie w `files/`, jak
 `default.vcl`), adresy usług klastra (`http://store:3000`, `http://api`), `STORE_ORIGIN` z domeny, bez sekretów i bez
 tokenu konta usługi, `backoffLimit: 0`. Ten sam CronJob posłuży pomiarowi obciążenia na serwerze w etapie 2.
@@ -313,7 +332,8 @@ Zapis powstaje w klastrze i poza serwerem, bez udziału komputera operatora i be
 - **Odczyty strażnika** (wolne miejsce co 5 minut) są w logu Joba.
 
 Trwała kopia powstaje z tych źródeł po przebiegu, w dowolnej chwili w czasie retencji: cel `generate` (także przy
-wznowieniu) zapisuje w `GENERATE_OUT` log kontenera, podsumowanie i `sizes.txt` (tabele, indeksy, Elasticsearch),
+wznowieniu) zapisuje w `GENERATE_OUT/<job>/` log kontenera (`demo-data.log`), podsumowanie (`summary.txt`)
+i `sizes.txt` (tabele, indeksy, Elasticsearch), a po Jobie `load` także jego log (`load.log`),
 a sesja prowadząca eksportuje z Grafana Cloud pełny log i szczyty metryk i zapisuje raport w `docs/reports/`
 (czasy kroków, rozmiary, szczyt dysku, szczyty pamięci i CPU, restarty kontenerów, wynik sprawdzenia; liczby opisują
 ten serwer i ten profil). Przebieg `medium` na serwerze sprawdza kompletność kopii w Grafana Cloud przed przebiegiem
@@ -321,8 +341,8 @@ ten serwer i ten profil). Przebieg `medium` na serwerze sprawdza kompletność k
 linie `DETAIL:` i `STATEMENT:`, więc pełna liczba linii może się różnić). To nie dowodzi kompletności przy wielkości
 logu `server`.
 
-Funkcje zapisu logu, rozmiarów, odczytu pliku puli zdjęć i tworzenia sekretu są dziś w `load.sh`; przechodzą do
-wspólnego pliku `scripts/demo-data-lib.sh` używanego przez `load.sh` i `generate.sh`, bez zmiany zachowania `load`.
+Funkcje zapisu logu, rozmiarów, odczytu pliku puli zdjęć i tworzenia sekretu są we wspólnym pliku
+`scripts/demo-data-lib.sh`, używanym przez `load.sh` i `generate.sh`.
 
 ### Ochrona przed przypadkowym uruchomieniem
 
@@ -330,7 +350,8 @@ wspólnego pliku `scripts/demo-data-lib.sh` używanego przez `load.sh` i `genera
 - Job bez `DEMO_DATA_CONFIRM` kończy się kodem 64 bez zmian (także utworzony ręcznie albo z interfejsu Argo CD).
 - Cel `generate` wymaga zgody użytkownika w rozmowie, słowa `tak` i `REPLACE` równego `data` z zapisu stanu; profil
   musi być tym z wdrożonych wartości.
-- `make -C infra/k8s rerun` odmawia Joba z etykietą generatora (`rerun` odtworzyłby Job razem z `DEMO_DATA_CONFIRM`).
+- `make -C infra/k8s rerun` odmawia Joba z etykietą generatora `app.kubernetes.io/name: demo-data` kodem 3 i wskazuje
+  `make generate` (`rerun` odtworzyłby Job razem z `DEMO_DATA_CONFIRM`).
 - Cel woła `ao-guard.sh` jak pozostałe cele z kubeconfigiem produkcji.
 
 ### Kolejne wdrożenia
@@ -420,13 +441,15 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
 
 1. Render `prod` zawiera zawieszony CronJob `demo-data` (`backoffLimit: 0`, limity czasu `medium` 6 h i `server`
    24 h, `terminationGracePeriodSeconds: 120`, zasoby `resources.demoData`, sekret puli tylko w jego kontenerze
-   i opcjonalny) i zawieszony CronJob `load` (obraz z digestem, bez sekretów, `automountServiceAccountToken: false`).
+   i opcjonalny) i zawieszony CronJob `load` (obraz z digestem, bez sekretów, `automountServiceAccountToken: false`); CronJob `load`
+   renderuje się we wszystkich profilach (`prod`, `ci`, `load`).
    Schemat odrzuca `prod` bez `anchor`, bez `photosSecretName`, z profilem innym niż `medium` i `server` albo
    z `minFreeGb` poniżej 10. Selftest łapie CronJob `demo-data` i `load` bez `suspend` oraz skrypt Joba bez
    sprawdzenia `DEMO_DATA_CONFIRM` i bez strażnika miejsca.
 2. Skrypt `demo-data.sh` (testy z podstawionymi poleceniami): `DEMO_DATA_CONFIRM` puste albo inne niż profil i `seed`
    daje kod 64 i nic się nie uruchamia; `seed` uruchamia `bin/seed-demo`, profil `bin/generate-demo`; za mało miejsca
-   albo nieudany odczyt przed startem kod 74; spadek poniżej progu w trakcie, trzy nieudane odczyty z rzędu i odczyt
+   (profil; `seed` nie ma progu) albo nieudany albo nieliczbowy odczyt przed startem (także `seed`) kod 74; spadek
+   poniżej progu w trakcie (profil, nie `seed`), trzy nieudane odczyty z rzędu i odczyt
    nieliczbowy zatrzymują grupę procesów generatora razem z poleceniem działającym na pierwszym planie i niczego
    poza nią, kod 75; sygnał TERM robi to samo; kod generatora przechodzi na wyjście; blok podsumowania z czasami kroków i linia powodu powstają na każdej z tych ścieżek. Kontener
    CronJoba ma `PGOPTIONS` z `client_connection_check_interval`; na działającym stosie sesja procesu PHP z tą
@@ -434,7 +457,8 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
 3. `generate` odmawia bez zmian (testy skryptu na atrapach `kubectl`): brak albo zły `PROFILE`, profil inny niż
    w CronJobie, brak albo zły `REPLACE`, brak `tak`, aktywny Job, trwająca synchronizacja, niegotowy Deployment albo
    StatefulSet, brak pliku puli zdjęć albo zmiennej odczytu (tylko gdy CronJob ma sekret puli i profil nie jest
-   `seed`), za mało wolnego miejsca (próg `diskPeakGb` tylko dla `medium` i `server`), nieczytelny odczyt miejsca,
+   `seed`), za mało wolnego miejsca (próg `minFreeGb` dla każdego profilu poza `seed`, próg `diskPeakGb` tylko dla `medium` i
+   `server`; `seed` odmawia tylko przy nieczytelnym odczycie), nieczytelny odczyt miejsca,
    `GENERATE_OUT` w repo albo bez prawa zapisu, brak `KUBE_DIR`, sonda któregokolwiek adresu niezgodna ze stanem albo
    nieczytelna.
 4. `generate` na ścieżce poprawnej (profil i `seed`, z Argo CD i bez niego) wykonuje kroki i zapisy stanu
@@ -464,37 +488,41 @@ Kroki sesji prowadzącej po zmergowaniu epiku; każdy krok ze zgodą jest osobn�
 7. Test dymny k3d (`make -C infra/k8s smoke`, także w `deploy.yml`, bez pliku puli zdjęć) uruchamia cel `generate`
    z profilem `small` zamiast samego Joba: żądania przez ingress wysyłane bez przerwy przestają dostawać 200 po
    zamknięciu (Z2), po przebiegu sklep odpowiada, zapis stanu to `idle` z `data: small`, Job `load` przeszedł, liczby
-   produktów i zamówień są te z profilu. `SMOKE_BREAK=demo-data` (nieudany generator): cel kończy się kodem 1,
+   produktów i zamówień są te z profilu (zamówień o jedno więcej: zamówienie Joba `load`). `SMOKE_BREAK=demo-data` (nieudany generator): cel kończy się kodem 1,
    ingress odpowiada 502, `data: failed`; potem `generate PROFILE=seed REPLACE=failed` otwiera sklep na danych
    seeda. Raport zawiera wynik obu ścieżek.
-8. `rerun` odmawia Joba generatora; `reinitialize` odmawia poza danymi `seed` w fazie `idle`; oba bez zmian
+8. `rerun` odmawia Joba generatora (kod 3, komunikat wskazuje `make generate`); `reinitialize` odmawia poza danymi `seed` w fazie `idle`; oba bez zmian
    w klastrze (testy).
 9. `status` pokazuje `data`, `phase`, zamknięcie i linię `initialize`; brak zapisu stanu wypisuje jako `seed`, `idle`.
 10. `load` z `LOAD_DATA` działa jak przed wydzieleniem wspólnego pliku (istniejące testy `test_load_script.py`
     przechodzą bez zmiany asercji poza utworzeniem Joba z `DEMO_DATA_CONFIRM`).
 11. `make -C infra/k8s check` przechodzi; nowe przypadki selftestu kończą `check` błędem (wynik obu uruchomień
     w raporcie zadania).
-12. Dokumentacja z sekcji „Dokumentacja” jest zmieniona; żaden tekst nie przedstawia pełnej skali jako
-    zweryfikowanej ani kopii OVH jako aktywnej.
+12. Dokumentacja z sekcji „Dokumentacja” opisuje stan po epiku, bez historii zmian; obie wersje `CLAUDE.md` mówią, że
+    `generate` wymaga zgody użytkownika w rozmowie, która nazywa operację, host i profil, a `rerun` nie ponawia Joba
+    generatora; runbook podaje pełne polecenia celu `generate` i sprawdzenie wdrożenia po generowaniu. Żaden tekst nie
+    przedstawia pełnej skali (10 mln produktów, 50 mln zamówień) jako zweryfikowanej ani automatycznej kopii OVH jako
+    aktywnej, a liczby `server` i `full` są opisane jako ekstrapolacja.
 
 Kroki z „Przebieg na serwerze” nie są kryteriami epiku: wykonuje je sesja po merge'u, za zgodą.
 
 ## Dokumentacja
 
-Zmieniana razem z implementacją:
+Utrzymywana razem z kodem. Dokumenty, które opisują tę funkcję albo jej zasady:
 
 - `docs/features/demo-data/spec.md`: P2 i W3 według U1, „Po epiku”, „Poza zakresem”, „Model zagrożeń” (CronJob
   także w `prod`), opis CronJoba (skrypt, `DEMO_DATA_CONFIRM`, strażnik miejsca).
 - `docs/vision.md`: „Skala docelowa” (dane w skali na serwerze demo, pomiar `full` odłożony, brak weryfikacji pełnej
   skali) i „Dane demo”.
-- `infra/k8s/README.md`: sekcja generowania danych na serwerze (przygotowanie, `generate`, wznowienie, błędy,
-  powrót do seeda i `medium`, wdrożenie po generowaniu, eksport logu z Grafana Cloud).
+- `infra/k8s/README.md`: sekcja 11 (CronJoby, `generate` na serwerze: przygotowanie, polecenia, wznowienie, błędy
+  i kody wyjścia, powrót do seeda i `medium`, scenariusze awarii, wdrożenie po generowaniu, eksport logu i metryk
+  z Grafana Cloud, adresy sondy przez Cloudflare).
 - `infra/k8s/CLAUDE.md` i główny `CLAUDE.md`: `generate` na liście celów wymagających zgody; `rerun` nie ponawia
   Joba generatora.
-- `docs/features/deploy/spec.md` i `docs/features/deploy-ops/spec.md`: CronJoby `demo-data` i `load` w `prod`,
+- `docs/features/deploy/spec.md` i `docs/features/deploy-ops/spec.md`: CronJoby `demo-data` i `load` w chartcie,
   zamknięcie sklepu a alerty.
 - `docs/adr/backups-observability.md`: klaster ma jedną, tymczasową NetworkPolicy (zamknięcie sklepu).
-- Komentarze celów w `infra/k8s/Makefile` i nagłówki skryptów.
+- Komentarze celów w `infra/k8s/Makefile` i nagłówki skryptów (`generate.sh`, `demo-data.sh`, `rerun.sh`).
 
 ## Ryzyka
 
@@ -511,7 +539,10 @@ Zmieniana razem z implementacją:
   `failed`, choć są nietknięte
   (ostrożnie: brak Joba nie dowodzi, że nie działał); kosztem jest ponowne generowanie albo powrót do seeda.
 - Sonda z komputera operatora przechodzi przez Cloudflare; jej kody spoza 502–504 i poniżej 500 są odczytem
-  nieudanym, więc awaria Cloudflare zatrzymuje cel, a nie otwiera ani nie zamyka sklepu.
+  nieudanym, więc awaria Cloudflare zatrzymuje cel, a nie otwiera ani nie zamyka sklepu. Wyzwanie Cloudflare (403)
+  jest dla niej kodem poniżej 500, czyli „otwarte”: skutki w „Cel `make -C infra/k8s generate`”; ochroną jest
+  sprawdzenie adresów przed uruchomieniem (runbook) i to, że niepotwierdzone zamknięcie kończy się cofnięciem przed
+  zastąpieniem danych.
 - Konta generatora zostają w Keycloaku po powrocie do seeda; przejście z `server` do `medium` usuwa je pojedynczo.
 - Retencja Grafana Cloud (14 dni) ogranicza czas na eksport pełnego logu i odczyt szczytów do raportu; po restarcie
   serwera w trakcie przebiegu to jedyna kopia logu. Przebieg `medium` porównuje ją z logiem kontenera, co nie dowodzi
