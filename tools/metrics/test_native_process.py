@@ -334,6 +334,56 @@ class MissingTranscriptsTest(ProcessEnv):
         for field in ('attempts', 'by_task', 'value', 'in_attempts', 'versions'):
             self.assertTrue(any('zachowano' in g for g in gaps_of(after, field)), (field, after['gaps']))
 
+    def subagent_file(self, agent, suffix):
+        return os.path.join(testkit.project_dir(self.projects, self.worktree), 's1', 'subagents',
+                            'agent-%s%s' % (agent, suffix))
+
+    def test_refresh_after_losing_a_subagent_transcript_keeps_the_stored_values(self):
+        for lost in (('.jsonl',), ('.jsonl', '.meta.json')):
+            with self.subTest(lost=lost):
+                self.setUp()
+                self.write_run()
+                self.write_session('s1', self.lead())
+                self.reviewed()
+                self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+                before = self.native_record()
+                self.assertEqual(len(before['attempts']), 2)
+                for suffix in lost:
+                    os.remove(self.subagent_file('ad1', suffix))
+                after = self.native_record()
+                for field in ('attempts', 'by_task', 'value', 'reviews', 'retries', 'integration', 'breakdown',
+                              'in_attempts'):
+                    self.assertEqual(after[field], before[field], field)
+                for field in ('attempts', 'value', 'by_task'):
+                    self.assertTrue(any('zachowano' in g for g in gaps_of(after, field)), (field, after['gaps']))
+                again = self.native_record()
+                self.assertEqual(again['attempts'], before['attempts'])
+                self.assertEqual(again['value'], before['value'])
+
+    def test_refresh_after_losing_a_session_keeps_the_stored_values(self):
+        self.write_run(sessions=('s1', 's2'))
+        self.write_session('s1', self.lead())
+        path = self.write_session('s2', Native("s2").assistant(1000, input=1000000).human(1500).assistant(1510))
+        before = self.native_record()
+        self.assertEqual(before['human']['interventions'], 2)
+        os.remove(path)
+        after = self.native_record()
+        self.assertEqual(after['human'], before['human'])
+        self.assertEqual(after['value'], before['value'])
+        self.assertTrue(any('zachowano' in g for g in gaps_of(after, 'value')), after['gaps'])
+
+    def test_refresh_with_more_transcripts_takes_the_new_values(self):
+        self.write_run()
+        self.write_session('s1', self.lead())
+        self.reviewed()
+        before = self.native_record()
+        self.subagent('ad1', 'developer', 'DEMO-1 zadanie', ['Gotowe'], 300)
+        after = self.native_record()
+        self.assertEqual(len(before['attempts']), 1)
+        self.assertEqual(len(after['attempts']), 2)
+        self.assertGreater(after['value']['total']['usd'], before['value']['total']['usd'])
+        self.assertFalse(any('zachowano' in g for g in after['gaps']), after['gaps'])
+
     def test_without_transcripts_and_without_a_stored_record_attempts_are_empty_with_gaps(self):
         self.write_run(sessions=('gone',))
         record = self.native_record()
