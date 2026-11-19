@@ -236,11 +236,12 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
     {
       "id": "DEMO-SCALE-8",
       "title": "Dokumentacja: zmiana kolejności, runbook generowania i zasady zgody",
-      "scope": "Dokumenty z sekcji „Dokumentacja” specyfikacji (kryterium 12): docs/features/demo-data/spec.md (P2 i W3 według U1, „Po epiku”, „Poza zakresem”, „Model zagrożeń”, opis CronJoba), docs/vision.md („Skala docelowa”, „Dane demo”), infra/k8s/README.md (sekcja generowania danych na serwerze: przygotowanie, generate, wznowienie, błędy, powrót do seeda i medium, scenariusze awarii, wdrożenie po generowaniu, eksport logu i metryk z Grafana Cloud, adresy sondy przez Cloudflare), infra/k8s/CLAUDE.md i główny CLAUDE.md (generate na liście celów wymagających zgody, rerun nie ponawia Joba generatora), docs/features/deploy/spec.md i docs/features/deploy-ops/spec.md (CronJoby demo-data i load w prod, zamknięcie sklepu a alerty), docs/adr/backups-observability.md (tymczasowa NetworkPolicy), docs/features/demo-scale/spec.md (stan po implementacji).",
+      "scope": "Dokumenty z sekcji „Dokumentacja” specyfikacji (kryterium 12), opisujące stan po epiku bez historii zmian: docs/features/demo-data/spec.md (P2 i W3 według U1, „Po epiku”, „Poza zakresem”, „Model zagrożeń”, opis CronJoba ze skryptem, DEMO_DATA_CONFIRM i strażnikiem), docs/vision.md („Skala docelowa”, „Dane demo”), infra/k8s/README.md (sekcja 11: CronJoby demo-data i load we wszystkich profilach, runbook generowania danych na serwerze: warunek wstępny L9 i osobna zgoda, przygotowanie, pełne polecenia generate z KUBE_DIR, GENERATE_OUT, GENERATE_PROBE_URL i zmiennymi dodatkowymi, potwierdzenie tak, wznowienie, błędy i kody wyjścia celu i Joba, powrót do seeda i do medium, scenariusze awarii, wdrożenie po generowaniu, eksport logu i metryk z Grafana Cloud, adresy sondy przez Cloudflare i wyzwanie Cloudflare), infra/k8s/CLAUDE.md i główny CLAUDE.md (generate na liście celów wymagających zgody, która nazywa operację, host i profil; rerun nie ponawia Joba generatora: kod 3), docs/features/deploy/spec.md i docs/features/deploy-ops/spec.md (CronJoby demo-data i load, zamknięcie sklepu a alerty, smoke przez generate), docs/adr/backups-observability.md (tymczasowa NetworkPolicy), docs/features/demo-scale/spec.md (stan po implementacji: seed bez progu wolnego miejsca, CronJob load w każdym profilu, wyniki w GENERATE_OUT/<job>/; bez zmian punktu o cache ISR w „Ryzyka” i warunku w „Wymagane przed startem”), nagłówek infra/k8s/scripts/rerun.sh (kod wyjścia 3; jedyna zmiana kodu).",
       "acceptance_criteria": [
-        "Każdy dokument z listy opisuje stan po epiku, bez historii zmian; zasady w obu CLAUDE.md mówią, że generate wymaga zgody użytkownika w rozmowie, która nazywa operację, host i profil.",
+        "Każdy dokument z listy opisuje stan po epiku, bez historii zmian; zasady w obu CLAUDE.md mówią, że generate wymaga zgody użytkownika w rozmowie, która nazywa operację, host i profil, a rerun nie ponawia Joba generatora (kod 3).",
         "Żaden tekst nie przedstawia pełnej skali jako zweryfikowanej ani automatycznej kopii OVH jako aktywnej; liczby server i full są opisane jako ekstrapolacja.",
-        "Runbook podaje pełne polecenia celu generate z KUBE_DIR, GENERATE_OUT i GENERATE_PROBE_URL oraz sprawdzenie wdrożenia po generowaniu (czas initialize, liczby, próg 5 minut).",
+        "Runbook podaje pełne polecenia celu generate z KUBE_DIR, GENERATE_OUT i GENERATE_PROBE_URL, warunek wstępny (wdrożona i zweryfikowana poprawka L9 oraz osobna zgoda), wznowienie, kody wyjścia, powrót do seeda i medium, ostrzeżenie o wyzwaniu Cloudflare przy sondzie oraz sprawdzenie wdrożenia po generowaniu (czas initialize, liczby, próg 5 minut).",
+        "Specyfikacja opisuje PROFILE=seed bez progu wolnego miejsca (cel i Job) i CronJob load w każdym profilu; punkt o cache ISR w „Ryzyka” i warunek w „Wymagane przed startem” bez zmian.",
         "make -C infra/k8s check przechodzi (testy dokumentów i zasad, które czytają te pliki)."
       ],
       "risk": "FAST",
@@ -257,6 +258,7 @@ Kontrakty między zadaniami są w specyfikacji: nazwy `shop-closed`, `demo-data-
         "docs/vision.md",
         "infra/k8s/README.md",
         "infra/k8s/CLAUDE.md",
+        "infra/k8s/scripts/rerun.sh",
         "CLAUDE.md"
       ],
       "parallel_with": [
