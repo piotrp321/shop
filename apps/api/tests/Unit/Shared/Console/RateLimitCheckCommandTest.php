@@ -159,6 +159,39 @@ final class RateLimitCheckCommandTest extends TestCase
         self::assertStringContainsString('unexpected', $this->display($tester));
     }
 
+    public function testTheMessagesAreOneLineEachOnANarrowTerminal(): void
+    {
+        // A pod has no terminal and no COLUMNS: a block of SymfonyStyle wraps at about 74 characters, but the smoke test and the runbook
+        // look for these texts in the log of the Job.
+        $columns = getenv('COLUMNS');
+        putenv('COLUMNS=40');
+        try {
+            $value = null;
+            $recording = $this->createStub(\Redis::class);
+            $recording->method('set')->willReturnCallback(static function (string $key, string $written) use (&$value): bool {
+                $value = $written;
+
+                return true;
+            });
+            $recording->method('get')->willReturnCallback(static function () use (&$value): mixed {
+                return $value;
+            });
+            $recording->method('del')->willReturn(1);
+            $ok = $this->tester($recording);
+            $ok->execute([]);
+
+            $failing = $this->createStub(\Redis::class);
+            $failing->method('set')->willThrowException(new \RedisException('Connection refused by the server at redis:6379'));
+            $failed = $this->tester($failing);
+            $failed->execute([]);
+        } finally {
+            putenv(false === $columns ? 'COLUMNS' : 'COLUMNS='.$columns);
+        }
+
+        self::assertStringContainsString('The Redis of the rate limiters accepted, returned and deleted the control key.', $ok->getDisplay());
+        self::assertStringContainsString('The Redis of the rate limiters failed: the write of the control key failed: Connection refused by the server at redis:6379', $failed->getDisplay());
+    }
+
     private function tester(\Redis $redis): CommandTester
     {
         return $this->testerOfConnection(static fn (): \Redis => $redis);
