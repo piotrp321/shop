@@ -1,6 +1,7 @@
-"""The disk limit of the store (docs/features/small-fixes/spec.md, D4): the ISR cache lives on the writable layer of the
-container and counts to its `ephemeral-storage`. prod (and its copy load) request 256Mi and limit 2Gi; the chart defaults
-and the profile ci have no entry (helm merges maps, so an entry in the defaults would reach ci and the throwaway clusters)."""
+"""The disk limit of the store (docs/features/small-fixes/spec.md, D4): the writable layer of the container counts to
+its `ephemeral-storage`, and the limit guards the disk of the node (the ISR cache stays in memory). prod (and its copy
+load) request 256Mi and limit 2Gi; the chart defaults and the profile ci have no entry (helm merges maps, so an entry in
+the defaults would reach ci and the throwaway clusters)."""
 
 import unittest
 

@@ -35,7 +35,8 @@ resources:
   mailpit: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
   api: { requests: { cpu: "1", memory: 512Mi }, limits: { memory: 2Gi } }
   worker: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1Gi } }
-  # ephemeral-storage: the ISR cache of the store grows on the writable layer; over the limit the pod is evicted (D4).
+  # ephemeral-storage guards the disk of the node against writes to the writable layer (the ISR cache stays in memory);
+  # over the limit the pod is evicted (small-fixes spec, D4).
   store: { requests: { cpu: 500m, memory: 512Mi, ephemeral-storage: 256Mi }, limits: { memory: 1536Mi, ephemeral-storage: 2Gi } }
   admin: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 128Mi } }
   imgproxy: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }

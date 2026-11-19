@@ -5,15 +5,16 @@ Dwa audyty z 2026-11-18 (`docs/reports/app-audit-2026-11-18.md`, R2 i B6, sekcja
 zatrzymać sprzedaż w publicznym demo: zarezerwować cały stan nieopłaconymi zamówieniami, zgadywać kody rabatowe bez
 ograniczenia, zakładać koszyki bez limitu, zablokować API równoległymi rozpoczęciami płatności albo dużymi i wolnymi
 treściami żądań, zapełnić dysk węzła cache ISR i oślepić Sentry. Epik zamyka te drogi limitami po stronie API, sklepu
-i ingressu. Każdy limit ma test prób obejścia (zasada projektu dla zadań ustawiających reguły).
+i ingressu; cache ISR sklepu jest tylko w pamięci, z limitem (`docs/features/product-page/spec.md`, „Cache ISR”), więc
+nie jest częścią epiku. Każdy limit ma test prób obejścia (zasada projektu dla zadań ustawiających reguły).
 
 Issues: #332, #406, #407, #421
-Zakres: `apps/api/src/Shared/Infrastructure/Http`, `apps/api/src/Cart/Domain`, `apps/api/src/Cart/UI/Http`, `apps/api/src/Ordering`, `apps/api/src/Payment`, `apps/api/config`, `apps/api/migrations`, `apps/api/docker/frankenphp`, `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/tests`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/cart`, `apps/store/src/checkout`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app/api`, `apps/store/app/p`, `apps/store/next.config.ts`, `apps/store/tests`, `infra/keycloak/realms`, `infra/k8s/charts/shop`, `infra/k8s/tests`, `infra/k8s/smoke`, `load/lib`, `e2e/tests`, `apps/api/CLAUDE.md`, `docs/features/hardening/spec.md`, `docs/features/cart/spec.md`, `docs/features/checkout/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `apps/api/src/Shared/UI/Console`, `infra/k8s/scripts`, `infra/k8s/README.md`, `docs/features/deploy-ops/spec.md`, `docs/features/async-reliability/spec.md`, `docs/adr/backups-observability.md`, `docs/vision.md`
+Zakres: `apps/api/src/Shared/Infrastructure/Http`, `apps/api/src/Cart/Domain`, `apps/api/src/Cart/UI/Http`, `apps/api/src/Ordering`, `apps/api/src/Payment`, `apps/api/config`, `apps/api/migrations`, `apps/api/docker/frankenphp`, `apps/api/composer.json`, `apps/api/composer.lock`, `apps/api/symfony.lock`, `apps/api/tests`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/cart`, `apps/store/src/checkout`, `apps/store/src/api/client.ts`, `apps/store/app/api`, `infra/keycloak/realms`, `infra/k8s/charts/shop`, `infra/k8s/tests`, `infra/k8s/smoke`, `load/lib`, `e2e/tests`, `apps/api/CLAUDE.md`, `docs/features/hardening/spec.md`, `docs/features/cart/spec.md`, `docs/features/checkout/spec.md`, `docs/features/discount-codes/spec.md`, `docs/features/payment/spec.md`, `docs/features/product-page/spec.md`, `apps/api/src/Shared/UI/Console`, `infra/k8s/scripts`, `infra/k8s/README.md`, `docs/features/deploy-ops/spec.md`, `docs/features/async-reliability/spec.md`, `docs/adr/backups-observability.md`, `docs/vision.md`
 
 **Zależności.** HARDENING (#267): `ClientIp`, `RateLimitSubscriber`, limitery w Redisie, przekazywanie
 `CF-Connecting-IP` przez sklep i Cloudflare przed originem (`ipAllowList`). CHECKOUT, PAYMENT, DISCOUNT-CODES,
-PRODUCT-PAGE, SENTRY: przepływy, które ograniczamy. SMALL-FIXES: limit `ephemeral-storage` kontenera `store`, którego
-L9 nie zmienia. Obraz API ma FrankenPHP 1.13.5, którego wymaga limit czasu treści (L8).
+PRODUCT-PAGE, SENTRY: przepływy, które ograniczamy. Obraz API ma FrankenPHP 1.13.5, którego wymaga limit czasu treści
+(L8).
 
 ## Cel i skutek
 
@@ -29,7 +30,6 @@ Po epiku, przy wartościach produkcyjnych:
 - Redis nieużywalny dla API, czyli wyłączone limitery tras, daje alert e-mail najpóźniej po ok. 17 minutach;
 - równoległe rozpoczęcia płatności jednego zamówienia nie zajmują wątków API;
 - treść żądania ma limit rozmiaru i czasu w API, BFF sklepu i ingressie;
-- cache ISR strony produktu nie zapisuje niczego na dysku poda i ma limit pamięci;
 - błędny token Bearer nie tworzy zdarzenia Sentry ani zrzutu logów;
 - hasła w Keycloaku mają minimalną politykę.
 
@@ -57,13 +57,13 @@ punkcie. Limity nie zatrzymują atakującego z wieloma adresami (botnet, własna
 | Zwolnienie przez pracownika stanu zablokowanego zamówieniem `new` | Status `new` nie ma przejść pracownika (`OrderStatus.php:32`); zamówienie wygasa samo po 35 min. |
 | Sprawdzanie na originie, z której strefy Cloudflare przyszło żądanie (Authenticated Origin Pulls albo tunel, SA-35) | SA-35: Low w audycie, nietestowane. Wymaga własnego certyfikatu klienta w strefie Cloudflare (krok użytkownika) i `clientAuth` w Traefiku: #796. Bez tego jedno założenie limitów na adres jest niepotwierdzone („Adres klienta”). |
 | Generator losowych kodów w panelu i minimalna długość kodu poufnego | Panel przyjmuje kod od 3 znaków. Poufność kodu daje jego losowość („Zgadywanie kodów rabatowych”); zmiana panelu i reguły kodu: #797. |
-| Wspólny cache ISR między replikami, cache HTML listingów, koszt renderu stron pod ruchem robotów | L9 ogranicza dysk i pamięć jednego poda sklepu. Reszta: PERFORMANCE (#781, STORE-CACHE). |
+| Cache ISR strony produktu (SA-13), wspólny cache ISR między replikami, cache HTML listingów, koszt renderu stron pod ruchem robotów | Cache ISR jest tylko w pamięci procesu sklepu, z limitem (`docs/features/product-page/spec.md`, „Cache ISR”); kolejność względem danych w skali na serwerze demo opisuje `docs/features/demo-scale/spec.md`. Reszta: PERFORMANCE (#781, STORE-CACHE). |
 
 ## Wymagane przed startem
 
 - Epik startuje po merge'u ASH-V1 i tagu `ash-v1.0`: jest pierwszym epikiem serii (`docs/features/ash-v1/spec.md`, D8).
 - Nowa zależność `symfony/lock` (D1) ma zgodę użytkownika.
-- Kolejność wdrożeń względem danych w skali na serwerze demo: „Wdrożenie i kolejność z DEMO-SCALE”.
+- Kolejność wdrożenia względem `generate` na serwerze demo: „Wdrożenie”.
 
 Sprawdzenia techniczne (mały eksperyment na początku zadania, wynik w raporcie zadania; gdy wynik przeczy założeniu,
 zadanie się zatrzymuje i wraca z decyzją, zamiast obchodzić wymaganie):
@@ -72,7 +72,6 @@ zadanie się zatrzymuje i wraca z decyzją, zamiast obchodzić wymaganie):
 |---|---|---|
 | E1 | `RateLimiterFactory` 8.1 tworzy blokadę z domyślnym TTL 300 s i czeka na nią bez limitu (`acquire(true)`), a wyniku nie sprawdza; ograniczone czekanie i krótki TTL daje własny dekorator `LockFactory` przekazany jako `lock_factory`. | L1 |
 | E2 | Caddy w FrankenPHP 1.13.5 (wersja z `main`): `request_body max_size` odrzuca treść ponad limit przed PHP także przy treści chunked; `handle_errors` zwraca problem JSON; `timeouts read_body` zamyka wolną treść. | L8 |
-| E3 | Next 16.4.6 (wersja z `main`): `experimental.isrFlushToDisk: false` wyłącza każdy zapis cache przyrostowego na dysk (wpisy stron, także 404, i cache `fetch`), `cacheMaxMemorySize` ogranicza cache w pamięci procesu, a `revalidateTag` działa. Kod tej wersji to pokazuje (`FileSystemCache.set` kończy się przed zapisem, gdy zapis na dysk jest wyłączony; rozmiar wpisu strony to długość HTML, bajty RSC i dane segmentów); eksperyment potwierdza to na buildzie produkcyjnym i mierzy pamięć. | L9 |
 | E4 | Middleware `buffering` Traefika z k3s buforuje też odpowiedź, więc jest tylko na trasach JSON (BFF sklepu `/api/`, host `api.`), nigdy na stronach HTML i RSC sklepu. | L8 |
 | E5 | Keycloak z compose importuje realm z `passwordPolicy`, a `kcadm update realms/<realm>` ustawia ją w istniejącym realmie. | L11 |
 
@@ -95,7 +94,6 @@ do hosta `api.` (zawsze przez Cloudflare: `CF-Connecting-IP` ustawia Cloudflare)
 | Samoblokada API równoległymi rozpoczęciami płatności | L7 | integracyjny z procesami |
 | Duża treść JSON (pamięć PHP, proces sklepu) | L8, L4 | E2E na stosie, Vitest, test dymny |
 | Wolna treść trzymająca wątki API | L8 (Traefik buforuje przed API; Caddy zamyka po 60 s) | test dymny przez ingress, E2E na compose |
-| Zapełnienie dysku węzła cache ISR | L9 (i limit dysku poda z SMALL-FIXES) | test i pomiar na buildzie produkcyjnym |
 | Limitery wyłączone bez sygnału (Redis nieużywalny dla API) | L12 | integracyjny komendy, `promtool`, test dymny |
 | Oślepienie Sentry i zalew logów błędnymi tokenami | L10 | funkcjonalny z licznikiem zdarzeń |
 | Słabe hasła kont | L11 | E2E rejestracji, render chartu |
@@ -123,7 +121,6 @@ Wartości i zachowania w tabeli są decyzjami użytkownika.
 | D9 | **Równoległe rozpoczęcia płatności (SA-03 p. 2).** `StartPayment` po sprawdzeniu dostępu i powtórzenia próbuje wziąć blokadę doradczą transakcji na zamówienie (`pg_try_advisory_xact_lock`, bez czekania); gdy jej nie dostanie, od razu kończy się istniejącym 409 `PaymentInProgress` („Płatność za to zamówienie jest w toku. Spróbuj za chwilę.”). Kontrakt API bez zmian. Jawny wyjątek DBAL w Payment, jak w D8. |
 | D10 | **Treść żądania (SA-12, #413 SR-3).** API (Caddy, działa też w compose): najwyżej 1 MB; wyjątek tylko `POST` na dokładnej ścieżce `/api/v1/admin/product-images` (z rozróżnieniem wielkości liter): 71 MB, czyli powyżej `post_max_size` 70 MB, więc za duże zdjęcie nadal daje dzisiejsze 422 z kontrolera (z nagłówkami CORS panelu); nagłówki w 10 s, treść w 60 s (FrankenPHP ≥ 1.13.5, GHSA-j45x-h238-h4xx). Przekroczenie 1 MB: 413 problem JSON z polskim `detail` z Caddy (`handle_errors`); żaden klient przeglądarkowy nie wysyła takich treści, więc 413 nie potrzebuje CORS. BFF sklepu: treść JSON najwyżej 16 KiB (`/api/revalidate`: 32 KiB, bo przyjmuje do 100 tagów), sprawdzana przed odczytem i w trakcie. Ingress (tylko chart): middleware Traefika `buffering` na hoście `api.` (1 MiB; osobna ścieżka uploadu 71 MiB) i na ścieżce `/api/` hosta sklepu (1 MiB), więc wolna treść nie dochodzi do wątków API; strony HTML i RSC sklepu bez buforowania (E4). |
 | D11 | **Polityka haseł Keycloaka (B6, SA-08):** oba realmy `length(12) and maxLength(128) and notUsername and notEmail`, `backoffice` dodatkowo `passwordHistory(5)`; bez listy zakazanych haseł (poza zakresem). Plik realmu ma `passwordPolicy`; chart kopiuje ją z pliku do `<realm>.settings.json`, więc Job `keycloak-config` ustawia ją przy każdym uruchomieniu także w istniejącym realmie. Istniejące hasła działają do następnej zmiany hasła. Compose importuje realm tylko przy pustym wolumenie Keycloaka: lokalny stos sprzed zmiany wymaga `make down` z usunięciem wolumenów. |
-| D12 | **Cache ISR strony produktu (SA-13):** cache przyrostowy sklepu (wpisy stron, także 404, i cache `fetch`) jest tylko w pamięci procesu: opcje Next `experimental.isrFlushToDisk: false` i `cacheMaxMemorySize` 128 MB (wypieranie najdawniej używanych), bez własnego handlera, nowej zależności i Redisa (E3); rewalidacja po tagach działa jak dziś. Slug spoza `isProductSlug` to 404 bez odczytu API. Limit `ephemeral-storage` kontenera `store` (SMALL-FIXES, D4: 2 GiB w `prod`) zostaje bez zmian jako zabezpieczenie dysku węzła. |
 | D13 | **Błędny token bez zdarzenia Sentry i bez zrzutu logów (SA-18):** logi weryfikacji tokenu dostępu trafiają do kanału Monologa `security`, który pomija handler `sentry` i który nie uruchamia zrzutu `fingers_crossed` w `prod` (osobny handler JSON od `warning`, jak kanał `cache`). |
 | D14 | **Sklep przekazuje adres klienta w każdym wywołaniu API koszyka** (`forwardingClientIp`, jak kasa i płatność), bo L2 i L3 liczą po adresie. Bez tego w `prod` wszystkie koszyki dzieliłyby jeden limit adresu sklepu. |
 | D15 | **Pusty koszyk gościa wygasa po 1 dniu (#406):** koszyk gościa bez linii ma `expiresAt` = ostatnia zmiana + 1 dzień, z liniami 30 dni jak dziś; reguła w `Cart::touch` i przy założeniu. Usuwa go istniejące `cart:purge-expired`. |
@@ -175,7 +172,6 @@ porównać z liczbą odpowiedzi 429; liczniki 429 należą do OPS-GUARDS (#775).
 | Nieopłacone zamówienia (L6) | PostgreSQL (tabela roszczeń) | blokady doradcze adresu i tożsamości (D8) | blokady i tabela są w jednej bazie | powtórzenie z tym samym kluczem wraca przed limitem (200) | działa |
 | Rozpoczęcie płatności (L7) | PostgreSQL | próba blokady bez czekania, 409 | blokada jest w bazie | w trakcie pierwszego rozpoczęcia 409, po nim działa jak dziś | działa |
 | Treść żądania (L4, L8) | brak | nie dotyczy | każda replika i ingress sprawdza sam | nie dotyczy | działa |
-| Cache ISR (L9) | pamięć procesu sklepu | nie dotyczy | limit pamięci na każdy pod sklepu osobno | nie dotyczy | działa |
 
 Awaria Redisa przywraca dzisiejszy stan tylko dla limiterów tras: zakładanie koszyków i zgadywanie kodów bez limitu
 (L2, L3) oraz brak limitów HARDENING. Ochrona stanu magazynowego (L5, L6) i wątków API (L7, L8) nie zależy od
@@ -432,53 +428,6 @@ hosta sklepu; każda nowa reguła ma te same middleware co jej host, w tym `ipal
 
 **Skutek dla klienta.** Brak; największe treści sklepu mają kilka KB. Pracownik wysyła zdjęcie do 64 MB jak dziś.
 
-## L9. Cache ISR strony produktu (SA-13)
-
-**Stan.** `apps/store/app/p/[slug]/page.tsx:10,12-14`: ISR (`revalidate = 3600`, pusty `generateStaticParams`), 404
-nieznanego sluga też trafia do cache. Next trzyma wpisy w pamięci (domyślnie do 50 MB) i zapisuje każdy na dysku poda
-bez sprzątania. Audyt wydajności zmierzył 262 KB na stronę produktu (HTML 142 KB, RSC 52 KB, segmenty 60 KB) i 140 KB
-na stronę 404, więc 100 unikalnych adresów na sekundę to 50–95 GB na godzinę. Dysk węzła chroni limit
-`ephemeral-storage` kontenera `store` (SMALL-FIXES: 2 GiB w `prod`): po ok. 8 tys. unikalnych stron produktu albo
-15 tys. stron 404 kubelet eksmituje jedyny pod sklepu, a nowy startuje z pustym cache. Mapa strony podaje adres
-każdego produktu, więc przy danych w skali do limitu prowadzi także zwykły ruch robotów, nie tylko atak.
-
-**Wymagane.** D12. Rozmiar cache jest stałą konfiguracji sklepu (`next.config.ts`), nie zmienną środowiska. Wpis 404
-sluga odwiedzonego przed publikacją dalej znika po rewalidacji tagu `product-slug-<slug>`
-(`docs/features/product-page/spec.md:23`). Poza cache przyrostowym sklep nie ma rosnących zapisów na dysk:
-optymalizator obrazów Next (`/_next/image`) nie działa przy własnym loaderze (`forbidden-loader`), a logi idą na stdout.
-
-128 MB to ok. 500 stron produktu albo ok. 950 stron 404. Next liczy HTML wpisu w znakach, nie w bajtach, więc wpis
-może zajmować w pamięci więcej niż jego rozmiar w cache; górne oszacowanie cache to dwukrotność limitu, ok. 256 MB.
-Kontener `store` ma w `prod` limit pamięci 1536 MiB (wartość domyślna chartu: 1 GiB). Szczyt jego pamięci w pomiarze
-`medium` z prawie pustym cache to 503 MiB (`docs/reports/demo-load-medium-2026-11-19.md`), więc oszacowanie z pełnym
-cache to ok. 760 MiB. HTML wpisów leży na stercie V8, której limit Node 24 ustawia według limitu pamięci kontenera:
-ok. 560 MiB przy 1 GiB i ok. 864 MiB przy 1536 MiB. Pamięć z pełnym cache nie jest zmierzona: mierzy ją zadanie
-(kryterium 3).
-
-**Kryteria akceptacji.**
-1. Test na buildzie produkcyjnym sklepu, uruchamiany w CI po E2E na stosie `STORE_MODE=production` (cel `make`
-   dopisany do `CI_AFTER_E2E`, jak `store-dynamic-routes`): po wejściu na strony istniejących produktów i na tyle
-   slugów nieistniejących, że wpisy przekraczają limit pamięci (N unikalnych adresów), katalog cache na dysku ma ten
-   sam rozmiar co przed nimi, a pierwszy adres po przepełnieniu znów daje `x-nextjs-cache: MISS`.
-2. Slug spoza `isProductSlug` (np. z wielkimi literami, kropką, za długi) to 404 bez wywołania API (test jednostkowy).
-3. Pomiar w raporcie zadania (obraz produkcyjny sklepu, limit pamięci kontenera 1 GiB): po N i po 2N unikalnych
-   adresach z kryterium 1, a potem w trakcie co najmniej 20 równoległych żądań stron spoza cache, proces sklepu nie
-   został zrestartowany; pamięć (RSS) po 2N jest wyższa niż po N o mniej niż 10% i także pod ruchem równoległym mieści
-   się w 768 MiB (limit 1 GiB z zapasem 25%), a zajęta sterta V8 w 75% jej limitu. Raport podaje RSS, zajętą stertę
-   i limit sterty. Inny wynik zatrzymuje zadanie i wraca z decyzją o rozmiarze cache.
-4. Istniejące testy świeżości strony produktu i rewalidacji po tagach (`product-page-freshness.spec.ts`, E2E
-   produkcyjne w CI) przechodzą bez zmian.
-5. Limit `ephemeral-storage` kontenera `store` zostaje bez zmian (asercje
-   `infra/k8s/tests/test_ephemeral_storage.py` bez zmian).
-6. Test konfiguracji (Vitest, `apps/store/tests`): `next.config.ts` ma `experimental.isrFlushToDisk` równe `false`
-   i `cacheMaxMemorySize` równe stałej 128 MB. Opcja jest eksperymentalna: jej zmianę albo usunięcie przy podbiciu
-   Next wykrywa test z kryterium 1 w CI.
-
-**Skutek dla klienta.** Brak; po restarcie poda cache startuje pusty jak dziś. Cache mieści ok. 500 stron produktu,
-więc przy katalogu w skali wejście na rzadko odwiedzaną stronę zwykle renderuje ją od nowa (ok. 39 ms CPU zamiast
-ok. 1 ms, audyt wydajności). Strony odwiedzane często zostają w cache, dopóki nie wyprze ich seria unikalnych adresów
-(ok. 950 nieznanych slugów wypełnia cały cache).
-
 ## L10. Błędny token Bearer bez zdarzenia Sentry (SA-18)
 
 **Stan.** Handler `sentry` (`apps/api/config/packages/monolog.yaml:10-13`) zamienia każdy log `error` kanału `app`
@@ -583,24 +532,8 @@ Od początku awarii do alertu mija od 12 do 17 minut i czas ewaluacji reguły.
 
 **Skutek dla klienta.** Brak. Koszt: jeden krótki pod z obrazem `api` co 5 minut.
 
-## Wdrożenie i kolejność z DEMO-SCALE
+## Wdrożenie
 
-- **Okno przed L9.** DEMO-SCALE wgrywa na worf.pl dane `medium` (1 mln produktów), a mapa strony podaje adres każdego
-  z nich. `prod` wysyła `X-Robots-Tag: noindex, nofollow`, ale `robots.txt` pozwala na strony produktów i wskazuje mapę
-  strony: robot musi pobrać stronę, żeby zobaczyć `noindex`, a skanery nie pytają o zgodę. Do wdrożenia L9 każda
-  unikalna strona produktu dopisuje 262 KB na dysku poda sklepu. Dysk węzła chroni limit 2 GiB (SMALL-FIXES; jego
-  działanie na serwerze sprawdza #794), ale ceną jest eksmisja jedynego poda sklepu co ok. 8 tys. unikalnych stron:
-  sklep nie odpowiada do startu nowego poda.
-- **Kolejność.** `make -C infra/k8s generate` z profilem `medium` albo `server` na worf.pl uruchamiamy dopiero po
-  wdrożeniu, które zawiera L9, i po weryfikacji L9 na serwerze (niżej). Jedno wdrożenie może zawierać oba epiki.
-  Zgoda użytkownika na `generate` nie zastępuje tego warunku.
-- **Weryfikacja L9 na serwerze**, po zgodzie użytkownika jak pozostałe sprawdzenia po wdrożeniu: wdrożona rewizja
-  zawiera L9 (`make -C infra/k8s status`); 4000 żądań `curl` przez `https://<domena>/p/<slug>` z unikalnymi,
-  nieistniejącymi slugami o poprawnym formacie, najwyżej 10 na sekundę (bez L9 to ok. 560 MB wpisów 404 na dysku).
-  Wynik jest dobry, gdy wolne miejsce na dysku węzła (`node_filesystem_avail_bytes` w Grafana Cloud) spada w czasie
-  próby o mniej niż 200 MB, a pod sklepu jest ten sam i bez restartu (`status`). Wynik trafia do komentarza w #181.
-- **Po L9** ruch robotów nie zużywa dysku, a pamięć cache ma limit. Zostaje koszt CPU renderu stron spoza cache
-  i listingów bez cache HTML: PERFORMANCE (#781).
 - **Wdrożenie epiku** nie zaczyna się w trakcie `generate` (faza w zapisie stanu `demo-data-state` inna niż `idle`):
   restartuje pody, których generator potrzebuje. Migracja L6 tworzy pustą tabelę, więc nie zależy od liczby zamówień.
 - **Po wdrożeniu**, po zgodzie użytkownika jak przy weryfikacji originu (kryteria „po wdrożeniu” w opisie PR): 21.
@@ -641,20 +574,19 @@ z tabeli wybiera sklep według miejsca, jak przy kasie.
 | `CLIENT_IP_HEADER` pusty (compose) | adres połączenia, wartości `when@dev` |
 | Blokada płatności zajęta | 409 `PaymentInProgress` bez czekania |
 | Treść ponad limit w BFF | 413 bez wywołania API |
-| Slug spoza formatu | 404 bez wywołania API |
 
 ## Testy
 
 - API: jednostkowe (TDD) dla reguł domeny i aplikacji (D15, L5, L6, klucze), funkcjonalne dla limiterów, 409 i 413
   (wartości `when@test`), integracyjne na prawdziwym Redisie (L1, L12) i PostgreSQL z procesami równoległymi (L6, L7),
   test konfiguracji `prod` i `dev` (`RateLimitConfigurationTest`), testy kanałów Monologa (L10).
-- Sklep: Vitest dla L4 i sluga z L9; test i pomiar pamięci na buildzie produkcyjnym dla L9.
+- Sklep: Vitest dla L4.
 - Chart: testy renderu (`infra/k8s/tests`) dla L8, L11 i L12; `promtool test rules`, selftest i test skryptu
   odtworzenia na atrapach dla L12; test plików k6 (L6); test dymny dla L8 i L12.
 - E2E: `checkout-guest-limits.spec.ts` (L5), `request-body-limit.spec.ts` (L8), `registration.spec.ts` (L11);
   wszystkie istniejące scenariusze przechodzą na wartościach `when@dev`.
 - Każde zadanie zmieniające regułę ma w raporcie wyniki fazy RED i GREEN; zmiany konfiguracji i infrastruktury
-  weryfikują komendy z planu i wyniki eksperymentów E1–E5.
+  weryfikują komendy z planu i wyniki eksperymentów E1, E2, E4 i E5.
 
 ## Dokumentacja
 
@@ -671,11 +603,6 @@ Poza tym `CLAUDE.md` aplikacji, specyfikacje innych funkcji i komentarze zmienia
 przeczy nowemu zachowaniu:
 
 - `apps/api/CLAUDE.md`: limitery „bez `symfony/lock`” (L1); kolejność blokad złożenia zamówienia (L6).
-- `apps/store/CLAUDE.md`: cache ISR zapisywany na dysku w obrazie produkcyjnym (L9).
-- `docs/features/small-fixes/spec.md` (uzasadnienie D4), komentarze przy `ephemeral-storage` w
-  `infra/k8s/environments/prod/values.yaml` i `load/values.yaml`, opis testu
-  `infra/k8s/tests/test_ephemeral_storage.py`, `docs/features/demo-scale/spec.md` (ryzyko cache ISR na dysku i warunek
-  kolejności): cache ISR nie rośnie na dysku, a limit zostaje jako zabezpieczenie (L9).
 - `docs/features/hardening/spec.md`: D1 (bez `symfony/lock`), limity koszyka poza zakresem (L1–L3); D7 i ryzyko
   fail open: sygnałem jest też alert `RateLimitsOff` (L12); D16 (L5, L6).
 - `docs/features/deploy-ops/spec.md`, `docs/adr/backups-observability.md`, `docs/vision.md`: lista i liczba reguł
@@ -687,8 +614,6 @@ przeczy nowemu zachowaniu:
 - `docs/features/cart/spec.md`: decyzja 5 i rate limiting koszyków poza zakresem (L2); kody BFF dla przeglądarki (L4).
 - `docs/features/checkout/spec.md`: tabela 409 złożenia (L5, L6).
 - `docs/features/payment/spec.md`: równoległe rozpoczęcia i ryzyko samoblokady (L7).
-- `docs/features/product-page/spec.md`: A6 i ryzyko wpisów ISR na dysku, w tym zdanie o eksmisji poda jako
-  ograniczeniu przyrostu (L9).
 
 ## Ryzyka i ograniczenia
 
@@ -708,18 +633,11 @@ przeczy nowemu zachowaniu:
 - Kolizja skrótu identyfikatora zamówienia w blokadzie L7 może dać 409 dla innego zamówienia; ponowienie przechodzi.
 - Limit wielkości dotyczy tylko gościa; po włączeniu rejestracji konta mają limity L6, ale nie L5.
 - Trasa uploadu przyjmuje anonimowo treść do 70 MB (PHP parsuje ją przed firewallem); buforuje ją Traefik.
-- Cache ISR w pamięci jest osobny w każdym podzie (jak dziś na dysku) i znika przy restarcie; mieści ok. 500 stron
-  produktu, a jego zużycie pamięci jest oszacowane i mierzy je dopiero zadanie (L9, kryterium 3).
-- Dane w skali trafiają na serwer demo dopiero po wdrożeniu i weryfikacji L9; do tego czasu DEMO-SCALE nie uruchamia
-  tam `generate` z profilem `medium` ani `server` („Wdrożenie i kolejność z DEMO-SCALE”).
 - `RateLimitsOff` sprawdza Redisa z osobnego poda z konfiguracją `api`, nie z podów `api`, co 5 minut: awaria
   obejmująca mniej niż trzy przebiegi (krótsza niż ok. 10 minut), pojedyncze błędy przy działającym Redisie i błąd
   sieci dotyczący tylko poda `api` zostają tylko w logu (alerty z logów: OPS-GUARDS, #775). Awaria niewiele dłuższa
   może dać alert już po swoim końcu. Po pierwszym wdrożeniu alert może odpalić do pierwszego udanego przebiegu (do 5 minut), jak `BackupMissing`
   przed pierwszą kopią.
-- Lista rewalidowanych tagów Next jest w pamięci procesu sklepu bez limitu, poza `cacheMaxMemorySize`: rośnie o każdy
-  tag produktu rewalidowany od startu poda, jak dziś. Jej wielkość na danych w skali nie jest zmierzona
-  (PERFORMANCE, #781).
 - Nie jest sprawdzone, czy ruch z obcej strefy Cloudflare może nieść wybrany adres klienta (SA-35, „Adres klienta”);
   zamyka to #796.
 - Polityka haseł nie wymusza zmiany słabych haseł już ustawionych.

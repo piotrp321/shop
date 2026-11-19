@@ -41,8 +41,8 @@ RUN --mount=type=secret,id=sentry_auth_token \
     fi; \
     API_CATALOG_URL=http://127.0.0.1:9 STORE_STANDALONE=1 npm run build && find .next -name '*.map' -delete
 
-# Production image: the standalone server only (traced dependencies, no npm, no sources). `.next/cache` (ISR) is
-# written at run time, so `.next` belongs to the unprivileged user.
+# Production image: the standalone server only (traced dependencies, no npm, no sources), run by the unprivileged user.
+# The ISR cache stays in memory (next.config.ts), so nothing grows on the writable layer at run time.
 FROM node AS prod
 
 ENV NODE_ENV=production \
