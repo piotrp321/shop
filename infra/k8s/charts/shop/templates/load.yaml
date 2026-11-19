@@ -38,9 +38,14 @@ spec:
           automountServiceAccountToken: false
           # The Job of make generate runs while the shop is closed: under the NetworkPolicy shop-closed the first connections of a
           # pod that was just created are refused (until the controller of the policies knows its address), and k6 asks the API
-          # once in its setup. k6 starts once the API answered from this pod.
+          # once in its setup. k6 starts once the API answered from this pod. It is no wait-for-<workload> of the waves of Argo CD:
+          # the CronJob is suspended, so a synchronization starts no pod of it; the limit is activeDeadlineSeconds of the Job.
           initContainers:
-            {{- include "shop.wait" (dict "root" . "name" "api" "check" "wget -T 3 -qO /dev/null http://api/health") | nindent 12 }}
+            - name: api-reachable
+              image: {{ .Values.images.alpine }}
+              command: ["sh", "-c", "until wget -T 3 -qO /dev/null http://api/health; do echo 'load: waiting until the API answers from this pod'; sleep 1; done"]
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 16 }}
           containers:
             - name: load
               image: {{ .Values.images.k6 }}

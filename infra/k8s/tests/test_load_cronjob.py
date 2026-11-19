@@ -121,7 +121,9 @@ class WaitForTheApiTest(unittest.TestCase):
         for case in CASES:
             with self.subTest(case):
                 (wait,) = self.init_containers(case)
-                self.assertEqual("wait-for-api", wait["name"])
+                # Not a wait-for-<workload> (tests/test_waves.py): no synchronization of Argo CD starts a pod of a suspended
+                # CronJob, so it is no dependency of the waves.
+                self.assertEqual("api-reachable", wait["name"])
                 script = " ".join(wait.get("command", []) + wait.get("args", []))
                 self.assertIn("until", script)
                 self.assertIn("http://api/health", script)
