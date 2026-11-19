@@ -178,8 +178,8 @@ kubeconfig:
 status:
 	sh scripts/status.sh "$(HOST)"
 
-# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Only for the seed data in
-# the phase idle (no record of the demo data is that too); otherwise it refuses with exit 1 before the question (make generate PROFILE=seed).
+# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak. Refuses with exit 1 before the
+# question while the shop is closed (the NetworkPolicy shop-closed of make generate; make generate PROFILE=seed goes back to the seed).
 # make -C infra/k8s reinitialize HOST=<user>@<address>
 reinitialize:
 	sh scripts/reinitialize.sh "$(HOST)"
