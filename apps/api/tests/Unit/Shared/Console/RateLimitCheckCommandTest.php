@@ -18,14 +18,17 @@ final class RateLimitCheckCommandTest extends TestCase
 {
     public function testAWorkingRedisIsExitCodeZeroAndTheKeyIsWrittenWithATimeToLiveReadAndDeleted(): void
     {
-        $written = [];
+        /** @var array{key: string, value: string, options: mixed} $written */
+        $written = ['key' => '', 'value' => '', 'options' => null];
         $redis = $this->createMock(\Redis::class);
-        $redis->expects(self::once())->method('set')->willReturnCallback(static function (string $key, mixed $value, mixed $options = null) use (&$written): bool {
+        $redis->expects(self::once())->method('set')->willReturnCallback(static function (string $key, string $value, mixed $options = null) use (&$written): bool {
             $written = ['key' => $key, 'value' => $value, 'options' => $options];
 
             return true;
         });
-        $redis->expects(self::once())->method('get')->willReturnCallback(static fn (string $key): string|false => $written['key'] === $key ? $written['value'] : false);
+        $redis->expects(self::once())->method('get')->willReturnCallback(static function (string $key) use (&$written): string|false {
+            return $written['key'] === $key ? $written['value'] : false;
+        });
         $redis->expects(self::once())->method('del')->willReturnCallback(static function (string $key) use (&$written): int {
             self::assertSame($written['key'], $key);
 
@@ -44,16 +47,20 @@ final class RateLimitCheckCommandTest extends TestCase
 
     public function testEveryRunWritesAnotherKeyAndValue(): void
     {
+        /** @var list<string> $keys */
         $keys = [];
+        /** @var array<string, string> $values */
         $values = [];
-        $redis = $this->createMock(\Redis::class);
-        $redis->method('set')->willReturnCallback(static function (string $key, mixed $value) use (&$keys, &$values): bool {
+        $redis = $this->createStub(\Redis::class);
+        $redis->method('set')->willReturnCallback(static function (string $key, string $value) use (&$keys, &$values): bool {
             $keys[] = $key;
             $values[$key] = $value;
 
             return true;
         });
-        $redis->method('get')->willReturnCallback(static fn (string $key): string => $values[$key]);
+        $redis->method('get')->willReturnCallback(static function (string $key) use (&$values): string {
+            return $values[$key];
+        });
         $redis->method('del')->willReturn(1);
         $tester = $this->tester($redis);
 
@@ -90,7 +97,7 @@ final class RateLimitCheckCommandTest extends TestCase
 
     public function testAnotherValueThanTheOneWrittenIsAnExitCodeOtherThanZeroWithTheReason(): void
     {
-        $redis = $this->createMock(\Redis::class);
+        $redis = $this->createStub(\Redis::class);
         $redis->method('set')->willReturn(true);
         $redis->method('get')->willReturn('another value');
 
@@ -102,7 +109,7 @@ final class RateLimitCheckCommandTest extends TestCase
 
     public function testAKeyThatIsNotThereOnReadIsAnExitCodeOtherThanZero(): void
     {
-        $redis = $this->createMock(\Redis::class);
+        $redis = $this->createStub(\Redis::class);
         $redis->method('set')->willReturn(true);
         $redis->method('get')->willReturn(false);
 
@@ -116,13 +123,15 @@ final class RateLimitCheckCommandTest extends TestCase
     {
         foreach (['an error' => new \RedisException('READONLY You can\'t write against a read only replica.'), 'nothing deleted' => 0] as $case => $outcome) {
             $value = null;
-            $redis = $this->createMock(\Redis::class);
+            $redis = $this->createStub(\Redis::class);
             $redis->method('set')->willReturnCallback(static function (string $key, mixed $written) use (&$value): bool {
                 $value = $written;
 
                 return true;
             });
-            $redis->method('get')->willReturnCallback(static fn (): mixed => $value);
+            $redis->method('get')->willReturnCallback(static function () use (&$value): mixed {
+                return $value;
+            });
             $redis->method('del')->willReturnCallback(static fn (): int => $outcome instanceof \Throwable ? throw $outcome : $outcome);
             $tester = $this->tester($redis);
 
@@ -141,7 +150,7 @@ final class RateLimitCheckCommandTest extends TestCase
 
     public function testAnErrorThatIsNotOfRedisIsHandledToo(): void
     {
-        $redis = $this->createMock(\Redis::class);
+        $redis = $this->createStub(\Redis::class);
         $redis->method('set')->willThrowException(new \TypeError('unexpected'));
 
         $tester = $this->tester($redis);

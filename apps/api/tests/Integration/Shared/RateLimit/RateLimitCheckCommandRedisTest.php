@@ -136,7 +136,9 @@ final class RateLimitCheckCommandRedisTest extends WebTestCase
     private function dump(\Redis $redis): array
     {
         $dump = [];
-        foreach ($redis->keys('*') ?: [] as $key) {
+        $keys = $redis->keys('*');
+        self::assertIsArray($keys);
+        foreach ($keys as $key) {
             $dump[$key] = (string) $redis->dump($key);
         }
         ksort($dump);
