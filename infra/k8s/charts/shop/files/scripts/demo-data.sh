@@ -130,8 +130,9 @@ stop_group() {
   say "processes of the group $gen_pid still run after KILL; they end with the container" >&2
 }
 
-# The guard: a reading every DEMO_DATA_SPACE_POLL seconds until the script stops it (TERM) or it stops the generator. A TERM that comes
-# while it stops the group does not cut the stop short.
+# The guard: a reading every DEMO_DATA_SPACE_POLL seconds until the script stops it (TERM, and the file stop-guard: a TERM that comes
+# before the guard set its trap is lost) or it stops the generator. A TERM that comes while it stops the group does not cut the stop
+# short.
 guard() {
   guard_quit="" guard_failures=0 guard_n=1
   trap 'guard_quit=1' TERM
@@ -140,7 +141,7 @@ guard() {
     sleep "$poll" &
     guard_sleep=$!
     wait "$guard_sleep" 2> /dev/null || :
-    if [ -n "$guard_quit" ]; then
+    if [ -n "$guard_quit" ] || [ -e "$work/stop-guard" ]; then
       kill "$guard_sleep" 2> /dev/null || :
       exit 0
     fi
@@ -279,6 +280,7 @@ while :; do
 done
 generator_done=1
 # The guard ends after a stop it began; the rest of the group (a process the generator left) is stopped as well.
+: > "$work/stop-guard"
 kill -TERM "$guard_pid" 2> /dev/null || :
 wait "$guard_pid" 2> /dev/null || :
 stop_group
