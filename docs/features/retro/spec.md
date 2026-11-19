@@ -343,7 +343,8 @@ wiersza albo wartość inna niż „przed startem” i „zakończona” sesja t
 - raport ma sekcję `## Odroczone do końca serii` (numer, tytuł, pliki) i przy każdej pozycji ocenę, czy jest blokadą
   kolejnego epiku serii albo zagrożeniem;
 - pozycję oznaczoną jako blokada albo zagrożenie sesja wprowadza dopiero po „tak” użytkownika wskazującym tę pozycję,
-  potem `observe --pr <nr> --branch <gałąź> --committed <numery wprowadzonych pozycji>`.
+  potem `observe --pr <nr> --branch <gałąź> --committed <numery wprowadzonych pozycji>`. Ponowne `observe` tego
+  samego `proposals.json` zmienia tylko PR retro: decyzje o propozycjach issues (`issues`, `reject`) zostają.
 
 Pierwsze sprawdzenie w praktyce to retrospektywa pierwszego epiku serii. `/retro small-fixes` (odbiór ścieżki natywnej)
 biegnie przed tagiem `ash-v1.0`, więc bez zamrożenia.

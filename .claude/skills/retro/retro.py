@@ -43,7 +43,8 @@ an item that does not exist) and, for `validate`, proposals that do not pass.
       Appends to observations.jsonl the observations of DIR/proposals.json and the key and incidents of every `fix`
       and `issue` item (no row twice). Records in <retro-home>/<epic>/state.json the `issue` items as
       `decisions_open` and, with --pr, the `fix` items as `pr` {number, branch, items} (the retro PR of this run);
-      --committed limits them to the fix items committed in the PR (`none` while the series is in progress).
+      --committed limits them to the fix items committed in the PR (`none` while the series is in progress). Observing
+      the same proposals.json again changes only `pr`: the decisions settled by `issues` and `reject` stay.
   retro.py reject (--key KEY | --all | --pr N) --reason TEXT [--epic EPIC]
       A conscious rejection, written to rejected.jsonl (the only command that writes it): `--key` takes the undecided
       item with the key (an item of an unresolved retro PR or an issue proposal in `decisions_open`); `--all` takes
@@ -1822,13 +1823,18 @@ def cmd_observe(args):
             seen.add(token)
             added.append(dict(row, epic=epic_id, at=moment))
     append_jsonl(path, added)
-    state['decisions_open'] = issues
+    # The issue items become the open decisions once per proposals.json: observing the same proposals again (the PR
+    # recorded after `gh pr create`, a deferred fix committed after "tak <n>") keeps what `issues` and `reject` settled.
+    digest = hashlib.sha256(json.dumps(proposals, sort_keys=True, ensure_ascii=False).encode('utf-8')).hexdigest()
+    if state.get('observed_proposals') != digest or not isinstance(state.get('decisions_open'), list):
+        state['decisions_open'] = issues
+        state['observed_proposals'] = digest
     if args.pr is not None:
         state['pr'] = {'number': args.pr, 'branch': args.branch, 'items': fixes}
         drop_carried(args.retro_home, {f['key'] for f in fixes})
     save_state(args.retro_home, epic_id, state)
     return {'epic': epic_id, 'observations': len(added), 'pr_items': len(fixes) if args.pr is not None else None,
-            'decisions_open': len(issues)}
+            'decisions_open': len(state['decisions_open'])}
 
 
 def cmd_reject(args):
