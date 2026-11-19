@@ -1,0 +1,45 @@
+{{- /*
+The check of the Redis of the rate limiters (docs/features/abuse-limits/spec.md, L12, D16): a CronJob that runs `bin/console rate-limit:check`
+in the image and the environment of the API every five minutes. The command writes, reads and deletes a control key over the connection of
+the limiters and exits with a code other than 0 when that fails; the alert RateLimitsOff (00-alerts.yaml) fires when no Job has succeeded for
+17 minutes, which is how a Redis that is ready but unusable for the API (the limiters fail open) is noticed. It is in every profile and never
+suspended; restore.sh suspends it while it works and brings it back.
+*/ -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rate-limit-check
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "rate-limit-check") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  schedule: {{ .Values.rateLimitCheck.schedule | quote }}
+  # One check at a time; a run that could not start within four minutes of its time is skipped (the next one is five minutes later).
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 240
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # A failed check is not retried: the next run is five minutes away and the alert counts successes.
+      backoffLimit: 0
+      activeDeadlineSeconds: 60
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "rate-limit-check") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          containers:
+            - name: rate-limit-check
+              image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["bin/console", "rate-limit:check"]
+              env:
+                {{- include "shop.apiEnv" . | nindent 16 }}
+              {{- include "shop.envFromSecret" . | nindent 14 }}
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 18 }}

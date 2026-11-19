@@ -128,6 +128,12 @@ cartPurge:
   schedule: "0 * * * *"
   timeZone: Europe/Warsaw
 
+# The CronJob rate-limit-check (docs/features/abuse-limits/spec.md, L12): every five minutes it checks that the Redis of the rate limiters
+# takes a write. The alert RateLimitsOff (templates/00-alerts.yaml) fires when no run has succeeded for 17 minutes (three periods of this
+# schedule and two minutes for the start of a pod), so a longer period needs a longer threshold there.
+rateLimitCheck:
+  schedule: "*/5 * * * *"
+
 # The demo data generator (docs/features/demo-data/spec.md, "k3d (chart w profilach ci i load; część 2)"): the suspended CronJob
 # demo-data, whose Jobs run bin/generate-demo and so DELETE the data of every module. Only the profiles ci and load switch it on; the
 # schema refuses it with the images of a release (image.requireDigests, prod).
