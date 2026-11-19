@@ -489,8 +489,12 @@ zwracana.
   `mergeGuestCart` i `applyGuestCartMerge`, tokenem z właśnie uzyskanych tokenów). Błąd scalenia nie psuje logowania;
   scalenie powtórzy pierwsze żądanie koszyka.
 - Kody BFF dla przeglądarki: 200 z `CartView` (`summary`: `{itemCount, notice}`); błędy API 404, 409 i 422 przekazywane
-  z `detail`; 401 sesji; 403 `Origin` lub `Content-Type`; 503 niedostępne zależności lub API (także 400 i 415 API, które
-  byłyby błędem BFF).
+  z `detail`; 429 limitu API (zapis, zakładanie koszyka gościa, podgląd kodu) z `detail` i `Retry-After` API; 401 sesji;
+  403 `Origin` lub `Content-Type`; 413 `{ detail }` („Treść żądania jest za duża.”), gdy treść JSON ma ponad 16 KiB
+  (sprawdzane po `Content-Length` przed odczytem i w trakcie odczytu, bez wywołania API; to samo w trasach kasy
+  i płatności); 503 niedostępne zależności lub API (także 400 i 415 API, które byłyby błędem BFF). Każde wywołanie API
+  z BFF koszyka (także założenie koszyka gościa i scalenie) niesie adres klienta z nagłówka z `CLIENT_IP_HEADER`
+  (`forwardingClientIp`), więc limity API liczą klientów, a nie sklep.
 - `src/api/client.ts` dostaje funkcje przeglądarki wołające `/api/cart/*` (`loadCart`, `loadCartSummary`, `addCartItem`,
   `changeCartItemQuantity`, `removeCartItem`; jedyne miejsce `fetch`). Zapisy idą jeden po drugim we wszystkich kartach
   sklepu w przeglądarce, żeby równoczesne pierwsze dodania gościa nie założyły kilku koszyków:
@@ -541,6 +545,8 @@ zwracana.
 | 409 przy dodaniu albo zmianie ilości | `detail` z API przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 404 produktu przy dodaniu | „Produkt nie jest już dostępny” |
 | 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta”. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: „Twoja sesja wygasła. Zaloguj się ponownie.”; wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii. W obu ostatnich przypadkach pole ilości pokazuje ilość z ostatniego widoku |
+| 429 przy dodaniu, zmianie ilości albo usunięciu | „Zbyt wiele zmian koszyka. Spróbuj ponownie za kilka minut.” (`role="alert"`) przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
+| 429 podglądu kodu w kasie | „Zbyt wiele prób sprawdzenia kodu. Spróbuj ponownie za kilka minut.” przy polu kodu; kasa czyta koszyk bez kodu, formularz zostaje |
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
 | błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |

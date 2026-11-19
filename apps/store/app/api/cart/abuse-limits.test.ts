@@ -189,7 +189,8 @@ describe("the limit of the JSON body (16 KiB)", () => {
         }
         controller.close();
       },
-    });
+      // Nothing is pulled before somebody reads: a body that is refused unread must show as not pulled.
+    }, { highWaterMark: 0 });
   };
   function raw(path: string, method: string, body: Body, headers: Record<string, string>) {
     return new NextRequest(`http://0.0.0.0:3000${path}`, {

@@ -44,7 +44,7 @@ function stream(text: string, onPull: () => void = () => {}) {
       }
       controller.close();
     },
-  });
+  }, { highWaterMark: 0 });
 }
 
 async function expectTooLarge(response: Response) {

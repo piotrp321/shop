@@ -5,7 +5,7 @@ import { addCartItem, type CartFailure } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { announceCartChange } from "./events";
-import { PRODUCT_GONE, SAVE_FAILED, SessionExpired } from "./messages";
+import { CART_RATE_LIMITED, PRODUCT_GONE, SAVE_FAILED, SessionExpired } from "./messages";
 
 // `variantId`: the variant the request was for; the message is shown only while that variant is the one on the button.
 type Feedback = { kind: "added"; variantId: string } | { kind: "error"; variantId: string; failure: CartFailure; returnTo: string };
@@ -67,6 +67,8 @@ function errorMessage({ failure, returnTo }: { failure: CartFailure; returnTo: s
       return failure.detail ?? SAVE_FAILED;
     case "not_found":
       return PRODUCT_GONE;
+    case "rate_limited":
+      return CART_RATE_LIMITED;
     case "unauthorized":
       return <SessionExpired returnTo={returnTo} />;
     case "failed":
